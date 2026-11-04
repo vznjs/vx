@@ -605,8 +605,8 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
 
     const code = await run(['run', '--all', 'hello', '--dry'])
     expect(code).toBe(0)
-    expect(stdout).toContain('would run:')
-    expect(stdout).toContain('one#hello')
+    expect(stdout).toStartWith('─ Plan 1 ')
+    expect(stdout).toMatch(/ run +miss .* one#hello\n/)
     // The actual task would have echoed `hello-cli`; it must NOT run.
     expect(stdout).not.toContain('hello-cli')
   })
@@ -624,7 +624,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
       vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
 
       expect(await run(['run', '--all', 'hello', flag, '--dry'])).toBe(0)
-      expect(stdout).toContain('no-cache (would exec)')
+      expect(stdout).toMatch(/ run +no-cache .* one#hello\n/)
       stdout = ''
       expect(await run(['run', '--all', 'hello', flag])).toBe(0)
       expect(stdout).toMatch(/\n {12}local 1∅\n/)

@@ -808,7 +808,13 @@ export function defaultLogger(
       runContext = info.context
       startedAtMs = Date.now()
       started = true
-      slots = Array.from({ length: Math.max(1, info.concurrency ?? 10) }, () => null)
+      // No more slots than tasks: one per allowed worker, every frame walked
+      // them all (`--concurrency=100000000` over six tasks took 80 s, and
+      // 2^32 threw here).
+      slots = Array.from(
+        { length: Math.max(1, Math.min(info.concurrency ?? 10, info.total)) },
+        () => null,
+      )
       tick()
       refresh(true)
     },

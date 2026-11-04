@@ -1,43 +1,36 @@
 // Formatters for `--dry` (human / JSON).
 
 import type { AffectedReason, CacheStatus, RunPlan } from '../orchestrator/index.js'
-import { skippedReason } from '../report/index.js'
+import { planList, type PlannedRow, skippedReason } from '../report/index.js'
 import { formatBytes, formatElapsed, maskedCommand } from '../util/index.js'
 import * as ui from '../ui/index.js'
-import { paint, type ColorSupport, type Style } from '../ui/index.js'
-
-/** `vx run --dry`'s screen. */
-export function planReport(plan: RunPlan): ui.Block {
-  return { lines: (c) => formatPlanText(plan, c).replace(/\n$/, '').split('\n') }
-}
+import type { ColorSupport } from '../ui/index.js'
 
 /**
- * Human-readable preview. One line per real task (groups hidden, same
- * as the live runner), tagged with predicted cache outcome. A would-run
- * task with recorded history also shows its typical duration (~p50).
+ * `vx run --dry`'s screen: the `Plan` panel, each task on the running
+ * list's grid (what the run would do with it, its usual time, where it
+ * would run), then the counts and the predicted time.
  *
- *   would run:
- *     ✓  @vzn/vx#lint       cache hit (local)        abc12345
- *     ↓  @vzn/vx#test       cache hit (remote)       def67890
- *     ▶  @vzn/vx#build      cache miss — would exec  fedcba98  ~1.20s
+ *   ─ Plan 3 ─────────────────────────────────────────────────────
+ *         time   usual status  cache      cpu    mem outputs  blocks worker       task
+ *    ⇢                 cached  local                                 local        @vzn/vx#lint
+ *    ⇣                 cached  remote                     12MB       local        @vzn/vx#test
+ *    ⏺︎               ~1.2s run     miss                                  local        @vzn/vx#build
  *
- *   3 task(s) planned, 2 cache hits (1 local, 1 remote), 1 would run.
- *   predicted: ~1.20s wall · ~1.20s total execution
+ *     tasks      3 planned · 2 cache hits (1 local, 1 remote, 12MB) · 1 would run
+ *     predicted  ~1.20s wall · ~1.20s total execution
  */
-export function formatPlanText(plan: RunPlan, c: ColorSupport = { enabled: false }): string {
+export function planReport(plan: RunPlan): ui.Block {
   // A group the platform skip reaches is still a group: it runs nothing.
   const real = plan.tasks.filter(
     (t) =>
       t.cacheStatus !== 'group' &&
       (t.cacheStatus !== 'skipped' || t.node.config.exec !== undefined),
   )
-  const dim = (s: string): string => paint('muted', s, c)
-  if (real.length === 0) return `${dim('No tasks planned.')}\n`
+  if (real.length === 0) return ui.section('Plan', ui.text('No tasks planned.'))
 
-  const idWidth = Math.max(...real.map((t) => t.node.id.length))
-  const tagWidth = 24
-
-  const lines: string[] = [paint('strong', 'would run:', c)]
+  const blocks = downstream(plan)
+  const rows: PlannedRow[] = []
   let local = 0
   let remote = 0
   let miss = 0
@@ -48,33 +41,28 @@ export function formatPlanText(plan: RunPlan, c: ColorSupport = { enabled: false
   for (const t of real) {
     // `@noop`: the run succeeds it without running, whatever its key says.
     const skipped = t.executor === 'noop' && t.cacheStatus !== 'skipped'
-    const sym = skipped ? '·' : symbolFor(t.cacheStatus)
-    const desc = skipped
-      ? 'noop — would not run'
-      : t.cacheStatus === 'skipped'
-        ? `skipped — ${skippedReason(t)}`
-        : describe(t.cacheStatus)
-    const shortHash = t.hash ? t.hash.slice(0, 8) : ''
+    const notes: string[] = []
+    if (t.cacheStatus === 'skipped') notes.push(skippedReason(t))
+    const desc = shownDescription(t)
+    if (desc !== undefined && desc !== '') notes.push(desc)
+    if (t.affected !== undefined) notes.push(`affected: ${describeReason(t.affected)}`)
     const executes = !skipped && (t.cacheStatus === 'miss' || t.cacheStatus === 'no-cache')
-    const eta = executes && t.p50Ms !== undefined ? `  ~${formatElapsed(t.p50Ms)}` : ''
-    // Placement, by EXECUTOR NAME rather than a local/remote word: the
-    // summary line below already spends "local" and "remote" on the cache
-    // tier, and a task placed on a named executor is what the reader can
-    // act on. Present only when the workspace declared a choice.
-    const where = t.executor !== undefined ? `  @${t.executor}` : ''
-    const hue: Style = skipped ? 'muted' : HUE[t.cacheStatus]
-    lines.push(
-      `  ${paint(hue, sym, c)}  ${ui.inline(ui.id(t.node.id), c)}${' '.repeat(idWidth - t.node.id.length)}  ${paint(hue, desc.padEnd(tagWidth), c)}  ${dim(shortHash)}${dim(eta)}${where}`,
-    )
-    // Optional one-line description from the task config, indented
-    // under the id so the eye picks up the task → blurb mapping.
-    const taskDesc = shownDescription(t)
-    if (taskDesc) {
-      lines.push(`     ${' '.repeat(idWidth)}  ${dim(taskDesc)}`)
-    }
-    if (t.affected !== undefined) {
-      lines.push(`     ${' '.repeat(idWidth)}  ${dim(`affected: ${describeReason(t.affected)}`)}`)
-    }
+    rows.push({
+      node: t.node,
+      ...(skipped ? NOOP : LOOK[t.cacheStatus]),
+      ...(executes && t.p50Ms !== undefined ? { usualMs: t.p50Ms } : {}),
+      ...(t.cacheStatus === 'hit-remote' && t.remoteBytes !== undefined
+        ? { outputBytes: t.remoteBytes }
+        : {}),
+      blocks: blocks.get(t.node.id) ?? 0,
+      // Placement by executor name; a task that will not run reaches no
+      // machine, as a skip's row in the run has none.
+      worker:
+        skipped || t.cacheStatus === 'skipped' || t.cacheStatus === 'not-started'
+          ? ''
+          : (t.executor ?? 'local'),
+      note: notes.join(' · '),
+    })
     if (skipped) noop++
     else if (t.cacheStatus === 'hit-local') local++
     else if (t.cacheStatus === 'hit-remote') remote++
@@ -92,15 +80,14 @@ export function formatPlanText(plan: RunPlan, c: ColorSupport = { enabled: false
     hitParts.push(bytes > 0 ? `${remote} remote, ${formatBytes(bytes)}` : `${remote} remote`)
   }
   const hits = local + remote
-  const summary: string[] = [`${real.length} task(s) planned`]
+  const summary: string[] = [`${real.length} planned`]
   if (hits > 0) summary.push(`${hits} cache hit${hits === 1 ? '' : 's'} (${hitParts.join(', ')})`)
   if (miss > 0) summary.push(`${miss} would run`)
   if (nocache > 0) summary.push(`${nocache} no-cache`)
   if (noop > 0) summary.push(`${noop} noop`)
   if (idle > 0) summary.push(`${idle} not started`)
   if (platform > 0) summary.push(`${platform} skipped`)
-  lines.push('')
-  lines.push(dim(summary.join(', ') + '.'))
+  const facts: ui.FieldRow[] = [['tasks', summary.join(' · ')]]
 
   // `--cache-download` is invisible without this: the eligibility gate silently
   // keeps producers eager, so a user who asked for `none` and got no
@@ -109,16 +96,13 @@ export function formatPlanText(plan: RunPlan, c: ColorSupport = { enabled: false
   const deferred = real.filter((t) => t.download === 'deferred')
   const downgrades = plan.downloadDowngrades ?? []
   if (deferred.length > 0 || downgrades.length > 0) {
-    lines.push('')
-    lines.push(
-      dim(
-        `download: ${deferred.length} task(s) would keep outputs remote` +
-          (downgrades.length > 0 ? `, ${downgrades.length} kept eager:` : '.'),
-      ),
-    )
-    for (const d of downgrades.slice(0, 3))
-      lines.push(`    ${ui.inline(ui.id(d.taskId), c)} ${dim(`— ${d.reason}`)}`)
-    if (downgrades.length > 3) lines.push(dim(`    …and ${downgrades.length - 3} more`))
+    facts.push([
+      'download',
+      `${deferred.length} task(s) would keep outputs remote` +
+        (downgrades.length > 0 ? `, ${downgrades.length} kept eager:` : '.'),
+      ...downgrades.slice(0, 3).map((d) => [ui.id(d.taskId), ui.dim(` — ${d.reason}`)]),
+      ...(downgrades.length > 3 ? [`…and ${downgrades.length - 3} more`] : []),
+    ])
   }
 
   // Time prediction — only when history gave us something to say: at least
@@ -126,15 +110,79 @@ export function formatPlanText(plan: RunPlan, c: ColorSupport = { enabled: false
   const p = plan.predicted
   const executes = miss + nocache
   if (p !== undefined && executes > 0 && executes > p.unknownCount) {
-    const parts = [`predicted: ~${formatElapsed(p.wallMs)} wall`]
+    const parts = [`~${formatElapsed(p.wallMs)} wall`]
     parts.push(`~${formatElapsed(p.workMs)} total execution`)
     if (p.unknownCount > 0) {
       parts.push(`${p.unknownCount} task${p.unknownCount === 1 ? '' : 's'} without history (+?)`)
     }
-    lines.push(dim(parts.join(' · ')))
+    facts.push(['predicted', parts.join(' · ')])
   }
-  return lines.join('\n') + '\n'
+  return ui.section('Plan', String(real.length), planList(rows), ui.fields(facts))
 }
+
+/**
+ * How many tasks are downstream of each, all of them (groups too), as the
+ * run's `blocks` counts them.
+ */
+function downstream(plan: RunPlan): Map<string, number> {
+  const dependants = new Map<string, string[]>()
+  for (const t of plan.tasks)
+    for (const d of t.deps) {
+      const list = dependants.get(d)
+      if (list === undefined) dependants.set(d, [t.node.id])
+      else list.push(t.node.id)
+    }
+  const counts = new Map<string, number>()
+  for (const t of plan.tasks) {
+    const seen = new Set<string>()
+    const stack = [...(dependants.get(t.node.id) ?? [])]
+    while (stack.length > 0) {
+      const id = stack.pop()!
+      if (seen.has(id)) continue
+      seen.add(id)
+      stack.push(...(dependants.get(id) ?? []))
+    }
+    counts.set(t.node.id, seen.size)
+  }
+  return counts
+}
+
+/** The plan as plain text: what a pipe, a test or `grep` reads. */
+export function formatPlanText(plan: RunPlan, c: ColorSupport = { enabled: false }): string {
+  return ui.render([planReport(plan)], c)
+}
+
+type Look = Pick<PlannedRow, 'glyph' | 'status' | 'tone' | 'cache' | 'cacheTone'>
+
+/** Each outcome on the run's grid: its glyph and words, as the run would print them. */
+const LOOK: Record<CacheStatus, Look> = {
+  'hit-local': {
+    glyph: '\u21e2',
+    status: 'cached',
+    tone: 'ok',
+    cache: 'local',
+    cacheTone: 'local',
+  },
+  'hit-remote': {
+    glyph: '\u21e3',
+    status: 'cached',
+    tone: 'ok',
+    cache: 'remote',
+    cacheTone: 'remote',
+  },
+  miss: { glyph: '\u23fa\ufe0e', status: 'run', tone: 'info', cache: 'miss', cacheTone: 'muted' },
+  'no-cache': {
+    glyph: '\u23fa\ufe0e',
+    status: 'run',
+    tone: 'info',
+    cache: 'no-cache',
+    cacheTone: 'muted',
+  },
+  group: { glyph: '\u25cb', status: 'group', tone: 'muted', cache: '', cacheTone: '' },
+  'not-started': { glyph: '\u25cc', status: 'not run', tone: 'muted', cache: '', cacheTone: '' },
+  skipped: { glyph: '\u2298', status: 'skipped', tone: 'warn', cache: '', cacheTone: '' },
+}
+const NOOP: Look = { glyph: '\u00b7', status: 'noop', tone: 'muted', cache: '', cacheTone: '' }
 
 /** One `--affected --dry` reason line: the cause, then the edge chain that carried it. */
 function describeReason(r: AffectedReason): string {
@@ -216,53 +264,4 @@ export function formatPlanJson(
         : {}),
     }) + '\n'
   )
-}
-
-/** A hit is green, a task that would run is yellow, the rest dim. */
-const HUE: Record<CacheStatus, Style> = {
-  'hit-local': 'ok',
-  'hit-remote': 'ok',
-  miss: 'warn',
-  'no-cache': 'warn',
-  group: 'muted',
-  'not-started': 'muted',
-  skipped: 'muted',
-}
-
-function symbolFor(s: CacheStatus): string {
-  switch (s) {
-    case 'hit-local':
-      return '✓'
-    case 'hit-remote':
-      return '↓'
-    case 'miss':
-      return '▶'
-    case 'no-cache':
-      return '∅'
-    case 'group':
-      return '○'
-    case 'not-started':
-      return '−'
-    case 'skipped':
-      return '·'
-  }
-}
-
-function describe(s: CacheStatus): string {
-  switch (s) {
-    case 'hit-local':
-      return 'cache hit (local)'
-    case 'hit-remote':
-      return 'cache hit (remote)'
-    case 'miss':
-      return 'cache miss — would exec'
-    case 'no-cache':
-      return 'no-cache (would exec)'
-    case 'group':
-      return 'group task'
-    case 'not-started':
-      return 'not started (unneeded)'
-    case 'skipped':
-      return 'skipped'
-  }
 }

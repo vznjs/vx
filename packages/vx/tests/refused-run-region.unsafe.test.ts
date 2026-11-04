@@ -55,12 +55,16 @@ async function onTerminal(args: string[]): Promise<{ code: number; screen: strin
 
 const ERASE = '\x1b[J'
 
-/** Whether `line` starts a line or follows an erase, not the end of a drawn row. */
+/**
+ * Whether `line` starts at the left edge on a clean line: after a line end,
+ * a carriage return (a cleared line is `ESC[2K` then `\r`) or an erase,
+ * never at the end of a drawn row.
+ */
 function startsClean(screen: string, line: string): boolean {
   const at = screen.indexOf(line)
   expect(at).toBeGreaterThan(0)
   const prior = screen.slice(0, at)
-  return prior.endsWith('\n') || prior.endsWith(ERASE)
+  return prior.endsWith('\n') || prior.endsWith('\r') || prior.endsWith(ERASE)
 }
 
 it('a refused run takes the region down before the refusal', async () => {

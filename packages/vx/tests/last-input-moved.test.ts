@@ -57,15 +57,15 @@ describe('vx last names the input that moved under a failed task', () => {
       const rows = Object.fromEntries(
         (await vx(root, ['last'])).out
           .split('\n')
-          .filter((l) => l.startsWith('  failed '))
+          .filter((l) => / failed /.test(l))
           .map((l) => {
-            const cells = l.trim().split(/\s{2,}/)
-            return [cells[1], [cells[0], cells.at(-1)]]
+            const [, id, note] = /(app#\w+) {2}(.*)$/.exec(l)!
+            return [id, note]
           }),
       )
       expect(rows).toEqual({
-        'app#self': ['failed (exit 1)', 'packages/app/src/s.txt changed during the run'],
-        'app#boom': ['failed (exit 3)', expect.not.stringContaining('changed')],
+        'app#self': 'exit 1  packages/app/src/s.txt changed during the run',
+        'app#boom': 'exit 3',
       })
     },
     TIMEOUT,

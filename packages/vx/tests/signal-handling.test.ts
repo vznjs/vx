@@ -682,7 +682,7 @@ describe('signal handling during vx run (e2e)', () => {
       const proc = Bun.spawn([process.execPath, BIN, 'run', 'app#big'], {
         cwd: fixture.root,
         // CI mode is where the empty write lost the tail.
-        env: { ...process.env, VX_TEST_KILL_GRACE: '5000ms', CI: 'true' },
+        env: { ...process.env, VX_TEST_KILL_GRACE: '5000ms', CI: 'true', NO_COLOR: '1' },
         stdout: 'pipe',
         stderr: 'pipe',
       })
@@ -714,7 +714,7 @@ describe('signal handling during vx run (e2e)', () => {
         slow: { dependsOn: ['done'], exec: { command: 'echo $$ > pid.txt; while :; do sleep 0.05; done' } },
       } }`,
       )
-      const env = { ...process.env, CI: 'true' }
+      const env = { ...process.env, CI: 'true', NO_COLOR: '1' }
       const first = Bun.spawn([process.execPath, BIN, 'run', 'app#slow'], {
         cwd: fixture.root,
         env,

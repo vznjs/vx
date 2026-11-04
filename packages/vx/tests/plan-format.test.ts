@@ -29,10 +29,10 @@ function task(
 
 describe('formatPlanText', () => {
   it('renders empty plan with a clear message', () => {
-    expect(formatPlanText({ tasks: [] })).toBe('No tasks planned.\n')
+    expect(formatPlanText({ tasks: [] }).split('\n').slice(1)).toEqual(['  No tasks planned.', ''])
   })
 
-  it('hides group tasks and lines up each real task with status + short hash', () => {
+  it('hides group tasks and puts each real task on the run grid', () => {
     const plan: RunPlan = {
       tasks: [
         task('a#ci', 'group', 'aaaaaaaa11111111'),
@@ -42,14 +42,12 @@ describe('formatPlanText', () => {
       ],
     }
     const out = formatPlanText(plan)
-    expect(out).toContain('would run:')
+    expect(out).toStartWith('─ Plan 3 ')
     expect(out).not.toContain('a#ci') // group hidden
-    expect(out).toContain('a#lint')
-    expect(out).toContain('cache hit (local)')
-    expect(out).toContain('bbbbbbbb')
-    expect(out).toContain('cache hit (remote)')
-    expect(out).toContain('cache miss — would exec')
-    expect(out).toMatch(/3 task\(s\) planned/)
+    expect(out).toMatch(/ ⇢ +cached +local +0 local +a#lint\n/)
+    expect(out).toMatch(/ ⇣ +cached +remote +0 local +a#test\n/)
+    expect(out).toMatch(/ ⏺\uFE0E +run +miss +0 local +a#build\n/)
+    expect(out).toContain('3 planned')
     expect(out).toContain('2 cache hits (1 local, 1 remote)')
     expect(out).toContain('1 would run')
   })
@@ -63,6 +61,8 @@ describe('formatPlanText', () => {
       ],
     })
     expect(out).toContain('3 cache hits (3 remote, 4.0 MB)')
+    // Each remote hit's own size sits in its outputs cell.
+    expect(out).toMatch(/cached +remote +3\.0MB +0 local +a#test\n/)
   })
 
   it('an @noop task is counted as noop, not as a would-run with a cost', () => {
@@ -72,21 +72,21 @@ describe('formatPlanText', () => {
         task('a#build', 'miss', '22222222', ['a#install'], undefined, 1000),
       ],
     })
-    expect(out).toMatch(/· {2}a#install {2}noop — would not run +11111111 {2}@noop\n/)
-    expect(out).toContain('2 task(s) planned, 1 would run, 1 noop.\n')
+    expect(out).toMatch(/ · +noop +1 {14}a#install\n/)
+    expect(out).toContain('2 planned · 1 would run · 1 noop\n')
   })
 
   it('handles all-miss plans without claiming any hits', () => {
     const out = formatPlanText({
       tasks: [task('a#x', 'miss', '11111111'), task('a#y', 'miss', '22222222')],
     })
-    expect(out).toMatch(/2 task\(s\) planned, 2 would run\./)
+    expect(out).toContain('2 planned · 2 would run\n')
     expect(out).not.toContain('cache hits')
   })
 
   it('one hit is a singular "cache hit"', () => {
     const out = formatPlanText({ tasks: [task('a#lint', 'hit-local', 'bbbbbbbb22222222')] })
-    expect(out.split('\n')).toContain('1 task(s) planned, 1 cache hit (1 local).')
+    expect(out.split('\n')).toContain('  tasks     1 planned · 1 cache hit (1 local)')
   })
 
   it('names the first three eager refusals and counts the rest', () => {
@@ -100,38 +100,37 @@ describe('formatPlanText', () => {
         .split('\n')
         .slice(-(n > 3 ? 6 : n + 2))
     expect(tail(5)).toEqual([
-      'download: 0 task(s) would keep outputs remote, 5 kept eager:',
-      '    a#t0 — reason 0',
-      '    a#t1 — reason 1',
-      '    a#t2 — reason 2',
-      '    …and 2 more',
+      '  download  0 task(s) would keep outputs remote, 5 kept eager:',
+      '            a#t0 — reason 0',
+      '            a#t1 — reason 1',
+      '            a#t2 — reason 2',
+      '            …and 2 more',
       '',
     ])
     // CONTROL: exactly three is the whole list, with no "more" line.
     expect(tail(3)).toEqual([
-      'download: 0 task(s) would keep outputs remote, 3 kept eager:',
-      '    a#t0 — reason 0',
-      '    a#t1 — reason 1',
-      '    a#t2 — reason 2',
+      '  download  0 task(s) would keep outputs remote, 3 kept eager:',
+      '            a#t0 — reason 0',
+      '            a#t1 — reason 1',
+      '            a#t2 — reason 2',
       '',
     ])
   })
 
-  it('shows task description below the id line when present', () => {
+  it('shows task description after the id when present', () => {
     const out = formatPlanText({
       tasks: [task('a#lint', 'miss', '11111111', [], 'oxlint with type-aware checks')],
     })
-    expect(out).toContain('a#lint')
-    expect(out).toContain('oxlint with type-aware checks')
+    expect(out).toMatch(/ a#lint {2}oxlint with type-aware checks\n/)
   })
 
-  it('omits the description row when undefined (no blank gap)', () => {
+  it('a task with no description ends at its id', () => {
     const out = formatPlanText({
       tasks: [task('a#lint', 'miss', '11111111')],
     })
-    const lines = out.split('\n')
-    // 'would run:', task line, '', summary, '' (trailing newline)
-    expect(lines).toHaveLength(5)
+    // The rule, the header, the row, '', the counts, '' (trailing newline).
+    expect(out.split('\n')).toHaveLength(6)
+    expect(out).toMatch(/ a#lint\n/)
   })
 })
 
@@ -147,14 +146,14 @@ describe('formatPlanText — time prediction', () => {
       predicted: { wallMs: 1500, workMs: 1500, unknownCount: 0, criticalPath: [] },
     }
     const out = formatPlanText(plan)
-    expect(out).toContain('~1.20s')
+    expect(out).toContain('~1.2s')
     expect(out).toContain('~300ms')
     // The hit line carries no eta.
     const lintLine = out.split('\n').find((l) => l.includes('a#lint'))!
     expect(lintLine).not.toContain('~')
     // Every would-run task has history: the footer names no unknown count.
-    expect(out.split('\n').find((l) => l.startsWith('predicted:'))).toBe(
-      'predicted: ~1.50s wall · ~1.50s total execution',
+    expect(out.split('\n').find((l) => l.startsWith('  predicted'))).toBe(
+      '  predicted  ~1.50s wall · ~1.50s total execution',
     )
   })
 
@@ -167,7 +166,7 @@ describe('formatPlanText — time prediction', () => {
       predicted: { wallMs: 1200, workMs: 1200, unknownCount: 1, criticalPath: [] },
     }
     const out = formatPlanText(plan)
-    expect(out).toContain('predicted: ~1.20s wall')
+    expect(out).toContain('predicted  ~1.20s wall')
     expect(out).toContain('1 task without history (+?)')
   })
 
@@ -176,7 +175,7 @@ describe('formatPlanText — time prediction', () => {
       tasks: [task('a#build', 'miss', 'bbbbbbbb22222222')],
       predicted: { wallMs: 0, workMs: 0, unknownCount: 1, criticalPath: [] },
     }
-    expect(formatPlanText(plan)).not.toContain('predicted:')
+    expect(formatPlanText(plan)).not.toContain('predicted')
   })
 
   it('omits the footer on an all-hit plan (nothing would run)', () => {
@@ -184,7 +183,7 @@ describe('formatPlanText — time prediction', () => {
       tasks: [task('a#lint', 'hit-local', 'aaaaaaaa11111111', [], undefined, 900)],
       predicted: { wallMs: 0, workMs: 0, unknownCount: 0, criticalPath: [] },
     }
-    expect(formatPlanText(plan)).not.toContain('predicted:')
+    expect(formatPlanText(plan)).not.toContain('predicted')
   })
 })
 
@@ -244,16 +243,13 @@ describe('placement in the plan', () => {
     // ("2 cache hits (1 local, 1 remote)"). Reusing those words for
     // placement would make a line ambiguous between two vocabularies.
     const out = formatPlanText({ tasks: [placed('a#build', 'vx/reapi')] })
-    expect(out).toContain('@vx/reapi')
+    expect(out).toMatch(/ vx\/reapi +a#build\n/)
     expect(out).not.toMatch(/\bremote\b(?!.*cache)/)
   })
 
-  it('text omits the label entirely when the task carries no placement', () => {
-    // The single-executor case: every line would say the same thing, so
-    // `planRun` attaches nothing and the output is byte-identical to before
-    // placement existed.
+  it('a task with no placement runs here: its worker is `local`, as the run says', () => {
     const out = formatPlanText({ tasks: [placed('a#build')] })
-    expect(out).not.toContain('@')
+    expect(out).toMatch(/ local +a#build\n/)
   })
 
   it('json carries the executor as a field, omitted when absent', () => {
@@ -281,7 +277,7 @@ describe('docs/modules/plan-format.md shows what the formatters print', () => {
     lang: m[1]!,
     body: m[2]!,
   }))
-  const texts = fenced.filter((b) => b.lang === '' && b.body.startsWith('would run:'))
+  const texts = fenced.filter((b) => b.lang === '' && b.body.startsWith('─ Plan'))
   const planned = (
     id: string,
     hash: string,

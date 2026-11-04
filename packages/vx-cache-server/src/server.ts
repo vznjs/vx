@@ -105,7 +105,15 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
   /** The token's own scope, the one place it writes. */
   const writeScope = (access: Access): string => {
     if (access.write === undefined) throw new Refusal(403, 'this request reads only')
-    return encodeURIComponent(access.write)
+    const scope = encodeURIComponent(access.write)
+    // Stored, it was a folder no read can name: every read's scope is ≤ SCOPE_MAX.
+    if (scope.length > SCOPE_MAX) {
+      throw new Refusal(
+        403,
+        `this job's ref is ${scope.length} characters percent-encoded, over the ${SCOPE_MAX} a scope takes: this request reads only`,
+      )
+    }
+    return scope
   }
 
   /**

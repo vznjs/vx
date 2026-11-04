@@ -162,8 +162,8 @@ describe('the one-task guides show what vx prints', () => {
   /** What changes run to run in a plan: its keys and predicted times too. */
   const plan = (text: string) =>
     stable(text)
-      .replace(/ {2}[0-9a-f]{8} {2}~\d+ms/g, '  <key>  ~<ms>')
-      .replace(/~\d+ms/g, '~<ms>')
+      // A usual time is right-aligned: its digits decide the spaces before it.
+      .replace(/ +~\d+ms/g, ' ~<ms>')
   const config = (name: string, dependsOn: string) => `export default {
   name: '@demo/${name}',
   tasks: {

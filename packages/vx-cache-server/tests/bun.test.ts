@@ -667,3 +667,28 @@ it('builds its image with the dependencies package.json pins, naming no version 
   expect(dockerfile).not.toMatch(/bun add/)
   expect(dockerfile).toContain('bun install --production')
 })
+
+it('refuses a write whose ref is over 512 characters percent-encoded: no read could name its folder', async () => {
+  const put = async (ref: string) => {
+    const t = await iss.sign({ ...MAIN_JOB, ref }, server.url.origin)
+    return fetch(new URL(`/v1/artifacts/${'e'.repeat(8)}`, server.url), {
+      method: 'PUT',
+      body: 'x',
+      headers: { ...NAMED, authorization: `Bearer ${t}` },
+    })
+  }
+  const at = 'refs/heads/' + 'é'.repeat(82) + 'aaaaa'
+  expect(scopeOf(at).length).toBe(512)
+  expect((await put(at)).status).toBe(204)
+  const over = at + 'a'
+  const objects = s3.objects.size
+  const res = await put(over)
+  expect([res.status, await res.json()]).toEqual([
+    403,
+    {
+      code: 'forbidden',
+      message: `this job's ref is 513 characters percent-encoded, over the 512 a scope takes: this request reads only`,
+    },
+  ])
+  expect(s3.objects.size).toBe(objects)
+})

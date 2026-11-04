@@ -19,7 +19,7 @@ export interface RunResult {
   signal?: string | number // the signal that killed the child (Bun's signalCode: its name, or its number when it has none)
   timedOut?: boolean // vx's own `timeoutMs` timer fired: a real `failed`, not an `aborted` shutdown
   cpuMs?: number // user + system, from Bun.spawn().resourceUsage()
-  peakRssBytes?: number // maxRSS (bytes), only when it rose above vx's own RSS high-water mark
+  peakRssBytes?: number // maxRSS (bytes) when it rose above vx's own RSS high-water mark; on Linux else the tree's peak `watchTree` saw, if a look landed
   spawnFailed?: true // Bun.spawn threw: the 127 is vx's, no shell ran
   leftRunning?: true // the drain bound cut a pipe a leftover process held: the result is not saved
 }

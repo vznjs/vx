@@ -29,6 +29,7 @@ import {
   spawnGuarded,
   untilGroupsGone,
 } from './kill-tree.js'
+import { type TreeUsage, watchTree } from './proc-sample.js'
 import { TaskPipes } from './pipes.js'
 import { spawnOff } from './spawn-off.js'
 import { runOnSpare, spareScript, takeSpare } from './warm-shell.js'
@@ -1166,6 +1167,10 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   // without it, and the run waited out the whole command (CI, 2026-11-04).
   if (opts.signal?.aborted === true) void stopLate(proc, stopSignal(opts.signal.reason))
   opts.onSpawn?.(proc.pid)
+  // Linux: the wait's peak includes vx's own, inherited at exec, so a task
+  // lighter than vx reads none (`rssFloorFor`); the tree looked at while it
+  // runs has the task's own.
+  const watch = process.platform === 'linux' ? watchTree(proc.pid) : undefined
   const timeout = armTimeout(proc, opts.timeoutMs)
   const ac = new AbortController()
   const [out, err] = pipes.streams(proc)
@@ -1222,8 +1227,18 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
     ...(proc.signalCode != null ? { signal: proc.signalCode } : {}),
     ...(timeout.timedOut() ? { timedOut: true } : {}),
     ...(cut ? { leftRunning: true } : {}),
-    ...resourceUsageToCpuRss(proc.resourceUsage(), rssFloorFor),
+    ...usageOf(proc, watch?.stop()),
   }
+}
+
+/** The CPU and peak a task used: the wait's, and the peak the looks saw when the wait's is vx's own. */
+function usageOf(
+  proc: Child,
+  looked: TreeUsage | undefined,
+): { cpuMs?: number; peakRssBytes?: number } {
+  const usage = resourceUsageToCpuRss(proc.resourceUsage(), rssFloorFor)
+  if (looked === undefined || looked.rssBytes <= 0) return usage
+  return { ...usage, peakRssBytes: Math.max(usage.peakRssBytes ?? 0, looked.rssBytes) }
 }
 
 /**

@@ -71,9 +71,13 @@ it('CONTROL: without the hold the ticker keeps drawing over the prompt line', as
   log.stepStart?.('vx:load')
   await until(() => /running internal +local +vx:load/.test(out.text()))
   log.stepEnd?.('vx:load', { durationMs: 300, ok: true })
+  // A step runs while the prompt would wait: its clock changes the region,
+  // and a frame that changes nothing writes nothing.
+  log.stepStart?.('vx:open')
   const at = out.text().length
   await Bun.sleep(400)
   expect(out.text().slice(at)).toContain('\x1b[2K\r')
+  log.stepEnd?.('vx:open', { durationMs: 400, ok: true })
   log.runStart?.({ total: 0, concurrency: 1 })
   log.runDone?.()
 })

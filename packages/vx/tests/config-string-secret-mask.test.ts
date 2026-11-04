@@ -199,8 +199,9 @@ it("vx why names a runtime probe's row masked, and the history holds no value", 
 
 it('--dry masks the description, as text and as JSON', () => {
   const text = vx(['run', 't', '--all', '--dry'])
+  // The description rides the task's row, after its id.
   expect(text.split('\n').filter((l) => l.includes('deploys'))).toEqual([
-    `${' '.repeat(5 + 'app#t'.length + 2)}deploys *** ***`,
+    expect.stringMatching(/ app#t {2}deploys \*\*\* \*\*\*$/),
   ])
   const json = JSON.parse(vx(['run', 't', '--all', '--dry=json'])) as {
     tasks: Array<{ description?: string }>

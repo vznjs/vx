@@ -86,7 +86,7 @@ function fencedBlock(page: string, lang: string, firstLine: string): string {
 
 // The running-tasks guide merged into the CI page (the short site).
 describe('the CI guide shows what --dry prints', () => {
-  it('its `would run:` block is formatPlanText on two local hits', () => {
+  it('its plan is formatPlanText on two local hits', () => {
     const page = readFileSync(path.join(DOCS, 'docs', 'running-tasks.mdx'), 'utf8')
     const task = (id: string, hash: string) => ({
       node: {

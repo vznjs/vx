@@ -13,21 +13,24 @@ it and gives you the command to run only that again:
 
 ```sh frame="terminal"
 $ vx last --failed
-run 01a16ada-e526-75db-8cd6-f58c924aa0a3 — FAILED
-  $ vx run build test --all
-  2026-10-23T22:21:32.842Z · 49ms · master @ aa76c317+dirty
-  8 tasks · 5 hits (5 up-to-date, 0 restored) · 1 failed
+─ Run 01a16ada-e526-75db-8cd6-f58c924aa0a3 ───────────────────
+  status    FAILED
+  command   vx run build test --all
+  when      2026-10-23T22:21:32.842Z · 49ms · master @ aa76c317+dirty
+  tasks     8 tasks · 5 hits (5 up-to-date, 0 restored) · 1 failed
 
-  failed (exit 1)   packages/b#test       14ms  99fea7dfce8b1fb5  0.6× cpu
-  success           packages/b#build      16ms  0ff42f6215707c25  0.5× cpu
-  success           packages/c#test       10ms  441a55956428a465  0.9× cpu
-  up-to-date        packages/c#build       3ms  ce5c731444829c07
-  up-to-date        packages/d#test        0ms  5b40789165953450
-  up-to-date        packages/a#test        0ms  9ea4543bb5eed678
-  up-to-date        packages/d#build       0ms  9f1cef08a2fd4006
-  up-to-date        packages/a#build       1ms  4ab2bc0d55dd78a0
+─ Tasks 8 ────────────────────────────────────────────────────
+      time  ±usual status  cache      cpu    mem outputs  blocks worker       task
+ ◼︎    14ms         failed  miss       60%      —               0 local        packages/b#test  exit 1
+ ⏺︎    16ms         success miss       50%      —     2KB       1 local        packages/b#build
+ ⏺︎    10ms         success miss       90%      —               0 local        packages/c#test
+ ►     3ms         success fresh                      0B       1 local        packages/c#build
+ ►     0ms         success fresh                      0B       0 local        packages/d#test
+ ►     0ms         success fresh                      0B       0 local        packages/a#test
+ ►     0ms         success fresh                      0B       1 local        packages/d#build
+ ►     1ms         success fresh                      0B       2 local        packages/a#build
 
-  re-run what failed: vx run packages/b#test
+  next      vx run packages/b#test
 
 $ vx last --log packages/b#test
 src/sum.test.ts:

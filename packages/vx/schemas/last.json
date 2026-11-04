@@ -245,6 +245,8 @@
         "queuedMs",
         "outputBytes",
         "placement",
+        "outputBytes",
+        "blocks",
         "wallclockStartNs",
         "wallclockEndNs",
         "blockedBy",
@@ -301,6 +303,14 @@
         "placement": {
           "type": ["string", "null"],
           "description": "where an executor ran it (small#1); null when here"
+        },
+        "outputBytes": {
+          "type": ["integer", "null"],
+          "description": "bytes of its outputs: what its save stored, or its hit restored"
+        },
+        "blocks": {
+          "type": ["integer", "null"],
+          "description": "how many tasks were downstream of it"
         },
         "wallclockStartNs": {
           "type": ["string", "null"],

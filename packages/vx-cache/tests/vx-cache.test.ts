@@ -1027,6 +1027,37 @@ describe('config', () => {
     ])
   })
 
+  // A ref whose scope is longer than the server takes (PROTOCOL.md § Keys:
+  // 512 characters, percent-encoded; a 60-character Japanese branch is 555)
+  // made every check a 400, so the run read nothing, main's artifacts too.
+  it("reads the run's other refs when one is too long to name a folder, and says so", async () => {
+    const srv = server(1 << 20)
+    try {
+      const main = await srv.token(MAIN_JOB)
+      await layer(srv.url, main, [MAIN]).put('ab12', new Blob(['m']), { durationMs: 1 })
+      const long = `refs/heads/${'日本語'.repeat(20)}`
+      const warned: string[] = []
+      const saved = Bun.env.VX_CACHE_TOKEN
+      Bun.env.VX_CACHE_TOKEN = await srv.token({ ...BRANCH_JOB, ref: long })
+      try {
+        const plugin = vxCache({ ...NAMED, url: srv.url })
+        const c = (await plugin.cache!({
+          refs: [long, MAIN],
+          warn: (m: string) => warned.push(m),
+        } as never)) as VxCacheLayer
+        expect(await c.has('ab12')).toEqual({ size: 1 })
+      } finally {
+        if (saved === undefined) delete Bun.env.VX_CACHE_TOKEN
+        else Bun.env.VX_CACHE_TOKEN = saved
+      }
+      expect(warned).toEqual([
+        `[vx] vx-cache: ${long} is 555 characters percent-encoded, over the 512 a cache folder's name takes: the run does not read it`,
+      ])
+    } finally {
+      await srv.stop()
+    }
+  })
+
   // Core opens a remote only when the run's policy reads or writes it: the
   // factory asked the limits (and GitHub for a token) on a --no-cache run.
   it('asks the server nothing until core opens it', async () => {

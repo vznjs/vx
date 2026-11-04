@@ -28,7 +28,7 @@ import {
   shortRunId,
   taskLog,
 } from '../orchestrator/index.js'
-import { outcomeWord, type WireEvent } from '../report/index.js'
+import { formatRecordedRow, outcomeWord, taskList, type WireEvent } from '../report/index.js'
 import {
   formatElapsed,
   nearest,
@@ -581,24 +581,6 @@ const fmtWhen = (ms: number): string => new Date(ms).toISOString()
 const fmtMs = (ms: number): string => formatElapsed(ms, true)
 
 /**
- * What an executed task used — its peak RSS and its CPU parallelism (CPU
- * time over wall time) — as the runner recorded them. This is the number
- * `@vzn/vx-history` reserves from, so the replay shows it where
- * a developer can read it; a hit spent nothing and shows nothing.
- */
-function fmtUsage(t: {
-  cpuMs: number | null
-  peakRssBytes: number | null
-  durationMs: number
-}): string {
-  const parts: string[] = []
-  if (t.peakRssBytes !== null) parts.push(formatBytes(t.peakRssBytes))
-  if (t.cpuMs !== null && t.durationMs > 0)
-    parts.push(`${(t.cpuMs / t.durationMs).toFixed(1)}× cpu`)
-  return parts.length > 0 ? `  ${parts.join(' · ')}` : ''
-}
-
-/**
  * Why a row failed or was skipped, as the run's own footer said it (the
  * v27 columns): a timeout or a never-ready server instead of the signal
  * their exit stands for, the sandbox's violation count, a skip's blocker.
@@ -695,34 +677,16 @@ export function formatTaskRows(
   const skippedHere = new Set(
     tasks.filter((t) => t.status === 'skipped').map((t) => `${t.project}#${t.task}`),
   )
-  const rows = ordered.map((t): ui.Inline[] => {
-    // The terminal summary's own word for a task that runs every time
-    // by design; a reader must not take its row for a miss.
-    // A failure's row reads as the frame did — `failed (exit 137)` —
-    // and above 128 names the signal the number stands for (260).
-    // A hit reads as the run's own summary said it: up-to-date (nothing
-    // restored) or restored-local / restored-remote.
-    const status =
-      t.status === 'failed'
-        ? `failed (exit ${t.exitCode})`
-        : t.cacheHit === true && t.restored !== null
-          ? outcomeWord({ status: t.status as 'cache-hit', restored: t.restored })
-          : t.status
-    const hue = t.status === 'failed' ? 'error' : t.status === 'skipped' ? 'muted' : 'ok'
-    return [
-      ui.tone(hue, status),
-      [
-        ui.id(`${t.project}#${t.task}`),
-        ...(t.placement !== null ? [ui.dim(`@${t.placement}`)] : []),
-      ],
-      fmtMs(t.durationMs),
-      (
-        `${t.hash !== '' ? t.hash : ''}${t.cached === false ? '  no-cache' : ''}${fmtUsage(t)}` +
-        reasonParts(t, skippedHere, inputMoved.get(`${t.project}#${t.task}`))
-      ).trim(),
-    ]
+  // The run's own grid (`taskList`): a replay reads as the run did. What
+  // the run said below the row (an exit, why it skipped) rides it dim.
+  const rows = ordered.map((t) => {
+    const note = (
+      (t.status === 'failed' ? `exit ${t.exitCode}` : '') +
+      reasonParts(t, skippedHere, inputMoved.get(`${t.project}#${t.task}`))
+    ).trim()
+    return (c: ui.ColorSupport) => formatRecordedRow(t, c, note)
   })
-  const blocks = [ui.table(['status', 'task', { title: 'time', align: 'right' }, 'key'], rows)]
+  const blocks = [taskList(rows)]
   if (folded)
     blocks.push(
       ui.text(

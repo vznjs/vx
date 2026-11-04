@@ -143,8 +143,21 @@ describe('configErrorFrame', () => {
     expect(at(`${cfg}: task name "x#y" holds '#', which separates a project from its task`)).toBe(
       'vx.config.ts:4:6',
     )
-    // An empty name has no key a search could tell from any other `:`.
-    expect(at(`${cfg}: task name "" is empty`)).toBeUndefined()
+    // An empty name and one with a control character were not framed: the
+    // message fell back to the absolute path. An empty key is always
+    // quoted, and the source spells a control character as an escape.
+    const odd = path.join(dir, 'odd', 'vx.config.ts')
+    await mkdir(path.dirname(odd), { recursive: true })
+    await writeFile(
+      odd,
+      "export default {\n  tasks: {\n    a: { exec: { command: 'x' } },\n    '': { exec: { command: 'x' } },\n    '\\u001b[31mred': {},\n  },\n}\n",
+    )
+    const atOdd = (m: string) =>
+      configErrorFrame(m, path.join(dir, 'odd'))?.split('\n')[0]?.split(': ')[0]
+    expect(atOdd(`${odd}: task name "" is empty`)).toBe('vx.config.ts:4:6')
+    expect(
+      atOdd(`${odd}: task name ${JSON.stringify('\u001b[31mred')} holds a control character`),
+    ).toBe('vx.config.ts:5:6')
   })
 })
 
