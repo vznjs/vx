@@ -117,6 +117,12 @@ describe('the conformance page', () => {
     expect(percent({ pass: 0, of: 0 })).toBe('–')
   })
 
+  it('prints 100% only when every case passed', () => {
+    expect(percent({ pass: 859, of: 860 })).toBe('99%')
+    expect(percent({ pass: 860, of: 860 })).toBe('100%')
+    expect(percent({ pass: 1, of: 200 })).toBe('0%')
+  })
+
   it('names each tool’s version, the coverage and the method', () => {
     for (const v of Object.values(RESULTS.tools)) expect(html).toContain(v)
     expect(html).toContain('https://github.com/vznjs/vx/blob/main/private/vx-conformance/README.md')
