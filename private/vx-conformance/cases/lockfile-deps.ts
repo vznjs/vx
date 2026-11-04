@@ -281,6 +281,27 @@ export default [
   }),
 
   defineCase({
+    id: 'affected/lockfile-change-selects-its-closure',
+    category: 'affected',
+    kind: 'correctness',
+    title:
+      'A committed dependency change selects the projects whose dependencies hold it, through a linked workspace too, and no other',
+    why: 'c changed no file of its own: only the lockfile says what it can now import.',
+    from: [FROM_CLOSURE],
+    needs: ['affected'],
+    workspace: closures(),
+    steps: [
+      ...bumpY,
+      { commit: 'bump y' },
+      {
+        affected: 'build',
+        base: 'HEAD~1',
+        expect: { exit: 0, ran: ['b#build', 'c#build'], notRan: ['a#build'] },
+      },
+    ],
+  }),
+
+  defineCase({
     id: 'inputs/reinstall-without-change-replays',
     category: 'inputs',
     kind: 'efficiency',

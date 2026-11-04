@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 185,
+    "ported": 186,
     "rest": {
       "pending": [],
       "vx-only": [
@@ -757,7 +757,6 @@
         "restore-git-spawns",
         "restore-link-swap",
         "restore-link-swap-rename",
-        "restore-occupied-parent",
         "restore-partial-commit",
         "restore-ported",
         "restore-rows-held",
@@ -990,12 +989,12 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 911,
-        "of": 912
+        "pass": 914,
+        "of": 915
       },
       "correctness": {
-        "pass": 755,
-        "of": 755
+        "pass": 758,
+        "of": 758
       },
       "efficiency": {
         "pass": 147,
@@ -1006,8 +1005,8 @@
         "of": 9
       },
       "graph": {
-        "pass": 134,
-        "of": 134
+        "pass": 135,
+        "of": 135
       },
       "config": {
         "pass": 7,
@@ -1018,8 +1017,8 @@
         "of": 70
       },
       "affected": {
-        "pass": 93,
-        "of": 94
+        "pass": 94,
+        "of": 95
       },
       "cache": {
         "pass": 35,
@@ -1030,8 +1029,8 @@
         "of": 296
       },
       "outputs": {
-        "pass": 216,
-        "of": 216
+        "pass": 217,
+        "of": 217
       },
       "env": {
         "pass": 27,
@@ -1052,12 +1051,12 @@
     },
     "turbo": {
       "all": {
-        "pass": 580,
-        "of": 844
+        "pass": 582,
+        "of": 847
       },
       "correctness": {
-        "pass": 483,
-        "of": 693
+        "pass": 485,
+        "of": 696
       },
       "efficiency": {
         "pass": 93,
@@ -1068,8 +1067,8 @@
         "of": 8
       },
       "graph": {
-        "pass": 87,
-        "of": 119
+        "pass": 88,
+        "of": 120
       },
       "config": {
         "pass": 3,
@@ -1081,7 +1080,7 @@
       },
       "affected": {
         "pass": 59,
-        "of": 94
+        "of": 95
       },
       "cache": {
         "pass": 27,
@@ -1092,8 +1091,8 @@
         "of": 287
       },
       "outputs": {
-        "pass": 157,
-        "of": 214
+        "pass": 158,
+        "of": 215
       },
       "env": {
         "pass": 23,
@@ -1114,12 +1113,12 @@
     },
     "nx": {
       "all": {
-        "pass": 582,
-        "of": 853
+        "pass": 583,
+        "of": 856
       },
       "correctness": {
-        "pass": 448,
-        "of": 704
+        "pass": 449,
+        "of": 707
       },
       "efficiency": {
         "pass": 130,
@@ -1130,8 +1129,8 @@
         "of": 8
       },
       "graph": {
-        "pass": 100,
-        "of": 123
+        "pass": 101,
+        "of": 124
       },
       "config": {
         "pass": 0,
@@ -1143,7 +1142,7 @@
       },
       "affected": {
         "pass": 55,
-        "of": 94
+        "of": 95
       },
       "cache": {
         "pass": 31,
@@ -1155,7 +1154,7 @@
       },
       "outputs": {
         "pass": 156,
-        "of": 214
+        "of": 215
       },
       "env": {
         "pass": 21,
@@ -1176,12 +1175,12 @@
     },
     "vite-task": {
       "all": {
-        "pass": 470,
-        "of": 704
+        "pass": 471,
+        "of": 706
       },
       "correctness": {
-        "pass": 390,
-        "of": 585
+        "pass": 391,
+        "of": 587
       },
       "efficiency": {
         "pass": 78,
@@ -1193,7 +1192,7 @@
       },
       "graph": {
         "pass": 77,
-        "of": 104
+        "of": 105
       },
       "config": {
         "pass": 3,
@@ -1216,8 +1215,8 @@
         "of": 288
       },
       "outputs": {
-        "pass": 134,
-        "of": 214
+        "pass": 135,
+        "of": 215
       },
       "env": {
         "pass": 25,
@@ -3672,6 +3671,32 @@
         },
         "vite-task": {
           "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/new-depends-on-edge-keys-consumer",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A `dependsOn` edge added to a task orders and keys it: an edit to the dependency then runs it again",
+      "from": [
+        "parity-turbo",
+        "task-hash-derive"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 5,
+          "detail": "did not run app#build"
         }
       }
     },
@@ -11001,6 +11026,33 @@
       }
     },
     {
+      "id": "outputs/file-in-place-of-output-directory-kept",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A replay where a plain file stands in place of the output directory fails, and keeps the file",
+      "why": "No output glob selects that file: deleting it to restore would destroy work nothing declared, and the task itself could not run there either.",
+      "from": [
+        "restore-occupied-parent",
+        "parity-turbo"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "succeeded, expected a failure"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
       "id": "outputs/link-into-workspace-restored",
       "category": "outputs",
       "kind": "correctness",
@@ -15618,6 +15670,35 @@
         },
         "vite-task": {
           "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "affected/lockfile-change-selects-its-closure",
+      "category": "affected",
+      "kind": "correctness",
+      "title": "A committed dependency change selects the projects whose dependencies hold it, through a linked workspace too, and no other",
+      "why": "c changed no file of its own: only the lockfile says what it can now import.",
+      "from": [
+        "vx-lockfile/closure-per-project"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run b#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 4,
+          "detail": "ran a#build, expected it replayed or left out"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs affected"
         }
       }
     },

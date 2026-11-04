@@ -3,7 +3,7 @@
 // run asks for, projects in unusual directories, selection over task edges,
 // and servers a run skips, replays past or hands arguments to.
 import { defineCase, type ProjectSpec, type TaskSpec, type WorkspaceSpec } from '../src/spec.ts'
-import { chainProject, out } from './shapes.ts'
+import { CONCAT, chainProject, out } from './shapes.ts'
 
 /** Wait (bounded) for a file, then go on. */
 const until = (file: string) =>
@@ -808,6 +808,41 @@ export default [
           within: 20,
           alone: true,
         },
+      },
+    ],
+  }),
+
+  defineCase({
+    id: 'graph/new-depends-on-edge-keys-consumer',
+    category: 'graph',
+    kind: 'correctness',
+    title:
+      'A `dependsOn` edge added to a task orders and keys it: an edit to the dependency then runs it again',
+    from: ['parity-turbo', 'task-hash-derive'],
+    workspace: {
+      projects: {
+        lib: chainProject('lib'),
+        // A package dependency from the start; only the task edge is new.
+        app: {
+          deps: ['lib'],
+          tasks: { build: { command: CONCAT, inputs: ['src/**'], outputs: ['dist/**'] } },
+          files: { 'src/a.txt': 'app\n' },
+        },
+      },
+    },
+    steps: [
+      { run: 'build', expect: { exit: 0, files: { [out('app')]: 'app\n' } } },
+      {
+        configure: (ws) => ({
+          ...ws,
+          projects: { ...ws.projects, app: chainProject('app', ['lib']) },
+        }),
+      },
+      { run: 'build', expect: { exit: 0, files: { [out('app')]: 'lib\napp\n' } } },
+      { write: { 'packages/lib/src/a.txt': 'lib2\n' } },
+      {
+        run: 'build',
+        expect: { exit: 0, ran: ['app#build'], files: { [out('app')]: 'lib2\napp\n' } },
       },
     ],
   }),
