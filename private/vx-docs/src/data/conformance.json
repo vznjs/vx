@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 179,
+    "ported": 180,
     "rest": {
       "pending": [],
       "vx-only": [
@@ -16151,7 +16151,7 @@
       "title": "An edit inside a `file:` dependency beside the repository runs the task of the project depending on it",
       "why": "The directory is outside the repository: no git status shows the edit, and the lockfile names only its path.",
       "from": [
-        "vx-lockfile/file-dir-dep"
+        "vx-lockfile/outside-dir-dep"
       ],
       "outcomes": {
         "vx": {
@@ -16180,7 +16180,7 @@
       "kind": "efficiency",
       "title": "An edit inside a `file:` dependency beside the repository replays the projects that do not depend on it",
       "from": [
-        "vx-lockfile/file-dir-dep"
+        "vx-lockfile/outside-dir-dep"
       ],
       "outcomes": {
         "vx": {
@@ -16203,7 +16203,7 @@
       "kind": "correctness",
       "title": "Pointing a `file:` dependency at another directory beside the repository runs the task again",
       "from": [
-        "vx-lockfile/file-dir-dep",
+        "vx-lockfile/outside-dir-dep",
         "vx-lockfile/closure-per-project"
       ],
       "outcomes": {
@@ -16234,7 +16234,7 @@
       "title": "An edit inside a `link:` dependency beside the repository runs the task of the project depending on it, with no install",
       "why": "node_modules holds a link to the directory: the edit is what the task reads, and nothing else changed.",
       "from": [
-        "vx-lockfile/file-dir-dep"
+        "vx-lockfile/outside-dir-dep"
       ],
       "outcomes": {
         "vx": {
@@ -16263,7 +16263,7 @@
       "kind": "correctness",
       "title": "A file added to a `link:` dependency beside the repository runs the task of the project depending on it",
       "from": [
-        "vx-lockfile/file-dir-dep"
+        "vx-lockfile/outside-dir-dep"
       ],
       "outcomes": {
         "vx": {
@@ -16292,7 +16292,7 @@
       "kind": "efficiency",
       "title": "An edit inside a `link:` dependency beside the repository replays the projects that do not depend on it",
       "from": [
-        "vx-lockfile/file-dir-dep"
+        "vx-lockfile/outside-dir-dep"
       ],
       "outcomes": {
         "vx": {
@@ -16315,7 +16315,7 @@
       "kind": "correctness",
       "title": "Pointing a `link:` dependency at another directory beside the repository runs the task again",
       "from": [
-        "vx-lockfile/file-dir-dep",
+        "vx-lockfile/outside-dir-dep",
         "vx-lockfile/closure-per-project"
       ],
       "outcomes": {
@@ -16343,7 +16343,7 @@
       "kind": "efficiency",
       "title": "Installing again with a `link:` dependency beside the repository unchanged replays the task",
       "from": [
-        "vx-lockfile/file-dir-dep"
+        "vx-lockfile/outside-dir-dep"
       ],
       "outcomes": {
         "vx": {
@@ -16535,7 +16535,7 @@
       "title": "An edit behind a dependency installed under another name, linked from beside the repository, runs the task again",
       "from": [
         "vx-lockfile/dependency-names",
-        "vx-lockfile/file-dir-dep"
+        "vx-lockfile/outside-dir-dep"
       ],
       "outcomes": {
         "vx": {

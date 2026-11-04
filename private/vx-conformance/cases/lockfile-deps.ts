@@ -781,7 +781,7 @@ export default [
     title:
       'An edit inside a `file:` dependency beside the repository runs the task of the project depending on it',
     why: 'The directory is outside the repository: no git status shows the edit, and the lockfile names only its path.',
-    from: ['vx-lockfile/file-dir-dep'],
+    from: ['vx-lockfile/outside-dir-dep'],
     workspace: outsideDir('file:'),
     steps: [
       { run: 'build', expect: { exit: 0, files: { [out('lib')]: 'dep\n' } } },
@@ -800,7 +800,7 @@ export default [
     kind: 'efficiency',
     title:
       'An edit inside a `file:` dependency beside the repository replays the projects that do not depend on it',
-    from: ['vx-lockfile/file-dir-dep'],
+    from: ['vx-lockfile/outside-dir-dep'],
     workspace: outsideDir('file:'),
     steps: [
       { run: 'build', expect: { exit: 0 } },
@@ -816,7 +816,7 @@ export default [
     kind: 'correctness',
     title:
       'Pointing a `file:` dependency at another directory beside the repository runs the task again',
-    from: ['vx-lockfile/file-dir-dep', FROM_CLOSURE],
+    from: ['vx-lockfile/outside-dir-dep', FROM_CLOSURE],
     workspace: outsideDir('file:'),
     steps: [
       { run: 'build', expect: { exit: 0, files: { [out('lib')]: 'dep\n' } } },
@@ -833,7 +833,7 @@ export default [
     title:
       'An edit inside a `link:` dependency beside the repository runs the task of the project depending on it, with no install',
     why: 'node_modules holds a link to the directory: the edit is what the task reads, and nothing else changed.',
-    from: ['vx-lockfile/file-dir-dep'],
+    from: ['vx-lockfile/outside-dir-dep'],
     workspace: outsideDir('link:'),
     steps: [
       { run: 'build', expect: { exit: 0, files: { [out('lib')]: 'dep\n' } } },
@@ -851,7 +851,7 @@ export default [
     kind: 'correctness',
     title:
       'A file added to a `link:` dependency beside the repository runs the task of the project depending on it',
-    from: ['vx-lockfile/file-dir-dep'],
+    from: ['vx-lockfile/outside-dir-dep'],
     workspace: outsideDir('link:'),
     steps: [
       { run: 'build', expect: { exit: 0 } },
@@ -869,7 +869,7 @@ export default [
     kind: 'efficiency',
     title:
       'An edit inside a `link:` dependency beside the repository replays the projects that do not depend on it',
-    from: ['vx-lockfile/file-dir-dep'],
+    from: ['vx-lockfile/outside-dir-dep'],
     workspace: outsideDir('link:'),
     steps: [
       { run: 'build', expect: { exit: 0 } },
@@ -884,7 +884,7 @@ export default [
     kind: 'correctness',
     title:
       'Pointing a `link:` dependency at another directory beside the repository runs the task again',
-    from: ['vx-lockfile/file-dir-dep', FROM_CLOSURE],
+    from: ['vx-lockfile/outside-dir-dep', FROM_CLOSURE],
     workspace: outsideDir('link:'),
     steps: [
       { run: 'build', expect: { exit: 0, files: { [out('lib')]: 'dep\n' } } },
@@ -900,7 +900,7 @@ export default [
     kind: 'efficiency',
     title:
       'Installing again with a `link:` dependency beside the repository unchanged replays the task',
-    from: ['vx-lockfile/file-dir-dep'],
+    from: ['vx-lockfile/outside-dir-dep'],
     workspace: outsideDir('link:'),
     steps: [
       { run: 'build', expect: { exit: 0 } },
@@ -1028,7 +1028,7 @@ export default [
     kind: 'correctness',
     title:
       'An edit behind a dependency installed under another name, linked from beside the repository, runs the task again',
-    from: ['vx-lockfile/dependency-names', 'vx-lockfile/file-dir-dep'],
+    from: ['vx-lockfile/dependency-names', 'vx-lockfile/outside-dir-dep'],
     workspace: {
       projects: { a: reader('a', { foo: `link:${OUT}/dep` }, 'cat node_modules/foo/v.txt') },
       outside: outsideVendored('dep', 'dep'),
