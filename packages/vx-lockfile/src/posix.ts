@@ -12,3 +12,18 @@ export function joinPosix(base: string, rel: string): string | undefined {
   }
   return parts.length === 0 ? '.' : parts.join('/')
 }
+
+/**
+ * `joinPosix`, but a path above the root keeps its leading `..`
+ * (`packages/a` + `../../../ext` → `../ext`): a local directory dependency
+ * beside the repository, whose content the claim hashes.
+ */
+export function resolvePosix(base: string, rel: string): string {
+  const parts: string[] = []
+  for (const seg of `${base}/${rel}`.split('/')) {
+    if (seg === '' || seg === '.') continue
+    if (seg === '..' && parts.length > 0 && parts.at(-1) !== '..') parts.pop()
+    else parts.push(seg)
+  }
+  return parts.length === 0 ? '.' : parts.join('/')
+}

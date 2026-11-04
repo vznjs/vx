@@ -112,13 +112,14 @@ interface Digests {
 }
 
 /**
- * A root-relative extra file's content hash, '' when absent; a path leaving
- * the root is never read. One there but unreadable (EACCES, a symlink loop)
- * refuses, as a settings file does: folded as '', it keyed as no file at all.
+ * A root-relative extra file's content hash, '' when absent. A path above
+ * the root is read too: a `file:` or `link:` directory beside the checkout
+ * is what a task imports, and left unread an edit in it moved no key. One
+ * there but unreadable (EACCES, a symlink loop) refuses, as a settings file
+ * does: folded as '', it keyed as no file at all.
  */
 async function hashExtra(workspaceRoot: string, rel: string): Promise<string> {
-  if (path.isAbsolute(rel) || rel.split(/[\\/]/).includes('..')) return 'outside-root'
-  const abs = path.join(workspaceRoot, rel)
+  const abs = path.resolve(workspaceRoot, rel)
   try {
     return xxh3hex(await Bun.file(abs).bytes())
   } catch (err) {
@@ -168,7 +169,7 @@ function identityOf(st: { size: number; mtimeMs: number; ctimeMs: number; ino: n
 async function statsOf(workspaceRoot: string, rels: readonly string[]): Promise<string[]> {
   return Promise.all(
     rels.map((rel) =>
-      stat(path.join(workspaceRoot, rel)).then(
+      stat(path.resolve(workspaceRoot, rel)).then(
         (st) => (st.isDirectory() ? hashExtra(workspaceRoot, rel) : identityOf(st)),
         () => 'gone',
       ),
