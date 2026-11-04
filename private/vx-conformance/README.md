@@ -17,18 +17,27 @@ bun src/cli.ts --tool nx --case outputs/ --verbose
 A case speaks no tool's language. Its workspace names projects, their
 dependencies and their tasks: a `sh` command, `dependsOn` (`^build`,
 `build`, `lib#build`), `inputs` and `outputs` as project-relative globs,
-`env` names, `cache: false`. Its steps write files, commit, change the
-config, and run a task; each run says what must hold:
+root-level ones, `env` names, `runtime` commands, `cache: false`,
+`timeout`, `retries`, `persistent`. Its steps write, delete, chmod and
+link files, run `sh`, install, commit, change the config, check the tree,
+and run a task: in some projects, by selectors, from a directory, with
+args, a concurrency limit, or a signal sent mid-run. Each run says what
+must hold:
 
-| Field    | Holds when                                             |
-| -------- | ------------------------------------------------------ |
-| `exit`   | the run succeeds (`0`) or fails (`'fail'`)             |
-| `ran`    | each task named ran its command                        |
-| `notRan` | each task named did not: it was replayed or left out   |
-| `order`  | `[a, b]`: a's command finished before b's started      |
-| `files`  | each file holds exactly this text, or (`null`) is gone |
-| `output` | the run's output holds this text                       |
-| `report` | the tool reports this about a task's run               |
+| Field        | Holds when                                             |
+| ------------ | ------------------------------------------------------ |
+| `exit`       | the run succeeds (`0`) or fails (`'fail'`)             |
+| `ran`        | each task named ran its command                        |
+| `notRan`     | each task named did not: it was replayed or left out   |
+| `order`      | `[a, b]`: a's command finished before b's started      |
+| `files`      | each file holds exactly this text, or (`null`) is gone |
+| `filesNot`   | each file does not hold this stale text                |
+| `ifReplayed` | a task that did not run left these files               |
+| `output`     | the run's output holds this text                       |
+| `report`     | the tool reports this about a task's run               |
+| `orRefused`  | a run refused before any task starts also passes       |
+| `within`     | the run ends within this many seconds                  |
+| `alone`      | no process the run started outlives it                 |
 
 Every run also fails a tool that starts one task twice. The harness puts a
 mark before and after each command, so "ran" means the command ran, not
@@ -40,7 +49,9 @@ when it is about what the tool reports of a run: cache status, time, CPU,
 memory, output size, read from its output, files or API. How a log reads
 is not measured. `why` says
 why the outcome is right where a tool could argue for another. `from`
-names the vx tests the case is drawn from.
+names the vx tests the case is drawn from. `needs` names a feature a
+tool may lack (affected, timeout, retries, persistent tasks…); a tool
+without it scores the case not applicable.
 
 ## Adapters
 

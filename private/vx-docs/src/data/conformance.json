@@ -1008,11 +1008,11 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 445,
+        "pass": 446,
         "of": 446
       },
       "correctness": {
-        "pass": 367,
+        "pass": 368,
         "of": 368
       },
       "efficiency": {
@@ -1032,7 +1032,7 @@
         "of": 7
       },
       "inputs": {
-        "pass": 132,
+        "pass": 133,
         "of": 133
       },
       "affected": {
@@ -5790,9 +5790,7 @@
       ],
       "outcomes": {
         "vx": {
-          "status": "fail",
-          "step": 4,
-          "detail": "did not run a#build"
+          "status": "pass"
         },
         "turbo": {
           "status": "pass"
