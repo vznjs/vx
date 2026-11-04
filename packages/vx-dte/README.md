@@ -88,7 +88,7 @@ before sealing, since no relay or socket compresses what is sealed. It
 is padded with trailing spaces to its size class, a power of two from
 256 bytes, then whole transport messages, so the relay learns no size
 within a class. Inside, each send is numbered and acknowledged
-end to end, and a quiet peer probed (Switchboard § Delivery, § Liveness).
+end to end, and a quiet worker reports (Switchboard § Delivery, § Liveness).
 
 ## Try it
 
@@ -456,9 +456,11 @@ use your own instead.
 - A worker reports the cores and memory its machine has when it joins.
   One the run started is held to the size it was started as, so
   `local()` workers sharing a host split it rather than each take all of
-  it. Each frame it sends (a task begun, a command ended, a task saved,
-  its heartbeat) carries its machine's load: cores busy over the last
-  second and memory in use. A task goes to it only when it fits now: while
+  it. Each frame it sends (a task saved, its report, a fault) carries its
+  machine's load: cores busy over the last second and memory in use. A
+  heartbeat with nothing else to say, it sends its report: that load, the
+  tasks it runs and the last batch it read. A task of that batch or before
+  its report no longer names goes back to the queue at once. A task goes to it only when it fits now: while
   one of its cores is free and the task's memory fits. What a worker has
   in use is what its running tasks used on their last run (history's
   measured CPU and peak RAM), or its live load plus what was sent since
@@ -576,8 +578,8 @@ use your own instead.
   `timeouts`).
 - A worker that stops answering, stops saying it holds a task, or cannot
   run one (a full disk) gets no more work, and its tasks run again on
-  another. A task two such workers had begun fails, naming both; one an
-  worker had not begun yet does not count. With no worker of the run left
+  another. A task two such workers were sent fails, naming both; one whose
+  send failed does not count. With no worker of the run left
   to take it and none starting, it fails at once.
 - A relay that answers nothing for 10 s, every try counted, fails every task not done
   (`the relay is unreachable`); none runs here, which may be far smaller
@@ -587,8 +589,8 @@ use your own instead.
 - The relay stores nothing, so a restart forgets the run. The orchestrator
   joins again as its host and each worker joins again as itself, for two
   heartbeats (4 s on the default); tasks keep running meanwhile, and what
-  either side sent goes again once both are back, taken once. Leases
-  wait while either is away, and a worker sent a task it runs already
+  either side sent goes again once both are back, taken once. A worker
+  keeps what it runs, and one sent a task it runs already
   does not run it again, so no work repeats. One not back by then
   ends: a worker's tasks run elsewhere, an orchestrator's run fails.
   Joining has the same 10 s in all, its socket and request together: a
@@ -611,27 +613,31 @@ use your own instead.
   orchestrator's at its run's end is the final call that closes the run,
   and a worker's when it is done. Either whose socket drops without it
   dials again, 3 times within 10 s, and the relay keeps it, and its run,
-  for those 10 s; past them the run is over. A peer quiet on a socket that never
-  closed is lost within two heartbeats (4 s on the default): only a
-  peer heard from for none of a heartbeat and a half is probed (an
-  empty numbered send), which it acks at once; either side hearing
-  nothing from the other for 1.9 heartbeats loses it, a worker by
-  ending, and saying so. A quiet pair trades one probe and its ack each heartbeat and a
-  half, the relay answers neither, and nobody pings. An orchestrator
+  for those 10 s; past them the run is over. Either side hearing nothing
+  from the other for 3 heartbeats (6 s on the default) loses it, and the
+  rest follows from that: a worker that said nothing for half of it (3 s)
+  sends its report; the orchestrator never speaks on a timer, only orders
+  and the acks of what it heard; a send unacknowledged for 3 s goes again.
+  A worker that loses its orchestrator ends, and says so. Nobody probes, the relay answers
+  neither, and nobody pings. An orchestrator
   with no worker yet asks the relay an empty frame instead; a frame the
   relay leaves unanswered a heartbeat closes the socket, which is dialed
   again.
-- The orchestrator's socket, its acks, probes and redials run on a thread
+- The orchestrator's socket, its acks and redials run on a thread
   of their own, so sync work on the run's loop never holds them (one CI
   run went quiet 12 s that way and lost every worker). A loop held a
   second or more says so, with how long; one held 5 heartbeats (10 s)
   ends the run, as a dead orchestrator would.
 - Each send is numbered for its receiver and held until the receiver
   acknowledges it, so one a socket or the relay dropped goes again after
-  a heartbeat, or at once on a new socket; the receiver takes each once,
-  in order. An ack rides the next send back, and those with none to ride
-  go together in one frame per half heartbeat: no message of its own on
-  a busy run.
+  a heartbeat and a half, or at once on a new socket; the receiver takes
+  each once, in order. An ack rides the next send back; the orchestrator's,
+  with no order to ride, go together after half a heartbeat.
+- A task sent runs at once: no message says it began. A command that
+  ended (`ran`, with when it began and ended by the worker's clock) rides
+  the worker's next frame, never alone; a task that saves first says it
+  in its `end` (begun, ran, ended). The run reads those times against the
+  clock of the frame that carried them.
 - A run where no task began or ended for a minute warns what it waits
   on, a line a task: which worker, and whether it runs or saves.
 - A message the relay would not take is a warning naming it, its
@@ -656,9 +662,9 @@ An idle worker the rest of the run cannot keep busy leaves (`left`): one
 beyond the peak of the cores the remaining tasks keep busy, so a lull
 between two wide parts keeps it. One a remaining task needs for its size
 stays, and so does one a later task needs when its size's `max` is
-spent, since none could start in its place. A lost worker's begun tasks run again on
+spent, since none could start in its place. A lost worker's tasks run again on
 another, and the run starts one in its place. A worker is lost when its
-socket closes, when it stops answering the orchestrator's probes, or at
+socket closes, when it says nothing for 3 heartbeats (6 s), or at
 once when its adapter sees its process or job end. Workers start at the first
 task the cache does not answer, so a warm run starts none. Once one has
 joined, its warm-up is what the next of its size takes at the least: work
@@ -675,10 +681,10 @@ run is over, one still starting is `not joined`), the tasks it
 has done, failed or had aborted by a stop, and the ones it runs now; while the run goes, those that left
 are one line (`3 workers  left  9 done`). A worker the
 run started is named by its size and the order it was started in; one
-that joined on its own is `worker#N`. A task sent to a worker but not yet
-begun there has no row; the tasks line counts it `scheduled`
+that joined on its own is `worker#N`. A task waiting for a worker has no
+row; the tasks line counts it `scheduled`
 (`30 success · 4 running · 12 scheduled · 62 total`). Its row and clock
-start when the worker begins it. A worker is `online` while the run
+start when it is sent: a worker runs what it is sent at once. A worker is `online` while the run
 goes; it ends `left` when the run let it go as not needed, `lost` when
 it crashed or went silent, and `stopped` when the run's end stopped it.
 Once the run is over, each worker adds its warm-up (from asking the

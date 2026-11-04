@@ -376,6 +376,7 @@ export function sealOrchestrator(
       return me.online
     },
     resumed: (f) => me.resumed(f),
+    quiet: (f) => me.quiet(f),
     async send(to, body) {
       const s = sessions.get(to)
       // Lost or never admitted: the relay's own answer for a peer it does
@@ -473,6 +474,7 @@ export async function sealWorker(
       return me.online
     },
     resumed: (f) => me.resumed(f),
+    quiet: (f) => me.quiet(f),
     async send(to, body) {
       if (session === undefined) throw new Error('no session with the orchestrator yet')
       await session.send(body, (sealed) => me.send(to, sealed))

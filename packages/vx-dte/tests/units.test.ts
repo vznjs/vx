@@ -59,6 +59,13 @@ const tmp = async (): Promise<string> => {
   return d
 }
 
+/** A worker's frames as their messages: `together` holds several. */
+const flat = <M extends { from: string; body: unknown }>(frames: M[]): M[] =>
+  frames.flatMap((f) => {
+    const b = f.body as { type?: string; messages?: unknown[] }
+    return b.type === 'together' ? b.messages!.map((body) => ({ ...f, body })) : [f]
+  })
+
 /** A tmp dir that is a git checkout, as a worker's root is: a save is
  *  withheld where git cannot diff the task's project. */
 const checkout = async (): Promise<string> => {
@@ -219,6 +226,7 @@ it('a send to a worker the relay would not take is said', async () => {
         heartbeatMs: me.heartbeatMs,
         online: true,
         resumed: () => {},
+        quiet: () => {},
         poll: (signal) => me.poll(signal),
         remove: (id) => me.remove(id),
         leave: () => me.leave(),
@@ -376,32 +384,133 @@ it('a task a worker runs across a relay restart and its orchestrator’s absence
     }
     const seen: string[] = []
     for (let i = 0; i < 100 && !seen.includes('end'); i++)
-      for (const { from, body } of await o.poll()) {
+      for (const { from, body } of flat(await o.poll())) {
         const m = body as { type: string; id?: string }
         if (from === 'relay') {
           seen.push(m.type)
           if (m.type !== 'joined') continue
           await o.send(m.id!, { type: 'welcome', name: 'a', cache: { refs: [], lent: {} } })
-          await o.send(m.id!, { type: 'batch', root, realRoot: root, tasks: [order] })
-          continue
-        }
-        seen.push(m.type)
-        if (m.type === 'start') {
+          await o.send(m.id!, { type: 'batch', n: 1, root, realRoot: root, tasks: [order] })
+          // Taken, it runs: the relay restarts under it.
+          await Bun.sleep(200)
           served.refuse = (r) => decodeURIComponent(r.url).includes('"role":"host"')
           served.restart()
           setTimeout(() => (served.refuse = undefined), 500)
+          continue
         }
+        seen.push(m.type)
         if (m.type === 'end') await o.send(from, { type: 'exit' })
       }
-    expect(seen.filter((t) => t !== 'held')).toEqual(['joined', 'start', 'ran', 'end'])
+    expect(seen.filter((t) => t !== 'report')).toEqual(['joined', 'end'])
     expect(await code).toBe(0)
   } finally {
     await served.stop()
   }
 })
 
-// An orchestrator may send a task again to the worker running it (its lease
-// ended while the relay was away): it is not run twice.
+// 2026-11-01: "You do minimum comms. You group whatever can be. You send
+// data at least every 2s." A quiet worker's heartbeat is its live report;
+// a `ran` is never sent alone (2026-11-03: "send run with next heartbeat or
+// event, never alone, unless end is faster"), and each says its times.
+it('a worker reports when quiet, and its ran rides the next frame or its own end says it', async () => {
+  const root = await tmp()
+  const served = servedRelay({ heartbeatMs: 500 })
+  try {
+    const o = sealOrchestrator(
+      await join(served.url, R, 'orchestrator', null, undefined),
+      R,
+      secretProof('s'),
+    )
+    const { artifacts } = fakeArtifacts()
+    let release!: () => void
+    const t2Ended = new Promise<void>((r) => (release = r))
+    artifacts.save = async (_key, task) => {
+      if (task.id === 't1') await t2Ended
+    }
+    const code = runWorker({
+      relay: served.url,
+      run: R,
+      root,
+      token: async () => undefined,
+      proof: secretProof('s'),
+      artifacts: () => artifacts,
+    })
+    const order = (task: string): RunOrder => ({
+      task,
+      key: `k-${task}`,
+      runKey: runKey(R, task),
+      deps: [],
+      nested: [],
+      // t1's command ends at once and saves until t2 ends.
+      command: task === 't1' ? 'true' : 'sleep 0.1',
+      cwd: '',
+      project: '',
+      env: {},
+      outputs: { files: [], workspaceFiles: [] },
+      cores: 1,
+      memory: 0,
+    })
+    type Said = {
+      type: string
+      task?: string
+      messages?: Said[]
+      running?: string[]
+      load?: { at?: number }
+      startedAt?: number
+      ranAt?: number
+      endedAt?: number
+    }
+    const seen: unknown[] = []
+    const unloaded: unknown[] = []
+    const timed: Said[] = []
+    let worker = ''
+    const said = (m: Said): unknown =>
+      m.type === 'together'
+        ? m.messages!.map(said)
+        : m.type === 'report'
+          ? `report ${m.running!.join(',')}`
+          : `${m.type} ${m.task}`
+    for (let i = 0; i < 100 && !seen.some((m) => String(m) === 'end t1'); i++)
+      for (const { from, body } of await o.poll()) {
+        const m = body as Said & { id?: string }
+        if (from === 'relay') {
+          if (m.type !== 'joined') continue
+          worker = m.id!
+          await o.send(worker, { type: 'welcome', name: 'a', cache: { refs: [], lent: {} } })
+          continue
+        }
+        seen.push(said(m))
+        const all = m.type === 'together' ? m.messages! : [m]
+        // Every frame carries its machine's load (2026-11-03: "with each
+        // event we should always send resources").
+        if (all.at(-1)?.load?.at === undefined) unloaded.push(said(m))
+        timed.push(...all.filter((x) => x.type === 'ran' || x.type === 'end'))
+        // Its first report, idle: then both tasks.
+        if (seen.length === 1)
+          await o.send(worker, {
+            type: 'batch',
+            n: 1,
+            root,
+            realRoot: root,
+            tasks: [order('t1'), order('t2')],
+          })
+        if (all.some((x) => x.type === 'end' && x.task === 't2')) release()
+      }
+    await o.send(worker, { type: 'exit' })
+    expect(seen[0]).toBe('report ')
+    expect(unloaded).toEqual([])
+    const events = seen.filter((m) => !String(m).startsWith('report'))
+    expect(events).toEqual([['ran t1', 'end t2'], 'end t1'])
+    for (const t of timed) {
+      expect(t.startedAt!).toBeLessThanOrEqual(t.ranAt!)
+      if (t.type === 'end') expect(t.ranAt!).toBeLessThanOrEqual(t.endedAt!)
+    }
+    expect(await code).toBe(0)
+  } finally {
+    await served.stop()
+  }
+})
+
 it('a worker sent a task it runs already does not run it again', async () => {
   const root = await tmp()
   const served = servedRelay({ heartbeatMs: 500 })
@@ -435,22 +544,21 @@ it('a worker sent a task it runs already does not run it again', async () => {
     }
     const seen: string[] = []
     for (let i = 0; i < 100 && !seen.includes('end'); i++)
-      for (const { from, body } of await o.poll()) {
+      for (const { from, body } of flat(await o.poll())) {
         const m = body as { type: string; id?: string }
         seen.push(m.type)
         if (from === 'relay') {
           if (m.type !== 'joined') continue
           await o.send(m.id!, { type: 'welcome', name: 'a', cache: { refs: [], lent: {} } })
-          await o.send(m.id!, { type: 'batch', root, realRoot: root, tasks: [order] })
+          await o.send(m.id!, { type: 'batch', n: 1, root, realRoot: root, tasks: [order] })
+          await o.send(m.id!, { type: 'batch', n: 2, root, realRoot: root, tasks: [order] })
           continue
         }
-        if (m.type === 'start')
-          await o.send(from, { type: 'batch', root, realRoot: root, tasks: [order] })
         if (m.type === 'end') await o.send(from, { type: 'exit' })
       }
     expect(await code).toBe(0)
     expect(await readFile(path.join(root, 'runs.txt'), 'utf8')).toBe('ran\n')
-    expect(seen.filter((t) => t === 'start')).toHaveLength(1)
+    expect(seen.filter((t) => t === 'end')).toHaveLength(1)
   } finally {
     await served.stop()
   }
@@ -488,11 +596,11 @@ it('a worker stopped by a signal stops its tasks before it exits', async () => {
       memory: 0,
     }
     for (let i = 0; i < 100 && pid === undefined; i++) {
-      for (const { from, body } of await o.poll()) {
+      for (const { from, body } of flat(await o.poll())) {
         const m = body as { type: string; id?: string }
         if (from !== 'relay' || m.type !== 'joined') continue
         await o.send(m.id!, { type: 'welcome', name: 'a', cache: { refs: [], lent: {} } })
-        await o.send(m.id!, { type: 'batch', root, realRoot: root, tasks: [order] })
+        await o.send(m.id!, { type: 'batch', n: 1, root, realRoot: root, tasks: [order] })
       }
       const text = await readFile(path.join(root, 'pid.txt'), 'utf8').catch(() => '')
       if (text.endsWith('\n')) pid = Number(text)
@@ -740,7 +848,6 @@ async function harness(
       store.saved.set(key, [{ text: `${task} out\n`, err: false }])
       await me.send('orchestrator', { type: 'end', task, key, result })
     }
-    const begin = (task: string) => me.send('orchestrator', { type: 'start', task })
     const say = (body: object) => me.send('orchestrator', body)
     const types = async (): Promise<string[]> => {
       const seen: string[] = []
@@ -762,7 +869,6 @@ async function harness(
       batches,
       bodies,
       finish,
-      begin,
       say,
       types,
       orders,
@@ -910,17 +1016,31 @@ it('sends a worker what its booking fits, though its load reads low; busier than
     await Bun.sleep(50)
     for (const id of ids) void h.o.execute(h.req(id))
     expect(await a.batches()).toEqual([['t1', 't2', 't3', 't4']])
-    for (const id of ['t1', 't2', 't3', 't4'])
-      await a.say({ type: 'start', task: id, load: { cpu: 0.1, memory: 0 } })
+    await a.say({
+      type: 'report',
+      running: ['t1', 't2', 't3', 't4'],
+      batch: 1,
+      load: { cpu: 0.1, memory: 0 },
+    })
     await Bun.sleep(50)
     expect(h.o.where('t5')).toBeNull()
     // The worker started for them gets them.
     const b = await h.worker(4)
     expect(await b.batches()).toEqual([['t5', 't6', 't7', 't8']])
     // Its machine busier than booked: the core a task freed stays taken.
-    await b.say({ type: 'start', task: 't5', load: { cpu: 4, memory: 0 } })
+    await b.say({
+      type: 'report',
+      running: ['t5', 't6', 't7', 't8'],
+      batch: 1,
+      load: { cpu: 4, memory: 0 },
+    })
     await b.finish('t5')
-    await b.say({ type: 'held', running: ['t6', 't7', 't8'], load: { cpu: 4, memory: 0 } })
+    await b.say({
+      type: 'report',
+      running: ['t6', 't7', 't8'],
+      batch: 1,
+      load: { cpu: 4, memory: 0 },
+    })
     const t9 = h.o.execute(h.req('t9'))
     await Bun.sleep(50)
     expect(h.o.where('t9')).toBeNull()
@@ -947,8 +1067,7 @@ it('places on a worker by its booking once a task ends: the load it reported cou
     void h.o.execute(h.req('t1'))
     void h.o.execute(h.req('t2'))
     expect(await a.batches()).toEqual([['t1', 't2']])
-    for (const id of ['t1', 't2'])
-      await a.say({ type: 'start', task: id, load: { cpu: 2, memory: 0 } })
+    await a.say({ type: 'report', running: ['t1', 't2'], batch: 1, load: { cpu: 2, memory: 0 } })
     void h.o.execute(h.req('t3'))
     await Bun.sleep(50)
     expect(h.o.where('t3')).toBeNull()
@@ -974,8 +1093,7 @@ it('plans a running unmeasured task as it planned it waiting', async () => {
     void h.o.execute(h.req('t1'))
     void h.o.execute(h.req('t2'))
     expect(await a.batches()).toEqual([['t1', 't2']])
-    for (const id of ['t1', 't2'])
-      await a.say({ type: 'start', task: id, load: { cpu: 0.1, memory: 0 } })
+    await a.say({ type: 'report', running: ['t1', 't2'], batch: 1, load: { cpu: 0.1, memory: 0 } })
     await Bun.sleep(50)
     const running = h.o.planState(() => undefined, 0).workers.find((w) => w.id === a.id)!.running
     expect(running.map((r) => r.cores)).toEqual([2, 2])
@@ -995,7 +1113,6 @@ it('books measured tasks at the share of their history the run’s tasks used, a
     for (const id of ids.slice(0, 4)) void h.o.execute(h.req(id))
     expect(await a.batches()).toEqual([['t1', 't2', 't3', 't4']])
     for (const id of ['t1', 't2', 't3', 't4']) {
-      await a.begin(id)
       h.store.saved.set(`k-${id}`, [])
       // Half a core of the one its history booked.
       await a.say({
@@ -1044,8 +1161,8 @@ it('books a worker the cores of a task from its start to its command’s end', a
   await Bun.sleep(50)
   for (const id of ['t1', 't2']) void h.o.execute(h.req(id))
   expect(await a.batches()).toEqual([['t1', 't2']])
-  await a.begin('t1')
   await a.say({ type: 'ran', task: 't1' })
+  await a.say({ type: 'ran', task: 't2' })
   await Bun.sleep(300)
   await h.stop()
   const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
@@ -1064,7 +1181,7 @@ it('says each worker’s machine busy average from the loads it sent', async () 
   expect(await a.batches()).toEqual([['t1']])
   // Its last frame's average, not the run's of its samples: a worker that
   // sent 3 frames, each as a task started, read 0.6 of 2.0 used (#4313).
-  await a.say({ type: 'start', task: 't1', load: { cpu: 0.2, memory: 0, avg: 1 } })
+  await a.say({ type: 'report', running: ['t1'], batch: 1, load: { cpu: 0.2, memory: 0, avg: 1 } })
   await a.say({ type: 'ran', task: 't1', load: { cpu: 0.2, memory: 0, avg: 3 } })
   await Bun.sleep(50)
   await h.stop()
@@ -1102,8 +1219,12 @@ it('profiles the run: each worker’s tasks on their own lanes, the run’s wait
   await Bun.sleep(50)
   const done = ['t1', 't2'].map((id) => h.o.execute(h.req(id)))
   expect(await a.batches()).toEqual([['t1', 't2']])
-  for (const t of ['t1', 't2']) await a.begin(t)
-  await a.say({ type: 'held', running: ['t1', 't2'], load: { cpu: 1.5, memory: 0, tasks: 1.2 } })
+  await a.say({
+    type: 'report',
+    running: ['t1', 't2'],
+    batch: 1,
+    load: { cpu: 1.5, memory: 0, tasks: 1.2 },
+  })
   // PR #4214's run asked 7 workers and cancelled each a second later: what each plan saw.
   h.o.planned({
     start: ['small'],
@@ -1239,7 +1360,6 @@ it('a task no worker fits waits here, and goes to the first one free', async () 
     await Bun.sleep(50)
     for (const id of ['t1', 't2']) void h.o.execute(h.req(id))
     expect(await a.batches()).toEqual([['t1']])
-    await a.begin('t1')
     const b = await h.worker(1)
     expect(await b.batches()).toEqual([['t2']])
   } finally {
@@ -1262,7 +1382,6 @@ it('a task that runs alone holds the worker it waits for; none after it takes it
     await Bun.sleep(50)
     void h.o.execute(h.req('t1'))
     expect(await a.batches()).toEqual([['t1']])
-    await a.begin('t1')
     for (const id of ['alone', 't3']) void h.o.execute(h.req(id))
     await Bun.sleep(50)
     await a.finish('t1')
@@ -1446,21 +1565,26 @@ it('a worker of a declared size is sent work for that size, not its machine', as
 })
 
 // 2026-10-21: 16 rows said running while 4 workers ran 4 of them; and
-// a worker's cores and memory belong to the final summary only.
-it('a task waits until a worker begins it; the live rows leave out its machine', async () => {
+// a worker's cores and memory belong to the final summary only. A worker
+// runs what it is sent at once (2026-11-03: "accepting order means it's
+// running"): a task sent runs there, one not sent waits.
+it('a task sent to a worker runs there, one not sent waits; the live rows leave out its machine', async () => {
   const h = await harness(new Map([node('t1'), node('t2'), node('t3'), node('t4')]))
   try {
     const a = await h.worker(2)
     await Bun.sleep(50)
     for (const id of ['t1', 't2', 't3', 't4']) void h.o.execute(h.req(id))
     expect(await a.batches()).toEqual([['t1', 't2']])
-    expect(['t1', 't2', 't3', 't4'].map((t) => h.o.where(t))).toEqual([null, null, null, null])
-    expect(h.o.where('other')).toBeUndefined()
-    await a.begin('t1')
     for (let i = 0; i < 40 && h.o.where('t1') === null; i++) await Bun.sleep(25)
-    expect(['t1', 't2'].map((t) => h.o.where(t))).toEqual(['worker#1', null])
+    expect(['t1', 't2', 't3', 't4'].map((t) => h.o.where(t))).toEqual([
+      'worker#1',
+      'worker#1',
+      null,
+      null,
+    ])
+    expect(h.o.where('other')).toBeUndefined()
     const live = JSON.stringify(h.o.footer())
-    expect(live).toContain('1 running')
+    expect(live).toContain('2 running')
     expect(live).not.toMatch(/\dc\//)
   } finally {
     await h.stop()
@@ -1611,7 +1735,6 @@ it('the final summary names the tasks of a worker that ran few', async () => {
   await Bun.sleep(50)
   const t1 = h.o.execute(h.req('t1'))
   expect(await a.batches()).toEqual([['t1']])
-  await a.begin('t1')
   await a.finish('t1')
   expect((await t1).exitCode).toBe(0)
   await h.stop()
@@ -1640,34 +1763,26 @@ it('lists the workers that left as one line while the run goes', async () => {
   }
 })
 
-// A lost worker's begun task runs again on another, two workers at most;
-// one it had not begun goes back and does not count.
-it('a task lost with two workers fails naming both; one not begun goes back free', async () => {
-  const h = await harness(new Map([node('t1'), node('t2')]))
+// A lost worker's task runs again on another, two workers at most: each
+// task sent runs at once, so each counts.
+it('a task lost with two workers fails naming both', async () => {
+  const h = await harness(new Map([node('t1')]))
   try {
-    const a = await h.worker(2)
+    const a = await h.worker(1)
     await Bun.sleep(50)
     // Its failure lands while b leaves, before the test awaits it.
     const t1 = h.o.execute(h.req('t1')).then(
       () => '',
       (e: Error) => e.message,
     )
-    const t2 = h.o.execute(h.req('t2'))
-    expect(await a.batches()).toEqual([['t1', 't2']])
-    await a.begin('t1')
+    expect(await a.batches()).toEqual([['t1']])
     await Bun.sleep(50)
     await a.leave()
-    const b = await h.worker(2)
-    expect(await b.batches()).toEqual([['t1', 't2']])
-    await b.begin('t1')
-    await b.begin('t2')
+    const b = await h.worker(1)
+    expect(await b.batches()).toEqual([['t1']])
     await Bun.sleep(50)
     await b.leave()
     expect(await t1).toBe('t1: failed on 2 workers: worker#1 lost, worker#2 lost')
-    const c = await h.worker(1)
-    expect(await c.batches()).toEqual([['t2']])
-    await c.finish('t2')
-    expect((await t2).exitCode).toBe(0)
   } finally {
     await h.stop()
   }
@@ -1682,7 +1797,6 @@ it('a worker its adapter says exited is lost at once, its task run again', async
     await Bun.sleep(50)
     const t1 = h.o.execute(h.req('t1'))
     expect(await a.batches()).toEqual([['t1']])
-    await a.begin('t1')
     await Bun.sleep(50)
     h.o.failed('worker#1', 'exited 137')
     const b = await h.worker(1)
@@ -1706,7 +1820,6 @@ it('reports a worker still there at the summary online until then', async () => 
     const a = await h.worker(1)
     const t1 = h.o.execute(h.req('t1'))
     expect(await a.batches()).toEqual([['t1']])
-    await a.begin('t1')
     await Bun.sleep(100)
     await a.finish('t1')
     expect((await t1).exitCode).toBe(0)
@@ -1794,41 +1907,39 @@ it('a worker that could not run a task it began gets no more; two such fail it',
   }
 })
 
-it('a task a worker stops saying it holds goes back when its lease ends', async () => {
-  // At 100 ms a beat, the test process held its loop past 190 ms once on
-  // CI and its worker lost the orchestrator (main ae800d6, 2026-10-26).
+// A report is the worker's whole state (2026-11-01: "the other reports
+// live"): a task it names no more goes back at once, not at a lease's
+// end. One of a batch it had not read when it reported, or ended, is not
+// missing.
+it('a task its worker’s report names no more goes back at once', async () => {
   const beat = 300
-  const h = await harness(new Map([node('t1')]), undefined, beat)
+  const h = await harness(new Map([node('t1'), node('t2')]), undefined, beat)
   try {
-    const a = await h.worker(1)
+    const a = await h.worker(2)
     await Bun.sleep(50)
     void h.o.execute(h.req('t1'))
-    expect(await a.batches()).toEqual([['t1']])
-    // One `held` lasts three heartbeats: a worker says it every one.
-    await a.say({ type: 'held', running: ['t1'], queued: [] })
-    const said = performance.now()
+    void h.o.execute(h.req('t2'))
+    expect(await a.batches()).toEqual([['t1', 't2']])
+    // Its report crossed the batch: it had read none, neither moves.
+    await a.say({ type: 'report', running: [], batch: 0, load: { cpu: 0, memory: 0 } })
+    await a.finish('t2')
+    await Bun.sleep(50)
+    expect(h.o.where('t1')).toBe('worker#1')
     const b = await h.worker(1)
-    // Alive, holding nothing: t1's lease ends and it moves.
-    const alive = setInterval(() => void a.say({ type: 'held', running: [], queued: [] }), 50)
-    try {
-      let got: string[][] = []
-      for (let i = 0; i < 3 && got.length === 0; i++) got = await b.batches()
-      expect(got).toEqual([['t1']])
-      // A `held` lasts three heartbeats: well under a lease of six.
-      expect(performance.now() - said).toBeLessThan(6 * beat)
-    } finally {
-      clearInterval(alive)
-    }
+    await a.say({ type: 'report', running: [], batch: 1, load: { cpu: 0, memory: 0 } })
+    const said = performance.now()
+    expect(await b.batches()).toEqual([['t1']])
+    expect(performance.now() - said).toBeLessThan(beat)
   } finally {
     await h.stop()
   }
 })
 
 // The relay restarts while a worker runs t1, and the orchestrator is away
-// a heartbeat; another worker polls past t1's lease, which no `held`
-// renewed. It stays the worker's, not run again elsewhere (2026-10-25:
-// "make sure on rejoin we don't repeat work").
-it('a task held across a relay restart stays its worker’s: its lease waits for both to be back', async () => {
+// a heartbeat; another worker polls past the time a lease used to end. It
+// stays the worker's, not run again elsewhere (2026-10-25: "make sure on
+// rejoin we don't repeat work").
+it('a task begun across a relay restart stays its worker’s', async () => {
   const beat = 400
   const h = await harness(new Map([node('t1')]), undefined, beat)
   try {
@@ -1836,8 +1947,7 @@ it('a task held across a relay restart stays its worker’s: its lease waits for
     await Bun.sleep(50)
     void h.o.execute(h.req('t1'))
     expect(await a.batches()).toEqual([['t1']])
-    await a.begin('t1')
-    await a.say({ type: 'held', running: ['t1'], queued: [] })
+    await a.say({ type: 'report', running: ['t1'], batch: 1, load: { cpu: 1, memory: 0 } })
     const heldAt = performance.now()
     const b = await h.worker(1)
     h.served.refuse = (r) => decodeURIComponent(r.url).includes('"role":"host"')
@@ -1846,8 +1956,7 @@ it('a task held across a relay restart stays its worker’s: its lease waits for
     // jitter of up to half a beat, and a 500 ms refusal of 600 left a
     // loaded runner 100 ms for it and the dial (CI, PR #4867).
     setTimeout(() => (h.served.refuse = undefined), beat)
-    // Half a beat past the lease of 3 heartbeats from that `held`, half a
-    // beat before the lease the rejoin renewed (at least 4 from it) ends.
+    // Past the lease of 3 heartbeats this once had.
     const until = heldAt + beat * 3.5
     const got: string[] = []
     while (performance.now() < until)
@@ -1858,52 +1967,12 @@ it('a task held across a relay restart stays its worker’s: its lease waits for
   }
 })
 
-// The loop expired leases before it read the batch it polled: a `held`
-// read late came too late, and the task ran again on
-// another worker (main CI, 2026-10-27).
-it('a held read late renews its lease before the lease is judged', async () => {
-  const beat = 300
-  const h = await harness(new Map([node('t1')]), undefined, beat)
-  // The poll in flight when `lag` is set returns its batch late.
-  let lag = 0
-  const me = (h.o as unknown as { o: { me: { poll: (s: AbortSignal) => Promise<unknown[]> } } }).o
-    .me
-  const poll = me.poll.bind(me)
-  me.poll = async (signal) => {
-    const got = await poll(signal)
-    if (lag > 0) await Bun.sleep(lag)
-    lag = 0
-    return got
-  }
-  try {
-    const a = await h.worker(1)
-    await Bun.sleep(50)
-    void h.o.execute(h.req('t1'))
-    expect(await a.batches()).toEqual([['t1']])
-    await a.begin('t1')
-    const b = await h.worker(1)
-    await a.say({ type: 'held', running: ['t1'], queued: [] })
-    await Bun.sleep(beat * 2.3)
-    // Said within the lease (3 beats), read after it: the loop was busy.
-    lag = beat
-    await a.say({ type: 'held', running: ['t1'], queued: [] })
-    const until = performance.now() + beat * 2
-    const got: string[] = []
-    while (performance.now() < until)
-      for (const m of await b.poll()) got.push((m.body as { type: string }).type)
-    expect(got.filter((t) => t === 'batch')).toEqual([])
-    expect(h.o.where('t1')).toBe('worker#1')
-  } finally {
-    await h.stop()
-  }
-})
-
 // Main 32f73ed: a run stuck 13 min said nothing of what it waited on
 // (2026-10-23).
-it('a task whose command ended keeps its lease while its worker holds it, and a quiet run says what it waits on', async () => {
+it('a task whose command ended stays its worker’s while it saves, and a quiet run says what it waits on', async () => {
   const waiting: string[] = []
-  // A quiet worker is probed at 1.5 heartbeats and lost at 1.9: at 100 ms,
-  // 40 ms of a loaded runner's stall lost the new worker (CI, 2026-10-25).
+  // A quiet worker is lost at 1.9 heartbeats: at 100 ms, 40 ms of a loaded
+  // runner's stall lost the new worker (CI, 2026-10-25).
   const beat = 200
   const h = await harness(new Map([node('t1')]), undefined, beat, undefined, undefined, {
     stalled: (w) => waiting.push(w),
@@ -1914,15 +1983,15 @@ it('a task whose command ended keeps its lease while its worker holds it, and a 
     await Bun.sleep(50)
     void h.o.execute(h.req('t1'))
     expect(await a.batches()).toEqual([['t1']])
-    // Held each beat from the batch on, as a worker says it. Begun after
-    // `ran` and `b`'s join, a runner's 400 ms stall there ended the lease
-    // before the first `held` (CI, 2026-10-28).
-    const alive = setInterval(() => void a.say({ type: 'held', running: ['t1'] }), beat)
+    // Reported each beat, as a worker says it.
+    const alive = setInterval(
+      () => void a.say({ type: 'report', running: ['t1'], batch: 1, load: { cpu: 0, memory: 0 } }),
+      beat,
+    )
     try {
-      await a.begin('t1')
       await a.say({ type: 'ran', task: 't1' })
       const b = await h.worker(1)
-      // Saving, it still holds t1: past a run's lease (0.6 s here), t1 stays.
+      // Saving, it still runs t1: t1 stays.
       expect(await b.batches()).toEqual([])
       expect(await b.batches()).toEqual([])
     } finally {
@@ -2095,7 +2164,7 @@ it('sends a dependency a worker could not read over the remotes’ copy, and the
 // dependency it could not read again, longer than a lease: the lease
 // ending meanwhile called the worker faulty and gave the task to another.
 for (const sent of [true, false])
-  it(`a task ended while its dependency is sent again keeps no lease (${sent ? 'sent' : 'not sent'})`, async () => {
+  it(`a task ended while its dependency is sent again goes to no other worker (${sent ? 'sent' : 'not sent'})`, async () => {
     const beat = 300
     const faults: string[] = []
     const h = await harness(new Map([node('t')]), undefined, beat, undefined, undefined, {
@@ -2108,7 +2177,6 @@ for (const sent of [true, false])
       await Bun.sleep(50)
       const ran = h.o.execute(h.req('t'))
       expect(await a.batches()).toEqual([['t']])
-      await a.begin('t')
       const b = await h.worker(1)
       await a.finish('t', a.orders[0]!.runKey, { exitCode: 1, durationMs: 0, unread: ['k-d'] })
       const until = performance.now() + 6 * beat
@@ -2218,7 +2286,8 @@ it('a refused batch fails only its own tasks, not those of a part sent before it
     expect(await a.batches()).toEqual([['t1']])
     expect(await t2).toBe('relay send: 413 too large')
     expect(first).toBe('pending')
-    expect(h.o.where('t1')).toBeNull()
+    // Sent, it runs there.
+    expect(h.o.where('t1')).toBe('worker#1')
   } finally {
     await h.stop()
   }
@@ -2234,10 +2303,8 @@ it('a task sent again over a dependency it could not read gives its booked cores
     await Bun.sleep(50)
     const ran = h.o.execute(h.req('t'))
     expect(await a.batches()).toEqual([['t']])
-    await a.begin('t')
     await a.finish('t', a.orders[0]!.runKey, { exitCode: 1, durationMs: 0, unread: ['k-d'] })
     expect(await a.batches()).toEqual([['t']])
-    await a.begin('t')
     await a.finish('t')
     expect((await ran).exitCode).toBe(0)
     const before = h.o.machines()[0]!.bookedAvg!
@@ -2343,13 +2410,11 @@ it('an order names every dependency, held by its worker or not', async () => {
     const t1 = h.o.execute(h.req('t1'))
     void h.o.execute(h.req('x', 'k-x'))
     expect(await a.batches()).toEqual([['t1']])
-    await a.begin('t1')
     const b = await h.worker(1)
     expect(await b.batches()).toEqual([['x']])
     await b.finish('x', 'k-x')
     void h.o.execute(h.req('w'))
     expect(await b.batches()).toEqual([['w']])
-    await b.begin('w')
     await a.finish('t1')
     await t1
     void h.o.execute(h.req('y'))
@@ -2640,7 +2705,7 @@ it('a worker uploads a key the run found missing, and its run key, asking the re
     const tasks = [order('t', 'true', true), order('u', 'true', false), order('v', 'exit 1', false)]
     let ended = 0
     for (let i = 0; i < 100 && ended < tasks.length; i++)
-      for (const { from, body } of await o.poll()) {
+      for (const { from, body } of flat(await o.poll())) {
         const m = body as { type: string; id?: string }
         if (from === 'relay' && m.type === 'joined') {
           await o.send(m.id!, {
@@ -2650,7 +2715,7 @@ it('a worker uploads a key the run found missing, and its run key, asking the re
             cores: 3,
             memory: 1e9,
           })
-          await o.send(m.id!, { type: 'batch', root, realRoot: root, tasks })
+          await o.send(m.id!, { type: 'batch', n: 1, root, realRoot: root, tasks })
         } else if (m.type === 'end' && ++ended === tasks.length)
           await o.send(from, { type: 'exit' })
       }
@@ -2719,7 +2784,7 @@ it('a worker says which task no remote took the upload of, sending its output wi
     const tasks = [order('t'), order('u'), order('v')]
     const ends = new Map<string, WiredResult>()
     for (let i = 0; i < 100 && ends.size < tasks.length; i++)
-      for (const { from, body } of await o.poll()) {
+      for (const { from, body } of flat(await o.poll())) {
         const m = body as { type: string; id?: string; task?: string; result?: WiredResult }
         if (from === 'relay' && m.type === 'joined') {
           await o.send(m.id!, {
@@ -2729,7 +2794,7 @@ it('a worker says which task no remote took the upload of, sending its output wi
             cores: 3,
             memory: 1e9,
           })
-          await o.send(m.id!, { type: 'batch', root, realRoot: root, tasks })
+          await o.send(m.id!, { type: 'batch', n: 1, root, realRoot: root, tasks })
         } else if (m.type === 'end') {
           ends.set(m.task!, m.result!)
           if (ends.size === tasks.length) await o.send(from, { type: 'exit' })
@@ -2810,7 +2875,7 @@ it('a forced run’s order is fresh, and its worker saves a success under the ru
     }
     let ended: string | undefined
     for (let i = 0; i < 100 && ended === undefined; i++)
-      for (const { from, body } of await o.poll()) {
+      for (const { from, body } of flat(await o.poll())) {
         const m = body as { type: string; id?: string; key?: string }
         if (from === 'relay' && m.type === 'joined') {
           await o.send(m.id!, {
@@ -2820,7 +2885,7 @@ it('a forced run’s order is fresh, and its worker saves a success under the ru
             cores: 2,
             memory: 1e9,
           })
-          await o.send(m.id!, { type: 'batch', root, realRoot: root, tasks: [order] })
+          await o.send(m.id!, { type: 'batch', n: 1, root, realRoot: root, tasks: [order] })
         } else if (m.type === 'end') {
           ended = m.key
           await o.send(from, { type: 'exit' })
@@ -2907,7 +2972,7 @@ it('a worker’s output is saved and replayed in the order the task wrote it', a
     }
     let ended = false
     for (let i = 0; i < 100 && !ended; i++)
-      for (const { from, body } of await o.poll()) {
+      for (const { from, body } of flat(await o.poll())) {
         const m = body as { type: string; id?: string }
         if (from === 'relay' && m.type === 'joined') {
           await o.send(m.id!, {
@@ -2917,7 +2982,7 @@ it('a worker’s output is saved and replayed in the order the task wrote it', a
             cores: 2,
             memory: 1e9,
           })
-          await o.send(m.id!, { type: 'batch', root, realRoot: root, tasks: [order] })
+          await o.send(m.id!, { type: 'batch', n: 1, root, realRoot: root, tasks: [order] })
         } else if (m.type === 'end') {
           ended = true
           await o.send(from, { type: 'exit' })
@@ -2990,7 +3055,7 @@ it('a worker restores a dependency once, before any task that needs it runs', as
     })
     const ends: { task: string; exitCode: number }[] = []
     for (let i = 0; i < 100 && ends.length < 2; i++) {
-      for (const { from, body } of await o.poll()) {
+      for (const { from, body } of flat(await o.poll())) {
         const m = body as {
           type: string
           id?: string
@@ -3007,6 +3072,7 @@ it('a worker restores a dependency once, before any task that needs it runs', as
           })
           await o.send(m.id!, {
             type: 'batch',
+            n: 1,
             root,
             realRoot: root,
             tasks: [order('t1'), order('t2')],
@@ -3085,7 +3151,7 @@ it('a worker fails a task whose dependency is in no cache it reads, and stays', 
     }
     const got: { type: string; key?: string; result?: { exitCode: number } }[] = []
     for (let i = 0; i < 100 && got.length === 0; i++) {
-      for (const { from, body } of await o.poll()) {
+      for (const { from, body } of flat(await o.poll())) {
         const m = body as { type: string; id?: string; key?: string; result?: { exitCode: number } }
         if (from === 'relay' && m.type === 'joined') {
           await o.send(m.id!, {
@@ -3095,7 +3161,7 @@ it('a worker fails a task whose dependency is in no cache it reads, and stays', 
             cores: 2,
             memory: 1e9,
           })
-          await o.send(m.id!, { type: 'batch', root, realRoot: root, tasks: [order] })
+          await o.send(m.id!, { type: 'batch', n: 1, root, realRoot: root, tasks: [order] })
         } else if (m.type === 'end' || m.type === 'fault') {
           got.push(m)
           await o.send(from, { type: 'exit' })
@@ -3173,7 +3239,7 @@ it('a worker restores a dependency again after a task cleared its files', async 
     const tasks = [order('t1', true), order('t2', false, dist), order('t3', true)]
     const ends: { task: string; exitCode: number }[] = []
     for (let i = 0; i < 100 && ends.length < 3; i++) {
-      for (const { from, body } of await o.poll()) {
+      for (const { from, body } of flat(await o.poll())) {
         const m = body as {
           type: string
           id?: string
@@ -3186,7 +3252,7 @@ it('a worker restores a dependency again after a task cleared its files', async 
             name: 'a',
             cache: { refs: [], lent: {} },
           })
-          await o.send(m.id!, { type: 'batch', root, realRoot: root, tasks: [tasks[0]!] })
+          await o.send(m.id!, { type: 'batch', n: 1, root, realRoot: root, tasks: [tasks[0]!] })
         } else if (m.type === 'end') {
           ends.push({ task: m.task!, exitCode: m.result!.exitCode })
           // One at a time, as the run sends a worker of 1 core.
@@ -3194,6 +3260,7 @@ it('a worker restores a dependency again after a task cleared its files', async 
           else
             await o.send(from, {
               type: 'batch',
+              n: 1,
               root,
               realRoot: root,
               tasks: [tasks[ends.length]!],
@@ -3223,7 +3290,6 @@ it('a task stopped while its worker is lost ends as stopped', async () => {
     const stop = new AbortController()
     const t1 = h.o.execute({ ...h.req('t1'), signal: stop.signal })
     expect(await a.batches()).toEqual([['t1']])
-    await a.begin('t1')
     await Bun.sleep(20)
     stop.abort()
     expect(await a.bodies()).toEqual([{ type: 'cancel', task: 't1' }])
@@ -3368,7 +3434,7 @@ it('a worker whose answer meets a closed run exits 0', async () => {
     })
     let sent = false
     for (let i = 0; i < 50 && !sent; i++) {
-      for (const { from, body } of await o.poll()) {
+      for (const { from, body } of flat(await o.poll())) {
         const m = body as { type: string; id?: string }
         if (from !== 'relay' || m.type !== 'joined') continue
         await o.send(m.id!, {
@@ -3380,6 +3446,7 @@ it('a worker whose answer meets a closed run exits 0', async () => {
         })
         await o.send(m.id!, {
           type: 'batch',
+          n: 1,
           root,
           realRoot: root,
           tasks: [order('t1', 'sleep 2'), order('t2', 'true')],
@@ -3444,12 +3511,11 @@ it('a worker begins its next task while the last one saves', async () => {
       cores: 1,
       memory: 0,
     })
-    // Each `start` is sent unawaited, so the relay may hand them over in
-    // either order, and t2 (`true`) may end in the same poll it starts.
+    // t2 ends while t1 still saves.
     const seen: string[] = []
-    const started = () => seen.includes('start t1') && seen.includes('start t2')
+    const started = () => seen.includes('end t2')
     for (let i = 0; i < 100 && !started(); i++) {
-      for (const { from, body } of await o.poll()) {
+      for (const { from, body } of flat(await o.poll())) {
         const m = body as { type: string; id?: string; task?: string }
         if (from === 'relay' && m.type === 'joined') {
           await o.send(m.id!, {
@@ -3461,11 +3527,12 @@ it('a worker begins its next task while the last one saves', async () => {
           })
           await o.send(m.id!, {
             type: 'batch',
+            n: 1,
             root,
             realRoot: root,
             tasks: [order('t1'), order('t2')],
           })
-        } else if (m.type === 'start' || m.type === 'end') seen.push(`${m.type} ${m.task}`)
+        } else if (m.type === 'end') seen.push(`${m.type} ${m.task}`)
       }
     }
     expect(started()).toBe(true)
@@ -4283,7 +4350,7 @@ it('sends a result too long for one relay frame in parts, all of it arriving', a
     const changed: string[] = []
     let ended = false
     for (let i = 0; i < 400 && !ended; i++)
-      for (const { from, body } of await o.poll()) {
+      for (const { from, body } of flat(await o.poll())) {
         const m = body as {
           type: string
           id?: string
@@ -4298,7 +4365,7 @@ it('sends a result too long for one relay frame in parts, all of it arriving', a
             cores: 2,
             memory: 1e9,
           })
-          await o.send(m.id!, { type: 'batch', root, realRoot: root, tasks: [order] })
+          await o.send(m.id!, { type: 'batch', n: 1, root, realRoot: root, tasks: [order] })
         } else if (m.type === 'part') {
           changed.push(...(m.changed ?? []))
         } else if (m.type === 'end') {
@@ -4360,7 +4427,7 @@ it('sends a long non-ASCII output in parts the relay takes', async () => {
     let text = ''
     let ended = false
     for (let i = 0; i < 400 && !ended; i++)
-      for (const { from, body } of await o.poll()) {
+      for (const { from, body } of flat(await o.poll())) {
         const m = body as {
           type: string
           id?: string
@@ -4375,7 +4442,7 @@ it('sends a long non-ASCII output in parts the relay takes', async () => {
             cores: 2,
             memory: 1e9,
           })
-          await o.send(m.id!, { type: 'batch', root, realRoot: root, tasks: [order] })
+          await o.send(m.id!, { type: 'batch', n: 1, root, realRoot: root, tasks: [order] })
         } else if (m.type === 'part') {
           text += (m.output ?? []).map((c) => c.text).join('')
         } else if (m.type === 'end') {
@@ -4435,7 +4502,7 @@ it('cuts a long output between characters, never inside one', async () => {
     const chunks: string[] = []
     let ended = false
     for (let i = 0; i < 400 && !ended; i++)
-      for (const { from, body } of await o.poll()) {
+      for (const { from, body } of flat(await o.poll())) {
         const m = body as {
           type: string
           id?: string
@@ -4450,7 +4517,7 @@ it('cuts a long output between characters, never inside one', async () => {
             cores: 2,
             memory: 1e9,
           })
-          await o.send(m.id!, { type: 'batch', root, realRoot: root, tasks: [order] })
+          await o.send(m.id!, { type: 'batch', n: 1, root, realRoot: root, tasks: [order] })
         } else if (m.type === 'part') {
           for (const c of m.output ?? []) chunks.push(c.text)
         } else if (m.type === 'end') {
@@ -4928,7 +4995,7 @@ it('fails a task on its own error and keeps the worker', async () => {
     const ends = new Map<string, number>()
     const seen: string[] = []
     for (let i = 0; i < 100 && ends.size < 2; i++) {
-      for (const { from, body } of await o.poll()) {
+      for (const { from, body } of flat(await o.poll())) {
         const m = body as {
           type: string
           id?: string
@@ -4945,6 +5012,7 @@ it('fails a task on its own error and keeps the worker', async () => {
           })
           await o.send(m.id!, {
             type: 'batch',
+            n: 1,
             root,
             realRoot: root,
             tasks: [order('t1', 'p[1]'), order('t2', '')],
@@ -5049,7 +5117,7 @@ it('restores the deps sent ahead of an order with its own', async () => {
     }
     let ended = false
     for (let i = 0; i < 100 && !ended; i++)
-      for (const { from, body } of await o.poll()) {
+      for (const { from, body } of flat(await o.poll())) {
         const m = body as { type: string; id?: string }
         if (from === 'relay' && m.type === 'joined') {
           const w = m.id!
@@ -5062,7 +5130,7 @@ it('restores the deps sent ahead of an order with its own', async () => {
           })
           await o.send(w, { type: 'deps', task: 't', deps: [dep(1)] })
           await o.send(w, { type: 'deps', task: 't', deps: [dep(2)] })
-          await o.send(w, { type: 'batch', root, realRoot: root, tasks: [order] })
+          await o.send(w, { type: 'batch', n: 1, root, realRoot: root, tasks: [order] })
         } else if (m.type === 'end') ended = true
       }
     expect(ended).toBe(true)

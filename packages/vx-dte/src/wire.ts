@@ -42,18 +42,17 @@ export function unsent(
  */
 const FIRST_REDIAL_MS = 250
 /**
- * The orchestrator probes a worker quiet this many heartbeats: each probe
- * and its ack are two frames, so a peer heard from is never asked.
+ * A peer quiet this many heartbeats is lost (6 s on the default): the one
+ * number the others derive from.
  */
-const PROBE_BEATS = 1.5
-/** A worker probes its orchestrator quiet this long: after the orchestrator would have. */
-const WORKER_PROBE_BEATS = 1.6
+const LOST_BEATS = 3
 /**
- * A peer quiet this many is lost: a live one, acking a probe at once, is
- * heard within a round trip of it. Checked each tenth, loss lands by two
- * (4 s on the default).
+ * A worker quiet half of `LOST_BEATS` sends its report (3 s), and its
+ * orchestrator's ack answers it: one late frame is not a loss.
  */
-const LOST_BEATS = 1.9
+const QUIET_BEATS = LOST_BEATS / 2
+/** A send unacknowledged as long goes again: its ack comes within it. */
+const RESEND_BEATS = LOST_BEATS / 2
 /** Why a worker ends on its orchestrator's silence. */
 export const ORCHESTRATOR_SILENT = 'relay: the orchestrator went silent'
 /**
@@ -63,8 +62,8 @@ export const ORCHESTRATOR_SILENT = 'relay: the orchestrator went silent'
  * rejoin for 2 heartbeats, it's over").
  */
 const REJOIN_BEATS = 2
-/** What a probe delivers: nothing. */
-const PROBED = Symbol('probe')
+/** What a beat delivers: nothing. */
+const BEAT = Symbol('beat')
 /** A frame of several sends stays under this, half the relay's 1 MiB body limit. */
 const FRAME_BYTES = 512 * 1024
 /** How long `leave` waits on its socket's close handshake. */
@@ -123,17 +122,17 @@ const isNumbered = (b: unknown): b is Numbered =>
   'body' in b &&
   Object.keys(b).length === ('acked' in b ? 3 : 2)
 /**
- * A peer quiet a heartbeat is asked: a numbered send with no body, which
- * its receiver acknowledges at once and delivers to no one.
+ * What a side with nothing else to say a heartbeat sends: a numbered send
+ * with no body, carrying its acks, delivered to no one.
  */
-interface Probe {
+interface Beat {
   readonly seq: number
   readonly acked?: number
 }
-const isProbe = (b: unknown): b is Probe =>
+const isBeat = (b: unknown): b is Beat =>
   typeof b === 'object' &&
   b !== null &&
-  typeof (b as Probe).seq === 'number' &&
+  typeof (b as Beat).seq === 'number' &&
   !('body' in b) &&
   Object.keys(b).length === ('acked' in b ? 2 : 1)
 const isAcked = (b: unknown): b is Acked =>
@@ -171,6 +170,12 @@ export interface Participant {
    * said meanwhile, and is not lost for that.
    */
   resumed(f: (peer?: string) => void): void
+  /**
+   * A worker's `f` is told when it said nothing to its orchestrator a
+   * heartbeat: it says something now, its live report. Untold, the wire
+   * sends a beat. The orchestrator is never told: it speaks on no timer.
+   */
+  quiet(f: (peer: string) => void): void
   send(to: string, body: unknown): Promise<void>
   /** Held up to one heartbeat, which also keeps this participant alive. */
   poll(signal?: AbortSignal): Promise<RelayMessage[]>
@@ -257,45 +262,47 @@ export async function join(
   >()
   /** Each sender's sends taken in order, and those that came ahead of a gap. */
   const taken = new Map<string, { upTo: number; ahead: Map<number, unknown> }>()
-  /**
-   * Acks owed, by peer: each rides the next send to its peer; those with
-   * none in half a heartbeat go together in one frame, before any peer
-   * sends again, in place of a ping.
-   */
+  /** Acks owed, by peer: each rides the next send to its peer. */
   const owing = new Set<string>()
+  /**
+   * The orchestrator sends only orders and acks: an ack no order carried
+   * goes on its own after half a heartbeat, every peer's in one frame. A
+   * worker's ride its next send, which it makes within a heartbeat.
+   */
   let acking: ReturnType<typeof setTimeout> | undefined
   const flushAcks = (): void => {
-    clearTimeout(acking)
     acking = undefined
     if (left || ended !== undefined) return
-    for (const peer of owing) {
+    for (const peer of [...owing]) {
       const upTo = taken.get(peer)?.upTo
-      if (upTo === undefined) continue
+      owing.delete(peer)
       // quiet: a lost ack only costs a resend, which is dropped as seen
-      put(peer, { acked: upTo } satisfies Acked).catch(() => undefined)
+      if (upTo !== undefined) put(peer, { acked: upTo } satisfies Acked).catch(() => undefined)
     }
-    owing.clear()
   }
-  /** `now`: a probe's ack goes at once, so its asker hears it within the loss window. */
-  const ack = (to: string, now = false): void => {
-    owing.add(to)
-    if (now) return flushAcks()
-    if (acking !== undefined) return
+  const owe = (peer: string): void => {
+    owing.add(peer)
+    if (role !== 'orchestrator' || acking !== undefined) return
     acking = setTimeout(flushAcks, heartbeatMs / 2)
     acking.unref()
   }
-  /** The ack owed `to`, if any, for a send to it to carry. */
-  const owed = (to: string): { acked?: number } =>
-    owing.delete(to) ? { acked: taken.get(to)!.upTo } : {}
+  /** When this side last sent each peer anything: a worker quiet a heartbeat says something. */
+  const said = new Map<string, number>()
+  let onQuiet: ((peer: string) => void) | undefined
+  /** The ack owed `to`, if any, for a send to it to carry; and `to` was just said to. */
+  const owed = (to: string): { acked?: number } => {
+    said.set(to, performance.now())
+    return owing.delete(to) ? { acked: taken.get(to)!.upTo } : {}
+  }
   /**
    * When each peer was last heard from: the orchestrator's workers from
    * their `joined`, a worker's orchestrator from its join. One quiet
-   * `PROBE_BEATS` is probed; one quiet `LOST_BEATS` is lost
+   * `LOST_BEATS` is lost
    * (2026-10-23: "if it does not reply for 10s its dead"), on a socket that
    * never closed: the relay loses one whose socket closed and says so.
    */
   const heard = new Map<string, number>()
-  /** `quiet`: an ack, a probe or a resend, which waits on no answer: the relay says only a failure. */
+  /** `quiet`: a beat or a resend, which waits on no answer: the relay says only a failure. */
   const put = (to: string, frame: object, quiet = true): Promise<void> =>
     over((s) => s.send(relayIds.get(to) ?? to, frame, quiet))
   const settle = (from: string, acked: number): void => {
@@ -329,17 +336,17 @@ export async function join(
       const from = heldIds.get(m.from) ?? m.from
       if (heard.has(from)) heard.set(from, performance.now())
       if (isAcked(body)) settle(from, body.acked)
-      else if (isProbe(body)) {
+      else if (isBeat(body)) {
         if (body.acked !== undefined) settle(from, body.acked)
         const t = taken.get(from) ?? { upTo: 0, ahead: new Map() }
         taken.set(from, t)
-        if (body.seq > t.upTo) t.ahead.set(body.seq, PROBED)
+        if (body.seq > t.upTo) t.ahead.set(body.seq, BEAT)
         while (t.ahead.has(t.upTo + 1)) {
           const next = t.ahead.get(++t.upTo)
           t.ahead.delete(t.upTo)
-          if (next !== PROBED) out.push({ from, body: next })
+          if (next !== BEAT) out.push({ from, body: next })
         }
-        ack(from, true)
+        owe(from)
       } else if (isNumbered(body)) {
         if (body.acked !== undefined) settle(from, body.acked)
         let t = taken.get(from)
@@ -348,9 +355,9 @@ export async function join(
         while (t.ahead.has(t.upTo + 1)) {
           const next = t.ahead.get(++t.upTo)
           t.ahead.delete(t.upTo)
-          if (next !== PROBED) out.push({ from, body: next })
+          if (next !== BEAT) out.push({ from, body: next })
         }
-        ack(from)
+        owe(from)
       } else out.push({ from, body })
     }
     return out
@@ -379,27 +386,26 @@ export async function join(
     outbox.delete(peer)
     taken.delete(peer)
     owing.delete(peer)
+    said.delete(peer)
     const now = relayIds.get(peer)
     relayIds.delete(peer)
     if (now !== undefined) heldIds.delete(now)
   }
   /**
-   * Only a quiet peer is probed: the orchestrator a worker quiet
-   * `PROBE_BEATS`, a worker its orchestrator quiet a tenth longer, so in a
-   * quiet pair the orchestrator's probe comes first and the pair trades
-   * one probe and its ack. Either loses a peer quiet `LOST_BEATS`.
+   * A worker says something to its orchestrator whenever it said nothing
+   * `QUIET_BEATS`: its live report (`quiet`), or a beat. The orchestrator
+   * answers with orders and acks only. Either loses a peer quiet `LOST_BEATS`.
    */
   const listen = (): void => {
     // With no socket nobody is heard: the redial or rejoin decides.
     if (socket?.open !== true) return
-    resend(heartbeatMs)
+    resend(RESEND_BEATS * heartbeatMs)
     const now = performance.now()
     // With no peer, the relay is asked instead: a frame it answers.
     if (heard.size === 0 && socket?.open === true && now - socket.heardAt >= heartbeatMs)
       socket.ask()
     for (const [peer, at] of heard) {
-      const quiet = now - at
-      if (quiet >= LOST_BEATS * heartbeatMs) {
+      if (now - at >= LOST_BEATS * heartbeatMs) {
         forget(peer)
         if (peer === 'orchestrator') {
           end(new RelayError(410, ORCHESTRATOR_SILENT))
@@ -407,18 +413,22 @@ export async function join(
         }
         inbox.push({ from: 'relay', body: { type: 'lost', id: peer } })
         nudge()
-      } else if (
-        quiet >= (role === 'orchestrator' ? PROBE_BEATS : WORKER_PROBE_BEATS) * heartbeatMs &&
-        // a numbered send's ack may be deferred past the loss line; a probe's is not
-        ![...(outbox.get(peer)?.unacked.values() ?? [])].some((u) => u.body === PROBED)
-      ) {
-        let o = outbox.get(peer)
-        if (o === undefined) outbox.set(peer, (o = { next: 0, unacked: new Map() }))
-        const seq = ++o.next
-        o.unacked.set(seq, { body: PROBED, at: now })
-        // quiet: unacknowledged, it goes again
-        put(peer, { seq, ...owed(peer) } satisfies Probe).catch(() => undefined)
+        continue
       }
+      // The orchestrator never speaks on a timer: its workers do.
+      if (role === 'orchestrator') continue
+      if (now - (said.get(peer) ?? 0) < QUIET_BEATS * heartbeatMs) continue
+      said.set(peer, now)
+      if (onQuiet !== undefined) {
+        onQuiet(peer)
+        continue
+      }
+      let o = outbox.get(peer)
+      if (o === undefined) outbox.set(peer, (o = { next: 0, unacked: new Map() }))
+      const seq = ++o.next
+      o.unacked.set(seq, { body: BEAT, at: now })
+      // quiet: unacknowledged, it goes again
+      put(peer, { seq, ...owed(peer) } satisfies Beat).catch(() => undefined)
     }
   }
   /** Sends again what waited `ms` unacknowledged, to `only` or to all; all of it, at 0. */
@@ -430,7 +440,7 @@ export async function join(
         if (now - u.at < ms) continue
         u.at = now
         // quiet: unacknowledged, it goes again next heartbeat
-        const again = u.body === PROBED ? { seq } : { seq, body: u.body }
+        const again = u.body === BEAT ? { seq } : { seq, body: u.body }
         put(to, { ...again, ...owed(to) }).catch(() => undefined)
       }
     }
@@ -584,8 +594,8 @@ export async function join(
     else again()
   }
   // Every tenth of a heartbeat, so a peer quiet `LOST_BEATS` is lost within
-  // two heartbeats (4 s on the default) of its last word, and what went
-  // unacknowledged a heartbeat goes again before its receiver loses this.
+  // two heartbeats (4 s on the default) of its last word, and a quiet
+  // worker speaks within a tenth of its heartbeat.
   const listening = setInterval(listen, heartbeatMs / 10)
   listening.unref()
   if (role === 'worker') heard.set('orchestrator', performance.now())
@@ -639,6 +649,9 @@ export async function join(
     resumed(f) {
       onResumed = f
     },
+    quiet(f) {
+      onQuiet = f
+    },
     async send(to, body) {
       let o = outbox.get(to)
       if (o === undefined) outbox.set(to, (o = { next: 0, unacked: new Map() }))
@@ -668,7 +681,7 @@ export async function join(
         // One neither the relay nor this side knows waits on nothing, and
         // would be asked every heartbeat for the rest of the run.
         if (err.status === 404 && !heard.has(to)) outbox.delete(to)
-        else o.unacked.set(seq, { body: PROBED, at: 0 })
+        else o.unacked.set(seq, { body: BEAT, at: 0 })
         throw err
       }
     },
@@ -704,7 +717,7 @@ export async function join(
         await said.catch(() => undefined)
       }
       left = true
-      // Ends what still waits on a socket (an ack, a probe): no redial
+      // Ends what still waits on a socket (a send, a beat): no redial
       // would ever bring one, and each waits a heartbeat at a time, for good.
       end(new RelayError(410, 'relay: this participant left'))
       const s = socket
@@ -986,7 +999,7 @@ async function connect(
       return
     }
     if (m.n === undefined || m.n === null) {
-      // An unnumbered frame's failure: an ack or probe to one the relay no
+      // An unnumbered frame's failure: a beat or resend to one the relay no
       // longer knows (404) is not one, its loss reaching this side apart.
       const failed = [m, ...(m.results ?? [])].filter(
         (a): a is Answer => a?.status !== undefined && a.status !== 404,

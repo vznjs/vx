@@ -1,5 +1,5 @@
 // The thread `joinOffLoop` (wire-thread.ts) starts: the orchestrator's
-// participant, its socket, acks, probes and redials, on a loop the run's
+// participant, its socket, acks, beats and redials, on a loop the run's
 // work never holds.
 
 import { join, type Participant } from './wire.js'
