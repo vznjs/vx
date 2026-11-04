@@ -142,14 +142,6 @@ export function formatStepLine(
   )
 }
 
-/**
- * Worker region: pinned ready persistent tasks, one row per worker
- * slot — a task stays in its slot for its whole life so names never
- * jump — then the live summary section. Every row sits on the shared
- * column grid (see formatTaskRow), so nothing shifts with id length:
- * layout shift IS the bug this display exists to fix. Height varies
- * only when pins arrive.
- */
 /** `rows` in a panel titled `title`, counted. */
 function panel(title: string, count: string, rows: readonly string[], c: ColorSupport): string[] {
   const bottom = panelBottom(c)
@@ -160,6 +152,14 @@ function panel(title: string, count: string, rows: readonly string[], c: ColorSu
   ]
 }
 
+/**
+ * Worker region: pinned ready persistent tasks, one row per worker
+ * slot — a task stays in its slot for its whole life so names never
+ * jump — then the live summary section. Every row sits on the shared
+ * column grid (see formatTaskRow), so nothing shifts with id length:
+ * layout shift IS the bug this display exists to fix. Height varies
+ * only when pins arrive.
+ */
 export function formatStatusRegion(
   s: StatusRegionState,
   colors: ColorSupport = NO_COLOR,

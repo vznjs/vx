@@ -148,39 +148,66 @@ const ESCAPE = /^(?:\x1b\[[0-9;]*[A-Za-z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\))/
 
 /**
  * `line` in rows of `w` visible columns, each padded to `w`. Nothing is
- * cut: a long line wraps, and a colour open at a break carries on in the
- * next row.
+ * cut: a long line wraps at a space where it has one, a continuation sits
+ * under the line's value column (past its first two-space gap: a field's
+ * value, a table's last cell) so the label column stays clear, and a colour
+ * open at a break carries on in the next row.
  */
 export function wrap(line: string, w: number): string[] {
   const shown = Bun.stringWidth(line)
   if (shown <= w) return [line + ' '.repeat(w - shown)]
-  const rows: string[] = []
-  let out = ''
-  let used = 0
+  // Each visible character with the escapes before it and the style open at it.
+  const cells: { pre: string; ch: string; cw: number; style: string }[] = []
+  let pre = ''
   let style = ''
-  let i = 0
-  while (i < line.length) {
+  for (let i = 0; i < line.length;) {
     if (line.charCodeAt(i) === 0x1b) {
       const m = ESCAPE.exec(line.slice(i, i + 256))
       if (m !== null) {
-        out += m[0]
+        pre += m[0]
         if (m[0].endsWith('m')) style = m[0] === RESET ? '' : style + m[0]
         i += m[0].length
         continue
       }
     }
     const ch = String.fromCodePoint(line.codePointAt(i)!)
-    const cw = Bun.stringWidth(ch)
-    if (used + cw > w) {
-      rows.push(`${out}${style === '' ? '' : RESET}${' '.repeat(w - used)}`)
-      out = style
-      used = 0
-    }
-    out += ch
-    used += cw
+    cells.push({ pre, ch, cw: Bun.stringWidth(ch), style })
+    pre = ''
     i += ch.length
   }
-  rows.push(`${out}${' '.repeat(Math.max(0, w - used))}`)
+  const plain = cells.map((c) => c.ch).join('')
+  const gap = /^ *\S.*? {2,}(?=\S)/.exec(plain)?.[0]
+  const lead = /^ */.exec(plain)![0].length
+  const hang = Math.min(gap === undefined ? lead : Bun.stringWidth(gap), Math.floor(w / 2))
+  const rows: string[] = []
+  let at = 0
+  let indent = 0
+  while (at < cells.length) {
+    // The widest run from `at` that fits, ended at a space when there is one.
+    let used = indent
+    let end = at
+    let space = -1
+    while (end < cells.length && used + cells[end]!.cw <= w) {
+      if (cells[end]!.ch === ' ' && end > at) space = end
+      used += cells[end]!.cw
+      end++
+    }
+    if (end < cells.length && space !== -1 && cells[end]!.ch !== ' ') end = space
+    if (end === at) end = at + 1
+    let row = indent === 0 ? '' : ' '.repeat(indent)
+    if (at > 0) row += cells[at]!.style
+    let width = indent
+    for (let k = at; k < end; k++) {
+      row += cells[k]!.pre + cells[k]!.ch
+      width += cells[k]!.cw
+    }
+    const open = end < cells.length ? cells[end]!.style : ''
+    if (end >= cells.length) row += pre
+    rows.push(`${row}${open === '' ? '' : RESET}${' '.repeat(Math.max(0, w - width))}`)
+    at = end
+    while (at < cells.length && cells[at]!.ch === ' ') at++
+    indent = hang
+  }
   return rows
 }
 

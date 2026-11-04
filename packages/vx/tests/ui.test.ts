@@ -116,3 +116,26 @@ describe('ui components', () => {
     expect(out.replace(/\x1b\[[0-9;]*m/g, '').match(/[\x00-\x09\x0b-\x1f\x7f-\x9f]/g)).toBeNull()
   })
 })
+
+describe('wrap', () => {
+  it('breaks at a space and hangs a continuation under the value column', () => {
+    // Cut by the column, `uncach|ed` split a word and the next row started
+    // at the box's edge, under the label.
+    expect(
+      ui.wrap('  todo      add inputs and outputs, or the task always runs uncached', 40),
+    ).toEqual(
+      [
+        '  todo      add inputs and outputs, or',
+        '            the task always runs',
+        '            uncached',
+      ].map((r) => r.padEnd(40)),
+    )
+  })
+
+  it('cuts a word longer than the row, and carries its colour on', () => {
+    expect(ui.wrap('\x1b[2mabcdefghijklmnopqrstuvwxyz\x1b[0m end', 20)).toEqual([
+      '\x1b[2mabcdefghijklmnopqrst\x1b[0m',
+      `\x1b[2muvwxyz\x1b[0m end${' '.repeat(10)}`,
+    ])
+  })
+})

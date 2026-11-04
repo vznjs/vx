@@ -6,6 +6,11 @@ import { formatBytes, formatElapsed, maskedCommand } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import { paint, type ColorSupport, type Style } from '../ui/index.js'
 
+/** `vx run --dry`'s screen. */
+export function planReport(plan: RunPlan): ui.Block {
+  return { lines: (c) => formatPlanText(plan, c).replace(/\n$/, '').split('\n') }
+}
+
 /**
  * Human-readable preview. One line per real task (groups hidden, same
  * as the live runner), tagged with predicted cache outcome. A would-run
@@ -19,11 +24,6 @@ import { paint, type ColorSupport, type Style } from '../ui/index.js'
  *   3 task(s) planned, 2 cache hits (1 local, 1 remote), 1 would run.
  *   predicted: ~1.20s wall · ~1.20s total execution
  */
-/** `vx run --dry`'s screen. */
-export function planReport(plan: RunPlan): ui.Block {
-  return { lines: (c) => formatPlanText(plan, c).replace(/\n$/, '').split('\n') }
-}
-
 export function formatPlanText(plan: RunPlan, c: ColorSupport = { enabled: false }): string {
   // A group the platform skip reaches is still a group: it runs nothing.
   const real = plan.tasks.filter(

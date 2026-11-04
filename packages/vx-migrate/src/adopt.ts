@@ -6,7 +6,10 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { ui, UserError } from '@vzn/vx'
+// By namespace: bin.ts loads this before its release check, and a core
+// with no `ui` must still reach that refusal.
+import * as vx from '@vzn/vx'
+import { UserError } from '@vzn/vx'
 
 export type AdoptionMode = 'native' | 'keep'
 
@@ -270,7 +273,7 @@ async function runManager(
   const line = argv.join(' ')
   // The report's `install` row says what ran; a terminal sees it while it
   // runs, on a line the report then takes the place of.
-  const clear = ui.transient(line)
+  const clear = vx.ui.transient(line)
   // The manager's own output (progress, deprecations, audit, postinstalls)
   // is shown only when it fails: mid-init it buried the report (Growth's
   // first-run funnel F3, 2026-10-13).
@@ -301,7 +304,7 @@ async function runManager(
   }
   clear()
   if (code !== 0) {
-    ui.data('err', said)
+    vx.ui.data('err', said)
     const missing = notServed(said)
     throw new UserError(
       missing === undefined

@@ -41,6 +41,9 @@ const GUARDS: Record<string, string> = {
   // While a config evaluates, its own prints go to stderr so stdout stays
   // vx's (a `--format json` reader's): it swaps the streams, it writes no line.
   'vx/src/workspace/project-loader.ts': "redirects a config's own prints to stderr",
+  // A core older than vx-migrate may have no `ui` (bunx keeps the installed
+  // one): the release refusal is written bare there, through `ui` otherwise.
+  'vx-migrate/src/bin.ts': 'refuses a core with no ui',
 }
 
 async function sources(): Promise<string[]> {

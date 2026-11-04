@@ -240,10 +240,11 @@ describe('the one-task guides show what vx prints', () => {
   it('why-a-task-missed: a changed file, then a changed upstream', () => {
     expect(run('run', 'build', '--all').code).toBe(0)
     const page = guide('caching/why-a-task-missed.md')
+    // The page shows the coloured screen: its panels, as a terminal draws them.
     for (const task of ['@demo/ui#build', '@demo/web#build']) {
-      const r = run('why', task)
+      const r = runColour('why', task)
       expect(r.code).toBe(0)
-      expect(stable(plain(printed(page, `vx why ${task}`)))).toBe(stable(r.stdout))
+      expect(stable(plain(printed(page, `vx why ${task}`)))).toBe(stable(plain(r.stdout)))
     }
   })
 })
@@ -358,7 +359,7 @@ describe("the quickstart's output", () => {
     const page = readFileSync(path.resolve(GUIDES, '..', 'quickstart.mdx'), 'utf8')
     // Each sits in a step, indented three spaces.
     const hit = /```ansi title="second run"\n(?: {3}.*\n)*? {3}(.*└─.*)\n/.exec(page)![1]!
-    const verdict = plain(/```ansi\n(?: {3}.*\n)*? {3}( +.*verdict.*)\n/.exec(page)![1]!)
+    const verdict = plain(/```ansi\n(?: {3}.*\n)*? {3}(.*verdict.*)\n/.exec(page)![1]!)
     const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-site-quickstart-'))
     try {
       await mkdir(path.join(dir, '.vx'))
@@ -417,7 +418,8 @@ describe("the quickstart's output", () => {
       expect(ms(runColour('run', 'build')).split('\n')).toContain(ms(hit))
       await writeFile(path.join(dir, 'src/index.ts'), '2\n')
       run('run', 'build')
-      expect(run('why', 'build').split('\n')).toContain(verdict)
+      const why = runColour('why', 'build')
+      expect(plain(why).split('\n')).toContain(verdict)
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
