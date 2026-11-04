@@ -32,7 +32,6 @@ export {
 } from './logger.js'
 export { formatPersistentList } from './framed-output.js'
 export { createForecast } from './forecast.js'
-export { fileLocations, fileMemo, type OutputLocation } from './path-links.js'
 export { plainOutput } from './plain-output.js'
 export type { LiveUsage } from './status-line.js'
 export { formatOutcomeTable, formatRunSummary } from './summary.js'

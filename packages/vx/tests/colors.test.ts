@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { detectColors, paint } from '../src/util/colors.js'
+import { detectColors, paint } from '../src/ui/index.js'
 import { restoreEnv } from './helpers/env.js'
 
 describe('paint', () => {

@@ -23,6 +23,7 @@ import {
   type RemoteOpenContext,
   type VxPlugin,
   refuseUnknownOptions,
+  ui,
   UserError,
   type PluginOptionKinds,
 } from '@vzn/vx'
@@ -265,7 +266,7 @@ export function resolveTurboCacheConfig(
   file: TurboJsonRemoteCache = {},
   /** The repo's `.turbo/config.json` (`turbo link` writes it): below the environment, above turbo.json. */
   local: TurboLocalConfig = {},
-  warn: (message: string) => void = (m) => console.error(`[vx] plugin '@vzn/vx-migrate': ${m}`),
+  warn: (message: string) => void = (m) => ui.say('warn', `[vx] plugin '@vzn/vx-migrate': ${m}`),
 ): TurboCacheConfig | undefined {
   // `enabled: false` turns Turbo's remote cache off whatever the env says;
   // options name a cache for vx alone, and win.

@@ -9,7 +9,9 @@ import { type FlakyTask } from '../history/index.js'
 import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
 import { namedCacheDir, parseCacheDirFlag, warnToStderr } from './workspace-config.js'
 import { formatBytes } from './format.js'
-import { detectColors, MIN_BUN, ui, type ColorSupport } from '../util/index.js'
+import { MIN_BUN } from '../util/index.js'
+import * as ui from '../ui/index.js'
+import { type ColorSupport } from '../ui/index.js'
 import { envName } from '../settings.js'
 
 interface InfoArgs {
@@ -55,15 +57,18 @@ export async function infoCmd(args: readonly string[]): Promise<number> {
     ...(parsed.cacheDir !== undefined ? { cacheDir: parsed.cacheDir } : {}),
     warn: warnToStderr,
   })
-  process.stdout.write(
-    parsed.format === 'json'
-      ? `${JSON.stringify(facts)}\n`
-      : `${renderInfo(facts, detectColors(process.stdout))}\n`,
-  )
+  if (parsed.format === 'json') ui.data('out', `${JSON.stringify(facts)}\n`)
+  else ui.print('out', infoReport(facts))
   return 0
 }
 
+/** `vx info` as text: the report's lines for `colors`. */
 export function renderInfo(f: InfoFacts, colors: ColorSupport = { enabled: false }): string {
+  return infoReport(f).lines(colors).join('\n')
+}
+
+/** The `vx info` report: one field a fact. */
+function infoReport(f: InfoFacts): ui.Block {
   const rows: [string, string][] = [
     [
       'vx',
@@ -125,7 +130,7 @@ export function renderInfo(f: InfoFacts, colors: ColorSupport = { enabled: false
       typeof f.lockError === 'string' ? `refused: ${f.lockError}` : f.lockfile ? 'yes' : 'no',
     ],
   ]
-  return ui.report('vx info', rows).lines(colors).join('\n')
+  return ui.report('vx info', rows)
 }
 
 /** `812 (1.2 GB)`, or why the index cannot be read and its fix. */

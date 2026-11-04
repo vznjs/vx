@@ -2,16 +2,9 @@
 
 import type { AffectedReason, CacheStatus, RunPlan } from '../orchestrator/index.js'
 import { skippedReason } from '../report/index.js'
-import {
-  formatBytes,
-  formatElapsed,
-  maskedCommand,
-  paint,
-  SUCCESS,
-  ui,
-  WARN,
-  type ColorSupport,
-} from '../util/index.js'
+import { formatBytes, formatElapsed, maskedCommand } from '../util/index.js'
+import * as ui from '../ui/index.js'
+import { paint, type ColorSupport, type Style } from '../ui/index.js'
 
 /**
  * Human-readable preview. One line per real task (groups hidden, same
@@ -26,6 +19,11 @@ import {
  *   3 task(s) planned, 2 cache hits (1 local, 1 remote), 1 would run.
  *   predicted: ~1.20s wall · ~1.20s total execution
  */
+/** `vx run --dry`'s screen. */
+export function planReport(plan: RunPlan): ui.Block {
+  return { lines: (c) => formatPlanText(plan, c).replace(/\n$/, '').split('\n') }
+}
+
 export function formatPlanText(plan: RunPlan, c: ColorSupport = { enabled: false }): string {
   // A group the platform skip reaches is still a group: it runs nothing.
   const real = plan.tasks.filter(
@@ -33,13 +31,13 @@ export function formatPlanText(plan: RunPlan, c: ColorSupport = { enabled: false
       t.cacheStatus !== 'group' &&
       (t.cacheStatus !== 'skipped' || t.node.config.exec !== undefined),
   )
-  const dim = (s: string): string => paint('', s, c, { dim: true })
+  const dim = (s: string): string => paint('muted', s, c)
   if (real.length === 0) return `${dim('No tasks planned.')}\n`
 
   const idWidth = Math.max(...real.map((t) => t.node.id.length))
   const tagWidth = 24
 
-  const lines: string[] = [paint('', 'would run:', c, { bold: true })]
+  const lines: string[] = [paint('strong', 'would run:', c)]
   let local = 0
   let remote = 0
   let miss = 0
@@ -64,9 +62,9 @@ export function formatPlanText(plan: RunPlan, c: ColorSupport = { enabled: false
     // tier, and a task placed on a named executor is what the reader can
     // act on. Present only when the workspace declared a choice.
     const where = t.executor !== undefined ? `  @${t.executor}` : ''
-    const hue = skipped ? '' : HUE[t.cacheStatus]
+    const hue: Style = skipped ? 'muted' : HUE[t.cacheStatus]
     lines.push(
-      `  ${paint(hue, sym, c, { dim: hue === '' })}  ${ui.inline(ui.id(t.node.id), c)}${' '.repeat(idWidth - t.node.id.length)}  ${paint(hue, desc.padEnd(tagWidth), c, { dim: hue === '' })}  ${dim(shortHash)}${dim(eta)}${where}`,
+      `  ${paint(hue, sym, c)}  ${ui.inline(ui.id(t.node.id), c)}${' '.repeat(idWidth - t.node.id.length)}  ${paint(hue, desc.padEnd(tagWidth), c)}  ${dim(shortHash)}${dim(eta)}${where}`,
     )
     // Optional one-line description from the task config, indented
     // under the id so the eye picks up the task → blurb mapping.
@@ -221,14 +219,14 @@ export function formatPlanJson(
 }
 
 /** A hit is green, a task that would run is yellow, the rest dim. */
-const HUE: Record<CacheStatus, string> = {
-  'hit-local': SUCCESS,
-  'hit-remote': SUCCESS,
-  miss: WARN,
-  'no-cache': WARN,
-  group: '',
-  'not-started': '',
-  skipped: '',
+const HUE: Record<CacheStatus, Style> = {
+  'hit-local': 'ok',
+  'hit-remote': 'ok',
+  miss: 'warn',
+  'no-cache': 'warn',
+  group: 'muted',
+  'not-started': 'muted',
+  skipped: 'muted',
 }
 
 function symbolFor(s: CacheStatus): string {

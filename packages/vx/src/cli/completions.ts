@@ -6,7 +6,9 @@
 // Tab is the wrong price).
 
 import { acceptedFlags, CORE_VERBS, flagHint, refuse, seeHelp } from './help.js'
-import { nearest, sayNotice } from '../util/index.js'
+import { nearest } from '../util/index.js'
+import * as ui from '../ui/index.js'
+import { sayNotice } from '../ui/index.js'
 import { setting } from '../settings.js'
 
 function enumValues(path: string): readonly string[] {
@@ -167,6 +169,6 @@ export async function completionsCmd(
   const verbs = [...CORE_VERBS.filter((v) => v !== 'help' && v !== 'version'), 'help', 'version']
   // No overlap to skip: the workspace load refuses a plugin verb named like a core one.
   verbs.push(...pluginVerbs)
-  process.stdout.write(completionScript(shell as CompletionShell, verbs))
+  ui.data('out', completionScript(shell as CompletionShell, verbs))
   return 0
 }

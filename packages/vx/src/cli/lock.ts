@@ -11,7 +11,6 @@ import { buildTaskGraph, expandRequested, isDefaultBuild } from '../graph/index.
 import { applyGraphStage, discoverProjects, hasHook, loadProjects } from '../orchestrator/index.js'
 import { resolveSetting, runRules } from '../settings.js'
 import {
-  refusalNotice,
   DOT_VX_GITATTRIBUTES,
   fsRefusalHint,
   isFsRefusal,
@@ -23,11 +22,11 @@ import {
   type UserError,
   secretMask,
   type SecretMask,
-  ui,
-  sayNotice,
   refuseSymlink,
   writeNoFollow,
 } from '../util/index.js'
+import * as ui from '../ui/index.js'
+import { refusalNotice, sayNotice } from '../ui/index.js'
 import {
   ConfigsRefused,
   findProjectConfigs,
@@ -517,7 +516,7 @@ async function checkLock(root: string, json: boolean): Promise<number> {
         notAudited: bare.length,
         problems,
       }
-      process.stdout.write(`${JSON.stringify(out)}\n`)
+      ui.data('out', `${JSON.stringify(out)}\n`)
     }
     return problems.length === 0 ? 0 : 1
   }

@@ -24,9 +24,9 @@ import {
   maskedLine,
   SecretBroker,
   thrownMessage,
-  ui,
   UserError,
 } from '../util/index.js'
+import * as ui from '../ui/index.js'
 import { resolveSetting } from '../settings.js'
 
 export interface ResolvedPluginCommand {

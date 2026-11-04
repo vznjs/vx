@@ -37,9 +37,9 @@ import {
   nearest,
   relPosix,
   UserError,
-  sayNotice,
-  ui,
 } from '../util/index.js'
+import * as ui from '../ui/index.js'
+import { sayNotice } from '../ui/index.js'
 import {
   claimedAffected,
   claimedExtraFiles,

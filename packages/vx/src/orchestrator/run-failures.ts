@@ -8,7 +8,7 @@ import { isGroupTask, type TaskOutcome } from '../graph/index.js'
 import { decodeOutputLog } from './output-log.js'
 import { PASS_STATUSES } from '../history/index.js'
 import { maskedLine, splitTaskId } from '../util/index.js'
-import { fileLocations, fileMemo, type OutputLocation } from '../report/index.js'
+import { fileLocations, fileMemo, type OutputLocation } from '../ui/index.js'
 
 /** A failed task of a run and what it said. */
 export interface TaskFailure {

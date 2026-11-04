@@ -6,7 +6,6 @@ import {
   formatKeptLines,
   formatPersistentTailBlock,
   formatListHeader,
-  formatListTitle,
   usualCell,
   formatTaskAbortedLine,
   formatTaskBlock,
@@ -17,16 +16,12 @@ import {
   formatTaskHashLine,
   formatTaskHitLine,
   formatTaskSkippedLine,
-  leavesStyle,
-  RESET,
   type OutputChunk,
 } from './framed-output.js'
 import {
-  createOutputWriter,
   formatFailureLine,
   formatStatusRegion,
   formatStepLine,
-  type StatusStream,
   type WorkerSlot,
 } from './status-line.js'
 import {
@@ -45,21 +40,26 @@ import {
   resetTail,
   tailText,
   type Tail,
-  detectColors,
   envFlagOn,
-  type ColorSupport,
-  ui,
 } from '../util/index.js'
-import { isCacheHit } from '../graph/index.js'
-import { failedLabel, outcomeWord, ranNoCache } from './events.js'
-import type { BlockedTask, Forecast } from './forecast.js'
+import * as ui from '../ui/index.js'
 import {
+  createOutputWriter,
+  detectColors,
+  hasEscape,
+  leavesStyle,
   notifyEscape,
   PROGRESS_CLEAR,
   progressEscape,
+  STYLE_END,
   terminalLinks,
   terminalSignals,
-} from './terminal-signals.js'
+  type ColorSupport,
+  type StatusStream,
+} from '../ui/index.js'
+import { isCacheHit } from '../graph/index.js'
+import { failedLabel, outcomeWord, ranNoCache } from './events.js'
+import type { BlockedTask, Forecast } from './forecast.js'
 
 export interface Logger {
   /** Header / footer / status text. Written verbatim, one trailing \n added. */
@@ -656,7 +656,7 @@ export function defaultLogger(
   // task`, and took its colour.
   let streamStyled = false
   const endStreamLine = (): void => {
-    const end = (streamStyled ? RESET : '') + (streamMidLine ? '\n' : '')
+    const end = (streamStyled ? STYLE_END : '') + (streamMidLine ? '\n' : '')
     streamStyled = false
     streamMidLine = false
     if (end.length > 0) logWrite(end)
@@ -668,10 +668,11 @@ export function defaultLogger(
   const streamWrite = (chunk: string): void => {
     streamedSinceBlock = true
     if (chunk.length > 0) streamMidLine = !chunk.endsWith('\n')
-    if (chunk.includes('\x1b[')) streamStyled = leavesStyle(chunk)
+    if (hasEscape(chunk)) streamStyled = leavesStyle(chunk)
     logWrite(chunk)
   }
   const logWrite = (chunk: string): void => {
+    if (panelOpen !== undefined && !inPanel && chunk.length > 0) closePanel()
     if (chunk.length > 0) endsBlank = chunk.endsWith('\n\n')
     if (!logOpened && chunk.length > 0) {
       logOpened = true
@@ -684,16 +685,42 @@ export function defaultLogger(
     taskWrite(`${line}\n`)
     lineEmitted = true
   }
-  // The list's header, once over its first row, where the live region
-  // heads its own rows the same way (2026-10-21).
-  let headed = !writer.enabled
-  const emitRow = (line: string): void => {
-    if (!headed) {
-      headed = true
-      emitLine(formatListTitle('Finished', colors))
-      emitLine(formatListHeader(colors))
+  // The open panel: rows of one kind share one box, the Tasks list on the
+  // log's stream and the Warnings on stderr; anything else said closes it
+  // first, and the next row opens it again. Painted, a box; plain on a
+  // terminal, the Tasks rule and header over the rows, as the live region
+  // heads its own (2026-10-21); piped, the bare rows a script reads.
+  const panels = colors.enabled || writer.enabled
+  let panelOpen: 'Tasks' | 'Warnings' | undefined
+  let inPanel = false
+  function closePanel(): void {
+    const was = panelOpen
+    if (was === undefined) return
+    panelOpen = undefined
+    const bottom = ui.panelBottom(colors)
+    if (bottom === undefined) return
+    if (was === 'Warnings') {
+      writer.writeTo(errOut, `${bottom}\n`)
+      return
     }
-    emitLine(line)
+    inPanel = true
+    emitLine(bottom)
+    inPanel = false
+  }
+  const emitRow = (line: string): void => {
+    if (!panels) {
+      emitLine(line)
+      return
+    }
+    if (panelOpen === 'Warnings') closePanel()
+    inPanel = true
+    if (panelOpen !== 'Tasks') {
+      emitLine(ui.panelTop('Tasks', colors))
+      emitLine(ui.panelRow(formatListHeader(colors), colors))
+      panelOpen = 'Tasks'
+    }
+    emitLine(ui.panelRow(line, colors))
+    inPanel = false
   }
   // formatTaskBlock returns '' for group tasks (no exec) — skip the
   // write so a stray newline doesn't sneak into the output.
@@ -761,6 +788,7 @@ export function defaultLogger(
       // A live-streamed server keeps writing after its frame closes, so a
       // summary row or "exited with code" can follow its partial line.
       endStreamLine()
+      closePanel()
       if (line === '' && endsBlank) return
       endsBlank = line === ''
       writer.write(`${line}\n`)
@@ -768,7 +796,20 @@ export function defaultLogger(
     warn(line) {
       flushKept()
       endStreamLine()
-      writer.writeTo(errOut, `${ui.tagged('warn', line, colors)}\n`)
+      if (!colors.enabled) {
+        writer.writeTo(errOut, `${ui.tagged('warn', line, colors)}\n`)
+        return
+      }
+      if (panelOpen === 'Tasks') closePanel()
+      if (panelOpen !== 'Warnings') {
+        writer.writeTo(errOut, `${ui.panelTop('Warnings', colors)}\n`)
+        panelOpen = 'Warnings'
+      }
+      const rows = line
+        .replace(/\n+$/, '')
+        .split('\n')
+        .map((l) => ui.panelRow(ui.tagged('warn', l, colors), colors))
+      writer.writeTo(errOut, `${rows.join('\n')}\n`)
     },
     runStart(info) {
       total = info.total
@@ -926,6 +967,7 @@ export function defaultLogger(
         flushedFailures = true
         for (const block of deferredFailures) emitBlock(fenced(block))
       }
+      closePanel()
       // The summary and the CLI's own lines follow on the stream directly:
       // nothing may still be held, and nothing after this is.
       writer.settle()

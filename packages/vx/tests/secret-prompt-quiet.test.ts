@@ -6,7 +6,7 @@
 
 import { expect, it } from 'bun:test'
 import { defaultLogger } from '../src/report/logger.js'
-import type { StatusStream } from '../src/report/status-line.js'
+import type { StatusStream } from '../src/ui/live-region.js'
 import { SecretBroker, type SecretStore } from '../src/util/index.js'
 
 function tty(): StatusStream & { text(): string } {

@@ -5,8 +5,8 @@ import {
   isUserError,
   OUT_OF_FDS_HINT,
   thrownMessage,
-  ui,
 } from '../util/index.js'
+import * as ui from '../ui/index.js'
 import {
   computeReverseDepCount,
   mergePriorities,

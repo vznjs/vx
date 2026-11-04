@@ -5,7 +5,8 @@
 // whole, best first.
 
 import { VERSION } from '../version.js'
-import { detectColors, paint, parseDecimalInt, ui } from '../util/index.js'
+import { parseDecimalInt } from '../util/index.js'
+import * as ui from '../ui/index.js'
 import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
 
 const SITE = 'https://vznjs.github.io/vx/'
@@ -238,7 +239,7 @@ export async function docsCmd(
   const hits = searchDocs(pages, parsed.terms, parsed.limit)
   const query = parsed.terms.join(' ')
   if (parsed.json) {
-    process.stdout.write(`${JSON.stringify({ query, hits })}\n`)
+    ui.data('out', `${JSON.stringify({ query, hits })}\n`)
     return 0
   }
   if (hits.length === 0) {
@@ -249,15 +250,13 @@ export async function docsCmd(
     )
     return 0
   }
-  const c = detectColors(process.stdout)
-  process.stdout.write(
-    hits
-      .map((h) =>
-        c.enabled
-          ? `${ui.render([ui.excerpt(`${h.page}.md${h.heading === '' ? '' : ` § ${h.heading}`}`, h.text)], c)}${paint('', h.url, c, { dim: true })}\n`
-          : `── ${h.page}.md${h.heading === '' ? '' : ` § ${h.heading}`} · ${h.url}\n\n${h.text}\n`,
-      )
-      .join('\n'),
+  // Each hit an excerpt of the page, its link under it: off colour the
+  // bare markdown, as a pipe copies it.
+  ui.print(
+    'out',
+    ...hits.map((h) =>
+      ui.excerpt(`${h.page}.md${h.heading === '' ? '' : ` § ${h.heading}`} · ${h.url}`, h.text),
+    ),
   )
   return 0
 }

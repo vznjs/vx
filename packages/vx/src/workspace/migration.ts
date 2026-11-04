@@ -16,9 +16,9 @@ import {
   refuseSymlink,
   relPosix,
   UserError,
-  ui,
   writeNoFollow,
 } from '../util/index.js'
+import * as ui from '../ui/index.js'
 import { VERSION } from '../version.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 
@@ -451,7 +451,8 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     ...plan.notes,
   ]
   if (args.json === true) {
-    process.stdout.write(
+    ui.data(
+      'out',
       `${JSON.stringify({
         dry,
         source,
@@ -472,7 +473,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
 
   // The lock's own words become a row; a refusal prints above the report.
   const lock = dry || args.lock === undefined ? undefined : lockAnswer(await args.lock(root))
-  if (lock !== undefined && lock.code !== 0) process.stderr.write(lock.said)
+  if (lock !== undefined && lock.code !== 0) ui.data('err', lock.said)
 
   const rows: ui.FieldRow[] = [['from', source]]
   if (dry) rows.push(['dry run', 'nothing written'])

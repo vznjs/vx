@@ -1,7 +1,7 @@
 // The output components (org/devex/log-design.md): each one's layout with
 // colors off, and the colors it owns with them on.
 import { describe, expect, it } from 'bun:test'
-import { ui } from '../src/util/index.js'
+import * as ui from '../src/ui/index.js'
 
 const OFF = { enabled: false }
 const ON = { enabled: true }

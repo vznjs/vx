@@ -27,9 +27,9 @@ import {
   type PluginSecrets,
   SecretBroker,
   thrownMessage,
-  ui,
   UserError,
 } from '../util/index.js'
+import * as ui from '../ui/index.js'
 import type { ProjectMeta } from '../workspace/index.js'
 import type { EventBus, Logger, RunStartInfo } from '../report/index.js'
 import type { CiContext } from './run-context.js'

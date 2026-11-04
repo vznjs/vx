@@ -14,7 +14,7 @@ import {
 } from '../src/exec/runner.js'
 import { MASKED, secretMask } from '../src/util/index.js'
 import { decodeOutputLog, failedOutputLog } from '../src/orchestrator/output-log.js'
-import { fileLocations } from '../src/report/path-links.js'
+import { fileLocations } from '../src/ui/links.js'
 import { gitInitCommit, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')

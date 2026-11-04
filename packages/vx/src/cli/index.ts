@@ -5,21 +5,19 @@ import { VERSION } from '../version.js'
 import { checkSettingsEnv } from '../settings.js'
 import { CORE_VERBS, flagHint, printHelp, refuse, refusedWord, seeHelp } from './help.js'
 import {
-  detectColors,
   errorDocument,
   hideEnvFromTasks,
-  sayNotice,
   isFsRefusal,
   isOutOfFds,
   isUserError,
   maskedLine,
   nearest,
-  refusalNotice,
   thrownMessage,
-  ui,
   UserError,
   wantsJson,
 } from '../util/index.js'
+import * as ui from '../ui/index.js'
+import { sayNotice, refusalNotice } from '../ui/index.js'
 
 // Every verb is imported when invoked, `run` included, and so is the
 // plugin-verb lookup: each pulls in the orchestrator and the workspace
@@ -163,9 +161,7 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
         )
       }
       // Painted, and the same words piped: a script reads `vx <version>`.
-      process.stdout.write(
-        `${ui.inline([ui.cmd('vx'), ' ', ui.tone('info', VERSION)], detectColors(process.stdout))}\n`,
-      )
+      ui.print('out', ui.line(ui.cmd('vx'), ' ', ui.tone('info', VERSION)))
       return 0
     }
     case 'run':
@@ -238,8 +234,7 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
       ): number => {
         sayNotice(tone, 'vx', text.replace(/^vx: /, '').trimEnd())
         // `vx --format json` puts the flag where the verb goes.
-        if (wantsJson([command, ...rest]))
-          process.stdout.write(errorDocument(code, maskedLine(json)))
+        if (wantsJson([command, ...rest])) ui.data('out', errorDocument(code, maskedLine(json)))
         return 1
       }
       const loadNote =

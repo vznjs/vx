@@ -22,7 +22,9 @@ import { access, chmod, chown, link, mkdtemp, rename, rm, stat } from 'node:fs/p
 import path from 'node:path'
 import { flagHint, refuse, seeHelp } from './help.js'
 import { resolveRegistry, type Registry } from './registry.js'
-import { UserError, sayNotice, ui } from '../util/index.js'
+import { UserError } from '../util/index.js'
+import * as ui from '../ui/index.js'
+import { sayNotice } from '../ui/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { VERSION } from '../version.js'
 

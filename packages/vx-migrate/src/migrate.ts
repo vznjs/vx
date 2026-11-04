@@ -429,7 +429,7 @@ async function lockWorkspace(root: string): Promise<{ code: number; said: string
   // A success's warnings print above the report; a refusal is said whole.
   // A success is a report row, matched as text: the colour FORCE_COLOR
   // gave the child would hide its `✓ vx lock` mark from that match.
-  if (code === 0) process.stderr.write(err)
+  if (code === 0) ui.data('err', err)
   return { code, said: code === 0 ? Bun.stripANSI(out) : out + err }
 }
 
@@ -613,7 +613,8 @@ async function keep(
     ...new Set(['@vzn/vx', '@vzn/vx-migrate', ...(declares ? all.map((p) => p.pkg) : [])]),
   ])
   if (args.json) {
-    process.stdout.write(
+    ui.data(
+      'out',
       `${JSON.stringify({
         dry: true,
         source,
@@ -637,7 +638,7 @@ async function keep(
   // A run reads only the lock; with the plugins installed it is written
   // now, else `next` names `vx lock` after the install.
   const lock = !args.dry && !next.includes(' lock && ') ? await lockWorkspace(root) : undefined
-  if (lock !== undefined && lock.code !== 0) process.stderr.write(lock.said)
+  if (lock !== undefined && lock.code !== 0) ui.data('err', lock.said)
   const rows: ui.FieldRow[] = [
     ['from', `${source}, run by ${runner}() from @vzn/vx-migrate`],
     ...(args.dry ? [['dry run', 'nothing written'] as const] : []),

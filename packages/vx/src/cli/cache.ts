@@ -11,8 +11,8 @@ import {
   parseSize,
   relPosix,
   treeBytes,
-  ui,
 } from '../util/index.js'
+import * as ui from '../ui/index.js'
 import { acquireRunLock } from '../orchestrator/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import {
@@ -270,9 +270,7 @@ function printPruned(
 ): void {
   if (json) {
     const { evicted, bytesFreed, orphans, orphanBytes } = result
-    process.stdout.write(
-      `${JSON.stringify({ dry: dry, evicted, bytesFreed, orphans, orphanBytes })}\n`,
-    )
+    ui.data('out', `${JSON.stringify({ dry: dry, evicted, bytesFreed, orphans, orphanBytes })}\n`)
     return
   }
   const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`
@@ -392,7 +390,7 @@ async function clear(
   const shown = doomed.map((t) => (path.relative(root, t).startsWith('..') ? t : relPosix(root, t)))
   if (parsed.format === 'json') {
     const result: ClearResult = { dry: dry, cleared: shown, bytesFreed: bytes }
-    process.stdout.write(`${JSON.stringify(result)}\n`)
+    ui.data('out', `${JSON.stringify(result)}\n`)
   } else
     ui.print(
       'out',

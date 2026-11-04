@@ -1,22 +1,15 @@
-import {
-  CORE_VERBS,
-  detectColors,
-  errorDocument,
-  maskedLine,
-  nearest,
-  paint,
-  refusalNotice,
-  ui,
-  wantsJson,
-  type ColorSupport,
-} from '../util/index.js'
+import { CORE_VERBS, errorDocument, maskedLine, nearest, wantsJson } from '../util/index.js'
+import * as ui from '../ui/index.js'
+import { detectColors, paint, refusalNotice, type ColorSupport } from '../ui/index.js'
 
 export async function printHelp(
   pluginCommands: readonly string[] = [],
   verb?: string,
 ): Promise<void> {
   const text = verb === undefined ? helpText(pluginCommands) : verbHelpText(verb)
-  process.stdout.write(paintHelp(text, helpColors(process.stdout, detectColors), paint))
+  // The reference a script greps: painted on a terminal only, and strips
+  // back to `text` exactly, so it goes out as written.
+  ui.data('out', paintHelp(text, helpColors(process.stdout, detectColors), paint))
 }
 
 /**
@@ -30,9 +23,6 @@ export function helpColors(
 ): ColorSupport {
   return { enabled: stream.isTTY === true && detect(stream as NodeJS.WriteStream).enabled }
 }
-
-const VERB = '#06b6d4' // cyan-500 — the orchestrator's accent
-const TERM = '#22d3ee' // cyan-400 — a flag, a selector, an example
 
 /**
  * The reference with ANSI accents, line by line and never reflowed, so the
@@ -48,13 +38,12 @@ export function paintHelp(text: string, colors: ColorSupport, paint: Paint): str
       if (line === '') return line
       if (i === 0) {
         const [name, ...rest] = line.split(' ')
-        return [paint(VERB, name!, colors, { bold: true }), ...rest].join(' ')
+        return [paint('info', name!, colors, true), ...rest].join(' ')
       }
       const heading = /^([A-Z][^:]*?)( \(for [^)]*\))?:$/.exec(line)
       if (heading !== null) {
-        const qualifier =
-          heading[2] === undefined ? '' : paint('', heading[2], colors, { dim: true })
-        return `${paint('', heading[1]!, colors, { bold: true })}${qualifier}${paint('', ':', colors, { bold: true })}`
+        const qualifier = heading[2] === undefined ? '' : paint('muted', heading[2], colors)
+        return `${paint('strong', heading[1]!, colors)}${qualifier}${paint('strong', ':', colors)}`
       }
       // `  term   description`: a term is a flag, a `vx` form, a selector.
       const row = /^(\s+)(\S(?:.*?\S)?)(\s{2,}\S.*)?$/.exec(line)
@@ -66,11 +55,11 @@ export function paintHelp(text: string, colors: ColorSupport, paint: Paint): str
         if (description === '' && !(CORE_VERBS as readonly string[]).includes(verb)) return line
         const head = `vx ${verb}`
         const tail = term!.slice(head.length)
-        return `${indent}${paint(VERB, head, colors, { bold: true })}${tail === '' ? '' : paint(TERM, tail, colors)}${description}`
+        return `${indent}${paint('info', head, colors, true)}${tail === '' ? '' : paint('term', tail, colors)}${description}`
       }
       if (description === '') return line
       if (/^(-|\(|[\w-]+#)/.test(term!))
-        return `${indent}${paint(TERM, term!, colors)}${description}`
+        return `${indent}${paint('term', term!, colors)}${description}`
       return line
     })
     .join('\n')
@@ -475,7 +464,7 @@ export function refuse(
 ): number {
   const line = `vx ${verb}: ${message}`
   ui.print('err', refusalNotice(`vx ${verb}`, message))
-  if (wantsJson(args)) process.stdout.write(errorDocument(code, maskedLine(line)))
+  if (wantsJson(args)) ui.data('out', errorDocument(code, maskedLine(line)))
   return 1
 }
 

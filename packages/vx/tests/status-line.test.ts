@@ -7,12 +7,11 @@
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import {
-  createOutputWriter,
   formatFailureLine,
   formatStatusRegion,
-  type StatusStream,
   type WorkerSlot,
 } from '../src/report/status-line.js'
+import { createOutputWriter, type StatusStream } from '../src/ui/live-region.js'
 import {
   formatListHeader,
   formatTaskExecutedLine,

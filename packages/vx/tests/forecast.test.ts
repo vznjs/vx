@@ -6,14 +6,15 @@ import { describe, expect, it, spyOn } from 'bun:test'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 import { createForecast } from '../src/report/forecast.js'
 import { defaultLogger } from '../src/report/logger.js'
-import { formatStatusRegion, type StatusStream } from '../src/report/status-line.js'
+import { formatStatusRegion } from '../src/report/status-line.js'
+import { type StatusStream } from '../src/ui/live-region.js'
 import { formatSummarySection } from '../src/report/summary.js'
 import {
   notifyEscape,
   PROGRESS_CLEAR,
   progressEscape,
   terminalSignals,
-} from '../src/report/terminal-signals.js'
+} from '../src/ui/terminal-signals.js'
 
 const node = (id: string, deps: string[] = [], group = false): TaskNode =>
   ({

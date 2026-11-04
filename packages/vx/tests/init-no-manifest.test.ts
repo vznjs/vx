@@ -9,7 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 import { initInstalls, notServed } from '../src/cli/init.js'
-import { ui } from '../src/util/index.js'
+import * as ui from '../src/ui/index.js'
 import { VERSION } from '../src/version.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')

@@ -7,7 +7,7 @@
 import { rm } from 'node:fs/promises'
 import { expect, it } from 'bun:test'
 import { defaultLogger } from '../src/report/logger.js'
-import type { StatusStream } from '../src/report/status-line.js'
+import type { StatusStream } from '../src/ui/live-region.js'
 import { addProject, makeWorkspace, TIMEOUT } from './helpers/orchestrator-fixture.js'
 import { run } from './helpers/orchestrator.js'
 

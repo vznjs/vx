@@ -19,8 +19,8 @@ import {
   machineMemoryBytes,
   machineParallelism,
   treeBytes,
-  ui,
 } from '../util/index.js'
+import * as ui from '../ui/index.js'
 import { vxPath } from '../handoff.js'
 import { VERSION } from '../version.js'
 import { probeSandbox, resetSandbox, untracedReason } from '../exec/index.js'

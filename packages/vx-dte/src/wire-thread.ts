@@ -7,6 +7,7 @@
 // tasks. Here the socket, its acks, beats and redials run on a thread the
 // run's work never holds; the run talks to it by messages.
 
+import { ui } from '@vzn/vx'
 import { RelayError, type Participant, type RelayMessage } from './wire.js'
 
 /** From the thread: what `wire-host.ts` posts. */
@@ -39,7 +40,7 @@ export async function joinOffLoop(
     const now = Date.now()
     const held = now - shared[0]! - TICK_MS
     if (shared[0] && held >= HELD_SAY_MS)
-      process.stderr.write(`[vx] dte: this machine's loop was held ${held} ms\n`)
+      ui.say('warn', `[vx] dte: this machine's loop was held ${held} ms`)
     shared[0] = now
   }
   tick()
