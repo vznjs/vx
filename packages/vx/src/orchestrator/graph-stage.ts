@@ -29,6 +29,12 @@ export async function applyGraphStage(
   // keyed and cleaned its outputs there: past the hard project boundary.
   const dirs = new Map(args.projectMetas.map((m) => [m.name, path.resolve(m.dir)]))
   const shown = (dir: string): string => relPosix(args.workspaceRoot, dir) || '.'
+  // The lock shares a task config two tasks declare alike: an edit in place
+  // works on this node's own copy.
+  if (plugins.some((p) => p.graph !== undefined)) {
+    for (const n of nodes.values())
+      if (!isDefaultBuild(n.config)) n.config = structuredClone(n.config)
+  }
   await applyGraphHooks(
     plugins,
     nodes,
