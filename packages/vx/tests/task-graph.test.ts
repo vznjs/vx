@@ -366,6 +366,27 @@ describe('buildTaskGraph', () => {
     ).toThrow(/a#build: dependsOn nope#build but no such project or task is declared/)
   })
 
+  // `a#build` against a project named by its path (`packages/a`) named
+  // neither the project nor what to type instead.
+  it.each([
+    ['a#build', 'packages/a#build'],
+    ['packages/b#build', 'packages/a#build'],
+    ['packages/a#biuld', 'packages/a#build'],
+  ])('a pkg#task miss names the nearest declared one (%s)', (dep, meant) => {
+    expect(() =>
+      buildTaskGraph({
+        projects: projects(
+          project('packages/a', { build: cmd('a') }),
+          project('packages/app', { test: { ...cmd('t'), dependsOn: [dep] } }),
+        ),
+        packageGraph: packageGraph({}),
+        requested: [{ project: 'packages/app', task: 'test' }],
+      }),
+    ).toThrow(
+      `packages/app#test: dependsOn ${dep} but no such project or task is declared. Did you mean ${meant}?`,
+    )
+  })
+
   it('detects a same-project task self-cycle', () => {
     expect(() =>
       buildTaskGraph({
