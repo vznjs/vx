@@ -93,17 +93,25 @@ describe.skipIf(!available || process.platform !== 'linux')(
       })
       await mkdir(path.join(dir, 'node_modules', 'dep'), { recursive: true })
       await writeFile(path.join(dir, 'node_modules', 'dep', 'index.js'), 'x\n')
-      const r = await run({ cwd: root, tasks: ['t'], log: quiet })
-      return [r.outcomes[0]?.status, r.outcomes[0]?.sandboxViolations ?? 0]
+      let output = ''
+      const keep = (_: unknown, chunk: string) => void (output += chunk)
+      const r = await run({
+        cwd: root,
+        tasks: ['t'],
+        log: { ...quiet, taskStdout: keep, taskStderr: keep },
+      })
+      return [r.outcomes[0]?.status, r.outcomes[0]?.sandboxViolations ?? 0, output] as const
     }
 
     it('passes when the cache directory is granted', async () => {
-      expect(await outcome(['node_modules/.cache/'])).toEqual(['success', 0])
+      expect((await outcome(['node_modules/.cache/'])).slice(0, 2)).toEqual(['success', 0])
     })
 
     it('CONTROL: fails when it is not', async () => {
-      const [status, count] = await outcome([])
-      expect([status, (count as number) > 0]).toEqual(['failed', true])
+      // Once on CI (main, 2026-11-04) it failed with no refusal reported and
+      // nothing to say why; the task's output, shown only then, will.
+      const [status, count, output] = await outcome([])
+      expect([status, count > 0, count > 0 ? '' : output]).toEqual(['failed', true, ''])
     })
 
     it('mkdir -p of a directory a read grant shows passes; of a new one, fails', async () => {
