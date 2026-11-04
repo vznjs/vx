@@ -416,9 +416,26 @@ function checkTurboShape(cfg: unknown, label: string): void {
         `${label}: ${at} holds ${JSON.stringify(bad)}: Turbo refuses a "$" before an env name — write ${JSON.stringify(bad.slice(1))}`,
       )
   }
+  // Turbo refuses an absolute glob (`AbsolutePathInConfig`), read past its
+  // `!` and `$TURBO_ROOT$/`; mapped, core refused it naming the project,
+  // as if its own config held it.
+  const paths = (v: unknown, at: string): void => {
+    for (const x of Array.isArray(v) ? v : []) {
+      const globs: unknown[] = isRecord(x) && Array.isArray(x['globs']) ? x['globs'] : [x]
+      for (const g of globs) {
+        if (typeof g !== 'string') continue
+        const bare = g.replace(/^!/, '').replace(/^\$TURBO_ROOT\$\//, '')
+        if (path.isAbsolute(bare))
+          throw new UserError(
+            `${label}: ${at} holds ${JSON.stringify(g)}: Turbo refuses an absolute path — name it relative to the package, or to the root with $TURBO_ROOT$/`,
+          )
+      }
+    }
+  }
   if (!isRecord(cfg)) refuse('the file', 'a JSON object')
   const c = cfg as Record<string, unknown>
   for (const k of TOP_LISTS) (ENV_LISTS.has(k) ? envList : list)(c[k], k)
+  paths(c['globalDependencies'], 'globalDependencies')
   if (c['global'] !== undefined) {
     if (!isRecord(c['global'])) refuse('global', 'an object')
     for (const k of GLOBAL_LISTS)
@@ -426,6 +443,7 @@ function checkTurboShape(cfg: unknown, label: string): void {
         (c['global'] as Record<string, unknown>)[k],
         `global.${k}`,
       )
+    paths((c['global'] as Record<string, unknown>)['inputs'], 'global.inputs')
   }
   for (const field of ['tasks', 'pipeline']) {
     const tasks = c[field]
@@ -443,6 +461,8 @@ function checkTurboShape(cfg: unknown, label: string): void {
         (!Array.isArray(inputs) || inputs.some((x) => typeof x !== 'string' && !isRecord(x)))
       )
         refuse(`${at}.inputs`, 'an array of globs')
+      paths(inputs, `${at}.inputs`)
+      paths(d['outputs'], `${at}.outputs`)
       for (const k of TASK_FLAGS)
         if (d[k] !== undefined && typeof d[k] !== 'boolean') refuse(`${at}.${k}`, 'true or false')
       for (const k of ['outputLogs', 'outputMode'])
