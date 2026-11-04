@@ -193,6 +193,47 @@ describe('two runs on one workspace', () => {
   )
 
   it(
+    '`vx cache clean` with no bound sizes the cache after the run it waited for',
+    async () => {
+      // The clear measured what it would delete, then waited for the run:
+      // what the run saved meanwhile was deleted but not counted ("freed
+      // 24 MB" for 76 MB).
+      await addProject(root, 'app', { config: MANY, files: { 'src/index.js': 'export {}\n' } })
+      const git = gitIn(root)
+      git('add', '-A')
+      git('commit', '-q', '-m', 'init')
+      expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
+      const cacheDir = path.join(root, '.vx', 'cache')
+      const release = await acquireRunLock(root, { log: () => {} })
+      let released = false
+      try {
+        const proc = Bun.spawn(
+          [process.execPath, BIN, 'cache', 'clean', '--format', 'json', '--cache-dir', cacheDir],
+          { cwd: root, stdout: 'pipe', stderr: 'pipe', env: { ...process.env, NO_COLOR: '1' } },
+        )
+        const out = new Response(proc.stdout).text()
+        const reader = (proc.stderr as ReadableStream<Uint8Array>).getReader()
+        let err = ''
+        while (!err.includes('waiting for another vx run')) {
+          const chunk = await reader.read()
+          if (chunk.done) throw new Error(`clear never waited: ${err}${await out}`)
+          err += new TextDecoder().decode(chunk.value)
+        }
+        // What the holding run saves while the clear waits.
+        await writeFile(path.join(cacheDir, 'saved-meanwhile'), new Uint8Array(3_000_000))
+        await release()
+        released = true
+        expect(await proc.exited).toBe(0)
+        expect(JSON.parse(await out).bytesFreed).toBeGreaterThanOrEqual(3_000_000)
+        expect(existsSync(cacheDir)).toBe(false)
+      } finally {
+        if (!released) await release()
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
     '`vx cache clean` from a task of a run on the workspace is refused, not left waiting',
     async () => {
       // The run holds the lock until it ends and the prune waited for it:
