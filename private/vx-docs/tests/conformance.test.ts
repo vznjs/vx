@@ -59,7 +59,7 @@ describe('the conformance page', () => {
       const want = TOOLS.map((t) => [t, c.outcomes[t]?.status ?? 'n/a'])
       if (JSON.stringify(got) !== JSON.stringify(want))
         wrong.push(`${c.id}: ${JSON.stringify(got)}`)
-      if ((c.why === undefined) === row(c.id).includes('class="cfm-why"'))
+      if (!c.why || !row(c.id).includes('<details class="cfm-why">'))
         wrong.push(`${c.id}: why`)
       if (agree(c) !== /data-agree(?:=""|\s|>)/.test(row(c.id).slice(0, 200)))
         wrong.push(`${c.id}: agree mark`)

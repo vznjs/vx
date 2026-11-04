@@ -234,8 +234,8 @@ export interface Case {
   kind: Kind
   /** The behaviour, one sentence, in a user's words. */
   title: string
-  /** Why this is the correct outcome, when a tool could argue for another. */
-  why?: string
+  /** Why this outcome is right, in 3–4 sentences: the page shows it collapsed under the case. */
+  why: string
   /** The vx tests or issues this case was drawn from. */
   from: string[]
   needs?: Feature[]

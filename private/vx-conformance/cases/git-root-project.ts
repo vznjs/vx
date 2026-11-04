@@ -40,6 +40,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'A member’s task that depends on a workspace-root task runs after it',
+    why: 'A member’s task may depend on a task of the workspace-root project, such as code generation over shared tools. That dependency must be honoured like any other edge, with the root task finishing first. Running the member first reads a missing or stale generated file, or races the generator.',
     from: ['root-project'],
     workspace: workspace(),
     steps: [
@@ -61,6 +62,7 @@ export default [
     category: 'inputs',
     kind: 'correctness',
     title: 'Editing a root file a workspace-root task reads runs it again',
+    why: 'The workspace root can be a project with its own tasks, reading files no member owns. When such a file changes, the root task’s key changes and the task must run again. Replaying the cached result would ship output generated from the old file.',
     from: ['root-project'],
     workspace: workspace(),
     steps: [
@@ -75,7 +77,7 @@ export default [
     category: 'inputs',
     kind: 'efficiency',
     title: 'Editing a member’s file leaves a workspace-root task over `**` replayed',
-    why: 'Each member’s files are that member’s: the root project owns only the files no member holds.',
+    why: 'A project owns the files under it except those inside a nested project. For the workspace-root project, every member is nested, so a root task over `**` does not read the members’ files. Rerunning it on every member edit would rebuild the root on nearly every change in the workspace.',
     from: ['root-project'],
     workspace: workspace(),
     steps: [
@@ -99,7 +101,7 @@ export default [
     kind: 'correctness',
     title:
       'An edit inside a nested repository a workspace-level input glob covers runs the task again',
-    why: 'The outer git holds the nested repository as one path, or none; its files are still what the task reads.',
+    why: 'The outer git records a nested repository as one path, or not at all, so it never lists the files inside. A task whose input glob covers them still reads those files. A key built only from the outer repository misses the edit and replays output built from the old content.',
     from: ['workspace-files-nested-repo'],
     workspace: {
       projects: {
@@ -133,6 +135,7 @@ export default [
     category: 'affected',
     kind: 'correctness',
     title: 'A changed root file no member owns selects the workspace-root project',
+    why: 'A file at the workspace root that no member owns belongs to the workspace-root project. A change to it must select that project’s tasks, like a change in any member. Treating root files as nobody’s skips root tasks such as code generation that read them.',
     from: ['root-project'],
     needs: ['affected'],
     workspace: workspace(),
@@ -147,6 +150,7 @@ export default [
     category: 'affected',
     kind: 'efficiency',
     title: 'A changed member file selects the member, not the workspace-root project holding it',
+    why: 'A member file lies under the workspace root, but the member owns it, not the root project. An edit there selects the member alone. Also selecting the root project would rerun root tasks on nearly every change, since every member file is under the root.',
     from: ['root-project'],
     needs: ['affected'],
     workspace: workspace(),

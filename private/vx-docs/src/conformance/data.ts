@@ -23,7 +23,7 @@ export interface Case {
   category: string
   kind: string
   title: string
-  why?: string
+  why: string
   from: string[]
   outcomes: Record<string, Outcome>
 }

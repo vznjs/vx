@@ -38,7 +38,7 @@ export default [
     category: 'graph',
     kind: 'efficiency',
     title: '`^build` runs the dependency’s build, not the builds that build itself never names',
-    why: 'b’s build declares no dependency on c’s build; c is b’s package dependency, not app’s task’s.',
+    why: '`^build` means the build of each nearest dependency that has one, not every build further down. Here b’s own build declares no dependency on c’s build: c is in b’s package graph but not in this task graph. Running c’s build anyway does work nobody asked for, on every run.',
     from: GRAPH,
     workspace: {
       projects: {
@@ -66,6 +66,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: '`^build` reaching one build through two projects without a build runs it once',
+    why: '`^build` passes through dependencies that have no build to reach the builds beyond them. When two such paths lead to the same project, its build is still one task and runs once. Running it twice wastes time and can race two writers on the same output directory.',
     from: GRAPH,
     workspace: {
       projects: {
@@ -94,7 +95,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'Two tasks of one project on `^build` each wait for the dependency’s build',
-    why: 'With two of a package’s tasks on `^build`, the second lost its edge and read the dependency half-built (turborepo#2981).',
+    why: 'Each task that lists `^build` needs its dependencies built before it starts. When two tasks of one project both list it, each must wait, not only the first. If the second loses its edge, it reads the dependency half built and produces output from stale or missing files.',
     from: GRAPH,
     workspace: {
       projects: {
@@ -140,7 +141,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'Each entry of a dependsOn list runs first: three of the project’s, two `^` names',
-    why: 'Another runner ran only the first entry, or let one `^` entry stand for the others.',
+    why: 'Every entry in a dependsOn list is a separate requirement. A runner that honours only the first entry, or lets one `^` entry stand for the others, starts the task before some of what it needs exists. The task then reads missing files, or old ones from an earlier run.',
     from: GRAPH,
     workspace: {
       projects: {
@@ -176,7 +177,7 @@ export default [
     kind: 'correctness',
     title:
       '`^test` and `^lint` through a project with no tasks reach each project beyond that declares them',
-    why: 'Nx’s order-invariance fixture: the middle project declares nothing, so both names pass through it.',
+    why: 'A project that declares no tasks still sits in the package graph. `^test` and `^lint` must each pass through it to the projects beyond that declare them, and the order they are listed in must not matter. Stopping at the empty project, or letting one name’s walk decide the other’s, runs the task before its real dependencies.',
     from: GRAPH,
     workspace: {
       projects: {
@@ -206,7 +207,7 @@ export default [
     kind: 'correctness',
     title:
       '`^build` where only a project off the dependency path declares build runs the task alone',
-    why: 'Some project declares build, so the name is no typo; none of this project’s dependencies has one.',
+    why: '`^build` asks for the builds of this project’s dependencies, and none of them has one. Some other project declares build, so the name is not a typo and the run should not fail. The task runs alone, and the unrelated project’s build is not pulled in.',
     from: GRAPH,
     workspace: {
       projects: {
@@ -229,7 +230,7 @@ export default [
     category: 'graph',
     kind: 'efficiency',
     title: 'A task that depends on the requested builds is not run with them',
-    why: 'Turborepo’s scheduler grew a `side-quest` cluster: a task depending on the build tree is not part of it.',
+    why: 'A run builds what was asked for and what that needs, not what happens to depend on it. A task that depends on the build tree is a consumer of the builds, not part of them. Running it too adds work, and possibly side effects such as a deploy, that the user did not request.',
     from: GRAPH,
     workspace: {
       projects: {
@@ -256,7 +257,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'dependsOn naming another project’s task that does not exist fails before any runs',
-    why: 'An edge dropped in silence runs the task without what it said it needs.',
+    why: 'A dependsOn entry is a promise that the named task runs first. If that task does not exist, the promise cannot be kept, and dropping the edge in silence runs the task without what it said it needs. Failing before anything runs points at the typo or the renamed task.',
     from: GRAPH,
     workspace: {
       projects: {
@@ -272,7 +273,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'dependsOn naming a task its own project lacks fails before any runs',
-    why: 'A misspelled same-project name (`lnt` for `lint`) is a typo; running without it skips the check.',
+    why: 'A same-project name the project does not declare, such as `lnt` for `lint`, is a typo. Running the task without it quietly skips the check the user meant to run first. Failing before any task runs shows the mistake in the config where it was made.',
     from: GRAPH,
     workspace: app({ lint: plain(), test: plain(['lnt']) }),
     steps: [{ run: 'test', expect: { exit: 'fail', notRan: ['app#test', 'app#lint'] } }],
@@ -283,7 +284,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: '`^biuld`, a name no project declares, fails the run instead of passing with no edge',
-    why: 'A `^name` some project declares may have no holder here, but one nothing declares can only be a typo (nx#32779).',
+    why: 'A `^name` some project declares may simply have no holder among this project’s dependencies, which is fine. A `^name` no project anywhere declares, like `^biuld`, can only be a typo. Passing the run with no edge hides that the dependency the user wanted is never built.',
     from: GRAPH,
     workspace: {
       projects: {
@@ -299,6 +300,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: '`^build` around a ring of four projects fails before any build runs',
+    why: 'A ring of `^build` edges has no valid order: each build needs another that needs it back. Starting any of them means it reads its dependency’s output before that exists. Failing before any build runs names the cycle, instead of a run that hangs or builds from stale files.',
     from: GRAPH,
     workspace: {
       projects: {
@@ -322,7 +324,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'A `^build` ring that passes through a project without a build still fails',
-    why: '`^build` reaches past a project without the task; around the ring each build then waits on itself.',
+    why: '`^build` reaches past a project without a build to the builds beyond it. Around this ring that walk comes back to the start, so each build waits on itself through the empty project. It is a real cycle, and the run must refuse it before any build runs, as it would a direct one.',
     from: GRAPH,
     workspace: {
       projects: {
@@ -347,7 +349,7 @@ export default [
     kind: 'correctness',
     title:
       'A package ring whose other projects declare no build is no task cycle: `^build` runs the build',
-    why: 'Walking past the projects without a build leads back to the one that asked; it is no dependency of itself.',
+    why: 'A cycle in the package graph is not a cycle in the task graph unless tasks close it. Here walking past the projects without a build leads back to the project that asked, and a task is never its own dependency. Refusing would break a valid repo over a package loop that holds no task cycle.',
     from: GRAPH,
     workspace: {
       projects: {
@@ -364,7 +366,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'A package cycle between a project with a build and one without orders and runs',
-    why: 'app1’s build reaches app3’s through app2; app3’s walk back through app2 meets only itself.',
+    why: 'app1’s build reaches app3’s build through app2, which has none. app3’s own walk back through app2 meets only itself, so there is no task cycle. The builds have a valid order and run; refusing them would fail a repo over a package loop its tasks never close.',
     from: GRAPH,
     workspace: {
       projects: {
@@ -391,6 +393,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'A cycle the requested task only leads into fails the run before any task runs',
+    why: 'A cycle anywhere below the requested task makes its graph impossible to order, even if the task itself is not in the cycle. Starting what can start would leave the run stuck, or run tasks before their inputs exist. Failing before any task runs names the cycle so it can be fixed.',
     from: GRAPH,
     workspace: app({ a: plain(['b']), b: plain(['c']), c: plain(['b']) }),
     steps: [{ run: 'a', expect: { exit: 'fail', notRan: ['app#a', 'app#b', 'app#c'] } }],
@@ -403,7 +406,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: '`build.*` on a task named `build.all` runs the other matches, not itself',
-    why: 'The pattern matches its own name; read as an edge, that is a cycle the user never wrote.',
+    why: 'A pattern like `build.*` names the other tasks in its family. It also matches the name of the task that declares it, and read as an edge, that is a cycle the user never wrote. The declaring task is left out, so the pattern means what it plainly says.',
     from: GRAPH,
     needs: ['task-pattern'],
     workspace: app({
@@ -428,7 +431,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'A dependsOn pattern that matches no task runs the task alone',
-    why: 'A pattern names a family that may be empty here: a shared preset spreads `codegen.*` over projects with no codegen.',
+    why: 'A pattern names a family of tasks that may be empty in a given project. A shared preset can list `codegen.*` for every project, including ones with no codegen. Failing there would force each project to opt out by hand, so the task simply runs alone.',
     from: GRAPH,
     needs: ['task-pattern'],
     workspace: app({ test: plain(['codegen.*']) }),
@@ -440,6 +443,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'A `^` pattern no project’s task matches runs the task alone',
+    why: 'A `^` pattern names a family of tasks that dependencies may or may not have. When no project matches, there is nothing to wait for, and the task runs alone. Unlike an exact name nobody declares, a pattern that matches nothing is a normal case for shared config, not a typo.',
     from: GRAPH,
     needs: ['task-pattern'],
     workspace: {
@@ -456,6 +460,7 @@ export default [
     category: 'graph',
     kind: 'efficiency',
     title: '`^build.*` runs every match of the nearest dependency holding one, and stops there',
+    why: '`^build.*` runs the matching tasks of the nearest dependency that has any, as `^build` does for one name. It runs every match there, since each may produce something the task needs. It does not reach further down, where the dependency’s own config decides what its tasks need.',
     from: GRAPH,
     needs: ['task-pattern'],
     workspace: {
@@ -484,6 +489,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: '`^build.*` passes through a dependency with no match to the one beyond it',
+    why: 'A dependency with no matching task is a step on the way, not the end of the walk. `^build.*` passes through it to the project beyond that has matches, as an exact `^build` would. Stopping there would run the task before the build it needs, on missing or stale files.',
     from: GRAPH,
     needs: ['task-pattern'],
     workspace: {
@@ -512,7 +518,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: '`^build.*` across a package cycle does not wrap back to the asking project’s own tasks',
-    why: 'Walking a’s dependencies leads back to a; its own `build.inner` is no dependency’s task.',
+    why: '`^` means the tasks of dependencies, never of the asking project itself. Across a package cycle, walking a’s dependencies leads back to a, but its own `build.inner` is still no dependency’s task. Including it would add an edge the user never wrote and run work nobody asked for.',
     from: GRAPH,
     needs: ['task-pattern'],
     workspace: {
@@ -535,6 +541,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'The `.` in `build.x*` is a dot: it never matches `buildAx1`',
+    why: 'In a task pattern the `.` is a plain character; task names use it to group families like `build.x1`. Reading it as a regular-expression wildcard would also match `buildAx1` and run a task the pattern was never meant to reach. Only `*` is a wildcard.',
     from: GRAPH,
     needs: ['task-pattern'],
     workspace: app({ all: plain(['build.x*']), 'build.x1': plain(), buildAx1: plain() }),
@@ -551,6 +558,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'A task named both exactly and by a pattern in one dependsOn runs once',
+    why: 'A task named twice in one dependsOn, once exactly and once by a pattern, is still one task. It runs once, before the task that needs it. Running it twice wastes time and lets two copies race on the same outputs, so the result depends on which copy finishes last.',
     from: GRAPH,
     needs: ['task-pattern'],
     workspace: app({ top: plain(['build.a', 'build.*']), 'build.a': plain(), 'build.b': plain() }),
@@ -571,7 +579,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'A task named like a route, `t--src/app/[id]/page`, is one name in dependsOn',
-    why: 'A name holding `[`, `]` or `/` was read as a pattern and linked nothing (nx#36498).',
+    why: 'An exact name in dependsOn is matched as written, whatever characters it holds. Generated task names often follow file routes and contain `[`, `]` or `/`. Reading such a name as a pattern links the wrong task or none, and the dependant runs without what it needs.',
     from: GRAPH,
     workspace: app({
       all: plain(['t--src/app/[id]/page']),
@@ -596,6 +604,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'In `t--src/app/[id]/*` the brackets are characters, not a class',
+    why: 'Only `*` is a wildcard in a task pattern; brackets are plain characters. Routes like `src/app/[id]/page` are common in task names, and reading `[id]` as a character class would match `i/page` instead. The pattern then links the wrong task, and the one the user meant runs late or not at all.',
     from: GRAPH,
     needs: ['task-pattern'],
     workspace: app({
@@ -622,7 +631,7 @@ export default [
     category: 'failure',
     kind: 'correctness',
     title: 'Asking for `constructor`, a task no project declares, fails the run',
-    why: 'A name every object carries is still no task unless a config declares it.',
+    why: 'A task exists only if a config declares it. A name every JavaScript object carries, like `constructor`, must not be found by accident in a lookup table. Otherwise the run would pass or crash on a task nobody declared, instead of reporting the unknown name.',
     from: GRAPH,
     workspace: app({ build: plain() }),
     steps: [{ run: 'constructor', expect: { exit: 'fail', notRan: ['app#build'] } }],
@@ -633,6 +642,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'A task the config names `constructor` runs like any other',
+    why: 'A task name is just a string, and `constructor` is as valid as `build`. A runner that keeps tasks in a plain object may confuse it with the object’s own property and fail or run the wrong thing. The declared task must run like any other.',
     from: GRAPH,
     workspace: app({ constructor: { command: 'echo ran > ran.txt', inputs: ['src/**'] } }),
     steps: [
@@ -648,6 +658,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: '`^build:prod` runs the dependency’s `build:prod` first and reruns on its change',
+    why: 'Names with colons, like `build:prod`, are common for task variants and must work in `^` edges. The dependency’s `build:prod` runs first, and a change to its inputs reaches the dependant’s cache key. Otherwise the dependant could replay output built from the old dependency.',
     from: ['cli-task-names'],
     workspace: {
       projects: {
@@ -697,6 +708,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'A task named `a:b:c` runs as one name, not as `a` with more after it',
+    why: 'Some runners read a colon as a separator, such as between project and target. A task named `a:b:c` must still be one name, run as declared. Splitting it would run a different task, here `a`, and report a result for work nobody asked for.',
     from: ['cli-task-names'],
     workspace: app({
       'a:b:c': { command: 'echo abc > abc.txt', inputs: ['src/**'] },
@@ -720,7 +732,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'A git worktree checked out inside the workspace adds no project to a run',
-    why: 'The worktree’s copies carry the same names; read as projects, they clash or build twice.',
+    why: 'A git worktree checked out inside the workspace holds copies of the same projects under the same names. Those copies are another checkout, not part of this workspace. Read as projects, they clash on names or build everything twice, and files from the other branch mix into this run.',
     from: ['cli-task-names'],
     workspace: {
       projects: {
@@ -750,7 +762,7 @@ export default [
     category: 'cache',
     kind: 'correctness',
     title: 'A task switched to never cached runs, instead of replaying what it saved while cached',
-    why: 'The user turned caching off for it; the entry from before is exactly what they no longer want (turborepo#1010).',
+    why: 'When the user turns caching off for a task, the task must run every time. The entry saved while it was cached is exactly what they no longer want replayed. Replaying it would skip a task the user has marked as needing to run, such as one with side effects.',
     from: ['parity-turbo'],
     needs: ['uncached-task'],
     workspace: app({
@@ -779,7 +791,7 @@ export default [
     category: 'outputs',
     kind: 'correctness',
     title: 'An uncached task over a cached dependency finds the dependency’s deleted outputs back',
-    why: 'Asked for by name, the uncached task skipped restoring its dependency’s outputs and read nothing (turborepo#6749).',
+    why: 'An uncached task still needs its cached dependencies’ outputs on disk. When those outputs were deleted and the dependency is a cache hit, the runner must restore them before the dependant runs. Otherwise the dependant reads nothing and fails, or ships an empty deploy.',
     from: ['parity-turbo'],
     needs: ['uncached-task'],
     workspace: app({
@@ -809,7 +821,7 @@ export default [
     category: 'cache',
     kind: 'correctness',
     title: 'A cached task run with other forwarded args runs again instead of replaying',
-    why: 'The args change what the command does; the output saved for `--a` is wrong for `--b`.',
+    why: 'Arguments passed through to a command change what it does. The output saved for `--a` is wrong for `--b`, so the args must be part of the cache key. Without that, a different command line replays the earlier result, and the user gets output for flags they did not pass.',
     from: ['parity-turbo'],
     workspace: app({
       show: {
@@ -840,6 +852,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'A concurrency of 1 runs independent tasks one at a time',
+    why: 'A concurrency of 1 is how a user says tasks must not overlap, often because they share a port, a database or a lot of memory. Independent tasks then run one at a time. Running two at once breaks that promise and causes failures that depend on timing.',
     from: ['parity-turbo', 'run-concurrency'],
     workspace: {
       projects: Object.fromEntries(
@@ -872,7 +885,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'A directory selector selects the same projects from a subdirectory as from the root',
-    why: 'A runner that read the path from where it ran, or added the project it ran in, selected differently by cwd (turborepo#11432, #11500).',
+    why: 'A directory selector names paths in the workspace, so it means the same thing wherever the command runs. A runner that reads the path from the current directory, or adds the project it was started in, selects different projects by cwd. The same command then gives different results in a script and in a terminal.',
     from: ['parity-turbo'],
     needs: ['filter', 'select-dir', 'uncached-task'],
     workspace: {
@@ -901,13 +914,24 @@ export default [
 
   // ─── stopping a run with servers and probes in flight ─────────────────
 
-  ...(['SIGINT', 'SIGTERM'] as const).map((signal) =>
+  ...(
+    [
+      [
+        'SIGINT',
+        'A server past its ready line should still receive Ctrl-C as SIGINT. Its shutdown hook is often bound to that one signal, to close connections and remove temp files. Forwarded as SIGTERM or SIGKILL, the hook never runs, and the server’s state is left behind while its dependants are torn down.',
+      ],
+      [
+        'SIGTERM',
+        'A ready server should receive a supervisor’s SIGTERM as SIGTERM. Servers bind their graceful shutdown, such as draining open connections, to that signal. Forwarded as another signal, that code is skipped, and requests in flight are cut off instead of drained while the run shuts down.',
+      ],
+    ] as const
+  ).map(([signal, why]) =>
     defineCase({
       id: `failure/${signal.toLowerCase()}-reaches-ready-server-as-itself`,
       category: 'failure',
       kind: 'correctness',
       title: `${signal} to the run reaches a server past its ready line as ${signal}`,
-      why: 'A server’s shutdown hook bound to one signal runs only if that signal arrives (turborepo#444, nx#23585).',
+      why,
       from: ['signal-handling'],
       needs: ['persistent', 'ready'],
       workspace: app({
@@ -931,6 +955,7 @@ export default [
     category: 'failure',
     kind: 'correctness',
     title: 'SIGTERM ends a run whose ready server and the task using it are both running',
+    why: 'SIGTERM ends the whole run: every task in it, not only the one that started first. Here a ready server and the task using it are both running, and both must end. A run that stops one and waits on the other hangs the supervisor that asked it to stop.',
     from: ['signal-handling'],
     needs: ['persistent', 'ready'],
     workspace: app({
@@ -951,7 +976,7 @@ export default [
     category: 'failure',
     kind: 'correctness',
     title: 'SIGTERM ends the child of a ready server that traps TERM, INT and HUP',
-    why: 'The child of a continuous task, trapping every signal it could get, outlived the stop (nx#33460, nx#32438).',
+    why: 'A stop must end every process the run started, even a server’s child that traps TERM, INT and HUP. Without escalating to SIGKILL, that child outlives the run and keeps its port and its output pipe. The next run then fails to bind, or the current one never exits.',
     from: ['signal-handling'],
     needs: ['persistent', 'ready'],
     workspace: app({
@@ -975,7 +1000,7 @@ export default [
     category: 'failure',
     kind: 'correctness',
     title: 'One Ctrl-C lets a ready server finish its cleanup while its dependant is stopped',
-    why: 'A server that reads a second signal as “force quit” skips its cleanup if the stop reaches it twice.',
+    why: 'One Ctrl-C should reach a ready server once. Many servers read a second signal as a request to force quit and skip their cleanup. A runner that sends the stop twice, once to the group and once to the server, leaves lock files and temp state behind.',
     from: ['abort'],
     needs: ['persistent', 'ready'],
     workspace: app({
@@ -999,7 +1024,7 @@ export default [
     category: 'failure',
     kind: 'correctness',
     title: 'Ctrl-C while a command that keys a task is still running ends the run and the command',
-    why: 'A probe left running held the stopped run open until it ended on its own.',
+    why: 'A command that computes part of a task’s key is part of the run and must end with it. If Ctrl-C leaves that probe running, the stopped run stays open until the probe finishes on its own. To the user, the run seems to ignore Ctrl-C.',
     from: ['abort'],
     needs: ['runtime-inputs'],
     workspace: app({

@@ -22,7 +22,7 @@ function edits(c: {
   id: string
   kind: Kind
   title: string
-  why?: string
+  why: string
   from: string[]
   task: TaskSpec
   files: Record<string, string>
@@ -34,7 +34,7 @@ function edits(c: {
     category: 'inputs',
     kind: c.kind,
     title: c.title,
-    ...(c.why ? { why: c.why } : {}),
+    why: c.why,
     from: c.from,
     workspace: { projects: { a: { tasks: { build: c.task }, files: c.files } } },
     steps: [
@@ -66,13 +66,19 @@ const once = (mark: string, then: string): string =>
 const ADDED_READ = 'mkdir -p dist; cat src/* src/*/* extra.txt > dist/out.txt 2>/dev/null; true'
 
 /** The command adds `rel` (project-relative) once, before it reads its inputs; the next run, without it, must not replay it. */
-function addedWhileRunning(id: string, rel: string, title: string, inputs = ['src/**']): Case {
+function addedWhileRunning(
+  id: string,
+  rel: string,
+  title: string,
+  why: string,
+  inputs = ['src/**'],
+): Case {
   return defineCase({
     id: `inputs/${id}`,
     category: 'inputs',
     kind: 'correctness',
     title,
-    why: 'The key was taken before the file existed and the output read it: stored under that key, the next run replays a file that is gone.',
+    why,
     from: ['inputs-moved'],
     workspace: {
       projects: {
@@ -97,14 +103,14 @@ function addedWhileRunning(id: string, rel: string, title: string, inputs = ['sr
 }
 
 /** `lib#gate` (uncached) edits app's src/a.txt once armed; app#build, after it, must not file the edit under the key of the bytes before. */
-function editedBeforeStart(tracked: boolean): Case {
+function editedBeforeStart(tracked: boolean, why: string): Case {
   return defineCase({
     id: `inputs/${tracked ? 'tracked' : 'untracked'}-input-edited-by-dependency`,
     category: 'inputs',
     kind: 'correctness',
     needs: ['uncached-task'],
     title: `${tracked ? 'A committed' : 'An untracked'} input a dependency edits before the task starts is not replayed once put back`,
-    why: 'A key taken before the dependency ran describes the bytes before its edit; the output was built from the edit.',
+    why,
     from: ['inputs-moved'],
     workspace: {
       projects: {
@@ -143,7 +149,7 @@ function editedBeforeStart(tracked: boolean): Case {
 }
 
 /** The file behind a linked input changes once while the command runs; put back, the next run must not replay it. */
-function editedBehindLink(kind: 'directory' | 'file'): Case {
+function editedBehindLink(kind: 'directory' | 'file', why: string): Case {
   const [link, target, inputs, read] =
     kind === 'directory'
       ? ['lib', '../../shared', ['lib/**'], 'lib/a.txt']
@@ -153,7 +159,7 @@ function editedBehindLink(kind: 'directory' | 'file'): Case {
     category: 'inputs',
     kind: 'correctness',
     title: `A file behind a linked input ${kind}, edited while the task runs, is not replayed once put back`,
-    why: 'The link’s target string did not change; the bytes behind it did, and the output was built from them.',
+    why,
     from: ['inputs-moved'],
     workspace: {
       projects: {
@@ -200,6 +206,7 @@ function underHook(
   id: string,
   name: 'GIT_INDEX_FILE' | 'GIT_DIR',
   layout: 'project' | 'vendored',
+  why: string,
 ): Case {
   const value = name === 'GIT_DIR' ? '$ROOT/.git' : '$ROOT/.git/index'
   const env = { [name]: value }
@@ -223,7 +230,7 @@ function underHook(
     category: 'inputs',
     kind: 'correctness',
     title: `Under a git hook’s ${name}, a file a nested repository force-added despite its ignore rule is still an input`,
-    why: 'A hook sets git’s location variables for the outer repository; the nested repository’s files are listed by its own index.',
+    why,
     from: ['nested-repo-inputs'],
     workspace: { projects: { [name_]: project } },
     steps: [
@@ -257,7 +264,7 @@ export default [
     id: 'inputs/negation-across-two-globs',
     kind: 'efficiency',
     title: 'A `!` input takes its files back from every positive glob that matched them',
-    why: 'The negation narrows the whole set, not only the glob listed beside it.',
+    why: 'A negated input removes its files from the task’s whole input set, not only from the glob listed next to it. If the exclusion applied to one positive glob only, a spec file matched by another glob would still key the build. Every edit to a spec file would then rebuild output that never reads it.',
     from: ['inputs'],
     task: reads(['src/**/*.ts', 'src/**/*.js', '!src/**/*.spec.ts'], 'src/a.ts src/b.js'),
     files: { 'src/a.ts': 'a\n', 'src/b.js': 'b\n', 'src/c.spec.ts': 'c\n' },
@@ -271,7 +278,7 @@ export default [
     id: 'inputs/single-star-dotfile',
     kind: 'correctness',
     title: 'An input `src/*` keys the dotfile `src/.env`',
-    why: 'Shell-style globbing skips dotfiles unless asked; a `.env` the task reads would then change no key.',
+    why: 'An input glob lists the files a task reads, so `src/*` covers every file in `src`, dotfiles included. Shell-style globbing hides dotfiles unless asked, and a `.env` the task reads would then change no key. Editing it would replay output built from the old values under a green run.',
     from: ['inputs'],
     task: reads(['src/*'], 'src/.env'),
     files: { 'src/.env': 'one\n', 'src/index.ts': 'i\n' },
@@ -282,7 +289,7 @@ export default [
     id: 'inputs/empty-inputs-replays',
     kind: 'efficiency',
     title: 'A cached task declaring empty inputs replays after a project file changes',
-    why: 'Empty inputs is a declaration that the task reads no file: it is keyed on its command alone.',
+    why: 'Empty inputs is an explicit statement that the task reads no file, so it is keyed on its command and config alone. It differs from listing no inputs at all, which says nothing and is not cached. Rerunning it on every project edit would ignore what the user declared and waste the run the cache was meant to save.',
     from: ['inputs'],
     task: { command: 'mkdir -p dist && echo ok > dist/out.txt', inputs: [], outputs: ['dist/**'] },
     files: { 'src/a.txt': 'a\n' },
@@ -293,7 +300,7 @@ export default [
     id: 'inputs/colon-name-by-wildcard',
     kind: 'correctness',
     title: 'An input `src/*:*.txt` keys a file whose name holds a colon',
-    why: 'A colon is a plain character in a POSIX name (vercel/turborepo#6847).',
+    why: 'A colon is a plain character in a POSIX file name, so a wildcard must match it like any other. A tool that reads it as a drive or scheme separator drops the file from the key. Edits to that file then replay the old output, and the build ships content that no longer matches the source.',
     from: ['inputs'],
     task: reads(['src/*:*.txt'], '"src/a:b.txt"'),
     files: { 'src/a:b.txt': 'one\n', 'src/c.txt': 'c\n' },
@@ -304,6 +311,7 @@ export default [
     id: 'inputs/colon-name-literal',
     kind: 'correctness',
     title: 'An input naming `src/a:b.txt` outright keys it, untracked or committed',
+    why: 'An input that names a file outright asks for exactly that file, whatever characters its name holds and whether git tracks it yet. A colon must not be parsed as a separator. Skipping the file lets edits to it replay a stale result, both before and after it is committed.',
     from: ['inputs'],
     task: reads(['src/a:b.txt', 'src/x:y.txt'], '"src/a:b.txt" "src/x:y.txt"'),
     files: { 'src/a:b.txt': 'a\n' },
@@ -318,6 +326,7 @@ export default [
     id: 'inputs/colon-name-negated',
     kind: 'efficiency',
     title: 'A `!src/a:b.txt` input takes the file with the colon back',
+    why: 'A negated input names a file the user said does not affect the task, and that holds for a name with a colon too. If the negation fails to parse, the file stays in the key. Every edit to it then reruns work that cannot change the output, on every machine and in CI.',
     from: ['inputs'],
     task: reads(['src/**', '!src/a:b.txt'], 'src/c.txt'),
     files: { 'src/a:b.txt': 'one\n', 'src/c.txt': 'c\n' },
@@ -328,7 +337,7 @@ export default [
     id: 'inputs/backslash-name',
     kind: 'correctness',
     title: 'An input named with a backslash and a double quote is keyed',
-    why: 'Listed without `-z`, git C-quotes such a name and the quoted path names no file.',
+    why: 'A file name can hold a backslash or a double quote, and it must be keyed by its real bytes. Listed without `-z`, git C-quotes such a name, and a tool that reads the quoted form looks up a path that does not exist. The file drops out of the key, so edits to it replay a stale result.',
     from: ['inputs'],
     task: reads(['src/**'], `src/a.txt 'src/back\\slash.txt' 'src/quo"te.txt'`),
     files: { 'src/a.txt': 'a\n', 'src/back\\slash.txt': 'b\n', 'src/quo"te.txt': 'q\n' },
@@ -343,7 +352,7 @@ export default [
     category: 'inputs',
     kind: 'correctness',
     title: 'An input whose name opens with a byte-order mark is keyed, untracked and committed',
-    why: 'A decoder that strips a leading U+FEFF loses the name: the file drops out of the key and every edit replays.',
+    why: 'A file name is the exact bytes on disk, including a leading U+FEFF byte-order mark. A decoder that strips the mark loses the name, so the file drops out of the key. Every edit to it then replays the old output, whether the file is untracked or committed.',
     from: ['inputs'],
     workspace: {
       projects: {
@@ -373,6 +382,7 @@ export default [
     id: 'inputs/new-untracked-directory',
     kind: 'correctness',
     title: 'A file in a new untracked directory is an input; an ignored install inside it is not',
+    why: 'A new file under an input glob is part of what the task reads, even in a directory git has never seen. Missing it replays output built without that file. An ignored `node_modules` install inside the same directory is local state, not source, so it must not key the task and rerun it after every install.',
     from: ['inputs'],
     task: reads(['src/**'], 'src/a.txt'),
     files: { 'src/a.txt': 'a\n' },
@@ -386,7 +396,7 @@ export default [
     id: 'inputs/git-info-exclude',
     kind: 'efficiency',
     title: 'A file the repository’s `.git/info/exclude` ignores changes nothing',
-    why: 'An exclude is an ignore rule like `.gitignore`, kept out of the tree.',
+    why: '`.git/info/exclude` is an ignore rule like `.gitignore`, only kept out of the committed tree. Ignored files are local state: scratch files, editor temp files, local logs. Keying a task on them reruns it whenever such a file changes, and the same commit gets different keys on different machines.',
     from: ['inputs'],
     task: reads(['src/**'], 'src/a.txt'),
     files: { 'src/a.txt': 'a\n' },
@@ -402,7 +412,7 @@ export default [
     category: 'inputs',
     kind: 'correctness',
     title: 'Pointing a dangling input link at another missing target runs the task again',
-    why: 'A link is an input in its own right: its target string is what it holds, with or without a file behind it.',
+    why: 'A symbolic link is an input in its own right: its target string is what it holds, with or without a file behind it. A command can read that string, as `readlink` does here. A tool that skips dangling links keeps the same key after the target changes and replays output naming the old target.',
     from: ['inputs'],
     workspace: {
       projects: {
@@ -434,6 +444,7 @@ export default [
     category: 'inputs',
     kind: 'correctness',
     title: 'A directory link back into its own input tree neither hangs nor fails the run',
+    why: 'A directory link that points back into its own tree is legal, and it turns up in vendored and generated layouts. A walker that follows links without tracking where it has been loops forever or fails on an endless path. A hung CI job or a crash over a harmless link blocks every build in the repository.',
     from: ['inputs'],
     workspace: one(),
     steps: [
@@ -447,7 +458,7 @@ export default [
     category: 'inputs',
     kind: 'correctness',
     title: 'Named pipes under the input and output globs neither hang the run nor stop a replay',
-    why: 'A pipe holds no bytes to hash or store; opening one to read blocks until something writes.',
+    why: 'A named pipe holds no bytes to hash or store, and opening one to read blocks until something writes. A tool that reads every matched path as a file hangs the run on the first pipe. Pipes under input or output globs must be passed over, so the build still runs, replays, and reruns on a real edit.',
     from: ['inputs'],
     workspace: {
       projects: {
@@ -476,6 +487,7 @@ export default [
     id: 'inputs/file-replaced-by-directory',
     kind: 'correctness',
     title: 'A committed input replaced by a directory keys what the directory holds',
+    why: 'When a committed file becomes a directory of the same name, the task now reads the files inside it. A tool that trusts git’s record of the old file, or skips the path as a type mismatch, keeps the old key. Edits inside the new directory then replay output built from a file that is gone.',
     from: ['inputs'],
     task: reads(['src/**'], 'src/a.txt $(test -d src/x && echo src/x/in || echo src/x)'),
     files: { 'src/a.txt': 'a\n', 'src/x': 'x\n' },
@@ -491,7 +503,7 @@ export default [
     kind: 'efficiency',
     title:
       'A project nested in `foo` keeps its files out of `foo`’s inputs beside a sibling `foo-bar`',
-    why: '`foo-bar` sorts between `foo` and `foo/`: a sorted scan that stops at it never finds `foo/inner`.',
+    why: 'A nested project’s files belong to it alone, so an edit there must not rerun the project around it. Here `foo-bar` sorts between `foo` and `foo/`, and a sorted scan that stops at it never sees `foo/inner` as nested. An edit in `inner` then reruns `foo` too, work nothing asked for.',
     from: ['nested-dirs'],
     workspace: {
       projects: {
@@ -532,6 +544,7 @@ export default [
     category: 'inputs',
     kind: 'efficiency',
     title: 'A project nested two deep keeps its files out of both projects around it',
+    why: 'Each project owns its own directory, and a project nested inside another is cut out of the outer one’s inputs. That must hold at any depth, not only one level down. If a leaf’s edit leaked into both projects above it, one change would rebuild three projects, and the waste grows with each level.',
     from: ['nested-dirs'],
     workspace: {
       projects: {
@@ -571,7 +584,7 @@ export default [
     id: 'inputs/index-without-stats',
     kind: 'correctness',
     title: 'A same-size edit is seen after `git read-tree` leaves the index without file stats',
-    why: 'An index entry with no stat says nothing about the file on disk (turborepo’s stale-index test).',
+    why: 'An index entry with no stat data says nothing about the file on disk. `git read-tree` leaves the index that way, and a tool that reads it as a sign of a clean file keys the committed blob, not the edited bytes. A same-size edit then replays the old output under a green run.',
     from: ['git-racy-index'],
     task: cached,
     files: { 'src/a.txt': 'a\n' },
@@ -584,6 +597,7 @@ export default [
     category: 'inputs',
     kind: 'correctness',
     title: 'An edit made before `git read-tree` wiped the index stats still runs the task again',
+    why: 'An edit made before `git read-tree` is still an edit: the bytes on disk differ from the last build. Reading the tree drops the index’s stat data, so a tool comparing stats against the index cannot tell. It must look at the file itself, or the next run replays output built from the old bytes.',
     from: ['git-racy-index'],
     workspace: one(),
     steps: [
@@ -601,7 +615,7 @@ export default [
     category: 'inputs',
     kind: 'correctness',
     title: 'A gitignored input named outright keys its creation, each edit, and its removal',
-    why: 'Naming an ignored file (`.env.local`) asks for it; skipping it replays a result built from other values.',
+    why: 'Naming an ignored file such as `.env.local` in the inputs asks for it, even though broad globs skip ignored files. Its creation, each edit and its removal all change what the task reads. Skipping any of them replays a result built from other values, such as a bundle pointed at the wrong API.',
     from: ['ignored-inputs'],
     workspace: {
       projects: {
@@ -635,7 +649,7 @@ export default [
     id: 'inputs/gitignored-directory-glob',
     kind: 'correctness',
     title: 'An input `gen/**` keys every file under the gitignored directory `gen`',
-    why: 'A glob whose fixed prefix is an ignored directory asks for that directory.',
+    why: 'A glob whose fixed prefix is an ignored directory asks for that directory by name. Generated sources often live in an ignored `gen/`, and the build reads them. Skipping its files replays output built from the old generated code after every regeneration.',
     from: ['ignored-inputs'],
     task: reads(['src/**', 'gen/**'], 'gen/deep/a.json'),
     files: { 'src/a.txt': 'a\n', 'gen/deep/a.json': '1\n', '.gitignore': 'gen/\n' },
@@ -646,6 +660,7 @@ export default [
     id: 'inputs/gitignored-directory-narrow-glob',
     kind: 'correctness',
     title: 'An input `gen/*.js` keys a matching file in the gitignored directory `gen`',
+    why: 'An input `gen/*.js` names files in the ignored directory `gen`, so the matching files are inputs. The ignore rule decides what git tracks, not what the task reads. Leaving the match out replays a stale result after the generator rewrites it. The glob still limits the key to the files it matches.',
     from: ['ignored-inputs'],
     task: reads(['src/**', 'gen/*.js'], 'gen/b.js'),
     files: {
@@ -661,6 +676,7 @@ export default [
     id: 'inputs/gitignored-directory-narrow-glob-rest',
     kind: 'efficiency',
     title: 'An input `gen/*.js` over a gitignored `gen` does not key a JSON file beside the match',
+    why: 'Naming an ignored directory with a narrow glob asks only for what that glob matches. A JSON file beside the `.js` match is outside it and stays local state. Keying the whole ignored directory would rerun the task on every unrelated generated file. The narrow glob is how the user says which generated files matter.',
     from: ['ignored-inputs'],
     task: reads(['src/**', 'gen/*.js'], 'gen/b.js'),
     files: {
@@ -677,7 +693,7 @@ export default [
     category: 'inputs',
     kind: 'correctness',
     title: 'An input naming a generated client under `node_modules` keys it',
-    why: 'A generator (`prisma generate`) writes there; a build over the client replays a stale output when its edit is skipped.',
+    why: 'A generator such as `prisma generate` writes its client under `node_modules`, and a build that compiles against it reads it. Naming that path asks for it even though `node_modules` is ignored. Skipping it replays output checked against the old client, and the mismatch shows up only at runtime.',
     from: ['ignored-inputs'],
     workspace: {
       projects: {
@@ -708,7 +724,7 @@ export default [
     category: 'inputs',
     kind: 'correctness',
     title: 'An input `gen/**` over a gitignored `gen` keys a `node_modules` inside it',
-    why: 'The entry asks for the ignored directory whole; nothing under it is skipped by name.',
+    why: 'An entry naming an ignored directory asks for the whole directory; nothing under it is dropped by name. A `node_modules` inside `gen` is part of what was asked for. Skipping it by its usual meaning replays a stale result after that code changes. Explicit config beats the usual skip rules.',
     from: ['ignored-inputs'],
     workspace: {
       projects: {
@@ -730,7 +746,7 @@ export default [
     id: 'inputs/brace-of-gitignored-files',
     kind: 'correctness',
     title: 'A brace input `{gen/a.txt,gen/b.txt}` keys each gitignored file it names',
-    why: 'A brace of whole paths names each one outright, as its expansions would.',
+    why: 'A brace of whole paths names each one outright, as its expansions written out would. Each named file is an input even though git ignores it. Treating the brace as a broad glob that skips ignored files replays output built from the old file. The brace is only shorthand for listing the paths one by one.',
     from: ['ignored-inputs'],
     task: reads(['{gen/a.txt,gen/b.txt}'], 'gen/a.txt'),
     files: { 'gen/a.txt': '1\n', 'gen/b.txt': 'b\n', '.gitignore': 'gen/\n' },
@@ -741,6 +757,7 @@ export default [
     id: 'inputs/brace-of-gitignored-directories',
     kind: 'correctness',
     title: 'A brace input `{gen,out}/**` keys the files of both gitignored directories',
+    why: '`{gen,out}/**` means `gen/**` and `out/**`, and each alternative names an ignored directory outright. Both trees are what the task reads. A tool that treats the brace differently from the two separate globs keys only one of them, and edits to the other replay stale output.',
     from: ['ignored-inputs'],
     task: reads(['{gen,out}/**'], 'gen/a.txt out/x.txt'),
     files: { 'gen/a.txt': '1\n', 'out/x.txt': 'x\n', '.gitignore': 'gen/\nout/\n' },
@@ -754,7 +771,7 @@ export default [
     id: 'inputs/ignored-directory-kept-by-gitkeep',
     kind: 'correctness',
     title: 'An input `gen/**` keys an ignored file beside the `.gitkeep` that keeps `gen` in git',
-    why: 'git lists the `.gitkeep`, so `gen` reads as tracked; the ignored files beside it are still what the task reads.',
+    why: 'git lists the `.gitkeep`, so `gen` looks tracked, but the files beside it are ignored and still what the task reads. A tool that takes git’s listing of a tracked directory as complete misses them. Each regeneration of `gen/client.ts` then replays output built from the old client.',
     from: ['ignored-inputs'],
     task: reads(['gen/**'], 'gen/client.ts'),
     files: { 'gen/.gitkeep': '', 'gen/client.ts': 'v1\n', '.gitignore': 'gen/*\n!gen/.gitkeep\n' },
@@ -766,6 +783,7 @@ export default [
     kind: 'correctness',
     title:
       'An input `out/**` over an ignored `out` keys an untracked file beside a force-added one',
+    why: 'One force-added file makes git list part of the ignored `out`, but the untracked files beside it are still under the glob. A tool that trusts git’s listing for the directory sees only the committed file. Edits to the rest then replay a stale result. The glob, not git’s listing, decides what is an input.',
     from: ['ignored-inputs'],
     task: reads(['out/**'], 'out/a.txt out/b.txt'),
     files: { 'out/a.txt': 'a\n', 'out/b.txt': 'b1\n', '.gitignore': 'out/\n' },
@@ -780,7 +798,7 @@ export default [
     category: 'inputs',
     kind: 'correctness',
     title: 'A task that rewrites its own input runs again once the old bytes are put back',
-    why: 'The result was made from the bytes before the rewrite but describes the bytes after: replayed for the old bytes, it leaves them unformatted (vercel/turborepo#10111).',
+    why: 'A task that rewrites its own input, like a formatter, made its result from the bytes before the rewrite but leaves the bytes after on disk. Stored under the old bytes’ key, a later checkout of the unformatted file replays a no-op and leaves it unformatted. The task must run again so the file really is formatted.',
     from: ['inputs-moved'],
     workspace: {
       projects: {
@@ -808,7 +826,7 @@ export default [
     category: 'inputs',
     kind: 'correctness',
     title: 'An input edited and put back while the task runs does not replay the edited result',
-    why: 'The bytes match the key again, but the output was built from the edit: filed under the key, it replays over the source.',
+    why: 'A key describes the bytes the task read, and here the command read an edit that was undone before it finished. The bytes on disk match the key again, but the output came from the edit. Filed under that key, it replays the edited result over a source that no longer holds it.',
     from: ['inputs-moved'],
     workspace: one({
       command: `${once('edited', "printf 'EDITED\\n' > src/a.txt")}; mkdir -p dist && cat src/a.txt > dist/out.txt; ${once('reverted', "printf 'a\\n' > src/a.txt")}`,
@@ -829,7 +847,7 @@ export default [
     category: 'inputs',
     kind: 'correctness',
     title: 'An input another task swaps out and puts back while a task reads it is not replayed',
-    why: 'The reader saw the swapped bytes; the key, before or after, describes the original ones.',
+    why: 'Another task swapped the file while the reader ran, so the reader saw the swapped bytes. The key, taken before or after, describes the original bytes. Stored under it, the bad result replays on every later run with the good file, until someone clears the cache by hand.',
     from: ['inputs-moved'],
     workspace: {
       projects: {
@@ -860,25 +878,40 @@ export default [
     ],
   }),
 
-  editedBeforeStart(true),
-  editedBeforeStart(false),
-  editedBehindLink('directory'),
-  editedBehindLink('file'),
+  editedBeforeStart(
+    true,
+    'The key must describe the bytes the command read, not the bytes before an earlier task ran. Here a dependency edits a committed input just before the task starts. A key taken before the dependency ran files the edited output under the old bytes, and putting those bytes back replays the edit.',
+  ),
+  editedBeforeStart(
+    false,
+    'An untracked input is read the same way as a committed one, so the same rule holds. A dependency edits it just before the task starts, and the output is built from the edit. Filed under the key of the bytes before, it replays the edited result once the original bytes come back.',
+  ),
+  editedBehindLink(
+    'directory',
+    'A linked directory’s target string did not change, but a file behind it did while the command ran. The output was built from the new bytes. Stored under the key of the old ones, it replays the edited result once they are put back, and the link gives no sign anything moved.',
+  ),
+  editedBehindLink(
+    'file',
+    'A linked input file holds a target string, and the bytes behind it are what the command reads. Here those bytes changed while the task ran. Stored under the key of the bytes before, the output replays the edited content after the original is restored.',
+  ),
 
   addedWhileRunning(
     'added-while-running',
     'src/new.txt',
     'A file the command adds under an input glob is not replayed once it is gone',
+    'A key must describe what the task read. Here the command created `src/new.txt` after the key was taken and read it into the output. Stored under that key, the next run replays content from a file that no longer exists. A clean build of the same sources would not produce it.',
   ),
   addedWhileRunning(
     'added-in-new-directory-while-running',
     'src/sub/new.txt',
     'A file added in a directory created while the task runs is not replayed once it is gone',
+    'The command created a new directory with a file in it after the key was taken, then read that file. The key describes the tree without the directory. Replayed under it, the output carries content from a file that is gone, and a clean build would not reproduce it.',
   ),
   addedWhileRunning(
     'named-input-added-while-running',
     'extra.txt',
     'A named input absent when the task started, then created by it, is not replayed once gone',
+    'A named input that is missing when the key is taken is keyed as absent. The command then created it and read it into the output. Stored under the key for its absence, the output replays content from that file the next time it is missing, which a clean build would not produce.',
     ['src/**', 'extra.txt'],
   ),
 
@@ -888,7 +921,7 @@ export default [
     kind: 'correctness',
     title:
       'A directory link added under an input glob while the task runs is not replayed once gone',
-    why: 'The link’s name matches no `*.txt`, but the files behind it do, and the command read them.',
+    why: 'The command created a link whose name matches no `*.txt`, but the files behind it do, and the command read them. The key was taken without them. Stored under it, the output replays content from files that are no longer reachable once the link is gone.',
     from: ['inputs-moved'],
     workspace: {
       projects: {
@@ -918,6 +951,7 @@ export default [
     kind: 'efficiency',
     title:
       'A task writing an ignored file, or one outside its inputs, still replays on the next run',
+    why: 'A task that writes a log or another ignored file, or a file outside its inputs, has not changed its own inputs. Those writes are side effects and local state, not source. Treating them as input changes would keep the task from ever replaying, so it would rerun on every build.',
     from: ['inputs-moved'],
     workspace: {
       projects: {
@@ -941,10 +975,30 @@ export default [
 
   // ── nested repositories under a git hook ────────────────────────────────
 
-  underHook('hook-index-project-in-nested-repo', 'GIT_INDEX_FILE', 'project'),
-  underHook('hook-git-dir-project-in-nested-repo', 'GIT_DIR', 'project'),
-  underHook('hook-index-nested-repo-in-project', 'GIT_INDEX_FILE', 'vendored'),
-  underHook('hook-git-dir-nested-repo-in-project', 'GIT_DIR', 'vendored'),
+  underHook(
+    'hook-index-project-in-nested-repo',
+    'GIT_INDEX_FILE',
+    'project',
+    'Git hooks run with `GIT_INDEX_FILE` set to the outer repository’s index. A tool that passes it on reads the wrong index when it lists a project inside a nested repository. The force-added file then drops out of the key, and a build started from a hook, such as pre-commit, replays a stale result.',
+  ),
+  underHook(
+    'hook-git-dir-project-in-nested-repo',
+    'GIT_DIR',
+    'project',
+    'Git hooks can run with `GIT_DIR` pointing at the outer repository. Passed through to the nested repository’s listing, it makes git describe the wrong repository. A file the nested repository tracks despite its ignore rule then goes unkeyed, and a pre-commit build replays stale output.',
+  ),
+  underHook(
+    'hook-index-nested-repo-in-project',
+    'GIT_INDEX_FILE',
+    'vendored',
+    'A project can vendor a repository of its own under an input glob. Under a hook’s `GIT_INDEX_FILE`, a tool that lists it with the outer index loses the files that repository force-added. Edits to them replay a stale result only when run from a hook, which makes the bug hard to see.',
+  ),
+  underHook(
+    'hook-git-dir-nested-repo-in-project',
+    'GIT_DIR',
+    'vendored',
+    'The variables a hook sets describe the outer repository, not one vendored inside a project. With `GIT_DIR` passed on, listing the vendored repository reads the outer one instead. A file it force-added despite its ignore rule falls out of the key, and edits to it replay old output.',
+  ),
 
   // ── globs that are no plain path ────────────────────────────────────────
 
@@ -953,7 +1007,7 @@ export default [
     category: 'inputs',
     kind: 'correctness',
     title: 'An input `src/{b}.txt` never replays a stale result for either file it could name',
-    why: 'A brace of one alternative reads as `src/b.txt` to one glob library and as the literal name to another: whichever it keys, the other changes unseen. Refusing it is right.',
+    why: 'A brace with one alternative reads as `src/b.txt` to one glob library and as the literal name `src/{b}.txt` to another. Whichever file a tool keys, the other can change unseen and replay a stale result. Refusing the spelling, or keying both files, is right; replaying old bytes is not.',
     from: ['one-alternative-brace'],
     workspace: {
       projects: {
@@ -978,7 +1032,7 @@ export default [
     kind: 'efficiency',
     needs: ['env-inputs'],
     title: 'Listing the same declared variables in another order still replays',
-    why: 'The variables are a set: their order in the config says nothing about the task.',
+    why: 'Declared environment variables are a set: their order in the config says nothing about what the task reads. Reordering the list is a cosmetic edit with the same values. Treating it as a change misses the cache for every task the edit touched, on every machine.',
     from: ['inputs'],
     workspace: one({
       command: 'mkdir -p dist && echo "$A $B $C" > dist/out.txt',
@@ -1014,7 +1068,7 @@ export default [
     category: 'outputs',
     kind: 'correctness',
     title: 'An output `**/*.js` never deletes or captures a nested project’s built files',
-    why: 'Project boundaries are hard: the nested project’s build output is its own.',
+    why: 'Project boundaries are hard: a nested project’s build output belongs to that project. An outer output glob like `**/*.js` must not capture it into the outer task’s cache entry or clear it before a run. Otherwise building the outer project deletes or overwrites files the inner project made, local edits included.',
     from: ['inputs'],
     workspace: {
       projects: {
@@ -1076,7 +1130,7 @@ export default [
     category: 'outputs',
     kind: 'correctness',
     title: 'An output listed twice, and one inside another, restores each file once and intact',
-    why: 'A file stored twice in one entry broke the restore (vercel/turborepo#14004).',
+    why: 'Output globs that list a file twice, or overlap, still describe one set of files. Storing a file twice in one cache entry has broken restores before, leaving files missing or corrupt. Each file must be stored once and come back intact, however the globs overlap.',
     from: ['inputs'],
     workspace: one({
       command: 'mkdir -p dist/sub && cp src/a.txt dist/a.txt && cp src/a.txt dist/sub/b.txt',
@@ -1103,7 +1157,7 @@ export default [
     kind: 'correctness',
     title:
       'A replayed `app/**` leaves the route `app/[id]` a later task adds, and drops a stray beside it',
-    why: 'Read as a class, `app/\\[id\\]` sets aside `app/i` instead: the stray survives and the route is judged stray.',
+    why: 'In an output glob, `app/\\[id\\]` is the literal directory `[id]`, as file-system routes are often named. Read as a character class, it sets aside `app/i` instead. A replay then keeps the stray file and deletes the real route a later task added, and the app ships without that page.',
     from: ['task-glob-brackets'],
     workspace: {
       sharedOutputs: true,

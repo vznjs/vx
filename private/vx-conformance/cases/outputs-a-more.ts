@@ -302,7 +302,7 @@ export default [
     needs: ['uncached-task'],
     title:
       'A task reading a file an uncached task before it writes builds from the bytes written this run',
-    why: 'Keyed from the file as the run found it, the reader replays the previous seed’s output under a green run.',
+    why: 'A task’s key reflects the bytes it reads when it runs, not the bytes on disk when the run started. Here an uncached task rewrites `config.json` just before the reader. Keyed from the file as the run found it, the reader replays the previous seed’s output, so the build ships old config under a green run.',
     from: ['undeclared-writes'],
     workspace: {
       projects: {
@@ -319,7 +319,7 @@ export default [
     needs: ['uncached-task'],
     title:
       'A committed file an uncached task rewrites ahead of its reader keys the reader on the new bytes',
-    why: 'Clean at the start of the run, the file’s committed content is not what the reader reads.',
+    why: 'A committed, clean file can still change during a run. Here `config.json` is clean in git at the start, but an uncached task overwrites it before the reader runs. Keying the reader from git’s committed content instead of the bytes it reads replays the output of a different config, and the run stays green.',
     from: ['undeclared-writes'],
     workspace: {
       projects: {
@@ -344,6 +344,7 @@ export default [
     needs: ['uncached-task'],
     title:
       'A package.json listed as an input and rewritten by an uncached task before its reader keys the reader on the new bytes',
+    why: 'A `package.json` named in the inputs is an input like any other, even though a tool also reads it as a manifest. Here an uncached task rewrites it before the reader. Keying from the copy read at startup replays output built from an older manifest, so a stale version field ships under a green run.',
     from: ['undeclared-writes'],
     workspace: {
       projects: {
@@ -378,6 +379,7 @@ export default [
     needs: ['uncached-task'],
     title:
       'A root input in a dependency that an uncached task there rewrites keys the dependant on the new bytes',
+    why: 'An input is keyed from what it holds when the task runs, even when it lives in another project and that project’s task writes it. Here `lib`’s uncached `gen` rewrites `lib/config.json` before `app` reads it. Keying `app` from the bytes at the start of the run replays output made from a different config.',
     from: ['undeclared-writes'],
     workspace: {
       projects: {
@@ -414,6 +416,7 @@ export default [
     needs: ['uncached-task'],
     title:
       'An uncached writer reached through a task that does nothing still keys its reader on what it wrote',
+    why: 'Ordering passes through every task in the graph, even one that runs nothing. Here a do-nothing task sits between the uncached writer and the reader. If the reader is keyed before the writer runs because the writer is not its direct dependency, it replays output from the previous seed under a green run.',
     from: ['undeclared-writes'],
     workspace: {
       projects: {
@@ -436,6 +439,7 @@ export default [
     needs: ['uncached-task'],
     title:
       'A cached task rewriting a file two do-nothing tasks ahead of its reader keys the reader on the new bytes',
+    why: 'A cached task can write files too, and a reader further down is keyed on what it wrote. Here `fmt` rewrites `config.json`, and two tasks that do nothing sit between it and the reader. Keying the reader from the file as the run found it, before `fmt` ran, replays output built from the previous seed under a green run.',
     from: ['undeclared-writes'],
     workspace: {
       projects: {
@@ -459,7 +463,7 @@ export default [
     kind: 'correctness',
     needs: ['uncached-task'],
     title: 'Editing the inputs of an uncached task in a dependency reruns its cached dependant',
-    why: 'The uncached task is keyed on its inputs whether it caches or not; its dependant folds that key.',
+    why: 'A task that is not cached still has inputs, and its dependants still see them change. Here `ui#bare` is uncached and `app#test` depends on it. Its key comes from its inputs whether it caches or not, and the dependant folds that key, so editing `ui` reruns `app#test`. Otherwise the tests replay green against code they never ran on.',
     from: ['keyed-projects'],
     workspace: keyedThrough(UNCACHED_UI, '^bare'),
     steps: [
@@ -476,6 +480,7 @@ export default [
     needs: ['uncached-task'],
     title:
       'Editing a dependency’s sources reruns a cached dependant reached through an uncached task',
+    why: 'A chain of dependencies passes through an uncached task without breaking. Here `app#test` depends on `ui#build`, which is uncached and depends on `ui#source`. If the uncached task in the middle cuts the chain of keys, an edit to `ui`’s sources leaves `app#test` replaying a result from before the edit, and a failing test goes unseen.',
     from: ['keyed-projects'],
     workspace: keyedThrough(
       {
@@ -497,6 +502,7 @@ export default [
     kind: 'efficiency',
     needs: ['uncached-task'],
     title: 'Editing a project nothing depends on lets a task with an uncached dependency replay',
+    why: 'An uncached dependency does not make its dependants uncacheable. Its key comes from its inputs, so only an edit those inputs see reruns the dependant. Here the edit is in a project nothing depends on. Rerunning `app#test` for it spends CI time on every change anywhere, and makes the cache useless above any uncached task.',
     from: ['keyed-projects'],
     workspace: keyedThrough(UNCACHED_UI, '^bare'),
     steps: [
@@ -512,6 +518,7 @@ export default [
     category: 'outputs',
     kind: 'correctness',
     title: 'An output symlink to a directory comes back as the same link',
+    why: 'A link to a directory in the outputs is part of the tree and comes back as a link. Restored as a copy of the directory, the two paths split apart, so a later write to one no longer shows in the other. A replay must leave the tree the command made: the real directory, with its files, and the link to it.',
     from: ['output-links'],
     workspace: {
       projects: {
@@ -550,7 +557,7 @@ export default [
     category: 'outputs',
     kind: 'correctness',
     title: 'A link with a 300-byte target and an empty directory 300 bytes deep come back',
-    why: 'Past tar’s 100-byte name fields: an archive that truncates them restores a different tree.',
+    why: 'Outputs can have long paths, and empty directories are part of the tree. Classic tar headers hold 100 bytes for a name or a link target; past that an archive needs an extended header. One that truncates instead restores a link to the wrong place and drops the deep empty directory: a different tree under a green run.',
     from: ['output-links'],
     workspace: {
       projects: {
@@ -585,7 +592,7 @@ export default [
     category: 'outputs',
     kind: 'correctness',
     title: 'An output link whose target is not there comes back as the same link',
-    why: 'A build may leave a link for a later step to fill; restoring nothing drops part of its tree.',
+    why: 'A link whose target does not exist yet is still output: a build may leave it for a later step, or for the program at runtime, to fill. Saving only what resolves drops the link, and a replay then gives a tree without it. Restoring it with its exact target text keeps a replay equal to a real run.',
     from: ['output-links'],
     workspace: {
       projects: {
@@ -613,6 +620,7 @@ export default [
     category: 'outputs',
     kind: 'correctness',
     title: 'An output link pointed elsewhere by hand, at the same length, is put back',
+    why: 'A link output edited by hand is like a file edited by hand: the next run puts back what the inputs produce. Here the link is pointed at `b.txt` instead of `a.txt`. The two targets have the same length, so a check of size alone sees no change; only comparing the target text catches it. Otherwise the wrong file ships through the link.',
     from: ['output-links'],
     workspace: {
       projects: {
@@ -642,6 +650,7 @@ export default [
     kind: 'correctness',
     title:
       'Paths a `!` output entry takes back are left in place by a run and never come back from a replay',
+    why: 'A `!` entry says a path under the output directory is not the task’s. A run leaves such files in place, here `keep.txt` and `fixture.txt` that the user keeps there. A replay restores the real outputs but never brings back an excluded file, like the `.tmp` scratch file the command wrote. Excluded means neither cleaned nor stored.',
     from: ['negated-outputs'],
     workspace: negated(),
     steps: [
@@ -680,7 +689,7 @@ export default [
     category: 'outputs',
     kind: 'correctness',
     title: 'A replay restores the outputs and leaves an edited path a `!` entry takes back alone',
-    why: 'The `!` entry says the file is not the task’s: a replay that cleans or overwrites it loses the user’s bytes.',
+    why: 'The `!` entry says the file is not the task’s output, so it belongs to the user. Here the user edits `fixture.txt` and deletes the real outputs; the replay restores the outputs and leaves the edited file as it is. A replay that cleans the whole directory or writes over the file loses the user’s bytes with no warning.',
     from: ['negated-outputs'],
     workspace: negated(),
     steps: [
@@ -712,6 +721,7 @@ export default [
     category: 'outputs',
     kind: 'correctness',
     title: 'A stray file in an output directory with `!` entries is gone after a replay',
+    why: '`!` entries carve out named paths; they do not turn the rest of the directory into user space. A stray file that is neither an output nor excluded must still go on a replay, or it ships with the build. Only the paths the `!` entries name are kept.',
     from: ['negated-outputs'],
     workspace: negated(),
     steps: [
@@ -737,6 +747,7 @@ export default [
     category: 'outputs',
     kind: 'correctness',
     title: 'Editing a path a `!` output entry takes back, and the inputs name, reruns the task',
+    why: 'A path can be excluded from outputs and still be an input. Here `out/keep.txt` is taken back by a `!` entry and named in the inputs, so editing it reruns the task. A tool that leaves a path out of the key because it sits under an output directory replays a result built from the old file.',
     from: ['negated-outputs'],
     workspace: negated(),
     steps: [
@@ -755,6 +766,7 @@ export default [
     kind: 'correctness',
     title:
       'A task adding to the tree of the task before it keeps its `!` scratch file out of what a replay brings back',
+    why: 'When a later task adds to the earlier task’s output tree, each task’s `!` entries still apply to its own outputs. Here `types` excludes `*.tmp`, so a replay restores `a.js` and `a.d.ts` and leaves the scratch file out. Bringing back an excluded file puts local state into a tree that ships.',
     from: ['negated-outputs'],
     workspace: negatedPair(['out/**', '!out/keep.txt', '!out/sub/**'], {
       command: 'echo d > out/a.d.ts && echo t > out/types.tmp',
@@ -789,7 +801,7 @@ export default [
     category: 'outputs',
     kind: 'correctness',
     title: 'Two tasks with disjoint outputs, each with a `!` entry, both run',
-    why: 'Their outputs share no path; a `!` entry is not an overlap.',
+    why: 'Two tasks conflict only when they write the same path. Here `x` writes `dist` and `y` writes `out`, each with a `!` entry inside its own directory. A `!` entry narrows a task’s own outputs and is not an overlap, so refusing or dropping either task blocks a valid config for no reason.',
     from: ['negated-outputs'],
     workspace: {
       projects: {
@@ -829,7 +841,7 @@ export default [
     kind: 'correctness',
     title:
       'A stray in an earlier task’s outputs is gone after a replay, beside a later task’s narrower `!` entry',
-    why: 'The later task’s `!dist/types/*.tmp` speaks of its own tree; it does not make the stray anyone’s output.',
+    why: 'Each task’s `!` entries speak only for its own outputs. The later task’s `!out/types/*.tmp` is about its own tree; it does not make a stray in the earlier task’s `out` anyone’s output. A replay removes the stray, or a file no task wrote ships with the build.',
     from: ['negated-outputs'],
     workspace: negatedPair(['out/**', '!out/keep.txt', '!out/sub/**'], {
       command: 'mkdir -p out/types && echo d > out/types/a.d.ts',
@@ -859,6 +871,7 @@ export default [
     kind: 'correctness',
     title:
       'A root output’s `!` entry leaves that file in place, out of the replay, and still an input',
+    why: 'A `!` entry on an output at the workspace root works like one inside the project. Here `gen/keep.txt` is excluded from the root output and named as an input: it stays in place on a run, never comes from a replay, and still reruns the task when it changes. Treating it as output loses the user’s file; leaving it out of the key replays stale results.',
     from: ['negated-outputs'],
     workspace: {
       projects: {
@@ -893,7 +906,7 @@ export default [
     kind: 'correctness',
     title:
       'An output directory the user made a link out of the project stays a link, and a replay writes nothing through it',
-    why: 'The link is the user’s; a replay writing through it puts files where no run of the task asked, and replacing it with a directory discards what the user set up.',
+    why: 'A link at the output directory that leads out of the project is the user’s setup, not the task’s output. A replay that writes through it puts files outside the project, where no run of the task asked. Replacing it with a real directory discards what the user set up. Keeping the link and writing nothing through it is the safe outcome.',
     from: ['restore-link-out'],
     workspace: { ...writing('dist/o.txt'), files: { 'elsewhere/.keep': '' } },
     steps: [
@@ -913,6 +926,7 @@ export default [
     category: 'outputs',
     kind: 'correctness',
     title: 'An output directory the user made a link inside the project is restored through',
+    why: 'A link at the output directory that stays inside the project changes where the files live, not what the task writes. Restoring through it gives the same tree as running the command, which also writes through the link. Replacing the link with a directory undoes the user’s layout and leaves the real directory empty.',
     from: ['restore-link-out'],
     workspace: writing('dist/o.txt'),
     steps: [
@@ -930,7 +944,7 @@ export default [
       category: 'outputs',
       kind: 'correctness',
       title: `A dangling link inside the project ${s.where} is restored through: its target made, the link kept`,
-      why: 'A live link inside the project is written through; one whose target is gone is the user’s all the same.',
+      why: 'A link inside the project is written through, whether or not its target exists yet. The command would create the target and write there, so a replay does the same: it makes the target, restores the file and keeps the link. Replacing a dangling link discards the user’s layout just because its target was cleaned.',
       from: ['restore-link-out'],
       workspace: writing(s.entry, s.outputs),
       steps: [
@@ -950,6 +964,7 @@ export default [
     kind: 'correctness',
     title:
       'A dangling absolute link inside the project at the output directory is restored through',
+    why: 'A link written as an absolute path is judged by where it leads, not how it is spelled. This one leads inside the project, so it is treated like a relative link there: the replay makes the target and restores through it. Treating every absolute link as outside the project would replace the user’s link with a directory.',
     from: ['restore-link-out'],
     workspace: writing('dist/o.txt'),
     steps: [
@@ -967,6 +982,7 @@ export default [
     kind: 'correctness',
     title:
       'A dangling output link is restored through by a task that waits on a same-project dependency',
+    why: 'Writing through an output link works the same when the task waits on another task. Here `build` depends on `codegen` in the same project, and its output directory is a dangling link inside the project. The file must land in `real-out` and the link stay, exactly as for a task with no dependency.',
     from: ['restore-link-out'],
     workspace: {
       projects: {
@@ -1003,7 +1019,7 @@ export default [
       category: 'outputs',
       kind: 'correctness',
       title: `A dangling output link out of the project ${s.where} gets nothing created through it`,
-      why: 'A replay that makes the link’s target writes outside the project; the link itself is the user’s and stays.',
+      why: 'A link out of the project, even one whose target is missing, is no place for a replay to write. Creating the target to restore into it writes files outside the project, where the task has no say. The link is the user’s and stays as it was. A failed run is acceptable here; creating the target is not.',
       from: ['restore-link-out'],
       workspace: { ...writing(s.entry, s.outputs), files: { 'outside/.keep': '' } },
       steps: [
@@ -1028,7 +1044,7 @@ export default [
     kind: 'correctness',
     title:
       'A dangling link out of the project where an output directory belongs is replaced by the directory',
-    why: 'Under `dist/**` the link is an output path like any other: removed, never followed.',
+    why: '`dist/**` matches `dist/sub` itself, so a link left there is an output path like any other. It is removed and replaced by the directory the task makes, never followed. Following it would create files outside the project, and keeping it would leave a tree different from the one the command made.',
     from: ['restore-link-out'],
     workspace: { ...writing('dist/sub/o.txt'), files: { 'outside/.keep': '' } },
     steps: [
@@ -1047,7 +1063,7 @@ export default [
       category: 'outputs',
       kind: 'correctness',
       title: `The root project’s output directory linked to ${to} never empties the repository`,
-      why: 'At the root, .git is inside the project: clearing `dist/**` through the link deletes the repository.',
+      why: 'When the repository root is itself a project, `.git` sits inside that project. A link from `dist` into `.git` therefore stays in the project, and a clean that follows it deletes git’s objects and refs: the repository, with any work not pushed, is gone. Removing or refusing the link is safe; clearing through it never is.',
       from: ['output-clean-link-git'],
       workspace: {
         projects: {
@@ -1072,6 +1088,7 @@ export default [
       category: 'outputs',
       kind: 'correctness',
       title: `A root output directory linked to ${to} never empties the repository`,
+      why: 'An output declared at the workspace root, outside any project, can be a link into `.git` too. Clearing `out/**` by following that link deletes git’s objects and refs, and with them any work not pushed. A tool may refuse the run or replace the link, but it never deletes through it.',
       from: ['output-clean-link-git'],
       workspace: {
         projects: {
@@ -1098,7 +1115,7 @@ export default [
     category: 'outputs',
     kind: 'correctness',
     title: 'A root `**/*.js` output leaves installed packages and .git alone',
-    why: '`**/*.js` means the build’s files; a clean or restore that reaches node_modules or .git deletes or reverts what no task wrote. Refusing so wide a pattern is as safe.',
+    why: '`**/*.js` at the root means the files the build writes. Read literally, it also matches installed packages under `node_modules` and files under `.git`. A clean or restore that reaches them deletes or reverts what no task wrote, and breaks the install or the repository. Refusing so wide a pattern is as safe.',
     from: ['output-reach'],
     workspace: {
       projects: {
@@ -1144,7 +1161,7 @@ export default [
     kind: 'correctness',
     title:
       'An escaped literal output `out/\\[x\\]` restores as a file where it was a directory, and back',
-    why: '`\\[x\\]` names one path; read as a pattern, the emptied directory stays and blocks the file’s restore.',
+    why: '`out/\\[x\\]` names one path, an entry literally called `[x]`. Read as a pattern instead, it matches `out/x`, so when the output changes from a directory to a file, the emptied directory is not cleared and blocks the file’s restore. Escapes in output patterns hold for saving and for cleaning alike.',
     from: ['output-glob-links'],
     workspace: {
       projects: {
@@ -1182,7 +1199,7 @@ export default [
     category: 'inputs',
     kind: 'correctness',
     title: 'A project whose directory is named with glob syntax (`[lib]`) still keys its files',
-    why: 'Joined unescaped, `packages/[lib]` reads as a class matching one letter, and the inputs match nothing.',
+    why: 'A project directory can contain characters that are special in globs, such as `[` and `]`. Joined unescaped with the input patterns, `packages/[lib]` reads as a class matching one letter, the inputs match nothing, and every edit replays the first build. The project’s own path is taken literally.',
     from: ['stale-hit'],
     workspace: {
       projects: {
@@ -1215,7 +1232,7 @@ export default [
     category: 'inputs',
     kind: 'correctness',
     title: 'An edit inside a git worktree checked out under a task’s inputs reruns the task',
-    why: 'git lists the worktree as one untracked directory and never descends into it; its files still key the task. Refusing the workspace until the worktree is ignored is as safe.',
+    why: 'Files under a task’s inputs key the task, however git sees them. A git worktree checked out inside the inputs shows up in git as one untracked directory, and git never lists the files in it. A key built only from git’s listing misses an edit there and replays an old result. Refusing the workspace until the worktree is ignored is as safe.',
     from: ['stale-hit'],
     workspace: {
       projects: {
@@ -1245,7 +1262,7 @@ export default [
       category: 'inputs',
       kind: 'correctness',
       title: `An executable bit still reruns the task when git’s core.fileMode is ${off === '' ? 'empty' : `\`${off}\``}`,
-      why: 'git then reports no mode change, but the command reads the mode: a key from git’s view replays the wrong output.',
+      why: 'File mode is an input when the command reads it. With git’s `core.fileMode` off, git reports no mode change, but the command here checks whether the script is executable and writes a different result. A key from git’s view replays the wrong output after a `chmod`. Each spelling of off is tried because git accepts them all.',
       from: ['stale-hit'],
       workspace: {
         projects: {
@@ -1278,6 +1295,7 @@ export default [
     category: 'outputs',
     kind: 'correctness',
     title: 'A root output edited by hand is put back on the next run',
+    why: 'An output at the workspace root, outside the project, is still the task’s output and follows the same rule. A hand edit to it is not what the inputs produce, so the next run puts back the cached bytes or reruns. Leaving the edit ships a file no build made under a green run.',
     from: ['stale-hit'],
     workspace: {
       projects: {
@@ -1306,6 +1324,7 @@ export default [
     category: 'outputs',
     kind: 'correctness',
     title: 'A stray file in the root project’s output directory is gone after a replay',
+    why: 'When the repository root is a project, its `dist` is an output directory like any other. A stray file dropped there must be gone after a replay, or it ships with the build. Being at the root is no reason to skip cleaning declared outputs, nor to reach past them into the rest of the repository.',
     from: ['stale-hit'],
     workspace: {
       projects: {
@@ -1343,6 +1362,7 @@ export default [
     kind: 'correctness',
     title:
       'A task adding a subdirectory to an earlier task’s root output: a warm run leaves the cold run’s tree',
+    why: 'Two tasks may share an output tree when one runs after the other: here `build` writes `gen` and `individual` adds `gen/individual`. A warm run must end with the same tree as the cold one. If restoring `build` clears all of `gen` and the later task is not restored after it, `gen/individual` is missing on every warm run.',
     from: ['overlapping-outputs'],
     workspace: rootPair(ADDS_SUBDIR),
     steps: [0, 1].map(() => ({
@@ -1360,6 +1380,7 @@ export default [
     kind: 'efficiency',
     title:
       'A task adding a subdirectory to an earlier task’s root output: an unchanged tree replays both',
+    why: 'When nothing changed, both tasks writing into a shared tree replay. Rerunning one because its outputs overlap another’s costs its full time on every run. The graph orders the two, so restoring the earlier task and then the later one gives the cold run’s tree with no command run.',
     from: ['overlapping-outputs'],
     workspace: rootPair(ADDS_SUBDIR),
     steps: [
@@ -1374,7 +1395,7 @@ export default [
     kind: 'correctness',
     title:
       'A task writing into the root output it reads from the task before it keeps that task’s files',
-    why: 'Clearing the shared tree before the later task runs deletes the file it is about to read.',
+    why: 'A later task may read from and write into the tree the task before it wrote. Here `individual` reads `gen/a.txt` and writes `gen/b.txt` beside it. Clearing the shared tree before the later task runs deletes the file it is about to read, so the run fails or writes the wrong bytes.',
     from: ['overlapping-outputs'],
     workspace: rootPair({
       command: 'cp ../../gen/a.txt ../../gen/b.txt && cat srcb/b.txt >> ../../gen/b.txt',
@@ -1400,6 +1421,7 @@ export default [
     kind: 'correctness',
     title:
       'A task writing into another project’s output directory from the root, and that project’s task adding to it: a warm run keeps both files',
+    why: 'A task in one project may write into another project’s output directory: here `a` writes `b/dist/a.txt`, and `b` adds its own file after it. A warm run keeps both files. If restoring `b` clears `dist` first, it deletes `a`’s file, and the package ships without it.',
     from: ['overlapping-outputs'],
     workspace: crossProjectPair,
     steps: [0, 1].map(() => ({
@@ -1417,6 +1439,7 @@ export default [
     kind: 'efficiency',
     title:
       'A task writing into another project’s output directory from the root, and that project’s task adding to it: both replay',
+    why: 'When nothing changed, both tasks writing into `b/dist` replay. Rerunning them because their outputs share a directory costs their full time on every run. The graph orders them, so restoring `a`’s files and then `b`’s gives the tree the cold run left.',
     from: ['overlapping-outputs'],
     workspace: crossProjectPair,
     steps: [
@@ -1431,7 +1454,7 @@ export default [
     kind: 'correctness',
     title:
       'A file a later task deletes from an earlier task’s root output stays deleted on warm runs',
-    why: 'A replay of the earlier task brings the file back; the later task must then remove it again, or its run must not be replayed.',
+    why: 'A later task may delete a file the earlier task wrote, here `tmp.js`. On a warm run, the replay of the earlier task brings that file back. The later task must then remove it again, or not be replayed, or the file ships in every warm tree but not in a cold one.',
     from: ['overlapping-outputs'],
     workspace: rootPair(
       {

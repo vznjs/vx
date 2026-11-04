@@ -64,7 +64,7 @@ function bothKept(x: Writer, y: Writer, wipe: string[], orRefused: boolean): Ste
   ]
 }
 
-type Pair = [slug: string, what: string, x: Writer, y: Writer, wipe: string[]]
+type Pair = [slug: string, what: string, why: string, x: Writer, y: Writer, wipe: string[]]
 
 const inA = (at: string, outputs: string[]): Writer => ({ project: 'a', at: `${A}/${at}`, outputs })
 
@@ -72,6 +72,7 @@ const COLLIDING: Pair[] = [
   [
     'dir-slash-over-file',
     'An output directory written with a trailing slash that holds another task’s file',
+    '`dist/` with a trailing slash names the same directory as `dist`, so it claims `dist/app.js`, the other task’s file. A tool that treats the slash as part of a name misses the overlap, then clears or restores `dist` and deletes that file under a green run. Spelling must not change what a pattern covers. Refusing the pair or keeping both files are both fine.',
     inA('dist/x.txt', ['dist/']),
     inA('dist/app.js', ['dist/app.js']),
     [`${A}/dist`],
@@ -79,6 +80,7 @@ const COLLIDING: Pair[] = [
   [
     'dot-slash-spelling',
     'One output pattern spelled `./dist/**` and the same pattern spelled `dist/**`',
+    '`./dist/**` and `dist/**` are the same pattern, so both tasks claim the whole of `dist`. A tool that compares the spellings as text sees two different trees and lets each task clear or restore `dist` over the other. One task’s file then vanishes from a green build. Paths must be normalised before they are compared.',
     inA('dist/x.txt', ['./dist/**']),
     inA('dist/y.txt', ['dist/**']),
     [`${A}/dist`],
@@ -86,6 +88,7 @@ const COLLIDING: Pair[] = [
   [
     'question-mark-over-literal',
     'A `?` output pattern that matches another task’s output file',
+    '`dist/a?.txt` matches `dist/ab.txt`, the other task’s file, because `?` stands for any one character. A tool that skips `?` when checking overlap lets one task’s restore delete or roll back the other’s output. The run stays green and the file is wrong. Every glob character counts when deciding who owns a path.',
     inA('dist/ax.txt', ['dist/a?.txt']),
     inA('dist/ab.txt', ['dist/ab.txt']),
     [`${A}/dist`],
@@ -93,6 +96,7 @@ const COLLIDING: Pair[] = [
   [
     'prefix-wildcard-over-literal',
     'A `name-*` output pattern that matches another task’s output file',
+    '`dist/vx-*` matches `dist/vx-linux-x64`, which another task writes. Release layouts often look like this, with an all-platforms task beside per-platform ones. A tool that misses the match lets one task’s clean or restore delete the other’s binary, and a release ships without it. Refusing the pair or keeping both files are the safe outcomes.',
     inA('dist/vx-all', ['dist/vx-*']),
     inA('dist/vx-linux-x64', ['dist/vx-linux-x64']),
     [`${A}/dist`],
@@ -100,6 +104,7 @@ const COLLIDING: Pair[] = [
   [
     'subtree-over-nested-subtree',
     'A whole output tree and another task’s pattern for a directory inside it',
+    '`dist/**` contains `dist/extra/**`, so the inner task’s files sit inside the outer task’s outputs. A tool that restores the outer task’s entry as the whole of `dist` deletes `dist/extra/y.txt` without an error. Nesting is a common way to add files to a build, which makes the silent loss easy to hit. The pair must be refused, or both files kept.',
     inA('dist/x.txt', ['dist/**']),
     inA('dist/extra/y.txt', ['dist/extra/**']),
     [`${A}/dist`],
@@ -107,6 +112,7 @@ const COLLIDING: Pair[] = [
   [
     'subtree-over-extension-glob',
     'A whole output tree and another task’s pattern for one extension inside it',
+    '`dist/**` covers every `.d.ts` file that `dist/**/*.d.ts` claims, as when a type-declaration task writes into a bundler’s tree. If either task clears or restores by its own pattern without regard to the other, the types or the bundle go missing behind a green run. The overlap is real even though the patterns differ. Refusing the pair or keeping both files are both acceptable.',
     inA('dist/x.txt', ['dist/**']),
     inA('dist/types/y.d.ts', ['dist/**/*.d.ts']),
     [`${A}/dist`],
@@ -114,6 +120,7 @@ const COLLIDING: Pair[] = [
   [
     'anywhere-glob-over-subtree',
     'A pattern for one extension anywhere and another task’s output tree holding such a file',
+    '`**/*.d.ts` matches every declaration file in the project, including `dist/y.d.ts`, which another task writes. A tool that checks the wide pattern only near where its own files sit misses the overlap. One task’s clean or restore then deletes the other’s file and the run stays green. A pattern claims everything it matches, wherever that is.',
     inA('types/x.d.ts', ['**/*.d.ts']),
     inA('dist/y.d.ts', ['dist/**']),
     [`${A}/dist`, `${A}/types`],
@@ -121,6 +128,7 @@ const COLLIDING: Pair[] = [
   [
     'wildcard-directory-over-literal',
     'A pattern with a wildcard directory that matches another task’s output file',
+    '`*/app.js` matches `dist/app.js` as well as `lib/app.js`, so two tasks claim the same file. A tool that treats the wildcard directory as one fixed name misses this. A restore of the first task can then overwrite or delete the second task’s `dist/app.js` under a green run. Refusing the pair or keeping both files are the safe answers.',
     inA('lib/app.js', ['*/app.js']),
     inA('dist/app.js', ['dist/app.js']),
     [`${A}/dist`, `${A}/lib`],
@@ -128,6 +136,7 @@ const COLLIDING: Pair[] = [
   [
     'brace-directory-over-literal',
     'A pattern with a brace set of directories that names another task’s output file',
+    '`{dist,lib}/app.js` names `lib/app.js`, which the other task writes. A tool that checks only the first brace alternative misses the overlap. The first task’s clean or restore then removes or rolls back the other task’s file with no error. A brace set must be expanded in full before ownership is decided.',
     inA('dist/app.js', ['{dist,lib}/app.js']),
     inA('lib/app.js', ['lib/app.js']),
     [`${A}/dist`, `${A}/lib`],
@@ -135,6 +144,7 @@ const COLLIDING: Pair[] = [
   [
     'patterns-meet-at-one-file',
     'A brace output pattern and a wildcard one that both match the file one task writes',
+    '`build/{a,b}.js` and `build/*.js` both match `build/b.js`, the file one task writes. Neither pattern looks like the other, so the clash is easy to miss. A tool that clears or restores each task by its pattern can delete one task’s file when the other runs. It must refuse the pair or keep both files intact.',
     inA('build/b.js', ['build/{a,b}.js']),
     inA('build/y.js', ['build/*.js']),
     [`${A}/build`],
@@ -142,6 +152,7 @@ const COLLIDING: Pair[] = [
   [
     'partial-negation',
     'A pattern whose `!` entry takes back only part of another task’s output tree',
+    'The `!types/x/**` entry takes back only `types/x`, so `**/dist/**` still claims `types/dist/y.txt`, the other task’s file. A tool that reads any negation under `types` as removing the whole tree misses the overlap. A restore can then delete that file under a green run. A negation removes exactly what it matches, no more.',
     inA('lib/dist/x.txt', ['**/dist/**', '!types/x/**']),
     inA('types/dist/y.txt', ['types/**']),
     [`${A}/lib`, `${A}/types`],
@@ -149,6 +160,7 @@ const COLLIDING: Pair[] = [
   [
     'root-outputs-across-projects',
     'Two projects’ root output patterns where one covers the other’s file',
+    'Root outputs live outside a project, so two projects can claim the same workspace path. Here `shared/**` covers `shared/b.txt`, which the other project writes. A tool that clears or restores one project’s root tree deletes the other’s file, and the run stays green. Overlap across projects needs the same check as overlap inside one.',
     { project: 'a', at: 'shared/a.txt', rootOutputs: ['shared/**'] },
     { project: 'b', at: 'shared/b.txt', rootOutputs: ['shared/b.txt'] },
     ['shared'],
@@ -156,6 +168,7 @@ const COLLIDING: Pair[] = [
   [
     'root-output-inside-project-tree',
     'A root output file inside another project’s output tree',
+    'A root output can point into another project’s folder. Here one task writes `packages/b/dist/a.txt`, which project b’s `dist/**` also claims. When b restores its `dist`, a tool that ignores the root claim deletes that file, and the run stays green. Root and project paths must be compared on one map of the workspace.',
     { project: 'a', at: 'packages/b/dist/a.txt', rootOutputs: ['packages/b/dist/a.txt'] },
     { project: 'b', at: 'packages/b/dist/y.txt', outputs: ['dist/**'] },
     ['packages/b/dist'],
@@ -163,6 +176,7 @@ const COLLIDING: Pair[] = [
   [
     'root-output-tree-over-project-file',
     'A root output tree that holds another project’s output file',
+    'The root output tree `packages/b/dist/**` covers `packages/b/dist/y.txt`, a file project b declares as its own output. Two tasks in different projects then claim one path. A tool that never compares root outputs with project outputs lets one task’s restore delete the other’s file under a green run. The pair must be refused, or both files kept.',
     { project: 'a', at: 'packages/b/dist/a.txt', rootOutputs: ['packages/b/dist/**'] },
     { project: 'b', at: 'packages/b/dist/y.txt', outputs: ['dist/y.txt'] },
     ['packages/b/dist'],
@@ -173,6 +187,7 @@ const DISJOINT: Pair[] = [
   [
     'two-literal-dirs',
     'Two tasks naming two different output directories outright',
+    '`dist` and `build` are different directories, so the two tasks share nothing. A tool that sees a conflict wherever two tasks name directories refuses a build that works. One that clears more than each task named breaks it. Each task should build, cache and restore its own tree without touching the other.',
     inA('dist/x.txt', ['dist']),
     inA('build/y.txt', ['build']),
     [`${A}/dist`, `${A}/build`],
@@ -180,6 +195,7 @@ const DISJOINT: Pair[] = [
   [
     'dir-beside-longer-name',
     'An output directory and another task’s file in a directory whose name extends it',
+    '`dist` and `distant/app.js` share a run of letters but no directory. A tool that compares paths as plain strings thinks `dist` covers `distant`. It then refuses a working build, or clears the other task’s file when `dist` is restored. Paths must be compared segment by segment.',
     inA('dist/x.txt', ['dist']),
     inA('distant/app.js', ['distant/app.js']),
     [`${A}/dist`, `${A}/distant`],
@@ -187,6 +203,7 @@ const DISJOINT: Pair[] = [
   [
     'literal-subdirs',
     'Two tasks naming sibling subdirectories of one directory outright',
+    'Naming `dist/a` and `dist/b` outright gives each task its own sibling folder; the shared parent belongs to neither. A tool that restores `dist` as one unit wipes the sibling. One that flags any two outputs under one parent refuses a working layout. Each named directory should be cached and restored on its own.',
     inA('dist/a/x.txt', ['dist/a']),
     inA('dist/b/y.txt', ['dist/b']),
     [`${A}/dist`],
@@ -194,6 +211,7 @@ const DISJOINT: Pair[] = [
   [
     'subtree-beside-longer-name',
     'An output tree and another task’s tree in a directory whose name extends it',
+    '`dist/**` and `distant/**` look alike as text but sit in different directories. A string-prefix check reads one as inside the other, and either refuses the pair or lets one task’s restore delete the other’s tree. The two tasks own separate paths, so both must build, cache and restore side by side.',
     inA('dist/x.txt', ['dist/**']),
     inA('distant/y.txt', ['distant/**']),
     [`${A}/dist`, `${A}/distant`],
@@ -201,6 +219,7 @@ const DISJOINT: Pair[] = [
   [
     'subtree-beside-sibling-glob',
     'An output tree and another task’s pattern over a sibling directory',
+    '`dist/a/**` and `dist/b/*.js` cover sibling folders, so no file can match both. A tool that stops comparing at the first wildcard, or at the shared `dist`, sees a clash that is not there. It refuses a working build, or clears one sibling when the other restores. Overlap is decided by what the patterns can match.',
     inA('dist/a/x.txt', ['dist/a/**']),
     inA('dist/b/y.js', ['dist/b/*.js']),
     [`${A}/dist`],
@@ -208,6 +227,7 @@ const DISJOINT: Pair[] = [
   [
     'extension-globs-apart',
     'Two patterns over one tree that take different extensions',
+    '`dist/**/*.js` and `dist/**/*.map` cover one tree but take different extensions, so `x.js` and `x.js.map` belong to different tasks. Splitting a bundle and its source maps between tasks is a real layout. A tool that calls any two patterns over one tree a clash refuses it, and one that restores by directory deletes the other’s files.',
     inA('dist/sub/x.js', ['dist/**/*.js']),
     inA('dist/sub/x.js.map', ['dist/**/*.map']),
     [`${A}/dist`],
@@ -215,6 +235,7 @@ const DISJOINT: Pair[] = [
   [
     'tree-beside-deep-glob',
     'An output tree and another task’s deep pattern over another directory',
+    '`lib/**` and `dist/**/*.js` start in different top-level directories. Two deep patterns are not in conflict just because both use `**`. A tool that treats `**` as reaching everywhere refuses a working build, or clears the other task’s files on restore. Each pattern reaches only below its fixed prefix.',
     inA('lib/x.txt', ['lib/**']),
     inA('dist/sub/y.js', ['dist/**/*.js']),
     [`${A}/dist`, `${A}/lib`],
@@ -222,6 +243,7 @@ const DISJOINT: Pair[] = [
   [
     'question-mark-unmatched',
     'A `?` output pattern beside a file it does not match',
+    '`dist/a?.txt` cannot match `dist/zz.txt`, since the first letter differs. A tool that treats any wildcard in a shared directory as a clash refuses a working build. A restore of the pattern’s task must also leave `dist/zz.txt` alone. Ownership is decided by what the pattern really matches.',
     inA('dist/ax.txt', ['dist/a?.txt']),
     inA('dist/zz.txt', ['dist/zz.txt']),
     [`${A}/dist`],
@@ -229,6 +251,7 @@ const DISJOINT: Pair[] = [
   [
     'brace-unmatched',
     'A brace output pattern beside a file it does not name',
+    '`dist/{a,b}.txt` names two files, and `dist/c.txt` is not one of them. A tool that treats a brace as matching anything in the directory refuses a working build, or deletes `c.txt` when it restores the first task. A brace set is a short list of names and nothing more.',
     inA('dist/a.txt', ['dist/{a,b}.txt']),
     inA('dist/c.txt', ['dist/c.txt']),
     [`${A}/dist`],
@@ -236,6 +259,7 @@ const DISJOINT: Pair[] = [
   [
     'odd-spellings-apart',
     'Two sibling output trees spelled `./dist/a/**` and `dist//b/**`',
+    '`./dist/a/**` and `dist//b/**` are untidy spellings of two sibling trees; normalised, they share no path. A tool that does not normalise them can see a clash and refuse a working build. It can also fail to match a task’s own files on a restore and leave them out. Harmless spelling must not change what a task owns.',
     inA('dist/a/x.txt', ['./dist/a/**']),
     inA('dist/b/y.txt', ['dist//b/**']),
     [`${A}/dist`],
@@ -243,6 +267,7 @@ const DISJOINT: Pair[] = [
   [
     'negation-takes-back-tree',
     'A pattern whose `!` entry takes back another task’s whole output tree',
+    '`!types/**` removes the whole `types` tree from `**/dist/**`, so the other task’s `types/dist/y.txt` is not claimed. A tool that ignores the negation refuses a working build, or clears the other task’s file on restore. Negation is how a config narrows a wide pattern, and explicit config beats the broad match.',
     inA('lib/dist/x.txt', ['**/dist/**', '!types/**']),
     inA('types/dist/y.txt', ['types/**']),
     [`${A}/lib`, `${A}/types`],
@@ -250,6 +275,7 @@ const DISJOINT: Pair[] = [
   [
     'brace-beside-literal',
     'A brace output pattern beside another task’s file in the same directory',
+    '`build/{a,b}.js` names `a.js` and `b.js`, while the other task writes `build/c.js`. They share a directory and nothing else. A tool that treats the brace as a wildcard refuses the pair, or removes `c.js` on a restore. Both tasks must build, cache and restore side by side.',
     inA('build/a.js', ['build/{a,b}.js']),
     inA('build/c.js', ['build/c.js']),
     [`${A}/build`],
@@ -257,6 +283,7 @@ const DISJOINT: Pair[] = [
   [
     'literal-beside-glob-head',
     'An output tree and another task’s files beside it, one in a directory whose name extends it',
+    '`dist/a/**` claims only the `dist/a` folder, while the other task writes `dist/ab/c.js` and `dist/b.js`. `dist/ab` starts with the same letters but is a different folder. A string-prefix check reads it as inside `dist/a`, then refuses the pair or deletes the file on a restore. Paths are compared by whole segments.',
     inA('dist/a/x.txt', ['dist/a/**']),
     inA('dist/ab/c.js', ['dist/ab/c.js', 'dist/b.js']),
     [`${A}/dist`],
@@ -264,6 +291,7 @@ const DISJOINT: Pair[] = [
   [
     'root-outputs-distinct',
     'Two projects writing distinct root output files into one directory',
+    'Two projects writing `generated/a.ts` and `generated/b.ts` share a workspace folder but no file, a common layout for code generators. A tool that treats the shared root folder as owned by one project refuses the build. One that clears the folder on a restore deletes the other project’s file. Each root output should be cached and restored on its own.',
     { project: 'a', at: 'generated/a.ts', rootOutputs: ['generated/a.ts'] },
     { project: 'b', at: 'generated/b.ts', rootOutputs: ['generated/b.ts'] },
     ['generated'],
@@ -271,6 +299,7 @@ const DISJOINT: Pair[] = [
   [
     'project-and-root-namespaces',
     'A project output and another project’s root output with the same relative name',
+    'A project output `generated/x.ts` means `packages/a/generated/x.ts`, while a root output of the same name means `generated/x.ts` at the workspace root. They are different files. A tool that compares the two lists without resolving them refuses a working build, or restores one file over the other. Relative names must be resolved before they are compared.',
     inA('generated/x.ts', ['generated/x.ts']),
     { project: 'b', at: 'generated/x.ts', rootOutputs: ['generated/x.ts'] },
     [`${A}/generated`, 'generated'],
@@ -278,6 +307,7 @@ const DISJOINT: Pair[] = [
   [
     'root-output-beside-project-tree',
     'A root output file in another project, beside that project’s output tree',
+    'A root output in `packages/b/gen` sits inside project b’s folder but outside its `dist` tree, so no file is claimed twice. A tool that treats a whole project folder as that project’s own refuses the pair, or clears `gen` when b restores. Ownership follows the declared patterns, not the project folder.',
     { project: 'a', at: 'packages/b/gen/a.txt', rootOutputs: ['packages/b/gen/a.txt'] },
     { project: 'b', at: 'packages/b/dist/y.txt', outputs: ['dist/**'] },
     ['packages/b/gen', 'packages/b/dist'],
@@ -285,6 +315,7 @@ const DISJOINT: Pair[] = [
   [
     'root-output-beside-project-glob',
     'A root output file in another project’s output directory that its pattern does not match',
+    'Project b claims `dist/*.js`, and a root output writes `packages/b/dist/a.txt` beside those files. The `.txt` file does not match b’s pattern. A tool that treats b’s whole `dist` folder as b’s refuses a working build, or deletes `a.txt` when b restores. Only what the pattern matches is b’s.',
     { project: 'a', at: 'packages/b/dist/a.txt', rootOutputs: ['packages/b/dist/a.txt'] },
     { project: 'b', at: 'packages/b/dist/y.js', outputs: ['dist/*.js'] },
     ['packages/b/dist'],
@@ -292,6 +323,7 @@ const DISJOINT: Pair[] = [
   [
     'root-output-taken-back',
     'A root output file in another project’s output tree that a `!` entry takes back',
+    'Project b’s `!dist/a.txt` takes back the file another project writes into b’s `dist` as a root output, so no path is claimed twice. A tool that ignores negations when comparing root and project outputs refuses a working build, or deletes `a.txt` on b’s restore. Explicit config beats the broad match.',
     { project: 'a', at: 'packages/b/dist/a.txt', rootOutputs: ['packages/b/dist/a.txt'] },
     { project: 'b', at: 'packages/b/dist/y.txt', outputs: ['dist/**', '!dist/a.txt'] },
     ['packages/b/dist'],
@@ -299,6 +331,7 @@ const DISJOINT: Pair[] = [
   [
     'two-projects-one-pattern',
     'Two projects declaring the same project-relative output pattern',
+    'Two projects declaring `dist/**` mean two different folders, `packages/a/dist` and `packages/b/dist`, since project outputs are relative to their project. A tool that compares the patterns as written sees a clash in almost every monorepo, or restores one project’s files into the other. Patterns must be resolved against their project first.',
     { project: 'a', at: `${A}/dist/x.txt`, outputs: ['dist/**'] },
     { project: 'b', at: 'packages/b/dist/y.txt', outputs: ['dist/**'] },
     [`${A}/dist`, 'packages/b/dist'],
@@ -471,26 +504,26 @@ const uncachedUpstream = (ignored: boolean): WorkspaceSpec => ({
 })
 
 export default [
-  ...COLLIDING.map(([slug, what, x, y, wipe]) =>
+  ...COLLIDING.map(([slug, what, why, x, y, wipe]) =>
     defineCase({
       id: `outputs/unordered-overlap-${slug}`,
       category: 'outputs',
       kind: 'correctness',
       title: `${what}: neither loses its file`,
-      why: 'A tool that clears a task’s outputs before it runs or restores deletes the other task’s file under a green run. Refusing the pair up front is as good as keeping both.',
+      why,
       from: ['output-collision'],
       workspace: pair(x, y),
       steps: bothKept(x, y, wipe, true),
     }),
   ),
 
-  ...DISJOINT.map(([slug, what, x, y, wipe]) =>
+  ...DISJOINT.map(([slug, what, why, x, y, wipe]) =>
     defineCase({
       id: `outputs/disjoint-${slug}`,
       category: 'outputs',
       kind: 'correctness',
       title: `${what} build, cache and restore side by side`,
-      why: 'Their outputs share no path: refusing the pair breaks a build that works.',
+      why,
       from: ['output-collision'],
       workspace: pair(x, y),
       steps: bothKept(x, y, wipe, false),
@@ -503,6 +536,7 @@ export default [
     kind: 'correctness',
     title:
       'A project that adds a root file beside a dependency’s root output tree: warm runs and an upstream edit keep both',
+    why: 'When a project adds a root file beside a dependency’s root output tree, every run must end with both files. The dependency’s `shared/**` covers `shared/b.txt`, so restoring its entry as the whole tree would delete the dependant’s file. After an upstream edit the dependency reruns, and the dependant’s file must still be there. The result should match a cold run of both.',
     from: ['output-collision'],
     workspace: rootAddition(),
     steps: [
@@ -528,6 +562,7 @@ export default [
     kind: 'correctness',
     title:
       'A root output file added into a dependency project’s output tree survives warm runs and that project’s rebuild',
+    why: 'A dependant may add a file into a dependency’s output tree through a root output. After the dependency rebuilds, that file must still be present. A tool that clears the whole `dist` for the dependency’s rerun, then replays the dependant without restoring its file, leaves the tree incomplete under a green run. Warm runs should match a cold run of both tasks.',
     from: ['output-collision'],
     workspace: intoProjectAddition(),
     steps: [
@@ -561,7 +596,7 @@ export default [
     category: 'outputs',
     kind: 'correctness',
     title: 'A stray file dropped deep in an output tree after warm runs is gone on the next run',
-    why: 'Outputs are what the task wrote; a tool that trusts an unchanged tree from its last look ships the stray.',
+    why: 'Outputs are what the task wrote, so a file dropped deep in the tree after several warm runs is a stray. A tool that trusts an unchanged tree from its last look, and skips the check, ships the stray with the next build. The deeper the file, the less likely anyone notices. Each run must leave exactly the task’s tree.',
     from: ['output-dirs'],
     workspace: one({ command: SUBTREE, inputs: ['src/**'], outputs: ['dist/**'] }),
     steps: [
@@ -585,7 +620,7 @@ export default [
     kind: 'correctness',
     title:
       'A file a later task writes into an earlier task’s outputs is gone when that task replays',
-    why: 'The earlier task did not write it; a replay that keeps it, or caches it as the task’s, ships a file no build of that task made.',
+    why: 'A file a later task writes into an earlier task’s outputs is not part of the earlier task’s result. When the earlier task replays, its tree must match what it made. A replay that keeps the file, or an entry that stored it as the task’s, ships a file no build of that task produced. If the later task needs it, the later task makes it again.',
     from: ['output-dirs'],
     workspace: buildThenPost('echo stray > dist/sub/stray.js'),
     steps: [
@@ -605,6 +640,7 @@ export default [
     category: 'outputs',
     kind: 'correctness',
     title: 'An output a later task deletes is back when the task that wrote it replays',
+    why: 'A replayed task’s outputs are what the task made, even if a later task deleted one in between. Here an uncached step removed `dist/sub/in.js`. A tool that sees the rest of the tree as current and skips the restore leaves the file missing under a green run. Anything that reads it next fails.',
     from: ['output-dirs'],
     workspace: buildThenPost('rm dist/sub/in.js'),
     steps: [
@@ -618,6 +654,7 @@ export default [
     category: 'outputs',
     kind: 'correctness',
     title: 'A stray file in an output directory named outright is gone after the next run',
+    why: 'Naming a directory outright, as `dist`, claims everything under it, the same as `dist/**`. A stray file in a subfolder is therefore inside the outputs and must go. A tool that only checks the directory entry itself keeps the stray and ships it. Both spellings should leave the same tree.',
     from: ['output-dirs'],
     workspace: one({ command: SUBTREE, inputs: ['src/**'], outputs: ['dist'] }),
     steps: [
@@ -639,6 +676,7 @@ export default [
     category: 'outputs',
     kind: 'correctness',
     title: 'An output file named outright and edited by hand is put back on the next run',
+    why: 'An output named outright, like `dist/tool`, is still an output, so a hand edit to it must be undone. A tool that only checks files found by a glob walk can miss a literal path and keep the edit. The build then ships bytes no run produced. Literal and wildcard patterns should be checked the same way.',
     from: ['output-dirs'],
     workspace: one({
       command: 'mkdir -p dist && cp src/a.txt dist/tool',
@@ -659,6 +697,7 @@ export default [
     kind: 'correctness',
     title:
       'A directory standing where an output file named outright belongs is replaced by the file',
+    why: 'When a directory stands where a literal output file belongs, the next run must replace it with the file. Failing to remove a non-empty directory turns a cached build red, and keeping it ships a stray tree. The run should end with `dist/tool` exactly as the task writes it. A literal output path is checked like any other.',
     from: ['output-dirs'],
     workspace: one({
       command: 'mkdir -p dist && cp src/a.txt dist/tool',
@@ -680,7 +719,7 @@ export default [
     kind: 'correctness',
     title:
       'A stray in a new directory an anywhere-pattern (`**/dist/**`) reaches is gone after a hit',
-    why: 'The pattern claims every `dist` in the project; a new one holding a stray is part of what the task owns.',
+    why: '`**/dist/**` claims every `dist` folder in the project, including one that did not exist when the task ran. A stray in a new `lib/dist` is therefore part of what the task owns, and a hit must remove it. A tool that checks only the folders it saw last time ships the stray. The pattern, not the last listing, says what is owned.',
     from: ['output-dirs'],
     workspace: one({
       command: 'mkdir -p dist && cp src/a.txt dist/out.js',
@@ -706,6 +745,7 @@ export default [
     category: 'outputs',
     kind: 'correctness',
     title: 'A stray file in a deleted root output directory is gone when the task replays',
+    why: 'A root output tree is the task’s output like any other, even though it sits outside the project. If it is deleted and a stray file appears there, a replay must restore the real files and remove the stray. A tool that cleans only project outputs keeps the stray at the workspace root. Root outputs need the same care as project outputs.',
     from: ['workspace-files'],
     workspace: {
       projects: {
@@ -743,6 +783,7 @@ export default [
     category: 'outputs',
     kind: 'efficiency',
     title: 'A task with project and root outputs replays once both are restored',
+    why: 'Once a task’s project and root outputs are both restored, nothing about it has changed, so later runs should replay. A tool that tracks root outputs poorly may see them as missing or new and rerun the task on every build. That repeats the work each time though no input changed. A restore should settle the task.',
     from: ['workspace-files'],
     workspace: {
       projects: {
@@ -782,6 +823,7 @@ export default [
     category: 'inputs',
     kind: 'correctness',
     title: 'Two tasks of one project with different root inputs: editing one’s root file reruns it',
+    why: 'Root inputs belong to the task that declares them, not to its project. Editing `other/thing.json` changes an input of `y` only, so `y` must rerun and see the new value. A tool that misses the root file, or keys it on the wrong task, replays stale output for `y` under a green run. Each task’s key folds exactly its own declared inputs.',
     from: ['workspace-files'],
     workspace: {
       projects: {
@@ -819,6 +861,7 @@ export default [
     kind: 'efficiency',
     title:
       'Two tasks of one project with different root inputs: editing one’s root file replays the other',
+    why: 'Editing a root file that only `y` reads should not rerun `x`. A tool that pools root inputs across a project’s tasks makes every edit to any shared file rerun them all. In a large workspace that costs minutes on each config change. Each task depends only on the inputs it declares.',
     from: ['workspace-files'],
     workspace: {
       projects: {
@@ -855,6 +898,7 @@ export default [
     category: 'inputs',
     kind: 'correctness',
     title: 'A task whose root input is a file its dependency generates sees each fresh version',
+    why: 'A task that reads a file its dependency generates must see each new version of that file. Here `b` reads `shared/gen.txt`, which `a` writes from its sources. A tool that keys `b` only on its own files misses the change upstream and replays stale output after an edit, or after the edit is undone. The dependant’s key must change whenever its dependency’s inputs do.',
     from: ['workspace-files'],
     workspace: {
       projects: {
@@ -897,7 +941,7 @@ export default [
     category: 'outputs',
     kind: 'correctness',
     title: 'Outputs with paths and file names over 100 bytes restore intact, with their modes',
-    why: 'A cache format that cannot hold a long name drops the file on every restore, or fails a build that passed.',
+    why: 'A cache must store and restore every path a task writes, whatever its length. Old archive formats limit names to 100 bytes, and deep package layouts or snapshot files pass that easily. A cache that cannot hold a long name drops the file on every restore, or fails a build that passed. Modes, like the executable bit on `dist/cli`, must survive too.',
     from: ['artifact-roundtrip'],
     workspace: one({
       command: [
@@ -937,6 +981,7 @@ export default [
     category: 'outputs',
     kind: 'efficiency',
     title: 'Outputs with names over 100 bytes are cached: deleted, they are restored, not rebuilt',
+    why: 'Long output names should not stop a task from being cached. A tool that cannot store them may skip the entry and rebuild the task each time its outputs are missing. The build stays correct but pays the full cost on every clean checkout. Deleted outputs should mean a restore, not a rebuild.',
     from: ['artifact-roundtrip'],
     workspace: one({
       command: `mkdir -p ${DEEP} && cp src/a.txt ${DEEP}/index.esm.production.min.js && cp src/a.txt dist/${LONGER}`,
@@ -956,7 +1001,7 @@ export default [
     kind: 'correctness',
     title:
       'A task whose own output patterns and directories overlap restores exactly the tree it wrote',
-    why: 'A file two of the task’s patterns match is one output, not two to write over each other.',
+    why: 'A task’s own output patterns may overlap: `.next/standalone` and `.next/standalone/**` name the same files, as do `.next/*.json` and `.next/**/*.json`. A file two patterns match is one output, not two to write over each other. A tool that stores it twice can fail the restore or leave a half-written file. The hit should leave exactly the tree the task wrote.',
     from: ['artifact-roundtrip'],
     workspace: NEXT,
     steps: [
@@ -971,6 +1016,7 @@ export default [
     category: 'outputs',
     kind: 'efficiency',
     title: 'A task whose own output patterns overlap replays after a restore',
+    why: 'Overlapping patterns within one task, common in framework configs, should not stop it from replaying. A tool that counts a file twice may see a mismatch after its own restore and rerun the task. Then every run after a clean checkout rebuilds work that was already cached. A restore should settle the task.',
     from: ['artifact-roundtrip'],
     workspace: NEXT,
     steps: [
@@ -986,6 +1032,7 @@ export default [
     category: 'outputs',
     kind: 'correctness',
     title: 'An output pattern with a brace set of extensions restores those files and no other',
+    why: '`.build/**/*.{js,map,ts}` names three extensions, so a hit restores those files and not `.build/c.css`. A tool that mishandles the brace either drops every file or restores the whole tree. The first leaves a broken build behind a green run; the second brings back files the config never claimed. Explicit patterns decide what is cached.',
     from: ['artifact-roundtrip'],
     workspace: one({
       command: [
@@ -1023,6 +1070,7 @@ export default [
     kind: 'correctness',
     title:
       'Output names with a space, a quote, a backslash or non-ASCII letters restore as written',
+    why: 'File names with spaces, quotes, backslashes or non-ASCII letters are legal and turn up in assets and tests. A cache must store and restore them exactly. A tool that passes names through a shell or an escaping step can drop, rename or split them, so the restored tree differs from the built one. A file must come back under the name the task gave it.',
     from: ['artifact-roundtrip'],
     workspace: oddWorkspace,
     steps: [
@@ -1037,6 +1085,7 @@ export default [
     category: 'outputs',
     kind: 'efficiency',
     title: 'Outputs with odd names are cached: deleted, they are restored, not rebuilt',
+    why: 'Odd file names should not stop a task from being cached. A tool that fails to store or match them may treat the outputs as missing and rebuild every time. The build stays correct, but a task that never hits costs its full run on every machine. Deleted outputs should be restored, not rebuilt.',
     from: ['artifact-roundtrip'],
     workspace: oddWorkspace,
     steps: [
@@ -1052,6 +1101,7 @@ export default [
     kind: 'correctness',
     title:
       'A large incompressible output restores byte for byte, an executable beside it kept executable',
+    why: 'A large output must restore byte for byte. Incompressible data, like this 6 MB file, takes the paths that compression, chunking or streaming use for big files. A cache that truncates or corrupts it replays a broken artifact under a green run. The executable bit on the script beside it must survive the same trip.',
     from: ['artifact-roundtrip'],
     workspace: {
       projects: {
@@ -1083,6 +1133,7 @@ export default [
     category: 'report',
     kind: 'data',
     title: 'A retried task’s reported time covers every attempt, not only the last',
+    why: 'A task’s reported time is how long it held up the run, and a retried task held it up for every attempt. Reporting only the last attempt hides the cost of flaky tasks. Time budgets, critical-path estimates and CI dashboards then look better than the build really is. Each attempt counts.',
     from: ['retries'],
     needs: ['retries'],
     workspace: {
@@ -1114,6 +1165,7 @@ export default [
     category: 'outputs',
     kind: 'correctness',
     title: 'A retry does not remove the root output directory a task beside it is writing into',
+    why: 'A retry may clean up the failed attempt’s outputs, but only the outputs that task declared. Here `p` owns `out/a.txt`, while `q` writes `out/b.txt` into the same folder at the same time. A tool that removes the whole `out` folder before the retry deletes `q`’s file mid-run. One task’s retry must never touch another task’s work.',
     from: ['retries'],
     needs: ['retries'],
     workspace: {
@@ -1153,6 +1205,7 @@ export default [
     category: 'outputs',
     kind: 'correctness',
     title: 'An output whose mode was changed by hand gets back the mode the task gave it',
+    why: 'A file’s mode is part of what a task produces, so a hand change to it must be undone. Here the task makes `dist/out.txt` 0644 and someone marks it 0755. A tool that compares only bytes keeps the wrong mode and ships it. Packaging and deploy steps can act on the executable bit, so the run must leave the task’s mode.',
     from: ['restore-staging'],
     workspace: one({
       command: 'mkdir -p dist && cat src/a.txt > dist/out.txt && chmod 644 dist/out.txt',
@@ -1172,6 +1225,7 @@ export default [
     category: 'outputs',
     kind: 'correctness',
     title: 'Empty directories a task leaves under its root outputs come back with a hit',
+    why: 'Empty directories under a root output tree are part of the task’s result, just as under a project’s outputs. A hit must bring back `gen/empty` along with `gen/real.txt`. A tool that stores only files, or handles root outputs on a separate path, drops it. A later step that writes into it then fails only on machines that replayed.',
     from: ['output-empty-dir'],
     workspace: rootGen(true),
     steps: [
@@ -1191,6 +1245,7 @@ export default [
     kind: 'correctness',
     title:
       'A file dropped into a root output directory the task left empty is gone after the next run',
+    why: 'A root output folder the task left empty is part of its outputs, so a file dropped into it is a stray. The next run must remove it, as it would under a project’s outputs. A tool that cleans only project trees leaves the stray at the workspace root, where it ships or leaks into later steps. The empty folder itself stays.',
     from: ['output-empty-dir'],
     workspace: rootGen(true),
     steps: [
@@ -1210,6 +1265,7 @@ export default [
     kind: 'correctness',
     title:
       'Empty directories an older build left in a root output tree do not come back with a hit',
+    why: 'A cache entry holds what the task made, not what older builds left behind. `gen/old` predates the run, so it must not be stored or restored. A tool that captures every folder under a root output tree recreates it on every hit, on every machine. Old layouts then outlive the code that made them.',
     from: ['output-empty-dir'],
     workspace: {
       projects: {
@@ -1244,6 +1300,7 @@ export default [
     category: 'outputs',
     kind: 'correctness',
     title: 'A stray empty directory under a root output tree is gone after a hit',
+    why: 'A stray empty folder under a root output tree is not part of the task’s result, so a hit removes it. Left in place, it changes what a later step sees, such as a glob that now matches or a package that ships an extra folder. Root outputs should be cleaned the same way as project outputs.',
     from: ['output-empty-dir'],
     workspace: rootGen(false),
     steps: [
@@ -1264,6 +1321,7 @@ export default [
     kind: 'correctness',
     title:
       'A hit puts back an edited output, a file replaced by a directory, and removes a stray tree, in one restore',
+    why: 'A restore must repair every kind of damage at once: an edited file, a file replaced by a directory, and a stray tree. A tool may handle each alone yet fail on the mix, for example by writing a file into a path a directory still holds. The run then goes red, or leaves part of the damage. The end tree must match a fresh run.',
     from: ['restore-in-place'],
     workspace: one({
       command: 'mkdir -p dist && echo a > dist/a.txt && echo out > dist/out',
@@ -1297,7 +1355,7 @@ export default [
     kind: 'correctness',
     title:
       'Appending to an output after a build or a restore does not change what the next restore brings back',
-    why: 'A cache that links its stored copy into the tree lets an edit of the tree rewrite the entry, and later hits replay the edit.',
+    why: 'What a cache stores for a task must not change after the task ends. A cache that hard-links or shares its stored copy with the working tree lets a later edit to the tree rewrite the entry. Every later hit then replays the edit instead of the build. Edits after a build or a restore must stay local.',
     from: ['restore-in-place'],
     workspace: one({
       command: 'mkdir -p dist && yes built | head -c 65536 > dist/out.txt',
@@ -1321,7 +1379,7 @@ export default [
     kind: 'efficiency',
     title:
       'A cached task depending on an uncached one that writes into its own inputs replays by the third run',
-    why: 'The uncached task’s first run adds a file its inputs cover, so its dependants may miss once more; after that nothing changes.',
+    why: 'An uncached task that writes a file inside its own inputs changes those inputs the first time it runs. Its dependants may then miss once more, since their keys follow the dependency’s inputs. After that the file is stable, so by the third run the cached task must replay. A tool that never settles reruns the dependant on every build.',
     from: ['uncached-upstream-key'],
     needs: ['uncached-task'],
     workspace: uncachedUpstream(false),
@@ -1338,6 +1396,7 @@ export default [
     kind: 'efficiency',
     title:
       'A cached task depending on an uncached one whose written file git ignores replays on the second run',
+    why: 'A file git ignores is local state, not a declared input, so an uncached task writing one changes no key. The cached task that depends on it should replay on the second run, its output still holding what the dependency wrote. A tool that counts the ignored file, or treats every uncached dependency as changed, reruns the dependant on every build.',
     from: ['uncached-upstream-key'],
     needs: ['uncached-task'],
     workspace: uncachedUpstream(true),

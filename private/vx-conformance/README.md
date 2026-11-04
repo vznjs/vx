@@ -47,8 +47,9 @@ A case is `correctness` when failing it leaves a wrong tree or exit code,
 `efficiency` when failing it reruns work nothing asked for, and `data`
 when it is about what the tool reports of a run: cache status, time, CPU,
 memory, output size, read from its output, files or API. How a log reads
-is not measured. `why` says
-why the outcome is right where a tool could argue for another. `from`
+is not measured. Every case has a `why`: 3–4 sentences on why the
+outcome is right and what the alternative costs a user, shown collapsed
+under the case on the site. `from`
 names the vx tests the case is drawn from. `needs` names a feature a
 tool may lack (affected, timeout, retries, persistent tasks…); a tool
 without it scores the case not applicable.

@@ -127,13 +127,13 @@ function argsServer(ready: boolean): WorkspaceSpec {
   }
 }
 
-function argsCase(slug: string, title: string, ready: boolean, args: string[], why?: string) {
+function argsCase(slug: string, title: string, why: string, ready: boolean, args: string[]) {
   return defineCase({
     id: `graph/${slug}`,
     category: 'graph',
     kind: 'correctness',
     title,
-    ...(why ? { why } : {}),
+    why,
     from: ['persistent'],
     needs: ready ? ['persistent', 'ready', 'multi-task'] : ['persistent', 'multi-task'],
     workspace: argsServer(ready),
@@ -180,6 +180,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'At a concurrency of 1, independent tasks run one at a time',
+    why: 'A concurrency of 1 is how a user says tasks must not overlap, often because they share a port, a database or a lock file. Running two at once anyway breaks that promise and gives failures that come and go with timing. The limit has to hold exactly, not on average.',
     from: ['scheduler', 'run-concurrency'],
     needs: ['uncached-task'],
     workspace: many(3, slotted(1)),
@@ -197,6 +198,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'At a concurrency of 2, no more than two tasks run at once',
+    why: 'The concurrency limit caps how many tasks run at once, so a run fits the machine’s memory and cores. Going over it can run a CI machine out of memory or slow every task down. The cap must hold at every moment, including when one task ends and the next ones start.',
     from: ['scheduler'],
     needs: ['uncached-task'],
     workspace: many(5, slotted(2)),
@@ -214,7 +216,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'Tasks that fail still count against the concurrency limit while they run',
-    why: 'A failing task is still a process using its slot until it exits.',
+    why: 'A failing task is still a process using its slot until it exits. Freeing the slot when the failure is first noticed, or starting the next task early, lets more tasks run than the limit allows. The limit exists for the shared resources, and those are still in use until the process is gone.',
     from: ['scheduler'],
     needs: ['uncached-task'],
     workspace: many(4, slotted(1, '; exit 1')),
@@ -232,6 +234,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'A concurrency far above the number of tasks runs them all and ends',
+    why: 'A concurrency higher than the number of tasks simply means no limit in practice. Every task should run and the run should end normally. Hanging while waiting for work that will never come, or refusing the setting, breaks a common choice such as a large fixed value in CI.',
     from: ['scheduler'],
     needs: ['uncached-task'],
     workspace: many(3, { command: 'true', cache: false }),
@@ -243,6 +246,7 @@ export default [
     category: 'failure',
     kind: 'correctness',
     title: 'A failure at the bottom of a chain runs nothing above it',
+    why: 'When a dependency fails, everything that builds on it would read a missing or broken output. Running lib and app anyway wastes time and can produce output that looks fine but is built on nothing. Skipping them keeps the failure in one place, where the user can see its real cause.',
     from: ['scheduler'],
     workspace: {
       projects: {
@@ -262,7 +266,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'A task behind a replayed task still waits for what the replayed one depends on',
-    why: 'app’s test reads lib’s output as well as app’s; a replay restored early is no sign lib is done.',
+    why: 'app’s test reads lib’s output as well as app’s, so it must wait for lib’s task, not only for app’s build. When app’s build replays from cache it finishes at once, but that says nothing about lib being done. Starting the test then makes it read lib’s old output, and it passes or fails on the wrong code.',
     from: ['scheduler'],
     needs: ['uncached-task'],
     workspace: behindReplay(),
@@ -287,7 +291,7 @@ export default [
     category: 'failure',
     kind: 'correctness',
     title: 'A failed dependency stops the task behind a replayed one from running',
-    why: 'app’s test reads lib’s output; lib failed, so what it would read is stale.',
+    why: 'app’s test reads lib’s output, and this time lib failed, so that output is missing or old. A replay of app’s build does not make lib’s failure go away. Running the test anyway checks stale code and can report a pass for a tree that does not build.',
     from: ['scheduler'],
     needs: ['uncached-task'],
     workspace: behindReplay(),
@@ -303,6 +307,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'A server starts when one of the tasks that need it must run, though another replays',
+    why: 'When any task that needs a server has to run, the server must start for it. Here web’s test replays from cache, but docs changed and its test must run against the server. Skipping the server because one dependant replayed leaves docs testing against nothing, so it hangs or fails for no reason in its own code.',
     from: ['scheduler', 'persistent'],
     needs: ['persistent'],
     workspace: behindServer(true),
@@ -327,6 +332,7 @@ export default [
     category: 'failure',
     kind: 'correctness',
     title: 'A server whose own build fails never starts, nor does what needs it',
+    why: 'A server that depends on a failed build would serve a missing or old output. Starting it anyway, and the tests behind it, checks the wrong code and can pass. Stopping both keeps the failure visible and avoids a long running process nobody can use.',
     from: ['scheduler'],
     needs: ['persistent'],
     workspace: {
@@ -354,7 +360,7 @@ export default [
     category: 'graph',
     kind: 'efficiency',
     title: 'A project without the requested task runs none of the tasks it would need',
-    why: 'docs declares no verify; its build is no one’s dependency in this run (turborepo#9589).',
+    why: 'A task’s dependencies run only because that task needs them. docs declares no verify, so nothing in this run needs docs’ build. Running it anyway wastes time and can fail the run on a project that had no part in what was asked. Only tasks reachable from the ones requested belong in the run.',
     from: ['task-selection'],
     workspace: {
       projects: {
@@ -384,7 +390,7 @@ export default [
     category: 'failure',
     kind: 'correctness',
     title: 'Asking for two tasks, one of which no project declares, fails the run',
-    why: 'A typo dropped because the other name resolved exits 0 having skipped what was asked.',
+    why: 'A task name that no project declares is a typo or a removed task. If it is dropped silently because the other name was found, the run exits 0 having skipped part of what was asked. CI then reports a check as passing that never ran. Failing names the unknown task, so the fix is a one word change.',
     from: ['task-selection'],
     needs: ['multi-task'],
     workspace: { projects: { a: checked([], { build: { command: 'true', inputs: ['src/**'] } }) } },
@@ -396,6 +402,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'Two tasks in one run each run where declared, though one project lacks one',
+    why: 'Asking for two tasks runs each one where it is declared. b has no lint, which is no reason to skip b’s build or to fail the run. Each requested task is looked up on its own; unrelated tasks such as check must not run. Projects rarely declare the same set of tasks, so this mix is the normal case.',
     from: ['task-selection'],
     needs: ['multi-task'],
     workspace: {
@@ -421,6 +428,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'Two tasks one project declares both run in one run',
+    why: 'Naming two tasks in one run is a request for both. Running only the first, or only the last, silently drops work the user asked for. CI scripts often combine tasks this way and read the exit code as covering all of them. Every named task has to be found and run, or the run must fail.',
     from: ['task-selection'],
     needs: ['multi-task'],
     workspace: {
@@ -439,7 +447,7 @@ export default [
     category: 'failure',
     kind: 'correctness',
     title: 'Asking for a task in a project that does not declare it fails the run',
-    why: 'Only b declares typecheck; a run of a’s typecheck that exits 0 checked nothing.',
+    why: 'The user asked for typecheck in a, which does not declare it; only b does. If the run exits 0, it reports a type check that never happened. Running b’s typecheck in its place is also wrong, since b was not selected. Failing points the user at the missing task before anyone relies on the result.',
     from: ['task-selection'],
     workspace: {
       projects: {
@@ -461,7 +469,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'Excluding one member keeps the workspace-root project’s task',
-    why: 'The exclude names b alone; the root is a project like any other (turborepo#9619).',
+    why: 'The exclude names b alone, and the workspace root is a project like any other. Dropping the root along with the excluded member removes checks the user never asked to skip. Root level tasks often guard shared tooling, so losing them hides real failures.',
     from: ['task-selection', 'filter'],
     needs: ['filter'],
     workspace: {
@@ -486,7 +494,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'Selecting the workspace-root project by name runs its task and not its members’',
-    why: 'The members sit in the root’s directory, but each is a project of its own.',
+    why: 'The members live inside the root’s directory, but each is a project of its own. Selecting the root by name means the root’s task only. Treating the root as containing its members runs every project in the workspace when one was asked for. Scope is by project, not by folder nesting.',
     from: ['filter'],
     needs: ['filter'],
     workspace: {
@@ -511,7 +519,7 @@ export default [
     kind: 'correctness',
     title:
       'A selection its excludes leave empty, beside a selector matching nothing, fails the run',
-    why: 'Nothing runs and one selector names no project: a typo that exits 0 lets CI pass having checked nothing.',
+    why: 'Here nothing is left to run, and one selector matches no project at all. That selector is almost always a typo, and exiting 0 lets CI pass having checked nothing. A selection the user empties on purpose with excludes is different, but the unmatched name is still an error to report.',
     from: ['select'],
     needs: ['filter'],
     workspace: { projects: { ui: checked(), lib: checked() } },
@@ -530,7 +538,7 @@ export default [
     kind: 'correctness',
     title:
       'Projects under a dot directory, under underscored names, and two of one base name each run',
-    why: 'Each is listed as a project; a runner that skips dot or `__x__` directories, or merges two `same`s, drops one.',
+    why: 'Every listed project must be found and run, wherever it lives. Skipping directories that start with a dot or look like generated code drops real projects silently. Two projects in folders with the same base name are still two projects, and merging them loses one.',
     from: ['project-dirs'],
     workspace: {
       projects: Object.fromEntries(
@@ -565,6 +573,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'A project whose directory holds spaces and parentheses runs there, caches and restores',
+    why: 'Spaces and parentheses are valid in directory names, and tasks must run in their own directory with their files found and restored. A runner that passes such paths through a shell unquoted breaks the command or writes outputs elsewhere. The cache must also restore into the same odd path, or a hit leaves `dist` empty.',
     from: ['project-dirs'],
     workspace: {
       projects: {
@@ -611,7 +620,7 @@ export default [
     category: 'affected',
     kind: 'correctness',
     title: 'A change selects a project whose task names the changed project’s task',
-    why: 'app declares it needs lib#build; leaving app out of the affected run leaves it untested on the new lib.',
+    why: 'app declares that its build needs lib’s build, so a change to lib affects app even without a package dependency. An affected run that follows only package manifests leaves app out. app then goes untested on the new lib, and the breakage shows up later, after merge.',
     from: ['project-dirs', 'select'],
     needs: ['affected'],
     workspace: {
@@ -647,7 +656,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'Selecting a project’s dependencies follows a task it names in another project',
-    why: 'e2e’s test needs app#build; app is its dependency though no manifest says so, and lib is app’s.',
+    why: 'e2e’s test names app’s build, so app is one of e2e’s dependencies even though no manifest says so. lib is app’s dependency, so it counts too. Following only package manifests finds none of these, and the user gets an empty run instead of the projects e2e builds on.',
     from: ['task-edge-selection', 'filter'],
     needs: ['filter', 'select-walk', 'uncached-task'],
     workspace: taskEdge(),
@@ -666,7 +675,7 @@ export default [
     kind: 'correctness',
     title:
       'A project’s dependents reach through a package dependency and then a task another project names',
-    why: 'app depends on lib, and e2e’s test needs app#build: a change to lib reaches e2e.',
+    why: 'A change to lib reaches app through the package graph, and reaches e2e because e2e’s test names app’s build. Dependents must be followed across both kinds of edge, in any order. Stopping at the first kind leaves e2e untested on a change that can break it.',
     from: ['task-edge-selection'],
     needs: ['filter', 'select-walk', 'uncached-task'],
     workspace: taskEdge(),
@@ -684,7 +693,7 @@ export default [
     category: 'cache',
     kind: 'correctness',
     title: 'A cached test behind a dev server runs again when the server’s sources change',
-    why: 'The test passed against the old server; replaying it vouches for a server it never saw.',
+    why: 'A test behind a server checks the server as much as its own code. When the server’s sources change, the old pass says nothing about the new server. Replaying it vouches for a server the test never saw, and a broken server ships under a green run.',
     from: ['exclude-dependencies-key'],
     needs: ['persistent'],
     workspace: behindServer(),
@@ -706,7 +715,7 @@ export default [
     kind: 'efficiency',
     title:
       'With dependencies skipped, a test behind an unchanged server replays and no server starts',
-    why: 'Nothing the test or its server reads changed since the full run built it.',
+    why: 'Nothing the test or its server reads changed since the full run, so the test’s cached result is still valid. With dependencies skipped, it should replay and no server should start. Starting the server anyway costs its whole start up time for a test that will not run.',
     from: ['exclude-dependencies-key'],
     needs: ['persistent', 'filter'],
     workspace: behindServer(),
@@ -727,7 +736,7 @@ export default [
     kind: 'correctness',
     title:
       'With dependencies skipped, each selected task reruns on any of its rebuilt dependencies',
-    why: 'app reads lib and base, top reads tool; keying on the first dependency only replays app or top built on the old one.',
+    why: 'A task’s key must cover every dependency it reads, skipped or not. app reads both lib and base, and top reads tool, so a new base or tool must rerun them. Keying on the first dependency only replays app or top built on the old one, and nothing in the run shows it.',
     from: ['exclude-dependencies-key'],
     needs: ['filter'],
     workspace: {
@@ -760,6 +769,7 @@ export default [
   argsCase(
     'server-gets-forwarded-args',
     'Args forwarded to a run reach a requested server’s command',
+    'Arguments after `--` are how a user passes options such as a port to the command a task runs. A server task is still a task, so `dev -- --port 3000` must start the server with that port. Dropping them starts it on the default port, where the test or the developer then talks to the wrong server or none.',
     false,
     ['--port', '3000'],
   ),
@@ -767,17 +777,17 @@ export default [
   argsCase(
     'ready-server-gets-forwarded-args',
     'Args forwarded to a run reach a requested server that prints a ready line',
+    'A server the run waits on until it prints a ready line is started like any other task. Its forwarded arguments must reach it, so `dev -- --port 3000` does not lose the port. Starting it a different way when a ready line is declared would make the same command behave differently for a setting about timing.',
     true,
     ['--port', '3000'],
-    'A server held until ready is started like any other: `dev -- --port 4000` must not lose the port.',
   ),
 
   argsCase(
     'server-args-reach-it-literally',
     'Args forwarded to a server reach it as typed, never expanded by a shell',
+    'The user’s own shell already parsed and quoted the arguments, so each must arrive as one literal string. Passing them through a second shell expands `$(...)` and backquotes, which runs commands the user never asked to run. It also splits `a b` in two, so the server gets different arguments than typed.',
     false,
     ['$(id -u)', '`id -u`', '$HOME', 'a b'],
-    'The user quoted them; a shell expanding them runs what the user never asked to run.',
   ),
 
   defineCase({
@@ -785,7 +795,7 @@ export default [
     category: 'failure',
     kind: 'correctness',
     title: 'A closed terminal lets a process a task backgrounded run its cleanup',
-    why: 'Killing it outright, as a run that dies of the hang-up does, skips the cleanup it traps for.',
+    why: 'Closing a terminal sends a hang-up, and processes a task started in the background often trap it to clean up, such as removing a lock or stopping a container. The run must pass the signal on and give them time to finish. Killing them outright, as a run that dies of the hang-up does, skips that cleanup and leaves the machine in a broken state.',
     from: ['task-tree-kill'],
     workspace: {
       projects: {
