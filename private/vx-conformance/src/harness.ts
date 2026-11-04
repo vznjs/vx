@@ -431,6 +431,7 @@ async function play(c: Case, adapter: Adapter, root: string, box: string): Promi
     await rm(path.join(root, LEFT), { force: true })
     const stop = 'stop' in step ? step.stop : undefined
     if (stop) await rm(path.join(root, stop.when), { force: true })
+    if (stop?.again) await rm(path.join(root, stop.again), { force: true })
     const tool = (
       'run' in step
         ? adapter.run(step.run, step.projects, {
@@ -448,14 +449,16 @@ async function play(c: Case, adapter: Adapter, root: string, box: string): Promi
     )
       // An adapter names its bin from the root; started elsewhere, that path is the root's.
       .map((a, j) => (j === 0 && a.startsWith('node_modules/') ? path.join(root, a) : a))
+    const openStdin = 'openStdin' in step && step.openStdin
     const argv =
-      stop || step.expect.alone
+      stop || step.expect.alone || openStdin
         ? [
             process.execPath,
             SUPERVISE,
             JSON.stringify({
               ...(stop ? { stop } : {}),
               ...(step.expect.alone ? { left: LEFT } : {}),
+              ...(openStdin ? { openStdin: true } : {}),
             }),
             ...tool,
           ]

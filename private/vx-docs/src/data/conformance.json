@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 186,
+    "ported": 189,
     "rest": {
       "pending": [],
       "vx-only": [
@@ -68,7 +68,6 @@
         "contract-task-globs",
         "core-alias",
         "critical-path",
-        "discover-stage",
         "discovery-node-modules",
         "discovery-refusals",
         "dte-sandbox.unsafe",
@@ -707,7 +706,6 @@
         "kill-tree-guard-zombie.unsafe",
         "kill-tree-hold",
         "kill-tree-proc.unsafe",
-        "left-running-save",
         "load-reads",
         "local-shortcircuit",
         "log-spacing",
@@ -785,7 +783,6 @@
         "run-spaced-value",
         "run-store",
         "run-tail",
-        "runner",
         "runtime-probe-secret-mask",
         "save-index-from-plan",
         "save-lane",
@@ -989,16 +986,16 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 914,
-        "of": 915
+        "pass": 918,
+        "of": 919
       },
       "correctness": {
-        "pass": 758,
-        "of": 758
+        "pass": 761,
+        "of": 761
       },
       "efficiency": {
-        "pass": 147,
-        "of": 148
+        "pass": 148,
+        "of": 149
       },
       "data": {
         "pass": 9,
@@ -1013,24 +1010,24 @@
         "of": 7
       },
       "failure": {
-        "pass": 70,
-        "of": 70
+        "pass": 72,
+        "of": 72
       },
       "affected": {
         "pass": 94,
         "of": 95
       },
       "cache": {
-        "pass": 35,
-        "of": 35
+        "pass": 36,
+        "of": 36
       },
       "inputs": {
         "pass": 296,
         "of": 296
       },
       "outputs": {
-        "pass": 217,
-        "of": 217
+        "pass": 218,
+        "of": 218
       },
       "env": {
         "pass": 27,
@@ -1051,16 +1048,16 @@
     },
     "turbo": {
       "all": {
-        "pass": 582,
-        "of": 847
+        "pass": 584,
+        "of": 851
       },
       "correctness": {
-        "pass": 485,
-        "of": 696
+        "pass": 486,
+        "of": 699
       },
       "efficiency": {
-        "pass": 93,
-        "of": 143
+        "pass": 94,
+        "of": 144
       },
       "data": {
         "pass": 4,
@@ -1075,16 +1072,16 @@
         "of": 3
       },
       "failure": {
-        "pass": 22,
-        "of": 43
+        "pass": 23,
+        "of": 45
       },
       "affected": {
         "pass": 59,
         "of": 95
       },
       "cache": {
-        "pass": 27,
-        "of": 35
+        "pass": 28,
+        "of": 36
       },
       "inputs": {
         "pass": 184,
@@ -1092,7 +1089,7 @@
       },
       "outputs": {
         "pass": 158,
-        "of": 215
+        "of": 216
       },
       "env": {
         "pass": 23,
@@ -1113,16 +1110,16 @@
     },
     "nx": {
       "all": {
-        "pass": 583,
-        "of": 856
+        "pass": 585,
+        "of": 860
       },
       "correctness": {
-        "pass": 449,
-        "of": 707
+        "pass": 450,
+        "of": 710
       },
       "efficiency": {
-        "pass": 130,
-        "of": 141
+        "pass": 131,
+        "of": 142
       },
       "data": {
         "pass": 4,
@@ -1137,16 +1134,16 @@
         "of": 6
       },
       "failure": {
-        "pass": 33,
-        "of": 51
+        "pass": 34,
+        "of": 53
       },
       "affected": {
         "pass": 55,
         "of": 95
       },
       "cache": {
-        "pass": 31,
-        "of": 33
+        "pass": 32,
+        "of": 34
       },
       "inputs": {
         "pass": 182,
@@ -1154,7 +1151,7 @@
       },
       "outputs": {
         "pass": 156,
-        "of": 215
+        "of": 216
       },
       "env": {
         "pass": 21,
@@ -1175,16 +1172,16 @@
     },
     "vite-task": {
       "all": {
-        "pass": 471,
-        "of": 706
+        "pass": 473,
+        "of": 710
       },
       "correctness": {
-        "pass": 391,
-        "of": 587
+        "pass": 392,
+        "of": 590
       },
       "efficiency": {
-        "pass": 78,
-        "of": 111
+        "pass": 79,
+        "of": 112
       },
       "data": {
         "pass": 2,
@@ -1199,16 +1196,16 @@
         "of": 3
       },
       "failure": {
-        "pass": 26,
-        "of": 31
+        "pass": 27,
+        "of": 33
       },
       "affected": {
         "pass": 0,
         "of": 0
       },
       "cache": {
-        "pass": 28,
-        "of": 29
+        "pass": 29,
+        "of": 30
       },
       "inputs": {
         "pass": 174,
@@ -1216,7 +1213,7 @@
       },
       "outputs": {
         "pass": 135,
-        "of": 215
+        "of": 216
       },
       "env": {
         "pass": 25,
@@ -11053,6 +11050,37 @@
       }
     },
     {
+      "id": "outputs/background-writer-not-saved",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A task that exits while a child it started still writes its outputs is not replayed with the partial tree",
+      "why": "Saved at exit, the entry holds the outputs half written: every replay restores that half.",
+      "from": [
+        "left-running-save",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run a#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run a#build"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run a#build"
+        }
+      }
+    },
+    {
       "id": "outputs/link-into-workspace-restored",
       "category": "outputs",
       "kind": "correctness",
@@ -19267,6 +19295,60 @@
       }
     },
     {
+      "id": "failure/second-stop-kills-at-once",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A second Ctrl-C kills a task still in its cleanup at once, and leaves nothing running",
+      "why": "The user pressed it again to stop now: a runner that waits out the cleanup ignores them.",
+      "from": [
+        "signal-handling"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 1,
+          "detail": "did not finish within 15 s"
+        }
+      }
+    },
+    {
+      "id": "failure/stdin-read-sees-eof",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A task that reads its input stream sees it end, though the runner’s own stays open, and the run finishes",
+      "why": "A task handed the terminal, or a pipe nobody closes, waits forever for input no one types.",
+      "from": [
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "did not finish within 20 s"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
       "id": "failure/timeout-kills-an-overrunning-task",
       "category": "failure",
       "kind": "correctness",
@@ -23983,6 +24065,30 @@
       "why": "Same commit, same inputs: the second checkout asks nothing new of the task.",
       "from": [
         "parity-turbo-hashing"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/workspace-through-link-replays",
+      "category": "cache",
+      "kind": "efficiency",
+      "title": "A run started through a link to the workspace replays what the real path built",
+      "why": "Same files, same commit: only the path the shell shows differs.",
+      "from": [
+        "discover-stage"
       ],
       "outcomes": {
         "vx": {

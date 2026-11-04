@@ -221,4 +221,23 @@ export default [
       },
     ],
   }),
+
+  defineCase({
+    id: 'cache/workspace-through-link-replays',
+    category: 'cache',
+    kind: 'efficiency',
+    title: 'A run started through a link to the workspace replays what the real path built',
+    why: 'Same files, same commit: only the path the shell shows differs.',
+    from: ['discover-stage'],
+    workspace: one(cached),
+    steps: [
+      { run: 'build', expect: { exit: 0, ran: ['a#build'] } },
+      { sh: 'ln -s . via && rm -rf packages/a/dist' },
+      {
+        run: 'build',
+        cwd: 'via',
+        expect: { exit: 0, notRan: ['a#build'], files: { [out('a')]: 'a\n' } },
+      },
+    ],
+  }),
 ]

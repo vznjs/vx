@@ -611,4 +611,25 @@ export const outputsRestore = [
       { run: 'build', expect: { exit: 'fail', files: { 'packages/a/dist': 'mine\n' } } },
     ],
   }),
+
+  defineCase({
+    id: 'outputs/background-writer-not-saved',
+    category: 'outputs',
+    kind: 'correctness',
+    title:
+      'A task that exits while a child it started still writes its outputs is not replayed with the partial tree',
+    why: 'Saved at exit, the entry holds the outputs half written: every replay restores that half.',
+    from: ['left-running-save', 'runner'],
+    workspace: one({
+      command:
+        'mkdir -p dist && echo early > dist/out.txt && (sleep 2; echo late > dist/out.txt) &',
+      inputs: ['src/**'],
+      outputs: ['dist/**'],
+    }),
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { sh: 'sleep 4 && rm -rf packages/a/dist' },
+      { run: 'build', expect: { exit: 0, ran: ['a#build'] } },
+    ],
+  }),
 ]

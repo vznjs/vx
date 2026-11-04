@@ -121,6 +121,8 @@ export interface Stop {
   when: string
   /** The runner was started with this signal ignored, as `nohup` starts it. */
   ignored?: true
+  /** Workspace-relative file whose appearance, after the first signal, sends the signal again: a second Ctrl-C. */
+  again?: string
 }
 
 export interface TreeCheck {
@@ -182,6 +184,8 @@ export type Step =
       dry?: true
       /** Stop the run as Ctrl-C or a supervisor does: `signal` to the runner's process group once `when` exists. */
       stop?: Stop
+      /** The runner's input stream is a pipe left open and never written, as a terminal nobody types in is. */
+      openStdin?: true
       expect: Expect
     }
   /**
