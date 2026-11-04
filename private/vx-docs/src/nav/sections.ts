@@ -182,7 +182,6 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Guides' | 'Reference', SidebarItem[]> = {
     {
       label: 'Compare',
       items: [
-        { label: 'vx, Turborepo, Nx, Bazel', link: '/compare/' },
         { label: 'vx vs Turborepo', link: '/compare/turborepo/' },
         { label: 'vx vs Nx', link: '/compare/nx/' },
         { label: 'vx vs Turborepo vs Nx', link: '/comparison/' },
