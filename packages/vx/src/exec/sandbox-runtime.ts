@@ -2324,6 +2324,14 @@ async function runSandboxedOnce(
   // (2026-09-05). A sandboxed task that fails must say what it was denied;
   // deciding on the user's behalf that a record was "just traversal" is how
   // a failure ends up with an empty violations section and no explanation.
+  // Linux: the write observer's records reach the store over a Unix socket
+  // this process serves, not with the child's exit. The observer sent them
+  // before the task exited, but a task that ends quickly is seen to exit
+  // in the turn its connection is accepted, before it is read: a turn to
+  // accept and a turn to read take them in (40 fast refused mkdirs at
+  // once: 38 of 200 unreported, 33 with one turn, none with two).
+  if (process.platform === 'linux')
+    for (let turn = 0; turn < 2; turn++) await new Promise((r) => setImmediate(r))
   const records = takeRecords()
   // Read as is on darwin only. Since SRT 0.0.75 the store is fed on Linux
   // too, by the seccomp helper's write observer — but SRT judges those
