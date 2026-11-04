@@ -2527,7 +2527,8 @@ its `package.json`), else by its directory; `vx show --format json` lists them.
 
 `vx why` / `vx last` find no recorded run for what they were asked, or
 `vx last --live` no run in progress. Run the task once (`vx run <task>`);
-history is this checkout's own.
+history is this checkout's own. Where nothing has run yet and no project
+declares the task, `vx why` says so and points at `vx show` instead.
 
 #### `VX_E_AMBIGUOUS`
 

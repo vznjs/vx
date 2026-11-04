@@ -873,6 +873,15 @@ describe('vx why in a workspace that never ran (E-39)', () => {
         code: 1,
         err: '› vx why  no runs of app#build yet\n\n  fix  vx run app#build\n',
       })
+      // A task no project declares: running it would only be refused.
+      expect((await vx(root, ['lock'])).code).toBe(0)
+      for (const target of ['app#biuld', 'nope#build', 'biuld']) {
+        const miss = await vx(root, ['why', target])
+        expect({ code: miss.code, err: miss.err }).toEqual({
+          code: 1,
+          err: `› vx why  no project declares ${target}\n\n  fix  vx show lists the tasks\n`,
+        })
+      }
     } finally {
       await rm(root, { recursive: true, force: true })
     }
