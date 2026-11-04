@@ -966,7 +966,7 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 940,
+        "pass": 941,
         "of": 941
       },
       "correctness": {
@@ -974,7 +974,7 @@
         "of": 775
       },
       "efficiency": {
-        "pass": 156,
+        "pass": 157,
         "of": 157
       },
       "data": {
@@ -994,7 +994,7 @@
         "of": 72
       },
       "affected": {
-        "pass": 94,
+        "pass": 95,
         "of": 95
       },
       "cache": {
@@ -1028,11 +1028,11 @@
     },
     "turbo": {
       "all": {
-        "pass": 598,
+        "pass": 599,
         "of": 869
       },
       "correctness": {
-        "pass": 485,
+        "pass": 486,
         "of": 709
       },
       "efficiency": {
@@ -1084,17 +1084,17 @@
         "of": 1
       },
       "watch": {
-        "pass": 25,
+        "pass": 26,
         "of": 29
       }
     },
     "nx": {
       "all": {
-        "pass": 617,
+        "pass": 611,
         "of": 894
       },
       "correctness": {
-        "pass": 469,
+        "pass": 463,
         "of": 730
       },
       "efficiency": {
@@ -1106,7 +1106,7 @@
         "of": 8
       },
       "graph": {
-        "pass": 107,
+        "pass": 105,
         "of": 128
       },
       "config": {
@@ -1114,7 +1114,7 @@
         "of": 6
       },
       "failure": {
-        "pass": 36,
+        "pass": 34,
         "of": 53
       },
       "affected": {
@@ -1126,11 +1126,11 @@
         "of": 34
       },
       "inputs": {
-        "pass": 181,
+        "pass": 182,
         "of": 297
       },
       "outputs": {
-        "pass": 155,
+        "pass": 152,
         "of": 216
       },
       "env": {
@@ -2914,7 +2914,9 @@
           "detail": "ran lib#build, expected it replayed or left out"
         },
         "nx": {
-          "status": "pass"
+          "status": "fail",
+          "step": 3,
+          "detail": "app#build started before base#build finished"
         },
         "vite-task": {
           "status": "fail",
@@ -3814,7 +3816,7 @@
         "nx": {
           "status": "fail",
           "step": 1,
-          "detail": "packages/app/seen.txt is \"<0><0></tmp/conf-nx-66WvCV/.home><a b>\", expected \"<$(id -u)><`id -u`><$HOME><a b>\""
+          "detail": "packages/app/seen.txt is \"<0><0></tmp/conf-nx-DfF0vG/.home><a b>\", expected \"<$(id -u)><`id -u`><$HOME><a b>\""
         },
         "vite-task": {
           "status": "n/a",
@@ -3838,10 +3840,12 @@
         "turbo": {
           "status": "fail",
           "step": 1,
-          "detail": "left running: /home/user/vx/node_modules/.bun/@turbo+linux-64@2.11.10/node_modules/@turbo/linux-64/bin/turbo run t --ui=stream --summarize; sh -c trap \"sleep 0.3; echo done > cleanup.txt; exit 0\" TERM HUP; touch started; while :; do sleep 0.05; done; sleep 0.05"
+          "detail": "left running: /home/user/vx/.claude/worktrees/cfm/node_modules/.bun/@turbo+linux-64@2.11.10/node_modules/@turbo/linux-64/bin/turbo run t --ui=stream --summarize; sh -c trap \"sleep 0.3; echo done > cleanup.txt; exit 0\" TERM HUP; touch started; while :; do sleep 0.05; done; sleep 0.05"
         },
         "nx": {
-          "status": "pass"
+          "status": "fail",
+          "step": 1,
+          "detail": "packages/a/cleanup.txt is missing, expected \"done\\n\""
         },
         "vite-task": {
           "status": "pass"
@@ -8243,9 +8247,7 @@
           "detail": "packages/a/out.txt is \"V1\\n\", expected \"V2\\n\""
         },
         "nx": {
-          "status": "fail",
-          "step": 6,
-          "detail": "packages/a/out.txt is \"V1\\n\", expected \"V2\\n\""
+          "status": "pass"
         },
         "vite-task": {
           "status": "fail",
@@ -11689,12 +11691,12 @@
         "turbo": {
           "status": "fail",
           "step": 5,
-          "detail": "play 2 of 5: packages/a/dist/x.txt is \"x1\\n\", expected \"x2\\n\""
+          "detail": "play 1 of 5: packages/a/dist/x.txt is \"x1\\n\", expected \"x2\\n\""
         },
         "nx": {
           "status": "fail",
           "step": 5,
-          "detail": "play 5 of 5: packages/a/dist/x.txt is \"x1\\n\", expected \"x2\\n\""
+          "detail": "play 2 of 5: packages/a/dist/x.txt is \"x1\\n\", expected \"x2\\n\""
         },
         "vite-task": {
           "status": "fail",
@@ -11769,15 +11771,17 @@
         "turbo": {
           "status": "fail",
           "step": 5,
-          "detail": "play 1 of 5: packages/a/dist/x.js is \"x1\\n\", expected \"x2\\n\""
+          "detail": "play 2 of 5: packages/a/dist/x.js is \"x1\\n\", expected \"x2\\n\""
         },
         "nx": {
-          "status": "pass"
+          "status": "fail",
+          "step": 5,
+          "detail": "play 2 of 5: packages/a/dist/x.js is \"x1\\n\", expected \"x2\\n\""
         },
         "vite-task": {
           "status": "fail",
           "step": 5,
-          "detail": "play 1 of 5: packages/a/dist/x.js is \"x1\\n\", expected \"x2\\n\""
+          "detail": "play 2 of 5: packages/a/dist/x.js is \"x1\\n\", expected \"x2\\n\""
         }
       }
     },
@@ -12313,10 +12317,12 @@
         "turbo": {
           "status": "fail",
           "step": 5,
-          "detail": "play 3 of 5: packages/a/dist/x.txt is \"x1\\n\", expected \"x2\\n\""
+          "detail": "play 1 of 5: packages/a/dist/x.txt is \"x1\\n\", expected \"x2\\n\""
         },
         "nx": {
-          "status": "pass"
+          "status": "fail",
+          "step": 5,
+          "detail": "play 3 of 5: packages/a/dist/x.txt is \"x1\\n\", expected \"x2\\n\""
         },
         "vite-task": {
           "status": "fail",
@@ -12512,12 +12518,14 @@
           "detail": "play 1 of 5: packages/a/build/b.js is \"x1\\n\", expected \"x2\\n\""
         },
         "nx": {
-          "status": "pass"
+          "status": "fail",
+          "step": 5,
+          "detail": "play 2 of 5: packages/a/build/b.js is \"x1\\n\", expected \"x2\\n\""
         },
         "vite-task": {
           "status": "fail",
           "step": 5,
-          "detail": "play 1 of 5: exited 1, expected success"
+          "detail": "play 1 of 5: packages/a/build/b.js is \"x1\\n\", expected \"x2\\n\""
         }
       }
     },
@@ -12590,11 +12598,11 @@
         "nx": {
           "status": "fail",
           "step": 5,
-          "detail": "play 4 of 5: packages/b/dist/a.txt is \"x1\\n\", expected \"x2\\n\""
+          "detail": "play 1 of 5: packages/b/dist/a.txt is \"x1\\n\", expected \"x2\\n\""
         },
         "vite-task": {
           "status": "fail",
-          "step": 3,
+          "step": 5,
           "detail": "play 1 of 5: packages/b/dist/a.txt is \"x1\\n\", expected \"x2\\n\""
         }
       }
@@ -15975,7 +15983,7 @@
         "nx": {
           "status": "fail",
           "step": 1,
-          "detail": "packages/a/args.txt is \"<sp ace><two\\nlines><it's><q><{\\\"a\\\":1}></tmp/conf-nx-ee1gw2/.home><&&><->\", expected \"<><sp ace><two\\nlines><it's><\\\"q\\\"><{\\\"a\\\":1}><$HOME><&&><->\""
+          "detail": "packages/a/args.txt is \"<sp ace><two\\nlines><it's><q><{\\\"a\\\":1}></tmp/conf-nx-0K8XL0/.home><&&><->\", expected \"<><sp ace><two\\nlines><it's><\\\"q\\\"><{\\\"a\\\":1}><$HOME><&&><->\""
         },
         "vite-task": {
           "status": "pass"
@@ -19449,7 +19457,7 @@
         "turbo": {
           "status": "fail",
           "step": 1,
-          "detail": "left running: /home/user/vx/node_modules/.bun/@turbo+linux-64@2.11.10/node_modules/@turbo/linux-64/bin/turbo run after --ui=stream --summarize; sleep 60"
+          "detail": "left running: /home/user/vx/.claude/worktrees/cfm/node_modules/.bun/@turbo+linux-64@2.11.10/node_modules/@turbo/linux-64/bin/turbo run after --ui=stream --summarize; sleep 60"
         },
         "nx": {
           "status": "pass"
@@ -19510,7 +19518,7 @@
         "nx": {
           "status": "fail",
           "step": 1,
-          "detail": "packages/a/got.txt is \"SIGTERM\\n\", expected \"SIGINT\\n\""
+          "detail": "packages/a/got.txt is missing, expected \"SIGINT\\n\""
         },
         "vite-task": {
           "status": "pass"
@@ -19676,7 +19684,9 @@
           "detail": "succeeded, expected a failure"
         },
         "nx": {
-          "status": "pass"
+          "status": "fail",
+          "step": 1,
+          "detail": "packages/a/cleanup.txt is missing, expected \"done\\n\""
         },
         "vite-task": {
           "status": "pass"
@@ -21383,7 +21393,9 @@
           "detail": "exited 1, expected success"
         },
         "nx": {
-          "status": "pass"
+          "status": "fail",
+          "step": 1,
+          "detail": "packages/app/cleaned.txt is missing, expected \"cleaned\\n\""
         },
         "vite-task": {
           "status": "n/a",
@@ -21713,7 +21725,7 @@
         "nx": {
           "status": "fail",
           "step": 1,
-          "detail": "packages/app/got.txt is missing, expected \"SIGINT\\n\""
+          "detail": "packages/app/got.txt is \"SIGTERM\\n\", expected \"SIGINT\\n\""
         },
         "vite-task": {
           "status": "n/a",
@@ -21737,7 +21749,7 @@
         "turbo": {
           "status": "fail",
           "step": 1,
-          "detail": "packages/app/got.txt is missing, expected \"SIGTERM\\n\""
+          "detail": "packages/app/got.txt is \"SIGINT\\n\", expected \"SIGTERM\\n\""
         },
         "nx": {
           "status": "fail",
@@ -23522,9 +23534,7 @@
       ],
       "outcomes": {
         "vx": {
-          "status": "fail",
-          "step": 6,
-          "detail": "ran b#test, expected it replayed or left out"
+          "status": "pass"
         },
         "turbo": {
           "status": "fail",
@@ -25992,6 +26002,9 @@
       ],
       "outcomes": {
         "vx": {
+          "status": "pass"
+        },
+        "turbo": {
           "status": "pass"
         },
         "nx": {
