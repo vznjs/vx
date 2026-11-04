@@ -34,8 +34,11 @@ export const nx: Adapter = {
   pkg: 'nx',
   bins: ['nx'],
   // `-p` takes names and globs; it walks neither direction of the graph.
-  // No per-task time limit, no retries.
-  lacks: ['select-walk', 'timeout', 'retries'],
+  // No per-task time limit, no retries. A failure skips what depends on
+  // it, every cache read writes too, no run is planned without running,
+  // and nothing keeps a command from what it never declared. Every host
+  // variable reaches a task, keying none it does not name.
+  lacks: ['select-walk', 'timeout', 'retries', 'continue', 'read-only-cache', 'dry-run', 'sandbox'],
   env: {
     NX_DAEMON: 'false',
     NX_NO_CLOUD: 'true',
@@ -93,7 +96,7 @@ export const nx: Adapter = {
             inputs: [
               spec.inputs || spec.rootInputs ? `${t}-inputs` : 'default',
               // A `^` pattern names no one task, so no one named input: the dependencies' files.
-              ...(spec.dependsOn ?? [])
+              ...(spec.dependencyInputs === false ? [] : (spec.dependsOn ?? []))
                 .filter((d) => d.startsWith('^'))
                 .map((d) => (d.includes('*') ? '^default' : `${d}-inputs`)),
               ...(spec.env ?? []).map((e) => ({ env: e })),
@@ -137,6 +140,7 @@ export const nx: Adapter = {
       ...(opts.only ? ['--excludeTaskDependencies'] : []),
       '--outputStyle=stream',
       ...(opts.concurrency !== undefined ? [`--parallel=${opts.concurrency}`] : []),
+      ...(opts.force ? ['--skipNxCache'] : []),
       ...(opts.args ? ['--', ...opts.args] : []),
     ]
   },

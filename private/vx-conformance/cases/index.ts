@@ -36,6 +36,8 @@ import outputs from './outputs.ts'
 import persistentReady from './persistent-ready.ts'
 import persistentServers from './persistent-servers.ts'
 import report from './report.ts'
+import runModes from './run-modes.ts'
+import sandbox from './sandbox.ts'
 
 /** Every case, in the results' order. */
 export const CASES: Case[] = [
@@ -75,5 +77,7 @@ export const CASES: Case[] = [
   ...affected,
   ...affectedGit,
   ...affectedMore,
+  ...runModes,
   ...report,
+  ...sandbox,
 ]

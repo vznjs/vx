@@ -14,6 +14,8 @@ export interface TaskSpec {
   inputs?: string[]
   /** Environment variables whose values key the task. */
   env?: string[]
+  /** Environment variables that reach the command but never key the task. */
+  passThrough?: string[]
   /** Project-relative globs the task writes, stored and restored with it. Omitted: the tool's default; `[]`: none. */
   outputs?: string[]
   /** Workspace-root-relative globs that also key the task, in any directory. */
@@ -36,6 +38,14 @@ export interface TaskSpec {
    * up; until then nothing that depends on it starts.
    */
   persistent?: true | { ready: string }
+  /** `false`: what the task depends on runs first, but its inputs never key this task. Default: they do. */
+  dependencyInputs?: false
+  /**
+   * The command runs isolated: it may read only its inputs (and its
+   * dependencies' installs) plus `read`, write only its outputs plus
+   * `write`, and reach no network unless `network`.
+   */
+  sandbox?: { read?: string[]; write?: string[]; network?: true }
 }
 
 export interface ProjectSpec {
@@ -142,6 +152,14 @@ export type Step =
       only?: true
       /** At most this many tasks at once. */
       concurrency?: number
+      /** A failed task does not stop the run: what depends on it runs too. The run still fails. */
+      continue?: true
+      /** Run every task, ignoring the cache's entries, and save the results. */
+      force?: true
+      /** Replay from the cache but save nothing to it. */
+      readOnlyCache?: true
+      /** Plan the run without running any task. */
+      dry?: true
       /** Stop the run as Ctrl-C or a supervisor does: `signal` to the runner's process group once `when` exists. */
       stop?: Stop
       expect: Expect
@@ -201,6 +219,7 @@ export type Category =
   | 'affected'
   | 'report'
   | 'failure'
+  | 'sandbox'
 
 /** What a case needs from a tool beyond running tasks in order. A tool without it cannot express the case. */
 export type Feature =
@@ -226,6 +245,20 @@ export type Feature =
   | 'runtime-inputs'
   /** More than one task named in one run (`also`). */
   | 'multi-task'
+  /** A run that goes on past a failure, running what depends on it. */
+  | 'continue'
+  /** A run that ignores cache entries and saves fresh ones. */
+  | 'force'
+  /** A run that reads the cache and writes nothing to it. */
+  | 'read-only-cache'
+  /** A run that plans and runs nothing. */
+  | 'dry-run'
+  /** Variables that reach a task without keying it. */
+  | 'pass-through-env'
+  /** A dependency ordered first whose inputs do not key the task. */
+  | 'dependency-inputs-off'
+  /** A task kept from reading, writing and reaching what it does not declare. */
+  | 'sandbox'
 
 export interface Case {
   /** `category/slug`, unique. */

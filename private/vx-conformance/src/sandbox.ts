@@ -33,6 +33,13 @@ export async function sandboxed(
   argv: string[],
   env: Record<string, string>,
   timeoutMs = 120_000,
+  /**
+   * The host's /proc and PID namespace in place of fresh ones: a tool that
+   * sandboxes its own tasks (vx's bwrap) cannot mount a proc inside a fresh
+   * one, and the PIDs it reads there must be its own. `--die-with-parent`
+   * still ends the run's process when the harness goes.
+   */
+  hostProc = false,
 ): Promise<Result> {
   if (BWRAP === null)
     throw new Error('bwrap not found: the conformance suite runs every tool sandboxed')
@@ -47,15 +54,14 @@ export async function sandboxed(
       '/',
       '--dev',
       '/dev',
-      '--proc',
-      '/proc',
+      ...(hostProc ? ['--bind', '/proc', '/proc'] : ['--proc', '/proc']),
       '--tmpfs',
       '/tmp',
       '--bind',
       root,
       root,
       '--unshare-net',
-      '--unshare-pid',
+      ...(hostProc ? [] : ['--unshare-pid']),
       '--unshare-ipc',
       '--die-with-parent',
       '--new-session',
