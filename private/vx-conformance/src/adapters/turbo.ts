@@ -96,6 +96,13 @@ export const turbo: Adapter = {
     '--summarize',
     '--affected',
   ],
+  watch: (task, projects) => [
+    'node_modules/.bin/turbo',
+    'watch',
+    task,
+    '--ui=stream',
+    ...(projects ?? []).map((f) => `--filter=${f}`),
+  ],
   // `--summarize` writes .turbo/runs/<id>.json per run.
   report: async (root) => {
     const dir = path.join(root, '.turbo', 'runs')

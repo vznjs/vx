@@ -164,6 +164,36 @@ export type Step =
   | { configure: (ws: WorkspaceSpec) => WorkspaceSpec }
   /** Run `task` only where the changes since `base` reach. */
   | { affected: string; base: string; expect: Expect }
+  /**
+   * Start the tool's watch mode for `watch` (in every project that declares
+   * it, or in `projects` and what they depend on), then play each phase:
+   * its change, then what must hold once the watch has acted on it. The
+   * first phase, with no change, is the initial run. The watch is stopped
+   * after the last phase.
+   */
+  | { watch: string; projects?: string[]; phases: WatchPhase[] }
+
+/** One change made under a running watch, and what must follow it. */
+export interface WatchPhase {
+  /** Write files (workspace-relative); `null` deletes. */
+  write?: Record<string, string | null>
+  /** A `sh` command the user runs in the workspace root (a rename, a new directory); it must succeed. */
+  sh?: string
+  /** Change the workspace's task definitions; the tool's config is written again, as a user does. */
+  configure?: (ws: WorkspaceSpec) => WorkspaceSpec
+  expect: WatchExpect
+}
+
+/**
+ * What must hold after a watch phase's change, judged by the marks and
+ * files the tasks leave, never by the watch's log. `ran` means the task
+ * ran to its end after the change; `notRan` and the once-only rule hold
+ * through a quiet window in which no task starts or ends.
+ */
+export type WatchExpect = Pick<Expect, 'ran' | 'notRan' | 'order' | 'files' | 'filesNot'> & {
+  /** Judge the moment the rest holds, a task maybe still running: the next change lands mid-run. */
+  inFlight?: true
+}
 
 /**
  * Which projects a run selects, as a user names them. A run's selection is
@@ -201,6 +231,7 @@ export type Category =
   | 'affected'
   | 'report'
   | 'failure'
+  | 'watch'
 
 /** What a case needs from a tool beyond running tasks in order. A tool without it cannot express the case. */
 export type Feature =
@@ -226,6 +257,8 @@ export type Feature =
   | 'runtime-inputs'
   /** More than one task named in one run (`also`). */
   | 'multi-task'
+  /** A watch mode: rerunning tasks as files change. */
+  | 'watch'
 
 export interface Case {
   /** `category/slug`, unique. */

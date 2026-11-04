@@ -148,6 +148,23 @@ export const nx: Adapter = {
     `--base=${base}`,
     '--outputStyle=stream',
   ],
+  // `nx watch` hears changes through the daemon, which every other run
+  // leaves off; it reruns the docs' `run-many` line on each change.
+  watch: (task, projects) => [
+    'env',
+    'NX_DAEMON=true',
+    'node_modules/.bin/nx',
+    'watch',
+    ...(projects ? ['-p', projects.join(','), '-d'] : ['--all']),
+    '--initialRun',
+    '--',
+    [
+      'node_modules/.bin/nx run-many -t',
+      task,
+      ...(projects ? ['-p', projects.join(',')] : []),
+      '--outputStyle=stream',
+    ].join(' '),
+  ],
   // Each run rewrites run.json in its cache directory.
   report: async (root) => {
     const [file] = await Array.fromAsync(

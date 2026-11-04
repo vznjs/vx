@@ -26,19 +26,26 @@ export function caseHome(root: string): string {
   return path.join(root, '.home')
 }
 
-/** `argv` run in `cwd` (inside `root`), able to write only under `root`. */
-export async function sandboxed(
+/** A sandboxed process that keeps running: its output so far, and the process itself (bwrap). */
+export interface Running {
+  proc: Bun.Subprocess<'ignore', 'pipe', 'pipe'>
+  out: () => string
+  /** Resolves once both streams closed. */
+  drained: Promise<void>
+}
+
+/** `argv` started in `cwd` (inside `root`), able to write only under `root`; killing it ends its whole PID namespace. */
+export function spawnSandboxed(
   root: string,
   cwd: string,
   argv: string[],
   env: Record<string, string>,
-  timeoutMs = 120_000,
-): Promise<Result> {
+  timeoutMs?: number,
+): Running {
   if (BWRAP === null)
     throw new Error('bwrap not found: the conformance suite runs every tool sandboxed')
   const home = caseHome(root)
   mkdirSync(home, { recursive: true })
-  const started = performance.now()
   const proc = Bun.spawn(
     [
       BWRAP,
@@ -81,22 +88,41 @@ export async function sandboxed(
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',
-      timeout: timeoutMs,
+      ...(timeoutMs === undefined ? {} : { timeout: timeoutMs }),
     },
   )
-  const [stdout, stderr, exit] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
+  let stdout = ''
+  let stderr = ''
+  const drain = async (stream: ReadableStream<Uint8Array>, add: (s: string) => void) => {
+    const decoder = new TextDecoder()
+    for await (const chunk of stream) add(decoder.decode(chunk, { stream: true }))
+  }
+  const drained = Promise.all([
+    drain(proc.stdout, (s) => (stdout += s)),
+    drain(proc.stderr, (s) => (stderr += s)),
+  ]).then(() => undefined)
+  return { proc, out: () => stdout + stderr, drained }
+}
+
+/** `argv` run in `cwd` (inside `root`), able to write only under `root`. */
+export async function sandboxed(
+  root: string,
+  cwd: string,
+  argv: string[],
+  env: Record<string, string>,
+  timeoutMs = 120_000,
+): Promise<Result> {
+  const started = performance.now()
+  const { proc, out, drained } = spawnSandboxed(root, cwd, argv, env, timeoutMs)
+  const [exit] = await Promise.all([proc.exited, drained])
   if (process.env['CONFORMANCE_DEBUG'])
     console.error(
-      `[${Math.round(performance.now() - started)} ms] ${argv.join(' ')} → ${exit}\n${stdout}${stderr}`,
+      `[${Math.round(performance.now() - started)} ms] ${argv.join(' ')} → ${exit}\n${out()}`,
     )
   const timedOut = proc.signalCode !== null && performance.now() - started >= timeoutMs
   return {
     exit: proc.signalCode ? 128 : exit,
-    out: stdout + stderr,
+    out: out(),
     ...(timedOut ? { timedOut } : {}),
   }
 }

@@ -14,7 +14,8 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { constants } from 'node:os'
 
 interface Options {
-  stop?: { signal: NodeJS.Signals; when: string; ignored?: boolean }
+  /** `waitMs`: how long to wait for `when` before the signal goes anyway (default 30 s). */
+  stop?: { signal: NodeJS.Signals; when: string; ignored?: boolean; waitMs?: number }
   left?: string
 }
 
@@ -29,7 +30,7 @@ const cmd = stop?.ignored
 const proc = Bun.spawn(cmd, { stdio: ['ignore', 'inherit', 'inherit'], detached: true })
 
 if (stop) {
-  const deadline = Date.now() + 30_000
+  const deadline = Date.now() + (stop.waitMs ?? 30_000)
   while (proc.exitCode === null && proc.signalCode === null && Date.now() < deadline) {
     if (existsSync(stop.when)) break
     await Bun.sleep(20)

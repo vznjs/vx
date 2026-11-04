@@ -17,7 +17,7 @@ export const viteTask: Adapter = {
   bins: ['vp'],
   // `vp run` selects by package, never by a git change, and takes one task;
   // dependsOn names tasks exactly; a task has no time limit, no retries, and
-  // is never a long-running process the run stops.
+  // is never a long-running process the run stops; there is no watch mode.
   lacks: [
     'affected',
     'task-pattern',
@@ -27,6 +27,7 @@ export const viteTask: Adapter = {
     'ready',
     'runtime-inputs',
     'multi-task',
+    'watch',
   ],
   env: { NO_COLOR: '1', DO_NOT_TRACK: '1', VITE_PLUS_TELEMETRY_DISABLED: '1' },
   // Vite Task installs the workspace's `packageManager` from the registry

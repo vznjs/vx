@@ -101,6 +101,12 @@ export const vx: Adapter = {
     ...(opts.args ? ['--', ...opts.args] : []),
   ],
   affected: (task, base) => [VX, 'run', task, `--affected=${base}`],
+  watch: (task, projects) => [
+    VX,
+    'watch',
+    task,
+    ...(projects ? projects.flatMap((p) => ['--filter', p]) : ['--all']),
+  ],
   report: async (_root, read) => {
     const last = JSON.parse(await read([VX, 'last', '--format', 'json']))
     return Object.fromEntries(

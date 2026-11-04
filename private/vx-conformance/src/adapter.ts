@@ -29,6 +29,8 @@ export interface Adapter {
   run(task: string, projects?: string[], opts?: RunOptions): string[]
   /** Run `task` where the changes since `base` reach. */
   affected(task: string, base: string): string[]
+  /** Run `task` as `run` does, then again as files change, until stopped (SIGINT). A tool lacking `watch` has none. */
+  watch?(task: string, projects?: string[]): string[]
   /** What the tool reports about its last run, per `project#task`, from its own output, files or API. */
   report(root: string, read: Read): Promise<Record<string, TaskReport>>
 }

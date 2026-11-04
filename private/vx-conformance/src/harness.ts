@@ -18,7 +18,7 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 import type { Adapter } from './adapter.ts'
-import { caseHome, sandboxed } from './sandbox.ts'
+import { caseHome, sandboxed, spawnSandboxed } from './sandbox.ts'
 import {
   projectDir,
   type Case,
@@ -26,6 +26,8 @@ import {
   type ReportCheck,
   type TaskReport,
   type TreeCheck,
+  type WatchExpect,
+  type WatchPhase,
   type WorkspaceSpec,
 } from './spec.ts'
 
@@ -45,6 +47,16 @@ const RAN = '.ran'
 
 /** Where a supervised run lists the processes it left alive. */
 const LEFT = '.left'
+
+/** The file whose appearance stops a watch: its supervisor sends SIGINT, as Ctrl-C does. */
+const STOP = '.stop-watch'
+
+/**
+ * How long a watch phase may take, and how long no task may start or end
+ * before it is judged: longer than the slowest tool takes to start a task
+ * after a change (Nx, through its daemon: up to 5 s on a loaded machine).
+ */
+const WATCH = { initialMs: 60_000, timeoutMs: 30_000, quietMs: 8_000, pollMs: 50 }
 
 const SUPERVISE = path.join(import.meta.dir, 'supervise.ts')
 
@@ -110,6 +122,7 @@ async function writeWorkspace(root: string, ws: WorkspaceSpec): Promise<void> {
       '.home',
       RAN,
       LEFT,
+      STOP,
       '.turbo',
       '.nx',
       '.vx/cache',
@@ -370,6 +383,30 @@ async function play(c: Case, adapter: Adapter, root: string): Promise<Outcome> {
       await configure(ws)
       continue
     }
+    if ('watch' in step) {
+      if (adapter.watch === undefined) throw new Error(`${adapter.name} has no watch`)
+      if (refused !== null)
+        return { status: 'fail', step: i + 1, detail: 'refused the config', log: refused }
+      const failed = await watch(
+        root,
+        adapter.env,
+        adapter
+          .watch(step.watch, step.projects)
+          .map((a, j) => (j === 0 && a.startsWith('node_modules/') ? path.join(root, a) : a)),
+        step.phases,
+        async (next) => {
+          ws = next(ws)
+          await configure(ws)
+          return refused
+        },
+        async (cmd) => {
+          const r = await sh(['sh', '-c', cmd], GIT_IDENTITY)
+          if (r.exit !== 0) throw new Error(`step ${i + 1} \`${cmd}\` exited ${r.exit}:\n${r.out}`)
+        },
+      )
+      if (failed !== null) return { status: 'fail', step: i + 1, ...failed }
+      continue
+    }
     await rm(path.join(root, RAN), { force: true })
     const cwd = 'cwd' in step && step.cwd ? path.join(root, step.cwd) : root
     await rm(path.join(root, LEFT), { force: true })
@@ -457,4 +494,142 @@ async function play(c: Case, adapter: Adapter, root: string): Promise<Outcome> {
       }
   }
   return { status: 'pass' }
+}
+
+/**
+ * Starts `argv` (a tool's watch) under a supervisor in the case's sandbox,
+ * plays each phase against it, then stops it with SIGINT; one that does not
+ * exit within 10 s is killed with its whole sandbox.
+ */
+async function watch(
+  root: string,
+  env: Record<string, string>,
+  argv: string[],
+  phases: WatchPhase[],
+  reconfigure: (next: (ws: WorkspaceSpec) => WorkspaceSpec) => Promise<string | null>,
+  shell: (cmd: string) => Promise<void>,
+): Promise<{ detail: string; log: string } | null> {
+  await rm(path.join(root, RAN), { force: true })
+  await rm(path.join(root, STOP), { force: true })
+  const stop = { signal: 'SIGINT', when: STOP, waitMs: 3_600_000 }
+  const supervised = [process.execPath, SUPERVISE, JSON.stringify({ stop }), ...argv]
+  const w = spawnSandboxed(root, root, supervised, env)
+  let exited = false
+  void w.proc.exited.then(() => (exited = true))
+  const marks = async () =>
+    ((await readMaybe(path.join(root, RAN))) ?? '').split('\n').filter(Boolean)
+  const log = () => `$ ${argv.join(' ')}\n${w.out()}`.slice(-4000)
+  try {
+    for (const [j, phase] of phases.entries()) {
+      const offset = (await marks()).length
+      if (phase.write) await writeFiles(root, phase.write)
+      if (phase.sh) await shell(phase.sh)
+      if (phase.configure) {
+        const refused = await reconfigure(phase.configure)
+        if (refused !== null) return { detail: `phase ${j + 1}: refused the config`, log: refused }
+      }
+      const names = [
+        ...Object.keys(phase.expect.files ?? {}),
+        ...Object.keys(phase.expect.filesNot ?? {}),
+      ]
+      const failed = await awaitPhase(
+        phase.expect,
+        async () => ({
+          marks: (await marks()).slice(offset),
+          files: Object.fromEntries(
+            await Promise.all(
+              names.map(async (f) => [f, await readMaybe(path.join(root, f))] as const),
+            ),
+          ),
+        }),
+        {
+          timeoutMs: j === 0 ? WATCH.initialMs : WATCH.timeoutMs,
+          quietMs: WATCH.quietMs,
+          pollMs: WATCH.pollMs,
+          alive: () => !exited,
+        },
+      )
+      if (failed !== null)
+        return {
+          detail: `phase ${j + 1}: ${failed === 'the watch exited' ? `the watch exited ${w.proc.exitCode}` : failed}`,
+          log: log(),
+        }
+    }
+    return null
+  } finally {
+    await writeFile(path.join(root, STOP), '')
+    const ended = await Promise.race([
+      w.proc.exited.then(() => true),
+      Bun.sleep(10_000).then(() => false),
+    ])
+    if (!ended) w.proc.kill('SIGKILL')
+    await w.proc.exited
+  }
+}
+
+// A watch phase is judged by polling the marks and files the tasks leave
+// until what it expects holds and the watch has gone quiet (no task started
+// or ended for a while), or the time runs out. Quiet is what makes "it did
+// not run" and "it ran once" mean something: a rerun a tool makes late, or
+// a loop on its own output, lands inside the window.
+
+/** What a poll sees: the marks since the phase's change, and the files the phase names. */
+export interface Seen {
+  marks: string[]
+  files: Record<string, string | null>
+}
+
+export interface PhaseTiming {
+  timeoutMs: number
+  /** How long no mark may land before the phase is judged. */
+  quietMs: number
+  pollMs: number
+  alive: () => boolean
+}
+
+/** Whether `task` started and then ended within `marks`. */
+function finished(marks: string[], task: string): boolean {
+  const start = marks.indexOf(`+${task}`)
+  return start !== -1 && marks.indexOf(`-${task}`, start) !== -1
+}
+
+function holds(expect: WatchExpect, s: Seen): boolean {
+  return (
+    (expect.ran ?? []).every((t) => finished(s.marks, t)) &&
+    Object.entries(expect.files ?? {}).every(([f, want]) => (s.files[f] ?? null) === want)
+  )
+}
+
+export async function awaitPhase(
+  expect: WatchExpect,
+  seen: () => Promise<Seen>,
+  t: PhaseTiming,
+): Promise<string | null> {
+  const start = performance.now()
+  let marks = -1
+  let changed = start
+  for (;;) {
+    if (!t.alive()) return 'the watch exited'
+    const s = await seen()
+    const now = performance.now()
+    if (s.marks.length !== marks) {
+      marks = s.marks.length
+      changed = now
+    }
+    const ok = holds(expect, s)
+    if (ok && (expect.inFlight || now - changed >= t.quietMs))
+      return check(expect, 0, '', s.marks, s.files)
+    if (now - start >= t.timeoutMs) {
+      const after = `after ${t.timeoutMs / 1000} s`
+      if (ok) return `${after}: still running tasks, never quiet`
+      const unfinished = (expect.ran ?? []).find(
+        (task) => s.marks.includes(`+${task}`) && !finished(s.marks, task),
+      )
+      const failed = check(expect, 0, '', s.marks, s.files)
+      if (failed?.startsWith('did not run') || unfinished === undefined)
+        return `${after}: ${failed ?? 'nothing held'}`
+      return `${after}: ${unfinished} started and did not finish`
+    }
+    await Bun.sleep(t.pollMs)
+  }
 }
