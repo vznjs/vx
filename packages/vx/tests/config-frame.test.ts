@@ -119,6 +119,33 @@ describe('configErrorFrame', () => {
         '    |   ^',
     )
   })
+
+  it('frames a backticked setting, nested or not, and a refused task name', async () => {
+    const ws = path.join(dir, 'named', '.vx', 'workspace.ts')
+    await mkdir(path.dirname(ws), { recursive: true })
+    await writeFile(
+      ws,
+      "export default {\n  cache: { dir: '' },\n  run: { schedule: 'x', concurrenc: 2 },\n}\n",
+    )
+    const cfg = path.join(dir, 'named', 'vx.config.ts')
+    await writeFile(
+      cfg,
+      "export default {\n  tags: 'a',\n  tasks: {\n    'x#y': { exec: { command: 'x' } },\n  },\n}\n",
+    )
+    const at = (m: string) =>
+      configErrorFrame(m, path.join(dir, 'named'))?.split('\n')[0]?.split(': ')[0]
+    expect(at(`${ws}: \`run.schedule\` must be one of 'most-work'`)).toBe('.vx/workspace.ts:3:10')
+    expect(at(`${ws}: \`run\` has unknown field "concurrenc" (allowed: retries)`)).toBe(
+      '.vx/workspace.ts:3:25',
+    )
+    expect(at(`${ws}: \`cache.dir\` must be a non-blank path`)).toBe('.vx/workspace.ts:2:12')
+    expect(at(`${cfg}: \`tags\` must be an array of non-empty strings`)).toBe('vx.config.ts:2:3')
+    expect(at(`${cfg}: task name "x#y" holds '#', which separates a project from its task`)).toBe(
+      'vx.config.ts:4:6',
+    )
+    // An empty name has no key a search could tell from any other `:`.
+    expect(at(`${cfg}: task name "" is empty`)).toBeUndefined()
+  })
 })
 
 describe('configRefusal', () => {
