@@ -30,7 +30,7 @@
       },
       "cold run @100": {
         "hash xxh3": 8057,
-        "spawn git": 7,
+        "spawn git": 8,
         "sqlite statement": 2749
       },
       "up-to-date run @100": {
@@ -56,9 +56,9 @@
       }
     },
     "time": {
-      "plan @100": 3.484,
-      "restore run @100": 12.568,
-      "up-to-date run @100": 5.76
+      "plan @100": 4.214,
+      "restore run @100": 10.845,
+      "up-to-date run @100": 4.742
     }
   }
 }
