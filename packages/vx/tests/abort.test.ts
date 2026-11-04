@@ -440,8 +440,47 @@ describe('RunOptions.signal aborts a run in flight', () => {
       await running
       const sent = kill.mock.calls.filter((c) => c[1] === 'SIGINT').map((c) => c[0])
       expect(sent.sort((a, b) => a - b)).toEqual([-srv, -e2e].sort((a, b) => a - b))
+      // Nor a SIGTERM after it: the end-of-graph teardown of the servers
+      // signalled the server again mid-cleanup (conformance
+      // failure/stop-cleanup-of-a-ready-server-not-cut-short).
+      const term = kill.mock.calls.filter((c) => c[1] === 'SIGTERM').map((c) => c[0])
+      expect(term).toEqual([])
     } finally {
       kill.mockRestore()
     }
+  }, 20_000)
+
+  it('a stop lets a ready server finish its cleanup: no second signal cuts it short', async () => {
+    const dir = await addProject(
+      root,
+      'app',
+      `
+        export default {
+          tasks: {
+            srv: { exec: { command: "trap 'trap - INT TERM; sleep 0.5; echo done > clean.txt; exit 0' INT TERM; echo READY; while :; do sleep 0.05; done", persistent: { readyWhen: 'READY' } } },
+            e2e: { dependsOn: ['srv'], exec: { command: 'echo $$ > e2e.pid; exec sleep 30' } },
+          },
+        }
+      `,
+    )
+    const ac = new AbortController()
+    // The cleanup is the subject: a long grace keeps the SIGKILL off it.
+    process.env['VX_TEST_KILL_GRACE'] = '5000ms'
+    try {
+      const running = run({
+        cwd: root,
+        tasks: ['e2e'],
+        projects: ['app'],
+        log: silent,
+        handleSignals: false,
+        signal: ac.signal,
+      })
+      await waitForPid(path.join(dir, 'e2e.pid'), 10_000)
+      ac.abort('SIGINT')
+      await running
+    } finally {
+      process.env['VX_TEST_KILL_GRACE'] = '200ms'
+    }
+    expect(await Bun.file(path.join(dir, 'clean.txt')).exists()).toBe(true)
   }, 20_000)
 })
