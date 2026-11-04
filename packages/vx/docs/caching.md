@@ -327,10 +327,11 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     Even with ctime trusted, git reads it to the second, and its racy
     rule looks at mtime alone. So a same-size rewrite that keeps an
     older mtime, made in the second the index recorded the file, also
-    reads clean. When an index holds an entry racy by ctime but not by
-    mtime, each trusted file whose ctime reaches the index's second is
-    hashed instead (2026-11-04). A warm index holds no such entry and
-    costs one scan of bytes already read.
+    reads clean. So an entry whose recorded ctime, not its mtime,
+    reaches the second its index was written is hashed instead
+    (2026-11-04). The stamps come from git's own `ls-files --debug`,
+    read with the blob-size check below and kept in its verdict, so a
+    warm run reads one row and does no extra work.
 
     Every pruned path, plus untracked files, falls back to an
     in-process `HASH("blob " + len + "\0" + content)` over the

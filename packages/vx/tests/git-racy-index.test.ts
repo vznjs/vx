@@ -19,7 +19,7 @@ import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { startGitEnumeration } from '../src/cache/index.js'
+import { checkBlobSizes, startGitEnumeration } from '../src/cache/index.js'
 import { gitInitCommit } from './helpers/workspace.js'
 
 const FILES = 20
@@ -123,6 +123,7 @@ describe('a racily clean index', () => {
       writeFileSync(file, attempt % 2 === 0 ? 'y\n' : 'z\n')
       utimesSync(file, mtime, new Date(mtime.getTime() + 1000 * (attempt + 1)))
       const next = await startGitEnumeration(root, ['.'])
+      await checkBlobSizes(next)
       if (Math.floor(Date.now() / 1000) !== second) continue
       seen = true
       expect(next.trusted.has('f3.txt')).toBe(false)
