@@ -167,6 +167,14 @@ describe('numeric flags take a plain decimal integer only', () => {
     expect(parseRunArgs(['build', '--concurrency', '4']).settings['run.concurrency']).toBe(4)
   })
 
+  it('a value flag given twice keeps the last value', () => {
+    const twice = parseRunArgs(['build', '--concurrency=1', '--concurrency', '2'])
+    expect([twice.error, twice.settings['run.concurrency']]).toEqual([undefined, 2])
+    expect(parseRunArgs(['build', '--timeout=1s', '--timeout=2m']).settings['run.timeout']).toBe(
+      parseRunArgs(['build', '--timeout=2m']).settings['run.timeout'],
+    )
+  })
+
   it('--concurrency <n>% is that share of the CPUs, never below 1', () => {
     expect(parseConcurrency('50%', 8)).toBe(4)
     expect(parseConcurrency('25%', 2)).toBe(1)
