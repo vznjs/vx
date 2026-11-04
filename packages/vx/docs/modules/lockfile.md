@@ -147,5 +147,8 @@ derivation once the lock itself holds.
   workspace and an entry whose config file was renamed. It compares a fresh evaluation in the
   lock's JSON form, so a field a config leaves `undefined` is not drift.
   An unknown argument exits 1 before anything is read or written.
+- A read lock's configs share each pooled value, so a reader never edits
+  one in place: the `project` and `graph` stages copy first
+  (`tests/plugin-pipeline.test.ts`, "an alike task").
 - `.vx/projects.lock.json` is globally excluded from cache inputs and
   `--affected` (it's vx's own metadata, never a task input).
