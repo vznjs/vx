@@ -71,7 +71,7 @@ export default defineProject({
       description: 'oxlint with tsgolint-backed type-aware checks',
       exec: {
         command:
-          'oxlint --type-aware --type-check astro.config.mjs scripts src/bench src/components src/features src/nav src/pages src/plugins tests',
+          'oxlint --type-aware --type-check astro.config.mjs scripts src/bench src/components src/conformance src/features src/nav src/pages src/plugins tests',
         sandbox: {
           allow: {
             read: ['**/*', '../../packages/vx/src/**'],
@@ -88,6 +88,9 @@ export default defineProject({
           'src/bench/**',
           // src/bench/data.ts imports it.
           'src/data/bench.json',
+          'src/conformance/**',
+          // src/conformance/data.ts imports it.
+          'src/data/conformance.json',
           'src/blog/**',
           'src/components/**',
           'src/features/**',
@@ -250,6 +253,9 @@ export default defineProject({
           // The figures' formatter and the data the pages are held to.
           'src/bench/**',
           'src/data/bench.json',
+          // conformance.test.ts holds the built page to the suite's results.
+          'src/conformance/**',
+          'src/data/conformance.json',
           // sidebar-coverage.test.ts imports the sidebars; diagram-kit.test.ts
           // reads the kit's styles, the widgets' and the theme's tokens, and
           // with landing.test.ts the landing's picture.

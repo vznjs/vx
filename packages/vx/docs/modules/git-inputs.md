@@ -116,6 +116,7 @@ export interface IndexBlobs {
   paths: string[] // regular stage-0 entries, index order (`ls-files --debug`)
   oids: string[]
   sizes: number[] // the worktree size the index recorded
+  sameSecond: string[] // entries git cannot see a same-second rewrite of
 }
 export interface IndexBlobCheck {
   key: string | undefined // xxh3 of the index file, prefix and pathspecs: the verdict's key

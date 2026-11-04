@@ -55,6 +55,7 @@ export const MENU: Partial<Record<SectionId, MenuLink[]>> = {
     { label: 'Caching in depth', href: 'caching/', line: 'How a key is made.' },
     { label: 'Benchmarks', href: 'benchmarks/', line: 'vx against Turborepo and Nx.' },
     { label: 'Compare', href: 'compare/', line: 'vx, Turborepo, Nx, Bazel.' },
+    { label: 'Conformance', href: 'conformance/', line: 'One suite of cases, every tool.' },
     { label: 'Security model', href: 'security/', line: 'What a task and a cache can reach.' },
   ],
 }

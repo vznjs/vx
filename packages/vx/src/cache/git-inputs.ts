@@ -896,7 +896,12 @@ export function fileIdentity(mode: string, oid: string): string {
 function parseLsFilesOutput(
   records: readonly string[],
   undecodableRecords: ReadonlySet<string>,
-  debug?: { sizes: readonly number[]; indexed: Map<string, { oid: string; size: number }> },
+  debug?: {
+    sizes: readonly number[]
+    ctimes: readonly number[]
+    mtimes: readonly number[]
+    indexed: Map<string, { oid: string; size: number; ctime: number; mtime: number }>
+  },
 ): GitLsResult {
   const files: string[] = []
   const oids = new Map<string, string>()
@@ -918,7 +923,12 @@ function parseLsFilesOutput(
     if ((mode === '100644' || mode === '100755' || mode === '120000') && stage === '0') {
       oids.set(filePath, fileIdentity(mode, m[3]!))
       if (debug !== undefined && mode !== '120000') {
-        debug.indexed.set(filePath, { oid: m[3]!, size: debug.sizes[i]! })
+        debug.indexed.set(filePath, {
+          oid: m[3]!,
+          size: debug.sizes[i]!,
+          ctime: debug.ctimes[i]!,
+          mtime: debug.mtimes[i]!,
+        })
       }
     } else if (mode === '160000') {
       gitlinks.add(filePath)
@@ -944,11 +954,15 @@ function parseLsFilesOutput(
 function splitLsDebug(run: GitRun): {
   records: string[]
   sizes: number[]
+  ctimes: number[]
+  mtimes: number[]
   undecodable: Set<string>
 } {
   const segs = run.stdout.split('\0')
   const records: string[] = []
   const sizes: number[] = []
+  const ctimes: number[] = []
+  const mtimes: number[] = []
   const undecodable = new Set<string>()
   let record = segs[0]!
   let recordRaw = record
@@ -956,12 +970,22 @@ function splitLsDebug(run: GitRun): {
     const seg = segs[i]
     let rest = ''
     let size = -1
+    let ctime = -1
+    let mtime = -1
     if (seg !== undefined) {
       let at = 0
       for (let k = 0; k < 5 && at >= 0; k++) {
         const nl = seg.indexOf('\n', at)
         if (nl < 0) at = -1
         else {
+          // `  ctime: <sec>:<nsec>`, then `  mtime: <sec>:<nsec>`.
+          if (k < 2) {
+            const n = parseInt(seg.slice(seg.indexOf(':', at) + 1, nl), 10)
+            if (!Number.isNaN(n)) {
+              if (k === 0) ctime = n
+              else mtime = n
+            }
+          }
           if (k === 4) {
             const field = seg.indexOf('size: ', at)
             if (field >= 0 && field < nl) {
@@ -977,12 +1001,14 @@ function splitLsDebug(run: GitRun): {
     if (record.length > 0) {
       records.push(record)
       sizes.push(size)
+      ctimes.push(ctime)
+      mtimes.push(mtime)
       if (run.undecodable.has(recordRaw)) undecodable.add(record)
     }
     record = rest
     recordRaw = seg ?? ''
   }
-  return { records, sizes, undecodable }
+  return { records, sizes, ctimes, mtimes, undecodable }
 }
 
 /**
@@ -1002,6 +1028,8 @@ export interface IndexBlobs {
   paths: string[]
   oids: string[]
   sizes: number[]
+  /** Entries git cannot see a same-second rewrite of (`sameSecond`). */
+  sameSecond: string[]
 }
 
 /** What the blob-size check reads, lazily: the verdict's key, and the listing a miss needs. */
@@ -1055,6 +1083,8 @@ export function checkBlobSizes(enumeration: GitEnumeration, memo?: BlobSizeMemo)
  * (racy) entry records 0 and is hashed from disk. An answer that cannot be
  * read trusts nothing. A filter that keeps the size (`tr a-z A-Z`) is not
  * caught: only a read of every trusted file would be (caching.md, step 12).
+ * The verdict also holds each entry git cannot see a same-second rewrite
+ * of (`sameSecond`), read from the same listing.
  */
 async function dropResizedOids(enumeration: GitEnumeration, memo?: BlobSizeMemo): Promise<void> {
   const { trusted, blobCheck } = enumeration
@@ -1102,7 +1132,7 @@ async function dropResizedOids(enumeration: GitEnumeration, memo?: BlobSizeMemo)
     }
     for (const [oid, n] of learned) sizes.set(oid, n)
     if (learned.size > 0) memo?.rememberBlobSizes(learned)
-    resized = []
+    resized = [...blobs.sameSecond]
     for (let i = 0; i < blobs.oids.length; i++) {
       const size = sizes.get(blobs.oids[i]!)
       // The index keeps the low 32 bits of a size.
@@ -1671,6 +1701,19 @@ function hasRacyEntry(index: Uint8Array, mtimeSec: number, oidBytes: number): bo
   return false
 }
 
+/**
+ * git compares a file's ctime to the second only, and its racy rule reads
+ * mtime alone: a same-size rewrite that keeps (or restores) an older mtime,
+ * made in the second the index recorded the file, keeps every stat git
+ * compares, and `status` calls it clean. An entry whose recorded ctime, not
+ * its mtime, reaches the second its index was written can hide one; git
+ * re-hashes an entry racy by mtime. Its OID is not trusted. The stamps are
+ * git's own (`ls-files --debug`), judged once per index (the verdict).
+ */
+function sameSecond(ctimeSec: number, mtimeSec: number, writtenSec: number): boolean {
+  return ctimeSec < 0 || (ctimeSec >= writtenSec && mtimeSec < writtenSec)
+}
+
 /** A private copy a run older than this may still have handed to `status`. */
 const STALE_INDEX_MS = 60_000
 
@@ -1886,7 +1929,9 @@ export async function startGitEnumeration(
         bytes,
         hash,
         st,
-        key: `${hash}:${pathspecKey}`,
+        // The mtime too: which entries git can see a same-second rewrite
+        // of (`sameSecond`) turns on the second the index was written.
+        key: `${hash}:${pathspecKey}:${Math.floor(st.mtimeMs / 1000)}`,
         stamp: `${st.ino}:${st.ctimeMs}:${st.size}`,
       }
     } catch {
@@ -1915,10 +1960,16 @@ export async function startGitEnumeration(
       index === undefined ? undefined : { GIT_INDEX_FILE: index },
     )
   // An index with no racy entry is read as it is: `status` spawns now.
+  // The copy `status` read, when it read one: its stats are the ones the
+  // dirty set came from, so the blob check lists it too.
+  let statusCopy: string | undefined
   const statusRun =
     read === undefined || indexFile === undefined || !racyIndex(read, facts!.objectFormat)
       ? spawnStatus(undefined)
-      : refreshedIndex(indexFile, read, spawnGit).then(spawnStatus)
+      : refreshedIndex(indexFile, read, spawnGit).then((copy) => {
+          statusCopy = copy
+          return spawnStatus(copy)
+        })
   const running = Promise.all([listing, statusRun, varsRun])
   const gitPrefix = facts?.prefix ?? ''
   const gitDir = facts?.commonDir ?? ''
@@ -1940,6 +1991,17 @@ export async function startGitEnumeration(
   // the stamp moves with any write) and is still in place after it: a
   // `git add` between the listing and the read paired one index's verdict
   // with the other's entries. Otherwise this run asks for no verdict.
+  // A verdict read from the copy holds for that copy file only: a copy
+  // written again (a new inode) asks again.
+  const copyKey = (key: string): string | undefined => {
+    if (statusCopy === undefined) return key
+    try {
+      const st = lstatSync(statusCopy)
+      return `${key}:${st.ino}:${st.mtimeMs}`
+    } catch {
+      return undefined
+    }
+  }
   let indexKey: string | undefined
   if (
     read !== undefined &&
@@ -1947,7 +2009,7 @@ export async function startGitEnumeration(
   ) {
     try {
       const st = lstatSync(indexFile!)
-      if (`${st.ino}:${st.ctimeMs}:${st.size}` === read.stamp) indexKey = read.key
+      if (`${st.ino}:${st.ctimeMs}:${st.size}` === read.stamp) indexKey = copyKey(read.key)
     } catch {
       // gone: no key
     }
@@ -2049,24 +2111,47 @@ export async function startGitEnumeration(
     blobCheck: {
       key: indexKey,
       async blobs() {
-        const run = await spawnGit(['ls-files', '-s', '-v', '-z', '--debug', '--', ...pathspecs])
+        const listed = statusCopy ?? indexFile
+        let writtenSec = 0
+        try {
+          if (listed !== undefined) writtenSec = Math.floor(lstatSync(listed).mtimeMs / 1000)
+        } catch {
+          return null
+        }
+        const run = await spawnGit(
+          ['ls-files', '-s', '-v', '-z', '--debug', '--', ...pathspecs],
+          undefined,
+          statusCopy === undefined ? undefined : { GIT_INDEX_FILE: statusCopy },
+        )
         if (run === null || run.exitCode !== 0) return null
         // Sizes from an index written since the listing judge entries the
         // trusted OIDs did not come from: an add there rewrote a resized
         // entry to one that fits, and the listed OID stood (A-60).
         if (indexStamp() !== stampBefore) return null
         const debug = splitLsDebug(run)
-        const indexed = new Map<string, { oid: string; size: number }>()
-        parseLsFilesOutput(debug.records, debug.undecodable, { sizes: debug.sizes, indexed })
-        const blobs: IndexBlobs = { paths: [], oids: [], sizes: [] }
-        for (const [rel, { oid, size }] of indexed) {
+        const indexed = new Map<
+          string,
+          { oid: string; size: number; ctime: number; mtime: number }
+        >()
+        parseLsFilesOutput(debug.records, debug.undecodable, {
+          sizes: debug.sizes,
+          ctimes: debug.ctimes,
+          mtimes: debug.mtimes,
+          indexed,
+        })
+        const blobs: IndexBlobs = { paths: [], oids: [], sizes: [], sameSecond: [] }
+        for (const [rel, { oid, size, ctime, mtime }] of indexed) {
           blobs.paths.push(rel)
           blobs.oids.push(oid)
           blobs.sizes.push(size)
+          if (sameSecond(ctime, mtime, writtenSec)) blobs.sameSecond.push(rel)
         }
         return blobs
       },
-      rekey: async () => (await readIndex())?.key,
+      rekey: async () => {
+        const key = (await readIndex())?.key
+        return key === undefined ? undefined : copyKey(key)
+      },
     },
     // A missing blob is an answer ("missing"), never a fetch from a partial
     // clone's promisor remote.

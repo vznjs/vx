@@ -4,7 +4,7 @@
 // path: the blog's to the Blog, a release note's to Releases, and every
 // other one, internals included, to the Reference, which is where the
 // internals index is linked from; the landing and the feature pages go to
-// their own. Those four have no sidebar, no table of contents and no
+// their own, as does the conformance table. Those have no sidebar, no table of contents and no
 // prev/next: their pages are a listing and posts read one column wide
 // (components/blog/), or run full width in the landing's look.
 
@@ -23,7 +23,9 @@ function links(entries: Entry[]): Link[] {
 function sectionByPath(id: string): SectionId {
   const top = id.split('/')[0]
   if (top === '' || top === 'index') return 'home'
-  return top === 'blog' || top === 'releases' || top === 'features' ? top : 'reference'
+  return top === 'blog' || top === 'releases' || top === 'features' || top === 'conformance'
+    ? top
+    : 'reference'
 }
 
 export const onRequest = defineRouteMiddleware(async (context) => {

@@ -13,7 +13,15 @@
 
 import type { StarlightUserConfig } from '@astrojs/starlight/types'
 
-export type SectionId = 'home' | 'features' | 'docs' | 'guides' | 'reference' | 'blog' | 'releases'
+export type SectionId =
+  | 'home'
+  | 'features'
+  | 'docs'
+  | 'guides'
+  | 'reference'
+  | 'conformance'
+  | 'blog'
+  | 'releases'
 
 declare global {
   namespace App {
@@ -30,6 +38,7 @@ export const SECTIONS: readonly { id: SectionId; label: string; href: string }[]
   { id: 'docs', label: 'Docs', href: 'docs/' },
   { id: 'guides', label: 'Guides', href: 'guides/' },
   { id: 'reference', label: 'Reference', href: 'cli/' },
+  { id: 'conformance', label: 'Conformance', href: 'conformance/' },
   { id: 'blog', label: 'Blog', href: 'blog/' },
   { id: 'releases', label: 'Releases', href: 'releases/' },
 ]

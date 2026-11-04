@@ -1,0 +1,151 @@
+{
+  "tasks": {
+    "install": {
+      "dependsOn": [
+        "^build"
+      ]
+    },
+    "ci": {
+      "dependsOn": [
+        "lint",
+        "test"
+      ]
+    },
+    "conformance": {
+      "description": "bun src/cli.ts: every case against vx, Turborepo, Nx and Vite Task → vx-docs/src/data/conformance.json",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun src/cli.ts",
+        "timeout": "30m",
+        "env": {
+          "define": {
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0"
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "src/**",
+          "cases/**",
+          "package.json"
+        ]
+      }
+    },
+    "lint": {
+      "dependsOn": [
+        "lint.oxlint",
+        "lint.oxfmt"
+      ]
+    },
+    "lint.oxlint": {
+      "description": "oxlint with tsgolint-backed type-aware checks",
+      "exec": {
+        "command": "oxlint --type-aware --type-check",
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ]
+          }
+        }
+      },
+      "dependsOn": [
+        "install"
+      ],
+      "inputs": {
+        "files": [
+          "src/**",
+          "cases/**",
+          "package.json",
+          "tests/**",
+          "*.ts",
+          ".oxlintrc.json",
+          "tsconfig.json"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "lint.oxfmt": {
+      "description": "oxfmt --check (no rewrite; CI-safe)",
+      "exec": {
+        "command": "oxfmt --check .",
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ]
+          }
+        }
+      },
+      "dependsOn": [
+        "install"
+      ],
+      "inputs": {
+        "files": [
+          "**/*",
+          "package.json"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test": {
+      "description": "bun test",
+      "exec": {
+        "command": "bun test --only-failures",
+        "env": {
+          "define": {
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0"
+          },
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX"
+          ]
+        }
+      },
+      "dependsOn": [
+        "install"
+      ],
+      "inputs": {
+        "files": [
+          "src/**",
+          "cases/**",
+          "package.json",
+          "tests/**"
+        ],
+        "workspaceFiles": [
+          "packages/*/tests/*.test.ts"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "build": {
+      "dependsOn": [
+        "^build"
+      ],
+      "inputs": {
+        "files": [
+          "**"
+        ]
+      }
+    }
+  }
+}

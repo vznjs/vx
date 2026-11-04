@@ -578,6 +578,7 @@ describe('each schema object is its source type', () => {
         forwarded: true,
         inputMoved: true,
         attempts: true,
+        queuedMs: true,
         output: true,
         locations: true,
         sandboxFix: true,

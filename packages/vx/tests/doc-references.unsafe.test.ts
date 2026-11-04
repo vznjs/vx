@@ -103,6 +103,8 @@ function siteSource(urlPath: string): string | undefined {
     path.join(CONTENT, `${page}.mdx`),
     path.join(CONTENT, page, 'index.md'),
     path.join(CONTENT, page, 'index.mdx'),
+    // A page the site builds from its own code (`/conformance/`), not from docs.
+    path.join(repo, 'private', 'vx-docs', 'src', 'pages', page, 'index.astro'),
   ]) {
     if (existsSync(candidate)) return candidate
   }

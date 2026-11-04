@@ -19,7 +19,7 @@ import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { startGitEnumeration } from '../src/cache/index.js'
+import { checkBlobSizes, startGitEnumeration } from '../src/cache/index.js'
 import { gitInitCommit } from './helpers/workspace.js'
 
 const FILES = 20
@@ -36,7 +36,11 @@ const gitDir = (): string => path.join(root, '.git')
 const indexFile = (): string => path.join(gitDir(), 'index')
 const copies = (): string[] => readdirSync(gitDir()).filter((n) => n.startsWith('vx-index-'))
 
-/** Files and index stamped in one second, long enough ago that nothing is in a racy window now. */
+/**
+ * Files and index stamped in one second, long enough ago that nothing is in a
+ * racy window now. Their ctimes are now: the index is written a second after
+ * them, as a checkout older than this second's would be, so no ctime is racy.
+ */
 function checkout(racy: boolean): void {
   const at = new Date(Math.floor(Date.now() / 1000) * 1000 - 100_000)
   for (let i = 0; i < FILES; i++) {
@@ -44,6 +48,7 @@ function checkout(racy: boolean): void {
     writeFileSync(file, `${i}\n`)
     utimesSync(file, at, at)
   }
+  Bun.sleepSync(1000 - (Date.now() % 1000) + 5)
   gitInitCommit(root, 'init')
   if (racy) utimesSync(indexFile(), at, at)
 }
@@ -99,6 +104,31 @@ describe('a racily clean index', () => {
     const edited = await startGitEnumeration(root, ['.'])
     expect(edited.changed).toEqual(['f3.txt'])
     expect(edited.trusted.has('f3.txt')).toBe(false)
+  })
+
+  // git compares ctime to the second only, and its racy rule reads mtime
+  // alone: a same-size rewrite that restores an old mtime, in the second
+  // the index (here the copy) recorded the file, keeps every stat git
+  // compares. Plain `git status` calls it clean; the key must not.
+  it('sees a same-size, mtime-keeping rewrite in the second the index recorded it', async () => {
+    checkout(true)
+    const file = path.join(root, 'f3.txt')
+    const { mtime } = statSync(file)
+    let seen = false
+    for (let attempt = 0; attempt < 5 && !seen; attempt++) {
+      while (Date.now() % 1000 > 300) await Bun.sleep(10)
+      const second = Math.floor(Date.now() / 1000)
+      utimesSync(file, mtime, new Date(mtime.getTime() + 1000 * (attempt + 1)))
+      await startGitEnumeration(root, ['.'])
+      writeFileSync(file, attempt % 2 === 0 ? 'y\n' : 'z\n')
+      utimesSync(file, mtime, new Date(mtime.getTime() + 1000 * (attempt + 1)))
+      const next = await startGitEnumeration(root, ['.'])
+      await checkBlobSizes(next)
+      if (Math.floor(Date.now() / 1000) !== second) continue
+      seen = true
+      expect(next.trusted.has('f3.txt')).toBe(false)
+    }
+    expect(seen).toBe(true)
   })
 
   it('a clean index gets no copy', async () => {

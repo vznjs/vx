@@ -18,6 +18,13 @@ import {
 } from '../src/cache/index.js'
 import { relPosix } from '../src/util/index.js'
 
+/**
+ * git sees a same-size rewrite in the second an index recorded it only by
+ * ctime, which it reads to the second, so vx hashes a file changed in the
+ * index's second itself. The fixtures' index is written a second later.
+ */
+const nextSecond = () => Bun.sleep(1000 - (Date.now() % 1000) + 5)
+
 let root: string
 beforeEach(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-verdict-'))
@@ -73,6 +80,7 @@ it('a verdict is read by a digest of the paths too: a renamed resized entry stay
   await writeFile(path.join(root, 'f.txt'), 'aa\r\n')
   const past = new Date(Date.now() - 10_000)
   await utimes(path.join(root, 'f.txt'), past, past)
+  await nextSecond()
   git('-c', 'core.autocrlf=true', 'add', 'f.txt')
 
   // Past the racy window, so the index is old enough to key a verdict.
@@ -102,6 +110,7 @@ it('an index written as the enumeration starts asks no verdict; an older one doe
   await writeFile(path.join(root, 'f.txt'), 'aa\r\n')
   const past = new Date(Date.now() - 10_000)
   await utimes(path.join(root, 'f.txt'), past, past)
+  await nextSecond()
   git('-c', 'core.autocrlf=true', 'add', 'f.txt')
   const lying: BlobSizeMemo = { ...memo(), blobVerdict: () => [] }
 
@@ -131,6 +140,7 @@ it('a verdict is keyed by the workspace too: a nested workspace on the same inde
   await writeFile(path.join(root, 'sub', 'f.txt'), 'aa\r\n')
   const past = new Date(Date.now() - 10_000)
   await utimes(path.join(root, 'sub', 'f.txt'), past, past)
+  await nextSecond()
   git('-c', 'core.autocrlf=true', 'add', 'sub/f.txt')
   await Bun.sleep(150)
 
@@ -207,6 +217,7 @@ async function manyFiles(n: number): Promise<void> {
   await writeFile(path.join(root, 'big.txt'), 'aa\r\n')
   const past = new Date(Date.now() - 10_000)
   await utimes(path.join(root, 'big.txt'), past, past)
+  await nextSecond()
   git('-c', 'core.autocrlf=true', 'add', 'big.txt')
   await Bun.sleep(150)
 }

@@ -324,6 +324,15 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     is then hashed through the memo below, which keys on ctime and
     inode.
 
+    Even with ctime trusted, git reads it to the second, and its racy
+    rule looks at mtime alone. So a same-size rewrite that keeps an
+    older mtime, made in the second the index recorded the file, also
+    reads clean. So an entry whose recorded ctime, not its mtime,
+    reaches the second its index was written is hashed instead
+    (2026-11-04). The stamps come from git's own `ls-files --debug`,
+    read with the blob-size check below and kept in its verdict, so a
+    warm run reads one row and does no extra work.
+
     Every pruned path, plus untracked files, falls back to an
     in-process `HASH("blob " + len + "\0" + content)` over the
     **worktree bytes** (sha1, or sha256 in `--object-format=sha256`

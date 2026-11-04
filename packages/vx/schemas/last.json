@@ -242,6 +242,7 @@
         "peakRssBytes",
         "peakCores",
         "avgRssBytes",
+        "queuedMs",
         "placement",
         "outputBytes",
         "blocks",
@@ -289,6 +290,10 @@
         "avgRssBytes": {
           "type": ["integer", "null"],
           "description": "mean resident memory over the samples; null when nothing sampled"
+        },
+        "queuedMs": {
+          "type": ["integer", "null"],
+          "description": "milliseconds it waited, ready, for a slot; null when it never queued"
         },
         "placement": {
           "type": ["string", "null"],

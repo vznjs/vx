@@ -1,0 +1,22 @@
+{
+  "name": "@vzn/vx-conformance",
+  "version": "0.0.0",
+  "license": "MIT",
+  "private": true,
+  "description": "One neutral suite of task-runner behaviours, run against vx, Turborepo, Nx and Vite Task, each sandboxed.",
+  "type": "module",
+  "engines": {
+    "bun": ">=1.4"
+  },
+  "//": [
+    "turbo, nx, vite-plus: the tools under test, at the pins @vzn/vx-bench measures, so the report and the site name the same versions."
+  ],
+  "devDependencies": {
+    "@types/bun": "^1.4.0",
+    "@vzn/vx": "workspace:*",
+    "@vzn/vx-lockfile": "workspace:*",
+    "nx": "24.0.2",
+    "turbo": "2.11.10",
+    "vite-plus": "1.4.0"
+  }
+}
