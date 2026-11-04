@@ -4,14 +4,6 @@
 
 import type { CacheFacts, CapturedChunk, ExecuteResult, SandboxConfig } from '@vzn/vx'
 
-/**
- * A worker says what it holds every this many heartbeats, and a task's
- * lease is three of them. Every heartbeat (2026-10-25: the fastest, not
- * a free plan's message count): a task its worker dropped while alive
- * goes back in 15 s, not 90.
- */
-export const HELD_EVERY = 1
-
 /** A worker's `join` info. */
 export interface WorkerInfo {
   readonly v: 1
@@ -100,9 +92,13 @@ export interface ServerOrder {
 }
 
 export type ToWorker =
-  /** Tasks that fit what it has free, each begun at once; `root` is swapped for the worker's in `env`. */
+  /**
+   * Tasks that fit what it has free: taken, each runs at once. `n` counts
+   * its batches, so its report says which it had read.
+   */
   | {
       type: 'batch'
+      n: number
       root: string
       /** `root`'s real path, as sandbox paths spell it. */
       realRoot: string
@@ -146,26 +142,48 @@ export interface Load {
    * `cpu` (one that sent 3, each as a task started, read 0.6 of 2.0 used).
    */
   readonly avg?: number
+  /** When it was read, by the worker's clock: its task times are read against it. */
+  readonly at?: number
+}
+
+/** A task's times on its worker, epoch ms by the worker's clock: begun, command ended. */
+export interface Ran {
+  readonly startedAt: number
+  readonly ranAt: number
 }
 
 export type ToOrchestrator =
-  /** It began the task. */
-  | { type: 'start'; task: string; load?: Load }
-  /** Its command is done; its outputs save now, its cores are free. */
-  | { type: 'ran'; task: string; load?: Load }
-  /** Each heartbeat while it runs any: what it runs, which renews its lease on each. */
-  | { type: 'held'; running: string[]; load?: Load }
+  /**
+   * Its command is done; its outputs save now, its cores are free. Never
+   * sent alone: it rides the next message, or its `end` says it.
+   */
+  | ({ type: 'ran'; task: string; load?: Load } & Ran)
+  /**
+   * A heartbeat with nothing else said: what it runs, the last batch it
+   * read, its live load. A task of that batch or before it no longer
+   * names goes back.
+   */
+  | { type: 'report'; running: string[]; batch: number; load: Load }
+  /** Messages said at one moment, as one frame: waiting `ran`s and the event they ride. */
+  | { type: 'together'; messages: ToOrchestrator[] }
   /** It could not run a task it began, not a non-zero exit: a full disk, a failed unpack. */
-  | { type: 'fault'; task: string; reason: string }
+  | { type: 'fault'; task: string; reason: string; load?: Load }
   /** It ran the task and saved it under `key`; its output is in that entry. */
-  | { type: 'end'; task: string; key: string; result: WiredResult; load?: Load }
+  | ({
+      type: 'end'
+      task: string
+      key: string
+      result: WiredResult
+      endedAt: number
+      load?: Load
+    } & Ran)
   /**
    * Ahead of an `end` too long for one relay frame, some of its lists:
    * the `end` that follows adds its own to them. One `end` with a sandboxed
    * task's 9000 violations was over the relay's 1 MiB, and the run waited
    * for it (2026-10-25).
    */
-  | ({ type: 'part'; task: string } & Partial<Pick<WiredResult, PartList>>)
+  | ({ type: 'part'; task: string; load?: Load } & Partial<Pick<WiredResult, PartList>>)
 
 /**
  * A message's JSON in UTF-8 bytes, what a relay frame holds: counted in

@@ -28,7 +28,6 @@ import {
 } from '@vzn/vx'
 import {
   bytesOf,
-  HELD_EVERY,
   HOST_ENV,
   PART_LISTS,
   type PartList,
@@ -65,11 +64,13 @@ interface Job {
   booked?: number
   /** The workers that failed it after beginning it, with why: two fail it. */
   faults?: string[]
-  /** Its worker's lease on it ends then unless the worker says it still holds it. */
-  leaseUntil?: number
+  /** Its worker's `end` came: a report naming it no more is not a loss. */
+  ended?: true
   /** When it was sent to its worker. */
   sentAt?: number
-  /** When its worker began it. */
+  /** The batch that sent it, by its worker's count: a report of that batch or later names it. */
+  batch?: number
+  /** When its worker began it: its send, then the time its worker says. */
   startedAt?: number
   /** When its worker said its command ended: it saves since. */
   ranAt?: number
@@ -112,8 +113,10 @@ interface Worker {
   readonly usage: Usage
   /** Sent to it and not finished: running there or in its queue. */
   readonly busy: Map<string, Job>
-  /** Of `busy`, the ones it began. */
+  /** Of `busy`, the ones it began: each one sent, as a worker runs what it takes at once. */
   readonly started: Set<string>
+  /** Batches sent it: each batch's `n`. */
+  batches: number
   usedCores: number
   usedMemory: number
   /** Its machine's use as its last frame said, and when this machine heard it. */
@@ -164,7 +167,7 @@ export interface OrchestratorOptions {
   readonly joined?: () => void
   /** Worker `id` did not join within twice its size's first join: given up, for its adapter to stop. */
   readonly overdue?: (id: string) => void
-  /** A worker failed a task or its lease: the run plans again, now, so a replacement starts. */
+  /** A worker failed a task or dropped it: the run plans again, now, so a replacement starts. */
   readonly faulted?: () => void
   /** How much of the run waits on a task (`tailsMs`): the queue places the most first. */
   readonly tail?: (taskId: string) => number
@@ -361,14 +364,6 @@ export class Orchestrator {
         return o.root
       }
     })()
-    // Leases ran on while either side was away, as a relay restarted: what
-    // a worker holds is still its own, not run again elsewhere
-    // (2026-10-25: "make sure on rejoin we don't repeat work").
-    o.me.resumed((peer) => {
-      for (const a of this.workers.values())
-        if (peer === undefined || a.id === peer)
-          for (const j of a.busy.values()) if (j.leaseUntil !== undefined) this.lease(j)
-    })
     this.loop = this.listen()
   }
 
@@ -975,8 +970,11 @@ export class Orchestrator {
             }
             tasks.push({ ...order, deps: [] })
           }
+          const n = ++a.batches
+          for (const { job } of part) job.batch = n
           const batch = {
             type: 'batch',
+            n,
             root: this.o.root,
             realRoot: this.realRoot,
             tasks,
@@ -986,9 +984,11 @@ export class Orchestrator {
           a.usage.messagesIn++
           a.usage.bytesIn += bytesOf(batch)
           for (const { job } of part) {
-            this.lease(job)
             pending.delete(job)
+            // Sent, it runs: its worker takes only what it has room for.
+            this.begun(a, job.req.taskId)
           }
+          this.pumpSoon()
         }
       })
       .catch((err: unknown) => {
@@ -1006,13 +1006,8 @@ export class Orchestrator {
       })
   }
 
-  /** Three of the worker's `held` from now. */
-  private lease(job: Job): void {
-    job.leaseUntil = performance.now() + 3 * HELD_EVERY * this.o.me.heartbeatMs
-  }
-
   /**
-   * Worker `a` let `job` down: lost, its lease ended, or it could not run
+   * Worker `a` let `job` down: lost, its report named it no more, or it could not run
    * it. One it had begun counts, and two workers fail it; one still in its
    * queue goes back free.
    */
@@ -1032,9 +1027,10 @@ export class Orchestrator {
     a.has.delete(job.req.taskId)
     this.unhold(a, job)
     delete job.worker
-    delete job.leaseUntil
     delete job.sentAt
+    delete job.ended
     delete job.ranAt
+    delete job.batch
     const begun = a.started.delete(job.req.taskId)
     // Stopped, it runs nowhere again; the cancel sent its worker has no one to answer it.
     if (job.req.signal?.aborted === true) {
@@ -1078,25 +1074,6 @@ export class Orchestrator {
     this.o.stalled?.(lines.join('\n'))
   }
 
-  /** Each task whose worker's lease on it ended goes back. */
-  private expire(): void {
-    // With no socket no `held` arrives: the leases wait for it (`resumed`).
-    if (!this.o.me.online) return
-    const now = performance.now()
-    const back: Job[] = []
-    for (const a of this.workers.values())
-      for (const j of [...a.busy.values()])
-        if (j.leaseUntil !== undefined && j.leaseUntil < now) {
-          const again = this.retry(a, j, 'lease expired')
-          if (again !== undefined) back.push(again)
-        }
-    if (back.length === 0) return
-    this.queue.unshift(...back)
-    this.o.faulted?.()
-    if (this.spawnedAt.size > 0) this.stranded(`a task's lease ended and no worker is left`)
-    this.pumpSoon()
-  }
-
   private post(a: Worker, m: ToWorker): void {
     a.chain = a.chain.then(() => this.o.me.send(a.id, m)).catch(this.unsent(m.type, a.label))
   }
@@ -1118,16 +1095,19 @@ export class Orchestrator {
   }
 
   /** Worker `a` ran `task` and saved it under `key`: it is done there, and done here once restored. */
-  private async finish(a: Worker, task: string, key: string, head: WiredResult): Promise<void> {
+  private async finish(
+    a: Worker,
+    task: string,
+    key: string,
+    head: WiredResult,
+    endedAt: number | undefined,
+  ): Promise<void> {
     const job = a.busy.get(task)
     if (job === undefined) return
     // A dependency's remote copy did not read back there (a truncated
     // upload): sent again from this machine, the task runs again. Taken as
     // the task's failure, it failed every run, the remote saying it held the
     // key (2026-10-25).
-    // Ended there, it is in no `held` again: a lease running on through a
-    // slow resend called its worker faulty and gave the task to another.
-    delete job.leaseUntil
     if (head.unread !== undefined) {
       const sent = await this.resend(job, head.unread)
       // Its worker was lost meanwhile: the task went back to the queue.
@@ -1145,7 +1125,7 @@ export class Orchestrator {
         return
       }
     }
-    const endAt = performance.now()
+    const endAt = endedAt ?? performance.now()
     this.traceTask(a, job, head, endAt)
     a.busy.delete(task)
     this.unhold(a, job)
@@ -1422,6 +1402,7 @@ export class Orchestrator {
         label,
         busy: new Map(),
         started: new Set(),
+        batches: 0,
         has: new Set(),
         // Its name first, before any batch.
         chain: this.cache()
@@ -1487,67 +1468,99 @@ export class Orchestrator {
         }
         const a = this.workers.get(from)
         if (a === undefined) continue
-        const m = body as ToOrchestrator
-        if ('load' in m) this.heard(a, m.load)
-        if (m.type !== 'held') this.movedAt = performance.now()
-        if (m.type === 'start') {
-          this.begun(a, m.task)
-          this.pumpSoon()
-        } else if (m.type === 'held') {
-          for (const t of m.running) {
-            const j = a.busy.get(t)
-            if (j?.leaseUntil !== undefined) this.lease(j)
-            this.begun(a, t)
+        const said = body as ToOrchestrator
+        const frame = said.type === 'together' ? said.messages : [said]
+        // A worker's times, read against its clock as this frame left it:
+        // no two machines' clocks agree.
+        const now = performance.now()
+        let at: number | undefined
+        for (const m of frame) if ('load' in m && m.load?.at !== undefined) at = Number(m.load.at)
+        const here = (t: unknown): number | undefined =>
+          at === undefined || typeof t !== 'number' || !Number.isFinite(at - t)
+            ? undefined
+            : Math.min(now, now - (at - t))
+        for (const m of frame) {
+          if ('load' in m && m.load !== undefined) this.heard(a, m.load)
+          if (m.type !== 'report') this.movedAt = performance.now()
+          if (m.type === 'report') {
+            // Every task of the batches it read that has not ended is in its
+            // report: one missing it no longer runs, and goes back at once.
+            const running = new Set(m.running)
+            const read = Number(m.batch) || 0
+            const back: Job[] = []
+            for (const [t, j] of [...a.busy])
+              if (
+                a.started.has(t) &&
+                j.ended !== true &&
+                (j.batch ?? 0) <= read &&
+                !running.has(t)
+              ) {
+                const again = this.retry(a, j, 'not in its report')
+                if (again !== undefined) back.push(again)
+              }
+            if (back.length > 0) {
+              this.queue.unshift(...back)
+              this.o.faulted?.()
+              if (this.spawnedAt.size > 0)
+                this.stranded(`${a.label} no longer runs a task it began and no worker is left`)
+            }
+            this.pumpSoon()
+          } else if (m.type === 'ran') {
+            // Its command ended: its cores are the next task's while it saves.
+            const j = a.busy.get(m.task)
+            if (j === undefined) continue
+            this.begun(a, m.task)
+            this.unhold(a, j)
+            // Its worker still says it holds it while it saves.
+            j.startedAt = here(m.startedAt) ?? j.startedAt ?? now
+            j.ranAt = here(m.ranAt) ?? now
+            this.pumpSoon()
+          } else if (m.type === 'fault') {
+            const j = a.busy.get(m.task)
+            if (j === undefined) continue
+            // It began it whether or not its `start` came first.
+            this.begun(a, m.task)
+            if (this.retry(a, j, m.reason) !== undefined) this.queue.unshift(j)
+            if (a.faulty) this.o.faulted?.()
+            if (a.faulty && this.spawnedAt.size > 0)
+              this.stranded(
+                `${a.label} could not run ${m.task} (${m.reason}) and no worker is left`,
+              )
+            this.pumpSoon()
+          } else if (m.type === 'part') {
+            a.usage.messagesOut++
+            a.usage.bytesOut += bytesOf(m)
+            const k = `${from}\0${m.task}`
+            const held = this.parts.get(k) ?? {}
+            for (const list of PART_LISTS) {
+              const items = m[list] as readonly unknown[] | undefined
+              if (items !== undefined) held[list] = [...(held[list] ?? []), ...items]
+            }
+            this.parts.set(k, held)
+          } else if (m.type === 'end') {
+            a.usage.messagesOut++
+            a.usage.bytesOut += bytesOf(m)
+            const k = `${from}\0${m.task}`
+            const held = this.parts.get(k)
+            this.parts.delete(k)
+            const result: Record<string, unknown> = { ...m.result }
+            for (const list of PART_LISTS) {
+              const items = m.result[list] as readonly unknown[] | undefined
+              if (held?.[list] !== undefined) result[list] = [...held[list], ...(items ?? [])]
+            }
+            // Not awaited: one task's restore holds no other message.
+            const j = a.busy.get(m.task)
+            if (j !== undefined) {
+              j.ended = true
+              const began = here(m.startedAt)
+              const ran = here(m.ranAt)
+              if (began !== undefined) j.startedAt = began
+              if (ran !== undefined) j.ranAt = ran
+            }
+            void this.finish(a, m.task, m.key, result as WiredResult, here(m.endedAt))
           }
-          this.pumpSoon()
-        } else if (m.type === 'ran') {
-          // Its command ended: its cores are the next task's while it saves.
-          const j = a.busy.get(m.task)
-          if (j === undefined) continue
-          this.begun(a, m.task)
-          this.unhold(a, j)
-          // Its worker still says it holds it while it saves.
-          j.ranAt = performance.now()
-          this.pumpSoon()
-        } else if (m.type === 'fault') {
-          const j = a.busy.get(m.task)
-          if (j === undefined) continue
-          // It began it whether or not its `start` came first.
-          this.begun(a, m.task)
-          if (this.retry(a, j, m.reason) !== undefined) this.queue.unshift(j)
-          if (a.faulty) this.o.faulted?.()
-          if (a.faulty && this.spawnedAt.size > 0)
-            this.stranded(`${a.label} could not run ${m.task} (${m.reason}) and no worker is left`)
-          this.pumpSoon()
-        } else if (m.type === 'part') {
-          a.usage.messagesOut++
-          a.usage.bytesOut += bytesOf(m)
-          const k = `${from}\0${m.task}`
-          const held = this.parts.get(k) ?? {}
-          for (const list of PART_LISTS) {
-            const items = m[list] as readonly unknown[] | undefined
-            if (items !== undefined) held[list] = [...(held[list] ?? []), ...items]
-          }
-          this.parts.set(k, held)
-        } else if (m.type === 'end') {
-          a.usage.messagesOut++
-          a.usage.bytesOut += bytesOf(m)
-          const k = `${from}\0${m.task}`
-          const held = this.parts.get(k)
-          this.parts.delete(k)
-          const result: Record<string, unknown> = { ...m.result }
-          for (const list of PART_LISTS) {
-            const items = m.result[list] as readonly unknown[] | undefined
-            if (held?.[list] !== undefined) result[list] = [...held[list], ...(items ?? [])]
-          }
-          // Not awaited: one task's restore holds no other message.
-          void this.finish(a, m.task, m.key, result as WiredResult)
         }
       }
-      // After the batch: a `held` in it renews its lease first. Expired
-      // before, a stalled loop's waiting `held` came too late and the task
-      // ran again on another worker (2026-10-27).
-      this.expire()
       this.stall()
     }
   }

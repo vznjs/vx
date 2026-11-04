@@ -112,6 +112,7 @@ The Bun server and its image do not start without an `ALLOW`.
 | `S3_BUCKET`, `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | | the bucket (Bun and Docker), as Bun's S3 client reads them |
 | `MAX_CHECK_HASHES` | 500 (6 on Workers) | how many lookups one check may make |
 | `MAX_UPLOAD_BYTES` | 100 MB | the largest result it takes |
+| `EXPIRY_DAYS` | unset: every lookup asks R2 | Workers: your bucket's expiry in days, so a repeat check skips R2 ([How it stores results](#how-it-stores-results)) |
 
 vx asks the server for its limits once per run and stays within them.
 On Workers each lookup is one subrequest, so a higher
@@ -242,7 +243,14 @@ serves a result once, that data center answers it without R2.
 An upload of a result R2 expired drops the copy in the data center it
 reaches.
 
-Whether a result exists is asked of R2 alone, so every data center agrees.
+Whether a result exists is asked of R2, never of that copy, so every
+data center agrees.
+
+With `EXPIRY_DAYS` set to the bucket's expiry, an upload, a check or a
+download that R2 answers leaves an "exists" mark in that data center
+until R2 may drop the result. A repeat check there skips R2.
+
+A miss always asks R2, so a later upload is never hidden.
 
 ## API
 

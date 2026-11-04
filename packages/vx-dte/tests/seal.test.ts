@@ -99,9 +99,9 @@ it('admits a worker its secret signed, and the relay carries no body it can read
   }
   await o.send(a.id, welcome)
   expect((await until(a)).map((m) => m.body)).toEqual([welcome])
-  await a.send('orchestrator', { type: 'start', task: 'app#build-secret-name' })
+  await a.send('orchestrator', { type: 'ran', task: 'app#build-secret-name' })
   expect((await until(o)).map((m) => m.body)).toEqual([
-    { type: 'start', task: 'app#build-secret-name' },
+    { type: 'ran', task: 'app#build-secret-name' },
   ])
   expect(r.bodies.join('\n')).not.toContain('worker#1')
   expect(r.bodies.join('\n')).not.toContain('lent-cache-token')
@@ -130,8 +130,8 @@ it('pads each body to its size class, so the relay learns no size within one', a
   await until(a)
   const sent = r.bodies.length
   for (const task of ['a', noise(150), noise(600), noise(100_000)]) {
-    await a.send('orchestrator', { type: 'start', task })
-    expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'start', task }])
+    await a.send('orchestrator', { type: 'ran', task })
+    expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'ran', task }])
   }
   // The seal's own size: its envelope's number and ack say nothing of the body.
   const sizes = r.bodies.slice(sent).map((b) => JSON.stringify(sealOf(b)).length)
@@ -214,7 +214,7 @@ it('loses a worker whose body the relay changed, and drops one it replays', asyn
   await until(o)
   await o.send(a.id, { type: 'welcome', name: 'worker#1' })
   await until(a)
-  await a.send('orchestrator', { type: 'start', task: 't' })
+  await a.send('orchestrator', { type: 'ran', task: 't' })
   const sent = sealOf(r.bodies.at(-1)!)
   await until(o)
   // The same sealed body again, in a new send: its seal's number was seen.
@@ -223,13 +223,13 @@ it('loses a worker whose body the relay changed, and drops one it replays', asyn
     send.body.body.seal = sent
     return JSON.stringify(send)
   })
-  await a.send('orchestrator', { type: 'start', task: 'u' })
-  await a.send('orchestrator', { type: 'start', task: 'v' })
-  expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'start', task: 'v' }])
+  await a.send('orchestrator', { type: 'ran', task: 'u' })
+  await a.send('orchestrator', { type: 'ran', task: 'v' })
+  expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'ran', task: 'v' }])
   r.tamperNext((b) =>
     b.replace(/"seal":\["(\d+)\.(.)/, (_, n, c) => `"seal":["${n}.${c === 'A' ? 'B' : 'A'}`),
   )
-  await a.send('orchestrator', { type: 'start', task: 'w' })
+  await a.send('orchestrator', { type: 'ran', task: 'w' })
   expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'lost', id: a.id }])
 })
 
@@ -293,7 +293,7 @@ it('loses a worker whose body the relay held back past a later one', async () =>
   await until(o)
   await o.send(a.id, { type: 'welcome', name: 'worker#1' })
   await until(a)
-  await a.send('orchestrator', { type: 'start', task: 't' })
+  await a.send('orchestrator', { type: 'ran', task: 't' })
   const old = sealOf(r.bodies.at(-1)!)
   await until(o)
   // Held back: a replay goes in its place, which the orchestrator drops.
@@ -311,7 +311,7 @@ it('loses a worker whose body the relay held back past a later one', async () =>
     send.body.body.seal = held
     return JSON.stringify(send)
   })
-  await a.send('orchestrator', { type: 'start', task: 'u' })
+  await a.send('orchestrator', { type: 'ran', task: 'u' })
   expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'lost', id: a.id }])
 })
 
