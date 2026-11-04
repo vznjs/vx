@@ -106,5 +106,6 @@ export function cachedFetchJson(
   `refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>` ref. A
   `pull_request_target`, `issue_comment` or `workflow_run` run writes
   nothing: its `ref` is the base while it may run a pull request's code.
-  Nor does a GitLab merge request pipeline unless `source_project_path` (GitLab
-  19.5+) names its own project: a fork's runs in the parent project.
+  Nor does a GitLab run whose `source_project_path` or `job_project_path`
+  names another project (a fork's merge request, a child pipeline of one),
+  or a merge request pipeline naming no source project (GitLab before 19.5).

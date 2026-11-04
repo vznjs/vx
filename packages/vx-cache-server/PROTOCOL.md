@@ -61,9 +61,11 @@ alone decides what it reads and where it writes, by the server's
   become, else its `ref`; on GitLab its `ref_path`.
 - A `pull_request_target`, `issue_comment` or `workflow_run` run writes
   nothing (a write is `403`): its `ref` is the base while it may run a
-  pull request's code. Nor does a GitLab `merge_request_event` pipeline unless its
-  `source_project_path` (GitLab 19.5+) names its own project: a fork's
-  runs in the parent project with the fork's branch as its `ref_path`.
+  pull request's code. Nor does a GitLab run whose `source_project_path`
+  or `job_project_path` names another project, whatever its
+  `pipeline_source`: a fork's merge request, and a child pipeline of one,
+  runs in the parent project with the fork's branch as its `ref_path`. A
+  `merge_request_event` pipeline must name its source project (GitLab 19.5+).
 
 A bad token is `401`. A server with `ALLOW` empty does not start; a
 Worker, which cannot refuse to, refuses every request: `401`,
