@@ -764,10 +764,12 @@ describe('signal handling during vx run (e2e)', () => {
         const p = vx('last', '--list')
         const out = await new Response(p.stdout).text()
         await p.exited
+        // Past the Runs rule and the header, each row's verdict.
         return out
-          .trim()
+          .trimEnd()
           .split('\n')
-          .map((l) => l.split(/\s+/)[0]!)
+          .slice(2)
+          .map((l) => l.trim().split(/\s+/)[0]!)
       }
       expect(await vx('run', 'quick', '--all').exited).toBe(0)
       expect(await list()).toEqual(['ok'])
@@ -817,10 +819,12 @@ describe('signal handling during vx run (e2e)', () => {
         const p = vx('last', '--list')
         const out = await new Response(p.stdout).text()
         await p.exited
+        // Past the Runs rule and the header, each row's verdict.
         return out
-          .trim()
+          .trimEnd()
           .split('\n')
-          .map((l) => l.split(/\s+/)[0]!)
+          .slice(2)
+          .map((l) => l.trim().split(/\s+/)[0]!)
       }
       expect(await vx('run', 'quick', '--all').exited).toBe(0)
       const proc = vx('run', 'dev', '--all')

@@ -58,7 +58,8 @@ it('a passing and a failing run each print their whole id on the info row, and v
   expect(recorded()).toEqual([okId!, badId!].sort())
   const opened = vx('last', okId!)
   expect(opened.code).toBe(0)
-  expect(opened.out).toContain(`run ${okId} — ok`)
+  expect(opened.out).toStartWith(`─ Run ${okId} `)
+  expect(opened.out).toContain('\n  status    ok\n')
 }, 60_000)
 
 // 2026-10-21: "why run id is not listed with dte? should always be".

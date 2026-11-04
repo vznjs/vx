@@ -94,7 +94,9 @@ it('a task id narrows to that task, a task name to it in every project', () => {
 it('the text view is one table, a row per task', () => {
   const r = vx('last', '--stats', 'build')
   expect(r.code).toBe(0)
-  const lines = r.out.trimEnd().split('\n')
+  // Under the Task stats rule, a header and a row per task.
+  expect(r.out).toStartWith('─ Task stats ')
+  const lines = r.out.trimEnd().split('\n').slice(1).map((l) => l.trim())
   expect(lines[0]).toMatch(/^task\s+runs\s+p50\s+p99\s+pass\s+hit\s+failure mode\s+peak rss\s+cpu$/)
   expect(lines.slice(1).map((l) => l.split(/\s+/).slice(0, 2))).toEqual([
     ['a#build', '2'],

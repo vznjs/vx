@@ -57,9 +57,13 @@ it('pretty prints an aligned table with a header row', () => {
   const r = vx('last', '--sql', GROUPED)
   expect(r.code).toBe(0)
   expect(r.out).toBe(
-    ['taskId   runs  hits', 'a#bad    1     0', 'a#build  2     1', 'b#build  2     1', ''].join(
-      '\n',
-    ),
+    [
+      '  taskId   runs  hits',
+      '  a#bad    1     0',
+      '  a#build  2     1',
+      '  b#build  2     1',
+      '',
+    ].join('\n'),
   )
 })
 
@@ -128,7 +132,7 @@ it('--sql needs a query and combines with nothing but --format and --cache-dir',
 // invocation's `started_at` under the task's place in the header.
 it('pretty prints a column named twice twice, each with its own value', () => {
   const r = vx('last', '--sql', 'SELECT 1 AS a, 2 AS a, 3 AS b')
-  expect([r.code, r.err, r.out]).toEqual([0, '', 'a  a  b\n1  2  3\n'])
+  expect([r.code, r.err, r.out]).toEqual([0, '', '  a  a  b\n  1  2  3\n'])
 })
 
 it('--format json refuses a column named twice, naming it', () => {

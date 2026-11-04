@@ -111,10 +111,11 @@ it('a run in progress: what runs, what ended, what waits, and its warnings', asy
 
     const pretty = vx('last', '--live')
     expect(pretty.code).toBe(0)
-    expect(pretty.out).toContain(`run ${l.live.runId} — running`)
-    expect(pretty.out).toMatch(/\n  running +a#slow +\d/)
-    expect(pretty.out).toMatch(/\n  waiting +a#after\n/)
-    expect(pretty.out).toContain('\n  warnings\n')
+    expect(pretty.out).toStartWith(`─ Run ${l.live.runId} `)
+    expect(pretty.out).toMatch(/\n {2}status +running /)
+    expect(pretty.out).toMatch(/\n {2}running +a#slow +\d/)
+    expect(pretty.out).toMatch(/\n {2}waiting +a#after *\n/)
+    expect(pretty.out).toMatch(/\n─ Warnings \d+ /)
 
     // --follow streams the run's events from now to its end, then exits.
     const follow = Bun.spawn({

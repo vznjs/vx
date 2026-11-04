@@ -100,9 +100,10 @@ describe('vx watch under a signal (e2e)', () => {
     const list = (): string[] =>
       Bun.spawnSync([process.execPath, BIN, 'last', '--list'], { cwd: root })
         .stdout.toString()
-        .trim()
+        .trimEnd()
         .split('\n')
-        .map((l) => l.split(/\s+/)[0]!)
+        .slice(2)
+        .map((l) => l.trim().split(/\s+/)[0]!)
     const quick = Bun.spawnSync([process.execPath, BIN, 'run', 'quick', '--all'], { cwd: root })
     expect(quick.exitCode).toBe(0)
     expect(list()).toEqual(['ok'])
