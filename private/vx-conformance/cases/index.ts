@@ -5,6 +5,7 @@ import affected from './affected.ts'
 import { cacheKeys } from './cache-keys.ts'
 import cache from './cache.ts'
 import configGraph from './config-graph.ts'
+import envCacheMore from './env-cache-more.ts'
 import envRuntime from './env-runtime.ts'
 import env from './env.ts'
 import failureMore from './failure-more.ts'
@@ -64,6 +65,7 @@ export const CASES: Case[] = [
   ...lockfileDeps,
   ...cache,
   ...cacheKeys,
+  ...envCacheMore,
   ...failure,
   ...failureStop,
   ...failureTimeout,
