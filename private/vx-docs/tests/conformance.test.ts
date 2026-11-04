@@ -50,10 +50,10 @@ describe('the conformance page', () => {
         continue
       }
       const section = html.lastIndexOf(
-        '<section class="cfm-cat" id="',
+        '<details class="cfm-cat" id="',
         html.indexOf(`data-case="${c.id}"`),
       )
-      if (!html.startsWith(`<section class="cfm-cat" id="${c.category}"`, section))
+      if (!html.startsWith(`<details class="cfm-cat" id="${c.category}"`, section))
         wrong.push(`${c.id}: not under ${c.category}`)
       const got = cells(row(c.id)).map(([t, s]) => [t, s])
       const want = TOOLS.map((t) => [t, c.outcomes[t]?.status ?? 'n/a'])
@@ -63,6 +63,23 @@ describe('the conformance page', () => {
         wrong.push(`${c.id}: why`)
       if (agree(c) !== /data-agree(?:=""|\s|>)/.test(row(c.id).slice(0, 200)))
         wrong.push(`${c.id}: agree mark`)
+    }
+    expect(wrong).toEqual([])
+  })
+
+  it('shows each category closed, its summary giving every tool’s score', () => {
+    const wrong: string[] = []
+    for (const id of CATEGORIES) {
+      const at = html.indexOf(`<details class="cfm-cat" id="${id}"`)
+      if (at < 0) {
+        wrong.push(`${id}: missing`)
+        continue
+      }
+      const head = html.slice(at, html.indexOf('</summary>', at))
+      if (/^<details[^>]*\sopen[\s>=]/.test(head)) wrong.push(`${id}: open`)
+      for (const t of TOOLS)
+        if (!head.includes(`>${percent(RESULTS.scores[t]?.[id])}</strong>`))
+          wrong.push(`${id}: ${t} score`)
     }
     expect(wrong).toEqual([])
   })
