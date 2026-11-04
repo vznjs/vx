@@ -58,7 +58,7 @@ the row's. A row not reported for `TIMING_DAYS` (30) is deleted.
 
 One request a run: `POST /v1/timings/query` with
 `{ "issuer", "repository", "refs": ["refs/heads/feature", "refs/heads/main"], "hashes": [ … ] }`,
-1 to 8 refs and up to 10 000 hashes: each hash's row in the first ref
+1 to 8 refs of up to 512 characters each and up to 10 000 hashes: each hash's row in the first ref
 named that holds one. A hash none holds is absent. The numbers are the
 scheduler's as they are:
 
