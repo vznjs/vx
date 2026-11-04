@@ -185,10 +185,11 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     OID, as the enumeration does. A changed index spawns
     `git ls-files -s -v -z --debug` for the recorded sizes, takes each
     still-trusted blob's size from `blob_sizes` (fixed for its OID),
-    and asks one
-    `git cat-file --batch-check` for the ones not yet known, beside
-    the listing rather than after it (65 ms
-    over 3,000 loose objects, 10 ms packed). The sizes it learns are
+    and asks `git cat-file --batch-check` for the ones not yet known,
+    one per core (256 OIDs or more each), beside the listing rather
+    than after it (one took 30 ms over 2,505 loose objects, four 14).
+    A whole-tree run starts the check as its cache opens, beside the
+    config load and graph build. The sizes it learns are
     stored while the tasks run, not before the first one (40,030 cost
     217 ms there at 9,603 tasks), and a cold cache skips the lookup.
     The check is by size,
@@ -791,6 +792,11 @@ is on):
    deletes the key's inline bytes, and upserts the `entries` row (taskId, command, exit code,
    duration, size, stdout, timestamps), the `output_files` fingerprint
    rows, and the entry's one `entry_inputs` row (`INSERT OR IGNORE`).
+   Saves that reach this step in one event-loop turn share the
+   transaction, each in a savepoint of its own: a refused write undoes
+   only its own rows and artifact. A BEGIN and COMMIT per save were half
+   the index time on a cold run's main thread (500 saves, 81 of 164 ms,
+   2026-11-03).
    Concurrent readers see either no entry or a complete entry — never a
    partial one — and bytes and rows go live together: the rename waits
    for the write lock, so no other writer's rows land beside it, and a

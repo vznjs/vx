@@ -81,6 +81,7 @@ export {
   MAX_SCOPED_PATHSPECS,
   repoRootOf,
   startGitEnumeration,
+  checkBlobSizes,
   lazyGitEnumeration,
   type LazyGitEnumeration,
   type GitEnumeration,

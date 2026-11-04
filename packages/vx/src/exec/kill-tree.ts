@@ -98,6 +98,9 @@ let guardProc: Child | undefined
  */
 const GUARD_STALL_MS = 1_000
 
+/** Bytes per write to the guard: under a socket's buffer on every platform. */
+const GUARD_PIECE = 1024
+
 function startGuard(): void {
   if (guardFd !== undefined) return
   guardFd = null
@@ -114,6 +117,8 @@ function startGuard(): void {
     const fd = guard.stdio[3] as number
     guardFd = fd
     guardProc = guard
+    // A clean exit strikes what it released: the EOF kills what is listed.
+    process.once('exit', flushGuard)
     // A guard that has died (killed, the OOM killer) is handed to no later
     // spawn: its pipe is broken, and a shell whose printf buffers (bash as
     // macOS's sh) flushed the failed `+<pgid>` line into the task's own
@@ -134,6 +139,7 @@ function startGuard(): void {
 function stopGuard(): void {
   const fd = guardFd
   guardFd = null
+  pending = ''
   guardProc?.kill('SIGKILL')
   if (typeof fd !== 'number') return
   try {
@@ -145,17 +151,61 @@ function stopGuard(): void {
 
 function guardWrite(line: string): void {
   if (typeof guardFd !== 'number') return
-  const deadline = Date.now() + GUARD_STALL_MS
+  let deadline = Date.now() + GUARD_STALL_MS
+  // A turn's batch can be more than the queue takes at once: it goes in
+  // pieces as the guard drains it, and only a guard that takes nothing for
+  // the whole stall is gone. With one deadline for the batch, 2000 strikes
+  // outlasted it on macOS and the guard was stopped under a live run.
+  let bytes = Buffer.from(line)
   for (;;) {
     try {
-      writeSync(guardFd, line)
-      return
+      const n = writeSync(guardFd, bytes, 0, Math.min(bytes.length, GUARD_PIECE))
+      if (n === bytes.length) return
+      bytes = bytes.subarray(n)
+      deadline = Date.now() + GUARD_STALL_MS
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'EAGAIN' || Date.now() >= deadline) break
       Bun.sleepSync(1)
     }
   }
   stopGuard()
+}
+
+/**
+ * Lines waiting for this turn's one write: strikes, and the listings of
+ * spare shells. Each line was a write of its own and a wake of the
+ * guard's shell: on a cold run of 500 tasks, 38 ms of vx's main thread
+ * for the strikes and 140 ms of the guard's CPU (2026-11-03). If vx dies
+ * in the turn a task ended, what that task left in the background dies
+ * with it, as when vx dies a moment before the task ends.
+ */
+let pending = ''
+let pendingTimer: ReturnType<typeof setImmediate> | undefined
+
+function queueLine(line: string): void {
+  pending += line
+  pendingTimer ??= setImmediate(flushGuard)
+}
+
+/** Write the lines this turn queued now: before a listed child is handed its work. */
+export function flushGuard(): void {
+  if (pendingTimer !== undefined) clearImmediate(pendingTimer)
+  pendingTimer = undefined
+  const lines = pending
+  pending = ''
+  if (lines !== '') guardWrite(lines)
+}
+
+/**
+ * List `pid`'s group from vx's side, for a child that runs nothing until
+ * vx hands it work (a spare shell waiting on its script): the line goes
+ * with the turn's others, and `flushGuard` before the hand-over. A spare
+ * vx dies before listing reads the end of its script's pipe and exits,
+ * having run nothing. Starts the guard.
+ */
+export function listGroup(pid: number): void {
+  startGuard()
+  if (typeof guardFd === 'number' && pid > 0) queueLine(`+${pid}\n`)
 }
 
 /**
@@ -172,6 +222,9 @@ function guardWrite(line: string): void {
  */
 export function spawnGuarded<C = Child>(spawn: (guard: number | undefined) => C): C {
   startGuard()
+  // The turn's lines go first, as they did one write each: a child's own
+  // listing behind them, not raced by a batch vx writes once it runs.
+  flushGuard()
   if (typeof guardFd !== 'number') return spawn(undefined)
   handingTo = guardProc?.pid
   try {
@@ -223,7 +276,7 @@ export function releaseGroup(child: Child): void {
   if (!(child.pid > 0)) return
   const hold = holds.get(child.pid)
   if (hold !== undefined) hold.released = true
-  else guardWrite(`-${child.pid}\n`)
+  else queueLine(`-${child.pid}\n`)
 }
 
 /**
