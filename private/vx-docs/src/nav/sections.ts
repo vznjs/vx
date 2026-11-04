@@ -177,6 +177,7 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Guides' | 'Reference', SidebarItem[]> = {
         { label: 'vx vs Turborepo', link: '/compare/turborepo/' },
         { label: 'vx vs Nx', link: '/compare/nx/' },
         { label: 'vx vs Turborepo vs Nx', link: '/comparison/' },
+        { label: 'Conformance', link: '/conformance/' },
         { label: 'Parity map for Turbo and Nx', link: '/parity/' },
         { label: 'Config support for Turbo and Nx', link: '/compare/turbo-nx-support/' },
         { label: 'Upstream bug ledger', link: '/upstream-ledger/' },

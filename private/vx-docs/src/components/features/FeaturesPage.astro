@@ -11,8 +11,10 @@ interface Props {
   title: string
   description: string
   ogImage?: string
+  /** The source the page's edit link opens, under private/vx-docs/. */
+  edit?: string
 }
-const { title, description, ogImage } = Astro.props
+const { title, description, ogImage, edit = 'src/features/features.ts' } = Astro.props
 const head = ogImage
   ? [{ tag: 'meta' as const, attrs: { property: 'og:image', content: ogImage } }]
   : []
@@ -31,9 +33,7 @@ const head = ogImage
     <slot />
     <div class="fedit">
       <p class="container">
-        <a href="https://github.com/vznjs/vx/edit/main/private/vx-docs/src/features/features.ts"
-          >Edit this page</a
-        >
+        <a href={`https://github.com/vznjs/vx/edit/main/private/vx-docs/${edit}`}>Edit this page</a>
       </p>
     </div>
     <Footer />

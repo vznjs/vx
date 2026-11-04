@@ -1,0 +1,114 @@
+// The conformance page (src/pages/conformance/) against the suite's results
+// (src/data/conformance.json): the built page shows every case with each
+// tool's outcome, a failing cell's detail, and each tool's score in every
+// group, so a page that drops or misreads a row fails here.
+
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { describe, expect, it } from 'bun:test'
+import { agree, CATEGORIES, KINDS, note, percent, RESULTS, TOOLS } from '../src/conformance/data.ts'
+
+const DIST = path.resolve(import.meta.dir, '../dist')
+const html = readFileSync(path.join(DIST, 'conformance/index.html'), 'utf8')
+
+const unescape = (s: string): string =>
+  s
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&#x27;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+
+/** A case's row: its `<tr>` to the next. */
+function row(id: string): string {
+  const start = html.indexOf(`data-case="${id}"`)
+  if (start < 0) return ''
+  return html.slice(start, html.indexOf('</tr>', start))
+}
+
+/** Each tool's cell in a row, as [tool, status, inner HTML]. */
+function cells(r: string): [string, string, string][] {
+  return [
+    ...r.matchAll(/<td data-tool="([^"]+)" data-status="([^"]+)"[^>]*>([\s\S]*?)<\/td>/g),
+  ].map((m) => [m[1]!, m[2]!, m[3]!])
+}
+
+describe('the conformance page', () => {
+  it('has the data to hold it to', () => {
+    expect(RESULTS.cases.length).toBeGreaterThan(50)
+    expect(TOOLS).toEqual(['vx', 'turbo', 'nx', 'vite-task'])
+    expect(
+      RESULTS.cases.some((c) => Object.values(c.outcomes).some((o) => o.status === 'fail')),
+    ).toBe(true)
+  })
+
+  it('shows every case once, in its category, with each tool’s outcome', () => {
+    const wrong: string[] = []
+    for (const c of RESULTS.cases) {
+      if (html.split(`data-case="${c.id}"`).length !== 2) {
+        wrong.push(`${c.id}: not shown once`)
+        continue
+      }
+      const section = html.lastIndexOf(
+        '<section class="cfm-cat" id="',
+        html.indexOf(`data-case="${c.id}"`),
+      )
+      if (!html.startsWith(`<section class="cfm-cat" id="${c.category}"`, section))
+        wrong.push(`${c.id}: not under ${c.category}`)
+      const got = cells(row(c.id)).map(([t, s]) => [t, s])
+      const want = TOOLS.map((t) => [t, c.outcomes[t]?.status ?? 'n/a'])
+      if (JSON.stringify(got) !== JSON.stringify(want))
+        wrong.push(`${c.id}: ${JSON.stringify(got)}`)
+      if ((c.why === undefined) === row(c.id).includes('class="cfm-why"'))
+        wrong.push(`${c.id}: why`)
+      if (agree(c) !== /data-agree(?:=""|\s|>)/.test(row(c.id).slice(0, 200)))
+        wrong.push(`${c.id}: agree mark`)
+    }
+    expect(wrong).toEqual([])
+  })
+
+  it('opens each failing cell onto its detail', () => {
+    const wrong: string[] = []
+    let fails = 0
+    for (const c of RESULTS.cases) {
+      for (const [t, status, inner] of cells(row(c.id))) {
+        if (status !== 'fail') continue
+        fails++
+        if (!inner.includes('<details>')) wrong.push(`${c.id} ${t}: no details`)
+        if (!unescape(inner).includes(note(c.outcomes[t]!))) wrong.push(`${c.id} ${t}: no detail`)
+      }
+    }
+    expect(wrong).toEqual([])
+    expect(fails).toBeGreaterThan(0)
+  })
+
+  it('scores each tool in every group, a group with no case as –', () => {
+    const groups = ['all', ...KINDS, ...CATEGORIES]
+    const wrong: string[] = []
+    for (const g of groups) {
+      const start = html.indexOf(`<tr data-group="${g}"`)
+      const tr = html.slice(start, html.indexOf('</tr>', start))
+      for (const t of TOOLS) {
+        const s = RESULTS.scores[t]?.[g]
+        const td = new RegExp(`<td data-tool="${t}"[^>]*>([\\s\\S]*?)</td>`).exec(tr)?.[1] ?? ''
+        const of = s && s.of > 0 ? `${s.pass}/${s.of}` : '–'
+        if (!td.includes(`>${percent(s)}<`) || !td.includes(`>${of}<`))
+          wrong.push(`${g} ${t}: ${td}`)
+      }
+    }
+    expect(wrong).toEqual([])
+    expect(percent({ pass: 0, of: 0 })).toBe('–')
+  })
+
+  it('names each tool’s version, the coverage and the method', () => {
+    for (const v of Object.values(RESULTS.tools)) expect(html).toContain(v)
+    expect(html).toContain('https://github.com/vznjs/vx/blob/main/private/vx-conformance/README.md')
+    const { coverage } = RESULTS
+    expect(html).toContain(`<span class="cfm-n">${coverage.ported}</span>`)
+    for (const [v, files] of Object.entries(coverage.rest)) {
+      const li = html.slice(html.indexOf(`data-verdict="${v}"`))
+      expect(li).toStartWith(`data-verdict="${v}"><span class="cfm-n">${files.length}</span>`)
+      expect(unescape(html)).toContain(coverage.verdicts[v]!)
+    }
+  })
+})

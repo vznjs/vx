@@ -1,0 +1,239 @@
+---
+// The conformance table: every case of @vzn/vx-conformance and what each
+// tool did with it, from src/data/conformance.json (src/conformance/data.ts).
+// No JavaScript: a failing cell opens its detail as a <details>, and the
+// "only where tools differ" switch is a checkbox the stylesheet reads.
+import FeaturesPage from '../../components/features/FeaturesPage.astro'
+import {
+  agree,
+  CATEGORIES,
+  groupName,
+  inline,
+  KIND_LINES,
+  KINDS,
+  note,
+  percent,
+  RESULTS,
+  TOOLS,
+  toolName,
+  toolShort,
+} from '../../conformance/data.ts'
+import '../../styles/conformance.css'
+
+const README = 'https://github.com/vznjs/vx/blob/main/private/vx-conformance/README.md'
+const GROUPS = ['all', ...KINDS, ...CATEGORIES]
+const { coverage, cases, scores, tools } = RESULTS
+const differ = cases.filter((c) => !agree(c)).length
+const sections = CATEGORIES.map((id) => ({
+  id,
+  cases: cases.filter((c) => c.category === id),
+}))
+const verdicts = Object.keys(coverage.verdicts)
+const total = coverage.ported + verdicts.reduce((n, v) => n + (coverage.rest[v]?.length ?? 0), 0)
+const MARK = { pass: '✓', fail: '✗', 'n/a': '–' } as const
+const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'not applicable' } as const
+---
+
+<FeaturesPage
+  title="Conformance"
+  description={`${cases.length} task-runner behaviours, each run against ${TOOLS.map(toolName).join(', ')}: what each tool did, case by case.`}
+  edit="src/pages/conformance/index.astro"
+>
+  <div class="cfm">
+    <section class="fhub-hero cfm-hero">
+      <div class="container">
+        <p class="vx-kicker">// {cases.length} cases, {TOOLS.length} tools</p>
+        <h1>Conformance</h1>
+        <p class="lede">
+          One neutral suite of task-runner behaviours. Each case is a small workspace, run
+          sandboxed against each tool.
+        </p>
+        <p class="lede">
+          Only outcomes count: which commands ran, the files left on disk, the exit code, and the
+          data each tool reports about a run.
+        </p>
+        <ul class="chips" aria-label="Tool versions">
+          {
+            TOOLS.map((t) => (
+              <li>
+                <span class="cfm-chip">
+                  {toolName(t)} <span class="count">{tools[t]}</span>
+                </span>
+              </li>
+            ))
+          }
+          <li>
+            <a href={README}>How it works</a>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="cfm-section" id="scores">
+      <div class="container">
+        <h2>Scores</h2>
+        <p class="cfm-sub">
+          Cases passed, of those a tool can express. A case a tool has no way to say is not
+          applicable and not counted.
+        </p>
+        <div class="cfm-scroll">
+          <table class="cfm-scores">
+            <thead>
+              <tr>
+                <th scope="col"><span class="sr-only">Group</span></th>
+                {TOOLS.map((t) => <th scope="col">{toolName(t)}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {
+                GROUPS.map((g) => (
+                  <tr
+                    data-group={g}
+                    class:list={[
+                      g === 'all' && 'cfm-all',
+                      (g === KINDS[0] || g === CATEGORIES[0]) && 'cfm-break',
+                    ]}
+                  >
+                    <th scope="row">
+                      {groupName(g)}
+                      {KIND_LINES[g] && <span class="cfm-line">{KIND_LINES[g]}</span>}
+                    </th>
+                    {TOOLS.map((t) => {
+                      const s = scores[t]?.[g]
+                      const pct = s && s.of > 0 ? (s.pass / s.of) * 100 : 0
+                      return (
+                        <td data-tool={t} style={`--pct:${pct}%`}>
+                          <span class="cfm-pct">{percent(s)}</span>
+                          <span class="cfm-of">{s && s.of > 0 ? `${s.pass}/${s.of}` : '–'}</span>
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="cfm-section" id="cases">
+      <div class="container">
+        <h2>Every case</h2>
+        <p class="cfm-sub">
+          ✓ passes, ✗ fails, – not applicable. Open a ✗ to see what the tool did instead.
+        </p>
+        <input type="checkbox" id="cfm-differ" class="cfm-toggle" />
+        <label for="cfm-differ" class="cfm-switch">
+          Only the {differ} cases where tools differ
+        </label>
+        <ul class="chips cfm-cats" aria-label="Categories">
+          {
+            sections.map((s) => (
+              <li>
+                <a href={`#${s.id}`}>
+                  {groupName(s.id)} <span class="count">{s.cases.length}</span>
+                </a>
+              </li>
+            ))
+          }
+        </ul>
+        {
+          sections.map((s) => (
+            <section class="cfm-cat" id={s.id} data-agree={s.cases.every(agree) ? '' : undefined}>
+              <h3>{groupName(s.id)}</h3>
+              <table class="cfm-cases">
+                <thead>
+                  <tr>
+                    <th scope="col">Case</th>
+                    {TOOLS.map((t) => (
+                      <th scope="col" class="cfm-tool" title={toolName(t)}>
+                        <span class="cfm-long">{toolName(t)}</span>
+                        <span class="cfm-short" aria-hidden="true">
+                          {toolShort(t)}
+                        </span>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {s.cases.map((c) => (
+                    <tr id={c.id} data-case={c.id} data-agree={agree(c) ? '' : undefined}>
+                      <th scope="row">
+                        <span class="cfm-title" set:html={inline(c.title)} />
+                        {c.why && <span class="cfm-why" set:html={inline(c.why)} />}
+                        <span class="cfm-meta">
+                          <a href={`#${c.id}`}>{c.id}</a> · {c.kind}
+                        </span>
+                      </th>
+                      {TOOLS.map((t) => {
+                        const o = c.outcomes[t] ?? { status: 'n/a' as const }
+                        const label = `${toolName(t)} ${SAY[o.status]}`
+                        return (
+                          <td data-tool={t} data-status={o.status}>
+                            {o.status === 'fail' ? (
+                              <details>
+                                <summary aria-label={label} title={note(o)}>
+                                  {MARK.fail}
+                                </summary>
+                                <p class="cfm-detail">
+                                  <strong>{toolName(t)}</strong> {note(o)}
+                                </p>
+                              </details>
+                            ) : (
+                              <span
+                                aria-label={label}
+                                title={o.status === 'n/a' ? note(o) || undefined : undefined}
+                              >
+                                {MARK[o.status]}
+                              </span>
+                            )}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          ))
+        }
+      </div>
+    </section>
+
+    <section class="cfm-section" id="coverage">
+      <div class="container">
+        <h2>Coverage</h2>
+        <p class="cfm-sub">
+          Each case is drawn from vx's own tests. {coverage.ported} of its {total} test files feed
+          a case; the rest are sorted by why.
+        </p>
+        <ul class="cfm-coverage">
+          <li data-verdict="ported">
+            <span class="cfm-n">{coverage.ported}</span>
+            <span class="cfm-v">ported</span>
+            <span class="cfm-line">a case carries it</span>
+          </li>
+          {
+            verdicts.map((v) => (
+              <li data-verdict={v}>
+                <span class="cfm-n">{coverage.rest[v]?.length ?? 0}</span>
+                <span class="cfm-v">{v}</span>
+                <span class="cfm-line">{coverage.verdicts[v]}</span>
+                {(coverage.rest[v]?.length ?? 0) > 0 && (
+                  <details>
+                    <summary>Files</summary>
+                    <p class="cfm-files">{coverage.rest[v]!.join(' · ')}</p>
+                  </details>
+                )}
+              </li>
+            ))
+          }
+        </ul>
+        <p class="cfm-sub">
+          The method, the adapters and how to run a case: <a href={README}>the suite's README</a>.
+        </p>
+      </div>
+    </section>
+  </div>
+</FeaturesPage>

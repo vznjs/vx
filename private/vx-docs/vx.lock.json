@@ -16,7 +16,7 @@
     "lint.oxlint": {
       "description": "oxlint with tsgolint-backed type-aware checks",
       "exec": {
-        "command": "oxlint --type-aware --type-check astro.config.mjs scripts src/bench src/components src/features src/nav src/pages src/plugins tests",
+        "command": "oxlint --type-aware --type-check astro.config.mjs scripts src/bench src/components src/conformance src/features src/nav src/pages src/plugins tests",
         "sandbox": {
           "allow": {
             "read": [
@@ -39,6 +39,8 @@
           "src/env.d.ts",
           "src/bench/**",
           "src/data/bench.json",
+          "src/conformance/**",
+          "src/data/conformance.json",
           "src/blog/**",
           "src/components/**",
           "src/features/**",
@@ -273,6 +275,8 @@
           "src/components/demos/model/**",
           "src/bench/**",
           "src/data/bench.json",
+          "src/conformance/**",
+          "src/data/conformance.json",
           "src/nav/**",
           "src/features/**",
           "src/assets/features/**",

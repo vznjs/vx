@@ -1,0 +1,399 @@
+/* The conformance page (src/pages/conformance/). It wears landing.css's
+   tokens and features.css's hero, chips and light theme; this adds the
+   score table, the case tables and the coverage list. */
+
+.vx-landing .cfm {
+  --cfm-pass: #4ade80;
+  --cfm-fail: #ff6b6b;
+  --cfm-na: var(--text-faint);
+}
+:root[data-theme='light'] .cfm {
+  --cfm-pass: #15803d;
+  --cfm-fail: #c81e1e;
+}
+
+.vx-landing .cfm-hero .lede + .lede {
+  margin-top: 8px;
+}
+.vx-landing .cfm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  font: var(--fw-medium) 13px / 1 var(--font-mono);
+  color: var(--text);
+  background: var(--surface-card);
+}
+
+.vx-landing .cfm-section {
+  padding: 56px var(--gutter);
+  border-top: 1px solid var(--line-faint);
+}
+.vx-landing .cfm-sub {
+  font: var(--fw-regular) 16px / 1.55 var(--font-body);
+  color: var(--text-mut);
+  margin: 12px 0 24px;
+  max-width: 44em;
+}
+.vx-landing .cfm a {
+  color: var(--link);
+}
+.vx-landing .cfm code {
+  white-space: normal;
+  font: 0.88em var(--font-mono);
+  color: var(--text-hi);
+  padding: 0.05em 0.3em;
+  border-radius: var(--radius-xs);
+  background: var(--ink-700);
+}
+.vx-landing .cfm table {
+  width: 100%;
+  border-collapse: collapse;
+  font: var(--fw-regular) 15px / 1.45 var(--font-body);
+}
+/* theme.css styles every table in a page's content: tinted headers,
+   zebra rows, a hover tint. This table is not prose; it takes none. */
+.vx-landing .cfm :is(th, td) {
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  letter-spacing: normal;
+  white-space: normal;
+  text-align: left;
+  vertical-align: top;
+}
+.vx-landing .cfm tbody tr:nth-child(even) td,
+.vx-landing .cfm tbody tr:hover td {
+  background: transparent;
+}
+.vx-landing .cfm .cfm-cases tbody tr:hover > * {
+  background: color-mix(in srgb, var(--phosphor) 5%, transparent);
+}
+.vx-landing .cfm thead th {
+  font: var(--type-label);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-mut);
+  padding: 0 8px 10px;
+  vertical-align: bottom;
+}
+.vx-landing .cfm-line {
+  display: block;
+  font: var(--fw-regular) 13px / 1.4 var(--font-body);
+  color: var(--text-faint);
+}
+
+/* ---- scores ---- */
+.vx-landing .cfm-scroll {
+  overflow-x: auto;
+}
+.vx-landing .cfm-scores th[scope='row'] {
+  padding: 12px 12px 12px 0;
+  color: var(--text-hi);
+  font-weight: var(--fw-medium);
+}
+.vx-landing .cfm .cfm-scores tbody tr td {
+  padding: 12px 8px;
+  min-width: 84px;
+  background: linear-gradient(
+      to right,
+      color-mix(in srgb, var(--phosphor) 14%, transparent) var(--pct),
+      transparent var(--pct)
+    )
+    no-repeat bottom / 100% 3px;
+}
+.vx-landing .cfm-pct {
+  display: block;
+  font: var(--fw-semibold) 20px / 1.1 var(--font-display);
+  color: var(--text-hi);
+  font-variant-numeric: tabular-nums;
+}
+.vx-landing .cfm-of {
+  font: 12px / 1.3 var(--font-mono);
+  color: var(--text-faint);
+}
+.vx-landing .cfm-all .cfm-pct {
+  font-size: 26px;
+}
+.vx-landing .cfm-all th[scope='row'] {
+  font-family: var(--font-display);
+  font-size: 18px;
+}
+.vx-landing .cfm-break > * {
+  border-top: 1px solid var(--line-strong);
+}
+
+/* ---- the cases ---- */
+.vx-landing .cfm-toggle {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.vx-landing .cfm-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font: var(--fw-medium) 14px / 1.3 var(--font-body);
+  color: var(--text);
+}
+.vx-landing .cfm-switch::before {
+  content: '';
+  flex: none;
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background:
+    radial-gradient(circle 7px at 10px 50%, var(--text-mut) 98%, transparent) no-repeat,
+    var(--surface-card);
+  transition: background-position 0.15s var(--ease-out);
+}
+.vx-landing .cfm-toggle:checked + .cfm-switch::before {
+  background:
+    radial-gradient(circle 7px at 24px 50%, var(--text-on-accent) 98%, transparent) no-repeat,
+    var(--phosphor);
+  border-color: var(--phosphor);
+}
+.vx-landing .cfm-toggle:focus-visible + .cfm-switch::before {
+  outline: 2px solid var(--phosphor);
+  outline-offset: 2px;
+}
+.vx-landing .cfm:has(.cfm-toggle:checked) [data-agree] {
+  display: none;
+}
+.vx-landing .cfm-cats {
+  margin-top: 20px;
+}
+
+.vx-landing .cfm-cat {
+  margin-top: 48px;
+  scroll-margin-top: 80px;
+}
+.vx-landing .cfm-cat h3 {
+  font: var(--fw-semibold) 22px / 1.2 var(--font-display);
+  margin-bottom: 14px;
+}
+.vx-landing .cfm-cases {
+  table-layout: fixed;
+}
+.vx-landing .cfm-cases thead th:first-child {
+  padding-left: 0;
+}
+.vx-landing .cfm-cases .cfm-tool {
+  width: 92px;
+  text-align: center;
+}
+.vx-landing .cfm-short {
+  display: none;
+}
+/* A long category scrolls its header row out of sight; the tools' names
+   stay under the site's header. */
+.vx-landing .cfm .cfm-cases thead th {
+  position: sticky;
+  top: var(--sl-nav-height, 64px);
+  z-index: 2;
+  padding-top: 10px;
+  background: var(--bg-page);
+}
+.vx-landing .cfm-cases tbody tr {
+  scroll-margin-top: 80px;
+}
+.vx-landing .cfm-cases tbody tr:target {
+  background: color-mix(in srgb, var(--phosphor) 8%, transparent);
+}
+.vx-landing .cfm-cases th[scope='row'] {
+  padding: 12px 12px 12px 0;
+  font-weight: var(--fw-regular);
+  overflow-wrap: anywhere;
+}
+.vx-landing .cfm-title {
+  display: block;
+  color: var(--text-hi);
+}
+.vx-landing .cfm-why {
+  display: block;
+  margin-top: 4px;
+  font-size: 14px;
+  color: var(--text-mut);
+}
+.vx-landing .cfm-meta {
+  display: block;
+  margin-top: 4px;
+  font: 12px / 1.4 var(--font-mono);
+  color: var(--text-faint);
+}
+.vx-landing .cfm .cfm-meta a {
+  color: inherit;
+  text-decoration: none;
+}
+.vx-landing .cfm .cfm-meta a:hover {
+  color: var(--text-hi);
+}
+.vx-landing .cfm-cases td {
+  position: relative;
+  padding: 12px 4px;
+  text-align: center;
+  font: var(--fw-bold) 18px / 1.2 var(--font-body);
+}
+.vx-landing .cfm-cases td[data-status='pass'] {
+  color: var(--cfm-pass);
+}
+.vx-landing .cfm .cfm-cases tbody tr td[data-status='fail'] {
+  color: var(--cfm-fail);
+  background: color-mix(in srgb, var(--cfm-fail) 7%, transparent);
+}
+.vx-landing .cfm-cases td[data-status='n/a'] {
+  color: var(--cfm-na);
+}
+.vx-landing .cfm-cases summary {
+  display: inline-block;
+  cursor: pointer;
+  list-style: none;
+  padding: 0 6px;
+  border-radius: var(--radius-xs);
+  border-bottom: 1px dashed currentColor;
+}
+.vx-landing .cfm-cases summary::-webkit-details-marker {
+  display: none;
+}
+.vx-landing .cfm-cases summary:focus-visible {
+  outline: 2px solid var(--phosphor);
+}
+.vx-landing .cfm-detail {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% - 6px);
+  right: 0;
+  width: 280px;
+  margin: 0;
+  padding: 10px 12px;
+  text-align: left;
+  font: var(--fw-regular) 13px / 1.45 var(--font-mono);
+  color: var(--text);
+  background: var(--surface-card);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+  overflow-wrap: anywhere;
+}
+.vx-landing .cfm-detail strong {
+  display: block;
+  color: var(--cfm-fail);
+  font-family: var(--font-body);
+}
+
+/* ---- coverage ---- */
+.vx-landing .cfm-coverage {
+  display: grid;
+  gap: 0;
+  margin: 0 0 24px;
+  padding: 0;
+  list-style: none;
+}
+.vx-landing .cfm-coverage li {
+  display: grid;
+  grid-template-columns: 72px 110px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 4px 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+.vx-landing .cfm-n {
+  font: var(--fw-semibold) 24px / 1 var(--font-display);
+  color: var(--text-hi);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.vx-landing .cfm-v {
+  font: var(--fw-medium) 13px / 1.3 var(--font-mono);
+  color: var(--accent-text);
+}
+.vx-landing .cfm-coverage li[data-verdict='ported'] .cfm-n {
+  color: var(--phosphor);
+}
+.vx-landing .cfm-coverage details {
+  grid-column: 3;
+}
+.vx-landing .cfm-coverage summary {
+  cursor: pointer;
+  font: var(--fw-medium) 13px / 1.4 var(--font-body);
+  color: var(--text-mut);
+}
+.vx-landing .cfm-files {
+  margin: 8px 0 0;
+  font: 12px / 1.6 var(--font-mono);
+  color: var(--text-faint);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .vx-landing .cfm-section {
+    padding: 40px var(--gutter);
+  }
+  .vx-landing .cfm table {
+    font-size: 14px;
+  }
+  .vx-landing .cfm-cases .cfm-tool {
+    width: 44px;
+    padding: 0 2px 10px;
+    font-size: 10px;
+    letter-spacing: 0;
+    text-align: center;
+  }
+  .vx-landing .cfm-cases .cfm-long {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .vx-landing .cfm-short {
+    display: inline;
+  }
+  .vx-landing .cfm-cases td {
+    padding: 12px 2px;
+    font-size: 16px;
+  }
+  .vx-landing .cfm-why {
+    font-size: 13px;
+  }
+  /* A narrow cell has no room beside it: the detail opens as a sheet. */
+  .vx-landing .cfm-detail {
+    position: fixed;
+    top: auto;
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    width: auto;
+  }
+  .vx-landing .cfm .cfm-scores tbody tr td {
+    min-width: 0;
+    padding: 10px 3px;
+  }
+  .vx-landing .cfm-scores thead th {
+    padding: 0 3px 10px;
+    font-size: 10px;
+    letter-spacing: 0;
+    overflow-wrap: anywhere;
+  }
+  .vx-landing .cfm-pct {
+    font-size: 17px;
+  }
+  .vx-landing .cfm-all .cfm-pct {
+    font-size: 20px;
+  }
+  .vx-landing .cfm-coverage li {
+    grid-template-columns: 56px minmax(0, 1fr);
+  }
+  .vx-landing .cfm-coverage .cfm-line,
+  .vx-landing .cfm-coverage details {
+    grid-column: 2;
+  }
+}
