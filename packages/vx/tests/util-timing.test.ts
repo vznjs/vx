@@ -7,11 +7,15 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 
 const TIMING = path.resolve(import.meta.dir, '..', 'src', 'util', 'timing.ts')
+const UI = path.resolve(import.meta.dir, '..', 'src', 'ui', 'index.ts')
 
 async function child(
   body: string,
   timing: string | undefined,
-  prelude = `import { mark, span, printTimings } from ${JSON.stringify(TIMING)}`,
+  // The run prints the table as orchestrator/run.ts does: its lines as a ui trace.
+  prelude = `import { mark, span, timingLines } from ${JSON.stringify(TIMING)}
+import { print, trace } from ${JSON.stringify(UI)}
+const printTimings = () => { const l = timingLines(); if (l !== undefined) print('err', trace(l)) }`,
 ): Promise<string> {
   const env: Record<string, string | undefined> = { ...process.env }
   if (timing === undefined) delete env.VX_DEBUG_TIMING
@@ -86,7 +90,7 @@ describe('the VX_DEBUG_TIMING table', () => {
     const out = await child(
       `mark('a')\nprintTimings()`,
       '1',
-      `const t = Bun.nanoseconds()\nwhile (Bun.nanoseconds() - t < 50e6) {}\nconst { mark, printTimings } = await import(${JSON.stringify(TIMING)})`,
+      `const t = Bun.nanoseconds()\nwhile (Bun.nanoseconds() - t < 50e6) {}\nconst { mark, timingLines } = await import(${JSON.stringify(TIMING)})\nconst { print, trace } = await import(${JSON.stringify(UI)})\nconst printTimings = () => print('err', trace(timingLines()))`,
     )
     const a = markRow.exec(out.split('\n')[1] ?? '')
     expect(a?.[1]).toBe('a')

@@ -7,7 +7,9 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { noticed } from './helpers/notice.js'
-import { gradientRule } from '../src/util/index.js'
+import { panelTop } from '../src/ui/index.js'
+
+const gradientRule = (c: { enabled: boolean }, title: string): string => panelTop(title, c)
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TEST = `export default { tasks: { test: { exec: { command: 'echo t' } } } }`
@@ -63,6 +65,7 @@ describe('the default build is no declared task', () => {
     ])
     expect(vx('show')[1]).toBe(
       [
+        panelTop('Projects', { enabled: false }, '2'),
         '  project  dir         tasks',
         '  x        packages/x  2 tasks',
         '  y        packages/y  2 tasks',

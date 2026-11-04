@@ -45,7 +45,7 @@ describe('formatRunSummary', () => {
     const lines = formatRunSummary([outcome('a#x', 'success'), outcome('b#x', 'success')], 1234)
     expect(lines).toEqual([
       '',
-      '─ vx ' + '─'.repeat(57),
+      '─ Summary ' + '─'.repeat(52),
       '  tasks     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰',
       '            2 success · 2 total',
       '  cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰',
@@ -164,7 +164,7 @@ describe('formatRunSummary', () => {
   it('gradient rule injects color escapes when enabled', () => {
     const lines = formatRunSummary([outcome('a#x', 'cache-hit')], 10, { enabled: true })
     expect(lines[1]).toContain('\x1b[38;2;')
-    expect(lines[1]).toContain('vx')
+    expect(lines[1]).toContain('Summary')
   })
 
   it('folds run context into the footer: version on the rule + info row', () => {
@@ -181,7 +181,7 @@ describe('formatRunSummary', () => {
         runId: '01a14941-c8cf-7a3e-9b51-2f06d4e8c713',
       },
     )
-    expect(lines[1]).toBe('─ vx 1.2.3 ' + '─'.repeat(51))
+    expect(lines[1]).toBe('─ Summary ' + '─'.repeat(41) + ' vx 1.2.3 ─')
     expect(lines).toContain(
       '  info      8 workers · local + remote cache · run 01a14941-c8cf-7a3e-9b51-2f06d4e8c713',
     )
@@ -532,7 +532,7 @@ describe('formatRunSummary', () => {
 
   it('no context keeps a bare `vx` rule and no projects/info rows (live-region parity)', () => {
     const lines = formatRunSummary([outcome('a#x', 'success')], 10)
-    expect(lines[1]).toBe('─ vx ' + '─'.repeat(57))
+    expect(lines[1]).toBe('─ Summary ' + '─'.repeat(52))
     expect(lines.find((l) => l.startsWith('  projects'))).toBeUndefined()
     expect(lines.find((l) => l.startsWith('  info'))).toBeUndefined()
     expect(lines.find((l) => l.startsWith('  result'))).toBeUndefined()

@@ -1097,7 +1097,7 @@ describe('flow e2e against a real fixture workspace', () => {
     expect(text()).toContain('┌─ one#boom')
     expect(text()).toContain('failed (exit 7)')
     // Summary still prints.
-    expect(text()).toContain('─ vx ')
+    expect(text()).toContain('─ Summary ')
     // No failed-id row in the summary (count in legend; frame above).
     expect(text()).not.toContain(
       '                   failed                                                     one#boom',

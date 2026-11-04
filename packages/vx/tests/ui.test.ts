@@ -63,7 +63,7 @@ describe('ui components', () => {
         '  next      vx run build --all\n',
     )
     const painted = ui.render([ui.report('vx', rows)], ON)
-    expect(painted).toContain('\x1b[2mfrom    \x1b[0m  turbo.json')
+    expect(painted).toContain('\x1b[2mfrom    \x1b[0m  \x1b[2mturbo.json\x1b[0m')
     expect(painted).toContain('\x1b[1mvx run build --all\x1b[0m')
   })
 

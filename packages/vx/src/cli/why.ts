@@ -348,7 +348,7 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
 
     const t = why.thisRun!
     const head: ui.FieldRow[] = [
-      ['task', ui.id(taskId)],
+      ['run', runId],
       ['this run', runFacts(t)],
     ]
     if (why.previousRun == null && t.hash === '') {
@@ -379,7 +379,7 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
       )
     }
     if (diff.entries.length === 0 && why.hashChanged === true) head.push(['detail', diff.note])
-    const blocks: ui.Block[] = [ui.section('Why', runId, ui.fields(head))]
+    const blocks: ui.Block[] = [ui.section('Why', taskId, ui.fields(head))]
 
     if (diff.entries.length > 0) {
       blocks.push(

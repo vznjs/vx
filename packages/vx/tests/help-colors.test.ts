@@ -69,7 +69,7 @@ describe('paintHelp', () => {
 
   it('bolds a heading and dims its (for <verb>)', () => {
     expect(paintHelp('t\nSelection (for run):', ON, paint).split('\n')[1]).toBe(
-      `${paint('', 'Selection', ON, { bold: true })}${paint('', ' (for run)', ON, { dim: true })}${paint('', ':', ON, { bold: true })}`,
+      `${paint('strong', 'Selection', ON)}${paint('muted', ' (for run)', ON)}${paint('strong', ':', ON)}`,
     )
   })
 })

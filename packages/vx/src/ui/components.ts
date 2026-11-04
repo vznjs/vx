@@ -327,7 +327,8 @@ export function fields(rows: readonly FieldRow[]): Block {
       const [label, ...values] = row
       const strongRow = label === 'next' || label === 'fix'
       values
-        .flatMap((v) => lines(typeof v === 'string' ? prose(v) : v, c))
+        // A command is bold whole, never dim prose under the bold.
+        .flatMap((v) => lines(typeof v === 'string' && !strongRow ? prose(v) : v, c))
         .forEach((v, i) => {
           const head = i === 0 ? paint('muted', label.padEnd(w), c) : ' '.repeat(w)
           const value = strongRow ? paint('strong', v, c) : v

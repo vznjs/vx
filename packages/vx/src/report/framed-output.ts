@@ -296,7 +296,7 @@ function glyphShape(o: TaskOutcome): string {
     case 'cache-hit-remote':
       return o.restored === false ? '\u25ba' : '\u21e3' // ► fresh : ⇣ remote
     case 'failed':
-      return '\u25a0' // ■ failed: ◼ draws two columns wide in xterm.js (VS Code)
+      return '\u25fc\uFE0E' // ◼ failed, text-presentation (narrow)
     case 'skipped':
       return '\u2298' // ⊘ skipped
     default:

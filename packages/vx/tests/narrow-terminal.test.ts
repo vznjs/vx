@@ -58,7 +58,7 @@ describe('on a terminal narrower than the footer', () => {
   it('CONTROL: off a terminal and on a wide one the footer keeps its 62 columns', () => {
     for (const lines of [footer(), footer(200)]) {
       const rows = furniture(lines)
-      expect(rows[0]).toBe('─ vx 1.2.3 ' + '─'.repeat(51))
+      expect(rows[0]).toBe('─ Summary ' + '─'.repeat(41) + ' vx 1.2.3 ─')
       for (const row of rows.slice(1)) expect(row.length).toBe(62)
     }
   })

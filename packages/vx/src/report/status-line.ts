@@ -103,7 +103,7 @@ export function formatFailureLine(
   cells: RowCells = {},
 ): string {
   return formatTaskRow(
-    paint('error', '\u25a0', colors),
+    paint('error', '\u25fc\uFE0E', colors),
     durationMs,
     'failed',
     'error',
@@ -130,7 +130,7 @@ export function formatStepLine(
   colors: ColorSupport = NO_COLOR,
 ): string {
   return formatTaskRow(
-    ok ? paint('ok', '\u23fa\uFE0E', colors) : paint('error', '\u25a0', colors),
+    ok ? paint('ok', '\u23fa\uFE0E', colors) : paint('error', '\u25fc\uFE0E', colors),
     durationMs,
     ok ? 'success' : 'failed',
     ok ? 'ok' : 'error',
@@ -292,7 +292,7 @@ export function formatStatusRegion(
   if (lines.length > 0)
     out.push(
       '',
-      ...panel('Running', String(running.length), [formatRunningHeader(colors), ...lines], colors),
+      ...panel('Running', String(s.pinnedPersistent.length + running.length + (s.steps?.length ?? 0)), [formatRunningHeader(colors), ...lines], colors),
     )
   out.push(...s.summaryLines)
   return out

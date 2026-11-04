@@ -12,8 +12,10 @@ import {
   type WorkerSlot,
 } from '../src/report/status-line.js'
 import { createOutputWriter, type StatusStream } from '../src/ui/live-region.js'
+import { panelRow } from '../src/ui/index.js'
 import {
   formatListHeader,
+  formatRunningHeader,
   formatTaskExecutedLine,
   formatSize,
   formatTaskHitLine,
@@ -345,7 +347,7 @@ describe('defaultLogger status line integration', () => {
     // Region from the start: the live summary section, and no worker row
     // until a worker is busy.
     expect(s.text()).not.toContain('idle')
-    expect(s.text()).toContain('─ vx ')
+    expect(s.text()).toContain('─ Summary ')
     expect(s.text()).toContain('▱')
     const a = mkNode('one#a')
     log.taskStart?.(a)
@@ -381,7 +383,7 @@ describe('defaultLogger status line integration', () => {
     log.taskStart?.(b)
     // rows[0] is the region's leading blank separator, [1] its title, [2] its header; slots start at [3].
     let rows = regionRows(s.chunks[s.chunks.length - 1]!)
-    expect(rows[1]).toBe(' Running')
+    expect(rows[1]).toStartWith('─ Running 2 ')
     expect(rows[3]).toContain('aa#x')
     expect(rows[4]).toContain('bb#x')
     // a finishes; b must stay in row 2; c reuses row 1.
@@ -729,7 +731,7 @@ describe('formatStatusRegion', () => {
     const lines = formatStatusRegion({ ...base, slots: [slot('a#build'), null], size: 2 })
     expect(lines).toEqual([
       '',
-      ' Running',
+      expect.stringMatching(/^─ Running \d+ ─+$/),
       '      time   usual status  cache      cpu    mem outputs  blocks worker       task',
       '     2.00s         running miss                                0 local        a#build',
       ...SUMMARY,
@@ -789,7 +791,7 @@ describe('formatStatusRegion', () => {
       slots: Array.from({ length: 10 }, () => null),
       size: 10,
     })
-    expect(lines).toEqual(['', ...SUMMARY])
+    expect(lines).toEqual(SUMMARY)
   })
 
   it('a running row counts the tasks it holds back, and the planned ones nest under it', () => {
@@ -881,7 +883,7 @@ describe('formatStatusRegion', () => {
     })
     expect(lines).toEqual([
       '',
-      ' Running',
+      expect.stringMatching(/^─ Running \d+ ─+$/),
       '      time   usual status  cache      cpu    mem outputs  blocks worker       task',
       ' ▸                 running                                       local        web#dev',
       ' ▸                 running                                       local        api#dev',
@@ -1228,7 +1230,7 @@ describe('the task log opens with one blank line', () => {
         // On a terminal the list's title is its first row.
         const first = s.chunks.find(
           (c) =>
-            (c.includes('one#a') || c.includes(' Finished') || c.includes(' Running')) &&
+            (c.includes('one#a') || c.includes('─ Tasks') || c.includes('─ Running')) &&
             !c.startsWith('\x1b') &&
             !c.startsWith('\r'),
         )
@@ -1287,7 +1289,7 @@ describe('list headers', () => {
       blockedBy: new Map([['a#build', 1]]),
     })
     expect(lines.slice(1, 4)).toEqual([
-      ' Running',
+      expect.stringMatching(/^─ Running \d+ ─+$/),
       '      time   usual status  cache      cpu    mem outputs  blocks worker       task',
       '     2.00s    ~18s running miss                                1 local        a#build',
     ])
@@ -1430,15 +1432,18 @@ describe('list headers', () => {
       ON,
     )
     // The title over it says what the list is, bold in the summary's violet.
-    expect(live[1]).toBe(' \x1b[1m\x1b[38;2;167;139;250mRunning\x1b[0m')
-    expect(underlined(live[2]!)).toBe(
+    expect(Bun.stripANSI(live[1]!)).toStartWith('╭─ Running 1 ')
+    expect(live[1]).toContain('\x1b[1m\x1b[38;2;167;139;250mRunning\x1b[0m')
+    // The header is the panel's first row.
+    expect(live[2]).toBe(panelRow(formatRunningHeader(ON), ON))
+    expect(underlined(formatRunningHeader(ON))).toBe(
       '      time   usual status  cache      cpu    mem outputs  blocks worker       task',
     )
     expect(underlined(formatListHeader(ON))).toBe(
       '      time  ±usual status  cache      cpu    mem outputs  blocks worker       task',
     )
     // No blank line between a header and its first row.
-    expect(Bun.stripANSI(live[3]!)).toEndWith('a#b')
+    expect(Bun.stripANSI(live[3]!)).toMatch(/ a#b +│$/)
   })
 })
 
