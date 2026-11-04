@@ -401,7 +401,9 @@ it('a task a worker runs across a relay restart and its orchestrator’s absence
         seen.push(m.type)
         if (m.type === 'end') await o.send(from, { type: 'exit' })
       }
-    expect(seen.filter((t) => t !== 'report')).toEqual(['joined', 'end'])
+    // A `ran` rides a report when one falls between the command's end and
+    // the `end` (a heartbeat here is 500 ms): the protocol's, not a redo.
+    expect(seen.filter((t) => t !== 'report' && t !== 'ran')).toEqual(['joined', 'end'])
     expect(await code).toBe(0)
   } finally {
     await served.stop()
