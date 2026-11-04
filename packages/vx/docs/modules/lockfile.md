@@ -44,6 +44,8 @@ export async function readLockfile(root: string): Promise<Lockfile | null>
 // The digest of the bytes a read lock came from: what its configs are a function of.
 export function lockDigest(lock: Lockfile): string | undefined
 export async function writeLockfile(root: string, lock: Lockfile): Promise<void>
+// A lock's entries from its bytes, pool put back; null when they do not parse
+export function lockEntries(bytes: Uint8Array | null): Record<string, unknown> | null
 export function frozenProjectConfigs(
   lock: Lockfile,
   metas: ReadonlyArray<{ name: string; dir: string; configPath: string }>,
