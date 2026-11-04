@@ -9,7 +9,7 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
-## ui: draw every line through one set of components
+## ui: draw every line vx prints from one UI kit
 
 the façade's `ui` is the new kit: `report(title, rows)`, `table(columns, rows)` with `Column`s, and `Style`/`Inline` from src/ui replace the src/util/ui.ts forms.
 
