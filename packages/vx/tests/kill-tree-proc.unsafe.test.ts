@@ -31,16 +31,23 @@ describe('untilGroupsGone reading /proc', () => {
         stdio: ['ignore', 'ignore', 'ignore'],
       })
       try {
-        // The name is there at exec; the TERM is ignored once the script's
-        // trap ran (bit 15 of SigIgn), and only then may it be sent.
-        expect(readFileSync(`/proc/${child.pid}/comm`, 'utf8').trim()).toBe('a) Z 9 9')
+        // The name is there once the exec is: Bun.spawn may return before
+        // it, and a read then saw the forked `bun` (2 of 200 under load).
+        // The TERM is ignored once the script's trap ran (bit 15 of SigIgn),
+        // and only then may it be sent.
+        const named = (): boolean =>
+          readFileSync(`/proc/${child.pid}/comm`, 'utf8').trim() === 'a) Z 9 9'
+        const deadline = Date.now() + 5_000
+        while (!named()) {
+          if (Date.now() > deadline) throw new Error('the member never took its name')
+          await Bun.sleep(5)
+        }
         const ignoresTerm = (): boolean => {
           const m = /^SigIgn:\s*([0-9a-f]+)$/m.exec(
             readFileSync(`/proc/${child.pid}/status`, 'utf8'),
           )
           return m !== null && (BigInt(`0x${m[1]}`) & (1n << 14n)) !== 0n
         }
-        const deadline = Date.now() + 5_000
         while (!ignoresTerm()) {
           if (Date.now() > deadline) throw new Error('the member never ignored TERM')
           await Bun.sleep(5)
