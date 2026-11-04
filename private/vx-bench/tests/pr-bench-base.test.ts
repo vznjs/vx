@@ -1,11 +1,11 @@
 import { expect, it } from 'bun:test'
 import {
-  baseFails,
+  baseSlower,
   HELD,
   SIGNIFICANCE,
   SITE_ARMS,
   tailAtLeast,
-  rivalFails,
+  rivalLosses,
   CPU_HELD,
   RIVALS,
   undecided,
@@ -16,11 +16,11 @@ import config from '../vx.config.js'
 // recorded ratio, so a run that grew slower than main by a fifth passed.
 // Then a 4% tolerance over the base let a regression land 3% at a time.
 // Now no slack: vx slower than the base in more pairs than chance explains.
-it('fails an arm slower than the base in more pairs than chance explains', () => {
+it('flags an arm slower than the base in more pairs than chance explains', () => {
   const pair = (vx: number, base: number) => ({ vx, base })
   const slow = Array.from({ length: 12 }, (_, i) => pair(103 + (i % 3), 100))
   const even = Array.from({ length: 12 }, (_, i) => pair(i % 2 === 0 ? 103 : 97, 100))
-  expect(baseFails({ noop: slow, restore: even }, ['noop', 'restore'])).toEqual([
+  expect(baseSlower({ noop: slow, restore: even }, ['noop', 'restore'])).toEqual([
     `noop: vx slower than the base in 12 of 12 pairs (p ${tailAtLeast(12, 12).toPrecision(2)})`,
   ])
 })
@@ -39,7 +39,7 @@ it('reads the binomial tail of a fair coin', () => {
 })
 
 it('holds nothing to a base the job did not time', () => {
-  expect(baseFails({ noop: [] }, ['noop'])).toEqual([])
+  expect(baseSlower({ noop: [] }, ['noop'])).toEqual([])
 })
 
 it('passes the base commit to the bench and keys the check on it', () => {
@@ -51,7 +51,7 @@ it('passes the base commit to the bench and keys the check on it', () => {
 // vx is the best of all runners in every case (2026-11-01): slower than
 // any rival fails, and so does more CPU than any but Vite Task, whose one
 // process per run does less than a shell per task.
-it('fails a case vx is slower than any rival in, or uses more CPU than Turbo or Nx in', () => {
+it('reports a case vx is slower than any rival in, or uses more CPU than Turbo or Nx in', () => {
   const t = (ms: number, cpuMs: number) => ({ ms, cpuMs })
   const vs = (vx: ReturnType<typeof t>, rival: ReturnType<typeof t>) => ({ vx, rival })
   const best = {
@@ -66,7 +66,7 @@ it('fails a case vx is slower than any rival in, or uses more CPU than Turbo or 
       'vite-task': vs(t(80, 90), t(9000, 50)),
     },
   }
-  expect(rivalFails(best, ['cold', 'noop'])).toEqual([
+  expect(rivalLosses(best, ['cold', 'noop'])).toEqual([
     'cold: vx 900 ms CPU against Nx 800 ms: vx uses more CPU than Nx',
     'cold: vx 1000 ms against Vite Task 990 ms: vx is slower than Vite Task',
   ])

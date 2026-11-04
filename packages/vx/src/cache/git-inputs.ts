@@ -1010,6 +1010,31 @@ export interface IndexBlobCheck {
   rekey(): Promise<string | undefined>
 }
 
+/** At most `n` contiguous parts of `items`, none under `CAT_FILE_MIN`: a spawn costs more than a few lookups. */
+function chunks<T>(items: readonly T[], n: number): T[][] {
+  const parts = Math.min(n, Math.ceil(items.length / CAT_FILE_MIN))
+  const size = Math.ceil(items.length / Math.max(1, parts))
+  const out: T[][] = []
+  for (let at = 0; at < items.length; at += size) out.push(items.slice(at, at + size))
+  return out
+}
+const CAT_FILE_MIN = 256
+
+const sizeChecks = new WeakMap<GitEnumeration, Promise<void>>()
+/**
+ * `dropResizedOids` once per enumeration: a run starts it as soon as its
+ * cache opens, so the check runs beside the config load and graph build
+ * instead of after them, and `applyGitEnumeration` waits on the same one.
+ */
+export function checkBlobSizes(enumeration: GitEnumeration, memo?: BlobSizeMemo): Promise<void> {
+  let check = sizeChecks.get(enumeration)
+  if (check === undefined) {
+    check = dropResizedOids(enumeration, memo)
+    sizeChecks.set(enumeration, check)
+  }
+  return check
+}
+
 /**
  * Drop each trusted OID whose blob is not the size the index recorded for
  * the worktree file (A-60). A clean filter's blob differs from the file it
@@ -1045,27 +1070,34 @@ async function dropResizedOids(enumeration: GitEnumeration, memo?: BlobSizeMemo)
     const oids = [...new Set(Array.from(trusted.values(), (v) => v.slice(v.lastIndexOf(':') + 1)))]
     const sizes = memo?.knownBlobSizes(oids) ?? new Map<string, number>()
     const unknown = oids.filter((oid) => !sizes.has(oid))
-    const asked = unknown.length > 0 ? enumeration.catFile(unknown.join('\n') + '\n') : undefined
-    const [blobs, run] = await Promise.all([listing, asked])
+    // One cat-file per core: a fresh clone's objects are loose, and one
+    // process opened and inflated 2,505 of them in 30 ms before the first
+    // task of a cold 100-package run; four took 14 (2026-11-03).
+    const asked = Promise.all(
+      chunks(unknown, Math.max(1, navigator.hardwareConcurrency)).map((part) =>
+        enumeration.catFile(part.join('\n') + '\n'),
+      ),
+    )
+    const [blobs, runs] = await Promise.all([listing, asked])
     if (blobs === null) {
       trusted.clear()
       return
     }
-    if (run !== undefined) {
-      if (run === null || run.exitCode !== 0) {
-        trusted.clear()
-        return
-      }
-      const learned = new Map<string, number>()
-      for (const line of run.stdout.split('\n')) {
+    if (runs.some((run) => run === null || run.exitCode !== 0)) {
+      trusted.clear()
+      return
+    }
+    const learned = new Map<string, number>()
+    for (const run of runs) {
+      for (const line of run!.stdout.split('\n')) {
         const sp = line.indexOf(' ')
         const n = Number(line.slice(sp + 1))
         if (sp > 0 && line.slice(sp + 1) !== '' && Number.isInteger(n))
           learned.set(line.slice(0, sp), n)
       }
-      for (const [oid, n] of learned) sizes.set(oid, n)
-      memo?.rememberBlobSizes(learned)
     }
+    for (const [oid, n] of learned) sizes.set(oid, n)
+    if (learned.size > 0) memo?.rememberBlobSizes(learned)
     resized = []
     for (let i = 0; i < blobs.oids.length; i++) {
       const size = sizes.get(blobs.oids[i]!)
@@ -2092,7 +2124,7 @@ export async function applyGitEnumeration(
   workspaceWide = false,
   memo?: BlobSizeMemo,
 ): Promise<void> {
-  await dropResizedOids(enumeration, memo)
+  await checkBlobSizes(enumeration, memo)
   const { all, trusted } = enumeration
   cache.setWorktreeDirty(enumeration.dirty)
   cache.setGitVars(enumeration.vars)

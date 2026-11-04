@@ -24,8 +24,9 @@ workspace's repo prefix (`blob_verdicts`; its paths are
 workspace-relative), so a
 warm run reads the file and one row and spawns nothing more; a changed
 index spawns the `--debug` listing, asks the cache's `blob_sizes` memo and
-one `git cat-file --batch-check` for the unknown ones; `applyGitEnumeration` runs the
-check, so every caller of it gets it. Split from `inputs.ts` on 2026-09-10:
+`git cat-file --batch-check` per core for the unknown ones; `checkBlobSizes` runs the
+check once per enumeration (a run starts it as its cache opens) and
+`applyGitEnumeration` waits on it, so every caller of it gets it. Split from `inputs.ts` on 2026-09-10:
 this file talks to git; `inputs.ts` decides which files a task declared
 and where the project boundary is.
 
@@ -142,6 +143,8 @@ export async function startGitEnumeration(
   workspaceRoot: string,
   pathspecs: readonly string[],
 ): Promise<GitEnumeration>
+// The blob-size check, once per enumeration: started as the cache opens, awaited by applyGitEnumeration.
+export function checkBlobSizes(enumeration: GitEnumeration, memo?: BlobSizeMemo): Promise<void>
 export async function applyGitEnumeration(
   enumeration: GitEnumeration,
   workspaceRoot: string,

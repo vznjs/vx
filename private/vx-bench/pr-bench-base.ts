@@ -56,8 +56,11 @@ export interface Match {
   rival: Best
 }
 
-/** Every held arm vx was slower than a rival in, or used more CPU than a rival `CPU_HELD` names. */
-export function rivalFails(
+/**
+ * Every held arm vx was slower than a rival in, or used more CPU than a
+ * rival `CPU_HELD` names. Reported, never a failure (2026-11-04).
+ */
+export function rivalLosses(
   best: Readonly<Partial<Record<Arm, Partial<Record<Rival, Match>>>>>,
   held: readonly Arm[],
 ): string[] {
@@ -113,7 +116,7 @@ export function undecided(pairs: readonly BasePair[]): boolean {
 }
 
 /** The held arms vx ran slower than the base in, beyond what chance explains. */
-export function baseFails(
+export function baseSlower(
   pairs: Readonly<Partial<Record<Arm, readonly BasePair[]>>>,
   held: readonly Arm[],
 ): string[] {

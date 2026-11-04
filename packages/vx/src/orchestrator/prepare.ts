@@ -39,6 +39,7 @@ import {
   gitPathspecs,
   MAX_SCOPED_PATHSPECS,
   startGitEnumeration,
+  checkBlobSizes,
   lazyGitEnumeration,
   measureFsClockLag,
   DEFAULT_STORE,
@@ -382,6 +383,13 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const fingerprintsAt = Date.now()
   const claimed = [...fingerprintClaims(plugins).keys()]
   const claimedBytes = await readClaimedFiles(workspaceRoot, claimed, reads)
+  // A whole-tree run's blob-size check starts with the cache it reads its
+  // verdict from, beside the config load and graph build: after them, a cold
+  // 100-package run waited 40-50 ms on it before its first task (2026-11-03).
+  if (git.started !== undefined) {
+    localCache.holdBlobSizes()
+    git.started.then((e) => checkBlobSizes(e, localCache)).catch(() => {})
+  }
   mark('open cache')
 
   // Configs load FROM .vx/projects.lock.json with no evaluation and no check of
