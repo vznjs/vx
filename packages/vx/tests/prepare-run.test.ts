@@ -265,8 +265,8 @@ describe('scoped config loading reaches every project a run can need', () => {
       await pkg('broken', 'export default { tasks: 42 }')
 
       await expect(lock(root)).rejects.toThrow(
-        `✗ vx lock  lock not written\n\n  ${path.join(root, 'packages', 'broken', 'vx.config.mjs')}: ` +
-          '`tasks` must be an object keyed by task name',
+        `✗ vx lock  lock not written\n\n  ${path.join(root, 'packages', 'broken', 'vx.config.mjs')}:1:18\n` +
+          '  `tasks` must be an object keyed by task name',
       )
       await expect(prepare({ projects: ['app'], locked: true })).rejects.toThrow(
         'no lock: run `vx lock`',
