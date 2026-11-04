@@ -88,15 +88,15 @@ describe('vx run --affected --dry says why each requested task was kept', () => 
     expect(Object.keys(JSON.parse(p.stdout.toString()) as object)).not.toContain('affectedBase')
   })
 
-  it('text: one reason line under each kept task', () => {
+  it("text: each kept task's row says why, after its id", () => {
     const lines = dry('build', 'lint', '--dry')
       .split('\n')
       .filter((l) => l.includes('affected:'))
-      .map((l) => l.trim())
+      .map((l) => l.slice(l.lastIndexOf(' ', l.indexOf('  affected:') - 1) + 1))
     expect(lines.sort()).toEqual([
-      'affected: packages/lib/src/a.js changed (an input)',
-      'affected: packages/lib/src/a.js changed (an input), via lib#build',
-      'affected: packages/lib/src/a.js changed (in its project)',
+      'app#build  affected: packages/lib/src/a.js changed (an input), via lib#build',
+      'lib#build  affected: packages/lib/src/a.js changed (an input)',
+      'lib#lint  affected: packages/lib/src/a.js changed (in its project)',
     ])
   })
 

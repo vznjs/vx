@@ -694,13 +694,13 @@ describe('a flaky task says so on its own row', () => {
     expect(flakyNote(outcome('a#x', 'success'))).toBe('')
     expect(
       formatTaskExecutedLine(node('a#x'), { ...outcome('a#x', 'success'), node: node('a#x') }),
-    ).toBe(' ⏺︎   100ms         success miss                                  local        a#x')
+    ).toBe(' ⏺︎   100ms         success miss         —      —                 local        a#x')
   })
 
   it('the note rides the row, dim', () => {
     const o = flaky('solid-js#types', 'success', 1, 1)
     expect(formatTaskExecutedLine(o.node, o)).toBe(
-      ' ⏺︎   100ms         success miss                                  local        solid-js#types flaky - failed 1× before',
+      ' ⏺︎   100ms         success miss         —      —                 local        solid-js#types flaky - failed 1× before',
     )
     const colored = formatTaskExecutedLine(o.node, o, { enabled: true })
     expect(colored).toContain('\x1b[2mflaky - failed 1× before')

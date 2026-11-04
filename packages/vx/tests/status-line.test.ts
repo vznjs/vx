@@ -26,13 +26,37 @@ import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 
 const CLEAR = '\x1b[2K\r'
 
-function tty(): StatusStream & { chunks: string[]; text(): string } {
+// The writer sends a frame as one write: erase, content, erase, region.
+// `chunks` holds its parts (an erase alone, the content, the erase with the
+// region last), which is what the logger tests read; `writes` holds the
+// writes themselves.
+// oxlint-disable-next-line no-control-regex -- the escapes are what this splits on
+const ERASE = /\x1b\[2K\r|\r\x1b\[\d+A\x1b\[J/g
+function parts(write: string): string[] {
+  const starts = [...write.matchAll(ERASE)].map((m) => m.index!)
+  if (starts[0] !== 0) starts.unshift(0)
+  const pieces = starts.map((at, i) => write.slice(at, starts[i + 1]))
+  const out: string[] = []
+  pieces.forEach((piece, i) => {
+    // oxlint-disable-next-line no-control-regex -- the escapes are what this splits on
+    const erase = piece.match(/^(?:\x1b\[2K\r|\r\x1b\[\d+A\x1b\[J)/)?.[0]
+    if (i < pieces.length - 1 && erase !== undefined && piece.length > erase.length) {
+      out.push(erase, piece.slice(erase.length))
+    } else out.push(piece)
+  })
+  return out
+}
+
+function tty(): StatusStream & { chunks: string[]; writes: string[]; text(): string } {
   const chunks: string[] = []
+  const writes: string[] = []
   return {
     isTTY: true,
     chunks,
+    writes,
     write(c: string) {
-      chunks.push(String(c))
+      writes.push(String(c))
+      chunks.push(...parts(String(c)))
       return true
     },
     text() {
@@ -145,11 +169,12 @@ describe('createOutputWriter', () => {
 
   it('serializes content writes: clear → content → redraw', () => {
     const s = tty()
-    const w = createOutputWriter(s)
+    const w = createOutputWriter(s, { forceFloorMs: 0 })
     w.setStatus('STATUS', { force: true })
-    s.chunks.length = 0
+    s.writes.length = 0
     w.write('a line\n')
-    expect(s.chunks).toEqual([CLEAR, 'a line\n', `${CLEAR}STATUS`])
+    // One write: the erase, the content and the redraw.
+    expect(s.writes).toEqual([`${CLEAR}a line\n${CLEAR}STATUS`])
   })
 
   it('throttles unforced redraws to minRedrawMs; force always draws', () => {
@@ -238,24 +263,52 @@ describe('createOutputWriter', () => {
     nowMs = 10
     w.setStatus('v2', { force: true })
     w.write('content\n')
-    // The write's own redraw already painted v2 — no trailing draw.
-    expect(s.chunks.at(-1)).toBe(`${CLEAR}v2`)
-    const len = s.chunks.length
+    // Inside the floor the write waits for the frame, and the frame paints
+    // the content and v2 in one write: no second draw follows.
     await Bun.sleep(45)
-    expect(s.chunks.length).toBe(len)
+    expect(s.writes.at(-1)).toBe(`${CLEAR}content\n${CLEAR}v2`)
+    const len = s.writes.length
+    await Bun.sleep(45)
+    expect(s.writes.length).toBe(len)
+  })
+
+  // 2,000 finished rows were 6,057 writes and 8.5 MB: each row erased and
+  // redrew the whole region. Rows inside one floor now land in one frame.
+  it('content inside the floor lands in one frame, the region redrawn once', async () => {
+    let nowMs = 0
+    const s = tty()
+    const w = createOutputWriter(s, { forceFloorMs: 30, now: () => nowMs })
+    w.setRegion(['r1', 'r2'], { force: true })
+    s.writes.length = 0
+    nowMs = 5
+    for (const row of ['a\n', 'b\n', 'c\n']) w.write(row)
+    expect(s.writes).toEqual([])
+    await Bun.sleep(45)
+    expect(s.writes).toEqual(['\r\x1b[1A\x1b[Ja\nb\nc\n\x1b[2K\rr1\nr2'])
+  })
+
+  it('a frame that would write the region as it stands writes nothing', () => {
+    const s = tty()
+    const w = createOutputWriter(s, { forceFloorMs: 0 })
+    w.setRegion(['r1', 'r2'], { force: true })
+    const before = s.writes.length
+    w.setRegion(['r1', 'r2'], { force: true })
+    expect(s.writes.length).toBe(before)
+    w.setRegion(['r1', 'r3'], { force: true })
+    expect(s.writes.length).toBe(before + 1)
   })
 
   it('holds the redraw while a streamed chunk leaves the cursor mid-line', () => {
     const s = tty()
-    const w = createOutputWriter(s)
+    const w = createOutputWriter(s, { forceFloorMs: 0 })
     w.setStatus('STATUS', { force: true })
-    s.chunks.length = 0
+    s.writes.length = 0
     w.write('partial')
     // No redraw — rewriting the line would wipe the partial output.
-    expect(s.chunks).toEqual([CLEAR, 'partial'])
+    expect(s.writes).toEqual([`${CLEAR}partial`])
     w.write(' ...done\n')
     // The newline restores column 0; the status line comes back.
-    expect(s.chunks).toEqual([CLEAR, 'partial', ' ...done\n', `${CLEAR}STATUS`])
+    expect(s.writes).toEqual([`${CLEAR}partial`, ` ...done\n${CLEAR}STATUS`])
   })
 })
 
@@ -560,7 +613,7 @@ describe('defaultLogger status line integration', () => {
     log.taskComplete(bad, mkOutcome(bad, 'failed'))
     // ✗ marker is permanent scrollback, not a region pin.
     expect(s2.text()).toContain(
-      'failed  no-cache                              local        one#boom',
+      'failed  no-cache     —      —                 local        one#boom',
     )
     expect(s2.text()).not.toContain('┌─ one#boom')
     log.runEnd?.()
@@ -846,7 +899,7 @@ describe('formatStatusRegion', () => {
       '     2.00s  ~300ms running miss                                0 local        d#x',
     )
     expect(lines[7]).toBe(
-      '     2.00s unknown running miss                                0 local        e#x',
+      '     2.00s       — running miss                                0 local        e#x',
     )
     // No history to ask: blank.
     expect(formatStatusRegion({ ...base, slots: [slot('e#x')] })[3]).toBe(
@@ -955,27 +1008,27 @@ describe('createOutputWriter region mechanics', () => {
 
   it('a foreign write erases the whole region, prints, then redraws', () => {
     const s = tty()
-    const w = createOutputWriter(s)
+    const w = createOutputWriter(s, { forceFloorMs: 0 })
     w.setRegion(['l1', 'l2'], { force: true })
-    const before = s.chunks.length
+    const before = s.writes.length
     w.write('content\n')
-    expect(s.chunks.slice(before)).toEqual(['\r\x1b[1A\x1b[J', 'content\n', `${CLEAR}l1\nl2`])
+    expect(s.writes.slice(before)).toEqual([`\r\x1b[1A\x1b[Jcontent\n${CLEAR}l1\nl2`])
   })
 
   it('variable region height: erase always uses the previously drawn height', () => {
     const s = tty()
     const w = createOutputWriter(s, { forceFloorMs: 0 })
     w.setRegion(['l1', 'l2'], { force: true })
-    expect(s.chunks.at(-1)).toBe(`${CLEAR}l1\nl2`)
+    expect(s.writes.at(-1)).toBe(`${CLEAR}l1\nl2`)
     // Grow 2 → 4: erase moves up 1 (old height 2), draws 4 lines.
     w.setRegion(['g1', 'g2', 'g3', 'g4'], { force: true })
-    expect(s.chunks.at(-1)).toBe('\r\x1b[1A\x1b[Jg1\ng2\ng3\ng4')
+    expect(s.writes.at(-1)).toBe('\r\x1b[1A\x1b[Jg1\ng2\ng3\ng4')
     // Shrink 4 → 1: erase moves up 3 (old height 4), draws 1 line.
     w.setRegion(['solo'], { force: true })
-    expect(s.chunks.at(-1)).toBe('\r\x1b[3A\x1b[Jsolo')
+    expect(s.writes.at(-1)).toBe('\r\x1b[3A\x1b[Jsolo')
     // A foreign write after the shrink erases exactly the 1-line region.
     w.write('content\n')
-    expect(s.chunks.slice(-3)).toEqual([CLEAR, 'content\n', `${CLEAR}solo`])
+    expect(s.writes.at(-1)).toBe(`${CLEAR}content\n${CLEAR}solo`)
   })
 
   it('clearStatus erases the region permanently', () => {
@@ -1025,7 +1078,7 @@ describe('createOutputWriter region erase accounts for wrapped rows', () => {
 
   it('a foreign write erases every wrapped row before printing', () => {
     const s = ttyW(10)
-    const w = createOutputWriter(s)
+    const w = createOutputWriter(s, { forceFloorMs: 0 })
     w.setRegion(['a'.repeat(15), 'b'], { force: true })
     const before = s.chunks.length
     w.write('content\n')
@@ -1068,8 +1121,8 @@ describe('createOutputWriter region erase accounts for wrapped rows', () => {
     const tall = Array.from({ length: 10 }, (_, i) => `row${i}`)
     w.setRegion(tall, { force: true })
     expect(s.chunks.at(-1)).toBe('\x1b[2K\rrow0\nrow1\nrow2\nrow3')
-    w.setRegion(tall, { force: true })
-    expect(s.chunks.at(-1)).toBe('\r\x1b[3A\x1b[Jrow0\nrow1\nrow2\nrow3')
+    w.setRegion(['top', ...tall], { force: true })
+    expect(s.chunks.at(-1)).toBe('\r\x1b[3A\x1b[Jtop\nrow0\nrow1\nrow2')
   })
 
   it('the cut counts wrapped rows, and a resize is read per draw', () => {
@@ -1327,7 +1380,7 @@ describe('list headers', () => {
     expect(row(2300, 2000)).toContain('   2.30s  +300ms success')
     expect(row(2300, 2000, ON)).toContain('\x1b[2m+300ms')
     // No history for the task: `unknown`, from the first row on.
-    expect(row(8000, null)).toContain('   8.00s unknown success')
+    expect(row(8000, null)).toContain('   8.00s       — success')
     // No history to ask (an embedder's logger): blank.
     expect(row(8000)).toContain('   8.00s         success')
     expect(row(8000, 2000, ON)).toContain('239;68;68m+6.00s')
@@ -1352,7 +1405,7 @@ describe('list headers', () => {
       false,
       3,
     ).replace('\uFE0E', '')
-    expect(row).toEndWith(' no-cache                            3 local        p#a')
+    expect(row).toEndWith(' no-cache     —      —               3 local        p#a')
     expect(head.indexOf('blocks') + 'blocks'.length).toBe(row.indexOf('3 local') + 1)
     expect(head.indexOf('task')).toBe(row.indexOf('p#a'))
     expect(head.indexOf('status')).toBe(row.indexOf('success'))

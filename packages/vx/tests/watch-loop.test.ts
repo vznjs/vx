@@ -98,25 +98,28 @@ describe('vx watch loop (e2e)', () => {
     await Bun.sleep(SETTLE_MS)
     // The duration, its distance from the usual (D) and cpu are padded to
     // fixed widths, so their digits decide the spaces before them. The first
-    // cycle has no history: its usual is unknown.
+    // cycle has no history: its usual is `—` (U). Mem (M) is `—` for a task
+    // over before the first look, a size past it.
     expect(
       w
         .out()
         .replace(/ +[+\u2212][\d.]+m?s/g, ' D')
         .replace(/ +\d+ms/g, ' Nms')
-        .replace(/ +\d+%/g, ' C'),
+        .replace(/ +\d+%/g, ' C')
+        .replace(/ +(?:\u2014|[\d.]+[KMG]?B)(?= +\d+B )/g, ' M')
+        .replace(/ +\u2014 success/g, ' U success'),
     ).toBe(
       [
-        ' ⏺︎ Nms unknown success miss C' +
-          ' '.repeat(13) +
+        ' ⏺︎ Nms U success miss C M' +
+          ' '.repeat(6) +
           '3B' +
           ' '.repeat(7) +
           '0 local        app#build',
         'watching 1 project · 1 task',
         '',
         'changed app src/b.txt (+1 more)',
-        ' ⏺︎ Nms D success miss C' +
-          ' '.repeat(13) +
+        ' ⏺︎ Nms D success miss C M' +
+          ' '.repeat(6) +
           '6B' +
           ' '.repeat(7) +
           '0 local        app#build',
@@ -144,19 +147,21 @@ describe('vx watch loop (e2e)', () => {
         .out()
         .replace(/ +[+\u2212][\d.]+m?s/g, ' D')
         .replace(/ +\d+ms/g, ' Nms')
-        .replace(/ +\d+%/g, ' C'),
+        .replace(/ +\d+%/g, ' C')
+        .replace(/ +(?:\u2014|[\d.]+[KMG]?B)(?= +\d+B )/g, ' M')
+        .replace(/ +\u2014 success/g, ' U success'),
     ).toBe(
       [
-        ' ⏺︎ Nms unknown success miss C' +
-          ' '.repeat(13) +
+        ' ⏺︎ Nms U success miss C M' +
+          ' '.repeat(6) +
           '3B' +
           ' '.repeat(7) +
           '0 local        app#build',
         'watching 1 project · 1 task',
         '',
         'changed app src/a.txt',
-        ' ⏺︎ Nms D success miss C' +
-          ' '.repeat(13) +
+        ' ⏺︎ Nms D success miss C M' +
+          ' '.repeat(6) +
           '3B' +
           ' '.repeat(7) +
           '0 local        app#build',

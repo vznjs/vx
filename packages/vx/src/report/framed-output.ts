@@ -26,7 +26,7 @@
 // `--ui=stream` mode.
 
 import { withForwardArgs } from '../exec/index.js'
-import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
+import { isCacheHit, isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { formatElapsed, maskedCommand, printable } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import {
@@ -365,8 +365,14 @@ export function formatTaskRow(
   const ca = cell(cache, cacheColor, CACHE_COL - Math.max(0, status.length - STATUS_COL), colors)
   const usual = cells.usual ?? { text: '', painted: '' }
   const us = `${' '.repeat(Math.max(0, USUAL_COL - usual.text.length))}${usual.painted}`
-  const cpu = cells.cpu === undefined ? '' : `${Math.round(cells.cpu * 100)}%`
-  const mem = cells.memBytes === undefined ? '' : formatSize(cells.memBytes)
+  const cpu =
+    cells.cpu === undefined ? '' : cells.cpu === null ? UNKNOWN : `${Math.round(cells.cpu * 100)}%`
+  const mem =
+    cells.memBytes === undefined
+      ? ''
+      : cells.memBytes === null
+        ? UNKNOWN
+        : formatSize(cells.memBytes)
   const out = cells.outputBytes === undefined ? '' : formatSize(cells.outputBytes)
   const blocks = cells.blocks ?? ''
   const worker = workerName(cells.worker ?? '')
@@ -378,14 +384,20 @@ export function formatTaskRow(
   )
 }
 
-/** A row's cells past time, status and cache; each blank when absent. */
+/**
+ * A cell vx cannot know: a peak no look saw, a task history never timed.
+ * Blank is a cell that does not apply (a hit ran nothing).
+ */
+const UNKNOWN = '\u2014'
+
+/** A row's cells past time, status and cache; each blank when absent, `—` when null. */
 export interface RowCells {
   /** After the time, pre-painted: `~18s` live, `+6.0s` / `−1.4s` after. */
   usual?: { text: string; painted: string }
   /** Cores in use (live) or on average (after): 1.8 prints `180%`. */
-  cpu?: number
+  cpu?: number | null
   /** Resident memory now (live) or at its peak (after). */
-  memBytes?: number
+  memBytes?: number | null
   /** The bytes of the task's outputs: what its save stored, or its hit restored. */
   outputBytes?: number
   /** How many tasks are downstream. */
@@ -435,7 +447,7 @@ function coresOf(o: TaskOutcome): number | undefined {
 /**
  * The results list's `±usual` cell: how far an executed task ran from its
  * usual time, `+6.0s` red or `−1.4s` green past a fifth of the usual either
- * way, dim within it; `unknown` (null) with no history for the task, blank
+ * way, dim within it; `—` (null) with no history for the task, blank
  * (undefined) with no history to ask. A blank within a fifth read as no
  * usual at all (2026-10-29).
  */
@@ -454,7 +466,7 @@ export function usualCell(
 
 /** The `usual` cell of a task history has never timed. */
 export function unknownUsual(colors: ColorSupport = NO_COLOR): { text: string; painted: string } {
-  return { text: 'unknown', painted: paint('muted', 'unknown', colors) }
+  return { text: UNKNOWN, painted: paint('muted', UNKNOWN, colors) }
 }
 
 /**
@@ -480,6 +492,129 @@ function header(usual: string, colors: ColorSupport): string {
     `${'status'.padEnd(STATUS_COL)} ${'cache'.padEnd(CACHE_COL)} ${'cpu'.padStart(CPU_COL)} ` +
     `${'mem'.padStart(MEM_COL)} ${'outputs'.padStart(OUT_COL)} ${'blocks'.padStart(BLOCKED_COL)} ${'worker'.padEnd(WORKER_COL)} task`
   return paint('label', head, colors)
+}
+
+/**
+ * The task list on its grid, under its header: the run's results panel's
+ * body, and `vx last`'s, so a replay reads as the run did.
+ */
+export function taskList(rows: readonly ((colors: ColorSupport) => string)[]): ui.Block {
+  return { lines: (c) => [formatListHeader(c), ...rows.map((row) => row(c))] }
+}
+
+/** What history keeps of a task's row: `vx last` draws it again from this. */
+export interface RecordedRow {
+  project: string
+  task: string
+  status: string
+  durationMs: number
+  restored: boolean | null
+  cached: boolean | null
+  cpuMs: number | null
+  peakRssBytes: number | null
+  placement: string | null
+  outputBytes: number | null
+  blocks: number | null
+}
+
+/** A recorded task's row, as the run printed it; `note` (dim) after its id. */
+export function formatRecordedRow(
+  r: RecordedRow,
+  colors: ColorSupport = NO_COLOR,
+  note = '',
+): string {
+  // The row functions read a node's names and whether it declared a cache.
+  const node = {
+    id: `${r.project}#${r.task}`,
+    projectName: r.project,
+    taskName: r.task,
+    config: r.cached === false ? {} : { cache: {} },
+  } as unknown as TaskNode
+  const o = {
+    node,
+    status: r.status,
+    durationMs: r.durationMs,
+    ...(r.restored !== null ? { restored: r.restored } : {}),
+    ...(r.cpuMs !== null ? { cpuMs: r.cpuMs } : {}),
+    ...(r.peakRssBytes !== null ? { peakRssBytes: r.peakRssBytes } : {}),
+    ...(r.placement !== null ? { where: r.placement } : {}),
+    ...(r.outputBytes !== null ? { outputBytes: r.outputBytes } : {}),
+  } as TaskOutcome
+  const blocks = r.blocks ?? undefined
+  const row =
+    o.status === 'skipped'
+      ? formatTaskSkippedLine(node, colors, undefined, blocks)
+      : o.status === 'aborted'
+        ? formatTaskAbortedLine(node, o, colors, blocks)
+        : isCacheHit(o.status)
+          ? formatTaskHitLine(node, o, colors, false, blocks)
+          : formatTaskExecutedLine(node, o, colors, false, blocks)
+  return note === '' ? row : `${row}  ${paint('muted', note, colors)}`
+}
+
+/**
+ * A running task's usual duration, fixed while the elapsed time counts up
+ * toward it (2026-10-14): `~5.2s`, `~42s`, `~2m 05s`. Fits the cache
+ * column below 100 minutes.
+ */
+export function formatExpected(ms: number): string {
+  // The tier by the rounded value: 999.6 ms printed `~1000ms` (item 1034's class).
+  if (Math.round(ms) < 1000) return `~${Math.round(ms)}ms`
+  if (ms < 9950) return `~${(ms / 1000).toFixed(1)}s`
+  const s = Math.round(ms / 1000)
+  if (s < 60) return `~${s}s`
+  return `~${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`
+}
+
+/** A task `--dry` lists: what the run would do with it, on the running list's grid. */
+export interface PlannedRow {
+  node: TaskNode
+  glyph: string
+  status: string
+  /** The glyph's and the status word's hue. */
+  tone: Style
+  cache: string
+  cacheTone: Style | ''
+  /** Its usual time, from history. */
+  usualMs?: number
+  /** What a remote hit would download. */
+  outputBytes?: number
+  /** How many tasks are downstream of it. */
+  blocks?: number
+  worker: string
+  /** Dim, after the id: its description, why it is affected. */
+  note: string
+}
+
+/** `--dry`'s list: the running list's header and grid, so a plan reads as the run would. */
+export function planList(rows: readonly PlannedRow[]): ui.Block {
+  return {
+    lines: (c) => [
+      formatRunningHeader(c),
+      ...rows.map((r) => {
+        const usual = r.usualMs === undefined ? undefined : formatExpected(r.usualMs)
+        const row = formatTaskRow(
+          paint(r.tone, r.glyph, c),
+          null,
+          r.status,
+          r.tone,
+          r.cache,
+          r.cacheTone,
+          paintTaskId(r.node, c),
+          c,
+          {
+            ...(usual !== undefined
+              ? { usual: { text: usual, painted: paint('muted', usual, c) } }
+              : {}),
+            ...(r.outputBytes !== undefined ? { outputBytes: r.outputBytes } : {}),
+            ...(r.blocks !== undefined ? { blocks: String(r.blocks) } : {}),
+            worker: r.worker,
+          },
+        )
+        return r.note === '' ? row : `${row}  ${paint('muted', r.note, c)}`
+      }),
+    ],
+  }
 }
 
 /** Compact one-liner for a cache hit with nothing to replay. */
@@ -528,13 +663,21 @@ export function formatTaskExecutedLine(
   })
 }
 
-/** An executed task's cells: where it ran, its average cores and peak memory. */
+/**
+ * An executed task's cells: where it ran, its average cores and peak
+ * memory; a task that ran with either unread shows `—`, a hit nothing.
+ */
 export function executedCells(o: TaskOutcome, blocks: number | undefined): RowCells {
   const cores = coresOf(o)
+  const ran = o.status === 'success' || o.status === 'failed'
   return {
     ...ranCells(o, blocks),
-    ...(cores !== undefined ? { cpu: cores } : {}),
-    ...(o.peakRssBytes !== undefined ? { memBytes: o.peakRssBytes } : {}),
+    ...(cores !== undefined ? { cpu: cores } : ran ? { cpu: null } : {}),
+    ...(o.peakRssBytes !== undefined
+      ? { memBytes: o.peakRssBytes }
+      : ran
+        ? { memBytes: null }
+        : {}),
   }
 }
 

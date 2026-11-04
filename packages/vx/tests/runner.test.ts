@@ -323,6 +323,23 @@ describe('runCommand', () => {
     expect(result.peakRssBytes).toBeUndefined()
   })
 
+  // The wait's peak of a task lighter than vx is vx's own, so it was left
+  // blank; the tree looked at while the task runs has the task's own.
+  it.if(process.platform === 'linux')(
+    'a light task that outlives a look reports the peak the look saw',
+    async () => {
+      const result = await runCommand({
+        command: 'sleep 0.6',
+        cwd,
+        env: { PATH: process.env.PATH ?? '' },
+      })
+      expect(result.exitCode).toBe(0)
+      expect(result.peakRssBytes!).toBeGreaterThan(0)
+      // A shell and a sleep: far under this process's own mark.
+      expect(result.peakRssBytes!).toBeLessThan(ownRssHighWater())
+    },
+  )
+
   it('captures rusage even when the command exits non-zero', async () => {
     const result = await runCommand({
       command: 'exit 7',

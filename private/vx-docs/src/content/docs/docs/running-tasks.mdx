@@ -23,11 +23,12 @@ vx watch test --all                    # re-run whenever its files change
 Here both builds would come from the local cache:
 
 ```ansi
-[1mwould run:[0m
-  [38;2;34;197;94m✓[0m  [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m   [38;2;34;197;94mcache hit (local)       [0m  [2me0464997[0m[2m[0m
-  [38;2;34;197;94m✓[0m  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m  [38;2;34;197;94mcache hit (local)       [0m  [2mb421f74f[0m[2m[0m
+[38;2;110;118;129m─ [0m[1m[38;2;167;139;250mPlan[0m [2m2[0m [38;2;110;118;129m─────────────────────────────────────────────────────[0m
+[2m[4m      time   usual status  cache      cpu    mem outputs  blocks worker       task[0m
+ [38;2;34;197;94m⇢[0m                 [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m                               [2m0[0m [2mlocal[0m        [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+ [38;2;34;197;94m⇢[0m                 [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m                               [2m0[0m [2mlocal[0m        [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
 
-[2m2 task(s) planned, 2 cache hits (2 local).[0m
+  [2mtasks   [0m  [38;2;203;213;225m2 planned · 2 cache hits (2 local)[0m
 ```
 
 | Flag                | Does                                                        |

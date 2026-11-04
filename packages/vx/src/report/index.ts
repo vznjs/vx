@@ -30,7 +30,13 @@ export {
   resolveOutputView,
   warnOf,
 } from './logger.js'
-export { formatPersistentList } from './framed-output.js'
+export {
+  formatPersistentList,
+  formatRecordedRow,
+  planList,
+  type PlannedRow,
+  taskList,
+} from './framed-output.js'
 export { createForecast } from './forecast.js'
 export { plainOutput } from './plain-output.js'
 export type { LiveUsage } from './status-line.js'

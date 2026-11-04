@@ -870,12 +870,13 @@ other persistent task`), and a non-zero exit makes the run exit 1
 
    - **time**: the live elapsed time; no glyph and no spinner.
    - **usual**: the task's executed p50 from local history, fixed while
-     the time counts up toward it; `unknown` for a task history never
+     the time counts up toward it; `—` for a task history never
      timed. History is read once, on the first row that asks, so a run
      that executes nothing never reads it. The results list's `±usual`
      is how far a run landed from it, `+6.00s` red or `−1.40s` green
-     past a fifth either way, dim within it, `unknown` with no history,
-     and blank on a hit.
+     past a fifth either way, dim within it, `—` with no history,
+     and blank on a hit. `—` is always a value vx cannot know; blank is
+     one that does not apply.
    - **status** and **cache**: `running` and `miss`, or `no-cache` for a
      task with no `cache` block (or a `--no-cache` run); finished rows
      say `local` or `remote` on a hit.
@@ -883,7 +884,10 @@ other persistent task`), and a non-zero exit makes the run exit 1
      it started and its peak memory so far, looked at every 500 ms only
      while this list draws (a pipe or CI reads nothing); on a finished
      row its average cores and peak memory over the whole run, blank on
-     a hit.
+     a hit. On Linux the peak the kernel reports at exit includes vx's own
+     memory, inherited at exec, so a task lighter than vx takes the peak
+     of its tree looked at every 250 ms while it runs; one over before
+     the first look shows `—`.
    - **outputs**: on a finished row, the bytes of its outputs: on a hit
      the files it restored, on a miss the files it wrote, saved or not;
      blank for a remote hit not yet downloaded.
@@ -1102,32 +1106,35 @@ existence check — planning never downloads or ingests artifacts.
 
 ```
 $ vx run ci --dry
-would run:
-  ✓  @vzn/vx#format-check  cache hit (local)         02bfe8a9
-  ✓  @vzn/vx#lint          cache hit (local)         d66cfed2
-  ▶  @vzn/vx#test          cache miss — would exec   68595e49  ~72.64s
+─ Plan 3 ─────────────────────────────────────────────────────
+      time   usual status  cache      cpu    mem outputs  blocks worker       task
+ ⇢                 cached  local                               0 local        @vzn/vx#format-check
+ ⇢                 cached  local                               0 local        @vzn/vx#lint
+ ⏺︎         ~1m 13s run     miss                                0 local        @vzn/vx#test
 
-3 task(s) planned, 2 cache hits (2 local), 1 would run.
-predicted: ~72.64s wall · ~72.64s total execution
+  tasks      3 planned · 2 cache hits (2 local) · 1 would run
+  predicted  ~72.64s wall · ~72.64s total execution
 ```
 
+The plan is a `Plan` panel on the run's own grid: each task's glyph and
+words as the run would print them (`cached` `local`, `run` `miss`), and
+where it would run under `worker`; the cache key is in `--dry=json`.
+
 **Time prediction.** A would-run task with recorded history shows its
-typical executed duration (`~p50` over its recent non-hit runs in the
-local `cache.db`). The footer predicts the run: `wall` is the longest dependency
+typical executed duration under `usual` (`~p50` over its recent non-hit
+runs in the local `cache.db`). The `predicted` field forecasts the run: `wall` is the longest dependency
 chain of would-run cost (cache hits restore near-instantly and count
 as 0), `total execution` is the sum across would-run tasks. Tasks with
 no history count as 0 and are called out (`N tasks without history
-(+?)`) — the totals are honest lower bounds. The footer is omitted
+(+?)`) — the totals are honest lower bounds. The field is omitted
 when nothing would run or when no would-run task has history.
 
-**Placement.** When the workspace's plugins supply more than one
-executor, each row carries the one the task would land on (`@spy-remote`;
-`@local` for the floor; `@noop` for an `exec.remote: 'only'` task no
-remote accepts, which the run would skip rather than run here) and the
-JSON object carries it as `executor`. With one executor there is
-nothing to choose and the column is absent, except `@noop`, which a
-remote-only task carries whatever the count; it costs nothing in the
-prediction. If an executor hook throws
+**Placement.** Each row's `worker` is where the task would land: the
+executor's name (`spy-remote`) when the workspace's plugins supply more
+than one, `local` for the floor; the JSON object carries it as
+`executor`. An `exec.remote: 'only'` task no remote accepts reads `noop`
+with no worker: the run would skip it rather than run here, and it
+costs nothing in the prediction. If an executor hook throws
 or returns something that is not an executor, the plan still prints —
 `--dry` never fails over a label — but says so on the status line, in
 the plugin's name: `[vx] placement not shown — plugin 'x' … (the run
@@ -1140,18 +1147,19 @@ them: the row says why (`needs darwin-arm64, this is linux-x64`,
 `blockedBy`. On CI, or when no executor routes such a task, `--dry`
 refuses as the run does.
 
-Status legend:
+Row legend (the run's own glyphs and words):
 
-| Symbol | Meaning                                                                                    |
-| ------ | ------------------------------------------------------------------------------------------ |
-| `✓`    | cache hit (local) — entry already in `<cacheDir>/`                                         |
-| `↓`    | cache hit (remote) — entry would be fetched from the layer                                 |
-| `▶`    | cache miss — task would execute (under `--force` too: nothing is read, what runs is saved) |
-| `∅`    | no-cache — task opts out (no `cache` block, or `--no-cache`)                               |
-| `·`    | `@noop` — task would not run anywhere                                                      |
-| `−`    | not started — a server you did not request whose every dependant is a hit, local or remote |
-| `·`    | skipped — `exec.platforms` leave this machine out, or a task it depends on is skipped      |
-| `○`    | group task (suppressed in human view; in JSON)                                             |
+| Glyph | Status / cache    | Meaning                                                                       |
+| ----- | ----------------- | ----------------------------------------------------------------------------- |
+| `⇢`   | `cached` `local`  | entry already in `<cacheDir>/`                                                |
+| `⇣`   | `cached` `remote` | entry would be fetched from the layer                                         |
+| `⏺`   | `run` `miss`      | task would execute (under `--force` too: nothing is read, what runs is saved) |
+| `⏺`   | `run` `no-cache`  | task opts out (no `cache` block, or `--no-cache`)                             |
+| `·`   | `noop`            | task would not run anywhere                                                   |
+| `◌`   | `not run`         | a server you did not request whose every dependant is a hit, local or remote  |
+| `⊘`   | `skipped`         | `exec.platforms` leave this machine out, or a task it depends on is skipped   |
+
+Group tasks are left out of the panel (they are in the JSON).
 
 `--dry=json` emits the same data as one JSON object on one line, alone on stdout
 (a stage's warnings go to stderr), and with nothing to run (nothing
@@ -1178,7 +1186,7 @@ Indented here to read:
 ```
 
 Every task with history carries `p50Ms`, hits included (only the text
-view's `~p50` is limited to tasks that would run); `predicted` counts
+view's `usual` is limited to tasks that would run); `predicted` counts
 would-run tasks only and is present whenever local history was
 readable. Its `criticalPath` names the would-run tasks with history on
 the chain `wallMs` measures, dependencies first: the tasks to speed up
@@ -1186,15 +1194,13 @@ to shorten the run.
 
 ### Why a task is affected (`affected.kind`)
 
-Under `--affected`, each requested task the diff kept gets a line, and
-its JSON object an `affected` reason:
+Under `--affected`, each requested task the diff kept says why after its
+id, and its JSON object carries an `affected` reason:
 
 ```
 $ vx run build lint --affected=main --dry
-  ▶  app#build  cache miss — would exec  …
-                affected: packages/lib/src/a.ts changed (an input), via lib#build
-  ·  lib#lint   no-cache                 …
-                affected: packages/lib/src/a.ts changed (in its project)
+ ⏺︎                 run     miss                                0 local        app#build  affected: packages/lib/src/a.ts changed (an input), via lib#build
+ ⏺︎                 run     no-cache                            0 local        lib#lint  affected: packages/lib/src/a.ts changed (in its project)
 ```
 
 `kind` is `input` (a changed `file` is a declared input), `project` (its
@@ -3174,14 +3180,17 @@ vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--stats [<task>] [--bran
 
 ```
 $ vx last
-run 01a16de7-6cd7-7563-984c-5ffba8fb6629 — ok
-  $ vx run ci --all
-  2026-10-24T12:34:05.662Z · 61ms · master @ 1587dec6
-  3 tasks · 0 hits
+─ Run 01a16de7-6cd7-7563-984c-5ffba8fb6629 ───────────────────
+  status    ok
+  command   vx run ci --all
+  when      2026-10-24T12:34:05.662Z · 425ms · master @ 1587dec6
+  tasks     3 tasks · 1 hit (0 up-to-date, 1 restored: 1 local, 0 remote)
 
-  success           app#test        3ms  d6e223ce81dfdb2c  1.1× cpu
-  success           app#build       7ms  b63bf0705528ba99  0.5× cpu
-  success           lib#build       7ms  e5123c0191687798  0.7× cpu
+─ Tasks 3 ────────────────────────────────────────────────────
+      time  ±usual status  cache      cpu    mem outputs  blocks worker       task
+ ⏺︎     3ms         success miss      110%      —      0B       0 local        app#test
+ ⏺︎   412ms         success miss       51%   48MB   120KB       1 local        app#build
+ ⇢     7ms         success local                    36KB       2 local        lib#build
 ```
 
 ```
@@ -3225,14 +3234,14 @@ with `--stats`.
 ### Understanding the output
 
 **The header and rows.** Bare `vx last` replays the most recent run: a header (verdict, command,
-when, duration, branch @ sha, CI, task/hit/failure counts) and a
-per-task table — status, id, duration, cache key, and for a task that
-executed, what it used (peak RSS and CPU parallelism, `312 MB · 1.4×
-cpu`: the runner's own record, and the number `@vzn/vx-history`
-reserves from; a hit spent nothing and shows nothing, and a task lighter
-than vx itself shows its CPU only) — failures first, each as the frame
-read it, `failed (exit 137)`, with the signal an exit above 128 stands
-for at the row's end (`128 + SIGKILL`; the shell's convention, so a
+when, duration, branch @ sha, CI, task/hit/failure counts) and its
+tasks on the run's own grid (time, status, cache, cpu, mem, outputs,
+blocks, worker, task; `±usual` stays blank), drawn by the same
+component: a replay reads as the run did. A hit's cpu and mem are
+blank (it spent nothing); `—` is a value the run could not read. The
+cache key is in `--format json`. Failures come first, each with its
+exit after the id, `exit 137`, and the signal an exit above 128 stands
+for after it (`128 + SIGKILL`; the shell's convention, so a
 command that exits 137 on its own reads the same). Where the run's
 footer gave a reason, the row ends with it instead: `timed out`,
 `never ready: exited`, `src/a.ts changed during the run` (an
@@ -3700,7 +3709,7 @@ A broad run looks like:
 
 ```
  ⇢     4ms         success local                                 local        @vzn/vx#format-check
- ⏺︎   5.20s         success miss                                  local        @vzn/vx#test
+ ⏺︎   5.20s         success miss         —      —                 local        @vzn/vx#test
 
 ─ Summary ───────────────────────────────────────── vx 0.0.0 ─
   projects  ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱

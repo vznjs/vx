@@ -3,6 +3,7 @@
 
 import { paint, panelTop, type ColorSupport } from '../ui/index.js'
 import {
+  formatExpected,
   formatRunningHeader,
   formatTaskRow,
   paintIdParts,
@@ -296,18 +297,4 @@ export function formatStatusRegion(
     )
   out.push(...s.summaryLines)
   return out
-}
-
-/**
- * A running task's usual duration, fixed while the elapsed time counts up
- * toward it (2026-10-14): `~5.2s`, `~42s`, `~2m 05s`. Fits the cache
- * column below 100 minutes.
- */
-function formatExpected(ms: number): string {
-  // The tier by the rounded value: 999.6 ms printed `~1000ms` (item 1034's class).
-  if (Math.round(ms) < 1000) return `~${Math.round(ms)}ms`
-  if (ms < 9950) return `~${(ms / 1000).toFixed(1)}s`
-  const s = Math.round(ms / 1000)
-  if (s < 60) return `~${s}s`
-  return `~${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`
 }

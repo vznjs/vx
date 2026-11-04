@@ -147,10 +147,24 @@ export function createOutputWriter(
    * it. Reachable only on a TTY whose winsize ioctl fails, since a non-TTY
    * disables the region outright.
    */
+  // A line's rows, memoized per width: most of a frame's lines are the
+  // last frame's, and measuring each one again was the most of a redraw's
+  // CPU (a 2,000-task run's profile).
+  let rowsWidth = -1
+  const rowsOf = new Map<string, number>()
   const lineRows = (line: string): number => {
     const cols = stream.columns
     if (cols === undefined || cols <= 0) return 1
-    return Math.max(1, Math.ceil(Bun.stringWidth(line) / cols))
+    if (cols !== rowsWidth || rowsOf.size > 4096) {
+      rowsWidth = cols
+      rowsOf.clear()
+    }
+    let rows = rowsOf.get(line)
+    if (rows === undefined) {
+      rows = Math.max(1, Math.ceil(Bun.stringWidth(line) / cols))
+      rowsOf.set(line, rows)
+    }
+    return rows
   }
   const regionRows = (lines: readonly string[]): number => {
     let rows = 0
@@ -183,45 +197,77 @@ export function createOutputWriter(
   // top row and clears to end of screen.
   const eraseSeq = (): string => (shownRows > 1 ? `\r\x1b[${shownRows - 1}A\x1b[J` : CLEAR)
 
+  // Content written since the last frame, drawn with it: one write per
+  // frame, the region erased and redrawn once around all of it. Each row
+  // used to be three writes (erase, row, region) and a whole region
+  // redraw: 2,000 rows wrote 8.5 MB.
+  const pending: string[] = []
+  // The region's text as last written: a frame that would write the same
+  // bytes writes nothing.
+  let shownText = ''
+
+  /** Write what is pending and, where it may show, the region: one write. */
   const draw = (): void => {
-    // Whatever was pending is now painted — the trailing draw would
-    // only repeat these bytes.
     cancelTrailing()
-    const erase = shown ? eraseSeq() : CLEAR
-    // Built here, not at the set: a warm run's task events set the
-    // region hundreds of times inside one floor, and each build was a
-    // forecast pass and a summary render no frame showed (200 hits on a
-    // terminal: run graph 62 → 9 ms). Kept built: a write redraws it.
-    if (typeof current === 'function') current = current()
-    const lines = fitted(current!)
-    stream.write(erase + lines.join('\n'))
-    shown = true
-    shownRows = regionRows(lines)
+    let text = ''
+    const content = pending.length > 0
+    if (content) {
+      text = (shown ? eraseSeq() : '') + pending.join('')
+      pending.length = 0
+      shown = false
+      shownRows = 0
+    }
+    if (!dead && current !== null && atLineStart && holds === 0) {
+      // Built here, not at the set: a warm run's task events set the
+      // region hundreds of times inside one floor, and each build was a
+      // forecast pass and a summary render no frame showed (200 hits on a
+      // terminal: run graph 62 → 9 ms). Kept built: a write redraws it.
+      if (typeof current === 'function') current = current()
+      const lines = fitted(current!)
+      const region = lines.join('\n')
+      if (shown && region === shownText) {
+        if (text !== '') stream.write(text)
+        lastDraw = now()
+        return
+      }
+      text += (shown ? eraseSeq() : CLEAR) + region
+      shown = true
+      shownRows = regionRows(lines)
+      shownText = region
+    }
+    if (text !== '') stream.write(text)
     lastDraw = now()
+  }
+  /**
+   * The next frame: now if the floor has passed since the last one, else
+   * once it does. A timer holding content keeps the process open until it
+   * lands; one that only redraws the region never does.
+   */
+  const frame = (): void => {
+    const since = now() - lastDraw
+    if (since >= forceFloorMs) {
+      draw()
+      return
+    }
+    if (trailing === null) {
+      trailing = setTimeout(() => {
+        trailing = null
+        draw()
+      }, forceFloorMs - since)
+      if (pending.length === 0) trailing.unref?.()
+    } else if (pending.length > 0) trailing.ref?.()
   }
   const set = (lines: Region, o: { force?: boolean }): void => {
     if (!enabled || dead) return
     current = lines
     if (!atLineStart || holds > 0) return
-    const since = now() - lastDraw
     if (o.force) {
-      if (since >= forceFloorMs) {
-        draw()
-        return
-      }
-      // Coalesce the burst: `current` is already the latest state, so
-      // one trailing draw at floor expiry lands it. unref — a stray
-      // timer must never hold the process open.
-      if (trailing === null) {
-        trailing = setTimeout(() => {
-          trailing = null
-          if (dead || current === null || !atLineStart || holds > 0) return
-          draw()
-        }, forceFloorMs - since)
-        trailing.unref?.()
-      }
+      // A burst coalesces: `current` is already the latest state, so one
+      // frame at the floor's expiry lands it.
+      frame()
       return
     }
+    const since = now() - lastDraw
     if (since >= minRedrawMs) draw()
   }
 
@@ -240,14 +286,12 @@ export function createOutputWriter(
         }
         return
       }
-      if (shown) {
-        stream.write(eraseSeq())
-        shown = false
-        shownRows = 0
-      }
-      stream.write(chunk)
       if (chunk.length > 0) atLineStart = chunk.endsWith('\n')
-      if (!dead && current !== null && atLineStart && holds === 0) draw()
+      pending.push(chunk)
+      // A held terminal (a prompt waits on it) or a dead region takes the
+      // write now: nothing will draw a frame for it.
+      if (holds > 0 || dead) draw()
+      else frame()
     },
     writeTo(target, chunk) {
       if (target === stream) return this.write(chunk)
@@ -257,11 +301,16 @@ export function createOutputWriter(
         target.write(chunk)
         return
       }
+      // What this stream holds is older than the chunk: it lands first,
+      // with the region erased, and the region returns after the chunk.
+      let text = pending.join('')
+      pending.length = 0
       if (shown) {
-        stream.write(eraseSeq())
+        text = eraseSeq() + text
         shown = false
         shownRows = 0
       }
+      if (text !== '') stream.write(text)
       target.write(chunk)
       if (!dead && current !== null && atLineStart && holds === 0) draw()
     },
@@ -280,21 +329,28 @@ export function createOutputWriter(
       dead = true
       current = null
       cancelTrailing()
+      // Content still waiting for a frame lands now, over the erased region.
+      let text = pending.join('')
+      pending.length = 0
       if (shown) {
-        stream.write(eraseSeq())
+        text = eraseSeq() + text
         shown = false
         shownRows = 0
       }
+      if (text !== '') stream.write(text)
     },
     hold() {
       if (!enabled || dead) return () => undefined
       holds++
       cancelTrailing()
+      let text = pending.join('')
+      pending.length = 0
       if (shown) {
-        stream.write(eraseSeq())
+        text = eraseSeq() + text
         shown = false
         shownRows = 0
       }
+      if (text !== '') stream.write(text)
       let released = false
       return () => {
         if (released) return
