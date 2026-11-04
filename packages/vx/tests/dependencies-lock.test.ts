@@ -1,0 +1,72 @@
+// `.vx/dependencies.lock.json` is flat: each directory once, sorted, every
+// edge and digest an index into that list, so the same workspace writes
+// the same bytes and a parse builds few strings.
+
+import { expect, it } from 'bun:test'
+import {
+  dependantsOf,
+  dependenciesLock,
+  parseDependenciesLock,
+  recordedDigests,
+} from '../src/workspace/dependencies-lock.js'
+import type { ProjectMeta } from '../src/workspace/index.js'
+
+const root = '/ws'
+const meta = (name: string, dir: string, deps?: string[], reach?: string[]): ProjectMeta =>
+  ({
+    name,
+    dir: `${root}/${dir}`,
+    configPath: null,
+    ...(deps ? { deps } : {}),
+    ...(reach ? { reach } : {}),
+  }) as ProjectMeta
+
+const metas = [
+  meta('web', 'apps/web', ['ui', 'core']),
+  meta('ui', 'packages/ui', ['core']),
+  meta('core', 'packages/core'),
+  meta('docs', 'apps/docs', undefined, ['ui']),
+]
+const files = new Map([['bun.lock', { hash: 'h1', projects: { web: 'dw', ui: 'du', core: 'dc' } }]])
+
+it('writes each directory once, sorted, and every edge and digest as a sorted index', () => {
+  expect(dependenciesLock(root, metas, files)).toEqual({
+    version: 2,
+    projects: ['apps/docs', 'apps/web', 'packages/core', 'packages/ui'],
+    deps: [[], [2, 3], [], [2]],
+    reach: [[3], [], [], []],
+    files: { 'bun.lock': { hash: 'h1', digests: ['', 'dw', 'dc', 'du'] } },
+  })
+})
+
+it('the same projects in another order write the same lock', () => {
+  expect(dependenciesLock(root, [...metas].reverse(), files)).toEqual(
+    dependenciesLock(root, metas, files),
+  )
+})
+
+it('reads back what it wrote: dependants by edge or reach, digests by directory', () => {
+  const lock = parseDependenciesLock(
+    new TextEncoder().encode(JSON.stringify(dependenciesLock(root, metas, files))),
+  )!
+  expect(dependantsOf(lock, 'packages/ui')).toEqual(['apps/docs', 'apps/web'])
+  expect(dependantsOf(lock, 'packages/gone')).toEqual([])
+  const rec = recordedDigests(lock, 'bun.lock')!
+  expect([rec.hash, rec.of('packages/ui'), rec.of('apps/docs'), rec.of('x')]).toEqual([
+    'h1',
+    'du',
+    undefined,
+    undefined,
+  ])
+  expect(recordedDigests(lock, 'pnpm-lock.yaml')).toBeUndefined()
+})
+
+it('reads nothing from a missing file, another version or another shape', () => {
+  const enc = (v: unknown) => new TextEncoder().encode(JSON.stringify(v))
+  expect(parseDependenciesLock(null)).toBeNull()
+  expect(parseDependenciesLock(enc({ version: 1, projects: {}, files: {} }))).toBeNull()
+  expect(
+    parseDependenciesLock(enc({ version: 2, projects: ['a'], deps: [], reach: [[]], files: {} })),
+  ).toBeNull()
+  expect(parseDependenciesLock(new TextEncoder().encode('{'))).toBeNull()
+})

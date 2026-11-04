@@ -92,9 +92,11 @@ async function dropLib(lockedAtBase: boolean): Promise<string> {
 it('a deleted project selects only the dependants the base dependencies lock records', async () => {
   const root = await dropLib(true)
   const recorded = JSON.parse(gitIn(root)('show', 'HEAD~1:.vx/dependencies.lock.json')) as {
-    projects: Record<string, { deps?: string[] }>
+    projects: string[]
+    deps: number[][]
   }
-  expect(recorded.projects['packages/app']).toEqual({ deps: ['packages/lib'] })
+  const app = recorded.projects.indexOf('packages/app')
+  expect(recorded.deps[app]).toEqual([recorded.projects.indexOf('packages/lib')])
   const tasks = await dry(root, ['build', '--affected=HEAD~1'])
   expect(tasks.map((t) => t.id)).toEqual(['app#build'])
   expect(tasks[0]!.affected).toMatchObject({ file: 'packages/lib/vx.config.mjs' })

@@ -25,6 +25,7 @@ import {
   DEPENDENCIES_LOCK_NAME,
   type DependenciesLock,
   dependantsOf,
+  recordedDigests,
   parseDependenciesLock,
 } from './dependencies-lock.js'
 import { configImportOwners, realpathOr } from './config-imports.js'
@@ -474,13 +475,14 @@ export async function affectedChanges(
     after: Uint8Array | null,
   ): Promise<ReadonlySet<string> | null> => {
     if (before === null || after === null || asked.digests === undefined) return null
-    const was = (await baseDependencies())?.files[file]
+    const base = await baseDependencies()
+    const was = base === null ? undefined : recordedDigests(base, file)
     if (was === undefined || was.hash !== xxh3hex(before)) return null
     const now = await asked.digests(file)
     if (now === undefined) return null
     const moved = new Set<string>()
     for (const p of projects) {
-      const d = was.projects[lockKey(rootDir, p.dir)]
+      const d = was.of(lockKey(rootDir, p.dir))
       if (d === undefined || d !== now.projects[p.name]) moved.add(p.name)
     }
     return moved
