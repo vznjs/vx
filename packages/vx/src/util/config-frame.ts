@@ -7,9 +7,11 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
-// `<file>: tasks.<path>[:] …`, or a top-level `<file> has unknown field …`,
-// from a project's vx.config or the workspace's .vx/workspace.ts.
-const HEAD = /^(\/[^\n]*?\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s)(?:: (tasks\.[^\s:]+)(:?))? /
+// `<file>: tasks.<path>[:] …`, `<file>: \`<setting>\` …`, `<file>: task name "<name>" …`,
+// or a top-level `<file> has unknown field …`, from a project's vx.config
+// or the workspace's .vx/workspace.ts.
+const HEAD =
+  /^(\/[^\n]*?\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s)(?:: (?:(tasks\.[^\s:]+)(:?)|`([^`\n]+)`|task name ("(?:[^"\\\n]|\\.)+")))? /
 
 /**
  * The message with its file named at `line:col`, relative to `cwd`, and a
@@ -19,13 +21,22 @@ const HEAD = /^(\/[^\n]*?\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s)(?:: (task
 export function configErrorFrame(message: string, cwd: string): string | undefined {
   const head = HEAD.exec(message)
   if (head === null) return positionFrame(message, cwd)
-  const [, file, fieldPath, colon] = head as unknown as [string, string, string?, string?]
+  const [, file, tasksPath, colon, setting, taskName] = head as unknown as [
+    string,
+    string,
+    string?,
+    string?,
+    string?,
+    string?,
+  ]
   const rest = message.slice(head[0].length)
   // The field the refusal is about, past the path that leads to it:
   // `has unknown field "comand"`, or `tasks.build: \`cache\` is not allowed`.
   const named =
     colon === ':' ? /^`([^`]+)`/.exec(rest) : /^has (?:unknown )?field "([^"]+)"/.exec(rest)
-  const segments = [...(fieldPath?.split('.') ?? []), ...(named === null ? [] : [named[1]!])]
+  const fieldPath =
+    taskName === undefined ? (tasksPath ?? setting)?.split('.') : ['tasks', JSON.parse(taskName)]
+  const segments = [...(fieldPath ?? []), ...(named === null ? [] : [named[1]!])]
   if (segments.length === 0) return undefined
   let source: string
   try {
