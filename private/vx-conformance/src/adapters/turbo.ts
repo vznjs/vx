@@ -27,6 +27,8 @@ export const turbo: Adapter = {
     'runtime-inputs',
     'dependency-inputs-off',
     'sandbox',
+    // A filter picks by name, directory or change; packages carry no tags.
+    'select-tag',
   ],
   env: { TURBO_TELEMETRY_DISABLED: '1', DO_NOT_TRACK: '1', NO_COLOR: '1' },
   async configure(dir, ws, command) {

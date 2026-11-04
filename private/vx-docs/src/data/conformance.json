@@ -986,12 +986,12 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 918,
-        "of": 919
+        "pass": 922,
+        "of": 923
       },
       "correctness": {
-        "pass": 761,
-        "of": 761
+        "pass": 765,
+        "of": 765
       },
       "efficiency": {
         "pass": 148,
@@ -1002,8 +1002,8 @@
         "of": 9
       },
       "graph": {
-        "pass": 135,
-        "of": 135
+        "pass": 139,
+        "of": 139
       },
       "config": {
         "pass": 7,
@@ -1110,12 +1110,12 @@
     },
     "nx": {
       "all": {
-        "pass": 585,
-        "of": 860
+        "pass": 588,
+        "of": 863
       },
       "correctness": {
-        "pass": 450,
-        "of": 710
+        "pass": 453,
+        "of": 713
       },
       "efficiency": {
         "pass": 131,
@@ -1126,8 +1126,8 @@
         "of": 8
       },
       "graph": {
-        "pass": 101,
-        "of": 124
+        "pass": 104,
+        "of": 127
       },
       "config": {
         "pass": 0,
@@ -2558,6 +2558,111 @@
           "status": "fail",
           "step": 1,
           "detail": "succeeded, expected a failure"
+        }
+      }
+    },
+    {
+      "id": "graph/select-by-tag",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A tag selects exactly the projects carrying it",
+      "from": [
+        "filter",
+        "filter-properties"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs select-tag"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs select-tag"
+        }
+      }
+    },
+    {
+      "id": "graph/select-by-tag-glob",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A `*` in a tag selects the projects carrying any tag it matches",
+      "from": [
+        "filter",
+        "filter-properties"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs select-tag"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs select-tag"
+        }
+      }
+    },
+    {
+      "id": "graph/select-exclude-tag",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A tag excluded takes the projects carrying it out of the selection",
+      "from": [
+        "filter",
+        "filter-properties"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs select-tag"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs select-tag"
+        }
+      }
+    },
+    {
+      "id": "graph/select-tag-with-dependencies",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A tag and its dependencies select the tagged projects and what they depend on",
+      "from": [
+        "filter",
+        "filter-properties"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs select-tag"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs select-walk"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs select-tag"
         }
       }
     },

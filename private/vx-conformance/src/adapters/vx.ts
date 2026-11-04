@@ -101,7 +101,7 @@ export const vx: Adapter = {
       )
       await writeFile(
         path.join(dir, projectDir(name, p), 'vx.config.mjs'),
-        `export default ${JSON.stringify({ name, tasks }, null, 2)}\n`,
+        `export default ${JSON.stringify({ name, ...(p.tags ? { tags: p.tags } : {}), tasks }, null, 2)}\n`,
       )
     }
     return [[VX, 'lock']]

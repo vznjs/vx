@@ -131,14 +131,18 @@ export const nx: Adapter = {
       )
       await writeFile(
         path.join(dir, rel, 'project.json'),
-        JSON.stringify({ name, root: rel, namedInputs, targets }, null, 2),
+        JSON.stringify(
+          { name, root: rel, ...(p.tags ? { tags: p.tags } : {}), namedInputs, targets },
+          null,
+          2,
+        ),
       )
     }
     return []
   },
   run: (task, projects, opts = {}) => {
     const sel = opts.select
-    const pick = (s: Selector) => s.name ?? s.dir!
+    const pick = (s: Selector) => (s.tag ? `tag:${s.tag}` : (s.name ?? s.dir!))
     const inc = sel ? sel.filter((s) => !s.exclude).map(pick) : projects
     const exc = (sel ?? []).filter((s) => s.exclude).map(pick)
     return [

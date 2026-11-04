@@ -27,6 +27,16 @@ function chain(): WorkspaceSpec {
 
 const FROM = ['filter', 'filter-properties']
 
+/** site and admin tagged web, api tagged scope:api and depending on lib; lib untagged. */
+const tagged = (): WorkspaceSpec => ({
+  projects: {
+    site: { ...p(), tags: ['web', 'scope:site'] },
+    admin: { ...p(), tags: ['web'] },
+    api: { ...p(['lib']), tags: ['scope:api'] },
+    lib: p(),
+  },
+})
+
 function selects(c: {
   slug: string
   title: string
@@ -42,6 +52,7 @@ function selects(c: {
   for (const s of c.select) {
     if (s.with) needs.add('select-walk')
     if (s.dir) needs.add('select-dir')
+    if (s.tag) needs.add('select-tag')
   }
   return defineCase({
     id: `graph/select-${c.slug}`,
@@ -377,5 +388,41 @@ export default [
         expect: { exit: 'fail', notRan: ['app#check', 'ui#check', 'utils#check', 'lib#check'] },
       },
     ],
+  }),
+
+  selects({
+    slug: 'by-tag',
+    title: 'A tag selects exactly the projects carrying it',
+    workspace: tagged(),
+    select: [{ tag: 'web' }],
+    ran: ['site', 'admin'],
+    notRan: ['api', 'lib'],
+  }),
+
+  selects({
+    slug: 'by-tag-glob',
+    title: 'A `*` in a tag selects the projects carrying any tag it matches',
+    workspace: tagged(),
+    select: [{ tag: 'scope:*' }],
+    ran: ['site', 'api'],
+    notRan: ['admin', 'lib'],
+  }),
+
+  selects({
+    slug: 'exclude-tag',
+    title: 'A tag excluded takes the projects carrying it out of the selection',
+    workspace: tagged(),
+    select: [{ name: '*' }, { tag: 'web', exclude: true }],
+    ran: ['api', 'lib'],
+    notRan: ['site', 'admin'],
+  }),
+
+  selects({
+    slug: 'tag-with-dependencies',
+    title: 'A tag and its dependencies select the tagged projects and what they depend on',
+    workspace: tagged(),
+    select: [{ tag: 'scope:api', with: 'dependencies' }],
+    ran: ['api', 'lib'],
+    notRan: ['site', 'admin'],
   }),
 ]

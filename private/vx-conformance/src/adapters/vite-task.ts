@@ -37,6 +37,8 @@ export const viteTask: Adapter = {
     'watch',
     'dry-run',
     'sandbox',
+    // A filter picks by name or directory; packages carry no tags.
+    'select-tag',
   ],
   env: { NO_COLOR: '1', DO_NOT_TRACK: '1', VITE_PLUS_TELEMETRY_DISABLED: '1' },
   // Vite Task installs the workspace's `packageManager` from the registry

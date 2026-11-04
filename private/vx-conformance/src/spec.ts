@@ -53,6 +53,8 @@ export interface ProjectSpec {
   dir?: string
   /** Names of the workspace projects this one depends on (package.json `dependencies`). */
   deps?: string[]
+  /** Labels a selector can pick the project by. */
+  tags?: string[]
   tasks?: Record<string, TaskSpec>
   /** Files to create, relative to the project's directory. */
   files?: Record<string, string>
@@ -231,6 +233,8 @@ export interface Selector {
   name?: string
   /** A workspace-relative directory, or a glob over directories: the projects there. */
   dir?: string
+  /** The projects carrying this tag. */
+  tag?: string
   /** Also take the matched projects' dependencies, their dependents, or their dependents and all those depend on. */
   with?: 'dependencies' | 'dependents' | 'dependents-and-dependencies'
   /** `false`: leave the matched projects out, keeping only what `with` adds. */
@@ -300,6 +304,8 @@ export type Feature =
   | 'sandbox'
   /** A run that stays up and runs tasks again on each edit. */
   | 'watch'
+  /** Projects selected by a tag they carry. */
+  | 'select-tag'
 
 export interface Case {
   /** `category/slug`, unique. */

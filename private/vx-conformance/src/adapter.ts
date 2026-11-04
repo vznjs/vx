@@ -59,7 +59,7 @@ export interface RunOptions {
 
 /** A selector in the pnpm filter grammar Turborepo, Vite Task and vx share. */
 export function pnpmFilter(s: Selector): string {
-  const base = s.name ?? (s.with ? `{./${s.dir}}` : `./${s.dir}`)
+  const base = s.tag ? `tag:${s.tag}` : (s.name ?? (s.with ? `{./${s.dir}}` : `./${s.dir}`))
   const caret = s.self === false ? '^' : ''
   const walked =
     s.with === 'dependencies'
