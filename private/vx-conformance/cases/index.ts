@@ -1,5 +1,6 @@
 import type { Case } from '../src/spec.ts'
 import affectedGit from './affected-git.ts'
+import affectedMore from './affected-more.ts'
 import affected from './affected.ts'
 import { cacheKeys } from './cache-keys.ts'
 import cache from './cache.ts'
@@ -69,5 +70,6 @@ export const CASES: Case[] = [
   ...persistentReady,
   ...affected,
   ...affectedGit,
+  ...affectedMore,
   ...report,
 ]
