@@ -1168,7 +1168,7 @@ describe('the caching guide lists what the cache never reads', () => {
       .filter((l) => !l.trim().startsWith('//'))
       .join('\n')
     const names = [...entries.matchAll(/'([^']+?)(?:\/\*\*)?'/g)].map((m) => m[1]!)
-    expect(names.length).toBe(7)
+    expect(names.length).toBe(8)
     const excluded = /^\| Always excluded +\|.*$/m.exec(page)
     expect(excluded).not.toBeNull()
     for (const name of names) expect(excluded![0]).toContain(name)

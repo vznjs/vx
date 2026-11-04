@@ -370,8 +370,11 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
         }
         continue
       }
-      const config: ProjectConfig =
+      const frozen: ProjectConfig =
         meta.configPath === null ? { tasks: {} } : (loaded[next++] as ProjectConfig)
+      // The lock shares a task two projects declare alike: an edit in place
+      // works on this project's own copy.
+      const config = projectStage ? structuredClone(frozen) : frozen
       if (projectStage) {
         // The `project` stage edits the validated object in place; core
         // re-validates after EACH plugin so a plugin can only produce what

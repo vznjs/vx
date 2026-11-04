@@ -419,6 +419,11 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
         const before = folded(change.before)
         return before !== undefined && before === folded(change.after) ? [] : undefined
       },
+      // A settings file folds into every key alike: nothing per project.
+      digests: (file, ctx) =>
+        claimsAt(ctx.workspaceRoot)
+          .find((c) => c.file === file)
+          ?.claim.fingerprint.digests?.(file, ctx),
       // The files the key hashes, so the key's own claim answers, from its
       // memo when it holds these bytes: `--affected` asks about every
       // changed path, and a classic `link:` to a workspace named without

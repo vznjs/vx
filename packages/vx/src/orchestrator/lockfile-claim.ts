@@ -379,6 +379,22 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
         }
         return names
       },
+      // What `vx lock` commits, so `--affected` reads the base's digests
+      // instead of parsing the base's file.
+      async digests(_file: string, ctx: FingerprintContext) {
+        if (scope === 'workspace') return undefined
+        const digests = await load(ctx.workspaceRoot, ctx.cacheDir)
+        if (digests.lock === '') return undefined
+        return {
+          hash: digests.lock,
+          projects: Object.fromEntries(
+            ctx.projects.map((p) => [
+              p.name,
+              digestFor(digests.importers, importerOf(ctx.workspaceRoot, p.dir)),
+            ]),
+          ),
+        }
+      },
       ...(options.extraFiles !== undefined
         ? {
             // The memo records which files these exact bytes name, for this

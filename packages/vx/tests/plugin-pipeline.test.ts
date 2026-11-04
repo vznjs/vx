@@ -256,6 +256,25 @@ describe('discover stage', () => {
 
 describe('project stage', () => {
   it(
+    'an edit to one project leaves an alike task of another as declared',
+    async () => {
+      await pkg('a', build)
+      await pkg('b', build)
+      await workspace([
+        pluginSource(
+          'org/edit',
+          `{ project(config, ctx) { if (ctx.name === 'a') config.tasks.build.description = 'edited' } }`,
+        ),
+      ])
+      const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
+      const of = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.description
+      expect(of('a#build')).toBe('edited')
+      expect(of('b#build')).toBeUndefined()
+    },
+    TIMEOUT,
+  )
+
+  it(
     'an injected task runs, and keys exactly like the same task written by hand',
     async () => {
       await pkg('a', build)
@@ -518,6 +537,25 @@ describe('project stage', () => {
 })
 
 describe('graph stage', () => {
+  it(
+    'an edit to one task leaves an alike task of another project as declared',
+    async () => {
+      await pkg('a', build)
+      await pkg('b', build)
+      await workspace([
+        pluginSource(
+          'org/edit',
+          `{ graph(nodes) { nodes.get('a#build').config.description = 'edited' } }`,
+        ),
+      ])
+      const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
+      const of = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.description
+      expect(of('a#build')).toBe('edited')
+      expect(of('b#build')).toBeUndefined()
+    },
+    TIMEOUT,
+  )
+
   it(
     'a plugin-added edge orders the run',
     async () => {

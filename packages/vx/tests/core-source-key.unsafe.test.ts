@@ -13,6 +13,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
+import { readLockfile } from '../src/workspace/lockfile.js'
 
 const REPO = path.resolve(import.meta.dir, '../../..')
 
@@ -28,8 +29,11 @@ interface LockedTask {
 }
 
 /** Every workspace package's evaluated tasks, by package name. */
+// Read as a run reads it: the lock writes a repeated task once, by index.
+const LOCK = (await readLockfile(REPO))!
+
 function lockedTasks(): Map<string, Record<string, LockedTask>> {
-  const lock = JSON.parse(readFileSync(path.join(REPO, '.vx/projects.lock.json'), 'utf8')) as {
+  const lock = LOCK as unknown as {
     projects: Record<string, { config: { tasks: Record<string, LockedTask> } }>
   }
   const out = new Map<string, Record<string, LockedTask>>()

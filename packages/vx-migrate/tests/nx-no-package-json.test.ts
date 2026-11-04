@@ -111,6 +111,7 @@ it('maps an Nx repo with no package.json to configs core runs alone', async () =
   expect(listed.split('\n').filter(Boolean).sort()).toEqual([
     '.vx/.gitattributes',
     '.vx/.gitignore',
+    '.vx/dependencies.lock.json',
     '.vx/projects.lock.json',
     '.vx/workspace.ts',
     'apps/b/vx.config.ts',

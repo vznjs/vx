@@ -52,6 +52,17 @@ describe('formatPlanText', () => {
     expect(out).toContain('1 would run')
   })
 
+  it('counts blocks in near-linear time: a 20,000 task chain renders at once', () => {
+    // The count was a closure walked per task: quadratic, 30 s on this chain.
+    const n = 20_000
+    const tasks = Array.from({ length: n }, (_, i) =>
+      task(`a#t${i}`, 'miss', 'dddddddd44444444', i === 0 ? [] : [`a#t${i - 1}`]),
+    )
+    const out = formatPlanText({ tasks })
+    expect(out).toMatch(/ 19999 local +a#t0\n/)
+    expect(out).toMatch(/ 0 local +a#t19999\n/)
+  }, 5_000)
+
   it('remote hits the remote sized say what restoring them downloads', () => {
     const out = formatPlanText({
       tasks: [

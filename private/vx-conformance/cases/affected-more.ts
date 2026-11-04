@@ -486,7 +486,7 @@ export default [
     kind: 'efficiency',
     title: 'Deleting a whole project selects none of the projects that remain',
     why: 'Nothing the remaining projects read changed; the deleted one has no task left to run.',
-    from: ['affected', 'affected-moves'],
+    from: ['affected', 'affected-moves', 'vx-lockfile/deleted-project'],
     needs: ['affected'],
     workspace: each(['a', 'b']),
     steps: [

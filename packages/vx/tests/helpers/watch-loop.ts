@@ -20,15 +20,15 @@ export const NOT_CI = { CI: '', GITHUB_ACTIONS: '' }
 
 /** `debug.watch`: each arm said on stderr, the sync point after a cycle that re-read the set. */
 export const ARMS = { VX_DEBUG_WATCH: '1' }
+/** Each arm's line under `ARMS`: how many projects it watched, and how many watches it held open. */
+export const armLines = (w: Watch): { projects: number; watches: number }[] =>
+  [...w.err().matchAll(/^vx watch: armed (\d+) projects? \((\d+) watch(?:es)?\)$/gm)].map((m) => ({
+    projects: Number(m[1]),
+    watches: Number(m[2]),
+  }))
 /** How many times the loop has armed (the first included), under `ARMS`. */
 export const arms = (w: Watch, projects?: number): number =>
-  w
-    .err()
-    .split(
-      projects === undefined
-        ? 'vx watch: armed '
-        : `vx watch: armed ${projects} project${projects === 1 ? '' : 's'}\n`,
-    ).length - 1
+  armLines(w).filter((a) => projects === undefined || a.projects === projects).length
 
 /**
  * Whether a cycle's run warned `line`. A run's warnings go to stderr (they

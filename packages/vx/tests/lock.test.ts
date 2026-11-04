@@ -155,7 +155,7 @@ describe('vx lock (e2e)', () => {
           { file: string; config: { tasks: { build: { exec: { command: string } } } } }
         >
       }
-      expect(lockJson.version).toBe(4)
+      expect(lockJson.version).toBe(5)
       const app = lockJson.projects['packages/app']!
       expect([app.file, app.config.tasks.build.exec.command]).toEqual([
         'vx.config.mjs',
@@ -326,7 +326,7 @@ describe('vx lock (e2e)', () => {
         await writeFile(
           file,
           JSON.stringify({
-            version: 4,
+            version: 5,
             projects: { 'packages/app': { file: 'vx.config.mjs', config: app } },
           }),
         )

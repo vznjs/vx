@@ -493,6 +493,11 @@ export class WatcherPool {
     return handle
   }
 
+  /** The watchers open now, each an OS watch or the poller in its slot. */
+  get open(): number {
+    return this.watchers.filter((w) => w !== CLOSED).length
+  }
+
   /** Settles once every arm so far has proved delivery or fallen back. */
   async proved(): Promise<void> {
     await Promise.all(this.proofs)

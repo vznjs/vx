@@ -10,8 +10,6 @@ import {
   CATEGORIES,
   groupName,
   inline,
-  KIND_LINES,
-  KINDS,
   note,
   percent,
   RESULTS,
@@ -22,7 +20,8 @@ import {
 import '../../styles/conformance.css'
 
 const README = 'https://github.com/vznjs/vx/blob/main/private/vx-conformance/README.md'
-const GROUPS = ['all', ...KINDS, ...CATEGORIES]
+// Categories split the cases, so each case counts in one row only.
+const GROUPS = ['all', ...CATEGORIES]
 const { coverage, cases, scores, tools } = RESULTS
 const differ = cases.filter((c) => !agree(c)).length
 const sections = CATEGORIES.map((id) => ({
@@ -92,13 +91,10 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'not applicable' } as const
                     data-group={g}
                     class:list={[
                       g === 'all' && 'cfm-all',
-                      (g === KINDS[0] || g === CATEGORIES[0]) && 'cfm-break',
+                      g === CATEGORIES[0] && 'cfm-break',
                     ]}
                   >
-                    <th scope="row">
-                      {groupName(g)}
-                      {KIND_LINES[g] && <span class="cfm-line">{KIND_LINES[g]}</span>}
-                    </th>
+                    <th scope="row">{groupName(g)}</th>
                     {TOOLS.map((t) => {
                       const s = scores[t]?.[g]
                       const pct = s && s.of > 0 ? (s.pass / s.of) * 100 : 0

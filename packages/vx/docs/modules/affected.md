@@ -73,6 +73,10 @@ export interface FingerprintClaims {
   }): Promise<ReadonlySet<string> | undefined>
   /** The files a claimed file names that its claimant keys too; absent = it reads none. */
   extraFiles?(file: string, bytes: Uint8Array): Promise<readonly string[] | undefined>
+  /** The claimed file's per-project digests now and the hash of the bytes they came from; absent or `undefined` = the claimant keeps none. */
+  digests?(
+    file: string,
+  ): Promise<{ hash: string; projects: Readonly<Record<string, string>> } | undefined>
 }
 
 /** The base `ref` names (`<base>...HEAD` reads as `<base>`) when it is the

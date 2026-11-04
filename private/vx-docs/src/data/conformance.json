@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 190,
+    "ported": 191,
     "rest": {
       "pending": [],
       "vx-only": [
@@ -132,6 +132,7 @@
         "lock-secret",
         "lock-shadowed-config",
         "lockfile-boundary",
+        "lockfile-pool",
         "lockfile-claim",
         "metrics",
         "migration",
@@ -655,6 +656,7 @@
         "closure-search",
         "colors",
         "core-source-key.unsafe",
+        "dependencies-lock",
         "dev",
         "disk-full.unsafe",
         "dispatched-verbs",
@@ -985,7 +987,7 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 924,
+        "pass": 925,
         "of": 925
       },
       "correctness": {
@@ -993,7 +995,7 @@
         "of": 767
       },
       "efficiency": {
-        "pass": 148,
+        "pass": 149,
         "of": 149
       },
       "data": {
@@ -1013,7 +1015,7 @@
         "of": 72
       },
       "affected": {
-        "pass": 94,
+        "pass": 95,
         "of": 95
       },
       "cache": {
@@ -23094,13 +23096,12 @@
       "why": "Nothing the remaining projects read changed; the deleted one has no task left to run.",
       "from": [
         "affected",
-        "affected-moves"
+        "affected-moves",
+        "vx-lockfile/deleted-project"
       ],
       "outcomes": {
         "vx": {
-          "status": "fail",
-          "step": 6,
-          "detail": "ran b#test, expected it replayed or left out"
+          "status": "pass"
         },
         "turbo": {
           "status": "fail",

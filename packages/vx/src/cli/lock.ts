@@ -8,7 +8,14 @@ import path from 'node:path'
 import type { ProjectConfig } from '../config.js'
 import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
 import { buildTaskGraph, expandRequested, isDefaultBuild } from '../graph/index.js'
-import { applyGraphStage, discoverProjects, hasHook, loadProjects } from '../orchestrator/index.js'
+import {
+  applyGraphStage,
+  claimedDigests,
+  discoverProjects,
+  fingerprintClaims,
+  hasHook,
+  loadProjects,
+} from '../orchestrator/index.js'
 import { resolveSetting, runRules } from '../settings.js'
 import {
   DOT_VX_GITATTRIBUTES,
@@ -42,6 +49,11 @@ import {
   checkDependencyRules,
   computeNestedProjectDirs,
   writeLockfile,
+  DEPENDENCIES_LOCK_NAME,
+  dependenciesLock,
+  parseDependenciesLock,
+  writeDependenciesLock,
+  type DependenciesLock,
   type Lockfile,
   type ProjectMeta,
 } from '../workspace/index.js'
@@ -139,6 +151,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     reviewFiles: true,
     strayReviews: [],
     shadowed: [],
+    dependencies: null,
   }
   try {
     const { workspaceConfig, plugins, cacheDir } = await loadCliWorkspace(root)
@@ -177,6 +190,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     })
     for (const entry of projects.values()) resolved.set(entry.name, entry.config)
     out.loaded = true
+    out.dependencies = await dependenciesOf(root, out.all, plugins, cacheDir, warn)
     checkBracketLiterals(root, projects.values())
     const names = new Set<string>()
     for (const entry of projects.values()) {
@@ -251,6 +265,30 @@ interface GraphCheck {
   strayReviews: string[]
   /** Config files a higher-precedence one beside them hides (`findProjectConfigs`). */
   shadowed: { file: string; read: string }[]
+  /** What the dependencies resolve to here; null when the configs did not load. */
+  dependencies: DependenciesLock | null
+}
+
+/** Each project's edges and each claimed file's digests, as `--affected` reads them back. */
+async function dependenciesOf(
+  root: string,
+  all: readonly ProjectMeta[],
+  plugins: Parameters<typeof fingerprintClaims>[0],
+  cacheDir: string,
+  warn: (message: string) => void,
+): Promise<DependenciesLock> {
+  const ctx = {
+    workspaceRoot: root,
+    cacheDir,
+    warn,
+    projects: all.map((p) => ({ name: p.name, dir: p.dir })),
+  }
+  const files = new Map<string, { hash: string; projects: Readonly<Record<string, string>> }>()
+  for (const [file, plugin] of fingerprintClaims(plugins)) {
+    const answer = await claimedDigests(plugin, file, ctx)
+    if (answer !== undefined) files.set(file, answer)
+  }
+  return dependenciesLock(root, all, files)
 }
 
 function configured(all: readonly ProjectMeta[]): ConfiguredMeta[] {
@@ -414,6 +452,7 @@ async function writeLock(
     return 1
   }
   await writeLockfile(root, check.fresh)
+  if (check.dependencies !== null) await writeDependenciesLock(root, check.dependencies)
   await writeIfMissing(path.join(root, '.vx', '.gitattributes'), DOT_VX_GITATTRIBUTES)
   const n = metas.length
   say(`${n} project config${n === 1 ? '' : 's'} → ${LOCKFILE_NAME}${bareNote(bare)}`)
@@ -598,6 +637,18 @@ async function checkLock(root: string, json: boolean): Promise<number> {
       const what = dir === '.' ? 'the workspace root project' : dir
       failures.push(`the lock holds ${what}, which has no vx.config now — run 'vx lock'`)
     }
+  }
+  // Named only over a lock that holds: a config drift moves the record too.
+  if (check.dependencies !== null && failures.length === 0) {
+    const text = await Bun.file(path.join(root, DEPENDENCIES_LOCK_NAME))
+      .bytes()
+      .catch(() => null)
+    // Compared as JSON: a formatter may lay the file out its own way.
+    const read = parseDependenciesLock(text)
+    if (read === null || !Bun.deepEquals(read, check.dependencies, true))
+      failures.push(
+        `${DEPENDENCIES_LOCK_NAME} ${text === null ? 'is missing' : 'is not what the dependencies resolve to here'} — run 'vx lock'`,
+      )
   }
   if (json)
     // Root-relative, as every other problem: the loader names the absolute path.

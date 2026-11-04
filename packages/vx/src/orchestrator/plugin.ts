@@ -491,6 +491,25 @@ export interface FingerprintClaim {
     bytes: Uint8Array,
     ctx: FingerprintContext,
   ): readonly string[] | Promise<readonly string[]>
+  /**
+   * Each project's digest of the claimed `file` as it is now, by project
+   * name, with `hash`, the identity of the bytes they came from (the
+   * file's xxh3 when nothing else is folded). `vx lock` records them in
+   * `.vx/dependencies.lock.json`, and `--affected` reads the base's copy
+   * there instead of asking `affected` to parse the base side, when its
+   * `hash` is the base file's xxh3. `undefined`: nothing to record.
+   */
+  digests?(
+    file: string,
+    ctx: FingerprintContext,
+  ): FingerprintDigests | undefined | Promise<FingerprintDigests | undefined>
+}
+
+/** `FingerprintClaim.digests`' answer. */
+export interface FingerprintDigests {
+  readonly hash: string
+  /** Project name → its digest of the file. */
+  readonly projects: Readonly<Record<string, string>>
 }
 
 export interface FingerprintChange {
