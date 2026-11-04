@@ -27,6 +27,8 @@ export interface Adapter {
   configure(dir: string, ws: WorkspaceSpec, command: Command): Promise<string[][]>
   /** Run `task` in every project declaring it, or in `projects` and what they depend on. */
   run(task: string, projects?: string[], opts?: RunOptions): string[]
+  /** Watch `task` in every project declaring it, or in `projects`: a run that stays up. Required unless it `lacks` `watch`. */
+  watch?(task: string, projects?: string[]): string[]
   /** Run `task` where the changes since `base` reach. */
   affected(task: string, base: string): string[]
   /** What the tool reports about its last run, per `project#task`, from its own output, files or API. */

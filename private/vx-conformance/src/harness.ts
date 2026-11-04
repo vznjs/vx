@@ -26,6 +26,7 @@ import {
   type ReportCheck,
   type TaskReport,
   type TreeCheck,
+  type WatchExpect,
   type WorkspaceSpec,
 } from './spec.ts'
 
@@ -49,6 +50,9 @@ const RAN = '.ran'
  * ignores, is granted instead.
  */
 export const ISOLATED_RAN = '.home/marks/ran'
+
+/** Where a watch lists the marks each of its phases wrote. */
+const WATCHED = '.watched'
 
 /** Where a supervised run lists the processes it left alive. */
 const LEFT = '.left'
@@ -156,6 +160,20 @@ async function linkTool(root: string, adapter: Adapter): Promise<void> {
   await symlink(realpathSync(path.join(MODULES, adapter.pkg)), pkg)
   for (const b of adapter.bins)
     await symlink(realpathSync(path.join(MODULES, '.bin', b)), path.join(bin, b))
+}
+
+/** One watch phase's marks against what it should have run. */
+export function checkWatch(want: WatchExpect, marks: string[]): string | null {
+  const started = marks.filter((m) => m.startsWith('+')).map((m) => m.slice(1))
+  const missed = (want.ran ?? []).filter((t) => !started.includes(t))
+  if (missed.length > 0) return `did not run ${missed.join(', ')}`
+  const extra = (want.notRan ?? []).filter((t) => started.includes(t))
+  if (extra.length > 0) return `ran ${extra.join(', ')}, expected it left alone`
+  for (const [t, n] of Object.entries(want.times ?? {})) {
+    const got = started.filter((s) => s === t).length
+    if (got !== n) return `ran ${t} ${got} times, expected ${n}`
+  }
+  return null
 }
 
 export function check(
@@ -365,6 +383,45 @@ async function play(c: Case, adapter: Adapter, root: string, box: string): Promi
     if ('configure' in step) {
       ws = step.configure(ws)
       await configure(ws)
+      continue
+    }
+    if ('watch' in step) {
+      if (adapter.watch === undefined)
+        throw new Error(`${adapter.name} has no watch: list it in lacks`)
+      for (const f of [RAN, ISOLATED_RAN, WATCHED]) await rm(path.join(root, f), { force: true })
+      await mkdir(path.dirname(path.join(root, ISOLATED_RAN)), { recursive: true })
+      const tool = adapter
+        .watch(step.watch, step.projects)
+        .map((a, j) => (j === 0 && a.startsWith('node_modules/') ? path.join(root, a) : a))
+      const plan = {
+        watch: {
+          phases: step.phases.map(({ write, sh }) => ({ write, sh })),
+          marks: [RAN, ISOLATED_RAN],
+          out: WATCHED,
+        },
+      }
+      const argv = [process.execPath, SUPERVISE, JSON.stringify(plan), ...tool]
+      const r =
+        refused === null
+          ? await sandboxed(root, root, argv, adapter.env, 600_000, false, box)
+          : { exit: 1, out: refused }
+      const slices: string[] = JSON.parse((await readMaybe(path.join(root, WATCHED))) ?? '[]')
+      const files: Record<string, string | null> = {}
+      for (const f of Object.keys(step.files ?? {})) files[f] = await readMaybe(path.join(root, f))
+      const failed =
+        [step.start, ...step.phases.map((p) => p.expect)]
+          .map((want, j) => {
+            const why = checkWatch(want, (slices[j] ?? '').split('\n').filter(Boolean))
+            return why === null ? null : `${j === 0 ? 'first run' : `after edit ${j}`}: ${why}`
+          })
+          .find((why) => why !== null) ?? check({ files: step.files ?? {} }, 0, r.out, [], files)
+      if (failed !== null)
+        return {
+          status: 'fail',
+          step: i + 1,
+          detail: slices.length === 0 ? `${failed} (the watch never ran a task)` : failed,
+          log: `$ ${tool.join(' ')}\n${r.out}`.slice(-4000),
+        }
       continue
     }
     await rm(path.join(root, RAN), { force: true })

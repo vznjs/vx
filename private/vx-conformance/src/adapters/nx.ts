@@ -37,8 +37,19 @@ export const nx: Adapter = {
   // No per-task time limit, no retries. A failure skips what depends on
   // it, every cache read writes too, no run is planned without running,
   // and nothing keeps a command from what it never declared. Every host
-  // variable reaches a task, keying none it does not name.
-  lacks: ['select-walk', 'timeout', 'retries', 'continue', 'read-only-cache', 'dry-run', 'sandbox'],
+  // variable reaches a task, keying none it does not name. `nx watch`
+  // runs through the daemon, off in every run here, and only runs a
+  // given command on a change, running no task to start.
+  lacks: [
+    'select-walk',
+    'timeout',
+    'retries',
+    'continue',
+    'read-only-cache',
+    'dry-run',
+    'sandbox',
+    'watch',
+  ],
   env: {
     NX_DAEMON: 'false',
     NX_NO_CLOUD: 'true',

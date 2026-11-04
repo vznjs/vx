@@ -68,6 +68,7 @@ const GROUP_NAMES: Record<string, string> = {
   affected: 'Affected',
   report: 'Run report',
   sandbox: 'Isolation',
+  watch: 'Watch',
 }
 export const groupName = (g: string): string => GROUP_NAMES[g] ?? g
 

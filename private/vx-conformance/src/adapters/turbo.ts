@@ -85,6 +85,13 @@ export const turbo: Adapter = {
     ...(opts.dry ? ['--dry=json'] : []),
     ...(opts.args ? ['--', ...opts.args] : []),
   ],
+  watch: (task, projects) => [
+    'node_modules/.bin/turbo',
+    'watch',
+    task,
+    '--ui=stream',
+    ...(projects ?? []).map((f) => `--filter=${f}`),
+  ],
   affected: (task, base) => [
     'env',
     `TURBO_SCM_BASE=${base}`,

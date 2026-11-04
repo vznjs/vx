@@ -33,6 +33,8 @@ export const viteTask: Adapter = {
     'continue',
     'force',
     'read-only-cache',
+    // `vp run` has no watch mode.
+    'watch',
     'dry-run',
     'sandbox',
   ],

@@ -101,6 +101,20 @@ export interface Expect {
 }
 
 /** A stop sent to a run in flight. */
+/** What a watch ran in one phase. */
+export interface WatchExpect extends Pick<Expect, 'ran' | 'notRan'> {
+  /** Each of these tasks started exactly this many times in the phase. */
+  times?: Record<string, number>
+}
+
+export interface WatchPhase {
+  /** Files written (workspace-relative) to start the phase; `null` deletes. Written in order, at once. */
+  write?: Record<string, string | null>
+  /** A shell line run in the root to start the phase, after `write`. */
+  sh?: string
+  expect: WatchExpect
+}
+
 export interface Stop {
   signal: 'SIGINT' | 'SIGTERM' | 'SIGHUP' | 'SIGQUIT'
   /** Workspace-relative file a task creates; the signal is sent once it exists (or after 30 s). */
@@ -170,6 +184,20 @@ export type Step =
       stop?: Stop
       expect: Expect
     }
+  /**
+   * Watch `watch` (every project declaring it, or `projects`): `start` is
+   * what its first run runs; each phase's edits are made once the tool has
+   * been quiet a while, and what it runs after them is that phase's. Then
+   * the watch is stopped as Ctrl-C stops it.
+   */
+  | {
+      watch: string
+      projects?: string[]
+      start: WatchExpect
+      phases: WatchPhase[]
+      /** The tree once the watch stopped. */
+      files?: Record<string, string | null>
+    }
   /** Write files (workspace-relative); `null` deletes. */
   | { write: Record<string, string | null> }
   /** Set file modes (workspace-relative). */
@@ -226,6 +254,7 @@ export type Category =
   | 'report'
   | 'failure'
   | 'sandbox'
+  | 'watch'
 
 /** What a case needs from a tool beyond running tasks in order. A tool without it cannot express the case. */
 export type Feature =
@@ -265,6 +294,8 @@ export type Feature =
   | 'dependency-inputs-off'
   /** A task kept from reading, writing and reaching what it does not declare. */
   | 'sandbox'
+  /** A run that stays up and runs tasks again on each edit. */
+  | 'watch'
 
 export interface Case {
   /** `category/slug`, unique. */
