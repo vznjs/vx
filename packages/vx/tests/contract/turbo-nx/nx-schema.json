@@ -1231,7 +1231,12 @@
           "default": true,
           "items": {
             "type": "string",
-            "enum": ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"]
+            "enum": [
+              "dependencies",
+              "devDependencies",
+              "peerDependencies",
+              "optionalDependencies"
+            ]
           }
         },
         "adjustSemverBumpsForZeroMajorVersion": {
@@ -1353,7 +1358,12 @@
           "default": true,
           "items": {
             "type": "string",
-            "enum": ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"]
+            "enum": [
+              "dependencies",
+              "devDependencies",
+              "peerDependencies",
+              "optionalDependencies"
+            ]
           }
         },
         "adjustSemverBumpsForZeroMajorVersion": {
