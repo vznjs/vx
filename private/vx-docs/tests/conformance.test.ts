@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { agree, CATEGORIES, KINDS, note, percent, RESULTS, TOOLS } from '../src/conformance/data.ts'
+import { agree, CATEGORIES, note, percent, RESULTS, TOOLS } from '../src/conformance/data.ts'
 
 const DIST = path.resolve(import.meta.dir, '../dist')
 const html = readFileSync(path.join(DIST, 'conformance/index.html'), 'utf8')
@@ -100,7 +100,7 @@ describe('the conformance page', () => {
   })
 
   it('scores each tool in every group, a group with no case as –', () => {
-    const groups = ['all', ...KINDS, ...CATEGORIES]
+    const groups = ['all', ...CATEGORIES]
     const wrong: string[] = []
     for (const g of groups) {
       const start = html.indexOf(`<tr data-group="${g}"`)

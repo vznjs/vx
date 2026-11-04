@@ -70,15 +70,7 @@ const GROUP_NAMES: Record<string, string> = {
 }
 export const groupName = (g: string): string => GROUP_NAMES[g] ?? g
 
-/** What a kind means (the suite's README). */
-export const KIND_LINES: Record<string, string> = {
-  correctness: 'Failing leaves a wrong tree or exit code.',
-  efficiency: 'Failing reruns work nothing asked for.',
-  data: 'What the tool reports about a run.',
-}
-
 const unique = (xs: string[]): string[] => [...new Set(xs)]
-export const KINDS = unique(RESULTS.cases.map((c) => c.kind))
 export const CATEGORIES = unique(RESULTS.cases.map((c) => c.category))
 
 /** A score as the page prints it: a whole percentage, rounded down so one failure never reads 100%, or `–` when no case applies. */
