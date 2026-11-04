@@ -650,7 +650,8 @@ value: `--dry=`, `--continue=` and
 
 `--affected` and `--profile` take a value with `=` only: in
 `vx run --affected main build`, `main` is a task. When no project
-declares it, the refusal names `--affected=main`.
+declares it, the refusal names `--affected=main`; `vx watch` and
+`vx show` say so too.
 
 #### Cache control: `--cache-policy`, `--no-cache`, `--force`
 

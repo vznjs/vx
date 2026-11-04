@@ -739,7 +739,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
  * The `=` form a refused task name was likely meant as: the word after a
  * bare `--affected` or `--profile`, when no project declares it.
  */
-async function spacedHint(parsed: RunArgs, cwd: string): Promise<string> {
+export async function spacedHint(parsed: RunArgs, cwd: string): Promise<string> {
   const s = parsed.spaced
   if (s === undefined || (await undeclaredTasks([s.value], cwd)) === undefined) return ''
   const what = s.flag === '--affected' ? 'base' : 'file'

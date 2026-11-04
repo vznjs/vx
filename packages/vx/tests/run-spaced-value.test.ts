@@ -9,6 +9,7 @@ import { parseRunArgs } from '../src/cli/run.js'
 import { run } from './helpers/cli.js'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { noticed } from './helpers/notice.js'
+import { lock } from './helpers/orchestrator.js'
 
 describe('parseRunArgs', () => {
   it('keeps the word after a bare --affected or --profile, and not a flag', () => {
@@ -46,6 +47,7 @@ describe('a word after a bare --affected or --profile that no project declares',
       `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
     )
     git('init', '-q', '-b', 'main')
+    await lock(root)
     git('add', '-A')
     git(
       '-c',
@@ -94,6 +96,20 @@ describe('a word after a bare --affected or --profile that no project declares',
     stderr = ''
     expect(await run(['run', '--all', '--affected', 'main', 'build', '--dry'])).toBe(1)
     expect(stderr).toContain("`--affected` takes its base with '=': --affected=main")
+  })
+
+  it('vx watch names the = form too', async () => {
+    expect(await run(['watch', '--affected', 'main', 'build'])).toBe(1)
+    expect(stderr).toContain("`--affected` takes its base with '=': --affected=main")
+  })
+
+  it('vx show names the = form, and not for a target named apart from the flag', async () => {
+    await expect(run(['show', '--affected', 'main'])).rejects.toThrow(
+      /"main"; projects and tasks: build, p\. `--affected` takes its base with '=': --affected=main$/,
+    )
+    await expect(run(['show', 'main', '--affected'])).rejects.toThrow(
+      /"main"; projects and tasks: build, p$/,
+    )
   })
 
   it('a declared word is the task it names: the other refusal says nothing of the flag', async () => {

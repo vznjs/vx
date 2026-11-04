@@ -48,6 +48,8 @@ interface ShowArgs {
   filters: string[]
   /** `--affected[=<base>]`: `''` is the default base. */
   affected?: string
+  /** The word after a bare `--affected`, read as the target: the base meant, when nothing is named so. */
+  spacedBase?: string
   error?: string
 }
 
@@ -67,8 +69,11 @@ export function parseShowArgs(args: readonly string[]): ShowArgs {
           error: `--filter requires a value: a project name, glob or path${seeHelp('show')}`,
         }
       out.filters.push(v)
-    } else if (a === '--affected') out.affected = ''
-    else if (a.startsWith('--affected=')) out.affected = a.slice('--affected='.length)
+    } else if (a === '--affected') {
+      out.affected = ''
+      const next = args[i + 1]
+      if (next !== undefined && !next.startsWith('-')) out.spacedBase ??= next
+    } else if (a.startsWith('--affected=')) out.affected = a.slice('--affected='.length)
     else if (a.startsWith('-'))
       return { ...out, error: `unknown flag: ${a}${flagHint('show', a)}${seeHelp('show')}` }
     else if (out.target === 'project')
@@ -206,10 +211,12 @@ export async function showCmd(args: readonly string[]): Promise<number> {
           if (declares(task)) names.add(t)
       // `nx show projects` lists them; here a bare `vx show` does.
       const nx = projectName === 'projects' ? ' (`nx show projects` is `vx show` here)' : ''
-      throw new UserError(
-        `vx show: unknown project or task: "${projectName}"${nx}${suggest(projectName!, [...byName.keys(), ...names], '', 'projects and tasks')}`,
-        'VX_E_UNKNOWN_TASK',
-      )
+      const unknown = `vx show: unknown project or task: "${projectName}"${nx}${suggest(projectName!, [...byName.keys(), ...names], '', 'projects and tasks')}`
+      const base =
+        parsed.spacedBase === projectName
+          ? `${unknown.endsWith('.') ? '' : '.'} \`--affected\` takes its base with '=': --affected=${projectName}`
+          : ''
+      throw new UserError(`${unknown}${base}`, 'VX_E_UNKNOWN_TASK')
     }
     let shown = declaring.filter((p) => inSelection(p.name))
     if (byDiff !== undefined) {
