@@ -757,6 +757,14 @@ function didYouMeanProject(
     // The pattern as typed with the name put right: `apq...` hinted `app`,
     // and the run it was copied into dropped the dependencies.
     const meant = (name: string): string => `. Did you mean ${pattern.replace(typed, name)}?`
+    // A task id where a project goes (`--filter app#build`): the filter
+    // takes the project, and the projects listed beside it hid why.
+    const hash = typed.indexOf('#')
+    const project = typed.slice(0, Math.max(hash, 0))
+    const owner =
+      hash <= 0 ? undefined : names.includes(project) ? project : nearest(project, names)
+    if (owner !== undefined)
+      return `. A filter names projects; did you mean ${pattern.replace(typed, owner)}?`
     const best = nearest(typed, names)
     if (best !== undefined) return meant(best)
     const bare = byBare.has(typed) ? typed : nearest(typed, byBare.keys())
