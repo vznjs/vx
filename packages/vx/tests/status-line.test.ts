@@ -613,7 +613,7 @@ describe('defaultLogger status line integration', () => {
     log.taskComplete(bad, mkOutcome(bad, 'failed'))
     // ✗ marker is permanent scrollback, not a region pin.
     expect(s2.text()).toContain(
-      'failed  no-cache                              local        one#boom',
+      'failed  no-cache     —      —                 local        one#boom',
     )
     expect(s2.text()).not.toContain('┌─ one#boom')
     log.runEnd?.()
@@ -899,7 +899,7 @@ describe('formatStatusRegion', () => {
       '     2.00s  ~300ms running miss                                0 local        d#x',
     )
     expect(lines[7]).toBe(
-      '     2.00s unknown running miss                                0 local        e#x',
+      '     2.00s       — running miss                                0 local        e#x',
     )
     // No history to ask: blank.
     expect(formatStatusRegion({ ...base, slots: [slot('e#x')] })[3]).toBe(
@@ -1380,7 +1380,7 @@ describe('list headers', () => {
     expect(row(2300, 2000)).toContain('   2.30s  +300ms success')
     expect(row(2300, 2000, ON)).toContain('\x1b[2m+300ms')
     // No history for the task: `unknown`, from the first row on.
-    expect(row(8000, null)).toContain('   8.00s unknown success')
+    expect(row(8000, null)).toContain('   8.00s       — success')
     // No history to ask (an embedder's logger): blank.
     expect(row(8000)).toContain('   8.00s         success')
     expect(row(8000, 2000, ON)).toContain('239;68;68m+6.00s')
@@ -1405,7 +1405,7 @@ describe('list headers', () => {
       false,
       3,
     ).replace('\uFE0E', '')
-    expect(row).toEndWith(' no-cache                            3 local        p#a')
+    expect(row).toEndWith(' no-cache     —      —               3 local        p#a')
     expect(head.indexOf('blocks') + 'blocks'.length).toBe(row.indexOf('3 local') + 1)
     expect(head.indexOf('task')).toBe(row.indexOf('p#a'))
     expect(head.indexOf('status')).toBe(row.indexOf('success'))

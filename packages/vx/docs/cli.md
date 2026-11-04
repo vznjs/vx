@@ -870,12 +870,13 @@ other persistent task`), and a non-zero exit makes the run exit 1
 
    - **time**: the live elapsed time; no glyph and no spinner.
    - **usual**: the task's executed p50 from local history, fixed while
-     the time counts up toward it; `unknown` for a task history never
+     the time counts up toward it; `—` for a task history never
      timed. History is read once, on the first row that asks, so a run
      that executes nothing never reads it. The results list's `±usual`
      is how far a run landed from it, `+6.00s` red or `−1.40s` green
-     past a fifth either way, dim within it, `unknown` with no history,
-     and blank on a hit.
+     past a fifth either way, dim within it, `—` with no history,
+     and blank on a hit. `—` is always a value vx cannot know; blank is
+     one that does not apply.
    - **status** and **cache**: `running` and `miss`, or `no-cache` for a
      task with no `cache` block (or a `--no-cache` run); finished rows
      say `local` or `remote` on a hit.
@@ -883,7 +884,10 @@ other persistent task`), and a non-zero exit makes the run exit 1
      it started and its peak memory so far, looked at every 500 ms only
      while this list draws (a pipe or CI reads nothing); on a finished
      row its average cores and peak memory over the whole run, blank on
-     a hit.
+     a hit. On Linux the peak the kernel reports at exit includes vx's own
+     memory, inherited at exec, so a task lighter than vx takes the peak
+     of its tree looked at every 250 ms while it runs; one over before
+     the first look shows `—`.
    - **outputs**: on a finished row, the bytes of its outputs: on a hit
      the files it restored, on a miss the files it wrote, saved or not;
      blank for a remote hit not yet downloaded.
@@ -3700,7 +3704,7 @@ A broad run looks like:
 
 ```
  ⇢     4ms         success local                                 local        @vzn/vx#format-check
- ⏺︎   5.20s         success miss                                  local        @vzn/vx#test
+ ⏺︎   5.20s         success miss         —      —                 local        @vzn/vx#test
 
 ─ Summary ───────────────────────────────────────── vx 0.0.0 ─
   projects  ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱

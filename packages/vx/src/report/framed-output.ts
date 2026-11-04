@@ -365,8 +365,14 @@ export function formatTaskRow(
   const ca = cell(cache, cacheColor, CACHE_COL - Math.max(0, status.length - STATUS_COL), colors)
   const usual = cells.usual ?? { text: '', painted: '' }
   const us = `${' '.repeat(Math.max(0, USUAL_COL - usual.text.length))}${usual.painted}`
-  const cpu = cells.cpu === undefined ? '' : `${Math.round(cells.cpu * 100)}%`
-  const mem = cells.memBytes === undefined ? '' : formatSize(cells.memBytes)
+  const cpu =
+    cells.cpu === undefined ? '' : cells.cpu === null ? UNKNOWN : `${Math.round(cells.cpu * 100)}%`
+  const mem =
+    cells.memBytes === undefined
+      ? ''
+      : cells.memBytes === null
+        ? UNKNOWN
+        : formatSize(cells.memBytes)
   const out = cells.outputBytes === undefined ? '' : formatSize(cells.outputBytes)
   const blocks = cells.blocks ?? ''
   const worker = workerName(cells.worker ?? '')
@@ -378,14 +384,20 @@ export function formatTaskRow(
   )
 }
 
-/** A row's cells past time, status and cache; each blank when absent. */
+/**
+ * A cell vx cannot know: a peak no look saw, a task history never timed.
+ * Blank is a cell that does not apply (a hit ran nothing).
+ */
+const UNKNOWN = '\u2014'
+
+/** A row's cells past time, status and cache; each blank when absent, `—` when null. */
 export interface RowCells {
   /** After the time, pre-painted: `~18s` live, `+6.0s` / `−1.4s` after. */
   usual?: { text: string; painted: string }
   /** Cores in use (live) or on average (after): 1.8 prints `180%`. */
-  cpu?: number
+  cpu?: number | null
   /** Resident memory now (live) or at its peak (after). */
-  memBytes?: number
+  memBytes?: number | null
   /** The bytes of the task's outputs: what its save stored, or its hit restored. */
   outputBytes?: number
   /** How many tasks are downstream. */
@@ -435,7 +447,7 @@ function coresOf(o: TaskOutcome): number | undefined {
 /**
  * The results list's `±usual` cell: how far an executed task ran from its
  * usual time, `+6.0s` red or `−1.4s` green past a fifth of the usual either
- * way, dim within it; `unknown` (null) with no history for the task, blank
+ * way, dim within it; `—` (null) with no history for the task, blank
  * (undefined) with no history to ask. A blank within a fifth read as no
  * usual at all (2026-10-29).
  */
@@ -454,7 +466,7 @@ export function usualCell(
 
 /** The `usual` cell of a task history has never timed. */
 export function unknownUsual(colors: ColorSupport = NO_COLOR): { text: string; painted: string } {
-  return { text: 'unknown', painted: paint('muted', 'unknown', colors) }
+  return { text: UNKNOWN, painted: paint('muted', UNKNOWN, colors) }
 }
 
 /**
@@ -528,13 +540,21 @@ export function formatTaskExecutedLine(
   })
 }
 
-/** An executed task's cells: where it ran, its average cores and peak memory. */
+/**
+ * An executed task's cells: where it ran, its average cores and peak
+ * memory; a task that ran with either unread shows `—`, a hit nothing.
+ */
 export function executedCells(o: TaskOutcome, blocks: number | undefined): RowCells {
   const cores = coresOf(o)
+  const ran = o.status === 'success' || o.status === 'failed'
   return {
     ...ranCells(o, blocks),
-    ...(cores !== undefined ? { cpu: cores } : {}),
-    ...(o.peakRssBytes !== undefined ? { memBytes: o.peakRssBytes } : {}),
+    ...(cores !== undefined ? { cpu: cores } : ran ? { cpu: null } : {}),
+    ...(o.peakRssBytes !== undefined
+      ? { memBytes: o.peakRssBytes }
+      : ran
+        ? { memBytes: null }
+        : {}),
   }
 }
 

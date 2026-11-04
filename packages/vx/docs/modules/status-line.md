@@ -110,7 +110,7 @@ Slot rules (the point of the design — the display derives from the
   taller than the terminal is cut, at its foot.
 - A worker row is on the results list's grid (cli.md, "The running
   list"): the ticking elapsed time (no glyph), its usual duration from
-  history (`~5.2s`, dim; `usual`, `unknown` for a task it never timed,
+  history (`~5.2s`, dim; `usual`, `—` for a task it never timed,
   blank with no `usual` to ask), `running`, `miss` or
   `no-cache`, its tree's average cores since it started and peak memory
   so far (`usage`, a `LiveUsage` of `{ cores, rssBytes }` from

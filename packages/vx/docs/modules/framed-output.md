@@ -55,7 +55,7 @@ export function formatTaskSkippedLine(
 // ` ◌ <blank> not run <id>` — the stop reached it before it ran
 export function formatTaskAbortedLine(node, outcome, colors?, blocks?): string
 // the grid they all share: `<glyph> <time> <usual> <status>
-// <cache> <cpu> <mem> <blocks> <worker> <id>`; a cell `cells` leaves out is blank
+// <cache> <cpu> <mem> <blocks> <worker> <id>`; a cell `cells` leaves out is blank, a null one `—` (unknown)
 export function formatTaskRow(
   glyph,
   ms,
@@ -72,7 +72,7 @@ export function formatTaskRow(
 export function formatListHeader(colors?): string
 export function formatRunningHeader(colors?): string
 // the bold violet title over each list: `Finished`, `Running`
-// `±usual`: the distance from `usualMs`, `unknown` for null, blank for undefined
+// `±usual`: the distance from `usualMs`, `—` for null, blank for undefined
 export function usualCell(ms, usualMs, colors?): { text; painted }
 // the `usual` cell of a task history never timed
 export function unknownUsual(colors?): { text; painted }
