@@ -754,11 +754,14 @@ function didYouMeanProject(
     if (parts.length > 1) {
       return `. A filter is one pattern: ${parts.map((p) => `--filter ${p}`).join(' ')}`
     }
+    // The pattern as typed with the name put right: `apq...` hinted `app`,
+    // and the run it was copied into dropped the dependencies.
+    const meant = (name: string): string => `. Did you mean ${pattern.replace(typed, name)}?`
     const best = nearest(typed, names)
-    if (best !== undefined) return `. Did you mean ${best}?`
+    if (best !== undefined) return meant(best)
     const bare = byBare.has(typed) ? typed : nearest(typed, byBare.keys())
     const scoped = bare === undefined ? undefined : byBare.get(bare)
-    if (scoped?.length === 1) return `. Did you mean ${scoped[0]}?`
+    if (scoped?.length === 1) return meant(scoped[0]!)
   }
   return names.length === 0 ? '' : `. Projects: ${listed(names)}`
 }

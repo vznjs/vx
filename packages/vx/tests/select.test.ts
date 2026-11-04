@@ -137,7 +137,7 @@ describe('resolveFilters', () => {
     // `apq[HEAD]` exited 0 as "nothing affected since HEAD" whatever the diff.
     const { value } = await quiet(() => resolveFilters(root, ['apq...[HEAD]']))
     expect(value).toEqual({
-      error: 'no projects matched filter(s): apq...[HEAD]. Did you mean app?',
+      error: 'no projects matched filter(s): apq...[HEAD]. Did you mean app...[HEAD]?',
     })
     // CONTROL: a selector that names a project with an empty diff is "nothing affected".
     const named = await quiet(() => resolveFilters(root, ['app[HEAD]']))
@@ -153,7 +153,7 @@ describe('resolveFilters', () => {
     }
     const near = await quiet(() => resolveFilters(root, ['apq[HEAD]']))
     expect(near.value).toEqual({
-      error: 'no projects matched filter(s): apq[HEAD]. Did you mean app?',
+      error: 'no projects matched filter(s): apq[HEAD]. Did you mean app[HEAD]?',
     })
     // CONTROL: a real name its diff did not reach is the exit-0 note.
     const named = await quiet(() => resolveFilters(root, ['app[HEAD]']))
@@ -238,7 +238,7 @@ describe('resolveFilters', () => {
 
   it("the hint reads a pattern's name through its graph operators", async () => {
     const { value } = await quiet(() => resolveFilters(root, ['apq...']))
-    expect(value).toEqual({ error: 'no projects matched filter(s): apq.... Did you mean app?' })
+    expect(value).toEqual({ error: 'no projects matched filter(s): apq.... Did you mean app...?' })
   })
 
   it('the hint reads a negated walk through its operators', async () => {
@@ -246,7 +246,10 @@ describe('resolveFilters', () => {
     // `...apq` kept its dots and `!...apq` listed the projects instead.
     const plain = await quiet(() => resolveFilters(root, ['lib', '!apq']))
     const walked = await quiet(() => resolveFilters(root, ['lib', '!...apq']))
-    expect([plain.stderr, walked.stderr].map((e) => e.includes('fix  app'))).toEqual([true, true])
+    expect([plain.stderr, walked.stderr].map((e) => /fix {2}\S*app\n/.exec(e)?.[0])).toEqual([
+      'fix  !app\n',
+      'fix  !...app\n',
+    ])
   })
 
   it('a diff that matched nothing beside a name that matched is not called a typo', async () => {

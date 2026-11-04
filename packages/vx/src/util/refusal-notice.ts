@@ -14,7 +14,8 @@ const SEE = /\s*\(see `([^`]+)`\)/
 // `(did you mean --concurrency?)`, `. Did you mean build?`: the fix.
 const MEANT = /\s*(?:\(did you mean ([^?]+)\?\)|(?:^|[.;—]\s*)[Dd]id you mean ([^?]+)\?)/
 
-const bare = (s: string): string => s.trim().replace(/[.:]$/, '')
+// A trailing `...` is the text's own (a `--filter a...`), not a full stop.
+const bare = (s: string): string => s.trim().replace(/(?<!\.)[.:]$/, '')
 
 /** A plain message in parts: its first sentence heads, each later one is a line. */
 export function messageParts(message: string): RefusalParts {
