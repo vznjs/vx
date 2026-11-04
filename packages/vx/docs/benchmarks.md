@@ -240,16 +240,17 @@ nothing-changed take 20-40 s a run, many times vx's, and filling Nx's
 cache took minutes. Each runs once, three times when within a quarter of
 vx.
 
-vx is the best of every runner in every case. A case fails when vx is
-slower than any rival, or uses more CPU than Turbo or Nx. Vite Task may
-use less CPU: it runs one process where vx runs a shell per task.
+vx aims to be the best of every runner in every case. The check reports
+and never blocks a PR. A `BEHIND` line names a case where vx is slower
+than a rival, or uses more CPU than Turbo or Nx. Vite Task may use less
+CPU: it runs one process where vx runs a shell per task.
 
-A case also fails when vx ran slower than the base in more of its quiet
+A `SLOWER` line names a case where vx ran slower than the base in more of its quiet
 pairs than chance explains (a sign test, p < 0.002). There is no slack: a
 4% tolerance let a regression land 3% at a time. A case whose pairs lean
 slower without proving it keeps adding pairs, 40 at most. Simulated, an
-unchanged vx fails 0.7% of cases, and one slower in 3 of 4 pairs fails
-63%.
+unchanged vx is flagged in 0.7% of cases, and one slower in 3 of 4 pairs
+in 63%.
 
 The base is main, the code whose numbers the site shows, timed on the
 same machine in the same minute. The site's own figures cannot hold a
