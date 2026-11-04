@@ -995,7 +995,7 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 893,
+        "pass": 894,
         "of": 895
       },
       "correctness": {
@@ -1003,7 +1003,7 @@
         "of": 744
       },
       "efficiency": {
-        "pass": 140,
+        "pass": 141,
         "of": 142
       },
       "data": {
@@ -1027,7 +1027,7 @@
         "of": 94
       },
       "cache": {
-        "pass": 34,
+        "pass": 35,
         "of": 35
       },
       "inputs": {
@@ -17874,9 +17874,7 @@
       ],
       "outcomes": {
         "vx": {
-          "status": "fail",
-          "step": 4,
-          "detail": "ran a#build, expected it replayed or left out"
+          "status": "pass"
         },
         "turbo": {
           "status": "pass"
