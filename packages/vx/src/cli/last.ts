@@ -664,6 +664,8 @@ export function formatTaskRows(
   tasks: readonly RunSummaryRow[],
   /** Task id → the input that moved under it, from the run's kept failures. */
   inputMoved: ReadonlyMap<string, string> = new Map(),
+  /** Task id → its usual time now, from history; a task absent was never timed. */
+  usual?: ReadonlyMap<string, number>,
 ): ui.Block[] {
   if (tasks.length === 0) return []
   const failed = tasks.filter((t) => t.status === 'failed')
@@ -684,7 +686,9 @@ export function formatTaskRows(
       (t.status === 'failed' ? `exit ${t.exitCode}` : '') +
       reasonParts(t, skippedHere, inputMoved.get(`${t.project}#${t.task}`))
     ).trim()
-    return (c: ui.ColorSupport) => formatRecordedRow(t, c, note)
+    const id = `${t.project}#${t.task}`
+    const usualMs = usual === undefined ? undefined : (usual.get(id) ?? null)
+    return (c: ui.ColorSupport) => formatRecordedRow(t, c, note, usualMs)
   })
   const blocks = [taskList(rows)]
   if (folded)
@@ -967,7 +971,12 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         ]),
       ),
     ]
-    const taskRows = formatTaskRows(detail?.tasks ?? [], moved)
+    // ±usual against the task's usual time now, as a run on this branch reads it.
+    const ranIds = (detail?.tasks ?? [])
+      .filter((t) => t.status === 'success' || t.status === 'failed')
+      .map((t) => `${t.project}#${t.task}`)
+    const usual = new LocalHistoryProvider(db, undefined, currentBranch(root)).p50sNow(ranIds)
+    const taskRows = formatTaskRows(detail?.tasks ?? [], moved, usual)
     if (taskRows.length > 0)
       blocks.push(ui.section('Tasks', String(detail?.tasks.length ?? 0), ...taskRows))
     const stepRows = formatStepRows(keptSteps(db, inv.runId))
