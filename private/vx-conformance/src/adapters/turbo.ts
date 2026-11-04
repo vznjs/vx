@@ -10,6 +10,19 @@ function fromRoot(glob: string): string {
   return glob.startsWith('!') ? `!$TURBO_ROOT$/${glob.slice(1)}` : `$TURBO_ROOT$/${glob}`
 }
 
+// Every opt-in Turbo ships that changes what a run selects, keys or
+// reports. `filterUsingTasks` costs Turbo its package-graph `--filter`
+// walks; the cases score that as Turbo's, since vx selects both ways.
+const FUTURE_FLAGS = {
+  affectedUsingTaskInputs: true,
+  filterUsingTasks: true,
+  strictTaskEntrypointSelection: true,
+  experimentalTaskCommand: true,
+  githubActionsRemoteBaseRefFallback: true,
+  experimentalObservability: true,
+  watchUsingTaskInputs: true,
+}
+
 export const turbo: Adapter = {
   name: 'turbo',
   pkg: 'turbo',
@@ -55,7 +68,10 @@ export const turbo: Adapter = {
     // A bare task name in a run or a `^` dependency needs a root entry too.
     for (const p of Object.values(ws.projects))
       for (const t of Object.keys(p.tasks ?? {})) tasks[t] ??= { dependsOn: [], outputs: [] }
-    await writeFile(path.join(dir, 'turbo.json'), JSON.stringify({ tasks }, null, 2))
+    await writeFile(
+      path.join(dir, 'turbo.json'),
+      JSON.stringify({ futureFlags: FUTURE_FLAGS, tasks }, null, 2),
+    )
     return []
   },
   run: (task, projects, opts = {}) => [
