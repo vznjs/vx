@@ -740,6 +740,33 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     }
   }
   const stale = (dir: string): boolean => armedAs.get(dir) !== inodeOf(dir)
+  // Bun keeps ONE FSEvents stream for every `fs.watch` of a process and
+  // rebuilds it, from "now", on each watch opened or closed: what lands
+  // while it is down is lost to every watch, the proved root stream
+  // included, and a close proves nothing after it. A re-arm that swapped
+  // `apps/`'s arms lost `apps/` made again, and the edit after it, for good
+  // (macOS CI, 2026-11-04). So inside the root the one stream serves the
+  // ancestor and import arms too, and a re-arm there opens or closes none.
+  /** Whether the one stream hears `dir`'s children: under the root by its real path. */
+  const inStream = (dir: string): boolean => {
+    if (!oneStream) return false
+    const rel = path.relative(workspaceRoot, dir)
+    if (rel.startsWith('..') || path.isAbsolute(rel)) return false
+    try {
+      return fs.realpathSync(dir) === path.join(realRoot, rel)
+    } catch {
+      return false
+    }
+  }
+  /** The ancestor and import directories the one stream serves (`inStream`). */
+  let streamedAncestors = new Set<string>()
+  let streamedImports = new Set<string>()
+  const heardInStream = (filename: string): void => {
+    const abs = path.join(workspaceRoot, filename)
+    const dir = path.dirname(abs)
+    if (streamedAncestors.has(dir)) ancestorEvent(dir, path.basename(abs))
+    if (streamedImports.has(dir)) importEvent(dir, path.basename(abs))
+  }
   /** The projects the workspace-wide arm names an event by. */
   let wide: readonly ProjectMeta[] = []
   // The deepest, as a nested project's file is its own.
@@ -802,6 +829,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
    * it from the outer), so each listener decides exactly as its own arm did.
    */
   const streamEvent = (filename: string): void => {
+    heardInStream(filename)
     const rel = filename.split(path.sep).join('/')
     if (!rel.includes('/')) rootFileEvent(rel)
     else if (rel.startsWith('.vx/') && rel.indexOf('/', 4) < 0) dotVxEvent(rel.slice(4))
@@ -821,6 +849,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
           // the rest of the tree; the ignore filter then keeps node_modules
           // / .git / .vx and declared outputs out of what remains.
           arm(workspaceRoot, true, (filename) => {
+            if (oneStream) heardInStream(filename)
             if (!matters(filename) || isIgnoredPath(workspaceRoot, filename)) return
             const abs = path.join(workspaceRoot, filename)
             if (
@@ -902,6 +931,17 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
       'out',
     )
   }
+  const importEvent = (dir: string, filename: string): void => {
+    if (!(importNames.get(dir)?.has(filename) ?? false)) return
+    const abs = path.join(dir, filename)
+    const rel = path.relative(workspaceRoot, abs)
+    if (configImportFiles.includes(abs)) {
+      reread = true
+      trigger(`config import ${rel}`, abs)
+      return
+    }
+    sayStaleImport(abs)
+  }
   const armImports = (): void => {
     const inProject = (f: string): boolean => projectDirs.some((d) => f.startsWith(d + path.sep))
     const want = new Map<string, Set<string>>()
@@ -912,29 +952,20 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
       want.set(path.dirname(f), names)
     }
     importNames = want
+    streamedImports = new Set([...want.keys()].filter(inStream))
     for (const [dir, handle] of importArms) {
-      if (want.has(dir) && !stale(dir)) continue
+      if (want.has(dir) && !streamedImports.has(dir) && !stale(dir)) continue
       handle.close()
       importArms.delete(dir)
     }
     for (const dir of want.keys()) {
-      if (importArms.has(dir)) continue
+      if (importArms.has(dir) || streamedImports.has(dir)) continue
       // Gone for now: its ancestor's arm (`armAncestors`) hears it return.
       if (inodeOf(dir) === undefined) continue
       try {
         importArms.set(
           dir,
-          arm(dir, false, (filename) => {
-            if (!(importNames.get(dir)?.has(filename) ?? false)) return
-            const abs = path.join(dir, filename)
-            const rel = path.relative(workspaceRoot, abs)
-            if (configImportFiles.includes(abs)) {
-              reread = true
-              trigger(`config import ${rel}`, abs)
-              return
-            }
-            sayStaleImport(abs)
-          }),
+          arm(dir, false, (filename) => importEvent(dir, filename)),
         )
         armedAs.set(dir, inodeOf(dir) ?? '')
       } catch (err) {
@@ -1014,7 +1045,11 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   }
   const debugArms = resolveSetting('debug.watch', undefined).value === true
   const sayArmed = (count: number): void => {
-    if (debugArms) ui.say('info', `vx watch: armed ${plural(count, 'project')}`)
+    if (debugArms)
+      ui.say(
+        'info',
+        `vx watch: armed ${plural(count, 'project')} (${pool.open} watch${pool.open === 1 ? '' : 'es'})`,
+      )
   }
 
   const rearm = async (say = true): Promise<void> => {
@@ -1091,6 +1126,18 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   // never heard `packages/` removed under `packages/a` (inotify did).
   const ancestorArms = new Map<string, WatchHandle>()
   let ancestorNames = new Map<string, Set<string>>()
+  const ancestorEvent = (dir: string, filename: string): void => {
+    // A project's parent's `.gitignore` shapes what its keys read, as the root's does.
+    if (!ancestorNames.get(dir)?.has(filename) && filename !== '.gitignore') return
+    const abs = path.join(dir, filename)
+    // A project directory still the one its arm holds is no change:
+    // its arm judges what is in it. macOS reports the directory's
+    // mtime here on every write at its top level, and a cycle's own
+    // write started the next (solid's `types`, 2026-10-15).
+    if (heldDirs.get(abs) === (inodeOf(abs) ?? '')) return
+    reread = true
+    trigger(path.relative(workspaceRoot, abs), abs)
+  }
   /** Each project directory below the root as these arms first saw it (`inodeOf`). */
   let heldDirs = new Map<string, string>()
   const armAncestors = (): void => {
@@ -1121,28 +1168,18 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
         dir = path.dirname(dir)
       }
     }
+    streamedAncestors = new Set([...ancestorNames.keys()].filter(inStream))
     for (const [dir, handle] of ancestorArms) {
-      if (ancestorNames.has(dir) && !stale(dir)) continue
+      if (ancestorNames.has(dir) && !streamedAncestors.has(dir) && !stale(dir)) continue
       handle.close()
       ancestorArms.delete(dir)
     }
     for (const dir of ancestorNames.keys()) {
-      if (ancestorArms.has(dir)) continue
+      if (ancestorArms.has(dir) || streamedAncestors.has(dir)) continue
       try {
         ancestorArms.set(
           dir,
-          arm(dir, false, (filename) => {
-            // A project's parent's `.gitignore` shapes what its keys read, as the root's does.
-            if (!ancestorNames.get(dir)?.has(filename) && filename !== '.gitignore') return
-            const abs = path.join(dir, filename)
-            // A project directory still the one its arm holds is no change:
-            // its arm judges what is in it. macOS reports the directory's
-            // mtime here on every write at its top level, and a cycle's own
-            // write started the next (solid's `types`, 2026-10-15).
-            if (heldDirs.get(abs) === (inodeOf(abs) ?? '')) return
-            reread = true
-            trigger(path.relative(workspaceRoot, abs), abs)
-          }),
+          arm(dir, false, (filename) => ancestorEvent(dir, filename)),
         )
         armedAs.set(dir, inodeOf(dir) ?? '')
       } catch (err) {

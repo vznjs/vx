@@ -15,6 +15,7 @@ import {
   executions,
   initialOnly,
   ARMS,
+  armLines,
   arms,
   startWatch,
   until,
@@ -29,6 +30,11 @@ async function recreate(root: string, pause: boolean, wait?: () => Promise<void>
   await cp(path.join(copy, 'packages'), path.join(root, 'packages'), { recursive: true })
   await rm(copy, { recursive: true, force: true })
 }
+
+/** The distinct watch counts the arms held: on macOS one, as no re-arm opens or closes a watch. */
+const watchCounts = (w: Parameters<typeof armLines>[0]): number[] => [
+  ...new Set(armLines(w).map((a) => a.watches)),
+]
 
 /** The project gone: its cycle fails, as the lock still holds it, until it is back. */
 function gone(w: { err: () => string }): () => Promise<void> {
@@ -134,6 +140,10 @@ describe('vx watch over a nested project whose ancestor is made again', () => {
       const before = await executions(log)
       await writeFile(path.join(dir, 'src', 'a.txt'), 'a2\n')
       await until(async () => (await executions(log)) > before, 'the edit after apps/ came back')
+      // Each watch opened or closed rebuilds Bun's one FSEvents stream, and
+      // what lands meanwhile is lost to all of them: a re-arm that swapped
+      // `apps/`'s arms lost `apps/` coming back and every edit after it.
+      if (process.platform === 'darwin') expect(watchCounts(w)).toHaveLength(1)
     } finally {
       w.proc.kill('SIGTERM')
       await w.proc.exited
@@ -229,6 +239,7 @@ describe('vx watch over a config import directory made again', () => {
       })
       expect(lock.exitCode).toBe(0)
       await until(async () => (await runs()).includes('v2'), 'the run under v2')
+      if (process.platform === 'darwin') expect(watchCounts(w)).toHaveLength(1)
     } finally {
       w.proc.kill('SIGTERM')
       await w.proc.exited

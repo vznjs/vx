@@ -14,6 +14,7 @@ import {
   executions,
   initialOnly,
   ARMS,
+  armLines,
   arms,
   startWatch,
   until,
@@ -99,10 +100,7 @@ describe('vx watch loop (e2e): the watched set', () => {
     // Gone again and re-locked: the lock's departure re-reads the set, and its arm is dropped.
     await rm(bDir, { recursive: true, force: true })
     relock()
-    await until(
-      () => w.err().split('armed 2 projects').at(-1)!.includes('armed 1 project\n'),
-      'the set without b',
-    )
+    await until(() => armLines(w).at(-1)?.projects === 1 && arms(w, 2) > 0, 'the set without b')
     await Bun.sleep(SETTLE_MS)
     expect(await executions(f.log)).toBe(3)
     // The set changed twice; stdout says "watching" once, before any cycle.

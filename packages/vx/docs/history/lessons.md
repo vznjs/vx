@@ -306,3 +306,9 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   generated from the branch commit and `site-upgrading.unsafe.test.ts`
   holds it to main's squash. #4570's squash reworded it and main went
   red until #4571 regenerated the guide (2026-10-28).
+- On macOS Bun runs ONE FSEvents stream for every `fs.watch` in the
+  process and rebuilds it from "now" on each watch opened or closed
+  (`src/runtime/node/fs_events.rs`). A watch that proved delivery is
+  deaf again while any other watch opens or closes, and a close proves
+  nothing after it. Count a change's watch churn before trusting an arm
+  (2026-11-04, `watch-recreated-dirs`).
