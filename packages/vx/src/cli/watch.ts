@@ -14,7 +14,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { parseRunArgs, resolveRunOptions, type RunArgs } from './run.js'
+import { parseRunArgs, resolveRunOptions, type RunArgs, spacedHint } from './run.js'
 import { refuse, seeHelp } from './help.js'
 import {
   fingerprintClaims,
@@ -129,7 +129,8 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   const cwd = process.cwd()
   const resolved = await resolveRunOptions(parsed, cwd, parsed.tasks, 'watch')
   if ('error' in resolved) {
-    sayNotice('error', 'vx watch', resolved.error)
+    const hint = resolved.code === 'VX_E_UNKNOWN_TASK' ? await spacedHint(parsed, cwd) : ''
+    sayNotice('error', 'vx watch', `${resolved.error}${hint}`)
     return 1
   }
   if ('nothingSelected' in resolved) {
@@ -249,8 +250,13 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // not (item 1017).
   let refusedToStart = false
   initial.held = runOrchestrator(initial.cycle.opts).then(
-    (run) => {
-      if (run.refused !== undefined) sayNotice('error', 'vx watch', run.refused)
+    async (run) => {
+      if (run.refused !== undefined) {
+        const hint = run.refused.startsWith('no projects declare')
+          ? await spacedHint(parsed, cwd)
+          : ''
+        sayNotice('error', 'vx watch', `${run.refused}${hint}`)
+      }
       sayAllCached(opts, run.outcomes)
       // A run that failed having run nothing refused to start: a requested
       // name no project declares (run() says which, with a "did you mean").

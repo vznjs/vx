@@ -80,6 +80,12 @@ export interface RunArgs {
    * `defaultAffectedBase`). Any other string is an explicit git ref.
    */
   affected: string | undefined
+  /**
+   * A bare `--affected` or `--profile` followed by a word: the word is read
+   * as a task, and when no project declares it the refusal names the `=`
+   * form the user likely meant.
+   */
+  spaced?: { flag: '--affected' | '--profile'; value: string }
   error?: string
 }
 
@@ -153,6 +159,12 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
   let cacheFlag = false
   let noCacheFlag = false
   let forceFlag = false
+
+  // Its value optional, the flag cannot take the next word: `--affected
+  // main build` reads `main` as a task, so only a refusal of it says why.
+  const spacedValue = (flag: '--affected' | '--profile', next: string | undefined): void => {
+    if (next !== undefined && !next.startsWith('-')) out.spaced ??= { flag, value: next }
+  }
 
   for (let i = 0; i < before.length; i++) {
     const a = before[i]
@@ -294,6 +306,7 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
       out.dry = fmt
     } else if (a === '--profile') {
       out.profile = 'profile.json'
+      spacedValue('--profile', before[i + 1])
     } else if (a?.startsWith('--profile=')) {
       // An optional-value flag: an empty `=` means "no value given", so it
       // takes the same documented default as the bare form. Resolving ''
@@ -302,6 +315,7 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
       out.profile = a.slice('--profile='.length) || 'profile.json'
     } else if (a === '--affected') {
       out.affected = ''
+      spacedValue('--affected', before[i + 1])
     } else if (a?.startsWith('--affected=')) {
       out.affected = a.slice('--affected='.length)
     } else if (a === '--poll') {
@@ -589,6 +603,8 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   }
 
   const cwd = process.cwd()
+  const unknownTask = async (message: string): Promise<number> =>
+    refuse('run', args, `${message}${await spacedHint(parsed, cwd)}`, 'VX_E_UNKNOWN_TASK')
   if (parsed.profile !== undefined) {
     const problem = profileProblem(cwd, parsed.profile)
     if (problem !== undefined) return refuse('run', args, problem, 'VX_E_USAGE')
@@ -649,7 +665,10 @@ export async function runCmd(args: readonly string[]): Promise<number> {
 
   const scopeOut: { affectedBase?: string } = {}
   const resolved = await resolveRunOptions(parsed, cwd, tasks, 'run', scopeOut)
-  if ('error' in resolved) return refuse('run', args, resolved.error, resolved.code ?? 'VX_E_USAGE')
+  if ('error' in resolved)
+    return resolved.code === 'VX_E_UNKNOWN_TASK'
+      ? unknownTask(resolved.error)
+      : refuse('run', args, resolved.error, resolved.code ?? 'VX_E_USAGE')
   // `--dry=json` prints a plan even when there is nothing to run: a script
   // reading stdout broke exactly then (Growth, 2026-10-16).
   const nothingToRun = (): 0 => {
@@ -678,11 +697,8 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     const plan = await planRun(opts)
     // Refused as a run refuses: `--dry=json` gets the error document.
     if (plan.unresolvedTasks !== undefined && plan.unresolvedTasks.length > 0) {
-      return refuse(
-        'run',
-        args,
+      return unknownTask(
         `no projects declare task(s): ${plan.unresolvedTasks.join(', ')}.${plan.unresolvedHint ?? ''}`,
-        'VX_E_UNKNOWN_TASK',
       )
     }
     if (plan.tasks.length === 0) {
@@ -696,12 +712,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
         sayNotice('info', 'vx run', `no affected project declares task(s): ${tasks.join(', ')}`)
         return nothingToRun()
       }
-      return refuse(
-        'run',
-        args,
-        `no projects declare task(s): ${tasks.join(', ')}`,
-        'VX_E_UNKNOWN_TASK',
-      )
+      return unknownTask(`no projects declare task(s): ${tasks.join(', ')}`)
     }
     if (parsed.dry === 'json') {
       process.stdout.write(formatPlanJson(plan, scopeOut.affectedBase))
@@ -717,10 +728,22 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   // is no whole-run delegation seam to consult.
   const summary = await runOrchestrator(opts)
   if (summary.refused !== undefined) {
-    const unknown = summary.refused.startsWith('no projects declare')
-    return refuse('run', args, summary.refused, unknown ? 'VX_E_UNKNOWN_TASK' : 'VX_E_REFUSED')
+    return summary.refused.startsWith('no projects declare')
+      ? unknownTask(summary.refused)
+      : refuse('run', args, summary.refused, 'VX_E_REFUSED')
   }
   return summary.ok ? 0 : 1
+}
+
+/**
+ * The `=` form a refused task name was likely meant as: the word after a
+ * bare `--affected` or `--profile`, when no project declares it.
+ */
+export async function spacedHint(parsed: RunArgs, cwd: string): Promise<string> {
+  const s = parsed.spaced
+  if (s === undefined || (await undeclaredTasks([s.value], cwd)) === undefined) return ''
+  const what = s.flag === '--affected' ? 'base' : 'file'
+  return ` \`${s.flag}\` takes its ${what} with '=': ${s.flag}=${s.value}`
 }
 
 /**
