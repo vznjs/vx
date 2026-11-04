@@ -186,6 +186,7 @@ export type {
   CacheFacts,
   TaskArtifacts,
   FingerprintChange,
+  FingerprintDigests,
   FingerprintClaim,
   FingerprintContext,
   GraphHookContext,

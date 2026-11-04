@@ -895,6 +895,10 @@ export interface FingerprintClaim {
     bytes: Uint8Array,
     ctx: FingerprintContext,
   ): readonly string[] | Promise<readonly string[]>
+  digests?(
+    file: string,
+    ctx: FingerprintContext,
+  ): FingerprintDigests | undefined | Promise<FingerprintDigests | undefined>
 }
 ```
 
@@ -905,6 +909,19 @@ type · `src/orchestrator/plugin.ts`
 ```ts
 export interface FingerprintContext extends BaseContext {
   readonly projects: ReadonlyArray<{ readonly name: string; readonly dir: string }>
+}
+```
+
+## `FingerprintDigests`
+
+type · `src/orchestrator/plugin.ts`
+
+`FingerprintClaim.digests`' answer.
+
+```ts
+export interface FingerprintDigests {
+  readonly hash: string
+  readonly projects: Readonly<Record<string, string>>
 }
 ```
 

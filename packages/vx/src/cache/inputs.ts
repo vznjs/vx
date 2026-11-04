@@ -101,6 +101,9 @@ const ALWAYS_IGNORE = [
   // must not select every `**` reader under --affected.
   '.vx/.gitattributes',
   '.vx/.gitignore',
+  // `vx lock`'s record of the dependency edges and digests: the key folds
+  // the digests through `fingerprint` already.
+  '.vx/dependencies.lock.json',
   // Where restores stage (archive.ts): vx's own, never an input.
   '.vx/tmp/**',
 ]

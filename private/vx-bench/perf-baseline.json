@@ -4,8 +4,8 @@
       "cold run @25": {
         "hash xxh3": 1983,
         "spawn git": 6,
-        "spawn sh": 51,
-        "sqlite statement": 715
+        "spawn sh": 1,
+        "sqlite statement": 716
       },
       "up-to-date run @25": {
         "hash xxh3": 1093,
@@ -26,14 +26,12 @@
         "hash blob update": 2,
         "hash xxh3": 910,
         "spawn git": 3,
-        "spawn sh": 18,
         "sqlite statement": 211
       },
       "cold run @100": {
         "hash xxh3": 8057,
         "spawn git": 8,
-        "spawn sh": 200,
-        "sqlite statement": 2748
+        "sqlite statement": 2749
       },
       "up-to-date run @100": {
         "hash xxh3": 4393,
@@ -54,7 +52,6 @@
         "hash blob update": 2,
         "hash xxh3": 3485,
         "spawn git": 3,
-        "spawn sh": 68,
         "sqlite statement": 717
       }
     },

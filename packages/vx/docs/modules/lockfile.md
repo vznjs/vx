@@ -72,6 +72,47 @@ nothing staged starts reading the lock when it finds the workspace root,
 beside discovery; a missing lock still refuses at the config load, after
 any refusal that comes first.
 
+### `.vx/dependencies.lock.json` (`dependencies-lock.ts`)
+
+```ts
+export const DEPENDENCIES_LOCK_NAME = '.vx/dependencies.lock.json'
+export interface DependenciesLock {
+  version: number // 2
+  projects: string[] // directories, sorted; every other list indexes this one
+  deps: number[][] // per project, the projects it builds after, sorted
+  reach: number[][] // per project, the projects it reaches for selection only, sorted
+  files: Record<string, { hash: string; digests: string[] }> // claimed file → its hash and each project's digest ('' none)
+}
+export function dependenciesLock(
+  root: string,
+  metas: readonly ProjectMeta[],
+  files: ReadonlyMap<string, { hash: string; projects: Readonly<Record<string, string>> }>, // by project name
+): DependenciesLock
+export function parseDependenciesLock(bytes: Uint8Array | null): DependenciesLock | null
+export function dependantsOf(lock: DependenciesLock, dir: string): string[]
+export function recordedDigests(
+  lock: DependenciesLock,
+  file: string,
+): { hash: string; of: (dir: string) => string | undefined } | undefined
+export async function writeDependenciesLock(root: string, lock: DependenciesLock): Promise<void>
+```
+
+`vx lock` writes it beside the lock, minified (only vx reads it) and committed:
+each project's `discover` edges and each claimed file's
+`FingerprintClaim.digests`. Flat: each directory once, in a sorted
+`projects` list, and every edge and digest an index into it (a third
+the size of keying each by its directory, and a quarter of the parse
+and lookup time at 2,000 projects). Every list is sorted, so the same
+workspace writes the same bytes. `--affected` reads the base commit's
+copy (`git show`): a deleted project's dependants are the projects
+whose edges hold its index, and a changed claimed file
+whose base bytes hash to the recorded `hash` takes its base digests
+from the record, never a parse. `parseDependenciesLock` answers null
+for a missing file, another version or another shape, and selection
+then falls back (every project for a deletion, the claimant's
+`affected` for a change). `vx lock --check` holds it to a fresh
+derivation once the lock itself holds.
+
 ## Invariants
 
 - Deliberate asymmetry: runs TRUST the lock outright — a

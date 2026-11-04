@@ -33,6 +33,13 @@ export {
   type LockedProject,
 } from './lockfile.js'
 export {
+  DEPENDENCIES_LOCK_NAME,
+  dependenciesLock,
+  parseDependenciesLock,
+  writeDependenciesLock,
+  type DependenciesLock,
+} from './dependencies-lock.js'
+export {
   ConfigsRefused,
   loadProjectConfig,
   loadProjectConfigs,

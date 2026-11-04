@@ -111,6 +111,10 @@ All are on the `@vzn/vx` façade.
 - **`affected`** digests both sides and names the projects whose digest
   moved; a side that is absent (the file appeared or went) answers
   `undefined`, and so does `scope: 'workspace'`.
+- **`digests`** answers each project's digest (its importer's, or its
+  nearest listed ancestor's, with the root's) and the file's hash, for
+  `vx lock` to record; `scope: 'workspace'` and a missing file answer
+  `undefined`.
 - **`scope: 'workspace'`** folds the file's hash into every task and
   never digests: the whole file, the coarsest key there is. With
   `importers` it still parses once per content, for the edges.
