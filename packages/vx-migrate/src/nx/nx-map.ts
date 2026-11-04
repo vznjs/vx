@@ -181,6 +181,7 @@ function checkNxNodes(nodes: Record<string, unknown>, label: string): void {
     const data = (n['data'] ?? {}) as Record<string, unknown>
     optional(data['root'], `${at}.data.root`, (v) => typeof v === 'string', 'a string')
     optional(data['targets'], `${at}.data.targets`, isRecord, 'an object of targets')
+    checkNamedInputs(data['namedInputs'], `${at}.data.namedInputs`, label)
     for (const [name, target] of Object.entries((data['targets'] ?? {}) as object)) {
       const t = `${at}.data.targets.${JSON.stringify(name)}`
       if (!isRecord(target)) refuse(t, 'an object')
@@ -193,6 +194,19 @@ function checkNxNodes(nodes: Record<string, unknown>, label: string): void {
         optional(tt[k], `${t}.${k}`, (v) => typeof v === 'string', 'a string')
     }
   }
+}
+
+/**
+ * `namedInputs` as the mapper expands them: each name a list of inputs.
+ * A name holding an object or a number reached the expansion's loop and
+ * printed `TypeError: {} is not iterable` with its stack (fuzzed).
+ */
+function checkNamedInputs(v: unknown, at: string, label: string): void {
+  if (v === undefined) return
+  if (!isRecord(v)) throw new UserError(`${label}: ${at} must be an object of named inputs`)
+  for (const [name, members] of Object.entries(v))
+    if (!Array.isArray(members) || members.some((x) => typeof x !== 'string' && !isRecord(x)))
+      throw new UserError(`${label}: ${at}.${JSON.stringify(name)} must be an array of inputs`)
 }
 
 export interface MapNxOptions {
@@ -743,6 +757,7 @@ export async function readNxJsonFacts(root: string): Promise<NxJsonFacts> {
       sync?: { globalGenerators?: unknown }
     }
     const named = parsed?.namedInputs
+    checkNamedInputs(named ?? undefined, 'namedInputs', 'nx.json')
     const ops = parsed?.tasksRunnerOptions?.default?.options?.cacheableOperations
     return {
       namedInputs:
@@ -754,7 +769,8 @@ export async function readNxJsonFacts(root: string): Promise<NxJsonFacts> {
         ? parsed.sync.globalGenerators.filter((g): g is string => typeof g === 'string')
         : [],
     }
-  } catch {
+  } catch (err) {
+    if (err instanceof UserError) throw err
     // An unreadable nx.json (or base) just degrades named-input refs to TODOs.
     return none
   }

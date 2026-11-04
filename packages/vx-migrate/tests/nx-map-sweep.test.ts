@@ -56,6 +56,25 @@ describe('nx-map: what the sweep found unheld', () => {
     )
   })
 
+  // Each reached the expansion's loop: `TypeError: {} is not iterable`, with its stack.
+  it('a named input that is no list is refused naming its file, not a TypeError', async () => {
+    const graph = (namedInputs: unknown) =>
+      JSON.stringify({ nodes: { a: { data: { root: 'packages/a', namedInputs, targets: {} } } } })
+    expect(() => parseNxGraph(graph({ prod: {} }), 'graph.json')).toThrow(
+      'graph.json: nodes."a".data.namedInputs."prod" must be an array of inputs',
+    )
+    expect(() => parseNxGraph(graph([1]), 'graph.json')).toThrow(
+      'graph.json: nodes."a".data.namedInputs must be an object of named inputs',
+    )
+    expect(() =>
+      parseNxGraph(graph({ prod: ['default', { env: 'A' }] }), 'graph.json'),
+    ).not.toThrow()
+    await writeFile(path.join(root, 'nx.json'), JSON.stringify({ namedInputs: { default: 1 } }))
+    expect(await readNxJsonFacts(root).catch((e: Error) => e.message)).toBe(
+      'nx.json: namedInputs."default" must be an array of inputs',
+    )
+  })
+
   it('a node root with a trailing slash still finds its project', async () => {
     // Unmatched, the node would be synthesized as a project of its own:
     // same name, but its dir carries the slash.
