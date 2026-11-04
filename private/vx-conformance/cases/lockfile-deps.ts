@@ -180,6 +180,24 @@ function overridden(overrides?: Record<string, string>): WorkspaceSpec {
 }
 const rootWith = (ws: WorkspaceSpec, extra: object) => rootManifest(ws.projects, extra)
 
+const READ_X = 'cat "$(ls -d node_modules/x ../../node_modules/x 2>/dev/null | head -1)/v.txt"'
+
+/** a takes x from the root's catalog, which points at vendor/`dir`; b takes nothing. */
+function catalogued(dir: string): WorkspaceSpec {
+  const projects: WorkspaceSpec['projects'] = {
+    a: reader('a', { x: 'catalog:' }, READ_X),
+    b: reader('b', {}, 'cat src/a.txt'),
+  }
+  return {
+    projects,
+    files: {
+      ...vendored('x1', 'x'),
+      ...vendored('x2', 'x'),
+      'package.json': rootManifest(projects, { catalog: { x: `file:./vendor/${dir}` } }),
+    },
+  }
+}
+
 /** The root installs `foo` and `bar` from the named vendor directories; a reads both through the root. */
 function rootAliases(foo: string, bar: string): WorkspaceSpec {
   const projects = {
@@ -297,6 +315,30 @@ export default [
         affected: 'build',
         base: 'HEAD~1',
         expect: { exit: 0, ran: ['b#build', 'c#build'], notRan: ['a#build'] },
+      },
+    ],
+  }),
+
+  defineCase({
+    id: 'inputs/catalog-change-reruns-its-readers',
+    category: 'inputs',
+    kind: 'correctness',
+    title:
+      'A catalog entry pointed elsewhere runs the task of the project that takes it, and no other',
+    why: 'The project’s own manifest still says `catalog:`: only the root and the lockfile change.',
+    from: [FROM_CLOSURE],
+    workspace: catalogued('x1'),
+    steps: [
+      { run: 'build', expect: { exit: 0, files: { [out('a')]: 'x1\n' } } },
+      {
+        write: {
+          'package.json': rootWith(catalogued('x2'), { catalog: { x: 'file:./vendor/x2' } }),
+        },
+      },
+      { install: true },
+      {
+        run: 'build',
+        expect: { exit: 0, ran: ['a#build'], notRan: ['b#build'], files: { [out('a')]: 'x2\n' } },
       },
     ],
   }),

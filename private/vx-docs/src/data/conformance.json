@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 189,
+    "ported": 190,
     "rest": {
       "pending": [],
       "vx-only": [
@@ -335,7 +335,6 @@
         "vx-lockfile/bun",
         "vx-lockfile/bun-catalog-precise",
         "vx-lockfile/bun-patch-precise",
-        "vx-lockfile/discover",
         "vx-lockfile/discover-parity",
         "vx-lockfile/entry-shapes",
         "vx-lockfile/io-refusals",
@@ -986,12 +985,12 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 922,
-        "of": 923
+        "pass": 924,
+        "of": 925
       },
       "correctness": {
-        "pass": 765,
-        "of": 765
+        "pass": 767,
+        "of": 767
       },
       "efficiency": {
         "pass": 148,
@@ -1002,8 +1001,8 @@
         "of": 9
       },
       "graph": {
-        "pass": 139,
-        "of": 139
+        "pass": 140,
+        "of": 140
       },
       "config": {
         "pass": 7,
@@ -1022,8 +1021,8 @@
         "of": 36
       },
       "inputs": {
-        "pass": 296,
-        "of": 296
+        "pass": 297,
+        "of": 297
       },
       "outputs": {
         "pass": 218,
@@ -1048,12 +1047,12 @@
     },
     "turbo": {
       "all": {
-        "pass": 584,
-        "of": 851
+        "pass": 585,
+        "of": 853
       },
       "correctness": {
-        "pass": 486,
-        "of": 699
+        "pass": 487,
+        "of": 701
       },
       "efficiency": {
         "pass": 94,
@@ -1065,7 +1064,7 @@
       },
       "graph": {
         "pass": 88,
-        "of": 120
+        "of": 121
       },
       "config": {
         "pass": 3,
@@ -1084,8 +1083,8 @@
         "of": 36
       },
       "inputs": {
-        "pass": 184,
-        "of": 287
+        "pass": 185,
+        "of": 288
       },
       "outputs": {
         "pass": 158,
@@ -1110,12 +1109,12 @@
     },
     "nx": {
       "all": {
-        "pass": 588,
-        "of": 863
+        "pass": 589,
+        "of": 865
       },
       "correctness": {
-        "pass": 453,
-        "of": 713
+        "pass": 454,
+        "of": 715
       },
       "efficiency": {
         "pass": 131,
@@ -1126,8 +1125,8 @@
         "of": 8
       },
       "graph": {
-        "pass": 104,
-        "of": 127
+        "pass": 105,
+        "of": 128
       },
       "config": {
         "pass": 0,
@@ -1147,7 +1146,7 @@
       },
       "inputs": {
         "pass": 182,
-        "of": 296
+        "of": 297
       },
       "outputs": {
         "pass": 156,
@@ -1173,11 +1172,11 @@
     "vite-task": {
       "all": {
         "pass": 473,
-        "of": 710
+        "of": 712
       },
       "correctness": {
         "pass": 392,
-        "of": 590
+        "of": 592
       },
       "efficiency": {
         "pass": 79,
@@ -1189,7 +1188,7 @@
       },
       "graph": {
         "pass": 77,
-        "of": 105
+        "of": 106
       },
       "config": {
         "pass": 3,
@@ -1209,7 +1208,7 @@
       },
       "inputs": {
         "pass": 174,
-        "of": 288
+        "of": 289
       },
       "outputs": {
         "pass": 135,
@@ -1824,6 +1823,35 @@
         },
         "vite-task": {
           "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/peer-workspace-dependency-orders-and-keys",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A workspace package named only as a peer is built first, and an edit to it runs the consumer again",
+      "why": "The workspace links the peer in: the consumer’s build reads it as it reads any dependency.",
+      "from": [
+        "parity-turbo",
+        "vx-lockfile/discover"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
         }
       }
     },
@@ -15832,6 +15860,34 @@
         "vite-task": {
           "status": "n/a",
           "detail": "needs affected"
+        }
+      }
+    },
+    {
+      "id": "inputs/catalog-change-reruns-its-readers",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "A catalog entry pointed elsewhere runs the task of the project that takes it, and no other",
+      "why": "The project’s own manifest still says `catalog:`: only the root and the lockfile change.",
+      "from": [
+        "vx-lockfile/closure-per-project"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run a#build"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run a#build"
         }
       }
     },

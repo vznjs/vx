@@ -365,4 +365,48 @@ export default [
     workspace: { projects: { a: proj({ build: plain(['build']) }) } },
     steps: [{ run: 'build', expect: { exit: 'fail', notRan: ['a#build'] } }],
   }),
+
+  defineCase({
+    id: 'graph/peer-workspace-dependency-orders-and-keys',
+    category: 'graph',
+    kind: 'correctness',
+    title:
+      'A workspace package named only as a peer is built first, and an edit to it runs the consumer again',
+    why: 'The workspace links the peer in: the consumer’s build reads it as it reads any dependency.',
+    from: ['parity-turbo', 'vx-lockfile/discover'],
+    workspace: {
+      projects: {
+        lib: chainProject('lib'),
+        app: {
+          tasks: { build: chainBuild(['lib']) },
+          files: {
+            'src/a.txt': 'app\n',
+            'package.json': JSON.stringify({
+              name: 'app',
+              version: '0.0.0',
+              private: true,
+              peerDependencies: { lib: 'workspace:*' },
+            }),
+          },
+        },
+      },
+    },
+    steps: [
+      {
+        run: 'build',
+        projects: ['app'],
+        expect: { exit: 0, files: { [out('app')]: 'lib\napp\n' } },
+      },
+      { write: { 'packages/lib/src/a.txt': 'lib2\n' } },
+      {
+        run: 'build',
+        projects: ['app'],
+        expect: {
+          exit: 0,
+          ran: ['lib#build', 'app#build'],
+          files: { [out('app')]: 'lib2\napp\n' },
+        },
+      },
+    ],
+  }),
 ]
