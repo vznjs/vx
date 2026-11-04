@@ -1408,10 +1408,11 @@ describe('execWrap — grandchild-orphan mitigation', () => {
     const child = Bun.spawn(['sh', '-c', execWrap('sleep 30')], { stdout: 'pipe' })
     // The pid vx tracks runs sleep directly (verified via /proc comm on
     // Linux). sh's exec into sleep lands when the scheduler lets it: a fixed
-    // 50 ms read "sh" on a loaded CI runner, so poll until it changes. A
+    // 50 ms read "sh" on a loaded CI runner, and Bun.spawn may return before
+    // its own exec, while comm is still "bun", so poll until it is sleep. A
     // wrapper that never execs stays "sh" through the deadline and fails.
-    let comm = 'sh'
-    for (const end = Date.now() + 5000; comm === 'sh' && Date.now() < end;) {
+    let comm = ''
+    for (const end = Date.now() + 5000; comm !== 'sleep' && Date.now() < end;) {
       await Bun.sleep(10)
       comm = (
         await Bun.file(`/proc/${child.pid}/comm`)
