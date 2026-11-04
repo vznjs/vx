@@ -559,11 +559,26 @@ describe('a persistent server that dies before the run stops it', () => {
   // Dead within a few ms of its spawn, the server was not yet reaped when
   // the graph ended: nothing gave Bun a turn, so `exitCode` still read
   // null, the footer said `1 success` with the server `running`, over a
-  // red exit (20 of 20 runs).
-  it('a requested server that dies at once fails the footer it exits on', async () => {
-    await addProject(root, 'app', crashing('echo READY; exit 3'))
-    const r = await run(root, ['srv'])
-    expect([r.code, r.pinned, r.tally]).toEqual([1, [], '1 failed · 1 total'])
+  // red exit (20 of 20 runs). Requested with a dependant that ends only
+  // once the server's pid is gone, so the crash has landed before the
+  // graph ends: alone, a slow runner's shell had not yet exited when vx
+  // read READY, and the footer was right to say it ran (CI, 2026-11-01).
+  it('a requested server that died before the graph ended fails the footer', async () => {
+    await addProject(
+      root,
+      'app',
+      `export default { tasks: {
+        srv: {
+          exec: { command: 'echo $$ > pid; echo READY; exit 3', persistent: { readyWhen: 'READY' } },
+        },
+        e2e: {
+          dependsOn: ['srv'],
+          exec: { command: 'while kill -0 $(cat pid) 2>/dev/null; do sleep 0.02; done' },
+        },
+      } }`,
+    )
+    const r = await run(root, ['srv', 'e2e'])
+    expect([r.code, r.pinned, r.tally]).toEqual([1, [], '1 failed · 1 success · 2 total'])
   }, 20_000)
 
   // WD-10: its output block closed `running` under the line naming its exit.
