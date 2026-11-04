@@ -86,7 +86,16 @@ async function writeWorkspace(root: string, ws: WorkspaceSpec): Promise<void> {
         ...(rootProject ? { version: '0.0.0' } : {}),
         private: true,
         packageManager: `bun@${Bun.version}`,
-        workspaces: members.map(([n, p]) => projectDir(n, p)),
+        // A workspaces entry is a glob: a directory named with glob syntax (`[lib]`) is
+        // reached as a user reaches it, by its parent's `*`.
+        workspaces: [
+          ...new Set(
+            members.map(([n, p]) => {
+              const dir = projectDir(n, p)
+              return /[[*?{]/.test(dir) ? `${path.dirname(dir)}/*` : dir
+            }),
+          ),
+        ],
         ...(rootProject?.[1].deps
           ? {
               dependencies: Object.fromEntries(rootProject[1].deps.map((d) => [d, 'workspace:*'])),

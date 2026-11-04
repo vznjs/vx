@@ -27,6 +27,7 @@ import inputsRuns from './inputs-runs.ts'
 import inputs from './inputs.ts'
 import lockfileDeps from './lockfile-deps.ts'
 import outputsBMore from './outputs-b-more.ts'
+import outputsAMore from './outputs-a-more.ts'
 import { outputsLinks } from './outputs-links.ts'
 import { outputsRestore } from './outputs-restore.ts'
 import { outputsShared } from './outputs-shared.ts'
@@ -57,6 +58,7 @@ export const CASES: Case[] = [
   ...outputsLinks,
   ...outputsShared,
   ...outputsBMore,
+  ...outputsAMore,
   ...env,
   ...envRuntime,
   ...lockfileDeps,
