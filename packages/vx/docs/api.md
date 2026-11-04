@@ -895,6 +895,10 @@ export interface FingerprintClaim {
     bytes: Uint8Array,
     ctx: FingerprintContext,
   ): readonly string[] | Promise<readonly string[]>
+  removed?(
+    gone: { readonly file: string; readonly dir: string; readonly before: Uint8Array | null },
+    ctx: FingerprintContext,
+  ): Iterable<string> | undefined | Promise<Iterable<string> | undefined>
 }
 ```
 

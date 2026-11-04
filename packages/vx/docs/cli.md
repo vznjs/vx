@@ -441,11 +441,12 @@ directory. Only a plugin that cannot tell selects everything, as
 `@vzn/vx-lockfile` does for the install settings it claims (`.npmrc`,
 `bunfig.toml`, `pnpm-workspace.yaml`, `.yarnrc.yml`, `.yarnrc`).
 
-**A deleted project selects everything.** Its dependents' keys lost an
-upstream, and the edge that named them went with it, so today's graph
-cannot say who they are. A `vx.config` the base had in a directory that
-is no project now selects every project, naming that file as the
-reason. A project that moved is no deletion: its config, the same bytes
+**A deleted project selects its dependants.** Their keys lost an
+upstream, and the edge that named them went with the project, so vx asks
+the lockfile as of the base who linked to it (`FingerprintClaim.removed`,
+as `@vzn/vx-lockfile` answers) and selects those, naming the deleted
+`vx.config` as the reason. With no claimant that answers, it selects
+every project. A project that moved is no deletion: its config, the same bytes
 in its new directory, selects only it, by its files. A dependency a plugin's `discover` drops without deleting a
 project is the plugin's to claim (`VxPlugin.fingerprint`, as the
 lockfile plugins do).

@@ -54,7 +54,10 @@ nothing runs and caches here.
   and a non-iterable answer is refused by name;
   `claimedExtraFiles(plugin, file, bytes)` → the files the claimant
   names from that file's bytes (`undefined` when it names none), a
-  non-list answer refused by name.
+  non-list answer refused by name;
+  `claimedRemoved(plugin, gone, ctx)` asks who depended on a deleted
+  project, held to `claimedAffected`'s rules (`null` when the claimant
+  has no `removed`).
 - `resolveExecutors(plugins, ctx)` → `TaskExecutor[]` (ordered, the
   local executor last; the first to accept a task runs it; a throwing
   factory aborts).

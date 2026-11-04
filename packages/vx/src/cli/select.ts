@@ -43,6 +43,7 @@ import { sayNotice } from '../ui/index.js'
 import {
   claimedAffected,
   claimedExtraFiles,
+  claimedRemoved,
   fingerprintClaims,
   gitOfDiscovery,
   hasHook,
@@ -132,6 +133,7 @@ async function workspaceFingerprintClaims(
     files: new Set(claims.keys()),
     affected: (change) => claimedAffected(claims.get(change.file)!, change, ctx),
     extraFiles: (file, bytes) => claimedExtraFiles(claims.get(file)!, file, bytes, ctx),
+    removed: (gone) => claimedRemoved(claims.get(gone.file)!, gone, ctx),
   }
 }
 

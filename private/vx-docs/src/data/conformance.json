@@ -1007,7 +1007,7 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 859,
+        "pass": 860,
         "of": 860
       },
       "correctness": {
@@ -1015,7 +1015,7 @@
         "of": 716
       },
       "efficiency": {
-        "pass": 134,
+        "pass": 135,
         "of": 135
       },
       "data": {
@@ -1035,7 +1035,7 @@
         "of": 68
       },
       "affected": {
-        "pass": 93,
+        "pass": 94,
         "of": 94
       },
       "cache": {
@@ -22227,9 +22227,7 @@
       ],
       "outcomes": {
         "vx": {
-          "status": "fail",
-          "step": 6,
-          "detail": "ran b#test, expected it replayed or left out"
+          "status": "pass"
         },
         "turbo": {
           "status": "fail",

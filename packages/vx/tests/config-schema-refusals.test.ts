@@ -215,11 +215,19 @@ describe('workspace refusals the sweep found unheld (item 653)', () => {
     )
   })
 
+  it('a fingerprint `removed` that is no function is refused', () => {
+    const claim = { files: ['bun.lock'], affected: () => new Set<string>(), removed: ['app'] }
+    const p = testPlugin('sweep-fp-removed', { fingerprint: claim as never })
+    expect(refusal({ plugins: [p] })).toBe(
+      `${WS}: \`plugins[0].fingerprint\` of plugin '${p.name}' must be { files: [name, …], affected: function, extraFiles?: function, removed?: function }`,
+    )
+  })
+
   it('a fingerprint claim over NO files is refused', () => {
     const claim = { files: [], affected: () => new Set<string>() }
     const p = testPlugin('sweep-653-fp', { fingerprint: claim as never })
     expect(refusal({ plugins: [p] })).toBe(
-      `${WS}: \`plugins[0].fingerprint\` of plugin '${p.name}' must be { files: [name, …], affected: function, extraFiles?: function }`,
+      `${WS}: \`plugins[0].fingerprint\` of plugin '${p.name}' must be { files: [name, …], affected: function, extraFiles?: function, removed?: function }`,
     )
     // Control: the same claim over a file core folds validates.
     const ok = testPlugin('sweep-653-fp-ok', {

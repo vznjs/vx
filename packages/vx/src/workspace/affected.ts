@@ -143,6 +143,12 @@ export interface FingerprintClaims {
   }): Promise<ReadonlySet<string> | undefined>
   /** The files a claimed file names that its claimant keys too; absent = it reads none. */
   extraFiles?(file: string, bytes: Uint8Array): Promise<readonly string[] | undefined>
+  /** Who depended on a deleted project (`dir`, root-relative POSIX); `undefined` = all, `null` = the claimant does not say. */
+  removed?(gone: {
+    file: string
+    dir: string
+    before: Uint8Array | null
+  }): Promise<ReadonlySet<string> | undefined | null>
 }
 
 /**
@@ -531,6 +537,23 @@ export async function affectedChanges(
     }
   }
 
+  // Every claimant that keeps edges answers; none answering is "cannot tell".
+  const dependantsOf = async (dir: string): Promise<ReadonlySet<string> | undefined> => {
+    const asked = await loadClaims()
+    if (asked?.removed === undefined) return undefined
+    const names = new Set<string>()
+    let answered = false
+    for (const file of asked.files) {
+      const before = await gitBytesAt(args.workspaceRoot, base, file)
+      const answer = await asked.removed({ file, dir, before })
+      if (answer === null) continue
+      if (answer === undefined) return undefined
+      answered = true
+      for (const name of answer) names.add(name)
+    }
+    return answered ? names : undefined
+  }
+
   // A config or manifest that makes an existing directory a project took
   // files from the project above it.
   const markers = changed.filter((rel) => PROJECT_MARKERS.has(path.posix.basename(rel)))
@@ -538,11 +561,19 @@ export async function affectedChanges(
     const atBase = await gitBlobsAt(args.workspaceRoot, base, markers)
     // A config the base had in a directory that is no project now: the
     // project is gone, and with it the edge naming who depended on it,
-    // while their keys lost an upstream. Today's graph cannot say who.
+    // while their keys lost an upstream. Today's graph cannot say who; the
+    // claimed file that recorded the edge (a lockfile) can, as of the base.
     // A config that moved, the same bytes under a new project, is no
     // loss: its files select it where it lives.
-    const gone = await removedProjectConfig(args.workspaceRoot, atBase, projects)
-    if (gone !== undefined) return everything(gone)
+    for (const gone of await removedProjectConfigs(args.workspaceRoot, atBase, projects)) {
+      const held = await dependantsOf(path.posix.dirname(gone))
+      if (held === undefined) return everything(gone)
+      for (const name of held) {
+        owned.add(name)
+        whole.add(name)
+        if (!claimedOwned.has(name)) claimedOwned.set(name, gone)
+      }
+    }
     for (const name of parentsOfNewNested(args.workspaceRoot, atBase, projects)) {
       owned.add(name)
       whole.add(name)
@@ -634,13 +665,14 @@ function parentsOfNewNested(
   return out
 }
 
-/** The first config in `atBase` the base had whose file and project are both gone now. */
-async function removedProjectConfig(
+/** Each config in `atBase` the base had whose file and project are both gone now. */
+async function removedProjectConfigs(
   workspaceRoot: string,
   atBase: ReadonlyMap<string, Uint8Array | null>,
   projects: readonly ProjectMeta[],
-): Promise<string | undefined> {
+): Promise<string[]> {
   const dirs = new Set(projects.map((p) => p.dir.normalize('NFC')))
+  const gone: string[] = []
   let added: Uint8Array[] | undefined
   for (const [rel, bytes] of atBase) {
     // A manifest's directory may never have been a project; a config's was.
@@ -655,9 +687,9 @@ async function removedProjectConfig(
         .map(([r]) => bytesOrNull(path.join(workspaceRoot, r))),
     ).then((all) => all.filter((b): b is Uint8Array => b !== null))
     if (added!.some((b) => Buffer.from(b).equals(bytes))) continue
-    return rel
+    gone.push(rel)
   }
-  return undefined
+  return gone
 }
 
 /**

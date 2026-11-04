@@ -392,6 +392,31 @@ export async function claimedAffected(
   ctx: FingerprintContext,
 ): Promise<Set<string> | undefined> {
   const answer = await safe(plugin, 'fingerprint', () => plugin.fingerprint!.affected(change, ctx))
+  return projectNames(plugin, answer, ctx)
+}
+
+/**
+ * `FingerprintClaim.removed`'s answer for a deleted project, held to
+ * `claimedAffected`'s rules; `null` when the plugin does not implement it.
+ */
+export async function claimedRemoved(
+  plugin: VxPlugin,
+  gone: { readonly file: string; readonly dir: string; readonly before: Uint8Array | null },
+  ctx: FingerprintContext,
+): Promise<Set<string> | undefined | null> {
+  const removed = plugin.fingerprint?.removed
+  if (removed === undefined) return null
+  const answer = await safe(plugin, 'fingerprint', () =>
+    removed.call(plugin.fingerprint, gone, ctx),
+  )
+  return projectNames(plugin, answer, ctx)
+}
+
+async function projectNames(
+  plugin: VxPlugin,
+  answer: unknown,
+  ctx: FingerprintContext,
+): Promise<Set<string> | undefined> {
   if (answer === undefined) return undefined
   // A plain object is no list: `for…of` threw "is not iterable", naming
   // neither the plugin nor the hook.

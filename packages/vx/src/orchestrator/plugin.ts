@@ -491,6 +491,19 @@ export interface FingerprintClaim {
     bytes: Uint8Array,
     ctx: FingerprintContext,
   ): readonly string[] | Promise<readonly string[]>
+  /**
+   * The projects (by name) that depended on a project `--affected` finds
+   * deleted: its directory `gone.dir` (root-relative POSIX) and the claimed
+   * `file`'s bytes at the base ref (`null` where it did not exist). The
+   * edge went with the project, so only the file that recorded it can say
+   * who lost an upstream. Every claimant that implements it is asked, and
+   * the answers are unioned; `undefined`, or no claimant implementing it,
+   * selects every project.
+   */
+  removed?(
+    gone: { readonly file: string; readonly dir: string; readonly before: Uint8Array | null },
+    ctx: FingerprintContext,
+  ): Iterable<string> | undefined | Promise<Iterable<string> | undefined>
 }
 
 export interface FingerprintChange {

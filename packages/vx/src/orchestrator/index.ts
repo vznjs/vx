@@ -95,6 +95,7 @@ export {
   applyScheduleHooks,
   claimedAffected,
   claimedExtraFiles,
+  claimedRemoved,
   fingerprintClaims,
   hasHook,
   REMOTE_CACHE_METHODS,
