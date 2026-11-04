@@ -85,19 +85,21 @@ describe('the VX_DEBUG_TIMING table', () => {
   })
 
   it("the clock starts at the module's load, not the process's", async () => {
-    // 50 ms of the child's own work before the import: a mark taken right
-    // after it reads near zero, where a process-start origin reads ≥ 50.
-    // The mark comes before the UI kit loads: taken after, it timed the
-    // kit's import (87 ms on a loaded CI worker). The kit imports this
-    // module, so it cannot load before the 50 ms either.
+    // 50 ms of the child's own work, then the import and the mark, timed on
+    // the process clock around them. A load-origin mark fits in that window;
+    // a process-start origin reads the 50 ms more. A fixed bound flaked: a
+    // loaded CI worker spent 30 ms on the import alone (#4930, #4932).
     const out = await child(
-      `printTimings()`,
+      `printTimings()\nconsole.log('window', (after - before) / 1e6)`,
       '1',
-      `const t = Bun.nanoseconds()\nwhile (Bun.nanoseconds() - t < 50e6) {}\nconst { mark, timingLines } = await import(${JSON.stringify(TIMING)})\nmark('a')\nconst { print, trace } = await import(${JSON.stringify(UI)})\nconst printTimings = () => print('err', trace(timingLines()))`,
+      `const t = Bun.nanoseconds()\nwhile (Bun.nanoseconds() - t < 50e6) {}\nconst before = Bun.nanoseconds()\nconst { mark, timingLines } = await import(${JSON.stringify(TIMING)})\nmark('a')\nconst after = Bun.nanoseconds()\nconst { print, trace } = await import(${JSON.stringify(UI)})\nconst printTimings = () => print('err', trace(timingLines()))`,
     )
-    const a = markRow.exec(out.split('\n')[1] ?? '')
+    const a = markRow.exec(out.split('\n').find((l) => markRow.test(l)) ?? '')
     expect(a?.[1]).toBe('a')
-    expect(Number(a![3])).toBeLessThan(25)
+    const window = Number(/^window (\S+)$/m.exec(out)?.[1])
+    expect(window).toBeGreaterThan(0)
+    // The table rounds to 0.1 ms.
+    expect(Number(a![3])).toBeLessThanOrEqual(window + 0.05)
   })
 
   it('marks without spans print no span section', async () => {
