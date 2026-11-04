@@ -689,7 +689,7 @@ describe('vx info — counts from the lock, for every number', () => {
       ])
       expect(facts).not.toHaveProperty('configErrors')
       const pretty = await vx(root, ['info'])
-      expect(pretty.out).toMatch(/^  projects +0 \(0 tasks\)$/m)
+      expect(pretty.out).toMatch(/^  projects +— \(no lock: `vx lock`\)$/m)
       expect(pretty.out).not.toContain('config errors')
     },
     TIMEOUT,
@@ -908,7 +908,7 @@ describe('vx info — the rendered rows', () => {
         '  git               (not found)',
         '  git status cache  (unknown)',
         '  workspace root    /w',
-        '  projects          2 (0 tasks)',
+        '  projects          — (no lock: `vx lock`)',
         '  plugins           2 — p (no seams); q (executor, cache)',
         '  workers           8 — .vx/workspace.ts (4 cores, cgroup CPU quota 2)',
         '  memory            2.0 GB usable — cgroup limit; the machine has 8.0 GB',

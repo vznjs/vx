@@ -1,6 +1,6 @@
 // `vx info` counts tasks from the lock, as a run reads them, and never
 // evaluates a config: broken configs are `vx lock`'s to report. With no
-// lock it still answers, with `projects lock: no` and no tasks.
+// lock it still answers, with `projects lock: no` and no count.
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -80,7 +80,10 @@ describe('vx info reads the lock', () => {
       tasks: facts['tasks'],
     }).toEqual({ code: 0, err: '', lockfile: false, tasks: 0 })
     expect(facts).not.toHaveProperty('configErrors')
-    expect(vx(root, 'info').out).toMatch(/^  projects lock +no$/m)
+    const pretty = vx(root, 'info').out
+    expect(pretty).toMatch(/^  projects lock +no$/m)
+    // Not counted is not none: "0 (0 tasks)" read as a workspace with no project.
+    expect(pretty).toMatch(/^  projects +— \(no lock: `vx lock`\)$/m)
   })
 
   it('counts the locked configs and the plugin stage as vx run does', async () => {
@@ -111,7 +114,9 @@ describe('vx info reads the lock', () => {
     const facts = JSON.parse(r.out) as Record<string, unknown>
     const said = '.vx/projects.lock.json is not valid JSON — re-run `vx lock` or delete it'
     expect([r.code, facts['lockfile'], facts['lockError']]).toEqual([0, true, said])
-    expect(vx(root, 'info').out).toContain(`  projects lock     refused: ${said}`)
+    const pretty = vx(root, 'info').out
+    expect(pretty).toContain(`  projects lock     refused: ${said}`)
+    expect(pretty).toMatch(/^  projects +— \(the lock is refused\)$/m)
     // CONTROL: a lock a run reads has no error.
     expect(vx(root, 'lock').code).toBe(0)
     expect(JSON.parse(vx(root, 'info', '--format', 'json').out)['lockError']).toBe(null)
