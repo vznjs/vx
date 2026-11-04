@@ -16,7 +16,10 @@ const BUILD =
 
 const made: string[] = []
 afterEach(async () => {
-  for (const d of made.splice(0)) await rm(d, { recursive: true, force: true })
+  for (const d of made.splice(0)) {
+    await rm(d, { recursive: true, force: true })
+    await rm(`${d}-cache`, { recursive: true, force: true })
+  }
 })
 
 async function workspace(deps: Record<string, Record<string, string>>): Promise<string> {
@@ -52,7 +55,12 @@ function install(root: string): void {
     [process.execPath, 'install', '--silent'],
     [process.execPath, CORE_BIN, 'lock'],
   ]) {
-    const r = Bun.spawnSync({ cmd, cwd: root })
+    // The sandbox mounts the user's install cache read-only.
+    const env = {
+      ...process.env,
+      BUN_INSTALL_CACHE_DIR: path.join(root, '..', `${path.basename(root)}-cache`),
+    }
+    const r = Bun.spawnSync({ cmd, cwd: root, env })
     if (r.exitCode !== 0) throw new Error(`${cmd[1]}: ${new TextDecoder().decode(r.stderr)}`)
   }
 }
