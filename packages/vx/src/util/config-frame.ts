@@ -86,14 +86,17 @@ function framed(
 
 /**
  * Where the last of `segments` is declared as a key, each one searched
- * after the one before. A task name holds dots (`lint.oxfmt`), so the
- * longest run of segments that names a key wins.
+ * inside the object literal the one before holds. A task name holds dots
+ * (`lint.oxfmt`), so the longest run of segments that names a key wins.
+ * A last segment the object leaves out (`outputs is required`) is placed
+ * at its parent: searched past it, the next task's `outputs` was framed.
  */
 function locate(
   source: string,
   segments: readonly string[],
 ): { line: number; col: number } | undefined {
   let pos = 0
+  let end = source.length
   let found = -1
   let i = 0
   while (i < segments.length) {
@@ -103,18 +106,52 @@ function locate(
       const re = new RegExp(`(?<![\\w$.])(['"\`]?)${escapeRe(name)}\\1\\s*:`, 'g')
       re.lastIndex = pos
       const m = re.exec(source)
-      if (m === null) continue
+      if (m === null || m.index >= end) continue
       found = m.index + m[1]!.length
       pos = m.index + m[0].length
+      end = literalEnd(source, pos)
       next = j
     }
-    if (next < 0) return undefined
+    if (next < 0) {
+      if (found < 0 || i !== segments.length - 1) return undefined
+      break
+    }
     i = next
   }
   if (found < 0) return undefined
   const before = source.slice(0, found)
   const line = before.split('\n').length
   return { line, col: found - before.lastIndexOf('\n') }
+}
+
+/**
+ * Where the object or array literal starting at `from` (past blanks) ends;
+ * `from` itself when the value is no literal (`exec: 'x'`, `cache: shared`),
+ * so no key is searched inside it.
+ */
+function literalEnd(source: string, from: number): number {
+  let i = from
+  while (i < source.length && /\s/.test(source[i]!)) i++
+  if (source[i] !== '{' && source[i] !== '[') return from
+  let depth = 0
+  for (; i < source.length; i++) {
+    const c = source[i]!
+    if (c === '"' || c === "'" || c === '`') {
+      for (i++; i < source.length && source[i] !== c; i++) if (source[i] === '\\') i++
+    } else if (c === '/' && source[i + 1] === '/') {
+      i = source.indexOf('\n', i)
+      if (i < 0) return source.length
+    } else if (c === '/' && source[i + 1] === '*') {
+      i = source.indexOf('*/', i + 2)
+      if (i < 0) return source.length
+      i++
+    } else if (c === '{' || c === '[') depth++
+    else if (c === '}' || c === ']') {
+      depth--
+      if (depth === 0) return i
+    }
+  }
+  return source.length
 }
 
 function escapeRe(s: string): string {

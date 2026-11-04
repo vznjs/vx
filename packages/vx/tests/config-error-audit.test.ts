@@ -83,7 +83,8 @@ it.each([
   [
     'a missing `cache.outputs`',
     task(`exec: { command: 'x' }, ${CACHE_IN}, cache: {}`),
-    `${REFUSED}<root>/p/vx.config.ts: tasks.build.cache.outputs is required when \`cache\` is set`,
+    // Framed at the `cache` that leaves it out.
+    framed(91, 'tasks.build.cache.outputs is required when `cache` is set'),
   ],
   [
     'a string `dependsOn`',

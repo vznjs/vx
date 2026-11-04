@@ -68,6 +68,33 @@ describe('configErrorFrame', () => {
       )[0],
     ).toBe(`${file}:4:7: tasks.build: \`exec\` is odd`)
   })
+  // A field the task leaves out was found in the NEXT task that has it:
+  // `tasks.after.cache.outputs is required` framed noout's `outputs`.
+  it('frames a missing field at its parent, never at a later task that has it', async () => {
+    const other = path.join(dir, 'missing-field', 'vx.config.ts')
+    await mkdir(path.dirname(other), { recursive: true })
+    await writeFile(
+      other,
+      `export default {
+  tasks: {
+    after: { cache: {}, exec: { command: 'x' } },
+    noout: { cache: { outputs: { files: ['dist/**'] } } },
+    plain: { exec: 'x' },
+    later: { exec: { timeout: 1 } },
+  },
+}
+`,
+    )
+    const at = (m: string) => configErrorFrame(`${other}: ${m}`, dir)?.split('\n')[0]
+    expect(at('tasks.after.cache.outputs is required when `cache` is set')).toBe(
+      'missing-field/vx.config.ts:3:14: tasks.after.cache.outputs is required when `cache` is set',
+    )
+    // A value that is no object literal holds no field to search.
+    expect(at('tasks.plain.exec.timeout must be a positive integer')).toBe(
+      'missing-field/vx.config.ts:5:14: tasks.plain.exec.timeout must be a positive integer',
+    )
+  })
+
   it("frames a syntax error at the loader's line:col", () => {
     // Bun's BuildMessage, as the loader words it: no field, a position.
     expect(configErrorFrame(`Project config ${file}:7:15: Expected "}" but found "x"`, dir)).toBe(
