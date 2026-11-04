@@ -149,7 +149,7 @@ here, itself or in a brace group.
 | [`config-imports.md`](./config-imports.md) | `src/workspace/config-imports.ts` — the config-import selection channel; the files `vx watch` watches.                                     |
 | [`nested-dirs.md`](./nested-dirs.md)       | `src/workspace/nested-dirs.ts` — boundary set (other projects rooted under each).                                                          |
 | [`fingerprint.md`](./fingerprint.md)       | `src/workspace/fingerprint.ts` — reads the root files a plugin claims (a lockfile, install settings); folds none.                          |
-| [`lockfile.md`](./lockfile.md)             | `src/workspace/lockfile.ts` — `.vx/projects.lock.json` freeze / trust / audit.                                                             |
+| [`lockfile.md`](./lockfile.md)             | `src/workspace/lockfile.ts` — `.vx/projects.lock.json` freeze / trust / audit; `src/workspace/dependencies-lock.ts` — `.vx/dependencies.lock.json`. |
 | [`migration.md`](./migration.md)           | `src/workspace/migration.ts` — the plan → files seam `@vzn/vx-migrate` and any adoption tool write through.                                |
 |                                            | `src/workspace/config-eval.ts` — fresh re-evaluation in a Worker (see project-loader.md).                                                  |
 |                                            | `src/workspace/config-bytecode.ts` — the workspace config's cached bytecode bundle (see project-loader.md).                                |

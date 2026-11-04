@@ -2170,7 +2170,7 @@ moat.
 - **`.vx/projects.lock.json`** — globally excluded (v24); also filtered out of
   `--affected` change sets. So are the files `vx lock` and `vx init`
   write beside it: each project's `vx.lock.json` review copy,
-  `.vx/dependencies.lock.json`, `.vx/.gitattributes` and `.vx/.gitignore`.
+  `.vx/.gitattributes`, `.vx/.gitignore` and `.vx/dependencies.lock.json`.
 - **`exec.remote`.** Pure PLACEMENT: it decides _where_ a task runs,
   never what it produces, so pinning a task to this machine does not
   bust its cache. It must not — the

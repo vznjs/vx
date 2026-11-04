@@ -86,7 +86,6 @@ export function dependenciesLock(
   metas: readonly ProjectMeta[],
   files: ReadonlyMap<string, { hash: string; projects: Readonly<Record<string, string>> }>, // by project name
 ): DependenciesLock
-export function dependenciesLockText(lock: DependenciesLock): string
 export function parseDependenciesLock(bytes: Uint8Array | null): DependenciesLock | null
 export async function writeDependenciesLock(root: string, lock: DependenciesLock): Promise<void>
 ```

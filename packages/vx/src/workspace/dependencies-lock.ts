@@ -57,7 +57,7 @@ export function dependenciesLock(
 }
 
 /** The committed text: pretty, so a dependency change reads as a diff. */
-export function dependenciesLockText(lock: DependenciesLock): string {
+function dependenciesLockText(lock: DependenciesLock): string {
   return `${JSON.stringify(lock, null, 2)}\n`
 }
 
