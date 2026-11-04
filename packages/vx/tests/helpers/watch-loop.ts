@@ -46,6 +46,12 @@ export interface Watch {
   cycles: () => number
 }
 
+/** Watches still running: a wait that times out shows what each said. */
+const live = new Set<Watch>()
+
+/** The last lines of a stream, enough to see where a watch stopped. */
+const tail = (text: string): string => text.split('\n').slice(-40).join('\n')
+
 export async function until(
   cond: () => Promise<boolean> | boolean,
   what: string,
@@ -56,7 +62,13 @@ export async function until(
     if (await cond()) return
     await Bun.sleep(25)
   }
-  throw new Error(`timed out waiting for ${what}`)
+  // A CI flake that said only "timed out waiting for the watching marker"
+  // could not be told from a slow runner or a stuck cycle.
+  const said = [...live].map(
+    (w) =>
+      `\nwatch ${w.proc.pid} stdout:\n${tail(w.out())}\nwatch ${w.proc.pid} stderr:\n${tail(w.err())}`,
+  )
+  throw new Error(`timed out waiting for ${what}${said.join('')}`)
 }
 
 export async function executions(log: string): Promise<number> {
@@ -105,12 +117,15 @@ export function startWatch(
   void (async () => {
     for await (const chunk of proc.stderr) err += new TextDecoder().decode(chunk)
   })()
-  return {
+  const w: Watch = {
     proc,
     out: () => out,
     err: () => err,
     cycles: () => out.split('\n').filter((l) => l.startsWith('changed ')).length,
   }
+  live.add(w)
+  void proc.exited.then(() => live.delete(w))
+  return w
 }
 
 export interface WatchFixture {

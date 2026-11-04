@@ -406,6 +406,15 @@ describe('the watch fixture', () => {
     f.watch = startWatch(f.root)
     await until(() => f.watch!.out().includes('watching'), 'the watch to start')
     expect(f.watch.cycles()).toBe(0)
+    // A wait that times out shows what each live watch said: a CI flake
+    // read only "timed out waiting for the watching marker".
+    const said = await until(() => false, 'nothing', 60).then(
+      () => '',
+      (e: Error) => e.message,
+    )
+    expect(said).toStartWith('timed out waiting for nothing\n')
+    expect(said).toContain(`watch ${f.watch.proc.pid} stdout:\n`)
+    expect(said).toContain('watching')
     seen.push(String(f.watch.proc.pid))
   })
 
