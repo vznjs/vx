@@ -1407,6 +1407,9 @@ async function runOnBus(
     const hold =
       options.holdPersistent === true &&
       (!stop.signal.aborted || stop.signal.reason === CYCLE_INTERRUPT)
+    // A stop already signalled every server once and waits out its grace:
+    // a SIGTERM here, while a server ran its cleanup, cut it short.
+    if (stop.signal.aborted) await stop.aborting?.catch(() => {})
     const { keepAlive, crashed: crashedPersistent } = await disposeServers({
       registry: persistentRegistry,
       nodes,

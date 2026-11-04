@@ -35,6 +35,8 @@ export interface Adapter {
 
 /** How a run is asked to run, beyond what it runs. */
 export interface RunOptions {
+  /** More tasks run beside the first, over the same projects. */
+  also?: string[]
   /** At most this many tasks at once. */
   concurrency?: number
   /** The projects to run in, in place of `projects`. */

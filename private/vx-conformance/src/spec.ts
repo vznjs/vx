@@ -127,8 +127,10 @@ export type Step =
   /** Run `task` in every project that declares it, or only in `projects` (and what they depend on). */
   | {
       run: string
+      /** More tasks the same run asks for beside `run`, each over the same projects. */
+      also?: string[]
       projects?: string[]
-      /** Variables set in the runner's environment for this run only. */
+      /** Variables set in the runner's environment for this run only; `$ROOT` in a value is the workspace's absolute path. */
       env?: Record<string, string>
       /** Args forwarded to the requested tasks' commands (a CLI's `-- <args>`). */
       args?: string[]
@@ -222,6 +224,8 @@ export type Feature =
   | 'ready'
   /** Inputs that are a command's output (`runtime`). */
   | 'runtime-inputs'
+  /** More than one task named in one run (`also`). */
+  | 'multi-task'
 
 export interface Case {
   /** `category/slug`, unique. */

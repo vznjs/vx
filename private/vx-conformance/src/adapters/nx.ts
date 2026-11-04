@@ -92,7 +92,10 @@ export const nx: Adapter = {
             dependsOn: (spec.dependsOn ?? []).map((d) => dependsOn(d, ready)),
             inputs: [
               spec.inputs || spec.rootInputs ? `${t}-inputs` : 'default',
-              ...(spec.dependsOn ?? []).filter((d) => d.startsWith('^')).map((d) => `${d}-inputs`),
+              // A `^` pattern names no one task, so no one named input: the dependencies' files.
+              ...(spec.dependsOn ?? [])
+                .filter((d) => d.startsWith('^'))
+                .map((d) => (d.includes('*') ? '^default' : `${d}-inputs`)),
               ...(spec.env ?? []).map((e) => ({ env: e })),
               ...(spec.runtime ?? []).map((r) => ({ runtime: r })),
             ],
@@ -128,7 +131,7 @@ export const nx: Adapter = {
       'node_modules/.bin/nx',
       'run-many',
       '-t',
-      task,
+      [task, ...(opts.also ?? [])].join(','),
       ...(inc && inc.length > 0 ? ['-p', inc.join(',')] : []),
       ...(exc.length > 0 ? ['--exclude', exc.join(',')] : []),
       ...(opts.only ? ['--excludeTaskDependencies'] : []),

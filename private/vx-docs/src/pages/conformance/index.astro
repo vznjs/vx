@@ -1,7 +1,8 @@
 ---
 // The conformance table: every case of @vzn/vx-conformance and what each
 // tool did with it, from src/data/conformance.json (src/conformance/data.ts).
-// No JavaScript: a failing cell opens its detail as a <details>, and the
+// No JavaScript: each category is a <details>, closed on its summary (its
+// count and each tool's score), a failing cell opens its detail as one, and the
 // "only where tools differ" switch is a checkbox the stylesheet reads.
 import FeaturesPage from '../../components/features/FeaturesPage.astro'
 import {
@@ -140,8 +141,18 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'not applicable' } as const
         </ul>
         {
           sections.map((s) => (
-            <section class="cfm-cat" id={s.id} data-agree={s.cases.every(agree) ? '' : undefined}>
-              <h3>{groupName(s.id)}</h3>
+            <details class="cfm-cat" id={s.id} data-agree={s.cases.every(agree) ? '' : undefined}>
+              <summary>
+                <h3>{groupName(s.id)}</h3>
+                <span class="cfm-cat-count">{s.cases.length} cases</span>
+                <span class="cfm-cat-scores">
+                  {TOOLS.map((t) => (
+                    <span class="cfm-cat-score" data-tool={t}>
+                      {toolName(t)} <strong>{percent(scores[t]?.[s.id])}</strong>
+                    </span>
+                  ))}
+                </span>
+              </summary>
               <table class="cfm-cases">
                 <thead>
                   <tr>
@@ -195,7 +206,7 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'not applicable' } as const
                   ))}
                 </tbody>
               </table>
-            </section>
+            </details>
           ))
         }
       </div>

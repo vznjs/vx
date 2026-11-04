@@ -1,0 +1,1560 @@
+// Inputs and outputs at their edges: negation-only and inverted lists,
+// nested projects, outputs that climb out of the project or through a
+// link, links among the inputs, git settings that hide an edit, names that
+// are not UTF-8, and inputs a run's own tasks move.
+import {
+  defineCase,
+  type Case,
+  type Expect,
+  type Kind,
+  type Step,
+  type TaskSpec,
+} from '../src/spec.ts'
+import { chainProject, one, out } from './shapes.ts'
+
+/** A cached build of project `a` that writes `read`'s bytes to dist/out.txt. */
+function reads(inputs: string[], read: string, extra: Partial<TaskSpec> = {}): TaskSpec {
+  return {
+    command: `mkdir -p dist && cat ${read} > dist/out.txt`,
+    inputs,
+    outputs: ['dist/**'],
+    ...extra,
+  }
+}
+
+/** Project `a`'s paths, workspace-relative. */
+function inA(files: Record<string, string | null>): Record<string, string | null> {
+  return Object.fromEntries(Object.entries(files).map(([f, c]) => [`packages/a/${f}`, c]))
+}
+
+/** Each step of `seq`: write, then a run that must leave `out` holding `want` (or refuse). */
+function sequence(
+  seq: Array<[Record<string, string | null>, string]>,
+  file: string,
+  more: Partial<Expect> = {},
+): Step[] {
+  return seq.flatMap(([change, want]): Step[] => [
+    ...(Object.keys(change).length > 0 ? [{ write: change }] : []),
+    { run: 'build', expect: { exit: 0, files: { [file]: want }, ...more } },
+  ])
+}
+
+/**
+ * One project `a`, built once, then each change in turn: `true` must run the
+ * build again (and leave `want` in dist/out.txt when given), `false` must not.
+ */
+function edits(c: {
+  id: string
+  kind: Kind
+  title: string
+  why?: string
+  from: string[]
+  task: TaskSpec
+  files: Record<string, string>
+  rootFiles?: Record<string, string>
+  setup?: Step[]
+  changes: Array<[Record<string, string | null>, boolean, string?]>
+}): Case {
+  return defineCase({
+    id: c.id,
+    category: c.id.startsWith('outputs/') ? 'outputs' : 'inputs',
+    kind: c.kind,
+    title: c.title,
+    ...(c.why ? { why: c.why } : {}),
+    from: c.from,
+    workspace: {
+      projects: { a: { tasks: { build: c.task }, files: c.files } },
+      ...(c.rootFiles ? { files: c.rootFiles } : {}),
+    },
+    steps: [
+      ...(c.setup ?? []),
+      { run: 'build', expect: { exit: 0, ran: ['a#build'] } },
+      ...c.changes.flatMap(([change, reruns, want]): Step[] => [
+        { write: change },
+        {
+          run: 'build',
+          expect: {
+            exit: 0,
+            ...(reruns ? { ran: ['a#build'] } : { notRan: ['a#build'] }),
+            ...(want === undefined ? {} : { files: { [out('a')]: want } }),
+          },
+        },
+      ]),
+    ],
+  })
+}
+
+/** `printf` spelling of a name holding the byte 0xFF, for a `sh` step. */
+const BAD = `$(printf 'x\\377y')`
+
+/** Project `a` reads every file in `src` into dist/all; `src/a` holds `v1`. */
+const catAll: Case['workspace'] = one(
+  { command: 'mkdir -p dist && cat src/* > dist/all', inputs: ['src/**'], outputs: ['dist/**'] },
+  { 'src/a': 'v1' },
+)
+
+/** Project `a` copies `src/x.txt` (a link step makes it) to out.txt, keyed on `src/**`. */
+function linkedRead(read: string, extra: Partial<TaskSpec> = {}): TaskSpec {
+  return { command: `cat ${read} > out.txt`, inputs: ['src/**'], outputs: ['out.txt'], ...extra }
+}
+
+const OUT_TXT = 'packages/a/out.txt'
+
+/** Build, edit `change`, build: the output must show the edit, never replay the bytes before. */
+function linkCase(c: {
+  id: string
+  title: string
+  why?: string
+  from: string[]
+  task: TaskSpec
+  files?: Record<string, string>
+  rootFiles: Record<string, string>
+  links: Record<string, string>
+  /** Links made after the commit: untracked. */
+  laterLinks?: Record<string, string>
+  first: string
+  changes: Array<[Record<string, string | null>, string, boolean?]>
+}): Case {
+  return defineCase({
+    id: c.id,
+    category: 'inputs',
+    kind: 'correctness',
+    title: c.title,
+    ...(c.why ? { why: c.why } : {}),
+    from: c.from,
+    workspace: {
+      projects: {
+        a: { tasks: { build: c.task }, files: { '.gitignore': 'out.txt\n', ...c.files } },
+      },
+      files: c.rootFiles,
+    },
+    steps: [
+      { link: c.links },
+      { commit: 'links' },
+      ...(c.laterLinks ? [{ link: c.laterLinks }] : []),
+      { run: 'build', expect: { exit: 0, files: { [OUT_TXT]: c.first } } },
+      ...c.changes.flatMap(([change, want, commit]): Step[] => [
+        { write: change },
+        ...(commit ? [{ commit: 'edit' }] : []),
+        { run: 'build', expect: { exit: 0, files: { [OUT_TXT]: want } } },
+      ]),
+    ],
+  })
+}
+
+/** A git setting, then `a/src/a.txt` CRLF on disk and LF in git's index; LF on disk must rebuild. */
+function crlf(id: string, title: string, setup: string, from: string[], scoped = false): Case {
+  const run = (want: string): Step => ({
+    run: 'build',
+    ...(scoped ? { projects: ['a'] } : {}),
+    expect: { exit: 0, files: { [out('a')]: want } },
+  })
+  return defineCase({
+    id,
+    category: 'inputs',
+    kind: 'correctness',
+    title,
+    why: 'git compares the file after its text filter: CRLF and LF read as one blob, though the task reads different bytes.',
+    from,
+    workspace: one(
+      {
+        command: 'mkdir -p dist && wc -c < src/a.txt | tr -d " " > dist/out.txt',
+        inputs: ['src/**'],
+        outputs: ['dist/**'],
+      },
+      { 'src/a.txt': 'one\r\ntwo\r\n' },
+    ),
+    steps: [
+      { sh: setup },
+      run('10\n'),
+      { write: { 'packages/a/src/a.txt': 'one\ntwo\n' } },
+      run('8\n'),
+    ],
+  })
+}
+
+/** A git setting under which git cannot see a same-size edit that keeps the mtime. */
+function weakStat(key: string, value: string): Case {
+  const stamp = 'touch -d @1600000000 packages/a/src/a.txt'
+  return defineCase({
+    id: `inputs/same-stat-rewrite-${key.replace('core.', '').toLowerCase()}-${value}`,
+    category: 'inputs',
+    kind: 'correctness',
+    title: `With git's \`${key}=${value}\`, a same-size edit that keeps its mtime runs the task again`,
+    why: 'The setting tells git to trust less of a file’s stat; a tool that trusts git’s answer replays the old bytes.',
+    from: ['stale-hit-git'],
+    workspace: one(reads(['src/**'], 'src/a.txt'), { 'src/a.txt': 'AAAA' }),
+    steps: [
+      {
+        sh: `git config ${key} ${value} && ${stamp} && git add -A && git commit -q --allow-empty -m t`,
+      },
+      { run: 'build', expect: { exit: 0, files: { [out('a')]: 'AAAA' } } },
+      { sh: `printf BBBB > packages/a/src/a.txt && ${stamp}` },
+      { run: 'build', expect: { exit: 0, files: { [out('a')]: 'BBBB' } } },
+    ],
+  })
+}
+
+/** Project `a` with a project of its own nested at `packages/a/<dir>`. */
+function nestedSibling(id: string, inputs: string[], title: string): Case {
+  return edits({
+    id,
+    kind: 'correctness',
+    title,
+    from: ['nested-input'],
+    task: reads(inputs, 'genx/e.txt'),
+    files: { 'src/a.txt': 'a\n', 'genx/e.txt': 'e1\n' },
+    changes: [[inA({ 'genx/e.txt': 'e2\n' }), true, 'e2\n']],
+  })
+}
+
+const precious = { 'victim/precious.txt': 'precious' }
+
+const cases: Case[] = [
+  // ── negation ───────────────────────────────────────────────────────────
+  defineCase({
+    id: 'inputs/negation-only-never-stale',
+    category: 'inputs',
+    kind: 'correctness',
+    title: 'An input list holding only a `!` pattern never replays a stale result',
+    why: 'Read as "everything but", the edit is an input; read as nothing, the task stops tracking its source. A tool may refuse the list, never replay.',
+    from: ['inputs-resolution'],
+    workspace: one(reads(['!vendor/**'], 'src/a.txt'), {
+      'src/a.txt': 'a\n',
+      'vendor/v.txt': 'v\n',
+    }),
+    steps: sequence(
+      [
+        [{}, 'a\n'],
+        [{ 'packages/a/src/a.txt': 'a2\n' }, 'a2\n'],
+      ],
+      out('a'),
+      { orRefused: true },
+    ),
+  }),
+
+  defineCase({
+    id: 'inputs/double-negation-never-stale',
+    category: 'inputs',
+    kind: 'correctness',
+    title: 'An input `!!vendor/**` never turns the rest of the inputs off',
+    why: 'Stripping one `!` and handing `!vendor/**` to a glob library inverts the set: only vendor stays keyed, and an edit in src replays the old build.',
+    from: ['inputs-resolution'],
+    workspace: one(reads(['**', '!!vendor/**'], 'src/a.txt'), {
+      'src/a.txt': 'a\n',
+      'vendor/v.txt': 'v\n',
+    }),
+    steps: sequence(
+      [
+        [{}, 'a\n'],
+        [{ 'packages/a/src/a.txt': 'a2\n' }, 'a2\n'],
+      ],
+      out('a'),
+      { orRefused: true },
+    ),
+  }),
+
+  edits({
+    id: 'inputs/node-modules-lookalike-directory',
+    kind: 'correctness',
+    title: 'A directory named like an ignored one, `my_node_modules`, is an input',
+    from: ['inputs-resolution'],
+    task: reads(['**'], 'my_node_modules/x.txt'),
+    files: { 'src/a.txt': 'a\n', 'my_node_modules/x.txt': 'x\n' },
+    changes: [[inA({ 'my_node_modules/x.txt': 'x2\n' }), true, 'x2\n']],
+  }),
+
+  // ── nested projects ────────────────────────────────────────────────────
+  defineCase({
+    id: 'inputs/nested-project-deep-excluded',
+    category: 'inputs',
+    kind: 'efficiency',
+    title:
+      'A project nested several directories down keeps its files out of the outer project’s inputs',
+    from: ['inputs-resolution'],
+    workspace: {
+      projects: {
+        a: {
+          tasks: { build: reads(['**'], 'x/y/p.txt') },
+          files: { 'x/y/p.txt': 'p\n' },
+        },
+        inner: { dir: 'packages/a/x/y/inner', files: { 'n.txt': 'n\n' } },
+      },
+    },
+    steps: [
+      { run: 'build', expect: { exit: 0, ran: ['a#build'] } },
+      { write: { 'packages/a/x/y/inner/n.txt': 'n2\n' } },
+      { run: 'build', expect: { exit: 0, notRan: ['a#build'] } },
+      { write: { 'packages/a/x/y/p.txt': 'p2\n' } },
+      { run: 'build', expect: { exit: 0, ran: ['a#build'], files: { [out('a')]: 'p2\n' } } },
+    ],
+  }),
+
+  defineCase({
+    id: 'inputs/ignored-directory-named-skips-nested-project',
+    category: 'inputs',
+    kind: 'efficiency',
+    title:
+      'A gitignored directory named in the inputs keys its own files, not a project nested in it',
+    from: ['inputs-resolution'],
+    workspace: {
+      projects: {
+        a: {
+          tasks: { build: reads(['gen/**'], 'gen/own.txt') },
+          files: { '.gitignore': 'gen/\n', 'gen/own.txt': 'o\n' },
+        },
+        sub: { dir: 'packages/a/gen/sub', files: { 'theirs.txt': 't\n' } },
+      },
+    },
+    steps: [
+      { run: 'build', expect: { exit: 0, ran: ['a#build'] } },
+      { write: { 'packages/a/gen/sub/theirs.txt': 't2\n' } },
+      { run: 'build', expect: { exit: 0, notRan: ['a#build'] } },
+    ],
+  }),
+
+  defineCase({
+    id: 'outputs/outer-output-skips-nested-project',
+    category: 'outputs',
+    kind: 'correctness',
+    title:
+      'An outer project’s `**/*.js` output never restores a nested project’s file over its newer build',
+    why: 'The nested project’s file is not the outer task’s output: held in its entry, a replay writes the old bytes over the new.',
+    from: ['inputs-resolution', 'nested-boundary'],
+    workspace: {
+      projects: {
+        outer: {
+          deps: ['inner'],
+          tasks: {
+            build: {
+              command: 'mkdir -p dist && cp src/a.txt dist/parent.js',
+              dependsOn: ['^build'],
+              inputs: ['src/**'],
+              outputs: ['**/*.js'],
+            },
+          },
+          files: { 'src/a.txt': 'p\n' },
+        },
+        inner: {
+          dir: 'packages/outer/inner',
+          tasks: {
+            build: {
+              command: 'mkdir -p dist && cp src/n.txt dist/nested.js',
+              inputs: ['src/**'],
+              outputs: ['dist/**'],
+            },
+          },
+          files: { 'src/n.txt': 'v1\n' },
+        },
+      },
+    },
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { write: { 'packages/outer/inner/src/n.txt': 'v2\n' } },
+      { run: 'build', projects: ['inner'], only: true, expect: { exit: 0 } },
+      { write: { 'packages/outer/dist': null } },
+      {
+        run: 'build',
+        projects: ['outer'],
+        expect: {
+          exit: 0,
+          files: {
+            'packages/outer/dist/parent.js': 'p\n',
+            'packages/outer/inner/dist/nested.js': 'v2\n',
+          },
+        },
+      },
+    ],
+  }),
+
+  nestedSibling(
+    'inputs/nested-project-sibling-accepted',
+    ['genx/**', 'src/**'],
+    'A glob over the sibling of a nested project, `genx` beside `gen`, keys it',
+  ),
+
+  nestedSibling(
+    'inputs/nested-project-negated-accepted',
+    ['**', '!gen/**'],
+    'A glob over the whole project with the nested project taken back keys the rest',
+  ),
+
+  defineCase({
+    id: 'inputs/nested-project-glob-character-name',
+    category: 'inputs',
+    kind: 'correctness',
+    title:
+      'A nested project named `pkg*` does not take its sibling `pkg-b` out of the outer inputs',
+    why: 'The nested project’s directory is a path, not a glob: read as one, it hides every sibling it would match.',
+    from: ['nested-boundary'],
+    workspace: {
+      projects: {
+        a: {
+          tasks: { build: reads(['**'], 'pkg-b/b.txt') },
+          files: { 'pkg-b/b.txt': 'b1\n' },
+        },
+        star: { dir: 'packages/a/pkg*', files: { 'a.txt': 'a\n' } },
+      },
+    },
+    steps: [
+      { run: 'build', projects: ['a'], expect: { exit: 0, ran: ['a#build'] } },
+      { write: { 'packages/a/pkg-b/b.txt': 'b2\n' } },
+      {
+        run: 'build',
+        projects: ['a'],
+        expect: { exit: 0, ran: ['a#build'], files: { [out('a')]: 'b2\n' } },
+      },
+    ],
+  }),
+
+  // ── outputs that leave the project ─────────────────────────────────────
+  defineCase({
+    id: 'outputs/parent-relative-output-deletes-nothing',
+    category: 'outputs',
+    kind: 'correctness',
+    title:
+      'An output glob climbing out of the project, `../../victim/**`, never deletes what is there',
+    why: 'A task owns only its project’s files; a clean or restore that follows `..` deletes another directory’s.',
+    from: ['inputs-resolution'],
+    workspace: {
+      ...one(reads(['src/**'], 'src/a.txt', { outputs: ['dist/**', '../../victim/**'] })),
+      files: precious,
+    },
+    steps: [
+      { run: 'build', expect: { files: precious } },
+      { write: { 'packages/a/src/a.txt': 'a2\n' } },
+      { run: 'build', expect: { files: precious } },
+      { run: 'build', expect: { files: precious } },
+    ],
+  }),
+
+  defineCase({
+    id: 'outputs/sibling-prefix-output-deletes-nothing',
+    category: 'outputs',
+    kind: 'correctness',
+    title:
+      'An output glob into a sibling whose name extends the project’s, `../a-extra/**`, deletes nothing',
+    from: ['inputs-resolution'],
+    workspace: {
+      ...one(reads(['src/**'], 'src/a.txt', { outputs: ['dist/**', '../a-extra/**'] })),
+      files: { 'packages/a-extra/precious.txt': 'precious' },
+    },
+    steps: [
+      { run: 'build', expect: { files: { 'packages/a-extra/precious.txt': 'precious' } } },
+      { write: { 'packages/a/src/a.txt': 'a2\n' } },
+      { run: 'build', expect: { files: { 'packages/a-extra/precious.txt': 'precious' } } },
+    ],
+  }),
+
+  defineCase({
+    id: 'outputs/output-dir-linked-out-of-project',
+    category: 'outputs',
+    kind: 'correctness',
+    title:
+      'An output directory that is a link out of the project never has the link’s target emptied',
+    why: 'Clearing `dist/**` through the link deletes another directory’s files; a tool may refuse the run instead.',
+    from: ['inputs-resolution'],
+    workspace: {
+      ...one({ command: 'true', inputs: ['src/**'], outputs: ['dist/**'] }),
+      files: precious,
+    },
+    steps: [
+      { link: { 'packages/a/dist': '../../victim' } },
+      { run: 'build', expect: { files: precious } },
+      { write: { 'packages/a/src/a.txt': 'a2\n' } },
+      { run: 'build', expect: { files: precious } },
+      { run: 'build', expect: { files: precious } },
+      { check: { links: { 'packages/a/dist': '../../victim' } } },
+    ],
+  }),
+
+  defineCase({
+    id: 'outputs/linked-file-in-output-dir',
+    category: 'outputs',
+    kind: 'correctness',
+    title:
+      'A link a task leaves in its output directory is cleared, and the file it points at survives',
+    from: ['inputs-resolution'],
+    workspace: {
+      ...one({
+        command:
+          'mkdir -p dist && cp src/a.txt dist/app.txt && ln -sf ../../../victim/precious.txt dist/linked.txt',
+        inputs: ['src/**'],
+        outputs: ['dist/**'],
+      }),
+      files: precious,
+    },
+    steps: [
+      { run: 'build', expect: { exit: 0, files: precious } },
+      { write: { 'packages/a/src/a.txt': 'a2\n' } },
+      {
+        run: 'build',
+        expect: { exit: 0, files: { ...precious, 'packages/a/dist/app.txt': 'a2\n' } },
+      },
+      { write: { 'packages/a/dist': null } },
+      { run: 'build', expect: { exit: 0, files: precious } },
+      { check: { links: { 'packages/a/dist/linked.txt': '../../../victim/precious.txt' } } },
+    ],
+  }),
+
+  defineCase({
+    id: 'outputs/backslash-directory-name',
+    category: 'outputs',
+    kind: 'correctness',
+    title: 'An output under a directory whose name holds a backslash is restored',
+    from: ['inputs-resolution'],
+    workspace: one({
+      command: "mkdir -p 'dist/a\\b' && cp src/a.txt 'dist/a\\b/app.txt'",
+      inputs: ['src/**'],
+      outputs: ['dist/**'],
+    }),
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { write: { 'packages/a/dist': null } },
+      {
+        run: 'build',
+        expect: { exit: 0, notRan: ['a#build'], files: { 'packages/a/dist/a\\b/app.txt': 'a\n' } },
+      },
+    ],
+  }),
+
+  defineCase({
+    id: 'outputs/unmatched-file-in-output-dir-kept',
+    category: 'outputs',
+    kind: 'correctness',
+    title:
+      'A file under an output directory that no output pattern matches survives a rebuild and a replay',
+    why: '`dist/**/*.js` names the build’s files; a user’s `dist/keep/notes.txt` is not the task’s to delete.',
+    from: ['inputs-resolution'],
+    workspace: one({
+      command: 'mkdir -p dist/a && cp src/a.txt dist/a/x.js',
+      inputs: ['src/**'],
+      outputs: ['dist/**/*.js'],
+    }),
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { write: { 'packages/a/dist/keep/notes.txt': 'mine' } },
+      { write: { 'packages/a/src/a.txt': 'a2\n' } },
+      {
+        run: 'build',
+        expect: {
+          exit: 0,
+          ran: ['a#build'],
+          files: { 'packages/a/dist/keep/notes.txt': 'mine', 'packages/a/dist/a/x.js': 'a2\n' },
+        },
+      },
+      { write: { 'packages/a/dist/a/x.js': null } },
+      {
+        run: 'build',
+        expect: {
+          exit: 0,
+          files: { 'packages/a/dist/keep/notes.txt': 'mine', 'packages/a/dist/a/x.js': 'a2\n' },
+        },
+      },
+    ],
+  }),
+
+  defineCase({
+    id: 'outputs/literal-directory-trailing-slash-output',
+    category: 'outputs',
+    kind: 'efficiency',
+    title:
+      'An output naming a directory with a trailing slash, `dist/`, stores and restores its tree',
+    from: ['inputs-resolution'],
+    workspace: one(
+      reads(['src/**'], 'src/a.txt', {
+        command: 'mkdir -p dist/deep && cp src/a.txt dist/deep/b.txt',
+        outputs: ['dist/'],
+      }),
+    ),
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { write: { 'packages/a/dist': null } },
+      {
+        run: 'build',
+        expect: { exit: 0, notRan: ['a#build'], files: { 'packages/a/dist/deep/b.txt': 'a\n' } },
+      },
+    ],
+  }),
+
+  defineCase({
+    id: 'outputs/root-output-directory-literal',
+    category: 'outputs',
+    kind: 'efficiency',
+    title: 'A root output naming a directory, `generated`, stores and restores its tree',
+    from: ['inputs-resolution'],
+    workspace: one({
+      command: 'mkdir -p ../../generated && cp src/a.txt ../../generated/s.txt',
+      inputs: ['src/**'],
+      outputs: [],
+      rootOutputs: ['generated'],
+    }),
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { write: { generated: null } },
+      {
+        run: 'build',
+        expect: { exit: 0, notRan: ['a#build'], files: { 'generated/s.txt': 'a\n' } },
+      },
+    ],
+  }),
+
+  defineCase({
+    id: 'inputs/root-output-in-own-project-not-input',
+    category: 'inputs',
+    kind: 'efficiency',
+    title:
+      'A root output inside the task’s own project is not its own input, though its inputs cover it',
+    from: ['inputs-resolution'],
+    workspace: one({
+      command: 'cp src/a.txt out.json',
+      inputs: ['**'],
+      outputs: [],
+      rootOutputs: ['packages/a/out.json'],
+    }),
+    steps: [
+      { run: 'build', expect: { exit: 0, ran: ['a#build'] } },
+      {
+        run: 'build',
+        expect: { exit: 0, notRan: ['a#build'], files: { 'packages/a/out.json': 'a\n' } },
+      },
+    ],
+  }),
+
+  defineCase({
+    id: 'inputs/own-output-named-as-input',
+    category: 'inputs',
+    kind: 'efficiency',
+    title: 'A task naming its own output file among its inputs still replays',
+    from: ['inputs-resolution'],
+    why: 'Its own output is never its input; a tool may refuse the overlap, never key the task on what it writes.',
+    workspace: one(reads(['src/a.txt', 'dist/out.txt'], 'src/a.txt')),
+    steps: [
+      { run: 'build', expect: { exit: 0, orRefused: true, ran: ['a#build'] } },
+      {
+        run: 'build',
+        expect: { exit: 0, orRefused: true, notRan: ['a#build'], files: { [out('a')]: 'a\n' } },
+      },
+    ],
+  }),
+
+  // ── literals ───────────────────────────────────────────────────────────
+  edits({
+    id: 'inputs/literal-directory-prefix-sibling',
+    kind: 'efficiency',
+    title: 'An input naming the directory `gen` does not key the file `gen-a.txt` beside it',
+    from: ['inputs-resolution'],
+    task: reads(['gen'], 'gen/x.txt'),
+    files: { 'gen/x.txt': 'x\n', 'gen-a.txt': 'a\n' },
+    changes: [
+      [inA({ 'gen-a.txt': 'a2\n' }), false],
+      [inA({ 'gen/x.txt': 'x2\n' }), true, 'x2\n'],
+    ],
+  }),
+
+  edits({
+    id: 'inputs/ignored-literal-beside-prefix-sibling',
+    kind: 'correctness',
+    title: 'A gitignored file `gen` named in the inputs is keyed beside a tracked `gen-notes.txt`',
+    from: ['inputs-resolution'],
+    task: reads(['gen', 'gen-notes.txt'], 'gen gen-notes.txt'),
+    files: { '.gitignore': 'gen\n', gen: 'g\n', 'gen-notes.txt': 'n\n' },
+    changes: [[inA({ gen: 'g2\n' }), true, 'g2\nn\n']],
+  }),
+
+  // ── in-run writes ──────────────────────────────────────────────────────
+  defineCase({
+    id: 'inputs/runtime-after-uncached-upstream',
+    category: 'inputs',
+    kind: 'correctness',
+    needs: ['runtime-inputs', 'uncached-task'],
+    title: 'A key command reading a file an uncached dependency rewrites answers after it ran',
+    why: 'Asked up front, the command answers for the bytes before the rewrite: the build is filed under that answer and replays when the run starts from it again.',
+    from: ['in-run-writes'],
+    workspace: {
+      projects: {
+        app: {
+          tasks: {
+            bump: { command: 'cp next.txt ver.txt', inputs: [], cache: false },
+            build: {
+              command: 'mkdir -p dist && cat ver.txt > dist/out.txt',
+              dependsOn: ['bump'],
+              inputs: ['src/**'],
+              runtime: ['cat packages/app/ver.txt'],
+              outputs: ['dist/**'],
+            },
+          },
+          files: { 'src/a.txt': 'a', 'ver.txt': '1', 'next.txt': '2' },
+        },
+      },
+    },
+    steps: [
+      { run: 'build', expect: { exit: 0, files: { [out('app')]: '2' } } },
+      { write: { 'packages/app/ver.txt': '1', 'packages/app/next.txt': '1' } },
+      { run: 'build', expect: { exit: 0, files: { [out('app')]: '1' } } },
+    ],
+  }),
+
+  defineCase({
+    id: 'inputs/runtime-output-not-utf8',
+    category: 'inputs',
+    kind: 'correctness',
+    needs: ['runtime-inputs'],
+    title: 'A key command printing a different byte that is not UTF-8 runs the task again',
+    why: 'Decoded as text, `\\351` and `\\350` both read as U+FFFD: one key, and the other byte’s build replays.',
+    from: ['runtime-inputs'],
+    workspace: {
+      projects: {
+        a: {
+          tasks: {
+            build: {
+              command: 'od -An -tx1 ../../marker | tr -d " \\n" > out.txt',
+              inputs: [],
+              runtime: ['cat marker'],
+              outputs: ['out.txt'],
+            },
+          },
+          files: { '.gitignore': 'out.txt\n' },
+        },
+      },
+    },
+    steps: [
+      { sh: "printf '\\351' > marker" },
+      { run: 'build', expect: { exit: 0, orRefused: true, files: { 'packages/a/out.txt': 'e9' } } },
+      { sh: "printf '\\350' > marker" },
+      { run: 'build', expect: { exit: 0, orRefused: true, files: { 'packages/a/out.txt': 'e8' } } },
+    ],
+  }),
+
+  // ── git that hides an edit ─────────────────────────────────────────────
+  edits({
+    id: 'inputs/git-status-config-quoted-name',
+    kind: 'correctness',
+    title:
+      'Colour, short status and quoted paths in the repository’s git config still let an edit rerun',
+    why: 'A tool parsing `git status` text loses every change once the repository colours or shortens it, or quotes the name.',
+    from: ['stale-hit-git'],
+    task: reads(['src/**'], 'src/*'),
+    files: { 'src/zaż "ó"\tx.txt': 'v1\n' },
+    setup: [
+      {
+        sh: 'git config color.ui always && git config color.status always && git config status.short true && git config status.branch true && git config core.quotePath true',
+      },
+    ],
+    changes: [[inA({ 'src/zaż "ó"\tx.txt': 'v2\n' }), true, 'v2\n']],
+  }),
+
+  defineCase({
+    id: 'inputs/committed-file-under-own-output-dir',
+    category: 'inputs',
+    kind: 'correctness',
+    title: 'An edit to a committed file inside the task’s own output directory runs it again',
+    why: 'The task reads the committed file; left out of the key as an output, the edit replays the old build over it.',
+    from: ['stale-hit-git'],
+    workspace: one(
+      {
+        command:
+          'cp data/sponsors.json data/s.tmp && mv data/s.tmp data/sponsors.json && cp data/sponsors.json data/gen.json',
+        inputs: ['**'],
+        outputs: ['data'],
+      },
+      { 'data/sponsors.json': '["a"]', '.gitignore': 'data/gen.json\n' },
+    ),
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { run: 'build', expect: { exit: 0 } },
+      { write: { 'packages/a/data/sponsors.json': '["b"]' } },
+      {
+        run: 'build',
+        expect: {
+          exit: 0,
+          files: {
+            'packages/a/data/gen.json': '["b"]',
+            'packages/a/data/sponsors.json': '["b"]',
+          },
+        },
+      },
+    ],
+  }),
+
+  defineCase({
+    id: 'outputs/committed-output-outside-inputs',
+    category: 'outputs',
+    kind: 'correctness',
+    title:
+      'A committed edit to a file under the outputs, outside the inputs, is not reverted by a replay',
+    why: 'A replay writes the entry’s copy of the file back: the old LICENSE over the one just committed (turborepo#14831).',
+    from: ['stale-hit-git'],
+    workspace: one(
+      {
+        command: 'mkdir -p out && cat src/*.txt > out/out.txt',
+        inputs: ['src/**'],
+        outputs: ['out/**'],
+      },
+      { 'src/a.txt': 'a\n', 'out/LICENSE': 'license v1', '.gitignore': 'out/out.txt\n' },
+    ),
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { run: 'build', expect: { exit: 0 } },
+      { write: { 'packages/a/out/LICENSE': 'license v2' } },
+      { commit: 'license v2' },
+      { run: 'build', expect: { exit: 0, files: { 'packages/a/out/LICENSE': 'license v2' } } },
+    ],
+  }),
+
+  defineCase({
+    id: 'outputs/codegen-rewrites-committed-output',
+    category: 'outputs',
+    kind: 'correctness',
+    title:
+      'A generator rewriting its committed output leaves the new bytes, and a later run brings them back',
+    from: ['stale-hit-git'],
+    workspace: one(
+      {
+        command: 'ls routes > src/routeTree.gen.txt',
+        inputs: ['routes/**', 'src/**'],
+        outputs: ['src/routeTree.gen.txt'],
+      },
+      { 'routes/a.tsx': 'a', 'src/routeTree.gen.txt': 'a.tsx\n' },
+    ),
+    steps: [
+      { write: { 'packages/a/routes/b.tsx': 'b' } },
+      {
+        run: 'build',
+        expect: { exit: 0, files: { 'packages/a/src/routeTree.gen.txt': 'a.tsx\nb.tsx\n' } },
+      },
+      { sh: 'git checkout -- packages/a/src/routeTree.gen.txt' },
+      {
+        run: 'build',
+        expect: { exit: 0, files: { 'packages/a/src/routeTree.gen.txt': 'a.tsx\nb.tsx\n' } },
+      },
+    ],
+  }),
+
+  defineCase({
+    id: 'outputs/committed-root-output-survives',
+    category: 'outputs',
+    kind: 'correctness',
+    title: 'A committed file under a root output glob survives a run that no longer writes it',
+    why: 'The file is source the repository holds; clearing the outputs before the run deletes it.',
+    from: ['stale-hit-git'],
+    workspace: {
+      projects: {
+        a: {
+          tasks: {
+            codegen: {
+              command: 'sh emit.sh',
+              inputs: ['emit.sh'],
+              outputs: [],
+              rootOutputs: ['gen/**'],
+            },
+          },
+          files: {
+            'emit.sh': 'mkdir -p ../../gen\nprintf a > ../../gen/a.js\nprintf b > ../../gen/b.ts\n',
+          },
+        },
+      },
+      files: { 'gen/a.js': 'a', 'gen/b.ts': 'b' },
+    },
+    steps: [
+      { run: 'codegen', expect: { exit: 0, files: { 'gen/b.ts': 'b' } } },
+      { write: { 'packages/a/emit.sh': 'mkdir -p ../../gen\nprintf a > ../../gen/a.js\n' } },
+      { run: 'codegen', expect: { exit: 0, files: { 'gen/a.js': 'a', 'gen/b.ts': 'b' } } },
+    ],
+  }),
+
+  defineCase({
+    id: 'inputs/sparse-path-materialised',
+    category: 'inputs',
+    kind: 'correctness',
+    title:
+      'A skip-worktree input absent from disk, as a sparse checkout leaves it, reruns the task once it appears',
+    from: ['stale-hit-git'],
+    workspace: one(reads(['src/**'], 'src/*.txt'), { 'src/a.txt': 'A\n', 'src/sparse.txt': 'S\n' }),
+    steps: [
+      {
+        sh: 'git update-index --skip-worktree packages/a/src/sparse.txt && rm packages/a/src/sparse.txt',
+      },
+      { run: 'build', expect: { exit: 0, files: { [out('a')]: 'A\n' } } },
+      { write: { 'packages/a/src/sparse.txt': 'S\n' } },
+      { run: 'build', expect: { exit: 0, files: { [out('a')]: 'A\nS\n' } } },
+    ],
+  }),
+
+  crlf(
+    'inputs/crlf-to-lf-under-text-attribute',
+    'Under `* text=auto`, changing an input from CRLF to LF runs the task again',
+    'printf "* text=auto\\n" > .gitattributes && git add -A && git commit -qm attrs && git rm -q --cached packages/a/src/a.txt && git add packages/a/src/a.txt && git commit -qm lf',
+    ['stale-hit-git'],
+  ),
+
+  crlf(
+    'inputs/crlf-to-lf-under-root-attribute-scoped',
+    'A root `.gitattributes` text rule reaches a run of one project: CRLF to LF runs it again',
+    'printf "* text=auto\\n" > .gitattributes && git add -A && git commit -qm attrs && git rm -q --cached packages/a/src/a.txt && git add packages/a/src/a.txt && git commit -qm lf',
+    ['stale-hit-git'],
+    true,
+  ),
+
+  crlf(
+    'inputs/crlf-to-lf-under-global-attributes',
+    'A text rule in the user’s global git attributes file: CRLF to LF runs the task again',
+    'mkdir -p "$XDG_CONFIG_HOME/git" && printf "* text\\n" > "$XDG_CONFIG_HOME/git/attributes" && git rm -q --cached packages/a/src/a.txt && git add packages/a/src/a.txt && git commit -qm lf',
+    ['stale-hit-git'],
+  ),
+
+  crlf(
+    'inputs/crlf-to-lf-under-autocrlf',
+    'With `core.autocrlf` set, changing an input from CRLF to LF runs the task again',
+    'git config core.autocrlf true && git rm -q --cached packages/a/src/a.txt && git add packages/a/src/a.txt && git commit -qm lf',
+    ['stale-hit-git'],
+  ),
+
+  weakStat('core.trustctime', 'false'),
+  weakStat('core.checkStat', 'minimal'),
+
+  defineCase({
+    id: 'inputs/root-output-into-consumer-project',
+    category: 'inputs',
+    kind: 'correctness',
+    title:
+      'A consumer reading what its dependency writes into it as a root output builds each version',
+    why: 'The generated file lands in the consumer’s own directory mid-run: keyed before it lands, the consumer replays another version’s build. A tool may refuse an input over another task’s output.',
+    from: ['stale-hit-git'],
+    workspace: {
+      projects: {
+        gen: {
+          tasks: {
+            codegen: {
+              command:
+                'mkdir -p ../app/gen out && cat src/version.txt > ../app/gen/out.txt && cp src/version.txt out/marker.txt',
+              inputs: ['src/**'],
+              outputs: ['out/**'],
+              rootOutputs: ['packages/app/gen/**'],
+            },
+          },
+          files: { 'src/version.txt': 'v0', '.gitignore': 'out/\n' },
+        },
+        app: {
+          tasks: {
+            build: {
+              command: 'mkdir -p dist && cat gen/out.txt > dist/out.txt',
+              dependsOn: ['gen#codegen'],
+              inputs: ['gen/**'],
+              outputs: ['dist/**'],
+            },
+          },
+        },
+      },
+    },
+    steps: ['vA', 'vB', 'vC', 'vA', 'vB', 'vC', 'vA', 'vB', 'vC'].flatMap((v): Step[] => [
+      { write: { 'packages/gen/src/version.txt': v } },
+      { commit: v },
+      {
+        run: 'build',
+        expect: {
+          exit: 0,
+          orRefused: true,
+          files: { [out('app')]: v, 'packages/app/gen/out.txt': v },
+        },
+      },
+    ]),
+  }),
+
+  defineCase({
+    id: 'outputs/rename-input-back-restores-own-outputs',
+    category: 'outputs',
+    kind: 'correctness',
+    title: 'Renaming an input and back leaves only the outputs that name produces',
+    why: 'Same bytes, another name: each name’s entry holds its own output file, and neither’s file outlives the rename.',
+    from: ['stale-hit-git'],
+    workspace: one({
+      command:
+        'mkdir -p dist && for f in src/*.txt; do cp "$f" "dist/$(basename "$f" .txt).js"; done',
+      inputs: ['src/**'],
+      outputs: ['dist/**'],
+    }),
+    steps: [
+      { run: 'build', expect: { exit: 0, files: { 'packages/a/dist/a.js': 'a\n' } } },
+      ...[
+        ['a', 'b'],
+        ['b', 'a'],
+        ['a', 'b'],
+      ].flatMap(([from, to]): Step[] => [
+        { write: { [`packages/a/src/${from}.txt`]: null, [`packages/a/src/${to}.txt`]: 'a\n' } },
+        {
+          run: 'build',
+          expect: {
+            exit: 0,
+            files: { [`packages/a/dist/${to}.js`]: 'a\n', [`packages/a/dist/${from}.js`]: null },
+          },
+        },
+      ]),
+    ],
+  }),
+
+  // ── names that are not UTF-8 ───────────────────────────────────────────
+  ...[true, false].map((tracked) =>
+    defineCase({
+      id: `inputs/non-utf8-name-${tracked ? 'tracked' : 'untracked'}`,
+      category: 'inputs',
+      kind: 'correctness',
+      title: `An edit to ${tracked ? 'a committed' : 'an untracked'} input whose name is not UTF-8 never replays the old build`,
+      why: 'Dropped from the key, the file stops counting: its edit replays. A tool may refuse the name instead.',
+      from: ['stale-hit-git'],
+      workspace: catAll,
+      steps: [
+        {
+          sh: `printf bad1 > "packages/a/src/${BAD}"${tracked ? ' && git add -A && git commit -qm bad' : ''}`,
+        },
+        {
+          run: 'build',
+          expect: { exit: 0, orRefused: true, files: { 'packages/a/dist/all': 'v1bad1' } },
+        },
+        { sh: `printf bad2 > "packages/a/src/${BAD}"` },
+        {
+          run: 'build',
+          expect: { exit: 0, orRefused: true, files: { 'packages/a/dist/all': 'v1bad2' } },
+        },
+      ],
+    }),
+  ),
+
+  defineCase({
+    id: 'inputs/non-utf8-root-input',
+    category: 'inputs',
+    kind: 'correctness',
+    title: 'An edit to a root input whose name is not UTF-8 never replays the old build',
+    from: ['stale-hit-git'],
+    workspace: {
+      ...one({
+        command: 'mkdir -p dist && cat ../../shared/* > dist/all',
+        inputs: ['src/**'],
+        rootInputs: ['shared/**'],
+        outputs: ['dist/**'],
+      }),
+      files: { 'shared/ok': 'o' },
+    },
+    steps: [
+      { sh: `printf bad1 > "shared/${BAD}" && git add -A && git commit -qm bad` },
+      {
+        run: 'build',
+        expect: { exit: 0, orRefused: true, files: { 'packages/a/dist/all': 'obad1' } },
+      },
+      { sh: `printf bad2 > "shared/${BAD}"` },
+      {
+        run: 'build',
+        expect: { exit: 0, orRefused: true, files: { 'packages/a/dist/all': 'obad2' } },
+      },
+    ],
+  }),
+
+  defineCase({
+    id: 'inputs/non-utf8-name-other-project-runs',
+    category: 'inputs',
+    kind: 'correctness',
+    title: 'A name that is not UTF-8 in one project does not stop another project’s task',
+    from: ['stale-hit-git'],
+    workspace: {
+      projects: Object.fromEntries(
+        ['a', 'b'].map((p) => [
+          p,
+          {
+            tasks: {
+              build: { command: 'cat src/* > out.txt', inputs: ['src/**'], outputs: ['out.txt'] },
+            },
+            files: { 'src/i': '1', '.gitignore': 'out.txt\n' },
+          },
+        ]),
+      ),
+    },
+    steps: [
+      { sh: `printf bad > "packages/a/src/${BAD}" && git add -A && git commit -qm bad` },
+      { run: 'build', expect: { ran: ['b#build'], files: { 'packages/b/out.txt': '1' } } },
+    ],
+  }),
+
+  edits({
+    id: 'inputs/replacement-character-name',
+    kind: 'correctness',
+    title: 'An input whose name holds U+FFFD as a character is an input like any other',
+    from: ['stale-hit-git'],
+    task: {
+      command: 'mkdir -p dist && cat src/* > dist/out.txt',
+      inputs: ['src/**'],
+      outputs: ['dist/**'],
+    },
+    files: { 'src/a': 'v1', 'src/x�y': 'f1' },
+    changes: [[inA({ 'src/x�y': 'f2' }), true, 'v1f2']],
+  }),
+
+  defineCase({
+    id: 'outputs/non-utf8-output-name',
+    category: 'outputs',
+    kind: 'correctness',
+    title: 'An output whose name is not UTF-8 is there after the next run, replayed or rebuilt',
+    why: 'An entry saved without it restores a tree missing a file the task wrote.',
+    from: ['stale-hit-git'],
+    workspace: one({
+      command: `mkdir -p dist && printf a > dist/ok && printf b > "dist/${BAD}"`,
+      inputs: ['src/**'],
+      outputs: ['dist/**'],
+    }),
+    steps: [
+      { run: 'build', expect: {} },
+      { write: { 'packages/a/dist': null } },
+      { run: 'build', expect: { files: { 'packages/a/dist/ok': 'a' } } },
+      { sh: `test -f "packages/a/dist/${BAD}"` },
+    ],
+  }),
+
+  // ── dependencies ───────────────────────────────────────────────────────
+  defineCase({
+    id: 'inputs/hand-file-in-dependency-output',
+    category: 'inputs',
+    kind: 'efficiency',
+    title:
+      'A file dropped by hand into a dependency’s output directory does not rerun its dependants',
+    why: 'A dependant keys what its dependency is built from; the dependency’s replay restores its own outputs.',
+    from: ['parity-nx-hashing'],
+    workspace: {
+      projects: {
+        lib: chainProject('lib'),
+        ui: chainProject('ui', ['lib']),
+        app: chainProject('app', ['ui']),
+      },
+    },
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { write: { 'packages/ui/dist/index.d.ts': 'x\n' } },
+      {
+        run: 'build',
+        expect: { exit: 0, notRan: ['app#build'], files: { [out('app')]: 'lib\nui\napp\n' } },
+      },
+    ],
+  }),
+
+  edits({
+    id: 'inputs/root-input-new-file',
+    kind: 'correctness',
+    title: 'A new file under a root input glob runs the task again',
+    from: ['parity-nx-hashing'],
+    task: reads(['src/**'], '../../config/*', { rootInputs: ['config/**'] }),
+    files: { 'src/a.txt': 'a\n' },
+    rootFiles: { 'config/a.json': '1\n' },
+    changes: [
+      [{ 'config/a.json': '2\n' }, true, '2\n'],
+      [{ 'config/b.json': '3\n' }, true, '2\n3\n'],
+    ],
+  }),
+
+  defineCase({
+    id: 'inputs/input-glob-over-sibling-task-output',
+    category: 'inputs',
+    kind: 'correctness',
+    title:
+      'A task whose inputs cover another task’s output never replays a build of that output’s old bytes',
+    why: 'The output is written mid-run: keyed before it lands, the reader replays. A tool may refuse the overlap instead.',
+    from: ['parity-nx-hashing'],
+    workspace: {
+      projects: {
+        a: {
+          tasks: {
+            gen: {
+              command: 'mkdir -p src/gen && cat seed.txt > src/gen/x.txt',
+              inputs: ['seed.txt'],
+              outputs: ['src/gen/**'],
+            },
+            build: {
+              command: 'mkdir -p dist && cat src/gen/x.txt > dist/out.txt',
+              dependsOn: ['gen'],
+              inputs: ['src/**'],
+              outputs: ['dist/**'],
+            },
+          },
+          files: { 'seed.txt': 'one\n', 'src/a.txt': 'a\n', '.gitignore': 'src/gen/\n' },
+        },
+      },
+    },
+    steps: sequence(
+      [
+        [{}, 'one\n'],
+        [{ 'packages/a/seed.txt': 'two\n' }, 'two\n'],
+        [{ 'packages/a/seed.txt': 'one\n' }, 'one\n'],
+      ],
+      out('a'),
+      { orRefused: true },
+    ),
+  }),
+
+  defineCase({
+    id: 'inputs/project-cycle-edit-reruns-only-it',
+    category: 'inputs',
+    kind: 'efficiency',
+    title: 'In projects that depend on each other, editing one reruns only its task',
+    from: ['parity-nx-hashing'],
+    workspace: {
+      projects: Object.fromEntries(
+        [
+          ['lib', 'ui'],
+          ['ui', 'lib'],
+        ].map(([p, dep]) => [
+          p!,
+          {
+            deps: [dep!],
+            tasks: {
+              lint: {
+                command: 'cat src/a.txt > out.txt',
+                inputs: ['src/**'],
+                outputs: ['out.txt'],
+              },
+            },
+            files: { 'src/a.txt': `${p}\n`, '.gitignore': 'out.txt\n' },
+          },
+        ]),
+      ),
+    },
+    steps: [
+      { run: 'lint', expect: { exit: 0 } },
+      { write: { 'packages/lib/src/a.txt': 'lib2\n' } },
+      { run: 'lint', expect: { exit: 0, ran: ['lib#lint'], notRan: ['ui#lint'] } },
+    ],
+  }),
+
+  defineCase({
+    id: 'inputs/upstream-deletes-input',
+    category: 'inputs',
+    kind: 'correctness',
+    title: 'An input a dependency deletes before its dependant starts lets the dependant run',
+    why: 'The file is gone when the dependant runs: keyed as absent, not an error and not a stale read.',
+    from: ['absent-input'],
+    workspace: {
+      projects: {
+        a: {
+          tasks: {
+            build: {
+              command: 'rm -f ../b/src/gen.txt && echo a > out.txt',
+              inputs: ['src/**'],
+              outputs: ['out.txt'],
+            },
+          },
+          files: { 'src/x': 'x', '.gitignore': 'out.txt\n' },
+        },
+        b: {
+          deps: ['a'],
+          tasks: {
+            build: {
+              command: 'ls src > out.txt',
+              dependsOn: ['^build'],
+              inputs: ['src/**'],
+              outputs: ['out.txt'],
+            },
+          },
+          files: { 'src/keep': 'k', 'src/gen.txt': 'g', '.gitignore': 'out.txt\n' },
+        },
+      },
+    },
+    steps: [
+      {
+        run: 'build',
+        expect: { exit: 0, ran: ['a#build', 'b#build'], files: { 'packages/b/out.txt': 'keep\n' } },
+      },
+    ],
+  }),
+
+  // ── links among the inputs ─────────────────────────────────────────────
+  linkCase({
+    id: 'inputs/linked-input-directories',
+    title:
+      'Edits behind an input directory that is a link, and behind a linked root input directory, rerun',
+    from: ['linked-inputs', 'parity-nx-hashing'],
+    task: linkedRead('lib/x.txt ../../ws/x.txt', { inputs: ['lib/**'], rootInputs: ['ws/**'] }),
+    rootFiles: { 'shared/x.txt': 'V1\n', 'other/x.txt': 'W1\n' },
+    links: { 'packages/a/lib': '../../shared', ws: 'other' },
+    first: 'V1\nW1\n',
+    changes: [
+      [{ 'shared/x.txt': 'V2\n' }, 'V2\nW1\n'],
+      [{ 'other/x.txt': 'W2\n' }, 'V2\nW2\n'],
+    ],
+  }),
+
+  linkCase({
+    id: 'inputs/linked-directory-below-glob-prefix',
+    title: 'Edits behind links below a glob’s fixed directory, one of them never committed, rerun',
+    from: ['linked-inputs'],
+    task: linkedRead('src/v/x.txt lib/y.txt ../../ws/l/z.txt', {
+      inputs: ['src/**/*.txt', '**/*.txt'],
+      rootInputs: ['ws/**/*.txt'],
+    }),
+    rootFiles: { 'shared/x.txt': 'V1\n', 'more/y.txt': 'M1\n', 'other/z.txt': 'W1\n' },
+    links: { 'packages/a/src/v': '../../../shared', 'ws/l': '../other' },
+    laterLinks: { 'packages/a/lib': '../../more' },
+    first: 'V1\nM1\nW1\n',
+    changes: [
+      [{ 'shared/x.txt': 'V2\n' }, 'V2\nM1\nW1\n'],
+      [{ 'more/y.txt': 'M2\n' }, 'V2\nM2\nW1\n'],
+      [{ 'other/z.txt': 'W2\n' }, 'V2\nM2\nW2\n'],
+    ],
+  }),
+
+  linkCase({
+    id: 'inputs/linked-brace-alternative',
+    title: 'An edit behind a brace alternative’s directory that is a link reruns',
+    from: ['linked-inputs'],
+    task: linkedRead('lib/x.txt etc/x.txt', { inputs: ['{lib,src}/**', '{etc/**,src/**}'] }),
+    rootFiles: { 'shared/x.txt': 'V1\n', 'other/x.txt': 'W1\n' },
+    links: { 'packages/a/lib': '../../shared', 'packages/a/etc': '../../other' },
+    first: 'V1\nW1\n',
+    changes: [
+      [{ 'shared/x.txt': 'V2\n' }, 'V2\nW1\n'],
+      [{ 'other/x.txt': 'W2\n' }, 'V2\nW2\n'],
+    ],
+  }),
+
+  linkCase({
+    id: 'inputs/linked-directory-in-ignored-input',
+    title: 'An edit behind a link inside a gitignored input directory reruns',
+    from: ['linked-inputs'],
+    task: linkedRead('gen/v/x.txt ../../gen/l/z.txt', {
+      inputs: ['gen/**/*.txt'],
+      rootInputs: ['gen/**/*.txt'],
+    }),
+    files: { '.gitignore': 'out.txt\ngen/\n' },
+    rootFiles: { 'shared/x.txt': 'V1\n', 'other/z.txt': 'W1\n', 'gen/.gitignore': '*\n' },
+    links: { 'packages/a/gen/v': '../../../shared', 'gen/l': '../other' },
+    first: 'V1\nW1\n',
+    changes: [
+      [{ 'shared/x.txt': 'V2\n' }, 'V2\nW1\n'],
+      [{ 'other/z.txt': 'W2\n' }, 'V2\nW2\n'],
+    ],
+  }),
+
+  linkCase({
+    id: 'inputs/file-link-out-of-project-committed',
+    title: 'A committed edit to a tracked file an input link out of the project points at reruns',
+    from: ['linked-inputs'],
+    task: linkedRead('src/x.txt'),
+    rootFiles: { 'shared/x.txt': 'V1\n' },
+    links: { 'packages/a/src/x.txt': '../../../shared/x.txt' },
+    first: 'V1\n',
+    changes: [[{ 'shared/x.txt': 'V2\n' }, 'V2\n', true]],
+  }),
+
+  linkCase({
+    id: 'inputs/file-link-out-of-project',
+    title: 'An edit behind an input link to a file outside the project reruns',
+    from: ['parity-nx-hashing', 'linked-inputs'],
+    task: linkedRead('src/x.txt'),
+    rootFiles: { 'elsewhere/linked.txt': 'O1\n' },
+    links: { 'packages/a/src/x.txt': '../../../elsewhere/linked.txt' },
+    first: 'O1\n',
+    changes: [[{ 'elsewhere/linked.txt': 'O2\n' }, 'O2\n']],
+  }),
+
+  linkCase({
+    id: 'inputs/file-link-to-ignored-file',
+    title: 'An edit to a gitignored file an input link points at reruns',
+    from: ['linked-inputs'],
+    task: linkedRead('src/x.txt'),
+    files: { '.gitignore': 'out.txt\nsecret.txt\n', 'secret.txt': 'S1\n' },
+    rootFiles: {},
+    links: { 'packages/a/src/x.txt': '../secret.txt' },
+    first: 'S1\n',
+    changes: [[{ 'packages/a/secret.txt': 'S2\n' }, 'S2\n']],
+  }),
+
+  linkCase({
+    id: 'inputs/linked-directory-new-file',
+    title: 'An edit, and then a new file, behind a linked input directory rerun',
+    from: ['linked-inputs', 'parity-nx-hashing'],
+    task: linkedRead('src/sh/*.txt'),
+    rootFiles: { 'shared/x.txt': 'V1\n' },
+    links: { 'packages/a/src/sh': '../../../shared' },
+    first: 'V1\n',
+    changes: [
+      [{ 'shared/x.txt': 'V2\n' }, 'V2\n', true],
+      [{ 'shared/y.txt': 'Y\n' }, 'V2\nY\n'],
+    ],
+  }),
+
+  linkCase({
+    id: 'inputs/link-inside-linked-directory',
+    title: 'An edit behind a link found inside a linked input directory reruns',
+    from: ['linked-inputs', 'parity-nx-hashing'],
+    task: linkedRead('src/d/deep/x.txt src/d/z.txt'),
+    rootFiles: { 'outside/d/deep/x.txt': 'O1\n', 'outside/z.txt': 'Z1\n' },
+    links: { 'outside/d/z.txt': '../z.txt', 'packages/a/src/d': '../../../outside/d' },
+    first: 'O1\nZ1\n',
+    changes: [
+      [{ 'outside/d/deep/x.txt': 'O2\n' }, 'O2\nZ1\n'],
+      [{ 'outside/z.txt': 'Z2\n' }, 'O2\nZ2\n'],
+    ],
+  }),
+
+  linkCase({
+    id: 'inputs/dangling-link-target-appears',
+    title: 'A dangling input link reruns its task once the file it names appears',
+    from: ['linked-inputs'],
+    task: linkedRead('src/x.txt', {
+      command: 'cat src/x.txt > out.txt 2>/dev/null || echo none > out.txt',
+    }),
+    rootFiles: {},
+    links: { 'packages/a/src/x.txt': '../nowhere.txt' },
+    first: 'none\n',
+    changes: [[{ 'packages/a/nowhere.txt': 'N\n' }, 'N\n']],
+  }),
+
+  defineCase({
+    id: 'inputs/link-loop',
+    category: 'inputs',
+    kind: 'efficiency',
+    title: 'Input links that point at each other are no error, and an unchanged tree replays',
+    from: ['linked-inputs'],
+    workspace: {
+      projects: {
+        a: {
+          tasks: {
+            build: linkedRead('src/a.txt', {
+              command: 'cat src/a.txt > out.txt 2>/dev/null || echo none > out.txt',
+            }),
+          },
+          files: { '.gitignore': 'out.txt\n' },
+        },
+      },
+    },
+    steps: [
+      { link: { 'packages/a/src/a.txt': 'b.txt', 'packages/a/src/b.txt': 'a.txt' } },
+      { commit: 'loop' },
+      { run: 'build', expect: { exit: 0, ran: ['a#build'], files: { [OUT_TXT]: 'none\n' } } },
+      { run: 'build', expect: { exit: 0, notRan: ['a#build'] } },
+    ],
+  }),
+
+  // ── outputs that matched nothing ───────────────────────────────────────
+  defineCase({
+    id: 'outputs/stray-under-empty-output-wiped',
+    category: 'outputs',
+    kind: 'correctness',
+    title: 'A stray file under an output glob the task never wrote to is gone after a replay',
+    why: 'The task’s outputs are what it left there: nothing. A replay that skips the clean when the entry is empty ships the stray.',
+    from: ['cache-declaration-warnings'],
+    workspace: one({ command: 'true', inputs: ['src/**'], outputs: ['build/**'] }),
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { run: 'build', expect: { exit: 0 } },
+      { write: { 'packages/a/build/stray.js': 'x' } },
+      { run: 'build', expect: { exit: 0, files: { 'packages/a/build/stray.js': null } } },
+    ],
+  }),
+
+  defineCase({
+    id: 'outputs/stray-under-empty-root-output-wiped',
+    category: 'outputs',
+    kind: 'correctness',
+    title: 'A stray file under a root output glob the task never wrote to is gone after a replay',
+    from: ['cache-declaration-warnings'],
+    workspace: one({
+      command: 'true',
+      inputs: ['src/**'],
+      outputs: [],
+      rootOutputs: ['nowhere/**'],
+    }),
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { run: 'build', expect: { exit: 0 } },
+      { write: { 'nowhere/stray.js': 'x' } },
+      { run: 'build', expect: { exit: 0, files: { 'nowhere/stray.js': null } } },
+    ],
+  }),
+
+  // ── names, permissions ─────────────────────────────────────────────────
+  defineCase({
+    id: 'affected/non-ascii-names-select',
+    category: 'affected',
+    kind: 'correctness',
+    needs: ['affected'],
+    title: 'Changed files named in CJK, Cyrillic or with an emoji select their projects',
+    from: ['affected-unicode'],
+    workspace: {
+      projects: Object.fromEntries(
+        Object.entries({ cjk: '测试 文件.txt', cyr: 'файл.rs', emoji: null, quiet: 'q.txt' }).map(
+          ([p, f]) => [
+            p,
+            {
+              tasks: {
+                build: { command: 'echo x > out.txt', inputs: ['**'], outputs: ['out.txt'] },
+              },
+              files: { '.gitignore': 'out.txt\n', ...(f ? { [f]: '1\n' } : { 'k.txt': 'k\n' }) },
+            },
+          ],
+        ),
+      ),
+    },
+    steps: [
+      { write: { 'packages/cjk/测试 文件.txt': '2\n' } },
+      { commit: 'edit' },
+      { write: { 'packages/cyr/файл.rs': '2\n', 'packages/emoji/emoji_🚀.md': 'new\n' } },
+      {
+        affected: 'build',
+        base: 'HEAD~1',
+        expect: {
+          exit: 0,
+          ran: ['cjk#build', 'cyr#build', 'emoji#build'],
+          notRan: ['quiet#build'],
+        },
+      },
+    ],
+  }),
+
+  defineCase({
+    id: 'affected/non-ascii-project-directory',
+    category: 'affected',
+    kind: 'correctness',
+    needs: ['affected'],
+    title: 'A committed change in a project whose directory is named `café` selects it',
+    from: ['affected-unicode'],
+    workspace: {
+      projects: Object.fromEntries(
+        [
+          ['cafe', 'packages/café'],
+          ['plain', 'packages/plain'],
+        ].map(([p, dir]) => [
+          p!,
+          {
+            dir: dir!,
+            tasks: { build: { command: 'echo x > out.txt', inputs: ['**'], outputs: ['out.txt'] } },
+            files: { '.gitignore': 'out.txt\n', 'x.txt': '1\n' },
+          },
+        ]),
+      ),
+    },
+    steps: [
+      { write: { 'packages/café/x.txt': '2\n' } },
+      { commit: 'edit' },
+      {
+        affected: 'build',
+        base: 'HEAD~1',
+        expect: { exit: 0, ran: ['cafe#build'], notRan: ['plain#build'] },
+      },
+    ],
+  }),
+
+  defineCase({
+    id: 'inputs/unreadable-input-never-stale',
+    category: 'inputs',
+    kind: 'correctness',
+    title: 'An input made unreadable after an edit fails the task or rebuilds it, never replays',
+    why: 'A file the tool cannot read cannot key the task; leaving it out replays the build from before the edit.',
+    from: ['unreadable-input'],
+    workspace: one(reads(['src/**'], 'src/*'), { 'src/a.txt': 'a', 'src/secret.txt': 's' }),
+    steps: [
+      { run: 'build', expect: { exit: 0, files: { [out('a')]: 'as' } } },
+      { write: { 'packages/a/src/secret.txt': 's2' } },
+      { chmod: { 'packages/a/src/secret.txt': 0o000 } },
+      { run: 'build', expect: { exit: 0, orRefused: true, files: { [out('a')]: 'as2' } } },
+      { chmod: { 'packages/a/src/secret.txt': 0o644 } },
+    ],
+  }),
+]
+
+export default cases

@@ -445,7 +445,8 @@ directory. Only a plugin that cannot tell selects everything, as
 upstream, and the edge that named them went with it, so today's graph
 cannot say who they are. A `vx.config` the base had in a directory that
 is no project now selects every project, naming that file as the
-reason. A dependency a plugin's `discover` drops without deleting a
+reason. A project that moved is no deletion: its config, the same bytes
+in its new directory, selects only it, by its files. A dependency a plugin's `discover` drops without deleting a
 project is the plugin's to claim (`VxPlugin.fingerprint`, as the
 lockfile plugins do).
 

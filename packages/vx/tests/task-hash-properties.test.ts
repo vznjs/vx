@@ -15,9 +15,9 @@
 //     moves the key, and `exec.remote`, upstream order, the memo and a
 //     structurally equal clone do not.
 //
-// Not claimed: config key ORDER. The config folds as `JSON.stringify`, so
-// writing `cache` before `exec` (or reordering a glob list) is one false
-// miss; item 983 declined sorting it for the warm-path cost.
+// Not claimed: the order of a glob list. Config keys are sorted
+// (`keysSorted`), and so are the env name lists, which are sets; a glob
+// list is not one (a `!` entry's place can matter).
 
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
@@ -451,6 +451,32 @@ describe('computeTaskHash over random resolved configs', () => {
       // Forward args reach only a task the run asked for.
       if (!c.requested) expect(await key({ ...c, forward: [...c.forward, 'x'] })).toBe(base)
     }
+  })
+
+  it('the order of inputs.env and exec.env.passThrough names keeps the key', async () => {
+    // Both are sets of names: the values are read by name, so listing
+    // `['C', 'A']` for `['A', 'C']` reran the task (conformance
+    // env/declared-order-irrelevant).
+    let shuffled = 0
+    for (const { c, r } of draws(0x0e4d, 40)) {
+      const env = shuffle(r, ['VX_KEYPROP_A', 'VX_KEYPROP_B', 'VX_KEYPROP_C'])
+      const pass = shuffle(r, ['P1', 'P2', 'P3'])
+      const withEnv = (e: string[], p: string[]): Case => ({
+        ...c,
+        cfg: {
+          ...c.cfg,
+          inputs: { ...c.cfg.inputs!, env: e },
+          exec: { ...c.cfg.exec!, env: { ...c.cfg.exec!.env, passThrough: p } },
+        },
+      })
+      const base = await key(withEnv(env, pass))
+      const e2 = [...env].reverse()
+      const p2 = [...pass].reverse()
+      expect(await key(withEnv(e2, p2))).toBe(base)
+      expect(await key(withEnv(env, p2))).toBe(base)
+      shuffled++
+    }
+    expect(shuffled).toBe(40)
   })
 
   it('package.json bytes no glob names never move the key: core keys no package file', async () => {

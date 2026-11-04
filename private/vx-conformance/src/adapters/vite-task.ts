@@ -15,9 +15,9 @@ export const viteTask: Adapter = {
   name: 'vite-task',
   pkg: 'vite-plus',
   bins: ['vp'],
-  // `vp run` selects by package, never by a git change; dependsOn names
-  // tasks exactly; a task has no time limit, no retries, and is never a
-  // long-running process the run stops.
+  // `vp run` selects by package, never by a git change, and takes one task;
+  // dependsOn names tasks exactly; a task has no time limit, no retries, and
+  // is never a long-running process the run stops.
   lacks: [
     'affected',
     'task-pattern',
@@ -26,6 +26,7 @@ export const viteTask: Adapter = {
     'persistent',
     'ready',
     'runtime-inputs',
+    'multi-task',
   ],
   env: { NO_COLOR: '1', DO_NOT_TRACK: '1', VITE_PLUS_TELEMETRY_DISABLED: '1' },
   // Vite Task installs the workspace's `packageManager` from the registry

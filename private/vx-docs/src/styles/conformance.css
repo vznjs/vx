@@ -173,12 +173,50 @@
 }
 
 .vx-landing .cfm-cat {
-  margin-top: 48px;
+  margin-top: 8px;
   scroll-margin-top: 80px;
+}
+.vx-landing .cfm-cat > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 16px;
+  cursor: pointer;
+  list-style: none;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line, rgba(127, 127, 127, 0.25));
+}
+.vx-landing .cfm-cat > summary::-webkit-details-marker {
+  display: none;
+}
+.vx-landing .cfm-cat > summary::before {
+  content: '▸';
+  color: var(--phosphor);
+  transition: transform 0.15s;
+}
+.vx-landing .cfm-cat[open] > summary::before {
+  transform: rotate(90deg);
+}
+.vx-landing .cfm-cat > summary:focus-visible {
+  outline: 2px solid var(--phosphor);
+  outline-offset: 2px;
 }
 .vx-landing .cfm-cat h3 {
   font: var(--fw-semibold) 22px / 1.2 var(--font-display);
-  margin-bottom: 14px;
+  margin: 0;
+}
+.vx-landing .cfm-cat-count {
+  opacity: 0.7;
+}
+.vx-landing .cfm-cat-scores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-left: auto;
+  font-size: 14px;
+}
+.vx-landing .cfm-cat[open] > .cfm-cases {
+  margin-top: 14px;
 }
 .vx-landing .cfm-cases {
   table-layout: fixed;

@@ -519,9 +519,23 @@ function hashableConfig(cfg: TaskConfig): unknown {
   // Keys sorted: moving `cache` above `exec`, or a `define` in another
   // order, missed every key of the task, and a `project` or `graph` plugin
   // writes a config the lock never sorted (2026-10-25).
-  if (cfg.exec?.remote === undefined) return keysSorted(cfg)
-  const { remote: _remote, ...execRest } = cfg.exec
-  return keysSorted({ ...cfg, exec: execRest })
+  const env = cfg.inputs?.env
+  const pass = cfg.exec?.env?.passThrough
+  if (cfg.exec?.remote === undefined && sortedNames(env) && sortedNames(pass))
+    return keysSorted(cfg)
+  const { remote: _remote, ...execRest } = cfg.exec ?? ({} as NonNullable<TaskConfig['exec']>)
+  // Env names are sets: each value is read by its name, so their order
+  // keys nothing (conformance env/declared-order-irrelevant).
+  if (!sortedNames(pass)) execRest.env = { ...execRest.env, passThrough: [...pass!].sort() }
+  const out: TaskConfig = cfg.exec === undefined ? { ...cfg } : { ...cfg, exec: execRest }
+  if (!sortedNames(env)) out.inputs = { ...cfg.inputs!, env: [...env!].sort() }
+  return keysSorted(out)
+}
+
+function sortedNames(names: readonly string[] | undefined): boolean {
+  if (names === undefined) return true
+  for (let i = 1; i < names.length; i++) if (names[i - 1]! > names[i]!) return false
+  return true
 }
 
 /**

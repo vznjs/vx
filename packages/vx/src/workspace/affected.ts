@@ -539,6 +539,8 @@ export async function affectedChanges(
     // A config the base had in a directory that is no project now: the
     // project is gone, and with it the edge naming who depended on it,
     // while their keys lost an upstream. Today's graph cannot say who.
+    // A config that moved, the same bytes under a new project, is no
+    // loss: its files select it where it lives.
     const gone = await removedProjectConfig(args.workspaceRoot, atBase, projects)
     if (gone !== undefined) return everything(gone)
     for (const name of parentsOfNewNested(args.workspaceRoot, atBase, projects)) {
@@ -639,12 +641,20 @@ async function removedProjectConfig(
   projects: readonly ProjectMeta[],
 ): Promise<string | undefined> {
   const dirs = new Set(projects.map((p) => p.dir.normalize('NFC')))
+  let added: Uint8Array[] | undefined
   for (const [rel, bytes] of atBase) {
     // A manifest's directory may never have been a project; a config's was.
     if (bytes === null || !CONFIG_NAMES.has(path.posix.basename(rel))) continue
     const dir = path.resolve(workspaceRoot, path.posix.dirname(rel)).normalize('NFC')
     if (dirs.has(dir)) continue
     if (await Bun.file(path.join(workspaceRoot, rel)).exists()) continue
+    // Each config the base lacked, read once, only when one went.
+    added ??= await Promise.all(
+      [...atBase]
+        .filter(([r, b]) => b === null && CONFIG_NAMES.has(path.posix.basename(r)))
+        .map(([r]) => bytesOrNull(path.join(workspaceRoot, r))),
+    ).then((all) => all.filter((b): b is Uint8Array => b !== null))
+    if (added!.some((b) => Buffer.from(b).equals(bytes))) continue
     return rel
   }
   return undefined

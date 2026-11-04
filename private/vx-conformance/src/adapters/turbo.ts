@@ -62,6 +62,7 @@ export const turbo: Adapter = {
     'node_modules/.bin/turbo',
     'run',
     task,
+    ...(opts.also ?? []),
     '--ui=stream',
     '--summarize',
     ...(opts.select ? opts.select.map(pnpmFilter) : (projects ?? [])).map((f) => `--filter=${f}`),

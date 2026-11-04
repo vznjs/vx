@@ -20,7 +20,7 @@ dependencies and their tasks: a `sh` command, `dependsOn` (`^build`,
 root-level ones, `env` names, `runtime` commands, `cache: false`,
 `timeout`, `retries`, `persistent`. Its steps write, delete, chmod and
 link files, run `sh`, install, commit, change the config, check the tree,
-and run a task: in some projects, by selectors, from a directory, with
+and run a task (or several): in some projects, by selectors, from a directory, with
 args, a concurrency limit, or a signal sent mid-run. Each run says what
 must hold:
 
@@ -67,7 +67,8 @@ mean the same thing, the adapter uses the one its docs teach:
   (`^build-inputs`, Nx's `^production` idiom). The report is the cache's
   `run.json`.
 - **Vite Task**: `run.tasks` in each project's vite.config.ts. It selects
-  by package only, so `affected` cases are not applicable to it. The report
+  by package only and runs one task per run, so `affected` and several-task
+  cases are not applicable to it. The report
   is `vp run --last-details`.
 - **vx**: a vx.config.mjs per project, `bun()` for the edges, `vx lock`.
   The report is `vx last --format json`.

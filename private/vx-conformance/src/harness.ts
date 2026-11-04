@@ -86,7 +86,16 @@ async function writeWorkspace(root: string, ws: WorkspaceSpec): Promise<void> {
         ...(rootProject ? { version: '0.0.0' } : {}),
         private: true,
         packageManager: `bun@${Bun.version}`,
-        workspaces: members.map(([n, p]) => projectDir(n, p)),
+        // A workspaces entry is a glob: a directory named with glob syntax (`[lib]`) is
+        // reached as a user reaches it, by its parent's `*`.
+        workspaces: [
+          ...new Set(
+            members.map(([n, p]) => {
+              const dir = projectDir(n, p)
+              return /[[*?{]/.test(dir) ? `${path.dirname(dir)}/*` : dir
+            }),
+          ),
+        ],
         ...(rootProject?.[1].deps
           ? {
               dependencies: Object.fromEntries(rootProject[1].deps.map((d) => [d, 'workspace:*'])),
@@ -353,6 +362,7 @@ async function play(c: Case, adapter: Adapter, root: string): Promise<Outcome> {
     const tool = (
       'run' in step
         ? adapter.run(step.run, step.projects, {
+            ...(step.also ? { also: step.also } : {}),
             ...(step.select ? { select: step.select } : {}),
             ...(step.only ? { only: true } : {}),
             ...(step.args ? { args: step.args } : {}),
@@ -380,7 +390,14 @@ async function play(c: Case, adapter: Adapter, root: string): Promise<Outcome> {
             root,
             cwd,
             argv,
-            { ...adapter.env, ...('env' in step ? step.env : {}) },
+            {
+              ...adapter.env,
+              ...('env' in step && step.env
+                ? Object.fromEntries(
+                    Object.entries(step.env).map(([k, v]) => [k, v.replaceAll('$ROOT', root)]),
+                  )
+                : {}),
+            },
             step.expect.within === undefined ? undefined : step.expect.within * 1000,
           )
         : { exit: 1, out: refused }
