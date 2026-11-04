@@ -44,6 +44,7 @@ export function localExecutor(): TaskExecutor {
         ...(req.liveChildren !== undefined ? { liveChildren: req.liveChildren } : {}),
         ...(req.onSpawn !== undefined ? { onSpawn: req.onSpawn } : {}),
         ...(req.timeoutMs !== undefined ? { timeoutMs: req.timeoutMs } : {}),
+        ...(req.signal !== undefined ? { signal: req.signal } : {}),
       }
       if (req.sandbox === undefined) {
         const res = await runCommand(req.terminal === true ? { ...common, terminal: true } : common)
@@ -56,7 +57,6 @@ export function localExecutor(): TaskExecutor {
         reportWithin: req.sandbox.reportWithin,
         reportLinked: req.sandbox.reportLinked,
         config: req.sandbox.config,
-        ...(req.signal !== undefined ? { signal: req.signal } : {}),
       })
     },
   }

@@ -2011,3 +2011,28 @@ describe('lineEnds — one stream never writes into the other’s open line', ()
     }
   })
 })
+
+// The spawn is awaited off the thread, so a stop can land between the
+// child's start and its entry in the live set: the stop swept a set
+// without it, and the command ran out its full length, the run waiting on
+// it with the flush and every teardown (plugin-teardown, CI 2026-11-04).
+describe('a stop that lands while the spawn is awaited', () => {
+  it('still stops the command', async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), 'vx-late-stop-'))
+    try {
+      const stop = new AbortController()
+      stop.abort('SIGINT')
+      const t0 = Date.now()
+      const r = await runCommand({
+        command: 'sleep 30',
+        cwd,
+        env: { PATH: process.env.PATH ?? '' },
+        liveChildren: new Set(),
+        signal: stop.signal,
+      })
+      expect([r.signal, Date.now() - t0 < 10_000]).toEqual(['SIGINT', true])
+    } finally {
+      await rm(cwd, { recursive: true, force: true })
+    }
+  }, 20_000)
+})
