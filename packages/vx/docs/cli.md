@@ -1494,7 +1494,8 @@ watch events within 2000 ms; polling every 250 ms instead`.
    the cycle when nothing else changed. The `watching` line is said
    once: a cycle that re-reads the watched set (a member came or went,
    the lock or a plugin changed) says nothing more; `VX_DEBUG_WATCH=1`
-   says each arm on stderr as `vx watch: armed N projects`. A plugin's
+   says each arm on stderr as `vx watch: armed N projects (M watches)`,
+   M the OS watches (or pollers) open. A plugin's
    warning is said once a cycle, by the cycle's run: the watch's own
    reads of the configs say none. Errors and refusals go to stderr. The
    orchestrator is invoked again with the same options, save one: the

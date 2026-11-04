@@ -256,6 +256,15 @@ git checkout packages`) was no event to its own arm, nor to the
      change there (`heldDirs`): its own arm judges what is in it, and a
      task's write at its top level started a second cycle on macOS
      (`tests/watch-project-dir-write.test.ts`).
+   - On macOS the one stream serves these arms, and the import arms,
+     for every directory under the root by its real path (`inStream`):
+     Bun runs ONE FSEvents stream for all of a process's `fs.watch`
+     calls and rebuilds it, from "now", on each watch opened or closed,
+     so what lands meanwhile is lost to every watch and a close proves
+     nothing after it. A re-arm that swapped `apps/`'s arms lost `apps/`
+     made again, and every edit after it (macOS CI, 2026-11-04). Under
+     `VX_DEBUG_WATCH` each arm line says its watch count, and on macOS
+     it holds still across a removal and a restore.
    - Filter out `node_modules` / `.git` / `.vx/cache` path segments,
      `.vx/tmp` (restore staging), the `~` suffix (editor swap files), the RESOLVED
      cache directory (a relocated `cache.dir` would otherwise re-trigger
