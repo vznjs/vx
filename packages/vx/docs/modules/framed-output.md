@@ -73,8 +73,8 @@ export function formatListHeader(colors?): string
 // the results list under its header, as a Block: the run's Tasks panel body and `vx last`'s
 export function taskList(rows: ((colors) => string)[]): ui.Block
 // a row history kept (`RecordedRow`: status, time, cpu, mem, outputs, blocks, placement),
-// drawn as the run drew it, `note` dim after the id
-export function formatRecordedRow(r: RecordedRow, colors?, note?): string
+// drawn as the run drew it, `note` dim after the id, `±usual` against `usualMs` (history's now)
+export function formatRecordedRow(r: RecordedRow, colors?, note?, usualMs?): string
 // `--dry`'s list: the running list's header, a `PlannedRow` per task (glyph, words, usual, worker)
 export function planList(rows: PlannedRow[]): ui.Block
 // a usual time: `~5.2s`, `~42s`, `~2m 05s`

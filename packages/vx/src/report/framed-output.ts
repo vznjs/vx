@@ -517,11 +517,15 @@ export interface RecordedRow {
   blocks: number | null
 }
 
-/** A recorded task's row, as the run printed it; `note` (dim) after its id. */
+/**
+ * A recorded task's row, as the run printed it; `note` (dim) after its id.
+ * `usualMs` is the task's usual time now, from history (`null`: never timed).
+ */
 export function formatRecordedRow(
   r: RecordedRow,
   colors: ColorSupport = NO_COLOR,
   note = '',
+  usualMs?: number | null,
 ): string {
   // The row functions read a node's names and whether it declared a cache.
   const node = {
@@ -548,7 +552,7 @@ export function formatRecordedRow(
         ? formatTaskAbortedLine(node, o, colors, blocks)
         : isCacheHit(o.status)
           ? formatTaskHitLine(node, o, colors, false, blocks)
-          : formatTaskExecutedLine(node, o, colors, false, blocks)
+          : formatTaskExecutedLine(node, o, colors, false, blocks, usualMs)
   return note === '' ? row : `${row}  ${paint('muted', note, colors)}`
 }
 

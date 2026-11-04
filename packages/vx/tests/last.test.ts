@@ -132,6 +132,18 @@ describe('vx last (e2e)', () => {
   )
 
   it(
+    "an executed row's ±usual reads the task's usual time history holds now",
+    async () => {
+      const list = await vx(root, ['last', '--list', '--format', 'json'])
+      const first = (JSON.parse(list.out) as Array<{ runId: string }>).at(-1)!.runId
+      const r = await vx(root, ['last', first])
+      // One timed run: its usual is its own time, so the cell is a zero delta.
+      expect(r.out).toMatch(/ \S+ +[+−]\d\S* success miss .* app#build$/m)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'replays the latest run: header + per-task line, no re-execution',
     async () => {
       const r = await vx(root, ['last'])
@@ -638,6 +650,26 @@ describe('formatTaskRows', () => {
     [1_000_000, '16m 40s'],
   ])('formats %dms as %s', (ms, want) => {
     expect(L(formatTaskRows([row('t', { durationMs: ms })]))[1]).toContain(want)
+  })
+
+  it('±usual reads the usual time history holds now; never timed is —, a hit blank', () => {
+    const usual = new Map([['p#slow', 1000]])
+    const [, slow, fresh, hitRow] = L(
+      formatTaskRows(
+        [
+          row('slow', { durationMs: 3000 }),
+          row('fresh', { durationMs: 5 }),
+          row('h', { status: 'cache-hit', cacheHit: true, restored: true }),
+        ],
+        new Map(),
+        usual,
+      ),
+    )
+    expect(slow).toMatch(/ +3\.00s +\+2\.00s success /)
+    expect(fresh).toMatch(/ +5ms +— success /)
+    expect(hitRow).toMatch(/ +5ms +success /)
+    // CONTROL: with no history read, the cell stays blank, as before.
+    expect(L(formatTaskRows([row('slow', { durationMs: 3000 })]))[1]).toMatch(/ +3\.00s +success /)
   })
 
   it('a zero-duration task reports no cpu ratio rather than NaN', () => {

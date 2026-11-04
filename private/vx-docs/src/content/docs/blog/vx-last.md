@@ -21,9 +21,9 @@ $ vx last --failed
 
 ─ Tasks 8 ────────────────────────────────────────────────────
       time  ±usual status  cache      cpu    mem outputs  blocks worker       task
- ◼︎    14ms         failed  miss       60%      —               0 local        packages/b#test  exit 1
- ⏺︎    16ms         success miss       50%      —     2KB       1 local        packages/b#build
- ⏺︎    10ms         success miss       90%      —               0 local        packages/c#test
+ ◼︎    14ms       — failed  miss       60%      —               0 local        packages/b#test  exit 1
+ ⏺︎    16ms    +0ms success miss       50%      —     2KB       1 local        packages/b#build
+ ⏺︎    10ms    +0ms success miss       90%      —               0 local        packages/c#test
  ►     3ms         success fresh                      0B       1 local        packages/c#build
  ►     0ms         success fresh                      0B       0 local        packages/d#test
  ►     0ms         success fresh                      0B       0 local        packages/a#test
