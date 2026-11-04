@@ -109,6 +109,9 @@ export interface VxHistoryOptions {
 // hint needs less and reads a 2.5× smaller slice of the run history.
 const DEFAULT_WINDOW = 20
 
+/** The longest ref a history server takes in a query (its PROTOCOL.md). */
+const REF_MAX = 512
+
 // Each option is read in ONE place that a run's hooks and `vx history`
 // share: two copies of each let either drift unseen (item 805).
 const windowOf = (options: VxHistoryOptions): number =>
@@ -445,14 +448,22 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
       // branch it merges into, the default branch (`baseBranch`). `main`
       // was assumed, so a `master` or `baseBranch: 'trunk'` repository
       // read no trunk's numbers; a run with none asks nothing.
-      const refs = ctx.refs
+      // A ref the server cannot name was a 400 for the whole query, and
+      // the run read no ref's numbers, its base branch's too.
+      const refs = [...new Set(ctx.refs)].filter((ref) => {
+        if (ref.length <= REF_MAX) return true
+        ctx.warn(
+          `[vx] vx-history: ${ref} is ${ref.length} characters, over the ${REF_MAX} a history server takes: the run does not read it`,
+        )
+        return false
+      })
       if (remote !== undefined && refs.length > 0) {
         const server = remote
         let late = false
         stopImport = () => (late = true)
         const weights = (async () => {
           const hashes = [...new Set(ids.flatMap((id) => defs.get(id) ?? []))]
-          const got = await server.query([...new Set(refs)], hashes)
+          const got = await server.query(refs, hashes)
           const timings = new Map<string, number>()
           const needs = new Map<string, TaskResources>()
           for (const id of ids) {

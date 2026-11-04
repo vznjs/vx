@@ -47,6 +47,8 @@ for its tasks' numbers, by task definition, in the refs the run reads,
 as a remote cache does: its branch's, the branch it merges into, then
 the default branch's (`baseBranch`, else git's or the CI's). A run
 that reads no ref (a detached HEAD with no default branch) asks nothing.
+A ref over the 512 characters a server takes is said and not read;
+the run reads the others.
 The run starts on its local history and re-ranks the tasks not yet
 started when they land; it never waits for them. At its end it sends the
 timings of the tasks it ran, once: under DTE that is the orchestrator,
