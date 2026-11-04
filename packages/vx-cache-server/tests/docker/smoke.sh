@@ -17,7 +17,7 @@ export VX_CACHE_S3_PORT="$s3_port"
 # The issuer serves its keys and a bucket, and writes the ALLOW that names it.
 bun tests/docker/issuer.ts >tests/docker/.allow &
 issuer=$!
-trap 'kill $issuer 2>/dev/null; docker rm -f "${name:-}" >/dev/null 2>&1; docker rmi -f "$tag" >/dev/null 2>&1; rm -f tests/docker/.allow' EXIT
+trap 'kill $issuer 2>/dev/null || true; docker rm -f "${name:-}" >/dev/null 2>&1 || true; docker rmi -f "$tag" >/dev/null 2>&1 || true; rm -f tests/docker/.allow' EXIT
 for _ in $(seq 50); do [ -s tests/docker/.allow ] && break; sleep 0.1; done
 name=$(docker run -d --network host -e ALLOW="$(cat tests/docker/.allow)" -e AUDIENCE="$VX_CACHE_SMOKE" \
   -e S3_BUCKET=b -e S3_ENDPOINT="http://127.0.0.1:$s3_port" -e S3_ACCESS_KEY_ID=a -e S3_SECRET_ACCESS_KEY=s \
