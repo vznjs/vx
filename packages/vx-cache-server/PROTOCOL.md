@@ -66,6 +66,8 @@ alone decides what it reads and where it writes, by the server's
   `pipeline_source`: a fork's merge request, and a child pipeline of one,
   runs in the parent project with the fork's branch as its `ref_path`. A
   `merge_request_event` pipeline must name its source project (GitLab 19.5+).
+- A ref over 512 characters percent-encoded writes nothing (a write is
+  `403`): no read could name its scope (§ Keys).
 
 A bad token is `401`. A server with `ALLOW` empty does not start; a
 Worker, which cannot refuse to, refuses every request: `401`,
