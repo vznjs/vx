@@ -7,6 +7,7 @@
 @vzn/vx-cache-server ALLOW
 @vzn/vx-cache-server AUDIENCE
 @vzn/vx-cache-server BLOBS
+@vzn/vx-cache-server EXPIRY_DAYS
 @vzn/vx-cache-server MAX_CHECK_HASHES
 @vzn/vx-cache-server MAX_UPLOAD_BYTES
 @vzn/vx-cache-server READ_ACCESS

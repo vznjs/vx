@@ -109,10 +109,20 @@ subrequests a request, and `MAX_UPLOAD_BYTES` your plan's request body.
 The server lowers neither. A download is read through the data center's cache: an
 artifact never changes, so after R2 serves it once, that data center
 answers it without R2 (free on every plan). Whether R2 holds an
-artifact (a check, a `HEAD`, an upload's skip) is asked of R2 alone: the
-data center's copy can outlive R2's, and a writer told "held" there
-would skip an upload another data center then cannot read. An upload
-drops the copy in the data center it reaches: R2 had let those bytes go.
+artifact (a check, a `HEAD`, an upload's skip) is asked of R2, never
+of that copy: it can outlive R2's, and a writer told "held" there would
+skip an upload another data center then cannot read. An upload drops
+the copy in the data center it reaches: R2 had let those bytes go.
+
+Set `EXPIRY_DAYS` to the bucket's lifecycle rule (below) and R2's
+"held" is kept in the data center's cache too: an upload, R2's
+answer to a lookup, or a download R2 serves marks the artifact held,
+in the background, until the rule may drop it, counted from its upload. A repeat check or `HEAD` in that data center then
+skips R2. Only "held" is kept: a miss always asks R2, so a later
+upload is never hidden. Unset, every lookup asks R2. A larger value
+than the rule is wrong: a mark would outlive the artifact. After
+deleting artifacts by hand, a mark may still say "held" for up to
+`EXPIRY_DAYS`; vx then misses the download and runs the task.
 
 ## Expiry
 
