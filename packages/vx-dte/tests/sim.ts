@@ -414,10 +414,12 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
   // Ready roots, then events until every task ended.
   // Roots first, then each: a root that ends at once readies its dependants itself.
   for (const id of graph.filter((t) => waiting.get(t.id) === 0).map((t) => t.id)) ready(id)
+  // One pass an event, as the run pumps once a message: a plan starts or
+  // lets workers go, and none it starts joins at once, so a second pass
+  // placed nothing and was a quarter of a 10 000-task sim (2026-11-05).
   const step = (): void => {
     dispatch()
     replan()
-    dispatch()
   }
   step()
   for (let guard = 0; done.size < graph.length; guard++) {
