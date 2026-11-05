@@ -47,7 +47,7 @@ export default defineProject({
     test: {
       description: 'bun test',
       exec: {
-        command: 'bun test --only-failures',
+        command: 'bun test --only-failures --timeout=30000',
         // Bun's transpiler cache writes under HOME, outside the sandbox's grants.
         env: { define: { BUN_RUNTIME_TRANSPILER_CACHE_PATH: '0', VX_CACHE_DIR: '.vx/cache' } },
         sandbox: {

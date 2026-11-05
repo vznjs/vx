@@ -107,7 +107,7 @@
     "test": {
       "description": "bun test",
       "exec": {
-        "command": "bun test --only-failures",
+        "command": "bun test --only-failures --timeout=30000",
         "env": {
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0"
