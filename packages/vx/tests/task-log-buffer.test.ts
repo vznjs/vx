@@ -2,6 +2,7 @@
 // budget with failed-tails prioritized over success, cache-hit drop, and
 // the drain ordering (failures first).
 
+import { cpuClock } from './helpers/cpu-clock.js'
 import { describe, expect, it } from 'bun:test'
 import {
   LOG_WIRE_VERSION,
@@ -431,12 +432,12 @@ describe('TaskLogBuffer — exact edges (C-43)', () => {
     // onRecord, which must return promptly. Linear, they take ~50 ms.
     const buf = new TaskLogBuffer()
     const line = 'x'.repeat(200)
-    const t0 = performance.now()
+    const cpu = cpuClock()
     for (let i = 0; i < 30_000; i++) {
       buf.append(`p#${i}`, line)
       buf.finish(`p#${i}`, i % 100 === 0 ? 'failed' : 'success', 'miss')
     }
-    expect(performance.now() - t0).toBeLessThan(2_000)
+    expect(cpu()).toBeLessThan(2_000)
     expect(buf.budgetUsed()).toBeLessThanOrEqual(RUN_LOG_BUDGET_CHARS)
     // The failures, the newest successes and nothing else keep their content.
     const kept = buf.drain('r', 'ws').tasks.filter((t) => t.content.length > 0)

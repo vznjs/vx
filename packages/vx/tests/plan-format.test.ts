@@ -1,3 +1,4 @@
+import { cpuClock } from './helpers/cpu-clock.js'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
@@ -58,10 +59,12 @@ describe('formatPlanText', () => {
     const tasks = Array.from({ length: n }, (_, i) =>
       task(`a#t${i}`, 'miss', 'dddddddd44444444', i === 0 ? [] : [`a#t${i - 1}`]),
     )
+    const cpu = cpuClock()
     const out = formatPlanText({ tasks })
+    expect(cpu()).toBeLessThan(5_000)
     expect(out).toMatch(/ 19999 local +a#t0\n/)
     expect(out).toMatch(/ 0 local +a#t19999\n/)
-  }, 5_000)
+  })
 
   it('remote hits the remote sized say what restoring them downloads', () => {
     const out = formatPlanText({
