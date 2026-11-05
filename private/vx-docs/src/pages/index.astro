@@ -131,9 +131,8 @@ const plugins = [
   { pkg: 'vx-reapi', title: 'Bazel remote cache and execution', line: 'For a Bazel REAPI server you already run: NativeLink, BuildBuddy.' },
 ]
 
-// Where vx differs from both, each cell as the choosing page's model says it
-// (src/components/demos/model/choosing.ts, checked against each tool's own
-// docs): yes, no, or only as a paid cloud service.
+// Where vx differs from both, each cell checked against each tool's own docs:
+// yes, no, or only as a paid cloud service.
 type Edge = { kind: 'yes' | 'no' | 'paid'; text: string }
 const edges: { trait: string; vx: Edge; turbo: Edge; nx: Edge }[] = [
   {

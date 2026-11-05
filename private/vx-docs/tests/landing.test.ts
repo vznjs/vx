@@ -359,7 +359,7 @@ describe('the landing page', () => {
     expect(wins.map((m) => text(m[1]!))).toEqual(['15', 'MIT', '0'])
   })
 
-  // Where vx differs from both, as the choosing page's model says it.
+  // Where vx differs from both, checked against each tool's own docs.
   it('compares vx, Turborepo and Nx trait by trait', () => {
     const edge = section(html, 'edge')
     const cols = [...edge.matchAll(/<th scope="col"[^>]*>([\s\S]*?)<\/th>/g)].map((m) =>
