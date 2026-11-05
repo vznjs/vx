@@ -433,6 +433,15 @@ function printQuery(db: Database, sql: string, format: 'pretty' | 'json'): numbe
   return 0
 }
 
+/** `text` as JSON, or undefined where it is not. */
+function parsed(text: string): unknown {
+  try {
+    return JSON.parse(text)
+  } catch {
+    return undefined
+  }
+}
+
 /** How long a run has to answer before `--live` gives up on it. */
 const LIVE_ANSWER_MS = 5_000
 
@@ -457,18 +466,36 @@ async function printLive(
   }
   let buffered = ''
   let snapshot: LiveSnapshot | undefined
+  /** The run answered a snapshot this vx cannot read: another vx version's. */
+  let unreadable = false
   let settle!: (answered: boolean) => void
   const done = new Promise<boolean>((resolve) => (settle = resolve))
   const line = (text: string): void => {
+    if (unreadable) return
     if (snapshot === undefined) {
-      snapshot = JSON.parse(text) as LiveSnapshot
+      const s = parsed(text) as Partial<LiveSnapshot> | undefined
+      const l = s?.live
+      if (
+        typeof l?.runId !== 'string' ||
+        typeof l.command !== 'string' ||
+        typeof l.startedAt !== 'number' ||
+        typeof l.elapsedMs !== 'number' ||
+        !Array.isArray(s!.tasks) ||
+        !Array.isArray(s!.warnings)
+      ) {
+        unreadable = true
+        return settle(false)
+      }
+      snapshot = s as LiveSnapshot
       if (format === 'json') ui.data('out', `${text}\n`)
       else ui.print('out', ...formatLive(snapshot))
       return
     }
     if (format === 'json') ui.data('out', `${text}\n`)
     else {
-      const event = formatLiveEvent(JSON.parse(text) as WireEvent)
+      const e = parsed(text)
+      const event =
+        typeof e === 'object' && e !== null ? formatLiveEvent(e as WireEvent) : undefined
       if (event !== undefined) ui.print('out', event)
     }
   }
@@ -503,6 +530,11 @@ async function printLive(
     : setTimeout(() => settle(snapshot !== undefined), LIVE_ANSWER_MS)
   const answered = await done
   clearTimeout(timer)
+  if (unreadable)
+    throw refusal({
+      headline: 'the run in progress answered in a form this vx does not read',
+      fix: 'ask with the vx that started the run',
+    })
   if (!answered) none()
   return 0
 }
