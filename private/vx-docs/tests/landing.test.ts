@@ -13,6 +13,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { FIGURES } from '../src/bench/data.ts'
+import { RESULTS, TOOLS, percent, toolName } from '../src/conformance/data.ts'
 import { CALLOUTS, oneRun } from '../src/components/landing/one-run.js'
 import { narrowOf, type Picture } from '../src/components/guide/diagram/diagram.js'
 
@@ -21,11 +22,12 @@ const BASE = (process.env['BASE_PATH'] ?? '/vx').replace(/\/?$/, '/')
 
 // Every section below the hero, top to bottom.
 const SECTIONS = [
+  'conformance',
+  'servers',
   'agents',
   'plugins',
   'bench',
   'shipping',
-  'edge',
   'try',
   'one-run',
   'pillars',
@@ -359,34 +361,37 @@ describe('the landing page', () => {
     expect(wins.map((m) => text(m[1]!))).toEqual(['15', 'MIT', '0'])
   })
 
-  // Where vx differs from both, checked against each tool's own docs.
-  it('compares vx, Turborepo and Nx trait by trait', () => {
-    const edge = section(html, 'edge')
-    const cols = [...edge.matchAll(/<th scope="col"[^>]*>([\s\S]*?)<\/th>/g)].map((m) =>
-      text(m[1]!),
-    )
-    expect(cols).toEqual(['', 'vx', 'Turborepo', 'Nx'])
-    const rows = [...edge.matchAll(/<tr>\s*<th scope="row">([\s\S]*?)<\/th>([\s\S]*?)<\/tr>/g)]
-    expect(rows.map((m) => text(m[1]!))).toEqual([
-      'A file sandbox for every task',
-      'Remote execution you host',
-      'A remote cache on any backend',
-      'Config is code',
-      'No background daemon',
+  // The first argument after the hero: every tool's score on one suite,
+  // from the site's conformance data, vx first.
+  it('scores every tool on the conformance suite, first after the hero', () => {
+    const cfm = section(html, 'conformance')
+    expect(text(cfm)).toContain(`${RESULTS.cases.length} cases`)
+    expect(text(cfm)).toContain('Every test in vx, Turborepo, Nx and Vite Task')
+    const rows = [...cfm.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/g)].map((m) => m[1]!)
+    const shown = rows.map((r) => [
+      text(/class="score-tool"[^>]*>([\s\S]*?)<\/span>/.exec(r)![1]!),
+      text(/class="score-pct"[^>]*>([\s\S]*?)<\/span>/.exec(r)![1]!),
+      text(/class="score-count"[^>]*>([\s\S]*?)<\/span>/.exec(r)![1]!),
     ])
-    const kinds = rows.map((m) =>
-      [...m[2]!.matchAll(/<td class="(yes|no|paid)" data-tool="([^"]+)"/g)].map(
-        (c) => `${c[2]} ${c[1]}`,
-      ),
+    expect(shown).toEqual(
+      TOOLS.map((t) => {
+        const all = RESULTS.scores[t]!.all!
+        return [toolName(t), percent(all), `${all.pass} / ${all.of}`]
+      }),
     )
-    expect(kinds).toEqual([
-      ['vx yes', 'Turborepo no', 'Nx paid'],
-      ['vx yes', 'Turborepo no', 'Nx paid'],
-      ['vx yes', 'Turborepo no', 'Nx no'],
-      ['vx yes', 'Turborepo no', 'Nx no'],
-      ['vx yes', 'Turborepo yes', 'Nx no'],
-    ])
-    expect(hrefs(edge)).toEqual([`${BASE}conformance/`])
+    expect(shown[0]![0]).toBe('vx')
+    expect(hrefs(cfm)).toEqual([`${BASE}conformance/`])
+    expect(cfm).not.toContain('<table')
+  })
+
+  // DTE, the remote cache and run history: a plugin and the server it talks to.
+  it('shows the self-hosted servers, each a plugin and its server', () => {
+    const servers = section(html, 'servers')
+    expect(hrefs(servers)).toEqual(
+      ['vx-dte', 'vx-cache', 'vx-history'].map((p) => `${BASE}plugins/${p}/`),
+    )
+    for (const p of ['vx-dte', 'vx-cache', 'vx-history'])
+      expect(text(servers)).toContain(`@vzn/${p} + @vzn/${p}-server`)
   })
 
   // Four commands on native config, and Turbo or Nx only as a temporary

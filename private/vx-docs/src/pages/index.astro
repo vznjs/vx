@@ -1,6 +1,7 @@
 ---
 // vx landing page (2026-10-02: vx is its own tool; Turbo and Nx
-// only through migration): the hero with the newest release, what agents
+// only through migration): the hero with the newest release, every tool's
+// conformance score, the servers you host for CI, what agents
 // get, what plugins unlock, the benchmark chart and why it is faster, what shipped lately
 // (2026-10-08: "it should look like we are busy"), how to start, then the one diagram with its six callouts, the four pillars
 // and a strip of the feature pages.
@@ -21,6 +22,7 @@ import { parseDuration, renderBars } from '../plugins/data-charts.ts'
 import { coverShowsTitle, formatDate, posts } from '../blog/posts.js'
 import Cover from '../components/blog/Cover.astro'
 import { FIGURES, fillBench } from '../bench/data.ts'
+import { RESULTS, TOOLS, percent, toolName } from '../conformance/data.ts'
 
 const base = import.meta.env.BASE_URL // '/vx/' on Pages, '/' on a custom domain
 const href = (p: string) => `${base}${p}`
@@ -126,47 +128,39 @@ const plugins = [
   { pkg: 'vx-migrate', title: 'Keep the cache you have', line: 'Keep Turbo’s or Nx’s remote cache while you move to native config.' },
   { pkg: 'vx-otel', title: 'Observability', line: 'Every run and task in any OpenTelemetry backend.' },
   { pkg: 'vx-ci', title: 'CI results on the PR', line: 'GitHub job summary and Checks.' },
-  { pkg: 'vx-history', title: 'Smarter scheduling', line: 'Order by the critical path learned from your run history.' },
   { pkg: 'vx-lockfile', title: 'Precise lockfile keys', line: 'Each task keyed on its own dependency closure: pnpm, bun, npm, yarn.' },
   { pkg: 'vx-reapi', title: 'Bazel remote cache and execution', line: 'For a Bazel REAPI server you already run: NativeLink, BuildBuddy.' },
 ]
 
-// Where vx differs from both, each cell checked against each tool's own docs:
-// yes, no, or only as a paid cloud service.
-type Edge = { kind: 'yes' | 'no' | 'paid'; text: string }
-const edges: { trait: string; vx: Edge; turbo: Edge; nx: Edge }[] = [
+// Conformance, the first argument after the hero: every tool's score on
+// one neutral suite, rounded down so only a clean sweep reads 100%.
+const conformance = TOOLS.map((t) => {
+  const all = RESULTS.scores[t]!.all!
+  return { tool: t, name: toolName(t), pass: all.pass, of: all.of, pct: percent(all), width: (all.pass / all.of) * 100 }
+})
+const caseCount = RESULTS.cases.length
+
+// The servers you host for CI: each a plugin plus the server it talks to.
+const servers = [
   {
-    trait: 'A file sandbox for every task',
-    vx: { kind: 'yes', text: 'Local and free, Linux and macOS' },
-    turbo: { kind: 'no', text: 'None' },
-    nx: { kind: 'paid', text: 'Nx Cloud add-on' },
+    pkg: 'vx-dte',
+    server: 'vx-dte-server',
+    title: 'Distributed task execution',
+    line: 'One run spread over the workers your own CI starts, through a relay that stores nothing.',
   },
   {
-    trait: 'Remote execution you host',
-    vx: { kind: 'yes', text: 'Your own CI’s workers (DTE), or a REAPI pool' },
-    turbo: { kind: 'no', text: 'None' },
-    nx: { kind: 'paid', text: 'Nx Agents on Nx Cloud' },
+    pkg: 'vx-cache',
+    server: 'vx-cache-server',
+    title: 'Remote cache',
+    line: 'CI writes and everyone reads, from one bucket on Bun, Docker with S3, or Workers with R2.',
   },
   {
-    trait: 'A remote cache on any backend',
-    vx: { kind: 'yes', text: 'REAPI, Turborepo’s or Nx’s wire, by plugin' },
-    turbo: { kind: 'no', text: 'Its own HTTP API' },
-    nx: { kind: 'no', text: 'Nx Cloud or its own API' },
-  },
-  {
-    trait: 'Config is code',
-    vx: { kind: 'yes', text: 'TypeScript, evaluated and hashed' },
-    turbo: { kind: 'no', text: 'JSON' },
-    nx: { kind: 'no', text: 'JSON, merged with inferred tasks' },
-  },
-  {
-    trait: 'No background daemon',
-    vx: { kind: 'yes', text: 'None' },
-    turbo: { kind: 'yes', text: 'None for turbo run' },
-    nx: { kind: 'no', text: 'On by default' },
+    pkg: 'vx-history',
+    server: 'vx-history-server',
+    title: 'Shared run history',
+    line: 'Task timings from every CI run, so each run starts the critical path first.',
   },
 ]
-const mark = { yes: '✓', no: '✕', paid: '$' }
 
 // Why the overhead stays low: three reasons, one short sentence each.
 const reasons = [
@@ -258,6 +252,56 @@ vx run build         # again: up-to-date, from the cache`
             width="760"
             alt="vx run ci --all on the starter: cold, three tasks run; again, three up-to-date."
           />
+        </div>
+      </section>
+
+      <section class="section" id="conformance">
+        <div class="container">
+          <div class="section-head">
+            <p class="vx-kicker">// {caseCount} cases · {TOOLS.length} tools · one neutral suite</p>
+            <h2>Correct, case by case.</h2>
+          </div>
+          <p class="sub">Every test in vx, Turborepo, Nx and Vite Task, parsed into one suite: each case runs sandboxed against each tool and counts only outcomes.</p>
+          <ol class="score-board">
+            {
+              conformance.map((c) => (
+                <li class:list={{ vx: c.tool === 'vx' }}>
+                  <span class="score-tool">{c.name}</span>
+                  <span class="score-bar" aria-hidden="true">
+                    <span style={`width: ${c.width.toFixed(1)}%`} />
+                  </span>
+                  <span class="score-pct">{c.pct}</span>
+                  <span class="score-count">
+                    {c.pass} / {c.of}
+                  </span>
+                </li>
+              ))
+            }
+          </ol>
+          <div class="section-links">
+            <a class="section-link" href={href('conformance/')}>Every case, every tool <span class="arr">→</span></a>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="servers">
+        <div class="container">
+          <div class="section-head">
+            <p class="vx-kicker">// your ci, your servers</p>
+            <h2>Distributed runs, a shared cache, shared history. Self-hosted.</h2>
+          </div>
+          <p class="sub">Each is a plugin and a server you deploy on Bun, Docker or Cloudflare Workers, with no account and no paid tier.</p>
+          <div class="plugin-grid server-grid">
+            {
+              servers.map((p) => (
+                <a class="plugin-card server-card" href={href(`plugins/${p.pkg}/`)}>
+                  <h3>{p.title}</h3>
+                  <code class="plugin-pkg">@vzn/{p.pkg} + @vzn/{p.server}</code>
+                  <p>{p.line}</p>
+                </a>
+              ))
+            }
+          </div>
         </div>
       </section>
 
@@ -399,51 +443,6 @@ vx run build         # again: up-to-date, from the cache`
                 </a>
               ))
             }
-          </div>
-        </div>
-      </section>
-
-      <section class="section" id="edge">
-        <div class="container">
-          <div class="section-head">
-            <p class="vx-kicker">// vx vs Turborepo vs Nx</p>
-            <h2>Built in, free, on your own machines.</h2>
-          </div>
-          <table class="edge-table">
-            <thead>
-              <tr>
-                <th scope="col"></th>
-                <th scope="col" class="vx">vx</th>
-                <th scope="col">Turborepo</th>
-                <th scope="col">Nx</th>
-              </tr>
-            </thead>
-            <tbody>
-              {
-                edges.map((e) => (
-                  <tr>
-                    <th scope="row">{e.trait}</th>
-                    {(
-                      [
-                        ['vx', e.vx],
-                        ['Turborepo', e.turbo],
-                        ['Nx', e.nx],
-                      ] as const
-                    ).map(([tool, c]) => (
-                      <td class={c.kind} data-tool={tool}>
-                        <span class="mark" aria-hidden="true">
-                          {mark[c.kind]}
-                        </span>
-                        {c.text}
-                      </td>
-                    ))}
-                  </tr>
-                ))
-              }
-            </tbody>
-          </table>
-          <div class="section-links">
-            <a class="section-link" href={href('conformance/')}>Where each tool passes and fails, case by case <span class="arr">→</span></a>
           </div>
         </div>
       </section>
