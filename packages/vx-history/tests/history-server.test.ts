@@ -325,6 +325,25 @@ describe('HistoryServer', () => {
     expect(refused.asked).toEqual(['403'])
   })
 
+  // A 200 that is not JSON (a proxy's page) threw the parser's own words.
+  it("says GitHub's OIDC endpoint sent no token when its answer is not JSON", async () => {
+    const fake = (async (input: string | URL) => {
+      const u = new URL(String(input))
+      if (u.hostname === 'oidc.example') return new Response('<html>busy</html>')
+      if (u.pathname === '/v1/capabilities')
+        return Response.json({ maxUploadTimings: 10, maxQueryHashes: 10 })
+      return new Response(null, { status: 204 })
+    }) as typeof fetch
+    const env = {
+      ACTIONS_ID_TOKEN_REQUEST_URL: 'https://oidc.example/token',
+      ACTIONS_ID_TOKEN_REQUEST_TOKEN: 't',
+    }
+    const client = new HistoryServer('https://h.example', NAMED, env, fake)
+    await expect(client.upload(new Map([['a', { durationMs: 1 }]]))).rejects.toThrow(
+      "GitHub's OIDC endpoint: no token",
+    )
+  })
+
   // One 503 from the server's edge at the run's end lost every timing the
   // run measured. A 500 is the server's own failure, maybe after the fold:
   // sent again, a run would count twice.
