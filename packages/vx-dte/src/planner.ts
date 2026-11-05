@@ -572,9 +572,9 @@ class Ends {
 /** What `play` reads of `tasks` alone, for each play of one plan. */
 interface Shape {
   readonly byId: { get(id: string): PlanTask | undefined }
-  /** Each task's dependants, by their place in the tasks. */
+  /** Each running task's dependants, by their place in the tasks. */
   readonly after: ReadonlyMap<string, readonly number[]>
-  /** The same by each task's place, and its place by id: a lookup by id at each end was most of a play. */
+  /** Each task's dependants by its place, and its place by id: a lookup by id at each end was most of a play. */
   readonly afterAt: readonly (readonly number[] | undefined)[]
   readonly indexOf: ReadonlyMap<string, number>
   /** How many dependencies each task, by its place, waits on before the play begins. */
@@ -596,22 +596,30 @@ function shapeOf(tasks: readonly PlanTask[], running: ReadonlySet<string>): Shap
   // 10 000-task plan's shape a third of its time (2026-11-05).
   const indexOf = new Map<string, number>()
   for (let i = 0; i < tasks.length; i++) indexOf.set(tasks[i]!.id, i)
+  // Of a running task only, by id: one in the work is by its place.
   const after = new Map<string, number[]>()
+  const afterAt: (number[] | undefined)[] = Array.from({ length: tasks.length })
   const waitedAt = new Int32Array(tasks.length)
-  tasks.forEach((t, i) => {
+  for (let i = 0; i < tasks.length; i++) {
     let n = 0
-    for (const d of t.deps)
-      if (indexOf.has(d) || running.has(d)) {
+    for (const d of tasks[i]!.deps) {
+      const j = indexOf.get(d)
+      // Pushed, not copied: copying made one install under 9000 tasks
+      // 40 million copies a play (2026-10-25).
+      if (j !== undefined) {
         n++
-        // Pushed, not copied: copying made one install under 9000 tasks
-        // 40 million copies a play (2026-10-25).
+        const at = afterAt[j]
+        if (at === undefined) afterAt[j] = [i]
+        else at.push(i)
+      } else if (running.has(d)) {
+        n++
         const at = after.get(d)
         if (at === undefined) after.set(d, [i])
         else at.push(i)
       }
+    }
     waitedAt[i] = n
-  })
-  const afterAt = tasks.map((t) => after.get(t.id))
+  }
   const tail = new Float64Array(tasks.length).fill(-1)
   const tailAt = (i: number): number => {
     if (tail[i]! >= 0) return tail[i]!
