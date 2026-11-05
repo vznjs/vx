@@ -22,14 +22,12 @@ import '../../styles/conformance.css'
 const README = 'https://github.com/vznjs/vx/blob/main/private/vx-conformance/README.md'
 // Categories split the cases, so each case counts in one row only.
 const GROUPS = ['all', ...CATEGORIES]
-const { coverage, cases, scores, tools } = RESULTS
+const { cases, scores, tools } = RESULTS
 const differ = cases.filter((c) => !agree(c)).length
 const sections = CATEGORIES.map((id) => ({
   id,
   cases: cases.filter((c) => c.category === id),
 }))
-const verdicts = Object.keys(coverage.verdicts)
-const total = coverage.ported + verdicts.reduce((n, v) => n + (coverage.rest[v]?.length ?? 0), 0)
 const MARK = { pass: '✓', fail: '✗', 'n/a': '–' } as const
 const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'not applicable' } as const
 ---
@@ -51,6 +49,9 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'not applicable' } as const
         <p class="lede">
           Only outcomes count: which commands ran, the files left on disk, the exit code, and the
           data each tool reports about a run.
+        </p>
+        <p class="lede">
+          The cases come from parsing every test in vx, Turbo and Nx. Vite Task's tests are next.
         </p>
         <ul class="chips" aria-label="Tool versions">
           {
@@ -208,41 +209,6 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'not applicable' } as const
             </details>
           ))
         }
-      </div>
-    </section>
-
-    <section class="cfm-section" id="coverage">
-      <div class="container">
-        <h2>Coverage</h2>
-        <p class="cfm-sub">
-          Each case is drawn from vx's own tests. {coverage.ported} of its {total} test files feed
-          a case; the rest are sorted by why.
-        </p>
-        <ul class="cfm-coverage">
-          <li data-verdict="ported">
-            <span class="cfm-n">{coverage.ported}</span>
-            <span class="cfm-v">ported</span>
-            <span class="cfm-line">a case carries it</span>
-          </li>
-          {
-            verdicts.map((v) => (
-              <li data-verdict={v}>
-                <span class="cfm-n">{coverage.rest[v]?.length ?? 0}</span>
-                <span class="cfm-v">{v}</span>
-                <span class="cfm-line">{coverage.verdicts[v]}</span>
-                {(coverage.rest[v]?.length ?? 0) > 0 && (
-                  <details>
-                    <summary>Files</summary>
-                    <p class="cfm-files">{coverage.rest[v]!.join(' · ')}</p>
-                  </details>
-                )}
-              </li>
-            ))
-          }
-        </ul>
-        <p class="cfm-sub">
-          The method, the adapters and how to run a case: <a href={README}>the suite's README</a>.
-        </p>
       </div>
     </section>
   </div>
