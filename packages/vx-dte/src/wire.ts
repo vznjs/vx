@@ -346,7 +346,12 @@ export async function join(
           t.ahead.delete(t.upTo)
           if (next !== BEAT) out.push({ from, body: next })
         }
-        owe(from)
+        // A beat comes only from a worker quiet `QUIET_BEATS`: half a
+        // heartbeat more would leave it 2 s of `LOST_BEATS` for a stall.
+        if (role === 'orchestrator') {
+          owing.delete(from)
+          put(from, { acked: t.upTo } satisfies Acked).catch(() => undefined)
+        } else owe(from)
       } else if (isNumbered(body)) {
         if (body.acked !== undefined) settle(from, body.acked)
         let t = taken.get(from)
