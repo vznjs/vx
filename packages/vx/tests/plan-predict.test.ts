@@ -23,6 +23,7 @@
 // nothing" and "same policy as the run" can only be proven against the real
 // executor.
 
+import { cpuClock } from './helpers/cpu-clock.js'
 import { rm } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
@@ -1068,9 +1069,9 @@ it('plans a server behind 60,000 restorable tasks in linear time', async () => {
   serve.requested = false
   serve.config.exec = { command: 'serve', persistent: true }
   const restorable = new Set(specs.slice(1).map((s) => s.id))
-  const started = performance.now()
+  const cpu = cpuClock()
   const p = await planUnit({ nodes, cache: stubCache(() => 'local').layer, restorable })
-  const ms = performance.now() - started
+  const ms = cpu()
   expect(statusById(p)['p#serve']).toBe('not-started')
   expect(ms).toBeLessThan(5_000)
 }, 60_000)

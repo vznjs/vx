@@ -28,6 +28,7 @@
 // one, and `util` really is forced by tests/module-boundaries.test.ts, which
 // allows `exec: ['util', 'config']` and no path from `exec` to `orchestrator`.
 
+import { cpuClock } from './helpers/cpu-clock.js'
 import { describe, expect, it } from 'bun:test'
 import {
   appendTail,
@@ -48,9 +49,6 @@ import {
   resetTail as resetViaBarrel,
   tailText as tailTextViaBarrel,
 } from '../src/util/index.js'
-
-// CI runners are ~3× slower and noisier; the one perf guard below scales.
-const PERF_SCALE = Number(process.env.VX_PERF_SCALE ?? (process.env.CI === 'true' ? '3' : '1'))
 
 /** Deterministic PRNG so a fuzz failure reproduces exactly from its seed. */
 function rng(seed: number): () => number {
@@ -780,14 +778,14 @@ describe('call-site contracts', () => {
   // ~15ms, i.e. shift is amortised O(1) here. A rewrite to `chunks.slice(1)`
   // or a per-append `join`/concat is O(n) per append and blows this budget by
   // orders of magnitude, which is the regression worth catching; the bound is
-  // deliberately ~100× the measurement so it can never flake on load.
+  // ~100× the measurement, timed in CPU so a crowded worker adds nothing.
   it('keeps eviction linear at the shipped cap', () => {
     const t = createTail()
-    const started = Bun.nanoseconds()
+    const cpu = cpuClock()
     for (let i = 0; i < 200_000; i++) appendTail(t, 'x')
-    const ms = (Bun.nanoseconds() - started) / 1e6
+    const ms = cpu()
     expect(t.chars).toBe(PERSISTENT_TAIL_CHARS)
     expect(t.chunks).toHaveLength(PERSISTENT_TAIL_CHARS)
-    expect(ms).toBeLessThan(1500 * PERF_SCALE)
+    expect(ms).toBeLessThan(1500)
   }, 30_000)
 })
