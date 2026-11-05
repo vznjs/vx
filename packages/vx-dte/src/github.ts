@@ -138,9 +138,10 @@ export function github(options: GithubOptions = {}): DteAdapter {
    * else is said. One the spent API limit refused is asked again at its
    * reset, when that comes within `CANCEL_WAIT_MS`.
    */
-  const cancelOf = async (run: string): Promise<void> => {
+  const cancelOf = async (run: string, still: () => boolean = () => true): Promise<void> => {
     const end = Date.now() + CANCEL_WAIT_MS
     for (;;) {
+      if (!still()) return
       const res = await call(`${run}/cancel`, { method: 'POST' }).catch((err: unknown) => {
         failed(`cancelling ${runOf(run)}`, err instanceof Error ? err.message : String(err))
         return undefined
@@ -227,7 +228,9 @@ export function github(options: GithubOptions = {}): DteAdapter {
           return
         }
         for (const id of ids) decide(id, false)
-        return cancelOf(run)
+        // Asked again at an API limit's reset, it stops once the run took
+        // one of them after all (`kept`).
+        return cancelOf(run, () => ids.every((id) => cancelled.has(id)))
       })
       .finally(() => pending.delete(p))
     pending.add(p)
@@ -472,6 +475,11 @@ export function github(options: GithubOptions = {}): DteAdapter {
       for (const id of gone) decide(id, false)
       return Promise.all(left).then((l) => ids.filter((_, i) => l[i]))
     },
+    // One given up as late joined after all: its run is not cancelled.
+    kept(id) {
+      late.delete(id)
+      cancelled.delete(id)
+    },
     // A finished run answers 409; one still queued or running is the
     // run's no more: its results are in, or the run failed without them.
     async close() {
@@ -481,7 +489,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
       await Promise.all(pending)
       for (const id of [...deciding.keys()]) decide(id, false)
       // A cancel that fails leaves the run to its timeout, and says so.
-      await Promise.all(runs.splice(0).map(cancelOf))
+      await Promise.all(runs.splice(0).map((run) => cancelOf(run)))
     },
   }
 }
