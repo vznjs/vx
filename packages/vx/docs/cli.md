@@ -267,7 +267,8 @@ even though no plugin links `e2e` to `app`. There is no
 `implicitDependencies` field: declare the dependency on the task.
 
 A filter that names no project (`...`, a bare `!`, an empty `{}`) is
-refused, and so is a path that climbs out of the root (`../`, `{..}`).
+refused, and so is a path that climbs out of the root (`../`, `{..}`)
+or one holding a control character.
 One whose pattern matched but selected nothing says what it matched:
 `no projects selected: filter "...^core" matched core, and no
 project depends on it`.

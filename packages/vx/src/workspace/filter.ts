@@ -22,7 +22,7 @@
 // given, the base set is "all projects" and excluded packages are removed.
 
 import path from 'node:path'
-import { BUN_GLOB_WILDCARDS, relPosix, UserError } from '../util/index.js'
+import { BUN_GLOB_WILDCARDS, hasControl, printable, relPosix, UserError } from '../util/index.js'
 import type { PackageGraph } from './package-graph.js'
 import { canonicalDir } from './canonical-dir.js'
 import type { ProjectMeta } from './workspace.js'
@@ -76,6 +76,13 @@ export function parseFilter(
   /** The filter as typed, when `raw` is the `./` reading of a name (`dirFallback`). */
   typed = raw,
 ): ParsedFilter {
+  // No project name, path or git ref holds one; echoed raw, a newline split
+  // the refusal in two and an escape painted the terminal.
+  if (hasControl(raw)) {
+    throw new UserError(
+      `filter "${printable(raw)}" holds a control character: no project name, path or git ref does`,
+    )
+  }
   let s = raw
   const negate = s.startsWith('!')
   if (negate) s = s.slice(1)
