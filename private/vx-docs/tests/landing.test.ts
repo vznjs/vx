@@ -375,7 +375,7 @@ describe('the landing page', () => {
     ])
     expect(shown).toEqual(
       TOOLS.map((t) => {
-        const all = RESULTS.scores[t]!.all
+        const all = RESULTS.scores[t]!.all!
         return [toolName(t), percent(all), `${all.pass} / ${all.of}`]
       }),
     )
