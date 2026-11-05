@@ -11,10 +11,15 @@ sandbox violations). Core's own executor, `localExecutor`, is the same
 
 ## Public surface
 
-- `TaskExecutor { name; remote?; sandbox?; capacity?; accepts?(task); demand?(remaining, missed); footer?(); machines?(); idealMs?(); profile?(); running?(id); execute(req) }`
+- `TaskExecutor { name; remote?; sandbox?; capacity?; accepts?(task); demand?(remaining, missed); footer?(); machines?(); idealMs?(); advice?(); profile?(); running?(id); execute(req) }`
   — `idealMs()` is the run's end had it placed its tasks perfectly, from
   the run's start, replayed from what each took (the run summary's
   `idealMs`, shown beside the real time)
+  — `advice()` returns the workers that would have run it best, from the
+  same replay, as `WorkerAdvice` (`{ of: 'declared' | 'more' | 'any';
+endMs; workers: { count; cores; memoryBytes; platform?; size? }[] }`):
+  the fewest of the sizes it may start, more than their max when that
+  ends sooner, and one shape of any cores (the run summary's `advice`)
   — `machines()` returns a `MachineReport` per machine it ran tasks on
   (`{ name; status; cores; memoryBytes; done; failed; onlineMs; busyMs;
 cpuPeak; cpuAvg; memoryPeakBytes; memoryAvgBytes; utilization }`), asked

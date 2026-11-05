@@ -888,6 +888,7 @@ const EXECUTOR_HOOKS = [
   'footer',
   'machines',
   'idealMs',
+  'advice',
   'profile',
   'running',
 ] as const

@@ -198,6 +198,9 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
   if (summary.machines !== undefined && summary.machines.length > 0) {
     lines.push(...renderWorkers(summary.machines, summary.tasks), '')
   }
+  if (summary.advice !== undefined && summary.advice.length > 0) {
+    lines.push(...renderAdvice(summary.advice), '')
+  }
 
   const header = ['Task', 'Status', 'Duration']
   lines.push(`| ${header.join(' | ')} |`)
@@ -236,6 +239,36 @@ const tasksCell = (ok: number, failed: number): string =>
   failed > 0 ? `${ok} ok, ${failed} failed` : `${ok}`
 
 const pct = (x: number): string => `${Math.round(x * 100)}%`
+
+/** What each `WorkerAdvice` played. */
+const ADVICE = {
+  declared: 'The fewest of the declared sizes',
+  more: "Past the sizes' max",
+  any: 'Any cores, least core time',
+} as const
+
+/**
+ * The workers that would have run it best (2026-11-05: "So I can add more
+ * or change their specs"): played again from what each task took.
+ */
+function renderAdvice(advice: NonNullable<RunSummaryRecord['advice']>): string[] {
+  const lines = [
+    '### Workers to declare',
+    '',
+    '| Played on | Workers | Ends at |',
+    '| --- | --- | --- |',
+  ]
+  for (const a of advice)
+    lines.push(
+      `| ${ADVICE[a.of]} | ${a.workers
+        .map(
+          (w) =>
+            `${w.count} × ${w.size === undefined ? '' : `${escapeMarkdownCell(escapeInline(w.size))} `}(${w.cores} cores, ${gb(w.memoryBytes)} GB${w.platform === undefined ? '' : `, ${escapeMarkdownCell(escapeInline(w.platform))}`})`,
+        )
+        .join(' + ')} | ${fmtMs(a.endMs)} |`,
+    )
+  return lines
+}
 
 /**
  * The workers an executor ran the run on (vx-dte's): the cores its tasks

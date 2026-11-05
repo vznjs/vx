@@ -748,6 +748,9 @@ machine together, and the share of their history the run's tasks used:
             probe    at 0.4s: 5 tasks left to run, 5 known misses
             asked    1 at 0.5s for 5 tasks (5 measured), plan 12.0s
             ideal    10.8s: each task as long as it took, placed perfectly
+            best     2 × small (4c/14G): 11.4s, the fewest of its sizes
+            more     3 × small (4c/14G): 10.8s, past its sizes' max
+            any      1 × (8c/28G): 10.9s, of any cores, the least core time
             total    cpu utilization 58%
 ```
 
@@ -777,6 +780,17 @@ workers as the sizes allow, each joining after its platform's fastest
 real warm-up. That ideal end (`TaskExecutor.idealMs`) sits beside the
 real time in the run summary and the footer's `ideal` line, and
 `@vzn/vx-ci` prints it.
+
+The same replay says which workers to declare next time
+(`TaskExecutor.advice`), each from an empty run with the plan's own
+rules (the fewest that end it within its margin of the soonest): `best`
+is how many of each size; `more`, shown only when more than a size's
+`max` would end the run sooner past that margin, is how many it would
+take; `any` is one shape for each platform, of 2 to 64 cores (memory a
+core as the platform's sizes have most), the one ending as soon for the
+least core time. Raise a size's `max`, or change its `cpu` and
+`memory`, by them. They are in the footer and the run summary, and
+`@vzn/vx-ci` prints them under "Workers to declare".
 
 ## Environment
 

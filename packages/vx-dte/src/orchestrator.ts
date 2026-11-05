@@ -25,6 +25,7 @@ import {
   type SandboxConfig,
   type TaskArtifacts,
   type TaskNode,
+  type WorkerAdvice,
 } from '@vzn/vx'
 import {
   bytesOf,
@@ -42,7 +43,15 @@ import {
   type ToOrchestrator,
   type WiredResult,
 } from './messages.js'
-import { simulate, type PlanTask, type PlanWorker, type Size, type WarmUp } from './planner.js'
+import {
+  advise,
+  simulate,
+  type Fleets,
+  type PlanTask,
+  type PlanWorker,
+  type Size,
+  type WarmUp,
+} from './planner.js'
 import { Usage, type UsageStats } from './usage.js'
 import { dispatch, type Need } from './dispatch.js'
 import { DEFAULT_STRATEGY, type Strategy } from './strategy.js'
@@ -216,6 +225,15 @@ const BATCH_BYTES = 512 * 1024
 const FEW = 2
 /** The unmeasured tasks the summary names; the rest it counts. */
 const NAMED = 40
+/** The footer's label of each `WorkerAdvice`. */
+const ADVICE: Record<WorkerAdvice['of'], readonly [label: string, note: string]> = {
+  declared: ['best', 'the fewest of its sizes'],
+  more: ['more', "past its sizes' max"],
+  any: ['any', 'of any cores, the least core time'],
+}
+/** `3 × small (4c/16G linux)`. */
+const fleetText = (w: WorkerAdvice['workers'][number]): string =>
+  `${w.count} × ${w.size === undefined ? '' : `${w.size} `}(${w.cores}c/${compact(w.memoryBytes)}${w.platform === undefined ? '' : ` ${w.platform}`})`
 /** Core-time of history the run's tasks finish before their use reshapes bookings: a few tasks' worth. */
 const LEARN_MS = 60_000
 /** The most a worker's bookings may add up to, in its cores, when tasks use less than their history. */
@@ -1925,13 +1943,8 @@ export class Orchestrator {
    * waits on its deps through those no worker ran (groups, hits).
    */
   idealMs(depsOf: (id: string) => readonly string[], sizes: readonly Size[]): number | undefined {
-    if (this.took.size === 0) return undefined
-    const all = [...this.workers.values(), ...this.gone]
-    const warm = new Map<string | undefined, number>()
-    for (const a of all)
-      if (a.warmUpMs !== undefined && !(warm.get(a.platform)! <= a.warmUpMs))
-        warm.set(a.platform, a.warmUpMs)
-    const least = this.warmUpMs() ?? 0
+    const r = this.replay(depsOf)
+    if (r === undefined) return undefined
     const pool: PlanWorker[] = (
       sizes.length > 0
         ? sizes.flatMap((s) =>
@@ -1941,14 +1954,104 @@ export class Orchestrator {
               platform: s.platform,
             })),
           )
-        : all.map((a) => ({ cores: a.cores, memory: a.memory, platform: a.platform }))
+        : [...this.workers.values(), ...this.gone].map((a) => ({
+            cores: a.cores,
+            memory: a.memory,
+            platform: a.platform,
+          }))
     ).map((w, i) => ({
       ...w,
       id: `ideal#${i}`,
-      at: warm.get(w.platform) ?? least,
+      at: r.warm(w.platform),
       running: [],
       idle: false,
     }))
+    const end = simulate(r.tasks, pool)
+    if (!Number.isFinite(end)) return undefined
+    return r.from + end
+  }
+
+  /**
+   * The workers that would have run this run best (`advise`), from the
+   * same replay as `idealMs`: on `sizes`, past their `max`, and of any
+   * cores. With no sizes (workers that join on their own), the shapes
+   * that joined stand for them, as many as joined.
+   */
+  advice(depsOf: (id: string) => readonly string[], sizes: readonly Size[]): WorkerAdvice[] {
+    // The footer and the summary each ask once the run ended: played once.
+    if (this.ended && this.advised !== undefined) return this.advised
+    const out = this.advise(depsOf, sizes)
+    if (this.ended) this.advised = out
+    return out
+  }
+
+  private advised: WorkerAdvice[] | undefined
+
+  private advise(
+    depsOf: (id: string) => readonly string[],
+    sizes: readonly Size[],
+  ): WorkerAdvice[] {
+    const r = this.replay(depsOf)
+    if (r === undefined) return []
+    const shapes: Size[] =
+      sizes.length > 0
+        ? [...sizes]
+        : [
+            ...[...this.workers.values(), ...this.gone]
+              .reduce((by, a) => {
+                const name = `${a.cores}c/${a.platform ?? ''}`
+                const had = by.get(name)
+                by.set(name, {
+                  name,
+                  max: (had?.max ?? 0) + 1,
+                  cpu: a.cores,
+                  memory: a.memory,
+                  platform: a.platform,
+                })
+                return by
+              }, new Map<string, Size>())
+              .values(),
+          ]
+    const a = advise(r.tasks, shapes, r.warm)
+    const wire = (of: WorkerAdvice['of'], f: Fleets | undefined): WorkerAdvice[] =>
+      f === undefined
+        ? []
+        : [
+            {
+              of,
+              endMs: Math.round(r.from + f.endMs),
+              workers: f.fleet.map((w) => ({
+                count: w.count,
+                cores: w.cores,
+                memoryBytes: w.memory,
+                ...(w.platform === undefined ? {} : { platform: w.platform }),
+                ...(w.size === undefined || sizes.length === 0 ? {} : { size: w.size }),
+              })),
+            },
+          ]
+    return [...wire('declared', a.declared), ...wire('more', a.more), ...wire('any', a.any)]
+  }
+
+  /**
+   * Each task a worker ran, as long as it held its worker and with the
+   * cores it used meanwhile, waiting on its deps through those no worker
+   * ran (groups, hits); each platform's fastest real warm-up; and when
+   * the run first knew its work.
+   */
+  private replay(depsOf: (id: string) => readonly string[]):
+    | {
+        tasks: PlanTask[]
+        warm: (platform: string | undefined) => number
+        from: number
+      }
+    | undefined {
+    if (this.took.size === 0) return undefined
+    const all = [...this.workers.values(), ...this.gone]
+    const warm = new Map<string | undefined, number>()
+    for (const a of all)
+      if (a.warmUpMs !== undefined && !(warm.get(a.platform)! <= a.warmUpMs))
+        warm.set(a.platform, a.warmUpMs)
+    const least = this.warmUpMs() ?? 0
     const seen = new Map<string, string[]>()
     const ran = (id: string): string[] => {
       const known = seen.get(id)
@@ -1958,10 +2061,11 @@ export class Orchestrator {
       seen.set(id, out)
       return out
     }
-    const tasks: PlanTask[] = [...this.took].map(([id, t]) => ({ id, ...t, deps: ran(id) }))
-    const end = simulate(tasks, pool)
-    if (!Number.isFinite(end)) return undefined
-    return (this.probe?.at ?? this.asks[0]?.at ?? 0) + end
+    return {
+      tasks: [...this.took].map(([id, t]) => ({ id, ...t, deps: ran(id) })),
+      warm: (platform) => warm.get(platform) ?? least,
+      from: this.probe?.at ?? this.asks[0]?.at ?? 0,
+    }
   }
 
   /**
@@ -2020,7 +2124,10 @@ export class Orchestrator {
    * each, the cores and memory its size declares and its machine reports;
    * and `ideal`, the run's `idealMs`, asked once it ended.
    */
-  footer(ideal?: () => number | undefined): [string, ui.Inline][] {
+  footer(
+    ideal?: () => number | undefined,
+    advice?: () => readonly WorkerAdvice[],
+  ): [string, ui.Inline][] {
     // Over with none, it says so: core's own `N workers` (this machine's
     // pool) read as the run's when no task needed one (2026-10-25).
     if (this.spawnedAt.size === 0 && this.workers.size === 0 && this.gone.length === 0)
@@ -2151,6 +2258,17 @@ export class Orchestrator {
                       ),
                     ] as [string, ui.Inline],
                   ])(ideal?.()),
+            // What to declare next time (2026-11-05: "So I can add more
+            // or change their specs").
+            ...(advice?.() ?? []).map(
+              (a) =>
+                [
+                  '',
+                  ui.dim(
+                    `${ADVICE[a.of][0].padEnd(width)}  ${a.workers.map(fleetText).join(' + ')}: ${seconds(a.endMs)}, ${ADVICE[a.of][1]}`,
+                  ),
+                ] as [string, ui.Inline],
+            ),
             ...(this.unmeasured.length === 0
               ? []
               : [

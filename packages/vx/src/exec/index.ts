@@ -64,6 +64,7 @@ export {
   type ExecuteSandbox,
   type InputFile,
   type MachineReport,
+  type WorkerAdvice,
   type ServerSpec,
   type TaskExecutor,
   type TaskInputs,
