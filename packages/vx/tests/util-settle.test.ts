@@ -468,7 +468,7 @@ describe('teardownTimeoutMs — rejects what Number() silently accepts', () => {
       '1_000',
       '1,000',
       '250 250',
-      '250 ', // NUL — the classic truncate-and-accept vector
+      '250\0', // NUL — the classic truncate-and-accept vector
       '2​50', // zero-width space is NOT whitespace for Number()
       '\ud800', // lone surrogate
       'NaN',
