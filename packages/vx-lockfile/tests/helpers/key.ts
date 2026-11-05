@@ -5,7 +5,7 @@
 import type { KeyHookContext, TaskNode, VxPlugin } from '@vzn/vx'
 
 /** A run's key context over what `vx lock` would record of `plugin`'s files now, for `projectDir`. */
-export function lockedContext(
+function lockedContext(
   plugin: VxPlugin,
   workspaceRoot: string,
   cacheDir: string,
