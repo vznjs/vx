@@ -539,7 +539,7 @@ it('stops trying workers once one like the rest sits idle in its play', () => {
 // by leave some margin. 5% or sth"; "And resource usage". Planned at
 // each task's end, a 1000-task run replayed itself ten thousand times.
 // While what the plan saw holds within 5%, the next is that plan again.
-it('makes the plan again only when reality moves past 5%: time, cores, memory, workers done', () => {
+it('follows the plan, played again only when an event moves past 5%', () => {
   const ids = Array.from({ length: 6 }, (_, i) => `t${i}`)
   const nodes = new Map(
     ids.map((id) => [
@@ -559,7 +559,14 @@ it('makes the plan again only when reality moves past 5%: time, cores, memory, w
   const last: { forecast?: Forecast } = {}
   const at = (
     now: number,
-    o: { ms?: number; cores?: number; memory?: number; endsIn?: number; idle?: boolean } = {},
+    o: {
+      ms?: number
+      cores?: number
+      memory?: number
+      runCores?: number
+      endsIn?: number
+      idle?: boolean
+    } = {},
   ) => {
     const before = plays
     const p = decide({
@@ -570,7 +577,9 @@ it('makes the plan again only when reality moves past 5%: time, cores, memory, w
       durationMs: () => o.ms ?? 10_000,
       workers: [
         counted(
-          o.idle === true ? [] : [{ id: 'r', cores: 1, memory: 1e9, endsIn: o.endsIn ?? 5_000 }],
+          o.idle === true
+            ? []
+            : [{ id: 'r', cores: o.runCores ?? 1, memory: 1e9, endsIn: o.endsIn ?? 5_000 }],
           o.idle,
         ),
       ],
@@ -589,18 +598,18 @@ it('makes the plan again only when reality moves past 5%: time, cores, memory, w
   expect(first).toBe(true)
   // A second on, all as planned: the same plan, a second shorter.
   expect(at(1_000)).toEqual([false, ends - 1_000, []])
-  // Within 5%: times 4% longer, cores and memory 4% more.
-  expect(at(2_000, { ms: 10_400, cores: 1.04, memory: 1.04e9 })[0]).toBe(false)
-  // Past it, each alone plans again.
-  expect(at(3_000, { ms: 12_000 })[0]).toBe(true)
-  expect(at(4_000, { ms: 12_000, cores: 1.2 })[0]).toBe(true)
-  expect(at(5_000, { ms: 12_000, cores: 1.2, memory: 2e9 })[0]).toBe(true)
-  // A running task past its time by 5% of the run's plans again; a moment late does not.
-  expect(at(6_000, { ms: 12_000, cores: 1.2, memory: 2e9, endsIn: -100 })[0]).toBe(false)
-  expect(at(7_000, { ms: 12_000, cores: 1.2, memory: 2e9, endsIn: -20_000 })[0]).toBe(true)
-  // Idle between the tasks the plan gives it: as planned.
-  expect(at(8_000, { ms: 12_000, cores: 1.2, memory: 2e9, idle: true })[0]).toBe(false)
+  // A waiting task's estimate is not read again: what it runs shows it.
+  expect(at(2_000, { ms: 12_000, cores: 1.2, memory: 2e9 })[0]).toBe(false)
+  // A running task's cores within 5%: as planned; past it, played again.
+  expect(at(3_000, { runCores: 1.04 })[0]).toBe(false)
+  expect(at(4_000, { runCores: 1.2 })[0]).toBe(true)
+  // Past its time by 5% of the run's plays again; a moment late does not.
+  expect(at(5_000, { runCores: 1.2, endsIn: -100 })[0]).toBe(false)
+  expect(at(6_000, { runCores: 1.2, endsIn: -20_000 })[0]).toBe(true)
+  expect(at(7_000, { runCores: 1.2, endsIn: -20_000 })[0]).toBe(false)
+  // Ended, idle between the tasks the plan gives it: as planned.
+  expect(at(8_000, { idle: true })[0]).toBe(false)
   // Idle with its planned work done, it goes as the plan foresaw: not played again.
-  const [played, , release] = at(10_000_000, { ms: 12_000, cores: 1.2, memory: 2e9, idle: true })
+  const [played, , release] = at(10_000_000, { idle: true })
   expect([played, release]).toEqual([false, ['w']])
 })

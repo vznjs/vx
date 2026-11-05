@@ -846,6 +846,16 @@ export function decide(input: {
   readonly now?: number
 }): Plan & { readonly tasks: readonly PlanTask[] } {
   const how = input.how ?? DEFAULT_STRATEGY
+  const now = input.now ?? 0
+  const had = input.last?.forecast
+  // Following a plan reads only what events move: the workers, their
+  // joins, each task as it starts and ends. Every task read at each of a
+  // 5000-task run's events made it quadratic (2026-11-05: "Why do we
+  // recheck every task against plan? There is no point").
+  if (how.scale !== 'backlog' && had !== undefined) {
+    const step = follow(had, undefined, input, undefined, now)
+    if (step !== undefined && step !== 'full') return shown(input.last!, had, step, now, had.tasks)
+  }
   const tasks = missedWork(
     input.remaining,
     input.nodes,
@@ -870,21 +880,9 @@ export function decide(input: {
       )
   if (how.scale === 'backlog')
     return { ...backlog(tasks, input.workers, sizes, input.warmUpMs, how), tasks }
-  const now = input.now ?? 0
-  const had = input.last?.forecast
   const step = had === undefined ? undefined : follow(had, tasks, input, sizes, now)
-  if (step !== undefined) {
-    input.last!.forecast = step.next
-    const since = now - had!.at
-    return {
-      start: step.start,
-      release: step.release,
-      endsInMs: Math.max(0, had!.plan.endsInMs - since),
-      boundMs: had!.plan.boundMs - since,
-      againInMs: step.next.later[0] === undefined ? undefined : step.next.later[0].at - now,
-      tasks,
-    }
-  }
+  if (step !== undefined && step !== 'full')
+    return shown(input.last!, had!, { ...step, next: { ...step.next, tasks } }, now, tasks)
   const { freeInMs, later, started, ...p } = plan(
     tasks,
     input.workers,
@@ -929,11 +927,15 @@ export interface Forecast {
     readonly join: number
   }[]
   /** Work it saw that has since been seen running: work that left otherwise moves the plan. */
-  readonly ran: ReadonlySet<string>
-  /** Work it saw waiting with no known time. */
-  readonly unknown: readonly string[]
+  readonly seen: Set<string>
+  /** When each task seen running ends, on the run's clock. */
+  readonly ends: ReadonlyMap<string, number>
+  /** How many tasks the run had handed over. */
+  readonly executed: number
   /** Each size's warm-up as it saw it: a join tells the run's own. */
   readonly warm: readonly number[]
+  /** The work as last read. */
+  readonly tasks: readonly PlanTask[]
   readonly late: ReadonlySet<string>
   readonly queued: string
   readonly final: boolean
@@ -941,7 +943,7 @@ export interface Forecast {
 
 type Seen = Pick<
   Parameters<typeof decide>[0],
-  'workers' | 'queued' | 'final' | 'sizes' | 'warmUpMs'
+  'workers' | 'queued' | 'final' | 'sizes' | 'warmUpMs' | 'executed'
 >
 
 /**
@@ -1006,9 +1008,15 @@ function forecastOf(
       free: now + l.freeInMs,
       join: now + l.inMs + l.joinInMs,
     })),
-    ran: new Set(),
-    unknown: tasks.filter((t) => t.ms === undefined).map((t) => t.id),
+    seen: new Set(),
+    ends: new Map(
+      input.workers.flatMap((w) =>
+        w.running.flatMap((r) => (r.id === undefined ? [] : [[r.id, now + r.endsIn] as const])),
+      ),
+    ),
+    executed: input.executed.size,
     warm: warmsOf(input),
+    tasks,
     late: lateOf(input.workers, slackOf(p)),
     queued: [...(input.queued ?? [])].sort().join('\0'),
     final: input.final,
@@ -1025,51 +1033,89 @@ function forecastOf(
  * boxes to full"; "If simulated all goes with plan so there should be no
  * replans").
  */
+/** The plan `had` made, followed a step: its decisions now, its times less the time since. */
+function shown(
+  last: { forecast?: Forecast },
+  had: Forecast,
+  step: Step,
+  now: number,
+  tasks: readonly PlanTask[],
+): Plan & { readonly tasks: readonly PlanTask[] } {
+  last.forecast = step.next
+  const since = now - had.at
+  return {
+    start: step.start,
+    release: step.release,
+    endsInMs: Math.max(0, had.plan.endsInMs - since),
+    boundMs: had.plan.boundMs - since,
+    againInMs: step.next.later[0] === undefined ? undefined : step.next.later[0].at - now,
+    tasks,
+  }
+}
+
+type Step = { start: Size[]; release: string[]; next: Forecast }
+
+/**
+ * Without `tasks` (and `sizes`), only what events move is read, and a
+ * step that starts or lets a worker go is `full`: read every task first.
+ */
 function follow(
   f: Forecast,
-  tasks: readonly PlanTask[],
+  tasks: readonly PlanTask[] | undefined,
   input: Seen,
-  sizes: readonly Size[],
+  sizes: readonly Size[] | undefined,
   now: number,
-): { start: Size[]; release: string[]; next: Forecast } | undefined {
+): Step | 'full' | undefined {
   if (f.final !== input.final) return undefined
   if ([...(input.queued ?? [])].sort().join('\0') !== f.queued) return undefined
   if (input.workers.length !== f.count) return undefined
   const warm = warmsOf(input)
   for (let i = 0; i < warm.length; i++)
     if (moved(f.warm[i]!, warm[i]!, MARGIN_MS / 5)) return undefined
-  for (const t of tasks) {
-    if (!f.ms.has(t.id)) return undefined
-    const was = f.ms.get(t.id)
-    if (was === undefined || t.ms === undefined) {
-      if (was !== t.ms) return undefined
-    } else if (moved(was, t.ms, MARGIN_MS / 5)) return undefined
-  }
-  // Work that left without running (a hit, or no longer asked) frees
-  // what the plan gave it; one of no known time that ended tells it.
-  const ran = new Set(f.ran)
-  if (tasks.length + ran.size < f.ms.size || f.unknown.length > 0) {
-    const running = new Set<string>()
-    for (const w of input.workers)
-      for (const r of w.running) if (r.id !== undefined) running.add(r.id)
-    const waiting = new Set(tasks.map((t) => t.id))
-    for (const id of f.unknown) if (!waiting.has(id) && !running.has(id)) return undefined
-    for (const id of f.ms.keys()) {
-      if (waiting.has(id) || ran.has(id)) continue
-      if (!running.has(id)) return undefined
-      ran.add(id)
-    }
-  }
-  // As for time, so for resources (2026-11-05: "And resource usage").
-  const off = (id: string | undefined, cores: number, memory: number): boolean => {
-    const was = id === undefined ? undefined : f.need.get(id)
-    return was !== undefined && (moved(was[0], cores, 0.05) || moved(was[1], memory, 64 * 2 ** 20))
-  }
-  for (const t of tasks) if (off(t.id, t.cores, t.memory)) return undefined
-  for (const w of input.workers)
-    for (const r of w.running) if (off(r.id, r.cores, r.memory)) return undefined
   const slack = slackOf(f.plan)
+  // Only what moved since is read: each task as it starts, runs and ends.
+  // A waiting one's time moves with the run's, which those show.
+  const ends = new Map<string, number>()
+  let began = 0
+  for (const w of input.workers)
+    for (const r of w.running) {
+      if (r.id === undefined) continue
+      const was = f.need.get(r.id)
+      // As for time, so for resources (2026-11-05: "And resource usage").
+      if (
+        was !== undefined &&
+        (moved(was[0], r.cores, 0.05) || moved(was[1], r.memory, 64 * 2 ** 20))
+      )
+        return undefined
+      const end = f.ends.get(r.id)
+      if (end !== undefined) {
+        ends.set(r.id, end)
+        continue
+      }
+      // Started since: work the plan saw, as long as it played it.
+      if (!f.ms.has(r.id)) return undefined
+      const ms = f.ms.get(r.id)
+      if (ms !== undefined && r.endsIn > ms + Math.max(MARGIN_MS / 5, ms * MARGIN)) return undefined
+      ends.set(r.id, now + r.endsIn)
+      f.seen.add(r.id)
+      began++
+    }
+  // Ended since: sooner than played moves the plan, and so does one of
+  // no known time ending.
+  for (const [id, at] of f.ends)
+    if (!ends.has(id) && (now < at - slack || (f.ms.has(id) && f.ms.get(id) === undefined)))
+      return undefined
   for (const id of lateOf(input.workers, slack)) if (!f.late.has(id)) return undefined
+  // Handed over more than started: work it did not see, maybe. Read it.
+  if (input.executed.size !== f.executed + began) {
+    if (tasks === undefined) return 'full'
+    for (const t of tasks) if (!f.ms.has(t.id)) return undefined
+    // Work that left without running (a hit, or no longer asked) frees
+    // what the plan gave it.
+    const waiting = new Set(tasks.map((t) => t.id))
+    for (const id of f.ms.keys())
+      if (!waiting.has(id) && !f.seen.has(id) && !ends.has(id)) return undefined
+  }
   const workers = new Set(f.workers)
   const free = new Map(f.free)
   const join = new Map(f.join)
@@ -1107,10 +1153,12 @@ function follow(
   while (later.length > 0 && now >= later[0]!.at) {
     const { size, free: ends, join: joins } = later.shift()!
     // Its size taken up since: the plan no longer fits the run.
+    if (sizes === undefined) return 'full'
     if (!sizes.some((s) => s.name === size.name)) return undefined
     start.push(size)
     fresh.push({ free: ends, join: joins })
   }
+  if (tasks === undefined && release.length > 0) return 'full'
   const next: Forecast = {
     ...f,
     workers,
@@ -1119,7 +1167,8 @@ function follow(
     join,
     fresh,
     later,
-    ran,
+    ends,
+    executed: input.executed.size,
   }
   return { start, release, next }
 }
