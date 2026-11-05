@@ -720,7 +720,7 @@ export function plan(
   const start: Size[] = []
   const frees = free()
   const started: { freeInMs: number; joinInMs: number }[] = []
-  const later: { size: Size; inMs: number; freeInMs: number }[] = []
+  const later: { size: Size; inMs: number; freeInMs: number; joinInMs: number }[] = []
   let againInMs: number | undefined
   for (let i = 0; i < n; i++) {
     const id = added[i]!.id
@@ -1020,16 +1020,6 @@ function forecastOf(
   }
 }
 
-/**
- * The plan `f` made, followed one step on when it still stands: no new
- * work, no task's time, cores or memory moved past 5%, no worker joined
- * or left but as planned, no task ran past its time. Its starts come due
- * and its workers with their work done go, as it foresaw; undefined
- * plays it anew. Planned at every task's end, a run of 1000 tasks
- * replayed itself 10 000 times (2026-11-05: "It's just about filling
- * boxes to full"; "If simulated all goes with plan so there should be no
- * replans").
- */
 /** The plan `had` made, followed a step: its decisions now, its times less the time since. */
 function shown(
   last: { forecast?: Forecast },
@@ -1053,6 +1043,15 @@ function shown(
 type Step = { start: Size[]; release: string[]; next: Forecast }
 
 /**
+ * The plan `f` made, followed one step on when it still stands: no new
+ * work, no task's time, cores or memory moved past 5%, no worker joined
+ * or left but as planned, no task ran past its time. Its starts come due
+ * and its workers with their work done go, as it foresaw; undefined
+ * plays it anew. Planned at every task's end, a run of 1000 tasks
+ * replayed itself 10 000 times (2026-11-05: "It's just about filling
+ * boxes to full"; "If simulated all goes with plan so there should be no
+ * replans").
+ *
  * Without `tasks` (and `sizes`), only what events move is read, and a
  * step that starts or lets a worker go is `full`: read every task first.
  */
