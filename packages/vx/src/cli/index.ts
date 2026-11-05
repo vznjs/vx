@@ -6,6 +6,7 @@ import { checkSettingsEnv } from '../settings.js'
 import { CORE_VERBS, flagHint, printHelp, refuse, refusedWord, seeHelp } from './help.js'
 import {
   errorDocument,
+  hasControl,
   hideEnvFromTasks,
   isFsRefusal,
   isOutOfFds,
@@ -30,6 +31,7 @@ const plugins = () => import('./plugin-commands.js')
 export async function run(argv: readonly string[]): Promise<number> {
   refuseLossyArgs(argv)
   const [command, ...rest] = argv
+  if (command !== undefined) refuseControlArgs(command, rest)
   await hideEnvFromTasks()
 
   // `vx <verb> --help` is the universal reflex, and every verb answered
@@ -67,6 +69,28 @@ function refuseLossyArgs(argv: readonly string[]): void {
   throw new UserError(
     `argument ${at + 1} (${JSON.stringify(argv[at])}) is not valid UTF-8, or holds U+FFFD; vx cannot pass it on byte for byte`,
   )
+}
+
+/**
+ * No core verb's argument holds a control character, and a refusal echoing
+ * one raw broke its headline at a newline. A forwarded one (after `--`) is
+ * the task's, a `--sql` query may span lines, and a plugin verb owns its own.
+ */
+function refuseControlArgs(command: string, rest: readonly string[]): void {
+  if (!(CORE_VERBS as readonly string[]).includes(command)) return
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i]!
+    if (a === '--') return
+    if (a === '--sql') {
+      i++
+      continue
+    }
+    if (a.startsWith('--sql=') || !hasControl(a)) continue
+    throw new UserError(
+      `argument ${i + 2} (${JSON.stringify(a)}) holds a control character, which no \`vx ${command}\` argument takes`,
+      'VX_E_USAGE',
+    )
+  }
 }
 
 /**
