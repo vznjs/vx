@@ -833,7 +833,7 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     absent, planned as this machine's and not checked on join). With no adapter, the sizes' platforms are
     the ones joining workers may have. Only work counts:
     a task that missed the cache, or waits on a cached one that did, and
-    every uncached task, which runs every time; groups and hits need no worker. At each miss, finish and join the run plays
+    every uncached task, which runs every time; groups and hits need no worker. The run plays
     that work out on its workers and on N more (`src/planner.ts`), each new
     one joining after its size's warm-up: this run's first of that size,
     else an earlier run's, else any size's this run, else 20 s,
@@ -843,6 +843,12 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     5 s later.
     That margin is spent once: later plans keep its deadline until new
     work is known. A task waiting on one that runs waits until it ends.
+    Then the run follows that plan: a start it wants later is asked when
+    due, and a worker idle with its planned work done goes. It plays again
+    only when reality leaves the plan: new work, work that leaves without
+    running, a worker that joins, leaves or warms up off plan, a task past
+    its time, one of no known time ending, or a task's time, CPU or memory
+    moved more than 5% (1 s, 0.05 cores, 64 MiB at least).
     What is left, running tasks too, takes as many times its history as
     the run's finished tasks took theirs (once they had 20 s of it; never
     less): a task past its forecast would otherwise be planned to end now,
