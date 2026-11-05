@@ -787,6 +787,8 @@ export function dte(options: DteOptions = {}) {
       }
       if (needsIn === undefined) scheduled = forecast
       else forecast()
+      // Core asks the footer and the summary after teardown: the last run's graph.
+      const depsOf = (id: string): readonly string[] => (nodes ?? ran)?.get(id)?.deps ?? []
       return {
         name: 'dte',
         remote: true,
@@ -818,9 +820,14 @@ export function dte(options: DteOptions = {}) {
           replan()
           return o.execute(req)
         },
-        footer: () => o.footer(() => o.idealMs((id) => (nodes ?? ran)?.get(id)?.deps ?? [], sizes)),
+        footer: () =>
+          o.footer(
+            () => o.idealMs(depsOf, sizes),
+            () => o.advice(depsOf, sizes),
+          ),
         machines: () => o.machines(),
-        idealMs: () => o.idealMs((id) => (nodes ?? ran)?.get(id)?.deps ?? [], sizes),
+        idealMs: () => o.idealMs(depsOf, sizes),
+        advice: () => o.advice(depsOf, sizes),
         profile: () => o.profile(),
         running: (id) => o.where(id),
         demand(remaining, misses) {

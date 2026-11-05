@@ -1737,6 +1737,37 @@ it('replays what each task took on every worker the sizes allow: the ideal end',
   }
 })
 
+// 2026-11-05: "what would be the optimal number and spec of workers for
+// the simulated run, and what would be optimal numbers based on provided
+// specification".
+it('advises the workers that would have run it best, from the same replay', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]))
+  try {
+    const sizes = [{ name: 'small', max: 2, cpu: 4, memory: 1e10 }]
+    expect(h.o.advice(() => [], sizes)).toEqual([])
+    const w = await h.worker(4)
+    await Bun.sleep(50)
+    const runs = [h.o.execute(h.req('t1')), h.o.execute(h.req('t2'))]
+    await w.batches()
+    await Bun.sleep(200)
+    const done = { exitCode: 0, durationMs: 200, cpuMs: 200 }
+    await w.finish('t1', 'k-t1', done)
+    await w.finish('t2', 'k-t2', done)
+    await Promise.all(runs)
+    // Two one-core tasks: one small takes both; of any cores, the least is two.
+    const advice = h.o.advice(() => [], sizes)
+    expect(advice.map((a) => [a.of, a.workers])).toEqual([
+      ['declared', [{ count: 1, cores: 4, memoryBytes: 1e10, size: 'small' }]],
+      ['any', [{ count: 1, cores: 2, memoryBytes: 5e9 }]],
+    ])
+    // Both end as the ideal does: every worker the sizes allow ends it no sooner.
+    const ideal = Math.round(h.o.idealMs(() => [], sizes)!)
+    expect(advice.map((a) => a.endMs)).toEqual([ideal, ideal])
+  } finally {
+    await h.stop()
+  }
+})
+
 // Main 6a7224f: ideal 127.8 s above real 111.0 s. Mac shards ran five
 // side by side at a 0.22 share; the replay kept their crowded length and
 // booked the cores they would use free, so it ran them one at a time.

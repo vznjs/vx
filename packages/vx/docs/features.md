@@ -144,7 +144,7 @@ config key or an environment variable is missing here.
 
 ## CI
 
-- **Results on GitHub** (`@vzn/vx-ci`: `github()`) — the job summary on the workflow page. [page](https://vznjs.github.io/vx/features/github-ci/) · post: [Your run, on GitHub](https://vznjs.github.io/vx/blog/results-on-github/)
+- **Results on GitHub** (`@vzn/vx-ci`: `github()`) — the job summary on the workflow page, with the workers a distributed run says to declare next time. [page](https://vznjs.github.io/vx/features/github-ci/) · post: [Your run, on GitHub](https://vznjs.github.io/vx/blog/results-on-github/)
 - **Cache scope from the ref** (`github({ cacheScope })`) — names the plugin-entry scope: none on main or a merge queue, else `<owner>/<repo>:<branch>`; the PR's base commit is a bare `--affected`'s base. [page](https://vznjs.github.io/vx/features/ref-cache-scope/) · post: [The cache on your terms](https://vznjs.github.io/vx/blog/the-cache-on-your-terms/)
 - **Cache scope on GitLab CI** (`@vzn/vx-ci`: `gitlab({ cacheScope })`) — names the plugin-entry scope: none on the default branch or a merge train, else `<project path>:<branch>`; a bare `--affected` compares a merge request with its diff base, a merged results pipeline with the target head it merged onto, and a merge train car with the car ahead. [page](https://vznjs.github.io/vx/features/ref-cache-scope/) · post: [The cache on your terms](https://vznjs.github.io/vx/blog/the-cache-on-your-terms/)
 - **Sandbox runtime on CI** (`@vzn/vx-ci`: `vx setup github`, `vx setup gitlab`, `--debs`) — one step before vx runs installs bubblewrap, socat, strace and ripgrep, lets bwrap make user namespaces under AppArmor, and proves the sandbox starts; nothing on macOS. [page](https://vznjs.github.io/vx/plugins/vx-ci/)

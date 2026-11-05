@@ -324,6 +324,17 @@ function play(
   let last = Math.max(0, ...ends.map((e) => e[0]))
   // When each platform's last task ends.
   const byPlatform = new Map<string | undefined, number>()
+  // The joined slots, read again once the next one joins.
+  let joined: Slot[] = []
+  let nextJoin = -Infinity
+  // A task that filled a size waits for a bigger one still to join.
+  const later = (above: { cores: number; memory: number }, platform?: string): boolean =>
+    slots.some(
+      (s) =>
+        s.at > now &&
+        (platform === undefined || s.platform === platform) &&
+        (s.cores > above.cores || s.memory > above.memory),
+    )
   for (;;) {
     if (joining.length > 0 || ready.stale) {
       // By the longest chain, those still ready keep their order and the
@@ -341,21 +352,21 @@ function play(
       else ready.reset(order)
       joining = []
     }
-    const joined = slots.filter((s) => s.at <= now)
-    // A task that filled a size waits for a bigger one still to join.
-    const later = (above: { cores: number; memory: number }, platform?: string): boolean =>
-      slots.some(
-        (s) =>
-          s.at > now &&
-          (platform === undefined || s.platform === platform) &&
-          (s.cores > above.cores || s.memory > above.memory),
-      )
-    const to = assign(ready.asks(spent, bounds, needs.size), joined, later, how.place, {
-      floor: (floor ??= floorOf(needs.values())),
-      kinds: needs.size,
-      spent,
-      bounds,
-    })
+    if (now >= nextJoin) {
+      joined = slots.filter((s) => s.at <= now)
+      nextJoin = Infinity
+      for (const s of slots) if (s.at > now) nextJoin = Math.min(nextJoin, s.at)
+    }
+    // With none ready nothing is given: a third of a sim's steps (2026-11-05).
+    const to =
+      readyCount === 0
+        ? NONE
+        : assign(ready.asks(spent, bounds, needs.size), joined, later, how.place, {
+            floor: (floor ??= floorOf(needs.values())),
+            kinds: needs.size,
+            spent,
+            bounds,
+          })
     // `graphene` ranks against the longest chain still ready.
     if (to.size > 0 && how.order === 'graphene') ready.stale = true
     for (const [id, best] of to) {
@@ -403,6 +414,8 @@ function play(
     }
   }
 }
+
+const NONE: ReadonlyMap<string, Slot> = new Map()
 
 /** What `play` reads of `tasks` alone, for each play of one plan. */
 interface Shape {
@@ -465,6 +478,28 @@ function kindsOf(tasks: readonly PlanTask[]): Kinds {
   return { at: new Map(tasks.map((t, i) => [t.id, i])), kindAt: tasks.map(kindOf) }
 }
 
+/** Two workers a play cannot tell apart, but by their place. */
+const twins = (a: PlanWorker, b: PlanWorker): boolean =>
+  a.cores === b.cores && a.memory === b.memory && a.platform === b.platform && a.at === b.at
+
+/** A worker of `s` that joins `at`. */
+function fresh(
+  s: { cpu: number; memory: number; platform?: string | undefined; size?: string | undefined },
+  id: string,
+  at: number,
+): PlanWorker {
+  return {
+    id,
+    cores: s.cpu,
+    memory: s.memory,
+    platform: s.platform,
+    ...(s.size === undefined ? {} : { size: s.size }),
+    at,
+    running: [],
+    idle: false,
+  }
+}
+
 /**
  * The workers to start and to let go. The fewest new ones (`candidates`,
  * in the order the run would start them, each joining after its size's `warmUpMs`)
@@ -488,26 +523,24 @@ export function plan(
   how: Strategy = DEFAULT_STRATEGY,
 ): Plan {
   const warm = warmOf(warmUpMs)
-  const fresh = (
-    s: { cpu: number; memory: number; platform?: string | undefined; size?: string | undefined },
-    id: string,
-    at: number,
-  ): PlanWorker => ({
-    id,
-    cores: s.cpu,
-    memory: s.memory,
-    platform: s.platform,
-    ...(s.size === undefined ? {} : { size: s.size }),
-    at,
-    running: [],
-    idle: false,
-  })
   const added = candidates.map((s, i) => fresh({ ...s, size: s.name }, `\0new${i}`, warm(s.name)))
   const ends: number[] = []
   for (let n = 0; n <= candidates.length; n++) {
-    ends.push(simulate(tasks, [...workers, ...added.slice(0, n)], how))
+    const played = play(tasks, [...workers, ...added.slice(0, n)], how)
+    ends.push(played.end)
     // Past the plan's own length more cannot end it sooner.
     if (n > 0 && ends[n] === ends[n - 1] && ends[n]! <= added[n - 1]!.at) break
+    // One the play gave nothing gets nothing beside a twin either: a task
+    // breaks a tie for the first. So none of its twins after it ends the
+    // run sooner; each play of them cost a sim of 150 tasks 4 s
+    // (2026-11-05).
+    const last = added[n - 1]
+    if (
+      last !== undefined &&
+      !played.first.has(last.id) &&
+      added.slice(n).every((a) => twins(a, last))
+    )
+      break
   }
   const best = Math.min(...ends)
   // Margin spent at each decision adds up: releases 4 s apart each lost
@@ -1025,28 +1058,46 @@ class Ready {
       }
       return
     }
-    const at = new Map<string, number>()
+    // Arrays, not the maps: the scan below is most of a sim's time (2026-11-05).
+    const ks: string[] = []
+    const qs: (readonly number[])[] = []
+    for (const [k, q] of this.kinds) {
+      ks.push(k)
+      qs.push(q)
+    }
+    const at = new Int32Array(ks.length).fill(-1)
     let cursor = -1
     for (;;) {
       let next = -1
-      let nextKind = ''
-      for (const [k, q] of this.kinds) {
+      let nextAt = -1
+      for (let x = 0; x < ks.length; x++) {
+        const k = ks[x]!
         if (spent.has(k)) continue
-        let p = at.get(k) ?? this.headOf(k, q)
+        const q = qs[x]!
+        let p = at[x]! === -1 ? this.headOf(k, q) : at[x]!
         if (p < q.length && cursor !== -1 && !this.before(cursor, q[p]!))
           p = this.after(q, p, cursor)
         while (p < q.length && this.taken[q[p]!] === 1) p++
-        at.set(k, p)
-        if (p < q.length && (next === -1 || this.before(q[p]!, next))) {
+        at[x] = p
+        if (p === q.length) continue
+        // A kind no bin fits or holds for is spent here, as `assign` would
+        // spend it once read: yielded, each cost a sim of 300 tasks a
+        // pass over the bins (2026-11-05). Bounds only shrink until a
+        // bin is given, which clears `spent`.
+        if (bounds !== undefined && dead(this.tasks[q[p]!]!, bounds)) {
+          spent.add(k)
+          continue
+        }
+        if (next === -1 || this.before(q[p]!, next)) {
           next = q[p]!
-          nextKind = k
+          nextAt = x
         }
       }
       if (next === -1) return
-      at.set(nextKind, at.get(nextKind)! + 1)
+      at[nextAt]!++
       cursor = next
       const t = this.tasks[next]!
-      yield { id: t.id, need: t, kind: nextKind }
+      yield { id: t.id, need: t, kind: ks[nextAt]! }
     }
   }
 
@@ -1080,4 +1131,188 @@ function floorOf(needs: Iterable<{ cores: number; memory: number }>): {
     memory = Math.min(memory, n.memory)
   }
   return { cores, memory }
+}
+
+/** Workers of one shape. */
+export interface Fleet {
+  readonly count: number
+  readonly cores: number
+  readonly memory: number
+  readonly platform?: string | undefined
+  /** The declared size, when it is one. */
+  readonly size?: string | undefined
+}
+
+/** Workers that end `tasks` soonest, and when. */
+export interface Fleets {
+  readonly fleet: readonly Fleet[]
+  readonly endMs: number
+}
+
+/**
+ * What would have run `tasks` best, played from an empty run (`advise`):
+ * on the declared sizes, how many of each; past their `max`, how many it
+ * would take; and of any cores, the shape that ends as soon for the
+ * least core time.
+ */
+export interface Advice {
+  readonly declared?: Fleets | undefined
+  /** Only when more than the sizes' `max` end it past the margin sooner. */
+  readonly more?: Fleets | undefined
+  readonly any?: Fleets | undefined
+}
+
+/** The cores a shape of `Advice.any` may have. */
+const SHAPES = [2, 4, 8, 16, 32, 64]
+/** Memory a core of a shape has when nothing declares any: as GitHub's larger runners. */
+const MEMORY_PER_CORE = 4 * 2 ** 30
+
+/**
+ * The run's workers, judged after it: `tasks` as each took, played from
+ * nothing on the fewest of `sizes`, in the order the live plan starts
+ * them (`candidates`), that end within its margin of all of them; again
+ * with each size's `max` lifted; and on one shape a platform of any
+ * cores. Each worker joins after its platform's `warm` warm-up.
+ */
+export function advise(
+  tasks: readonly PlanTask[],
+  sizes: readonly Size[],
+  warm: (platform: string | undefined) => number,
+  how: Strategy = DEFAULT_STRATEGY,
+): Advice {
+  if (tasks.length === 0) return {}
+  const perPlatform = new Map<string | undefined, number>()
+  for (const t of tasks) perPlatform.set(t.platform, (perPlatform.get(t.platform) ?? 0) + 1)
+  const wants = new Map(
+    [...perPlatform].flatMap(([p, n]) => (p === undefined ? [] : [[p, n] as const])),
+  )
+  const atOf = (s: Size): number => warm(s.platform)
+  const fleetOf = (kept: readonly PlanWorker[], of: readonly Size[]): Fleet[] => {
+    const by = new Map<string, number>()
+    for (const k of kept) if (k.size !== undefined) by.set(k.size, (by.get(k.size) ?? 0) + 1)
+    return of.flatMap((s) => {
+      const count = by.get(s.name) ?? 0
+      return count === 0
+        ? []
+        : [{ count, cores: s.cpu, memory: s.memory, platform: s.platform, size: s.name }]
+    })
+  }
+  const byName = (w: readonly Size[]) => (size: string | undefined) =>
+    atOf(w.find((s) => s.name === size)!)
+  // More workers than run at once end it no sooner: of `cores` on a
+  // platform, at most twice its work over the longest chain, a task each
+  // at most. Without the cap 1000 tasks played 1000 workers (70 s).
+  const chain = longestMs(tasks)
+  const work = new Map<string | undefined, number>()
+  for (const t of tasks)
+    work.set(t.platform, (work.get(t.platform) ?? 0) + t.cores * (t.ms ?? UNKNOWN_MS))
+  const capOf = (cores: number, platform: string | undefined): number => {
+    let w = 0
+    let n = 0
+    for (const [p, c] of perPlatform)
+      if (platform === undefined || p === platform) {
+        w += work.get(p) ?? 0
+        n += c
+      }
+    return Math.min(n, 2 * Math.ceil(w / cores / Math.max(1, chain)) + 1)
+  }
+  /** The fewest of `of`, each up to its `max`, ending within the margin of all of them: halving. */
+  const halved = (of: readonly Size[]): { fleets: Fleets; kept: PlanWorker[] } | undefined => {
+    const at = byName(of)
+    const all = candidates(of, new Map(), [], Infinity, wants).map((s, i) =>
+      fresh({ ...s, size: s.name }, `\0advice${i}`, at(s.name)),
+    )
+    const best = simulate(tasks, all, how)
+    if (!Number.isFinite(best)) return undefined
+    const bound = best + Math.max(MARGIN_MS, best * MARGIN)
+    let lo = 1
+    let hi = all.length
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1
+      if (simulate(tasks, all.slice(0, mid), how) <= bound) hi = mid
+      else lo = mid + 1
+    }
+    const kept = all.slice(0, lo)
+    return { fleets: { fleet: fleetOf(kept, of), endMs: simulate(tasks, kept, how) }, kept }
+  }
+  const declared = sizes.length === 0 ? undefined : halved(sizes)?.fleets
+  const lifted = sizes.map((s) => ({ ...s, max: Math.max(s.max, capOf(s.cpu, s.platform)) }))
+  const wider = lifted.some((s, i) => s.max > sizes[i]!.max) ? halved(lifted)?.fleets : undefined
+  const more =
+    wider !== undefined &&
+    declared !== undefined &&
+    wider.endMs + Math.max(MARGIN_MS, declared.endMs * MARGIN) < declared.endMs
+      ? wider
+      : undefined
+  // Of any cores: each platform's memory a core as its sizes have most.
+  const ratio = new Map<string | undefined, number>()
+  for (const s of sizes)
+    ratio.set(s.platform, Math.max(ratio.get(s.platform) ?? 0, s.memory / s.cpu))
+  const most = new Map<string | undefined, number>()
+  for (const t of tasks) most.set(t.platform, Math.max(most.get(t.platform) ?? 0, t.memory))
+  const tried: { fleets: Fleets; coreMs: number; workers: number }[] = []
+  for (const cores of SHAPES) {
+    const shapes: Size[] = [...perPlatform.keys()].map((platform) => ({
+      name: `${cores}#${platform ?? ''}`,
+      max: capOf(cores, platform),
+      cpu: cores,
+      memory: Math.max(
+        cores * (ratio.get(platform) ?? ratio.get(undefined) ?? MEMORY_PER_CORE),
+        most.get(platform) ?? 0,
+      ),
+      platform,
+    }))
+    const got = halved(shapes)
+    if (got === undefined) continue
+    let coreMs = 0
+    for (const k of got.kept) coreMs += k.cores * Math.max(0, got.fleets.endMs - k.at)
+    tried.push({ fleets: got.fleets, coreMs, workers: got.kept.length })
+  }
+  let any: Fleets | undefined
+  if (tried.length > 0) {
+    const soonest = Math.min(...tried.map((t) => t.fleets.endMs))
+    const bound = soonest + Math.max(MARGIN_MS, soonest * MARGIN)
+    let cheapest: (typeof tried)[number] | undefined
+    for (const t of tried)
+      if (
+        t.fleets.endMs <= bound &&
+        (cheapest === undefined ||
+          t.coreMs < cheapest.coreMs ||
+          // As cheap, fewer machines.
+          (t.coreMs === cheapest.coreMs && t.workers < cheapest.workers))
+      )
+        cheapest = t
+    any = {
+      fleet: cheapest!.fleets.fleet.map((f) => ({
+        count: f.count,
+        cores: f.cores,
+        memory: f.memory,
+        platform: f.platform,
+      })),
+      endMs: cheapest!.fleets.endMs,
+    }
+  }
+  return { declared, more, any }
+}
+
+/** The longest chain of `tasks` by their `ms`, through the deps among them. */
+function longestMs(tasks: readonly PlanTask[]): number {
+  const byId = new Map(tasks.map((t) => [t.id, t]))
+  const memo = new Map<string, number>()
+  const of = (t: PlanTask): number => {
+    const had = memo.get(t.id)
+    if (had !== undefined) return had
+    memo.set(t.id, 0)
+    let up = 0
+    for (const d of t.deps) {
+      const u = byId.get(d)
+      if (u !== undefined) up = Math.max(up, of(u))
+    }
+    const out = up + (t.ms ?? UNKNOWN_MS)
+    memo.set(t.id, out)
+    return out
+  }
+  let most = 0
+  for (const t of tasks) most = Math.max(most, of(t))
+  return most
 }

@@ -378,6 +378,13 @@ export interface TaskExecutor {
    */
   idealMs?(): number | undefined
   /**
+   * The workers that would have run the run best, judged after it from
+   * what each task took: for the run summary, so its reader can change
+   * how many workers the executor may start and of what size. Asked once
+   * at the end, only when a sink is on. A throw reports none.
+   */
+  advice?(): readonly WorkerAdvice[]
+  /**
    * Its own Chrome-trace events for `vx run --profile` (the machines it ran
    * tasks on, in time), asked once at the end, only when the flag is set.
    * `ts` is in microseconds of `performance.now()`; `pid` from 1, which
@@ -421,6 +428,27 @@ export interface MachineReport {
   warmUpMs?: number
   /** When it was asked for (else when it joined), from the executor's start. */
   startMs?: number
+}
+
+/**
+ * Workers that would have run the run best (`TaskExecutor.advice`): `of`
+ * says on what. `declared`: as many of each size the executor may start
+ * as end it soonest; `more`: past each size's limit, when that ends it
+ * sooner; `any`: one shape a platform, of any cores, ending as soon for
+ * the least core time.
+ */
+export interface WorkerAdvice {
+  of: 'declared' | 'more' | 'any'
+  /** The run's end on them, from its start. */
+  endMs: number
+  workers: readonly {
+    count: number
+    cores: number
+    memoryBytes: number
+    platform?: string
+    /** The size it is, for `declared` and `more`. */
+    size?: string
+  }[]
 }
 
 /**

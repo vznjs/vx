@@ -2563,6 +2563,7 @@ export interface RunSummaryRecord {
   uploads?: { count: number; bytes: number; ms: number; failed: number }
   machines?: readonly MachineReport[]
   idealMs?: number
+  advice?: readonly WorkerAdvice[]
 }
 ```
 
@@ -2892,6 +2893,7 @@ export interface TaskExecutor {
   footer?(): readonly (readonly [label: string, text: ui.Inline])[]
   machines?(): readonly MachineReport[]
   idealMs?(): number | undefined
+  advice?(): readonly WorkerAdvice[]
   profile?(): readonly Record<string, unknown>[]
   running?(taskId: string): string | null | undefined
   execute(req: ExecuteRequest): Promise<ExecuteResult>
@@ -3460,6 +3462,30 @@ ran without them and said nothing (item 1060). Trailing blanks go first.
 
 ```ts
 export function withForwardArgs(command: string, args: readonly string[] | undefined): string
+```
+
+## `WorkerAdvice`
+
+type · `src/exec/executor.ts`
+
+Workers that would have run the run best (`TaskExecutor.advice`): `of`
+says on what. `declared`: as many of each size the executor may start
+as end it soonest; `more`: past each size's limit, when that ends it
+sooner; `any`: one shape a platform, of any cores, ending as soon for
+the least core time.
+
+```ts
+export interface WorkerAdvice {
+  of: 'declared' | 'more' | 'any'
+  endMs: number
+  workers: readonly {
+    count: number
+    cores: number
+    memoryBytes: number
+    platform?: string
+    size?: string
+  }[]
+}
 ```
 
 ## `WorkspaceConfig`

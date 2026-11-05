@@ -606,6 +606,47 @@ describe('every output the vx-ci sweep found unheld', () => {
     )
   })
 
+  // 2026-11-05: the workers that would have run it best, so the next run
+  // can declare more of them or other sizes.
+  it('a distributed run says the workers to declare', () => {
+    const md = renderJobSummary(
+      summary([task({})], {
+        advice: [
+          {
+            of: 'declared',
+            endMs: 20_000,
+            workers: [{ count: 2, cores: 4, memoryBytes: 16e9, size: 'small' }],
+          },
+          {
+            of: 'more',
+            endMs: 10_000,
+            workers: [{ count: 4, cores: 4, memoryBytes: 16e9, size: 'small' }],
+          },
+          {
+            of: 'any',
+            endMs: 10_000,
+            workers: [
+              { count: 1, cores: 16, memoryBytes: 64e9, platform: 'linux' },
+              { count: 1, cores: 2, memoryBytes: 8e9, platform: 'mac' },
+            ],
+          },
+        ],
+      }),
+    )
+    expect(md).toContain(
+      [
+        '### Workers to declare',
+        '',
+        '| Played on | Workers | Ends at |',
+        '| --- | --- | --- |',
+        '| The fewest of the declared sizes | 2 × small (4 cores, 16.0 GB) | 20.0s |',
+        "| Past the sizes' max | 4 × small (4 cores, 16.0 GB) | 10.0s |",
+        '| Any cores, least core time | 1 × (16 cores, 64.0 GB, linux) + 1 × (2 cores, 8.0 GB, mac) | 10.0s |',
+      ].join('\n'),
+    )
+    expect(renderJobSummary(summary([task({})]))).not.toContain('Workers to declare')
+  })
+
   it('a persistent task that failed to spawn reads so', () => {
     const md = renderJobSummary(
       summary([task({ status: 'failed', exitCode: 127, notReady: 'spawn' })]),
