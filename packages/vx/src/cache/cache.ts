@@ -2147,7 +2147,15 @@ export class Cache implements CacheLayer {
    * uploaded under a fresh sum.
    */
   private treePlan(hash: string, tree: string, rows: readonly OutputFileRow[]): ArtifactPlan {
-    const plan = planOfTree(tree, this.stdoutText(hash))
+    let plan: ArtifactPlan
+    try {
+      plan = planOfTree(tree, this.stdoutText(hash))
+    } catch (err) {
+      // A sidecar cut short at rest, as a file is: named as the damage it is.
+      if (err instanceof SyntaxError)
+        throw new CorruptArtifactError(hash, 'its sidecar does not parse')
+      throw err
+    }
     const size = new Map(rows.map((r) => [treeName(r.path), r.size]))
     for (const i of plan.inputs) {
       const want = size.get(i.name)
