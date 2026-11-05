@@ -275,7 +275,7 @@ const LIB = `
   selected = map (id: builtins.getAttr id tasks) requested;
 `
 
-export function nixFile(
+function nixFile(
   ws: WorkspaceSpec,
   command: (project: string, task: string) => string,
 ): string {
