@@ -587,30 +587,20 @@ export function plan(
 ): Plan & Ahead {
   const warm = warmOf(warmUpMs)
   const added = candidates.map((s, i) => fresh({ ...s, size: s.name }, `\0new${i}`, warm(s.name)))
-  const ends: number[] = []
-  const floor = chainMs(tasks, workers)
-  for (let n = 0; n <= candidates.length; n++) {
-    const played = play(tasks, [...workers, ...added.slice(0, n)], how)
-    ends.push(played.end)
-    // At the longest chain no worker more ends it sooner, and the first
-    // to reach it is the one kept: playing on to the last candidate was
-    // most of a 1000-task plan (2026-11-05).
-    if (played.end <= floor) break
-    // Past the plan's own length more cannot end it sooner.
-    if (n > 0 && ends[n] === ends[n - 1] && ends[n]! <= added[n - 1]!.at) break
-    // One the play gave nothing gets nothing beside a twin either: a task
-    // breaks a tie for the first. So none of its twins after it ends the
-    // run sooner; each play of them cost a sim of 150 tasks 4 s
-    // (2026-11-05).
-    const last = added[n - 1]
-    if (
-      last !== undefined &&
-      !played.first.has(last.id) &&
-      added.slice(n).every((a) => twins(a, last))
-    )
-      break
+  // The fewest new ones ending within the margin of the best, found by
+  // halving: more workers end the run no later, so the best is all of
+  // them. Trying each count in turn played the whole run some 50 times a
+  // plan (2026-11-05: "Why it replays 64 times to pick workers").
+  const played = new Map<number, number>()
+  const endOf = (n: number): number => {
+    let e = played.get(n)
+    if (e === undefined)
+      played.set(n, (e = play(tasks, [...workers, ...added.slice(0, n)], how).end))
+    return e
   }
-  const best = Math.min(...ends)
+  const floor = chainMs(tasks, workers)
+  const none = endOf(0)
+  const best = none <= floor ? none : Math.min(none, endOf(candidates.length))
   // Margin spent at each decision adds up: releases 4 s apart each lost
   // 4 s of 5 (tests/sim.test.ts, a growing graph). Spent once, unless the
   // rest can no longer end by then.
@@ -618,10 +608,15 @@ export function plan(
     best === Infinity
       ? Infinity
       : Math.max(best, Math.min(best + Math.max(MARGIN_MS, best * MARGIN), limitMs))
-  const n = Math.max(
-    0,
-    ends.findIndex((e) => e <= bound),
-  )
+  let lo = 0
+  let hi = candidates.length
+  if (none <= bound) hi = 0
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (endOf(mid) <= bound) hi = mid
+    else lo = mid + 1
+  }
+  const n = lo
   let kept = [...workers, ...added.slice(0, n)]
   // Sizes come in turns, so the prefix can hold one the plan ends as soon
   // without: a second Mac the plan needed came after a second Linux worker
@@ -930,8 +925,9 @@ export interface Forecast {
   readonly seen: Set<string>
   /** When each task seen running ends, on the run's clock. */
   readonly ends: ReadonlyMap<string, number>
-  /** How many tasks the run had handed over. */
+  /** How many tasks the run had handed over, and those it had when planned. */
   readonly executed: number
+  readonly before: ReadonlySet<string>
   /** Each size's warm-up as it saw it: a join tells the run's own. */
   readonly warm: readonly number[]
   /** The work as last read. */
@@ -943,7 +939,7 @@ export interface Forecast {
 
 type Seen = Pick<
   Parameters<typeof decide>[0],
-  'workers' | 'queued' | 'final' | 'sizes' | 'warmUpMs' | 'executed'
+  'workers' | 'queued' | 'final' | 'sizes' | 'warmUpMs' | 'executed' | 'nodes'
 >
 
 /**
@@ -1015,6 +1011,7 @@ function forecastOf(
       ),
     ),
     executed: input.executed.size,
+    before: new Set(input.executed),
     warm: warmsOf(input),
     tasks,
     late: lateOf(input.workers, slackOf(p)),
@@ -1106,15 +1103,28 @@ function follow(
     if (!ends.has(id) && (now < at - slack || (f.ms.has(id) && f.ms.get(id) === undefined)))
       return undefined
   for (const id of lateOf(input.workers, slack)) if (!f.late.has(id)) return undefined
-  // Handed over more than started: work it did not see, maybe. Read it.
-  if (input.executed.size !== f.executed + began) {
-    if (tasks === undefined) return 'full'
-    for (const t of tasks) if (!f.ms.has(t.id)) return undefined
-    // Work that left without running (a hit, or no longer asked) frees
-    // what the plan gave it.
-    const waiting = new Set(tasks.map((t) => t.id))
-    for (const id of f.ms.keys())
-      if (!waiting.has(id) && !f.seen.has(id) && !ends.has(id)) return undefined
+  // More handed over than started, or fewer known: work it did not see,
+  // maybe. Read it.
+  if (input.executed.size > f.executed + began || input.executed.size < f.executed) {
+    // Handed over and not started yet is work it saw: only one it did not
+    // see sends the plan to read every task.
+    if (tasks === undefined) {
+      if (input.executed.size < f.executed) return 'full'
+      for (const id of input.executed)
+        if (
+          !f.ms.has(id) &&
+          !f.before.has(id) &&
+          input.nodes.get(id)?.config.exec?.command !== undefined
+        )
+          return 'full'
+    } else {
+      for (const t of tasks) if (!f.ms.has(t.id)) return undefined
+      // Work that left without running (a hit, or no longer asked) frees
+      // what the plan gave it.
+      const waiting = new Set(tasks.map((t) => t.id))
+      for (const id of f.ms.keys())
+        if (!waiting.has(id) && !f.seen.has(id) && !ends.has(id)) return undefined
+    }
   }
   const workers = new Set(f.workers)
   const free = new Map(f.free)
