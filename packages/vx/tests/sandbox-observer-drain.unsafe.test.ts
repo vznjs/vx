@@ -5,7 +5,16 @@
 // 200 such tasks run 16 at a time reported nothing.
 import { realpathSync } from 'node:fs'
 import { mkdir, rm } from 'node:fs/promises'
+import { SandboxManager } from '@anthropic-ai/sandbox-runtime'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import {
+  collectRecords,
+  initSandbox,
+  releaseBridges,
+  resetSandbox,
+  resolveSandboxConfig,
+  wrapSandboxedCommand,
+} from '../src/exec/sandbox-runtime.js'
 import { run } from './helpers/orchestrator.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -41,5 +50,46 @@ describe.skipIf(!available || process.platform !== 'linux')(
       }
       expect(unnamed).toEqual([])
     }, 120_000)
+  },
+)
+
+// A fixed count of event-loop turns after the exit was a guess at when the
+// observer's record is in: 2 held here, and 4 of 24 such tasks lost theirs
+// on a loaded CI worker. A record already sent but not yet accepted when the
+// exit is seen is the case, made here on purpose: socat writes it with the
+// loop held, so no turn passes between the send and the read.
+describe.skipIf(!available || process.platform !== 'linux')(
+  'the observer read after an exit',
+  () => {
+    afterEach(() => resetSandbox())
+
+    it('holds every record sent before it, however late it is accepted', async () => {
+      await initSandbox()
+      const dir = realpathSync(await makeWorkspace({ prefix: 'vx-observer-late-' }))
+      const w = await wrapSandboxedCommand({
+        command: 'true',
+        cwd: dir,
+        env: process.env,
+        baseAllowRead: [dir],
+        baseDenyRead: [],
+        config: resolveSandboxConfig({}, dir),
+      })
+      releaseBridges(w.tag)
+      await rm(dir, { recursive: true, force: true })
+      const socket = /--setenv SRT_OBSERVE_SOCK (\S+)/.exec(w.wrapped)?.[1] ?? ''
+      expect(socket).toEndWith('.sock')
+      const store = SandboxManager.getSandboxViolationStore()
+      for (let i = 0; i < 20; i++) {
+        const command = `: 'late-${i}'; mkdir x`
+        const take = collectRecords(store, command, socket)
+        const encodedCommand = Buffer.from(command.slice(0, 100)).toString('base64')
+        const line = JSON.stringify({ encodedCommand, syscall: 'mkdirat', path: `/late/${i}` })
+        const sent = Bun.spawnSync(['socat', '-', `UNIX-CONNECT:${socket}`], {
+          stdin: Buffer.from(`${line}\n`),
+        })
+        expect(sent.exitCode).toBe(0)
+        expect((await take(true)).map((v) => v.line)).toEqual([`deny mkdirat /late/${i}`])
+      }
+    }, 60_000)
   },
 )
