@@ -113,6 +113,14 @@ describe('what a status means', () => {
     )
   })
 
+  // Printed raw, an `ESC ]` in the server's words retitled the terminal (L-31).
+  it('a refusal’s words reach the terminal with each control escaped', async () => {
+    const { fetchImpl } = stub(() => new Response('no \x1b]0;PWNED\x07 \x9b', { status: 507 }))
+    await expect(cacheWith(fetchImpl).get('aa')).rejects.toThrow(
+      'HTTP 507: no \\x1b]0;PWNED\\x07 \\x9b',
+    )
+  })
+
   it('a server with no batch query is no answer, so each hash is asked', async () => {
     for (const status of [404, 405, 501]) {
       const { fetchImpl } = stub(() => new Response(null, { status }))

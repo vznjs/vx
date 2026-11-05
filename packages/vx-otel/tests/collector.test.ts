@@ -194,6 +194,21 @@ describe('the OTLP transport reports a collector that refuses the export', () =>
     ).toEqual([])
   })
 
+  // Printed raw, an `ESC ]` in the collector's words retitled the terminal (L-31).
+  it('a collector’s words reach the terminal with each control escaped', async () => {
+    const said = 'no \x1b]0;PWNED\x07 \x1b[31mred\x9b'
+    const refused = await exportWith({ status: 400, body: said })
+    const dropped = await exportWith({
+      status: 200,
+      body: JSON.stringify({ partialSuccess: { rejectedSpans: '1', errorMessage: said } }),
+    })
+    for (const w of [refused[0]!, dropped[0]!]) {
+      expect(w).toContain('no \\x1b]0;PWNED\\x07 \\x1b[31mred\\x9b')
+      // oxlint-disable-next-line no-control-regex
+      expect(/[\x00-\x1f\x7f-\x9f]/.test(w)).toBe(false)
+    }
+  })
+
   it('an error body rides the message bounded and on one line', async () => {
     const warnings = await exportWith({ status: 413, body: `${'x'.repeat(500)}\n\nsecond line` })
     expect(warnings.length).toBe(1)

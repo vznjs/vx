@@ -245,10 +245,19 @@ function retryAfterMs(value: string | null): number {
   return Number.isFinite(ms) && ms > 0 ? ms : 0
 }
 
-/** One line of a collector's error body, bounded — it is remote text. */
+/**
+ * One line of a collector's error body, bounded, each control written as
+ * `\xNN`: it is remote text, and an `ESC ]` in it retitled the terminal
+ * the warning printed to (L-31).
+ */
 function detail(body: string): string {
-  const line = body.replace(/\s+/g, ' ').trim()
-  return line === '' ? '' : `: ${line.slice(0, 200)}`
+  const line = body
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 200)
+    // oxlint-disable-next-line no-control-regex
+    .replace(/[\x00-\x1f\x7f-\x9f]/g, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`)
+  return line === '' ? '' : `: ${line}`
 }
 
 /** An export the collector accepted whole, with a word about it. */
