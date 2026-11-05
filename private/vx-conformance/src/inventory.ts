@@ -432,6 +432,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'sandbox-temp-vars.unsafe',
     'sandbox-timeout-clock.unsafe',
     'sandbox-trace-exit.unsafe',
+    'sandbox-mount-race.unsafe',
     'sandbox-tracer-retry.unsafe',
     'sandbox-usage.unsafe',
     'sandbox-violation-secret-mask.unsafe',
