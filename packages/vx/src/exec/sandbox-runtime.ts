@@ -44,6 +44,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { mkdir, unlink } from 'node:fs/promises'
+import { createConnection } from 'node:net'
 import type { SandboxConfig } from '../config.js'
 import {
   armTimeout,
@@ -2101,18 +2102,21 @@ let collectorOn = false
 
 /**
  * Start collecting SRT's store records for `command`; the returned function
- * stops and hands them over. The store is a 100-record ring the whole run
- * shares, and on Linux its write observer reports every write any task
+ * stops and hands them over, with `settle` once every record the task's
+ * Linux observer (`observer`, its socket) sent is read. The store is a
+ * 100-record ring the whole run shares, and on Linux its write observer
+ * reports every write any task
  * makes, so a refused write followed by 150 declared ones was gone before
  * the task's exit read it (B-7). One subscription takes each record as it
  * arrives and keeps it only for a command still running. SRT keys a record
  * by the base64 of the command's first 100 characters
  * (`encodeSandboxedCommand`, not exported).
  */
-function collectRecords(
+export function collectRecords(
   store: ReturnType<SrtModule['SandboxManager']['getSandboxViolationStore']>,
   command: string,
-): () => SandboxViolation[] {
+  observer: string | undefined,
+): (settle: boolean) => Promise<SandboxViolation[]> {
   if (!collectorOn) {
     collectorOn = true
     let seen = store.getTotalCount()
@@ -2128,10 +2132,42 @@ function collectRecords(
   const key = Buffer.from(command.slice(0, 100)).toString('base64')
   const list: SandboxViolation[] = []
   collecting.set(key, list)
-  return () => {
+  return async (settle) => {
+    if (settle && observer !== undefined) await observerCaughtUp(observer)
     collecting.delete(key)
     return list
   }
+}
+
+/**
+ * The Unix socket SRT's Linux write observer listens on, from the command
+ * it wrapped (`--setenv SRT_OBSERVE_SOCK <path>`); none when the listener
+ * failed or on macOS.
+ */
+function observerSocket(wrapped: string): string | undefined {
+  return /--setenv SRT_OBSERVE_SOCK (?:'([^']*)'|(\S+))/.exec(wrapped)?.slice(1).find(Boolean)
+}
+
+/**
+ * Resolves once SRT has read every record sent to `socket` before the call.
+ * A task's observer sends its records before the task exits, but they are
+ * read when this process gets to that connection: a fixed count of event
+ * loop turns after the exit (2) lost 4 of 24 refusals on a loaded CI
+ * worker. So a connection of ours goes in after them: the kernel queues
+ * connections in order, so SRT accepts it no earlier than the task's, and
+ * the task's bytes were already there when it did. SRT's server is not
+ * half-open, so it ends ours once it reads our end, and that end coming
+ * back means the task's bytes were read first. A socket that is gone
+ * answers at once with an error.
+ */
+function observerCaughtUp(socket: string): Promise<void> {
+  return new Promise((resolve) => {
+    const conn = createConnection(socket)
+    conn.on('connect', () => conn.end())
+    conn.on('error', () => resolve())
+    conn.on('close', () => resolve())
+    conn.resume()
+  })
 }
 
 /**
@@ -2187,12 +2223,16 @@ async function runSandboxedOnce(
       ...(useStrace ? { trace: useStrace } : {}),
       ...(widened !== undefined && widened.size > 0 ? { tracePaths: true } : {}),
     })
-  const takeRecords = collectRecords(SandboxManager.getSandboxViolationStore(), srtCommand)
+  const takeRecords = collectRecords(
+    SandboxManager.getSandboxViolationStore(),
+    srtCommand,
+    observerSocket(wrapped),
+  )
   // A stop that landed during the awaits above leaves nothing to kill yet:
   // spawned now, the task ran after the teardown swept the run's children.
   if (args.signal?.aborted === true) {
     releaseBridges(tag)
-    takeRecords()
+    void takeRecords(false)
     afterCommand(SandboxManager)
     const signal = stopSignal(args.signal.reason)
     return {
@@ -2248,7 +2288,7 @@ async function runSandboxedOnce(
     const stderr = spawnFailureText(err, args.cwd, SANDBOXED_TASK, wrapped)
     args.onStderr?.(stderr)
     releaseBridges(tag)
-    takeRecords()
+    void takeRecords(false)
     afterCommand(SandboxManager)
     return {
       exitCode: 127,
@@ -2341,15 +2381,9 @@ async function runSandboxedOnce(
   // (2026-09-05). A sandboxed task that fails must say what it was denied;
   // deciding on the user's behalf that a record was "just traversal" is how
   // a failure ends up with an empty violations section and no explanation.
-  // Linux: the write observer's records reach the store over a Unix socket
-  // this process serves, not with the child's exit. The observer sent them
-  // before the task exited, but a task that ends quickly is seen to exit
-  // in the turn its connection is accepted, before it is read: a turn to
-  // accept and a turn to read take them in (40 fast refused mkdirs at
-  // once: 38 of 200 unreported, 33 with one turn, none with two).
-  if (process.platform === 'linux')
-    for (let turn = 0; turn < 2; turn++) await new Promise((r) => setImmediate(r))
-  const records = takeRecords()
+  // Linux: the write observer's records arrive over a socket, not with the
+  // exit; `takeRecords(true)` waits until all it sent are read.
+  const records = await takeRecords(true)
   // Read as is on darwin only. Since SRT 0.0.75 the store is fed on Linux
   // too, by the seccomp helper's write observer — but SRT judges those
   // reports against the GLOBAL `filesystem.allowWrite` from `initialize`
