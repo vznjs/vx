@@ -19,6 +19,7 @@ export interface DteAdapter {
   spawn(worker: WorkerSpawn): void | Promise<void>
   close?(): void | Promise<void>
   cancel?(ids: readonly string[], late?: boolean): void | Promise<readonly string[]>
+  kept?(id: string): void
   init?(setup: DteSetup): Promise<DteInit>
   report?(warn: (message: string) => void): void
   readonly keyless?: boolean

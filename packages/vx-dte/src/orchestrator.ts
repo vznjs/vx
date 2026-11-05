@@ -167,6 +167,8 @@ export interface OrchestratorOptions {
   readonly joined?: () => void
   /** Worker `id` did not join within twice its size's first join: given up, for its adapter to stop. */
   readonly overdue?: (id: string) => void
+  /** Worker `id`, given up as late (`overdue`), joined after all and is taken. */
+  readonly kept?: (id: string) => void
   /** A worker failed a task or dropped it: the run plans again, now, so a replacement starts. */
   readonly faulted?: () => void
   /** How much of the run waits on a task (`tailsMs`): the queue places the most first. */
@@ -1336,6 +1338,7 @@ export class Orchestrator {
       if (info.id !== undefined && this.late.delete(info.id)) {
         this.cancelled.delete(info.id)
         this.unstarted.delete(info.id)
+        this.o.kept?.(info.id)
       }
       if (info.id !== undefined && this.cancelled.has(info.id)) {
         this.turnedAway.add(info.id)

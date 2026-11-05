@@ -718,11 +718,15 @@ it('gives up a started worker past twice the first of its size’s join, and sto
 // Main db1702f (2026-10-24): three smalls GitHub queued 60 s were given up
 // at their join limit and others asked; the three joined later, were told
 // to exit, and the run ended at 232 s against an ideal of 141 s. A worker
-// given up for lateness that joins after all is taken.
+// given up for lateness that joins after all is taken, and its adapter is
+// told: PR #4955's late smalls joined and ran tasks, then the stop asked
+// when they were given up cancelled them mid-task (2026-11-05).
 it('takes a worker given up past its join limit that joins after all', async () => {
   const overdue: string[] = []
+  const kept: string[] = []
   const h = await harness(new Map([node('t1')]), undefined, 60_000, undefined, undefined, {
     overdue: (id) => overdue.push(id),
+    kept: (id) => kept.push(id),
   })
   try {
     h.o.spawned('worker#1', { size: 'small', cpu: 1, memory: 1 })
@@ -733,6 +737,7 @@ it('takes a worker given up past its join limit that joins after all', async () 
     const late = await h.worker(1, 'worker#2')
     const first = (await late.poll()).map((m) => m.body as { type: string; name?: string })
     expect(first[0]).toMatchObject({ type: 'welcome', name: 'worker#2' })
+    expect(kept).toEqual(['worker#2'])
   } finally {
     await h.stop()
   }
@@ -803,6 +808,7 @@ async function harness(
     stalled?: (waiting: string) => void
     stallMs?: number
     overdue?: (id: string) => void
+    kept?: (id: string) => void
     sent?: Map<string, number>
     pinWaitMs?: number
   } = {},
