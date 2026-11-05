@@ -52,6 +52,11 @@ describe.skipIf(!available || process.platform !== 'linux' || realBwrap === null
     afterEach(async () => {
       process.env['PATH'] = prevPath
       await resetSandbox()
+      // The runtime keeps its last config past a reset, and its dependency
+      // check reads the bwrap path from it: the next file in this process
+      // found the fake's, deleted below, and called the sandbox unavailable.
+      await initSandbox()
+      await resetSandbox()
       await rm(dir, { recursive: true, force: true })
     })
 
