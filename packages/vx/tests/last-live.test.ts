@@ -72,6 +72,44 @@ it('with no run in progress it says so, exit 1', () => {
   expect(r.err).toContain('no run in progress')
 })
 
+// A run of another vx version answered a snapshot this one could not
+// read: the throw inside the socket's handler was swallowed, and `--live`
+// printed nothing and exited 0.
+it('a run whose snapshot this vx cannot read says so, exit 1', async () => {
+  const other = await makeWorkspace({ prefix: 'vx-last-live-other-' })
+  try {
+    for (const reply of ['nope', '{}', '{"live":{},"tasks":[],"warnings":[]}']) {
+      const srv = Bun.listen({
+        unix: liveSocketPath(other),
+        socket: {
+          data(s) {
+            s.write(`${reply}\n`)
+            s.end()
+          },
+        },
+      })
+      try {
+        // Not spawnSync: this process answers on the socket meanwhile.
+        const p = Bun.spawn({
+          cmd: [process.execPath, BIN, 'last', '--live'],
+          cwd: other,
+          env,
+          stderr: 'pipe',
+        })
+        expect([reply, await p.exited, await new Response(p.stderr).text()]).toEqual([
+          reply,
+          1,
+          expect.stringContaining('answered in a form this vx does not read'),
+        ])
+      } finally {
+        srv.stop(true)
+      }
+    }
+  } finally {
+    await rm(other, { recursive: true, force: true })
+  }
+}, 30_000)
+
 it('a run in progress: what runs, what ended, what waits, and its warnings', async () => {
   const run = Bun.spawn({
     cmd: [process.execPath, BIN, 'run', 'a#all'],
