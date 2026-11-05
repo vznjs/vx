@@ -104,6 +104,8 @@ export interface Plan {
  * and when each started now ends its work.
  */
 interface Ahead {
+  /** When the window it played moves on, from now: plan again then. */
+  readonly untilInMs: number | undefined
   readonly freeInMs: ReadonlyMap<string, number>
   readonly later: readonly {
     readonly size: Size
@@ -292,8 +294,14 @@ function play(
   tasks: readonly PlanTask[],
   workers: readonly PlanWorker[],
   how: Strategy,
+  // Played no further: past it the rest ends no sooner than its longest
+  // chain from there (2026-11-05: "We can plan as we go till next level";
+  // "it can look ahead 2 warmups").
+  horizon = Infinity,
 ): {
   end: number
+  /** It stopped at `horizon` with work left. */
+  cut?: boolean
   first: Map<string, number>
   ends: Map<string | undefined, number>
   free: () => Map<string, number>
@@ -357,6 +365,14 @@ function play(
   let left = tasks.length
   let now = 0
   let last = Math.max(0, ends.last())
+  // Core-ms of the tasks not yet given.
+  const workLeft = new Map<string | undefined, number>()
+  const spend = (t: PlanTask, by: number): void => {
+    const w = by * t.cores * (t.ms ?? UNKNOWN_MS)
+    workLeft.set(undefined, (workLeft.get(undefined) ?? 0) + w)
+    if (t.platform !== undefined) workLeft.set(t.platform, (workLeft.get(t.platform) ?? 0) + w)
+  }
+  if (horizon < Infinity) for (const t of tasks) spend(t, 1)
   // When each platform's last task ends.
   const byPlatform = (): Map<string | undefined, number> => {
     const out = new Map<string | undefined, number>()
@@ -427,6 +443,7 @@ function play(
       )
       last = Math.max(last, end)
       best.last = Math.max(best.last ?? 0, end)
+      if (horizon < Infinity) spend(t, -1)
     }
     const first = (): Map<string, number> =>
       new Map(slots.flatMap((s) => (s.first === undefined ? [] : [[s.id, s.first] as const])))
@@ -437,6 +454,26 @@ function play(
     // The next moment anything changes: a task ends or a worker joins.
     let next = ends.next()
     for (const s of slots) if (s.at > now) next = Math.min(next, s.at)
+    if (next >= horizon && next < Infinity) {
+      // No sooner than its longest chain, nor than its work spread on
+      // every core it has: the workers it asks later are the next plan's.
+      // Of each platform on its own workers, and all of it on all.
+      const work = new Map(workLeft)
+      const cores = new Map<string | undefined, number>()
+      for (const s of slots) {
+        cores.set(undefined, (cores.get(undefined) ?? 0) + s.cores)
+        if (s.platform !== undefined) cores.set(s.platform, (cores.get(s.platform) ?? 0) + s.cores)
+      }
+      for (const e of ends.all())
+        work.set(undefined, (work.get(undefined) ?? 0) + e.cores * (e.at - now))
+      let end = last
+      for (const [p, w] of work) end = Math.max(end, now + w / Math.max(cores.get(p) ?? 0, 1e-9))
+      for (const t of ready.live()) end = Math.max(end, now + tailOf(t.id))
+      for (const e of ends.all())
+        for (const d of (e.place >= 0 ? afterAt[e.place] : after.get(e.id!)) ?? [])
+          end = Math.max(end, e.at + tailOf(tasks[d]!.id))
+      return { end, cut: true, first: first(), ends: byPlatform(), free }
+    }
     if (next === Infinity)
       return { end: left === 0 ? last : Infinity, first: first(), ends: byPlatform(), free }
     now = next
@@ -503,6 +540,9 @@ class Ends {
   }
   next(): number {
     return this.heap[0]?.at ?? Infinity
+  }
+  all(): readonly End[] {
+    return this.heap
   }
   last(): number {
     let most = 0
@@ -674,11 +714,27 @@ export function plan(
   // halving: more workers end the run no later, so the best is all of
   // them. Trying each count in turn played the whole run some 50 times a
   // plan (2026-11-05: "Why it replays 64 times to pick workers").
+  // Two warm-ups ahead: a worker asked now joins after one, and the next
+  // plan, a warm-up on, sees the one after.
+  const horizon =
+    2 *
+      Math.max(
+        warm(undefined),
+        ...candidates.map((c) => warm(c.name)),
+        ...workers.map((w) => w.at),
+      ) +
+    MARGIN_MS +
+    // And a task given at its end runs through: work counted as cores
+    // spread over the rest asked too few workers for a few long tasks.
+    tasks.reduce((most, t) => Math.max(most, t.ms ?? UNKNOWN_MS), 0)
+  const run = (ws: readonly PlanWorker[]): ReturnType<typeof play> => play(tasks, ws, how, horizon)
+  // Given no task in the play, and none past its window.
+  const unused = (p: ReturnType<typeof play>, id: string): boolean =>
+    !p.first.has(id) && p.cut !== true
   const played = new Map<number, number>()
   const endOf = (n: number): number => {
     let e = played.get(n)
-    if (e === undefined)
-      played.set(n, (e = play(tasks, [...workers, ...added.slice(0, n)], how).end))
+    if (e === undefined) played.set(n, (e = run([...workers, ...added.slice(0, n)]).end))
     return e
   }
   const floor = chainMs(tasks, workers)
@@ -707,7 +763,7 @@ export function plan(
   // Dropped only when neither the end nor its platform's moves past the
   // margin: to the run's end alone, a 110 s guess of an unmeasured chain
   // cut every other platform to it.
-  let before = best < Infinity && n > 0 ? play(tasks, kept, how) : undefined
+  let before = best < Infinity && n > 0 ? run(kept) : undefined
   if (before !== undefined)
     for (let i = n - 1, dropped = false; i >= 0; i--) {
       // Its twin after it stayed, and nothing moved since: without this
@@ -716,7 +772,7 @@ export function plan(
       if (i < n - 1 && !dropped && twins(added[i]!, added[i + 1]!)) continue
       const platform = added[i]!.platform
       const without = kept.filter((k) => k !== added[i])
-      const after = play(tasks, without, how)
+      const after = run(without)
       dropped =
         after.end <= before.end &&
         (after.ends.get(platform) ?? 0) <= (before.ends.get(platform) ?? 0) + MARGIN_MS
@@ -748,11 +804,7 @@ export function plan(
       // margin, the next plan's estimates moved a second later and
       // cancelled 7 asked one at a time (PR #4214); ending the run no
       // sooner, main 005e8f2 cancelled a mac and asked one again 18 s on.
-      if (
-        twin === undefined
-          ? !play(tasks, kept, how).first.has(w.id)
-          : simulate(tasks, without, how) <= bound
-      ) {
+      if (twin === undefined ? unused(run(kept), w.id) : run(without).end <= bound) {
         kept = without
         if (twin === undefined) release.push(w.id)
       }
@@ -772,7 +824,9 @@ export function plan(
     })
     for (const w of idle) {
       const without = kept.filter((k) => k !== w)
-      const next = play(tasks, [...kept, ...standIns], how).first.get(w.id)
+      const played = run([...kept, ...standIns])
+      // Given nothing in a window with work past it: needed past it, maybe.
+      const next = played.first.get(w.id) ?? (played.cut === true ? horizon : undefined)
       if (next === undefined) {
         kept = without
         release.push(w.id)
@@ -791,7 +845,7 @@ export function plan(
         w.id,
         next,
       )
-      if (simulate(tasks, [...without, ...standIns, instead], how) <= bound) {
+      if (run([...without, ...standIns, instead]).end <= bound) {
         kept = without
         release.push(w.id)
         standIns.push(instead)
@@ -799,7 +853,7 @@ export function plan(
       }
     }
   }
-  const { end, first, free } = play(tasks, [...kept, ...standIns], how)
+  const { end, first, free, cut } = run([...kept, ...standIns])
   const start: Size[] = []
   const frees = free()
   const started: { freeInMs: number; joinInMs: number }[] = []
@@ -823,12 +877,15 @@ export function plan(
     }
   }
   later.sort((a, b) => a.inMs - b.inMs)
+  // Work past the window: plan again a warm-up on, the window moved.
+  const untilInMs = cut === true ? (horizon - MARGIN_MS) / 2 : undefined
   return {
     start,
     release,
     endsInMs: end,
     boundMs: bound,
-    againInMs,
+    againInMs: untilInMs === undefined ? againInMs : Math.min(againInMs ?? Infinity, untilInMs),
+    untilInMs,
     freeInMs: frees,
     later,
     started,
@@ -961,7 +1018,7 @@ export function decide(input: {
   const step = had === undefined ? undefined : follow(had, tasks, input, sizes, now)
   if (step !== undefined && step !== 'full')
     return shown(input.last!, had!, { ...step, next: { ...step.next, tasks } }, now, tasks)
-  const { freeInMs, later, started, ...p } = plan(
+  const { freeInMs, later, started, untilInMs, ...p } = plan(
     tasks,
     input.workers,
     sizes,
@@ -972,7 +1029,7 @@ export function decide(input: {
     how,
   )
   if (input.last !== undefined)
-    input.last.forecast = forecastOf(p, { freeInMs, later, started }, tasks, input, now)
+    input.last.forecast = forecastOf(p, { freeInMs, later, started, untilInMs }, tasks, input, now)
   return { ...p, tasks }
 }
 
@@ -1015,6 +1072,8 @@ export interface Forecast {
   readonly warm: readonly number[]
   /** The work as last read. */
   readonly tasks: readonly PlanTask[]
+  /** When its window moves on, on the run's clock. */
+  readonly until: number
   readonly late: ReadonlySet<string>
   readonly queued: string
   readonly final: boolean
@@ -1097,6 +1156,7 @@ function forecastOf(
     before: new Set(input.executed),
     warm: warmsOf(input),
     tasks,
+    until: ahead.untilInMs === undefined ? Infinity : now + ahead.untilInMs,
     late: lateOf(input.workers, slackOf(p)),
     queued: [...(input.queued ?? [])].sort().join('\0'),
     final: input.final,
@@ -1112,13 +1172,14 @@ function shown(
   tasks: readonly PlanTask[],
 ): Plan & { readonly tasks: readonly PlanTask[] } {
   last.forecast = step.next
+  const again = Math.min(step.next.later[0]?.at ?? Infinity, step.next.until)
   const since = now - had.at
   return {
     start: step.start,
     release: step.release,
     endsInMs: Math.max(0, had.plan.endsInMs - since),
     boundMs: had.plan.boundMs - since,
-    againInMs: step.next.later[0] === undefined ? undefined : step.next.later[0].at - now,
+    againInMs: Number.isFinite(again) ? again - now : undefined,
     tasks,
   }
 }
@@ -1145,6 +1206,7 @@ function follow(
   sizes: readonly Size[] | undefined,
   now: number,
 ): Step | 'full' | undefined {
+  if (now >= f.until) return undefined
   if (f.final !== input.final) return undefined
   if ([...(input.queued ?? [])].sort().join('\0') !== f.queued) return undefined
   if (input.workers.length !== f.count) return undefined
