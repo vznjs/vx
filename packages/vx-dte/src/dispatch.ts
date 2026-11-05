@@ -25,6 +25,67 @@ export function ordered(
   return [...ids].sort((x, y) => Number(hard(y)) - Number(hard(x)) || byTail(x, y))
 }
 
+/** How `dispatch` sees the waiting tasks and the run. */
+export interface Dispatching {
+  readonly how: Strategy
+  /** Each one's longest chain after it (`tailsMs`); none: they go in the order they came. */
+  readonly tail?: ((id: string) => number) | undefined
+  /** What it asks, as history said. */
+  readonly need: (id: string) => Need
+  /** What it books now (`Orchestrator.booking`); default `need`'s. */
+  readonly book?: (need: Need) => Need
+  /** Its direct dependencies (`Ask.up`). */
+  readonly deps: (id: string) => readonly string[] | undefined
+  /** Whether it may go now, and where (`Orchestrator.pin`): `'wait'` not yet, `'done'` it ended. */
+  readonly gate?: (id: string) => 'wait' | 'done' | { only?: string; avoid?: string }
+  /** A worker bigger than `above` of `platform` is coming (`assign`'s `waits`). */
+  readonly waits?: (above: NonNullable<Need['above']>, platform: string | undefined) => boolean
+}
+
+/**
+ * Where the `waiting` tasks go now: ordered (`ordered`), gated, and placed
+ * (`assign`). The one rule of the live run (`Orchestrator.pump`, at each
+ * message) and of the sims (`tests/sim.ts`, at each event): each kept its
+ * own, and the sims passed while runs placed otherwise (2026-11-05).
+ * `left`: the ones that stay waiting, in order.
+ */
+export function dispatch<B extends Bin>(
+  waiting: readonly string[],
+  bins: readonly B[],
+  o: Dispatching,
+): { to: Map<string, B>; left: string[] } {
+  const queue =
+    o.tail === undefined
+      ? waiting
+      : ordered(
+          waiting,
+          o.how.order,
+          o.tail,
+          o.need,
+          bins.reduce((n, b) => Math.max(n, b.cores), 1),
+        )
+  const left: string[] = []
+  const asks: Ask[] = []
+  // The least any ask needs: once no worker takes it, the pass ends. Each
+  // pump read every queued task, 8000 of them a pump (2026-10-25).
+  const floor = { cores: Infinity, memory: Infinity }
+  for (const id of queue) {
+    const gate = o.gate?.(id) ?? {}
+    if (gate === 'done') continue
+    if (gate === 'wait') {
+      left.push(id)
+      continue
+    }
+    const need = o.book === undefined ? o.need(id) : o.book(o.need(id))
+    floor.cores = Math.min(floor.cores, need.cores)
+    floor.memory = Math.min(floor.memory, need.memory)
+    asks.push({ id, need, up: o.deps(id) ?? [], ...gate })
+  }
+  const to = assign(asks, bins, o.waits, o.how.place, { floor, kinds: Infinity })
+  for (const ask of asks) if (!to.has(ask.id)) left.push(ask.id)
+  return { to, left }
+}
+
 /** What a task asks of a worker: its history's cores and peak memory. */
 export interface Need {
   readonly cores: number
@@ -59,8 +120,12 @@ export interface Bin {
 export interface Ask {
   readonly id: string
   readonly need: Need
-  /** Its dependencies, all the way up: a worker holding them is preferred. */
-  readonly up?: Iterable<string>
+  /**
+   * Its direct dependencies: a worker holding most is preferred. One holds
+   * what was sent with each, so the direct ones say enough: counting every
+   * upstream for every worker read thousands an ask (2026-11-05).
+   */
+  readonly up?: readonly string[]
   /** Names its need: asks of one kind fit and fail alike (`kindOf`). */
   readonly kind?: string
   /** The one bin that may take it: it holds files no cache does. */
@@ -149,14 +214,14 @@ export function assign<B extends Bin>(
       continue
     }
     const pool = anyBigger ? of.filter(bigger) : of
-    const up = ask.up === undefined ? [] : [...ask.up]
     let best: B | undefined
     let bestScore: [number, number] = [0, 0]
-    for (const b of pool) {
+    for (let i = 0; i < pool.length; i++) {
+      const b = pool[i]!
       if (held.has(b) || !fits(b, need)) continue
       let has = 0
-      for (const id of up) if (b.has?.has(id) === true) has++
-      const score: [number, number] = [has, fit(b, need, place, pool.indexOf(b))]
+      for (const id of ask.up ?? []) if (b.has?.has(id) === true) has++
+      const score: [number, number] = [has, fit(b, need, place, i)]
       if (
         best === undefined ||
         score[0] > bestScore[0] ||

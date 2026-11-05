@@ -73,6 +73,15 @@ export interface RunOrder {
   runtime?: RuntimeOrder[]
 }
 
+/**
+ * A dependency as an order carries it: whole the first time its worker is
+ * sent it under that key, then by its task's name alone.
+ */
+export type WiredDep = DepOrder | string
+
+/** A `RunOrder` as it travels: its deps `WiredDep`s, made whole again by the worker. */
+export type SentOrder = Omit<RunOrder, 'deps'> & { deps: WiredDep[] }
+
 export interface RuntimeOrder {
   command: string
   output: string
@@ -102,12 +111,12 @@ export type ToWorker =
       root: string
       /** `root`'s real path, as sandbox paths spell it. */
       realRoot: string
-      tasks: RunOrder[]
+      tasks: SentOrder[]
       /** The run's sandboxed tasks' `exec.sandbox`, in a worker's first batch that has a sandboxed task. */
       sandboxes?: SandboxConfig[]
     }
   /** Part of an order's `deps`, ahead of the batch whose order was too long for one frame. */
-  | { type: 'deps'; task: string; deps: DepOrder[] }
+  | { type: 'deps'; task: string; deps: WiredDep[] }
   | { type: 'cancel'; task: string }
   /**
    * It was taken into the run, under the name the run's output gives it,

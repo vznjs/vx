@@ -525,6 +525,8 @@ use your own instead.
   or of files a formatter changed) is sent in parts, none of it dropped.
   An order too long for one frame (a task with thousands of deps) sends
   its deps ahead of it the same way.
+- A worker gets each dependency in full once. Later orders name it, so a
+  deep graph's orders stay small.
 - A task runs with the orchestrator's environment under the worker's
   root. `HOME`, `TMPDIR`, `USER` and the like are the worker's own, unless
   the task's `env.define` sets them; `npm_execpath` is the workspace's

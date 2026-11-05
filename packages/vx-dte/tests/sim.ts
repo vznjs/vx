@@ -1,12 +1,12 @@
 // A distributed run played on a virtual clock: core hands over each task
 // that misses as its dependencies end, the run decides (`decide`) and
-// dispatches (`assign`) with the plugin's own code at every event, and
+// places (`dispatch`, as `Orchestrator.pump`) with the plugin's own code at every event, and
 // workers join after their warm-up and run tasks for as long as they
 // took. Pure and deterministic: a run of minutes plays in milliseconds.
 // What the summary's Workers table would say comes back with it.
 
 import type { TaskNode } from '@vzn/vx'
-import { assign, ordered, type Need } from '../src/dispatch.js'
+import { dispatch as place, type Need } from '../src/dispatch.js'
 import { needOf } from '../src/plugin.js'
 import { booked, DEFAULT_STRATEGY, type Strategy } from '../src/strategy.js'
 import {
@@ -201,8 +201,6 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
   const overloaded = new Set<string>()
   let overSent = 0
   const dispatch = (): void => {
-    const widest = Math.max(1, ...joined().map((w) => w.cores))
-    queue.splice(0, queue.length, ...ordered(queue, how.order, tail, need, widest))
     const bins = joined().map((w) => {
       let cores = 0
       let memory = 0
@@ -227,16 +225,17 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
         w,
       }
     })
-    const to = assign(
-      queue.map((id) => ({ id, need: need(id), up: byId.get(id)!.deps })),
-      bins,
-      undefined,
-      how.place,
-    )
+    // The live run's own rule (`Orchestrator.pump`).
+    const { to, left } = place(queue, bins, {
+      how,
+      tail,
+      need,
+      deps: (id) => byId.get(id)!.deps,
+    })
+    queue.splice(0, queue.length, ...left)
     for (const [id, bin] of to) {
       const w = bin.w
       if (overloaded.has(w.id)) overSent++
-      queue.splice(queue.indexOf(id), 1)
       const ran = byId.get(id)!.ran!
       w.running.set(id, {
         id,
