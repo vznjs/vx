@@ -14,6 +14,7 @@ import {
   releaseVersion,
   supportsTrustedPublishing,
   tarballUrl,
+  publishCommand,
 } from '../scripts/release.js'
 
 const message = (f: () => unknown): string => {
@@ -276,6 +277,22 @@ describe('release assets (scripts/release-assets.ts)', () => {
   })
 })
 
+describe('publishCommand', () => {
+  it('publishes with provenance at the log level that names an OIDC refusal', () => {
+    expect(publishCommand('npm', 'dist/npm/a', undefined)).toEqual([
+      'npm',
+      'publish',
+      'dist/npm/a',
+      '--access',
+      'public',
+      '--provenance',
+      '--loglevel',
+      'verbose',
+    ])
+    expect(publishCommand('npm', 'd', 'backfill').slice(-2)).toEqual(['--tag', 'backfill'])
+  })
+})
+
 describe('greenCommit', () => {
   const runs = [
     { head_sha: 'c3', conclusion: null },
@@ -292,6 +309,30 @@ describe('greenCommit', () => {
     expect(greenCommit('c0', runs)).toEqual({ sha: 'c0' })
     expect(greenCommit('c2', runs)).toEqual({
       refuse: 'CI did not pass on c2 on main; not releasing it',
+    })
+  })
+
+  it('counts a run green once every job but Bench passed', () => {
+    const job = (name: string, conclusion: string | null) => ({ name, conclusion })
+    const ok = [job('VX DTE', 'success'), job('Perf', 'success'), job('Bench', null)]
+    const mixed = [
+      { head_sha: 'c5', conclusion: null, jobs: [job('VX DTE', null), job('Bench', null)] },
+      { head_sha: 'c4', conclusion: null, jobs: ok },
+      ...runs,
+    ]
+    expect(greenCommit('', mixed)).toEqual({ sha: 'c4' })
+    expect(greenCommit('c4', mixed)).toEqual({ sha: 'c4' })
+    expect(greenCommit('c5', mixed)).toEqual({
+      refuse: 'CI did not pass on c5 on main; not releasing it',
+    })
+    const failed = [job('VX DTE', 'success'), job('Perf', 'failure'), job('Bench', 'success')]
+    expect(greenCommit('c6', [{ head_sha: 'c6', conclusion: 'failure', jobs: failed }])).toEqual({
+      refuse: 'CI did not pass on c6 on main; not releasing it',
+    })
+    expect(
+      greenCommit('c7', [{ head_sha: 'c7', conclusion: null, jobs: [job('Bench', 'success')] }]),
+    ).toEqual({
+      refuse: 'CI did not pass on c7 on main; not releasing it',
     })
   })
 

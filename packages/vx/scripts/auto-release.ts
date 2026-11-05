@@ -1,5 +1,5 @@
 // auto-release.yml's one step, the `release.auto` task: release a commit
-// whose CI went green on main, VX_RELEASE_SHA or, when that is empty, the
+// whose CI went green on main (every job but Bench), VX_RELEASE_SHA or, when that is empty, the
 // newest such commit (greenCommit). It tags it with the next version and creates
 // the GitHub release as a draft, its body the release post at that commit or,
 // with none, the Conventional Commits since the last tag (release-notes.ts), then dispatches release.yml and npm.yml: a release
@@ -43,10 +43,32 @@ export function decideRelease(sha: string, git: Git): Decision {
   return { release: true, last }
 }
 
-/** A ci.yml run as the runs API lists it. */
+/** A ci.yml job: its name and how it ended (null while it runs). */
+export interface CiJob {
+  name: string
+  conclusion: string | null
+}
+
+/** A ci.yml run as the runs API lists it, with its jobs when fetched. */
 export interface CiRun {
   head_sha: string
   conclusion: string | null
+  jobs?: readonly CiJob[]
+}
+
+// Bench measures the site's numbers, about 35 min a run, and gates
+// nothing: a run whose other jobs passed is green while it still runs or
+// even when it failed.
+const NON_BLOCKING = new Set(['Bench'])
+
+/** CI passed on the run: the run concluded success, or every job but Bench did. */
+function passed(run: CiRun): boolean {
+  if (run.conclusion === 'success') return true
+  const gating = (run.jobs ?? []).filter((j) => !NON_BLOCKING.has(j.name))
+  return (
+    gating.length > 0 &&
+    gating.every((j) => j.conclusion === 'success' || j.conclusion === 'skipped')
+  )
 }
 
 /**
@@ -58,7 +80,7 @@ export function greenCommit(
   asked: string,
   runs: readonly CiRun[],
 ): { sha: string } | { refuse: string } {
-  const green = runs.filter((r) => r.conclusion === 'success')
+  const green = runs.filter(passed)
   if (asked === '') {
     const newest = green[0]
     return newest ? { sha: newest.head_sha } : { refuse: 'no green CI run on main to release' }
@@ -99,10 +121,20 @@ async function main(): Promise<void> {
     { headers },
   )
   if (!listed.ok) throw new Error(`GET ci.yml runs: ${listed.status} ${await listed.text()}`)
-  const picked = greenCommit(
-    asked,
-    ((await listed.json()) as { workflow_runs: CiRun[] }).workflow_runs,
-  )
+  const runs = ((await listed.json()) as { workflow_runs: Array<CiRun & { id: number }> })
+    .workflow_runs
+  // Only a run newer than the newest success can change the pick, so only
+  // those runs' jobs are asked for.
+  for (const run of runs) {
+    if (run.conclusion === 'success') break
+    const jobs = await fetch(
+      `https://api.github.com/repos/${repo}/actions/runs/${run.id}/jobs?per_page=100`,
+      { headers },
+    )
+    if (!jobs.ok) throw new Error(`GET run ${run.id} jobs: ${jobs.status} ${await jobs.text()}`)
+    run.jobs = ((await jobs.json()) as { jobs: CiJob[] }).jobs
+  }
+  const picked = greenCommit(asked, runs)
   if ('refuse' in picked) throw new Error(picked.refuse)
   const { sha } = picked
   const decision = decideRelease(sha, git)

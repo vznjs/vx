@@ -110,6 +110,17 @@ export function publishTag(version: string, latest: string | undefined): string 
   return latest !== undefined && Bun.semver.order(version, latest) < 0 ? 'backfill' : undefined
 }
 
+/**
+ * The `npm publish` command line. Verbose: npm logs every trusted
+ * publishing refusal (no id-token, a failed token exchange) only at that
+ * level, and without it v0.0.651's darwin publish failed as a bare
+ * ENEEDAUTH.
+ */
+export function publishCommand(npm: string, dir: string, tag: string | undefined): string[] {
+  const args = [npm, 'publish', dir, '--access', 'public', '--provenance', '--loglevel', 'verbose']
+  return tag === undefined ? args : [...args, '--tag', tag]
+}
+
 /** Where npm serves `name@version`'s tarball. */
 export const tarballUrl = (name: string, version: string): string =>
   `https://registry.npmjs.org/${name}/-/${name.split('/').pop()}-${version}.tgz`
@@ -293,9 +304,8 @@ function publish(os: Os, version: string): void {
         Bun.spawnSync({ cmd: [npm, 'view', spec, 'version'], stdout: 'ignore', stderr: 'ignore' })
           .exitCode === 0,
       publish: (dir) => {
-        const publishArgs = [npm, 'publish', dir, '--access', 'public', '--provenance']
         const r = Bun.spawnSync({
-          cmd: tag === undefined ? publishArgs : [...publishArgs, '--tag', tag],
+          cmd: publishCommand(npm, dir, tag),
           stdout: 'inherit',
           stderr: 'inherit',
         })
