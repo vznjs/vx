@@ -29,10 +29,7 @@ and run a task (or several): in some projects, by selectors, from a directory, w
 args, a concurrency limit, a signal sent mid-run (and again, as a second
 Ctrl-C), its stdin held open as an idle terminal, going on past a failure,
 forced past the cache, reading the cache without writing it, or planned
-without running. A watch step starts a tool's watch, makes each phase's
-edits once it has been quiet for 3 s, and checks what each phase ran
-(`ran`, `notRan`, `times`) before stopping it as Ctrl-C does. Each run says what
-must hold:
+without running; or watch a task. Each run says what must hold:
 
 | Field        | Holds when                                             |
 | ------------ | ------------------------------------------------------ |
@@ -49,6 +46,15 @@ must hold:
 | `within`     | the run ends within this many seconds                  |
 | `alone`      | no process the run started outlives it                 |
 
+A watch step starts the tool's watch mode and plays phases under it: a
+change (files written or deleted, a `sh` command, a config edit), then
+`ran`, `notRan`, `order`, `files` or `filesNot` as above. The first phase,
+with no change, is the initial run. A phase is judged once what it expects
+holds and no task has started or ended for 8 s, so a late rerun or a loop
+on the task's own output lands inside it; `inFlight` judges at once, to
+make the next change mid-run. Then the watch gets SIGINT, and a watch
+still running 10 s later is killed with its sandbox.
+
 Every run also fails a tool that starts one task twice. The harness puts a
 mark before and after each command, so "ran" means the command ran, not
 what a tool's log claims.
@@ -62,10 +68,11 @@ A case is `correctness` when failing it leaves a wrong tree or exit code,
 `efficiency` when failing it reruns work nothing asked for, and `data`
 when it is about what the tool reports of a run: cache status, time, CPU,
 memory, output size, read from its output, files or API. How a log reads
-is not measured. `why` says
-why the outcome is right where a tool could argue for another. `from`
+is not measured. Every case has a `why`: 3–4 sentences on why the
+outcome is right and what the alternative costs a user, shown collapsed
+under the case on the site. `from`
 names the vx tests the case is drawn from. `needs` names a feature a
-tool may lack (affected, timeout, retries, persistent tasks…); a tool
+tool may lack (affected, timeout, retries, persistent tasks, watch…); a tool
 without it scores the case not applicable.
 
 ## Adapters
@@ -77,18 +84,20 @@ mean the same thing, the adapter uses the one its docs teach:
 
 - **Turborepo**: a package.json script per task, a `project#task` entry
   in turbo.json each. Runs pass `--summarize`; the report is its run summary.
+  Watch is `turbo watch`.
 - **Nx**: an `nx:run-commands` target per task; each task's inputs are a
   named input, and each `^task` in `dependsOn` adds the dependency's own
   (`^build-inputs`, Nx's `^production` idiom). The report is the cache's
-  `run.json`.
+  `run.json`. Watch is `nx watch --all --initialRun -- nx run-many -t
+<task>`, with the daemon it needs on.
 - **Vite Task**: `run.tasks` in each project's vite.config.ts. It selects
-  by package only and runs one task per run, so `affected` and several-task
-  cases are not applicable to it. The report
+  by package only, runs one task per run and has no watch mode, so
+  `affected`, several-task and watch cases are not applicable to it. The report
   is `vp run --last-details`.
 - **vx**: a vx.config.mjs per project, `bun()` for the edges, `vx lock`,
   and its default cache store (in the case's home, so a linked worktree
   shares it). An isolated task is `exec.sandbox`. The report is
-  `vx last --format json`.
+  `vx last --format json`. Watch is `vx watch`.
 
 ## Sandbox
 

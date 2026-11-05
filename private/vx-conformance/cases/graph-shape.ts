@@ -24,6 +24,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: '`^gen` runs the dependencies’ gen first, and not their build',
+    why: '`^gen` asks for one specific task in each dependency, here the code generation app reads. Running lib’s build in its place leaves `gen/g.txt` missing or stale, and app builds on it. Running both wastes time on a build nobody asked for; the caret names a task, not a whole project.',
     from: GRAPH,
     workspace: {
       projects: {
@@ -67,6 +68,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: '`^build` over a dependency that declares no build runs the project alone',
+    why: '`^build` means build each dependency that has a build. A dependency without one has nothing to wait for, so the project runs on its own. Failing the run would make every project declare an empty build, and running some other task of lib in its place does work nobody asked for.',
     from: GRAPH,
     workspace: {
       projects: {
@@ -82,6 +84,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'A five-project chain builds strictly from the bottom up',
+    why: 'Each project in the chain reads the one below it, so the order must hold at every step, not only the first. If any build starts early it reads a missing or older output, and the error carries silently up to the top. A long chain is where a scheduler that only checks direct edges or races ahead shows it.',
     from: ['scheduler', 'scheduler-properties'],
     workspace: {
       projects: {
@@ -115,6 +118,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'Two selected projects over one dependency build it once, before both',
+    why: 'Two selected projects that share a dependency need it built once, and before either of them. Building it twice wastes time and can rewrite its output while one of them reads it. Starting either project before the shared build finishes gives it a missing or stale input.',
     from: ['scheduler', 'scheduler-properties'],
     needs: ['filter'],
     workspace: {
@@ -146,6 +150,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: '`test` on `build` and `^build` waits for both the project’s and its dependency’s build',
+    why: 'Two edges on one task both have to hold: the project’s own build and its dependency’s build. Honouring only one lets test start while the other build is still writing, so it checks a missing or half-written output. The test result then says nothing reliable about the code.',
     from: GRAPH,
     workspace: {
       projects: {
@@ -183,6 +188,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'Selecting a project and its dependency runs the dependency once, first',
+    why: 'Selecting a dependency by name does not make it independent of the project that needs it. lib must still build once and before app, as it would if only app were asked for. Running it twice or alongside app wastes time and lets app read a missing or stale lib.',
     from: ['exclude-dependencies-key', 'scheduler'],
     needs: ['filter'],
     workspace: { projects: { lib: chainProject('lib'), app: chainProject('app', ['lib']) } },
@@ -205,6 +211,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: '`^build` follows a dependency by package name when its directory is named otherwise',
+    why: 'Projects depend on each other by package name, and the directory a package lives in can be named anything. Matching dependencies by directory name drops the edge from app to ui. app then builds before ui, or on an old ui, and the run still exits 0.',
     from: ['package-graph', 'project-dirs'],
     workspace: {
       projects: {
@@ -240,6 +247,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: '`@acme/core#build` in dependsOn runs that scoped project’s build first',
+    why: 'Scoped names such as `@acme/core` are ordinary package names and must work in an explicit edge. A runner that misreads the `@` or the `/` cannot find the task and either fails or drops the edge. Dropping it lets site build first and copy a missing or stale core output.',
     from: ['package-graph', 'filter'],
     workspace: {
       projects: {
@@ -275,6 +283,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'A project nested in another runs its own task in its own directory',
+    why: 'A project inside another project’s directory is still its own project with its own task. Running it from the outer directory, or folding it into the outer project, writes outputs to the wrong place or skips it. Each task must run where its project lives, or its paths mean something else.',
     from: ['project-dirs', 'exclude-dependencies-key'],
     workspace: {
       projects: {
@@ -302,7 +311,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'Projects that depend on each other run a task that names no dependency',
-    why: 'The package cycle forms no task cycle: nothing orders these tasks, so nothing stops them.',
+    why: 'Packages that depend on each other form a cycle only for tasks that wait on dependencies. A task that names no dependency has no order to keep, so nothing stops it. Refusing the run would block checks like lint in any workspace with a package cycle, for no reason the tasks give.',
     from: ['package-graph', 'filter'],
     workspace: {
       projects: {
@@ -318,7 +327,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: '`^build` across projects that depend on each other fails before any build runs',
-    why: 'Each build waits on the other; any order runs one on a dependency not built yet.',
+    why: 'When each build waits on the other, no order is right: whichever runs first builds on a dependency not built yet. Running anyway gives an output that depends on timing and is never reproducible. Failing before any build runs names the cycle so the user can break it.',
     from: GRAPH,
     workspace: {
       projects: {
@@ -334,7 +343,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'A project listing itself as a dependency is no cycle: `^build` runs its build',
-    why: 'A package cannot be its own dependency; the self entry orders nothing.',
+    why: 'A package cannot be its own dependency, so a self entry in its manifest orders nothing. Treating it as a cycle fails a run that has a clear and valid order. The right reading ignores the self edge and runs the build once. A package that lists itself is a common slip in a manifest, and it should not block every build of that package.',
     from: ['package-graph'],
     workspace: { projects: { a: proj({ build: plain(['^build']) }, ['a']) } },
     steps: [{ run: 'build', expect: { exit: 0, ran: ['a#build'] } }],
@@ -345,6 +354,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'Two projects’ tasks naming each other fail the run before either runs',
+    why: 'Two tasks that each wait on the other can never both run after their dependency. Running them anyway breaks the order the user wrote, so one of them reads a missing or stale output. Failing before either runs points at the cycle instead of producing a build that depends on timing.',
     from: GRAPH,
     workspace: {
       projects: {
@@ -360,7 +370,7 @@ export default [
     category: 'graph',
     kind: 'correctness',
     title: 'A task that depends on itself fails the run',
-    why: 'A task cannot run after itself; running it anyway ignores the order the user wrote.',
+    why: 'A task cannot run after itself, so a self dependency is a mistake in the config. Running the task anyway hides that mistake and ignores an order the user wrote, perhaps meaning another task. Failing the run makes the bad edge visible while it is cheap to fix.',
     from: GRAPH,
     workspace: { projects: { a: proj({ build: plain(['build']) }) } },
     steps: [{ run: 'build', expect: { exit: 'fail', notRan: ['a#build'] } }],
@@ -372,7 +382,7 @@ export default [
     kind: 'correctness',
     title:
       'A workspace package named only as a peer is built first, and an edit to it runs the consumer again',
-    why: 'The workspace links the peer in: the consumer’s build reads it as it reads any dependency.',
+    why: 'The workspace links the peer in, so the consumer’s build reads it as it reads any dependency. Naming it as a peer only changes who installs it outside the workspace. Building the consumer first, or replaying it after the peer changed, leaves it built against code that is no longer there.',
     from: ['parity-turbo', 'vx-lockfile/discover'],
     workspace: {
       projects: {

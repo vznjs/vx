@@ -7,6 +7,7 @@ const cached = { command: CONCAT, inputs: ['src/**'], outputs: ['dist/**'] }
 function rerunsOn(
   id: string,
   title: string,
+  why: string,
   from: string[],
   change: Record<string, string | null>,
   want: string,
@@ -17,6 +18,7 @@ function rerunsOn(
     category: 'inputs',
     kind: 'correctness',
     title,
+    why,
     from,
     workspace: one(cached, files),
     steps: [
@@ -33,6 +35,7 @@ export default [
     category: 'inputs',
     kind: 'efficiency',
     title: 'A second run over an unchanged tree replays instead of running',
+    why: 'When nothing a task reads has changed, its last result is still right, so replaying it is safe. Running it again spends CI minutes and local time on work whose answer is already known. Across a monorepo of many tasks, this is what lets a run with no changes finish in seconds instead of taking the full build time.',
     from: ['parity-turbo', 'parity-nx-hashing', 'repeated-runs.unsafe'],
     workspace: one(cached),
     steps: [
@@ -44,6 +47,7 @@ export default [
   rerunsOn(
     'edit',
     'Editing an input runs the task again',
+    'A changed input means the stored result was computed from source that no longer exists. Replaying it would ship output built from the old code under a green run. Seeing every edit to a declared input is the most basic promise a cache makes, and every other saving depends on it.',
     ['parity-turbo-hashing', 'inputs'],
     {
       'packages/a/src/a.txt': 'edited\n',
@@ -54,6 +58,7 @@ export default [
   rerunsOn(
     'same-size-edit',
     'A same-size edit right after a commit runs the task again',
+    'Change detection must rest on content, not on size and timestamps alone. An edit that keeps the file’s length and lands in the same second as a commit can look untouched to a check based on file stats. A tool that trusts such a check replays the old output, and the edit never reaches the build.',
     ['parity-turbo-hashing', 'git-racy-index', 'hash-scenarios'],
     { 'packages/a/src/a.txt': 'b\n' },
     'b\n',
@@ -62,6 +67,7 @@ export default [
   rerunsOn(
     'new-file',
     'A new file under an input glob runs the task again',
+    'A glob names a set of files, and adding a file changes that set. A build that concatenates, bundles or tests everything under `src/` gives different output once a new file exists. Keying only on the files seen before would replay a bundle that is missing the new module.',
     ['inputs', 'parity-turbo-hashing'],
     {
       'packages/a/src/b.txt': 'b\n',
@@ -72,6 +78,7 @@ export default [
   rerunsOn(
     'deleted-file',
     'Deleting an input runs the task again',
+    'Removing a file changes the input set just as editing one does. A task that bundles a directory must stop including the deleted file. Replaying the old result would ship code that is gone from the tree, such as a removed module or a test that should no longer run.',
     ['parity-turbo-hashing', 'absent-input'],
     { 'packages/a/src/b.txt': null },
     'a\n',
@@ -81,6 +88,7 @@ export default [
   rerunsOn(
     'renamed-file',
     'Renaming an input runs the task again',
+    'A file’s path is part of what a task reads, not only its bytes. A rename can change order, module names or import paths, so the output can differ even when no content changed. A key built only from the set of content hashes sees the same bytes and replays output that still names the old file.',
     ['stale-hit-git', 'inputs-moved'],
     { 'packages/a/src/a.txt': null, 'packages/a/src/c.txt': 'a\n' },
     'b\na\n',
@@ -90,6 +98,7 @@ export default [
   rerunsOn(
     'nested-dir',
     'An edit deep in a nested input directory runs the task again',
+    'A recursive glob covers every depth, and a change at any depth counts. A tool that stops walking early, or trusts a directory’s own timestamp, can miss an edit several levels down. Real sources nest deeply, so missing such an edit replays stale output for ordinary work.',
     ['parity-turbo-hashing', 'nested-dirs'],
     { 'packages/a/src/deep/er/x.txt': 'deep2\n' },
     'a\n',
@@ -99,6 +108,7 @@ export default [
   rerunsOn(
     'odd-file-name',
     'An edit to an input named with spaces, `$` and quotes runs the task again',
+    'File names with spaces, quotes or `$` are legal and occur in real repos, for example among assets and fixtures. If such a name is mangled when it is listed, quoted or passed through a shell, the file drops out of the key. Edits to it then never rerun the task, and the build ships its old content.',
     ['hash-scenarios', 'git-enum-unicode'],
     { "packages/a/src/it's $x y.txt": 'two\n' },
     'a\ntwo\n',
@@ -108,6 +118,7 @@ export default [
   rerunsOn(
     'unicode-file-name',
     'An edit to an input with a non-ASCII name runs the task again',
+    'Non-ASCII file names are ordinary on every current file system and must map to the same path every time. git escapes such names in its plain output; a reader that does not undo the escaping loses the file from the key. Edits to it then replay the old output.',
     ['git-enum-unicode', 'affected-unicode'],
     { 'packages/a/src/żółw.txt': 'two\n' },
     'a\ntwo\n',
@@ -119,6 +130,7 @@ export default [
     category: 'inputs',
     kind: 'correctness',
     title: 'Undoing an edit replays the first run’s outputs, not the edited ones',
+    why: 'A key must depend only on the current inputs, so going back to old inputs must give back the old outputs. After an undo, the tree must hold what the first run produced, not the edited run’s output. A tool that keeps whatever it wrote last leaves output from code that is no longer in the tree, under a green run.',
     from: ['parity-turbo-hashing', 'hash-scenarios', 'stale-hit'],
     workspace: one(cached),
     steps: [
@@ -135,6 +147,7 @@ export default [
     category: 'inputs',
     kind: 'efficiency',
     title: 'A file outside the task’s inputs changes nothing',
+    why: 'Declared inputs are the contract: only those files can change the result. Rerunning a build because a README or another unrelated file changed wastes time on every docs edit. Explicit inputs are what let a cache stay warm across changes that cannot matter to the task.',
     from: ['parity-turbo', 'inputs'],
     workspace: one(cached, { 'src/a.txt': 'a\n', 'README.md': 'one' }),
     steps: [
@@ -149,6 +162,7 @@ export default [
     category: 'inputs',
     kind: 'efficiency',
     title: 'A file a `!` input pattern takes back changes nothing',
+    why: 'A `!` pattern is the user stating that a file does not affect the task. Notes, another tool’s fixtures or generated docs often sit inside a source folder. Ignoring the exclusion reruns the task on edits the user has said cannot change its output, and the cache loses its value for that folder.',
     from: ['parity-turbo-hashing', 'patterns-doc-drift'],
     workspace: one(
       { command: CONCAT, inputs: ['src/**', '!src/notes.md'], outputs: ['dist/**'] },
@@ -166,7 +180,7 @@ export default [
     category: 'inputs',
     kind: 'efficiency',
     title: 'A gitignored file under an input glob changes nothing',
-    why: 'Ignored files are local state (logs, caches); keying on them makes every machine miss.',
+    why: 'Files git ignores are local state such as logs, editor files and caches, not part of the source. They differ between machines and change on their own. Keying on them gives every machine a different key, so the cache misses on every CI runner and laptop even when the committed source is identical.',
     from: ['ignored-inputs', 'parity-nx-hashing', 'parity-turbo-hashing'],
     workspace: one(cached),
     steps: [
@@ -181,6 +195,7 @@ export default [
   rerunsOn(
     'untracked-file',
     'A new file git does not track yet is an input',
+    'A task reads what is on disk, not what git has recorded. A developer adds a file and builds before committing, and the new file belongs in the output. A tool that keys only on tracked files replays the old result until the next commit, hiding the new file from local builds.',
     ['parity-turbo-hashing', 'git-pending-reads'],
     {
       'packages/a/src/z.txt': 'z\n',
@@ -193,7 +208,7 @@ export default [
     category: 'inputs',
     kind: 'correctness',
     title: 'Making an input executable runs the task again',
-    why: 'The mode is part of what the task reads: a build that copies a script ships it runnable or not.',
+    why: 'The file mode is part of what a task reads: a build that copies a script ships it runnable or not. A key that hashes content alone sees no change after `chmod +x`. The cache then replays an output whose script is not executable, and the failure shows only when someone tries to run it.',
     from: ['stale-hit'],
     workspace: one(
       {
@@ -216,7 +231,7 @@ export default [
     category: 'inputs',
     kind: 'correctness',
     title: 'Making the file an input link points at executable runs the task again',
-    why: 'The link is unchanged; only its target’s mode moved, and the task reads that mode.',
+    why: 'The link itself is unchanged; only the mode of the file it points to moved. The task reads that mode, so its output can change, as a script that checks whether a file is runnable does. A key that looks only at the link, or ignores modes, replays the old result under the new tree.',
     from: ['linked-inputs', 'stale-hit'],
     workspace: one(
       {
@@ -240,7 +255,7 @@ export default [
     kind: 'correctness',
     title:
       'Two dependencies that swap contents, at the same output path, run the project built on them again',
-    why: 'Each dependency’s files are a set the other had: a key that folds them without their order replays the old result.',
+    why: 'After the swap each dependency holds what the other had, so the set of files is the same but which name holds which is not. The consumer reads them by name and builds a different result. A key that folds the dependencies without their order sees nothing new and replays the old output.',
     from: ['parity-turbo-hashing', 'task-hash-derive'],
     workspace: {
       projects: {
@@ -261,6 +276,7 @@ export default [
     category: 'inputs',
     kind: 'correctness',
     title: 'Editing a dependency rebuilds the projects that read its output',
+    why: 'A project built from a dependency’s output must rebuild when that dependency changes. Otherwise the app keeps bundling the old library while the library itself is new, and the two disagree inside one green build. The mismatch is hard to spot because each project looks up to date on its own.',
     from: ['parity-turbo', 'parity-nx-hashing', 'hash-chain'],
     workspace: fourProjects(),
     steps: [
@@ -282,6 +298,7 @@ export default [
     category: 'inputs',
     kind: 'efficiency',
     title: 'Editing one project does not rerun a project that does not depend on it',
+    why: 'A change can only affect projects that read it, directly or through their dependencies. Rebuilding unrelated projects on every edit makes CI time grow with the size of the repo rather than the size of the change. In a large monorepo that is the difference between checking one package and rebuilding everything.',
     from: ['parity-turbo-hashing-env', 'hash-chain'],
     workspace: fourProjects(),
     steps: [
@@ -299,6 +316,7 @@ export default [
     category: 'inputs',
     kind: 'efficiency',
     title: 'An edit to a file outside a dependency’s build inputs does not rebuild its dependents',
+    why: 'A dependant is affected only when something its dependency’s build reads has changed. A test file in a library does not change the built library, so the app built from it stays the same. Rebuilding the whole chain on every test edit throws away cached work whose result is already known.',
     from: ['parity-nx-hashing'],
     workspace: {
       projects: {
@@ -318,6 +336,7 @@ export default [
     category: 'inputs',
     kind: 'efficiency',
     title: 'A project nested inside another keeps its files out of the outer project’s inputs',
+    why: 'A project nested in another’s folder owns its own files. If the outer project’s `**` also counts them, every edit inside the inner project reruns the outer one too. Project boundaries are what keep one team’s change from invalidating another team’s cache.',
     from: ['nested-boundary', 'parity-nx-hashing'],
     workspace: {
       projects: {
@@ -345,6 +364,7 @@ export default [
     category: 'inputs',
     kind: 'correctness',
     title: 'Pointing an input symlink at another file runs the task again',
+    why: 'A task reads the file behind a link, so pointing the link somewhere else changes the input. A key built from the link’s own path, or from what it pointed at once, misses the change. The cache then replays output built from the old target while the tree points at the new one.',
     from: ['stale-hit', 'linked-inputs', 'path-links'],
     workspace: one(
       { command: CONCAT, inputs: ['src/**'], outputs: ['dist/**'] },
@@ -363,7 +383,7 @@ export default [
     category: 'inputs',
     kind: 'correctness',
     title: 'A task that lists no inputs never replays a stale result when a file it reads changes',
-    why: 'A default guesses what the task reads; a file outside the guess changes and the cache replays the old bytes.',
+    why: 'When a task lists no inputs, any default is a guess at what it reads. Here the command reads a file outside its project; when that file changes, a guessed key does not, and the cache replays the old bytes under a green run. Not caching such a task, or rerunning it, is right. Declaring inputs is how a task earns caching.',
     from: ['configless-default-build', 'cache-declaration-warnings'],
     workspace: {
       projects: {
@@ -392,7 +412,7 @@ export default [
     kind: 'correctness',
     title:
       'A task that lists no inputs never replays a stale result when a variable it reads changes',
-    why: 'A cache keyed on files alone replays the output of a value the command no longer sees.',
+    why: 'A task that lists no inputs gives the tool no way to know which variables it reads. A cache keyed on files alone replays the output of a value the command no longer sees: `MODE` moves from dev to prod and a dev build ships as prod. Rerunning the task, or hiding the variable from it, both keep the output true.',
     from: ['configless-default-build', 'env-reads-complete'],
     workspace: one({
       command: 'mkdir -p dist && printf "%s\\n" "${MODE-unset}" > dist/out.txt',
@@ -414,6 +434,7 @@ export default [
     category: 'inputs',
     kind: 'correctness',
     title: 'A task that lists no inputs runs again when its project’s sources change',
+    why: 'Whatever a tool does with a task that declares no inputs, it must not miss an edit to the project’s own sources. Running such a task every time is correct, and so is keying it on a default set that covers the edit. Replaying the result from before the edit would ship old code after a plain source change.',
     from: ['configless-default-build'],
     workspace: one({ command: CONCAT, outputs: ['dist/**'] }),
     steps: [

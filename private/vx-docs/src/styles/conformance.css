@@ -278,6 +278,23 @@
   font-size: 14px;
   color: var(--text-mut);
 }
+.vx-landing .cfm .cfm-cases .cfm-why > summary {
+  padding: 0;
+  border-bottom: 0;
+  font-size: 13px;
+  color: var(--phosphor);
+}
+.vx-landing .cfm .cfm-cases .cfm-why > summary::before {
+  content: '▸ ';
+}
+.vx-landing .cfm .cfm-cases .cfm-why[open] > summary::before {
+  content: '▾ ';
+}
+.vx-landing .cfm-why > p {
+  margin: 6px 0 0;
+  max-width: 68ch;
+  line-height: 1.5;
+}
 .vx-landing .cfm-meta {
   display: block;
   margin-top: 4px;

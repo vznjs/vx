@@ -137,7 +137,9 @@ const MERGED: Record<string, string> = {
   'playground/': 'quickstart/',
   'blog/the-playground/': 'quickstart/',
   'features/playground/': 'quickstart/',
-  'learn/choosing/': 'compare/',
+  'learn/choosing/': 'conformance/',
+  // The page that weighed the tools gave way to the suite that tests them (2026-11-04).
+  'compare/': 'conformance/',
   'learn/glossary/': 'glossary/',
   'guide/why/': '#one-run',
   'guide/tasks/': '#tasks',

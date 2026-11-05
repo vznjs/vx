@@ -37,7 +37,7 @@ export default [
     category: 'inputs',
     kind: 'correctness',
     title: 'A task rewriting its own input ahead of a reader leaves the reader’s output current',
-    why: 'The reader’s key must see the bytes the formatter wrote this run, not those it found before.',
+    why: 'The reader’s key must see the bytes the formatter wrote in this run, not the ones it found before. A runner that hashes every input up front keys the reader on the old `a.txt` and stores the new output under that key. A later run with the old source then replays output built from the new one, so the build ships text the source no longer holds.',
     from: ['in-run-writes'],
     workspace: {
       projects: {
@@ -64,6 +64,7 @@ export default [
     kind: 'correctness',
     title:
       'A task depending on another project’s named task rebuilds when that task’s output changes',
+    why: 'A task that depends on another task builds on what that task produced. When the upstream output changes, the dependant must run again, even though none of its own files changed. A runner that only looks at the dependant’s own inputs replays its old output, and the app ships with a generated file from an earlier seed.',
     from: ['in-run-writes'],
     workspace: {
       projects: {
@@ -94,7 +95,7 @@ export default [
     kind: 'correctness',
     title:
       'A result built from an input another task edited mid-run is not replayed once the input is put back',
-    why: 'The key was taken over the old bytes and the output built from the new: stored under that key, it replays the edit.',
+    why: 'A key taken over the old bytes must not be stored with an output built from the new ones. Here another task edits `src/a.txt` while the reader runs, so the reader’s output reflects the edit but its key does not. Once the file is put back, that key matches again and replays the edit that is gone. A runner must re-check its inputs before storing.',
     from: ['unkeyed-upstream'],
     workspace: {
       projects: {
@@ -138,7 +139,7 @@ export default [
     kind: 'correctness',
     title:
       'Tasks built over a dependency whose input was edited mid-run are not replayed once it is put back',
-    why: 'Each dependant’s key folds the dependency’s key from before the edit, and its output the edit itself.',
+    why: 'A stale key does not stay in one task: it flows down the chain. Each dependant folds the dependency’s key from before the edit, while its output carries the edit itself. If the dependency’s entry is not dropped, every task built on it is stored wrong too, and putting the file back replays the whole chain from a state that no longer exists.',
     from: ['unkeyed-upstream'],
     workspace: {
       projects: {
@@ -196,6 +197,7 @@ export default [
     kind: 'correctness',
     needs: ['runtime-inputs'],
     title: 'A change in what a key command prints runs the task again',
+    why: 'A key command is how a task declares an input that is not a file, such as a tool’s version or a generated value. Its printed answer is part of the key, so a new answer must run the task again. Otherwise the runner replays output built for the old answer, for example a build made with a compiler version that is no longer installed.',
     from: ['runtime-inputs'],
     workspace: probed(['cat marker']),
     steps: [
@@ -214,6 +216,7 @@ export default [
     kind: 'efficiency',
     needs: ['runtime-inputs'],
     title: 'A key command printing the same as before lets the task replay',
+    why: 'A key command makes its answer part of the key, not a reason to always run. If it prints the same as before, nothing the task depends on has changed, and the stored result is still right. A runner that treats any key command as uncacheable rebuilds on every run, and the declared input buys only wasted time.',
     from: ['runtime-inputs'],
     workspace: probed(['cat marker']),
     steps: [
@@ -228,7 +231,7 @@ export default [
     kind: 'correctness',
     needs: ['runtime-inputs'],
     title: 'A key command that exits non-zero fails the run without running the task',
-    why: 'Without its answer the key is unknown; running or replaying under a guessed key is the stale-hit class.',
+    why: 'Without its answer the key is unknown, so the task can neither replay nor run safely. Running it and storing the result under a guessed key, or replaying an old entry, is how stale bytes reach a green build. A command that fails also often means a tool is missing or broken. The run must stop and say so.',
     from: ['runtime-inputs', 'inputs-resolution'],
     workspace: probed(['sh -c "exit 7"']),
     steps: [{ run: 'build', expect: { exit: 'fail', notRan: ['a#build'] } }],
@@ -240,6 +243,7 @@ export default [
     kind: 'efficiency',
     needs: ['runtime-inputs'],
     title: 'A key command two projects share is run once per run',
+    why: 'A key command reads the state of the machine, which does not change during a run. When two projects declare the same command, its answer is the same for both, so running it twice only costs time. A slow command, such as asking a toolchain for its version, would otherwise be paid once per project on every run.',
     from: ['runtime-inputs', 'inputs-resolution'],
     workspace: {
       projects: Object.fromEntries(
@@ -269,6 +273,7 @@ export default [
     needs: ['runtime-inputs'],
     title:
       'A gitignored `.env.local` keyed through a command’s output reruns the task when edited or removed',
+    why: 'A gitignored file is local state and is no input by default, which is right. A user who wants such a file to count can say so through a key command, and that explicit choice must hold. Editing or removing `.env.local` must then run the task again; otherwise the build keeps an old API address or a value from a file that no longer exists.',
     from: ['runtime-inputs'],
     workspace: {
       projects: {
@@ -300,7 +305,7 @@ export default [
     kind: 'correctness',
     needs: ['runtime-inputs'],
     title: 'A key command reading a dependency’s output answers after that dependency ran',
-    why: 'Asked before the dependency wrote, the command answers for the previous run and files this build under it.',
+    why: 'A key command must answer for the state the task will run in. If it reads a dependency’s output before that dependency has run, it answers for the previous run. The task then builds from the new output but is stored under the old answer, and a later run replays the wrong result. The command must wait for the dependencies.',
     from: ['in-run-writes'],
     workspace: {
       projects: {
@@ -332,6 +337,7 @@ export default [
     kind: 'correctness',
     title:
       'A task reading a same-project dependency’s output, its inputs excluding it, rebuilds when the source changes',
+    why: 'A task may leave its dependency’s output out of its own inputs, since that output follows from the dependency’s inputs. Its key must then fold in the dependency’s key. When `src/a.txt` changes, the build runs and the test must run too. Otherwise the test result replayed is for the old source, and a broken change passes.',
     from: ['input-overlap'],
     workspace: {
       projects: {
@@ -368,6 +374,7 @@ export default [
     category: 'inputs',
     kind: 'efficiency',
     title: 'A task reading a same-project dependency’s output replays when nothing changed',
+    why: 'When nothing changed, both the build and the task that reads its output have results already stored. Folding the dependency’s key, rather than hashing its output after each run, lets the reader replay. A runner that cannot replay here reruns a test suite on every run though no source moved.',
     from: ['input-overlap'],
     workspace: {
       projects: {
@@ -400,7 +407,7 @@ export default [
     category: 'inputs',
     kind: 'correctness',
     title: 'An untracked directory under an input glob that the user may not enter is no error',
-    why: 'It holds nothing git or the tool can read, so it is no input (vercel/turborepo#6957). Run as root, every directory is searchable.',
+    why: 'A directory the user may not enter holds nothing git or the task can read, so it is no input. It is often left by another tool, a container or a mounted volume. Failing the run there blocks every build over a folder unrelated to the source. The case runs as a normal user, since root can enter every directory.',
     from: ['unreadable-input'],
     workspace: {
       projects: {
@@ -429,7 +436,7 @@ export default [
     category: 'failure',
     kind: 'correctness',
     title: 'Running a task no project declares fails instead of passing with nothing run',
-    why: 'A green run that ran nothing reads as a passing build or test suite.',
+    why: 'Running a task that no project declares is almost always a typo or a missing config. A runner that exits 0 with nothing run reports a green build or test suite that never happened. In CI that hides a broken pipeline for as long as nobody reads the log. A clear failure points at the mistake at once.',
     from: ['default-build-not-declared'],
     workspace: {
       projects: {

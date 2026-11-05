@@ -16,13 +16,13 @@ const a = (tasks: Record<string, TaskSpec>): WorkspaceSpec => ({
 /** A loop that never ends on its own, so only the stop can end the task. */
 const LOOP = 'while :; do sleep 0.05; done'
 
-const reaps = (signal: Stop['signal'], name: string, from: string[]) =>
+const reaps = (signal: Stop['signal'], name: string, why: string, from: string[]) =>
   defineCase({
     id: `failure/${signal.toLowerCase()}-reaps-task-tree`,
     category: 'failure',
     kind: 'correctness',
     title: `${name} ends the run, its task, and what the task backgrounded`,
-    why: 'A shell runs a backgrounded job with SIGINT and SIGQUIT ignored, so the signal alone does not end it: the runner must take down the whole tree, or the job runs on under init.',
+    why,
     from,
     workspace: a({
       slow: { command: `sh -c 'exec sleep 60' & touch started; sleep 60` },
@@ -44,13 +44,13 @@ const reaps = (signal: Stop['signal'], name: string, from: string[]) =>
     ],
   })
 
-const reachesAs = (signal: 'SIGINT' | 'SIGTERM') =>
+const reachesAs = (signal: 'SIGINT' | 'SIGTERM', why: string) =>
   defineCase({
     id: `failure/${signal.toLowerCase()}-reaches-task-as-itself`,
     category: 'failure',
     kind: 'correctness',
     title: `${signal} to the run reaches a running task as ${signal}`,
-    why: 'A cleanup bound to one signal (Node’s process.on, a shell trap) runs only if that signal arrives; one forwarded as another skips it.',
+    why,
     from: ['signal-handling'],
     workspace: a({
       t: {
@@ -67,20 +67,46 @@ const reachesAs = (signal: 'SIGINT' | 'SIGTERM') =>
   })
 
 export default [
-  reaps('SIGINT', 'Ctrl-C (SIGINT)', ['abort', 'signal-handling', 'task-tree-kill']),
-  reaps('SIGTERM', 'SIGTERM', ['signal-handling', 'task-tree-kill']),
-  reaps('SIGHUP', 'A hang-up (SIGHUP)', ['task-tree-kill']),
-  reaps('SIGQUIT', 'Ctrl-\\ (SIGQUIT)', ['task-tree-kill']),
+  reaps(
+    'SIGINT',
+    'Ctrl-C (SIGINT)',
+    'Ctrl-C means stop everything this run started, and start nothing new. A non-interactive shell runs a backgrounded job with SIGINT ignored, so the signal alone does not end it. Unless the runner takes down the whole process tree, the job runs on under init, holding ports and files after the prompt is back.',
+    ['abort', 'signal-handling', 'task-tree-kill'],
+  ),
+  reaps(
+    'SIGTERM',
+    'SIGTERM',
+    'SIGTERM is how a CI system, a container runtime or a process supervisor asks a run to end. Unless the runner ends the whole task tree, a job the task backgrounded keeps running after the run has exited. On a shared CI machine that orphan can hold a port, keep writing files or use CPU into the next job.',
+    ['signal-handling', 'task-tree-kill'],
+  ),
+  reaps(
+    'SIGHUP',
+    'A hang-up (SIGHUP)',
+    'A closed terminal or a dropped SSH session sends SIGHUP, and the work started there should end with it. A runner that passes it only to the task’s shell leaves what the task backgrounded running, unseen, with no terminal to show it. Such orphans pile up and hold the ports and locks the next run needs.',
+    ['task-tree-kill'],
+  ),
+  reaps(
+    'SIGQUIT',
+    'Ctrl-\\ (SIGQUIT)',
+    'The quit key is a harder stop than Ctrl-C, and a user who presses it wants everything gone. A shell runs a backgrounded job with SIGQUIT ignored, so the signal alone does not end it. The runner must end the whole tree, or the job runs on under init with nothing left that will stop it.',
+    ['task-tree-kill'],
+  ),
 
-  reachesAs('SIGINT'),
-  reachesAs('SIGTERM'),
+  reachesAs(
+    'SIGINT',
+    'A task should receive the signal the user sent, unchanged. Cleanup code is often bound to one signal, such as a Node `process.on("SIGINT")` handler or a shell `trap ... INT`. If Ctrl-C is forwarded as SIGTERM or SIGKILL, that handler never runs, and temp files, locks or child processes are left behind.',
+  ),
+  reachesAs(
+    'SIGTERM',
+    'A supervisor’s SIGTERM should reach the task as SIGTERM. Containers and CI agents send it to ask for a graceful shutdown, and programs bind their shutdown code to it. Forwarded as SIGINT or SIGKILL, that code is skipped, so connections are not drained and partial state is left on disk.',
+  ),
 
   defineCase({
     id: 'failure/stop-starts-no-dependant-of-a-task-that-exits-0',
     category: 'failure',
     kind: 'correctness',
     title: 'A task that exits 0 on Ctrl-C does not start its dependants',
-    why: 'The user asked the run to stop; a task that handles the signal by exiting cleanly has not finished its work.',
+    why: 'Once the user asks a run to stop, nothing new should start. A task that handles Ctrl-C by exiting 0 is shutting down cleanly, not reporting that its work is done. Starting its dependants would launch new work after the stop, on output that may be incomplete, and keep the terminal busy after Ctrl-C.',
     from: ['abort'],
     workspace: a({
       slow: { command: `trap 'exit 0' INT TERM; touch started; ${LOOP}` },
@@ -105,7 +131,7 @@ export default [
     category: 'failure',
     kind: 'correctness',
     title: 'Ctrl-C ends a run whose task ignores SIGINT and SIGTERM',
-    why: 'A task that shrugs the polite signal off must still die: the run neither hangs nor leaves it running.',
+    why: 'A stop must end the run even when a task ignores the polite signals. Some programs trap or ignore SIGINT and SIGTERM, by design or by bug. Without escalating to SIGKILL after a grace period, the run hangs at Ctrl-C, or exits and leaves the task running in the background.',
     from: ['abort', 'signal-handling'],
     workspace: a({ stubborn: { command: `trap '' INT TERM; touch started; sleep 60` } }),
     steps: [
@@ -118,7 +144,7 @@ export default [
     category: 'failure',
     kind: 'correctness',
     title: 'A run stopped by SIGTERM exits only once its tasks have',
-    why: 'A runner that exits while its tasks are still shutting down leaves them writing to the terminal, and to files, after the prompt is back.',
+    why: 'A run should exit only after its tasks have. If the runner returns the prompt while tasks are still running their shutdown code, they keep printing over the next command and writing files the user thinks are settled. A script that starts the next step once the runner exits would race those late writes.',
     from: ['signal-handling'],
     workspace: a({
       slow: {
@@ -135,7 +161,7 @@ export default [
     category: 'failure',
     kind: 'correctness',
     title: 'One Ctrl-C lets a task finish its cleanup',
-    why: 'A handler that runs once (process.once, a trap that resets itself) dies mid-cleanup if the task hears the stop twice.',
+    why: 'One Ctrl-C should reach a task once. Many cleanup handlers run once and then reset, like `process.once` or a trap that clears itself, so a second copy of the signal kills the task in the middle of its cleanup. A runner that signals the process group and then the task again leaves the cleanup half done.',
     from: ['abort', 'persistent-ready-timeout'],
     workspace: a({
       t: {
@@ -157,6 +183,7 @@ export default [
     kind: 'correctness',
     title:
       'A process a task backgrounded gets to clean up on SIGTERM after the task’s shell has died',
+    why: 'Every process in a task’s tree deserves the same chance to shut down cleanly. A task’s shell often dies on SIGTERM at once, while a process it backgrounded is still running its handler. A runner that sends SIGKILL to the rest of the tree as soon as the shell exits cuts that cleanup short and leaves lock files or temp state behind.',
     from: ['task-tree-kill'],
     workspace: a({
       t: {
@@ -182,7 +209,7 @@ export default [
     category: 'failure',
     kind: 'correctness',
     title: 'A task that traps Ctrl-C and exits 0 is not cached with its partial outputs',
-    why: 'Its exit 0 came from the stop, not the end of its work: cached, the partial tree replays as a success.',
+    why: 'An exit 0 after a stop does not mean the work finished. A program that traps Ctrl-C and exits 0 to shut down gracefully may have written only part of its outputs. Cached, that partial tree would replay as a success on every later run with the same inputs, so the next run must run the task again.',
     from: ['signal-handling', 'aborted-outcome'],
     workspace: a({
       t: {
@@ -203,6 +230,7 @@ export default [
     category: 'failure',
     kind: 'efficiency',
     title: 'A task that finished before Ctrl-C is replayed by the next run',
+    why: 'A task that finished before the stop produced a complete, valid result. Throwing it away because a later task was interrupted makes the next run redo work that was already done. Only the interrupted tasks need to run again; the finished one replays from the cache.',
     from: ['signal-handling'],
     workspace: a({
       quick: { command: CONCAT, inputs: ['src/**'], outputs: ['dist/**'] },
@@ -232,7 +260,7 @@ export default [
     category: 'failure',
     kind: 'correctness',
     title: 'A run started with SIGHUP ignored (nohup) runs on when the terminal closes',
-    why: '`nohup` asks for exactly this; a runner that installs its own SIGHUP handler over the inherited ignore stops the run.',
+    why: '`nohup` sets SIGHUP to ignored so that a long job survives a closed terminal or a dropped SSH session. The ignore is inherited, and a runner that installs its own SIGHUP handler over it stops the run anyway. The user asked for the job to keep going, so the run finishes and exits 0.',
     from: ['task-tree-kill', 'hangup-ignored'],
     workspace: a({ slow: { command: 'touch started; sleep 1; echo done > done.txt' } }),
     steps: [
@@ -250,7 +278,7 @@ export default [
     kind: 'correctness',
     title:
       'A dependency killed by a signal mid-write leaves no dependant cached from its partial output',
-    why: 'The kill switch is no input, so a healthy run derives the same keys: anything cached from the partial tree replays as a green hit.',
+    why: 'A dependency killed mid-write leaves partial output, and nothing built from it may be kept. The kill came from something that is not an input, so a later healthy run derives the same cache keys. If a dependant had been cached from the partial file, that run would replay the wrong bytes under a green result.',
     from: ['aborted-outcome'],
     workspace: {
       projects: {
@@ -303,6 +331,7 @@ export default [
     category: 'failure',
     kind: 'correctness',
     title: 'A concurrency of 0 is refused or read as a limit, never a run that waits for good',
+    why: 'A concurrency of 0 lets no task start, so a run that takes it literally waits forever. In CI that is a job that hangs until its timeout, with no error to explain it. The runner may refuse the value with a clear message or read it as some valid limit, but it must never sit idle.',
     from: ['run-concurrency'],
     workspace: a({ t: { command: 'echo t' } }),
     steps: [{ run: 't', concurrency: 0, expect: { within: 30 } }],
@@ -313,7 +342,7 @@ export default [
     category: 'failure',
     kind: 'correctness',
     title: 'A second Ctrl-C kills a task still in its cleanup at once, and leaves nothing running',
-    why: 'The user pressed it again to stop now: a runner that waits out the cleanup ignores them.',
+    why: 'The first Ctrl-C asks tasks to clean up and stop. Pressing it again says the user will not wait for that cleanup. A runner that keeps waiting ignores the user, and one that exits while leaving the task running hides a process that may still hold a port or write files.',
     from: ['signal-handling'],
     workspace: a({
       slow: {
@@ -336,7 +365,7 @@ export default [
     kind: 'correctness',
     title:
       'A task that reads its input stream sees it end, though the runner’s own stays open, and the run finishes',
-    why: 'A task handed the terminal, or a pipe nobody closes, waits forever for input no one types.',
+    why: 'A task that reads its input stream must see it end, or it waits forever for input nobody will type. The runner’s own input may stay open, as a terminal or a supervisor leaves it. Handing that stream on to the task turns a finished build into a run that never ends.',
     from: ['runner'],
     workspace: a({
       build: {

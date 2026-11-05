@@ -37,19 +37,8 @@ export const nx: Adapter = {
   // No per-task time limit, no retries. A failure skips what depends on
   // it, every cache read writes too, no run is planned without running,
   // and nothing keeps a command from what it never declared. Every host
-  // variable reaches a task, keying none it does not name. `nx watch`
-  // runs through the daemon, off in every run here, and only runs a
-  // given command on a change, running no task to start.
-  lacks: [
-    'select-walk',
-    'timeout',
-    'retries',
-    'continue',
-    'read-only-cache',
-    'dry-run',
-    'sandbox',
-    'watch',
-  ],
+  // variable reaches a task, keying none it does not name.
+  lacks: ['select-walk', 'timeout', 'retries', 'continue', 'read-only-cache', 'dry-run', 'sandbox'],
   env: {
     NX_DAEMON: 'false',
     NX_NO_CLOUD: 'true',
@@ -166,6 +155,23 @@ export const nx: Adapter = {
     task,
     `--base=${base}`,
     '--outputStyle=stream',
+  ],
+  // `nx watch` hears changes through the daemon, which every other run
+  // leaves off; it reruns the docs' `run-many` line on each change.
+  watch: (task, projects) => [
+    'env',
+    'NX_DAEMON=true',
+    'node_modules/.bin/nx',
+    'watch',
+    ...(projects ? ['-p', projects.join(','), '-d'] : ['--all']),
+    '--initialRun',
+    '--',
+    [
+      'node_modules/.bin/nx run-many -t',
+      task,
+      ...(projects ? ['-p', projects.join(',')] : []),
+      '--outputStyle=stream',
+    ].join(' '),
   ],
   // Each run rewrites run.json in its cache directory.
   report: async (root) => {
