@@ -14,6 +14,7 @@ import {
   releaseVersion,
   supportsTrustedPublishing,
   tarballUrl,
+  oidcClaims,
   publishCommand,
 } from '../scripts/release.js'
 
@@ -274,6 +275,25 @@ describe('release assets (scripts/release-assets.ts)', () => {
     expect(assetsToUpload('darwin', ['vx-darwin-arm64', 'vx-darwin-x64'], r)).toEqual([
       'vx-darwin-x64',
     ])
+  })
+})
+
+describe('oidcClaims', () => {
+  it('keeps the claims trusted publishing matches, nothing else', () => {
+    const part = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url')
+    const jwt = `${part({ alg: 'RS256' })}.${part({
+      sub: 'repo:vznjs/vx:environment:npm',
+      repository: 'vznjs/vx',
+      environment: 'npm',
+      job_workflow_ref: 'vznjs/vx/.github/workflows/npm.yml@refs/heads/main',
+      runner_environment: 'github-hosted',
+    })}.sig`
+    expect(oidcClaims(jwt)).toEqual({
+      sub: 'repo:vznjs/vx:environment:npm',
+      repository: 'vznjs/vx',
+      environment: 'npm',
+      job_workflow_ref: 'vznjs/vx/.github/workflows/npm.yml@refs/heads/main',
+    })
   })
 })
 
