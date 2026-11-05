@@ -90,3 +90,34 @@ it('reads nothing from a missing file, another version or another shape', () => 
   ).toBeNull()
   expect(parseDependenciesLock(new TextEncoder().encode('{'))).toBeNull()
 })
+
+// A committed file a merge or a hand edit can break inside: a shape check
+// of the top level alone let `files: { "bun.lock": null }` or `deps: [5]`
+// through, and the first lookup threw a raw TypeError instead of the
+// "invalid, run `vx lock`" refusal.
+it('reads nothing from a lock whose entries are not this shape', () => {
+  const enc = (v: unknown) => new TextEncoder().encode(JSON.stringify(v))
+  const good = { version: 3, projects: ['a', 'b'], deps: [[], [0]], reach: [[], []], files: {} }
+  expect(parseDependenciesLock(enc(good))).not.toBeNull()
+  const rec = { hash: 'h', digests: ['', 'd'] }
+  for (const bad of [
+    { projects: ['a', 5] },
+    { deps: [[], 5] },
+    { deps: [[], ['0']] },
+    { deps: [[], [2]] },
+    { reach: [null, []] },
+    { files: [] },
+    { files: { 'bun.lock': null } },
+    { files: { 'bun.lock': { ...rec, hash: 5 } } },
+    { files: { 'bun.lock': { ...rec, digests: {} } } },
+    { files: { 'bun.lock': { ...rec, digests: [''] } } },
+    { files: { 'bun.lock': { ...rec, digests: ['', 7] } } },
+    { files: { 'bun.lock': { ...rec, extras: [] } } },
+    { files: { 'bun.lock': { ...rec, extras: { x: 1 } } } },
+  ]) {
+    expect([bad, parseDependenciesLock(enc({ ...good, ...bad }))]).toEqual([bad, null])
+  }
+  expect(
+    parseDependenciesLock(enc({ ...good, files: { 'bun.lock': { ...rec, extras: { x: 'h' } } } })),
+  ).not.toBeNull()
+})

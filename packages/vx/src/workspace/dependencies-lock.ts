@@ -116,22 +116,41 @@ export function parseDependenciesLock(bytes: Uint8Array | null): DependenciesLoc
   if (bytes === null) return null
   try {
     const lock = JSON.parse(new TextDecoder().decode(bytes)) as Partial<DependenciesLock>
-    const n = lock.projects?.length
-    if (
-      lock.version !== DEPENDENCIES_LOCK_VERSION ||
-      !Array.isArray(lock.projects) ||
-      !Array.isArray(lock.deps) ||
-      lock.deps.length !== n ||
-      !Array.isArray(lock.reach) ||
-      lock.reach.length !== n ||
-      typeof lock.files !== 'object' ||
-      lock.files === null
-    )
-      return null
-    return lock as DependenciesLock
+    return lock.version === DEPENDENCIES_LOCK_VERSION && wellFormed(lock)
+      ? (lock as DependenciesLock)
+      : null
   } catch {
     return null
   }
+}
+
+// A committed file a merge or a hand edit can break inside, so every
+// entry is checked: one bad entry read on would throw a raw TypeError at
+// its first lookup instead of the "invalid, run `vx lock`" refusal.
+function wellFormed(lock: Partial<DependenciesLock>): boolean {
+  const { projects, deps, reach, files } = lock
+  if (!Array.isArray(projects) || !projects.every((d) => typeof d === 'string')) return false
+  const n = projects.length
+  const edges = (lists: unknown): boolean =>
+    Array.isArray(lists) &&
+    lists.length === n &&
+    lists.every((l) => Array.isArray(l) && l.every((i) => Number.isInteger(i) && i >= 0 && i < n))
+  if (!edges(deps) || !edges(reach) || !isRecord(files)) return false
+  return Object.values(files).every(
+    (rec: unknown) =>
+      isRecord(rec) &&
+      typeof rec['hash'] === 'string' &&
+      Array.isArray(rec['digests']) &&
+      rec['digests'].length === n &&
+      rec['digests'].every((d) => typeof d === 'string') &&
+      (rec['extras'] === undefined ||
+        (isRecord(rec['extras']) &&
+          Object.values(rec['extras']).every((h) => typeof h === 'string'))),
+  )
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
 
 /** The project directories whose edges reach `dir`. */
