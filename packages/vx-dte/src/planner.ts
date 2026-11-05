@@ -1070,6 +1070,12 @@ export interface Forecast {
   /** How many tasks the run had handed over, and those it had when planned. */
   readonly executed: number
   readonly before: ReadonlySet<string>
+  /**
+   * How far it read the handed-over set, kept across its steps: a Set's
+   * iterator sees what is added after it, so each id is read once. Each
+   * step read the whole set, O(n) an event (2026-11-05).
+   */
+  readonly scan: { of?: ReadonlySet<string> | undefined; it?: Iterator<string>; read: number }
   /** Each size's warm-up as it saw it: a join tells the run's own. */
   readonly warm: readonly number[]
   /** When its window moves on, on the run's clock. */
@@ -1154,6 +1160,7 @@ function forecastOf(
     ),
     executed: input.executed.size,
     before: new Set(input.executed),
+    scan: { read: 0 },
     warm: warmsOf(input),
     until: ahead.untilInMs === undefined ? Infinity : now + ahead.untilInMs,
     late: lateOf(input.workers, slackOf(p)),
@@ -1253,13 +1260,29 @@ function follow(
     // see sends the plan to read every task.
     if (tasks === undefined) {
       if (input.executed.size < f.executed) return 'full'
-      for (const id of input.executed)
+      const scan = f.scan
+      if (scan.of !== input.executed) {
+        scan.of = input.executed
+        scan.it = input.executed.values()
+        scan.read = 0
+      }
+      for (; scan.read < input.executed.size; scan.read++) {
+        const r = scan.it!.next()
+        // One left the set: the count no longer says where it read to.
+        if (r.done === true) {
+          scan.of = undefined
+          return 'full'
+        }
+        const id = r.value
         if (
           !f.ms.has(id) &&
           !f.before.has(id) &&
           input.nodes.get(id)?.config.exec?.command !== undefined
-        )
+        ) {
+          scan.read++
           return 'full'
+        }
+      }
     } else {
       for (const t of tasks) if (!f.ms.has(t.id)) return undefined
       // Work that left without running (a hit, or no longer asked) frees

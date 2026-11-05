@@ -134,7 +134,16 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     const t = byId.get(id)!
     return t.known === undefined ? t.ran : (t.known ?? undefined)
   }
+  // Each task's need made once: the run's own is kept on its job.
+  const needs = new Map<string, Need>()
   const need = (id: string): Need => {
+    const had = needs.get(id)
+    if (had !== undefined) return had
+    const made = measured(id)
+    needs.set(id, made)
+    return made
+  }
+  const measured = (id: string): Need => {
     const k = known(id)
     const b = booked(
       k?.cores === undefined

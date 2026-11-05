@@ -16,13 +16,42 @@ export function ordered(
   cores: number,
 ): string[] {
   if (how === 'fifo') return [...ids]
-  const byTail = (x: string, y: string): number => tail(y) - tail(x)
-  if (how === 'critical-path') return [...ids].sort(byTail)
+  // Each one's key read once: a comparator that read the tails read them
+  // q log q times at each event, most of a 10 000-task sim (2026-11-05).
+  const tails = ids.map(tail)
+  if (how === 'critical-path') return byKey(ids, tails)
   // Troublesome: within a quarter of the longest chain, or half a worker wide.
   let longest = 0
-  for (const id of ids) longest = Math.max(longest, tail(id))
-  const hard = (id: string): boolean => tail(id) >= 0.75 * longest || need(id).cores >= cores / 2
-  return [...ids].sort((x, y) => Number(hard(y)) - Number(hard(x)) || byTail(x, y))
+  for (const t of tails) longest = Math.max(longest, t)
+  // Hard ones first: a key above every tail.
+  const keys = ids.map((id, i) =>
+    tails[i]! >= 0.75 * longest || need(id).cores >= cores / 2
+      ? tails[i]! + longest + 1
+      : tails[i]!,
+  )
+  return byKey(ids, keys)
+}
+
+/**
+ * `ids` by `keys`, highest first, ties in the order they came. The queue
+ * comes back as it left plus what got ready since: the run of it already
+ * in order is merged with the rest, sorted, and not sorted again.
+ */
+function byKey(ids: readonly string[], keys: readonly number[]): string[] {
+  let run = 1
+  while (run < ids.length && keys[run]! <= keys[run - 1]!) run++
+  if (run >= ids.length) return [...ids]
+  const rest: number[] = []
+  for (let i = run; i < ids.length; i++) rest.push(i)
+  rest.sort((x, y) => keys[y]! - keys[x]! || x - y)
+  const out: string[] = []
+  let i = 0
+  let j = 0
+  while (i < run && j < rest.length)
+    out.push(keys[i]! >= keys[rest[j]!]! ? ids[i++]! : ids[rest[j++]!]!)
+  while (i < run) out.push(ids[i++]!)
+  while (j < rest.length) out.push(ids[rest[j++]!]!)
+  return out
 }
 
 /** How `dispatch` sees the waiting tasks and the run. */
