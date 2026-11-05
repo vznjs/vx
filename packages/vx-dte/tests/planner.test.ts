@@ -511,3 +511,24 @@ it('advises each platform its own workers, joined after its warm-up', () => {
   })
   expect(advice.more).toBeUndefined()
 })
+
+// 2026-11-05: "Simulations should be turbo fast". A plan tried every
+// candidate while its end lay past their warm-up: 60 plays of 40 tasks
+// though the tenth new worker already sat idle. Its twins after it get
+// nothing either, so the plan stops there, and plans the same.
+it('stops trying workers once one like the rest sits idle in its play', () => {
+  let plays = 0
+  const counted: PlanWorker = {
+    ...worker('w', { idle: false }),
+    get running() {
+      plays++
+      return []
+    },
+  }
+  const tasks = Array.from({ length: 40 }, (_, i) => task(`t${i}`, 60_000))
+  const sixty = Array.from({ length: 60 }, () => ({ ...small, max: 60 }))
+  const p = plan(tasks, [counted], sixty, WARM)
+  expect([p.start.length, p.endsInMs]).toEqual([9, 80_000])
+  // Two reads a play; every candidate tried read 144.
+  expect(plays).toBeLessThan(60)
+})

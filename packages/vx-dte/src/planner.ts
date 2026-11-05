@@ -324,6 +324,17 @@ function play(
   let last = Math.max(0, ...ends.map((e) => e[0]))
   // When each platform's last task ends.
   const byPlatform = new Map<string | undefined, number>()
+  // The joined slots, read again once the next one joins.
+  let joined: Slot[] = []
+  let nextJoin = -Infinity
+  // A task that filled a size waits for a bigger one still to join.
+  const later = (above: { cores: number; memory: number }, platform?: string): boolean =>
+    slots.some(
+      (s) =>
+        s.at > now &&
+        (platform === undefined || s.platform === platform) &&
+        (s.cores > above.cores || s.memory > above.memory),
+    )
   for (;;) {
     if (joining.length > 0 || ready.stale) {
       // By the longest chain, those still ready keep their order and the
@@ -341,21 +352,21 @@ function play(
       else ready.reset(order)
       joining = []
     }
-    const joined = slots.filter((s) => s.at <= now)
-    // A task that filled a size waits for a bigger one still to join.
-    const later = (above: { cores: number; memory: number }, platform?: string): boolean =>
-      slots.some(
-        (s) =>
-          s.at > now &&
-          (platform === undefined || s.platform === platform) &&
-          (s.cores > above.cores || s.memory > above.memory),
-      )
-    const to = assign(ready.asks(spent, bounds, needs.size), joined, later, how.place, {
-      floor: (floor ??= floorOf(needs.values())),
-      kinds: needs.size,
-      spent,
-      bounds,
-    })
+    if (now >= nextJoin) {
+      joined = slots.filter((s) => s.at <= now)
+      nextJoin = Infinity
+      for (const s of slots) if (s.at > now) nextJoin = Math.min(nextJoin, s.at)
+    }
+    // With none ready nothing is given: a third of a sim's steps (2026-11-05).
+    const to =
+      readyCount === 0
+        ? NONE
+        : assign(ready.asks(spent, bounds, needs.size), joined, later, how.place, {
+            floor: (floor ??= floorOf(needs.values())),
+            kinds: needs.size,
+            spent,
+            bounds,
+          })
     // `graphene` ranks against the longest chain still ready.
     if (to.size > 0 && how.order === 'graphene') ready.stale = true
     for (const [id, best] of to) {
@@ -403,6 +414,8 @@ function play(
     }
   }
 }
+
+const NONE: ReadonlyMap<string, Slot> = new Map()
 
 /** What `play` reads of `tasks` alone, for each play of one plan. */
 interface Shape {
@@ -465,6 +478,10 @@ function kindsOf(tasks: readonly PlanTask[]): Kinds {
   return { at: new Map(tasks.map((t, i) => [t.id, i])), kindAt: tasks.map(kindOf) }
 }
 
+/** Two workers a play cannot tell apart, but by their place. */
+const twins = (a: PlanWorker, b: PlanWorker): boolean =>
+  a.cores === b.cores && a.memory === b.memory && a.platform === b.platform && a.at === b.at
+
 /** A worker of `s` that joins `at`. */
 function fresh(
   s: { cpu: number; memory: number; platform?: string | undefined; size?: string | undefined },
@@ -509,9 +526,21 @@ export function plan(
   const added = candidates.map((s, i) => fresh({ ...s, size: s.name }, `\0new${i}`, warm(s.name)))
   const ends: number[] = []
   for (let n = 0; n <= candidates.length; n++) {
-    ends.push(simulate(tasks, [...workers, ...added.slice(0, n)], how))
+    const played = play(tasks, [...workers, ...added.slice(0, n)], how)
+    ends.push(played.end)
     // Past the plan's own length more cannot end it sooner.
     if (n > 0 && ends[n] === ends[n - 1] && ends[n]! <= added[n - 1]!.at) break
+    // One the play gave nothing gets nothing beside a twin either: a task
+    // breaks a tie for the first. So none of its twins after it ends the
+    // run sooner; each play of them cost a sim of 150 tasks 4 s
+    // (2026-11-05).
+    const last = added[n - 1]
+    if (
+      last !== undefined &&
+      !played.first.has(last.id) &&
+      added.slice(n).every((a) => twins(a, last))
+    )
+      break
   }
   const best = Math.min(...ends)
   // Margin spent at each decision adds up: releases 4 s apart each lost
@@ -1029,28 +1058,46 @@ class Ready {
       }
       return
     }
-    const at = new Map<string, number>()
+    // Arrays, not the maps: the scan below is most of a sim's time (2026-11-05).
+    const ks: string[] = []
+    const qs: (readonly number[])[] = []
+    for (const [k, q] of this.kinds) {
+      ks.push(k)
+      qs.push(q)
+    }
+    const at = new Int32Array(ks.length).fill(-1)
     let cursor = -1
     for (;;) {
       let next = -1
-      let nextKind = ''
-      for (const [k, q] of this.kinds) {
+      let nextAt = -1
+      for (let x = 0; x < ks.length; x++) {
+        const k = ks[x]!
         if (spent.has(k)) continue
-        let p = at.get(k) ?? this.headOf(k, q)
+        const q = qs[x]!
+        let p = at[x]! === -1 ? this.headOf(k, q) : at[x]!
         if (p < q.length && cursor !== -1 && !this.before(cursor, q[p]!))
           p = this.after(q, p, cursor)
         while (p < q.length && this.taken[q[p]!] === 1) p++
-        at.set(k, p)
-        if (p < q.length && (next === -1 || this.before(q[p]!, next))) {
+        at[x] = p
+        if (p === q.length) continue
+        // A kind no bin fits or holds for is spent here, as `assign` would
+        // spend it once read: yielded, each cost a sim of 300 tasks a
+        // pass over the bins (2026-11-05). Bounds only shrink until a
+        // bin is given, which clears `spent`.
+        if (bounds !== undefined && dead(this.tasks[q[p]!]!, bounds)) {
+          spent.add(k)
+          continue
+        }
+        if (next === -1 || this.before(q[p]!, next)) {
           next = q[p]!
-          nextKind = k
+          nextAt = x
         }
       }
       if (next === -1) return
-      at.set(nextKind, at.get(nextKind)! + 1)
+      at[nextAt]!++
       cursor = next
       const t = this.tasks[next]!
-      yield { id: t.id, need: t, kind: nextKind }
+      yield { id: t.id, need: t, kind: ks[nextAt]! }
     }
   }
 
