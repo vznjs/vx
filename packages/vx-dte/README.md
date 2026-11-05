@@ -838,6 +838,9 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     one joining after its size's warm-up: this run's first of that size,
     else an earlier run's, else any size's this run, else 20 s,
     and takes the fewest N that end within 5% (5 s at least) of the best.
+    It plays only two warm-ups and the longest task ahead; past that, the
+    rest ends no sooner than its longest chain, nor than its work spread
+    on the cores it has, and the next plan, a warm-up on, sees further.
     Sizes of different platforms come in turns, so of those N it drops
     each the plan ends as soon without, its platform's work no more than
     5 s later.
@@ -847,8 +850,9 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     due, and a worker idle with its planned work done goes. It plays again
     only when reality leaves the plan: new work, work that leaves without
     running, a worker that joins, leaves or warms up off plan, a task past
-    its time, one of no known time ending, or a task's time, CPU or memory
-    moved more than 5% (1 s, 0.05 cores, 64 MiB at least).
+    its time or ending sooner, one of no known time ending, a task starting
+    with its time, CPU or memory more than 5% off (1 s, 0.05 cores, 64 MiB
+    at least), or its window moving on.
     What is left, running tasks too, takes as many times its history as
     the run's finished tasks took theirs (once they had 20 s of it; never
     less): a task past its forecast would otherwise be planned to end now,
