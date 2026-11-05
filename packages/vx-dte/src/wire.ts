@@ -350,6 +350,7 @@ export async function join(
         // heartbeat more would leave it 2 s of `LOST_BEATS` for a stall.
         if (role === 'orchestrator') {
           owing.delete(from)
+          // quiet: a lost ack only costs a resend, which is dropped as seen
           put(from, { acked: t.upTo } satisfies Acked).catch(() => undefined)
         } else owe(from)
       } else if (isNumbered(body)) {
