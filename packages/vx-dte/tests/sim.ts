@@ -327,7 +327,12 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       })
     }
     const held = (t: SimTask): boolean => options.probe !== false && t.cache && t.ran === undefined
-    const remaining = graph.filter((t) => !done.has(t.id) && !held(t)).map((t) => t.id)
+    // Read only when the plan reads every task: a plan followed reads none.
+    const remaining = {
+      *[Symbol.iterator](): Iterator<string> {
+        for (const t of graph) if (!done.has(t.id) && !held(t)) yield t.id
+      },
+    }
     const p = decide({
       remaining,
       nodes,
@@ -351,7 +356,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     })
     deadline = now + p.boundMs
     for (const t of p.tasks) planned.add(t.id)
-    if (p.release.length > 0 && remaining.length > 0)
+    if (p.release.length > 0 && !remaining[Symbol.iterator]().next().done)
       for (const id of p.release) {
         const w = workers.find((x) => x.id === id)!
         if (w.joinedAt === undefined) w.cancelledAt = now
