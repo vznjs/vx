@@ -539,7 +539,7 @@ it('stops trying workers once one like the rest sits idle in its play', () => {
 // by leave some margin. 5% or sth"; "And resource usage". Planned at
 // each task's end, a 1000-task run replayed itself ten thousand times.
 // While what the plan saw holds within 5%, the next is that plan again.
-it('makes the plan again only when reality moves past 5%: time, cores, memory, workers', () => {
+it('makes the plan again only when reality moves past 5%: time, cores, memory, workers done', () => {
   const ids = Array.from({ length: 6 }, (_, i) => `t${i}`)
   const nodes = new Map(
     ids.map((id) => [
@@ -583,12 +583,12 @@ it('makes the plan again only when reality moves past 5%: time, cores, memory, w
       last,
       now,
     })
-    return [plays > before, p.endsInMs] as const
+    return [plays > before, p.endsInMs, p.release] as const
   }
   const [first, ends] = at(0)
   expect(first).toBe(true)
   // A second on, all as planned: the same plan, a second shorter.
-  expect(at(1_000)).toEqual([false, ends - 1_000])
+  expect(at(1_000)).toEqual([false, ends - 1_000, []])
   // Within 5%: times 4% longer, cores and memory 4% more.
   expect(at(2_000, { ms: 10_400, cores: 1.04, memory: 1.04e9 })[0]).toBe(false)
   // Past it, each alone plans again.
@@ -598,6 +598,9 @@ it('makes the plan again only when reality moves past 5%: time, cores, memory, w
   // A running task past its time by 5% of the run's plans again; a moment late does not.
   expect(at(6_000, { ms: 12_000, cores: 1.2, memory: 2e9, endsIn: -100 })[0]).toBe(false)
   expect(at(7_000, { ms: 12_000, cores: 1.2, memory: 2e9, endsIn: -20_000 })[0]).toBe(true)
-  // A worker fallen idle may go: planned again.
-  expect(at(8_000, { ms: 12_000, cores: 1.2, memory: 2e9, idle: true })[0]).toBe(true)
+  // Idle between the tasks the plan gives it: as planned.
+  expect(at(8_000, { ms: 12_000, cores: 1.2, memory: 2e9, idle: true })[0]).toBe(false)
+  // Idle with its planned work done, it goes as the plan foresaw: not played again.
+  const [played, , release] = at(10_000_000, { ms: 12_000, cores: 1.2, memory: 2e9, idle: true })
+  expect([played, release]).toEqual([false, ['w']])
 })
