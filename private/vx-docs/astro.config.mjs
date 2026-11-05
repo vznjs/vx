@@ -136,7 +136,7 @@ export default defineConfig({
     starlight({
       title: 'vx',
       description:
-        'A content-addressed cache and task scheduler for JavaScript monorepos, built Bun-native.',
+        'Correct, sandboxed, extensible task orchestration. Plugins decide where tasks run and where the cache lives. MIT, no cloud, no account.',
       logo: {
         src: './src/assets/logo.svg',
         alt: 'vx',
@@ -151,7 +151,7 @@ export default defineConfig({
           tag: 'meta',
           attrs: {
             property: 'og:image:alt',
-            content: 'vx: a faster runner for your Turborepo or Nx repo',
+            content: 'vx: Task orchestration you own.',
           },
         },
         {

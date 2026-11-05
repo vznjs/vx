@@ -35,6 +35,8 @@ import {
   type DepOrder,
   type RunOrder,
   type RuntimeOrder,
+  type SentOrder,
+  type WiredDep,
   type ToWorker,
   type Load,
   type ToOrchestrator,
@@ -42,7 +44,7 @@ import {
 } from './messages.js'
 import { simulate, type PlanTask, type PlanWorker, type Size, type WarmUp } from './planner.js'
 import { Usage, type UsageStats } from './usage.js'
-import { assign, ordered, type Need } from './dispatch.js'
+import { dispatch, type Need } from './dispatch.js'
 import { DEFAULT_STRATEGY, type Strategy } from './strategy.js'
 import { RelayError, unsent, type Participant } from './wire.js'
 import { ORCHESTRATOR, Trace } from './trace.js'
@@ -84,7 +86,12 @@ interface Job {
   reread?: Set<string>
   /** Its upstreams, once the graph named it: walked again at every pump, 8000 queued spent 5 ms a pump on it (2026-10-25). */
   up?: Set<string>
+  /** Its direct dependencies, as placing reads them (`Ask.up`). */
+  deps?: readonly string[] | undefined
 }
+
+/** An upstream's files, as an order names them (`DepOrder`). */
+type DepFiles = Pick<DepOrder, 'project' | 'outputs'>
 
 /** The longest a task waits on the worker holding its upstream's files before they are made again (2026-10-23: 10 s on any wait). */
 const PIN_WAIT_MS = 10_000
@@ -123,6 +130,8 @@ interface Worker {
   load?: { cpu: number; memory: number; at: number }
   /** Tasks whose outputs it holds: it ran them, or was sent them. */
   readonly has: Set<string>
+  /** Each dependency it was sent whole, by the key it was sent under: the next order names it alone. */
+  readonly sentDeps: Map<string, string>
   /** Sends to it go out in order: a run's parts before the run. */
   chain: Promise<void>
   /** It was sent the run's sandbox configs. */
@@ -215,12 +224,12 @@ const OVERBOOK = 1.5
 const RESTARTS = 3
 
 /** `orders` in runs of at most `max` bytes of JSON; one bigger goes alone. */
-function parts<T extends { order: unknown }>(orders: readonly T[], max: number): T[][] {
+function parts<T extends { bytes: number }>(orders: readonly T[], max: number): T[][] {
   const out: T[][] = []
   let part: T[] = []
   let bytes = 0
   for (const o of orders) {
-    const size = bytesOf(o.order)
+    const size = o.bytes
     if (part.length > 0 && bytes + size > max) {
       out.push(part)
       part = []
@@ -354,6 +363,8 @@ export class Orchestrator {
   private relend: ReturnType<typeof setTimeout> | undefined
   /** The plugins any of the run's lends lent a token. */
   private readonly lenders = new Set<string>()
+  /** Each graph's upstreams as orders name them (`dep`). */
+  private readonly deps = new WeakMap<ReadonlyMap<string, TaskNode>, Map<string, DepFiles | null>>()
 
   constructor(private readonly o: OrchestratorOptions) {
     this.sent = o.sent ?? new Map()
@@ -371,6 +382,11 @@ export class Orchestrator {
 
   async execute(req: ExecuteRequest): Promise<ExecuteResult> {
     if (this.lost !== undefined) throw new Error(this.lost)
+    // Walked once here, for every later read: walked again on the way in,
+    // sharing, placing and sending, a run of 8000 tasks spent 17 s of this
+    // machine's CPU on it (2026-11-05).
+    const nodes = this.o.nodes()
+    const up = upstream(nodes, req.taskId)
     // A worker runs the run's tree: a file its key includes that the tree
     // lacks (untracked) is not there, and the output it saved under that
     // key was a stale hit for the next run (2026-10-24).
@@ -380,25 +396,16 @@ export class Orchestrator {
       // A dependency's output is restored there before the task runs: a
       // key that reads an upstream's bytes (`inputs.tasks` leaving it out)
       // was refused (2026-10-25).
-      const nodes = this.o.nodes()
-      const restored = [...upstream(nodes, req.taskId)].flatMap((id) => {
-        const n = nodes?.get(id)
-        const outs = n?.config.cache?.outputs
-        return n === undefined || outs === undefined
-          ? []
-          : [
-              names(path.relative(this.o.root, n.projectDir), {
-                files: outs.files,
-                workspaceFiles: outs.workspaceFiles ?? [],
-              }),
-            ]
-      })
+      let restored: ((file: string) => boolean)[] | undefined
+      const made = (file: string): boolean =>
+        (restored ??= [...up].flatMap((id) => {
+          const d = this.dep(nodes, id)
+          return d === undefined ? [] : [names(d.project, d.outputs)]
+        })).some((m) => m(file))
       const stray =
         tree === undefined
           ? undefined
-          : req.inputs.files.find(
-              (f) => !tree.files.has(f.path) && !restored.some((made) => made(f.path)),
-            )
+          : req.inputs.files.find((f) => !tree.files.has(f.path) && !made(f.path))
       if (stray !== undefined) {
         // A committed submodule's files are not the tree's: its gitlink is.
         const link = tree?.links.find((l) => stray.path.startsWith(`${l}/`))
@@ -410,11 +417,12 @@ export class Orchestrator {
       }
     }
     for (const u of req.inputs?.upstream ?? []) this.upstreamKeys.set(u.taskId, u.hash)
-    await this.share(req.taskId)
+    await this.share(up, nodes)
     return new Promise((resolve, reject) => {
       const need = this.o.need(req.taskId)
       const job: Job = {
         req,
+        ...(nodes?.has(req.taskId) === true ? { up } : {}),
         need: { ...need, platform: req.platform ?? this.o.home },
         queuedAt: performance.now(),
         resolve,
@@ -521,25 +529,12 @@ export class Orchestrator {
 
   private pump(): void {
     const batches = new Map<Worker, Job[]>()
-    const left: Job[] = []
     // Core asks in its critical-path order, but only as tasks get ready: a
     // long chain ready a moment late queued behind 46 shards ready at once,
     // and its 41 s build began 47 s in, the run's end (main, 2026-10-23).
-    const tail = this.o.tail
-    const how = this.o.how ?? DEFAULT_STRATEGY
     const waiting = this.queue.splice(0)
     const workers = [...this.workers.values()].filter((a) => !a.faulty)
     const byId = new Map(waiting.map((j) => [j.req.taskId, j]))
-    const queue =
-      tail === undefined
-        ? waiting
-        : ordered(
-            waiting.map((j) => j.req.taskId),
-            how.order,
-            tail,
-            (id) => byId.get(id)!.need,
-            Math.max(1, ...workers.map((a) => a.cores)),
-          ).map((id) => byId.get(id)!)
     const bins = workers.map((a) => {
       let running = 0
       for (const j of a.busy.values()) if (j.held !== undefined) running++
@@ -555,39 +550,28 @@ export class Orchestrator {
       }
     })
     const nodes = this.o.nodes()
-    const asks = []
-    const placed: Job[] = []
-    // The least any ask needs: once no worker takes it, the pass ends. Each
-    // pump read every queued task, 8000 of them a pump (2026-10-25).
-    const floor = { cores: Infinity, memory: Infinity }
-    for (const job of queue) {
-      const up =
-        job.up ??
-        (nodes?.has(job.req.taskId) === true
-          ? (job.up = upstream(nodes, job.req.taskId))
-          : upstream(nodes, job.req.taskId))
-      const pin = this.pin(job, up)
-      if (pin === 'done') continue
-      if (pin === 'wait') {
-        left.push(job)
-        continue
-      }
-      placed.push(job)
-      const need = this.booking(job.need)
-      floor.cores = Math.min(floor.cores, need.cores)
-      floor.memory = Math.min(floor.memory, need.memory)
-      asks.push({ id: job.req.taskId, need, up, ...pin })
-    }
-    const to = assign(asks, bins, (above, platform) => this.bigger(above, platform), how.place, {
-      floor,
-      kinds: Infinity,
-    })
+    const { to, left } = dispatch(
+      waiting.map((j) => j.req.taskId),
+      bins,
+      {
+        how: this.o.how ?? DEFAULT_STRATEGY,
+        tail: this.o.tail,
+        need: (id) => byId.get(id)!.need,
+        book: (need) => this.booking(need),
+        deps: (id) => (byId.get(id)!.deps ??= nodes?.get(id)?.deps),
+        gate: (id) => {
+          const job = byId.get(id)!
+          const up =
+            job.up ??
+            (nodes?.has(id) === true ? (job.up = upstream(nodes, id)) : upstream(nodes, id))
+          return this.pin(job, up)
+        },
+        waits: (above, platform) => this.bigger(above, platform),
+      },
+    )
+    const placed = [...to.keys()].map((id) => byId.get(id)!)
     for (const job of placed) {
-      const a = to.get(job.req.taskId)?.a
-      if (a === undefined) {
-        left.push(job)
-        continue
-      }
+      const a = to.get(job.req.taskId)!.a
       job.worker = a.id
       job.sentAt = performance.now()
       a.busy.set(job.req.taskId, job)
@@ -610,7 +594,7 @@ export class Orchestrator {
       if (batch === undefined) batches.set(a, [job])
       else batch.push(job)
     }
-    this.queue.push(...left)
+    this.queue.push(...left.map((id) => byId.get(id)!))
     for (const [a, jobs] of batches) this.send(a, jobs)
   }
 
@@ -815,11 +799,13 @@ export class Orchestrator {
    * hit only this cache held (the remote evicted it, or this machine does
    * not write it) failed the dependant there (2026-10-24).
    */
-  private async share(id: string): Promise<void> {
-    const nodes = this.o.nodes()
+  private async share(
+    up: ReadonlySet<string>,
+    nodes: ReadonlyMap<string, TaskNode> | undefined,
+  ): Promise<void> {
     const keys: string[] = []
-    for (const d of upstream(nodes, id)) {
-      if (this.savedAs.has(d) || nodes?.get(d)?.config.cache?.outputs === undefined) continue
+    for (const d of up) {
+      if (this.savedAs.has(d) || this.dep(nodes, d) === undefined) continue
       const key = this.upstreamKeys.get(d) ?? this.o.keyOf(d)
       if (key !== undefined) keys.push(key)
     }
@@ -860,92 +846,108 @@ export class Orchestrator {
     return got.includes(true)
   }
 
+  /**
+   * Upstream `id` as an order names it, once per graph: its project and
+   * outputs. Undefined: it is not in the graph, or leaves no files.
+   */
+  private dep(nodes: ReadonlyMap<string, TaskNode> | undefined, id: string): DepFiles | undefined {
+    if (nodes === undefined) return undefined
+    let of = this.deps.get(nodes)
+    if (of === undefined) this.deps.set(nodes, (of = new Map()))
+    let d = of.get(id)
+    if (d === undefined) {
+      const n = nodes.get(id)
+      const outs = n?.config.cache?.outputs
+      d =
+        n === undefined || outs === undefined
+          ? null
+          : {
+              project: path.relative(this.o.root, n.projectDir),
+              outputs: { files: [...outs.files], workspaceFiles: [...(outs.workspaceFiles ?? [])] },
+            }
+      of.set(id, d)
+    }
+    return d ?? undefined
+  }
+
   private send(a: Worker, jobs: readonly Job[]): void {
     const nodes = this.o.nodes()
-    const orders = jobs.map((job) => {
+    const orders = jobs.map((job): { job: Job; order: RunOrder } => {
       const { req } = job
       const deps: DepOrder[] = []
       // Every one, held there or not: the worker restores each key once, and
       // one it was sent but gave back it never ran or restored.
-      for (const id of upstream(nodes, req.taskId)) {
-        const n = nodes?.get(id)
-        const outs = n?.config.cache?.outputs
+      for (const id of job.up ?? upstream(nodes, req.taskId)) {
+        const d = this.dep(nodes, id)
         const key = this.savedAs.get(id) ?? this.upstreamKeys.get(id) ?? this.o.keyOf(id)
-        if (n === undefined || outs === undefined || key === undefined) continue
+        if (d === undefined || key === undefined) continue
         a.has.add(id)
-        deps.push({
-          task: id,
-          key,
-          project: path.relative(this.o.root, n.projectDir),
-          outputs: { files: [...outs.files], workspaceFiles: [...(outs.workspaceFiles ?? [])] },
-        })
+        deps.push({ task: id, key, project: d.project, outputs: d.outputs })
       }
       // A task sent here leaves its outputs here for its dependants.
       a.has.add(req.taskId)
       const node = nodes?.get(req.taskId)
       const env = defined(req.env, req.envDefine)
-      return {
-        job,
-        order: {
-          task: req.taskId,
-          // Unsaved: under the run's own key, as an uncached task's.
-          ...(req.cacheKey === undefined || req.unsaved === true ? {} : { key: req.cacheKey }),
-          runKey: runKey(this.o.run, req.taskId, this.sends(req.taskId)),
-          // A held key keeps its entry, and restored here it replaced the
-          // forced run's fresh bytes with the ones it bypassed (2026-10-25).
-          ...(req.refresh === true ? { fresh: true as const } : {}),
-          // A HEAD per upload was the workers' only remote probe: the run
-          // already knows the key is in no cache (2026-10-25).
-          ...(req.refresh !== true && this.missed.has(req.taskId) ? { absent: true as const } : {}),
-          deps,
-          nested: node === undefined ? [] : nestedIn(nodes!, node.projectDir, this.o.root),
-          command: withForwardArgs(req.command, req.forwardArgs),
-          cwd: path.relative(this.o.root, req.cwd),
-          project: node === undefined ? '' : path.relative(this.o.root, node.projectDir),
-          env,
-          ...(node?.config.exec?.env?.secret === undefined
-            ? {}
-            : { secret: [...node.config.exec.env.secret] }),
-          ...(req.timeoutMs === undefined ? {} : { timeoutMs: req.timeoutMs }),
-          outputs: {
-            files: [...req.outputs.files],
-            workspaceFiles: [...req.outputs.workspaceFiles],
-          },
-          cores: job.held?.cores ?? 1,
-          memory: job.held?.memory ?? 0,
-          ...(req.sandbox === undefined || node?.config.exec?.sandbox === undefined
-            ? {}
-            : {
-                sandbox: {
-                  config: node.config.exec.sandbox,
-                  ...(req.sandbox.keyed === undefined
-                    ? {}
-                    : { keyed: req.sandbox.keyed.map((d) => path.relative(this.o.root, d)) }),
-                },
-              }),
-          ...runtimeOrders(req),
-          ...(req.servers === undefined || req.servers.length === 0
-            ? {}
-            : {
-                servers: req.servers.map((s) => ({
-                  task: s.taskId,
-                  command: s.command,
-                  cwd: path.relative(this.o.root, s.cwd),
-                  env: defined(s.env, {}),
-                  ...(s.readyWhen === undefined ? {} : { readyWhen: s.readyWhen }),
-                  ...(s.timeoutMs === undefined ? {} : { timeoutMs: s.timeoutMs }),
-                  ...(s.sandbox === undefined
-                    ? {}
-                    : {
-                        sandbox: {
-                          config: s.sandbox.config,
-                          nested: s.sandbox.nested.map((d) => path.relative(this.o.root, d)),
-                        },
-                      }),
-                })),
-              }),
-        } as RunOrder,
-      }
+      const order = {
+        task: req.taskId,
+        // Unsaved: under the run's own key, as an uncached task's.
+        ...(req.cacheKey === undefined || req.unsaved === true ? {} : { key: req.cacheKey }),
+        runKey: runKey(this.o.run, req.taskId, this.sends(req.taskId)),
+        // A held key keeps its entry, and restored here it replaced the
+        // forced run's fresh bytes with the ones it bypassed (2026-10-25).
+        ...(req.refresh === true ? { fresh: true as const } : {}),
+        // A HEAD per upload was the workers' only remote probe: the run
+        // already knows the key is in no cache (2026-10-25).
+        ...(req.refresh !== true && this.missed.has(req.taskId) ? { absent: true as const } : {}),
+        deps,
+        nested: node === undefined ? [] : nestedIn(nodes!, node.projectDir, this.o.root),
+        command: withForwardArgs(req.command, req.forwardArgs),
+        cwd: path.relative(this.o.root, req.cwd),
+        project: node === undefined ? '' : path.relative(this.o.root, node.projectDir),
+        env,
+        ...(node?.config.exec?.env?.secret === undefined
+          ? {}
+          : { secret: [...node.config.exec.env.secret] }),
+        ...(req.timeoutMs === undefined ? {} : { timeoutMs: req.timeoutMs }),
+        outputs: {
+          files: [...req.outputs.files],
+          workspaceFiles: [...req.outputs.workspaceFiles],
+        },
+        cores: job.held?.cores ?? 1,
+        memory: job.held?.memory ?? 0,
+        ...(req.sandbox === undefined || node?.config.exec?.sandbox === undefined
+          ? {}
+          : {
+              sandbox: {
+                config: node.config.exec.sandbox,
+                ...(req.sandbox.keyed === undefined
+                  ? {}
+                  : { keyed: req.sandbox.keyed.map((d) => path.relative(this.o.root, d)) }),
+              },
+            }),
+        ...runtimeOrders(req),
+        ...(req.servers === undefined || req.servers.length === 0
+          ? {}
+          : {
+              servers: req.servers.map((s) => ({
+                task: s.taskId,
+                command: s.command,
+                cwd: path.relative(this.o.root, s.cwd),
+                env: defined(s.env, {}),
+                ...(s.readyWhen === undefined ? {} : { readyWhen: s.readyWhen }),
+                ...(s.timeoutMs === undefined ? {} : { timeoutMs: s.timeoutMs }),
+                ...(s.sandbox === undefined
+                  ? {}
+                  : {
+                      sandbox: {
+                        config: s.sandbox.config,
+                        nested: s.sandbox.nested.map((d) => path.relative(this.o.root, d)),
+                      },
+                    }),
+              })),
+            }),
+      } as RunOrder
+      return { job, order }
     })
     const sandboxed = orders.some(
       (o) => o.order.sandbox !== undefined || o.order.servers?.some((s) => s.sandbox !== undefined),
@@ -955,13 +957,32 @@ export class Orchestrator {
     const pending = new Set(jobs)
     a.chain = a.chain
       .then(async () => {
-        for (const [i, part] of parts(orders, BATCH_BYTES).entries()) {
+        // A dependency the worker was sent under the same key goes by name
+        // alone: each order named every upstream whole, and 8000 tasks of a
+        // deep graph sent 219 MB (2026-11-05). Read here, as sends go in
+        // order: one sent before it fails is not counted as sent.
+        const fresh = new Map<string, string>()
+        const wired = orders.map(({ job, order }) => {
+          const intro: [string, string][] = []
+          const deps = order.deps.map((d): WiredDep => {
+            if ((fresh.get(d.task) ?? a.sentDeps.get(d.task)) === d.key) return d.task
+            fresh.set(d.task, d.key)
+            intro.push([d.task, d.key])
+            return d
+          })
+          const sent: SentOrder = { ...order, deps }
+          // Measured once: a giant repo's were measured three times each (2026-11-05).
+          return { job, order: sent, intro, bytes: bytesOf(sent) }
+        })
+        for (const [i, part] of parts(wired, BATCH_BYTES).entries()) {
           // An order too long for a frame (a task of thousands of
           // dependencies was refused, 413) sends its deps ahead.
-          const tasks: RunOrder[] = []
-          for (const { order } of part) {
-            if (bytesOf(order) <= BATCH_BYTES) {
+          const tasks: SentOrder[] = []
+          let bytes = 0
+          for (const { order, bytes: size } of part) {
+            if (size <= BATCH_BYTES) {
               tasks.push(order)
+              bytes += size
               continue
             }
             for (const deps of chunks(order.deps, BATCH_BYTES)) {
@@ -970,7 +991,9 @@ export class Orchestrator {
               a.usage.messagesIn++
               a.usage.bytesIn += bytesOf(ahead)
             }
-            tasks.push({ ...order, deps: [] })
+            const alone = { ...order, deps: [] }
+            tasks.push(alone)
+            bytes += bytesOf(alone)
           }
           const n = ++a.batches
           for (const { job } of part) job.batch = n
@@ -984,7 +1007,9 @@ export class Orchestrator {
           } satisfies ToWorker
           await this.o.me.send(a.id, batch)
           a.usage.messagesIn++
-          a.usage.bytesIn += bytesOf(batch)
+          // Its orders' bytes, a comma between each, in the batch's own.
+          a.usage.bytesIn += bytesOf({ ...batch, tasks: [] }) + bytes + tasks.length - 1
+          for (const { intro } of part) for (const [t, k] of intro) a.sentDeps.set(t, k)
           for (const { job } of part) {
             pending.delete(job)
             // Sent, it runs: its worker takes only what it has room for.
@@ -1389,6 +1414,7 @@ export class Orchestrator {
         started: new Set(),
         batches: 0,
         has: new Set(),
+        sentDeps: new Map(),
         // Its name first, before any batch.
         chain: this.cache()
           .then((cache) =>
@@ -2190,15 +2216,28 @@ export function nestedIn(
 ): string[] {
   let of = nested.get(nodes)
   if (of === undefined) {
-    of = { dirs: [...new Set([...nodes.values()].map((n) => n.projectDir))], by: new Map() }
+    of = {
+      dirs: [...new Set([...nodes.values()].map((n) => n.projectDir))].sort(),
+      by: new Map(),
+    }
     nested.set(nodes, of)
   }
   let out = of.by.get(dir)
   if (out === undefined) {
-    out = of.dirs
-      .filter((d) => d.startsWith(dir + path.sep))
-      .map((d) => path.relative(root, d))
-      .sort()
+    // Sorted, the ones under `dir` lie together: each project read every
+    // project, 16 million reads for 4000 (2026-11-05).
+    const under = dir + path.sep
+    let lo = 0
+    let hi = of.dirs.length
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1
+      if (of.dirs[mid]! < under) lo = mid + 1
+      else hi = mid
+    }
+    const found: string[] = []
+    for (let i = lo; i < of.dirs.length && of.dirs[i]!.startsWith(under); i++)
+      found.push(path.relative(root, of.dirs[i]!))
+    out = found.sort()
     of.by.set(dir, out)
   }
   return [...out]

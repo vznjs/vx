@@ -36,6 +36,7 @@ import {
   HOST_ENV,
   PART_LISTS,
   type DepOrder,
+  type WiredDep,
   type Load,
   type WorkerInfo,
   type RunOrder,
@@ -114,7 +115,9 @@ export async function runWorker(opts: {
   const artifacts = opts.artifacts(() => facts)
   const running = new Map<string, AbortController>()
   /** Each order's deps sent ahead of its batch, until the batch comes. */
-  const ahead = new Map<string, DepOrder[]>()
+  const ahead = new Map<string, WiredDep[]>()
+  /** Each dependency sent whole, by its task: an order after names it alone (`WiredDep`). */
+  const known = new Map<string, DepOrder>()
   const work = new Set<Promise<void>>()
   let root = opts.root
   let realRoot = opts.root
@@ -621,11 +624,28 @@ export async function runWorker(opts: {
             else await floor.rearm(m.sandboxes)
           }
           for (const t of m.tasks) {
+            const sent = ahead.get(t.task)
+            ahead.delete(t.task)
+            // Learned in the order sent, a task run already too: the run counts them sent.
+            let missing: string | undefined
+            const deps = (sent === undefined ? t.deps : [...sent, ...t.deps]).map((d): DepOrder => {
+              if (typeof d !== 'string') {
+                known.set(d.task, d)
+                return d
+              }
+              const got = known.get(d)
+              if (got === undefined) missing ??= d
+              return got!
+            })
             // One it runs already is not run twice.
             if (running.has(t.task)) continue
-            const deps = ahead.get(t.task)
-            ahead.delete(t.task)
-            start(deps === undefined ? t : { ...t, deps: [...deps, ...t.deps] })
+            if (missing !== undefined) {
+              const reason = `was sent ${missing} by name, never whole`
+              ui.print('err', ui.status('error', t.task, `could not run: ${reason}`))
+              await say({ type: 'fault', task: t.task, reason }).catch(unsent('fault'))
+              continue
+            }
+            start({ ...t, deps })
           }
         }
       }

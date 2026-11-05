@@ -266,6 +266,48 @@ it('the orchestrator acks a quiet worker’s beat at once, not half a heartbeat 
   await o.leave()
 }, 30_000)
 
+// 2026-11-05: a live worker says its quiet heartbeat as a numbered
+// `report`, not a beat, so its ack waited half a heartbeat as any other:
+// the stall #4970 closed for beats stayed open for real workers. A peer
+// the orchestrator has not spoken to in a heartbeat is answered right
+// after the orchestrator reacts: an order it sends carries the ack, and
+// with none, the ack goes alone.
+it('the orchestrator answers a quiet worker’s report at once, and an order it sends in reply carries the ack', async () => {
+  const { url, frames } = sockets(2_000)
+  const o = await join(url, R2, 'orchestrator', null, undefined)
+  const a = await join(url, R2, 'worker', null, undefined)
+  await o.poll()
+  a.quiet(() => void a.send('orchestrator', { type: 'report' }))
+  const report =
+    /"sends":\[\{"to":"host","body":\{"seq":\d+(,"acked":\d+)?,"body":\{"type":"report"\}/
+  const ack = new RegExp(`"sends":\\[\\{"to":"${a.id}","body":\\{"acked":\\d+\\}\\}\\]`)
+  frames.length = 0
+  while (!frames.some((f) => report.test(f))) await Bun.sleep(5)
+  const t = performance.now()
+  while (!frames.some((f) => ack.test(f)) && performance.now() - t < 3_000) await Bun.sleep(5)
+  expect(performance.now() - t).toBeLessThan(500)
+  // Answered with an order: the order carries the ack, and no ack goes alone.
+  await o.poll()
+  frames.length = 0
+  let reports = 0
+  const reacting = (async () => {
+    for (;;) {
+      const got = await o.poll()
+      for (const m of got) if ((m.body as { type?: string }).type === 'report') reports++
+      if (reports > 0) return o.send(a.id, { type: 'batch' })
+    }
+  })()
+  await reacting
+  await a.poll()
+  await Bun.sleep(1_200)
+  const order = new RegExp(
+    `"to":"${a.id}","body":\\{"seq":\\d+,"body":\\{"type":"batch"\\},"acked":\\d+\\}`,
+  )
+  expect([frames.some((f) => order.test(f)), frames.filter((f) => ack.test(f))]).toEqual([true, []])
+  await a.leave()
+  await o.leave()
+}, 30_000)
+
 // PR #4317's run (2026-10-24): two workers each sent `ran` a moment
 // before a probe was due, and the worker judged its orchestrator silent
 // first. Now a send stands for the worker's beat, and its ack answers it.
