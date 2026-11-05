@@ -862,6 +862,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'cli-help-synopsis',
     'cli-hint-every-verb',
     'cli-json-schemas',
+    'cli-control-args',
     'cli-nonutf8-args',
     'cli-refusal-see-help',
     'cli-streams',
