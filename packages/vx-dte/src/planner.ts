@@ -571,7 +571,7 @@ class Ends {
 
 /** What `play` reads of `tasks` alone, for each play of one plan. */
 interface Shape {
-  readonly byId: ReadonlyMap<string, PlanTask>
+  readonly byId: { get(id: string): PlanTask | undefined }
   /** Each task's dependants, by their place in the tasks. */
   readonly after: ReadonlyMap<string, readonly number[]>
   /** The same by each task's place, and its place by id: a lookup by id at each end was most of a play. */
@@ -592,39 +592,44 @@ function shapeOf(tasks: readonly PlanTask[], running: ReadonlySet<string>): Shap
   const runs = [...running].sort().join('\0')
   const had = shapes.get(tasks)
   if (had !== undefined && had.runs === runs) return had.shape
-  const byId = new Map(tasks.map((t) => [t.id, t]))
-  const dependants = new Map<string, string[]>()
+  // One map by id, the rest by place: a map of each by id made a
+  // 10 000-task plan's shape a third of its time (2026-11-05).
+  const indexOf = new Map<string, number>()
+  for (let i = 0; i < tasks.length; i++) indexOf.set(tasks[i]!.id, i)
   const after = new Map<string, number[]>()
   const waitedAt = new Int32Array(tasks.length)
   tasks.forEach((t, i) => {
     let n = 0
     for (const d of t.deps)
-      if (byId.has(d) || running.has(d)) {
+      if (indexOf.has(d) || running.has(d)) {
         n++
         // Pushed, not copied: copying made one install under 9000 tasks
         // 40 million copies a play (2026-10-25).
-        const list = dependants.get(d)
-        if (list === undefined) dependants.set(d, [t.id])
-        else list.push(t.id)
         const at = after.get(d)
         if (at === undefined) after.set(d, [i])
         else at.push(i)
       }
     waitedAt[i] = n
   })
-  const tail = new Map<string, number>()
-  const tailOf = (id: string): number => {
-    const known = tail.get(id)
-    if (known !== undefined) return known
-    let most = 0
-    for (const d of dependants.get(id) ?? []) most = Math.max(most, tailOf(d))
-    const t = most + (byId.get(id)!.ms ?? UNKNOWN_MS)
-    tail.set(id, t)
-    return t
-  }
-  const indexOf = new Map(tasks.map((t, i) => [t.id, i]))
   const afterAt = tasks.map((t) => after.get(t.id))
-  const shape = { byId, after, afterAt, indexOf, waitedAt, tailOf, kinds: kindsOf(tasks) }
+  const tail = new Float64Array(tasks.length).fill(-1)
+  const tailAt = (i: number): number => {
+    if (tail[i]! >= 0) return tail[i]!
+    let most = 0
+    for (const d of afterAt[i] ?? []) most = Math.max(most, tailAt(d))
+    return (tail[i] = most + (tasks[i]!.ms ?? UNKNOWN_MS))
+  }
+  const tailOf = (id: string): number => tailAt(indexOf.get(id)!)
+  const byId = { get: (id: string) => tasks[indexOf.get(id)!] }
+  const shape = {
+    byId,
+    after,
+    afterAt,
+    indexOf,
+    waitedAt,
+    tailOf,
+    kinds: { at: indexOf, kindAt: tasks.map(kindOf) },
+  }
   shapes.set(tasks, { runs, shape })
   return shape
 }
