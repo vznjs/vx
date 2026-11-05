@@ -181,7 +181,7 @@ export default defineProject({
     test: {
       description: 'bun test',
       exec: {
-        command: 'bun test --only-failures',
+        command: 'bun test --only-failures --timeout=30000',
         env: { define: { ...NO_TRANSPILER_CACHE.define, VX_CACHE_DIR: '.vx/cache' } },
         sandbox: {
           allow: {

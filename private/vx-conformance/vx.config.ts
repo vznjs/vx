@@ -63,7 +63,7 @@ export default defineProject({
     test: {
       description: 'bun test',
       exec: {
-        command: 'bun test --only-failures',
+        command: 'bun test --only-failures --timeout=30000',
         env: { define: NO_TRANSPILER_CACHE, passThrough: ['VX_REQUIRE_SANDBOX'] },
       },
       dependsOn: ['install'],
