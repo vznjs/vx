@@ -13,10 +13,12 @@ export type Command = (project: string, task: string) => string
  */
 export interface Adapter {
   name: string
-  /** The package whose version the report names. */
-  pkg: string
+  /** The package whose version the report names, linked into the workspace from this package's install. Absent: a tool installed on the machine. */
+  pkg?: string
   /** Bins linked into the workspace's node_modules/.bin. */
   bins: string[]
+  /** The version the report names, for a tool with no `pkg`. */
+  version?(): Promise<string>
   /** What the tool's config cannot express: a case needing one is not applicable. */
   lacks: Feature[]
   /** Variables every invocation of the tool sees. */

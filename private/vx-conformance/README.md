@@ -1,7 +1,7 @@
 # @vzn/vx-conformance
 
-One suite of task-runner behaviours, run against **vx**, **Turborepo**, **Nx**
-and **Vite Task**. Each case is a small workspace and the outcome a user
+One suite of task-runner behaviours, run against **vx**, **Turborepo**, **Nx**,
+**Vite Task** and **Nix**. Each case is a small workspace and the outcome a user
 sees: which commands ran, the files left on disk, the exit code, and the
 data the tool reports about the run. The results (every case, what each
 tool did, each tool's score) are the site's conformance page, written to
@@ -94,6 +94,23 @@ mean the same thing, the adapter uses the one its docs teach:
   by package only, runs one task per run and has no watch mode, so
   `affected`, several-task and watch cases are not applicable to it. The report
   is `vp run --last-details`.
+- **Nix**: a `default.nix` at the root, a raw `derivation` per task (no
+  nixpkgs), run by `nix-build` (`src/adapters/nix-run.ts`). Declared
+  inputs are the derivation's sources, each glob a regex matched in Nix at
+  every evaluation; omitted inputs are the project's git-tracked files, as
+  a flake sees them. `dependsOn` are derivation inputs, whose outputs the
+  build sees at their workspace paths; `env` names are `builtins.getEnv`
+  attributes; a `cache: false` task takes a per-run nonce. The build runs
+  in a copy of the workspace; its declared outputs, or with none declared
+  what its command wrote, go to `$out`, and the run copies each built
+  task's `$out` back into the tree: the Nix store is the cache. The report
+  is the derivations nix-build lists to build. Each case has its own store
+  in its home, so the builds run unsandboxed and without build users. It
+  lacks affected, every selector but a project list, task patterns,
+  persistent tasks, timeouts, retries, runtime inputs, pass-through
+  variables, dependency inputs off, continue, force, read-only cache,
+  isolation and watch. It needs Nix on the PATH (`nix-build`,
+  `nix-instantiate`); its version is `nix --version`.
 - **vx**: a vx.config.mjs per project, `bun()` for the edges, `vx lock`,
   and its default cache store (in the case's home, so a linked worktree
   shares it). An isolated task is `exec.sandbox`. The report is

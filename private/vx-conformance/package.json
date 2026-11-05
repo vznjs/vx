@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "license": "MIT",
   "private": true,
-  "description": "One neutral suite of task-runner behaviours, run against vx, Turborepo, Nx and Vite Task, each sandboxed.",
+  "description": "One neutral suite of task-runner behaviours, run against vx, Turborepo, Nx, Vite Task and Nix, each sandboxed.",
   "type": "module",
   "engines": {
     "bun": ">=1.4"

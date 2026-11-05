@@ -162,6 +162,7 @@ async function writeWorkspace(root: string, ws: WorkspaceSpec): Promise<void> {
 
 /** The tool's package and bins, linked from this package's pinned install: no registry. */
 async function linkTool(root: string, adapter: Adapter): Promise<void> {
+  if (adapter.pkg === undefined) return
   const bin = path.join(root, 'node_modules', '.bin')
   await mkdir(bin, { recursive: true })
   const pkg = path.join(root, 'node_modules', adapter.pkg)
