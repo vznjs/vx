@@ -78,10 +78,19 @@ export function dispatch<B extends Bin>(
   // takes, and making every queued one's at each event was most of a
   // 5000-task sim (2026-11-05).
   const read: string[] = []
+  // The bins' bounds as assign keeps them: an ask no bin can take or hold
+  // for is not made. Each such ask read every bin, and a full run's queue
+  // of them at each event was most of a 10 000-task sim (2026-11-05).
+  const bounds: Bounds = { done: false, open: true, free: 0, cores: 0, memory: 0 }
   let i = 0
   function* asks(): Generator<Ask> {
     for (; i < queue.length; i++) {
       const id = queue[i]!
+      if (bounds.done) return
+      if (dead(needs[i]!, bounds)) {
+        read.push(id)
+        continue
+      }
       const gate = o.gate?.(id) ?? {}
       if (gate === 'done') continue
       read.push(id)
@@ -89,10 +98,11 @@ export function dispatch<B extends Bin>(
       yield { id, need: needs[i]!, up: o.deps(id) ?? [], ...gate }
     }
   }
-  const to = assign(asks(), bins, o.waits, o.how.place, { floor, kinds: Infinity })
+  const to = assign(asks(), bins, o.waits, o.how.place, { floor, kinds: Infinity, bounds })
   const left = read.filter((id) => !to.has(id))
   // The pass ended at the ask it read last, and took or left it.
-  for (let j = i + 1; j < queue.length; j++) left.push(queue[j]!)
+  for (let j = i < queue.length && read.at(-1) === queue[i] ? i + 1 : i; j < queue.length; j++)
+    left.push(queue[j]!)
   return { to, left }
 }
 
