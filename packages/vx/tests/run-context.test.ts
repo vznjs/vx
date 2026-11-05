@@ -323,7 +323,7 @@ describe('captureDefaultBranch', () => {
     const started = Date.now()
     expect(captureDefaultBranch({ GITHUB_EVENT_PATH: '/dev/zero' }, dir)).toBeNull()
     expect(Date.now() - started).toBeLessThan(2000)
-  }, 10_000)
+  }, 30_000)
 })
 
 describe('detectCi', () => {

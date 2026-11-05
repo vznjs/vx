@@ -2010,7 +2010,7 @@ it('a task whose command ended stays its worker’s while it saves, and a quiet 
   } finally {
     await h.stop()
   }
-}, 15_000)
+}, 30_000)
 
 // An additive task rewrites its upstream's file: restored after it, the
 // upstream put the old bytes back (2026-10-25).
@@ -3759,7 +3759,7 @@ for (const hook of ['main', 'linked'] as const)
     expect(git('diff', '--cached', '--name-only')).toBe('staged.txt')
     const env = await readFile(seen, 'utf8')
     expect(env).not.toMatch(/^GIT_(INDEX_FILE|DIR)=/m)
-  }, 20_000)
+  }, 30_000)
 
 it('a worker size or unmeasured with a key dte() does not read is refused', () => {
   // A typo of max left the size uncapped, without a word.

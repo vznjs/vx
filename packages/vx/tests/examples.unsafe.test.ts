@@ -349,7 +349,7 @@ describe('the terminal demo', () => {
     expect(r.exitCode).toBe(0)
     // A whole vx run of the starter: a loaded gate took it past bun's
     // 5 s default (5,006 ms) though it passes alone.
-  }, 20_000)
+  }, 30_000)
 })
 
 // Each starter's README opens with `bun install`, and the fixtures above

@@ -45,4 +45,4 @@ it('a run leaves no subscriber on the bus it was given', async () => {
     expect(r.ok).toBe(true)
     expect(bus.live()).toBe(0)
   }
-}, 20_000)
+}, 30_000)

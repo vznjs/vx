@@ -76,7 +76,7 @@ printf '%s' "$last" | sed "s#/src#$src#g; s#\\(/tmp\\)\\{0,1\\}/work#${dir}/work
   } finally {
     process.env['PATH'] = saved
   }
-}, 20_000)
+}, 30_000)
 
 // `vx watch` runs again in one process: the next run's containers checked
 // out the first run's tree (2026-10-24).
@@ -134,7 +134,7 @@ printf '%s' "$last" | sed "s#/src#$src#g; s#\\(/tmp\\)\\{0,1\\}/work#${dir}/work
   } finally {
     process.env['PATH'] = saved
   }
-}, 20_000)
+}, 30_000)
 
 it('says why a worker’s container ended before it joined', async () => {
   const root = path.join(dir, 'ws2')
@@ -172,7 +172,7 @@ it('says why a worker’s container ended before it joined', async () => {
   } finally {
     process.env['PATH'] = saved
   }
-}, 20_000)
+}, 30_000)
 
 it('a worker shares this machine’s store: the same home, the same repository identity', async () => {
   const root = path.join(dir, 'ws3')
@@ -230,7 +230,7 @@ printf '%s' "$last" | sed "s#/src#$src#g; s#\\(/tmp\\)\\{0,1\\}/work#${dir}/work
     Object.assign(process.env, saved)
     process.getuid = uid
   }
-}, 20_000)
+}, 30_000)
 
 it('on Linux, a container runs as this user, so what it writes in the store is this user’s', async () => {
   const root = path.join(dir, 'ws4')
@@ -278,4 +278,4 @@ it('on Linux, a container runs as this user, so what it writes in the store is t
     process.getuid = ids.uid
     process.getgid = ids.gid
   }
-}, 20_000)
+}, 30_000)

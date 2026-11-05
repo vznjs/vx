@@ -60,5 +60,5 @@ describe('a run writes its task lines to stdout coalesced', () => {
     // Two runs of twenty spawned tasks: a loaded macOS runner took 6.5 s,
     // past bun's 5 s default, and the cleanup then pulled the cache from
     // under the run still opening it (SQLITE_IOERR_VNODE).
-  }, 20_000)
+  }, 30_000)
 })

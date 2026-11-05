@@ -73,7 +73,7 @@ it('a refused run takes the region down before the refusal', async () => {
   expect(code).toBe(1)
   expect(screen).toContain('vx:load')
   expect(startsClean(screen, '✗ vx run')).toBe(true)
-}, 20_000)
+}, 30_000)
 
 it('a run whose load throws takes the region down before the error', async () => {
   await slowLoad(`throw new Error('discover broke')`)
@@ -81,4 +81,4 @@ it('a run whose load throws takes the region down before the error', async () =>
   expect(code).toBe(1)
   expect(screen).toContain('discover broke')
   expect(startsClean(screen, '✗ vx run')).toBe(true)
-}, 20_000)
+}, 30_000)

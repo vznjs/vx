@@ -320,7 +320,7 @@ describe('the transport, as the vx-otel sweep found it unheld', () => {
     } finally {
       await hang.stop(true)
     }
-  }, 20_000)
+  }, 30_000)
 
   // F-49: `OTEL_EXPORTER_OTLP_<SIGNAL>_TIMEOUT` was not read; one timeout
   // served all three signals.
@@ -359,7 +359,7 @@ describe('the transport, as the vx-otel sweep found it unheld', () => {
     } finally {
       await hang.stop(true)
     }
-  }, 10_000)
+  }, 30_000)
 
   it('the request timer is cleared once the export answers: it never keeps the process alive', async () => {
     // A timer left armed keeps a CLI process alive until it fires, long
@@ -386,7 +386,7 @@ describe('the transport, as the vx-otel sweep found it unheld', () => {
       stderr: '',
     })
     expect(lived).toBeLessThan(3_000)
-  }, 15_000)
+  }, 30_000)
 })
 
 // F-28: a collector shedding load answers 429/503 for a moment; the export
@@ -455,7 +455,7 @@ describe('a collector that sheds load', () => {
     const afterAbort = Date.now() - abortedAt
     expect([hits, warnings.length, warnings[0]?.includes('HTTP 503: busy')]).toEqual([1, 1, true])
     expect(afterAbort).toBeLessThan(1_000)
-  }, 10_000)
+  }, 30_000)
 })
 
 // F-40: a certificate fetch refuses fails the same way every time, and its
@@ -541,7 +541,7 @@ describe('the sink, as its second sweep found it unheld', () => {
     expect(await exportWith({ status: 200, body: '{}' })).toEqual([])
     const ms = Date.now() - t0
     expect([hits, ms >= 1_900, ms < 3_000]).toEqual([2, true, true])
-  }, 10_000)
+  }, 30_000)
 
   // RFC 9110 lets Retry-After be a date; `Number()` of one is NaN, and
   // the retry came 200 ms later, while the collector asked for seconds.
@@ -552,7 +552,7 @@ describe('the sink, as its second sweep found it unheld', () => {
     expect(await exportWith({ status: 200, body: '{}' })).toEqual([])
     const ms = Date.now() - t0
     expect([hits, ms >= 900, ms < 3_000]).toEqual([2, true, true])
-  }, 10_000)
+  }, 30_000)
 
   it('only a signal asked to gzip is sent gzipped', async () => {
     reply = { status: 200, body: '{}' }

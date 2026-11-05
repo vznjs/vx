@@ -57,7 +57,7 @@ it('refuses a word or a shape the CLI would not pass, at run() and planRun()', a
       expect([call.name, got]).toEqual([call.name, `RunOptions.${said}`])
     }
   }
-}, 20_000)
+}, 30_000)
 
 it('takes each word the CLI passes', async () => {
   for (const opts of [
@@ -73,4 +73,4 @@ it('takes each word the CLI passes', async () => {
     )
     expect(got).toBe('ok true')
   }
-}, 20_000)
+}, 30_000)

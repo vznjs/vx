@@ -887,7 +887,7 @@ describe('startedVersion', () => {
     const t0 = performance.now()
     expect(startedVersion(hung, 300)).toBeNull()
     expect(performance.now() - t0).toBeLessThan(3_000)
-  }, 15_000)
+  }, 30_000)
 })
 
 describe('npmOwnedBinary', () => {

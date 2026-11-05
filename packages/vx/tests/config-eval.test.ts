@@ -352,7 +352,7 @@ describe('a config that calls process.exit (D-65)', () => {
           restored: true,
         }) + '\n',
     })
-  }, 20_000)
+  }, 30_000)
 })
 
 describe('a first load that never settles (D-66)', () => {
@@ -389,7 +389,7 @@ describe('a first load that never settles (D-66)', () => {
           restored: true,
         }) + '\n',
     })
-  }, 20_000)
+  }, 30_000)
 })
 
 describe('evaluateConfigFresh: what a config prints (D-64)', () => {
@@ -426,7 +426,7 @@ describe('evaluateConfigFresh: what a config prints (D-64)', () => {
         'from console.log\nfrom console.info\nfrom stdout.write\nfrom Bun.write\nfrom a writer\n' +
         'config {"tasks":{"t":{"exec":{"command":"true"}}}}\n',
     })
-  }, 20_000)
+  }, 30_000)
 })
 
 describe('a first load in process: what a config prints', () => {
@@ -457,7 +457,7 @@ describe('a first load in process: what a config prints', () => {
       new Response(p.stderr).text(),
     ])
     expect({ code, out, err }).toEqual({ code: 0, out: '[]', err: '' })
-  }, 20_000)
+  }, 30_000)
 
   it("goes to stderr, never the verb's stdout, and every route is put back", async () => {
     // `vx show --format json` evaluates in process, and a config's
@@ -494,7 +494,7 @@ describe('a first load in process: what a config prints', () => {
       out: 'back true\n',
       err: 'log\nwrite\nbun\nwriter\n'.repeat(2),
     })
-  }, 20_000)
+  }, 30_000)
 
   it('rounds that overlap all load, and the last one out puts the routes back', async () => {
     // `--affected`'s per-file sweep loads each config in a round of its own:
@@ -535,7 +535,7 @@ describe('a first load in process: what a config prints', () => {
       out: 'fulfilled fulfilled fulfilled back true\n',
       err: 'log\n'.repeat(3),
     })
-  }, 20_000)
+  }, 30_000)
 })
 
 describe('evaluateConfigFresh: errors cross the boundary', () => {
@@ -803,7 +803,7 @@ describe('the evaluation deadline', () => {
       5000,
     )
     expect(after).toBe('RESOLVED {"tasks":{"ok":{}}}')
-  }, 15_000)
+  }, 30_000)
 
   it('a deadline inside a held round retires the wedged worker, so the next config loads (D-17)', async () => {
     // A round held open across sequential loads (item 694) keeps its
@@ -826,7 +826,7 @@ describe('the evaluation deadline', () => {
     } finally {
       end()
     }
-  }, 15_000)
+  }, 30_000)
 
   it('an uncaught throw in the worker rejects at once, naming it, not at the deadline (D-17)', async () => {
     // A throw from a config's microtask escapes the evaluation's try and
@@ -839,7 +839,7 @@ describe('the evaluation deadline', () => {
     const out = await settleOrHang(evaluateConfigFresh(file), 5000)
     expect(out.startsWith('REJECTED config worker failed:')).toBe(true)
     expect(out).toContain('micro boom')
-  }, 15_000)
+  }, 30_000)
 
   it('rejects the whole wedged round at the FIRST deadline, not each at its own', async () => {
     // A watch cycle loads its configs concurrently and they share one worker,
@@ -861,7 +861,7 @@ describe('the evaluation deadline', () => {
     // Both name the budget of whichever call timed out FIRST — the sibling's
     // own minute never applied to it.
     for (const o of outcomes) expect(o).toBe('REJECTED config worker did not answer within 200ms')
-  }, 15_000)
+  }, 30_000)
 
   const MALFORMED = ['abc', '', ' 250ms', '-5ms', '1e3ms', '25.0ms', '250']
 
@@ -877,7 +877,7 @@ describe('the evaluation deadline', () => {
       expect(await settleOrHang(evaluateConfigFresh(file), 5000)).toBe(
         'RESOLVED {"tasks":{"ok":{}}}',
       )
-    }, 15_000)
+    }, 30_000)
   }
 
   it('a budget of 0 falls back to the default instead of firing on the next tick (D-157)', async () => {
@@ -889,7 +889,7 @@ describe('the evaluation deadline', () => {
     const file = await write('await Bun.sleep(400)\nexport default { tasks: { ok: {} } }\n')
     const outcome = await settleOrHang(evaluateConfigFresh(file), 5000)
     expect(outcome).toBe('RESOLVED {"tasks":{"ok":{}}}')
-  }, 15_000)
+  }, 30_000)
 
   it('a budget past the timer ceiling falls back instead of firing at 1ms', async () => {
     // FIXED. Unbounded, `999999999999` overflowed the timer's 32-bit delay to
@@ -907,7 +907,7 @@ describe('the evaluation deadline', () => {
     // The ~400ms config now finishes, because the honest budget is 30s.
     expect(String(outcome)).not.toContain('did not answer within')
     expect(Date.now() - started).toBeGreaterThanOrEqual(300)
-  }, 15_000)
+  }, 30_000)
 
   it('a REJECTED evaluation does not poison a later one', async () => {
     // `clearTimeout` used to sit after the `await` inside the try body, so it

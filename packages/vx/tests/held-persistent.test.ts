@@ -59,7 +59,7 @@ it("a held server's output reaches the run's logger until it is stopped", async 
   const node = r.outcomes[0]!.node
   bus.emit({ kind: 'task:stdout', node, chunk: 'AFTER-STOP' })
   expect(heard).not.toContain('AFTER-STOP')
-}, 20_000)
+}, 30_000)
 
 // C-60: a foreground run that failed holds no server; the watch loop's
 // cycle still does, so a failing test does not stop its dev server.
@@ -86,7 +86,7 @@ it('a held run hands its server back though another task failed', async () => {
   } finally {
     await r.persistent?.stop()
   }
-}, 20_000)
+}, 30_000)
 
 // `RunOptions.keep` (the watch loop's next cycle): a server still up whose
 // task is unchanged stays up while its dependency rebuilds, and what it

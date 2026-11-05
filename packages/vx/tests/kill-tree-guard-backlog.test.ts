@@ -71,7 +71,7 @@ it('a burst of releases leaves the run guarded', async () => {
       process.kill(process.pid, 'SIGKILL')
     `),
   ).toEqual([137, false])
-}, 20_000)
+}, 30_000)
 
 it('a guard that never drains kills no released group at a clean exit', async () => {
   // The guard stopped while the burst queues; the task's release cannot
@@ -86,7 +86,7 @@ it('a guard that never drains kills no released group at a clean exit', async ()
       guard.kill('SIGCONT')
     `),
   ).toEqual([0, true])
-}, 20_000)
+}, 30_000)
 
 /** Stop the guard behind a queue too full for one more line, then start a task. */
 const BEHIND = `
@@ -110,7 +110,7 @@ it("a task's own listing waits out a full queue", async () => {
       process.kill(process.pid, 'SIGKILL')
     `),
   ).toEqual([137, false])
-}, 20_000)
+}, 30_000)
 
 it('a task waiting on a full queue runs once the guard dies', async () => {
   expect(
@@ -119,7 +119,7 @@ it('a task waiting on a full queue runs once the guard dies', async () => {
       await t
     `),
   ).toEqual([0, true])
-}, 20_000)
+}, 30_000)
 
 it('a group listed twice is released by one release', async () => {
   // A shell that keeps a failed printf buffered sends its line again with
@@ -132,7 +132,7 @@ it('a group listed twice is released by one release', async () => {
       releaseGroup(t)
     `),
   ).toEqual([0, true])
-}, 20_000)
+}, 30_000)
 
 it('CONTROL: a listed group dies with a kill -9 of vx', async () => {
   expect(
@@ -141,4 +141,4 @@ it('CONTROL: a listed group dies with a kill -9 of vx', async () => {
       process.kill(process.pid, 'SIGKILL')
     `),
   ).toEqual([137, false])
-}, 20_000)
+}, 30_000)

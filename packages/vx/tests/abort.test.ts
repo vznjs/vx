@@ -77,7 +77,7 @@ describe('RunOptions.signal aborts a run in flight', () => {
     ])
     expect(Date.now() - started).toBeLessThan(10_000)
     expect(await waitForDead(pid, 1_000)).toBe(true)
-  }, 20_000)
+  }, 30_000)
 
   // Turbo #6210: a task that ends well after the stop readied its
   // dependents, and the walk started them.
@@ -109,7 +109,7 @@ describe('RunOptions.signal aborts a run in flight', () => {
     expect(r.ok).toBe(false)
     expect(r.outcomes.find((o) => o.node.id === 'app#after')?.status).toBe('aborted')
     expect(await Bun.file(path.join(dir, 'after.txt')).exists()).toBe(false)
-  }, 20_000)
+  }, 30_000)
 
   it('the summary a sink hears counts the aborted tasks, which its task list leaves out', async () => {
     // Aborted tasks are not real runs and stay out of `tasks`; without the
@@ -154,7 +154,7 @@ describe('RunOptions.signal aborts a run in flight', () => {
       abortedCount: s.abortedCount,
       tasks: s.tasks.length,
     }).toEqual({ exitOk: false, failedCount: 0, abortedCount: 2, tasks: 0 })
-  }, 20_000)
+  }, 30_000)
 
   it('a child that ignores SIGTERM is SIGKILLed after the grace', async () => {
     const dir = await addProject(
@@ -182,7 +182,7 @@ describe('RunOptions.signal aborts a run in flight', () => {
     const r = await running
     expect(r.ok).toBe(false)
     expect(await waitForDead(pid, 1_000)).toBe(true)
-  }, 20_000)
+  }, 30_000)
 
   // C-19: an abort names no signal, so the task hears SIGTERM; one that
   // forwarded SIGINT for it survived the suite.
@@ -213,7 +213,7 @@ describe('RunOptions.signal aborts a run in flight', () => {
       process.env['VX_TEST_KILL_GRACE'] = '200ms'
     }
     expect(await Bun.file(path.join(dir, 'got.txt')).text()).toBe('SIGTERM\n')
-  }, 20_000)
+  }, 30_000)
 
   it('an already-aborted signal runs nothing: every task completes aborted', async () => {
     await addProject(
@@ -238,7 +238,7 @@ describe('RunOptions.signal aborts a run in flight', () => {
     expect(r.ok).toBe(false)
     expect(r.outcomes.map((o) => o.status)).toEqual(['aborted'])
     expect(await Bun.file(path.join(root, 'packages', 'app', 'ran.txt')).exists()).toBe(false)
-  }, 20_000)
+  }, 30_000)
 
   // C-65: a runtime probe still running when the run stopped held it until
   // the probe ended (a Ctrl-C waited out the signal bound, ~7 s), and the
@@ -266,7 +266,7 @@ describe('RunOptions.signal aborts a run in flight', () => {
     const r = await running
     expect(r.outcomes.map((o) => o.status)).toEqual(['aborted'])
     expect(await waitForDead(pid, 1_000)).toBe(true)
-  }, 20_000)
+  }, 30_000)
 
   // C-62: a server the stop killed while it started read `failed (never
   // ready: exited)` with a recap, where every other task the stop kills
@@ -294,7 +294,7 @@ describe('RunOptions.signal aborts a run in flight', () => {
     const r = await running
     expect(r.outcomes.map((o) => [o.status, o.notReady])).toEqual([['aborted', undefined]])
     expect(await waitForDead(pid, 1_000)).toBe(true)
-  }, 20_000)
+  }, 30_000)
 
   // A server whose readyWhen matches only once the stop has landed (its
   // trap prints the marker on the way down) read `success`, where a
@@ -330,7 +330,7 @@ describe('RunOptions.signal aborts a run in flight', () => {
       ['app#srv', 'aborted'],
     ])
     expect(await waitForDead(pid, 1_000)).toBe(true)
-  }, 20_000)
+  }, 30_000)
 
   // C-65: probes are the run's own. Two runs in one process (an embedder's
   // daemon, the `inflight` case): stopping one kills its probe, not the
@@ -368,7 +368,7 @@ describe('RunOptions.signal aborts a run in flight', () => {
     } finally {
       await rm(otherRoot, { recursive: true, force: true })
     }
-  }, 20_000)
+  }, 30_000)
 
   // C-46: a stopped run's servers are already being torn down, so a
   // `holdPersistent` caller (the watch loop) is handed none: it would own
@@ -405,7 +405,7 @@ describe('RunOptions.signal aborts a run in flight', () => {
     const r = await running
     expect([r.ok, r.persistent]).toEqual([false, undefined])
     expect(await waitForDead(pid, 1_000)).toBe(true)
-  }, 20_000)
+  }, 30_000)
 
   // A ready server sits in the live set and the persistent registry at
   // once; the stop signalled its group twice, and a server that reads a
@@ -448,7 +448,7 @@ describe('RunOptions.signal aborts a run in flight', () => {
     } finally {
       kill.mockRestore()
     }
-  }, 20_000)
+  }, 30_000)
 
   it('a stop lets a ready server finish its cleanup: no second signal cuts it short', async () => {
     const dir = await addProject(
@@ -482,5 +482,5 @@ describe('RunOptions.signal aborts a run in flight', () => {
       process.env['VX_TEST_KILL_GRACE'] = '200ms'
     }
     expect(await Bun.file(path.join(dir, 'clean.txt')).exists()).toBe(true)
-  }, 20_000)
+  }, 30_000)
 })

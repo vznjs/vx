@@ -159,7 +159,7 @@ describe('shutdownPersistent', () => {
     } finally {
       restoreEnv(saved)
     }
-  }, 15_000)
+  }, 30_000)
 
   // C-46: the e2e rows set VX_TEST_KILL_GRACE and pass on the 2 s default
   // too, only slower, so a default that ignored it survived them.
@@ -175,7 +175,7 @@ describe('shutdownPersistent', () => {
     } finally {
       restoreEnv(saved)
     }
-  }, 15_000)
+  }, 30_000)
 
   // C-46: the hold keeps a group on the guard's list through the grace
   // (kill-tree.ts); never let go, the dead group's number stayed listed

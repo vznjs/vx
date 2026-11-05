@@ -84,4 +84,4 @@ it("a failed probe's output is masked on --dry's stderr", async () => {
   ])
   expect(err).toBe(said(path.join(root, 'packages', 'app')))
   expect(out.includes(SECRET) || out.includes(PAT)).toBe(false)
-}, 20_000)
+}, 30_000)

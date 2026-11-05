@@ -59,7 +59,7 @@ describe('a task under a vx that runs on a terminal', () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
-  }, 20_000)
+  }, 30_000)
 })
 
 // `exec.interactive` (Turbo #1235, Nx #8269): on a terminal the task gets
@@ -115,7 +115,7 @@ describe('an interactive task under a vx on a terminal', () => {
       code: 0,
       answers: ['IN-TTY', 'OUT-TTY', 'got:[hello]'],
     })
-  }, 20_000)
+  }, 30_000)
 
   it('a server holds it too, and the run ends when it exits', async () => {
     const config = `export default { tasks: { dev: { exec: { command: ${JSON.stringify(PROBE)}, interactive: true, persistent: {} } } } }`
@@ -123,13 +123,13 @@ describe('an interactive task under a vx on a terminal', () => {
       code: 0,
       answers: ['IN-TTY', 'OUT-TTY', 'got:[hello]'],
     })
-  }, 20_000)
+  }, 30_000)
 
   // CONTROL: the same command undeclared reads end of input at once.
   it('without the field the task reads no terminal', async () => {
     const config = `export default { tasks: { ask: { exec: { command: ${JSON.stringify(PROBE)} } } } }`
     expect(await onTerminal(config, 'app#ask')).toEqual({ code: 0, answers: ['got:[]'] })
-  }, 20_000)
+  }, 30_000)
 
   // vx dies of a stopping signal (signals.ts) so a shell script running it
   // stops too, but dying skips Bun's exit, which puts back the terminal it
@@ -174,7 +174,7 @@ describe('an interactive task under a vx on a terminal', () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
-  }, 20_000)
+  }, 30_000)
 })
 
 // A task that holds the terminal and sets it raw, then dies without putting
@@ -239,7 +239,7 @@ describe('a task that leaves the terminal raw', () => {
       before: true,
       restored: true,
     })
-  }, 20_000)
+  }, 30_000)
 
   it('a server gets its modes back when vx is interrupted', async () => {
     expect(await modesAround('stty raw -echo; echo raw > MARKER; sleep 30', true, true)).toEqual({
@@ -247,7 +247,7 @@ describe('a task that leaves the terminal raw', () => {
       before: true,
       restored: true,
     })
-  }, 20_000)
+  }, 30_000)
 
   // A second signal is "now": SIGKILL and exit, past the runner's own
   // restore, which runs when the task exits. Bun restores the modes it
@@ -257,7 +257,7 @@ describe('a task that leaves the terminal raw', () => {
     expect(
       await modesAround(`trap '' INT; stty raw -echo; echo raw > MARKER; sleep 30`, 2),
     ).toEqual({ code: 0, before: true, restored: true })
-  }, 20_000)
+  }, 30_000)
 
   it('gets its modes back when the task exits', async () => {
     expect(await modesAround('stty raw -echo', false)).toEqual({
@@ -265,7 +265,7 @@ describe('a task that leaves the terminal raw', () => {
       before: true,
       restored: true,
     })
-  }, 20_000)
+  }, 30_000)
 })
 
 // Every run needs git, so a workspace git does not track is refused before
@@ -311,7 +311,7 @@ describe('the picker outside a git work tree', () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
-  }, 20_000)
+  }, 30_000)
 })
 
 // `vx last` prints the run's command as a line to paste: a run whose task
@@ -360,7 +360,7 @@ describe('a task picked on a terminal', () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
-  }, 20_000)
+  }, 30_000)
 })
 
 // `vx run > out.txt` on a terminal: the menu and prompt went to stdout, so
@@ -401,7 +401,7 @@ describe('the picker with stdout redirected', () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
-  }, 20_000)
+  }, 30_000)
 })
 
 // `--filter` scopes the menu as it scopes a bare task: the picker listed
@@ -446,7 +446,7 @@ describe('the picker under --filter', () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
-  }, 20_000)
+  }, 30_000)
 })
 
 describe('a vx that paints its own output on a terminal', () => {

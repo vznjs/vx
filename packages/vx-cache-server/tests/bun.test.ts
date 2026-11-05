@@ -522,7 +522,7 @@ it('takes --port only as decimal digits: Number read 0x50 as 80 and 1e1 as 10', 
     [2, '✗ vx-cache-server  --port: not a port:  80\n'],
     [2, '✗ vx-cache-server  --port: not a port: 80.0\n'],
   ])
-}, 20_000)
+}, 30_000)
 
 it("refuses an empty --host: Bun bound '' to localhost alone", () => {
   const cli = Bun.spawnSync(

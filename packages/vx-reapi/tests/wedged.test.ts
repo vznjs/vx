@@ -55,7 +55,7 @@ describe.if(CHUNKING_SUPPORTED)('a wedged remote (accepts TCP, never answers)', 
     } finally {
       cache.close()
     }
-  }, 10_000)
+  }, 30_000)
 
   it('fails fast through the plugin instead of hanging the run', async () => {
     // reapi()'s remote over a wedged server throws at its deadline; core
@@ -81,7 +81,7 @@ describe.if(CHUNKING_SUPPORTED)('a wedged remote (accepts TCP, never answers)', 
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
-  }, 15_000)
+  }, 30_000)
 
   it('a DOWN server (connection refused) also degrades, the fast way', async () => {
     // The control for the wedge: refused connections were never the problem,
@@ -98,7 +98,7 @@ describe.if(CHUNKING_SUPPORTED)('a wedged remote (accepts TCP, never answers)', 
     } finally {
       cache.close()
     }
-  }, 20_000)
+  }, 30_000)
 })
 
 describe.if(CHUNKING_SUPPORTED)('adaptive chunk downgrade', () => {
@@ -135,7 +135,7 @@ describe.if(CHUNKING_SUPPORTED)('adaptive chunk downgrade', () => {
     } finally {
       client.close()
     }
-  }, 15_000)
+  }, 30_000)
 
   it('a single-chunk write does NOT downgrade-retry (nothing to downgrade)', async () => {
     // Control: at or below SAFE_CHUNK_BYTES there is no smaller safe size,
@@ -162,7 +162,7 @@ describe.if(CHUNKING_SUPPORTED)('adaptive chunk downgrade', () => {
     } finally {
       client.close()
     }
-  }, 10_000)
+  }, 30_000)
 })
 
 describe.if(CHUNKING_SUPPORTED)("the chunk stall's deadline spelled by the server", () => {
@@ -245,21 +245,21 @@ describe.if(CHUNKING_SUPPORTED)("the chunk stall's deadline spelled by the serve
       ),
     ])
     expect(r.elapsed).toBeGreaterThanOrEqual(2 * T)
-  }, 15_000)
+  }, 30_000)
 
   it("a CANCELLED BEFORE the deadline is the server's own, and is not retried", async () => {
     const r = await write(150, 512 * 1024)
     expect([r.code, r.details]).toEqual([grpc.status.CANCELLED, 'Call cancelled'])
     expect(r.warns).toEqual([])
     expect(r.elapsed).toBeLessThan(T)
-  }, 15_000)
+  }, 30_000)
 
   it('a single-message write cancelled at its deadline does NOT downgrade', async () => {
     const r = await write(T, 1024)
     expect(r.code).toBe(grpc.status.CANCELLED)
     expect(r.warns).toEqual([])
     expect(r.elapsed).toBeLessThan(2 * T)
-  }, 15_000)
+  }, 30_000)
 })
 
 describe.if(CHUNKING_SUPPORTED)(
@@ -288,7 +288,7 @@ describe.if(CHUNKING_SUPPORTED)(
       } finally {
         cache.close()
       }
-    }, 20_000)
+    }, 30_000)
 
     it('defaults derive from callTimeoutMs and cap at 15s, so raising it never lengthens a probe', () => {
       // Pinned on the instance's deadline, not by waiting the cap out on the
@@ -324,7 +324,7 @@ describe.if(CHUNKING_SUPPORTED)(
       } finally {
         cache.close()
       }
-    }, 20_000)
+    }, 30_000)
   },
 )
 
@@ -376,7 +376,7 @@ describe.if(CHUNKING_SUPPORTED)('a call a proxy cuts in transit', () => {
       details: 'Received RST_STREAM with code 2 (Internal server error)',
       calls: 4,
     })
-  }, 15_000)
+  }, 30_000)
 
   // CONTROL: the count is the attempts — a CANCEL, which is not retried, is one.
   it('RST_STREAM(CANCEL) reads as CANCELLED and is not retried', async () => {
@@ -385,7 +385,7 @@ describe.if(CHUNKING_SUPPORTED)('a call a proxy cuts in transit', () => {
       details: 'Call cancelled',
       calls: 1,
     })
-  }, 15_000)
+  }, 30_000)
 })
 
 // A server that stays down: each call spent 2.1 s of backoff on UNAVAILABLE,
@@ -420,5 +420,5 @@ describe.if(CHUNKING_SUPPORTED)('a server that stays unreachable', () => {
       client.close()
       fake.stop()
     }
-  }, 20_000)
+  }, 30_000)
 })

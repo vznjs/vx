@@ -67,11 +67,11 @@ async function refusal(hooks: string): Promise<string> {
 
 it("run() rejects with a plugin's setup failure masked", async () => {
   expect(await refusal(`{ setup() { ${THROW} } }`)).toBe(`plugin 'org/p' failed in setup: ${SAID}`)
-}, 20_000)
+}, 30_000)
 
 it("run() rejects with a plugin's stage failure masked", async () => {
   expect(await refusal(`{ project() { ${THROW} } }`)).toBe(
     `plugin 'org/p' failed in project: ${SAID}`,
   )
   expect(await refusal(`{ key() { ${THROW} } }`)).toBe(`plugin 'org/p' failed in key: ${SAID}`)
-}, 20_000)
+}, 30_000)

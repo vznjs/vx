@@ -75,7 +75,7 @@ it('a task names the tasks with a command it waited on, through a group, and the
   // (774.87 against a run started at 775 on a macOS runner).
   expect(runGraph.startedAt).toBeGreaterThan(first.startedAt - 1)
   expect(runGraph.endedAt).toBeLessThan(first.endedAt + 1)
-}, 20_000)
+}, 30_000)
 
 it('a cacheable task that ran counts the files its key read; a hit and an uncached task count none', async () => {
   const root = await makeWorkspace({ prefix: 'vx-trace-' })
@@ -116,7 +116,7 @@ it('a cacheable task that ran counts the files its key read; a hit and an uncach
     ['p#build', undefined],
     ['p#plain', undefined],
   ])
-}, 20_000)
+}, 30_000)
 
 it('a miss names what its key changed since the last entry saved for it', async () => {
   const root = await makeWorkspace({ prefix: 'vx-trace-' })
@@ -162,4 +162,4 @@ it('a miss names what its key changed since the last entry saved for it', async 
   })
   // A hit ran nothing and names nothing.
   expect(await changes()).toBeUndefined()
-}, 20_000)
+}, 30_000)

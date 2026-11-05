@@ -358,7 +358,7 @@ describe('config worker settlement', () => {
       else process.env['VX_CONFIG_WORKER_TIMEOUT'] = prev
       await rm(dir, { recursive: true, force: true })
     }
-  }, 20_000)
+  }, 30_000)
 })
 
 describe('what the transpiler was told besides the bytes', () => {

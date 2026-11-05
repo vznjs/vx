@@ -102,7 +102,7 @@ describe('runCommand', () => {
     expect(result.stdout).toContain('up')
     // Well under the sleep's 10s → proves we did not wait for the grandchild.
     expect(elapsed).toBeLessThan(3000)
-  }, 15_000)
+  }, 30_000)
 
   it('output a backgrounded child writes after the drain bound is cut, and the frame says so', async () => {
     // The bound stays (the row above), but the cut was silent: `late-line`
@@ -132,7 +132,7 @@ describe('runCommand', () => {
     expect(clean.stdout).toBe('early-line\n')
     expect(clean.stderr).toBe('')
     expect(control).toEqual([])
-  }, 15_000)
+  }, 30_000)
 
   // The cut line opens a line of its own, and only that: its leading
   // newline printed a blank line under the task's last line, and none
@@ -154,7 +154,7 @@ describe('runCommand', () => {
       await run('(sleep 1; echo late) & printf half'),
     ]).toEqual([[POST_EXIT_CUT_LINE], [`\n${POST_EXIT_CUT_LINE}`]])
     expect(POST_EXIT_CUT_LINE).toStartWith('[vx] ')
-  }, 15_000)
+  }, 30_000)
 
   // nx#36863, nx#35302: output a task's background child printed just
   // after the task exited was missing from the log and the replay. Within
@@ -454,7 +454,7 @@ describe('runCommand capture', () => {
     expect(result.exitCode).toBe(0)
     expect(result.stdout).toBe('')
     expect(bytes).toBeGreaterThan(2_000_000)
-  }, 15_000)
+  }, 30_000)
 })
 
 describe('signalExitCode', () => {
@@ -1698,7 +1698,7 @@ describe('runCommand — the rows its sweep asked for', () => {
       if (prev === undefined) delete process.env['VX_TEST_KILL_GRACE']
       else process.env['VX_TEST_KILL_GRACE'] = prev
     }
-  }, 10_000)
+  }, 30_000)
 
   it('a timed-out command that traps the TERM and exits 0 exits non-zero', async () => {
     // A DTE worker read the 0 as a pass and said so (2026-10-25): a
@@ -1711,7 +1711,7 @@ describe('runCommand — the rows its sweep asked for', () => {
       onStdout: () => {},
     })
     expect([r.timedOut, r.exitCode]).toEqual([true, signalExitCode('SIGTERM')])
-  }, 10_000)
+  }, 30_000)
 
   it('a finished command is struck from the guard: what it left runs past a vx kill -9', async () => {
     const runner = path.resolve(import.meta.dir, '..', 'src', 'exec', 'runner.ts')
@@ -1734,7 +1734,7 @@ describe('runCommand — the rows its sweep asked for', () => {
     expect(await Bun.file(path.join(dir, 'up.txt')).exists()).toBe(true)
     await Bun.sleep(2_000)
     expect(await Bun.file(path.join(dir, 'late.txt')).exists()).toBe(true)
-  }, 20_000)
+  }, 30_000)
 })
 
 // Bun's `'pipe'` is a socketpair, and Linux opens `/dev/stdout` through
@@ -1861,7 +1861,7 @@ describe("a task's stdout and stderr are pipes it can open by path", () => {
     await Bun.sleep(50)
     // By count: a spare taken is replaced by one on other descriptors.
     expect(openFds().size).toBe(before.size)
-  }, 10_000)
+  }, 30_000)
 })
 
 // A task's stdout and stderr are two pipes, merged in the order vx reads
@@ -2052,5 +2052,5 @@ describe('a stop that lands while the spawn is awaited', () => {
     } finally {
       await rm(cwd, { recursive: true, force: true })
     }
-  }, 20_000)
+  }, 30_000)
 })

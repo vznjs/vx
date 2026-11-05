@@ -144,7 +144,7 @@ describe('what the line does under sh', () => {
       out: r.out.trim(),
       term: (await term.exists()) ? await term.text() : null,
     }).toEqual({ code: 1, out: 'check-failed', term: 'terminated\n' })
-  }, 10_000)
+  }, 30_000)
 
   it('parallel: both run at once, and the line succeeds when both have', async () => {
     // A rendezvous: each waits (bounded) for the other's file, so in order
@@ -157,7 +157,7 @@ describe('what the line does under sh', () => {
       code: 0,
       lines: ['a', 'b'],
     })
-  }, 10_000)
+  }, 30_000)
 
   it('serial: one command’s exit or cd stays in its own shell, and a failure stops the rest', async () => {
     const ok = line(

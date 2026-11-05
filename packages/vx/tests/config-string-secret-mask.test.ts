@@ -113,7 +113,7 @@ it('vx show masks every string of the task', () => {
     'deploys *** ***',
     ['echo *** $(cat stamp)', 'echo *** $(cat stamp)'],
   ])
-}, 20_000)
+}, 30_000)
 
 it('vx show builds the env mask once for the tasks that define no variable', async () => {
   // Built per task, the pattern over vx's env was 10 of `vx show build`'s
@@ -160,7 +160,7 @@ globalThis.RegExp = new Proxy(Native, {
     '  command   echo ***',
   ])
   expect(await Bun.file(log).text()).toBe('x')
-}, 20_000)
+}, 30_000)
 
 it("vx why names a runtime probe's row masked, and the history holds no value", async () => {
   // A probe sees only the essential env, so the change it answers is a file's.
@@ -207,7 +207,7 @@ it('--dry masks the description, as text and as JSON', () => {
     tasks: Array<{ description?: string }>
   }
   expect(json.tasks.map((t) => t.description)).toEqual(['deploys *** ***'])
-}, 20_000)
+}, 30_000)
 
 it("the picker's menu masks the description", async () => {
   const input = new PassThrough()
@@ -246,4 +246,4 @@ it('the readiness notice masks a secret in readyWhen, a listed one too', async (
   expect(lines.filter((l) => l.includes('not ready after'))).toEqual([
     'vx: app#wait not ready after 200 ms: waiting for a line matching /up *** ***/ (readyWhen)',
   ])
-}, 20_000)
+}, 30_000)

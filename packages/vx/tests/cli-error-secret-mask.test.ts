@@ -63,7 +63,7 @@ it("a config's own throw is masked", async () => {
   expect(err.split('\n').filter((l) => l.includes('reply'))).toEqual([
     `  Project config ${root}/packages/app/vx.config.mjs threw: ${SAID} (at ${root}/packages/app/vx.config.mjs:1:11)`,
   ])
-}, 20_000)
+}, 30_000)
 
 it("vx watch's failed cycle is masked", async () => {
   // A cycle reads configs from the lock and evaluates none, so the text

@@ -107,7 +107,8 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   as a hang guard (`tests/suite-coverage.unsafe.test.ts`; a vx-migrate test
   spawning vx four times passed 5 s too, 2026-11-05); speed is a CPU-time
   assertion, never the timeout. A test's own timeout argument overrides
-  the flag, so none is set under 30 s either (17 were, 3 to 8 s).
+  the flag, so none is set under 30 s either (258 were, 3 to 25 s;
+  `tests/suite-coverage.unsafe.test.ts`).
 - Two measured quantities that are equal by construction sit on jitter:
   a light child's `ru_maxrss` IS the parent's mark, and the kernel's RSS
   counters lag by pages, so an exact `>` between them flipped on one CI

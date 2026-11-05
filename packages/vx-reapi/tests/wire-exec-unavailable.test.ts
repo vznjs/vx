@@ -36,7 +36,7 @@ describe.if(CHUNKING_SUPPORTED)('an Execute refused UNAVAILABLE', () => {
       true,
       ['Execute', 'Execute'],
     ])
-  }, 20_000)
+  }, 30_000)
 
   it('past the retry budget is refused, not waited on', async () => {
     fake.fail('Execute', grpc.status.UNAVAILABLE, 10)
@@ -51,5 +51,5 @@ describe.if(CHUNKING_SUPPORTED)('an Execute refused UNAVAILABLE', () => {
       '14 UNAVAILABLE: injected UNAVAILABLE',
       ['Execute', 'Execute', 'Execute', 'Execute'],
     ])
-  }, 20_000)
+  }, 30_000)
 })
