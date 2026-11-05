@@ -245,6 +245,27 @@ it('a quiet worker beats once each heartbeat and a half, its orchestrator only a
   await o.leave()
 }, 30_000)
 
+// CI run 41952026507 (2026-11-05): three busy workers ended at once on
+// their orchestrator's silence while it ran. A quiet worker beats 3 s
+// after it last spoke and is lost at 6 s: an ack half a heartbeat late
+// left 2 s for a stall. Its beat's ack goes at once.
+it('the orchestrator acks a quiet worker’s beat at once, not half a heartbeat later', async () => {
+  const { url, frames } = sockets(2_000)
+  const o = await join(url, R2, 'orchestrator', null, undefined)
+  const a = await join(url, R2, 'worker', null, undefined)
+  await o.poll()
+  const beat = /"sends":\[\{"to":"host","body":\{"seq":\d+(,"acked":\d+)?\}\}\]/
+  const ack = new RegExp(`"sends":\\[\\{"to":"${a.id}","body":\\{"acked":\\d+\\}\\}\\]`)
+  frames.length = 0
+  while (!frames.some((f) => beat.test(f))) await Bun.sleep(5)
+  const t = performance.now()
+  while (!frames.some((f) => ack.test(f)) && performance.now() - t < 3_000) await Bun.sleep(5)
+  // Half a heartbeat is 1 s: at once is the relay's round trip.
+  expect(performance.now() - t).toBeLessThan(500)
+  await a.leave()
+  await o.leave()
+}, 30_000)
+
 // PR #4317's run (2026-10-24): two workers each sent `ran` a moment
 // before a probe was due, and the worker judged its orchestrator silent
 // first. Now a send stands for the worker's beat, and its ack answers it.

@@ -633,7 +633,8 @@ use your own instead.
   acknowledges it, so one a socket or the relay dropped goes again after
   a heartbeat and a half, or at once on a new socket; the receiver takes
   each once, in order. An ack rides the next send back; the orchestrator's,
-  with no order to ride, go together after half a heartbeat.
+  with no order to ride, go together after half a heartbeat, except a
+  quiet worker's beat, acked at once.
 - A task sent runs at once: no message says it began. A command that
   ended (`ran`, with when it began and ended by the worker's clock) rides
   the worker's next frame, never alone; a task that saves first says it
