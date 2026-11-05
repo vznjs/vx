@@ -1,3 +1,4 @@
+import { cpuClock } from './helpers/cpu-clock.js'
 import { describe, expect, it } from 'bun:test'
 import { parsePruneArgs } from '../src/cli/cache.js'
 import { parseSize } from '../src/util/size.js'
@@ -445,9 +446,9 @@ describe('parseSize — hostile input', () => {
   // guards the algorithmic SHAPE and not machine speed.
   it('does not backtrack catastrophically on a long digit run', () => {
     const adversarial = '9'.repeat(40) + 'x'
-    const started = Bun.nanoseconds()
+    const cpu = cpuClock()
     expect(parseSize(adversarial)).toBeNull()
-    expect((Bun.nanoseconds() - started) / 1e6).toBeLessThan(100)
+    expect(cpu()).toBeLessThan(100)
   })
 })
 

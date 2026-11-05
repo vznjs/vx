@@ -3086,8 +3086,9 @@ describe('a slow collector never holds the run', () => {
         exitCode: 0,
         durationMs: 1,
       } as TelemetryRecord)
-      // Handing records over never waits on the network.
-      expect(performance.now() - t0).toBeLessThan(50)
+      // Handing records over never waits on the network, which here never
+      // answers: 1 s is far past a handoff and far short of the 60 s transport.
+      expect(performance.now() - t0).toBeLessThan(1_000)
       while (held.length === 0) await Bun.sleep(5)
       const deadline = new AbortController()
       setTimeout(() => deadline.abort(new Error('deadline')), 100)

@@ -3,6 +3,7 @@
 // 80 s on a terminal and 6 s piped, every frame walking the empty slots,
 // and 2^32 threw in runStart, so the renderer drew nothing. A run never
 // fills more slots than it has tasks.
+import { cpuClock } from './helpers/cpu-clock.js'
 import { expect, it } from 'bun:test'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 import { defaultLogger } from '../src/report/logger.js'
@@ -35,14 +36,14 @@ for (const concurrency of [100_000_000, 2 ** 32]) {
   it(`a run of two tasks at --concurrency=${concurrency} draws them at once`, () => {
     const out = tty()
     const log = defaultLogger({ enabled: false }, { mode: 'broad' }, out, { forceFloorMs: 0 })
-    const t0 = performance.now()
+    const cpu = cpuClock()
     log.runStart?.({ total: 2, concurrency })
     const a = node('p#a')
     log.taskStart?.(a)
     log.taskComplete(a, { node: a, status: 'success', exitCode: 0, durationMs: 1 } as TaskOutcome)
     log.runEnd?.()
     log.runDone?.()
-    expect(performance.now() - t0).toBeLessThan(500)
+    expect(cpu()).toBeLessThan(500)
     expect(out.text()).toContain('p#a')
   })
 }
