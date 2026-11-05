@@ -126,7 +126,8 @@ const REMOVED: Record<string, string> = {
   'benchmarks/#how-the-overhead-scales-with-the-workspace-2026-09-10':
     'the #scale panel went; one benchmark stays',
   'cli/#vx-init': 'the migrate section went; the quickstart runs vx init',
-  'comparison/': 'the footer links compare/, the page that says when to pick another tool',
+  'comparison/': 'the footer links conformance/, where every tool runs one suite',
+  'compare/': 'the page went; conformance/ shows every tool on one suite',
   'guide/affected/': CHAPTER,
   'guide/caching/': CHAPTER,
   'guide/concurrency/': CHAPTER,
@@ -358,7 +359,7 @@ describe('the landing page', () => {
     expect(wins.map((m) => text(m[1]!))).toEqual(['15', 'MIT', '0'])
   })
 
-  // Where vx differs from both, as the choosing page's model says it.
+  // Where vx differs from both, checked against each tool's own docs.
   it('compares vx, Turborepo and Nx trait by trait', () => {
     const edge = section(html, 'edge')
     const cols = [...edge.matchAll(/<th scope="col"[^>]*>([\s\S]*?)<\/th>/g)].map((m) =>
@@ -385,7 +386,7 @@ describe('the landing page', () => {
       ['vx yes', 'Turborepo no', 'Nx no'],
       ['vx yes', 'Turborepo yes', 'Nx no'],
     ])
-    expect(hrefs(edge)).toEqual([`${BASE}compare/`])
+    expect(hrefs(edge)).toEqual([`${BASE}conformance/`])
   })
 
   // Four commands on native config, and Turbo or Nx only as a temporary

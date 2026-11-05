@@ -7,7 +7,7 @@ Both tools run the tasks of a JavaScript monorepo and cache their
 results. This page puts them side by side on one benchmark, feature by
 feature, and says when Nx is the better choice.
 
-The design choices behind both are on [vx, Turborepo, Nx, Bazel](../).
+How both do on one suite of cases is on [Conformance](../../conformance/).
 
 ## The numbers
 

@@ -101,7 +101,7 @@ describe('docs site sidebar coverage', () => {
       expect(pages.some((u) => u.startsWith(`/${dir}/`))).toBe(true)
     }
     expect(listed).toContain('/glossary/')
-    expect(listed).toContain('/compare/')
+    expect(listed).toContain('/comparison/')
     expect(pages.filter((u) => /^\/(?:learn|guide)\//.test(u))).toEqual([])
   })
 

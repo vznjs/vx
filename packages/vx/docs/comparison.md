@@ -1,7 +1,8 @@
 # Compared to Turborepo, Nx, vite-task
 
 A side-by-side reference for what each of the four tools does, plus an
-explicit list of gaps `@vzn/vx` has against the other three.
+explicit list of gaps `@vzn/vx` has against the other three. What vx
+shares with them is in [`patterns.md`](./patterns.md).
 
 This is a living document; every claim cites a source file or reference
 page in the upstream repo so future revisions can be diffed against

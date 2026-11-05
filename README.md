@@ -142,9 +142,8 @@ not a way to run the repo. The benchmark below uses native vx config.
 | Plugin API         | **Yes**: every pipeline stage             | No                             | Yes (TS-tied)    |
 | Install            | **Single binary**; no Bun, Node optional  | npm + Node                     | npm + Node       |
 
-Every gap, and when another tool is the better pick:
-[comparison](packages/vx/docs/comparison.md) ·
-[vx, Turborepo, Nx, Bazel](https://vznjs.github.io/vx/compare/).
+Every gap: [comparison](packages/vx/docs/comparison.md) ·
+every tool on one suite of cases: [conformance](https://vznjs.github.io/vx/conformance/).
 
 ## Fast, without trading correctness
 
