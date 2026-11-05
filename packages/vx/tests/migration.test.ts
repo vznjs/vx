@@ -91,6 +91,18 @@ describe('quoteTsLiteral', () => {
     writeFileSync(file, `export default ${quoteTsLiteral("x\r\n'\\y")}\n`)
     expect((await import(file)).default).toBe("x\r\n'\\y")
   })
+
+  // A script's raw ESC (`echo \u001b]0;title\u0007`) was written into the
+  // file as the byte itself, and reading the file retitled the terminal.
+  it('writes every other control as its escape, and the literal loads back as the same string', async () => {
+    const raw = 'echo \u001b]0;pwn\u0007 \t\u0000\u007f\u009b'
+    const lit = quoteTsLiteral(raw)
+    // oxlint-disable-next-line no-control-regex
+    expect(/[\x00-\x1f\x7f-\x9f]/.test(lit)).toBe(false)
+    const file = path.join(root, 'controls.mjs')
+    writeFileSync(file, `export default ${lit}\n`)
+    expect((await import(file)).default).toBe(raw)
+  })
 })
 
 describe('applyMigration', () => {

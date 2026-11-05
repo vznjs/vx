@@ -42,6 +42,10 @@ export function isStarterConfig(file: string): boolean {
   }
 }
 
+/** A C0 or C1 control, or DEL. */
+// oxlint-disable-next-line no-control-regex
+const CONTROL = /[\x00-\x1f\x7f-\x9f]/g
+
 /**
  * Escape an arbitrary string into a single-quoted TS literal. Escapes
  * backslash + quote AND raw newlines/CR — a value with an embedded newline
@@ -55,7 +59,10 @@ export function quoteTsLiteral(s: string): string {
     .replaceAll('\\', '\\\\')
     .replaceAll("'", "\\'")
     .replaceAll('\n', '\\n')
-    .replaceAll('\r', '\\r')}'`
+    .replaceAll('\r', '\\r')
+    // Any other control as its escape: a script's raw ESC landed in the
+    // file as the byte, and `cat vx.config.ts` retitled the terminal.
+    .replace(CONTROL, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`)}'`
 }
 
 /**
