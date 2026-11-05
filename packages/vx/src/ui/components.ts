@@ -273,7 +273,8 @@ export function status(t: Tone, verb: string, headline: Inline): Block {
  * tag is painted whole. One string, no newline: the run's own streams write it.
  */
 export function tagged(t: Tone, line: string, c: ColorSupport): string {
-  const body = line.replace(/\n+$/, '')
+  // A warning carries a remote's or a plugin's words, anyone's bytes.
+  const body = plainText(line.replace(/\n+$/, ''))
   const tag = /^(?:\[vx\]|vx(?: [a-z][\w-]*){0,2}:|[\w@/.-]+: )/.exec(body)?.[0].trimEnd()
   return tag === undefined
     ? paint(t, body, c)

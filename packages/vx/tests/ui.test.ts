@@ -116,6 +116,18 @@ describe('ui components', () => {
     // oxlint-disable-next-line no-control-regex
     expect(out.replace(/\x1b\[[0-9;]*m/g, '').match(/[\x00-\x09\x0b-\x1f\x7f-\x9f]/g)).toBeNull()
   })
+
+  // A warning carries a remote's or a plugin's words: a cache server's
+  // `ESC ]0;…` retitled the terminal from the Warnings panel.
+  it('writes a control byte in a warning as \\xNN, painted or not', () => {
+    const bad = "[vx] plugin 'p': x\x1b]0;t\x07\ry"
+    expect(ui.tagged('warn', bad, { enabled: false })).toBe(
+      "[vx] plugin 'p': x\\x1b]0;t\\x07\\x0dy",
+    )
+    const painted = ui.tagged('warn', bad, ON)
+    // oxlint-disable-next-line no-control-regex
+    expect(painted.replace(/\x1b\[[0-9;]*m/g, '').match(/[\x00-\x1f\x7f-\x9f]/g)).toBeNull()
+  })
 })
 
 describe('wrap', () => {
