@@ -40,6 +40,7 @@ import runModes from './run-modes.ts'
 import sandbox from './sandbox.ts'
 import viteTaskE2eA from './vite-task-e2e-a.ts'
 import viteTaskE2eB from './vite-task-e2e-b.ts'
+import vitePlanA from './vite-task-plan-a.ts'
 import watch from './watch.ts'
 
 /** Every case, in the results' order. */
@@ -86,4 +87,5 @@ export const CASES: Case[] = [
   ...watch,
   ...viteTaskE2eA,
   ...viteTaskE2eB,
+  ...vitePlanA,
 ]
