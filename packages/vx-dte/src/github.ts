@@ -376,10 +376,13 @@ export function github(options: GithubOptions = {}): DteAdapter {
         throw new Error(`github(): dispatching ${workflow}: ${res.status} ${text}${fix}`)
       }
     }
-    const id =
+    // quiet: a body that is not JSON names no run, refused below
+    const said =
       res.status === 200
-        ? ((await res.json()) as { workflow_run_id?: number }).workflow_run_id
+        ? ((await res.json().catch(() => null)) as { workflow_run_id?: unknown } | null)
+            ?.workflow_run_id
         : undefined
+    const id = Number.isSafeInteger(said) && (said as number) > 0 ? (said as number) : undefined
     // An API naming no run (a 204) is refused, not trusted by repository
     // alone: any job of it with id-token: write would join as a worker.
     if (id === undefined) {
