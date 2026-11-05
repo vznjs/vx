@@ -122,15 +122,10 @@ describe('the conformance page', () => {
     expect(percent({ pass: 1, of: 200 })).toBe('0%')
   })
 
-  it('names each tool’s version, the coverage and the method', () => {
+  it('names each tool’s version, where the cases come from and the method', () => {
     for (const v of Object.values(RESULTS.tools)) expect(html).toContain(v)
     expect(html).toContain('https://github.com/vznjs/vx/blob/main/private/vx-conformance/README.md')
-    const { coverage } = RESULTS
-    expect(html).toContain(`<span class="cfm-n">${coverage.ported}</span>`)
-    for (const [v, files] of Object.entries(coverage.rest)) {
-      const li = html.slice(html.indexOf(`data-verdict="${v}"`))
-      expect(li).toStartWith(`data-verdict="${v}"><span class="cfm-n">${files.length}</span>`)
-      expect(unescape(html)).toContain(coverage.verdicts[v]!)
-    }
+    expect(unescape(html)).toContain('parsing every test in vx, Turbo and Nx')
+    expect(html).not.toContain('id="coverage"')
   })
 })

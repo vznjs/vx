@@ -1,6 +1,6 @@
 /* The conformance page (src/pages/conformance/). It wears landing.css's
    tokens and features.css's hero, chips and light theme; this adds the
-   score table, the case tables and the coverage list. */
+   score table and the case tables. */
 
 .vx-landing .cfm {
   --cfm-pass: #4ade80;
@@ -361,50 +361,6 @@
   font-family: var(--font-body);
 }
 
-/* ---- coverage ---- */
-.vx-landing .cfm-coverage {
-  display: grid;
-  gap: 0;
-  margin: 0 0 24px;
-  padding: 0;
-  list-style: none;
-}
-.vx-landing .cfm-coverage li {
-  display: grid;
-  grid-template-columns: 72px 110px minmax(0, 1fr);
-  align-items: baseline;
-  gap: 4px 16px;
-  padding: 14px 0;
-  border-bottom: 1px solid var(--line);
-}
-.vx-landing .cfm-n {
-  font: var(--fw-semibold) 24px / 1 var(--font-display);
-  color: var(--text-hi);
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-.vx-landing .cfm-v {
-  font: var(--fw-medium) 13px / 1.3 var(--font-mono);
-  color: var(--accent-text);
-}
-.vx-landing .cfm-coverage li[data-verdict='ported'] .cfm-n {
-  color: var(--phosphor);
-}
-.vx-landing .cfm-coverage details {
-  grid-column: 3;
-}
-.vx-landing .cfm-coverage summary {
-  cursor: pointer;
-  font: var(--fw-medium) 13px / 1.4 var(--font-body);
-  color: var(--text-mut);
-}
-.vx-landing .cfm-files {
-  margin: 8px 0 0;
-  font: 12px / 1.6 var(--font-mono);
-  color: var(--text-faint);
-  overflow-wrap: anywhere;
-}
-
 @media (max-width: 640px) {
   .vx-landing .cfm-section {
     padding: 40px var(--gutter);
@@ -460,12 +416,5 @@
   }
   .vx-landing .cfm-all .cfm-pct {
     font-size: 20px;
-  }
-  .vx-landing .cfm-coverage li {
-    grid-template-columns: 56px minmax(0, 1fr);
-  }
-  .vx-landing .cfm-coverage .cfm-line,
-  .vx-landing .cfm-coverage details {
-    grid-column: 2;
   }
 }
