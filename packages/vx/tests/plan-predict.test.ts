@@ -161,6 +161,7 @@ async function planUnit(args: {
   downloadOf?: (id: string) => 'eager' | 'deferred' | 'never' | undefined
   downloadDowngrades?: ReadonlyArray<{ taskId: string; reason: string }>
   executorOf?: (id: string) => string | undefined
+  restorable?: ReadonlySet<string>
 }): Promise<RunPlan> {
   return plan({
     nodes: args.nodes,
@@ -172,6 +173,7 @@ async function planUnit(args: {
     ...(args.history !== undefined ? { history: args.history } : {}),
     ...(args.downloadOf !== undefined ? { downloadOf: args.downloadOf } : {}),
     ...(args.executorOf !== undefined ? { executorOf: args.executorOf } : {}),
+    ...(args.restorable !== undefined ? { restorable: args.restorable } : {}),
     ...(args.downloadDowngrades !== undefined
       ? { downloadDowngrades: args.downloadDowngrades }
       : {}),
@@ -1055,3 +1057,20 @@ describe('planRun() — unresolved requests', () => {
     TIMEOUT,
   )
 })
+
+// A server shared by many tasks: the dependents map copied each list it
+// grew, k²/2 element copies for k dependents of one task.
+it('plans a server behind 60,000 restorable tasks in linear time', async () => {
+  const specs: NodeSpec[] = [{ id: 'p#serve' }]
+  for (let i = 0; i < 60_000; i++) specs.push({ id: `p#t${i}`, deps: ['p#serve'] })
+  const nodes = makeNodes(specs)
+  const serve = nodes.get('p#serve')! as { requested: boolean; config: { exec?: object } }
+  serve.requested = false
+  serve.config.exec = { command: 'serve', persistent: true }
+  const restorable = new Set(specs.slice(1).map((s) => s.id))
+  const started = performance.now()
+  const p = await planUnit({ nodes, cache: stubCache(() => 'local').layer, restorable })
+  const ms = performance.now() - started
+  expect(statusById(p)['p#serve']).toBe('not-started')
+  expect(ms).toBeLessThan(5_000)
+}, 60_000)

@@ -225,7 +225,11 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
     )
     const dependents = new Map<string, string[]>()
     for (const node of args.nodes.values())
-      for (const dep of node.deps) dependents.set(dep, [...(dependents.get(dep) ?? []), node.id])
+      for (const dep of node.deps) {
+        const ds = dependents.get(dep)
+        if (ds === undefined) dependents.set(dep, [node.id])
+        else ds.push(node.id)
+      }
     for (const id of idleServers(args.nodes, dependents, restoreTier))
       cacheStatusById.set(id, 'not-started')
   }
