@@ -5256,3 +5256,33 @@ it('removes a worker’s removed outputs only where no link leads elsewhere', as
     await served.stop()
   }
 })
+
+// 2026-11-05: placing scored every worker a task fit, 200 per task on a
+// big run: 15% of the orchestrator's CPU. It scores the first 16, as
+// Kubernetes scores a share of its nodes; workers fill in order.
+it('scores a task on the first 16 workers it fits, not every one', () => {
+  let read = 0
+  const bins = Array.from({ length: 200 }, (_, i) => ({
+    id: `w${i}`,
+    cores: 4,
+    memory: 16e9,
+    used: { cores: 0, memory: 0 },
+    n: 0,
+    get running(): number {
+      read++
+      return this.n
+    },
+    set running(n: number) {
+      this.n = n
+    },
+    has: new Set<string>(),
+    platform: undefined,
+  }))
+  const to = assign(
+    [{ id: 't', need: { cores: 1, memory: 0 }, up: [] }],
+    bins,
+    undefined,
+    'best-fit',
+  )
+  expect([to.get('t')?.id, read]).toEqual(['w0', 18])
+})

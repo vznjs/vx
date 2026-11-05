@@ -86,6 +86,14 @@ export function dispatch<B extends Bin>(
   return { to, left }
 }
 
+/**
+ * The most workers a task is scored on, of those it fits, as Kubernetes
+ * scores a share of its nodes: scoring every one cost the orchestrator
+ * 15% more CPU at 200 workers, and the sims ended within 0.4% sampling
+ * even 2 (2026-11-05).
+ */
+const SAMPLE = 16
+
 /** What a task asks of a worker: its history's cores and peak memory. */
 export interface Need {
   readonly cores: number
@@ -216,9 +224,12 @@ export function assign<B extends Bin>(
     const pool = anyBigger ? of.filter(bigger) : of
     let best: B | undefined
     let bestScore: [number, number] = [0, 0]
+    let seen = 0
     for (let i = 0; i < pool.length; i++) {
       const b = pool[i]!
       if (held.has(b) || !fits(b, need)) continue
+      // Workers fill in order, so the first that fit hold the fullest.
+      if (++seen > SAMPLE) break
       let has = 0
       for (const id of ask.up ?? []) if (b.has?.has(id) === true) has++
       const score: [number, number] = [has, fit(b, need, place, i)]
