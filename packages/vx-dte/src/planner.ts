@@ -270,6 +270,8 @@ interface Slot extends Bin {
   first?: number
   /** When its last task ends. */
   free?: number
+  /** When its last task given in the play ends. */
+  last?: number
 }
 
 /**
@@ -299,7 +301,7 @@ function play(
   // A dependency running now ends when it does; one ended or a hit, now.
   const runningIds = new Set<string>()
   for (const w of workers) for (const r of w.running) if (r.id !== undefined) runningIds.add(r.id)
-  const { byId, after, waitedAt, tailOf, kinds } = shapeOf(tasks, runningIds)
+  const { byId, after, afterAt, indexOf, waitedAt, tailOf, kinds } = shapeOf(tasks, runningIds)
   // By place, not id: maps keyed by id were a 5000-task play's most time (2026-11-05).
   const waits = waitedAt.slice()
   const slots: Slot[] = workers.map((w) => ({
@@ -312,14 +314,14 @@ function play(
     running: 0,
   }))
   // Ends to come: [at, slot, cores, memory, task or undefined].
-  const ends: [number, Slot, number, number, string | undefined][] = []
+  const ends = new Ends()
   workers.forEach((w, i) => {
     const s = slots[i]!
     for (const r of w.running) {
       s.used.cores += r.cores
       s.used.memory += r.memory
       s.running++
-      ends.push([Math.max(0, r.endsIn), s, r.cores, r.memory, r.id])
+      ends.push(Math.max(0, r.endsIn), s, r.cores, r.memory, -1, r.id)
       s.free = Math.max(s.free ?? 0, r.endsIn)
     }
   })
@@ -354,9 +356,14 @@ function play(
   const widest = Math.max(1, ...workers.map((w) => w.cores))
   let left = tasks.length
   let now = 0
-  let last = Math.max(0, ...ends.map((e) => e[0]))
+  let last = Math.max(0, ends.last())
   // When each platform's last task ends.
-  const byPlatform = new Map<string | undefined, number>()
+  const byPlatform = (): Map<string | undefined, number> => {
+    const out = new Map<string | undefined, number>()
+    for (const s of slots)
+      if (s.last !== undefined) out.set(s.platform, Math.max(out.get(s.platform) ?? 0, s.last))
+    return out
+  }
   // The joined slots, read again once the next one joins.
   let joined: Slot[] = []
   let nextJoin = -Infinity
@@ -410,35 +417,37 @@ function play(
       best.first ??= now
       best.free = Math.max(best.free ?? 0, now + (t.ms ?? UNKNOWN_MS))
       const end = now + (t.ms ?? UNKNOWN_MS)
-      ends.push([end, best, Math.min(t.cores, best.cores), Math.min(t.memory, best.memory), t.id])
+      ends.push(
+        end,
+        best,
+        Math.min(t.cores, best.cores),
+        Math.min(t.memory, best.memory),
+        indexOf.get(id)!,
+        undefined,
+      )
       last = Math.max(last, end)
-      byPlatform.set(best.platform, Math.max(byPlatform.get(best.platform) ?? 0, end))
+      best.last = Math.max(best.last ?? 0, end)
     }
     const first = (): Map<string, number> =>
       new Map(slots.flatMap((s) => (s.first === undefined ? [] : [[s.id, s.first] as const])))
     const free = (): Map<string, number> =>
       new Map(slots.flatMap((s) => (s.free === undefined ? [] : [[s.id, s.free] as const])))
-    if (left === 0 && readyCount === 0) return { end: last, first: first(), ends: byPlatform, free }
+    if (left === 0 && readyCount === 0)
+      return { end: last, first: first(), ends: byPlatform(), free }
     // The next moment anything changes: a task ends or a worker joins.
-    let next = Infinity
-    for (const e of ends) next = Math.min(next, e[0])
+    let next = ends.next()
     for (const s of slots) if (s.at > now) next = Math.min(next, s.at)
     if (next === Infinity)
-      return { end: left === 0 ? last : Infinity, first: first(), ends: byPlatform, free }
+      return { end: left === 0 ? last : Infinity, first: first(), ends: byPlatform(), free }
     now = next
-    for (let i = 0; i < ends.length;) {
-      const [at, s, cores, memory, id] = ends[i]!
-      if (at > now) {
-        i++
-        continue
-      }
-      ends.splice(i, 1)
+    while (ends.next() <= now) {
+      const { s, cores, memory, place, id } = ends.pop()
       s.used.cores -= cores
       s.used.memory -= memory
       s.running--
-      if (id === undefined) continue
-      if (byId.has(id)) left--
-      for (const d of after.get(id) ?? []) {
+      if (place >= 0) left--
+      else if (id === undefined) continue
+      for (const d of (place >= 0 ? afterAt[place] : after.get(id!)) ?? []) {
         if (--waits[d]! === 0) {
           joining.push(tasks[d]!)
           readyCount++
@@ -451,11 +460,83 @@ function play(
 
 const NONE: ReadonlyMap<string, Slot> = new Map()
 
+interface End {
+  at: number
+  seq: number
+  s: Slot
+  cores: number
+  memory: number
+  /** The task's place in the play, or -1 for one running when it began (`id`). */
+  place: number
+  id: string | undefined
+}
+
+/**
+ * A play's ends to come, soonest first, ties in the order given: a scan
+ * of every running task at each step was most of a 20 000-task play
+ * (2026-11-05).
+ */
+class Ends {
+  private readonly heap: End[] = []
+  private seq = 0
+  private readonly before = (a: End, b: End): boolean =>
+    a.at < b.at || (a.at === b.at && a.seq < b.seq)
+  push(
+    at: number,
+    s: Slot,
+    cores: number,
+    memory: number,
+    place: number,
+    id: string | undefined,
+  ): void {
+    const h = this.heap
+    const e: End = { at, seq: this.seq++, s, cores, memory, place, id }
+    let i = h.length
+    h.push(e)
+    while (i > 0) {
+      const p = (i - 1) >> 1
+      if (!this.before(e, h[p]!)) break
+      h[i] = h[p]!
+      i = p
+    }
+    h[i] = e
+  }
+  next(): number {
+    return this.heap[0]?.at ?? Infinity
+  }
+  last(): number {
+    let most = 0
+    for (const e of this.heap) most = Math.max(most, e.at)
+    return most
+  }
+  pop(): End {
+    const h = this.heap
+    const top = h[0]!
+    const e = h.pop()!
+    if (h.length > 0) {
+      let i = 0
+      for (;;) {
+        const l = 2 * i + 1
+        if (l >= h.length) break
+        const c = l + 1 < h.length && this.before(h[l + 1]!, h[l]!) ? l + 1 : l
+        if (!this.before(h[c]!, e)) break
+        h[i] = h[c]!
+        i = c
+      }
+      h[i] = e
+    }
+    return top
+  }
+}
+
 /** What `play` reads of `tasks` alone, for each play of one plan. */
 interface Shape {
   readonly byId: ReadonlyMap<string, PlanTask>
   /** Each task's dependants, by their place in the tasks. */
   readonly after: ReadonlyMap<string, readonly number[]>
+  /** The same by each task's place, and its place by id: a lookup by id at each end was most of a play. */
+  readonly afterAt: readonly (readonly number[] | undefined)[]
+  readonly indexOf: ReadonlyMap<string, number>
   /** How many dependencies each task, by its place, waits on before the play begins. */
   readonly waitedAt: Int32Array
   readonly tailOf: (id: string) => number
@@ -501,7 +582,9 @@ function shapeOf(tasks: readonly PlanTask[], running: ReadonlySet<string>): Shap
     tail.set(id, t)
     return t
   }
-  const shape = { byId, after, waitedAt, tailOf, kinds: kindsOf(tasks) }
+  const indexOf = new Map(tasks.map((t, i) => [t.id, i]))
+  const afterAt = tasks.map((t) => after.get(t.id))
+  const shape = { byId, after, afterAt, indexOf, waitedAt, tailOf, kinds: kindsOf(tasks) }
   shapes.set(tasks, { runs, shape })
   return shape
 }
