@@ -992,7 +992,15 @@ export function decide(input: {
     const step = follow(had, undefined, input, undefined, now)
     // No work read, none to hand back: each step handed back the plan's
     // whole work, and the run read it all at each event.
-    if (step !== undefined && step !== 'full') return shown(input.last!, had, step, now, [])
+    // A start or a release hands back the work it plans for, as the run reports it.
+    if (step !== undefined && step !== 'full')
+      return shown(
+        input.last!,
+        had,
+        step,
+        now,
+        step.start.length > 0 || step.release.length > 0 ? had.work : [],
+      )
   }
   const tasks = missedWork(
     input.remaining,
@@ -1043,6 +1051,8 @@ export function decide(input: {
 export interface Forecast {
   readonly at: number
   readonly plan: Plan
+  /** The work it played. */
+  readonly work: readonly PlanTask[]
   /** Each waiting task's time, and each waiting or running task's cores and memory. */
   readonly ms: ReadonlyMap<string, number | undefined>
   readonly need: ReadonlyMap<string, readonly [cores: number, memory: number]>
@@ -1087,7 +1097,7 @@ export interface Forecast {
 
 type Seen = Pick<
   Parameters<typeof decide>[0],
-  'workers' | 'queued' | 'final' | 'sizes' | 'warmUpMs' | 'executed' | 'nodes'
+  'workers' | 'queued' | 'final' | 'sizes' | 'started' | 'warmUpMs' | 'executed' | 'nodes'
 >
 
 /**
@@ -1137,6 +1147,7 @@ function forecastOf(
   return {
     at: now,
     plan: p,
+    work: tasks,
     ms: new Map(tasks.map((t) => [t.id, t.ms])),
     need: needsOf(tasks, input.workers),
     workers: new Set(input.workers.map((w) => w.id).filter((id) => !p.release.includes(id))),
@@ -1202,8 +1213,8 @@ type Step = { start: Size[]; release: string[]; next: Forecast }
  * boxes to full"; "If simulated all goes with plan so there should be no
  * replans").
  *
- * Without `tasks` (and `sizes`), only what events move is read, and a
- * step that starts or lets a worker go is `full`: read every task first.
+ * Without `tasks` (and `sizes`), only what events move is read: work it
+ * did not see is `full`, read every task first.
  */
 function follow(
   f: Forecast,
@@ -1332,13 +1343,22 @@ function follow(
   const later = [...f.later]
   while (later.length > 0 && now >= later[0]!.at) {
     const { size, free: ends, join: joins } = later.shift()!
-    // Its size taken up since: the plan no longer fits the run.
-    if (sizes === undefined) return 'full'
-    if (!sizes.some((s) => s.name === size.name)) return undefined
+    // Its size taken up since: the plan no longer fits the run. Read
+    // from what the run started, not from every task: each start read
+    // them all (2026-11-05).
+    if (sizes === undefined) {
+      const kind = input.sizes.find((s) => s.name === size.name)
+      if (
+        input.final ||
+        kind === undefined ||
+        input.queued?.has(size.name) === true ||
+        (input.started.get(size.name) ?? 0) >= kind.max
+      )
+        return undefined
+    } else if (!sizes.some((s) => s.name === size.name)) return undefined
     start.push(size)
     fresh.push({ free: ends, join: joins })
   }
-  if (tasks === undefined && release.length > 0) return 'full'
   const next: Forecast = {
     ...f,
     workers,
