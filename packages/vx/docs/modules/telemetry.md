@@ -142,6 +142,7 @@ interface RunSummaryRecord {
   uploads?: { count: number; bytes: number; ms: number; failed: number } // remote uploads once settled; ms summed
   machines?: readonly MachineReport[] // TaskExecutor.machines: each machine an executor ran tasks on, with what it did
   idealMs?: number // TaskExecutor.idealMs: the run's end placed perfectly, beside totalDurationMs
+  advice?: readonly WorkerAdvice[] // TaskExecutor.advice: the workers that would have run it best
 }
 
 interface FailedAttempt {

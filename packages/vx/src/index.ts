@@ -245,6 +245,7 @@ export type {
   ServerSpec,
   TaskExecutor,
   TaskPlacement,
+  WorkerAdvice,
 } from './exec/index.js'
 
 // Telemetry — THE canonical, versioned data-export contract every exporter

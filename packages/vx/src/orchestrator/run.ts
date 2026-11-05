@@ -28,7 +28,7 @@ import {
 } from '../exec/index.js'
 import { DeferredOutputs } from './deferred-outputs.js'
 import { resolveDownloadModes } from './download-policy.js'
-import type { MachineReport, TaskExecutor } from '../exec/index.js'
+import type { MachineReport, TaskExecutor, WorkerAdvice } from '../exec/index.js'
 import {
   deadServerBehind,
   declaredTask,
@@ -1623,6 +1623,7 @@ async function runOnBus(
         uploads: prepared.localCache.uploads,
         machines: executors.flatMap((e) => executorMachines(e, fault)),
         idealMs: executors.map((e) => executorIdeal(e, fault)).find((ms) => ms !== undefined),
+        advice: executors.flatMap((e) => executorAdvice(e, fault)),
       })
       telemetry.emitSummary(summary)
       const sinks = telemetry
@@ -2180,6 +2181,16 @@ function executorMachines(e: TaskExecutor, fault: ExecutorFault): readonly Machi
     return Array.isArray(m) ? m : []
   } catch (err) {
     fault(e, 'machines', err)
+    return []
+  }
+}
+
+function executorAdvice(e: TaskExecutor, fault: ExecutorFault): readonly WorkerAdvice[] {
+  try {
+    const a = e.advice?.()
+    return Array.isArray(a) ? a : []
+  } catch (err) {
+    fault(e, 'advice', err)
     return []
   }
 }

@@ -1,6 +1,7 @@
 import { expect, it } from 'bun:test'
 import type { TaskNode } from '@vzn/vx'
 import {
+  advise,
   candidates,
   knownMisses,
   missedWork,
@@ -463,3 +464,50 @@ it('plans a 6000-task tree in seconds of CPU', () => {
   const { user, system } = process.cpuUsage(start)
   expect((user + system) / 1000).toBeLessThan(10_000)
 }, 120_000)
+
+// 2026-11-05: "what would be the optimal number and spec of workers for
+// the simulated run, and what would be optimal numbers based on provided
+// specification. So I can add more or change their specs".
+it('advises the workers that would have run it best: of the declared sizes, past their max, and of any cores', () => {
+  const tasks = Array.from({ length: 16 }, (_, i) => task(`t${i}`, 10_000))
+  const two: Size = { ...small, max: 2 }
+  const advice = advise(tasks, [two], () => 0)
+  // Two of four cores: 16 one-core tasks of 10 s, in two waves.
+  expect(advice.declared).toEqual({
+    fleet: [{ count: 2, cores: 4, memory: 16e9, platform: undefined, size: 'small' }],
+    endMs: 20_000,
+  })
+  // Four end it in one wave, past the margin sooner.
+  expect(advice.more).toEqual({
+    fleet: [{ count: 4, cores: 4, memory: 16e9, platform: undefined, size: 'small' }],
+    endMs: 10_000,
+  })
+  // Of any cores, as cheap in core time from 2 to 16: the fewest machines.
+  expect(advice.any).toEqual({
+    fleet: [{ count: 1, cores: 16, memory: 64e9, platform: undefined }],
+    endMs: 10_000,
+  })
+  // As many as it needs already: nothing more to say.
+  expect(advise(tasks, [{ ...small, max: 4 }], () => 0).more).toBeUndefined()
+})
+
+it('advises each platform its own workers, joined after its warm-up', () => {
+  const tasks = [
+    ...Array.from({ length: 4 }, (_, i) => ({ ...task(`l${i}`, 10_000), platform: 'linux' })),
+    { ...task('m', 10_000), platform: 'mac' },
+  ]
+  const sizes: Size[] = [
+    { name: 'linux', max: 4, cpu: 2, memory: 8e9, platform: 'linux' },
+    { name: 'mac', max: 1, cpu: 3, memory: 7e9, platform: 'mac' },
+  ]
+  const advice = advise(tasks, sizes, (p) => (p === 'mac' ? 30_000 : 5_000))
+  // The Mac's task ends at 40 s: one Linux worker's two waves end at 25 s.
+  expect(advice.declared).toEqual({
+    fleet: [
+      { count: 1, cores: 2, memory: 8e9, platform: 'linux', size: 'linux' },
+      { count: 1, cores: 3, memory: 7e9, platform: 'mac', size: 'mac' },
+    ],
+    endMs: 40_000,
+  })
+  expect(advice.more).toBeUndefined()
+})
