@@ -106,7 +106,7 @@
     "test.wire": {
       "description": "bun test ./tests/wire.test.ts",
       "exec": {
-        "command": "bun test --only-failures ./tests/wire.test.ts",
+        "command": "bun test --only-failures --timeout=30000 ./tests/wire.test.ts",
         "env": {
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
@@ -150,7 +150,7 @@
     "test.local-e2e": {
       "description": "bun test ./tests/local-e2e.test.ts",
       "exec": {
-        "command": "bun test --only-failures ./tests/local-e2e.test.ts",
+        "command": "bun test --only-failures --timeout=30000 ./tests/local-e2e.test.ts",
         "env": {
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
@@ -194,7 +194,7 @@
     "test.local-e2e-saves": {
       "description": "bun test ./tests/local-e2e-saves.test.ts",
       "exec": {
-        "command": "bun test --only-failures ./tests/local-e2e-saves.test.ts",
+        "command": "bun test --only-failures --timeout=30000 ./tests/local-e2e-saves.test.ts",
         "env": {
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
@@ -238,7 +238,7 @@
     "test.units": {
       "description": "bun test ./tests/units.test.ts",
       "exec": {
-        "command": "bun test --only-failures ./tests/units.test.ts",
+        "command": "bun test --only-failures --timeout=30000 ./tests/units.test.ts",
         "env": {
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
@@ -282,7 +282,7 @@
     "test.gitlab": {
       "description": "bun test ./tests/gitlab.test.ts",
       "exec": {
-        "command": "bun test --only-failures ./tests/gitlab.test.ts",
+        "command": "bun test --only-failures --timeout=30000 ./tests/gitlab.test.ts",
         "env": {
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
@@ -326,7 +326,7 @@
     "test.rest": {
       "description": "bun test the files no other shard runs",
       "exec": {
-        "command": "bun test --only-failures $(ls tests/*.test.ts | grep -v -e /wire.test.ts -e /local-e2e.test.ts -e /local-e2e-saves.test.ts -e /units.test.ts -e /gitlab.test.ts)",
+        "command": "bun test --only-failures --timeout=30000 $(ls tests/*.test.ts | grep -v -e /wire.test.ts -e /local-e2e.test.ts -e /local-e2e-saves.test.ts -e /units.test.ts -e /gitlab.test.ts)",
         "env": {
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
