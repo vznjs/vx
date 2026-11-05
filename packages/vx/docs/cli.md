@@ -554,6 +554,9 @@ An argument that is not valid UTF-8 (`-- $'a\xff'`), here or before
 offers no raw bytes, so it would reach the task as U+FFFD, and two
 different args would share one key. An argument holding a real
 U+FFFD cannot be told apart and is refused too.
+An argument before `--`holding a control character (a newline, a tab)
+is refused too, naming its position; only a`vx last --sql` query may
+span lines.
 
 ### Flags
 
