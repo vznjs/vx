@@ -11,7 +11,7 @@ const rest = `$(ls tests/*.test.ts | grep -v ${HEAVY.map((f) => `-e /${f}.test.t
 const testTask = (files: string) => ({
   description: `bun test ${files === rest ? 'the files no other shard runs' : files}`,
   exec: {
-    command: `bun test --only-failures ${files}`,
+    command: `bun test --only-failures --timeout=30000 ${files}`,
     // Fixture repos assume git's defaults; a global config may sign commits.
     // Bun's transpiler cache writes under HOME, outside the sandbox's grants.
     env: {

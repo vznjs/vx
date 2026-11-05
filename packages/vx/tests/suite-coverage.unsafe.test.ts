@@ -124,4 +124,24 @@ describe('every test file is launched by a task', () => {
     expect(launchers).toContain('vx-reapi#test')
     expect(verbose).toEqual([])
   })
+
+  // Bun's 5 s default is a wall budget: a vx-migrate test that spawns vx
+  // four times passed it on a packed DTE worker (2026-11-05), as a core
+  // one did before the core shards took 30 s (#4198). Speed is asserted
+  // elsewhere; the timeout only catches a hang.
+  it('every task that launches bun test gives a test 30 s or more', async () => {
+    const short: string[] = []
+    for (const name of packages) {
+      const config = (await import(path.join(packagesDir, name, 'vx.config.ts'))) as {
+        default: ConfigLike
+      }
+      for (const [task, t] of Object.entries(config.default.tasks ?? {})) {
+        const command = t.exec?.command
+        if (command === undefined || !/\bbun test\b/.test(command)) continue
+        const ms = Number(/--timeout[= ](\d+)/.exec(command)?.[1] ?? 5_000)
+        if (ms < 30_000) short.push(`${name}#${task}`)
+      }
+    }
+    expect(short).toEqual([])
+  })
 })

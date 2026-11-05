@@ -27,7 +27,7 @@ const TEST_SHARDS = 4
 const testShard = (i: number) => ({
   description: `bun test, shard ${i} of ${TEST_SHARDS}`,
   exec: {
-    command: `bun test --only-failures --shard=${i}/${TEST_SHARDS} --timings=tests/timings.json`,
+    command: `bun test --only-failures --timeout=30000 --shard=${i}/${TEST_SHARDS} --timings=tests/timings.json`,
     // `nx-exec-live.test.ts` runs the bin against REAL Nx when
     // VX_NX_MODULES names an install (CI puts one under `.nx-live/`,
     // inside this project, so the sandbox's read grant covers it) and
@@ -122,7 +122,7 @@ export default defineProject({
     'test.live': {
       description: 'bun test, the live Nx files, against the install in .nx-live',
       exec: {
-        command: 'bun test --only-failures ./tests/*-live.test.ts',
+        command: 'bun test --only-failures --timeout=30000 ./tests/*-live.test.ts',
         env: {
           define: {
             ...SUITE_ENV,
