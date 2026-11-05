@@ -203,7 +203,12 @@ export function assign<B extends Bin>(
   for (const ask of asks) {
     if (
       all !== undefined &&
-      (spent.size >= all.kinds || !bins.some((b) => !held.has(b) && fits(b, all.floor)))
+      (spent.size >= all.kinds ||
+        // Its bounds, kept as it gives, say it: a read of every bin an ask
+        // was most of a plan's play (2026-11-05).
+        (bounds !== undefined
+          ? bounds.done
+          : !bins.some((b) => !held.has(b) && fits(b, all.floor))))
     )
       break
     if (ask.kind !== undefined && spent.has(ask.kind)) continue
@@ -216,12 +221,13 @@ export function assign<B extends Bin>(
         : bins.filter((b) => (ask.only === undefined || b.id === ask.only) && b.id !== ask.avoid)
     const of =
       need.platform === undefined ? allowed : allowed.filter((b) => b.platform === need.platform)
-    const anyBigger = of.some(bigger)
+    // With no size to beat, every bin is bigger: no copy of them an ask.
+    const anyBigger = need.above === undefined ? of.length > 0 : of.some(bigger)
     if (!anyBigger && need.above !== undefined && waits(need.above, need.platform)) {
       if (ask.kind !== undefined) spent.add(ask.kind)
       continue
     }
-    const pool = anyBigger ? of.filter(bigger) : of
+    const pool = anyBigger && need.above !== undefined ? of.filter(bigger) : of
     let best: B | undefined
     let bestScore: [number, number] = [0, 0]
     let seen = 0
