@@ -33,7 +33,7 @@ afterAll(() => {
  * A fresh git repo holding `examples/<name>`, with `links` (package dirs)
  * and `vx-lockfile` as its @vzn deps and the workspace's links in the
  * `bun.lock` the README's `bun install` writes, which `bun()` reads its
- * edges from.
+ * edges from, and the README's `vx lock` after it.
  */
 function fixture(name: string, links: string[]): string {
   const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), `vx-example-${name}-`)))
@@ -44,6 +44,8 @@ function fixture(name: string, links: string[]): string {
     symlinkSync(path.join(PACKAGES, dir), path.join(root, 'node_modules', '@vzn', dir))
   }
   writeFileSync(path.join(root, 'bun.lock'), JSON.stringify(bunWorkspaceLock(root), null, 2))
+  const lock = Bun.spawnSync([process.execPath, BIN, 'lock'], { cwd: root, stderr: 'pipe' })
+  if (lock.exitCode !== 0) throw new Error(`vx lock: ${lock.stderr.toString()}`)
   commit(root)
   return root
 }
@@ -288,9 +290,7 @@ describe('examples/ci', () => {
   it('main fills the cache, a pull request reuses it and builds only what it changed', () => {
     const main = 'refs/heads/main'
     const pr = 'refs/pull/7/merge'
-    // A laptop writes the lock and commits it.
-    expect(Bun.spawnSync([process.execPath, BIN, 'lock'], { cwd: root }).exitCode).toBe(0)
-    commit(root)
+    // A laptop wrote the locks and committed them (the fixture, as the README says).
     expect(step(main, ['lock', '--check']).exit).toBe(0)
     const pushed = step(main, ['run', 'ci', '--all'])
     expect(pushed.exit).toBe(0)
@@ -356,9 +356,12 @@ describe('the terminal demo', () => {
 // link node_modules instead of installing, so nothing ran it: the lockfile
 // plugin each workspace declares must read the lockfile that install writes.
 describe('the starters install with the package manager their README names', () => {
-  it('each starter installs with bun and reads bun.lock', () => {
+  it('each starter installs with bun, locks, and reads bun.lock', () => {
     for (const name of starters()) {
-      expect(readFileSync(path.join(EXAMPLES, name, 'README.md'), 'utf8')).toContain('bun install')
+      const readme = readFileSync(path.join(EXAMPLES, name, 'README.md'), 'utf8')
+      expect(readme).toContain('bun install')
+      // A run keys from the digests `vx lock` records, and refuses without them.
+      expect(readme.indexOf('vx lock')).toBeGreaterThan(readme.indexOf('bun install'))
       const workspace = readFileSync(path.join(EXAMPLES, name, '.vx', 'workspace.ts'), 'utf8')
       expect(workspace).toContain("import { bun } from '@vzn/vx-lockfile'")
     }

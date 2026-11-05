@@ -56,8 +56,10 @@ nothing runs and caches here.
   names from that file's bytes (`undefined` when it names none), a
   non-list answer refused by name;
   `claimedDigests(plugin, file, ctx)` → the claimant's per-project
-  digests and the hash they came from (`undefined` when it keeps none),
-  a malformed answer or an unknown project name refused by name.
+  digests, the hash they came from and each extra file they read with
+  its hash now (`hashExtra`, as a run checks it; `undefined` when it
+  keeps none), a malformed answer or an unknown project name refused by
+  name.
 - `resolveExecutors(plugins, ctx)` → `TaskExecutor[]` (ordered, the
   local executor last; the first to accept a task runs it; a throwing
   factory aborts).

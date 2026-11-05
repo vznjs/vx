@@ -12,7 +12,7 @@ import { type Logger } from '@vzn/vx'
 import { planRun } from '../../vx/tests/helpers/orchestrator.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { editMemo, readMemo } from './helpers/memo.js'
-import { affectedIds, commitAll, moved } from './helpers/affected.js'
+import { affectedIds, commitAll, lockAt, moved } from './helpers/affected.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 const BUILD =
@@ -119,10 +119,11 @@ it('with no memo yet (a fresh clone) the edit still selects the project reaching
   await hashes()
   commitAll(root)
   await writeFile(path.join(root, 'packages/other/vendor/index.js'), '// dep v2\n')
+  lockAt(root)
   const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
   db.run('DELETE FROM lockfile_memos')
   db.close()
-  expect(affectedIds(root, 'build')).toContain('lib#build')
+  expect(affectedIds(root, 'build', { lock: false })).toContain('lib#build')
 })
 
 it('the files --affected is told the lockfile names come from the memo once a run wrote it', async () => {

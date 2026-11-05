@@ -368,6 +368,13 @@ async function play(c: Case, adapter: Adapter, root: string, box: string): Promi
     }
     if ('install' in step) {
       await install()
+      for (const argv of refused === null ? (adapter.installed ?? []) : []) {
+        const r = await sh(argv)
+        if (r.exit !== 0) {
+          refused = `$ ${argv.join(' ')}\n${r.out}`
+          break
+        }
+      }
       continue
     }
     if ('commit' in step) {

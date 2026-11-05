@@ -477,7 +477,10 @@ export async function affectedChanges(
     if (before === null || after === null || asked.digests === undefined) return null
     const base = await baseDependencies()
     const was = base === null ? undefined : recordedDigests(base, file)
-    if (was === undefined || was.hash !== xxh3hex(before)) return null
+    // Base digests that read another file are that file's at the base,
+    // which the record does not prove.
+    if (was === undefined || was.hash !== xxh3hex(before) || Object.keys(was.extras).length > 0)
+      return null
     const now = await asked.digests(file)
     if (now === undefined) return null
     const moved = new Set<string>()

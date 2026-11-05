@@ -460,7 +460,29 @@ export interface GraphHookContext extends BaseContext {
   readonly requested: readonly string[]
 }
 
-export interface KeyHookContext extends BaseContext {}
+export interface KeyHookContext extends BaseContext {
+  /**
+   * What `vx lock` recorded of the claimed `file` in
+   * `.vx/dependencies.lock.json` (`FingerprintClaim.digests`): a run keys
+   * from the record and never parses the file. Undefined when the file is
+   * absent and unrecorded. Refuses, naming `vx lock`, when the lock is
+   * absent or records no such present file; a recorded file whose bytes
+   * moved since refused the run before the key stage.
+   */
+  locked(file: string): Promise<LockedFile | undefined>
+}
+
+/** `KeyHookContext.locked`'s answer. */
+export interface LockedFile {
+  /**
+   * The other files the digests read → each one's hash then (`hashExtra`).
+   * Not checked by core: a `link:` directory is edited with no install,
+   * so a claimant whose extra file moved digests anew.
+   */
+  readonly extras: Readonly<Record<string, string>>
+  /** The project at `projectDir`'s digest; undefined when none. Refuses for a project the lock does not list. */
+  digest(projectDir: string): string | undefined
+}
 
 /** A plugin's claim on workspace-root files — see `VxPlugin.fingerprint`. */
 export interface FingerprintClaim {
@@ -493,11 +515,13 @@ export interface FingerprintClaim {
   ): readonly string[] | Promise<readonly string[]>
   /**
    * Each project's digest of the claimed `file` as it is now, by project
-   * name, with `hash`, the identity of the bytes they came from (the
-   * file's xxh3 when nothing else is folded). `vx lock` records them in
-   * `.vx/dependencies.lock.json`, and `--affected` reads the base's copy
-   * there instead of asking `affected` to parse the base side, when its
-   * `hash` is the base file's xxh3. `undefined`: nothing to record.
+   * name, with `hash`, the xxh3 of the bytes they came from (`xxh3hex`),
+   * and `extras`, the other files they read. `vx lock` records them in
+   * `.vx/dependencies.lock.json` with each extra file's hash; a run keys
+   * from that record (`KeyHookContext.locked`), and `--affected`
+   * reads the base's copy there instead of asking `affected` to parse the
+   * base side, when its `hash` is the base file's xxh3. `undefined`:
+   * nothing to record.
    */
   digests?(
     file: string,
@@ -510,6 +534,8 @@ export interface FingerprintDigests {
   readonly hash: string
   /** Project name → its digest of the file. */
   readonly projects: Readonly<Record<string, string>>
+  /** Root-relative files besides `file` whose bytes the digests read (a `bun.lock` patch). */
+  readonly extras?: readonly string[]
 }
 
 export interface FingerprintChange {

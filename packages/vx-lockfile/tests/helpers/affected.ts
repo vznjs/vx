@@ -32,10 +32,15 @@ export function commitAll(root: string): void {
   git('commit', '-q', '-m', 'init')
 }
 
-/** The same run, after `vx lock`, when it is refused: its exit code and stderr. */
-export function affectedRefusal(root: string, task: string): { exitCode: number; stderr: string } {
+/** `vx lock` in `root`, as a user runs it after an install: a run keys from what it records. */
+export function lockAt(root: string): void {
   const lock = Bun.spawnSync({ cmd: [process.execPath, CORE_BIN, 'lock'], cwd: root })
   if (lock.exitCode !== 0) throw new Error(`vx lock: ${new TextDecoder().decode(lock.stderr)}`)
+}
+
+/** The same run, after `vx lock`, when it is refused: its exit code and stderr. */
+export function affectedRefusal(root: string, task: string): { exitCode: number; stderr: string } {
+  lockAt(root)
   const r = Bun.spawnSync({
     cmd: [process.execPath, CORE_BIN, 'run', task, '--affected=HEAD', '--dry=json'],
     cwd: root,
@@ -45,11 +50,13 @@ export function affectedRefusal(root: string, task: string): { exitCode: number;
 }
 
 /**
- * `vx run <task> --affected=HEAD --dry=json` through the real CLI: the ids
- * of the tasks the run selected, sorted. An empty selection prints no plan,
- * only its "nothing affected" line.
+ * `vx lock`, then `vx run <task> --affected=HEAD --dry=json` through the
+ * real CLI: the ids of the tasks the run selected, sorted. An empty
+ * selection prints no plan, only its "nothing affected" line. `lock: false`
+ * runs on the lock as it is.
  */
-export function affectedIds(root: string, task: string): string[] {
+export function affectedIds(root: string, task: string, opts: { lock?: boolean } = {}): string[] {
+  if (opts.lock !== false) lockAt(root)
   const r = Bun.spawnSync({
     cmd: [process.execPath, CORE_BIN, 'run', task, '--affected=HEAD', '--dry=json'],
     cwd: root,

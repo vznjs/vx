@@ -4,6 +4,7 @@ Two packages: `app` uses `lib`. Copy it, then:
 
 ```sh
 bun install
+vx lock              # record what bun.lock resolves to
 git init && git add -A && git commit -m init   # vx reads the tree from git
 vx run ci --all      # lib#build, app#build, app#test: local 3↑
 vx run ci --all      # nothing changed: local 3✓
@@ -13,8 +14,9 @@ Edit `packages/lib/src/greet.js` and run again: all three re-run, since
 `app#build` depends on `^build` and `app#test` on `build`.
 
 A run reads each package's tasks from `.vx/projects.lock.json`, never from its
-`vx.config.ts`: after editing a config, run `vx lock`, then
-commit the lock and the `vx.lock.json` copy beside each config.
+`vx.config.ts`, and the dependency digests from `.vx/dependencies.lock.json`,
+never from `bun.lock`: after editing a config or installing, run `vx lock`,
+then commit the locks and the `vx.lock.json` copy beside each config.
 
 `.vx/workspace.ts` marks the workspace root. Each package's
 `vx.config.ts` declares its tasks: the command, what runs

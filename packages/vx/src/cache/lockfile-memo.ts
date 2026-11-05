@@ -21,7 +21,8 @@ export interface LockfileMemo {
   lock: string
   /** Each extra file the digests read → its content hash then. */
   extras: Record<string, string>
-  importers: Record<string, string>
+  /** Each importer's digest; null when the parse that wrote it left them out (a run's). */
+  importers: Record<string, string> | null
   edges: Record<string, unknown>
   /** Each importer's recorded dependency names; absent when the claimant reads none. */
   recorded?: Record<string, readonly string[]>
@@ -77,7 +78,7 @@ export function readLockfileMemo(
       version: row.version,
       lock: row.lock,
       extras: JSON.parse(row.extras) as Record<string, string>,
-      importers: JSON.parse(row.importers) as Record<string, string>,
+      importers: JSON.parse(row.importers) as Record<string, string> | null,
       edges: JSON.parse(row.edges) as Record<string, unknown>,
       ...(row.recorded !== null
         ? { recorded: JSON.parse(row.recorded) as Record<string, readonly string[]> }

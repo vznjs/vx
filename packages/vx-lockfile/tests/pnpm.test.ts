@@ -800,7 +800,7 @@ describe('vx run with pnpm() declared', () => {
     await hashes()
     const cacheDir = path.join(root, '.vx', 'cache')
     const memo = readMemo(cacheDir, 'pnpm-lock.yaml')
-    expect(Object.keys(memo.importers).sort()).toEqual([
+    expect(Object.keys(memo.importers ?? {}).sort()).toEqual([
       '.',
       'packages/a',
       'packages/b',
@@ -812,7 +812,7 @@ describe('vx run with pnpm() declared', () => {
     // on it — the proof the memo was read and the file not parsed.
     const before = await hashes()
     editMemo(cacheDir, 'pnpm-lock.yaml', (m) => {
-      m.importers['packages/a'] = 'sentinel'
+      if (m.importers !== null) m.importers['packages/a'] = 'sentinel'
     })
     await workspace('pnpm() /* fresh instance */')
     const planted = await hashes()

@@ -1,5 +1,6 @@
 // vx: a vx.config.mjs per project, the lockfile plugin for edges (as a
-// user's `bun()` reads them), then `vx lock`, which every run reads.
+// user's `bun()` reads them), then `vx lock`, which every run reads: after
+// an install too, since a run keys from the lockfile digests it records.
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { pnpmFilter, type Adapter } from '../adapter.ts'
@@ -27,6 +28,7 @@ export const vx: Adapter = {
   bins: ['vx'],
   lacks: [],
   env: { NO_COLOR: '1' },
+  installed: [[VX, 'lock']],
   async configure(dir, ws, command) {
     await mkdir(path.join(dir, '.vx'), { recursive: true })
     await writeFile(

@@ -36,6 +36,8 @@ export {
   DEPENDENCIES_LOCK_NAME,
   dependenciesLock,
   parseDependenciesLock,
+  readDependenciesLock,
+  recordedDigests,
   writeDependenciesLock,
   type DependenciesLock,
 } from './dependencies-lock.js'

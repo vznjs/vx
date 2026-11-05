@@ -918,6 +918,7 @@ export interface FingerprintContext extends BaseContext {
 export interface FingerprintDigests {
   readonly hash: string
   readonly projects: Readonly<Record<string, string>>
+  readonly extras?: readonly string[]
 }
 == type FoldMemo (src/cache/fold-memo.ts)
 export interface FoldMemo {
@@ -1050,7 +1051,9 @@ export interface InvocationRecord {
   vxVersion: string
 }
 == type KeyHookContext (src/orchestrator/plugin.ts)
-export interface KeyHookContext extends BaseContext {}
+export interface KeyHookContext extends BaseContext {
+  locked(file: string): Promise<LockedFile | undefined>
+}
 == type Known (src/config.ts)
 type Known<T, Shape> = { [P in keyof T]: P extends keyof Shape ? unknown : never }
 == type KnownExec (src/config.ts)
@@ -1098,6 +1101,11 @@ export interface LocalHistoryOptions {
   readonly recent?: number | undefined
   readonly branch?: string | null | undefined
   readonly defs?: ReadonlyMap<string, string> | undefined
+}
+== type LockedFile (src/orchestrator/plugin.ts)
+export interface LockedFile {
+  readonly extras: Readonly<Record<string, string>>
+  digest(projectDir: string): string | undefined
 }
 == type LockfileClaimHooks (src/orchestrator/lockfile-claim.ts)
 export interface LockfileClaimHooks {

@@ -191,6 +191,7 @@ export type {
   FingerprintContext,
   GraphHookContext,
   KeyHookContext,
+  LockedFile,
   PluginCommand,
   ProjectHookContext,
   ScheduleHookContext,

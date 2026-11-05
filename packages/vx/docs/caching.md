@@ -1967,7 +1967,7 @@ CREATE TABLE lockfile_memos (
   version   INTEGER NOT NULL,       -- the claimant's digest version
   lock      TEXT NOT NULL,          -- xxh3 of the lockfile's bytes
   extras    TEXT NOT NULL,          -- JSON { file: content hash } of the files it names
-  importers TEXT NOT NULL,          -- JSON { importer: digest }
+  importers TEXT NOT NULL,          -- JSON { importer: digest }, or null: a run's read digests nothing
   edges     TEXT NOT NULL,          -- JSON { importer: { deps, peers } }
   recorded  TEXT,                   -- JSON { importer: [dependency name] }
   PRIMARY KEY (file, claimant)

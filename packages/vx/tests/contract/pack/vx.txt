@@ -122,6 +122,7 @@ src/orchestrator/keyed-projects.ts
 src/orchestrator/live-usage.ts
 src/orchestrator/local-floor.ts
 src/orchestrator/local-shortcircuit.ts
+src/orchestrator/locked-digests.ts
 src/orchestrator/lockfile-claim.ts
 src/orchestrator/miss-save.ts
 src/orchestrator/options.ts
