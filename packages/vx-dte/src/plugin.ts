@@ -76,6 +76,8 @@ export interface DteAdapter {
    * on joining, stuck or queued, so stopped whatever its job holds.
    */
   cancel?(ids: readonly string[], late?: boolean): void | Promise<readonly string[]>
+  /** Worker `id`, given up as late, joined after all and the run took it: a stop not yet sent is dropped. */
+  kept?(id: string): void
   /** The CI files that start its workers, which `vx dte init` writes; none for an adapter that starts them on this machine. */
   init?(setup: DteSetup): Promise<DteInit>
   /** Where it says a fault it works around (a status poll or a cancel that failed); called as the run starts. */
@@ -552,6 +554,7 @@ export function dte(options: DteOptions = {}) {
         joined: () => onChange(),
         // A worker given up on joining: its job, still queued or stuck, is stopped.
         overdue: (id) => void adapter?.cancel?.([id], true),
+        kept: (id) => adapter?.kept?.(id),
         // Before the run counts what is left to start: a worker that let a
         // task's lease end failed main's macOS run with another to start
         // (2026-10-23).

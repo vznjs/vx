@@ -427,6 +427,64 @@ it('cancels the run of a worker given up as late, though its job has a runner', 
   }
 })
 
+// Given up as late, a worker that joins anyway is taken by the run. Its
+// run's cancel, refused by the spent API limit and asked again at the
+// reset, still landed: PR #4955's small#1-#11 were given up at 61 s, joined
+// by 80 s, and were cancelled mid-task at 132 s, failing four shards lost
+// on two workers each (2026-11-05). A cancel asked again first checks the
+// run still holds no worker the run took.
+it('cancels no run once its worker given up as late joins after all', async () => {
+  const calls: string[] = []
+  let cancels = 0
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(req) {
+      const path = new URL(req.url).pathname
+      calls.push(`${req.method} ${path}`)
+      if (path.endsWith('/dispatches')) return Response.json({ workflow_run_id: 3 })
+      if (path.endsWith('/cancel') && ++cancels === 1)
+        return new Response('API rate limit exceeded for installation', {
+          status: 403,
+          headers: { 'retry-after': '1' },
+        })
+      if (path.endsWith('/jobs'))
+        return Response.json({
+          jobs: [{ name: 'small#1', status: 'in_progress', conclusion: null }],
+        })
+      return new Response(null, { status: 202 })
+    },
+  })
+  Object.assign(process.env, {
+    GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
+    GITHUB_REPOSITORY: 'o/r',
+    GITHUB_TOKEN: 'ght',
+  })
+  try {
+    const adapter = github()
+    void adapter.spawn(spawn('small#1', 'small'))
+    await Bun.sleep(50)
+    expect(await adapter.cancel?.(['small#1'], true)).toEqual([])
+    for (let i = 0; i < 50 && !calls.some((c) => c.endsWith('/cancel')); i++) await Bun.sleep(20)
+    adapter.kept?.('small#1')
+    await Bun.sleep(1500)
+    expect(calls.filter((c) => c.endsWith('/cancel'))).toEqual([
+      'POST /repos/o/r/actions/runs/3/cancel',
+    ])
+    // CONTROL: one still given up is cancelled at the reset.
+    calls.length = 0
+    void adapter.spawn(spawn('small#2', 'small'))
+    await Bun.sleep(50)
+    await adapter.cancel?.(['small#2'], true)
+    for (let i = 0; i < 50 && !calls.some((c) => c.endsWith('/cancel')); i++) await Bun.sleep(20)
+    expect(calls.filter((c) => c.endsWith('/cancel'))).toEqual([
+      'POST /repos/o/r/actions/runs/3/cancel',
+    ])
+  } finally {
+    await server.stop(true)
+  }
+}, 10_000)
+
 // A run that holds a worker still needed goes on, so a fellow let go in
 // it is no worker stopped either: it joins, and the run takes it.
 it('says a worker let go in a run that goes on is left running', async () => {

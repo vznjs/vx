@@ -204,7 +204,8 @@ every 30 s, asks with each answer's ETag (an unchanged answer is free),
 and asks nothing until a spent limit resets. A dispatch the limit refuses
 is sent again at the reset, if that comes within 5 minutes; past that it
 fails, naming when. A cancel the limit refuses is sent again at the
-reset, if that comes within a minute. A run that dies before it cancels
+reset, if that comes within a minute, unless a worker given up as late
+joined meanwhile: the run took it, so its workflow run goes on. A run that dies before it cancels
 (a cancelled or timed-out job) leaves it to the job's last step, which
 cancels each worker run the run listed in `RUNNER_TEMP`. Past both, a
 worker that starts reads its run's attempt (`parent`) first, and once
