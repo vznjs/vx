@@ -841,9 +841,11 @@ export function decide(input: {
   )
   // A plan that starts or releases workers changes what the next one sees
   // (a start that fails leaves the workers as they were): it holds no forecast.
-  if (input.last !== undefined)
-    input.last.forecast =
-      p.start.length === 0 && p.release.length === 0 ? forecastOf(p, tasks, input, now) : undefined
+  if (input.last !== undefined) {
+    if (p.start.length === 0 && p.release.length === 0)
+      input.last.forecast = forecastOf(p, tasks, input, now)
+    else delete input.last.forecast
+  }
   return { ...p, tasks }
 }
 
