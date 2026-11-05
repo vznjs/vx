@@ -35,6 +35,8 @@ import {
   type DepOrder,
   type RunOrder,
   type RuntimeOrder,
+  type SentOrder,
+  type WiredDep,
   type ToWorker,
   type Load,
   type ToOrchestrator,
@@ -128,6 +130,8 @@ interface Worker {
   load?: { cpu: number; memory: number; at: number }
   /** Tasks whose outputs it holds: it ran them, or was sent them. */
   readonly has: Set<string>
+  /** Each dependency it was sent whole, by the key it was sent under: the next order names it alone. */
+  readonly sentDeps: Map<string, string>
   /** Sends to it go out in order: a run's parts before the run. */
   chain: Promise<void>
   /** It was sent the run's sandbox configs. */
@@ -868,7 +872,7 @@ export class Orchestrator {
 
   private send(a: Worker, jobs: readonly Job[]): void {
     const nodes = this.o.nodes()
-    const orders = jobs.map((job): { job: Job; order: RunOrder; bytes: number } => {
+    const orders = jobs.map((job): { job: Job; order: RunOrder } => {
       const { req } = job
       const deps: DepOrder[] = []
       // Every one, held there or not: the worker restores each key once, and
@@ -943,9 +947,7 @@ export class Orchestrator {
               })),
             }),
       } as RunOrder
-      // Measured once: an order names every upstream, and a giant repo's
-      // were measured three times each (2026-11-05).
-      return { job, order, bytes: bytesOf(order) }
+      return { job, order }
     })
     const sandboxed = orders.some(
       (o) => o.order.sandbox !== undefined || o.order.servers?.some((s) => s.sandbox !== undefined),
@@ -955,10 +957,27 @@ export class Orchestrator {
     const pending = new Set(jobs)
     a.chain = a.chain
       .then(async () => {
-        for (const [i, part] of parts(orders, BATCH_BYTES).entries()) {
+        // A dependency the worker was sent under the same key goes by name
+        // alone: each order named every upstream whole, and 8000 tasks of a
+        // deep graph sent 219 MB (2026-11-05). Read here, as sends go in
+        // order: one sent before it fails is not counted as sent.
+        const fresh = new Map<string, string>()
+        const wired = orders.map(({ job, order }) => {
+          const intro: [string, string][] = []
+          const deps = order.deps.map((d): WiredDep => {
+            if ((fresh.get(d.task) ?? a.sentDeps.get(d.task)) === d.key) return d.task
+            fresh.set(d.task, d.key)
+            intro.push([d.task, d.key])
+            return d
+          })
+          const sent: SentOrder = { ...order, deps }
+          // Measured once: a giant repo's were measured three times each (2026-11-05).
+          return { job, order: sent, intro, bytes: bytesOf(sent) }
+        })
+        for (const [i, part] of parts(wired, BATCH_BYTES).entries()) {
           // An order too long for a frame (a task of thousands of
           // dependencies was refused, 413) sends its deps ahead.
-          const tasks: RunOrder[] = []
+          const tasks: SentOrder[] = []
           let bytes = 0
           for (const { order, bytes: size } of part) {
             if (size <= BATCH_BYTES) {
@@ -990,6 +1009,7 @@ export class Orchestrator {
           a.usage.messagesIn++
           // Its orders' bytes, a comma between each, in the batch's own.
           a.usage.bytesIn += bytesOf({ ...batch, tasks: [] }) + bytes + tasks.length - 1
+          for (const { intro } of part) for (const [t, k] of intro) a.sentDeps.set(t, k)
           for (const { job } of part) {
             pending.delete(job)
             // Sent, it runs: its worker takes only what it has room for.
@@ -1394,6 +1414,7 @@ export class Orchestrator {
         started: new Set(),
         batches: 0,
         has: new Set(),
+        sentDeps: new Map(),
         // Its name first, before any batch.
         chain: this.cache()
           .then((cache) =>

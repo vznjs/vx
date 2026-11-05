@@ -42,7 +42,7 @@ import { Usage } from '../src/usage.js'
 import { plan, planTasks, tailsMs } from '../src/planner.js'
 import { join, RelayError } from '../src/wire.js'
 import { sealOrchestrator, secretProof } from '../src/seal.js'
-import type { RunOrder, ToWorker, WiredResult } from '../src/messages.js'
+import type { DepOrder, RunOrder, SentOrder, ToWorker, WiredResult } from '../src/messages.js'
 import { snapshot } from '../src/tree.js'
 import { servedRelay } from './served-relay.js'
 
@@ -903,11 +903,21 @@ async function harness(
       undefined,
     )
     const orders: RunOrder[] = []
+    // As a worker reads them: a dependency sent whole before comes by name.
+    const known = new Map<string, DepOrder>()
+    const whole = (o: SentOrder): RunOrder => ({
+      ...o,
+      deps: o.deps.map((d) => {
+        if (typeof d === 'string') return known.get(d)!
+        known.set(d.task, d)
+        return d
+      }),
+    })
     const batches = async (): Promise<string[][]> => {
       for (let i = 0; i < 20; i++) {
-        const got = (await me.poll()).map((m) => m.body as { type: string; tasks?: RunOrder[] })
+        const got = (await me.poll()).map((m) => m.body as { type: string; tasks?: SentOrder[] })
         const b = got.filter((m) => m.type === 'batch').map((m) => m.tasks!)
-        orders.push(...b.flat())
+        orders.push(...b.flat().map(whole))
         if (b.length > 0) return b.map((t) => t.map((o) => o.task))
       }
       return []
@@ -930,8 +940,8 @@ async function harness(
     /** The next messages that are not batches, by type. */
     const bodies = async (): Promise<{ type: string; task?: string }[]> => {
       for (let i = 0; i < 20; i++) {
-        const got = (await me.poll()).map((m) => m.body as { type: string; tasks?: RunOrder[] })
-        orders.push(...got.flatMap((m) => (m.type === 'batch' ? m.tasks! : [])))
+        const got = (await me.poll()).map((m) => m.body as { type: string; tasks?: SentOrder[] })
+        orders.push(...got.flatMap((m) => (m.type === 'batch' ? m.tasks!.map(whole) : [])))
         const rest = got.filter((m) => !['batch', 'welcome', 'cache'].includes(m.type))
         if (rest.length > 0) return rest
       }
@@ -4937,11 +4947,11 @@ it('sends an order too long for one frame with its deps ahead, all of them arriv
     const a = await h.worker(1)
     void h.o.execute(h.req('final', 'k-final'))
     const deps: string[] = []
-    let batch: RunOrder[] | undefined
+    let batch: SentOrder[] | undefined
     for (let i = 0; i < 50 && batch === undefined; i++)
       for (const { body } of await a.poll()) {
         const m = body as ToWorker
-        if (m.type === 'deps') deps.push(...m.deps.map((d) => d.task))
+        if (m.type === 'deps') deps.push(...m.deps.map((d) => (typeof d === 'string' ? d : d.task)))
         if (m.type === 'batch') batch = m.tasks
       }
     expect(batch?.map((o) => [o.task, o.deps.length])).toEqual([['final', 0]])
@@ -5020,6 +5030,102 @@ it('restores the deps sent ahead of an order with its own', async () => {
       }
     expect(ended).toBe(true)
     expect(restored.toSorted()).toEqual(['k-d1', 'k-d2', 'k-d3'])
+    await raw.leave()
+    expect(await code).toBe(0)
+  } finally {
+    await served.stop()
+  }
+})
+
+// 2026-11-05: an order names a dependency its worker was sent whole by name
+// alone. The worker makes it whole again; one it never got whole faults the
+// task, never runs it without the dependency.
+it('takes a dependency by name once it was sent whole', async () => {
+  const root = await tmp()
+  const served = servedRelay()
+  const restored: string[] = []
+  try {
+    const raw = await join(served.url, R, 'orchestrator', null, undefined)
+    const o = sealOrchestrator(raw, R, secretProof('s'))
+    const code = runWorker({
+      relay: served.url,
+      run: R,
+      root,
+      token: async () => undefined,
+      proof: secretProof('s'),
+      artifacts: () => ({
+        async save() {},
+        async output() {
+          return null
+        },
+        async share() {
+          return false
+        },
+        async resend() {
+          return false
+        },
+        async restore(key) {
+          restored.push(key)
+          return []
+        },
+      }),
+    })
+    const dep = (i: number) => ({
+      task: `d${i}`,
+      key: `k-d${i}`,
+      project: '',
+      outputs: { files: ['out/**'], workspaceFiles: [] },
+    })
+    const order = (task: string, deps: SentOrder['deps']): SentOrder => ({
+      task,
+      runKey: runKey(R, task),
+      deps,
+      nested: [],
+      command: 'true',
+      cwd: '',
+      project: '',
+      env: {},
+      outputs: { files: [], workspaceFiles: [] },
+      cores: 1,
+      memory: 0,
+    })
+    const ended: string[] = []
+    const faults: string[] = []
+    for (let i = 0; i < 100 && ended.length + faults.length < 3; i++)
+      for (const { from, body } of flat(await o.poll())) {
+        const m = body as { type: string; id?: string; task?: string; reason?: string }
+        if (from === 'relay' && m.type === 'joined') {
+          const w = m.id!
+          await o.send(w, {
+            type: 'welcome',
+            name: 'a',
+            cache: { refs: [], lent: {} },
+            cores: 4,
+            memory: 1e9,
+          })
+          await o.send(w, { type: 'deps', task: 't1', deps: [dep(1)] })
+          await o.send(w, {
+            type: 'batch',
+            n: 1,
+            root,
+            realRoot: root,
+            tasks: [order('t1', [dep(2)]), order('t2', ['d1', 'd2'])],
+          })
+          await o.send(w, {
+            type: 'batch',
+            n: 2,
+            root,
+            realRoot: root,
+            tasks: [order('t3', ['d9'])],
+          })
+        } else if (m.type === 'end') ended.push(m.task!)
+        else if (m.type === 'fault') faults.push(`${m.task}: ${m.reason}`)
+      }
+    expect([ended.toSorted(), faults, restored.toSorted()]).toEqual([
+      ['t1', 't2'],
+      ['t3: was sent d9 by name, never whole'],
+      ['k-d1', 'k-d2'],
+    ])
     await raw.leave()
     expect(await code).toBe(0)
   } finally {

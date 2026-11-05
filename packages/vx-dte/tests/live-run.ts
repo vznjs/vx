@@ -62,6 +62,11 @@ export interface LiveResult {
   readonly batches: number
   /** Times the orchestrator looked a task up in the graph: how much of it it walked. */
   readonly lookups: number
+  /** Dependencies sent whole, and of those, how many a worker was sent whole already. */
+  readonly whole: number
+  readonly again: number
+  /** Bytes of JSON the orchestrator sent. */
+  readonly bytes: number
 }
 
 /** The run's graph, counting each look-up of a task in it. */
@@ -90,7 +95,25 @@ export async function liveRun(
   )
   const byId = new Map(graph.map((t) => [t.id, t]))
   let batches = 0
+  let whole = 0
+  let again = 0
+  let bytes = 0
+  const had = new Set<string>()
   const line: Line = new Line((worker, body) => {
+    bytes += JSON.stringify(body).length
+    const sent =
+      body.type === 'deps'
+        ? body.deps
+        : body.type === 'batch'
+          ? body.tasks.flatMap((t) => t.deps)
+          : []
+    for (const d of sent) {
+      if (typeof d === 'string') continue
+      whole++
+      const k = `${worker}\0${d.task}\0${d.key}`
+      if (had.has(k)) again++
+      had.add(k)
+    }
     if (body.type !== 'batch') return
     batches++
     for (const t of body.tasks)
@@ -185,7 +208,7 @@ export async function liveRun(
   const ms = performance.now() - started
   const { lookups } = nodes
   await o.close()
-  return { ms, batches, lookups }
+  return { ms, batches, lookups, whole, again, bytes }
 }
 
 /** How many tasks each task of `graph` depends on, transitively, all told. */
