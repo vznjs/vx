@@ -359,11 +359,14 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     if (p.release.length > 0 && !remaining[Symbol.iterator]().next().done)
       for (const id of p.release) {
         const w = workers.find((x) => x.id === id)!
-        if (w.joinedAt === undefined) w.cancelledAt = now
-        else if (w.running.size === 0) w.leftAt = now
-        else continue
         const s = sizeOf.get(id)!
-        started.set(s.name, started.get(s.name)! - 1)
+        // As the plugin: one let go after it joined still counts against
+        // its size's max; only one cancelled before it joined does not.
+        if (w.joinedAt === undefined) {
+          w.cancelledAt = now
+          started.set(s.name, started.get(s.name)! - 1)
+        } else if (w.running.size === 0) w.leftAt = now
+        else continue
         goneAt.push({ size: s.name, at: now })
       }
     again = p.againInMs === undefined ? undefined : now + p.againInMs

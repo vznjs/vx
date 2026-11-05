@@ -470,3 +470,25 @@ it('asks no worker while the CI queues one of its size', () => {
   // holds is followed, not played again at each join for a closer end.
   expect(r.endMs).toBeLessThanOrEqual(121_600 * 1.05)
 })
+
+// PR #4989's first CI run: a plan that played a window let a Mac worker go
+// once it was idle past its work there, though a Mac task waited past it.
+// Its size's one start was spent, so no Mac worker could start again and
+// the run never ended.
+it('keeps a worker needed past the plan window when its size can start no other', () => {
+  const ran = (ms: number) => ({ ms, cores: 1, memory: 1e9 })
+  const graph: SimTask[] = [
+    { id: 'm0', deps: [], exec: true, cache: true, ran: ran(5_000), platform: 'darwin-arm64' },
+    { id: 'a', deps: [], exec: true, cache: true, ran: ran(60_000), platform: 'linux-x64' },
+    { id: 'b', deps: ['a'], exec: true, cache: true, ran: ran(60_000), platform: 'linux-x64' },
+    { id: 'm1', deps: ['b'], exec: true, cache: true, ran: ran(5_000), platform: 'darwin-arm64' },
+  ]
+  const r = simulate(graph, {
+    sizes: [
+      { name: 'small', max: 1, cpu: 4, memory: 16e9, platform: 'linux-x64' },
+      { name: 'mac', max: 1, cpu: 3, memory: 7e9, platform: 'darwin-arm64' },
+    ],
+    home: 'linux-x64',
+  })
+  expect(r.endMs).toBeLessThan(160_000)
+})

@@ -1298,6 +1298,10 @@ function follow(
     if (!w.idle || w.starting === true) continue
     const at = free.get(w.id)
     if (at === undefined || now >= at - slack) {
+      // Its work done in a window with work past it: maybe needed there,
+      // and one let go still counts against its size's max. A Mac let go
+      // so left a Mac task no worker, and the run never ended (#4989).
+      if (f.until < Infinity) return undefined
       release.push(w.id)
       workers.delete(w.id)
     }
