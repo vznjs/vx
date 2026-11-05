@@ -110,10 +110,12 @@ and squash-merge only with Marketing's ✓, the EA's go and CI green.
 
 ## 3. Release
 
-Wait for `main`'s CI to go green on the merge commit, then dispatch
+Wait for `main`'s CI to go green on the merge commit (every job but
+Bench, which gates nothing), then dispatch
 `auto-release.yml` on `main` with `sha` = that commit (GitHub MCP
 `actions_run_trigger`).
-It refuses a commit CI did not pass. The GitHub release's body is the
+It refuses a commit CI did not pass; a run still in Bench counts as
+passed once its other jobs did. The GitHub release's body is the
 post (`scripts/release-notes.ts`, `postNotes`); a later edit of the post
 on main rewrites it (`release.sync` in ci.yml's Linux run). Confirm the tag is the version the
 post names; if another release landed first and the number moved, rename

@@ -295,6 +295,30 @@ describe('greenCommit', () => {
     })
   })
 
+  it('counts a run green once every job but Bench passed', () => {
+    const job = (name: string, conclusion: string | null) => ({ name, conclusion })
+    const ok = [job('VX DTE', 'success'), job('Perf', 'success'), job('Bench', null)]
+    const mixed = [
+      { head_sha: 'c5', conclusion: null, jobs: [job('VX DTE', null), job('Bench', null)] },
+      { head_sha: 'c4', conclusion: null, jobs: ok },
+      ...runs,
+    ]
+    expect(greenCommit('', mixed)).toEqual({ sha: 'c4' })
+    expect(greenCommit('c4', mixed)).toEqual({ sha: 'c4' })
+    expect(greenCommit('c5', mixed)).toEqual({
+      refuse: 'CI did not pass on c5 on main; not releasing it',
+    })
+    const failed = [job('VX DTE', 'success'), job('Perf', 'failure'), job('Bench', 'success')]
+    expect(greenCommit('c6', [{ head_sha: 'c6', conclusion: 'failure', jobs: failed }])).toEqual({
+      refuse: 'CI did not pass on c6 on main; not releasing it',
+    })
+    expect(
+      greenCommit('c7', [{ head_sha: 'c7', conclusion: null, jobs: [job('Bench', 'success')] }]),
+    ).toEqual({
+      refuse: 'CI did not pass on c7 on main; not releasing it',
+    })
+  })
+
   it('refuses when main has no green run', () => {
     expect(greenCommit('', runs.slice(0, 2))).toEqual({
       refuse: 'no green CI run on main to release',
