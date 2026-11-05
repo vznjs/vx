@@ -167,6 +167,8 @@ export function tailsMs(
   return visit
 }
 
+const walked = new WeakMap<ReadonlyMap<string, TaskNode>, Map<string, string[]>>()
+
 /**
  * `ids`' tasks as the plan takes them: each that runs a command, with
  * what it asks and the tasks it waits on through the groups between.
@@ -179,7 +181,10 @@ export function planTasks(
   home?: string,
 ): PlanTask[] {
   const runs = (id: string): boolean => nodes.get(id)?.config.exec?.command !== undefined
-  const ran = new Map<string, string[]>()
+  // The graph is the run's, fixed: each task's deps are walked once a run,
+  // not at each plan (2026-11-05: a 5000-task sim spent a quarter here).
+  let ran = walked.get(nodes)
+  if (ran === undefined) walked.set(nodes, (ran = new Map()))
   const depsOf = (id: string): string[] => {
     const known = ran.get(id)
     if (known !== undefined) return known
@@ -1056,11 +1061,13 @@ function follow(
     }
   }
   // As for time, so for resources (2026-11-05: "And resource usage").
-  for (const [id, [cores, memory]] of needsOf(tasks, input.workers)) {
-    const was = f.need.get(id)
-    if (was === undefined) continue
-    if (moved(was[0], cores, 0.05) || moved(was[1], memory, 64 * 2 ** 20)) return undefined
+  const off = (id: string | undefined, cores: number, memory: number): boolean => {
+    const was = id === undefined ? undefined : f.need.get(id)
+    return was !== undefined && (moved(was[0], cores, 0.05) || moved(was[1], memory, 64 * 2 ** 20))
   }
+  for (const t of tasks) if (off(t.id, t.cores, t.memory)) return undefined
+  for (const w of input.workers)
+    for (const r of w.running) if (off(r.id, r.cores, r.memory)) return undefined
   const slack = slackOf(f.plan)
   for (const id of lateOf(input.workers, slack)) if (!f.late.has(id)) return undefined
   const workers = new Set(f.workers)
