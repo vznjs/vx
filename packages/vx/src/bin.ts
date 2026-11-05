@@ -79,6 +79,10 @@ async function main(): Promise<void> {
         err.parts,
       )
       ui.data('err', maskedLine(ui.render([block], ui.colorsOf('err'))))
+    } else if (cwdGone(err)) {
+      // Removed under the shell (a checkout of another branch, `rm -rf` in
+      // another): every verb starts from the cwd.
+      say('vx: the current directory no longer exists — cd into the workspace again and re-run\n')
     } else if (isOutOfFds(err)) {
       say(`vx: ${err.message} — ${OUT_OF_FDS_HINT}\n`)
     } else if (isFsRefusal(err)) {
@@ -158,6 +162,14 @@ process.on('beforeExit', () => {
   )
   process.exitCode = 1
 })
+
+/** `process.cwd()`'s refusal of a directory removed under the process. */
+function cwdGone(err: unknown): boolean {
+  return (
+    (err as NodeJS.ErrnoException | null)?.code === 'ENOENT' &&
+    /\buv_cwd\b/.test((err as Error).message)
+  )
+}
 
 // A reader that leaves is not the run's failure. `vx run build | head -1`
 // closes the pipe after one line; every later write gets EPIPE, which Bun

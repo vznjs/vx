@@ -146,6 +146,35 @@ describe('out of file descriptors', () => {
   })
 })
 
+// A shell whose directory was removed under it (a branch checkout, an
+// `rm -rf` elsewhere): every verb, `--version` too, died with a stack.
+it('a removed current directory is one line saying so, not a stack', async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-cwd-gone-'))
+  try {
+    const gone = path.join(dir, 'gone')
+    mkdirSync(gone)
+    const proc = Bun.spawn(
+      [
+        'sh',
+        '-c',
+        `cd "$1" && rmdir "$1" && exec "$2" "$3" --version`,
+        'sh',
+        gone,
+        process.execPath,
+        path.resolve(import.meta.dir, '..', 'src', 'bin.ts'),
+      ],
+      { stdout: 'pipe', stderr: 'pipe' },
+    )
+    const [err, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited])
+    expect({ code, err }).toEqual({
+      code: 1,
+      err: 'vx: the current directory no longer exists — cd into the workspace again and re-run\n',
+    })
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}, 30_000)
+
 describe('a git that could not be spawned', () => {
   // Every git call site tells "git is not installed" from "git ran and
   // failed" by this predicate; read as always-true, a git that exits
