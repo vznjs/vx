@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 212,
+    "ported": 217,
     "rest": {
       "pending": [],
       "vx-only": [
@@ -69,7 +69,6 @@
         "core-alias",
         "critical-path",
         "discovery-node-modules",
-        "discovery-refusals",
         "dte-sandbox.unsafe",
         "executor",
         "executor-demand",
@@ -131,6 +130,7 @@
         "lock-review-files",
         "lock-secret",
         "lock-shadowed-config",
+        "locked-digests",
         "lockfile-boundary",
         "lockfile-pool",
         "lockfile-claim",
@@ -641,7 +641,6 @@
         "capture-cap",
         "ci-env-readers",
         "ci-output",
-        "cli-arg-hygiene",
         "cli-bare",
         "cli-cache-dir-stages",
         "cli-colors-e2e",
@@ -701,7 +700,6 @@
         "keep-alive",
         "keep-alive-sigkill",
         "key-fold",
-        "kill-tree",
         "kill-tree-guard-backlog",
         "kill-tree-guard-lines.unsafe",
         "kill-tree-guard-zombie.unsafe",
@@ -728,7 +726,6 @@
         "output-log",
         "output-memory.unsafe",
         "package-entry-shims.unsafe",
-        "package-json-bom",
         "painted-output",
         "persistent-lifecycle-properties.unsafe",
         "persistent-sandbox-hint.unsafe",
@@ -754,7 +751,6 @@
         "restore-artifact-replaced",
         "restore-exdev",
         "restore-git-spawns",
-        "restore-link-swap",
         "restore-link-swap-rename",
         "restore-partial-commit",
         "restore-ported",
@@ -902,6 +898,7 @@
         "error-codes-repo.unsafe",
         "examples.unsafe",
         "execution-doc-drift",
+        "exit-trap-cleanup.unsafe",
         "exports-referenced.unsafe",
         "features-inventory.unsafe",
         "markdown-anchors",
@@ -966,52 +963,52 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 941,
-        "of": 941
+        "pass": 959,
+        "of": 959
       },
       "correctness": {
-        "pass": 775,
-        "of": 775
+        "pass": 788,
+        "of": 788
       },
       "efficiency": {
-        "pass": 157,
-        "of": 157
+        "pass": 162,
+        "of": 162
       },
       "data": {
         "pass": 9,
         "of": 9
       },
       "graph": {
-        "pass": 140,
-        "of": 140
+        "pass": 148,
+        "of": 148
       },
       "config": {
-        "pass": 7,
-        "of": 7
+        "pass": 8,
+        "of": 8
       },
       "failure": {
-        "pass": 72,
-        "of": 72
+        "pass": 73,
+        "of": 73
       },
       "affected": {
         "pass": 95,
         "of": 95
       },
       "cache": {
-        "pass": 36,
-        "of": 36
+        "pass": 40,
+        "of": 40
       },
       "inputs": {
-        "pass": 297,
-        "of": 297
-      },
-      "outputs": {
-        "pass": 218,
-        "of": 218
+        "pass": 298,
+        "of": 298
       },
       "env": {
-        "pass": 27,
-        "of": 27
+        "pass": 29,
+        "of": 29
+      },
+      "outputs": {
+        "pass": 219,
+        "of": 219
       },
       "report": {
         "pass": 9,
@@ -1028,52 +1025,52 @@
     },
     "turbo": {
       "all": {
-        "pass": 599,
-        "of": 869
+        "pass": 616,
+        "of": 887
       },
       "correctness": {
-        "pass": 486,
-        "of": 709
+        "pass": 498,
+        "of": 722
       },
       "efficiency": {
-        "pass": 109,
-        "of": 152
+        "pass": 114,
+        "of": 157
       },
       "data": {
         "pass": 4,
         "of": 8
       },
       "graph": {
-        "pass": 83,
-        "of": 121
+        "pass": 90,
+        "of": 129
       },
       "config": {
-        "pass": 3,
-        "of": 3
+        "pass": 4,
+        "of": 4
       },
       "failure": {
-        "pass": 23,
-        "of": 45
+        "pass": 24,
+        "of": 46
       },
       "affected": {
         "pass": 67,
         "of": 95
       },
       "cache": {
-        "pass": 28,
-        "of": 36
+        "pass": 32,
+        "of": 40
       },
       "inputs": {
-        "pass": 185,
-        "of": 288
-      },
-      "outputs": {
-        "pass": 156,
-        "of": 216
+        "pass": 186,
+        "of": 289
       },
       "env": {
-        "pass": 23,
-        "of": 27
+        "pass": 25,
+        "of": 29
+      },
+      "outputs": {
+        "pass": 157,
+        "of": 217
       },
       "report": {
         "pass": 4,
@@ -1090,52 +1087,52 @@
     },
     "nx": {
       "all": {
-        "pass": 611,
-        "of": 894
+        "pass": 628,
+        "of": 911
       },
       "correctness": {
-        "pass": 463,
-        "of": 730
+        "pass": 475,
+        "of": 742
       },
       "efficiency": {
-        "pass": 144,
-        "of": 156
+        "pass": 149,
+        "of": 161
       },
       "data": {
         "pass": 4,
         "of": 8
       },
       "graph": {
-        "pass": 105,
-        "of": 128
+        "pass": 112,
+        "of": 135
       },
       "config": {
-        "pass": 0,
-        "of": 6
+        "pass": 1,
+        "of": 7
       },
       "failure": {
-        "pass": 34,
-        "of": 53
+        "pass": 35,
+        "of": 54
       },
       "affected": {
         "pass": 55,
         "of": 95
       },
       "cache": {
-        "pass": 32,
-        "of": 34
+        "pass": 36,
+        "of": 38
       },
       "inputs": {
-        "pass": 182,
-        "of": 297
-      },
-      "outputs": {
-        "pass": 152,
-        "of": 216
+        "pass": 183,
+        "of": 298
       },
       "env": {
-        "pass": 21,
-        "of": 27
+        "pass": 23,
+        "of": 29
+      },
+      "outputs": {
+        "pass": 153,
+        "of": 217
       },
       "report": {
         "pass": 4,
@@ -1152,52 +1149,52 @@
     },
     "vite-task": {
       "all": {
-        "pass": 473,
-        "of": 712
+        "pass": 491,
+        "of": 730
       },
       "correctness": {
-        "pass": 392,
-        "of": 592
+        "pass": 405,
+        "of": 605
       },
       "efficiency": {
-        "pass": 79,
-        "of": 112
+        "pass": 84,
+        "of": 117
       },
       "data": {
         "pass": 2,
         "of": 8
       },
       "graph": {
-        "pass": 77,
-        "of": 106
+        "pass": 85,
+        "of": 114
       },
       "config": {
-        "pass": 3,
-        "of": 3
+        "pass": 4,
+        "of": 4
       },
       "failure": {
-        "pass": 27,
-        "of": 33
+        "pass": 28,
+        "of": 34
       },
       "affected": {
         "pass": 0,
         "of": 0
       },
       "cache": {
-        "pass": 29,
-        "of": 30
+        "pass": 33,
+        "of": 34
       },
       "inputs": {
-        "pass": 174,
-        "of": 289
-      },
-      "outputs": {
-        "pass": 135,
-        "of": 216
+        "pass": 175,
+        "of": 290
       },
       "env": {
-        "pass": 25,
-        "of": 26
+        "pass": 27,
+        "of": 28
+      },
+      "outputs": {
+        "pass": 136,
+        "of": 217
       },
       "report": {
         "pass": 2,
@@ -4106,6 +4103,82 @@
           "status": "fail",
           "step": 1,
           "detail": "succeeded, expected a failure"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/select-taskless-project-with-dependencies",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "Selecting a project without the task, with its dependencies, runs the task in those dependencies",
+      "why": "The selection is mid and everything below it, and the task exists in lib, so lib’s build is what was asked for. mid lacking the task removes only mid from the run, not the projects reached through it. Failing, or running nothing, leaves lib unbuilt for the user who wanted mid’s dependencies ready, and app above the selection must stay out.",
+      "from": [
+        "filter",
+        "graph-pipeline-properties"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "did not run lib#build"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs select-walk"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/dependency-in-two-manifest-fields-builds-once",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A dependency named in both `dependencies` and `devDependencies` is built once, before its dependant",
+      "why": "Listing a package in two dependency fields of one manifest still makes it one dependency. `^build` must build it first, and once: two edges to the same task are one edge. Missing the edge builds app against a missing lib; running lib twice wastes the work and can rewrite its output while app reads it.",
+      "from": [
+        "package-graph"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-prefix-path-finds-command",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A `PATH=…` prefix on a command decides where that command’s program is found",
+      "why": "In sh, `PATH=dir tool` looks `tool` up in `dir`: the assignment holds for that one command, lookup included. A runner that resolves the program itself, with the PATH it was started with, finds no `tool` or a different one. The task then fails, or runs a program the command never named, though the same line works in a terminal.",
+      "from": [
+        "task-shell"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
         },
         "vite-task": {
           "status": "pass"
@@ -26013,6 +26086,380 @@
         "vite-task": {
           "status": "n/a",
           "detail": "needs watch"
+        }
+      }
+    },
+    {
+      "id": "graph/independent-tasks-run-at-once",
+      "category": "graph",
+      "kind": "efficiency",
+      "title": "Two tasks with no edge between them run at the same time",
+      "why": "Tasks with no dependency between them can run side by side, and a run that has cores to spare should use them. Here each task waits a while for the other to start, so run one after the other they each wait out the full delay. Running independent work in turn makes a monorepo’s wall time the sum of its tasks instead of its longest path.",
+      "from": [
+        "scheduler",
+        "run-concurrency"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "failure/task-closing-its-output-still-awaited",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A task that closes its output and keeps working is waited for until it exits",
+      "why": "A process can close its output streams and go on working, as a daemonizing tool or a quiet build step does. The task ends when its process exits, not when its output ends. A runner that takes the closed stream as the end starts the dependant on a half-written output, or ends the run with the task still running behind it.",
+      "from": [
+        "kill-tree",
+        "scheduler"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/outputs-revert-replays",
+      "category": "cache",
+      "kind": "efficiency",
+      "title": "Putting back the outputs a task first declared replays the entry saved for them",
+      "why": "An entry is saved under the task’s config as it was, so going back to that config finds it again. A team that tries a wider output set and reverts it should get its old hits back, not rebuild. The entry still holds every output the restored config names, so replaying it leaves the right tree.",
+      "from": [
+        "task-hash-derive",
+        "hash-scenarios"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/each-value-keeps-its-entry",
+      "category": "env",
+      "kind": "efficiency",
+      "title": "Switching a declared variable back and forth replays each value’s own result",
+      "why": "Each value of a keyed variable has its own entry, and a new value must not push out the old one. Builds that switch between modes, such as dev and prod or two targets, go back and forth all day. A cache that keeps only the latest value rebuilds on every switch, though both results are already known.",
+      "from": [
+        "env",
+        "hash-scenarios"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/each-args-keep-their-entry",
+      "category": "cache",
+      "kind": "efficiency",
+      "title": "Running a task with one set of args, then another, then each again replays both",
+      "why": "Forwarded args are part of the key, so each set of args has its own entry. Running tests for one file, then another, then the first again is ordinary work. A cache that keeps only the last args reruns work whose result it already had, while keeping both costs nothing in correctness.",
+      "from": [
+        "forward-args-verbatim",
+        "hash-scenarios"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "config/malformed-manifest-refused",
+      "category": "config",
+      "kind": "correctness",
+      "title": "A project whose package.json does not parse fails the run",
+      "why": "A manifest that does not parse leaves the project’s name, dependencies and tasks unknown. Skipping the project lets the run go green with its tasks never run and its dependants built in the wrong order. Failing at once names the broken file while the mistake is fresh.",
+      "from": [
+        "discovery-refusals",
+        "package-json-bom"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/dir-link-replayed-over-itself",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "Replaying an older build over a tree holding the same directory link restores through it",
+      "why": "A store layout such as `dist/pkg -> store/pkg` is common in package builds, and the link is already there when an older entry is replayed. The restore must put the old files back and leave the link as a link to the same directory. A restore that trips over the existing link fails a run that should replay, and one that follows or flattens it leaves the newer build’s bytes or a copy where a link belongs.",
+      "from": [
+        "restore-link-swap",
+        "output-links"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/args-named-like-runner-flags-reach-task",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "Forwarded args such as `--help`, `--version` and `-v` reach the task, not the runner",
+      "why": "Args after the task belong to the task’s command, whatever they look like. `--help`, `--version` and `-v` are also flags of every runner, and a runner that reads them itself prints its own help or version and runs nothing, often with exit 0. The user asked the task for its help or a verbose run and got neither, with a green exit hiding it.",
+      "from": [
+        "forward-args-verbatim",
+        "cli-arg-hygiene"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/caret-and-explicit-edge-run-once",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A dependency reached by `^build` and by `b#build` builds once, first",
+      "why": "Naming one task twice, once through the package graph and once by its full name, asks for the same work twice. It must run once and finish before the task that needs it. Two runs of it waste time and can rewrite its output while the dependant reads it; dropping either edge can start the dependant early.",
+      "from": [
+        "task-graph",
+        "task-graph-properties"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/explicit-edges-chain-across-projects",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "Explicit `project#task` edges chain: each one’s own edges run first, and nothing else",
+      "why": "An explicit edge names a task, and that task brings its own dependsOn with it. deploy needs utils#lint, which needs core#build and utils#build, so all of them run first, in that order. A runner that follows only the first hop lints against a core that was never built; one that pulls in core#clean or the tests runs work nobody named.",
+      "from": [
+        "task-graph",
+        "task-edge-selection"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/negated-trailing-slash-directory",
+      "category": "inputs",
+      "kind": "efficiency",
+      "title": "A negation with a trailing slash, `!src/gen/`, takes that directory’s tree out of the key",
+      "why": "A trailing slash only says the path is a directory: `!src/gen/` takes back every file under it, as `src/` keys every file under src. Read as a bare pattern, it matches nothing and the generated files stay in the key. Each regeneration then reruns a task the user excluded them from, while edits outside it must still rerun.",
+      "from": [
+        "inputs-resolution"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/non-ascii-command-edit-reruns",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A command of multi-byte characters runs byte-exact, and changing its last character runs it again",
+      "why": "A command is text of any script, and `echo ああ` must print exactly that. A runner that counts characters as bytes cuts the command inside a character or drops its tail, so the shell runs something else, or two commands differing only at the end share one key. The edit then replays the old output under a green run.",
+      "from": [
+        "task-hash-derive",
+        "forward-args-verbatim"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/non-ascii-args-forwarded-and-keyed",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A forwarded arg of multi-byte characters reaches the command byte-exact and keys the task",
+      "why": "Args forwarded to a task are its input as much as its files are. An emoji must reach the command as the same bytes the user typed, and a different emoji is a different run. A runner that mangles or truncates the arg feeds the command something else, or replays the result of one arg for another.",
+      "from": [
+        "forward-args-verbatim",
+        "task-hash-derive"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/select-two-excludes",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "Two excludes alone each take their project out of every project",
+      "why": "An exclude given with no include takes from the whole workspace, and a second exclude takes from that same set. A runner that lets the second exclude replace the first, or reads it as an include, runs a project the user ruled out. That can be the slow or broken project the excludes were there to skip.",
+      "from": [
+        "filter",
+        "filter-properties"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/select-exclude-matching-nothing",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "An exclude alone that names no project runs every project, or refuses",
+      "why": "Excluding a project that does not exist leaves the whole workspace: nothing was taken out. Refusing the run as a likely typo is also fair, before anything starts. Running nothing and exiting 0 is not: CI goes green having checked no project at all.",
+      "from": [
+        "filter",
+        "filter-properties"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
         }
       }
     }

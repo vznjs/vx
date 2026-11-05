@@ -125,7 +125,7 @@ describe('the conformance page', () => {
   it('names each tool’s version, where the cases come from and the method', () => {
     for (const v of Object.values(RESULTS.tools)) expect(html).toContain(v)
     expect(html).toContain('https://github.com/vznjs/vx/blob/main/private/vx-conformance/README.md')
-    expect(unescape(html)).toContain('parsing every test in vx, Turbo and Nx')
+    expect(unescape(html)).toContain('parsing every test in vx, Turbo, Nx and Vite Task')
     expect(html).not.toContain('id="coverage"')
   })
 })

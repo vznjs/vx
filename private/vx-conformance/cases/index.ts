@@ -38,6 +38,10 @@ import persistentServers from './persistent-servers.ts'
 import report from './report.ts'
 import runModes from './run-modes.ts'
 import sandbox from './sandbox.ts'
+import viteTaskE2eA from './vite-task-e2e-a.ts'
+import viteTaskE2eB from './vite-task-e2e-b.ts'
+import vitePlanA from './vite-task-plan-a.ts'
+import vitePlanB from './vite-task-plan-b.ts'
 import watch from './watch.ts'
 
 /** Every case, in the results' order. */
@@ -50,6 +54,7 @@ export const CASES: Case[] = [
   ...graphMore,
   ...gitRootProject,
   ...configGraph,
+  ...vitePlanB,
   ...inputs,
   ...inputsGlobs,
   ...inputsRoot,
@@ -82,4 +87,7 @@ export const CASES: Case[] = [
   ...report,
   ...sandbox,
   ...watch,
+  ...viteTaskE2eA,
+  ...viteTaskE2eB,
+  ...vitePlanA,
 ]
