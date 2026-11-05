@@ -515,6 +515,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-dte/gitlab',
     'vx-dte/init',
     'vx-dte/jsdoc',
+    'vx-dte/live-run',
     'vx-dte/local-e2e',
     'vx-dte/local-e2e-saves',
     'vx-dte/noise',

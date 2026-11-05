@@ -265,35 +265,11 @@ function play(
   workers: readonly PlanWorker[],
   how: Strategy,
 ): { end: number; first: Map<string, number>; ends: Map<string | undefined, number> } {
-  const byId = new Map(tasks.map((t) => [t.id, t]))
-  const dependants = new Map<string, string[]>()
-  const waits = new Map<string, number>()
   // A dependency running now ends when it does; one ended or a hit, now.
   const runningIds = new Set<string>()
   for (const w of workers) for (const r of w.running) if (r.id !== undefined) runningIds.add(r.id)
-  for (const t of tasks) {
-    let n = 0
-    for (const d of t.deps)
-      if (byId.has(d) || runningIds.has(d)) {
-        n++
-        // Pushed, not copied: copying made one install under 9000 tasks
-        // 40 million copies a play (2026-10-25).
-        const list = dependants.get(d)
-        if (list === undefined) dependants.set(d, [t.id])
-        else list.push(t.id)
-      }
-    waits.set(t.id, n)
-  }
-  const tail = new Map<string, number>()
-  const tailOf = (id: string): number => {
-    const known = tail.get(id)
-    if (known !== undefined) return known
-    let after = 0
-    for (const d of dependants.get(id) ?? []) after = Math.max(after, tailOf(d))
-    const t = after + (byId.get(id)!.ms ?? UNKNOWN_MS)
-    tail.set(id, t)
-    return t
-  }
+  const { byId, dependants, waited, tailOf, kinds } = shapeOf(tasks, runningIds)
+  const waits = new Map(waited)
   const slots: Slot[] = workers.map((w) => ({
     id: w.id,
     cores: w.cores,
@@ -317,7 +293,7 @@ function play(
   // Ready tasks, ordered again only once one joins (`graphene`: or
   // leaves): each step sorted every ready task, and a run of 9000 spent
   // its orchestrator planning (2026-10-25).
-  const ready = new Ready(tasks)
+  const ready = new Ready(tasks, kinds)
   let joining = tasks.filter((t) => waits.get(t.id) === 0)
   let readyCount = joining.length
   const spent = new Set<string>()
@@ -426,6 +402,67 @@ function play(
       }
     }
   }
+}
+
+/** What `play` reads of `tasks` alone, for each play of one plan. */
+interface Shape {
+  readonly byId: ReadonlyMap<string, PlanTask>
+  readonly dependants: ReadonlyMap<string, readonly string[]>
+  /** How many dependencies each task waits on before the play begins. */
+  readonly waited: ReadonlyMap<string, number>
+  readonly tailOf: (id: string) => number
+  readonly kinds: Kinds
+}
+
+/**
+ * `tasks`' shape, made once while what runs stays the same: a plan plays
+ * them 20 to 40 times, and each play made it again, its tails and kinds
+ * too (2026-11-05).
+ */
+function shapeOf(tasks: readonly PlanTask[], running: ReadonlySet<string>): Shape {
+  const runs = [...running].sort().join('\0')
+  const had = shapes.get(tasks)
+  if (had !== undefined && had.runs === runs) return had.shape
+  const byId = new Map(tasks.map((t) => [t.id, t]))
+  const dependants = new Map<string, string[]>()
+  const waited = new Map<string, number>()
+  for (const t of tasks) {
+    let n = 0
+    for (const d of t.deps)
+      if (byId.has(d) || running.has(d)) {
+        n++
+        // Pushed, not copied: copying made one install under 9000 tasks
+        // 40 million copies a play (2026-10-25).
+        const list = dependants.get(d)
+        if (list === undefined) dependants.set(d, [t.id])
+        else list.push(t.id)
+      }
+    waited.set(t.id, n)
+  }
+  const tail = new Map<string, number>()
+  const tailOf = (id: string): number => {
+    const known = tail.get(id)
+    if (known !== undefined) return known
+    let after = 0
+    for (const d of dependants.get(id) ?? []) after = Math.max(after, tailOf(d))
+    const t = after + (byId.get(id)!.ms ?? UNKNOWN_MS)
+    tail.set(id, t)
+    return t
+  }
+  const shape = { byId, dependants, waited, tailOf, kinds: kindsOf(tasks) }
+  shapes.set(tasks, { runs, shape })
+  return shape
+}
+const shapes = new WeakMap<readonly PlanTask[], { runs: string; shape: Shape }>()
+
+/** Each task's place in `tasks` and its kind (`kindOf`). */
+interface Kinds {
+  readonly at: ReadonlyMap<string, number>
+  readonly kindAt: readonly string[]
+}
+
+function kindsOf(tasks: readonly PlanTask[]): Kinds {
+  return { at: new Map(tasks.map((t, i) => [t.id, i])), kindAt: tasks.map(kindOf) }
 }
 
 /**
@@ -806,8 +843,7 @@ const MAX_JUMP_KINDS = 32
  * task 17 million times a plan (2026-10-25).
  */
 class Ready {
-  private readonly ids: readonly string[]
-  private readonly at: Map<string, number>
+  private readonly at: ReadonlyMap<string, number>
   private readonly kindAt: readonly string[]
   private readonly taken: Uint8Array
   /** The rank: the lower `primary` first, then the lower `seq`. */
@@ -823,11 +859,17 @@ class Ready {
   private lo = 0
   /** Order it again before the next step. */
   stale = false
+  /** Taken ones still in `order`: past its live ones, it is read again without them. */
+  private dead = 0
+  /** Each kind's tasks not taken: a kind with none leaves `kinds`. */
+  private readonly liveOf = new Map<string, number>()
 
-  constructor(private readonly tasks: readonly PlanTask[]) {
-    this.ids = tasks.map((t) => t.id)
-    this.at = new Map(this.ids.map((id, i) => [id, i]))
-    this.kindAt = tasks.map(kindOf)
+  constructor(
+    private readonly tasks: readonly PlanTask[],
+    kinds: Kinds = kindsOf(tasks),
+  ) {
+    this.at = kinds.at
+    this.kindAt = kinds.kindAt
     this.taken = new Uint8Array(tasks.length)
     this.primary = new Float64Array(tasks.length)
     this.seq = new Float64Array(tasks.length)
@@ -838,7 +880,17 @@ class Ready {
   }
 
   take(id: string): void {
-    this.taken[this.at.get(id)!] = 1
+    const i = this.at.get(id)!
+    this.taken[i] = 1
+    this.dead++
+    const k = this.kindAt[i]!
+    const n = this.liveOf.get(k)! - 1
+    if (n > 0) this.liveOf.set(k, n)
+    else {
+      this.liveOf.delete(k)
+      this.kinds.delete(k)
+      this.head.delete(k)
+    }
   }
 
   live(): PlanTask[] {
@@ -861,6 +913,8 @@ class Ready {
     this.order = []
     this.kinds = new Map()
     this.head.clear()
+    this.liveOf.clear()
+    this.dead = 0
     this.stale = false
     const batch = ids.map((id) => {
       const i = this.at.get(id)!
@@ -891,26 +945,67 @@ class Ready {
   }
 
   private join(batch: readonly number[]): void {
-    this.order = this.merge(this.order, batch)
-    this.lo = 0
+    // Taken ones outnumber the rest: read without them once.
+    if (this.dead > this.order.length / 2) {
+      this.order = this.merge(this.order, [])
+      for (const [k, q] of this.kinds) this.kinds.set(k, this.merge(q, []))
+      this.head.clear()
+      this.dead = 0
+      this.lo = 0
+    }
+    const len = this.order.length + batch.length
+    this.lo = Math.min(this.lo, this.insert(this.order, batch))
+    // A merge left the taken ones out.
+    this.dead -= len - this.order.length
     const by = new Map<string, number[]>()
     for (const i of batch) {
       const k = this.kindAt[i]!
+      this.liveOf.set(k, (this.liveOf.get(k) ?? 0) + 1)
       const q = by.get(k)
       if (q === undefined) by.set(k, [i])
       else q.push(i)
     }
-    // Kinds keep the order's: a kind left with no task is gone, as one
-    // ordered again from scratch.
-    const kinds = new Map<string, number[]>()
-    for (const [k, q] of this.kinds) {
-      const merged = this.merge(q, by.get(k) ?? [])
-      by.delete(k)
-      if (merged.length > 0) kinds.set(k, merged)
+    // Only the kinds it joins: each join read every kind and every ready
+    // task, and a 6000-task tree spent 2 s of a 5 s plan on it (2026-11-05).
+    for (const [k, q] of by) {
+      const had = this.kinds.get(k)
+      if (had === undefined) {
+        this.kinds.set(k, q)
+        this.head.delete(k)
+      } else {
+        const first = this.insert(had, q)
+        const h = this.head.get(k)
+        if (h !== undefined && first < h) this.head.set(k, first)
+      }
     }
-    for (const [k, q] of by) kinds.set(k, q)
-    this.kinds = kinds
-    this.head.clear()
+  }
+
+  /**
+   * `batch`, in rank order, into `into`, in rank order: merged when it is
+   * as big, each put in its place when it is few. The first place it took.
+   */
+  private insert(into: number[], batch: readonly number[]): number {
+    if (batch.length === 0) return into.length
+    if (batch.length * 8 > into.length) {
+      const merged = this.merge(into, batch)
+      into.length = 0
+      for (const i of merged) into.push(i)
+      return 0
+    }
+    let first = into.length
+    let lo = 0
+    for (const b of batch) {
+      let hi = into.length
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1
+        if (this.before(into[mid]!, b)) lo = mid + 1
+        else hi = mid
+      }
+      into.splice(lo, 0, b)
+      first = Math.min(first, lo)
+      lo++
+    }
+    return first
   }
 
   /** In order, past each kind in `spent` as `assign` reads it then. */
