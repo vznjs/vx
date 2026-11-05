@@ -14,6 +14,7 @@ import {
   releaseVersion,
   supportsTrustedPublishing,
   tarballUrl,
+  publishCommand,
 } from '../scripts/release.js'
 
 const message = (f: () => unknown): string => {
@@ -273,6 +274,22 @@ describe('release assets (scripts/release-assets.ts)', () => {
     expect(assetsToUpload('darwin', ['vx-darwin-arm64', 'vx-darwin-x64'], r)).toEqual([
       'vx-darwin-x64',
     ])
+  })
+})
+
+describe('publishCommand', () => {
+  it('publishes with provenance at the log level that names an OIDC refusal', () => {
+    expect(publishCommand('npm', 'dist/npm/a', undefined)).toEqual([
+      'npm',
+      'publish',
+      'dist/npm/a',
+      '--access',
+      'public',
+      '--provenance',
+      '--loglevel',
+      'verbose',
+    ])
+    expect(publishCommand('npm', 'd', 'backfill').slice(-2)).toEqual(['--tag', 'backfill'])
   })
 })
 
