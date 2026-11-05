@@ -975,7 +975,8 @@ export function decide(input: {
   readonly queued?: ReadonlySet<string>
   /**
    * The run's last plan, kept here: while what it saw holds, the next is
-   * that plan again, not played anew. With `now`, the run's clock.
+   * that plan again, not played anew, and hands back no `tasks` when it
+   * read none. With `now`, the run's clock.
    */
   readonly last?: { forecast?: Forecast }
   readonly now?: number
@@ -989,7 +990,9 @@ export function decide(input: {
   // recheck every task against plan? There is no point").
   if (how.scale !== 'backlog' && had !== undefined) {
     const step = follow(had, undefined, input, undefined, now)
-    if (step !== undefined && step !== 'full') return shown(input.last!, had, step, now, had.tasks)
+    // No work read, none to hand back: each step handed back the plan's
+    // whole work, and the run read it all at each event.
+    if (step !== undefined && step !== 'full') return shown(input.last!, had, step, now, [])
   }
   const tasks = missedWork(
     input.remaining,
@@ -1016,8 +1019,7 @@ export function decide(input: {
   if (how.scale === 'backlog')
     return { ...backlog(tasks, input.workers, sizes, input.warmUpMs, how), tasks }
   const step = had === undefined ? undefined : follow(had, tasks, input, sizes, now)
-  if (step !== undefined && step !== 'full')
-    return shown(input.last!, had!, { ...step, next: { ...step.next, tasks } }, now, tasks)
+  if (step !== undefined && step !== 'full') return shown(input.last!, had!, step, now, tasks)
   const { freeInMs, later, started, untilInMs, ...p } = plan(
     tasks,
     input.workers,
@@ -1070,8 +1072,6 @@ export interface Forecast {
   readonly before: ReadonlySet<string>
   /** Each size's warm-up as it saw it: a join tells the run's own. */
   readonly warm: readonly number[]
-  /** The work as last read. */
-  readonly tasks: readonly PlanTask[]
   /** When its window moves on, on the run's clock. */
   readonly until: number
   readonly late: ReadonlySet<string>
@@ -1155,7 +1155,6 @@ function forecastOf(
     executed: input.executed.size,
     before: new Set(input.executed),
     warm: warmsOf(input),
-    tasks,
     until: ahead.untilInMs === undefined ? Infinity : now + ahead.untilInMs,
     late: lateOf(input.workers, slackOf(p)),
     queued: [...(input.queued ?? [])].sort().join('\0'),

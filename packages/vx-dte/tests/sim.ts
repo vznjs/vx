@@ -180,7 +180,9 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
   const waitedMs = new Map<string, number>()
   const startedAt = new Map<string, number>()
   const endedAt = new Map<string, number>()
-  const finished: { took: number; forecast: number | undefined }[] = []
+  // What ended, summed as `slowdown` sums it: read whole at each event, it
+  // made a 10 000-task sim quadratic.
+  const finished = { took: 0, forecast: 0 }
   const ready = (id: string): void => {
     const t = byId.get(id)!
     if (t.exec && t.ran !== undefined) {
@@ -267,7 +269,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     const likely = options.likely ?? new Set<string>()
     if (executed.size === 0 && likely.size === 0) return
     // As the plugin: what is left takes as much longer than history as what ended did.
-    const slow = slowdown(finished)
+    const slow = slowdown([finished])
     const ms = (id: string): number | undefined => {
       const m = durationMs(id)
       return m === undefined ? undefined : m * slow
@@ -451,7 +453,10 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
           w.running.delete(r.id)
           w.has.add(r.id)
           endedAt.set(r.id, now)
-          finished.push({ took: now - r.startedAt, forecast: r.knownMs })
+          if (r.knownMs !== undefined && r.knownMs > 0) {
+            finished.took += now - r.startedAt
+            finished.forecast += r.knownMs
+          }
           end(r.id)
         }
     step()
