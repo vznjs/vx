@@ -549,7 +549,7 @@ it('takes --port only as decimal digits: Number read 0x50 as 80 and 1e1 as 10', 
     [2, '--port: not a port:  80\n'],
     [2, '--port: not a port: 80.0\n'],
   ])
-}, 20_000)
+}, 30_000)
 
 it('reads with no token where READ_ACCESS is public, only a repository ALLOW names', async () => {
   const auth = oidcTokenAuth({ allow: allowOf(), readAccess: 'public', fetchJson: iss.fetchJson })

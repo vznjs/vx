@@ -86,7 +86,7 @@ describe.skipIf(!available || process.platform !== 'linux')('a port bridge’s s
     expect(sockets(port)).toEqual(before)
     // The file's first sandboxed run: SRT's start and the probe ride on the
     // task's own second, past bun's 5 s default on a loaded gate (B-43).
-  }, 20_000)
+  }, 30_000)
 
   it('is removed by an exit while the task runs', async () => {
     // In a child: `exit` runs every hook a process holds, SRT's `reset()`
@@ -142,7 +142,7 @@ describe.skipIf(!available || process.platform !== 'linux')('a port bridge’s s
       named: true,
     })
     expect(existsSync(sock)).toBe(false)
-  }, 20_000)
+  }, 30_000)
 
   // SRT's own once-only `exit`, SIGINT and SIGTERM listeners each start an
   // unawaited `reset()`, which kills the bridges at once and clears SRT's
@@ -211,5 +211,5 @@ describe.skipIf(!available || process.platform !== 'linux')('a port bridge’s s
       proc.exited,
     ])
     expect({ out: out.trim(), err }).toEqual({ out: '[true,""]', err: '' })
-  }, 20_000)
+  }, 30_000)
 })

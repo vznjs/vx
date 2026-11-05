@@ -208,7 +208,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
       JSON.stringify([true, []]),
       '',
     ])
-  }, 20_000)
+  }, 30_000)
 
   // A literal `ignore` entry is realpath'd WHOLE: a denial through a link
   // lands on the link's target, which is what the record names, so the
@@ -999,7 +999,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
         JSON.stringify({ fd: 'closed', got: 'child\n' }),
         `${untraced('strace --version exited 1')[0]}\n`,
       ])
-    }, 20_000)
+    }, 30_000)
 
     // A host that refuses ptrace still answers `--version`, and every
     // sandboxed task failed twice (the retry) on strace's attach error. One
@@ -1207,5 +1207,5 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     const r = await runSandboxed(args('sleep 10 & echo up'))
     expect([r.exitCode, r.stdout]).toEqual([0, 'up\n'])
     expect(Date.now() - t0).toBeLessThan(3000)
-  }, 15_000)
+  }, 30_000)
 })

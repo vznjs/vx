@@ -46,7 +46,7 @@ it('a watcher closed before its proof settled is not replaced by a poller', asyn
   // Only the pool's own lines: they name the dir. Another file in the shard
   // writes to stderr from its own async work while this row waits.
   expect(stderr.mock.calls.map((c) => String(c[0])).filter((l) => l.includes(dir))).toEqual([])
-}, 10_000)
+}, 30_000)
 
 it('an arm made after closeAll watches nothing', async () => {
   const dir = await tempDir()
@@ -63,4 +63,4 @@ it('an arm made after closeAll watches nothing', async () => {
   control.closeAll()
   expect(controlSeen).toContain('edit.txt')
   expect(seen).toEqual([])
-}, 10_000)
+}, 30_000)

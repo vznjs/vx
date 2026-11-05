@@ -51,7 +51,7 @@ it('a release deferred by a hold is written when the hold ends', async () => {
       letGo()
     `),
   ).toBe(true)
-}, 20_000)
+}, 30_000)
 
 it('a group two teardowns hold stays listed until both let go', async () => {
   // The first hold's end must not write the deferred release: the second
@@ -64,7 +64,7 @@ it('a group two teardowns hold stays listed until both let go', async () => {
       first()
     `),
   ).toBe(false)
-}, 20_000)
+}, 30_000)
 
 it('CONTROL: a held group whose release never came is the guard’s', async () => {
   expect(
@@ -73,7 +73,7 @@ it('CONTROL: a held group whose release never came is the guard’s', async () =
       releaseGroup(child)
     `),
   ).toBe(false)
-}, 20_000)
+}, 30_000)
 
 // Sweep of kill-tree.ts (B-10): a hold's end wrote the release whether or
 // not the runner had released, and the suite stayed green. A group the
@@ -85,7 +85,7 @@ it('a hold that ends before the runner releases leaves the group listed', async 
       letGo()
     `),
   ).toBe(false)
-}, 20_000)
+}, 30_000)
 
 // B-10: a guard that has died (killed, OOM) is handed to no later spawn.
 // Handed, its broken pipe made bash (macOS's sh) flush the failed guard line
@@ -129,7 +129,7 @@ it('a task spawned after the guard died still runs, and is handed no guard', asy
   ]
   expect([await proc.exited, err]).toEqual([0, ''])
   expect(JSON.parse(out)).toEqual([false, 0, 'ran\n'])
-}, 20_000)
+}, 30_000)
 
 // Sweep of kill-tree.ts (B-10): the guard line's `trap '' PIPE`. A guard
 // that dies between the hand-over and the child's write leaves a broken
@@ -236,7 +236,7 @@ it('a listed session’s pid dies alone, and its paths go, with the lister', asy
     listedFile: false,
     kept: true,
   })
-}, 20_000)
+}, 30_000)
 
 it('a struck session is left to itself', async () => {
   expect(await afterSessionLister(true)).toEqual({
@@ -246,15 +246,15 @@ it('a struck session is left to itself', async () => {
     listedFile: true,
     kept: true,
   })
-}, 20_000)
+}, 30_000)
 
 // The registry still owns a ready server after its shell exits and stops
 // its group at the end of the run; the runner struck the group at the
 // shell's exit, so a `kill -9` of vx left the backgrounded server to nobody.
 it('a server group that outlives its shell stays listed', async () => {
   expect(await serverOutlivesHolder('')).toBe(false)
-}, 20_000)
+}, 30_000)
 
 it('CONTROL: a teardown that lets the server group go strikes it', async () => {
   expect(await serverOutlivesHolder('holdGroups([child])()')).toBe(true)
-}, 20_000)
+}, 30_000)

@@ -134,7 +134,7 @@ describe('settleWithin — the deadline wins', () => {
     // rather than firing instantly; upper bound proves it gave up at all.
     expect(elapsed).toBeGreaterThanOrEqual(35)
     expect(elapsed).toBeLessThan(5000)
-  }, 10_000)
+  }, 30_000)
 
   it('returns false for a promise that settles just past the budget', async () => {
     expect(await pastDeadline(20, 80)).toBe(false)
@@ -158,7 +158,7 @@ describe('settleWithin — the deadline wins', () => {
     } finally {
       process.off('unhandledRejection', count)
     }
-  }, 10_000)
+  }, 30_000)
 })
 
 describe('settleWithin — a rejection propagates, it is not a timeout', () => {
@@ -206,7 +206,7 @@ describe('settleWithin — a rejection propagates, it is not a timeout', () => {
     const started = Date.now()
     await expect(settleWithin(Promise.reject(new Error('x')), 5000)).rejects.toThrow('x')
     expect(Date.now() - started).toBeLessThan(1000)
-  }, 10_000)
+  }, 30_000)
 })
 
 describe('settleWithin — the timer never outlives the call', () => {
@@ -302,7 +302,7 @@ describe('settleWithin — every call gets its own budget', () => {
     // the total: a loaded shard stalls all three timers alike, and a total
     // under 150 read 152 on main (M-7). Measured 0-1ms.
     expect(Math.max(...settled) - Math.min(...settled)).toBeLessThan(60)
-  }, 10_000)
+  }, 30_000)
 
   // A short deadline firing must not cancel a longer one running beside it —
   // i.e. the timer is per-call state, never module state.
@@ -312,14 +312,14 @@ describe('settleWithin — every call gets its own budget', () => {
       settleWithin(resolveAfter(60, undefined), 95),
     ])
     expect({ timedOut, settled }).toEqual({ timedOut: false, settled: true })
-  }, 10_000)
+  }, 30_000)
 
   it('a rejecting neighbour does not disturb a concurrent healthy call', async () => {
     const healthy = settleWithin(resolveAfter(20, undefined), 90)
     const failing = settleWithin(Promise.reject(new Error('neighbour')), 90)
     await expect(failing).rejects.toThrow('neighbour')
     expect(await healthy).toBe(true)
-  }, 10_000)
+  }, 30_000)
 })
 
 describe('settleWithin — hostile budgets', () => {
@@ -342,7 +342,7 @@ describe('settleWithin — hostile budgets', () => {
   it('never hangs on a negative or NaN budget', async () => {
     expect(await settleWithin(never(), -5)).toBe(false)
     expect(await settleWithin(never(), Number.NaN)).toBe(false)
-  }, 10_000)
+  }, 30_000)
 
   // FINDING (see src/util/settle.ts:25, reachable via teardownTimeoutMs).
   // A delay of 2^31 or more does not fit a 32-bit signed int, so the timer
@@ -356,7 +356,7 @@ describe('settleWithin — hostile budgets', () => {
     expect(await settleWithin(never(), 2 ** 31)).toBe(false)
     // 2^31 ms is ~25 days; anything under a second proves the clamp.
     expect(Date.now() - started).toBeLessThan(1000)
-  }, 10_000)
+  }, 30_000)
 
   it('the last budget that behaves as written is 2^31 - 1, and it IS enforced', () => {
     // Boundary statement, not a wait: 2147483647 is honoured (~24 days) while
@@ -524,7 +524,7 @@ describe('teardownTimeoutMs — the upper end is bounded', () => {
     const started = Date.now()
     expect(await settleWithin(never(), timeoutFor('120'))).toBe(false)
     expect(Date.now() - started).toBeLessThan(2000)
-  }, 20_000)
+  }, 30_000)
 })
 
 describe('call-site contracts', () => {
@@ -612,7 +612,7 @@ describe('call-site contracts', () => {
       60,
     )
     expect({ settled, healthyFlushed }).toEqual({ settled: false, healthyFlushed: true })
-  }, 10_000)
+  }, 30_000)
 
   // NOT pinned, deliberately: the parameter is `Promise<unknown>`, and the
   // `finally` calls `p.catch(...)` — which a bare PromiseLike does not have,

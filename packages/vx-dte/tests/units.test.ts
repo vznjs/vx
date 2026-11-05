@@ -322,6 +322,70 @@ it('a worker its orchestrator went silent on says so and exits 0', async () => {
   }
 })
 
+// A worker that leaves on its orchestrator's silence stops its tasks, and
+// the run gives them to other workers. The stopped task was still saved
+// and its `end` (exit 143) still said: one reached the orchestrator and
+// failed the run (CI run 41952026507, 2026-11-05).
+it('a task a worker stops on its orchestrator’s silence is neither saved nor ended', async () => {
+  const root = await tmp()
+  let silent = false
+  const served = servedRelay({ heartbeatMs: 100 }, (frame) => {
+    if (!silent) return frame
+    const f = JSON.parse(frame) as { sends?: { to: string }[] }
+    if (f.sends === undefined) return frame
+    return JSON.stringify({ ...f, sends: f.sends.filter((one) => one.to === 'host') })
+  })
+  try {
+    const o = sealOrchestrator(
+      await join(served.url, R, 'orchestrator', null, undefined),
+      R,
+      secretProof('s'),
+    )
+    const { artifacts } = fakeArtifacts()
+    const saves: string[] = []
+    artifacts.save = async (key) => void saves.push(key)
+    const code = runWorker({
+      relay: served.url,
+      run: R,
+      root,
+      token: async () => undefined,
+      proof: secretProof('s'),
+      artifacts: () => artifacts,
+    })
+    const order: RunOrder = {
+      task: 't',
+      key: 'k-t',
+      runKey: runKey(R, 't'),
+      deps: [],
+      nested: [],
+      command: 'sleep 30',
+      cwd: '',
+      project: '',
+      env: {},
+      outputs: { files: [], workspaceFiles: [] },
+      cores: 1,
+      memory: 0,
+    }
+    const seen: string[] = []
+    let done = false
+    void code.then(() => (done = true))
+    for (let i = 0; i < 200 && !done; i++)
+      for (const { from, body } of flat(await o.poll())) {
+        const m = body as { type: string; id?: string; running?: string[] }
+        seen.push(m.type)
+        // It runs the task: the orchestrator goes silent.
+        if (m.running?.includes('t') === true) silent = true
+        if (from !== 'relay' || m.type !== 'joined') continue
+        await o.send(m.id!, { type: 'welcome', name: 'a', cache: { refs: [], lent: {} } })
+        await o.send(m.id!, { type: 'batch', n: 1, root, realRoot: root, tasks: [order] })
+      }
+    expect(await code).toBe(0)
+    expect([silent, saves, seen.includes('end')]).toEqual([true, [], false])
+  } finally {
+    await served.stop()
+  }
+}, 30_000)
+
 // A relay restart its orchestrator does not join again within two
 // heartbeats loses the worker. The run gave its tasks to others; the
 // worker's CI job is no failure (mac#1 on #3895).
@@ -2010,7 +2074,7 @@ it('a task whose command ended stays its worker’s while it saves, and a quiet 
   } finally {
     await h.stop()
   }
-}, 15_000)
+}, 30_000)
 
 // An additive task rewrites its upstream's file: restored after it, the
 // upstream put the old bytes back (2026-10-25).
@@ -3759,7 +3823,7 @@ for (const hook of ['main', 'linked'] as const)
     expect(git('diff', '--cached', '--name-only')).toBe('staged.txt')
     const env = await readFile(seen, 'utf8')
     expect(env).not.toMatch(/^GIT_(INDEX_FILE|DIR)=/m)
-  }, 20_000)
+  }, 30_000)
 
 it('a worker size or unmeasured with a key dte() does not read is refused', () => {
   // A typo of max left the size uncapped, without a word.

@@ -151,6 +151,8 @@ export async function runWorker(opts: {
   const onTerm = onSignal('SIGTERM')
   process.once('SIGINT', onInt)
   process.once('SIGTERM', onTerm)
+  /** Aborted as this worker leaves: what runs here then is stopped, not ended. */
+  const leaving = new AbortController()
   const quitCode = (): number => 128 + constants.signals[quit.signal.reason as 'SIGINT' | 'SIGTERM']
   /**
    * The run is over for this worker (410), its job no failure. An end on
@@ -179,9 +181,11 @@ export async function runWorker(opts: {
     res: WiredResult & { output: CapturedChunk[] },
     bare = false,
   ): Promise<void> => {
-    // Stopped by a signal: its end would fail the task in the run, which
-    // runs it again elsewhere once this worker leaves.
-    if (quit.signal.aborted) return
+    // Stopped by a signal, or by this worker leaving (its orchestrator went
+    // silent): its end would fail the task in the run, which runs it again
+    // elsewhere once this worker leaves. One such end reached the
+    // orchestrator and failed the run (2026-11-05).
+    if (quit.signal.aborted || leaving.signal.aborted) return
     const { output, ...result } = res
     // Forced: the key keeps an entry it holds, so the run's machines restore
     // the fresh bytes under the run key.
@@ -634,6 +638,7 @@ export async function runWorker(opts: {
     process.off('SIGINT', onInt)
     process.off('SIGTERM', onTerm)
     trees.stop()
+    leaving.abort()
     for (const c of running.values()) c.abort()
     await Promise.all(work)
     const onlineMs = performance.now() - started.at

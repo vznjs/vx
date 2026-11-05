@@ -81,7 +81,7 @@ it("a run stores each row's waited, outputs and blocks", async () => {
   // a busy runner made even a lone hit wait 2 ms for its slot.
   expect(warm).toHaveLength(1)
   expect(warm![0]).toMatchObject({ task: 'gen', status: 'cache-hit', output_bytes: 5, blocks: 0 })
-}, 20_000)
+}, 30_000)
 
 it("an outcome's waited, outputs, blocks and flaky record reach its RunRecord", () => {
   const node = {
@@ -150,7 +150,7 @@ it('a forced miss over a kept entry still reports its outputs', async () => {
   expect(forced.ok).toBe(true)
   expect(forced.outcomes[0]).toMatchObject({ status: 'success', outputBytes: 5 })
   expect(rows()[1]![0]).toMatchObject({ status: 'success', output_bytes: 5 })
-}, 20_000)
+}, 30_000)
 
 // A miss that saves nothing (here: downstream of a task with no `cache`
 // block, so it has no key to save under) still wrote its outputs, and its
@@ -178,4 +178,4 @@ it('a miss that saves nothing still reports the outputs it wrote', async () => {
   const gen = r.outcomes.find((o) => o.node.id === 'p#gen')!
   expect(gen.saved).toBeUndefined()
   expect(gen).toMatchObject({ status: 'success', outputBytes: 7 })
-}, 20_000)
+}, 30_000)

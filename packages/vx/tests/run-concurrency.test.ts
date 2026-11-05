@@ -33,7 +33,7 @@ it('refuses a concurrency that is not a positive integer, and runs at 1', async 
     )
   }
   expect(await runWith({ concurrency: 1 })).toBe('ok true')
-}, 20_000)
+}, 30_000)
 
 // A NaN `retries` retried a failing task without end; a bad `timeout`
 // killed every task at once, failed 143.
@@ -49,7 +49,7 @@ it('refuses retries and a timeout the CLI refuses, and runs at their edges', asy
     )
   }
   expect(await runWith({ retries: 0, timeout: 2 ** 31 - 1 })).toBe('ok true')
-}, 20_000)
+}, 30_000)
 
 it('refuses a run that names no task', async () => {
   for (const tasks of [[], ['']]) {

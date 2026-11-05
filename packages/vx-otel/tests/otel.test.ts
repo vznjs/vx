@@ -3103,5 +3103,5 @@ describe('a slow collector never holds the run', () => {
       release()
       await server.stop(true)
     }
-  }, 10_000)
+  }, 30_000)
 })

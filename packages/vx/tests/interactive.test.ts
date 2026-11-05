@@ -268,7 +268,7 @@ describe('a run', () => {
       alone: false,
       said: ['said-a', 'said-b', 'said-c'],
     })
-  }, 20_000)
+  }, 30_000)
 
   // `--dry` previews the run on the same terminal: it planned two
   // interactive servers the run refuses before any task starts.

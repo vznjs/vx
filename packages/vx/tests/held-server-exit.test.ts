@@ -56,7 +56,7 @@ it('a held server that dies on its own is said', async () => {
   while (lines.length === before && Date.now() < deadline) await Bun.sleep(20)
   expect(lines.slice(before)).toEqual(['vx: app#dev exited with code 3'])
   await result.persistent?.stop()
-}, 20_000)
+}, 30_000)
 
 // Control: the holder stopping its own servers says nothing.
 it("the holder's stop() is not said as a death", async () => {
@@ -73,4 +73,4 @@ it("the holder's stop() is not said as a death", async () => {
   await result.persistent?.stop()
   await Bun.sleep(100)
   expect(lines.slice(before)).toEqual([])
-}, 20_000)
+}, 30_000)

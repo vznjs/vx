@@ -129,7 +129,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
       expect([last.invocation.exitOk, recorded.status, recorded.exitCode]).toEqual(
         exitCode === 0 ? [true, 'success', 0] : [false, 'failed', exitCode],
       )
-    }, 20_000)
+    }, 30_000)
   }
 
   // Another vx version ran on this cache during the session and reset the
@@ -174,7 +174,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
       'dev:success',
       'other:success',
     ])
-  }, 20_000)
+  }, 30_000)
 
   // C-19: the teardown's default signal. No one pressed Ctrl-C here, so
   // the others get SIGTERM; a SIGINT in its place survived the suite.
@@ -201,7 +201,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
     await waitForPid(path.join(dir, 'pid.txt'), 10_000)
     expect(await proc.exited).toBe(0)
     expect(readFileSync(path.join(dir, 'got.txt'), 'utf8')).toBe('SIGTERM\n')
-  }, 20_000)
+  }, 30_000)
 
   // turborepo#12920: Ctrl-C during the foreground wait after the summary
   // did not end the run.
@@ -237,7 +237,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
     // The server's 130 was the stop's, not a crash: the record read FAILED
     // with no failure in it, over the previous real run (item 854).
     expect(last.invocation.exitOk).toBe(true)
-  }, 20_000)
+  }, 30_000)
   // WD-16: a stop after the summary signalled once by the abort, then again
   // by the wait's own teardown once another kept server went: a server that
   // reads a second signal as "quit now" lost its graceful shutdown.
@@ -285,7 +285,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
       await reading
       expect(await waitForDead(pid, 1_000)).toBe(true)
       expect(readFileSync(path.join(dir, 'sigs'), 'utf8')).toBe(`${sent}\n`)
-    }, 20_000)
+    }, 30_000)
   }
 
   // C-66: a plugin's subscriptions were released only after the keep-alive
@@ -342,7 +342,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
     expect(await waitForDead(pid, 1_000)).toBe(true)
     // It heard the server while the run was its; nothing after its teardown.
     expect(readFileSync(heard, 'utf8')).toBe('live:READY\n')
-  }, 20_000)
+  }, 30_000)
 
   // C-46: a kept server keeps the persistent tasks it depends on. Under
   // `--filter app` only app#dev was kept, and the api#dev it was started
@@ -380,7 +380,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
     expect(await proc.exited).toBe(130)
     await reading
     expect(await Promise.all(pids.map((p) => waitForDead(p, 1_000)))).toEqual([true, true])
-  }, 20_000)
+  }, 30_000)
 
   // WD-3: a kept dependency that exits 0 is a daemon that forked and
   // returned; it ended the wait and the dev server with it.
@@ -421,7 +421,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
     const said = (out + (await err)).split('\n').filter((l) => l.startsWith('vx: '))
     expect(said).toEqual([])
     expect(await waitForDead(pid, 1_000)).toBe(true)
-  }, 20_000)
+  }, 30_000)
 
   // C-60: a run that failed held its healthy servers for good: a script's
   // `vx run dev --all` hung, and the Ctrl-C that ended it read 130.
@@ -456,7 +456,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
       const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
       expect(await proc.exited).toBe(1)
       expect(await waitForDead(pid, 1_000)).toBe(true)
-    }, 20_000)
+    }, 30_000)
   }
 
   it('CONTROL: under --continue=always the healthy server is held', async () => {
@@ -486,7 +486,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
     expect(await proc.exited).toBe(130)
     await reading
     expect(await waitForDead(pid, 1_000)).toBe(true)
-  }, 20_000)
+  }, 30_000)
 })
 
 // Item 892: a persistent server that became ready and then died on its own
@@ -554,7 +554,7 @@ describe('a persistent server that dies before the run stops it', () => {
       pinned: [],
       tally: '1 failed · 1 success · 2 total',
     })
-  }, 20_000)
+  }, 30_000)
 
   // Dead within a few ms of its spawn, the server was not yet reaped when
   // the graph ended: nothing gave Bun a turn, so `exitCode` still read
@@ -585,7 +585,7 @@ describe('a persistent server that dies before the run stops it', () => {
     )
     const r = await run(root, ['srv', 'e2e'])
     expect([r.code, r.pinned, r.tally]).toEqual([1, [], '1 failed · 1 success · 2 total'])
-  }, 20_000)
+  }, 30_000)
 
   // WD-10: its output block closed `running` under the line naming its exit.
   it("a crashed dependency-only server's output block closes failed", async () => {
@@ -614,7 +614,7 @@ describe('a persistent server that dies before the run stops it', () => {
       .filter((l) => l.startsWith('└─') && l.includes('app#srv'))
       .map((l) => l.replace(/\(\d+(\.\d+)?m?s\)/, '(T)'))
     expect([code, closes]).toEqual([1, ['└─ ▸ app#srv ── (T) failed (exit 3)']])
-  }, 20_000)
+  }, 30_000)
 
   // WD-11: the count of servers it stopped took in one already dead.
   it('the server that ends the wait counts only the others still up', async () => {
@@ -635,7 +635,7 @@ describe('a persistent server that dies before the run stops it', () => {
       'vx: app#srv2 exited with code 4 while the run went on',
       'vx: app#srv exited with code 3',
     ])
-  }, 20_000)
+  }, 30_000)
 
   // Item 1102: a signal death printed the signal's name as its code.
   it('a dependency-only server killed by a signal is named by its exit code', async () => {
@@ -644,7 +644,7 @@ describe('a persistent server that dies before the run stops it', () => {
       'vx: app#srv exited with code 143 while the run went on',
       'vx: app#srv exited with code 143 before the run stopped it',
     ])
-  }, 20_000)
+  }, 30_000)
 
   it('CONTROL: one that exits 0 on its own, and one the run stops, leave the run green', async () => {
     // The stopped server's own exit is the SIGTERM's (143): read after the
@@ -655,7 +655,7 @@ describe('a persistent server that dies before the run stops it', () => {
     await rm(path.join(root, 'packages', 'app', 'gone'), { force: true })
     await addProject(root, 'app', crashing('touch gone; echo READY; exec sleep 30'))
     expect(await run(root, ['e2e'])).toEqual(green)
-  }, 20_000)
+  }, 30_000)
 
   // Item 1061: a Ctrl-C tears the servers down before the graph ends, so
   // each one the stop killed had ended by the time the end of the run asked,
@@ -709,7 +709,7 @@ describe('a persistent server that dies before the run stops it', () => {
       said: [],
       tally: '1 success · 1 aborted · 2 total',
     })
-  }, 20_000)
+  }, 30_000)
 
   it('CONTROL: a server that died before the Ctrl-C is still named', async () => {
     expect(
@@ -722,7 +722,7 @@ describe('a persistent server that dies before the run stops it', () => {
       ],
       tally: '1 failed · 1 aborted · 2 total',
     })
-  }, 20_000)
+  }, 30_000)
 
   it('a requested server that died while its dependant ran is not pinned as running', async () => {
     await addProject(root, 'app', crashing('echo READY; sleep 0.1; touch gone; exit 3'))
@@ -735,7 +735,7 @@ describe('a persistent server that dies before the run stops it', () => {
       pinned: [],
       tally: '1 failed · 1 success · 2 total',
     })
-  }, 20_000)
+  }, 30_000)
 
   // C-46: a kept server that ended cleanly before the end is no crash.
   it('a requested server that exited 0 while its dependant ran leaves the run green', async () => {
@@ -746,7 +746,7 @@ describe('a persistent server that dies before the run stops it', () => {
       pinned: [],
       tally: '2 success · 2 total',
     })
-  }, 20_000)
+  }, 30_000)
 
   // C-46: a KEPT server the Ctrl-C stopped is not failed by its own exit
   // either; the rows above ask only of a dependency-only one.
@@ -756,7 +756,7 @@ describe('a persistent server that dies before the run stops it', () => {
       said: [],
       tally: '1 success · 1 aborted · 2 total',
     })
-  }, 20_000)
+  }, 30_000)
 })
 
 describe('a persistent task keeps an open stdin', () => {
@@ -808,7 +808,7 @@ describe('a persistent task keeps an open stdin', () => {
     process.kill(proc.pid, 'SIGTERM')
     expect(await proc.exited).toBe(143)
     expect((await out).join('')).not.toContain('STDIN-ENDED')
-  }, 20_000)
+  }, 30_000)
 
   // The write end was closed once the server's OUTPUT ended, not the
   // server: one that sends its output to a log (`exec >log 2>&1`, a
@@ -847,7 +847,7 @@ describe('a persistent task keeps an open stdin', () => {
     process.kill(proc.pid, 'SIGTERM')
     expect(await proc.exited).toBe(143)
     await out
-  }, 20_000)
+  }, 30_000)
 
   it('the stdin ends when vx is SIGKILLed, so a server that watches it goes too', async () => {
     // A `kill -9` of vx runs no teardown, and a persistent task survives
@@ -883,5 +883,5 @@ describe('a persistent task keeps an open stdin', () => {
     process.kill(proc.pid, 'SIGKILL')
     expect(await proc.exited).toBe(137)
     expect(await waitForDead(pid, 2_000)).toBe(true)
-  }, 20_000)
+  }, 30_000)
 })

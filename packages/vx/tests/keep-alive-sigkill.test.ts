@@ -102,7 +102,7 @@ Bun.spawn = (cmd, opts) => {
         `{ command: '(while [ ! -f go ]; do sleep 0.02; done; echo late > late.txt) & echo $! > pid.txt; echo READY; wait', persistent: { readyWhen: 'READY' } }`,
       ),
     ).toBe(false)
-  }, 20_000)
+  }, 30_000)
 
   it('a SIGKILLed vx takes an unsandboxed one-shot task’s backgrounded child with it', async () => {
     expect(
@@ -111,7 +111,7 @@ Bun.spawn = (cmd, opts) => {
         `{ command: '(trap "" INT TERM; while [ ! -f go ]; do sleep 0.02; done; echo late > late.txt) & echo $! > pid.txt; wait' }`,
       ),
     ).toBe(false)
-  }, 20_000)
+  }, 30_000)
 
   it('a task’s group is listed before it runs: a kill -9 while vx is descheduled takes it', async () => {
     expect(
@@ -120,7 +120,7 @@ Bun.spawn = (cmd, opts) => {
         true,
       ),
     ).toBe(false)
-  }, 20_000)
+  }, 30_000)
 
   it('a run that spawns no task starts no guard', async () => {
     // The guard is the price of a spawn, not of a run: a warm run pays
@@ -162,7 +162,7 @@ Bun.spawn = (cmd, opts) => {
     // which the preload does not reach; the guard spawns here.
     expect(await guards()).toEqual(['vx-group-guard'])
     expect(await guards()).toEqual([])
-  }, 20_000)
+  }, 30_000)
 
   it('a terminal’s Ctrl-C leaves the guard, so a kill -9 in the teardown still takes the task', async () => {
     // A terminal signals its foreground group: vx and, were it in vx's
@@ -194,7 +194,7 @@ Bun.spawn = (cmd, opts) => {
     process.kill(proc.pid, 'SIGKILL')
     expect(await proc.exited).toBe(137)
     expect([await waitForDead(child, 5_000), await waitForDead(shell, 5_000)]).toEqual([true, true])
-  }, 20_000)
+  }, 30_000)
 
   it('a kill -9 in a Ctrl-C’s grace takes the child of a shell that died on the signal', async () => {
     // The shell dies on the SIGINT; the child it backgrounded ignores it
@@ -237,7 +237,7 @@ Bun.spawn = (cmd, opts) => {
     await Bun.write(path.join(dir, 'go'), '')
     await Bun.sleep(2_000)
     expect(existsSync(path.join(dir, 'late.txt'))).toBe(false)
-  }, 20_000)
+  }, 30_000)
 
   it('a kill -9 in the persistent shutdown’s grace takes the server a dead shell left', async () => {
     // The end-of-run shutdown SIGTERMs a persistent dependency; its
@@ -280,7 +280,7 @@ Bun.spawn = (cmd, opts) => {
     process.kill(proc.pid, 'SIGKILL')
     expect(await proc.exited).toBe(137)
     expect(await waitForDead(server, 5_000)).toBe(true)
-  }, 20_000)
+  }, 30_000)
 
   it('a kill -9 in a readiness timeout’s grace takes the server a dead shell left', async () => {
     // The readiness timeout SIGTERMs the group; the `& wait` shell dies at
@@ -319,7 +319,7 @@ Bun.spawn = (cmd, opts) => {
     process.kill(proc.pid, 'SIGKILL')
     expect(await proc.exited).toBe(137)
     expect(await waitForDead(server, 3_000)).toBe(true)
-  }, 20_000)
+  }, 30_000)
 
   it('CONTROL: a group vx finished with is not the guard’s when vx exits', async () => {
     // A one-shot task that leaves a process behind keeps it after vx's
@@ -342,5 +342,5 @@ Bun.spawn = (cmd, opts) => {
     // after it starts, and the guard's EOF would have killed it first.
     await Bun.sleep(2_000)
     expect(existsSync(path.join(dir, 'late.txt'))).toBe(true)
-  }, 20_000)
+  }, 30_000)
 })

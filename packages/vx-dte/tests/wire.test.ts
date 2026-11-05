@@ -243,7 +243,7 @@ it('a quiet worker beats once each heartbeat and a half, its orchestrator only a
   expect(talking.filter((f) => ack.test(f)).length).toBeLessThanOrEqual(9)
   await a.leave()
   await o.leave()
-}, 15_000)
+}, 30_000)
 
 // PR #4317's run (2026-10-24): two workers each sent `ran` a moment
 // before a probe was due, and the worker judged its orchestrator silent
@@ -276,7 +276,7 @@ it('a worker that sends just before its next beat still hears its orchestrator',
   ).toBe('live')
   await a.leave()
   await o.leave()
-}, 10_000)
+}, 30_000)
 
 it('joins again when its first socket does not open', async () => {
   // A relay that made a run twice for two joins at once forgot the first
@@ -710,7 +710,7 @@ it('a worker ends when its orchestrator’s relay answers nothing, the run’s c
     for (;;) await a.poll()
   }
   await expect(polls()).rejects.toThrow('relay: the orchestrator went silent')
-}, 10_000)
+}, 30_000)
 
 // The final call: a `leave` whose socket answers nothing goes again on a
 // new one, so its run's close reaches its workers.
@@ -742,7 +742,7 @@ it('gives up on a socket upgrade the relay holds, after 3 dials', async () => {
   }
   await expect(polls()).rejects.toThrow('no socket in 3 dials')
   expect(performance.now() - at).toBeLessThan(6_000)
-}, 10_000)
+}, 30_000)
 
 // Cloudflare answers 5xx while a Durable Object restarts, and a runner's
 // network drops a connection now and then: one such answer to a worker's
@@ -945,7 +945,7 @@ it('gives up on a relay that answers nothing in 10 s in all, and names it', asyn
     `cannot connect to the relay ${url}: no answer in 10 s`,
   )
   expect(performance.now() - at).toBeLessThan(11_000)
-}, 25_000)
+}, 30_000)
 
 // A token that could not be had was said as a relay that never answered,
 // "no answer in 10 s", with the relay up and never asked, after asking
@@ -1031,7 +1031,7 @@ it('ends what waits on a socket when it leaves, so its process can end', async (
     null,
     'left',
   ])
-}, 10_000)
+}, 30_000)
 // An ack still owed to a worker the relay then lost: the next send to it
 // read the intake `forget` dropped and its TypeError was taken for a
 // closed socket, so the send resolved and its body went again to nobody
@@ -1130,4 +1130,4 @@ for (const [how, open, heldMs, want] of [
     }
     await o.leave().catch(() => undefined)
     await child.exited
-  }, 25_000)
+  }, 30_000)

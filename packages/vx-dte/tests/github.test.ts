@@ -483,7 +483,7 @@ it('cancels no run once its worker given up as late joins after all', async () =
   } finally {
     await server.stop(true)
   }
-}, 10_000)
+}, 30_000)
 
 // A run that holds a worker still needed goes on, so a fellow let go in
 // it is no worker stopped either: it joins, and the run takes it.
@@ -596,7 +596,7 @@ it('says why for each worker whose job ended, a success too', async () => {
   } finally {
     await server.stop(true)
   }
-}, 10_000)
+}, 30_000)
 
 // A job list is paged at 100 and a matrix holds 256: a job past the first
 // page that failed went unseen, and its worker held its size's max.
@@ -639,7 +639,7 @@ it('reads every page of a run with more than 100 jobs', async () => {
   } finally {
     await server.stop(true)
   }
-}, 10_000)
+}, 30_000)
 
 it("dispatches on the base branch once a merged PR's branch is gone", async () => {
   // Before: a PR merged mid-run, its branch was deleted, GitHub answered
@@ -728,7 +728,7 @@ it('adopts the workers a step started, watching and stopping them as its own', a
     await server.stop(true)
     await rm(temp, { recursive: true, force: true })
   }
-}, 10_000)
+}, 30_000)
 
 // 2026-10-23: a remote fault is at least a warning. A jobs poll or a
 // cancel GitHub refused went unsaid: a dead worker unseen, a run left to
@@ -763,7 +763,7 @@ it('says each poll and cancel GitHub refused, by status and body, once', async (
   } finally {
     await server.stop(true)
   }
-}, 15_000)
+}, 30_000)
 
 // Every job of a repository shares GITHUB_TOKEN's API limit (1000 an
 // hour). Each run polled its workers' jobs every 10 s, so with many PRs
@@ -808,7 +808,7 @@ it("asks a run's jobs again with its ETag, a 304 changing nothing", async () => 
   } finally {
     await server.stop(true)
   }
-}, 15_000)
+}, 30_000)
 
 it('asks no more jobs until a spent API limit resets, saying when', async () => {
   let jobs = 0
@@ -849,7 +849,7 @@ it('asks no more jobs until a spent API limit resets, saying when', async () => 
   } finally {
     await server.stop(true)
   }
-}, 15_000)
+}, 30_000)
 
 it('dispatches again once a spent API limit resets', async () => {
   let dispatches = 0
@@ -886,7 +886,7 @@ it('dispatches again once a spent API limit resets', async () => {
   } finally {
     await server.stop(true)
   }
-}, 10_000)
+}, 30_000)
 
 it('names the spent API limit, not a permission, when its reset is too far', async () => {
   const reset = Math.ceil(Date.now() / 1000) + 3600
@@ -915,7 +915,7 @@ it('names the spent API limit, not a permission, when its reset is too far', asy
   } finally {
     await server.stop(true)
   }
-}, 10_000)
+}, 30_000)
 
 // An orchestrator that died where it could not cancel (the API limit spent,
 // a SIGKILL) left its queued workers to start for no one, each holding a
@@ -982,7 +982,7 @@ it('cancels again once a spent API limit resets, as the run closes', async () =>
   } finally {
     await server.stop(true)
   }
-}, 10_000)
+}, 30_000)
 
 it('says a cancel the spent API limit refuses past its wait, with the reset', async () => {
   const reset = Math.ceil(Date.now() / 1000) + 3600
@@ -1195,7 +1195,7 @@ it('reads every page of a run of more than 100 jobs', async () => {
   } finally {
     await server.stop(true)
   }
-}, 10_000)
+}, 30_000)
 
 // A first page's ETag says nothing of the next: asked by it, a run of more
 // than 100 jobs answered 304 and its later pages were never read again.
@@ -1243,4 +1243,4 @@ it('reads every page of a run of more than 100 jobs again, its first unchanged',
   } finally {
     await server.stop(true)
   }
-}, 15_000)
+}, 30_000)

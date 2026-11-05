@@ -49,19 +49,19 @@ it('a server not ready in time is said once, with the pattern it waits for', asy
   expect(await runWith('echo listening; exec sleep 30', 1500)).toEqual([
     'vx: app#dev not ready after 200 ms: waiting for a line matching /ready/ (readyWhen)',
   ])
-}, 20_000)
+}, 30_000)
 
 it('an unbounded wait says no exec.timeout bounds it', async () => {
   // Ready at 800 ms: past the notice, so the run ends on its own.
   expect(await runWith('echo listening; sleep 0.8; echo ready; exec sleep 30')).toEqual([
     'vx: app#dev not ready after 200 ms: waiting for a line matching /ready/ (readyWhen), with no exec.timeout',
   ])
-}, 20_000)
+}, 30_000)
 
 // Control: a server ready before the notice is not said.
 it('a server ready in time says nothing', async () => {
   expect(await runWith('echo ready; exec sleep 30')).toEqual([])
-}, 20_000)
+}, 30_000)
 
 // The pattern in the command line is not output: a matcher fed the
 // `$ command` header, or an echo of it, called the server ready at spawn.
@@ -69,7 +69,7 @@ it('a pattern only the command line holds is no readiness', async () => {
   expect(await runWith(': ready; echo listening; exec sleep 30', 1500)).toEqual([
     'vx: app#dev not ready after 200 ms: waiting for a line matching /ready/ (readyWhen)',
   ])
-}, 20_000)
+}, 30_000)
 
 it('a task waiting on two servers names each one not ready', async () => {
   root = await makeWorkspace({ prefix: 'vx-ready-notice-' })
@@ -96,4 +96,4 @@ it('a task waiting on two servers names each one not ready', async () => {
     'vx: app#s1 not ready after 200 ms: waiting for a line matching /up-s1/ (readyWhen)',
     'vx: app#s2 not ready after 200 ms: waiting for a line matching /up-s2/ (readyWhen)',
   ])
-}, 20_000)
+}, 30_000)

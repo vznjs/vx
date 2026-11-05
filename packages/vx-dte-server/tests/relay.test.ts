@@ -1009,7 +1009,7 @@ it('takes --port only as decimal digits: Number read 0x50 as 80 and 1e1 as 10', 
     [2, '✗ vx-dte-server  --port: not a port:  80\n'],
     [2, '✗ vx-dte-server  --port: not a port: 80.0\n'],
   ])
-}, 20_000)
+}, 30_000)
 
 // Bun binds an empty hostname to localhost alone: `--host "$HOST"` with
 // HOST unset served no one outside the machine. The cache and history

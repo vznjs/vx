@@ -139,6 +139,6 @@ describe('a run whose collector fails', () => {
           .toSorted(byText),
       ).toEqual(c.said.toSorted(byText))
       expect(r.ms).toBeLessThan(5_000)
-    }, 20_000)
+    }, 30_000)
   }
 })

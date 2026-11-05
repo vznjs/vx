@@ -183,7 +183,7 @@ describe('the telemetry source samples a tracked task', () => {
     } finally {
       stop(child)
     }
-  }, 10_000)
+  }, 30_000)
 })
 
 it('a run hands each spawned task to the sampler, keyed by its id', async () => {
@@ -224,4 +224,4 @@ it('a run hands each spawned task to the sampler, keyed by its id', async () => 
   } finally {
     db.close()
   }
-}, 20_000)
+}, 30_000)

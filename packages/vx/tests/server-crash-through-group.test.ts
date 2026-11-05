@@ -41,4 +41,4 @@ it('a task behind a group skips when the server the group stands for dies', asyn
   expect([c?.status, c?.blockedBy]).toEqual(['skipped', 'app#srv'])
   expect(existsSync(join(root, 'packages/app/c.ran'))).toBe(false)
   expect(result.ok).toBe(false)
-}, 20_000)
+}, 30_000)

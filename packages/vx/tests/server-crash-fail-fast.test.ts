@@ -57,7 +57,7 @@ it('a server that dies mid-run stops a --continue=never run from dispatching', a
   })
   expect(existsSync(join(root, 'packages/app/b.ran'))).toBe(false)
   expect(result.ok).toBe(false)
-}, 20_000)
+}, 30_000)
 
 // Under the default mode a dependant of the dead server not yet started
 // is skipped, named for it, as below a failed task; one that does not
@@ -73,4 +73,4 @@ it('a deps-ok run skips what depends on a dead server, and only that', async () 
   })
   expect(result.outcomes.find((o) => o.node.id === 'app#c')?.blockedBy).toBe('app#srv')
   expect(existsSync(join(root, 'packages/app/c.ran'))).toBe(false)
-}, 20_000)
+}, 30_000)

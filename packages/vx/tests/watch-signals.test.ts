@@ -79,7 +79,7 @@ describe('vx watch under a signal (e2e)', () => {
     proc.kill('SIGTERM')
     expect(await proc.exited).toBe(0)
     expect(await waitForDead(pid, 1_000)).toBe(true)
-  }, 20_000)
+  }, 30_000)
 
   // A stopped cycle is not a run `vx last` lists, as a stopped `vx run`
   // is not (item 854): it read as FAILED with 0 tasks, and `vx last
@@ -150,7 +150,7 @@ describe('vx watch under a signal (e2e)', () => {
     proc.kill('SIGTERM')
     expect(await proc.exited).toBe(0)
     expect(await waitForDead(pid, 1_000)).toBe(true)
-  }, 20_000)
+  }, 30_000)
 
   it('SIGINT while idle prints stopped and exits 0', async () => {
     await addProject(
@@ -176,7 +176,7 @@ describe('vx watch under a signal (e2e)', () => {
     expect(await proc.exited).toBe(0)
     await reader
     expect(out).toContain('vx watch: stopped')
-  }, 20_000)
+  }, 30_000)
 
   // `stopped` was written the moment the signal landed, so the aborted
   // cycle's task line and summary printed below it while its children
@@ -210,7 +210,7 @@ describe('vx watch under a signal (e2e)', () => {
       stopped: lines.filter((l) => l === 'vx watch: stopped').length,
       last: lines.at(-1),
     }).toEqual({ stopped: 1, last: 'vx watch: stopped' })
-  }, 20_000)
+  }, 30_000)
 
   // WD-22: the server's TERM trap writes got.txt, then takes 0.6 s to exit,
   // so the SIGINT lands while the cycle is still stopping it. A server is
@@ -258,7 +258,7 @@ describe('vx watch under a signal (e2e)', () => {
       .slice(1)
       .filter((l) => l.trim() !== '' && !l.startsWith('app#dev │'))
     expect(after).toEqual(['vx watch: stopped'])
-  }, 20_000)
+  }, 30_000)
 
   // A config that does not parse at start ended watch with exit 1, while
   // the same break mid-watch was a failed cycle the fix re-ran (item 1017).

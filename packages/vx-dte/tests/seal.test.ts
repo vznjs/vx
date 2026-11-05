@@ -630,7 +630,7 @@ it('asks GitHub for an OIDC token again when a try hangs, within the same budget
   expect(await oidcToken(`http://127.0.0.1:${issuer.port}/token?v=1`, 'b', 'aud')).toBe('tok')
   expect(calls).toBe(2)
   expect(performance.now() - started).toBeLessThan(5_000)
-}, 15_000)
+}, 30_000)
 
 // A refusal said only its status, and an answer with no token returned
 // undefined, which the relay then refused as no token at all.

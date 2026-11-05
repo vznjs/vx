@@ -32,4 +32,4 @@ it('vx show in an empty workspace says so and names vx init', () => {
   const err = p.stderr.toString()
   expect(err).toContain('no projects')
   expect(err).toContain('vx init')
-}, 20_000)
+}, 30_000)

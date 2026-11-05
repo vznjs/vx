@@ -47,7 +47,7 @@ it('starts a server two shards on one machine depend on once, for both', async (
   } finally {
     await floor.close()
   }
-}, 20_000)
+}, 30_000)
 
 it('says why a server did not start through the stream a worker ships', async () => {
   dir = await mkdtemp(path.join(os.tmpdir(), 'vx-floor-srv-'))
@@ -83,7 +83,7 @@ it('says why a server did not start through the stream a worker ships', async ()
   } finally {
     await floor.close()
   }
-}, 20_000)
+}, 30_000)
 
 // A worker's stop (a cancel, its shutdown) aborts the request: a task still
 // waiting on a server that never prints its `readyWhen` line, with no
@@ -124,7 +124,7 @@ it('a stop ends a task that waits on a server not yet ready', async () => {
   } finally {
     await floor.close()
   }
-}, 20_000)
+}, 30_000)
 
 // A server that crashed after it became ready was handed to every later
 // task as up: the dependant ran against nothing and failed on its own
@@ -165,7 +165,7 @@ it('a task after its server crashed is told the server exited', async () => {
   } finally {
     await floor.close()
   }
-}, 20_000)
+}, 30_000)
 
 it('CONTROL: a server that exited 0 (a setup step) still serves the next task', async () => {
   dir = await mkdtemp(path.join(os.tmpdir(), 'vx-floor-srv-'))
@@ -192,7 +192,7 @@ it('CONTROL: a server that exited 0 (a setup step) still serves the next task', 
   } finally {
     await floor.close()
   }
-}, 20_000)
+}, 30_000)
 
 // A shell that exits before ready can leave what it forked running
 // (`server & …; exit`): the next task starts the server again, and the
@@ -229,7 +229,7 @@ it('a server that exits before ready leaves nothing it forked running', async ()
   } finally {
     await floor.close()
   }
-}, 20_000)
+}, 30_000)
 
 it('says why a server could not spawn, and closes after it', async () => {
   // `runPersistent` hands back no child when the spawn throws: the floor
@@ -264,4 +264,4 @@ it('says why a server could not spawn, and closes after it', async () => {
     `s#srv, which s#live depends on, did not start: failed to spawn persistent task: its working directory ${path.join(dir, 'gone')} does not exist`,
   )
   await floor.close()
-}, 20_000)
+}, 30_000)

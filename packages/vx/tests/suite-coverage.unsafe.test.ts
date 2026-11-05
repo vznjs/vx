@@ -16,7 +16,7 @@
 // `.unsafe`: it reads every package, which the cross-project law forbids a
 // sandboxed task.
 
-import { readdirSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { testFiles } from '../scripts/test-shard.js'
@@ -149,6 +149,30 @@ describe('every test file is launched by a task', () => {
         if (command === undefined || !/\bbun test\b/.test(command)) continue
         const ms = Number(/--timeout[= ](\d+)/.exec(command)?.[1] ?? 5_000)
         if (ms < 30_000) short.push(`${name}#${task}`)
+      }
+    }
+    expect(short).toEqual([])
+  })
+
+  // A test's own timeout argument overrides the flag: 17 tests ran on 3
+  // to 8 s of wall that way (2026-11-05). The test is found by walking
+  // back from its closing `}, N)` to the line that opened it.
+  it('no test sets its own timeout under 30 s', () => {
+    const short: string[] = []
+    for (const top of ['packages', 'private']) {
+      for (const file of new Bun.Glob('*/tests/**/*.test.ts').scanSync(path.join(repo, top))) {
+        const lines = readFileSync(path.join(repo, top, file), 'utf8').split('\n')
+        lines.forEach((line, i) => {
+          const m = /^\s*\}, *([\d_]+)\)\s*$/.exec(line)
+          if (m === null || Number(m[1]!.replaceAll('_', '')) >= 30_000) return
+          let depth = 0
+          for (let j = i; j >= 0; j--) {
+            depth += lines[j]!.split('}').length - lines[j]!.split('{').length
+            if (depth > 0) continue
+            if (/^\s*(it|test)(\.\w+)*\(/.test(lines[j]!)) short.push(`${top}/${file}:${i + 1}`)
+            return
+          }
+        })
       }
     }
     expect(short).toEqual([])

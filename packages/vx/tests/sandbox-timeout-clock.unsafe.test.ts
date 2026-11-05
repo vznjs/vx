@@ -54,7 +54,7 @@ describe.skipIf(!available)("a sandboxed task's timeout starts at its spawn", ()
 
   it('a wrap slower than the timeout does not time the task out', async () => {
     expect(await runWithWrapDelay(1500, 'echo ran > marker.txt')).toEqual(['success', 1, true])
-  }, 20_000)
+  }, 30_000)
 
   it('CONTROL: a task that outlives its timeout is still killed', async () => {
     expect(await runWithWrapDelay(0, 'sleep 5; echo ran > marker.txt')).toEqual([
@@ -62,5 +62,5 @@ describe.skipIf(!available)("a sandboxed task's timeout starts at its spawn", ()
       2,
       false,
     ])
-  }, 20_000)
+  }, 30_000)
 })

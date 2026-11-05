@@ -328,7 +328,7 @@ describe('the lifecycle is reached on a run a signal stops', () => {
     proc.kill('SIGINT')
     expect(await proc.exited).toBe(130)
     expect(await lifecycle()).toEqual(['flush', 'teardown'])
-  }, 20_000)
+  }, 30_000)
 
   it('a second signal exits without waiting for a teardown that hangs', async () => {
     await workspace(
@@ -343,7 +343,7 @@ describe('the lifecycle is reached on a run a signal stops', () => {
     expect(await proc.exited).toBe(130)
     expect(Date.now() - t0).toBeLessThan(1_500)
     expect(await lifecycle()).toEqual(['flush', 'teardown'])
-  }, 20_000)
+  }, 30_000)
 })
 
 // `RunOptions.bus` is the surface seam: an embedder's bus outlives the run

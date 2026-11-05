@@ -85,7 +85,7 @@ describe('telemetry flush is time-bounded', () => {
     expect(elapsed).toBeLessThan(5000)
     expect(elapsed).toBeGreaterThanOrEqual(200)
     expect(warnings.join('\n')).toContain('telemetry flush timed out')
-  }, 15_000)
+  }, 30_000)
 
   // Abandoned is not ended: a request still in flight kept the event loop,
   // and `vx run`, alive after the run returned (item 1055). The sink is
@@ -102,7 +102,7 @@ describe('telemetry flush is time-bounded', () => {
     const source = createTelemetrySource({ sinks: [listening], run: RUN, warn: () => {} })
     await source.flush()
     expect(seen?.aborted).toBe(true)
-  }, 15_000)
+  }, 30_000)
 
   // A sink that warns as the abort lands said nothing: flush returned at
   // the deadline, and the run ended before the aborted export's warning
@@ -131,7 +131,7 @@ describe('telemetry flush is time-bounded', () => {
       '[vx] telemetry flush timed out after 100ms; buffered records lost',
       'export aborted',
     ])
-  }, 15_000)
+  }, 30_000)
 
   it('a healthy sink still completes its flush, and no timeout is reported', async () => {
     process.env['VX_TEST_TEARDOWN_TIMEOUT'] = '2000ms'
@@ -246,7 +246,7 @@ describe('a hook that never settles', () => {
     expect(lines.filter((l) => l.includes("plugin 'org/hang'"))).toEqual([
       "[vx] plugin 'org/hang' telemetry failed to initialize; disabled for this run: did not initialize within 200 ms",
     ])
-  }, 10_000)
+  }, 30_000)
 
   it('anywhere else: the process exits non-zero and says why, not 0', async () => {
     const root = await fixture(`{ setup() { return new Promise(() => {}) } }`)
