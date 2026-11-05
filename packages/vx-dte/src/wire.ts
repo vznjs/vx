@@ -51,6 +51,11 @@ const LOST_BEATS = 3
  * orchestrator's ack answers it: one late frame is not a loss.
  */
 const QUIET_BEATS = LOST_BEATS / 2
+/**
+ * How long the orchestrator gives its own reaction to a frame (a pump, a
+ * batch) to carry the frame's ack, before the ack goes alone.
+ */
+const REACT_MS = 20
 /** A send unacknowledged as long goes again: its ack comes within it. */
 const RESEND_BEATS = LOST_BEATS / 2
 /** Why a worker ends on its orchestrator's silence. */
@@ -267,22 +272,45 @@ export async function join(
   /**
    * The orchestrator sends only orders and acks: an ack no order carried
    * goes on its own after half a heartbeat, every peer's in one frame. A
-   * worker's ride its next send, which it makes within a heartbeat.
+   * worker's ride its next send, which it makes within a heartbeat. A peer
+   * the orchestrator said nothing to in a heartbeat (a quiet worker's
+   * report) is answered once the orchestrator reacted: an order sent in
+   * reply carries the ack, and with none it goes alone, `REACT_MS` on.
    */
   let acking: ReturnType<typeof setTimeout> | undefined
+  let answering: ReturnType<typeof setTimeout> | undefined
+  const soon = new Set<string>()
+  const ack = (peer: string): void => {
+    const upTo = taken.get(peer)?.upTo
+    owing.delete(peer)
+    said.set(peer, performance.now())
+    // quiet: a lost ack only costs a resend, which is dropped as seen
+    if (upTo !== undefined) put(peer, { acked: upTo } satisfies Acked).catch(() => undefined)
+  }
   const flushAcks = (): void => {
     acking = undefined
     if (left || ended !== undefined) return
-    for (const peer of [...owing]) {
-      const upTo = taken.get(peer)?.upTo
-      owing.delete(peer)
-      // quiet: a lost ack only costs a resend, which is dropped as seen
-      if (upTo !== undefined) put(peer, { acked: upTo } satisfies Acked).catch(() => undefined)
-    }
+    for (const peer of [...owing]) ack(peer)
+  }
+  const answer = (): void => {
+    answering = undefined
+    const peers = [...soon]
+    soon.clear()
+    if (left || ended !== undefined) return
+    for (const peer of peers) if (owing.has(peer)) ack(peer)
   }
   const owe = (peer: string): void => {
     owing.add(peer)
-    if (role !== 'orchestrator' || acking !== undefined) return
+    if (role !== 'orchestrator') return
+    if (performance.now() - (said.get(peer) ?? 0) >= heartbeatMs) {
+      soon.add(peer)
+      if (answering === undefined) {
+        answering = setTimeout(answer, REACT_MS)
+        answering.unref()
+      }
+      return
+    }
+    if (acking !== undefined) return
     acking = setTimeout(flushAcks, heartbeatMs / 2)
     acking.unref()
   }
