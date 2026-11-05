@@ -537,16 +537,14 @@ describe('appendTail — hostile limits', () => {
     })
   })
 
-  // FINDING (latent, src/util/tail.ts:41+47). Every bound test is `chars >
-  // limit`, and any comparison against NaN is false — so a non-finite limit
-  // disables the cap ENTIRELY and silently, which is precisely the unbounded
-  // heap this module exists to prevent. Unreachable today (the sole holder
-  // always takes the default), but nothing guards it.
-  it('a NaN limit silently disables the bound (documented defect)', () => {
+  // Every bound test is `chars > limit`, and any comparison against NaN is
+  // false: a NaN limit disabled the cap entirely and silently, the
+  // unbounded heap this module exists to prevent. It retains nothing now.
+  it('a NaN limit retains nothing, never everything', () => {
     const t = createTail()
     for (let i = 0; i < 500; i++) appendTail(t, 'x'.repeat(100), Number.NaN)
-    expect(t.chars).toBe(50_000)
-    expect(t.dropped).toBe(0)
+    expect(t.chars).toBe(0)
+    expect(t.dropped).toBe(50_000)
   })
 
   it('an Infinite limit is unbounded too, which at least reads as intentional', () => {

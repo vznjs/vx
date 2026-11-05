@@ -92,9 +92,10 @@ describe('settleWithin — the promise wins', () => {
 
   it('returns true for a promise that resolves inside the budget', async () => {
     const started = Date.now()
-    expect(await settleWithin(resolveAfter(10, undefined), 80)).toBe(true)
-    // Proves it returned on the promise, not by waiting the budget out.
-    expect(Date.now() - started).toBeLessThan(70)
+    expect(await settleWithin(resolveAfter(10, undefined), 30_000)).toBe(true)
+    // Proves it returned on the promise, not by waiting the budget out: a
+    // budget of 80 against a bound of 70 failed on a loaded machine.
+    expect(Date.now() - started).toBeLessThan(10_000)
   })
 
   // THE sharpest value case. `p.then(() => true)` exists precisely so the
@@ -344,23 +345,18 @@ describe('settleWithin — hostile budgets', () => {
     expect(await settleWithin(never(), Number.NaN)).toBe(false)
   }, 30_000)
 
-  // FINDING (see src/util/settle.ts:25, reachable via teardownTimeoutMs).
-  // A delay of 2^31 or more does not fit a 32-bit signed int, so the timer
-  // silently clamps it to ONE MILLISECOND — the tightest possible deadline,
-  // the exact inverse of the request. `VX_TEST_TEARDOWN_TIMEOUT=99999999999ms`
-  // ("give the flush all the time it needs") therefore makes every flush time
-  // out and every buffered telemetry record get dropped, with only a
-  // "flush timed out" warning to show for it. Pinned as CURRENT behaviour.
-  it('silently collapses a 2^31-or-larger budget to ~1ms (documented defect)', async () => {
-    const started = Date.now()
-    expect(await settleWithin(never(), 2 ** 31)).toBe(false)
-    // 2^31 ms is ~25 days; anything under a second proves the clamp.
-    expect(Date.now() - started).toBeLessThan(1000)
+  // A delay of 2^31 or more does not fit a 32-bit signed int, and the
+  // timer fired it at ONE MILLISECOND, the inverse of the request: a
+  // caller's "all the time it needs" dropped every flush. It is the
+  // longest the timer holds instead.
+  it('holds a 2^31-or-larger budget as the longest the timer holds, not 1 ms', async () => {
+    expect(await settleWithin(resolveAfter(300, undefined), 2 ** 31)).toBe(true)
+    expect(await settleWithin(resolveAfter(300, undefined), Number.MAX_SAFE_INTEGER)).toBe(true)
   }, 30_000)
 
   it('the last budget that behaves as written is 2^31 - 1, and it IS enforced', () => {
     // Boundary statement, not a wait: 2147483647 is honoured (~24 days) while
-    // 2147483648 collapses to 1ms at the timer. `teardownTimeoutMs` now refuses
+    // 2147483648 does not fit the timer. `teardownTimeoutMs` refuses
     // to hand out anything past the ceiling.
     expect(MAX_TIMEOUT_MS).toBe(2147483647)
     expect(timeoutFor('2147483647')).toBe(2147483647)

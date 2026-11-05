@@ -32,8 +32,11 @@ export function createTail(): Tail {
   return { chunks: [], chars: 0, dropped: 0 }
 }
 
-export function appendTail(t: Tail, chunk: string, limit = PERSISTENT_TAIL_CHARS): void {
+export function appendTail(t: Tail, chunk: string, cap = PERSISTENT_TAIL_CHARS): void {
   if (chunk.length === 0) return
+  // Every bound below is `chars > limit`, which NaN never is: a NaN cap
+  // kept everything, the unbounded heap this exists to prevent.
+  const limit = Number.isNaN(cap) ? 0 : cap
   t.chunks.push(chunk)
   t.chars += chunk.length
   // Evict WHOLE chunks from the head — no concatenation until the flush

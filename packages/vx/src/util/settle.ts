@@ -51,7 +51,8 @@ export function killGraceMs(defaultMs: number): number {
 export async function settleWithin(p: Promise<unknown>, ms: number): Promise<boolean> {
   let timer: ReturnType<typeof setTimeout> | undefined
   const deadline = new Promise<false>((resolve) => {
-    timer = setTimeout(() => resolve(false), ms)
+    // A delay past a 32-bit int fires at 1 ms: the longest the timer holds instead.
+    timer = setTimeout(() => resolve(false), Math.min(ms, MAX_TIMEOUT_MS))
   })
   try {
     return (await Promise.race([p.then(() => true), deadline])) !== false
