@@ -1,7 +1,9 @@
 // The claimant's shell (`lockfileClaim`): the memo, the per-run gate, the
 // fallback for an unlisted project and the `--affected` diff, with a fake
 // digest so the pins are about the shell and not a lockfile format. The
-// real formats are pinned in @vzn/vx-lockfile, one file per manager.
+// real formats are pinned in @vzn/vx-lockfile, one file per manager. The
+// digests are asked as `vx lock` asks them (`digestOf`): a run's key reads
+// the recorded ones (`KeyHookContext.locked`, tests/locked-digests.test.ts).
 import { Database } from 'bun:sqlite'
 import { mkdir, mkdtemp, readdir, rm, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -10,6 +12,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Cache } from '../src/cache/index.js'
 import { lockfileClaim, reachDigests } from '../src/index.js'
 import type { TaskNode } from '../src/graph/index.js'
+import type { LockedFile } from '../src/orchestrator/index.js'
+import { xxh3hex } from '../src/util/index.js'
 
 let root: string
 let calls: string[]
@@ -42,13 +46,42 @@ function claim(scope?: 'project' | 'workspace') {
     },
   })
 }
-const ctx = () => ({ workspaceRoot: root, cacheDir: path.join(root, '.vx', 'cache'), warn() {} })
+const ctx = () => ({
+  workspaceRoot: root,
+  cacheDir: path.join(root, '.vx', 'cache'),
+  warn() {},
+  locked: (): Promise<LockedFile | undefined> => {
+    throw new Error('asked the lock')
+  },
+})
+/** A run's context over a lock recording `digests` (project dir → digest) and `extras` of bun.lock. */
+const lockedCtx = (
+  digests: Record<string, string>,
+  extras: Record<string, string> = {},
+  asked: string[] = [],
+) => ({
+  ...ctx(),
+  locked: async (file: string) => {
+    asked.push(file)
+    return { extras, digest: (dir: string) => digests[path.relative(root, dir) || '.'] }
+  },
+})
 const task = (dir: string) => ({ projectDir: path.join(root, dir) }) as TaskNode
+/** What `vx lock` records as the project at `dir`'s digest, as the key part it becomes. */
+async function digestOf(
+  hooks: ReturnType<typeof lockfileClaim>,
+  dir: string,
+  c: { workspaceRoot: string; cacheDir: string; warn(): void } = ctx(),
+): Promise<{ deps: string } | undefined> {
+  const projects = [{ name: 'p', dir: path.join(root, dir) }]
+  const d = await hooks.fingerprint.digests!('bun.lock', { ...c, projects })
+  return d === undefined ? undefined : { deps: d.projects['p']! }
+}
 const lock = (text: string) => writeFile(path.join(root, 'bun.lock'), text)
 type Memo = {
   version: number
   extras: Record<string, string>
-  importers: Record<string, string>
+  importers: Record<string, string> | null
   edges: Record<string, unknown>
   recorded: Record<string, string[]> | null
 }
@@ -77,7 +110,9 @@ function editMemo(edit: (memo: Memo) => void): void {
     db.run(
       `UPDATE lockfile_memos SET extras = ?, importers = ?, edges = ?, recorded = ?
        WHERE rowid = (SELECT MAX(rowid) FROM lockfile_memos WHERE file = 'bun.lock')`,
-      JSON_COLUMNS.map((c) => (memo[c] === null ? null : JSON.stringify(memo[c]))),
+      JSON_COLUMNS.map((c) =>
+        c === 'recorded' && memo[c] === null ? null : JSON.stringify(memo[c]),
+      ),
     )
   } finally {
     db.close()
@@ -118,13 +153,13 @@ describe('extra files the lockfile names', () => {
   it('an edited extra file moves the key, in a new process and in the same one', async () => {
     await lock('packages/a=a1\nextra:patches/p.patch\n')
     await patch('one')
-    const first = (await withExtras().key(task('packages/a'), ctx()))!['deps']
+    const first = (await digestOf(withExtras(), 'packages/a'))!['deps']
     await patch('two!')
     const hooks = withExtras()
-    const second = (await hooks.key(task('packages/a'), ctx()))!['deps']
+    const second = (await digestOf(hooks, 'packages/a'))!['deps']
     expect(second).not.toBe(first)
     await patch('three!!')
-    const third = (await hooks.key(task('packages/a'), ctx()))!['deps']
+    const third = (await digestOf(hooks, 'packages/a'))!['deps']
     expect(new Set([first, second, third]).size).toBe(3)
   })
 
@@ -135,10 +170,10 @@ describe('extra files the lockfile names', () => {
   it("another claimant's memo is not trusted", async () => {
     await lock('packages/a=a1\nextra:patches/p.patch\n')
     await patch('one')
-    await claim().key(task('packages/a'), ctx())
-    const first = (await withExtras().key(task('packages/a'), ctx()))!['deps']
+    await digestOf(claim(), 'packages/a')
+    const first = (await digestOf(withExtras(), 'packages/a'))!['deps']
     await patch('two!')
-    expect((await withExtras().key(task('packages/a'), ctx()))!['deps']).not.toBe(first)
+    expect((await digestOf(withExtras(), 'packages/a'))!['deps']).not.toBe(first)
   })
 
   // Read as absent, an extra file that is there but unreadable folded as
@@ -149,12 +184,12 @@ describe('extra files the lockfile names', () => {
     await lock('packages/a=a1\nextra:patches/p.patch\n')
     await mkdir(path.join(root, 'patches'), { recursive: true })
     await symlink('p.patch', path.join(root, 'patches', 'p.patch'))
-    await expect(withExtras().key(task('packages/a'), ctx())).rejects.toThrow(
+    await expect(digestOf(withExtras(), 'packages/a')).rejects.toThrow(
       'patches/p.patch: cannot be read (',
     )
     // CONTROL: an absent one is absent.
     await rm(path.join(root, 'patches', 'p.patch'))
-    expect((await withExtras().key(task('packages/a'), ctx()))!['deps']).toBe('a1|patches/p.patch:')
+    expect((await digestOf(withExtras(), 'packages/a'))!['deps']).toBe('a1|patches/p.patch:')
   })
 
   // `--affected` asks which files a lockfile names for every diff (one may
@@ -172,7 +207,7 @@ describe('extra files the lockfile names', () => {
     // CONTROL: no memo yet, so the lockfile is parsed.
     const cold = counting()
     expect(await cold.extraFiles('bun.lock', bytes, fctx)).toEqual(['patches/p.patch'])
-    await cold.hooks.key(task('packages/a'), ctx())
+    await digestOf(cold.hooks, 'packages/a')
     const warm = counting()
     editMemo((m) => {
       m.extras = { 'patches/from-the-memo': m.extras['patches/p.patch']! }
@@ -186,22 +221,53 @@ describe('extra files the lockfile names', () => {
   it('CONTROL: an unchanged extra file costs a warm run no parse', async () => {
     await lock('packages/a=a1\nextra:patches/p.patch\n')
     await patch('one')
-    const first = (await withExtras().key(task('packages/a'), ctx()))!['deps']
+    const first = (await digestOf(withExtras(), 'packages/a'))!['deps']
     const parses = calls.length
-    expect((await withExtras().key(task('packages/a'), ctx()))!['deps']).toBe(first)
+    expect((await digestOf(withExtras(), 'packages/a'))!['deps']).toBe(first)
     expect(calls.length).toBe(parses)
   })
 })
 
 describe('key', () => {
+  it("a run's key is the digest `vx lock` recorded: the file is not read, nor parsed", async () => {
+    await lock('packages/a=a1\n')
+    const asked: string[] = []
+    const run = lockedCtx({ 'packages/a': 'recorded' }, {}, asked)
+    const hooks = claim()
+    expect(await hooks.key(task('packages/a'), run)).toEqual({ deps: 'recorded' })
+    expect(await hooks.key(task('packages/b'), run)).toBeUndefined()
+    // Asked once per run, however many tasks.
+    expect(asked).toEqual(['bun.lock'])
+    expect(calls).toHaveLength(0)
+    // A file absent and unrecorded keys nothing.
+    expect(await hooks.key(task('packages/a'), { ...ctx(), locked: async () => undefined })).toBe(
+      undefined,
+    )
+  })
+
+  // A `link:` directory is edited with no install, so a moved extra file is
+  // no refusal: the record is stale for it, and the claim digests anew.
+  it('an extra file moved since the lock is digested anew, not read from the record', async () => {
+    await lock('packages/a=a1\n')
+    await mkdir(path.join(root, 'patches'))
+    await writeFile(path.join(root, 'patches', 'p.patch'), 'now')
+    const hooks = claim()
+    const stale = lockedCtx({ 'packages/a': 'recorded' }, { 'patches/p.patch': 'then' })
+    expect(await hooks.key(task('packages/a'), stale)).toEqual({ deps: 'a1' })
+    expect(calls).toHaveLength(1)
+    // CONTROL: the hash as recorded keys from the record.
+    const fresh = lockedCtx({ 'packages/a': 'recorded' }, { 'patches/p.patch': xxh3hex('now') })
+    expect(await hooks.key(task('packages/a'), fresh)).toEqual({ deps: 'recorded' })
+  })
+
   it("folds the project's digest, the root's for an unlisted project, and nothing without a file", async () => {
     const hooks = claim()
-    expect(await hooks.key(task('packages/a'), ctx())).toBeUndefined()
+    expect(await digestOf(hooks, 'packages/a')).toBeUndefined()
     await lock('packages/a=a1\n')
-    expect(await hooks.key(task('packages/a'), ctx())).toEqual({ deps: 'a1' })
+    expect(await digestOf(hooks, 'packages/a')).toEqual({ deps: 'a1' })
     await lock('.=root1\npackages/a=a1\n')
-    expect(await hooks.key(task('packages/b'), ctx())).toEqual({ deps: 'root1' })
-    expect(await hooks.key(task('.'), ctx())).toEqual({ deps: 'root1' })
+    expect(await digestOf(hooks, 'packages/b')).toEqual({ deps: 'root1' })
+    expect(await digestOf(hooks, '.')).toEqual({ deps: 'root1' })
   })
 
   it("a listed project folds the root importer's digest too: the root's tools are on its PATH", async () => {
@@ -212,7 +278,7 @@ describe('key', () => {
     const hooks = claim()
     const key = async (text: string, dir: string) => {
       await lock(text)
-      return (await hooks.key(task(dir), ctx()))!['deps']!
+      return (await digestOf(hooks, dir))!['deps']!
     }
     const base = await key('.=root1\npackages/a=a1\npackages/b=b1\n', 'packages/a')
     const rootMoved = await key('.=root2\npackages/a=a1\npackages/b=b1\n', 'packages/a')
@@ -234,7 +300,7 @@ describe('key', () => {
     const hooks = claim()
     const key = async (text: string, dir: string) => {
       await lock(text)
-      return (await hooks.key(task(dir), ctx()))!['deps']!
+      return (await digestOf(hooks, dir))!['deps']!
     }
     const base = await key('.=root1\npackages/a=a1\npackages/b=b1\n', 'packages/a/e2e')
     expect(base).toBe(await key('.=root1\npackages/a=a1\npackages/b=b1\n', 'packages/a'))
@@ -244,13 +310,13 @@ describe('key', () => {
     expect(await key('.=root1\npackages/a=a1\n', 'packages/ab')).toBe('root1')
   })
 
-  it('parses once per content: the memo serves the next process, the context the next task', async () => {
+  it('parses once per content: the memo serves the next process, the process the next ask', async () => {
     // No root importer: these rows are about the memo, so a's key is its own digest.
     await lock('packages/a=a1\n')
     const first = claim()
     const run = ctx()
-    await first.key(task('packages/a'), run)
-    await first.key(task('packages/b'), run)
+    await digestOf(first, 'packages/a', run)
+    await digestOf(first, 'packages/b', run)
     expect(calls).toHaveLength(1)
     // The memo is a row of cache.db, keyed by version + content hash, and no file.
     const memo = readMemo()
@@ -259,17 +325,17 @@ describe('key', () => {
     expect(memo.importers).toEqual({ 'packages/a': 'a1' })
     // A fresh instance (a new process) reads the memo instead of parsing.
     const second = claim()
-    expect(await second.key(task('packages/a'), ctx())).toEqual({ deps: 'a1' })
+    expect(await digestOf(second, 'packages/a')).toEqual({ deps: 'a1' })
     expect(calls).toHaveLength(1)
-    // A planted memo is what keys the task: the proof the file was not parsed.
+    // A planted memo is what `vx lock` records: the proof the file was not parsed.
     editMemo((m) => {
-      m.importers['packages/a'] = 'planted'
+      m.importers!['packages/a'] = 'planted'
     })
-    expect(await claim().key(task('packages/a'), ctx())).toEqual({ deps: 'planted' })
+    expect(await digestOf(claim(), 'packages/a')).toEqual({ deps: 'planted' })
     expect(calls).toHaveLength(1)
     // Changed bytes ignore the stale memo and parse again.
     await lock('packages/a=a2\n')
-    expect(await claim().key(task('packages/a'), ctx())).toEqual({ deps: 'a2' })
+    expect(await digestOf(claim(), 'packages/a')).toEqual({ deps: 'a2' })
     expect(calls).toHaveLength(2)
   })
 
@@ -285,7 +351,7 @@ describe('key', () => {
         },
       })
     for (let i = 1; i <= 2; i++) {
-      await expect(throwing().key(task('packages/a'), ctx())).rejects.toThrow('not JSON')
+      await expect(digestOf(throwing(), 'packages/a')).rejects.toThrow('not JSON')
       expect(calls).toHaveLength(i)
     }
     const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
@@ -306,22 +372,22 @@ describe('key', () => {
     await utimes(file, kept, kept)
     await Bun.sleep(60)
     const hooks = claim()
-    expect(await hooks.key(task('packages/a'), ctx())).toEqual({ deps: 'a1' })
+    expect(await digestOf(hooks, 'packages/a')).toEqual({ deps: 'a1' })
     await lock('packages/a=a2\n')
     await utimes(file, kept, kept)
     await Bun.sleep(60)
-    expect(await hooks.key(task('packages/a'), ctx())).toEqual({ deps: 'a2' })
+    expect(await digestOf(hooks, 'packages/a')).toEqual({ deps: 'a2' })
   })
 
   it('a memo of another digest version is not trusted', async () => {
     await lock('.=root1\n')
-    await claim().key(task('.'), ctx())
+    await digestOf(claim(), '.')
     const hooks = lockfileClaim({
       file: 'bun.lock',
       version: 2,
       digest: () => new Map([['.', 'v2']]),
     })
-    expect(await hooks.key(task('.'), ctx())).toEqual({ deps: 'v2' })
+    expect(await digestOf(hooks, '.')).toEqual({ deps: 'v2' })
   })
 
   it('scope: workspace folds the file hash into every task and never parses', async () => {
@@ -344,7 +410,8 @@ describe('key', () => {
       part: 'bun',
       digest: () => new Map([['.', 'r']]),
     })
-    expect(await hooks.key(task('.'), ctx())).toEqual({ bun: 'r' })
+    const run = lockedCtx({ '.': 'r' })
+    expect(await hooks.key(task('.'), run)).toEqual({ bun: 'r' })
   })
 
   it('a memo it CANNOT write is a speed-up lost, never a failed run', async () => {
@@ -357,27 +424,27 @@ describe('key', () => {
     await writeFile(blocked, 'this is a file, so no index can be made under it')
     const hooks = claim()
     const blockedCtx = { workspaceRoot: root, cacheDir: blocked, warn() {} }
-    expect(await hooks.key(task('packages/a'), blockedCtx)).toEqual({ deps: 'a1' })
+    expect(await digestOf(hooks, 'packages/a', blockedCtx)).toEqual({ deps: 'a1' })
     // A second run over the same content re-parses, since nothing was
     // memoised — the cost the memo exists to avoid, paid rather than fatal.
-    expect(await claim().key(task('packages/a'), { ...blockedCtx })).toEqual({ deps: 'a1' })
+    expect(await digestOf(claim(), 'packages/a', { ...blockedCtx })).toEqual({ deps: 'a1' })
     expect(calls.length).toBe(2)
   })
 
-  // A `discover` hook reads the memo before a first run has made the index:
-  // the parse it pays then is kept once the index exists, by the same
-  // process's next read, though that read is served from memory.
+  // `vx lock` digests before a first run has made the index: the parse it
+  // pays then is kept once the index exists, by the same process's next
+  // read, though that read is served from memory.
   it('a memo with no index to keep it in is kept once there is one', async () => {
     await lock('packages/a=a1\n')
     const cacheDir = path.join(root, 'fresh')
     await mkdir(cacheDir)
     const fresh = { ...ctx(), cacheDir }
     const hooks = claim()
-    expect(await hooks.importers(fresh)).toEqual(new Map())
+    expect(await digestOf(hooks, 'packages/a', fresh)).toEqual({ deps: 'a1' })
     expect(await readdir(cacheDir)).toEqual([])
     new Cache(cacheDir).close()
-    expect(await hooks.key(task('packages/a'), fresh)).toEqual({ deps: 'a1' })
-    expect(await claim().key(task('packages/a'), fresh)).toEqual({ deps: 'a1' })
+    expect(await hooks.importers(fresh)).toEqual(new Map())
+    expect(await digestOf(claim(), 'packages/a', fresh)).toEqual({ deps: 'a1' })
     expect(calls).toHaveLength(1)
   })
 
@@ -445,6 +512,42 @@ describe('importers', () => {
     })
     expect(await withRecorded().recorded(ctx())).toEqual(new Map([['.', new Set(['planted'])]]))
     expect(calls).toHaveLength(1)
+  })
+
+  // The digests are most of a parse (bun.lock's reach digests), and a run
+  // keys from the recorded ones: its read leaves them out of the memo, and
+  // `vx lock`'s read, which needs them, parses again and keeps them.
+  it("a run's read digests nothing; `vx lock`'s adds the digests to the memo", async () => {
+    const digested: string[] = []
+    const hooks = () =>
+      lockfileClaim({
+        file: 'bun.lock',
+        version: 1,
+        digest: (text) => {
+          digested.push(text)
+          return new Map([['packages/a', 'a1']])
+        },
+        importers: (text) => {
+          calls.push(text)
+          return new Map()
+        },
+      })
+    await lock('packages/a>packages/b\n')
+    await hooks().importers(ctx())
+    expect([calls.length, digested.length, readMemo().importers]).toEqual([1, 0, null])
+    // A fresh process's run reads the memo: no parse at all.
+    await hooks().importers(ctx())
+    expect([calls.length, digested.length]).toEqual([1, 0])
+    expect(await digestOf(hooks(), 'packages/a')).toEqual({ deps: 'a1' })
+    expect([calls.length, digested.length, readMemo().importers]).toEqual([
+      2,
+      1,
+      { 'packages/a': 'a1' },
+    ])
+    // Then every reader is served from it.
+    await hooks().importers(ctx())
+    expect(await digestOf(hooks(), 'packages/a')).toEqual({ deps: 'a1' })
+    expect([calls.length, digested.length]).toEqual([2, 1])
   })
 
   it('scope: workspace still records them, and its memo is not a project-scope memo', async () => {

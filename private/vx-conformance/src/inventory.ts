@@ -329,6 +329,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'lock-review-files',
     'lock-secret',
     'lock-shadowed-config',
+    'locked-digests',
     'lockfile-boundary',
     'lockfile-pool',
     'lockfile-claim',

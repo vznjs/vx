@@ -31,12 +31,27 @@ const files = new Map([['bun.lock', { hash: 'h1', projects: { web: 'dw', ui: 'du
 
 it('writes each directory once, sorted, and every edge and digest as a sorted index', () => {
   expect(dependenciesLock(root, metas, files)).toEqual({
-    version: 2,
+    version: 3,
     projects: ['apps/docs', 'apps/web', 'packages/core', 'packages/ui'],
     deps: [[], [2, 3], [], [2]],
     reach: [[3], [], [], []],
     files: { 'bun.lock': { hash: 'h1', digests: ['', 'dw', 'dc', 'du'] } },
   })
+})
+
+it('records the other files the digests read, sorted, and only when there are any', () => {
+  const withExtras = new Map([
+    ['bun.lock', { hash: 'h1', projects: {}, extras: { 'patches/b.patch': 'hb', 'a/x': 'ha' } }],
+  ])
+  const lock = dependenciesLock(root, metas, withExtras)
+  expect(JSON.stringify(lock.files)).toBe(
+    '{"bun.lock":{"hash":"h1","digests":["","","",""],"extras":{"a/x":"ha","patches/b.patch":"hb"}}}',
+  )
+  expect(recordedDigests(lock, 'bun.lock')!.extras).toEqual({
+    'a/x': 'ha',
+    'patches/b.patch': 'hb',
+  })
+  expect(recordedDigests(dependenciesLock(root, metas, files), 'bun.lock')!.extras).toEqual({})
 })
 
 it('the same projects in another order write the same lock', () => {
@@ -58,6 +73,8 @@ it('reads back what it wrote: dependants by edge or reach, digests by directory'
     undefined,
     undefined,
   ])
+  // A project the lock has with no digest, and one it does not have.
+  expect([rec.has('apps/docs'), rec.has('x')]).toEqual([true, false])
   expect(recordedDigests(lock, 'pnpm-lock.yaml')).toBeUndefined()
 })
 
@@ -66,7 +83,10 @@ it('reads nothing from a missing file, another version or another shape', () => 
   expect(parseDependenciesLock(null)).toBeNull()
   expect(parseDependenciesLock(enc({ version: 1, projects: {}, files: {} }))).toBeNull()
   expect(
-    parseDependenciesLock(enc({ version: 2, projects: ['a'], deps: [], reach: [[]], files: {} })),
+    parseDependenciesLock(enc({ version: 2, projects: [], deps: [], reach: [], files: {} })),
+  ).toBeNull()
+  expect(
+    parseDependenciesLock(enc({ version: 3, projects: ['a'], deps: [], reach: [[]], files: {} })),
   ).toBeNull()
   expect(parseDependenciesLock(new TextEncoder().encode('{'))).toBeNull()
 })

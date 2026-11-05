@@ -922,6 +922,7 @@ type · `src/orchestrator/plugin.ts`
 export interface FingerprintDigests {
   readonly hash: string
   readonly projects: Readonly<Record<string, string>>
+  readonly extras?: readonly string[]
 }
 ```
 
@@ -1205,7 +1206,9 @@ export function isUserError(err: unknown): err is UserError
 type · `src/orchestrator/plugin.ts`
 
 ```ts
-export interface KeyHookContext extends BaseContext {}
+export interface KeyHookContext extends BaseContext {
+  locked(file: string): Promise<LockedFile | undefined>
+}
 ```
 
 ## `LentAccess`
@@ -1313,6 +1316,19 @@ export interface LocalHistoryOptions {
   readonly recent?: number | undefined
   readonly branch?: string | null | undefined
   readonly defs?: ReadonlyMap<string, string> | undefined
+}
+```
+
+## `LockedFile`
+
+type · `src/orchestrator/plugin.ts`
+
+`KeyHookContext.locked`'s answer.
+
+```ts
+export interface LockedFile {
+  readonly extras: Readonly<Record<string, string>>
+  digest(projectDir: string): string | undefined
 }
 ```
 

@@ -448,7 +448,8 @@ who linked to it and selects those, naming the deleted `vx.config` as
 the reason. With no such file at the base, it selects every project.
 The same file holds each claimed file's per-project digests and the
 hash of the bytes they came from, so a changed lockfile whose base
-bytes match the record is digested on the head side only. A project that moved is no deletion: its config, the same bytes
+bytes match the record is digested on the head side only (one whose
+digests read another file, a `bun.lock` patch, is digested on both). A project that moved is no deletion: its config, the same bytes
 in its new directory, selects only it, by its files. A dependency a plugin's `discover` drops without deleting a
 project is the plugin's to claim (`VxPlugin.fingerprint`, as the
 lockfile plugins do).
@@ -1850,11 +1851,17 @@ to `.vx/projects.lock.json`. Runs read the lock, never the configs:
 after you edit one, run `vx lock` and commit the lock.
 
 Beside it, `.vx/dependencies.lock.json` records each project's edges and
-each claimed file's per-project digests (`FingerprintClaim.digests`),
-minified as the config lock is, since only vx reads it. Commit it too:
-`--affected` reads the base commit's copy to find a deleted project's
-dependants and a changed lockfile's base digests, and `vx lock --check`
-fails when it is missing or stale.
+each claimed file's per-project digests (`FingerprintClaim.digests`)
+with the hash of the file and of each other file they read (a
+`bun.lock` patch), minified as the config lock is, since only vx reads
+it. Commit it too: a run keys each task from those digests and never
+parses the lockfile, so after an install, run `vx lock`; a run whose
+lockfile changed since refuses (`VX_E_LOCK`), and so does one with no
+dependencies lock while a plugin claims a lockfile that is there. An
+edit in a `link:` or `file:` directory the lockfile names needs no
+`vx lock`: the plugin digests anew. `--affected` reads the base commit's copy to find a deleted
+project's dependants and a changed lockfile's base digests, and `vx
+lock --check` fails when it is missing or stale.
 
 ### Usage
 
@@ -2585,7 +2592,11 @@ The task graph has a cycle. The message names the loop; drop one of its
 A run reads its configs only from `.vx/projects.lock.json`, and that
 lock is missing, not one this vx reads (not JSON, another version, a
 hand-edited entry), holds no entry for a project the workspace has, has
-not seen a `vx.config` written since, or locks one that is gone.
+not seen a `vx.config` written since, or locks one that is gone. Or a
+plugin claims a lockfile (`bun()`, `pnpm()`, …) and
+`.vx/dependencies.lock.json` is missing, not one this vx reads, does not
+record that lockfile, or records bytes it no longer holds: it changed
+since `vx lock` (an install).
 Run `vx lock`, then the verb again. Commit the lock; `vx lock --check`
 on CI fails one that no longer matches the configs.
 

@@ -7,8 +7,9 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import type { DiscoverContext, TaskNode } from '@vzn/vx'
+import type { DiscoverContext } from '@vzn/vx'
 import { yarn } from '../src/index.js'
+import { lockedKey } from './helpers/key.js'
 
 let root: string
 beforeEach(async () => {
@@ -46,9 +47,9 @@ afterEach(async () => {
 
 /** One run's key for a task in packages/a: a fresh plugin and context, as a new process has. */
 async function key(): Promise<string> {
-  const ctx = { workspaceRoot: root, cacheDir: path.join(root, '.vx', 'cache'), warn() {} }
-  const task = { projectDir: path.join(root, 'packages/a') } as TaskNode
-  return JSON.stringify(await yarn().key!(task, ctx))
+  return JSON.stringify(
+    await lockedKey(yarn(), root, path.join(root, '.vx', 'cache'), path.join(root, 'packages/a')),
+  )
 }
 
 it('an edit under a workspace a classic `link:` names moves no key', async () => {

@@ -5,8 +5,9 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import type { DiscoverContext, ProjectMeta, TaskNode, VxPlugin } from '@vzn/vx'
+import type { DiscoverContext, ProjectMeta, VxPlugin } from '@vzn/vx'
 import { bun, npm } from '../src/index.js'
+import { lockedKey } from './helpers/key.js'
 
 let root: string
 beforeEach(async () => {
@@ -18,8 +19,7 @@ afterEach(async () => {
 
 /** One run's key for a task at the root: a fresh context, as core hands each run. */
 async function key(plugin: VxPlugin): Promise<Readonly<Record<string, string>> | undefined> {
-  const ctx = { workspaceRoot: root, cacheDir: path.join(root, '.vx', 'cache'), warn() {} }
-  return plugin.key!({ projectDir: root } as TaskNode, ctx)
+  return lockedKey(plugin, root, path.join(root, '.vx', 'cache'))
 }
 
 async function discover(plugin: VxPlugin): Promise<unknown> {

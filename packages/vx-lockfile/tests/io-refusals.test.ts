@@ -5,8 +5,9 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import type { DiscoverContext, TaskNode } from '@vzn/vx'
+import type { DiscoverContext } from '@vzn/vx'
 import { bun, pnpm } from '../src/index.js'
+import { lockedKey } from './helpers/key.js'
 
 let root: string
 beforeEach(async () => {
@@ -45,8 +46,7 @@ it('an unparsable pnpm-workspace.yaml refuses the lock, named, not every workspa
 
 it('a settings file that is there but unreadable refuses the key, not folds as absent', async () => {
   await mkdir(path.join(root, '.npmrc'))
-  const ctx = { workspaceRoot: root, cacheDir: path.join(root, '.vx', 'cache'), warn() {} }
-  await expect(pnpm().key!({ projectDir: root } as TaskNode, ctx)).rejects.toThrow('.npmrc')
+  await expect(lockedKey(pnpm(), root, path.join(root, '.vx', 'cache'))).rejects.toThrow('.npmrc')
 })
 
 it('a package.json that is there but unreadable refuses the lock, not reads as no manifest', async () => {

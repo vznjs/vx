@@ -60,6 +60,7 @@ export {
   type CommandContext,
   type GraphHookContext,
   type KeyHookContext,
+  type LockedFile,
   type PluginCommand,
   type ProjectHookContext,
   type ScheduleHookContext,

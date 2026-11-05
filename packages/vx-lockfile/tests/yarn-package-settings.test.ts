@@ -8,8 +8,8 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import type { TaskNode } from '@vzn/vx'
 import { yarn } from '../src/index.js'
+import { lockedKey } from './helpers/key.js'
 
 let root: string
 beforeEach(async () => {
@@ -20,8 +20,7 @@ afterEach(async () => {
 })
 
 const key = async (): Promise<string> => {
-  const ctx = { workspaceRoot: root, cacheDir: path.join(root, '.vx', 'cache'), warn() {} }
-  return JSON.stringify(await yarn().key!({ projectDir: root } as TaskNode, ctx))
+  return JSON.stringify(await lockedKey(yarn(), root, path.join(root, '.vx', 'cache')))
 }
 const manifest = (pkg: Record<string, unknown>): Promise<void> =>
   writeFile(path.join(root, 'package.json'), JSON.stringify(pkg))

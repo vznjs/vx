@@ -165,6 +165,13 @@ function run(): string {
     )
     // The workspace links `bun install` records, which bun() reads its edges from.
     writeFileSync(path.join(root, 'bun.lock'), JSON.stringify(BASIC_LOCK))
+    // And the README's `vx lock` after it: a run keys from what it records.
+    const lock = Bun.spawnSync({
+      cmd: [process.execPath, path.join(ROOT, 'packages/vx/src/bin.ts'), 'lock'],
+      cwd: root,
+      env: { ...process.env, HOME: home },
+    })
+    if (lock.exitCode !== 0) throw new Error(`vx lock: ${lock.stderr.toString()}`)
     for (const args of [
       ['init', '-q'],
       ['add', '-A'],

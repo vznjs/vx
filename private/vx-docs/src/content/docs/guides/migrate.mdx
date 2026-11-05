@@ -168,7 +168,7 @@ is a Turbo repo with that `.vx/workspace.ts` added. A test runs these
 lines on every commit:
 
 ```sh
-bun install && git init && git add -A && git commit -m init
+bun install && vx lock && git init && git add -A && git commit -m init
 vx run test --all      # local 3↑: lib#build, app#build, app#test
 vx run test --all      # local 3✓
 bunx @vzn/vx-migrate       # tasks 3 clean

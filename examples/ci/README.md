@@ -6,8 +6,8 @@ The starter from `examples/basic`, with the CI setup the
 
 ```sh
 bun install
+vx lock          # write the .vx locks, then commit them
 git init && git add -A && git commit -m init
-vx lock          # write .vx/projects.lock.json, then commit it
 ```
 
 Run `vx lock` again and commit the lock whenever a config, a plugin, a

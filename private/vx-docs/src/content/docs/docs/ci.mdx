@@ -125,7 +125,8 @@ Run `vx lock` and commit the lock after you change any of these:
 
 - a `vx.config.ts` or `.vx/workspace.ts`
 - a file a config imports
-- your dependencies
+- your dependencies (an install: a run refuses a lockfile changed since
+  `vx lock`, since it keys each task from the digests the lock records)
 
 Make `vx lock --check` the workflow's first vx step. When someone
 forgot, it fails and names the project.

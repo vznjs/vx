@@ -283,7 +283,7 @@ async function dependenciesOf(
     warn,
     projects: all.map((p) => ({ name: p.name, dir: p.dir })),
   }
-  const files = new Map<string, { hash: string; projects: Readonly<Record<string, string>> }>()
+  const files = new Map<string, NonNullable<Awaited<ReturnType<typeof claimedDigests>>>>()
   for (const [file, plugin] of fingerprintClaims(plugins)) {
     const answer = await claimedDigests(plugin, file, ctx)
     if (answer !== undefined) files.set(file, answer)
