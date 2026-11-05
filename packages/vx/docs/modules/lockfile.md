@@ -90,29 +90,49 @@ any refusal that comes first.
 ```ts
 export const DEPENDENCIES_LOCK_NAME = '.vx/dependencies.lock.json'
 export interface DependenciesLock {
-  version: number // 2
+  version: number // 3
   projects: string[] // directories, sorted; every other list indexes this one
   deps: number[][] // per project, the projects it builds after, sorted
   reach: number[][] // per project, the projects it reaches for selection only, sorted
-  files: Record<string, { hash: string; digests: string[] }> // claimed file → its hash and each project's digest ('' none)
+  // claimed file → its bytes' xxh3, each project's digest ('' none), and each
+  // other file the digests read → its hash (absent when none)
+  files: Record<string, { hash: string; digests: string[]; extras?: Record<string, string> }>
 }
 export function dependenciesLock(
   root: string,
   metas: readonly ProjectMeta[],
-  files: ReadonlyMap<string, { hash: string; projects: Readonly<Record<string, string>> }>, // by project name
+  files: ReadonlyMap<
+    string,
+    {
+      hash: string
+      projects: Readonly<Record<string, string>>
+      extras?: Readonly<Record<string, string>>
+    }
+  >, // by project name
 ): DependenciesLock
+export function readDependenciesLock(root: string, reads?: LoadReads): Promise<Uint8Array | null>
 export function parseDependenciesLock(bytes: Uint8Array | null): DependenciesLock | null
 export function dependantsOf(lock: DependenciesLock, dir: string): string[]
 export function recordedDigests(
   lock: DependenciesLock,
   file: string,
-): { hash: string; of: (dir: string) => string | undefined } | undefined
+):
+  | {
+      hash: string
+      extras: Readonly<Record<string, string>>
+      has: (dir: string) => boolean
+      of: (dir: string) => string | undefined
+    }
+  | undefined
 export async function writeDependenciesLock(root: string, lock: DependenciesLock): Promise<void>
 ```
 
 `vx lock` writes it beside the lock, minified (only vx reads it) and committed:
 each project's `discover` edges and each claimed file's
-`FingerprintClaim.digests`. Flat: each directory once, in a sorted
+`FingerprintClaim.digests`, with the xxh3 of the file's bytes and the
+hash of each other file the digests read (`extras`: a `bun.lock`
+patch, a `file:` directory). A run keys from those digests and never
+parses the file (`orchestrator/locked-digests.ts`, below). Flat: each directory once, in a sorted
 `projects` list, and every edge and digest an index into it (a third
 the size of keying each by its directory, and a quarter of the parse
 and lookup time at 2,000 projects). Every list is sorted, so the same
@@ -126,6 +146,40 @@ then falls back (every project for a deletion, the claimant's
 `affected` for a change). `vx lock --check` holds it to a fresh
 derivation once the lock itself holds.
 
+### A run's read (`orchestrator/locked-digests.ts`)
+
+```ts
+export function lockedFiles(
+  workspaceRoot: string,
+  claimed: readonly string[],
+  bytes: ReadonlyMap<string, Uint8Array>, // the claimed files the run read
+  lockBytes: Uint8Array | null,
+): KeyHookContext['locked']
+```
+
+A run reads the lock once (through the load's `reads`, beside the
+claimed files) when a plugin claims a file, and builds
+`KeyHookContext.locked` from it before the `key` stage. Every claimed
+file the lock records is checked first: its bytes (as the run read
+them) must hash to the record; one that moved, or a recorded file now
+gone, refuses the run (`VX_E_LOCK`: "bun.lock changed since `vx lock`:
+run `vx lock`"). A claimant that asks for a present file the lock does
+not record refuses too: with no lock ("no .vx/dependencies.lock.json:
+run `vx lock`"), an invalid one or another version, or a lock written
+before the file was there. A file absent and unrecorded answers
+`undefined`. The answer's `digest(projectDir)` refuses a project the
+lock does not list, and answers `undefined` for one it lists with no
+digest. Never a guess: a stale lockfile refuses, so a key comes from
+the bytes `vx lock` read.
+
+The files the digests read besides the lockfile (`extras`) are handed
+to the claimant with their recorded hashes, unchecked: a `link:` or
+`file:` directory is source edited with no install, and refusing each
+edit until `vx lock` failed eight conformance cases
+(`inputs/link-dir-dependency-edit-reruns` and its kin). `lockfileClaim`
+re-hashes them, as its memo did on every run before, and digests anew
+(through the memo) when one moved.
+
 ## Invariants
 
 - Deliberate asymmetry: runs TRUST the lock outright — a
@@ -133,6 +187,10 @@ derivation once the lock itself holds.
   byte-hash re-check cannot see import closures or env, so it would be
   a weaker guarantee pretending to add safety); only `--check` pays the
   full re-evaluation, and the CI recipe is `vx lock --check && vx run`.
+- The dependencies lock is the other way round: a run holds each
+  recorded file to its hash. A claimed file is its bytes, so the hash is
+  the whole guarantee, and it costs one xxh3 of bytes the run reads
+  anyway (2026-11-05).
 - A missing entry (or a missing lock) in a run is a hard
   `UserError` — never a silent fallback to evaluation. A locked
   directory whose config file is gone is refused before the lock is

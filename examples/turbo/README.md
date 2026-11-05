@@ -6,6 +6,7 @@ temporary start until the repo has native config:
 
 ```sh
 bun install
+vx lock              # record what bun.lock resolves to
 git init && git add -A && git commit -m init
 vx run test --all    # lib#build, app#build, app#test: local 3↑
 vx run test --all    # local 3✓

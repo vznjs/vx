@@ -5,9 +5,9 @@
 What every lockfile plugin needs around its parser. A plugin that keys
 each project on its own dependency closure (`@vzn/vx-lockfile`'s
 `bun()`, `pnpm()`, `npm()`, `yarn()`) claims the file
-(`VxPlugin.fingerprint`), folds one digest
-per project through `key`, and answers `--affected` by digesting both
-sides of a change. Only the parser differs per package manager; the
+(`VxPlugin.fingerprint`), records one digest per project through
+`vx lock` (`digests`), folds the recorded one through `key`, and answers
+`--affected` by digesting both sides of a change. Only the parser differs per package manager; the
 memo, the per-run gate, the fallback for a project the file does not
 list and the `--affected` diff are one implementation here, so a third
 lockfile is a parser and nothing else.
@@ -62,6 +62,19 @@ All are on the `@vzn/vx` façade.
 
 ## Construction rules
 
+- **A run's key never parses the lockfile.** `key` (project scope)
+  answers the digest `vx lock` recorded in `.vx/dependencies.lock.json`
+  (`ctx.locked(file)`, asked once per run), which core holds to the
+  file's bytes ([`lockfile.md`](./lockfile.md), "A run's read"). Only
+  when an extra file the record names moved since (a `link:` directory
+  edited, no install) does the run digest, through the memo; `digests`
+  (`vx lock`, `--affected`'s head side) and `affected` always do.
+- **A run's read digests nothing.** `importers` and `recorded` (a
+  `discover` or `project` stage's reads) leave the digests out of a
+  parse they pay, and out of the memo (`importers: null`); `digests`
+  parses again and keeps them. The digest was most of a parse: on this
+  repo's bun.lock about twice the text parse, and ten times the edges
+  (2026-11-05).
 - **Once per content.** The digests, and `importers`' and `recorded`'s
   answers beside them, are memoised in cache.db (`lockfile_memos`, one
   row per file and claimant, `cache/lockfile-memo.ts`) by `version`, the
@@ -77,9 +90,9 @@ All are on the `@vzn/vx` façade.
   same process's next load writes it once the index exists. A memo that
   cannot be written is a speed-up lost, not an error.
 - **Once per run.** Core hands every `key` call of one run the same
-  context object; a `WeakMap` on it makes the stat + read happen once
-  per run, not once per task (1000 tasks cost 1000 stats, 47 ms in
-  the plugin-stages row, before this).
+  context object; under `scope: 'workspace'` a `WeakMap` on it makes the
+  stat + read happen once per run, not once per task (1000 tasks cost
+  1000 stats, 47 ms in the plugin-stages row, before this).
 - **Once per process.** The file's size, mtime, ctime and inode gate the
   read within a process (a `vx watch` cycle), as `Cache.hashFile`'s memo
   keys a file: size and mtime alone kept the digests of a same-size
@@ -112,12 +125,14 @@ All are on the `@vzn/vx` façade.
   moved; a side that is absent (the file appeared or went) answers
   `undefined`, and so does `scope: 'workspace'`.
 - **`digests`** answers each project's digest (its importer's, or its
-  nearest listed ancestor's, with the root's) and the file's hash, for
-  `vx lock` to record; `scope: 'workspace'` and a missing file answer
-  `undefined`.
-- **`scope: 'workspace'`** folds the file's hash into every task and
-  never digests: the whole file, the coarsest key there is. With
-  `importers` it still parses once per content, for the edges.
+  nearest listed ancestor's, with the root's), the xxh3 of the file's
+  bytes and the extra files the digests read, for `vx lock` to record;
+  `scope: 'workspace'` and a missing file answer `undefined`.
+- **`scope: 'workspace'`** folds the file's hash (with its extra
+  files') into every task and never digests: the whole file, the
+  coarsest key there is, read by the run itself, since `vx lock`
+  records nothing for it. With `importers` it still parses once per
+  content, for the edges.
 
 `reachDigests` is the digest the parsers share: one hash per node over
 everything the node reaches, Merkle-style, with the strongly connected
@@ -166,11 +181,13 @@ in it is edited. A path outside the root is never read.
 
 ## Tests
 
-`tests/lockfile-claim.test.ts` — `importers` (served from the memo in a
+`tests/lockfile-claim.test.ts` — the key (the recorded digest, no read
+and no parse), `importers` (served from the memo in a
 new process, kept under `scope: 'workspace'` and not read by a
-project-scope claimant), the memo (served across instances, a
-planted memo keys the task, a changed file or version ignores it), the
-per-run gate (one parse for two tasks), the root folded into every
+project-scope claimant, a run's read digesting nothing and `vx lock`'s
+adding the digests), the memo (served across instances, a
+planted memo is what `vx lock` records, a changed file or version ignores it), the
+in-process gate (one parse for two projects), the root folded into every
 project and the root fallback, `scope: 'workspace'`, the `affected` diff
 (a root move names every project), and `reachDigests` (reach moves a
 digest, numbering does not, a cycle shares a component). The formats

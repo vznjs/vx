@@ -53,6 +53,7 @@ import {
   lockDigest,
   PROJECT_CONFIG_FILENAMES,
   readClaimedFiles,
+  readDependenciesLock,
   resolveCacheDir,
   resolveStoreRoot,
   type ProjectEntry,
@@ -77,6 +78,7 @@ import {
   teardownPlugins,
   type ScheduleRun,
 } from './plugin-host.js'
+import { lockedFiles } from './locked-digests.js'
 import {
   discoverProjects,
   gitOfDiscovery,
@@ -383,6 +385,9 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const fingerprintsAt = Date.now()
   const claimed = [...fingerprintClaims(plugins).keys()]
   const claimedBytes = await readClaimedFiles(workspaceRoot, claimed, reads)
+  // What `vx lock` recorded of them: a run keys from it (locked-digests.ts).
+  const dependenciesLock = claimed.length > 0 ? readDependenciesLock(workspaceRoot, reads) : null
+  dependenciesLock?.catch(() => {})
   // A whole-tree run's blob-size check starts with the cache it reads its
   // verdict from, beside the config load and graph build: after them, a cold
   // 100-package run waited 40-50 ms on it before its first task (2026-11-03).
@@ -809,7 +814,8 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       }
     }
     if (hasHook(plugins, 'key')) {
-      await applyKeyHooks(plugins, nodes, { workspaceRoot, cacheDir, warn: warnOf(log) })
+      const locked = lockedFiles(workspaceRoot, claimed, claimedBytes, await dependenciesLock)
+      await applyKeyHooks(plugins, nodes, { workspaceRoot, cacheDir, warn: warnOf(log), locked })
     }
     refuseFiltersThroughGroups(nodes)
     const exclude = options.excludeDependencies

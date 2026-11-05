@@ -60,9 +60,12 @@ digests?(file, ctx) }`
 (`extraFiles`: the files a claimed file names that the plugin's key
 reads too, such as `bun.lock`'s patches and a `file:` dependency's
 directory; the same ones the key reads, since `--affected` asks about
-every changed path; `digests`: each project's digest now and the hash of
-the bytes it came from (`FingerprintDigests`), which `vx lock` records in
-`.vx/dependencies.lock.json` so `--affected` never parses the base side). The schema refuses a
+every changed path; `digests`: each project's digest now, the xxh3 of
+the bytes it came from and the other files it read
+(`FingerprintDigests`), which `vx lock` records in
+`.vx/dependencies.lock.json`: a run's key reads them back
+(`KeyHookContext.locked`) and refuses when a recorded file's bytes
+moved, and `--affected` never parses the base side). The schema refuses a
 second claimant for one file. `fingerprintClaims(plugins)` in
 `plugin-host.ts` indexes the claims. `--affected`
 (`workspace/affected.ts`) asks the claimant's `affected` with the file's

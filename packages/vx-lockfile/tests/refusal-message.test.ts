@@ -11,6 +11,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { bun, npm, pnpm, yarn } from '../src/index.js'
 import { affectedRefusal, commitAll } from './helpers/affected.js'
+import { lockedKey } from './helpers/key.js'
 
 type Affected = { fingerprint: { affected: (change: unknown, ctx: unknown) => unknown } }
 
@@ -74,8 +75,8 @@ describe('a lockfile the plugin cannot read', () => {
   })
 })
 
-describe('a conflicted lockfile on the key path', () => {
-  // The key reads a lockfile's extra files before its digest and edges,
+describe('a conflicted lockfile on the digest path', () => {
+  // `vx lock`'s digest reads a lockfile's extra files before its digest and edges,
   // and that read parsed the file with no conflict check: under pnpm, npm
   // and bun the run refused with a bare parse error, and the check the
   // digest and edges make was never reached.
@@ -92,12 +93,8 @@ describe('a conflicted lockfile on the key path', () => {
       const root = await mkdtemp(path.join(tmpdir(), 'vx-conflict-'))
       try {
         await writeFile(path.join(root, file), conflicted(head))
-        const key = (plugin as unknown as { key: (t: unknown, c: unknown) => Promise<unknown> }).key
         got.push(
-          await key(
-            { projectDir: root },
-            { workspaceRoot: root, cacheDir: path.join(root, '.c') },
-          ).then(
+          await lockedKey(plugin, root, path.join(root, '.c')).then(
             () => '(no refusal)',
             (e: unknown) => (e instanceof Error ? e.message : String(e)),
           ),
@@ -115,7 +112,7 @@ describe('a conflicted lockfile on the key path', () => {
   })
 })
 
-describe('a malformed bun.lock on the key path (L-16)', () => {
+describe('a malformed bun.lock on the digest path (L-16)', () => {
   // Its patch files are read before the digest, and that read refused
   // outside the digest's wrapper: a bare "JSONC Parse error", no file or
   // fix named (fuzzed).
@@ -123,11 +120,7 @@ describe('a malformed bun.lock on the key path (L-16)', () => {
     const root = await mkdtemp(path.join(tmpdir(), 'vx-l16-'))
     try {
       await writeFile(path.join(root, 'bun.lock'), '{ "lockfileVersion": 1, "workspaces": {')
-      const key = (bun() as unknown as { key: (t: unknown, c: unknown) => Promise<unknown> }).key
-      const got = await key(
-        { projectDir: root },
-        { workspaceRoot: root, cacheDir: path.join(root, '.c') },
-      ).then(
+      const got = await lockedKey(bun(), root, path.join(root, '.c')).then(
         () => '(no refusal)',
         (e: unknown) => (e instanceof Error ? e.message : String(e)),
       )

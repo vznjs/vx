@@ -45,6 +45,7 @@ import type {
   ConfigContext,
 } from './plugin.js'
 import type { ProjectMeta } from '../workspace/index.js'
+import { hashExtra } from './lockfile-claim.js'
 
 /** `a string`, `an array`, `null`, `a number` — for a refusal that names what came back. */
 function describeValue(v: unknown): string {
@@ -397,7 +398,8 @@ export async function claimedAffected(
 }
 
 /**
- * `FingerprintClaim.digests`' answer for `file`; `undefined` when the
+ * `FingerprintClaim.digests`' answer for `file`, each extra file it names
+ * with its hash now (`hashExtra`, as a run checks it); `undefined` when the
  * plugin has none. A digest of a name no project carries, or a value that
  * is not a string, is refused by name: `vx lock` would commit it.
  */
@@ -405,22 +407,31 @@ export async function claimedDigests(
   plugin: VxPlugin,
   file: string,
   ctx: FingerprintContext,
-): Promise<FingerprintDigests | undefined> {
+): Promise<
+  | {
+      hash: string
+      projects: FingerprintDigests['projects']
+      extras?: Readonly<Record<string, string>>
+    }
+  | undefined
+> {
   const digests = plugin.fingerprint?.digests
   if (digests === undefined) return undefined
   const answer: unknown = await safe(plugin, 'fingerprint', () =>
     digests.call(plugin.fingerprint, file, ctx),
   )
   if (answer === undefined) return undefined
-  const { hash, projects } = (answer ?? {}) as Partial<FingerprintDigests>
+  const { hash, projects, extras } = (answer ?? {}) as Partial<FingerprintDigests>
   if (
     typeof hash !== 'string' ||
     typeof projects !== 'object' ||
     projects === null ||
-    Object.values(projects).some((d) => typeof d !== 'string')
+    Object.values(projects).some((d) => typeof d !== 'string') ||
+    (extras !== undefined &&
+      (!Array.isArray(extras) || extras.some((rel) => typeof rel !== 'string')))
   ) {
     throw new UserError(
-      `plugin '${plugin.name}' failed in fingerprint: digests returned ${describeValue(answer)}, not { hash, projects: { name: digest } }`,
+      `plugin '${plugin.name}' failed in fingerprint: digests returned ${describeValue(answer)}, not { hash, projects: { name: digest }, extras?: [path] }`,
     )
   }
   const known = new Set(ctx.projects.map((p) => p.name))
@@ -430,7 +441,11 @@ export async function claimedDigests(
       `plugin '${plugin.name}' failed in fingerprint: digest of ${JSON.stringify(stray)}, which is not a project in this workspace`,
     )
   }
-  return { hash, projects }
+  if (extras === undefined || extras.length === 0) return { hash, projects }
+  const hashed = await Promise.all(
+    extras.map(async (rel) => [rel, await hashExtra(ctx.workspaceRoot, rel)] as const),
+  )
+  return { hash, projects, extras: Object.fromEntries(hashed) }
 }
 
 async function projectNames(

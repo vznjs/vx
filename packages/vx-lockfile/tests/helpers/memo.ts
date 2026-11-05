@@ -8,7 +8,7 @@ export interface Memo {
   version: number
   lock: string
   extras: Record<string, string>
-  importers: Record<string, string>
+  importers: Record<string, string> | null
   edges: Record<string, unknown>
   recorded: Record<string, string[]> | null
 }
@@ -41,7 +41,12 @@ export function editMemo(cacheDir: string, file: string, edit: (memo: Memo) => v
     db.run(
       `UPDATE lockfile_memos SET extras = ?, importers = ?, edges = ?, recorded = ?
        WHERE rowid = (SELECT MAX(rowid) FROM lockfile_memos WHERE file = ?)`,
-      [...JSON_COLUMNS.map((c) => (memo[c] === null ? null : JSON.stringify(memo[c]))), file],
+      [
+        ...JSON_COLUMNS.map((c) =>
+          c === 'recorded' && memo[c] === null ? null : JSON.stringify(memo[c]),
+        ),
+        file,
+      ],
     )
   } finally {
     db.close()

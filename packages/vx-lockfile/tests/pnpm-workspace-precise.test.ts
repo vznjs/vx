@@ -8,9 +8,9 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import type { TaskNode } from '@vzn/vx'
 import { pnpm } from '../src/index.js'
 import * as pnpmLock from '../src/pnpm.js'
+import { lockedKey } from './helpers/key.js'
 
 let root: string
 beforeEach(async () => {
@@ -21,8 +21,7 @@ afterEach(async () => {
 })
 
 const key = async (): Promise<string> => {
-  const ctx = { workspaceRoot: root, cacheDir: path.join(root, '.vx', 'cache'), warn() {} }
-  return JSON.stringify(await pnpm().key!({ projectDir: root } as TaskNode, ctx))
+  return JSON.stringify(await lockedKey(pnpm(), root, path.join(root, '.vx', 'cache')))
 }
 const write = (text: string): Promise<void> =>
   writeFile(path.join(root, 'pnpm-workspace.yaml'), text)
