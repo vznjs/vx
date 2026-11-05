@@ -121,3 +121,17 @@ test('a pooled task that is not a task is named on a crash path', async () => {
   )
   expect(lockEntryBroken(root)).toBe(true)
 })
+
+// A hand edit or a merge gone wrong: `pool.exec: {}` threw "{} is not
+// iterable", a crash where every other bad lock says re-run `vx lock`.
+test('a pool that is not an object of lists is refused', async () => {
+  for (const pool of [null, [], 5, { exec: {} }, { task: 5 }, { env: true }]) {
+    await Bun.write(
+      lockfilePath(root),
+      JSON.stringify({ version: LOCKFILE_VERSION, pool, projects: { a: entry({}) } }),
+    )
+    await expect(readLockfile(root)).rejects.toThrow(
+      '`pool` must be an object of lists — re-run `vx lock`',
+    )
+  }
+})

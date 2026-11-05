@@ -208,6 +208,12 @@ function pooledIn(lock: Pooled): void {
   const pool = lock.pool
   delete lock.pool
   if (pool === undefined) return
+  if (!isObj(pool) || Object.values(pool).some((list) => !Array.isArray(list))) {
+    throw new UserError(
+      `${LOCKFILE_NAME}: \`pool\` must be an object of lists — re-run \`vx lock\``,
+      'VX_E_LOCK',
+    )
+  }
   const at = (name: PoolName, i: number): unknown => {
     const hit = pool[name]?.[i]
     if (hit === undefined) {
