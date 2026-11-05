@@ -123,6 +123,9 @@ describe('the schema', () => {
     [' tag:app', 'surrounding whitespace'],
     ['tag: app', 'surrounding whitespace'],
     ['...', "'...'"],
+    // Matches no project name or tag; read as a walk once the filter
+    // parser refused it.
+    ['tag:a\x1bb', 'control character'],
   ])('refuses the selector %p, which no project can match', (sel, why) => {
     for (const rule of [
       { from: 'tag:lib', deny: [sel] },

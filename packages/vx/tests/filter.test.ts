@@ -6,6 +6,7 @@ import { makeWorkspace } from './helpers/workspace.js'
 import { applyFilters, parseFilter } from '../src/workspace/filter.js'
 import { buildPackageGraph } from '../src/workspace/package-graph.js'
 import type { ProjectMeta } from '../src/workspace/workspace.js'
+import { hasControl, UserError } from '../src/util/index.js'
 
 const ROOT = '/ws'
 
@@ -431,6 +432,22 @@ describe('applyFilters', () => {
     expect(() => parseFilter('@s/*{../x}', ROOT)).toThrow(
       'filter "@s/*{../x}" names a directory outside the workspace root',
     )
+  })
+
+  it('refuses a control character, escaped on one line, before any part of the filter is read', () => {
+    // A newline split the refusal into a headline and a stray detail line,
+    // and a ref `[a\nb]` reached git (fuzz, 2026-11-05).
+    for (const raw of ['p\nq', '...[a\nb]', '!\x1b[31m', '\x7f']) {
+      expect(() => parseFilter(raw, ROOT)).toThrow(UserError)
+      let message = ''
+      try {
+        parseFilter(raw, ROOT)
+      } catch (err) {
+        message = (err as Error).message
+      }
+      expect(hasControl(message)).toBe(false)
+      expect(message).toContain('holds a control character')
+    }
   })
 
   it('path filter selects packages under the directory', () => {

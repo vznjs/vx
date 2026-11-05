@@ -231,6 +231,8 @@ function ruleSelectorProblem(s: string): string | null {
   // The root's own name, which the filter reads as the root's directory.
   if (s === ROOT_NAME) return null
   if (s.startsWith('!')) return "starts with '!', which a filter reads as an exclusion"
+  // The filter parser refuses one, which the catch below would read as a walk.
+  if (hasControl(s)) return 'holds a control character'
   const walk = "starts or ends with '...', which a filter reads as a dependency walk"
   let f: ReturnType<typeof parseFilter>
   try {
@@ -1699,6 +1701,9 @@ export function taskNameProblem(name: string): string | null {
 function tagProblem(tag: string): string | null {
   if (tag.trim() !== tag) return 'has surrounding whitespace'
   if (tag.includes('*')) return "holds '*', which makes it a pattern"
+  // Refused by the caller in its own words; the filter parser refuses one
+  // too, which the catch below would read as a walk.
+  if (hasControl(tag)) return null
   const walk = "ends in '...', which a filter reads as a dependency walk"
   let f: ReturnType<typeof parseFilter>
   try {
