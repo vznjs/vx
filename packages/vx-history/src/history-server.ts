@@ -181,7 +181,8 @@ export class HistoryServer {
       u.searchParams.set('audience', new URL(this.url).origin)
       const res = await this.askGithub(u, signal)
       if (!res.ok) throw new Error(`GitHub's OIDC endpoint: ${(await refusal(res)).message}`)
-      const jwt = ((await res.json()) as { value?: unknown }).value
+      // quiet: a body that is not JSON holds no token, said below
+      const jwt = ((await res.json().catch(() => null)) as { value?: unknown } | null)?.value
       if (typeof jwt !== 'string' || jwt === '') throw new Error("GitHub's OIDC endpoint: no token")
       return { jwt, exp: expiryOf(jwt) }
     })()

@@ -1030,15 +1030,17 @@ it('says a cancel the spent API limit refuses past its wait, with the reset', as
 // repository with id-token: write as a worker.
 it('names the workflow runs its workers come from, refusing a dispatch that named none', async () => {
   let id = 6
-  let named = true
+  let named: boolean | string = true
   const server = Bun.serve({
     port: 0,
     hostname: '127.0.0.1',
     fetch(req) {
       if (new URL(req.url).pathname.endsWith('/dispatches'))
-        return named
+        return named === true
           ? Response.json({ workflow_run_id: ++id })
-          : new Response(null, { status: 204 })
+          : named === false
+            ? new Response(null, { status: 204 })
+            : new Response(named, { status: 200 })
       return Response.json({ jobs: [] })
     },
   })
@@ -1069,6 +1071,17 @@ it('names the workflow runs its workers come from, refusing a dispatch that name
       ],
       ['5', '7'],
     ])
+    // A 200 whose body names no run id (a proxy's page, a string id) was a
+    // JSON parse error, or a run id no job carries.
+    for (const body of ['<html>busy</html>', JSON.stringify({ workflow_run_id: '9' })]) {
+      named = body
+      why.length = 0
+      void adapter.spawn(spawn('big#4', 'big', (w) => why.push(w)))
+      for (let i = 0; i < 50 && why.length === 0; i++) await Bun.sleep(20)
+      expect(why).toEqual([
+        'github(): dispatching vx-worker.yml named no workflow run (200): its workers cannot be told from any job of the repository',
+      ])
+    }
   } finally {
     await server.stop(true)
     await rm(temp, { recursive: true, force: true })
