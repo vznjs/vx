@@ -47,6 +47,7 @@ const TOOL_NAMES: Record<string, string> = {
   turbo: 'Turborepo',
   nx: 'Nx',
   'vite-task': 'Vite Task',
+  nix: 'Nix',
 }
 export const toolName = (t: string): string => TOOL_NAMES[t] ?? t
 /** A column header's name on a phone, where a cell is a mark wide. */
