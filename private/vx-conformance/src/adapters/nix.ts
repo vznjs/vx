@@ -275,10 +275,7 @@ const LIB = `
   selected = map (id: builtins.getAttr id tasks) requested;
 `
 
-function nixFile(
-  ws: WorkspaceSpec,
-  command: (project: string, task: string) => string,
-): string {
+function nixFile(ws: WorkspaceSpec, command: (project: string, task: string) => string): string {
   const s = specs(ws) as Record<string, { command: string }>
   for (const id of Object.keys(s)) {
     const at = id.lastIndexOf('#')
