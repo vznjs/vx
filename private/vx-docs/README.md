@@ -30,12 +30,13 @@ page (its own nav, footer and theme; the docs stay Starlight). It is the
 whole story (design/site-short-2026-09.md): static, one script for the
 install command's copy button, no paragraph longer than one sentence.
 Sections, in order: the hero (one line, three of the chart's multiples, the install pill, Quickstart and
-GitHub); `#one-run`, the one picture (`src/components/landing/one-run.ts`,
+GitHub); `#conformance`, every tool's score on the conformance suite
+(`src/data/conformance.json`); `#servers`, DTE, the remote cache and run
+history, each a plugin and the server you host; `#one-run`, the one picture (`src/components/landing/one-run.ts`,
 drawn by the diagram kit with its phone layout) and its six numbered
 lines, each at the anchor an old Guide chapter redirects to (`#tasks`,
 `#parallel`, `#cache`, `#changed`, `#sandbox`, `#plugins`); `#bench`, the
-one benchmark; `#edge`, vx, Turborepo and Nx trait by trait (from the
-choosing page's model); `#pillars`, four cards (correctness, sandbox,
+one benchmark; `#pillars`, four cards (correctness, sandbox,
 extensibility, freedom), each an icon, a title, one sentence and its
 Docs page; `#features`, eight feature cards; the footer. `tests/landing.test.ts` holds the order, the
 hero's actions, the picture's data and lines against the design, the
