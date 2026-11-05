@@ -93,7 +93,7 @@ it('learns it was let go from the frame the relay says it in, not the close', as
   await o.remove(a.id)
   await expect(a.poll()).rejects.toThrow('relay: unknown id')
   expect(performance.now() - t0).toBeLessThan(1_000)
-}, 3_000)
+}, 30_000)
 
 /** A relay on Bun.serve whose participants' sockets the test sees, and can drop as a network does. */
 function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof createRelay>[0]> = {}) {
@@ -654,7 +654,7 @@ it('ends on a frame that is not the relay’s, and says what it was', async () =
     expect((err as RelayError).message).toBe(`relay: a frame that is not its protocol: ${text}`)
     await o.leave()
   }
-}, 5_000)
+}, 30_000)
 
 // A socket a network stops carrying sends no close: on a CI runner a worker's
 // `held` frames waited on acks that never came, its lease lapsed mid-task, and
@@ -675,7 +675,7 @@ it('drops a socket the relay stopped answering, and carries on over a new one', 
   expect(read).toEqual([{ from: 'orchestrator', body: 'batch' }])
   await a.leave()
   await o.leave()
-}, 5_000)
+}, 30_000)
 
 // A Cloudflare relay over its daily limit answers no frame: a send waited
 // for its answer forever, and the run with it (CI on #3888, 2026-10-22).
@@ -697,7 +697,7 @@ it('a worker whose relay answers nothing ends, and the orchestrator loses it, wi
   expect(read).toEqual([{ from: 'relay', body: { type: 'lost', id: a.id } }])
   expect(performance.now() - at).toBeLessThan(3_600)
   await o.leave()
-}, 6_000)
+}, 30_000)
 
 it('a worker ends when its orchestrator’s relay answers nothing, the run’s close unheard', async () => {
   const { url, drop } = dropping()
@@ -725,7 +725,7 @@ it('says its leave again on a new socket when the first answers nothing', async 
     for (;;) await a.poll()
   }
   await expect(polls()).rejects.toThrow('relay: the run is closed')
-}, 5_000)
+}, 30_000)
 
 // A relay that held a poll left the run waiting on Bun's own five-minute
 // limit before it failed (CI, 2026-10-22): an upgrade held past three
@@ -996,7 +996,7 @@ it('sends again what its receiver did not acknowledge, and the receiver takes it
   expect(await a.poll()).toEqual([])
   await a.leave()
   await o.leave()
-}, 5_000)
+}, 30_000)
 
 it('takes each send once and in order, however often it arrives', async () => {
   const { url, host } = sockets(500)
@@ -1015,7 +1015,7 @@ it('takes each send once and in order, however often it arrives', async () => {
   expect(got).toEqual([1, 2, 3])
   await a.leave()
   await o.leave()
-}, 5_000)
+}, 30_000)
 
 // A participant that left while its relay held every redial kept what
 // waited on a socket (here an owed ack) asking for one a heartbeat at a

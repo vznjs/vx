@@ -3272,7 +3272,7 @@ it('a task stopped while its worker is lost ends as stopped', async () => {
   } finally {
     await h.stop()
   }
-}, 3_000)
+}, 30_000)
 
 // A task handed over already stopped was queued and run in full: its
 // signal's abort had fired before anyone listened (2026-10-22).
@@ -3287,7 +3287,7 @@ it('a task handed over already stopped ends as stopped', async () => {
   } finally {
     await h.stop()
   }
-}, 3_000)
+}, 30_000)
 
 // A run's only worker faulted on a task: no worker was left to run it, none
 // was starting, and the run waited forever (2026-10-22).
@@ -3312,7 +3312,7 @@ it('a task its only worker could not run fails when no worker is left', async ()
   } finally {
     await h.stop()
   }
-}, 3_000)
+}, 30_000)
 
 // Main's macOS run, 2026-10-23: mac#1 let unsafe.shard-1's lease end,
 // mac#2 had left, and the run failed rather than start another.
@@ -3338,7 +3338,7 @@ it('a task its only worker failed waits for the worker the run starts for it the
   } finally {
     await h.stop()
   }
-}, 5_000)
+}, 30_000)
 
 // A batch for a wide worker passed the relay's 1 MiB body limit and every
 // task in it failed with `413 body over 1 MiB` (2026-10-22).

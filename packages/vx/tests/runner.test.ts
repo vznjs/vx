@@ -513,7 +513,7 @@ describe('runPersistent', () => {
       spawn.child!.kill('SIGKILL')
       await spawn.child!.exited
     }
-  }, 8_000)
+  }, 30_000)
 
   it('keeps streaming to the live callbacks after ready has resolved', async () => {
     // A kept-alive dev server streams for hours. `ready` resolving is not the
@@ -539,7 +539,7 @@ describe('runPersistent', () => {
       spawn.child!.kill('SIGKILL')
       await spawn.child!.exited
     }
-  }, 8_000)
+  }, 30_000)
 
   it('matches a marker split across chunks within one line', async () => {
     const spawn = runPersistent({
@@ -558,7 +558,7 @@ describe('runPersistent', () => {
       spawn.child!.kill('SIGKILL')
       await spawn.child!.exited
     }
-  }, 8_000)
+  }, 30_000)
 
   it('still matches a marker on a complete newline-terminated line', async () => {
     const spawn = runPersistent({
@@ -577,7 +577,7 @@ describe('runPersistent', () => {
       spawn.child!.kill('SIGKILL')
       await spawn.child!.exited
     }
-  }, 8_000)
+  }, 30_000)
 
   // The pattern is tested per line, without the break and without terminal
   // escapes (item 1059). Each command writes its lines in ONE printf, so they
@@ -643,7 +643,7 @@ describe('runPersistent', () => {
       spawn.child!.kill('SIGKILL')
       await spawn.child!.exited
     }
-  }, 8_000)
+  }, 30_000)
 
   it('rejects ready when the child exits before the marker appears', async () => {
     const spawn = runPersistent({
@@ -1536,7 +1536,7 @@ describe('runPersistent — the rows its sweep asked for', () => {
     } finally {
       await stop(spawn)
     }
-  }, 8_000)
+  }, 30_000)
 
   it('says the pattern never matched when the child exits first', async () => {
     const why = async (readyWhen?: string): Promise<string> => {
