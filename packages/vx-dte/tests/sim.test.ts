@@ -466,6 +466,7 @@ it('asks no worker while the CI queues one of its size', () => {
     warmUpMs: (n) => (joins[n - 1] ?? 90) * 1_000,
   })
   expect(r.workers.filter((w) => w.cancelledAt !== undefined).map((w) => w.id)).toEqual([])
-  // The run's ideal: 121.6 s.
-  expect(r.endMs).toBeLessThanOrEqual(125_000)
+  // The run's ideal, 121.6 s, within the plan's 5% margin: a plan that
+  // holds is followed, not played again at each join for a closer end.
+  expect(r.endMs).toBeLessThanOrEqual(121_600 * 1.05)
 })

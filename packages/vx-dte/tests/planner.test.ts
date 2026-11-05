@@ -3,6 +3,8 @@ import type { TaskNode } from '@vzn/vx'
 import {
   advise,
   candidates,
+  decide,
+  type Forecast,
   knownMisses,
   missedWork,
   plan,
@@ -531,4 +533,83 @@ it('stops trying workers once one like the rest sits idle in its play', () => {
   expect([p.start.length, p.endsInMs]).toEqual([9, 80_000])
   // Two reads a play; every candidate tried read 144.
   expect(plays).toBeLessThan(60)
+})
+
+// 2026-11-05: "It's just about filling boxes to full"; "Reality changes
+// by leave some margin. 5% or sth"; "And resource usage". Planned at
+// each task's end, a 1000-task run replayed itself ten thousand times.
+// While what the plan saw holds within 5%, the next is that plan again.
+it('follows the plan, played again only when an event moves past 5%', () => {
+  const ids = Array.from({ length: 6 }, (_, i) => `t${i}`)
+  const nodes = new Map(
+    ids.map((id) => [
+      id,
+      { id, deps: [], config: { exec: { command: 'x' }, cache: {} } } as unknown as TaskNode,
+    ]),
+  )
+  let plays = 0
+  // A play reads each worker's cores; telling whether the plan holds does not.
+  const counted = (running: PlanWorker['running'], idle = false): PlanWorker => ({
+    ...worker('w', { idle, running }),
+    get cores() {
+      plays++
+      return 4
+    },
+  })
+  const last: { forecast?: Forecast } = {}
+  const at = (
+    now: number,
+    o: {
+      ms?: number
+      cores?: number
+      memory?: number
+      runCores?: number
+      endsIn?: number
+      idle?: boolean
+    } = {},
+  ) => {
+    const before = plays
+    const p = decide({
+      remaining: ids,
+      nodes,
+      executed: new Set(ids),
+      need: () => ({ cores: o.cores ?? 1, memory: o.memory ?? 1e9 }),
+      durationMs: () => o.ms ?? 10_000,
+      workers: [
+        counted(
+          o.idle === true
+            ? []
+            : [{ id: 'r', cores: o.runCores ?? 1, memory: 1e9, endsIn: o.endsIn ?? 5_000 }],
+          o.idle,
+        ),
+      ],
+      running: new Set(),
+      sizes: [small],
+      started: new Map(),
+      final: false,
+      warmUpMs: WARM,
+      replaceable: true,
+      last,
+      now,
+    })
+    return [plays > before, p.endsInMs, p.release] as const
+  }
+  const [first, ends] = at(0)
+  expect(first).toBe(true)
+  // A second on, all as planned: the same plan, a second shorter.
+  expect(at(1_000)).toEqual([false, ends - 1_000, []])
+  // A waiting task's estimate is not read again: what it runs shows it.
+  expect(at(2_000, { ms: 12_000, cores: 1.2, memory: 2e9 })[0]).toBe(false)
+  // A running task's cores within 5%: as planned; past it, played again.
+  expect(at(3_000, { runCores: 1.04 })[0]).toBe(false)
+  expect(at(4_000, { runCores: 1.2 })[0]).toBe(true)
+  // Past its time by 5% of the run's plays again; a moment late does not.
+  expect(at(5_000, { runCores: 1.2, endsIn: -100 })[0]).toBe(false)
+  expect(at(6_000, { runCores: 1.2, endsIn: -20_000 })[0]).toBe(true)
+  expect(at(7_000, { runCores: 1.2, endsIn: -20_000 })[0]).toBe(false)
+  // Ended, idle between the tasks the plan gives it: as planned.
+  expect(at(8_000, { idle: true })[0]).toBe(false)
+  // Idle with its planned work done, it goes as the plan foresaw: not played again.
+  const [played, , release] = at(10_000_000, { idle: true })
+  expect([played, release]).toEqual([false, ['w']])
 })

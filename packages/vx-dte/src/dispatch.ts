@@ -64,25 +64,35 @@ export function dispatch<B extends Bin>(
           o.need,
           bins.reduce((n, b) => Math.max(n, b.cores), 1),
         )
-  const left: string[] = []
-  const asks: Ask[] = []
   // The least any ask needs: once no worker takes it, the pass ends. Each
   // pump read every queued task, 8000 of them a pump (2026-10-25).
   const floor = { cores: Infinity, memory: Infinity }
+  const needs: Need[] = []
   for (const id of queue) {
-    const gate = o.gate?.(id) ?? {}
-    if (gate === 'done') continue
-    if (gate === 'wait') {
-      left.push(id)
-      continue
-    }
     const need = o.book === undefined ? o.need(id) : o.book(o.need(id))
+    needs.push(need)
     floor.cores = Math.min(floor.cores, need.cores)
     floor.memory = Math.min(floor.memory, need.memory)
-    asks.push({ id, need, up: o.deps(id) ?? [], ...gate })
   }
-  const to = assign(asks, bins, o.waits, o.how.place, { floor, kinds: Infinity })
-  for (const ask of asks) if (!to.has(ask.id)) left.push(ask.id)
+  // Asks are made as the pass reads them: it ends at the first no worker
+  // takes, and making every queued one's at each event was most of a
+  // 5000-task sim (2026-11-05).
+  const read: string[] = []
+  let i = 0
+  function* asks(): Generator<Ask> {
+    for (; i < queue.length; i++) {
+      const id = queue[i]!
+      const gate = o.gate?.(id) ?? {}
+      if (gate === 'done') continue
+      read.push(id)
+      if (gate === 'wait') continue
+      yield { id, need: needs[i]!, up: o.deps(id) ?? [], ...gate }
+    }
+  }
+  const to = assign(asks(), bins, o.waits, o.how.place, { floor, kinds: Infinity })
+  const left = read.filter((id) => !to.has(id))
+  // The pass ended at the ask it read last, and took or left it.
+  for (let j = i + 1; j < queue.length; j++) left.push(queue[j]!)
   return { to, left }
 }
 
