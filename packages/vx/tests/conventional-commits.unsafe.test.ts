@@ -31,6 +31,8 @@ it("the PR's title is a Conventional Commits header", () => {
 // subject cannot change without rewriting the branch every landed PR
 // shares (2026-10-28).
 const KNOWN = new Set([
+  // The conformance page's coverage drop, pushed before its subject was cut: 76 chars.
+  '07826d51a0d3c97cfe85b518c92635ada75560c7',
   // #4909's first commit, pushed before its subject was cut: 82 chars.
   'c06443abb95ae880949aa349802eaade1c58b144',
   '92f8f41369c5c8ebe41934bb31c8eeddda32b1a1',
