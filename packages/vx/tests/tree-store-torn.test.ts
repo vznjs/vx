@@ -110,3 +110,25 @@ it('a stored tree file cut short is not uploaded under a fresh checksum', async 
     cache.close()
   }
 })
+
+// A sidecar cut short at rest left the upload failing on a bare JSON
+// SyntaxError, the entry never named as damaged.
+it('a stored tree whose sidecar was cut short is not uploaded, and is named corrupt', async () => {
+  const cache = await damaged(DEFAULT_STORE, 64 * 1024)
+  try {
+    const meta = readdirSync(path.join(root, 'cache'), { recursive: true }).find((p) =>
+      String(p).endsWith('.vx-meta.json'),
+    )!
+    truncateSync(path.join(root, 'cache', String(meta)), 5)
+    const pinned = await cache.pinArtifact('k1').then(
+      async (p) => {
+        await p.release()
+        return 'packed'
+      },
+      (e: Error) => e.name,
+    )
+    expect(pinned).toBe('CorruptArtifactError')
+  } finally {
+    cache.close()
+  }
+})
