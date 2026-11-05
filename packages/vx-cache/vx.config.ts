@@ -56,7 +56,7 @@ export default defineProject({
     test: {
       description: 'bun test',
       exec: {
-        command: 'bun test --only-failures',
+        command: 'bun test --only-failures --timeout=30000',
         // Fixture repos assume git's defaults; a global config may sign commits.
         // Bun's transpiler cache writes under HOME, outside the sandbox's grants.
         env: {

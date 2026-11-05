@@ -103,8 +103,10 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   (2026-10-23). A deadline the code itself enforces stays on the wall.
 - Bun's per-test timeout is a wall budget too. A test that spawns vx and
   git (457 ms idle, 1.3 s under strace) passed 5 s on a packed DTE worker
-  (#4198), so the core shards run `--timeout=30000` (`vx.config.ts`) as a
-  hang guard; speed is a CPU-time assertion, never the timeout.
+  (#4198), so every task that launches `bun test` passes `--timeout=30000`
+  as a hang guard (`tests/suite-coverage.unsafe.test.ts`; a vx-migrate test
+  spawning vx four times passed 5 s too, 2026-11-05); speed is a CPU-time
+  assertion, never the timeout.
 - Two measured quantities that are equal by construction sit on jitter:
   a light child's `ru_maxrss` IS the parent's mark, and the kernel's RSS
   counters lag by pages, so an exact `>` between them flipped on one CI
