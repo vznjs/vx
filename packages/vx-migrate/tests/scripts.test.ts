@@ -1919,29 +1919,34 @@ describe('vx init — the generated build is not a cached no-op', () => {
     }
   })
 
-  it('a deleted dist is rebuilt on the next run', async () => {
-    const root = await makeRoot('vx-init-rebuild-')
-    await withLockfile(root)
-    await addPackage(root, 'w', { build: 'mkdir -p dist && cp src/a.txt dist/a.txt' })
-    await mkdir(path.join(root, 'packages', 'w', 'src'), { recursive: true })
-    await writeFile(path.join(root, 'packages', 'w', 'src', 'a.txt'), 'a\n')
-    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
-    try {
-      expect((await vx(root, ['init'])).code).toBe(0)
-      const dist = path.join(root, 'packages', 'w', 'dist', 'a.txt')
-      for (let i = 0; i < 2; i++) {
+  // Four vx processes: a loaded CI shard took over bun's 5 s default (2026-11-05).
+  it(
+    'a deleted dist is rebuilt on the next run',
+    async () => {
+      const root = await makeRoot('vx-init-rebuild-')
+      await withLockfile(root)
+      await addPackage(root, 'w', { build: 'mkdir -p dist && cp src/a.txt dist/a.txt' })
+      await mkdir(path.join(root, 'packages', 'w', 'src'), { recursive: true })
+      await writeFile(path.join(root, 'packages', 'w', 'src', 'a.txt'), 'a\n')
+      Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+      try {
+        expect((await vx(root, ['init'])).code).toBe(0)
+        const dist = path.join(root, 'packages', 'w', 'dist', 'a.txt')
+        for (let i = 0; i < 2; i++) {
+          const r = await vx(root, ['run', 'build', '--all'])
+          expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
+        }
+        expect(await Bun.file(dist).exists()).toBe(true)
+        await rm(path.join(root, 'packages', 'w', 'dist'), { recursive: true, force: true })
         const r = await vx(root, ['run', 'build', '--all'])
         expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
+        expect(await Bun.file(dist).exists()).toBe(true)
+      } finally {
+        await rm(root, { recursive: true, force: true })
       }
-      expect(await Bun.file(dist).exists()).toBe(true)
-      await rm(path.join(root, 'packages', 'w', 'dist'), { recursive: true, force: true })
-      const r = await vx(root, ['run', 'build', '--all'])
-      expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
-      expect(await Bun.file(dist).exists()).toBe(true)
-    } finally {
-      await rm(root, { recursive: true, force: true })
-    }
-  })
+    },
+    TIMEOUT,
+  )
 })
 
 describe('vx init on a workspace with no scripts', () => {
