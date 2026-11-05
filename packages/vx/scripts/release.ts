@@ -121,6 +121,47 @@ export function publishCommand(npm: string, dir: string, tag: string | undefined
   return tag === undefined ? args : [...args, '--tag', tag]
 }
 
+/**
+ * The claims npm's trusted publishing matches, from a GitHub OIDC token
+ * (never the token itself): a refused exchange says only "package not
+ * found", so the log shows what npm was sent (v0.0.651, npm/cli#9969).
+ */
+export function oidcClaims(jwt: string): Record<string, unknown> {
+  const payload = jwt.split('.')[1] ?? ''
+  const all = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as Record<
+    string,
+    unknown
+  >
+  const keep = [
+    'sub',
+    'repository',
+    'repository_owner',
+    'environment',
+    'job_workflow_ref',
+    'ref',
+    'aud',
+  ]
+  return Object.fromEntries(keep.filter((k) => k in all).map((k) => [k, all[k]]))
+}
+
+async function printOidcClaims(): Promise<void> {
+  const url = process.env['ACTIONS_ID_TOKEN_REQUEST_URL']
+  const token = process.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN']
+  if (url === undefined || token === undefined) {
+    console.log('oidc: no id-token request in this job')
+    return
+  }
+  try {
+    const res = await fetch(`${url}&audience=npm:registry.npmjs.org`, {
+      headers: { authorization: `Bearer ${token}` },
+    })
+    const { value } = (await res.json()) as { value: string }
+    console.log(`oidc claims: ${JSON.stringify(oidcClaims(value))}`)
+  } catch (e) {
+    console.log(`oidc: could not read the id-token: ${(e as Error).message}`)
+  }
+}
+
 /** Where npm serves `name@version`'s tarball. */
 export const tarballUrl = (name: string, version: string): string =>
   `https://registry.npmjs.org/${name}/-/${name.split('/').pop()}-${version}.tgz`
@@ -272,7 +313,8 @@ async function assemble(os: Os, version: string): Promise<void> {
   console.log(`assembled ${path.relative(CORE, TREE)} at ${version}:\n  ${names.join('\n  ')}`)
 }
 
-function publish(os: Os, version: string): void {
+async function publish(os: Os, version: string): Promise<void> {
+  await printOidcClaims()
   const pluginsDir = path.join(TREE, 'plugins')
   const plugins = existsSync(pluginsDir) ? readdirSync(pluginsDir) : []
   const packages = publishOrder(os, plugins).map((rel) => {
