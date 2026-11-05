@@ -2028,6 +2028,18 @@ export function releaseBridges(tag: string): void {
 const TRACER_RETRY_LINE =
   "[vx] the sandbox's tracer (strace) failed on its own; running the task again\n"
 
+/** What a task's output says when a mount went away as bwrap set the sandbox up. */
+const MOUNT_RACE_RETRY_LINE =
+  '[vx] a mount went away as the sandbox was set up; running the task again\n'
+
+/**
+ * bwrap's own refusal of a mount gone between its read of the mount table
+ * and its remount: a container runtime's transient mount under /tmp
+ * (`/newroot/tmp/containerd-mount…`, a `docker build` beside the task on
+ * CI). The command never started.
+ */
+const BWRAP_MOUNT_GONE = /^bwrap: Can't .*: No such file or directory$/
+
 /**
  * Run a single task wrapped in the sandbox. Caller must have called
  * `initSandbox()` first.
@@ -2053,20 +2065,21 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
       if (chunk.length > 0) midLine = !chunk.endsWith('\n')
       on?.(chunk)
     }
-  const { tracerFailed, ranMs, ...first } = await runSandboxedOnce({
+  const { tracerFailed, mountGone, ranMs, ...first } = await runSandboxedOnce({
     ...args,
     onStdout: seen(args.onStdout),
     onStderr: seen(args.onStderr),
   })
   // A stopping run has killed the children it holds; a retry would be one
   // spawned after that kill.
-  if (!tracerFailed || args.signal?.aborted === true) return first
-  const notice = (midLine ? '\n' : '') + TRACER_RETRY_LINE
+  if (!(tracerFailed || mountGone) || args.signal?.aborted === true) return first
+  const notice = (midLine ? '\n' : '') + (mountGone ? MOUNT_RACE_RETRY_LINE : TRACER_RETRY_LINE)
   args.onStderr?.(notice)
   // `timeout` bounds the task's whole run (schema.md), so the retry gets
   // what the first attempt left of it, not a fresh window.
   const {
     tracerFailed: _again,
+    mountGone: _gone,
     ranMs: _ran,
     ...second
   } = await runSandboxedOnce(
@@ -2140,7 +2153,7 @@ const STRACE_OWN_ERROR = /^(?:[^\s:]*\/)?strace: /
  */
 async function runSandboxedOnce(
   args: SandboxedRunArgs,
-): Promise<SandboxedRunResult & { tracerFailed: boolean; ranMs: number }> {
+): Promise<SandboxedRunResult & { tracerFailed: boolean; mountGone: boolean; ranMs: number }> {
   const start = Date.now()
   const { SandboxManager } = await loadSrt()
   // Linux: SRT's store sees only writes (below), so read denials need
@@ -2190,6 +2203,7 @@ async function runSandboxedOnce(
       signal,
       violations: [],
       tracerFailed: false,
+      mountGone: false,
       ranMs: 0,
     }
   }
@@ -2244,6 +2258,7 @@ async function runSandboxedOnce(
       spawnFailed: true,
       violations: [],
       tracerFailed: false,
+      mountGone: false,
       ranMs: 0,
     }
   } finally {
@@ -2261,6 +2276,7 @@ async function runSandboxedOnce(
   // The unfinished last line of stderr, and whether a line was strace's.
   let partial = ''
   let straceSpoke = false
+  let mountGone = false
   const [out, err] = pipes.streams(proc)
   const ends = lineEnds(args.onStdout, args.onStderr)
   const streams = Promise.all([
@@ -2273,6 +2289,7 @@ async function runSandboxedOnce(
         const lines = (partial + chunk).split('\n')
         partial = (lines.pop() ?? '').slice(0, 512)
         if (lines.some((l) => STRACE_OWN_ERROR.test(l))) straceSpoke = true
+        if (lines.some((l) => BWRAP_MOUNT_GONE.test(l))) mountGone = true
         ends.onStderr?.(chunk)
       },
       ac.signal,
@@ -2481,6 +2498,7 @@ async function runSandboxedOnce(
         ? {}
         : { cpuMs: looked.cpuMs, peakRssBytes: looked.rssBytes }),
     ranMs,
+    mountGone: exitCode !== 0 && (mountGone || BWRAP_MOUNT_GONE.test(partial)),
     tracerFailed:
       straceLog !== undefined &&
       !timeout.timedOut() &&
