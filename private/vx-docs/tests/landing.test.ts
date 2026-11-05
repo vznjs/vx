@@ -553,6 +553,19 @@ describe('a shared link shows the card', () => {
     expect(lines).toBe(h1)
   })
 
+  // The card's alt text still said "a faster runner for your Turborepo or Nx
+  // repo", and a shared docs link's snippet "task scheduler for JavaScript
+  // monorepos", after the landing stopped (2026-11-05).
+  it("the card's alt text and the site description say what the page says", () => {
+    const h1 = text(/<h1\b[^>]*>([\s\S]*?)<\/h1>/.exec(page())![1]!)
+    const quickstart = readFileSync(path.join(DIST, 'quickstart', 'index.html'), 'utf8')
+    for (const html of [page(), quickstart])
+      expect(meta(html, 'og:image:alt')).toEqual([`vx: ${h1}`])
+    const config = readFileSync(path.resolve(import.meta.dir, '../astro.config.mjs'), 'utf8')
+    const description = meta(page(), 'description')[0]!
+    expect(config).toContain(`'${description}'`)
+  })
+
   it('the card is a 1200×630 PNG', () => {
     const png = readFileSync(path.join(DIST, 'og.png'))
     expect(png.subarray(1, 4).toString()).toBe('PNG')
