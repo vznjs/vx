@@ -68,6 +68,22 @@ it('plans main’s run on three workers: only its misses are work, never a group
   expect(p.endsInMs).toBeLessThan(WARM + 75_000)
 })
 
+it('plays two warm-ups and the longest task ahead, and plans again as that window moves', () => {
+  // A 200 s chain, then 16 wide: the wide part is past the window.
+  const tasks = [
+    task('a', 100_000),
+    task('b', 100_000, ['a']),
+    ...Array.from({ length: 16 }, (_, i) => task(`w${i}`, 30_000, ['b'])),
+  ]
+  const online = [worker('one', { idle: false, running: [] })]
+  const p = plan(tasks, online, candidates([small], new Map(), [], tasks.length), WARM)
+  expect(p.start).toEqual([])
+  // Not asked for the wide part yet: planned again half its window on.
+  expect(p.againInMs).toBe((2 * WARM + 100_000) / 2)
+  // The rest ends no sooner than its chain.
+  expect(p.endsInMs).toBeGreaterThanOrEqual(230_000)
+})
+
 it('starts a worker the plan needs later only when its warm-up nears', () => {
   // One long task, then 16 wide: a worker for the wide part is used 60 s in.
   const tasks = [

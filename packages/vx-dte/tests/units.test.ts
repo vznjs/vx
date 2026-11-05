@@ -36,7 +36,7 @@ import {
   ui,
 } from '@vzn/vx'
 import { nestedIn, Orchestrator, runKey } from '../src/orchestrator.js'
-import { assign, fits, type Need } from '../src/dispatch.js'
+import { assign, fits, type Need, ordered } from '../src/dispatch.js'
 import { names, outputFiles } from '../src/outputs.js'
 import { Usage } from '../src/usage.js'
 import { plan, planTasks, tailsMs } from '../src/planner.js'
@@ -5316,4 +5316,17 @@ it('scores a task on the first 16 workers it fits, not every one', () => {
     'best-fit',
   )
   expect([to.get('t')?.id, read]).toEqual(['w0', 18])
+})
+
+it('orders a queue that left in order plus what got ready since as one sort would', () => {
+  const tails: Record<string, number> = { a: 9, b: 7, c: 7, d: 3, e: 8, f: 7, g: 1, h: 10 }
+  const ids = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+  const tail = (id: string) => tails[id]!
+  const need = (id: string): Need => ({ cores: id === 'd' ? 4 : 1, memory: 0 })
+  expect(ordered(ids, 'critical-path', tail, need, 8)).toEqual(
+    [...ids].sort((x, y) => tail(y) - tail(x)),
+  )
+  // Graphene: within a quarter of the longest, or half a worker wide, first.
+  expect(ordered(ids, 'graphene', tail, need, 8)).toEqual(['h', 'a', 'e', 'd', 'b', 'c', 'f', 'g'])
+  expect(ordered(['c', 'b'], 'critical-path', tail, need, 8)).toEqual(['c', 'b'])
 })

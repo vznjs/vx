@@ -134,7 +134,16 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     const t = byId.get(id)!
     return t.known === undefined ? t.ran : (t.known ?? undefined)
   }
+  // Each task's need made once: the run's own is kept on its job.
+  const needs = new Map<string, Need>()
   const need = (id: string): Need => {
+    const had = needs.get(id)
+    if (had !== undefined) return had
+    const made = measured(id)
+    needs.set(id, made)
+    return made
+  }
+  const measured = (id: string): Need => {
     const k = known(id)
     const b = booked(
       k?.cores === undefined
@@ -180,7 +189,9 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
   const waitedMs = new Map<string, number>()
   const startedAt = new Map<string, number>()
   const endedAt = new Map<string, number>()
-  const finished: { took: number; forecast: number | undefined }[] = []
+  // What ended, summed as `slowdown` sums it: read whole at each event, it
+  // made a 10 000-task sim quadratic.
+  const finished = { took: 0, forecast: 0 }
   const ready = (id: string): void => {
     const t = byId.get(id)!
     if (t.exec && t.ran !== undefined) {
@@ -267,7 +278,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     const likely = options.likely ?? new Set<string>()
     if (executed.size === 0 && likely.size === 0) return
     // As the plugin: what is left takes as much longer than history as what ended did.
-    const slow = slowdown(finished)
+    const slow = slowdown([finished])
     const ms = (id: string): number | undefined => {
       const m = durationMs(id)
       return m === undefined ? undefined : m * slow
@@ -359,11 +370,14 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     if (p.release.length > 0 && !remaining[Symbol.iterator]().next().done)
       for (const id of p.release) {
         const w = workers.find((x) => x.id === id)!
-        if (w.joinedAt === undefined) w.cancelledAt = now
-        else if (w.running.size === 0) w.leftAt = now
-        else continue
         const s = sizeOf.get(id)!
-        started.set(s.name, started.get(s.name)! - 1)
+        // As the plugin: one let go after it joined still counts against
+        // its size's max; only one cancelled before it joined does not.
+        if (w.joinedAt === undefined) {
+          w.cancelledAt = now
+          started.set(s.name, started.get(s.name)! - 1)
+        } else if (w.running.size === 0) w.leftAt = now
+        else continue
         goneAt.push({ size: s.name, at: now })
       }
     again = p.againInMs === undefined ? undefined : now + p.againInMs
@@ -448,7 +462,10 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
           w.running.delete(r.id)
           w.has.add(r.id)
           endedAt.set(r.id, now)
-          finished.push({ took: now - r.startedAt, forecast: r.knownMs })
+          if (r.knownMs !== undefined && r.knownMs > 0) {
+            finished.took += now - r.startedAt
+            finished.forecast += r.knownMs
+          }
           end(r.id)
         }
     step()

@@ -104,6 +104,8 @@ export interface Plan {
  * and when each started now ends its work.
  */
 interface Ahead {
+  /** When the window it played moves on, from now: plan again then. */
+  readonly untilInMs: number | undefined
   readonly freeInMs: ReadonlyMap<string, number>
   readonly later: readonly {
     readonly size: Size
@@ -270,6 +272,8 @@ interface Slot extends Bin {
   first?: number
   /** When its last task ends. */
   free?: number
+  /** When its last task given in the play ends. */
+  last?: number
 }
 
 /**
@@ -290,8 +294,14 @@ function play(
   tasks: readonly PlanTask[],
   workers: readonly PlanWorker[],
   how: Strategy,
+  // Played no further: past it the rest ends no sooner than its longest
+  // chain from there (2026-11-05: "We can plan as we go till next level";
+  // "it can look ahead 2 warmups").
+  horizon = Infinity,
 ): {
   end: number
+  /** It stopped at `horizon` with work left. */
+  cut?: boolean
   first: Map<string, number>
   ends: Map<string | undefined, number>
   free: () => Map<string, number>
@@ -299,7 +309,7 @@ function play(
   // A dependency running now ends when it does; one ended or a hit, now.
   const runningIds = new Set<string>()
   for (const w of workers) for (const r of w.running) if (r.id !== undefined) runningIds.add(r.id)
-  const { byId, after, waitedAt, tailOf, kinds } = shapeOf(tasks, runningIds)
+  const { byId, after, afterAt, indexOf, waitedAt, tailOf, kinds } = shapeOf(tasks, runningIds)
   // By place, not id: maps keyed by id were a 5000-task play's most time (2026-11-05).
   const waits = waitedAt.slice()
   const slots: Slot[] = workers.map((w) => ({
@@ -312,14 +322,14 @@ function play(
     running: 0,
   }))
   // Ends to come: [at, slot, cores, memory, task or undefined].
-  const ends: [number, Slot, number, number, string | undefined][] = []
+  const ends = new Ends()
   workers.forEach((w, i) => {
     const s = slots[i]!
     for (const r of w.running) {
       s.used.cores += r.cores
       s.used.memory += r.memory
       s.running++
-      ends.push([Math.max(0, r.endsIn), s, r.cores, r.memory, r.id])
+      ends.push(Math.max(0, r.endsIn), s, r.cores, r.memory, -1, r.id)
       s.free = Math.max(s.free ?? 0, r.endsIn)
     }
   })
@@ -354,9 +364,22 @@ function play(
   const widest = Math.max(1, ...workers.map((w) => w.cores))
   let left = tasks.length
   let now = 0
-  let last = Math.max(0, ...ends.map((e) => e[0]))
+  let last = Math.max(0, ends.last())
+  // Core-ms of the tasks not yet given.
+  const workLeft = new Map<string | undefined, number>()
+  const spend = (t: PlanTask, by: number): void => {
+    const w = by * t.cores * (t.ms ?? UNKNOWN_MS)
+    workLeft.set(undefined, (workLeft.get(undefined) ?? 0) + w)
+    if (t.platform !== undefined) workLeft.set(t.platform, (workLeft.get(t.platform) ?? 0) + w)
+  }
+  if (horizon < Infinity) for (const t of tasks) spend(t, 1)
   // When each platform's last task ends.
-  const byPlatform = new Map<string | undefined, number>()
+  const byPlatform = (): Map<string | undefined, number> => {
+    const out = new Map<string | undefined, number>()
+    for (const s of slots)
+      if (s.last !== undefined) out.set(s.platform, Math.max(out.get(s.platform) ?? 0, s.last))
+    return out
+  }
   // The joined slots, read again once the next one joins.
   let joined: Slot[] = []
   let nextJoin = -Infinity
@@ -410,35 +433,58 @@ function play(
       best.first ??= now
       best.free = Math.max(best.free ?? 0, now + (t.ms ?? UNKNOWN_MS))
       const end = now + (t.ms ?? UNKNOWN_MS)
-      ends.push([end, best, Math.min(t.cores, best.cores), Math.min(t.memory, best.memory), t.id])
+      ends.push(
+        end,
+        best,
+        Math.min(t.cores, best.cores),
+        Math.min(t.memory, best.memory),
+        indexOf.get(id)!,
+        undefined,
+      )
       last = Math.max(last, end)
-      byPlatform.set(best.platform, Math.max(byPlatform.get(best.platform) ?? 0, end))
+      best.last = Math.max(best.last ?? 0, end)
+      if (horizon < Infinity) spend(t, -1)
     }
     const first = (): Map<string, number> =>
       new Map(slots.flatMap((s) => (s.first === undefined ? [] : [[s.id, s.first] as const])))
     const free = (): Map<string, number> =>
       new Map(slots.flatMap((s) => (s.free === undefined ? [] : [[s.id, s.free] as const])))
-    if (left === 0 && readyCount === 0) return { end: last, first: first(), ends: byPlatform, free }
+    if (left === 0 && readyCount === 0)
+      return { end: last, first: first(), ends: byPlatform(), free }
     // The next moment anything changes: a task ends or a worker joins.
-    let next = Infinity
-    for (const e of ends) next = Math.min(next, e[0])
+    let next = ends.next()
     for (const s of slots) if (s.at > now) next = Math.min(next, s.at)
-    if (next === Infinity)
-      return { end: left === 0 ? last : Infinity, first: first(), ends: byPlatform, free }
-    now = next
-    for (let i = 0; i < ends.length;) {
-      const [at, s, cores, memory, id] = ends[i]!
-      if (at > now) {
-        i++
-        continue
+    if (next >= horizon && next < Infinity) {
+      // No sooner than its longest chain, nor than its work spread on
+      // every core it has: the workers it asks later are the next plan's.
+      // Of each platform on its own workers, and all of it on all.
+      const work = new Map(workLeft)
+      const cores = new Map<string | undefined, number>()
+      for (const s of slots) {
+        cores.set(undefined, (cores.get(undefined) ?? 0) + s.cores)
+        if (s.platform !== undefined) cores.set(s.platform, (cores.get(s.platform) ?? 0) + s.cores)
       }
-      ends.splice(i, 1)
+      for (const e of ends.all())
+        work.set(undefined, (work.get(undefined) ?? 0) + e.cores * (e.at - now))
+      let end = last
+      for (const [p, w] of work) end = Math.max(end, now + w / Math.max(cores.get(p) ?? 0, 1e-9))
+      for (const t of ready.live()) end = Math.max(end, now + tailOf(t.id))
+      for (const e of ends.all())
+        for (const d of (e.place >= 0 ? afterAt[e.place] : after.get(e.id!)) ?? [])
+          end = Math.max(end, e.at + tailOf(tasks[d]!.id))
+      return { end, cut: true, first: first(), ends: byPlatform(), free }
+    }
+    if (next === Infinity)
+      return { end: left === 0 ? last : Infinity, first: first(), ends: byPlatform(), free }
+    now = next
+    while (ends.next() <= now) {
+      const { s, cores, memory, place, id } = ends.pop()
       s.used.cores -= cores
       s.used.memory -= memory
       s.running--
-      if (id === undefined) continue
-      if (byId.has(id)) left--
-      for (const d of after.get(id) ?? []) {
+      if (place >= 0) left--
+      else if (id === undefined) continue
+      for (const d of (place >= 0 ? afterAt[place] : after.get(id!)) ?? []) {
         if (--waits[d]! === 0) {
           joining.push(tasks[d]!)
           readyCount++
@@ -451,11 +497,86 @@ function play(
 
 const NONE: ReadonlyMap<string, Slot> = new Map()
 
+interface End {
+  at: number
+  seq: number
+  s: Slot
+  cores: number
+  memory: number
+  /** The task's place in the play, or -1 for one running when it began (`id`). */
+  place: number
+  id: string | undefined
+}
+
+/**
+ * A play's ends to come, soonest first, ties in the order given: a scan
+ * of every running task at each step was most of a 20 000-task play
+ * (2026-11-05).
+ */
+class Ends {
+  private readonly heap: End[] = []
+  private seq = 0
+  private readonly before = (a: End, b: End): boolean =>
+    a.at < b.at || (a.at === b.at && a.seq < b.seq)
+  push(
+    at: number,
+    s: Slot,
+    cores: number,
+    memory: number,
+    place: number,
+    id: string | undefined,
+  ): void {
+    const h = this.heap
+    const e: End = { at, seq: this.seq++, s, cores, memory, place, id }
+    let i = h.length
+    h.push(e)
+    while (i > 0) {
+      const p = (i - 1) >> 1
+      if (!this.before(e, h[p]!)) break
+      h[i] = h[p]!
+      i = p
+    }
+    h[i] = e
+  }
+  next(): number {
+    return this.heap[0]?.at ?? Infinity
+  }
+  all(): readonly End[] {
+    return this.heap
+  }
+  last(): number {
+    let most = 0
+    for (const e of this.heap) most = Math.max(most, e.at)
+    return most
+  }
+  pop(): End {
+    const h = this.heap
+    const top = h[0]!
+    const e = h.pop()!
+    if (h.length > 0) {
+      let i = 0
+      for (;;) {
+        const l = 2 * i + 1
+        if (l >= h.length) break
+        const c = l + 1 < h.length && this.before(h[l + 1]!, h[l]!) ? l + 1 : l
+        if (!this.before(h[c]!, e)) break
+        h[i] = h[c]!
+        i = c
+      }
+      h[i] = e
+    }
+    return top
+  }
+}
+
 /** What `play` reads of `tasks` alone, for each play of one plan. */
 interface Shape {
   readonly byId: ReadonlyMap<string, PlanTask>
   /** Each task's dependants, by their place in the tasks. */
   readonly after: ReadonlyMap<string, readonly number[]>
+  /** The same by each task's place, and its place by id: a lookup by id at each end was most of a play. */
+  readonly afterAt: readonly (readonly number[] | undefined)[]
+  readonly indexOf: ReadonlyMap<string, number>
   /** How many dependencies each task, by its place, waits on before the play begins. */
   readonly waitedAt: Int32Array
   readonly tailOf: (id: string) => number
@@ -501,7 +622,9 @@ function shapeOf(tasks: readonly PlanTask[], running: ReadonlySet<string>): Shap
     tail.set(id, t)
     return t
   }
-  const shape = { byId, after, waitedAt, tailOf, kinds: kindsOf(tasks) }
+  const indexOf = new Map(tasks.map((t, i) => [t.id, i]))
+  const afterAt = tasks.map((t) => after.get(t.id))
+  const shape = { byId, after, afterAt, indexOf, waitedAt, tailOf, kinds: kindsOf(tasks) }
   shapes.set(tasks, { runs, shape })
   return shape
 }
@@ -591,11 +714,27 @@ export function plan(
   // halving: more workers end the run no later, so the best is all of
   // them. Trying each count in turn played the whole run some 50 times a
   // plan (2026-11-05: "Why it replays 64 times to pick workers").
+  // Two warm-ups ahead: a worker asked now joins after one, and the next
+  // plan, a warm-up on, sees the one after.
+  const horizon =
+    2 *
+      Math.max(
+        warm(undefined),
+        ...candidates.map((c) => warm(c.name)),
+        ...workers.map((w) => w.at),
+      ) +
+    MARGIN_MS +
+    // And a task given at its end runs through: work counted as cores
+    // spread over the rest asked too few workers for a few long tasks.
+    tasks.reduce((most, t) => Math.max(most, t.ms ?? UNKNOWN_MS), 0)
+  const run = (ws: readonly PlanWorker[]): ReturnType<typeof play> => play(tasks, ws, how, horizon)
+  // Given no task in the play, and none past its window.
+  const unused = (p: ReturnType<typeof play>, id: string): boolean =>
+    !p.first.has(id) && p.cut !== true
   const played = new Map<number, number>()
   const endOf = (n: number): number => {
     let e = played.get(n)
-    if (e === undefined)
-      played.set(n, (e = play(tasks, [...workers, ...added.slice(0, n)], how).end))
+    if (e === undefined) played.set(n, (e = run([...workers, ...added.slice(0, n)]).end))
     return e
   }
   const floor = chainMs(tasks, workers)
@@ -624,7 +763,7 @@ export function plan(
   // Dropped only when neither the end nor its platform's moves past the
   // margin: to the run's end alone, a 110 s guess of an unmeasured chain
   // cut every other platform to it.
-  let before = best < Infinity && n > 0 ? play(tasks, kept, how) : undefined
+  let before = best < Infinity && n > 0 ? run(kept) : undefined
   if (before !== undefined)
     for (let i = n - 1, dropped = false; i >= 0; i--) {
       // Its twin after it stayed, and nothing moved since: without this
@@ -633,7 +772,7 @@ export function plan(
       if (i < n - 1 && !dropped && twins(added[i]!, added[i + 1]!)) continue
       const platform = added[i]!.platform
       const without = kept.filter((k) => k !== added[i])
-      const after = play(tasks, without, how)
+      const after = run(without)
       dropped =
         after.end <= before.end &&
         (after.ends.get(platform) ?? 0) <= (before.ends.get(platform) ?? 0) + MARGIN_MS
@@ -665,11 +804,7 @@ export function plan(
       // margin, the next plan's estimates moved a second later and
       // cancelled 7 asked one at a time (PR #4214); ending the run no
       // sooner, main 005e8f2 cancelled a mac and asked one again 18 s on.
-      if (
-        twin === undefined
-          ? !play(tasks, kept, how).first.has(w.id)
-          : simulate(tasks, without, how) <= bound
-      ) {
+      if (twin === undefined ? unused(run(kept), w.id) : run(without).end <= bound) {
         kept = without
         if (twin === undefined) release.push(w.id)
       }
@@ -689,7 +824,9 @@ export function plan(
     })
     for (const w of idle) {
       const without = kept.filter((k) => k !== w)
-      const next = play(tasks, [...kept, ...standIns], how).first.get(w.id)
+      const played = run([...kept, ...standIns])
+      // Given nothing in a window with work past it: needed past it, maybe.
+      const next = played.first.get(w.id) ?? (played.cut === true ? horizon : undefined)
       if (next === undefined) {
         kept = without
         release.push(w.id)
@@ -708,7 +845,7 @@ export function plan(
         w.id,
         next,
       )
-      if (simulate(tasks, [...without, ...standIns, instead], how) <= bound) {
+      if (run([...without, ...standIns, instead]).end <= bound) {
         kept = without
         release.push(w.id)
         standIns.push(instead)
@@ -716,7 +853,7 @@ export function plan(
       }
     }
   }
-  const { end, first, free } = play(tasks, [...kept, ...standIns], how)
+  const { end, first, free, cut } = run([...kept, ...standIns])
   const start: Size[] = []
   const frees = free()
   const started: { freeInMs: number; joinInMs: number }[] = []
@@ -740,12 +877,15 @@ export function plan(
     }
   }
   later.sort((a, b) => a.inMs - b.inMs)
+  // Work past the window: plan again a warm-up on, the window moved.
+  const untilInMs = cut === true ? (horizon - MARGIN_MS) / 2 : undefined
   return {
     start,
     release,
     endsInMs: end,
     boundMs: bound,
-    againInMs,
+    againInMs: untilInMs === undefined ? againInMs : Math.min(againInMs ?? Infinity, untilInMs),
+    untilInMs,
     freeInMs: frees,
     later,
     started,
@@ -835,7 +975,8 @@ export function decide(input: {
   readonly queued?: ReadonlySet<string>
   /**
    * The run's last plan, kept here: while what it saw holds, the next is
-   * that plan again, not played anew. With `now`, the run's clock.
+   * that plan again, not played anew, and hands back no `tasks` when it
+   * read none. With `now`, the run's clock.
    */
   readonly last?: { forecast?: Forecast }
   readonly now?: number
@@ -849,7 +990,9 @@ export function decide(input: {
   // recheck every task against plan? There is no point").
   if (how.scale !== 'backlog' && had !== undefined) {
     const step = follow(had, undefined, input, undefined, now)
-    if (step !== undefined && step !== 'full') return shown(input.last!, had, step, now, had.tasks)
+    // No work read, none to hand back: each step handed back the plan's
+    // whole work, and the run read it all at each event.
+    if (step !== undefined && step !== 'full') return shown(input.last!, had, step, now, [])
   }
   const tasks = missedWork(
     input.remaining,
@@ -876,9 +1019,8 @@ export function decide(input: {
   if (how.scale === 'backlog')
     return { ...backlog(tasks, input.workers, sizes, input.warmUpMs, how), tasks }
   const step = had === undefined ? undefined : follow(had, tasks, input, sizes, now)
-  if (step !== undefined && step !== 'full')
-    return shown(input.last!, had!, { ...step, next: { ...step.next, tasks } }, now, tasks)
-  const { freeInMs, later, started, ...p } = plan(
+  if (step !== undefined && step !== 'full') return shown(input.last!, had!, step, now, tasks)
+  const { freeInMs, later, started, untilInMs, ...p } = plan(
     tasks,
     input.workers,
     sizes,
@@ -889,7 +1031,7 @@ export function decide(input: {
     how,
   )
   if (input.last !== undefined)
-    input.last.forecast = forecastOf(p, { freeInMs, later, started }, tasks, input, now)
+    input.last.forecast = forecastOf(p, { freeInMs, later, started, untilInMs }, tasks, input, now)
   return { ...p, tasks }
 }
 
@@ -928,10 +1070,16 @@ export interface Forecast {
   /** How many tasks the run had handed over, and those it had when planned. */
   readonly executed: number
   readonly before: ReadonlySet<string>
+  /**
+   * How far it read the handed-over set, kept across its steps: a Set's
+   * iterator sees what is added after it, so each id is read once. Each
+   * step read the whole set, O(n) an event (2026-11-05).
+   */
+  readonly scan: { of?: ReadonlySet<string> | undefined; it?: Iterator<string>; read: number }
   /** Each size's warm-up as it saw it: a join tells the run's own. */
   readonly warm: readonly number[]
-  /** The work as last read. */
-  readonly tasks: readonly PlanTask[]
+  /** When its window moves on, on the run's clock. */
+  readonly until: number
   readonly late: ReadonlySet<string>
   readonly queued: string
   readonly final: boolean
@@ -1012,8 +1160,9 @@ function forecastOf(
     ),
     executed: input.executed.size,
     before: new Set(input.executed),
+    scan: { read: 0 },
     warm: warmsOf(input),
-    tasks,
+    until: ahead.untilInMs === undefined ? Infinity : now + ahead.untilInMs,
     late: lateOf(input.workers, slackOf(p)),
     queued: [...(input.queued ?? [])].sort().join('\0'),
     final: input.final,
@@ -1029,13 +1178,14 @@ function shown(
   tasks: readonly PlanTask[],
 ): Plan & { readonly tasks: readonly PlanTask[] } {
   last.forecast = step.next
+  const again = Math.min(step.next.later[0]?.at ?? Infinity, step.next.until)
   const since = now - had.at
   return {
     start: step.start,
     release: step.release,
     endsInMs: Math.max(0, had.plan.endsInMs - since),
     boundMs: had.plan.boundMs - since,
-    againInMs: step.next.later[0] === undefined ? undefined : step.next.later[0].at - now,
+    againInMs: Number.isFinite(again) ? again - now : undefined,
     tasks,
   }
 }
@@ -1062,6 +1212,7 @@ function follow(
   sizes: readonly Size[] | undefined,
   now: number,
 ): Step | 'full' | undefined {
+  if (now >= f.until) return undefined
   if (f.final !== input.final) return undefined
   if ([...(input.queued ?? [])].sort().join('\0') !== f.queued) return undefined
   if (input.workers.length !== f.count) return undefined
@@ -1109,13 +1260,29 @@ function follow(
     // see sends the plan to read every task.
     if (tasks === undefined) {
       if (input.executed.size < f.executed) return 'full'
-      for (const id of input.executed)
+      const scan = f.scan
+      if (scan.of !== input.executed) {
+        scan.of = input.executed
+        scan.it = input.executed.values()
+        scan.read = 0
+      }
+      for (; scan.read < input.executed.size; scan.read++) {
+        const r = scan.it!.next()
+        // One left the set: the count no longer says where it read to.
+        if (r.done === true) {
+          scan.of = undefined
+          return 'full'
+        }
+        const id = r.value
         if (
           !f.ms.has(id) &&
           !f.before.has(id) &&
           input.nodes.get(id)?.config.exec?.command !== undefined
-        )
+        ) {
+          scan.read++
           return 'full'
+        }
+      }
     } else {
       for (const t of tasks) if (!f.ms.has(t.id)) return undefined
       // Work that left without running (a hit, or no longer asked) frees
@@ -1153,6 +1320,10 @@ function follow(
     if (!w.idle || w.starting === true) continue
     const at = free.get(w.id)
     if (at === undefined || now >= at - slack) {
+      // Its work done in a window with work past it: maybe needed there,
+      // and one let go still counts against its size's max. A Mac let go
+      // so left a Mac task no worker, and the run never ended (#4989).
+      if (f.until < Infinity) return undefined
       release.push(w.id)
       workers.delete(w.id)
     }
