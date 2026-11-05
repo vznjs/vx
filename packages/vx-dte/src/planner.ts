@@ -63,6 +63,7 @@ export interface PlanWorker {
     readonly id?: string
     readonly cores: number
     readonly memory: number
+    /** Below 0: past its time by as much. */
     readonly endsIn: number
   }[]
   /** Holding no task: the run may let it go. */
@@ -268,8 +269,9 @@ function play(
   // A dependency running now ends when it does; one ended or a hit, now.
   const runningIds = new Set<string>()
   for (const w of workers) for (const r of w.running) if (r.id !== undefined) runningIds.add(r.id)
-  const { byId, dependants, waited, tailOf, kinds } = shapeOf(tasks, runningIds)
-  const waits = new Map(waited)
+  const { byId, after, waitedAt, tailOf, kinds } = shapeOf(tasks, runningIds)
+  // By place, not id: maps keyed by id were a 5000-task play's most time (2026-11-05).
+  const waits = waitedAt.slice()
   const slots: Slot[] = workers.map((w) => ({
     id: w.id,
     cores: w.cores,
@@ -294,7 +296,7 @@ function play(
   // leaves): each step sorted every ready task, and a run of 9000 spent
   // its orchestrator planning (2026-10-25).
   const ready = new Ready(tasks, kinds)
-  let joining = tasks.filter((t) => waits.get(t.id) === 0)
+  let joining = tasks.filter((_, i) => waits[i] === 0)
   let readyCount = joining.length
   const spent = new Set<string>()
   const bounds: Bounds = { done: false, open: true, free: 0, cores: 0, memory: 0 }
@@ -402,13 +404,11 @@ function play(
       s.running--
       if (id === undefined) continue
       if (byId.has(id)) left--
-      for (const d of dependants.get(id) ?? []) {
-        const n = waits.get(d)! - 1
-        waits.set(d, n)
-        if (n === 0) {
-          joining.push(byId.get(d)!)
+      for (const d of after.get(id) ?? []) {
+        if (--waits[d]! === 0) {
+          joining.push(tasks[d]!)
           readyCount++
-          count(byId.get(d)!, 1)
+          count(tasks[d]!, 1)
         }
       }
     }
@@ -420,9 +420,10 @@ const NONE: ReadonlyMap<string, Slot> = new Map()
 /** What `play` reads of `tasks` alone, for each play of one plan. */
 interface Shape {
   readonly byId: ReadonlyMap<string, PlanTask>
-  readonly dependants: ReadonlyMap<string, readonly string[]>
-  /** How many dependencies each task waits on before the play begins. */
-  readonly waited: ReadonlyMap<string, number>
+  /** Each task's dependants, by their place in the tasks. */
+  readonly after: ReadonlyMap<string, readonly number[]>
+  /** How many dependencies each task, by its place, waits on before the play begins. */
+  readonly waitedAt: Int32Array
   readonly tailOf: (id: string) => number
   readonly kinds: Kinds
 }
@@ -438,8 +439,9 @@ function shapeOf(tasks: readonly PlanTask[], running: ReadonlySet<string>): Shap
   if (had !== undefined && had.runs === runs) return had.shape
   const byId = new Map(tasks.map((t) => [t.id, t]))
   const dependants = new Map<string, string[]>()
-  const waited = new Map<string, number>()
-  for (const t of tasks) {
+  const after = new Map<string, number[]>()
+  const waitedAt = new Int32Array(tasks.length)
+  tasks.forEach((t, i) => {
     let n = 0
     for (const d of t.deps)
       if (byId.has(d) || running.has(d)) {
@@ -449,20 +451,23 @@ function shapeOf(tasks: readonly PlanTask[], running: ReadonlySet<string>): Shap
         const list = dependants.get(d)
         if (list === undefined) dependants.set(d, [t.id])
         else list.push(t.id)
+        const at = after.get(d)
+        if (at === undefined) after.set(d, [i])
+        else at.push(i)
       }
-    waited.set(t.id, n)
-  }
+    waitedAt[i] = n
+  })
   const tail = new Map<string, number>()
   const tailOf = (id: string): number => {
     const known = tail.get(id)
     if (known !== undefined) return known
-    let after = 0
-    for (const d of dependants.get(id) ?? []) after = Math.max(after, tailOf(d))
-    const t = after + (byId.get(id)!.ms ?? UNKNOWN_MS)
+    let most = 0
+    for (const d of dependants.get(id) ?? []) most = Math.max(most, tailOf(d))
+    const t = most + (byId.get(id)!.ms ?? UNKNOWN_MS)
     tail.set(id, t)
     return t
   }
-  const shape = { byId, dependants, waited, tailOf, kinds: kindsOf(tasks) }
+  const shape = { byId, after, waitedAt, tailOf, kinds: kindsOf(tasks) }
   shapes.set(tasks, { runs, shape })
   return shape
 }
@@ -476,6 +481,30 @@ interface Kinds {
 
 function kindsOf(tasks: readonly PlanTask[]): Kinds {
   return { at: new Map(tasks.map((t, i) => [t.id, i])), kindAt: tasks.map(kindOf) }
+}
+
+/**
+ * No play of `tasks` ends sooner: each chain of them in a row, from when
+ * the running tasks it waits on end, and each running task's end.
+ */
+function chainMs(tasks: readonly PlanTask[], workers: readonly PlanWorker[]): number {
+  const runningIds = new Set<string>()
+  const endsAt = new Map<string, number>()
+  for (const w of workers)
+    for (const r of w.running)
+      if (r.id !== undefined) {
+        runningIds.add(r.id)
+        endsAt.set(r.id, Math.max(endsAt.get(r.id) ?? 0, r.endsIn))
+      }
+  const { tailOf } = shapeOf(tasks, runningIds)
+  let most = 0
+  for (const w of workers) for (const r of w.running) most = Math.max(most, r.endsIn)
+  for (const t of tasks) {
+    let from = 0
+    for (const d of t.deps) from = Math.max(from, endsAt.get(d) ?? 0)
+    most = Math.max(most, from + tailOf(t.id))
+  }
+  return most
 }
 
 /** Two workers a play cannot tell apart, but by their place. */
@@ -525,9 +554,14 @@ export function plan(
   const warm = warmOf(warmUpMs)
   const added = candidates.map((s, i) => fresh({ ...s, size: s.name }, `\0new${i}`, warm(s.name)))
   const ends: number[] = []
+  const floor = chainMs(tasks, workers)
   for (let n = 0; n <= candidates.length; n++) {
     const played = play(tasks, [...workers, ...added.slice(0, n)], how)
     ends.push(played.end)
+    // At the longest chain no worker more ends it sooner, and the first
+    // to reach it is the one kept: playing on to the last candidate was
+    // most of a 1000-task plan (2026-11-05).
+    if (played.end <= floor) break
     // Past the plan's own length more cannot end it sooner.
     if (n > 0 && ends[n] === ends[n - 1] && ends[n]! <= added[n - 1]!.at) break
     // One the play gave nothing gets nothing beside a twin either: a task
@@ -563,14 +597,18 @@ export function plan(
   // cut every other platform to it.
   let before = best < Infinity && n > 0 ? play(tasks, kept, how) : undefined
   if (before !== undefined)
-    for (let i = n - 1; i >= 0; i--) {
+    for (let i = n - 1, dropped = false; i >= 0; i--) {
+      // Its twin after it stayed, and nothing moved since: without this
+      // one the play is that one's again, so it stays too. Each was a
+      // play of the whole run (2026-11-05).
+      if (i < n - 1 && !dropped && twins(added[i]!, added[i + 1]!)) continue
       const platform = added[i]!.platform
       const without = kept.filter((k) => k !== added[i])
       const after = play(tasks, without, how)
-      if (
+      dropped =
         after.end <= before.end &&
         (after.ends.get(platform) ?? 0) <= (before.ends.get(platform) ?? 0) + MARGIN_MS
-      ) {
+      if (dropped) {
         kept = without
         before = after
       }
@@ -746,6 +784,12 @@ export function decide(input: {
    * queued it, and one asked now queues behind it. None of them starts.
    */
   readonly queued?: ReadonlySet<string>
+  /**
+   * The run's last plan, kept here: while what it saw holds, the next is
+   * that plan again, not played anew. With `now`, the run's clock.
+   */
+  readonly last?: { forecast?: Forecast }
+  readonly now?: number
 }): Plan & { readonly tasks: readonly PlanTask[] } {
   const how = input.how ?? DEFAULT_STRATEGY
   const tasks = missedWork(
@@ -772,6 +816,19 @@ export function decide(input: {
       )
   if (how.scale === 'backlog')
     return { ...backlog(tasks, input.workers, sizes, input.warmUpMs, how), tasks }
+  const now = input.now ?? 0
+  const had = input.last?.forecast
+  if (had !== undefined && holds(had, tasks, input, now)) {
+    const since = now - had.at
+    return {
+      start: [],
+      release: [],
+      endsInMs: Math.max(0, had.plan.endsInMs - since),
+      boundMs: had.plan.boundMs - since,
+      againInMs: had.againAt === undefined ? undefined : had.againAt - now,
+      tasks,
+    }
+  }
   const p = plan(
     tasks,
     input.workers,
@@ -782,7 +839,116 @@ export function decide(input: {
     tasks.every((t) => input.known?.has(t.id) === true) ? input.limitMs : undefined,
     how,
   )
+  // A plan that starts or releases workers changes what the next one sees
+  // (a start that fails leaves the workers as they were): it holds no forecast.
+  if (input.last !== undefined)
+    input.last.forecast =
+      p.start.length === 0 && p.release.length === 0 ? forecastOf(p, tasks, input, now) : undefined
   return { ...p, tasks }
+}
+
+/**
+ * What a plan saw, to tell whether the next would differ: its work and
+ * each task's time, its workers as starting, idle or busy, the tasks
+ * already past their time, the sizes queued, when it wanted to look again.
+ */
+export interface Forecast {
+  readonly at: number
+  readonly plan: Plan
+  readonly againAt: number | undefined
+  /** Each waiting task's time, and each waiting or running task's cores and memory. */
+  readonly ms: ReadonlyMap<string, number | undefined>
+  readonly need: ReadonlyMap<string, readonly [cores: number, memory: number]>
+  readonly workers: ReadonlyMap<string, 'starting' | 'idle' | 'busy'>
+  readonly late: ReadonlySet<string>
+  readonly queued: string
+  readonly final: boolean
+}
+
+type Seen = Pick<Parameters<typeof decide>[0], 'workers' | 'queued' | 'final'>
+
+const stateOf = (w: PlanWorker): 'starting' | 'idle' | 'busy' =>
+  w.starting === true ? 'starting' : w.idle ? 'idle' : 'busy'
+
+/**
+ * Running tasks past their time by more than `slack`: one that runs that
+ * long moves the plan (2026-11-05: "Reality changes by leave some
+ * margin. 5% or sth").
+ */
+function lateOf(workers: readonly PlanWorker[], slack: number): Set<string> {
+  const out = new Set<string>()
+  for (const w of workers)
+    for (const r of w.running) if (r.endsIn < -slack && r.id !== undefined) out.add(r.id)
+  return out
+}
+
+/** Each waiting and running task's cores and memory, as a plan saw them. */
+function needsOf(
+  tasks: readonly PlanTask[],
+  workers: readonly PlanWorker[],
+): Map<string, readonly [number, number]> {
+  const out = new Map<string, readonly [number, number]>(
+    tasks.map((t) => [t.id, [t.cores, t.memory] as const]),
+  )
+  for (const w of workers)
+    for (const r of w.running) if (r.id !== undefined) out.set(r.id, [r.cores, r.memory])
+  return out
+}
+
+/** Whether `is` moved from `was` past 5%, or past `least` when they are small. */
+const moved = (was: number, is: number, least: number): boolean =>
+  Math.abs(is - was) > Math.max(least, Math.abs(was) * MARGIN)
+
+/** How late a task may run, or how far its time may move, before the plan is made again: 5% of the run's. */
+const slackOf = (p: Plan): number => Math.max(MARGIN_MS / 5, p.endsInMs * MARGIN)
+
+function forecastOf(p: Plan, tasks: readonly PlanTask[], input: Seen, now: number): Forecast {
+  return {
+    at: now,
+    plan: p,
+    againAt: p.againInMs === undefined ? undefined : now + p.againInMs,
+    ms: new Map(tasks.map((t) => [t.id, t.ms])),
+    need: needsOf(tasks, input.workers),
+    workers: new Map(input.workers.map((w) => [w.id, stateOf(w)])),
+    late: lateOf(input.workers, slackOf(p)),
+    queued: [...(input.queued ?? [])].sort().join('\0'),
+    final: input.final,
+  }
+}
+
+/**
+ * Whether the plan `f` made still stands: no new work, no task's time,
+ * cores or memory moved past 5%, no worker joined, left, fell idle or took work, no task
+ * ran past its time, and its own time to look again not come. Planned at
+ * every task's end, a run of 1000 tasks replayed itself 10 000 times
+ * (2026-11-05: "It's just about filling boxes to full").
+ */
+function holds(f: Forecast, tasks: readonly PlanTask[], input: Seen, now: number): boolean {
+  if (f.againAt !== undefined && now >= f.againAt) return false
+  if (f.final !== input.final) return false
+  if ([...(input.queued ?? [])].sort().join('\0') !== f.queued) return false
+  if (input.workers.length !== f.workers.size) return false
+  for (const w of input.workers) {
+    const was = f.workers.get(w.id)
+    const is = stateOf(w)
+    // Idle or busy anew: one to let go, or one the plan left idle working.
+    if (was !== is) return false
+  }
+  for (const t of tasks) {
+    if (!f.ms.has(t.id)) return false
+    const was = f.ms.get(t.id)
+    if (was === undefined || t.ms === undefined) {
+      if (was !== t.ms) return false
+    } else if (moved(was, t.ms, MARGIN_MS / 5)) return false
+  }
+  // As for time, so for resources (2026-11-05: "And resource usage").
+  for (const [id, [cores, memory]] of needsOf(tasks, input.workers)) {
+    const was = f.need.get(id)
+    if (was === undefined) continue
+    if (moved(was[0], cores, 0.05) || moved(was[1], memory, 64 * 2 ** 20)) return false
+  }
+  for (const id of lateOf(input.workers, slackOf(f.plan))) if (!f.late.has(id)) return false
+  return true
 }
 
 /**
@@ -864,8 +1030,17 @@ function backlog(
   return { start, release, endsInMs: end, boundMs: end, againInMs: undefined }
 }
 
-/** The most kinds `Ready.asks` jumps across; past it, it reads every task. */
+/** The most kinds `Ready.asks` jumps across; past it, it jumps across the cores' classes. */
 const MAX_JUMP_KINDS = 32
+/** Classes a doubling of cores spans (`classOf`). */
+const CLASSES = 4
+/** The class of a task that names a platform or a size to beat: never passed whole. */
+const ODD = -Infinity
+/** A task's cores' class: about 2^(c / CLASSES) to 2^((c + 1) / CLASSES), its span kept as joined. */
+const classOf = (t: PlanTask): number =>
+  t.platform !== undefined || t.above !== undefined
+    ? ODD
+    : Math.floor(Math.log2(Math.max(t.cores, 1e-6)) * CLASSES)
 
 /**
  * Ready tasks in the order `ordered` gave, by kind (`kindOf`): `assign`
@@ -886,6 +1061,15 @@ class Ready {
   /** In rank order; taken ones linger until the next join. */
   private order: number[] = []
   private kinds = new Map<string, number[]>()
+  /**
+   * Ready tasks by their cores' class (`classOf`), in rank order, each
+   * class's first not taken and the most memory one asked: what `asks`
+   * jumps across when kinds are too many.
+   */
+  private classes = new Map<number, number[]>()
+  private readonly classHead = new Map<number, number>()
+  /** The fewest and most cores and the most memory a task of each class asked. */
+  private readonly classSpan = new Map<number, [number, number, number]>()
   /** Each kind's first task not taken. */
   private readonly head = new Map<string, number>()
   /** No task before this place in `order` is left: a pass began at 0 and read 9000 taken ones (2026-10-25). */
@@ -946,6 +1130,9 @@ class Ready {
     this.order = []
     this.kinds = new Map()
     this.head.clear()
+    this.classes = new Map()
+    this.classHead.clear()
+    this.classSpan.clear()
     this.liveOf.clear()
     this.dead = 0
     this.stale = false
@@ -983,6 +1170,12 @@ class Ready {
       this.order = this.merge(this.order, [])
       for (const [k, q] of this.kinds) this.kinds.set(k, this.merge(q, []))
       this.head.clear()
+      for (const [c, q] of this.classes) {
+        const left = this.merge(q, [])
+        if (left.length > 0) this.classes.set(c, left)
+        else this.classes.delete(c)
+      }
+      this.classHead.clear()
       this.dead = 0
       this.lo = 0
     }
@@ -997,6 +1190,32 @@ class Ready {
       const q = by.get(k)
       if (q === undefined) by.set(k, [i])
       else q.push(i)
+    }
+    const byClass = new Map<number, number[]>()
+    for (const i of batch) {
+      const t = this.tasks[i]!
+      const c = classOf(t)
+      const span = this.classSpan.get(c)
+      if (span === undefined) this.classSpan.set(c, [t.cores, t.cores, t.memory])
+      else {
+        span[0] = Math.min(span[0], t.cores)
+        span[1] = Math.max(span[1], t.cores)
+        span[2] = Math.max(span[2], t.memory)
+      }
+      const q = byClass.get(c)
+      if (q === undefined) byClass.set(c, [i])
+      else q.push(i)
+    }
+    for (const [c, q] of byClass) {
+      const had = this.classes.get(c)
+      if (had === undefined) {
+        this.classes.set(c, q)
+        this.classHead.delete(c)
+      } else {
+        const first = this.insert(had, q)
+        const h = this.classHead.get(c)
+        if (h !== undefined && first < h) this.classHead.set(c, first)
+      }
     }
     // Only the kinds it joins: each join read every kind and every ready
     // task, and a 6000-task tree spent 2 s of a 5 s plan on it (2026-11-05).
@@ -1046,16 +1265,7 @@ class Ready {
     // Measured needs are unrounded, so kinds can be as many as tasks: a
     // jump across every kind then cost more than a read of every task.
     if (this.kinds.size > MAX_JUMP_KINDS) {
-      while (this.lo < this.order.length && this.taken[this.order[this.lo]!] === 1) this.lo++
-      for (let p = this.lo; p < this.order.length; p++) {
-        const i = this.order[p]!
-        const kind = this.kindAt[i]!
-        if (this.taken[i] === 1 || spent.has(kind)) continue
-        if (bounds?.done === true || (kinds !== undefined && spent.size >= kinds)) return
-        const t = this.tasks[i]!
-        if (bounds !== undefined && dead(t, bounds)) spent.add(kind)
-        else yield { id: t.id, need: t, kind }
-      }
+      yield* this.byClass(spent, bounds, kinds)
       return
     }
     // Arrays, not the maps: the scan below is most of a sim's time (2026-11-05).
@@ -1099,6 +1309,70 @@ class Ready {
       const t = this.tasks[next]!
       yield { id: t.id, need: t, kind: ks[nextAt]! }
     }
+  }
+
+  /**
+   * As a read of every ready task in rank order, past each taken, spent
+   * or `dead` one, but jumping across the cores' classes: a class whose
+   * every task no bin fits, by the span its tasks asked, is passed whole. Read one by one, the ready
+   * tasks of a 5000-task play were most of its time (2026-11-05). A task
+   * found dead stays dead until a bin is given, and a give only shrinks
+   * the bins' room, so the read goes past it for the rest of the pass.
+   */
+  private *byClass(spent: Set<string>, bounds?: Bounds, kinds?: number): Generator<Ask> {
+    const cs: number[] = []
+    const qs: (readonly number[])[] = []
+    for (const [c, q] of this.classes) {
+      cs.push(c)
+      qs.push(q)
+    }
+    const at = new Int32Array(cs.length).fill(-1)
+    let cursor = -1
+    for (;;) {
+      if (bounds?.done === true || (kinds !== undefined && spent.size >= kinds)) return
+      let next = -1
+      for (let x = 0; x < cs.length; x++) {
+        const c = cs[x]!
+        if (
+          bounds !== undefined &&
+          c !== ODD &&
+          !bounds.open &&
+          this.classSpan.get(c)![0] > bounds.free + 1e-9 &&
+          this.classSpan.get(c)![1] < bounds.cores &&
+          this.classSpan.get(c)![2] <= bounds.memory
+        )
+          continue
+        const q = qs[x]!
+        let p = at[x]! === -1 ? this.classHeadOf(c, q) : at[x]!
+        if (p < q.length && cursor !== -1 && !this.before(cursor, q[p]!))
+          p = this.after(q, p, cursor)
+        for (; p < q.length; p++) {
+          const i = q[p]!
+          if (this.taken[i] === 1) continue
+          const t = this.tasks[i]!
+          if (bounds === undefined || !dead(t, bounds)) break
+          spent.add(this.kindAt[i]!)
+        }
+        at[x] = p
+        // A spent kind is passed here only: a give clears `spent`.
+        let r = p
+        while (r < q.length && (this.taken[q[r]!] === 1 || spent.has(this.kindAt[q[r]!]!))) r++
+        if (r < q.length && (next === -1 || this.before(q[r]!, next))) {
+          next = q[r]!
+        }
+      }
+      if (next === -1) return
+      cursor = next
+      const t = this.tasks[next]!
+      yield { id: t.id, need: t, kind: this.kindAt[next]! }
+    }
+  }
+
+  private classHeadOf(c: number, q: readonly number[]): number {
+    let h = this.classHead.get(c) ?? 0
+    while (h < q.length && this.taken[q[h]!] === 1) h++
+    this.classHead.set(c, h)
+    return h
   }
 
   private headOf(k: string, q: readonly number[]): number {

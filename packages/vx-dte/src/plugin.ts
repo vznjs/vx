@@ -20,7 +20,7 @@ import type { Need } from './dispatch.js'
 import { booked, DEFAULT_STRATEGY, STRATEGIES, type Strategy } from './strategy.js'
 import type { Orchestrator } from './orchestrator.js'
 import type { Proof } from './seal.js'
-import type { Size } from './planner.js'
+import type { Forecast, Size } from './planner.js'
 
 /** One kind of worker the adapter can start. */
 export interface WorkerSize {
@@ -625,6 +625,8 @@ export function dte(options: DteOptions = {}) {
       // The run's deadline (`Plan.boundMs`), and the work its plans knew.
       let deadline: number | undefined
       const known = new Set<string>()
+      // The last plan, which stands while what it saw holds (`decide`).
+      const last: { forecast?: Forecast } = {}
       // A plan that needs a worker later plans again then.
       let again: ReturnType<typeof setTimeout> | undefined
       // The fewest workers that end the run's known work within a margin of
@@ -667,6 +669,8 @@ export function dte(options: DteOptions = {}) {
           how,
           home,
           queued: o.queued(warmUp),
+          last,
+          now: performance.now(),
         })
         deadline = performance.now() + p.boundMs
         for (const t of p.tasks) known.add(t.id)

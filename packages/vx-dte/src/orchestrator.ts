@@ -1771,7 +1771,8 @@ export class Orchestrator {
           id: j.req.taskId,
           cores: Math.min(a.cores, Math.max((j.held?.cores ?? 0) * over, j.need.ask?.cores ?? 0)),
           memory: Math.max(j.held?.memory ?? 0, Math.min(a.memory, j.need.ask?.memory ?? 0)),
-          endsIn: Math.max(0, (ms(j.req.taskId) ?? 0) - (now - j.startedAt!)),
+          // Below 0: past its time, which the plan weighs (`decide`).
+          endsIn: (ms(j.req.taskId) ?? 0) - (now - j.startedAt!),
         })),
       })
     }

@@ -14,6 +14,7 @@ import {
   simulate as play,
   slowdown,
   tailsMs,
+  type Forecast,
   type PlanTask,
   type PlanWorker,
   type Size,
@@ -260,6 +261,8 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     }
   }
 
+  // As the plugin: the last plan, which stands while what it saw holds.
+  const last: { forecast?: Forecast } = {}
   const replan = (): void => {
     const likely = options.likely ?? new Set<string>()
     if (executed.size === 0 && likely.size === 0) return
@@ -303,7 +306,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
             Math.max(Math.min(r.booked.cores, w.cores) * over, r.booked.ask?.cores ?? 0),
           ),
           memory: Math.min(Math.max(r.booked.memory, r.booked.ask?.memory ?? 0), w.memory),
-          endsIn: Math.max(0, (r.knownMs ?? 0) * slow - (now - r.startedAt)),
+          endsIn: (r.knownMs ?? 0) * slow - (now - r.startedAt),
         })),
       })
     }
@@ -343,6 +346,8 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       how,
       home: options.home,
       queued,
+      last,
+      now,
     })
     deadline = now + p.boundMs
     for (const t of p.tasks) planned.add(t.id)
