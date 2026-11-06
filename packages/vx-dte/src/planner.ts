@@ -571,10 +571,10 @@ class Ends {
 
 /** What `play` reads of `tasks` alone, for each play of one plan. */
 interface Shape {
-  readonly byId: ReadonlyMap<string, PlanTask>
-  /** Each task's dependants, by their place in the tasks. */
+  readonly byId: { get(id: string): PlanTask | undefined }
+  /** Each running task's dependants, by their place in the tasks. */
   readonly after: ReadonlyMap<string, readonly number[]>
-  /** The same by each task's place, and its place by id: a lookup by id at each end was most of a play. */
+  /** Each task's dependants by its place, and its place by id: a lookup by id at each end was most of a play. */
   readonly afterAt: readonly (readonly number[] | undefined)[]
   readonly indexOf: ReadonlyMap<string, number>
   /** How many dependencies each task, by its place, waits on before the play begins. */
@@ -592,39 +592,52 @@ function shapeOf(tasks: readonly PlanTask[], running: ReadonlySet<string>): Shap
   const runs = [...running].sort().join('\0')
   const had = shapes.get(tasks)
   if (had !== undefined && had.runs === runs) return had.shape
-  const byId = new Map(tasks.map((t) => [t.id, t]))
-  const dependants = new Map<string, string[]>()
+  // One map by id, the rest by place: a map of each by id made a
+  // 10 000-task plan's shape a third of its time (2026-11-05).
+  const indexOf = new Map<string, number>()
+  for (let i = 0; i < tasks.length; i++) indexOf.set(tasks[i]!.id, i)
+  // Of a running task only, by id: one in the work is by its place.
   const after = new Map<string, number[]>()
+  const afterAt: (number[] | undefined)[] = Array.from({ length: tasks.length })
   const waitedAt = new Int32Array(tasks.length)
-  tasks.forEach((t, i) => {
+  for (let i = 0; i < tasks.length; i++) {
     let n = 0
-    for (const d of t.deps)
-      if (byId.has(d) || running.has(d)) {
+    for (const d of tasks[i]!.deps) {
+      const j = indexOf.get(d)
+      // Pushed, not copied: copying made one install under 9000 tasks
+      // 40 million copies a play (2026-10-25).
+      if (j !== undefined) {
         n++
-        // Pushed, not copied: copying made one install under 9000 tasks
-        // 40 million copies a play (2026-10-25).
-        const list = dependants.get(d)
-        if (list === undefined) dependants.set(d, [t.id])
-        else list.push(t.id)
+        const at = afterAt[j]
+        if (at === undefined) afterAt[j] = [i]
+        else at.push(i)
+      } else if (running.has(d)) {
+        n++
         const at = after.get(d)
         if (at === undefined) after.set(d, [i])
         else at.push(i)
       }
+    }
     waitedAt[i] = n
-  })
-  const tail = new Map<string, number>()
-  const tailOf = (id: string): number => {
-    const known = tail.get(id)
-    if (known !== undefined) return known
-    let most = 0
-    for (const d of dependants.get(id) ?? []) most = Math.max(most, tailOf(d))
-    const t = most + (byId.get(id)!.ms ?? UNKNOWN_MS)
-    tail.set(id, t)
-    return t
   }
-  const indexOf = new Map(tasks.map((t, i) => [t.id, i]))
-  const afterAt = tasks.map((t) => after.get(t.id))
-  const shape = { byId, after, afterAt, indexOf, waitedAt, tailOf, kinds: kindsOf(tasks) }
+  const tail = new Float64Array(tasks.length).fill(-1)
+  const tailAt = (i: number): number => {
+    if (tail[i]! >= 0) return tail[i]!
+    let most = 0
+    for (const d of afterAt[i] ?? []) most = Math.max(most, tailAt(d))
+    return (tail[i] = most + (tasks[i]!.ms ?? UNKNOWN_MS))
+  }
+  const tailOf = (id: string): number => tailAt(indexOf.get(id)!)
+  const byId = { get: (id: string) => tasks[indexOf.get(id)!] }
+  const shape = {
+    byId,
+    after,
+    afterAt,
+    indexOf,
+    waitedAt,
+    tailOf,
+    kinds: { at: indexOf, kindAt: tasks.map(kindOf) },
+  }
   shapes.set(tasks, { runs, shape })
   return shape
 }
@@ -992,7 +1005,15 @@ export function decide(input: {
     const step = follow(had, undefined, input, undefined, now)
     // No work read, none to hand back: each step handed back the plan's
     // whole work, and the run read it all at each event.
-    if (step !== undefined && step !== 'full') return shown(input.last!, had, step, now, [])
+    // A start or a release hands back the work it plans for, as the run reports it.
+    if (step !== undefined && step !== 'full')
+      return shown(
+        input.last!,
+        had,
+        step,
+        now,
+        step.start.length > 0 || step.release.length > 0 ? had.work : [],
+      )
   }
   const tasks = missedWork(
     input.remaining,
@@ -1043,6 +1064,8 @@ export function decide(input: {
 export interface Forecast {
   readonly at: number
   readonly plan: Plan
+  /** The work it played. */
+  readonly work: readonly PlanTask[]
   /** Each waiting task's time, and each waiting or running task's cores and memory. */
   readonly ms: ReadonlyMap<string, number | undefined>
   readonly need: ReadonlyMap<string, readonly [cores: number, memory: number]>
@@ -1087,7 +1110,7 @@ export interface Forecast {
 
 type Seen = Pick<
   Parameters<typeof decide>[0],
-  'workers' | 'queued' | 'final' | 'sizes' | 'warmUpMs' | 'executed' | 'nodes'
+  'workers' | 'queued' | 'final' | 'sizes' | 'started' | 'warmUpMs' | 'executed' | 'nodes'
 >
 
 /**
@@ -1137,6 +1160,7 @@ function forecastOf(
   return {
     at: now,
     plan: p,
+    work: tasks,
     ms: new Map(tasks.map((t) => [t.id, t.ms])),
     need: needsOf(tasks, input.workers),
     workers: new Set(input.workers.map((w) => w.id).filter((id) => !p.release.includes(id))),
@@ -1202,8 +1226,8 @@ type Step = { start: Size[]; release: string[]; next: Forecast }
  * boxes to full"; "If simulated all goes with plan so there should be no
  * replans").
  *
- * Without `tasks` (and `sizes`), only what events move is read, and a
- * step that starts or lets a worker go is `full`: read every task first.
+ * Without `tasks` (and `sizes`), only what events move is read: work it
+ * did not see is `full`, read every task first.
  */
 function follow(
   f: Forecast,
@@ -1332,13 +1356,22 @@ function follow(
   const later = [...f.later]
   while (later.length > 0 && now >= later[0]!.at) {
     const { size, free: ends, join: joins } = later.shift()!
-    // Its size taken up since: the plan no longer fits the run.
-    if (sizes === undefined) return 'full'
-    if (!sizes.some((s) => s.name === size.name)) return undefined
+    // Its size taken up since: the plan no longer fits the run. Read
+    // from what the run started, not from every task: each start read
+    // them all (2026-11-05).
+    if (sizes === undefined) {
+      const kind = input.sizes.find((s) => s.name === size.name)
+      if (
+        input.final ||
+        kind === undefined ||
+        input.queued?.has(size.name) === true ||
+        (input.started.get(size.name) ?? 0) >= kind.max
+      )
+        return undefined
+    } else if (!sizes.some((s) => s.name === size.name)) return undefined
     start.push(size)
     fresh.push({ free: ends, join: joins })
   }
-  if (tasks === undefined && release.length > 0) return 'full'
   const next: Forecast = {
     ...f,
     workers,

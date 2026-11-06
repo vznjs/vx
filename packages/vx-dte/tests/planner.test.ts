@@ -629,3 +629,60 @@ it('follows the plan, played again only when an event moves past 5%', () => {
   const [played, , release] = at(10_000_000, { idle: true })
   expect([played, release]).toEqual([false, ['w']])
 })
+
+it('starts a worker the plan foresaw without reading the work, and none past its size', () => {
+  // One task, then 16 long and wide: workers for those start later.
+  const ids = ['a', ...Array.from({ length: 16 }, (_, i) => `w${i}`)]
+  const nodes = new Map(
+    ids.map((id) => [
+      id,
+      {
+        id,
+        deps: id === 'a' ? [] : ['a'],
+        config: { exec: { command: 'x' }, cache: {} },
+      } as unknown as TaskNode,
+    ]),
+  )
+  let reads = 0
+  const remaining = {
+    *[Symbol.iterator]() {
+      reads++
+      yield* ids
+    },
+  }
+  const at = (now: number, started: number, last: { forecast?: Forecast }) =>
+    decide({
+      remaining,
+      nodes,
+      executed: new Set(ids),
+      need: () => ({ cores: 1, memory: 1e9 }),
+      durationMs: (id) => (id === 'a' ? 60_000 : 100_000),
+      workers: [
+        worker('one', {
+          idle: false,
+          running: [{ id: 'a', cores: 1, memory: 1e9, endsIn: 60_000 - now }],
+        }),
+      ],
+      running: new Set(['a']),
+      sizes: [small],
+      started: new Map([['small', started]]),
+      final: false,
+      warmUpMs: WARM,
+      replaceable: true,
+      last,
+      now,
+    })
+  const last: { forecast?: Forecast } = {}
+  const first = at(0, 0, last)
+  expect(first.start).toEqual([])
+  const due = first.againInMs!
+  reads = 0
+  const now = at(due, 0, last)
+  expect(now.start.length).toBeGreaterThan(0)
+  // Each start read every task: a run of 10 000 read them at each one.
+  expect(reads).toBe(0)
+  // Its size's max spent since: played again, and none started past it.
+  const spent: { forecast?: Forecast } = {}
+  at(0, 0, spent)
+  expect(at(due, small.max, spent).start).toEqual([])
+})
