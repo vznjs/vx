@@ -95,7 +95,7 @@ export default defineProject({
     // which @vzn/vx-docs#bench.data gathers into the site's bench.json. vx's is
     // keyed on its source through install's ^build, a rival's on the
     // harness and the pins in package.json. One runner at a time on a
-    // machine of its own: only CI's Bench job (ci.yml) runs them, with
+    // machine of its own: only CI's Bench job (bench.yml) runs them, with
     // `--concurrency 1 --force`, so all four time the same CPU, and no build
     // depends on them, so a DTE worker, packed beside other tasks, never does.
     ...Object.fromEntries(
