@@ -188,7 +188,7 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
         const depOut = depNode.config.outputs
         if ((depOut?.files?.length ?? 0) > 0) outputs.add(depNode.projectName)
         if ((depOut?.workspaceFiles?.length ?? 0) > 0) wsOutputUpstream = true
-        // An uncached producer declares no outputs, yet a same-project reader
+        // An uncached producer is held to no outputs, yet a same-project reader
         // after it (`tasks: []` decouples the key, not the order) read the
         // bytes it wrote: its key taken up front was the pre-producer one, and
         // the fourth run of seeds A,B,B,A replayed B over A (turborepo#13788).

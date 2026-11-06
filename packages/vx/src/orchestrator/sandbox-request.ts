@@ -854,9 +854,9 @@ export type WriteReach = 'none' | 'project' | 'workspace'
  * names — the files whose run-start facts (the git snapshot, its index
  * OIDs) a later key must not reuse (item 743).
  *
- * A cached task declares its outputs and is held to them. A task with no
- * `cache: true` can declare none, so it may have written anywhere
- * `commandWriteReach` says. An unsandboxed write into another project is
+ * A cached task declares its outputs and is held to them: its save checks
+ * them. A task with no `cache: true` is held to nothing, even when it
+ * declares outputs, so it may have written anywhere `commandWriteReach` says. An unsandboxed write into another project is
  * out of contract, as it is for a cached task.
  */
 export function undeclaredWriteReach(node: TaskNode, workspaceRoot: string): WriteReach {

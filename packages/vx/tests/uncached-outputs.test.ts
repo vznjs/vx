@@ -57,7 +57,7 @@ describe('an uncached task’s outputs', () => {
   it(
     'are not cleaned before it runs',
     async () => {
-      await addProject(fixture.root, 'gen', {
+      const dir = await addProject(fixture.root, 'gen', {
         config: `
           export default {
             tasks: {
@@ -69,7 +69,7 @@ describe('an uncached task’s outputs', () => {
           }
         `,
       })
-      const out = path.join(fixture.root, 'gen', 'out')
+      const out = path.join(dir, 'out')
       await mkdir(out, { recursive: true })
       await writeFile(path.join(out, 'old.txt'), 'OLD\n')
       const r = await run({ cwd: fixture.root, tasks: ['gen'], log: collectingLogger(fixture) })

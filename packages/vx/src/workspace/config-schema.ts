@@ -972,9 +972,9 @@ export function validateProjectConfig(
     const stability = (inputs as { stability?: unknown } | undefined)?.stability
     if (stability !== undefined) {
       validateInputStability(stability, `${where}.inputs.stability`)
-      if (cache !== true) {
+      if (exec === undefined) {
         throw new UserError(
-          `${where}.inputs.stability needs \`cache: true\` — it decides only whether a run's result is saved`,
+          `${where}.inputs.stability needs \`exec\` — a task with no command runs nothing that could write its inputs`,
         )
       }
     }
@@ -983,9 +983,9 @@ export function validateProjectConfig(
         throw new UserError(`${where}.outputs must be an object — \`outputs: { files: [...] }\``)
       }
       assertKnownFields(outputs, OUTPUT_FIELDS, `${where}.outputs`)
-      if (cache !== true) {
+      if (exec === undefined) {
         throw new UserError(
-          `${where}.outputs needs \`cache: true\` — vx saves and restores outputs only for a cached task`,
+          `${where}.outputs needs \`exec\` — a task with no command writes nothing`,
         )
       }
       const clean = (outputs as { clean?: unknown }).clean

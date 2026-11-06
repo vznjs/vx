@@ -120,7 +120,7 @@ interface TaskConfig {
   exec?: ExecConfig // omit to declare a group task
   dependsOn?: readonly string[] // Turbo/Nx micro-syntax
   inputs?: InputsConfig // what the task reads: its key, cached or not
-  outputs?: TaskOutputs // what it writes; needs `cache: true`
+  outputs?: TaskOutputs // what it writes, cached or not
   cache?: boolean // caching is opt-in; needs `exec`, `inputs` and `outputs`
 }
 ```
@@ -867,7 +867,7 @@ interface InputsConfig {
   runtime?: readonly string[] // optional; project-dir shell commands
   workspaceRuntime?: readonly string[] // optional; workspace-root shell commands
   tasks?: readonly string[] // optional; same micro-syntax as dependsOn
-  stability?: InputStability // optional; needs `cache: true`
+  stability?: InputStability // optional
 }
 ```
 
@@ -1253,7 +1253,8 @@ interface InputStability {
 ```
 
 `inputs.stability` says what a write to an input while the command runs
-means for the save, so it needs `cache: true`. `strategy` says which writes count:
+means for the save. An uncached task saves nothing, so there it changes
+nothing. `strategy` says which writes count:
 
 - `'immutable'` (the default, on CI too): any write. An edit undone
   mid-run, or another task changing the file and putting it back, cannot
@@ -1314,7 +1315,9 @@ export default defineProject({
 
 ### `outputs` (optional)
 
-What the task produces. Needs `cache: true`.
+What the task produces, cached or not. On an uncached task, `bin`,
+`mount` and dependants' sandbox reads work the same; nothing is saved or
+restored, and nothing is cleaned, since there is no snapshot to keep exact.
 
 ```ts
 interface TaskOutputs {
@@ -2702,8 +2705,8 @@ a user meets most:
 | `invalid inputs.tasks "<entry>": <reason>`                                                                                            | A malformed entry (`^`, `a#`, `#x`, `!`, `^a#b`), refused at load with the parser's reason.                                                                                                                                    |
 | `cache must be true or false`                                                                                                         | `cache: {...}` or `'yes'`; caching is a switch.                                                                                                                                                                                |
 | `cache needs outputs — what the task produces, outputs: { files: [...] } ([] for none)`                                               | Forgot `outputs` on a cached task.                                                                                                                                                                                             |
-| `outputs needs cache: true — vx saves and restores outputs only for a cached task`                                                    | `outputs` on a task that is not cached.                                                                                                                                                                                        |
-| `inputs.stability needs cache: true — it decides only whether a run's result is saved`                                                | `inputs.stability` on a task that is not cached.                                                                                                                                                                               |
+| `outputs needs exec — a task with no command writes nothing`                                                                          | `outputs` on a group task.                                                                                                                                                                                                     |
+| `inputs.stability needs exec — a task with no command runs nothing that could write its inputs`                                       | `inputs.stability` on a group task.                                                                                                                                                                                            |
 | `inputs.stability must be an object`                                                                                                  | A bare string (`stability: 'mutable'`).                                                                                                                                                                                        |
 | `inputs.stability.strategy must be 'immutable', 'mutable' or 'unchecked'`                                                             | Any other value (`'content'`, `false`).                                                                                                                                                                                        |
 | `inputs.stability.severity must be 'warn' or 'error'`                                                                                 | Any other value (`'fail'`, `true`).                                                                                                                                                                                            |

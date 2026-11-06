@@ -3897,10 +3897,7 @@
         ]
       },
       "tasks.*.cache": {
-        "$CONFIG: tasks.c.inputs.stability needs `cache: true` — it decides only whether a run's result is saved": [
-          "<absent>",
-          "false"
-        ],
+        "ok": ["<absent>", "true", "false"],
         "$CONFIG: tasks.c.cache must be true or false": [
           "null",
           "0",
@@ -3931,8 +3928,7 @@
           "[\"A*\"]",
           "{}",
           "{\"x\":\"y\"}"
-        ],
-        "ok": ["true"]
+        ]
       },
       "tasks.*.outputs.bin": {
         "ok": ["<absent>", "\"out/bin\""],

@@ -332,15 +332,13 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
     () => validated({ tasks: { b: { ...ok, inputs: { files: [] }, cache: true } } }),
   ],
   [
-    'outputs needs cache: true — vx saves and restores outputs only for a cached task',
-    () => validated({ tasks: { b: { ...ok, inputs: { files: [] }, outputs: { files: [] } } } }),
+    'outputs needs exec — a task with no command writes nothing',
+    () => validated({ tasks: { b: { dependsOn: ['a'], outputs: { files: [] } } } }),
   ],
   [
-    "inputs.stability needs cache: true — it decides only whether a run's result is saved",
+    'inputs.stability needs exec — a task with no command runs nothing that could write its inputs',
     () =>
-      validated({
-        tasks: { b: { ...ok, inputs: { files: [], stability: { strategy: 'mutable' } } } },
-      }),
+      validated({ tasks: { b: { inputs: { files: [], stability: { strategy: 'mutable' } } } } }),
   ],
   [
     'inputs.stability must be an object',
