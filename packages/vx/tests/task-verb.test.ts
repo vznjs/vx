@@ -184,7 +184,13 @@ describe('a task typed as a verb', () => {
       noticed(
         `vx run: missing task name (stdin is not a TTY, so no picker; tasks here: ${tasks}) (see \`vx run --help\`)\n`,
       )
-    expect(bare(root)).toBe(line('build, dev'))
+    // At the root, no project is here: the names are the workspace's, and
+    // `vx run build` there was refused as "not inside a project".
+    expect(bare(root)).toBe(
+      noticed(
+        "vx run: missing task name (stdin is not a TTY, so no picker; not inside a project, the workspace's tasks with --all: build, dev) (see `vx run --help`)\n",
+      ),
+    )
     const many = await addProject(
       root,
       'many',
