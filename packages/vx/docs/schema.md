@@ -1637,10 +1637,10 @@ when another task of the run lists some. SRT runs one proxy per run that
 filters by the union of every task's list; vx puts a proxy of the task's
 own in front of it, so the task's list is checked first (until
 2026-11-06 a task reached any host another task of the run listed).
-`network: true` keeps the run's proxy: it reaches the union (nothing in
-a run with no list). `deny.network` is the task's own and also the
-run's: the run's proxy refuses the union of every task's denies to
-every task, checked before the allowlist (B-21). A refused request is a violation on both
+`network: true` reaches the union (nothing in a run with no list).
+`deny.network` is the task's own, checked before its allowlist (B-21);
+until 2026-11-06 the run's proxy refused every task's denies to every
+task. A refused request is a violation on both
 platforms, `deny network-outbound <host>:<port> (<reason>)` from the
 proxy, and fails the task even when it survived the refusal;
 `ignore: { network: ['<host>:<port>'] }` silences one, matched as the

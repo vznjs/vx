@@ -167,10 +167,10 @@ per run and checks every request against `config.network.allowedDomains`
 from `initialize()` (`sandbox-manager.js:238` in 0.0.76). `run()` therefore arms it
 with the union of every domain any sandboxed task declared. Every
 sandboxed task is handed that proxy, so a task that declared no domains
-reached the union until 2026-11-06. `deniedDomains` is the union of every task's
-`deny.network` (`sandboxRunUnion`), refused to every task; it was always
-empty, and a deny refused nothing, until B-21 (schema.md §
-`exec.sandbox`). SRT cannot tell tasks apart: its filter hears a host
+reached the union until 2026-11-06. `deniedDomains` is handed to SRT
+empty: each task's front refuses its own `deny.network`; the run's
+proxy refused the union of every task's denies to every task until
+2026-11-06 (B-21, schema.md § `exec.sandbox`). SRT cannot tell tasks apart: its filter hears a host
 and port, and the command's name rides in the proxy username, which the
 sandboxed process writes, so one task could claim another's list.
 
@@ -198,7 +198,7 @@ export interface SandboxAvailability {
 export function probeSandbox(opts?: { weakerNested?: boolean }): Promise<SandboxAvailability>
 export function initSandbox(opts?: {
   allowedDomains?: readonly string[] // the run's union
-  deniedDomains?: readonly string[] // every task's deny.network, refused to all (B-21)
+  deniedDomains?: readonly string[] // every task's deny.network: checked, never handed to SRT
   allowAllUnixSockets?: boolean // some task asks; the lift is set per task's wrap
 }): Promise<void>
 export function resetSandbox(): Promise<void>
