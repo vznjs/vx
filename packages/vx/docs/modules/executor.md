@@ -149,8 +149,9 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   (outputs left remote, fetched only if a local consumer needs them).
   `spawnFailed: true` says the command never started (its 127 is the
   executor's, so no "command not found" line follows; A-41).
-  `leftRunning: true` says a process the command left still held its
-  output when vx stopped reading: core saves no entry for the task.
+  `leftRunning: true` says a process the command left still ran when
+  its shell exited (it held the output past the drain bound, or was
+  still in the task's process group): core saves no entry for the task.
   `changed` lists the tracked files (workspace-relative) the command
   changed where an executor ran it elsewhere: one the key read withholds
   core's save under the key, with the line an input changed here gets.

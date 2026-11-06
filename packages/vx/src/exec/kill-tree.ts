@@ -443,7 +443,7 @@ export async function untilGroupsGone(
  * and a group that ignored the SIGTERM went un-killed; there the group
  * signal is the answer and the grace ends the wait.
  */
-function groupAlive(child: Child): boolean {
+export function groupAlive(child: Child): boolean {
   if (!(child.pid > 0) || goneGroups.has(child)) return false
   try {
     process.kill(-child.pid, 0)

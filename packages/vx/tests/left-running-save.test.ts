@@ -49,3 +49,34 @@ it(
   },
   TIMEOUT,
 )
+
+// The same leftover with its stdio sent elsewhere holds no pipe, so the
+// drain never cut it: the group it shares with the task's shell is what
+// says it is still running.
+it(
+  'a task that leaves a writer running with its stdio redirected is not saved',
+  async () => {
+    const root = await makeWorkspace({ prefix: 'vx-left-running-' })
+    made.push(root)
+    const app = await addProject(root, 'app', {
+      files: { 'src/a.txt': 'a', '.gitignore': 'dist/\n' },
+      config: `export default { tasks: { build: {
+        exec: { command: 'mkdir -p dist; echo early > dist/early.txt; (sleep 1; echo late > dist/late.txt) >/dev/null 2>&1 &' },
+        inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+      } } }`,
+    })
+    const fx = { root, log: [] as string[], err: [] as string[] }
+    const opts = { cwd: root, tasks: ['build'], log: silentLogger(fx) }
+    const first = await run(opts)
+    expect(first.outcomes.map((o) => o.status)).toEqual(['success'])
+    expect(fx.log.join('\n')).toContain(
+      'app#build: a process it left running may still write its outputs',
+    )
+    await until(path.join(app, 'dist', 'late.txt'))
+    await rm(path.join(app, 'dist'), { recursive: true })
+    const second = await run(opts)
+    expect(second.outcomes.map((o) => o.status)).toEqual(['success'])
+    await until(path.join(app, 'dist', 'late.txt'))
+  },
+  TIMEOUT,
+)

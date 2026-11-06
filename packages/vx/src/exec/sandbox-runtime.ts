@@ -112,6 +112,7 @@ import {
 } from './sandbox-violations.js'
 import {
   closeSignalChannel,
+  groupAlive,
   killTree,
   releaseGroup,
   signalThrough,
@@ -2645,6 +2646,9 @@ async function runSandboxedOnce(
   const cutLine = ends.own(POST_EXIT_CUT_LINE)
   if (cut) args.onStderr?.(cutLine)
   const stderr = cut ? streamed + cutLine : streamed
+  // As runCommand: a leftover holding no pipe is still in the group. Under
+  // Linux's pid namespace it died with the command; macOS keeps it.
+  const left = cut || groupAlive(proc)
   args.liveChildren?.delete(proc)
   releaseGroup(proc)
   closeSignalChannel(proc)
@@ -2811,7 +2815,7 @@ async function runSandboxedOnce(
     violations,
     ...(typeof proc.signalCode === 'string' ? { signal: proc.signalCode } : {}),
     ...(timeout.timedOut() ? { timedOut: true } : {}),
-    ...(cut ? { leftRunning: true } : {}),
+    ...(left ? { leftRunning: true } : {}),
     // Linux: the task's CPU and peak never reach this wait. bwrap runs it
     // in a pid namespace (`--unshare-pid`), and what the namespace's
     // processes used is not folded into bwrap's usage: a 500 ms busy loop
