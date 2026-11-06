@@ -126,6 +126,7 @@ import { CACHE_VERSION, foldKey } from './key-fold.js'
 import { type FoldMemo, IndexFoldMemo } from './fold-memo.js'
 import { IndexRemoteHits, type RemoteHits } from './remote-hits.js'
 import { behindLink } from './linked-inputs.js'
+import { WalCheckpointer } from './checkpointer.js'
 
 /**
  * An artifact or temp file without an `entries` row is never reaped
@@ -138,6 +139,8 @@ import { behindLink } from './linked-inputs.js'
  */
 // About 1.3 ms of inserts per turn: a task's exit waits at most that.
 const HELD_SLICE = 250
+/** SQLite's own default, back on a connection whose checkpoint thread failed. */
+const WAL_AUTOCHECKPOINT = 1000
 const byOid = (a: [string, number], b: [string, number]): number =>
   a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0
 
@@ -966,6 +969,8 @@ export class Cache implements CacheLayer {
   /** The held sizes being stored, and how many are: fields, not a closure's, so the store lets them go. */
   private storing: Array<[string, number]> | undefined
   private stored = 0
+  /** The checkpoint thread: `armed` until a save commits (`checkpointOffThread`). */
+  private checkpoints: 'armed' | WalCheckpointer | undefined
   private readonly insertEntryInput: ReturnType<Database['prepare']>
   /** The per-file (mtime, size) → blob-OID memo behind `hashFile`. */
   private readonly files: FileHashStore
@@ -3358,7 +3363,34 @@ export class Cache implements CacheLayer {
       for (let i = 0; i < batch.length; i++) batch[i]!.settle(failed.get(i) ?? err)
       return
     }
+    if (this.checkpoints === 'armed') this.startCheckpointer()
     for (let i = 0; i < batch.length; i++) batch[i]!.settle(failed.get(i))
+  }
+
+  /**
+   * A run's saves from now on leave the WAL's checkpoints to a thread of
+   * their own (checkpointer.ts), started by the first save's commit, so a
+   * run that saves nothing starts none. `stopCheckpoints` ends it.
+   */
+  checkpointOffThread(): void {
+    if (this.checkpoints === undefined && historyFiles(this) !== undefined)
+      this.checkpoints = 'armed'
+  }
+
+  private startCheckpointer(): void {
+    const files = historyFiles(this)!
+    this.db.exec('PRAGMA wal_autocheckpoint = 0')
+    this.checkpoints = new WalCheckpointer(files, () => {
+      // No thread: the run's connection checkpoints as it did.
+      this.db.exec(`PRAGMA wal_autocheckpoint = ${WAL_AUTOCHECKPOINT}`)
+    })
+  }
+
+  /** Ends the checkpoint thread before `close`, so this connection's close is the last. */
+  async stopCheckpoints(): Promise<void> {
+    const c = this.checkpoints
+    this.checkpoints = undefined
+    if (c instanceof WalCheckpointer) await c.stop()
   }
 
   private tempTreePath(hash: string): string {
@@ -3731,6 +3763,8 @@ export class Cache implements CacheLayer {
       // `rm -rf .vx/cache`): macOS answers SQLITE_IOERR_VNODE on a
       // write to an unlinked file where Linux happily writes on.
     }
+    if (this.checkpoints instanceof WalCheckpointer) this.checkpoints.terminate()
+    this.checkpoints = undefined
     closeDb(this.db)
   }
 

@@ -19,6 +19,7 @@ skills/vx/SKILL.md
 src/bin.ts
 src/cache/archive.ts
 src/cache/cache.ts
+src/cache/checkpointer.ts
 src/cache/file-hashes.ts
 src/cache/fold-memo.ts
 src/cache/fs-clock.ts

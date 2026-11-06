@@ -50,6 +50,11 @@ and key derivation logic live here.
   (`historyFiles(cache)`). A run with fewer hits writes none there; a
   batch the thread does not land comes back and goes in the bundle. The
   writer is a second `bun build --compile` entry point.
+- `checkpointer.ts` — `WalCheckpointer`: once a run's first save commits
+  (`checkpointOffThread`), the index's WAL checkpoints run PASSIVE on a
+  thread of their own every 100 ms, through a second connection, and the
+  run's connection checkpoints nothing until its close
+  (`stopCheckpoints` first). A thread that fails hands them back.
 - `run-notes.ts` — `keepRunNotes` / `keptSteps` / `keptWarnings` /
   `keptFailures`: what a run said beside its rows (`steps`, `warnings`,
   `failures`), the newest 50 runs per table (metrics.md), one `RunNotes`.
