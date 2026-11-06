@@ -366,7 +366,7 @@ describe('the landing page', () => {
   it('scores every tool on the conformance suite, first after the hero', () => {
     const cfm = section(html, 'conformance')
     expect(text(cfm)).toContain(`${RESULTS.cases.length} cases`)
-    expect(text(cfm)).toContain('Every test in vx, Turborepo, Nx and Vite Task')
+    expect(text(cfm)).toContain('Every test in vx, Turborepo, Nx, Vite Task, Nix and moon')
     const rows = [...cfm.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/g)].map((m) => m[1]!)
     const shown = rows.map((r) => [
       text(/class="score-tool"[^>]*>([\s\S]*?)<\/span>/.exec(r)![1]!),
