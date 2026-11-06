@@ -107,43 +107,44 @@ const answerMs = (heartbeatMs: number): number =>
   Math.min(Math.max(heartbeatMs, MIN_WAIT_MS), REPLY_MS)
 
 /**
- * A send as it travels: numbered per receiver, so a resend is dropped as
- * seen, and carrying the sender's ack of what it took from that receiver,
- * so most acks cost no message of their own.
+ * A send as it travels: numbered (`n`) per receiver, so a resend is
+ * dropped as seen, its body `b`, and carrying the sender's ack (`a`) of
+ * what it took from that receiver, so most acks cost no message of their
+ * own. One letter each: they travel in every frame, twice.
  */
 interface Numbered {
-  readonly seq: number
-  readonly body: unknown
-  readonly acked?: number
+  readonly n: number
+  readonly b: unknown
+  readonly a?: number
 }
-/** The receiver took every send to it numbered up to `acked`. */
+/** The receiver took every send to it numbered up to `a`. */
 interface Acked {
-  readonly acked: number
+  readonly a: number
 }
 const isNumbered = (b: unknown): b is Numbered =>
   typeof b === 'object' &&
   b !== null &&
-  typeof (b as Numbered).seq === 'number' &&
-  'body' in b &&
-  Object.keys(b).length === ('acked' in b ? 3 : 2)
+  typeof (b as Numbered).n === 'number' &&
+  'b' in b &&
+  Object.keys(b).length === ('a' in b ? 3 : 2)
 /**
  * What a side with nothing else to say a heartbeat sends: a numbered send
  * with no body, carrying its acks, delivered to no one.
  */
 interface Beat {
-  readonly seq: number
-  readonly acked?: number
+  readonly n: number
+  readonly a?: number
 }
 const isBeat = (b: unknown): b is Beat =>
   typeof b === 'object' &&
   b !== null &&
-  typeof (b as Beat).seq === 'number' &&
-  !('body' in b) &&
-  Object.keys(b).length === ('acked' in b ? 2 : 1)
+  typeof (b as Beat).n === 'number' &&
+  !('b' in b) &&
+  Object.keys(b).length === ('a' in b ? 2 : 1)
 const isAcked = (b: unknown): b is Acked =>
   typeof b === 'object' &&
   b !== null &&
-  typeof (b as Acked).acked === 'number' &&
+  typeof (b as Acked).a === 'number' &&
   Object.keys(b).length === 1
 
 /** Runs `f` again after a fault, at most `RETRIES` times and within `REPLY_MS`. */
@@ -285,7 +286,7 @@ export async function join(
     owing.delete(peer)
     said.set(peer, performance.now())
     // quiet: a lost ack only costs a resend, which is dropped as seen
-    if (upTo !== undefined) put(peer, { acked: upTo } satisfies Acked).catch(() => undefined)
+    if (upTo !== undefined) put(peer, { a: upTo } satisfies Acked).catch(() => undefined)
   }
   const flushAcks = (): void => {
     acking = undefined
@@ -318,9 +319,9 @@ export async function join(
   const said = new Map<string, number>()
   let onQuiet: ((peer: string) => void) | undefined
   /** The ack owed `to`, if any, for a send to it to carry; and `to` was just said to. */
-  const owed = (to: string): { acked?: number } => {
+  const owed = (to: string): { a?: number } => {
     said.set(to, performance.now())
-    return owing.delete(to) ? { acked: taken.get(to)!.upTo } : {}
+    return owing.delete(to) ? { a: taken.get(to)!.upTo } : {}
   }
   /**
    * When each peer was last heard from: the orchestrator's workers from
@@ -363,12 +364,12 @@ export async function join(
       }
       const from = heldIds.get(m.from) ?? m.from
       if (heard.has(from)) heard.set(from, performance.now())
-      if (isAcked(body)) settle(from, body.acked)
+      if (isAcked(body)) settle(from, body.a)
       else if (isBeat(body)) {
-        if (body.acked !== undefined) settle(from, body.acked)
+        if (body.a !== undefined) settle(from, body.a)
         const t = taken.get(from) ?? { upTo: 0, ahead: new Map() }
         taken.set(from, t)
-        if (body.seq > t.upTo) t.ahead.set(body.seq, BEAT)
+        if (body.n > t.upTo) t.ahead.set(body.n, BEAT)
         while (t.ahead.has(t.upTo + 1)) {
           const next = t.ahead.get(++t.upTo)
           t.ahead.delete(t.upTo)
@@ -379,13 +380,13 @@ export async function join(
         if (role === 'orchestrator') {
           owing.delete(from)
           // quiet: a lost ack only costs a resend, which is dropped as seen
-          put(from, { acked: t.upTo } satisfies Acked).catch(() => undefined)
+          put(from, { a: t.upTo } satisfies Acked).catch(() => undefined)
         } else owe(from)
       } else if (isNumbered(body)) {
-        if (body.acked !== undefined) settle(from, body.acked)
+        if (body.a !== undefined) settle(from, body.a)
         let t = taken.get(from)
         if (t === undefined) taken.set(from, (t = { upTo: 0, ahead: new Map() }))
-        if (body.seq > t.upTo) t.ahead.set(body.seq, body.body)
+        if (body.n > t.upTo) t.ahead.set(body.n, body.b)
         while (t.ahead.has(t.upTo + 1)) {
           const next = t.ahead.get(++t.upTo)
           t.ahead.delete(t.upTo)
@@ -462,7 +463,7 @@ export async function join(
       const seq = ++o.next
       o.unacked.set(seq, { body: BEAT, at: now })
       // quiet: unacknowledged, it goes again
-      put(peer, { seq, ...owed(peer) } satisfies Beat).catch(() => undefined)
+      put(peer, { n: seq, ...owed(peer) } satisfies Beat).catch(() => undefined)
     }
   }
   /** Sends again what waited `ms` unacknowledged, to `only` or to all; all of it, at 0. */
@@ -474,7 +475,7 @@ export async function join(
         if (now - u.at < ms) continue
         u.at = now
         // quiet: unacknowledged, it goes again next heartbeat
-        const again = u.body === BEAT ? { seq } : { seq, body: u.body }
+        const again = u.body === BEAT ? { n: seq } : { n: seq, b: u.body }
         put(to, { ...again, ...owed(to) }).catch(() => undefined)
       }
     }
@@ -701,7 +702,7 @@ export async function join(
       }
       try {
         if (s?.open !== true) throw ended!
-        await s.send(relayIds.get(to) ?? to, { seq, body, ...owed(to) } satisfies Numbered)
+        await s.send(relayIds.get(to) ?? to, { n: seq, b: body, ...owed(to) } satisfies Numbered)
       } catch (err) {
         // Closed under it: it goes again on the next socket.
         if (!(err instanceof RelayError)) return

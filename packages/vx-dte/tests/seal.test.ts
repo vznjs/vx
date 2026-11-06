@@ -53,14 +53,14 @@ function relay() {
 }
 
 /** A send as the relay carries it: numbered by the wire, its body sealed. */
-type Envelope = { body: { body: { seal: string[] } } }
+type Envelope = { body: { b: string[] } }
 /** Random text: a body is compressed before it is sealed, and this one barely shrinks. */
 const noise = (n: number): string =>
   Buffer.from(crypto.getRandomValues(new Uint8Array(n)))
     .toString('base64')
     .slice(0, n)
 
-const sealOf = (send: string): string[] => (JSON.parse(send) as Envelope).body.body.seal
+const sealOf = (send: string): string[] => (JSON.parse(send) as Envelope).body.b
 
 async function until(p: Participant, n = 1): Promise<RelayMessage[]> {
   const got: RelayMessage[] = []
@@ -123,13 +123,27 @@ it('sends bodies in the order they were asked for, however long each takes to se
   expect((await until(o, 2)).map((m) => (m.body as { type: string }).type)).toEqual(['ran', 'end'])
 })
 
+// Messages asked for together each went as a send, a relay frame and
+// its answer of their own (2026-11-06).
+it('seals the bodies asked for together as one send, each delivered in order', async () => {
+  const { r, o, a } = await pair()
+  await until(o)
+  await o.send(a.id, { type: 'welcome' })
+  await until(a)
+  const sent = r.bodies.length
+  const starts = ['a', 'b', 'c'].map((task) => ({ type: 'start', task }))
+  await Promise.all(starts.map((s) => a.send('orchestrator', s)))
+  expect((await until(o, 3)).map((m) => m.body)).toEqual(starts)
+  expect(r.bodies.length - sent).toBe(1)
+})
+
 it('pads each body to its size class, so the relay learns no size within one', async () => {
   const { r, o, a } = await pair()
   await until(o)
   await o.send(a.id, { type: 'welcome' })
   await until(a)
   const sent = r.bodies.length
-  for (const task of ['a', noise(150), noise(600), noise(100_000)]) {
+  for (const task of ['a', noise(25), noise(600), noise(100_000)]) {
     await a.send('orchestrator', { type: 'ran', task })
     expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'ran', task }])
   }
@@ -137,6 +151,8 @@ it('pads each body to its size class, so the relay learns no size within one', a
   const sizes = r.bodies.slice(sent).map((b) => JSON.stringify(sealOf(b)).length)
   expect(sizes[0]).toBe(sizes[1]!)
   expect(sizes[2]).toBeGreaterThan(sizes[1]!)
+  // The smallest class is 64 bytes: a `ran` sealed in 256 cost 364 of base64.
+  expect(sizes[0]).toBeLessThan(120)
   // Past one transport message, whole ones: 100 000 bytes fill two.
   expect(sealOf(r.bodies.at(-1)!)).toHaveLength(2)
 })
@@ -154,6 +170,46 @@ it('compresses a body before it seals it, which no relay can after', async () =>
   const seal = sealOf(r.bodies[sent]!)
   expect(seal).toHaveLength(1)
   expect(JSON.stringify(seal).length).toBeLessThan(1_000)
+})
+
+// Each batch sent its tasks' env and paths again: 1000 tasks put 3.1 MB
+// through the relay, 1.6 MB compressed against what was sent before
+// (2026-11-06).
+it('compresses each orchestrator body against those before it: one sent again seals in the smallest class', async () => {
+  const { r, o, a } = await pair()
+  await until(o)
+  await o.send(a.id, { type: 'welcome' })
+  await until(a)
+  const sent = r.bodies.length
+  const env = noise(3_000)
+  for (const task of ['a', 'b']) {
+    await o.send(a.id, { type: 'batch', task, env })
+    expect((await until(a)).map((m) => m.body)).toEqual([{ type: 'batch', task, env }])
+  }
+  const [first, again] = r.bodies.slice(sent).map((b) => JSON.stringify(sealOf(b)).length)
+  expect(first).toBeGreaterThan(3_000)
+  expect(again).toBeLessThan(400)
+})
+
+// A body compressed against one its receiver never opened decodes, from
+// the receiver's own dictionary, to other bytes: here the kept-back
+// body's twin read as the body before it, another task's batch.
+it('a worker leaves on a body compressed against one the relay kept back', async () => {
+  const { r, o, a } = await pair()
+  await until(o)
+  const batch = (n: number) => ({ type: 'batch', task: `app#${'x'.repeat(200)}${n}` })
+  await o.send(a.id, batch(1))
+  const old = sealOf(r.bodies.at(-1)!)
+  expect((await until(a)).map((m) => m.body)).toEqual([batch(1)])
+  // Kept back: a replay goes in its place, which the worker drops.
+  r.tamperNext((b) => {
+    const send = JSON.parse(b) as Envelope
+    send.body.b = old
+    return JSON.stringify(send)
+  })
+  await o.send(a.id, batch(2))
+  await o.send(a.id, batch(2))
+  await expect(until(a)).rejects.toThrow(SealError)
 })
 
 it('refuses a worker with another secret, and a worker refuses an orchestrator with another', async () => {
@@ -209,7 +265,21 @@ it('a token it could not check refuses the worker by that cause, and says it', a
   expect(said).toEqual([`[vx] dte: refused a worker: ${reason}`])
 })
 
-it('loses a worker whose body the relay changed, and drops one it replays', async () => {
+it('loses a worker whose body the relay changed', async () => {
+  const { r, o, a } = await pair()
+  await until(o)
+  await o.send(a.id, { type: 'welcome', name: 'worker#1' })
+  await until(a)
+  r.tamperNext((b) =>
+    b.replace(/"b":\["(\d+)\.(.)/, (_, n, c) => `"b":["${n}.${c === 'A' ? 'B' : 'A'}`),
+  )
+  await a.send('orchestrator', { type: 'start', task: 'w' })
+  expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'lost', id: a.id }])
+})
+
+// A replay in a body's place was dropped and the next body taken: the
+// relay kept back any body it chose, unseen (2026-11-06).
+it('drops a body the relay replays, and loses its worker at the next, sealed after the one replaced', async () => {
   const { r, o, a } = await pair()
   await until(o)
   await o.send(a.id, { type: 'welcome', name: 'worker#1' })
@@ -220,16 +290,11 @@ it('loses a worker whose body the relay changed, and drops one it replays', asyn
   // The same sealed body again, in a new send: its seal's number was seen.
   r.tamperNext((b) => {
     const send = JSON.parse(b) as Envelope
-    send.body.body.seal = sent
+    send.body.b = sent
     return JSON.stringify(send)
   })
   await a.send('orchestrator', { type: 'ran', task: 'u' })
   await a.send('orchestrator', { type: 'ran', task: 'v' })
-  expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'ran', task: 'v' }])
-  r.tamperNext((b) =>
-    b.replace(/"seal":\["(\d+)\.(.)/, (_, n, c) => `"seal":["${n}.${c === 'A' ? 'B' : 'A'}`),
-  )
-  await a.send('orchestrator', { type: 'ran', task: 'w' })
   expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'lost', id: a.id }])
 })
 
@@ -260,7 +325,7 @@ it('loses a worker whose body the relay spliced from two, each part sealed', asy
   // A fresh first part, then the delivered body's second: only the first was checked.
   r.tamperNext((b) => {
     const send = JSON.parse(b) as Envelope
-    send.body.body.seal = [send.body.body.seal[0]!, first[1]!]
+    send.body.b = [send.body.b[0]!, first[1]!]
     return JSON.stringify(send)
   })
   await a.send('orchestrator', noise(100_000))
@@ -277,9 +342,9 @@ it('loses a worker whose body the relay reordered, its parts each sealed', async
   await until(a)
   r.tamperNext((b) => {
     const send = JSON.parse(b) as Envelope
-    const s = send.body.body.seal
+    const s = send.body.b
     expect(s).toHaveLength(4)
-    send.body.body.seal = [s[0]!, s[1]!, s[1]!, s[3]!]
+    send.body.b = [s[0]!, s[1]!, s[1]!, s[3]!]
     return JSON.stringify(send)
   })
   await a.send('orchestrator', { type: 'ran', task: noise(300_000) })
@@ -299,20 +364,21 @@ it('loses a worker whose body the relay held back past a later one', async () =>
   // Held back: a replay goes in its place, which the orchestrator drops.
   r.tamperNext((b) => {
     const send = JSON.parse(b) as Envelope
-    send.body.body.seal = old
+    send.body.b = old
     return JSON.stringify(send)
   })
   await a.send('orchestrator', { type: 'ran', task: 'a' })
   const held = sealOf(r.bodies.at(-1)!)
+  // The later body names what was sealed before it, the held one too.
   await a.send('orchestrator', { type: 'end', task: 'a' })
-  expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'end', task: 'a' }])
+  expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'lost', id: a.id }])
   r.tamperNext((b) => {
     const send = JSON.parse(b) as Envelope
-    send.body.body.seal = held
+    send.body.b = held
     return JSON.stringify(send)
   })
-  await a.send('orchestrator', { type: 'ran', task: 'u' })
-  expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'lost', id: a.id }])
+  await a.send('orchestrator', { type: 'ran', task: 'u' }).catch(() => undefined)
+  expect(await o.poll()).toEqual([])
 })
 
 it('on GitHub, admits by OIDC tokens of this repository whose audience is the key, with no secret', async () => {

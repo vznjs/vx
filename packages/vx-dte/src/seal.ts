@@ -7,6 +7,7 @@
 // opens no past run.
 
 import { createHash } from 'node:crypto'
+import { zstdCompressSync, zstdDecompressSync } from 'node:zlib'
 import { type Bytes, type CipherState, Handshake, MAX_PLAINTEXT } from './noise.js'
 import { RelayError, unsent as unsentBy, type Participant, type RelayMessage } from './wire.js'
 import { ui } from '@vzn/vx'
@@ -192,12 +193,16 @@ const REPLAY = Symbol('replay')
 
 /**
  * The size a body is padded to, so the relay learns its size class, not
- * its size: a power of two from 256 bytes, then whole transport messages.
+ * its size: a power of two from 64 bytes, then whole transport messages.
+ * From 256, each `ran`, `end` and `report`, mostly some 100 bytes, sealed
+ * in two to eight times its size, and their order and timing already
+ * say which is which (2026-11-06).
  */
 function padded(n: number): number {
   if (n >= MAX_PLAINTEXT) return Math.ceil(n / MAX_PLAINTEXT) * MAX_PLAINTEXT
-  return Math.min(2 ** Math.ceil(Math.log2(Math.max(n, 256))), MAX_PLAINTEXT)
+  return Math.min(2 ** Math.ceil(Math.log2(Math.max(n, MIN_CLASS))), MAX_PLAINTEXT)
 }
+const MIN_CLASS = 64
 
 /**
  * One worker and the orchestrator after their handshake. Each body is
@@ -208,37 +213,59 @@ function padded(n: number): number {
  */
 class Session {
   private sent = 0
+  /** What this side sealed and what it opened: the orchestrator's bodies' zstd dictionary. */
+  private readonly sealed: History
+  private readonly opened: History
   private readonly seen = new Set<number>()
   /** The last nonce of the newest body opened. */
   private newest = -1
   /** The last send handed to the wire, or still sealing: the next waits on it. */
   private turn: Promise<unknown> = Promise.resolve()
+  /** Bodies asked for in this turn of the event loop, or while the send before seals: sealed as one. */
+  private group: { bodies: string[]; bytes: number; sent: Promise<void> } | undefined
 
   constructor(
     private readonly tx: CipherState,
     private readonly rx: CipherState,
-  ) {}
+    orchestrator: boolean,
+  ) {
+    this.sealed = new History(orchestrator ? HISTORY_BYTES : 0)
+    this.opened = new History(orchestrator ? 0 : HISTORY_BYTES)
+  }
 
   /**
    * `body` sealed and handed to `wire`, in the order sends were asked for:
    * sealing is async, and a big body sealed first reached the wire after a
    * small one sealed next (a worker's `end` before its `ran`, 2026-10-26).
    * The wire numbers a send as it is handed over, so only the handing waits.
+   * Bodies that wait together go as one: each was a send, a relay frame
+   * and its answer of its own.
    */
-  async send(body: unknown, wire: (sealed: { seal: string[] }) => Promise<void>): Promise<void> {
-    let sent: Promise<void> | undefined
-    const mine = this.turn.then(async () => {
-      sent = wire(await this.seal(body))
+  send(body: unknown, wire: (sealed: string[]) => Promise<void>): Promise<void> {
+    const json = JSON.stringify(body)
+    const g = this.group
+    if (g !== undefined && g.bytes + json.length <= GROUP_BYTES) {
+      g.bodies.push(json)
+      g.bytes += json.length
+      return g.sent
+    }
+    const mine = { bodies: [json], bytes: json.length, sent: Promise.resolve() }
+    this.group = mine
+    let handed: Promise<void> | undefined
+    const sealed = this.turn.then(async () => {
+      if (this.group === mine) this.group = undefined
+      handed = wire(await this.seal(`[${mine.bodies.join(',')}]`))
     })
-    // quiet: `await mine` below hands the caller this error; the next turn
-    // must not inherit it.
-    this.turn = mine.catch(() => undefined)
-    await mine
-    await sent
+    // quiet: `sent` hands each caller this error; the next turn must not inherit it.
+    this.turn = sealed.catch(() => undefined)
+    mine.sent = sealed.then(() => handed)
+    return mine.sent
   }
 
-  private async seal(body: unknown): Promise<{ seal: string[] }> {
-    const plain = squeeze(text.encode(JSON.stringify(body)))
+  private async seal(bodies: string): Promise<string[]> {
+    const json = text.encode(bodies)
+    const plain = squeeze(json, this.sealed)
+    this.sealed.add(json)
     // Trailing spaces: JSON.parse reads past them, and `unsqueeze` stops before them.
     const bytes = new Uint8Array(padded(plain.length)).fill(0x20)
     bytes.set(plain)
@@ -249,12 +276,11 @@ class Session {
       const c = await this.tx.encrypt(n, ad, bytes.subarray(at, at + MAX_PLAINTEXT))
       out.push(`${n}.${b64(c)}`)
     }
-    return { seal: out }
+    return out
   }
 
-  /** The body; `REPLAY` for one delivered before; undefined for one that does not open. */
-  async open(body: unknown): Promise<unknown> {
-    const s = (body as { seal?: unknown } | null)?.seal
+  /** Its bodies; `REPLAY` for one delivered before; undefined for one that does not open. */
+  async open(s: unknown): Promise<unknown[] | typeof REPLAY | undefined> {
     if (!Array.isArray(s) || s.length === 0) return undefined
     const parts: { n: number; c: string }[] = []
     for (const p of s) {
@@ -277,10 +303,13 @@ class Session {
     try {
       const plain: Uint8Array[] = []
       for (const p of parts) plain.push(await this.rx.decrypt(p.n, ad, unb64(p.c)))
-      const body: unknown = JSON.parse(unsqueeze(Buffer.concat(plain)).toString())
+      const json = unsqueeze(Buffer.concat(plain), this.opened)
+      const bodies: unknown = JSON.parse(Buffer.from(json).toString())
+      if (!Array.isArray(bodies)) return undefined
+      this.opened.add(json)
       for (const p of parts) this.seen.add(p.n)
       this.newest = parts.at(-1)!.n
-      return body
+      return bodies
       // quiet: a body that does not open is the relay's tampering, which the caller says
     } catch {
       return undefined
@@ -288,29 +317,92 @@ class Session {
   }
 }
 
-/** Leads a compressed body: no JSON starts with it. */
+/** Leads a body zstd-compressed, and one as its JSON. */
 const ZSTD = 0
+const RAW = 1
+/**
+ * Bodies of up to this much JSON go sealed as one; each body of more goes
+ * alone, and the wire keeps a frame under the relay's limit by its own.
+ */
+const GROUP_BYTES = 64 * 1024
+/** The lead byte and its sender's history length; a compressed one's frame length next. */
+const HEADER = 5
+/**
+ * The last this many bytes the orchestrator sealed to a worker are its
+ * next body's zstd dictionary: each batch sent its tasks' env and paths
+ * again. 32 KiB sealed no less for 1.7 times the CPU (1000 tasks,
+ * 2026-11-06). A worker's bodies go without one: a dictionary costs some
+ * 100 µs a body (node:zlib's per-call context), and the orchestrator
+ * opening each in turn ran a 1000-task run 0.3 s longer.
+ */
+const HISTORY_BYTES = 16 * 1024
 
 /**
- * A body over the smallest size class, zstd-compressed before it is sealed:
- * once sealed it is random bytes no relay or socket compression shrinks.
- * The padding still hides its size within a class.
+ * One direction's bodies, as JSON: both ends add each, in the order sealed,
+ * as the wire delivers each once and in order.
  */
-function squeeze(json: Uint8Array): Uint8Array {
-  if (json.length <= 256) return json
-  const z = Bun.zstdCompressSync(json)
-  if (z.length + 5 >= json.length) return json
-  const out = new Uint8Array(z.length + 5)
-  out[0] = ZSTD
-  new DataView(out.buffer).setUint32(1, z.length)
-  out.set(z, 5)
+class History {
+  constructor(private readonly bytes: number) {}
+  window = new Uint8Array(0)
+  /**
+   * Every body's bytes, before the window too: each body names its
+   * sender's, so one sealed after a body the relay kept back or refused
+   * does not open.
+   */
+  total = 0
+  add(json: Uint8Array): void {
+    this.total = (this.total + json.length) >>> 0
+    if (this.bytes === 0) return
+    const all = new Uint8Array(this.window.length + json.length)
+    all.set(this.window)
+    all.set(json, this.window.length)
+    this.window = all.subarray(Math.max(0, all.length - this.bytes))
+  }
+}
+
+/**
+ * A body zstd-compressed against what this side sealed before, before it
+ * is sealed, when smaller so: sealed, it is random bytes no relay or
+ * socket compression shrinks. The padding still hides its size within a
+ * class.
+ */
+function squeeze(json: Uint8Array, h: History): Uint8Array {
+  const z =
+    h.window.length === 0
+      ? Bun.zstdCompressSync(json)
+      : zstdCompressSync(json, { dictionary: h.window })
+  const raw = z.length + 4 >= json.length
+  const out = new Uint8Array(HEADER + (raw ? json.length : 4 + z.length))
+  const v = new DataView(out.buffer)
+  out[0] = raw ? RAW : ZSTD
+  v.setUint32(1, h.total)
+  if (raw) out.set(json, HEADER)
+  else {
+    v.setUint32(HEADER, z.length)
+    out.set(z, HEADER + 4)
+  }
   return out
 }
 
-function unsqueeze(plain: Uint8Array): Uint8Array {
-  if (plain[0] !== ZSTD) return plain
-  const n = new DataView(plain.buffer, plain.byteOffset).getUint32(1)
-  return Bun.zstdDecompressSync(plain.subarray(5, 5 + n))
+/**
+ * Its JSON, unpadded. Throws for one sealed after a body this side never
+ * opened: compressed, it decoded against another dictionary to other
+ * bytes, and either way the relay kept that body back.
+ */
+function unsqueeze(plain: Uint8Array, h: History): Uint8Array {
+  const v = new DataView(plain.buffer, plain.byteOffset)
+  if (v.getUint32(1) !== h.total) throw new Error('sealed after a body never opened')
+  if (plain[0] === RAW) {
+    // JSON.stringify ends no body with a space: what trails it is padding.
+    let end = plain.length
+    while (end > HEADER && plain[end - 1] === 0x20) end--
+    return plain.subarray(HEADER, end)
+  }
+  if (plain[0] !== ZSTD) throw new Error('no body')
+  const z = plain.subarray(HEADER + 4, HEADER + 4 + v.getUint32(HEADER))
+  return h.window.length === 0
+    ? Bun.zstdDecompressSync(z)
+    : zstdDecompressSync(z, { dictionary: h.window })
 }
 
 /** What each part of one body is sealed to: its first nonce and how many parts. */
@@ -367,7 +459,7 @@ export function sealOrchestrator(
       proof.psk === undefined
         ? { type: 'hello', noise: answer, token: await proof.sign!(['hello', run, b64(hs.hash)]) }
         : { type: 'hello', noise: answer }
-    return { info: parsed, hello, session: new Session(send, receive) }
+    return { info: parsed, hello, session: new Session(send, receive, true) }
   }
   return {
     id: me.id,
@@ -424,7 +516,7 @@ export function sealOrchestrator(
           out.push({ from: 'relay', body: { type: 'lost', id: m.from } })
           continue
         }
-        out.push({ from: m.from, body })
+        for (const one of body) out.push({ from: m.from, body: one })
       }
       return out
     },
@@ -464,7 +556,7 @@ export async function sealWorker(
     )
       return false
     const { send, receive } = await hs.split()
-    session = new Session(send, receive)
+    session = new Session(send, receive, false)
     return true
   }
   return {
@@ -501,7 +593,7 @@ export async function sealWorker(
           throw new SealError(
             'a message from the orchestrator did not open: the relay changed or replayed it',
           )
-        out.push({ from: m.from, body })
+        for (const one of body) out.push({ from: m.from, body: one })
       }
       return out
     },
