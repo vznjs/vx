@@ -94,6 +94,7 @@ export const vx: Adapter = {
                       outputs: {
                         files: spec.outputs ?? [],
                         ...(spec.rootOutputs ? { workspaceFiles: spec.rootOutputs } : {}),
+                        ...(spec.bin ? { bin: spec.bin } : {}),
                       },
                     },
                   }

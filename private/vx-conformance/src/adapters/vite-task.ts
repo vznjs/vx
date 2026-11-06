@@ -19,6 +19,8 @@ export const viteTask: Adapter = {
   // dependsOn names tasks exactly; a task has no time limit, no retries, and
   // is never a long-running process the run stops.
   lacks: [
+    // No task names a directory of programs its dependants get on PATH.
+    'dependency-bin',
     'affected',
     'task-pattern',
     'timeout',

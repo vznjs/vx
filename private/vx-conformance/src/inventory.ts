@@ -53,6 +53,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'default-build-cycle-key',
     'default-build-not-declared',
     'deferred-output-link',
+    'dependency-bin',
     'dot-slash-globs',
     'dotenv-isolation',
     'env',

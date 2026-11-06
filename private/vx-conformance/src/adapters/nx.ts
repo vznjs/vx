@@ -38,7 +38,17 @@ export const nx: Adapter = {
   // it, every cache read writes too, no run is planned without running,
   // and nothing keeps a command from what it never declared. Every host
   // variable reaches a task, keying none it does not name.
-  lacks: ['select-walk', 'timeout', 'retries', 'continue', 'read-only-cache', 'dry-run', 'sandbox'],
+  lacks: [
+    // No task names a directory of programs its dependants get on PATH.
+    'dependency-bin',
+    'select-walk',
+    'timeout',
+    'retries',
+    'continue',
+    'read-only-cache',
+    'dry-run',
+    'sandbox',
+  ],
   env: {
     NX_DAEMON: 'false',
     NX_NO_CLOUD: 'true',
