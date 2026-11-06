@@ -59,6 +59,8 @@ describe.skipIf(!available)(
       })
       const r = await run({ cwd: fixture.root, tasks: ['peek'], log: collectingLogger(fixture) })
       if (!r.ok) throw new Error(`run failed:\n${fixture.log.join('\n')}`)
+      // The runtime's own socket sat under the host temp directory the deny hid.
+      expect(fixture.log.join('\n')).not.toContain('observe_init_error')
       return fixture.log
         .flatMap((l) => l.split('\n'))
         .map((l) => l.trim())
@@ -93,6 +95,36 @@ describe.skipIf(!available)(
           'HOSTTOOL',
           'NOUSR',
         ])
+      },
+      TIMEOUT,
+    )
+
+    it(
+      "with it and a domain, the task still reaches the runtime's proxy",
+      async () => {
+        // The proxy's socket and the wait for its bridge (grep, sleep) are
+        // the runtime's, outside the workspace.
+        await addProject(fixture.root, 'app', {
+          files: {},
+          config: `
+            export default {
+              tasks: {
+                net: {
+                  exec: {
+                    command: "grep -qsE ':0C38 [0-9A-F]+:0000 0A' /proc/net/tcp /proc/net/tcp6 && echo PROXY || echo NOPROXY",
+                    sandbox: { hermetic: true, allow: { read: ['.'], network: ['example.com'] } },
+                  },
+                },
+              },
+            }
+          `,
+        })
+        const r = await run({ cwd: fixture.root, tasks: ['net'], log: collectingLogger(fixture) })
+        if (!r.ok) throw new Error(`run failed:\n${fixture.log.join('\n')}`)
+        const out = fixture.log.join('\n')
+        expect(out).toContain('PROXY')
+        expect(out).not.toContain('NOPROXY')
+        expect(out).not.toContain('not found')
       },
       TIMEOUT,
     )

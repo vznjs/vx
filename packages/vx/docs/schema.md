@@ -1683,7 +1683,8 @@ project's cached outputs, around the cross-project wall and its key.
 Outside the workspace, the task reads only what `allow.read` names.
 
 vx still grants the programs it runs around the command (the task shell,
-`bash`, `setsid`, `strace`, `env`, `socat`) and the libraries they link.
+`bash`, `setsid`, `strace`, `env`, `socat`, `grep`, `sleep`) and the
+libraries they link.
 
 Any other tool is yours to grant, with its libraries: `ldd $(command -v
 node)` lists them. The task then cannot lean on the machine unseen.

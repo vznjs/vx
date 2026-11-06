@@ -1275,6 +1275,8 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
       ignore: `{ read: ['/tmp/noisy'] }`,
       weakerWhenNested: 'false',
       weakerNetworkIsolation: 'false',
+      // A hermetic task runs no `cat` it did not grant (sandbox-hermetic.unsafe.test.ts).
+      hermetic: 'false',
     }
     expect(Object.keys(sandbox).sort()).toEqual(fieldsOf('SANDBOX_FIELDS'))
     expect(Object.keys(allow).sort()).toEqual(fieldsOf('GRANT_FIELDS'))

@@ -668,7 +668,8 @@ function hostHelpers(): { dirs: string[]; files: string[] } {
 /**
  * What a hermetic task reads outside the workspace without naming it: the
  * programs vx and the runtime run around its command (the runtime's bash,
- * the task shell, setsid, strace, env, the seccomp helper) and what the
+ * the task shell, setsid, strace, env, socat, the seccomp helper, and the
+ * grep and sleep its network wait runs) and what the
  * loader maps for them. Anything else outside the workspace is the task's
  * to grant. Learned once per PATH: the files a host's shell links are
  * fixed for the process.
@@ -707,7 +708,7 @@ function rootDenies(): string[] {
 
 async function hermeticAllows(): Promise<string[]> {
   const programs: string[] = []
-  for (const name of ['bash', 'setsid', 'strace', 'env', 'socat']) {
+  for (const name of ['bash', 'setsid', 'strace', 'env', 'socat', 'grep', 'sleep']) {
     try {
       programs.push(executablePath(name))
     } catch {
@@ -760,6 +761,26 @@ function bothSpellings(p: string): string[] {
     at = next
   }
   return hops
+}
+
+/**
+ * The runtime's own sockets a hermetic task's command reaches: the write
+ * observer's and the network proxy's, under the host's temp directory.
+ * The runtime binds each before the read denies, so the deny's tmpfs over
+ * that directory hid them (`connect …/srt-obs-…: No such file`), and no
+ * call names the observer's. They are read off the wrap, once per run
+ * each: the observer listens after the runtime starts, so a later wrap may
+ * name one the first did not.
+ */
+const runtimeOwn = new Set<string>()
+function runtimeBinds(wrapped: string): string[] {
+  const tmp = toRealPath(os.tmpdir()) + path.sep
+  const out: string[] = []
+  for (const m of wrapped.matchAll(/--bind (?:'([^']*)'|(\S+)) (?:'([^']*)'|(\S+))/g)) {
+    const from = m[1] ?? m[2]!
+    if (from === (m[3] ?? m[4]) && from.startsWith(tmp)) out.push(from)
+  }
+  return out
 }
 
 function linuxToolPaths(): { bwrapPath?: string; socatPath?: string } {
@@ -1018,6 +1039,7 @@ export async function resetSandbox(): Promise<void> {
 
 function srtDown(): void {
   srtUp = false
+  runtimeOwn.clear()
   perTaskRun = undefined
   availabilityCache.clear()
   straceAvailableCache = undefined
@@ -1538,7 +1560,7 @@ async function wrapIn(
   if (args.config.hermetic === true) {
     const reads = await hermeticReads()
     customConfig!.filesystem!.denyRead!.push(...reads.deny)
-    customConfig!.filesystem!.allowRead!.push(...reads.allow)
+    customConfig!.filesystem!.allowRead!.push(...reads.allow, ...runtimeOwn)
   }
   const helpers = hostHelpers()
   customConfig!.filesystem!.denyRead!.push(...helpers.dirs)
@@ -1608,6 +1630,20 @@ async function wrapIn(
     ports.length > 0 || asksUnixSockets(args.config),
     args.config.gitConfig === true,
   )
+  if (process.platform === 'linux' && args.config.hermetic === true) {
+    const own = runtimeBinds(wrapped).filter((p) => !runtimeOwn.has(p))
+    if (own.length > 0) {
+      for (const p of own) runtimeOwn.add(p)
+      customConfig!.filesystem!.allowRead!.push(...own)
+      wrapped = await wrapForTask(
+        SandboxManager,
+        inner,
+        literalReadPaths(customConfig),
+        ports.length > 0 || asksUnixSockets(args.config),
+        args.config.gitConfig === true,
+      )
+    }
+  }
   if (process.platform === 'darwin') {
     const rules = [
       ...macProfileRules(args.config),
