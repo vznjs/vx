@@ -370,7 +370,8 @@ Only CI's Bench workflow (`bench.yml`) runs them, on main and on a dispatch: `vx
 runner of its own, one runner at a time. `--force` measures all four on
 that one machine, never a row cached from another runner's CPU. A
 cold figure is the median of three cold runs (`COLD_REPS=3`): one let a
-single run move it by seconds. It
+single run move it by seconds. Nx's is one run: its overhead is minutes,
+so seconds move no comparison. It
 uploads `measured/bench.json` as the `bench-data` artifact.
 
 `site.yml` deploys the site on each main push and again when a Bench

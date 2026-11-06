@@ -111,8 +111,10 @@ export default defineProject({
               define: {
                 ...NO_TRANSPILER_CACHE.define,
                 // The median of three cold runs: one let a single run move
-                // the site's cold figure by seconds (2026-11-01).
-                COLD_REPS: '3',
+                // the site's cold figure by seconds (2026-11-01). Nx's
+                // overhead is minutes, so seconds move no comparison, and
+                // its two extra runs were ~10 of the job's 37 min (2026-11-06).
+                COLD_REPS: runner === 'nx' ? '1' : '3',
                 RUNNERS: runner,
                 OUT: `site/${runner}.json`,
               },
