@@ -25,7 +25,7 @@ export interface Report {
 export interface Outcome {
   /** The task's definition hash, as its timing names it. */
   readonly hash: string
-  /** The run's cache key: one key that passed and failed is a flake. */
+  /** The run's cache key: one key that failed, then passed, is a flake. */
   readonly key: string
   /** `flaky`: the run saw the task flake itself (a retry that passed). */
   readonly outcome: 'pass' | 'fail' | 'flaky'
@@ -69,10 +69,11 @@ export interface Repo {
 const DROP_OLD = 'DROP TABLE IF EXISTS task_timings'
 const SCHEMA = `CREATE TABLE IF NOT EXISTS timings (issuer TEXT NOT NULL, repository TEXT NOT NULL, ref TEXT NOT NULL, hash TEXT NOT NULL, duration_ms INTEGER NOT NULL, cores REAL, rss_bytes INTEGER, runs INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (issuer, repository, ref, hash)) WITHOUT ROWID`
 
-// The flaky record (2026-11-06): one row per task definition and cache
-// key, when it last passed, failed and flaked. Kept by repository, not by
+// The flaky record (2026-11-06): a row only for a task definition and
+// cache key that failed, and whether it flaked since. A pass with no row
+// writes nothing: passes are most outcomes. Kept by repository, not by
 // ref: a key is the same inputs on every branch.
-const OUTCOMES = `CREATE TABLE IF NOT EXISTS outcomes (issuer TEXT NOT NULL, repository TEXT NOT NULL, hash TEXT NOT NULL, key TEXT NOT NULL, passed_at INTEGER, failed_at INTEGER, flaky_at INTEGER, PRIMARY KEY (issuer, repository, hash, key)) WITHOUT ROWID`
+const OUTCOMES = `CREATE TABLE IF NOT EXISTS outcomes (issuer TEXT NOT NULL, repository TEXT NOT NULL, hash TEXT NOT NULL, key TEXT NOT NULL, flaky INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (issuer, repository, hash, key)) WITHOUT ROWID`
 
 // When the database was last swept, by whichever node: a Worker runs many
 // isolates and starts new ones all day, and each swept on its first upload.
@@ -98,26 +99,22 @@ WHERE abs(excluded.duration_ms - duration_ms) > duration_ms * ${NOISE}
   OR (excluded.rss_bytes IS NOT NULL AND (rss_bytes IS NULL OR excluded.rss_bytes > rss_bytes))
   OR excluded.updated_at - updated_at >= ${DAY_MS}`
 
-// A column is written when it was empty or a day old: each write is billed,
-// and the sweep reads the newest of the three.
-const fresher = (c: string): string =>
-  `(excluded.${c} IS NOT NULL AND (${c} IS NULL OR excluded.${c} - ${c} >= ${DAY_MS}))`
-const RECORD = `INSERT INTO outcomes (issuer, repository, hash, key, passed_at, failed_at, flaky_at)
-SELECT ?1, ?2, j.value ->> '$.hash', j.value ->> '$.key',
-  CASE WHEN j.value ->> '$.outcome' <> 'fail' THEN ?3 END,
-  CASE WHEN j.value ->> '$.outcome' = 'fail' THEN ?3 END,
-  CASE WHEN j.value ->> '$.outcome' = 'flaky' THEN ?3 END
-FROM json_each(?4) AS j WHERE true
-ON CONFLICT (issuer, repository, hash, key) DO UPDATE SET
-  passed_at = coalesce(excluded.passed_at, passed_at),
-  failed_at = coalesce(excluded.failed_at, failed_at),
-  flaky_at = coalesce(excluded.flaky_at, flaky_at)
-WHERE ${fresher('passed_at')} OR ${fresher('failed_at')} OR ${fresher('flaky_at')}`
+// A failure or a run's flake writes its row; a row already as it would
+// be is rewritten only when a day old, since each write is billed.
+const RECORD = `INSERT INTO outcomes (issuer, repository, hash, key, flaky, at)
+SELECT ?1, ?2, j.value ->> '$.hash', j.value ->> '$.key', j.value ->> '$.outcome' = 'flaky', ?3
+FROM json_each(?4) AS j WHERE j.value ->> '$.outcome' <> 'pass'
+ON CONFLICT (issuer, repository, hash, key) DO UPDATE SET flaky = max(flaky, excluded.flaky), at = excluded.at
+WHERE excluded.flaky > flaky OR excluded.at - at >= ${DAY_MS}`
 
-/** The hashes asked that flaked: one key that passed and failed, or a run that saw it. */
+/** A pass of a key that failed: the key flaked. */
+const PASSED = `UPDATE outcomes SET flaky = 1, at = ?3
+WHERE issuer = ?1 AND repository = ?2 AND flaky = 0 AND (hash, key) IN
+  (SELECT j.value ->> '$.hash', j.value ->> '$.key' FROM json_each(?4) AS j WHERE j.value ->> '$.outcome' = 'pass')`
+
+/** The hashes asked that flaked: a key that failed and then passed, or a run that saw it. */
 const FLAKY = `SELECT DISTINCT hash FROM outcomes
-WHERE issuer = ?1 AND repository = ?2 AND hash IN (SELECT value FROM json_each(?3))
-  AND (flaky_at IS NOT NULL OR (passed_at IS NOT NULL AND failed_at IS NOT NULL))`
+WHERE issuer = ?1 AND repository = ?2 AND hash IN (SELECT value FROM json_each(?3)) AND flaky = 1`
 
 /** The rows of `refs` for the hashes asked; a hash the first ref lacks reads the next. */
 const READ = `SELECT hash, ref, duration_ms, cores, rss_bytes, runs FROM timings
@@ -174,8 +171,10 @@ export function sqliteStore(db: Db): Store {
       await db.run(OUTCOMES, [])
     },
     async record(repo, now, outcomes) {
-      for (const part of jsonParams(outcomes))
+      for (const part of jsonParams(outcomes)) {
+        await db.run(PASSED, [repo.issuer, repo.repository, now, part])
         await db.run(RECORD, [repo.issuer, repo.repository, now, part])
+      }
     },
     async flaky(repo, hashes) {
       const rows = await Promise.all(
@@ -221,10 +220,7 @@ export function sqliteStore(db: Db): Store {
       // A report that would not move its row is not written for up to a
       // day (FOLD): a row's write time lags its last report by up to that.
       const deleted = await db.run('DELETE FROM timings WHERE updated_at < ?1', [before - DAY_MS])
-      await db.run(
-        'DELETE FROM outcomes WHERE max(coalesce(passed_at, 0), coalesce(failed_at, 0), coalesce(flaky_at, 0)) < ?1',
-        [before - DAY_MS],
-      )
+      await db.run('DELETE FROM outcomes WHERE at < ?1', [before - DAY_MS])
       await db.run(
         'INSERT INTO sweeps (id, at) VALUES (1, ?1) ON CONFLICT (id) DO UPDATE SET at = excluded.at',
         [now],

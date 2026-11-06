@@ -66,9 +66,10 @@ characters), `outcome` one of:
 - `flaky`: it passed on a retry, so the run saw it flake.
 
 The server keeps, per repository (not per ref: a key is the same inputs
-on every branch), task and key, when each last came. A task is
-**flaky** when one key both passed and failed, or a run said `flaky`.
-A key with nothing for `TIMING_DAYS` is deleted.
+on every branch), only the task and keys that failed, each with a flaky
+flag. A pass of a failed key, or a run's `flaky`, sets the flag; any
+other pass is stored nowhere. A task is **flaky** when one of its keys
+is. A key with nothing for `TIMING_DAYS` is deleted.
 
 ## Query
 

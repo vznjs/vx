@@ -64,8 +64,8 @@ export function conformance(name: string, target: Target): void {
       })
     })
 
-    it('names a task flaky when one key passed and failed, or a run saw it flake, by any ref', async () => {
-      const [mixed, once, seen, other] = [hash(), hash(), hash(), hash()]
+    it('names a task flaky when one key failed then passed, or a run saw it flake, by any ref', async () => {
+      const [mixed, once, seen, other, first] = [hash(), hash(), hash(), hash(), hash()]
       const report = (outcomes: unknown[], token = tokens.main) =>
         post('/v1/timings/upload', { timings: [], outcomes }, token)
       expect((await report([{ hash: mixed, key: 'k1', outcome: 'fail' }])).status).toBe(204)
@@ -80,7 +80,10 @@ export function conformance(name: string, target: Target): void {
       ])
       await report([{ hash: once, key: 'b', outcome: 'pass' }])
       await report([{ hash: seen, key: 'k', outcome: 'flaky' }])
-      const res = await ask(['refs/heads/main'], [mixed, once, seen, other])
+      // A pass is kept only against a failure, so a pass before one is not.
+      await report([{ hash: first, key: 'k', outcome: 'pass' }])
+      await report([{ hash: first, key: 'k', outcome: 'fail' }])
+      const res = await ask(['refs/heads/main'], [mixed, once, seen, other, first])
       const body = (await res.json()) as { flaky: string[] }
       expect(body.flaky.sort()).toEqual([mixed, seen].sort())
     })

@@ -6,7 +6,7 @@ A server for the task timings a vx scheduler asks for, that you host. It
 keeps one row per task, already the numbers the scheduler uses (duration,
 CPU cores, peak memory), and merges each CI run's report into it: a
 history, not a log. It also keeps the flaky record every CI machine
-shares: per task and cache key, when it last passed, failed or flaked,
+shares: only the cache keys that failed, each with a flaky flag,
 so a run retries a task that flaked on another machine. It speaks the [vx-history protocol](./PROTOCOL.md)
 (`/v1`) on three backends that answer alike:
 
