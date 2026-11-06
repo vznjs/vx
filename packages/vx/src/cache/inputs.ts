@@ -18,6 +18,7 @@
 
 import path from 'node:path'
 import {
+  chmodSync,
   type Dirent,
   lstatSync,
   readdirSync,
@@ -1365,9 +1366,25 @@ const SYNC_CLEAN_MAX = 128
  * wrote, a read-only checkout) is the environment's failure, not vx's:
  * the scheduler prints any other error as an "internal error", which
  * sends the reader to file a bug against a permission bit.
+ *
+ * A directory of this user's that withholds its own write (a task's
+ * `chmod 555 dist/ro`, which a hit restores too) gets owner write and
+ * search for the remove and its mode back after, as a restore's write
+ * into it does (archive.ts `reopen`): else that task could never run or
+ * restore again until someone chmodded the tree by hand.
  */
 async function removeAll(all: readonly string[], root: string): Promise<string[]> {
   const files = insideRoot(all, root)
+  const reopened = new Map<string, number>()
+  const reopen = (dir: string): boolean => {
+    if (reopened.has(dir)) return true
+    const st = lstatSync(dir, { throwIfNoEntry: false })
+    if (st?.isDirectory() !== true || st.uid !== process.getuid?.()) return false
+    if ((st.mode & 0o300) === 0o300) return false
+    reopened.set(dir, st.mode & 0o7777)
+    chmodSync(dir, (st.mode & 0o7777) | 0o300)
+    return true
+  }
   const refused = (f: string, err: NodeJS.ErrnoException): UserError => {
     const rel = relPosix(root, f)
     return new UserError(
@@ -1376,24 +1393,46 @@ async function removeAll(all: readonly string[], root: string): Promise<string[]
         `by this user, or stop declaring it as an output`,
     )
   }
-  if (files.length <= SYNC_CLEAN_MAX) {
-    for (const f of files) {
+  const denied = (err: unknown, f: string): boolean =>
+    (err as NodeJS.ErrnoException).code === 'EACCES' && reopen(path.dirname(f))
+  try {
+    if (files.length <= SYNC_CLEAN_MAX) {
+      for (const f of files) {
+        try {
+          rmSync(f, { force: true })
+        } catch (err) {
+          if (!denied(err, f)) throw refused(f, err as NodeJS.ErrnoException)
+          try {
+            rmSync(f, { force: true })
+          } catch (again) {
+            throw refused(f, again as NodeJS.ErrnoException)
+          }
+        }
+      }
+      return files
+    }
+    await Promise.all(
+      files.map((f) =>
+        rm(f, { force: true })
+          .catch((err: NodeJS.ErrnoException) => {
+            if (!denied(err, f)) throw err
+            return rm(f, { force: true })
+          })
+          .catch((err: NodeJS.ErrnoException) => {
+            throw refused(f, err)
+          }),
+      ),
+    )
+    return files
+  } finally {
+    for (const [dir, mode] of reopened) {
       try {
-        rmSync(f, { force: true })
-      } catch (err) {
-        throw refused(f, err as NodeJS.ErrnoException)
+        chmodSync(dir, mode)
+      } catch {
+        // gone since: nothing to give back
       }
     }
-    return files
   }
-  await Promise.all(
-    files.map((f) =>
-      rm(f, { force: true }).catch((err: NodeJS.ErrnoException) => {
-        throw refused(f, err)
-      }),
-    ),
-  )
-  return files
 }
 
 /**
