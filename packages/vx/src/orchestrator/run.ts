@@ -1996,7 +1996,7 @@ async function planRestorable(
 /** The names a project outside the run's selection declares, and how to reach them. */
 function elsewhereHint(names: readonly string[]): string {
   if (names.length === 0) return ''
-  return ` Only projects outside the selection declare ${names.join(', ')} — pass --all, or --filter to pick them.`
+  return ` Only projects outside the selection declare ${names.join(', ')} — pass --all, or a --filter that includes them.`
 }
 
 /**

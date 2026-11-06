@@ -52,9 +52,9 @@ vx run build --filter @demo/ap
 
 - **Only one package ran.** `vx run build` runs the package you are in
   and what it depends on. Add `--all`.
-- **`0 tasks · build has no command in these projects`.** No selected
-  package gives `build` a command, so vx ran only its default group.
-  Give `build` an `exec.command` in the packages that build.
+- **`no projects declare task(s): build`.** No selected package declares
+  `build`; one with no vx config has none. Give it a `vx.config.ts` whose
+  `build` has an `exec.command`, then run `vx lock`.
 - **A task runs every time.** It has no `cache: true`. `vx-migrate` leaves
   a `TODO(vx-migrate)` where it could not write one. Or a task it depends on declares no
   `inputs`: that task has no key, so nothing behind it hits. Give it

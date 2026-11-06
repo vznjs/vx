@@ -145,3 +145,44 @@ it(
   },
   TIMEOUT,
 )
+
+// With no discover plugin a new directory is no project at all, so the
+// check above, which asks only projects, never saw it: `packages/d#build`
+// said no project declares it and offered `packages/a#build`, a root
+// `c#build` listed the projects.
+it(
+  'naming a task of a directory whose config came after the lock asks for `vx lock`',
+  async () => {
+    const root = await makeWorkspace({ prefix: 'vx-unlocked-dir-', workspaceFile: false })
+    try {
+      for (const p of ['a', 'b'])
+        await addProject(
+          root,
+          p,
+          `export default { tasks: { build: { exec: { command: 'echo ${p}' } } } }\n`,
+        )
+      expect((await vx(root, ['lock'])).code).toBe(0)
+      const config = "export default { tasks: { build: { exec: { command: 'echo new' } } } }\n"
+      await mkdir(path.join(root, 'packages', 'd'), { recursive: true })
+      await writeFile(path.join(root, 'packages', 'd', 'vx.config.mjs'), config)
+      await mkdir(path.join(root, 'c'), { recursive: true })
+      await writeFile(path.join(root, 'c', 'vx.config.mjs'), config)
+      const d = await vx(root, ['run', 'packages/d#build'])
+      expect(d.text).toContain(
+        'packages/d#build: packages/d/vx.config.mjs is not in the lock yet — run `vx lock`',
+      )
+      expect(d.text).not.toContain('packages/a#build')
+      expect(d.code).toBe(1)
+      const c = await vx(root, ['run', 'c#build'])
+      expect(c.text).toContain('c#build: c/vx.config.mjs is not in the lock yet — run `vx lock`')
+      expect(c.code).toBe(1)
+      // CONTROL: a directory with no config is still no project.
+      const e = await vx(root, ['run', 'e#build'])
+      expect(e.text).not.toContain('not in the lock yet')
+      expect(e.code).toBe(1)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  },
+  TIMEOUT,
+)
