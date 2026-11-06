@@ -51,6 +51,7 @@ export {
   committedFiles,
   cleanWorkspaceOutputs,
   declaresInput,
+  namedIgnoredReach,
   namedOutright,
   workspaceFilesReachInto,
   filesToken,

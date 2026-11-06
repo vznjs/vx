@@ -1537,9 +1537,12 @@ Always ignored (no re-trigger):
 - `node_modules/`, `.git/`, `.vx/cache/` anywhere in the path.
 - A path git ignores (`git check-ignore`, asked once per debounce
   window, never per event), unless a task's inputs name it outright
-  (`.env.local`, `dist/**`): invisible to every other cache key — inputs are
-  tracked + untracked-not-ignored — so a cycle it started could change
-  nothing. A tracked file that matches a pattern is not ignored, by
+  (`.env.local`, `dist/**`) by the rule the key reads them (schema.md §
+  gitignore filter): `src/**` over a listed `src` names no ignored
+  `src/dev.log`, so a dev server writing one starts no cycle. Any other
+  is invisible to every cache key — inputs are tracked +
+  untracked-not-ignored — so a cycle it started could change nothing,
+  and it never names a cycle. A tracked file that matches a pattern is not ignored, by
   git's own rule; outside a repository nothing is.
 - Files ending in `~` (editor swap files), and `.vx/tmp/`, where
   restores stage.

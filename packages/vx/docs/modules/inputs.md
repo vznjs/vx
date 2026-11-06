@@ -40,9 +40,19 @@ export function declaresInput(
 export function workspaceFilesReachInto(task: TaskConfig, dir: string): boolean
 
 /** Paths a task names outright (literals, globs' fixed prefixes): `files`
- *  project-relative, `workspaceFiles` root-relative. `vx watch` judges a
- *  git-ignored edit there. */
+ *  project-relative, `workspaceFiles` root-relative. */
 export function namedOutright(task: TaskConfig): { files: string[]; workspaceFiles: string[] }
+
+/** The entries of `named` (absolute) a git-ignored input can be under, by
+ *  the rule a key reads them: git lists nothing at or under one, or
+ *  ignores a new file directly in it. `listed` is what git lists, absolute,
+ *  with the directories above. `vx watch` judges a git-ignored edit there
+ *  only: `src` of `src/**` over a listed `src` is none. */
+export function namedIgnoredReach(
+  root: string,
+  named: readonly string[],
+  listed: ReadonlySet<string>,
+): string[]
 
 /** What a probe answers here: an `inputs.runtime` command run in
  *  `projectDir`, or with `workspace` a `workspaceRuntime` one run in

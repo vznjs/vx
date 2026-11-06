@@ -41,6 +41,17 @@ import { FILE_HASH_RACY_MS, racyWindowMs } from './layer.js'
 /** A name no ignore rule names, standing for a file a task may create. */
 const FRESH_NAME = '__vx_probe__'
 
+/**
+ * Which of `dirs` (relative to `root`) git ignores a new file directly in,
+ * in one `git check-ignore`: `GitFilesCache.newFilesIgnored`'s probe, which
+ * watch asks of the entries a task names (`namedIgnoredReach`).
+ */
+export function newFilesIgnoredIn(root: string, dirs: readonly string[]): Set<string> {
+  const probes = dirs.map((d) => `${d}/${FRESH_NAME}`)
+  const hit = checkIgnoreSync(root, probes)
+  return new Set(dirs.filter((_, i) => hit?.has(probes[i]!) === true))
+}
+
 /** Three facts of the repository a directory is in: read off the disk, or one `git rev-parse`. */
 export interface RepoFacts {
   /** `--show-prefix`: the directory's path below the worktree root, `''` at the root. */
@@ -413,10 +424,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
       else hi = mid
     }
     known = false
-    if (ig.paths[lo]?.startsWith(under) === true) {
-      const probe = `${under}${FRESH_NAME}`
-      known = checkIgnoreSync(ig.root, [probe])?.has(probe) === true
-    }
+    if (ig.paths[lo]?.startsWith(under) === true) known = newFilesIgnoredIn(ig.root, [rel]).size > 0
     ig.asked.set(rel, known)
     return known
   }
