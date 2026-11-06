@@ -748,6 +748,8 @@ export interface PersistentSpawn {
   ready: Promise<void>
   /** ms from spawn to ready, to the readiness timeout giving up, or to now. */
   readyMs: () => number
+  /** Whether the readiness timeout fired: `ready` rejects only after the kill grace. */
+  gaveUp: () => boolean
 }
 
 // `capture` is a `runCommand` concept: a persistent task never returns a
@@ -848,6 +850,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
         new PersistentReadyError(`failed to spawn persistent task: ${message}`, 'spawn'),
       ),
       readyMs: () => Date.now() - start,
+      gaveUp: () => false,
     }
   } finally {
     pipes.spawned()
@@ -1031,6 +1034,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     child,
     ready,
     readyMs: () => (readyAt ?? gaveUpAt ?? Date.now()) - start,
+    gaveUp: () => gaveUpAt !== undefined,
   }
 }
 
