@@ -83,3 +83,30 @@ describe('the default build is no declared task', () => {
     )
   })
 })
+
+describe('a workspace that declares no task yet', () => {
+  let fresh: string
+  beforeAll(async () => {
+    fresh = await makeWorkspace({ prefix: 'vx-no-task-yet-' })
+    await addProject(fresh, 'x', 'export default { tasks: {} }')
+  })
+  afterAll(async () => {
+    await rm(fresh, { recursive: true, force: true })
+  })
+
+  // Right after `vx init` the lock is current: "run `vx lock`" alone sent
+  // a new user to a command that changed nothing.
+  it('`vx run build` says to declare a task, not only to lock', () => {
+    const p = Bun.spawnSync({
+      cmd: [process.execPath, BIN, 'run', 'build', '--all'],
+      cwd: fresh,
+      stdin: 'ignore',
+    })
+    expect([p.exitCode, p.stderr.toString()]).toEqual([
+      1,
+      noticed(
+        'vx run: no projects declare task(s): build. No project declares a task yet: add one under `tasks` in a vx.config, then run `vx lock`.\n',
+      ),
+    ])
+  })
+})

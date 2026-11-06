@@ -71,7 +71,10 @@ The refusal adds what helps:
   runnable one) is within two edits.
 - Otherwise what exists: `Tasks: build, test.`, `No
 project is named zzz; projects: a, b.`, or `a's tasks: build, test.`
-- Then ``A run reads the lock: after editing a
+- With no task declared anywhere (right after `vx init`): ``No project
+  declares a task yet: add one under `tasks` in a vx.config, then run
+  `vx lock`.``
+- Otherwise ``A run reads the lock: after editing a
 vx.config, run `vx lock`.``, since a task added since the last lock is not in it.
 - `Only projects outside the selection declare <name> — pass
 --all, or --filter to pick them.` when the run was scoped and a project

@@ -2005,7 +2005,7 @@ async function unresolvedHint(prepared: {
   )
   const init = await initHint(prepared)
   const lock =
-    init === '' && elsewhere === '' && !near.startsWith(' Did you mean')
+    init === '' && elsewhere === '' && !near.startsWith(' Did you mean') && !near.includes(NO_TASK)
       ? ' A run reads the lock: after editing a vx.config, run `vx lock`.'
       : ''
   return `${elsewhere}${near}${init}${lock}`
@@ -2027,6 +2027,11 @@ async function initHint(prepared: {
   if (unlocked !== undefined) return ` ${unlocked} is not in the lock yet — run \`vx lock\`.`
   return ` ${EMPTY_LOCK}.`
 }
+
+// The state right after `vx init`: the lock is current, so the lock hint
+// alone sent a new user to a command that changed nothing.
+const NO_TASK =
+  'No project declares a task yet: add one under `tasks` in a vx.config, then run `vx lock`.'
 
 /**
  * A typo's nearest declared name, when one is within two edits — the
@@ -2068,7 +2073,7 @@ function didYouMean(
       // A name outside the selection is already said, with `--all`.
       else if (allTasks.size > 0 && !elsewhere.includes(spec)) {
         lists.add(`Tasks: ${listed(allTasks)}.`)
-      }
+      } else if (allTasks.size === 0 && elsewhere.length === 0) lists.add(NO_TASK)
       continue
     }
     const [proj, task] = [spec.slice(0, at), spec.slice(at + 1)]
