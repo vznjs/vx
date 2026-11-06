@@ -3950,14 +3950,24 @@ it('local() reclaims the worktrees of a run whose vx is gone, and keeps a live r
   } finally {
     await adapter.close?.()
   }
-  const trees = () =>
-    git('worktree', 'list', '--porcelain')
-      .split('\n')
-      .filter((l) => l.startsWith('worktree '))
-      .map((l) => l.slice('worktree '.length))
+  // A reclaim or a close may be pruning while this reads: git then fails
+  // on a half-removed admin dir, so read again.
+  const trees = async (): Promise<string[]> => {
+    for (;;) {
+      try {
+        return git('worktree', 'list', '--porcelain')
+          .split('\n')
+          .filter((l) => l.startsWith('worktree '))
+          .map((l) => l.slice('worktree '.length))
+      } catch {
+        await Bun.sleep(20)
+      }
+    }
+  }
   const until = Date.now() + 10_000
-  while (trees().includes(dead) && Date.now() < until) await Bun.sleep(20)
-  expect([trees().includes(dead), existsSync(dead), trees().includes(live)]).toEqual([
+  while ((await trees()).includes(dead) && Date.now() < until) await Bun.sleep(20)
+  const after = await trees()
+  expect([after.includes(dead), existsSync(dead), after.includes(live)]).toEqual([
     false,
     false,
     true,
