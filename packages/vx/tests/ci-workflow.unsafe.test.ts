@@ -163,7 +163,7 @@ describe('ci.yml', () => {
     expect(names.indexOf('Hand the Pages token to the run')).toBeLessThan(names.indexOf('vx run'))
     const docs = readFileSync(path.join(dir, '../../private/vx-docs/vx.config.ts'), 'utf8')
     expect(docs).toContain("release: { dependsOn: ['deploy.pages'] }")
-    expect(docs).toContain('bun scripts/live-bench.ts && ${ASTRO_BUILD} --outDir dist-live')
+    expect(docs).toContain('${ASTRO_BUILD} --outDir dist-live && bun scripts/deploy-pages.ts dist-live')
     expect(run.steps!.some((s) => /deploy-pages|upload-pages-artifact/.test(s.uses ?? ''))).toBe(
       false,
     )

@@ -2,7 +2,6 @@ import { satteri } from '@astrojs/markdown-satteri'
 import starlight from '@astrojs/starlight'
 import { defineConfig } from 'astro/config'
 import { readdirSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { SIDEBAR } from './src/nav/sections.ts'
 import { bench } from './src/plugins/bench.ts'
 import { dataCharts } from './src/plugins/data-charts.ts'
@@ -18,7 +17,10 @@ export default defineConfig({
   // Both caches under `.astro/`, not node_modules: see the `build` task's
   // sandbox grants in vx.config.ts for why a write under node_modules breaks
   // module resolution inside the Linux sandbox.
-  cacheDir: './.astro/cache',
+  // Main's deploy (VX_DOCS_BENCH set) renders into a cache of its own,
+  // emptied first: the content store keeps each page as rendered, so the
+  // build's copy held the committed bench figures (2026-11-06).
+  cacheDir: process.env.VX_DOCS_BENCH ? './.astro/live' : './.astro/cache',
   vite: {
     cacheDir: './.astro/vite',
     // Starlight's <Steps> and <Tabs> parse markdown at render time with
@@ -31,14 +33,6 @@ export default defineConfig({
     // the build's sandbox hides: Linux answers ENOENT and the search goes
     // on, macOS's seatbelt answers EPERM and the build failed.
     css: { postcss: {} },
-    // Main's deploy builds with the newest numbers Bench measured
-    // (deploy.pages, scripts/live-bench.ts), not the committed copy
-    // src/bench/data.ts imports.
-    resolve: {
-      alias: process.env.VX_DOCS_BENCH
-        ? [{ find: /^\.\.\/data\/bench\.json$/, replacement: resolve(process.env.VX_DOCS_BENCH) }]
-        : [],
-    },
   },
   site,
   base,
