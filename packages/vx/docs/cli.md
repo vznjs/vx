@@ -270,7 +270,9 @@ even though no plugin links `e2e` to `app`. There is no
 
 A filter that names no project (`...`, a bare `!`, an empty `{}`) is
 refused, and so is a path that climbs out of the root (`../`, `{..}`)
-or one holding a control character.
+or one holding a control character, and `^...` before a git ref
+(`app^...[main]`, which neither Turbo nor pnpm reads: `app[main]^...` is
+the dependencies of a changed app).
 One whose pattern matched but selected nothing says what it matched:
 `no projects selected: filter "...^core" matched core, and no
 project depends on it`.
