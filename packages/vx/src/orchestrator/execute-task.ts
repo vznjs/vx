@@ -1138,9 +1138,13 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // A child we SIGTERMed for exceeding the timeout is a genuine failure —
     // stream a clear line so the 143 exit reads as a timeout. One that outlived
     // the grace died of the SIGKILL, and the line said SIGTERM over an exit
-    // 137 (item 1063).
+    // 137 (item 1063); so did a shell dead of the SIGTERM whose leftover the
+    // SIGKILL took.
     if (res.timedOut) {
-      const how = res.signal === 'SIGKILL' ? 'SIGKILL after the SIGTERM grace' : 'SIGTERM'
+      const how =
+        res.signal === 'SIGKILL' || res.killedAfterGrace === true
+          ? 'SIGKILL after the SIGTERM grace'
+          : 'SIGTERM'
       log.taskStderr(
         node,
         `${midLine ? '\n' : ''}[vx] timed out after ${effectiveTimeout}ms — killed (${how})\n`,

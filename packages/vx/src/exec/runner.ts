@@ -52,6 +52,9 @@ export interface RunResult {
    *  Distinguishes a timeout (a real `failed`) from a Ctrl-C shutdown
    *  SIGTERM (which the orchestrator reverts to `aborted`). */
   timedOut?: boolean
+  /** The timeout's SIGKILL past the grace took a process of the task's
+   *  group: the child, or one it left after dying of the SIGTERM. */
+  killedAfterGrace?: true
   /** Total user+system CPU time for the child, in milliseconds. */
   cpuMs?: number
   /** Peak resident set size for the child, in bytes. */
@@ -506,7 +509,8 @@ function afterPendingExits(fn: () => void): ReturnType<typeof setTimeout> {
  * classify the resulting SIGTERM as a real failure rather than a
  * Ctrl-C abort — and `settle()`, awaited once the child has exited:
  * it cancels the timers and, when the timeout fired, waits out the rest
- * of the grace for the child's GROUP and SIGKILLs whoever is left. The
+ * of the grace for the child's GROUP and SIGKILLs whoever is left, and
+ * `sigkilled()` says whether that SIGKILL found anyone. The
  * shell dying on the SIGTERM is not the tree dying: a backgrounded
  * process that ignores it lived on under init after vx exited (nx#11782's
  * sibling, reproduced on vx 2026-09-24). A no-op (never fires, nothing
@@ -515,9 +519,11 @@ function afterPendingExits(fn: () => void): ReturnType<typeof setTimeout> {
 export function armTimeout(
   proc: ReturnType<typeof Bun.spawn>,
   timeoutMs: number | undefined,
-): { timedOut: () => boolean; settle: () => Promise<void> } {
-  if (timeoutMs === undefined) return { timedOut: () => false, settle: async () => {} }
+): { timedOut: () => boolean; sigkilled: () => boolean; settle: () => Promise<void> } {
+  if (timeoutMs === undefined)
+    return { timedOut: () => false, sigkilled: () => false, settle: async () => {} }
   let firedAt: number | undefined
+  let sigkilled = false
   let killTimer: ReturnType<typeof setTimeout> | undefined
   const graceMs = killGraceMs(TIMEOUT_SIGKILL_GRACE_MS)
   let timer = setTimeout(() => {
@@ -532,17 +538,22 @@ export function armTimeout(
     // timeout, so a wedged child hangs the whole run forever. Mirrors the
     // end-of-run persistent-shutdown escalation. Unref'd so it never keeps
     // the CLI alive.
-    killTimer = setTimeout(() => killTree(proc, 'SIGKILL'), graceMs)
+    killTimer = setTimeout(() => {
+      sigkilled = true
+      killTree(proc, 'SIGKILL')
+    }, graceMs)
     killTimer.unref?.()
   }
   return {
     timedOut: () => firedAt !== undefined,
+    sigkilled: () => sigkilled,
     settle: async () => {
       clearTimeout(timer)
       if (killTimer !== undefined) clearTimeout(killTimer)
       if (firedAt === undefined) return
       const left = await untilGroupsGone([proc], Math.max(0, firedAt + graceMs - Date.now()))
       for (const child of left) killTree(child, 'SIGKILL')
+      if (left.length > 0) sigkilled = true
     },
   }
 }
@@ -1236,6 +1247,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
     stderr,
     ...(proc.signalCode != null ? { signal: proc.signalCode } : {}),
     ...(timeout.timedOut() ? { timedOut: true } : {}),
+    ...(timeout.sigkilled() ? { killedAfterGrace: true } : {}),
     ...(left ? { leftRunning: true } : {}),
     ...usageOf(proc, watch?.stop()),
   }

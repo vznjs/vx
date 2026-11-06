@@ -2757,6 +2757,7 @@ async function runSandboxedOnce(
     violations,
     ...(typeof proc.signalCode === 'string' ? { signal: proc.signalCode } : {}),
     ...(timeout.timedOut() ? { timedOut: true } : {}),
+    ...(timeout.sigkilled() ? { killedAfterGrace: true } : {}),
     ...(left ? { leftRunning: true } : {}),
     // Linux: the task's CPU and peak never reach this wait. bwrap runs it
     // in a pid namespace (`--unshare-pid`), and what the namespace's
