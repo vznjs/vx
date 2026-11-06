@@ -43,6 +43,15 @@ export function shellVerdict(args: {
   if (args.code === 126) {
     return `[vx] exit 126 is the shell's "found but cannot execute": ${what} is not executable or is a directory — chmod +x it`
   }
+  // A program the host's PATH has may be one the sandbox hides (a
+  // hermetic task sees no /usr/bin): the reason is a grant, not an install.
+  const found =
+    word === undefined || args.hidden === undefined
+      ? null
+      : Bun.which(word, { PATH: [...args.bins, process.env['PATH'] ?? ''].join(path.delimiter) })
+  if (found !== null && args.hidden!(found)) {
+    return `[vx] exit 127 is the shell's "command not found": ${word} is ${found} on the host, but no sandbox grant reads it, so inside the sandbox it is not there — add it (or its directory) to exec.sandbox.allow.read`
+  }
   const unnamed = args.bins.find((dir) => dir.includes(path.delimiter))
   if (unnamed !== undefined) {
     return `[vx] exit 127 is the shell's "command not found": ${what} is not on this task's PATH — ${unnamed} holds "${path.delimiter}", which PATH reads as a separator, so vx cannot put it there; move the workspace to a path without "${path.delimiter}"`
