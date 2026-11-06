@@ -29,6 +29,7 @@ import inputs from './inputs.ts'
 import lockfileDeps from './lockfile-deps.ts'
 import moonTests from './moon-tests.ts'
 import nixFunctional from './nix-functional.ts'
+import nixSandbox from './nix-sandbox.ts'
 import outputsBMore from './outputs-b-more.ts'
 import outputsAMore from './outputs-a-more.ts'
 import { outputsLinks } from './outputs-links.ts'
@@ -93,5 +94,6 @@ export const CASES: Case[] = [
   ...viteTaskE2eB,
   ...vitePlanA,
   ...nixFunctional,
+  ...nixSandbox,
   ...moonTests,
 ]
