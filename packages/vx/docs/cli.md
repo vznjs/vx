@@ -3450,7 +3450,9 @@ history and prints its rows: a table with a header, or with
 flag does: filter by task or project, group, trend. The table prints
 every column, a name repeated by a join's `SELECT *` (`run_id`) too;
 `--format json` refuses a repeated name, since an object holds one
-value per key: name each with `AS`.
+value per key: name each with `AS`. A query starting with `-` (an SQL
+comment) takes `--sql=`: the space form reads a following flag as a
+missing query.
 
 ```sh
 # a task's memory and cpu, run by run

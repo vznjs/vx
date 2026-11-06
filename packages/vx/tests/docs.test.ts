@@ -122,6 +122,14 @@ describe('vx docs', () => {
     ])
   })
 
+  it('--limit followed by a flag says the value is missing', async () => {
+    const r = await vx(['cache', '--limit', '--format', 'json'])
+    expect([r.code, r.err.split('\n')[0]!.trim()]).toEqual([
+      1,
+      '✗ vx docs  --limit requires a value: a whole number above 0 (got flag --format)',
+    ])
+  })
+
   it('no match is an answer; no query is a usage refusal', async () => {
     const none = await vx(['zzqx'])
     expect([none.code, none.out.startsWith('vx docs: no section of the docs at ')]).toEqual([

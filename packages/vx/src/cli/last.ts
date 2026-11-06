@@ -127,10 +127,16 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
     }
     if (a === '--sql' || a.startsWith('--sql=')) {
       const v = a === '--sql' ? args[++i] : a.slice('--sql='.length)
-      if (v === undefined || v.trim() === '') {
+      // The space form took the next flag as the query, then blamed that
+      // flag for combining with --sql.
+      const flag =
+        a === '--sql' && v?.startsWith('-') === true
+          ? ` (got flag ${v}; a query that starts with - needs --sql=${v})`
+          : ''
+      if (v === undefined || v.trim() === '' || flag !== '') {
         return {
           ...out,
-          error: `--sql requires a query, like 'SELECT * FROM runs'${seeHelp('last')}`,
+          error: `--sql requires a query, like 'SELECT * FROM runs'${flag}${seeHelp('last')}`,
         }
       }
       out.sql = v

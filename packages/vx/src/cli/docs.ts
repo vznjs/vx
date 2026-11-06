@@ -31,10 +31,12 @@ export function parseDocsArgs(args: readonly string[]): DocsArgs {
       out.json = fv === 'json'
     } else if (a === '--limit' || a.startsWith('--limit=')) {
       const v = a === '--limit' ? args[++i] : a.slice('--limit='.length)
-      if (v === undefined || v === '') {
+      // The space form took the next flag as the count and refused it as one.
+      const flag = a === '--limit' && v !== undefined && /^-\D/.test(v) ? ` (got flag ${v})` : ''
+      if (v === undefined || v === '' || flag !== '') {
         return {
           ...out,
-          error: `--limit requires a value: a whole number above 0${seeHelp('docs')}`,
+          error: `--limit requires a value: a whole number above 0${flag}${seeHelp('docs')}`,
         }
       }
       const n = parseDecimalInt(v)
