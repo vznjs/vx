@@ -602,6 +602,7 @@ use your own instead.
 - A relay that answers nothing for 10 s, every try counted, fails every task not done
   (`the relay is unreachable`); none runs here, which may be far smaller
   than the workers. What finished is saved, so a rerun resumes from it.
+  The footer counts each worker that had joined `lost`, with what it ran.
   A fault (a `5xx`, a dropped or refused connection) is tried again 3
   times, by the orchestrator and workers alike, and the third failed
   retry ends them (`no socket in 3 dials`). The waits are random, from
@@ -702,7 +703,7 @@ workspace's cache under its commit, and the next commit's run plans by it
 before any worker of that size joins.
 
 The `workers` rows, live while the run goes and again in the footer,
-give each worker its status (`starting`, `online`, `left`, `gone`, or `failed`
+give each worker its status (`starting`, `online`, `left`, `lost`, or `failed`
 with why, such as `exited 1: Cannot find package '@vzn/vx-dte'`; once the
 run is over, one still starting is `not joined`), the tasks it
 has done, failed or had aborted by a stop, and the ones it runs now; while the run goes, those that left
@@ -735,7 +736,9 @@ not:
 ```
 
 A run over that started none (every task a hit) says
-`workers   none started: no task needed one`.
+`workers   none started: no task needed one`; one where a task waited
+on a worker and none joined (none started, or each refused) says
+`workers   none joined: a task waited on one`.
 
 Under each worker, and `local`, the footer then spells out what it did:
 its time online, busy and idle; its CPU peak and average in cores and
