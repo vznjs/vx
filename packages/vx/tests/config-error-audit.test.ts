@@ -90,6 +90,14 @@ it.each([
     ),
   ],
   [
+    'an env var written straight under `exec.env`',
+    task("exec: { command: 'x', env: { NODE_ENV: 'production' } }"),
+    framed(65, 'tasks.build.exec.env has unknown field "NODE_ENV"', {
+      allowed: 'define, passThrough, secret',
+      fix: 'use exec.env.define: { NODE_ENV: "production" }',
+    }),
+  ],
+  [
     'a string `dependsOn`',
     task("exec: { command: 'x' }, dependsOn: '^build'"),
     framed(60, 'tasks.build.dependsOn must be an array — write dependsOn: ["^build"]'),

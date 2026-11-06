@@ -2210,7 +2210,7 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: tasks.t.exec.env has unknown field \"x\" (allowed: define, passThrough, secret)": [
+        "$CONFIG: tasks.t.exec.env has unknown field \"x\" (allowed: define, passThrough, secret) — vx spells it exec.env.define: { x: \"y\" }": [
           "{\"x\":\"y\"}"
         ]
       },

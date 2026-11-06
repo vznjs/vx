@@ -659,6 +659,18 @@ export function validateProjectConfig(
         if (typeof env !== 'object' || env === null) {
           throw new UserError(`${where}.exec.env must be an object (or omitted)`)
         }
+        // `env: { NODE_ENV: 'production' }` (Turbo's and Nx's shape): name
+        // the level the variable belongs at, not only the allowed fields.
+        const plain = Array.isArray(env)
+          ? undefined
+          : Object.entries(env).find(([k, v]) => !ENV_FIELDS.has(k) && typeof v === 'string')
+        if (plain !== undefined) {
+          throw new UserError(
+            `${where}.exec.env has unknown field "${plain[0]}" ` +
+              `(allowed: ${[...ENV_FIELDS].sort().join(', ')}) — vx spells it ` +
+              `exec.env.define: { ${plain[0]}: ${JSON.stringify(plain[1])} }`,
+          )
+        }
         // `env: { set: {...} }` loaded and defined nothing — the one level
         // without this check until 2026-09-10 (tests/schema-unknown-keys).
         assertKnownFields(env, ENV_FIELDS, `${where}.exec.env`)
