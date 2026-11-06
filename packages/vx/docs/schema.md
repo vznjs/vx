@@ -1450,6 +1450,8 @@ export default defineProject({
           `nix copy --from "$PWD/.nix" --to "local?root=$PWD/out" "$p" --no-check-sigs && rm -rf out/nix/var`,
           `mkdir -p out/bin && ln -s "../nix/store/\${p#/nix/store/}/bin/node" out/bin/node`,
         ].join(' && '),
+        // Nix builds for this machine: the key holds which one.
+        platforms: ['linux-x64', 'linux-arm64'],
         sandbox: {
           allow: {
             network: ['cache.nixos.org', 'github.com', 'codeload.github.com'],
@@ -1469,6 +1471,9 @@ export default defineProject({
 ```
 
 The nixpkgs commit sits in the command, so the key moves with it.
+Nix picks the system itself, so a mount needs `exec.platforms`: each
+platform keeps its own entry, and an arm64 machine never restores x64
+binaries.
 `--option substituters ''` builds from source instead of downloading
 Nix's prebuilt packages. The dependant runs in `exec.sandbox` on Linux:
 the mount is a bind, which an unsandboxed task or macOS cannot make, and

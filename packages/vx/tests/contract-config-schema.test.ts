@@ -282,7 +282,7 @@ function projectSeed(): Record<string, unknown> {
         cache: { outputs: { files: ['out/**'], bin: 'out/bin' } },
       },
       m: {
-        exec: { command: 'true' },
+        exec: { command: 'true', platforms: ['linux-x64'] },
         inputs: { files: ['src/**'] },
         cache: { outputs: { files: ['out/**'], mount: { '/nix/store': 'out/nix/store' } } },
       },
