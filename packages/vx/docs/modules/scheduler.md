@@ -215,7 +215,7 @@ export function tieredReverseDepCount(
 export function mergePriorities(
   baseline: ReadonlyMap<string, number>,
   overrides: ReadonlyMap<string, number>,
-): ReadonlyMap<string, number>
+): (id: string) => number // read as asked: no merged copy of the two maps
 ```
 
 ## Algorithm

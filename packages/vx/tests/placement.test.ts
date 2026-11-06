@@ -597,15 +597,15 @@ describe('hasPooledExecutor / poolOfPlacement', () => {
 })
 
 describe('locallyPlaced — "not remote", not "declared local"', () => {
-  // The set feeds resolveDownloadModes as "these wrote in place, the outputs
+  // The predicate feeds resolveDownloadModes as "these wrote in place, the outputs
   // are already here". `remote` is three-state: true, false, and UNDEFINED —
   // which is core's own floor, since localExecutor() declares no `remote` at
   // all. Ask "is it declared local" instead of "is it not remote" and every
   // task on the floor drops out, i.e. every task in a workspace with no
   // executor plugin; vx then believes it must fetch their outputs from a CAS
   // that never held them. Both call sites (`run()` and `--dry`) built this
-  // inline from the same predicate, and the download tests hand the finished
-  // set in as a literal, so nothing watched how it was BUILT.
+  // inline from the same predicate, and the download tests hand their own
+  // predicate in, so nothing watched how it was BUILT.
   const exec = (name: string, remote?: boolean): TaskExecutor =>
     ({
       name,
@@ -631,9 +631,9 @@ describe('locallyPlaced — "not remote", not "declared local"', () => {
       ['a#declared', exec('org/local', false)],
       ['a#remote', exec('org/remote', true)],
     ])
-    expect([...locallyPlaced(p, ['a#floor', 'a#declared', 'a#remote'])].sort()).toEqual([
-      'a#declared',
+    expect(['a#floor', 'a#declared', 'a#remote'].filter(locallyPlaced(p))).toEqual([
       'a#floor',
+      'a#declared',
     ])
   })
 
@@ -641,7 +641,7 @@ describe('locallyPlaced — "not remote", not "declared local"', () => {
     // A group or persistent task is never placed; `get` answers undefined and
     // `?.remote` is undefined, so it is not remote and its outputs are here.
     const p = placements([['a#remote', exec('org/remote', true)]])
-    expect([...locallyPlaced(p, ['a#unplaced', 'a#remote'])]).toEqual(['a#unplaced'])
+    expect(['a#unplaced', 'a#remote'].filter(locallyPlaced(p))).toEqual(['a#unplaced'])
   })
 })
 

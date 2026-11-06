@@ -643,7 +643,8 @@ export function formatRunSummary(
           }
         : {}),
       ...(emptyGroups.length > 0 ? { emptyGroups } : {}),
-      buckets: bucketsOf(outcomes),
+      // Read only to move a task by its remote traffic.
+      ...(context?.cache?.remote === true ? { buckets: bucketsOf(outcomes) } : {}),
     },
     totalMs,
     colors,

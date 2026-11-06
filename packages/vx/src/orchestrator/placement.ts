@@ -223,8 +223,9 @@ export interface Placements {
 }
 
 /**
- * The tasks that write IN PLACE — everything not placed on a remote
- * executor. `resolveDownloadModes` reads it as "the outputs are already
+ * Whether a task writes IN PLACE — everything not placed on a remote
+ * executor. A predicate, not a set: a set held an entry per task of the
+ * run for its whole length. `resolveDownloadModes` reads it as "the outputs are already
  * here", so a task wrongly left out is one vx thinks it must fetch from a
  * CAS that never held it.
  *
@@ -234,11 +235,11 @@ export interface Placements {
  * remote", never "declared local"; asking the latter drops every task on
  * the floor executor, i.e. every task in a workspace with no executor
  * plugin. It lives here, shared, because `run()` and `--dry` each built
- * this set inline from the same predicate and a second copy is how the
+ * this inline from the same predicate and a second copy is how the
  * plan and the run would disagree about what comes home (441, 442, 445).
  */
-export function locallyPlaced(placements: Placements, ids: Iterable<string>): Set<string> {
-  return new Set([...ids].filter((id) => placements.executors.get(id)?.remote !== true))
+export function locallyPlaced(placements: Placements): (id: string) => boolean {
+  return (id) => placements.executors.get(id)?.remote !== true
 }
 
 export function placeTasks(
@@ -442,7 +443,7 @@ export async function planExecutorOf(
       : resolveDownloadModes({
           nodes: prepared.nodes,
           policy,
-          localPlaced: locallyPlaced(placements, prepared.nodes.keys()),
+          localPlaced: locallyPlaced(placements),
           remoteOnly: placements.remoteOnly,
         })
   return {

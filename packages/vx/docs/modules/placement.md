@@ -34,8 +34,8 @@ export function placeTasks(
   nodes: Map<string, TaskNode>,
   executors: readonly TaskExecutor[],
 ): Placements
-// `ids` whose executor is not `remote` — they write in place
-export function locallyPlaced(placements: Placements, ids: Iterable<string>): Set<string>
+// whether a task's executor is not `remote` — it writes in place
+export function locallyPlaced(placements: Placements): (id: string) => boolean
 // the run's word on `otherPlatform`: refuse (an unroutable task, or CI), warn and skip, or nothing
 export function platformVerdict(
   placements: Placements,

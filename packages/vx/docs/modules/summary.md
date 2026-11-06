@@ -36,7 +36,7 @@ export interface SummaryStats {
   etaMs?: number // live section only: the forecast of what is left (`~3s left` on the time row)
   overMs?: number // live section only: how long the run has gone past that forecast (`+3s over`)
   emptyGroups?: readonly string[] // a run of command-less groups: their names, after `0 tasks`
-  buckets?: ReadonlyMap<string, CacheBucket> // each finished task's cache bucket by its key
+  buckets?: ReadonlyMap<string, TaskBucket> // each finished task's cache bucket by its key and id; only with a remote
 }
 
 // The cache bar segment a finished task fills before its remote traffic is weighed.
