@@ -3349,7 +3349,8 @@ as a hit's replay is; a task's `env.define` / `env.secret` values only
 the run knows), so a passing task's log reads too, on a hit
 or in the run that saved it. An uncached task that passed, or a skip,
 kept none, nor does a failed task past the newest 50 failed runs:
-stdout is empty and stderr says so, exit 0. A kept log that is empty
+stdout is empty and stderr says so, exit 0; a skip names what blocked
+it (`c#after did not run: c#gate blocked it (vx last --log c#gate)`). A kept log that is empty
 says the task printed nothing. A task that retried shows every
 attempt, each under a heading (`── attempt 1 of 2 · exit 1 ──`), the
 last `passed` when a retry passed. With

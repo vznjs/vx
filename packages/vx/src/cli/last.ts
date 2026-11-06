@@ -875,14 +875,27 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
               .query('SELECT cached FROM runs WHERE run_id = ? AND project = ? AND task = ?')
               .get(log.runId, project, task) as { cached: number | null } | null
           )?.cached === 1
+        // A skip ran nothing: the output to read is its blocker's.
+        const blocker =
+          log.status === 'skipped'
+            ? (
+                db
+                  .query(
+                    'SELECT blocked_by AS b FROM runs WHERE run_id = ? AND project = ? AND task = ?',
+                  )
+                  .get(log.runId, project, task) as { b: string | null } | null
+              )?.b
+            : null
         sayNotice(
           'info',
           'vx last',
-          log.status === 'failed'
-            ? `${log.taskId} ended failed, and vx kept no output for it: it keeps the newest 50 failed runs`
-            : cached
-              ? `${log.taskId} ended ${log.status}, and its entry is not in the cache: the run did not save it, or it was pruned since`
-              : `${log.taskId} ended ${log.status}. vx keeps output only for failed and cached tasks`,
+          typeof blocker === 'string'
+            ? `${log.taskId} did not run: ${blocker} blocked it (vx last --log ${blocker})`
+            : log.status === 'failed'
+              ? `${log.taskId} ended failed, and vx kept no output for it: it keeps the newest 50 failed runs`
+              : cached
+                ? `${log.taskId} ended ${log.status}, and its entry is not in the cache: the run did not save it, or it was pruned since`
+                : `${log.taskId} ended ${log.status}. vx keeps output only for failed and cached tasks`,
         )
       } else if (log.output === '') {
         sayNotice('info', 'vx last', `${log.taskId} ended ${log.status} and printed nothing`)

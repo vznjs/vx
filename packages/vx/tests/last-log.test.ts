@@ -51,6 +51,12 @@ export default { tasks: {
   )
   expect(vx('run', 'b#build').code).toBe(0)
   expect(vx('run', 'b#own').code).toBe(0)
+  await addProject(
+    root,
+    'c',
+    `export default { tasks: { gate: { exec: { command: 'exit 2' } }, after: { dependsOn: ['gate'], exec: { command: 'echo after' } } } }\n`,
+  )
+  expect(vx('run', 'c#after').code).toBe(1)
 }, 60_000)
 afterAll(async () => {
   await rm(root, { recursive: true, force: true })
@@ -221,4 +227,17 @@ it('a task named with a colon saves, restores and reads back its log', async () 
   expect(await Bun.file(path.join(dir, 'dist', 'o')).text()).toBe('p\n')
   expect(await Bun.file(path.join(dir, 'runs.txt')).text()).toBe('r\n')
   expect(vx('last', '--log', 'c#build:prod')).toEqual({ code: 0, out: 'prod-ok\n', err: '' })
+})
+
+// "ended skipped. vx keeps output only for failed and cached tasks" was a
+// dead end: the output to read is its blocker's.
+it("a skipped task's log points at what blocked it", () => {
+  expect(vx('last', '--log', 'c#after')).toEqual({
+    code: 0,
+    out: '',
+    err: noticed(
+      'vx last: c#after did not run: c#gate blocked it (vx last --log c#gate)\n',
+      'info',
+    ),
+  })
 })
