@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## config: move outputs and stability beside cache: true
+
+No migration note.
+
 ## orchestrator: key runs from the dependencies lock
 
 a run refuses when a claimed lockfile changed since `vx lock` or .vx/dependencies.lock.json is missing; run `vx lock` after each install. The lock is version 3 (files record extras), and KeyHookContext gains locked(file), FingerprintDigests gains extras.
@@ -447,7 +451,7 @@ cachePolicy in run history and telemetry records reads `local:rw,remote:r`, the 
 
 ## cache: cache everything the outputs hold under clean: false
 
-under outputs.clean: false a leftover output file is now saved and restored on every machine; before, its presence meant nothing was cached.
+under cache.outputs.clean: false a leftover output file is now saved and restored on every machine; before, its presence meant nothing was cached.
 
 ## cli: stop vx watch re-running on its own run's writes
 
@@ -457,9 +461,9 @@ vx lock refuses a cached task whose inputs read another task's outputs through a
 
 `bunx skills add vznjs/vx/packages/vx/skills/vx` no longer exists; install the agent skill with `bunx skills add vznjs/vx`.
 
-## cache: drop the VX_OUTPUTS_CLEAN variable
+## cache: drop the VX_CACHE_OUTPUTS_CLEAN variable
 
-VX_OUTPUTS_CLEAN is no longer read. Set outputs.clean in .vx/workspace.ts or on the task instead.
+VX_CACHE_OUTPUTS_CLEAN is no longer read. Set cache.outputs.clean in .vx/workspace.ts or on the task instead.
 
 ## cache: share blob sizes and the flaky record across worktrees
 
@@ -561,9 +565,9 @@ vx.workspace keys, VX_* variables and some flags are renamed; old names are refu
 
 the top-level `cacheScope` workspace key is removed; use `cache: { scope }`.
 
-## cache: replace rewrittenInputs with inputs.stability
+## cache: replace rewrittenInputs with cache.inputStability
 
-cache.rewrittenInputs and VX_REWRITTEN_INPUTS are gone. Use inputs.stability: { strategy: 'immutable' | 'mutable' | 'unchecked', severity: 'warn' | 'error' } ('withhold' is 'immutable', 'compare' is 'mutable'), VX_INPUT_STABILITY and VX_INPUT_STABILITY_SEVERITY.
+cache.rewrittenInputs and VX_REWRITTEN_INPUTS are gone. Use cache.inputStability: { strategy: 'immutable' | 'mutable' | 'unchecked', severity: 'warn' | 'error' } ('withhold' is 'immutable', 'compare' is 'mutable'), VX_INPUT_STABILITY and VX_INPUT_STABILITY_SEVERITY.
 
 ## orchestrator: skip the schedule stage when every task is a hit
 

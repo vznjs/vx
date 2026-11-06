@@ -664,10 +664,7 @@ function resolveAtomizedWorkspaceOutputs(
   const cached = (ps: readonly { name: string; dir: string; tasks: GeneratedTask[] }[]): number => {
     const copy = structuredClone(ps.map((p) => ({ name: p.name, dir: p.dir, tasks: p.tasks })))
     resolveSharedWorkspaceOutputs(root, copy)
-    return copy.reduce(
-      (n, p) => n + p.tasks.filter((t) => t.task?.['cache'] === true).length,
-      0,
-    )
+    return copy.reduce((n, p) => n + p.tasks.filter((t) => t.task?.['cache'] === true).length, 0)
   }
   const better = split.size > 0 && cached(last) > cached(projects)
   resolveSharedWorkspaceOutputs(root, better ? last : projects)

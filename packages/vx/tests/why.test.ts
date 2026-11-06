@@ -339,7 +339,7 @@ describe('parseWhyArgs', () => {
         expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
         const why = await vx(root, ['why', 'lib#build'])
         expect(why.code).toBe(0)
-        expect(why.out).toContain('declares no `cache` block')
+        expect(why.out).toContain('declares no `cache: true`')
         expect(why.out).not.toContain('inputs differ')
         const last = await vx(root, ['last'])
         expect(last.code).toBe(0)
