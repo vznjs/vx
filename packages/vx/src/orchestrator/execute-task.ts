@@ -42,6 +42,8 @@ import {
 } from './output-log.js'
 import { isGroupTask, RestoreDemoted, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import {
+  anyTaskGlob,
+  isLiteralPattern,
   killGraceMs,
   MASKED,
   maskedStreams,
@@ -875,9 +877,15 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // (`lib/**` in a package that builds `src/`). Said once per miss, on the
   // run's status line — the task itself succeeds.
   const declaredInputs = [...(cfg.inputs?.files ?? []), ...(cfg.inputs?.workspaceFiles ?? [])]
-  if (inputs !== undefined && declaredInputs.length > 0 && inputs.files.length === 0) {
+  const unmatched =
+    inputs === undefined || declaredInputs.length === 0
+      ? []
+      : inputs.files.length === 0
+        ? declaredInputs
+        : deadSourceGlobs(cfg.inputs, inputs.files, relPosix(args.workspaceRoot, node.projectDir))
+  if (unmatched.length > 0) {
     warnOf(log)(
-      `[vx] ${node.id}: inputs matched no files (${declaredInputs.join(', ')}) — ` +
+      `[vx] ${node.id}: inputs matched no files (${unmatched.join(', ')}) — ` +
         `the key will not change when this project's source does` +
         bracketLiteralHint([
           ...(cfg.inputs?.files ?? []).map((g) => [node.projectDir, g] as const),
@@ -1660,4 +1668,31 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         }
       : {}),
   }
+}
+
+/**
+ * The wildcard input globs, when not one of them matched a file: the
+ * literal files beside them did. A lockfile plugin appends `package.json`
+ * to every task's inputs, so `scr/**` for `src/**` kept a non-empty set
+ * and its warning went unsaid: an edit to `src/` then replayed a stale hit.
+ * On the miss path only; stops at the first matched file.
+ */
+function deadSourceGlobs(
+  declared: InputsConfig | undefined,
+  files: readonly { readonly path: string }[],
+  projectRel: string,
+): string[] {
+  const wild = (globs: readonly string[] | undefined): string[] =>
+    (globs ?? []).filter((g) => !g.startsWith('!') && !isLiteralPattern(g))
+  const own = wild(declared?.files)
+  const ws = wild(declared?.workspaceFiles)
+  if (own.length === 0 && ws.length === 0) return []
+  const ownMatch = anyTaskGlob(own)
+  const wsMatch = anyTaskGlob(ws)
+  const prefix = projectRel === '' ? '' : `${projectRel}/`
+  for (const { path: p } of files) {
+    if (wsMatch(p)) return []
+    if (p.startsWith(prefix) && ownMatch(p.slice(prefix.length))) return []
+  }
+  return [...own, ...ws]
 }
