@@ -40,6 +40,15 @@ describe('the default build is no declared task', () => {
     ])
   })
 
+  it('a project-scoped typo neither lists nor hints it', () => {
+    expect(vx('run', 'x#nope')[2]).toBe(
+      noticed(
+        "vx run: no projects declare task(s): x#nope. x's tasks: test. A run reads the lock: after editing a vx.config, run `vx lock`.\n",
+      ),
+    )
+    expect(vx('run', 'x#buil')[2]).not.toContain('x#build')
+  })
+
   it('`vx build` and `vx biuld` are unknown commands, not a hint to that run', () => {
     expect(vx('build')[2].split('\n')[0]).toBe('✗ vx  unknown command: build')
     expect(vx('biuld')[2].split('\n')[0]).toBe('✗ vx  unknown command: biuld')
