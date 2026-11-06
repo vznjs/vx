@@ -47,6 +47,7 @@ import {
 import {
   buildPackageGraph,
   computeNestedProjectDirs,
+  findProjectConfigs,
   findWorkspaceRoot,
   configuredBaseBranch,
   type LoadReads,
@@ -471,7 +472,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // nothing, exit 0.
   if (options.selectedByDiff === true && candidateProjects.length === 0)
     unresolvedTasks = [...new Set([...tasks.filter((t) => !t.includes('#')), ...unresolvedTasks])]
-  refuseUnlockedConfig(tasks, projects, projectMetas, workspaceRoot)
+  await refuseUnlockedConfig(tasks, projects, projectMetas, workspaceRoot)
   // A scope that loaded no candidate judged no bare name: each is unresolved.
   if (options.projects !== undefined && options.selectedByDiff !== true)
     refuseUnlockedScope(
@@ -1049,12 +1050,12 @@ function unlockedConfigOf(
  * one that runs nothing: ran, `c#build` was 0 tasks, exit 0, where a
  * renamed task gets "run `vx lock`" (Growth, lock drift).
  */
-function refuseUnlockedConfig(
+async function refuseUnlockedConfig(
   tasks: readonly string[],
   projects: ReadonlyMap<string, ProjectEntry>,
   metas: ReadonlyArray<{ name: string; dir: string; configPath?: string | null }>,
   workspaceRoot: string,
-): void {
+): Promise<void> {
   for (const spec of tasks) {
     const at = spec.indexOf('#')
     if (at < 0) continue
@@ -1062,7 +1063,11 @@ function refuseUnlockedConfig(
     const entry = projects.get(name)
     // No entry: a package the lock holds no project for, whose config came after it.
     if (entry !== undefined && !isDefaultBuild(entry.config.tasks?.[spec.slice(at + 1)])) continue
-    const config = unlockedConfig(name, metas)
+    const config =
+      unlockedConfig(name, metas) ??
+      (metas.some((m) => m.name === name)
+        ? undefined
+        : await unlockedDir(name, metas, workspaceRoot))
     if (config === undefined) continue
     throw new UserError(
       `${spec}: ${relPosix(workspaceRoot, config)} is not in the lock yet — run \`vx lock\``,
@@ -1107,6 +1112,27 @@ function unlockedConfig(
   if (typeof meta.configPath === 'string' && meta.configPath !== '') return undefined
   const config = PROJECT_CONFIG_FILENAMES.find((n) => existsSync(path.join(meta.dir, n)))
   return config === undefined ? undefined : path.join(meta.dir, config)
+}
+
+/**
+ * The config `vx lock` would find in the directory a name no project has
+ * reads as (`packages/d`, `c`): with no discover plugin a config written
+ * after the lock makes no project, so `unlockedConfig` never sees it.
+ * Asked only for a name that matches nothing, a run about to be refused;
+ * the listing is paid only when the directory holds a config.
+ */
+async function unlockedDir(
+  name: string,
+  metas: ReadonlyArray<{ dir: string }>,
+  workspaceRoot: string,
+): Promise<string | undefined> {
+  const dir = path.resolve(workspaceRoot, name)
+  // A project's directory typed for its name is that project, hinted as such.
+  if (!dir.startsWith(workspaceRoot + path.sep) || metas.some((m) => m.dir === dir))
+    return undefined
+  if (!PROJECT_CONFIG_FILENAMES.some((n) => existsSync(path.join(dir, n)))) return undefined
+  const { configs } = await findProjectConfigs(workspaceRoot)
+  return configs.find((c) => c.dir === dir)?.configPath
 }
 
 /**

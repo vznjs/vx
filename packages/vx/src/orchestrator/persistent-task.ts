@@ -181,6 +181,17 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
       : {}),
     ...(signalChannel ? { signalChannel } : {}),
     ...(args.terminal === true ? { terminal: true } : {}),
+    // What the pre-ready text left held goes out first, so the run can
+    // tell it from what the server writes since ready.
+    ...(args.serverReady !== undefined
+      ? {
+          onReady: () => {
+            serverMasked?.end()
+            ends.end()
+            args.serverReady!(node.id)
+          },
+        }
+      : {}),
   }
   if (step.persistent.readyWhen !== undefined) {
     persistentOpts.readyWhen = step.persistent.readyWhen

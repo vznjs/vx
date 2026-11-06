@@ -52,6 +52,7 @@ export function runCommand(opts: RunOptions): Promise<RunResult>
 export interface PersistentOptions extends Omit<RunOptions, 'forwardArgs' | 'capture'> {
   readyWhen?: string // string regex; matched against streamed output
   timeoutMs?: number // bounds the readiness wait
+  onReady?: () => void // at ready: after the text up to the ready line's end, before the rest
   signalChannel?: boolean // fd 3 carries SIGINT/SIGTERM (a Linux sandboxed command, item 752)
 }
 
@@ -400,6 +401,15 @@ A persistent task's output reaches the caller ONLY through the live
 logger keeps the one bounded tail (registered at `taskStart`, so it
 covers the pre-ready window too), which is what surfaces pre-ready
 output on a fail-before-ready outcome.
+
+`onReady` marks where the since-ready stream begins: the chunk that
+holds the ready line is split after that line's break (a CRLF's `\n`
+too; a prompt-style marker splits at the chunk's end), the first part
+forwarded, `onReady` called, then the rest. Handed over whole, the
+lines after the ready line in the same write read as pre-ready, the
+frame a ready server's row never prints: Vite's `Network:` line after
+`readyWhen: 'Local:'` was never shown. With no `readyWhen` it fires at
+spawn, before any output.
 
 ## What an unsandboxed task costs (Linux, 2026-10-02)
 

@@ -92,6 +92,7 @@ import {
   neverStarted,
   plainOutput,
   resolveOutputView,
+  type RunEvent,
   terminalSubscriber,
   warnOf,
 } from '../report/index.js'
@@ -428,14 +429,30 @@ async function runOnBus(
   // A server's output goes through a cell of its own: a later watch cycle
   // that keeps the server points it at that cycle's bus (`RunOptions.keep`).
   const serverOuts = new Map<string, { bus: EventBus }>()
+  // What a server writes from ready until its outcome is logged: renderers
+  // keep output before the outcome for its frame, which a ready server's
+  // row never prints, so its first lines since ready were lost.
+  const sinceReady = new Map<string, RunEvent[]>()
   const serverLog = (id: string): Logger => {
     const out = { bus }
     serverOuts.set(id, out)
+    const emit = (event: RunEvent): void => {
+      const held = sinceReady.get(id)
+      if (held === undefined) out.bus.emit(event)
+      else held.push(event)
+    }
     return {
       ...log,
-      taskStdout: (node, chunk) => out.bus.emit({ kind: 'task:stdout', node, chunk }),
-      taskStderr: (node, chunk) => out.bus.emit({ kind: 'task:stderr', node, chunk }),
+      taskStdout: (node, chunk) => emit({ kind: 'task:stdout', node, chunk }),
+      taskStderr: (node, chunk) => emit({ kind: 'task:stderr', node, chunk }),
     }
+  }
+  const releaseSinceReady = (id: string): void => {
+    const held = sinceReady.get(id)
+    if (held === undefined) return
+    sinceReady.delete(id)
+    const out = serverOuts.get(id) ?? { bus }
+    for (const event of held) out.bus.emit(event)
   }
 
   const prepared = await step('vx:load', () => prepareRun(options, log))
@@ -1187,6 +1204,7 @@ async function runOnBus(
       stopSignal: stop.signal,
       failFast: failFast.signal,
       inputStability,
+      serverReady: (id) => void sinceReady.set(id, []),
     }
     if (options.retries !== undefined) scope.retries = options.retries
     scope.knownFlaky = (node, hash) => {
@@ -1366,6 +1384,7 @@ async function runOnBus(
         judgeFlaky(o)
         keeper?.taskDone(o)
         log.taskComplete(o.node, o)
+        if (sinceReady.size > 0) releaseSinceReady(o.node.id)
         streamHit(o)
         demand.finished(o.node.id)
         // A server that dies while the graph runs is no longer running:
@@ -1996,7 +2015,7 @@ async function planRestorable(
 /** The names a project outside the run's selection declares, and how to reach them. */
 function elsewhereHint(names: readonly string[]): string {
   if (names.length === 0) return ''
-  return ` Only projects outside the selection declare ${names.join(', ')} — pass --all, or --filter to pick them.`
+  return ` Only projects outside the selection declare ${names.join(', ')} — pass --all, or a --filter that includes them.`
 }
 
 /**

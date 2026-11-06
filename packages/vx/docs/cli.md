@@ -76,7 +76,7 @@ project is named zzz; projects: a, b.`, or `a's tasks: build, test.`
 - Then ``A run reads the lock: after editing a
 vx.config, run `vx lock`.``, since a task added since the last lock is not in it.
 - `Only projects outside the selection declare <name> — pass
---all, or --filter to pick them.` when the run was scoped and a project
+--all, or a --filter that includes them.` when the run was scoped and a project
   outside the scope declares it.
 
 A name declared by only some projects is fine; the check fires only when

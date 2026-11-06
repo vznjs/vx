@@ -70,7 +70,13 @@ both paths share are `taskEnv` and `taskTimeoutMs` in `task-process.ts`.
    Spawned anyway, the server came up after the teardown, and a Ctrl-C
    took 7 s to end the run.
 4. Call `runPersistent(opts)`. Stash the returned `child` in
-   `persistentRegistry[node.id]`.
+   `persistentRegistry[node.id]`. Its `onReady` flushes what the
+   secret mask and the open-line hold kept of the pre-ready text, then
+   calls `serverReady`: run.ts holds the server's output from there
+   until it has logged the task's outcome, so a renderer files every
+   byte after the ready line as since-ready, never into the frame (the
+   lines after the ready line, and what came before the outcome, were
+   lost from a success row's view).
 5. `await spawn.ready`. On reject (child exited before ready) →
    stop what its group left running (SIGTERM, grace, SIGKILL), then
    return `failed` with the captured streams.

@@ -781,6 +781,12 @@ export interface PersistentOptions extends Omit<RunOptions, 'forwardArgs' | 'cap
    */
   timeoutMs?: number
   /**
+   * Called once, at ready: after `onStdout` / `onStderr` had the text up to
+   * the end of the ready line, before anything after it. What follows is
+   * the since-ready stream; a chunk holding both is split there.
+   */
+  onReady?: () => void
+  /**
    * Spawn it with fd 3 as its signal channel and route its polite signals
    * there (`signalThrough`): a Linux sandboxed command, whose group signal
    * would kill bwrap instead (`wrapSandboxedCommand`'s `forwardsSignals`).
@@ -883,6 +889,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
       readyAt = Date.now()
       if (readyTimer !== undefined) clearTimeout(readyTimer)
       resolveReady()
+      opts.onReady?.()
     }
   }
 
@@ -903,45 +910,60 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   ): Promise<void> => {
     if (!stream || typeof stream === 'number') return
     let fragment = ''
+    // Chunks are forwarded, never retained. The one consumer of a
+    // persistent task's text is the logger, which keeps its OWN bounded
+    // tail fed from these same callbacks (registered at taskStart, so it
+    // covers the pre-ready window too) — a second copy here was read by
+    // nobody.
+    const forward = (text: string): void => {
+      if (text.length === 0) return
+      if (isStderr) opts.onStderr?.(text)
+      else opts.onStdout?.(text)
+    }
+    // Where in `chunk` the ready line ends (past its break, a CRLF's `\n`
+    // too), or -1 while not ready. The fragment holds no break, so every
+    // break found is in `chunk`.
+    const readyEnd = (re: RegExp, chunk: string): number => {
+      const base = fragment.length
+      fragment += chunk
+      let start = 0
+      for (let i = base; i < fragment.length; i++) {
+        const c = fragment.charCodeAt(i)
+        if (c !== 10 && c !== 13) continue
+        if (readyLine(re, fragment.slice(start, i))) {
+          fragment = ''
+          return i + 1 - base + (c === 13 && chunk.charCodeAt(i + 1 - base) === 10 ? 1 : 0)
+        }
+        start = i + 1
+      }
+      fragment = fragment.slice(start)
+      if (readyLine(re, fragment)) {
+        fragment = ''
+        return chunk.length
+      }
+      // Dropping complete lines assumes the stream HAS line breaks. Output
+      // with none is one endless line, so the fragment would become a
+      // third unbounded accumulator (measured 464 MiB in 6 s, and the
+      // per-chunk `test` over an ever-growing string makes it quadratic
+      // in CPU too). Keep the most RECENT window: a match may span the
+      // chunk boundary, and no readiness marker is anywhere near this
+      // long.
+      if (fragment.length > READY_MATCH_WINDOW_CHARS) {
+        fragment = fragment.slice(fragment.length - READY_MATCH_WINDOW_CHARS)
+      }
+      return -1
+    }
     const handleChunk = (chunk: string): void => {
       if (chunk.length === 0) return
-      // Chunks are forwarded, never retained. The one consumer of a
-      // persistent task's text is the logger, which keeps its OWN bounded
-      // tail fed from these same callbacks (registered at taskStart, so it
-      // covers the pre-ready window too) — a second copy here was read by
-      // nobody.
-      if (isStderr) opts.onStderr?.(chunk)
-      else opts.onStdout?.(chunk)
-      if (readyRe && readyAt === undefined) {
-        fragment += chunk
-        let start = 0
-        for (let i = 0; i < fragment.length; i++) {
-          const c = fragment.charCodeAt(i)
-          if (c !== 10 && c !== 13) continue
-          if (readyLine(readyRe, fragment.slice(start, i))) {
-            markReady()
-            fragment = ''
-            return
-          }
-          start = i + 1
-        }
-        fragment = fragment.slice(start)
-        if (readyLine(readyRe, fragment)) {
-          markReady()
-          fragment = ''
-          return
-        }
-        // Dropping complete lines assumes the stream HAS line breaks. Output
-        // with none is one endless line, so the fragment would become a
-        // third unbounded accumulator (measured 464 MiB in 6 s, and the
-        // per-chunk `test` over an ever-growing string makes it quadratic
-        // in CPU too). Keep the most RECENT window: a match may span the
-        // chunk boundary, and no readiness marker is anywhere near this
-        // long.
-        if (fragment.length > READY_MATCH_WINDOW_CHARS) {
-          fragment = fragment.slice(fragment.length - READY_MATCH_WINDOW_CHARS)
-        }
-      }
+      if (!readyRe || readyAt !== undefined) return forward(chunk)
+      const end = readyEnd(readyRe, chunk)
+      if (end < 0) return forward(chunk)
+      // Split where the ready line ends: handed over whole, the lines after
+      // it in the same write read as pre-ready, the frame a ready server's
+      // row never prints (Vite's `Network:` line after `Local:`).
+      forward(chunk.slice(0, end))
+      markReady()
+      forward(chunk.slice(end))
     }
     const reader = stream.getReader()
     const decoder = new TextDecoder('utf-8', { ignoreBOM: true })

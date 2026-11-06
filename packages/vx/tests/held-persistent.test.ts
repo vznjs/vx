@@ -10,7 +10,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { CYCLE_INTERRUPT, type HeldPersistent } from '../src/orchestrator/index.js'
-import { createEventBus, type Logger } from '../src/report/index.js'
+import { createEventBus, defaultLogger, type Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
 
 process.env['VX_TEST_KILL_GRACE'] = '200ms'
@@ -249,6 +249,49 @@ it('a cycle interrupted on readiness keeps the servers it was handed', async () 
   } finally {
     await second.persistent?.stop()
     api.kill('SIGKILL')
+  }
+}, 30_000)
+
+// What a server wrote in the chunk that held its ready line went to the
+// frame a success row never prints: Vite's `Network:` line after
+// `readyWhen: 'Local:'` was never shown, and a partial line after the ready
+// one lost its first piece.
+it("a server's lines after its ready line, in the same write, show once", async () => {
+  // `%s`: the command line a frame prints must not hold the text looked for.
+  const srv = (id: string): string =>
+    `${id}: { exec: { command: 'printf "READY\\\\nAFTER-%s\\\\nPART-" ${id}; sleep 0.3; printf "%s-END\\\\n" ${id}; exec sleep 30', persistent: { readyWhen: 'READY' } } }`
+  await addProject(root, 'app', {
+    config: `export default { tasks: { ${srv('api')}, ${srv('web')} } }`,
+  })
+  let text = ''
+  const log = defaultLogger(
+    { enabled: false },
+    { mode: 'broad' },
+    { write: (c: string) => ((text += c), true) },
+  )
+  const r = await run({
+    cwd: root,
+    tasks: ['api', 'web'],
+    projects: ['app'],
+    log,
+    handleSignals: false,
+    holdPersistent: true,
+  })
+  try {
+    const deadline = Date.now() + 5_000
+    while (!(text.includes('api-END') && text.includes('web-END')) && Date.now() < deadline)
+      await Bun.sleep(20)
+    // Since ready: in the block at the summary (a partial line ends it), or
+    // a line at a time under the server's id after it.
+    for (const id of ['api', 'web']) {
+      expect([
+        text.split(`AFTER-${id}\nPART-`).length,
+        text.split(`AFTER-${id}`).length,
+        text.split(`app#${id} │ ${id}-END\n`).length,
+      ]).toEqual([2, 2, 2])
+    }
+  } finally {
+    await r.persistent?.stop()
   }
 }, 30_000)
 
