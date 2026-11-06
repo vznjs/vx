@@ -1488,7 +1488,7 @@ unsandboxed.** Full walkthrough in the
 ```ts
 interface SandboxConfig {
   allow?: SandboxGrants // what the command may do
-  deny?: { network?: string[] } // domains to refuse, run-wide (below)
+  deny?: { network?: string[] } // domains to refuse; every task of the run (below)
   ignore?: SandboxIgnore // violations to leave out of the report
   weakerWhenNested?: boolean // Linux: let a sandboxed task sandbox (default false)
   weakerNetworkIsolation?: boolean // macOS: host-proxy net, lower isolation (default false)
@@ -1623,15 +1623,16 @@ takes a bare `*` (deny all, `*:22` for one port). Until 2026-10-02 such an
 entry matched nothing with no word, and an allowed `*` opened every host
 to every sandboxed task of the run.
 
-**`network` is per-RUN, not per-task.** SRT runs one filtering proxy
-per `vx run` and checks every request against the allowlist that proxy
-was started with: the union of every domain list any sandboxed task in
-the graph declared. Every sandboxed task is handed that proxy. So a task
-that declares no network reaches the domains another task of the run
-listed, and `network: true` reaches only those (nothing in a run with no
-list). `deny.network` is the run's too: the proxy starts with the union
-of every task's denies and refuses those domains to every task, checked
-before the allowlist (B-21). A refused request is a violation on both
+**`network` is per-task.** Each sandboxed task reaches only the hosts
+its own list names, and a task that lists none reaches no host, even
+when another task of the run lists some. SRT runs one proxy per run that
+filters by the union of every task's list; vx puts a proxy of the task's
+own in front of it, so the task's list is checked first (until
+2026-11-06 a task reached any host another task of the run listed).
+`network: true` keeps the run's proxy: it reaches the union (nothing in
+a run with no list). `deny.network` is the task's own and also the
+run's: the run's proxy refuses the union of every task's denies to
+every task, checked before the allowlist (B-21). A refused request is a violation on both
 platforms, `deny network-outbound <host>:<port> (<reason>)` from the
 proxy, and fails the task even when it survived the refusal;
 `ignore: { network: ['<host>:<port>'] }` silences one, matched as the
@@ -1640,7 +1641,7 @@ client's spelling, `EXAMPLE.Com` or `example.com.`, escaped it). Until
 2026-10-02 Linux reported none, and the line could not be ignored on macOS.
 
 **Baseline** (`sandbox: {}`): the task reads nothing in the workspace,
-writes nothing but its own `TMPDIR` and reaches no domain no task of the run lists — not even its own project
+writes nothing but its own `TMPDIR` and reaches no host — not even its own project
 directory, which is why `allow: { read: ['.'] }` is the first line of
 almost every real block. The task still starts in its own directory, an empty one
 then: a relative read is refused and reported, never resolved elsewhere. The read wall is the WORKSPACE ROOT: a path

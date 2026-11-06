@@ -407,6 +407,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'sandbox-lifecycle.unsafe',
     'sandbox-mkdir-ancestor.unsafe',
     'sandbox-network-patterns.unsafe',
+    'sandbox-network-per-task.unsafe',
     'sandbox-noscan-dir.unsafe',
     'sandbox-noscan-gone.unsafe',
     'sandbox-observer-drain.unsafe',

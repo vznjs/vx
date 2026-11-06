@@ -166,12 +166,24 @@ per run and checks every request against `config.network.allowedDomains`
 from `initialize()` (`sandbox-manager.js:238` in 0.0.76). `run()` therefore arms it
 with the union of every domain any sandboxed task declared. Every
 sandboxed task is handed that proxy, so a task that declared no domains
-still reaches the union. `deniedDomains` is the union of every task's
+reached the union until 2026-11-06. `deniedDomains` is the union of every task's
 `deny.network` (`sandboxRunUnion`), refused to every task; it was always
 empty, and a deny refused nothing, until B-21 (schema.md §
-`exec.sandbox`). Per-task filtering is out of reach: SRT's filter hears a
-host and port, and the command's name rides in the proxy username, which
-the sandboxed process writes, so one task could claim another's list.
+`exec.sandbox`). SRT cannot tell tasks apart: its filter hears a host
+and port, and the command's name rides in the proxy username, which the
+sandboxed process writes, so one task could claim another's list.
+
+So each task with a network list, or none, gets a front of its own
+(`task-proxy.ts`, built from SRT's own proxy modules): it filters by the
+task's lists and passes what it allows on to the run's proxy as its
+parent, which applies the union and its address guard again. The socket
+the task was given is what names it. Linux: the front listens on a
+socket in the task's tmpdir, bound over SRT's bridge path after the
+root's read-only bind (a bind before it is masked). macOS: it listens on
+a loopback port of its own, and the task's proxy variables and profile
+name it in place of the run's. A refusal is recorded as SRT's own
+violation line. `network: true` keeps the run's proxy. A task the front
+cannot take fails instead of running on the run's proxy.
 
 ## Public surface
 
