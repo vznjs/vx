@@ -594,8 +594,13 @@ use your own instead.
 - A relay that answers nothing for 10 s, every try counted, fails every task not done
   (`the relay is unreachable`); none runs here, which may be far smaller
   than the workers. What finished is saved, so a rerun resumes from it.
-  A shorter fault (a `5xx` while the host restarts the relay, a dropped
-  connection) is asked through, by the orchestrator and workers alike.
+  A fault (a `5xx`, a dropped or refused connection) is tried again 3
+  times, by the orchestrator and workers alike, and the third failed
+  retry ends them (`no socket in 3 dials`). The waits are random, from
+  up to 250 ms doubling to up to half a heartbeat, about 3 s at most in
+  all on the default, so a relay down or restarting is asked through
+  only when it is back within them: one down under a second usually is,
+  one down 2 s usually fails the run.
 - The relay stores nothing, so a restart forgets the run. The orchestrator
   joins again as its host and each worker joins again as itself, for two
   heartbeats (4 s on the default); tasks keep running meanwhile, and what
@@ -603,9 +608,10 @@ use your own instead.
   keeps what it runs, and one sent a task it runs already
   does not run it again, so no work repeats. One not back by then
   ends: a worker's tasks run elsewhere, an orchestrator's run fails.
-  Joining has the same 10 s in all, its socket and request together: a
-  relay silent that long fails the run with `cannot connect to the relay
-<origin>: no answer in 10 s`.
+  Joining has the same 10 s in all, its socket and request together, and
+  the same 3 retries: a relay silent that long, or refusing all four
+  tries, fails the run with
+  `cannot connect to the relay <origin>: no answer in 10 s`.
 - A worker that never joins says why on its row (`failed  exited 1:
 …`); its job ending, a success too, is what says so. Once the first
   worker of a size joins, each other of that size not joined within twice
@@ -622,8 +628,8 @@ use your own instead.
 - Only `leave` ends a participant at once (2026-10-25): the
   orchestrator's at its run's end is the final call that closes the run,
   and a worker's when it is done. Either whose socket drops without it
-  dials again, 3 times within 10 s, and the relay keeps it, and its run,
-  for those 10 s; past them the run is over. Either side hearing nothing
+  dials again, 3 times as above and within 10 s, and the relay keeps it,
+  and its run, for 10 s; past either the run is over. Either side hearing nothing
   from the other for 3 heartbeats (6 s on the default) loses it, and the
   rest follows from that: a worker that said nothing for half of it (3 s)
   sends its report; the orchestrator never speaks on a timer, only orders
