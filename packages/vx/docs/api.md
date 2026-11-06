@@ -302,6 +302,8 @@ export class Cache implements CacheLayer {
     | { tmpPath: string }
     | { plan: true; saved: SavedTree }
   >
+  checkpointOffThread(): void
+  async stopCheckpoints(): Promise<void>
   recordRun(run: RunRecord): void
   recordRuns(
     runs: readonly RunRecord[],

@@ -139,6 +139,7 @@ import { CACHE_VERSION, foldKey } from './key-fold.js'
 import { type FoldMemo, IndexFoldMemo } from './fold-memo.js'
 import { IndexRemoteHits, type RemoteHits } from './remote-hits.js'
 import { behindLink } from './linked-inputs.js'
+import { WalCheckpointer } from './checkpointer.js'
 
 /**
  * An artifact or temp file without an `entries` row is never reaped
@@ -151,6 +152,8 @@ import { behindLink } from './linked-inputs.js'
  */
 // About 1.3 ms of inserts per turn: a task's exit waits at most that.
 const HELD_SLICE = 250
+/** SQLite's own default, back on a connection whose checkpoint thread failed. */
+const WAL_AUTOCHECKPOINT = 1000
 
 const ORPHAN_GRACE_MS = 60 * 60 * 1000
 
@@ -976,7 +979,10 @@ export class Cache implements CacheLayer {
   private indexQueue: Array<{ write: () => void; settle: (err?: unknown) => void }> = []
   /** The held sizes being stored, and how many are: fields, not a closure's, so the store lets them go. */
   private storing: Array<[string, number]> | undefined
+  private storingOrder: Uint32Array = new Uint32Array(0)
   private stored = 0
+  /** The checkpoint thread: `armed` until a save commits (`checkpointOffThread`). */
+  private checkpoints: 'armed' | WalCheckpointer | undefined
   private readonly insertEntryInput: ReturnType<Database['prepare']>
   /** The per-file (mtime, size) → blob-OID memo behind `hashFile`. */
   private readonly files: FileHashStore
@@ -1694,7 +1700,17 @@ export class Cache implements CacheLayer {
     const held = this.heldBlobSizes
     this.heldBlobSizes = undefined
     if (held === undefined || held.length === 0) return
+    // In OID order, so each slice appends at the key index's right edge:
+    // in git's path order every slice dirtied pages across the whole
+    // index, and the 160 commits of a cold 9,603-task run cost its main
+    // thread ~5x more (2026-11-06). Indices are sorted, not the entries:
+    // the sort's merge buffer then holds no entry, where a stale stack
+    // slot naming it kept all of them alive (2026-11-06).
+    const order = new Uint32Array(held.length)
+    for (let i = 0; i < order.length; i++) order[i] = i
+    order.sort((a, b) => (held[a]![0] < held[b]![0] ? -1 : held[a]![0] > held[b]![0] ? 1 : 0))
     this.storing = held
+    this.storingOrder = order
     this.stored = 0
     this.heldTimer = setTimeout(this.storeHeldSlice, 0)
   }
@@ -1707,12 +1723,22 @@ export class Cache implements CacheLayer {
     if (held === undefined) return
     const at = this.stored
     this.stored = at + HELD_SLICE
-    this.guard(() => this.files.rememberBlobSizes(new Map(held.slice(at, this.stored))))
+    this.guard(() => this.files.rememberBlobSizes(this.heldSizes(held, at, this.stored)))
     if (this.stored < held.length) this.heldTimer = setTimeout(this.storeHeldSlice, 0)
     else {
       this.heldTimer = undefined
       this.storing = undefined
+      this.storingOrder = new Uint32Array(0)
     }
+  }
+  private heldSizes(held: Array<[string, number]>, from: number, to: number): Map<string, number> {
+    const out = new Map<string, number>()
+    const order = this.storingOrder
+    for (let i = from; i < Math.min(to, order.length); i++) {
+      const e = held[order[i]!]!
+      out.set(e[0], e[1])
+    }
+    return out
   }
   /** `BlobSizeMemo`: the paths an index with this digest distrusts, when known. */
   blobVerdict(digest: string): string[] | undefined {
@@ -3425,7 +3451,34 @@ export class Cache implements CacheLayer {
       for (let i = 0; i < batch.length; i++) batch[i]!.settle(failed.get(i) ?? err)
       return
     }
+    if (this.checkpoints === 'armed') this.startCheckpointer()
     for (let i = 0; i < batch.length; i++) batch[i]!.settle(failed.get(i))
+  }
+
+  /**
+   * A run's saves from now on leave the WAL's checkpoints to a thread of
+   * their own (checkpointer.ts), started by the first save's commit, so a
+   * run that saves nothing starts none. `stopCheckpoints` ends it.
+   */
+  checkpointOffThread(): void {
+    if (this.checkpoints === undefined && historyFiles(this) !== undefined)
+      this.checkpoints = 'armed'
+  }
+
+  private startCheckpointer(): void {
+    const files = historyFiles(this)!
+    this.db.exec('PRAGMA wal_autocheckpoint = 0')
+    this.checkpoints = new WalCheckpointer(files, () => {
+      // No thread: the run's connection checkpoints as it did.
+      this.db.exec(`PRAGMA wal_autocheckpoint = ${WAL_AUTOCHECKPOINT}`)
+    })
+  }
+
+  /** Ends the checkpoint thread before `close`, so this connection's close is the last. */
+  async stopCheckpoints(): Promise<void> {
+    const c = this.checkpoints
+    this.checkpoints = undefined
+    if (c instanceof WalCheckpointer) await c.stop()
   }
 
   private tempTreePath(hash: string): string {
@@ -3784,11 +3837,17 @@ export class Cache implements CacheLayer {
     try {
       this.flushIndex()
       clearTimeout(this.heldTimer)
-      const held = this.heldBlobSizes ?? this.storing?.slice(this.stored) ?? []
+      const held =
+        this.heldBlobSizes !== undefined
+          ? new Map(this.heldBlobSizes)
+          : this.storing !== undefined
+            ? this.heldSizes(this.storing, this.stored, this.storing.length)
+            : undefined
       this.heldBlobSizes = undefined
       this.storing = undefined
+      this.storingOrder = new Uint32Array(0)
       this.heldTimer = undefined
-      if (held.length > 0) this.files.rememberBlobSizes(new Map(held))
+      if (held !== undefined && held.size > 0) this.files.rememberBlobSizes(held)
       this.flushAccessed()
       this.outputs.flushOutputDirs()
       this.folds.flush()
@@ -3801,6 +3860,8 @@ export class Cache implements CacheLayer {
       // `rm -rf .vx/cache`): macOS answers SQLITE_IOERR_VNODE on a
       // write to an unlinked file where Linux happily writes on.
     }
+    if (this.checkpoints instanceof WalCheckpointer) this.checkpoints.terminate()
+    this.checkpoints = undefined
     closeDb(this.db)
   }
 

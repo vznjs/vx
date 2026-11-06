@@ -1103,6 +1103,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vanished-artifact',
     'version-fast-path',
     'vx-lockfile/link-outside-root',
+    'wal-checkpointer',
     'warm-shell',
     'watch-affected',
     'watch-claimed-files',

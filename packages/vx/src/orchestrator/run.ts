@@ -732,6 +732,7 @@ async function runOnBus(
   const closeCache = async (): Promise<void> => {
     if (cacheClosed) return
     cacheClosed = true
+    await prepared.localCache.stopCheckpoints()
     cache.close()
     live?.unlisten()
     // Released with the handle: before a persistent task's wait, on every
@@ -1320,6 +1321,7 @@ async function runOnBus(
     }
     let lockBroken: boolean | undefined
     prepared.localCache.storeHeldBlobSizes()
+    prepared.localCache.checkpointOffThread()
     // A hit's row is whole when it finishes, so it is written while the
     // graph runs (history-stream.ts); every other row waits for the bundle.
     // A row with forward args is the bundle's too: only it digests them.
