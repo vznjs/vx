@@ -87,6 +87,12 @@ its remote is off for the run.
 An upload answered with a 5xx or a 429, or whose connection reset, is sent again, three tries in
 all: a PUT names its hash, so a second one stores the same bytes.
 
+An artifact is immutable on the server: one that did not read back
+(corrupt) is not replaced. Its re-run's upload is not sent and not
+counted as landed (a DTE worker is not told it did), and the run says
+once that the remote misses the key until the bucket's lifecycle rule
+expires it (`@vzn/vx-cache-server`'s Expiry).
+
 A refused token is said once and turns the remote off for the run; a
 refused write (a job that reads only) turns off writes alone. Any other
 refusal is a warning naming the server's own words, and the task reads

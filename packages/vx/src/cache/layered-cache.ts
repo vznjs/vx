@@ -200,7 +200,8 @@ export interface RemoteCacheLayer {
    * first; a wire that would overwrite checks inside, unless told `missing`.
    * `replace`: the remote's copy of `hash` did not read back (a
    * `CorruptArtifactError`, here or on another machine of the run), so
-   * these bytes go over it.
+   * these bytes go over it; a wire that cannot write over a held key
+   * returns `false`, or the run counts the bad copy fixed.
    * `false`: nothing was sent and nothing failed (a layer that writes
    * nothing this run, such as one with no token), so no upload is counted.
    */
