@@ -68,7 +68,7 @@ describe('vx init with no package.json', () => {
       ui.render(
         [
           ui.report(`vx init ${VERSION}`, [
-            ['from', 'no turbo.json or nx.json: one project, the root'],
+            ['from', 'no turbo.json or nx.json'],
             ['files', '.vx/workspace.ts', 'vx.config.ts', '.vx/.gitignore', '.vx/.gitattributes'],
             ['lock', '1 project config → .vx/projects.lock.json'],
             null,

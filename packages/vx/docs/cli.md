@@ -2363,7 +2363,7 @@ vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--pl
 $ vx init --dry
 
 ─ vx init 0.0.0 ──────────────────────────────────────────────
-  from      no turbo.json or nx.json: one project, the root
+  from      no turbo.json or nx.json
   dry run   nothing written
   files     .vx/workspace.ts
             vx.config.ts
