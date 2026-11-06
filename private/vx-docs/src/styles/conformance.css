@@ -89,18 +89,48 @@
   color: var(--text-faint);
 }
 
-/* ---- scores ---- */
-.vx-landing .cfm-scroll {
-  overflow-x: auto;
+/* ---- the board ----
+   One grid: the tools' names, the total, then each category as a <details>
+   whose summary is its scores and whose cases sit in the same columns. */
+.vx-landing .cfm {
+  --cfm-col: 124px;
+  --cfm-head: 36px;
 }
-.vx-landing .cfm-scores th[scope='row'] {
+.vx-landing .cfm-board {
+  margin-top: 20px;
+}
+.vx-landing .cfm-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(6, var(--cfm-col));
+  border-bottom: 1px solid var(--line);
+}
+.vx-landing .cfm-name {
   padding: 12px 12px 12px 0;
   color: var(--text-hi);
   font-weight: var(--fw-medium);
 }
-.vx-landing .cfm .cfm-scores tbody tr td {
+.vx-landing .cfm-head {
+  position: sticky;
+  top: var(--sl-nav-height, 64px);
+  z-index: 4;
+  height: var(--cfm-head);
+  box-sizing: border-box;
+  align-items: end;
+  background: var(--bg-page);
+}
+.vx-landing .cfm-head .cfm-tool {
+  padding: 0 8px 10px;
+  font: var(--type-label);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-mut);
+  white-space: nowrap;
+}
+.vx-landing .cfm-short {
+  display: none;
+}
+.vx-landing .cfm-cell {
   padding: 12px 8px;
-  min-width: 84px;
   background: linear-gradient(
       to right,
       color-mix(in srgb, var(--phosphor) 14%, transparent) var(--pct),
@@ -114,24 +144,28 @@
   color: var(--text-hi);
   font-variant-numeric: tabular-nums;
 }
-.vx-landing .cfm-of {
-  font: 12px / 1.3 var(--font-mono);
-  color: var(--text-faint);
-}
+.vx-landing .cfm-of,
 .vx-landing .cfm-sup {
   display: block;
   font: 12px / 1.3 var(--font-mono);
   color: var(--text-faint);
+  white-space: nowrap;
 }
 .vx-landing .cfm-all .cfm-pct {
   font-size: 26px;
 }
-.vx-landing .cfm-all th[scope='row'] {
-  font-family: var(--font-display);
-  font-size: 18px;
+.vx-landing .cfm-all .cfm-name {
+  font: var(--fw-semibold) 18px / 1.3 var(--font-display);
 }
-.vx-landing .cfm-break > * {
-  border-top: 1px solid var(--line-strong);
+.vx-landing .cfm-all {
+  border-bottom-color: var(--line-strong);
+}
+.vx-landing .cfm-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
 }
 
 /* ---- the cases ---- */
@@ -173,94 +207,66 @@
 .vx-landing .cfm:has(.cfm-toggle:checked) [data-agree] {
   display: none;
 }
-.vx-landing .cfm-cats {
-  margin-top: 20px;
-}
-
 .vx-landing .cfm-cat {
-  margin-top: 8px;
-  scroll-margin-top: 80px;
+  scroll-margin-top: 110px;
 }
 .vx-landing .cfm-cat > summary {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px 16px;
   cursor: pointer;
   list-style: none;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--line, rgba(127, 127, 127, 0.25));
 }
 .vx-landing .cfm-cat > summary::-webkit-details-marker {
   display: none;
 }
-.vx-landing .cfm-cat > summary::before {
-  content: '▸';
-  color: var(--phosphor);
-  transition: transform 0.15s;
-}
-.vx-landing .cfm-cat[open] > summary::before {
-  transform: rotate(90deg);
+.vx-landing .cfm-cat > summary:hover {
+  background: color-mix(in srgb, var(--phosphor) 5%, transparent);
 }
 .vx-landing .cfm-cat > summary:focus-visible {
   outline: 2px solid var(--phosphor);
-  outline-offset: 2px;
+  outline-offset: -2px;
+}
+.vx-landing .cfm-cat .cfm-name::before {
+  content: '▸';
+  display: inline-block;
+  margin-right: 10px;
+  color: var(--phosphor);
+  transition: transform 0.15s;
+}
+.vx-landing .cfm-cat[open] .cfm-name::before {
+  transform: rotate(90deg);
 }
 .vx-landing .cfm-cat h3 {
-  font: var(--fw-semibold) 22px / 1.2 var(--font-display);
+  display: inline;
+  font: var(--fw-semibold) 18px / 1.3 var(--font-display);
   margin: 0;
 }
 .vx-landing .cfm-cat-count {
-  opacity: 0.7;
+  display: block;
+  margin: 4px 0 0 22px;
+  font: 12px / 1.3 var(--font-mono);
+  color: var(--text-faint);
 }
 .vx-landing .cfm-cat-about {
-  margin: 14px 0 0;
+  margin: 14px 0;
   max-width: 70ch;
   font-size: 15px;
-  opacity: 0.8;
+  color: var(--text-mut);
 }
-.vx-landing .cfm-col-score {
-  display: block;
-  margin-top: 2px;
-  font: var(--fw-bold) 14px / 1.2 var(--font-body);
-  letter-spacing: 0;
-  color: var(--text-hi);
-}
-.vx-landing .cfm-cat[open] > .cfm-cases {
-  margin-top: 14px;
+/* An open category keeps its scores under the tools' names while its
+   cases scroll; its cases' columns are the board's. */
+.vx-landing .cfm-cat[open] > summary {
+  position: sticky;
+  top: calc(var(--sl-nav-height, 64px) + var(--cfm-head));
+  z-index: 3;
+  background: var(--bg-page);
 }
 .vx-landing .cfm-cases {
   table-layout: fixed;
 }
-.vx-landing .cfm-cases thead th:first-child {
-  padding-left: 0;
+.vx-landing .cfm-cases .cfm-col {
+  width: var(--cfm-col);
 }
-.vx-landing .cfm-cases .cfm-tool {
-  width: 92px;
-  text-align: center;
-}
-.vx-landing .cfm-short {
-  display: none;
-}
-/* An open category keeps its name, then the tools' names and scores,
-   under the site's header while its cases scroll. The summary is one line,
-   so the header row knows where it ends. */
-.vx-landing .cfm-cat[open] > summary {
-  position: sticky;
-  top: var(--sl-nav-height, 64px);
-  z-index: 3;
-  box-sizing: border-box;
-  height: var(--cfm-sum, 52px);
-  flex-wrap: nowrap;
-  overflow: hidden;
-  background: var(--bg-page);
-}
-.vx-landing .cfm .cfm-cases thead th {
-  position: sticky;
-  top: calc(var(--sl-nav-height, 64px) + var(--cfm-sum, 52px));
-  z-index: 2;
-  padding-top: 10px;
-  background: var(--bg-page);
+.vx-landing .cfm-cat[open] {
+  margin-bottom: 24px;
 }
 .vx-landing .cfm-cases tbody tr {
   scroll-margin-top: 80px;
@@ -373,24 +379,58 @@
   .vx-landing .cfm table {
     font-size: 14px;
   }
-  .vx-landing .cfm-cases .cfm-tool {
-    width: 44px;
-    padding: 0 2px 10px;
-    font-size: 10px;
-    letter-spacing: 0;
-    text-align: center;
+  /* Six tools leave a phone no room: the board keeps its width and
+     scrolls sideways, each row's name pinned at the left. A scroller
+     cannot hold a sticky top, so the tools' names scroll with it. */
+  .vx-landing .cfm {
+    --cfm-col: 96px;
   }
-  .vx-landing .cfm-cases .cfm-long {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
+  .vx-landing .cfm-board {
+    overflow-x: auto;
+    margin-right: calc(-1 * var(--gutter));
+    padding-right: var(--gutter);
+  }
+  .vx-landing .cfm-board > * {
+    min-width: calc(170px + 6 * var(--cfm-col));
+  }
+  .vx-landing .cfm-head,
+  .vx-landing .cfm-cat[open] > summary {
+    position: static;
+  }
+  .vx-landing .cfm-name,
+  .vx-landing .cfm .cfm-cases tbody tr > th[scope='row'] {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--bg-page);
+  }
+  .vx-landing .cfm-cat-about {
+    position: sticky;
+    left: 0;
+    max-width: calc(100vw - 2 * var(--gutter));
+  }
+  .vx-landing .cfm-long {
+    display: none;
   }
   .vx-landing .cfm-short {
     display: inline;
   }
-  .vx-landing .cfm-col-score {
+  .vx-landing .cfm-head .cfm-tool {
+    padding: 0 4px 10px;
+    font-size: 11px;
+    letter-spacing: 0;
+  }
+  .vx-landing .cfm-cell {
+    padding: 10px 4px;
+  }
+  .vx-landing .cfm-pct {
+    font-size: 17px;
+  }
+  .vx-landing .cfm-all .cfm-pct {
+    font-size: 20px;
+  }
+  .vx-landing .cfm-of,
+  .vx-landing .cfm-sup {
     font-size: 11px;
   }
   .vx-landing .cfm-cases td {
@@ -408,21 +448,5 @@
     right: 16px;
     bottom: 16px;
     width: auto;
-  }
-  .vx-landing .cfm .cfm-scores tbody tr td {
-    min-width: 0;
-    padding: 10px 3px;
-  }
-  .vx-landing .cfm-scores thead th {
-    padding: 0 3px 10px;
-    font-size: 10px;
-    letter-spacing: 0;
-    overflow-wrap: anywhere;
-  }
-  .vx-landing .cfm-pct {
-    font-size: 17px;
-  }
-  .vx-landing .cfm-all .cfm-pct {
-    font-size: 20px;
   }
 }

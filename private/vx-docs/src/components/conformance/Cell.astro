@@ -1,0 +1,19 @@
+---
+// One tool's score in one group of the conformance board: passed, of all,
+// and supported, over a bar as long as the share passed.
+import { percent, RESULTS, supports } from '../../conformance/data.ts'
+
+interface Props {
+  t: string
+  g: string
+}
+const { t, g } = Astro.props
+const s = RESULTS.scores[t]?.[g]
+const pct = s && s.of > 0 ? (s.pass / s.of) * 100 : 0
+---
+
+<span class="cfm-cell" data-tool={t} style={`--pct:${pct}%`}>
+  <span class="cfm-pct">{percent(s)}</span>
+  <span class="cfm-of">{s && s.of > 0 ? `${s.pass}/${s.of}` : '–'}</span>
+  <span class="cfm-sup">supports {supports(s)}</span>
+</span>
