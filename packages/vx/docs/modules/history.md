@@ -68,6 +68,8 @@ export interface FlakyFinding extends FlakyCandidate {
 }
 // judged before the run's own rows are recorded; no candidate, no query
 export function detectFlaky(db: Database, candidates: readonly FlakyCandidate[]): FlakyFinding[]
+// asked after a failure only: does the record know this task as flaky?
+export function knownFlaky(db: Database, project: string, task: string, hash: string): boolean
 
 // history.ts again:
 export const PASS_STATUSES: string // the pass set as SQL `(…)`, derived from `isPassStatus`
@@ -228,6 +230,11 @@ The same rule, applied at the end of every run and by the doctor:
   this workspace's `runs`: every worktree of a repo judges a key on what
   all of them saw. It keeps every executed outcome that names its key and
   a key's first hit; a later hit replays a pass on record and adds none.
+- `knownFlaky(db, project, task, hash)` — asked by the retry loop
+  (`execute-task.ts`) after a failure only, so a green run never reads it:
+  this key passed before, or a key of the task failed after it passed, or
+  a pass took a retry. True gives a task with no `retries` one more
+  attempt.
 - `flakyTasks(db)` — every task with a key that failed after a pass in the whole
   retained history, most failures first: the `vx info` row. A pass that
   took a retry is one `success` row; its failed attempts count as

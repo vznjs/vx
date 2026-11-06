@@ -317,6 +317,13 @@ server that fails before it is ready fails at once); explicit config
 always wins, including an explicit `retries: 0`. The CLI flag never
 affects cache keys.
 
+With neither set, a task the run history knows as **flaky** gets one
+more attempt when it fails: its key passed before, or one of its keys
+failed after it passed, or a pass took a retry, within the history's
+30 days. Only a cached task has that record, and a timeout always fails.
+The retry is decided at run time, so it never touches the key. Set
+`retries: 0` to turn it off.
+
 #### `remote` (optional)
 
 ```ts
