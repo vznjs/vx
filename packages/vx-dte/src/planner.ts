@@ -295,6 +295,43 @@ export function missedWork(
 }
 
 /**
+ * `workers` as a plan may let them go: of a platform whose sizes can start
+ * no other (`max` spent; one let go still counts), the last idle one stays
+ * while a task of that platform has not ended (`left`). A hit core's probe
+ * found can still miss when its restore fails, and only a worker of its
+ * platform runs it: main let its one arm worker go, check.binary.linux-arm64
+ * came back as a miss, and the run waited out its timeout (2026-11-06).
+ */
+export function keepLast(
+  workers: readonly PlanWorker[],
+  sizes: readonly Size[],
+  started: ReadonlyMap<string, number>,
+  left: (platform: string) => boolean,
+): readonly PlanWorker[] {
+  const of = new Map<string, PlanWorker[]>()
+  for (const w of workers) {
+    if (w.platform === undefined) continue
+    const all = of.get(w.platform)
+    if (all === undefined) of.set(w.platform, [w])
+    else all.push(w)
+  }
+  let kept: Set<PlanWorker> | undefined
+  for (const [platform, all] of of) {
+    // A busy one is not let go; one starting, cancelled, frees its start.
+    if (all.some((w) => !w.idle && w.starting !== true)) continue
+    const idle = all.find((w) => w.idle && w.starting !== true)
+    if (idle === undefined) continue
+    const own = sizes.filter((s) => s.platform === platform)
+    if (own.length === 0 || own.some((s) => (started.get(s.name) ?? 0) < s.max)) continue
+    if (!left(platform)) continue
+    ;(kept ??= new Set()).add(idle)
+  }
+  return kept === undefined
+    ? workers
+    : workers.map((w) => (kept!.has(w) ? { ...w, idle: false } : w))
+}
+
+/**
  * The tasks a plan counts as missed: those handed over to run, the
  * misses core's probe found, and of the commit's forecast (`likely`) only
  * those still `remaining`. One the probe found held left `remaining`, and
