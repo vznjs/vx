@@ -1,4 +1,4 @@
-// Deploys dist/ to GitHub Pages from inside the run, as soon as the build
+// Deploys a built site (argv[2], dist/ unset) to GitHub Pages from inside the run, as soon as the build
 // is done: actions/upload-pages-artifact and actions/deploy-pages ran after
 // the whole run, 33 s of main's workflow (2026-10-24). The same protocol
 // they speak: dist as `artifact.tar`, zipped into the `github-pages`
@@ -201,8 +201,9 @@ export async function deploy(
 
 if (import.meta.main) {
   // As upload-pages-artifact makes it: links followed, `.git` left out.
+  const dir = process.argv[2] ?? 'dist'
   const tar = Bun.spawnSync(
-    ['tar', '--dereference', '--hard-dereference', '--exclude=.git', '-C', 'dist', '-cf', '-', '.'],
+    ['tar', '--dereference', '--hard-dereference', '--exclude=.git', '-C', dir, '-cf', '-', '.'],
     { stderr: 'inherit' },
   )
   if (tar.exitCode !== 0) process.exit(tar.exitCode ?? 1)

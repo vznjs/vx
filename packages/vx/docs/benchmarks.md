@@ -365,18 +365,19 @@ an unknown token.
 
 The line under the table names each runner's version, date and machine.
 
-Only CI's Bench job runs them, on main and on a dispatch: `vx run
+Only CI's Bench workflow (`bench.yml`) runs them, on main and on a dispatch: `vx run
 @vzn/vx-docs#bench.data --concurrency 1 --force` on a 4-core Linux
 runner of its own, one runner at a time. `--force` measures all four on
 that one machine, never a row cached from another runner's CPU. A
 cold figure is the median of three cold runs (`COLD_REPS=3`): one let a
-single run move it by seconds. It
+single run move it by seconds. Nx's is one run: its overhead is minutes,
+so seconds move no comparison. It
 uploads `measured/bench.json` as the `bench-data` artifact.
 
-On main the job then copies that file over `src/data/bench.json` and
-runs `@vzn/vx-docs#deploy.pages`, so each main push puts its own numbers
-live. The site deploys only from this job: a deploy from main's run would
-ship the committed copy, older than the live one (2026-11-01).
+Main's DTE run deploys the site (`@vzn/vx-docs#deploy.pages`, part of
+`release`). It fetches the newest `bench-data` from main and builds the
+site with it, so it never waits on Bench and never ships the committed
+copy, older than the live one. New numbers go live with the next main push.
 
 No build depends on the
 benchmarks, so neither the DTE run, where a worker is packed beside

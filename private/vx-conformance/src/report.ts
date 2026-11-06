@@ -28,9 +28,11 @@ export function coverage(cases: Case[]): Coverage {
   }
 }
 
-/** Cases a tool passed, of those it could express. */
+/** Cases a tool passed and could express, of all cases in the group. */
 export interface Score {
   pass: number
+  /** Cases the tool can express at all; the rest are not applicable to it. */
+  can: number
   of: number
 }
 
@@ -62,11 +64,14 @@ export async function toolVersion(a: Adapter): Promise<string> {
 
 type Row = Results['cases'][number]
 
+// Every case counts: one a tool cannot express is a behaviour its users
+// cannot get, so it is not passed. Counting only what a tool can express
+// let a tool that expresses one case of eleven read 100%.
 function score(rows: Row[], tool: string): Score {
-  const applicable = rows.filter((r) => r.outcomes[tool]?.status !== 'n/a')
   return {
-    pass: applicable.filter((r) => r.outcomes[tool]?.status === 'pass').length,
-    of: applicable.length,
+    pass: rows.filter((r) => r.outcomes[tool]?.status === 'pass').length,
+    can: rows.filter((r) => r.outcomes[tool]?.status !== 'n/a').length,
+    of: rows.length,
   }
 }
 
@@ -89,7 +94,9 @@ export function scores(tools: string[], rows: Row[]): Results['scores'] {
 }
 
 const percent = (s: Score | undefined) =>
-  s === undefined || s.of === 0 ? '–' : `${Math.round((s.pass / s.of) * 100)}% (${s.pass}/${s.of})`
+  s === undefined || s.of === 0
+    ? '–'
+    : `${Math.round((s.pass / s.of) * 100)}% (${s.pass}/${s.of}), supports ${Math.round((s.can / s.of) * 100)}%`
 
 /** The score table, as the CLI prints it. */
 export function scoreTable(r: Pick<Results, 'tools' | 'scores'>): string {

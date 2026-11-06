@@ -17,7 +17,10 @@ export default defineConfig({
   // Both caches under `.astro/`, not node_modules: see the `build` task's
   // sandbox grants in vx.config.ts for why a write under node_modules breaks
   // module resolution inside the Linux sandbox.
-  cacheDir: './.astro/cache',
+  // Main's deploy (VX_DOCS_BENCH set) renders into a cache of its own,
+  // emptied first: the content store keeps each page as rendered, so the
+  // build's copy held the committed bench figures (2026-11-06).
+  cacheDir: process.env.VX_DOCS_BENCH ? './.astro/live' : './.astro/cache',
   vite: {
     cacheDir: './.astro/vite',
     // Starlight's <Steps> and <Tabs> parse markdown at render time with

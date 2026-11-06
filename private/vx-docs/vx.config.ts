@@ -47,6 +47,10 @@ const IMPORTED = [
 // so no key read them before either.
 const NOT_GENERATED = [...IMPORTED, 'public/_img/**', 'dist/**'].map((g) => `!${g}`)
 
+// Under Bun, prerender included: the `build` task says why.
+const ASTRO_BUILD =
+  'mkdir -p .astro/bin && ln -sf "$(command -v bun)" .astro/bin/node && PATH="$PWD/.astro/bin:$PATH" bun --bun astro build'
+
 export default defineProject({
   tasks: {
     ci: {
@@ -331,8 +335,7 @@ export default defineProject({
         // after; min of three interleaved sandboxed builds, 17.2 s before and
         // 14.5 s after (item 708). Build-time code still must not assume Bun:
         // astro 6 refuses a Node below 22.12 wherever it does run on Node.
-        command:
-          'mkdir -p .astro/bin && ln -sf "$(command -v bun)" .astro/bin/node && PATH="$PWD/.astro/bin:$PATH" bun --bun astro build',
+        command: ASTRO_BUILD,
         // astro's telemetry does `mkdir ~/.config` before anything else; a
         // sandboxed task may read HOME but not write it, so it is told to
         // stay home.
@@ -367,16 +370,22 @@ export default defineProject({
       },
     },
 
-    // Main's deploy, a task (2026-10-24: the Pages actions were 33 s of
-    // main's workflow). CI's Bench job runs it once it has measured, so
-    // the site ships the numbers of its own commit (2026-11-01: a deploy
-    // in main's run shipped the committed copy, older than the live one).
+    // The site's part of main's `release`.
+    release: { dependsOn: ['deploy.pages'] },
+    // Main's deploy, a task of main's DTE run (2026-10-24: the Pages
+    // actions were 33 s of main's workflow), on whichever worker is free.
+    // It builds the site again with the newest numbers Bench measured on
+    // main (scripts/live-bench.ts): the committed copy is older than the
+    // live one (2026-11-01), and the deploy never waits on the bench
+    // (2026-11-06). Uncached: those numbers are no file of the commit.
     'deploy.pages': {
-      description: 'deploy dist/ to GitHub Pages (GitHub Actions only)',
-      dependsOn: ['ci'],
+      description:
+        "build the site with main's newest bench numbers → dist-live/ and deploy it to GitHub Pages (GitHub Actions only)",
+      dependsOn: ['ci', 'install', 'import', 'build.images'],
       exec: {
-        command: 'bun scripts/deploy-pages.ts',
+        command: `bun scripts/live-bench.ts && rm -rf .astro/live && ${ASTRO_BUILD} --outDir dist-live && bun scripts/deploy-pages.ts dist-live`,
         env: {
+          define: { ASTRO_TELEMETRY_DISABLED: '1', VX_DOCS_BENCH: 'measured/live.json' },
           passThrough: [
             'ACTIONS_RUNTIME_TOKEN',
             'ACTIONS_RESULTS_URL',
@@ -392,6 +401,9 @@ export default defineProject({
         sandbox: {
           allow: {
             read: ['**/*'],
+            write: ['measured/live.json', 'dist-live/**', '.astro/**'],
+            systemInfo: ['vfs.disk-space', 'net.link.addr'],
+            machLookup: ['com.apple.SystemConfiguration.DNSConfiguration'],
             network: [
               '*.actions.githubusercontent.com',
               '*.blob.core.windows.net',

@@ -2,11 +2,15 @@
 // A run as a Nix user makes it: nix-build the requested tasks' derivations
 // from the workspace's default.nix, then copy each built task's `$out` (its
 // declared outputs, at their workspace paths) back into the tree, as one
-// copies out of `result`. argv[2]: JSON { tasks, projects?, args?, concurrency?, dry? }.
-import { existsSync } from 'node:fs'
-import { mkdir, readdir, rm, writeFile } from 'node:fs/promises'
+// copies out of `result`. Every build runs in Nix's sandbox; the harness's
+// marks a build makes reach its log (nix.ts's MARK), and the run appends
+// them to the tree's `.ran` as they come.
+// argv[2]: JSON { tasks, projects?, args?, concurrency?, dry? }.
+import { appendFileSync, chmodSync, existsSync, mkdirSync } from 'node:fs'
+import { readdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { jsRegExp } from './nix.ts'
+import { MEET } from '../spec.ts'
+import { jsRegExp, MARK } from './nix.ts'
 
 interface Info {
   id: string
@@ -37,12 +41,22 @@ while (!existsSync(path.join(root, 'default.nix'))) {
 }
 const home = process.env['HOME']!
 // A store of the case's own, under its home: its store directory is
-// writable there, so the builds need no namespace to see it.
+// writable there, so the builds need no build users to fill it.
 const store = `local?store=${home}/nix/store&state=${home}/nix/var&log=${home}/nix/log`
-// The harness's marks live in the workspace; a build reads where from here,
-// a path no derivation names, so the workspace's place never keys a task.
-await mkdir('/tmp/vx-conformance-nix', { recursive: true })
-await writeFile('/tmp/vx-conformance-nix/root', root)
+// What a build sees of the host besides its inputs: the system's tools (and
+// the links /etc/alternatives resolves some through) and Bun, as a nixpkgs build sees its toolchain. Never the workspace or a home.
+const toolchain = [
+  ...new Set(
+    ['/bin', '/usr', '/lib', '/lib64', '/etc/alternatives', path.dirname(process.execPath)].filter(
+      (p) => existsSync(p),
+    ),
+  ),
+]
+
+const meet = path.join(root, MEET)
+mkdirSync(meet, { recursive: true })
+// The sandbox's build user is not the case's owner.
+chmodSync(meet, 0o777)
 
 const run = JSON.stringify({
   tasks: req.tasks,
@@ -59,6 +73,16 @@ const common = [
   '--option',
   'substituters',
   '',
+  '--option',
+  'sandbox',
+  'true',
+  // A sandbox that cannot start fails the build, never runs it unsandboxed.
+  '--option',
+  'sandbox-fallback',
+  'false',
+  '--option',
+  'sandbox-paths',
+  [...toolchain, `/meet=${meet}`].join(' '),
   path.join(root, 'default.nix'),
   '--argstr',
   'run',
@@ -85,10 +109,17 @@ const build = Bun.spawn(
   { stdout: 'inherit', stderr: 'pipe' },
 )
 let log = ''
+let line = ''
 const decoder = new TextDecoder()
+const ran = path.join(root, '.ran')
 for await (const chunk of build.stderr) {
   process.stderr.write(chunk)
-  log += decoder.decode(chunk, { stream: true })
+  const text = decoder.decode(chunk, { stream: true })
+  log += text
+  const lines = (line + text).split('\n')
+  line = lines.pop()!
+  // A mark starts its line; the failure's echo of the log's last lines indents it.
+  for (const l of lines) if (l.startsWith(MARK)) appendFileSync(ran, `${l.slice(MARK.length)}\n`)
 }
 const exit = await build.exited
 

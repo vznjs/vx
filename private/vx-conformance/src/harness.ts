@@ -1,7 +1,8 @@
 // Runs one case against one tool: writes the workspace, lets the adapter
 // write the tool's config, commits, then plays the steps and checks each
 // run against what the case expects. Everything the tool runs (install,
-// its own setup, every run) runs sandboxed in the case's directory.
+// its own setup, every run) runs sandboxed in the case's directory: in
+// bubblewrap, or for a tool that isolates itself, in that tool's own sandbox.
 
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import {
@@ -18,7 +19,7 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 import type { Adapter } from './adapter.ts'
-import { caseHome, sandboxed, spawnSandboxed } from './sandbox.ts'
+import { caseHome, sandboxed, spawnSandboxed, type SpawnOptions } from './sandbox.ts'
 import {
   projectDir,
   type Case,
@@ -136,6 +137,7 @@ async function writeWorkspace(root: string, ws: WorkspaceSpec): Promise<void> {
       '.turbo',
       '.nx',
       '.vx/cache',
+      '.moon/cache',
       'dist',
       '',
     ].join('\n'),
@@ -313,8 +315,9 @@ export async function everyPlay(
 }
 
 async function play(c: Case, adapter: Adapter, root: string, box: string): Promise<Outcome> {
+  const boxed = adapter.sandboxed !== false
   const sh = (argv: string[], env: Record<string, string> = {}, cwd = root) =>
-    sandboxed(root, cwd, argv, { ...adapter.env, ...env }, undefined, false, box)
+    sandboxed(root, cwd, argv, { ...adapter.env, ...env }, { bind: box, boxed })
   const install = () => setup([process.execPath, 'install', '--offline', '--no-progress'])
   const setup = async (argv: string[]) => {
     const r = await sh(argv)
@@ -411,7 +414,7 @@ async function play(c: Case, adapter: Adapter, root: string, box: string): Promi
         return { status: 'fail', step: i + 1, detail: 'refused the config', log: refused }
       const failed = await watch(
         root,
-        box,
+        { bind: box, boxed },
         adapter.env,
         adapter
           .watch(step.watch, step.projects)
@@ -483,9 +486,12 @@ async function play(c: Case, adapter: Adapter, root: string, box: string): Promi
                   )
                 : {}),
             },
-            step.expect.within === undefined ? undefined : step.expect.within * 1000,
-            c.needs?.includes('sandbox') === true,
-            box,
+            {
+              ...(step.expect.within === undefined ? {} : { timeoutMs: step.expect.within * 1000 }),
+              hostProc: c.needs?.includes('sandbox') === true,
+              bind: box,
+              boxed,
+            },
           )
         : { exit: 1, out: refused }
     const left: string[] = step.expect.alone
@@ -533,13 +539,13 @@ async function play(c: Case, adapter: Adapter, root: string, box: string): Promi
 }
 
 /**
- * Starts `argv` (a tool's watch) under a supervisor in the case's sandbox,
- * plays each phase against it, then stops it with SIGINT; one that does not
- * exit within 10 s is killed with its whole sandbox.
+ * Starts `argv` (a tool's watch) under a supervisor in the case's sandbox
+ * (`box`), plays each phase against it, then stops it with SIGINT; one that
+ * does not exit within 10 s is killed with its whole sandbox.
  */
 async function watch(
   root: string,
-  box: string,
+  box: SpawnOptions,
   env: Record<string, string>,
   argv: string[],
   phases: WatchPhase[],
@@ -550,7 +556,7 @@ async function watch(
   await mkdir(path.dirname(path.join(root, ISOLATED_RAN)), { recursive: true })
   const stop = { signal: 'SIGINT', when: STOP, waitMs: 3_600_000 }
   const supervised = [process.execPath, SUPERVISE, JSON.stringify({ stop }), ...argv]
-  const w = spawnSandboxed(root, root, supervised, env, undefined, false, box)
+  const w = spawnSandboxed(root, root, supervised, env, box)
   let exited = false
   void w.proc.exited.then(() => (exited = true))
   const marks = async () => {
@@ -603,7 +609,7 @@ async function watch(
       w.proc.exited.then(() => true),
       Bun.sleep(10_000).then(() => false),
     ])
-    if (!ended) w.proc.kill('SIGKILL')
+    if (!ended) w.kill()
     await w.proc.exited
   }
 }

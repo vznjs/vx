@@ -3,15 +3,17 @@
   "version": "0.0.0",
   "license": "MIT",
   "private": true,
-  "description": "One neutral suite of task-runner behaviours, run against vx, Turborepo, Nx, Vite Task and Nix, each sandboxed.",
+  "description": "One neutral suite of task-runner behaviours, run against vx, Turborepo, Nx, Vite Task, Nix and moon, each sandboxed.",
   "type": "module",
   "engines": {
     "bun": ">=1.4"
   },
   "//": [
-    "turbo, nx, vite-plus: the tools under test, at the pins @vzn/vx-bench measures, so the report and the site name the same versions."
+    "turbo, nx, vite-plus: the tools under test, at the pins @vzn/vx-bench measures, so the report and the site name the same versions.",
+    "@moonrepo/cli: moon, a tool under test the bench does not measure; its bin runs the binary its platform's optional dependency ships."
   ],
   "devDependencies": {
+    "@moonrepo/cli": "2.6.5",
     "@types/bun": "^1.4.0",
     "@vzn/vx": "workspace:*",
     "@vzn/vx-lockfile": "workspace:*",

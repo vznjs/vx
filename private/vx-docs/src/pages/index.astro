@@ -22,7 +22,7 @@ import { parseDuration, renderBars } from '../plugins/data-charts.ts'
 import { coverShowsTitle, formatDate, posts } from '../blog/posts.js'
 import Cover from '../components/blog/Cover.astro'
 import { FIGURES, fillBench } from '../bench/data.ts'
-import { RESULTS, TOOLS, percent, toolName } from '../conformance/data.ts'
+import { RESULTS, TOOLS, percent, supports, toolName } from '../conformance/data.ts'
 
 const base = import.meta.env.BASE_URL // '/vx/' on Pages, '/' on a custom domain
 const href = (p: string) => `${base}${p}`
@@ -133,10 +133,13 @@ const plugins = [
 ]
 
 // Conformance, the first argument after the hero: every tool's score on
-// one neutral suite, rounded down so only a clean sweep reads 100%.
+// one neutral suite, rounded down so only a clean sweep reads 100%. Two
+// numbers, both of every case: what a tool passes, and what it can express
+// at all (the bar's faint part), so a tool that expresses little never
+// reads as complete.
 const conformance = TOOLS.map((t) => {
   const all = RESULTS.scores[t]!.all!
-  return { tool: t, name: toolName(t), pass: all.pass, of: all.of, pct: percent(all), width: (all.pass / all.of) * 100 }
+  return { tool: t, name: toolName(t), pct: percent(all), sup: supports(all), width: (all.pass / all.of) * 100, canWidth: (all.can / all.of) * 100 }
 })
 const caseCount = RESULTS.cases.length
 
@@ -261,19 +264,18 @@ vx run build         # again: up-to-date, from the cache`
             <p class="vx-kicker">// {caseCount} cases · {TOOLS.length} tools · one neutral suite</p>
             <h2>Correct, case by case.</h2>
           </div>
-          <p class="sub">Every test in vx, Turborepo, Nx and Vite Task, parsed into one suite: each case runs sandboxed against each tool and counts only outcomes.</p>
+          <p class="sub">Every test in vx, Turborepo, Nx, Vite Task, Nix and moon, parsed into one suite: each case runs sandboxed against each tool and counts only outcomes.</p>
           <ol class="score-board">
             {
               conformance.map((c) => (
                 <li class:list={{ vx: c.tool === 'vx' }}>
                   <span class="score-tool">{c.name}</span>
                   <span class="score-bar" aria-hidden="true">
-                    <span style={`width: ${c.width.toFixed(1)}%`} />
+                    <span class="score-can" style={`width: ${c.canWidth.toFixed(1)}%`} />
+                    <span class="score-pass" style={`width: ${c.width.toFixed(1)}%`} />
                   </span>
                   <span class="score-pct">{c.pct}</span>
-                  <span class="score-count">
-                    {c.pass} / {c.of}
-                  </span>
+                  <span class="score-count">supports {c.sup}</span>
                 </li>
               ))
             }

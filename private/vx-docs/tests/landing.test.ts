@@ -13,7 +13,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { FIGURES } from '../src/bench/data.ts'
-import { RESULTS, TOOLS, percent, toolName } from '../src/conformance/data.ts'
+import { RESULTS, TOOLS, percent, supports, toolName } from '../src/conformance/data.ts'
 import { CALLOUTS, oneRun } from '../src/components/landing/one-run.js'
 import { narrowOf, type Picture } from '../src/components/guide/diagram/diagram.js'
 
@@ -366,7 +366,7 @@ describe('the landing page', () => {
   it('scores every tool on the conformance suite, first after the hero', () => {
     const cfm = section(html, 'conformance')
     expect(text(cfm)).toContain(`${RESULTS.cases.length} cases`)
-    expect(text(cfm)).toContain('Every test in vx, Turborepo, Nx and Vite Task')
+    expect(text(cfm)).toContain('Every test in vx, Turborepo, Nx, Vite Task, Nix and moon')
     const rows = [...cfm.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/g)].map((m) => m[1]!)
     const shown = rows.map((r) => [
       text(/class="score-tool"[^>]*>([\s\S]*?)<\/span>/.exec(r)![1]!),
@@ -376,10 +376,10 @@ describe('the landing page', () => {
     expect(shown).toEqual(
       TOOLS.map((t) => {
         const all = RESULTS.scores[t]!.all!
-        return [toolName(t), percent(all), `${all.pass} / ${all.of}`]
+        return [toolName(t), percent(all), `supports ${supports(all)}`]
       }),
     )
-    expect(shown.map((s) => s[0])).toEqual(['vx', 'Turborepo', 'Nx', 'Vite Task', 'Nix'])
+    expect(shown.map((s) => s[0])).toEqual(['vx', 'Turborepo', 'Nx', 'Vite Task', 'Nix', 'moon'])
     expect(hrefs(cfm)).toEqual([`${BASE}conformance/`])
     expect(cfm).not.toContain('<table')
   })
