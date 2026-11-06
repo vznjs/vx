@@ -383,7 +383,7 @@ export default defineProject({
         "build the site with main's newest bench numbers → dist-live/ and deploy it to GitHub Pages (GitHub Actions only)",
       dependsOn: ['ci', 'install', 'import', 'build.images'],
       exec: {
-        command: `bun scripts/live-bench.ts && ${ASTRO_BUILD} --outDir dist-live && bun scripts/deploy-pages.ts dist-live`,
+        command: `bun scripts/live-bench.ts && rm -rf .astro/live && ${ASTRO_BUILD} --outDir dist-live && bun scripts/deploy-pages.ts dist-live`,
         env: {
           define: { ASTRO_TELEMETRY_DISABLED: '1', VX_DOCS_BENCH: 'measured/live.json' },
           passThrough: [
