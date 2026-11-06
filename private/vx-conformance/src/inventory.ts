@@ -274,6 +274,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'executor-fallback',
     'executor-sync-result',
     'flaky',
+    'flaky-retry',
     'forecast',
     'forward-args-group',
     'frozen-deleted-config',

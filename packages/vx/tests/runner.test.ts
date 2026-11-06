@@ -1,5 +1,5 @@
 import { fstatSync } from 'node:fs'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -159,19 +159,32 @@ describe('runCommand', () => {
   // nx#36863, nx#35302: output a task's background child printed just
   // after the task exited was missing from the log and the replay. Within
   // the post-exit drain it is kept: live, and in what the cache stores.
-  // The TEST releases the grandchild: it holds the only reader of `gone`,
-  // whose one writer is the shell (the exit is its EOF), and 50 ms after
-  // that EOF writes `go`, which the grandchild waits on to print. Late
-  // enough that a 0 ms drain loses it; and nothing after the exit forks.
-  // The grandchild's own `sleep 0.05` (CI, macOS, 2026-10-03), a fixed
-  // `sleep 0.1` (292 ms) and a `kill -0` loop forking `sleep 0.01` (317 ms)
-  // each paid an exec under load and overran the 250 ms drain (M-68).
+  // A process of its own releases the grandchild: it holds the only reader
+  // of `gone`, whose one writer is the shell (the exit is its EOF), and 50
+  // ms after that EOF writes `go`, which the grandchild waits on to print.
+  // Late enough that a 0 ms drain loses it; and nothing after the exit
+  // forks. The grandchild's own `sleep 0.05` (CI, macOS, 2026-10-03), a
+  // fixed `sleep 0.1` (292 ms) and a `kill -0` loop forking `sleep 0.01`
+  // (317 ms) each paid an exec under load and overran the 250 ms drain
+  // (M-68). The test itself releasing it (`await readFile(gone)`, then
+  // `Bun.sleep(50)`) ran on the event loop vx's drain deadline runs on: a
+  // traced, loaded worker stalled that loop 250-540 ms, both timers fired
+  // late, and vx cut before the test had written `go` (CI, 2026-11-06).
   it('a grandchild that prints within the post-exit drain reaches the live stream and the result', async () => {
     const gone = path.join(cwd, 'gone')
     const go = path.join(cwd, 'go')
     expect(Bun.spawnSync(['mkfifo', gone, go]).exitCode).toBe(0)
+    const release = Bun.spawn(
+      [
+        process.execPath,
+        '-e',
+        `const fs = require('node:fs'); fs.readFileSync(${JSON.stringify(gone)}); ` +
+          `Bun.sleepSync(50); fs.writeFileSync(${JSON.stringify(go)}, '\\n')`,
+      ],
+      { stdio: ['ignore', 'ignore', 'inherit'] },
+    )
     let live = ''
-    const running = runCommand({
+    const result = await runCommand({
       command: '(read _ < go; echo TAIL) & exec 3> gone; echo HEAD',
       cwd,
       env: { PATH: process.env.PATH ?? '' },
@@ -179,12 +192,7 @@ describe('runCommand', () => {
         live += chunk
       },
     })
-    // Opening `gone` for reading is what lets the shell's `exec 3> gone`
-    // go on, so this reader is held before the shell can exit.
-    await readFile(gone)
-    await Bun.sleep(50)
-    await writeFile(go, '\n')
-    const result = await running
+    expect(await release.exited).toBe(0)
     expect(result.exitCode).toBe(0)
     expect(result.stdout).toBe('HEAD\nTAIL\n')
     expect(live).toBe('HEAD\nTAIL\n')
