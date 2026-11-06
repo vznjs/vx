@@ -213,9 +213,9 @@ const MIN_CLASS = 64
  */
 class Session {
   private sent = 0
-  /** What this side sealed and what it opened: each next body's zstd dictionary. */
-  private readonly sealed = new History()
-  private readonly opened = new History()
+  /** What this side sealed and what it opened: the orchestrator's bodies' zstd dictionary. */
+  private readonly sealed: History
+  private readonly opened: History
   private readonly seen = new Set<number>()
   /** The last nonce of the newest body opened. */
   private newest = -1
@@ -227,7 +227,11 @@ class Session {
   constructor(
     private readonly tx: CipherState,
     private readonly rx: CipherState,
-  ) {}
+    orchestrator: boolean,
+  ) {
+    this.sealed = new History(orchestrator ? HISTORY_BYTES : 0)
+    this.opened = new History(orchestrator ? 0 : HISTORY_BYTES)
+  }
 
   /**
    * `body` sealed and handed to `wire`, in the order sends were asked for:
@@ -324,10 +328,12 @@ const GROUP_BYTES = 64 * 1024
 /** The lead byte and its sender's history length; a compressed one's frame length next. */
 const HEADER = 5
 /**
- * The last this many bytes one side sealed to the other are its next
- * body's zstd dictionary: each batch sent its tasks' env and paths again,
- * and each `start`, `ran` and `end` the same names. 32 KiB sealed no less
- * for 1.7 times the CPU (1000 tasks, 2026-11-06).
+ * The last this many bytes the orchestrator sealed to a worker are its
+ * next body's zstd dictionary: each batch sent its tasks' env and paths
+ * again. 32 KiB sealed no less for 1.7 times the CPU (1000 tasks,
+ * 2026-11-06). A worker's bodies go without one: a dictionary costs some
+ * 100 µs a body (node:zlib's per-call context), and the orchestrator
+ * opening each in turn ran a 1000-task run 0.3 s longer.
  */
 const HISTORY_BYTES = 16 * 1024
 
@@ -336,6 +342,7 @@ const HISTORY_BYTES = 16 * 1024
  * as the wire delivers each once and in order.
  */
 class History {
+  constructor(private readonly bytes: number) {}
   window = new Uint8Array(0)
   /**
    * Every body's bytes, before the window too: each body names its
@@ -345,10 +352,11 @@ class History {
   total = 0
   add(json: Uint8Array): void {
     this.total = (this.total + json.length) >>> 0
+    if (this.bytes === 0) return
     const all = new Uint8Array(this.window.length + json.length)
     all.set(this.window)
     all.set(json, this.window.length)
-    this.window = all.subarray(Math.max(0, all.length - HISTORY_BYTES))
+    this.window = all.subarray(Math.max(0, all.length - this.bytes))
   }
 }
 
@@ -451,7 +459,7 @@ export function sealOrchestrator(
       proof.psk === undefined
         ? { type: 'hello', noise: answer, token: await proof.sign!(['hello', run, b64(hs.hash)]) }
         : { type: 'hello', noise: answer }
-    return { info: parsed, hello, session: new Session(send, receive) }
+    return { info: parsed, hello, session: new Session(send, receive, true) }
   }
   return {
     id: me.id,
@@ -548,7 +556,7 @@ export async function sealWorker(
     )
       return false
     const { send, receive } = await hs.split()
-    session = new Session(send, receive)
+    session = new Session(send, receive, false)
     return true
   }
   return {

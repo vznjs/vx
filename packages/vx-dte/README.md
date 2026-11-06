@@ -86,9 +86,11 @@ every body its sender sealed before (4 bytes, big-endian, mod 2³²), and
 then, `1`, its JSON, an array of the messages sent together (up to 64
 KiB), or `0`, when smaller so, its zstd frame's length (4 bytes) and
 the frame: compressed before sealing, since no
-relay or socket compresses what is sealed, against the last 16 KiB of
-those bodies' JSON as its dictionary, so a batch's env and paths, or a
-task's name, said before cost a few bytes. A body whose length is not
+relay or socket compresses what is sealed. The orchestrator's are
+compressed against the last 16 KiB of its bodies' JSON to that worker
+as their dictionary, so a batch's env and paths said before cost a few
+bytes; a worker's go without one, which would cost the orchestrator
+some 100 µs to open each. A body whose length is not
 the receiver's own count was sealed after one it never opened, which the
 relay kept back, and loses its sender. It
 is padded with trailing spaces to its size class, a power of two from
