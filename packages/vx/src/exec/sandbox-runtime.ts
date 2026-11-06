@@ -2916,7 +2916,7 @@ function sbplToken(value: string, field: string): string {
  *
  * `systemInfo` has no SRT field at any level. The rest DO have fields,
  * but SRT reads `network.allowLocalBinding` / `allowUnixSockets` /
- * `allowMachLookup` off the config given to `initialize()` and never off
+ * `allowMachLookup` / `enableWeakerNetworkIsolation` off the config given to `initialize()` and never off
  * the per-call one (`sandbox-manager.js` getters, 0.0.75 and 0.0.76) — so a per-task
  * grant passed there is silently dropped. vx is per-task by definition,
  * so it emits them itself. The rule text mirrors SRT's own.
@@ -2938,6 +2938,9 @@ export function macProfileRules(c: ResolvedSandboxConfig): string[] {
     rules.push('(allow network-bind (local ip "*:*"))')
     rules.push('(allow network-inbound (local ip "*:*"))')
     rules.push('(allow network-outbound (remote ip "localhost:*"))')
+  }
+  if (c.weakerNetworkIsolation === true) {
+    rules.push('(allow mach-lookup (global-name "com.apple.trustd.agent"))')
   }
   if (c.unixSockets === true) {
     rules.push('(allow system-socket (socket-domain AF_UNIX))')

@@ -148,8 +148,9 @@ that link re-granted the whole project past its `allow.read`.
 
 ### What SRT's config cannot carry
 
-`localBinding`, `unixSockets`, `machLookup` and `systemInfo` do not reach
-SRT as config, and neither does a `network` domain list. The first three exist as fields, but `sandbox-manager.js`
+`localBinding`, `unixSockets`, `machLookup`, `weakerNetworkIsolation` (its
+`trustd.agent` lookup) and `systemInfo` do not reach
+SRT as config, and neither does a `network` domain list. The first four exist as fields, but `sandbox-manager.js`
 (0.0.75, still 0.0.76) reads them off the config given to `initialize()` and never off
 the per-call one, so a per-task grant is silently dropped; `systemInfo`
 has no field at any level (each name becomes both a `system-info` and a
