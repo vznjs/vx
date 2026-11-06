@@ -37,7 +37,7 @@ const tool = (target: string, entry: string, prog: string, word: string): string
     export default {
       tasks: {
         build: {
-          exec: { command: ${JSON.stringify(cmd)} },
+          exec: { command: ${JSON.stringify(cmd)}, platforms: ['linux-x64', 'linux-arm64'] },
           inputs: { files: ['src/**'] },
           cache: { outputs: { files: ['out/**'], bin: 'out/bin', mount: { ${JSON.stringify(target)}: 'out/store' } } },
         },
@@ -215,7 +215,10 @@ describe.skipIf(!available)('a link out of a mount is still refused', () => {
           export default {
             tasks: {
               build: {
-                exec: { command: 'mkdir -p out/store && ln -s /etc/hostname out/store/h' },
+                exec: {
+                  command: 'mkdir -p out/store && ln -s /etc/hostname out/store/h',
+                  platforms: ['linux-x64', 'linux-arm64'],
+                },
                 inputs: { files: ['src/**'] },
                 cache: { outputs: { files: ['out/**'], mount: { '/nix/store': 'out/store' } } },
               },

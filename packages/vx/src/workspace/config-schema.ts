@@ -1051,8 +1051,18 @@ export function validateProjectConfig(
         validateOutputDir(bin, outFiles as string[], `${where}.cache.outputs.bin`, 'out/bin')
       }
       const mount = (outputs as { mount?: unknown }).mount
-      if (mount !== undefined)
+      if (mount !== undefined) {
         validateMount(mount, outFiles as string[], `${where}.cache.outputs.mount`)
+        // Nix picks the system itself, so nothing in the command names it:
+        // without platforms the key holds none and another arch restores
+        // these binaries.
+        if ((exec as { platforms?: unknown } | undefined)?.platforms === undefined) {
+          throw new UserError(
+            `${where}.cache.outputs.mount holds programs built for one platform — declare ` +
+              `exec.platforms, such as ['linux-x64', 'linux-arm64'], so each platform keeps its own cache entry`,
+          )
+        }
+      }
     }
   }
 }

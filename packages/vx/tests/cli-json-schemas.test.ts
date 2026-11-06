@@ -98,6 +98,7 @@ const KITCHEN = `export default {
       dependsOn: ['build'],
       exec: {
         command: 'echo all',
+        platforms: ['linux-x64', 'linux-arm64', 'darwin-x64', 'darwin-arm64'],
         remote: 'only',
         timeout: '5s',
         retries: 1,

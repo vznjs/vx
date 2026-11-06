@@ -327,6 +327,7 @@ describe('a config built from readonly lists type-checks and loads', () => {
         dependsOn: ['^build'] as const,
         exec: {
           command: 'tsc',
+          platforms: ['linux-x64', 'linux-arm64', 'darwin-x64', 'darwin-arm64'] as const,
           env: { passThrough: NAMES, secret: NAMES },
           sandbox: {
             allow: {
