@@ -2,7 +2,7 @@
 // but no task `vx run build --all` takes: no project declares it. So
 // `vx build` and `vx show build` must not name it as one (X-145).
 
-import { rm } from 'node:fs/promises'
+import { rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -108,5 +108,24 @@ describe('a workspace that declares no task yet', () => {
         'vx run: no projects declare task(s): build. No project declares a task yet: add one under `tasks` in a vx.config, then run `vx lock`.\n',
       ),
     ])
+  })
+
+  // From the root, the run selects the root project alone, which declares
+  // nothing: that is no sign the workspace declares nothing.
+  it('a run from a root that declares nothing still lists the tasks elsewhere', async () => {
+    const ws = await makeWorkspace({ prefix: 'vx-root-no-task-' })
+    try {
+      await writeFile(path.join(ws, 'vx.config.mjs'), 'export default { tasks: {} }\n')
+      await addProject(ws, 'x', TEST)
+      const p = Bun.spawnSync({
+        cmd: [process.execPath, BIN, 'run', 'lint'],
+        cwd: ws,
+        stdin: 'ignore',
+      })
+      expect(p.stderr.toString()).not.toContain('No project declares a task yet')
+      expect(p.stderr.toString()).toContain('Tasks: test')
+    } finally {
+      await rm(ws, { recursive: true, force: true })
+    }
   })
 })
