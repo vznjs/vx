@@ -32,6 +32,8 @@ export interface SimTask {
   readonly known?: { readonly ms: number; readonly cores?: number; readonly memory: number } | null
   /** The platform core placed it on (`TaskNode.platform`). */
   readonly platform?: string
+  /** Core's probe found it held, and its restore then failed: it runs (`ran`) once ready. */
+  readonly restoreFails?: boolean
 }
 
 export interface SimOptions {
@@ -331,7 +333,10 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
         starting: true,
       })
     }
-    const held = (t: SimTask): boolean => options.probe !== false && t.cache && t.ran === undefined
+    const held = (t: SimTask): boolean =>
+      options.probe !== false &&
+      t.cache &&
+      (t.ran === undefined || (t.restoreFails === true && !executed.has(t.id)))
     // Read only when the plan reads every task: a plan followed reads none.
     const remaining = {
       *[Symbol.iterator](): Iterator<string> {

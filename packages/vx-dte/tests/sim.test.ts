@@ -471,6 +471,36 @@ it('asks no worker while the CI queues one of its size', () => {
   expect(r.endMs).toBeLessThanOrEqual(121_600 * 1.05)
 })
 
+// Main, 2026-11-06: the one arm worker (max 1) was let go idle, then
+// check.binary.linux-arm64, which core's probe had found held, came back
+// as a miss. No arm worker could start again, and each main run waited
+// out its 25-minute timeout.
+it('keeps the last worker a size can start while its platform has a task left', () => {
+  const ran = (ms: number) => ({ ms, cores: 1, memory: 1e9 })
+  const graph: SimTask[] = [
+    { id: 'm0', deps: [], exec: true, cache: true, ran: ran(2_000), platform: 'linux-arm64' },
+    { id: 'a', deps: [], exec: true, cache: true, ran: ran(60_000), platform: 'linux-x64' },
+    { id: 'b', deps: ['a'], exec: true, cache: true, ran: ran(60_000), platform: 'linux-x64' },
+    {
+      id: 'm1',
+      deps: ['b'],
+      exec: true,
+      cache: true,
+      ran: ran(2_000),
+      platform: 'linux-arm64',
+      restoreFails: true,
+    },
+  ]
+  const r = simulate(graph, {
+    sizes: [
+      { name: 'small', max: 1, cpu: 4, memory: 16e9, platform: 'linux-x64' },
+      { name: 'arm', max: 1, cpu: 4, memory: 16e9, platform: 'linux-arm64' },
+    ],
+    home: 'linux-x64',
+  })
+  expect(r.endMs).toBeLessThan(160_000)
+})
+
 // PR #4989's first CI run: a plan that played a window let a Mac worker go
 // once it was idle past its work there, though a Mac task waited past it.
 // Its size's one start was spent, so no Mac worker could start again and
