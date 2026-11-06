@@ -401,7 +401,7 @@ export function refusedConnections(records: readonly string[]): SandboxViolation
      SRT's `getViolationsForCommand` can disambiguate concurrent tasks
      with identical commands (it keys by base64 of the first 100 chars).
      On Linux the tag also leads the wrap SRT keys write records by, ahead
-     of the proxy-bridge wait every networked task shares
+     of the proxy-bridge wait every task shares
      (`tests/sandbox-records-key.unsafe.test.ts`).
    - Builds a `customConfig` by merging the baseline (dependency dirs
      and the workspace-root deny anchor) with the user's resolved
@@ -434,11 +434,14 @@ export function refusedConnections(records: readonly string[]): SandboxViolation
      once more unless it timed out or the run is stopping: the trace
      stopped short, and under `--seccomp-bpf` (which implies
      `--kill-on-exit`) a dying strace SIGKILLs the task (exit 137; M-18).
-   - On Linux, a task that declares `allow.network` waits, in front of its
-     command, until SRT's in-sandbox proxy bridges (`socat TCP-LISTEN`
+   - On Linux, every task the run's proxy bridge reaches waits, in front
+     of its command, until SRT's in-sandbox proxy bridges (`socat TCP-LISTEN`
      on 3128 and 1080, started in the background) listen, read off
      `/proc/net/tcp{,6}`, at most ~5 s: its first dial met "connection
-     refused" on a loaded box (M-20).
+     refused" on a loaded box (M-20). A task with no `allow.network` waits
+     too: its dial must reach the proxy, whose refusal names the host and
+     fails it; without the wait it met the closed port under load and
+     passed with nothing reported. The wait costs ~4 ms, the socat's start.
 4. **Filtering.** Enforcement anchors at the workspace root, but only
    denials on a path inside `reportWithin` (the project) or one of
    `reportLinked` (the linked packages a cached task was denied because

@@ -4,8 +4,10 @@
 // `403` and no report, and one that survived the refusal passed. The line
 // also lacks seatbelt's `deny(<n>)`, so `ignore.network` could not
 // silence it on macOS (2026-10-02).
-import { rm } from 'node:fs/promises'
-import { realpathSync } from 'node:fs'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { chmodSync, realpathSync, writeFileSync } from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { resolveSandboxConfig } from '../src/exec/index.js'
 import { refusedConnections, reportableViolations } from '../src/exec/sandbox-violations.js'
@@ -75,6 +77,14 @@ describe('a proxy record in the report', () => {
 })
 
 const available = await sandboxAvailable('sandbox proxy denials test')
+// Bun reads the cwd's `bunfig.toml`, so the project is granted.
+const addApp = (root: string, ignore = '') =>
+  addProject(root, 'app', {
+    config: `export default { tasks: { t: { exec: {
+      command: "bun -e \\"await fetch('https://example.com').catch(() => {})\\"",
+      sandbox: { allow: { read: ['.'] }${ignore} },
+    } } } }\n`,
+  })
 const quiet = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
 
 describe.skipIf(!available)('a refused connection, run for real', () => {
@@ -84,17 +94,8 @@ describe.skipIf(!available)('a refused connection, run for real', () => {
   })
   afterEach(() => rm(root, { recursive: true, force: true }))
 
-  // Bun reads the cwd's `bunfig.toml`, so the project is granted.
-  const project = (ignore: string) =>
-    addProject(root, 'app', {
-      config: `export default { tasks: { t: { exec: {
-        command: "bun -e \\"await fetch('https://example.com').catch(() => {})\\"",
-        sandbox: { allow: { read: ['.'] }${ignore} },
-      } } } }\n`,
-    })
-
   it('fails a task that survived it, naming the host', async () => {
-    await project('')
+    await addApp(root)
     const r = await run({ cwd: root, tasks: ['t'], log: quiet })
     expect([r.outcomes[0]?.status, r.outcomes[0]?.sandboxViolationLines]).toEqual([
       'failed',
@@ -103,7 +104,7 @@ describe.skipIf(!available)('a refused connection, run for real', () => {
   })
 
   it('CONTROL: ignore.network naming the host passes it', async () => {
-    await project(`, ignore: { network: ['example.com:443'] }`)
+    await addApp(root, `, ignore: { network: ['example.com:443'] }`)
     const r = await run({ cwd: root, tasks: ['t'], log: quiet })
     expect([r.outcomes[0]?.status, r.outcomes[0]?.sandboxViolationLines ?? []]).toEqual([
       'success',
@@ -111,3 +112,51 @@ describe.skipIf(!available)('a refused connection, run for real', () => {
     ])
   })
 })
+
+// The run's proxy bridge inside the sandbox is a socat SRT starts in the
+// background; only a task that listed a network waited for it. One that
+// listed none met the closed port instead when the socat started late (10
+// unsafe shards on 4 cores), swallowed the error and passed with nothing
+// reported (2026-11-06). Here every in-sandbox socat starts a second late.
+describe.skipIf(!available || process.platform !== 'linux')(
+  'a refused connection while the bridge starts late',
+  () => {
+    const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+    let root: string
+    let shim: string
+    beforeEach(async () => {
+      root = realpathSync(await makeWorkspace({ prefix: 'vx-proxy-late-' }))
+      shim = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-proxy-late-bin-')))
+      const socat = Bun.which('socat')!
+      writeFileSync(
+        path.join(shim, 'socat'),
+        `#!/bin/sh\ncase "$*" in *TCP-LISTEN*) sleep 1;; esac\nexec ${socat} "$@"\n`,
+      )
+      chmodSync(path.join(shim, 'socat'), 0o755)
+    })
+    afterEach(async () => {
+      await rm(root, { recursive: true, force: true })
+      await rm(shim, { recursive: true, force: true })
+    })
+
+    it('still fails a task that lists no network, naming the host', async () => {
+      await addApp(root)
+      const lock = Bun.spawnSync({
+        cmd: [process.execPath, BIN, 'lock'],
+        cwd: root,
+        stderr: 'pipe',
+      })
+      expect(lock.exitCode, lock.stderr.toString()).toBe(0)
+      const r = Bun.spawnSync({
+        cmd: [process.execPath, BIN, 'run', 'app#t', '--output-logs', 'full'],
+        cwd: root,
+        // A process of its own: vx resolves socat once per process.
+        env: { ...process.env, PATH: `${shim}:${process.env['PATH']}` },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const text = r.stdout.toString() + r.stderr.toString()
+      expect([r.exitCode !== 0, text.includes(DENY)], text).toEqual([true, true])
+    }, 30_000)
+  },
+)
