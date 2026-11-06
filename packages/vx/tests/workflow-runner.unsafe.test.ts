@@ -73,7 +73,6 @@ describe('a Linux CI job that runs a vx task', () => {
       'ci.yml#perf',
       'npm.yml#publish',
       'release.yml#assets',
-      'site.yml#deploy',
     ])
   })
 

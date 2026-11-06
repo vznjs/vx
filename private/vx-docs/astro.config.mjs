@@ -2,6 +2,7 @@ import { satteri } from '@astrojs/markdown-satteri'
 import starlight from '@astrojs/starlight'
 import { defineConfig } from 'astro/config'
 import { readdirSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { SIDEBAR } from './src/nav/sections.ts'
 import { bench } from './src/plugins/bench.ts'
 import { dataCharts } from './src/plugins/data-charts.ts'
@@ -30,6 +31,14 @@ export default defineConfig({
     // the build's sandbox hides: Linux answers ENOENT and the search goes
     // on, macOS's seatbelt answers EPERM and the build failed.
     css: { postcss: {} },
+    // Main's deploy builds with the newest numbers Bench measured
+    // (deploy.pages, scripts/live-bench.ts), not the committed copy
+    // src/bench/data.ts imports.
+    resolve: {
+      alias: process.env.VX_DOCS_BENCH
+        ? [{ find: /^\.\.\/data\/bench\.json$/, replacement: resolve(process.env.VX_DOCS_BENCH) }]
+        : [],
+    },
   },
   site,
   base,

@@ -4,7 +4,7 @@
 //
 // `.unsafe`: the workflows live at the repo root, which a sandboxed project
 // task may not read.
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 
@@ -42,7 +42,6 @@ const read = (file: string): Workflow =>
 const doc = read('ci.yml')
 const worker = read('vx-worker.yml').jobs['worker']!
 const bench = read('bench.yml').jobs['bench']!
-const site = read('site.yml').jobs['deploy']!
 const checkout = (j: Job | undefined): Step | undefined =>
   j?.steps?.find((s) => String(s.uses).startsWith('actions/checkout@'))
 
@@ -148,17 +147,30 @@ describe('ci.yml', () => {
     expect(doc.jobs['linux']!.steps!.some((s) => s.run?.includes(' setup ') === true)).toBe(false)
   })
 
-  // The site deploys from site.yml, never from the run: a deploy in
-  // main's run shipped the committed numbers, older than the live ones
-  // (2026-11-01).
-  it('deploys nothing itself', () => {
+  // Main's run deploys the site, a task of the run (2026-10-24), with
+  // the newest numbers Bench measured on main, fetched by the task itself
+  // (2026-11-06): the committed copy is older than the live one
+  // (2026-11-01), and the deploy never waits on the bench.
+  it('deploys the site on a push to main, from the run', () => {
     const run = doc.jobs['linux']!
-    expect(run.environment).toBeUndefined()
-    expect(run.permissions?.['pages']).toBeUndefined()
-    expect(run.steps!.some((s) => s.uses?.startsWith('actions/github-script@'))).toBe(false)
-    expect(
-      readFileSync(path.join(dir, '../../private/vx-docs/vx.config.ts'), 'utf8'),
-    ).not.toContain("release: { dependsOn: ['deploy.pages'] }")
+    expect(run.environment).toBe("${{ github.event_name == 'push' && 'github-pages' || '' }}")
+    expect([run.permissions?.['pages'], run.permissions?.['actions']]).toEqual(['write', 'write'])
+    const hand = run.steps!.find((s) => s.name === 'Hand the Pages token to the run')!
+    expect(hand.if).toBe("github.event_name == 'push' && github.ref == 'refs/heads/main'")
+    expect(hand.with?.['script']).toContain("core.exportVariable('ACTIONS_RUNTIME_TOKEN'")
+    const names = run.steps!.map((s) => s.name)
+    expect(names.indexOf('Hand the Pages token to the run')).toBeLessThan(names.indexOf('vx run'))
+    const docs = readFileSync(path.join(dir, '../../private/vx-docs/vx.config.ts'), 'utf8')
+    expect(docs).toContain("release: { dependsOn: ['deploy.pages'] }")
+    expect(docs).toContain('bun scripts/live-bench.ts && ${ASTRO_BUILD} --outDir dist-live')
+    expect(run.steps!.some((s) => /deploy-pages|upload-pages-artifact/.test(s.uses ?? ''))).toBe(
+      false,
+    )
+  })
+
+  // One deploy path: the run's.
+  it('has no other workflow deploying the site', () => {
+    expect(existsSync(path.join(dir, 'site.yml'))).toBe(false)
   })
 
   // A run is what a developer would write (2026-10-23: "super
@@ -183,10 +195,9 @@ describe('ci.yml', () => {
   // The remote cache serves every hit (2026-10-23: "we dont need
   // to carry any vx cache anymore"), and Bun's packages restored took as
   // long as a cold install (4-9 s against about 5 s, main 68b851d): only
-  // the sandbox runtime of a worker, the benchmark jobs and the site's
-  // deploy is kept.
+  // the sandbox runtime of a worker and the benchmark jobs is kept.
   it('carries no vx cache between runs', () => {
-    const jobs = [...Object.values(doc.jobs), bench, site, worker]
+    const jobs = [...Object.values(doc.jobs), bench, worker]
     const cached = jobs.flatMap((j) =>
       j.steps!.filter((s) => s.uses?.startsWith('actions/cache')).map((s) => s.with?.['path']),
     )
@@ -272,54 +283,6 @@ describe('bench.yml', () => {
     expect(doc.concurrency).toEqual({ group: 'bench', 'cancel-in-progress': false })
     expect(bench.environment).toBeUndefined()
     expect(bench.permissions?.['pages']).toBeUndefined()
-  })
-})
-
-describe('site.yml', () => {
-  // A site change is live minutes after its push, and the numbers once
-  // Bench has measured them (2026-11-06): the deploy waited ~35 min on
-  // the bench. The deploy is a task (2026-10-24: the Pages actions were
-  // 33 s).
-  it('deploys on each main push and after each Bench run on main', () => {
-    const doc = read('site.yml')
-    const on = (doc.on ?? doc.true)!
-    expect(on['push']).toEqual({ branches: ['main'] })
-    expect(on['workflow_run']).toEqual({
-      workflows: ['Bench'],
-      types: ['completed'],
-      branches: ['main'],
-    })
-    expect(doc.concurrency).toEqual({ group: 'pages', 'cancel-in-progress': false })
-    expect(site.if).toContain("github.event.workflow_run.conclusion == 'success'")
-    expect(site.environment).toBe('github-pages')
-    expect([site.permissions?.['pages'], site.permissions?.['actions']]).toEqual(['write', 'read'])
-  })
-
-  // The newest rows Bench measured on main, never the committed copy,
-  // which is older than the live one (2026-11-01).
-  it('ships the newest measured numbers', () => {
-    const names = site.steps!.map((s) => s.name)
-    expect(names.slice(names.indexOf('Use the newest measured numbers'))).toEqual([
-      'Use the newest measured numbers',
-      'Hand the Pages token to the run',
-      'Deploy the site',
-    ])
-    const step = (name: string): Step => site.steps!.find((s) => s.name === name)!
-    const use = step('Use the newest measured numbers').run!
-    expect(use).toContain('actions/artifacts?name=bench-data')
-    expect(use).toContain('.workflow_run.head_branch == "main"')
-    expect(use).toContain(
-      'cp private/vx-docs/measured/bench.json private/vx-docs/src/data/bench.json',
-    )
-    expect(step('Hand the Pages token to the run').with?.['script']).toContain(
-      "core.exportVariable('ACTIONS_RUNTIME_TOKEN'",
-    )
-    expect(step('Deploy the site').run).toBe(
-      'bun packages/vx/src/bin.ts run @vzn/vx-docs#deploy.pages',
-    )
-    expect(site.steps!.some((s) => /deploy-pages|upload-pages-artifact/.test(s.uses ?? ''))).toBe(
-      false,
-    )
   })
 })
 

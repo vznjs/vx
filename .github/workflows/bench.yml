@@ -5,7 +5,7 @@ name: Bench
 # where a worker is packed beside other tasks. `--force` measures every
 # runner in this one job, on this one machine: rows restored from another
 # runner's run timed other CPUs. It uploads the rows as the `bench-data`
-# artifact; site.yml deploys them once this run ends.
+# artifact; main's next DTE run deploys them (@vzn/vx-docs#deploy.pages).
 #
 # Its own workflow (2026-11-06): inside ci.yml it held main's run open
 # for its ~35 min, and main's next run queued behind it.
