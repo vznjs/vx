@@ -368,9 +368,10 @@ export default defineProject({
     },
 
     // Main's deploy, a task (2026-10-24: the Pages actions were 33 s of
-    // main's workflow). CI's Bench job runs it once it has measured, so
-    // the site ships the numbers of its own commit (2026-11-01: a deploy
-    // in main's run shipped the committed copy, older than the live one).
+    // main's workflow). site.yml runs it on each main push and after each
+    // Bench run, with the newest numbers Bench measured (2026-11-01: a
+    // deploy in main's run shipped the committed copy, older than the
+    // live one).
     'deploy.pages': {
       description: 'deploy dist/ to GitHub Pages (GitHub Actions only)',
       dependsOn: ['ci'],

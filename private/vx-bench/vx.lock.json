@@ -169,7 +169,7 @@
         "env": {
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
-            "COLD_REPS": "3",
+            "COLD_REPS": "1",
             "RUNNERS": "nx",
             "OUT": "site/nx.json"
           },

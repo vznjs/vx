@@ -95,7 +95,7 @@ export default defineProject({
     // which @vzn/vx-docs#bench.data gathers into the site's bench.json. vx's is
     // keyed on its source through install's ^build, a rival's on the
     // harness and the pins in package.json. One runner at a time on a
-    // machine of its own: only CI's Bench job (ci.yml) runs them, with
+    // machine of its own: only CI's Bench job (bench.yml) runs them, with
     // `--concurrency 1 --force`, so all four time the same CPU, and no build
     // depends on them, so a DTE worker, packed beside other tasks, never does.
     ...Object.fromEntries(
@@ -111,8 +111,10 @@ export default defineProject({
               define: {
                 ...NO_TRANSPILER_CACHE.define,
                 // The median of three cold runs: one let a single run move
-                // the site's cold figure by seconds (2026-11-01).
-                COLD_REPS: '3',
+                // the site's cold figure by seconds (2026-11-01). Nx's
+                // overhead is minutes, so seconds move no comparison, and
+                // its two extra runs were ~10 of the job's 37 min (2026-11-06).
+                COLD_REPS: runner === 'nx' ? '1' : '3',
                 RUNNERS: runner,
                 OUT: `site/${runner}.json`,
               },

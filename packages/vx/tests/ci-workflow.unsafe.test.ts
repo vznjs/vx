@@ -34,21 +34,24 @@ interface Job {
 interface Workflow {
   on?: Record<string, unknown>
   true?: Record<string, unknown>
-  concurrency?: Record<string, string>
+  concurrency?: Record<string, string | boolean>
   jobs: Record<string, Job>
 }
 const read = (file: string): Workflow =>
   Bun.YAML.parse(readFileSync(path.join(dir, file), 'utf8')) as Workflow
 const doc = read('ci.yml')
 const worker = read('vx-worker.yml').jobs['worker']!
+const bench = read('bench.yml').jobs['bench']!
+const site = read('site.yml').jobs['deploy']!
 const checkout = (j: Job | undefined): Step | undefined =>
   j?.steps?.find((s) => String(s.uses).startsWith('actions/checkout@'))
 
 describe('ci.yml', () => {
   // The run only plans and dispatches: Linux x64, so every macOS and arm
-  // runner is a worker's. The benchmarks run beside it on a runner of
-  // their own, and it waits for none of them: no build depends on one.
-  it('is one run, and the benchmarks beside it', () => {
+  // runner is a worker's. Perf runs beside it on a runner of its own, and
+  // it waits for none: no build depends on one. The site's bench is
+  // bench.yml (2026-11-06): here it held main's run open ~35 min.
+  it('is one run, and Perf beside it', () => {
     // The benchmarks' machine: a kept runner when BENCH_RUNNER names one.
     const bench = "${{ vars.BENCH_RUNNER || 'ubuntu-latest' }}"
     const top =
@@ -57,25 +60,8 @@ describe('ci.yml', () => {
       Object.entries(doc.jobs).map(([id, j]) => [id, j.name, j['runs-on'], j.if, j.needs]),
     ).toEqual([
       ['linux', 'VX DTE', 'ubuntu-latest', top, undefined],
-      [
-        'bench',
-        'Bench',
-        bench,
-        "github.event_name == 'push' || github.event_name == 'workflow_dispatch'",
-        undefined,
-      ],
       ['perf', 'Perf', bench, top, undefined],
     ])
-  })
-
-  // The site's head-to-head rows are timed on a machine of their own, one
-  // runner at a time, so a benchmark never runs under DTE (2026-10-29).
-  it('measures the site benchmark off the DTE run, one runner at a time', () => {
-    const bench = doc.jobs['bench']!
-    expect(JSON.stringify(bench)).not.toContain('VX_DTE')
-    expect(bench.steps?.find((s) => s.name === 'vx run bench.data')?.run).toBe(
-      'bun packages/vx/src/bin.ts run @vzn/vx-docs#bench.data --concurrency 1 --force',
-    )
   })
 
   // A DTE worker is packed for the run's wall time, so a benchmark there
@@ -117,10 +103,7 @@ describe('ci.yml', () => {
       Object.entries(doc.jobs).flatMap(([id, j]) =>
         j.permissions?.['checks'] === undefined ? [] : [[id, j.permissions['checks']]],
       ),
-    ).toEqual([
-      ['linux', 'read'],
-      ['bench', 'read'],
-    ])
+    ).toEqual([['linux', 'read']])
   })
 
   // A PR that changes the relay runs on its own relay code, Workers Builds'
@@ -165,13 +148,10 @@ describe('ci.yml', () => {
     expect(doc.jobs['linux']!.steps!.some((s) => s.run?.includes(' setup ') === true)).toBe(false)
   })
 
-  // docs.yml was its own workflow, its own install and sandbox runtime
-  // (2026-10-23). The deploy is a task (2026-10-24: the Pages actions
-  // were 33 s), run by the Bench job once it has measured: a deploy in
+  // The site deploys from site.yml, never from the run: a deploy in
   // main's run shipped the committed numbers, older than the live ones
   // (2026-11-01).
-  it('deploys the docs site from the Bench job, with the numbers it measured', () => {
-    const push = "github.event_name == 'push'"
+  it('deploys nothing itself', () => {
     const run = doc.jobs['linux']!
     expect(run.environment).toBeUndefined()
     expect(run.permissions?.['pages']).toBeUndefined()
@@ -179,32 +159,6 @@ describe('ci.yml', () => {
     expect(
       readFileSync(path.join(dir, '../../private/vx-docs/vx.config.ts'), 'utf8'),
     ).not.toContain("release: { dependsOn: ['deploy.pages'] }")
-    const job = doc.jobs['bench']!
-    expect(job.environment).toBe(`\${{ ${push} && 'github-pages' || '' }}`)
-    expect([job.permissions?.['pages'], job.permissions?.['id-token']]).toEqual(['write', 'write'])
-    const names = job.steps!.map((s) => s.name)
-    const after = names.slice(names.indexOf('vx run bench.data'))
-    expect(after).toEqual([
-      'vx run bench.data',
-      'Upload the benchmark data',
-      'Use the measured numbers',
-      'Hand the Pages token to the run',
-      'Deploy the site',
-    ])
-    const step = (name: string | undefined): Step => job.steps!.find((s) => s.name === name)!
-    for (const name of after.slice(2)) expect(step(name).if).toBe(push)
-    expect(step('Use the measured numbers').run).toBe(
-      'cp private/vx-docs/measured/bench.json private/vx-docs/src/data/bench.json',
-    )
-    expect(step('Hand the Pages token to the run').with?.['script']).toContain(
-      "core.exportVariable('ACTIONS_RUNTIME_TOKEN'",
-    )
-    expect(step('Deploy the site').run).toBe(
-      'bun packages/vx/src/bin.ts run @vzn/vx-docs#deploy.pages',
-    )
-    expect(job.steps!.some((s) => /deploy-pages|upload-pages-artifact/.test(s.uses ?? ''))).toBe(
-      false,
-    )
   })
 
   // A run is what a developer would write (2026-10-23: "super
@@ -229,17 +183,14 @@ describe('ci.yml', () => {
   // The remote cache serves every hit (2026-10-23: "we dont need
   // to carry any vx cache anymore"), and Bun's packages restored took as
   // long as a cold install (4-9 s against about 5 s, main 68b851d): only
-  // the sandbox runtime of a worker and of the two benchmark jobs is kept.
+  // the sandbox runtime of a worker, the benchmark jobs and the site's
+  // deploy is kept.
   it('carries no vx cache between runs', () => {
-    const cached = [...Object.values(doc.jobs), worker].flatMap((j) =>
+    const jobs = [...Object.values(doc.jobs), bench, site, worker]
+    const cached = jobs.flatMap((j) =>
       j.steps!.filter((s) => s.uses?.startsWith('actions/cache')).map((s) => s.with?.['path']),
     )
-    expect(cached).toEqual([
-      '~/.cache/vx/setup-debs',
-      '~/.cache/vx/setup-debs',
-      '~/.cache/vx/setup-debs',
-      '~/.cache/vx/setup-debs',
-    ])
+    expect(cached).toEqual(jobs.map(() => '~/.cache/vx/setup-debs'))
   })
 
   // Spotlight indexed what a Mac worker's tasks wrote: a fixed test
@@ -295,6 +246,80 @@ describe('ci.yml', () => {
       group: '${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}',
       'cancel-in-progress': "${{ github.event_name == 'pull_request' }}",
     })
+  })
+})
+
+describe('bench.yml', () => {
+  // The site's head-to-head rows are timed on a machine of their own, one
+  // runner at a time, so a benchmark never runs under DTE (2026-10-29).
+  it('measures the site benchmark off the DTE run, one runner at a time', () => {
+    expect(JSON.stringify(bench)).not.toContain('VX_DTE')
+    expect(bench['runs-on']).toBe("${{ vars.BENCH_RUNNER || 'ubuntu-latest' }}")
+    expect(bench.steps?.find((s) => s.name === 'vx run bench.data')?.run).toBe(
+      'bun packages/vx/src/bin.ts run @vzn/vx-docs#bench.data --concurrency 1 --force',
+    )
+    expect(bench.steps?.at(-1)?.with).toEqual({
+      name: 'bench-data',
+      path: 'private/vx-docs/measured/bench.json',
+    })
+  })
+
+  // Main's run no longer waits on it, and a push that lands while it
+  // measures is measured next, never halfway through.
+  it('measures each main push in its own workflow, one at a time', () => {
+    const doc = read('bench.yml')
+    expect(Object.keys((doc.on ?? doc.true)!)).toEqual(['push', 'workflow_dispatch'])
+    expect(doc.concurrency).toEqual({ group: 'bench', 'cancel-in-progress': false })
+    expect(bench.environment).toBeUndefined()
+    expect(bench.permissions?.['pages']).toBeUndefined()
+  })
+})
+
+describe('site.yml', () => {
+  // A site change is live minutes after its push, and the numbers once
+  // Bench has measured them (2026-11-06): the deploy waited ~35 min on
+  // the bench. The deploy is a task (2026-10-24: the Pages actions were
+  // 33 s).
+  it('deploys on each main push and after each Bench run on main', () => {
+    const doc = read('site.yml')
+    const on = (doc.on ?? doc.true)!
+    expect(on['push']).toEqual({ branches: ['main'] })
+    expect(on['workflow_run']).toEqual({
+      workflows: ['Bench'],
+      types: ['completed'],
+      branches: ['main'],
+    })
+    expect(doc.concurrency).toEqual({ group: 'pages', 'cancel-in-progress': false })
+    expect(site.if).toContain("github.event.workflow_run.conclusion == 'success'")
+    expect(site.environment).toBe('github-pages')
+    expect([site.permissions?.['pages'], site.permissions?.['actions']]).toEqual(['write', 'read'])
+  })
+
+  // The newest rows Bench measured on main, never the committed copy,
+  // which is older than the live one (2026-11-01).
+  it('ships the newest measured numbers', () => {
+    const names = site.steps!.map((s) => s.name)
+    expect(names.slice(names.indexOf('Use the newest measured numbers'))).toEqual([
+      'Use the newest measured numbers',
+      'Hand the Pages token to the run',
+      'Deploy the site',
+    ])
+    const step = (name: string): Step => site.steps!.find((s) => s.name === name)!
+    const use = step('Use the newest measured numbers').run!
+    expect(use).toContain('actions/artifacts?name=bench-data')
+    expect(use).toContain('.workflow_run.head_branch == "main"')
+    expect(use).toContain(
+      'cp private/vx-docs/measured/bench.json private/vx-docs/src/data/bench.json',
+    )
+    expect(step('Hand the Pages token to the run').with?.['script']).toContain(
+      "core.exportVariable('ACTIONS_RUNTIME_TOKEN'",
+    )
+    expect(step('Deploy the site').run).toBe(
+      'bun packages/vx/src/bin.ts run @vzn/vx-docs#deploy.pages',
+    )
+    expect(site.steps!.some((s) => /deploy-pages|upload-pages-artifact/.test(s.uses ?? ''))).toBe(
+      false,
+    )
   })
 })
 
