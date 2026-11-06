@@ -304,6 +304,12 @@ export interface ExecuteArgs {
   serversNested?: readonly (readonly string[])[]
   /** When each command of the run ran and where it may write (command-windows.ts). */
   commandWindows?: CommandWindows
+  /**
+   * A persistent task matched `readyWhen` (or spawned, with none): what it
+   * writes from here on is its since-ready output (run.ts holds it until
+   * the task's outcome has been logged).
+   */
+  serverReady?: (id: string) => void
 }
 
 /**
