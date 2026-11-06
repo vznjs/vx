@@ -19,7 +19,8 @@ check: {
     sandbox: { allow: { read: ['src'] } },
   },
   inputs: { files: ['src/**'] },
-  cache: { outputs: { files: [] } },
+  outputs: { files: [] },
+  cache: true,
 }
 ```
 

@@ -36,7 +36,9 @@ it("names vx's home for a project key another tool spells (D-99)", () => {
   expect(where('inputs')).toBe(
     'vx spells it `tasks.<name>.inputs`: a project holds tasks, and each task its own `inputs`',
   )
-  expect(where('outputs')).toBe('vx spells it `tasks.<name>.cache.outputs.files`')
+  expect(where('outputs')).toBe(
+    'vx spells it `tasks.<name>.outputs`: a project holds tasks, and each task its own `outputs`',
+  )
   expect(where('env')).toBe(
     'vx spells it `tasks.<name>.inputs.env` (to key a task on it) or `tasks.<name>.exec.env`',
   )

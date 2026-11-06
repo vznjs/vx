@@ -19,7 +19,7 @@ exits, read from its source.
 | Inputs looked at again       | no               | no (batch: rehash) | files the task opened     | every declared input       |
 | Writes it notices            | none             | none              | the task's own            | any process's              |
 | What it does on a change     | saves            | saves             | skips the save            | skips the save, names file |
-| Can be relaxed per task      | n/a              | n/a               | n/a                       | `inputStability`           |
+| Can be relaxed per task      | n/a              | n/a               | n/a                       | `inputs.stability`         |
 
 ## Turborepo 2.11.7
 
@@ -51,7 +51,7 @@ Writes by other processes are not traced
 ```sh frame="terminal"
 $ vx run packages/api#build
 ┌─ packages/api#build > $ echo "export const r = $RANDOM" > src/routes.gen.ts && mkdir -p out && cp src/index.ts out/
-[vx] packages/api#build: `packages/api/src/routes.gen.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs
+[vx] packages/api#build: `packages/api/src/routes.gen.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in outputs
 └─ packages/api#build ── (6ms) success
   cache     1 not saved
 ```
@@ -62,7 +62,7 @@ vx checks every declared input after the run, whoever wrote it. A
 changed input keeps the result and saves nothing, and tasks downstream
 skip their save too.
 
-`cache.inputStability` relaxes it per task
+`inputs.stability` relaxes it per task
 ([how](../inputs-that-move/)).
 
 ## Each one is a trade

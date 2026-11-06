@@ -55,7 +55,7 @@ running anything.
 ## JSON for scripts and agents
 
 ```json
-{"name":"packages/a","dir":"packages/a","task":"build","config":{"exec":{"command":"bun build src/index.ts --outdir dist"},"inputs":{"files":["src/**"]},"cache":{"outputs":{"files":["dist/**"]}}}}
+{"name":"packages/a","dir":"packages/a","task":"build","config":{"exec":{"command":"bun build src/index.ts --outdir dist"},"inputs":{"files":["src/**"]},"outputs": {"files":["dist/**"]}, "cache": true}}
 ```
 
 `--format json` prints the object. On this repository that is 13

@@ -33,7 +33,7 @@ it('a brace alternative ending in ** folds files below its first directory', asy
         tasks: {
           build: {
             exec: { command: 'true' },
-            inputs: { files: ['{src/**,lib/**}'] }, cache: { outputs: { files: [] } },
+            inputs: { files: ['{src/**,lib/**}'] }, outputs: { files: [] }, cache: true,
           },
         },
       }
@@ -68,7 +68,7 @@ it('a brace of directories or ./ spellings keys what each alternative names', as
           tasks: {
             build: {
               exec: { command: 'true' },
-              inputs: { files: [${JSON.stringify(glob)}] }, cache: { outputs: { files: [] } },
+              inputs: { files: [${JSON.stringify(glob)}] }, outputs: { files: [] }, cache: true,
             },
           },
         }
@@ -106,7 +106,7 @@ it('a `,` `{` or `}` inside a class in a brace alternative is a member, not a cu
           tasks: {
             build: {
               exec: { command: 'true' },
-              inputs: { files: ${files} }, cache: { outputs: { files: [] } },
+              inputs: { files: ${files} }, outputs: { files: [] }, cache: true,
             },
           },
         }

@@ -24,15 +24,15 @@ beforeAll(async () => {
   await addProject(
     root,
     'a',
-    `const cache = { outputs: { files: [] } }
+    `const outputs = { files: [] }
 const inputs = { files: ['package.json'] }
 export default { tasks: {
-  build: { exec: { command: 'echo built-ok' }, inputs, cache },
+  build: { exec: { command: 'echo built-ok' }, inputs, outputs, cache: true },
   plain: { exec: { command: 'echo plain' } },
   bad: { exec: { command: 'echo boom; exit 3' } },
-  quiet: { exec: { command: 'true' }, inputs, cache },
+  quiet: { exec: { command: 'true' }, inputs, outputs, cache: true },
   mute: { exec: { command: 'exit 4' } },
-  unsaved: { exec: { command: 'echo unsaved' }, inputs, cache },
+  unsaved: { exec: { command: 'echo unsaved' }, inputs, outputs, cache: true },
 } }
 `,
   )
@@ -212,7 +212,7 @@ it('a task named with a colon saves, restores and reads back its log', async () 
   const dir = await addProject(
     root,
     'c',
-    `export default { tasks: { 'build:prod': { exec: { command: 'echo r >> runs.txt && mkdir -p dist && echo p > dist/o && echo prod-ok' }, inputs: { files: ['package.json'] }, cache: { outputs: { files: ['dist/**'] } } } } }\n`,
+    `export default { tasks: { 'build:prod': { exec: { command: 'echo r >> runs.txt && mkdir -p dist && echo p > dist/o && echo prod-ok' }, inputs: { files: ['package.json'] }, outputs: { files: ['dist/**'] }, cache: true } } }\n`,
   )
   expect(vx('run', 'c#build:prod').code).toBe(0)
   await rm(path.join(dir, 'dist'), { recursive: true })

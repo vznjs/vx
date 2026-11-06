@@ -35,6 +35,14 @@ const AMBIENT = ['@vzn/vx-reapi']
  *  in the note that introduced it. Each excuse must still be needed. */
 const RECORDS: Record<string, string> = {
   'releases/vx-0-0-325.md-0': '`run.affectedBase`, since the `VX_AFFECTED_BASE` variable only',
+  'releases/vx-0-0-199.md-2': '`cache: { outputs }`, since `outputs` beside `cache: true`',
+  'releases/vx-0-0-21.md-0': '`cache: { outputs }`, since `outputs` beside `cache: true`',
+  'releases/vx-0-0-21.md-2': '`cache: { outputs }`, since `outputs` beside `cache: true`',
+  'releases/vx-0-0-636.md-0': '`cache: { outputs }`, since `outputs` beside `cache: true`',
+  'releases/vx-0-0-637.md-0': '`cache: { outputs }`, since `outputs` beside `cache: true`',
+  'releases/vx-0-0-638.md-1': '`cache: { outputs }`, since `outputs` beside `cache: true`',
+  'releases/vx-0-0-639.md-0': '`cache: { outputs }`, since `outputs` beside `cache: true`',
+  'releases/vx-0-0-640.md-0': '`cache: { outputs }`, since `outputs` beside `cache: true`',
 }
 
 async function pages(dir: string): Promise<string[]> {

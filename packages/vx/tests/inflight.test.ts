@@ -46,7 +46,7 @@ async function makeWorkspace(opts?: { withDep?: boolean }): Promise<string> {
       '    slow: {',
       "      exec: { command: 'sleep 0.5 && printf x >> counter.txt && printf done > out.txt' },",
       ...(opts?.withDep ? ["      dependsOn: ['pre'],"] : []),
-      "      inputs: { files: ['input.txt'] }, cache: { outputs: { files: ['out.txt'] } },",
+      "      inputs: { files: ['input.txt'] }, outputs: { files: ['out.txt'] }, cache: true,",
       '    },',
       '  },',
       '}',
@@ -87,7 +87,7 @@ async function makeCrossProject(): Promise<string> {
         '  tasks: {',
         '    build: {',
         "      exec: { command: 'sleep 0.5 && printf L >> ../../counter.txt && printf lib > out.txt' },",
-        "      inputs: { files: ['src.txt'] }, cache: { outputs: { files: ['out.txt'] } },",
+        "      inputs: { files: ['src.txt'] }, outputs: { files: ['out.txt'] }, cache: true,",
         '    },',
         '  },',
         '}',
@@ -102,7 +102,7 @@ async function makeCrossProject(): Promise<string> {
         '    build: {',
         "      exec: { command: 'printf A >> ../../counter.txt && printf app > out.txt' },",
         "      dependsOn: ['lib#build'],",
-        "      inputs: { files: ['src.txt'], tasks: [] }, cache: { outputs: { files: ['out.txt'] } },",
+        "      inputs: { files: ['src.txt'], tasks: [] }, outputs: { files: ['out.txt'] }, cache: true,",
         '    },',
         '  },',
         '}',
@@ -224,7 +224,7 @@ describe('in-flight dedup', () => {
   tasks: {
     meet: {
       exec: { command: 'printf s >> starts.txt; i=0; until [ $(wc -c < starts.txt) -ge 2 ]; do i=$((i+1)); [ $i -gt 200 ] && exit 1; sleep 0.05; done' },
-      inputs: { files: ['input.txt'] }, cache: { outputs: { files: [] } },
+      inputs: { files: ['input.txt'] }, outputs: { files: [] }, cache: true,
     },
   },
 }
@@ -252,7 +252,7 @@ describe('in-flight dedup', () => {
   tasks: {
     flaky: {
       exec: { command: 'printf s >> log.txt; sleep 1; printf e >> log.txt; exit 1' },
-      inputs: { files: ['input.txt'] }, cache: { outputs: { files: [] } },
+      inputs: { files: ['input.txt'] }, outputs: { files: [] }, cache: true,
     },
   },
 }

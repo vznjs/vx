@@ -119,7 +119,7 @@ const CASES = [
   { name: 'yarn', file: 'yarn.lock', text: YARN_CLASSIC, label: 'yarn() classic' },
 ] as const
 
-const BUILD = `export default { tasks: { build: { dependsOn: ['^build'], exec: { command: 'echo built' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } } }\n`
+const BUILD = `export default { tasks: { build: { dependsOn: ['^build'], exec: { command: 'echo built' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true } } }\n`
 
 function silent(): Logger {
   return {

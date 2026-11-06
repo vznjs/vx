@@ -39,11 +39,11 @@ it(
     const app = await addProject(root, 'app', {
       config: `export default { tasks: {
         gen: { exec: { command: 'touch started; while [ ! -f go ]; do sleep 0.01; done; mkdir -p dist && cp src/a.txt dist/gen.txt' },
-               inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } } },
+               inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true },
         use: { dependsOn: ['gen'], exec: { command: 'mkdir -p out && cat dist/gen.txt > out/use.txt' },
-               inputs: { files: ['lib/**'] }, cache: { outputs: { files: ['out/**'] } } },
+               inputs: { files: ['lib/**'] }, outputs: { files: ['out/**'] }, cache: true },
         pack: { dependsOn: ['use'], exec: { command: 'mkdir -p pkg && cat out/use.txt > pkg/p.txt' },
-                inputs: { files: ['lib/**'] }, cache: { outputs: { files: ['pkg/**'] } } } } }`,
+                inputs: { files: ['lib/**'] }, outputs: { files: ['pkg/**'] }, cache: true } } }`,
       files: {
         'src/a.txt': 'one',
         'lib/x.txt': 'x',
@@ -91,15 +91,15 @@ it(
     await addProject(root, 'lib', {
       config: `export default { tasks: {
         fmt: { exec: { command: 'while [ ! -f ../app/started ]; do sleep 0.01; done; echo more >> src/a.txt; touch ../app/go' },
-               inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } } }`,
+               inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true } } }`,
       files: { 'src/a.txt': 'one\n' },
     })
     await addProject(root, 'app', {
       config: `export default { tasks: {
         read: { exec: { command: 'touch started; while [ ! -f go ]; do sleep 0.01; done; cat ../lib/src/a.txt > out.txt' },
                 inputs: { files: ['src/**'], workspaceFiles: ['packages/lib/src/a.txt'] },
-                cache: { 
-                         outputs: { files: ['out.txt'] } } } } }`,
+                outputs: { files: ['out.txt'] },
+                cache: true } } }`,
       files: { 'src/x.txt': 'x', '.gitignore': 'out.txt\ngo\nstarted\n' },
     })
     gitIn(root)('add', '-A')
@@ -115,7 +115,7 @@ it(
     })
     expect(r.ok).toBe(true)
     expect(lines.filter((l) => l.startsWith('[vx] app#read:'))).toEqual([
-      '[vx] app#read: `packages/lib/src/a.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs',
+      '[vx] app#read: `packages/lib/src/a.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in outputs',
     ])
     // The old bytes back: no entry holds the new ones under their key.
     gitIn(root)('checkout', '--', 'packages/lib/src/a.txt')

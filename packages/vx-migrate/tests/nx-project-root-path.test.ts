@@ -49,8 +49,7 @@ async function mapped(target: Record<string, unknown>): Promise<unknown> {
 
 it('an output of the project dir is its whole tree', async () => {
   const tree = await mapped({ outputs: ['{projectRoot}/**'] })
-  const files = (tree as { task: { cache: { outputs: { files: string[] } } } }).task.cache.outputs
-    .files
+  const files = (tree as { task: { outputs: { files: string[] }; cache: true } }).task.outputs.files
   expect(files.slice(0, 2)).toEqual(['**', '!package.json'])
   for (const o of ['{projectRoot}', '{projectRoot}/', 'packages/a', 'packages/a/'])
     expect(await mapped({ outputs: [o] })).toEqual(tree)

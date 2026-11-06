@@ -40,7 +40,7 @@ describe('migrateTurbo: a committed file under an output', () => {
     ]
     const t = (await migrateTurbo(root, metas)).projects[0]!.tasks[0]!
     expect({
-      outputs: (t.task as { cache: { outputs: unknown } }).cache.outputs,
+      outputs: (t.task as { outputs: unknown; cache: true }).outputs,
       todos: t.todos,
     }).toEqual({
       outputs: { files: ['dist/**'] },

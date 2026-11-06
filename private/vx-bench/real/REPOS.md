@@ -89,7 +89,7 @@ runs it. 83 tasks; wide set `build build:plugin test` = 157. 24k
 tracked files.
 
 - `.vx/workspace.mjs`: `turbo()` plus a ten-line project-stage plugin
-  that sets `cache.outputs.files` of `build` and `build:plugin` to
+  that sets `outputs.files` of `build` and `build:plugin` to
   `dist/**` and `.medusa/**`, with `inputs.files: ['**/*']` and
   `inputs.workspaceFiles: ['turbo.json']` (the mapped inputs). The
   repo's turbo.json declares the outputs as `*/**` and `.medusa/**`

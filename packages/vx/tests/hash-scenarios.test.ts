@@ -20,7 +20,7 @@ afterEach(async () => {
 })
 
 const task = (inputs: string) =>
-  `{ exec: { command: 'true' }, inputs: ${inputs}, cache: { outputs: { files: [] } } }`
+  `{ exec: { command: 'true' }, inputs: ${inputs}, outputs: { files: [] }, cache: true }`
 
 /** A workspace with project `lib` (tasks `t`, …) and `files` beside it, committed. */
 async function workspace(
@@ -291,7 +291,7 @@ describe('selection (Turbo task-hash)', () => {
       const ws = await makeWorkspace({ prefix: 'vx-hash-scen-', edges: { lib: ['dep'] } })
       made.push(ws)
       await addProject(ws, 'lib', {
-        config: `export default { tasks: { t: { exec: { command: 'true' }, dependsOn: ['^t'], inputs: { files: ['src/**'], workspaceFiles: ['README.md'] }, cache: { outputs: { files: [] } } } } }\n`,
+        config: `export default { tasks: { t: { exec: { command: 'true' }, dependsOn: ['^t'], inputs: { files: ['src/**'], workspaceFiles: ['README.md'] }, outputs: { files: [] }, cache: true } } }\n`,
         files: { 'src/a': 'a\n' },
       })
       await addProject(ws, 'dep', { config: 'export default { tasks: {} }\n' })
@@ -429,7 +429,7 @@ describe('refused at vx lock (Turbo, Nx)', () => {
   const refusal = (inputs: InputsConfig): string => {
     try {
       validateProjectConfig(
-        { tasks: { t: { exec: { command: 'x' }, inputs, cache: { outputs: { files: [] } } } } },
+        { tasks: { t: { exec: { command: 'x' }, inputs, outputs: { files: [] }, cache: true } } },
         'vx.config.ts',
       )
     } catch (err) {

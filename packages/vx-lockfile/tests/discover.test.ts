@@ -702,7 +702,7 @@ function silent(): Logger {
 
 describe('vx run with bun() declared', () => {
   const BUILD = (inputs: string) =>
-    `export default { tasks: { build: { dependsOn: ['^build'], exec: { command: 'echo built' }, inputs: { files: ${inputs} }, cache: { outputs: { files: [] } } }, lint: { exec: { command: 'echo lint' }, inputs: { files: ['src/**'] } } } }\n`
+    `export default { tasks: { build: { dependsOn: ['^build'], exec: { command: 'echo built' }, inputs: { files: ${inputs} }, outputs: { files: [] }, cache: true }, lint: { exec: { command: 'echo lint' }, inputs: { files: ['src/**'] } } } }\n`
 
   beforeEach(async () => {
     await writeFile(
@@ -819,7 +819,7 @@ describe('vx run with bun() declared', () => {
   it('a task rewriting its own package.json identically still hits (tsdown), as `mutable` allows', async () => {
     await writeFile(
       path.join(root, 'packages', 'b', 'vx.config.mjs'),
-      `export default { tasks: { build: { exec: { command: 'c=$(cat package.json); printf "%s" "$c" > package.json' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] }, inputStability: { strategy: 'mutable' } } } } }\n`,
+      `export default { tasks: { build: { exec: { command: 'c=$(cat package.json); printf "%s" "$c" > package.json' }, inputs: { files: ['src/**'], stability: { strategy: 'mutable' } }, outputs: { files: [] }, cache: true } } }\n`,
     )
     const once = () =>
       run({ cwd: root, tasks: ['b#build'], log: silent(), handleSignals: false }).then((r) =>
@@ -845,7 +845,7 @@ describe('a package.json edit re-keys a cached task only through the plugin', ()
       await writeFile(path.join(dir, 'src', 'index.js'), `// ${name}\n`)
       await writeFile(
         path.join(dir, 'vx.config.mjs'),
-        `export default { tasks: { build: { exec: { command: 'echo built' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } } }\n`,
+        `export default { tasks: { build: { exec: { command: 'echo built' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true } } }\n`,
       )
     }
     await writeFile(path.join(root, 'bun.lock'), BUN)

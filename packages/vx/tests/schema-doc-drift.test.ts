@@ -145,7 +145,7 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
     '<level> must be an object (fields: <fields>), not an array',
     () =>
       validated({
-        tasks: { b: { ...ok, inputs: { files: [] }, cache: { outputs: ['dist/**'] } } },
+        tasks: { b: { ...ok, inputs: { files: [] }, outputs: ['dist/**'], cache: true } },
       }),
   ],
   ['tasks.<name> must be an object', () => validated({ tasks: { b: 'not-an-object' } })],
@@ -181,7 +181,8 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
           b: {
             exec: { command: 'x', persistent: {} },
             inputs: { files: [] },
-            cache: { outputs: { files: [] } },
+            outputs: { files: [] },
+            cache: true,
           },
         },
       }),
@@ -198,7 +199,8 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
           b: {
             exec: { command: 'x', interactive: true },
             inputs: { files: [] },
-            cache: { outputs: { files: [] } },
+            outputs: { files: [] },
+            cache: true,
           },
         },
       }),
@@ -225,7 +227,8 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
           b: {
             dependsOn: ['o'],
             inputs: { files: [] },
-            cache: { outputs: { files: [] } },
+            outputs: { files: [] },
+            cache: true,
           },
         },
       }),
@@ -237,17 +240,17 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
   [
     'inputs must be an object',
     () =>
-      validated({ tasks: { b: { ...ok, inputs: 'src/**', cache: { outputs: { files: [] } } } } }),
+      validated({ tasks: { b: { ...ok, inputs: 'src/**', outputs: { files: [] }, cache: true } } }),
   ],
   [
     "cache needs inputs — the key is the task's inputs",
-    () => validated({ tasks: { b: { ...ok, cache: { outputs: { files: [] } } } } }),
+    () => validated({ tasks: { b: { ...ok, outputs: { files: [] }, cache: true } } }),
   ],
   [
     'inputs.files must be an array',
     () =>
       validated({
-        tasks: { b: { ...ok, inputs: { files: 'src/**' }, cache: { outputs: { files: [] } } } },
+        tasks: { b: { ...ok, inputs: { files: 'src/**' }, outputs: { files: [] }, cache: true } },
       }),
   ],
   [
@@ -255,7 +258,7 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
     () =>
       validated({
         tasks: {
-          b: { ...ok, inputs: { files: [], runtime: [''] }, cache: { outputs: { files: [] } } },
+          b: { ...ok, inputs: { files: [], runtime: [''] }, outputs: { files: [] }, cache: true },
         },
       }),
   ],
@@ -267,7 +270,8 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
           b: {
             ...ok,
             inputs: { files: [], workspaceRuntime: [42] },
-            cache: { outputs: { files: [] } },
+            outputs: { files: [] },
+            cache: true,
           },
         },
       }),
@@ -277,7 +281,7 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
     () =>
       validated({
         tasks: {
-          b: { ...ok, inputs: { files: [], tasks: '^build' }, cache: { outputs: { files: [] } } },
+          b: { ...ok, inputs: { files: [], tasks: '^build' }, outputs: { files: [] }, cache: true },
         },
       }),
   ],
@@ -292,7 +296,8 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
             ...ok,
             dependsOn: ['build'],
             inputs: { files: [], tasks: ['buidl'] },
-            cache: { outputs: { files: [] } },
+            outputs: { files: [] },
+            cache: true,
           },
         },
       }),
@@ -307,69 +312,81 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
             ...ok,
             dependsOn: ['build'],
             inputs: { files: [], tasks: ['^'] },
-            cache: { outputs: { files: [] } },
+            outputs: { files: [] },
+            cache: true,
           },
         },
       }),
   ],
   [
-    'cache.outputs must be an object',
-    () => validated({ tasks: { b: { ...ok, inputs: { files: [] }, cache: { outputs: 'dist' } } } }),
+    'outputs must be an object',
+    () =>
+      validated({ tasks: { b: { ...ok, inputs: { files: [] }, outputs: 'dist', cache: true } } }),
   ],
   [
-    'cache.outputs is required when cache is set',
+    'cache must be true or false',
     () => validated({ tasks: { b: { ...ok, inputs: { files: [] }, cache: {} } } }),
   ],
   [
-    'cache.inputStability must be an object',
+    'cache needs outputs — what the task produces, outputs: { files: [...] } ([] for none)',
+    () => validated({ tasks: { b: { ...ok, inputs: { files: [] }, cache: true } } }),
+  ],
+  [
+    'outputs needs exec — a task with no command writes nothing',
+    () => validated({ tasks: { b: { dependsOn: ['a'], outputs: { files: [] } } } }),
+  ],
+  [
+    'inputs.stability needs exec — a task with no command runs nothing that could write its inputs',
+    () =>
+      validated({ tasks: { b: { inputs: { files: [], stability: { strategy: 'mutable' } } } } }),
+  ],
+  [
+    'inputs.stability must be an object',
     () =>
       validated({
         tasks: {
           b: {
             ...ok,
-            inputs: { files: [] },
-            cache: { outputs: { files: [] }, inputStability: 'mutable' },
+            inputs: { files: [], stability: 'mutable' },
+            outputs: { files: [] },
+            cache: true,
           },
         },
       }),
   ],
   [
-    "cache.inputStability.strategy must be 'immutable', 'mutable' or 'unchecked'",
+    "inputs.stability.strategy must be 'immutable', 'mutable' or 'unchecked'",
     () =>
       validated({
         tasks: {
           b: {
             ...ok,
-            inputs: { files: [] },
-            cache: {
-              outputs: { files: [] },
-              inputStability: { strategy: 'content' },
-            },
+            inputs: { files: [], stability: { strategy: 'content' } },
+            outputs: { files: [] },
+            cache: true,
           },
         },
       }),
   ],
   [
-    "cache.inputStability.severity must be 'warn' or 'error'",
+    "inputs.stability.severity must be 'warn' or 'error'",
     () =>
       validated({
         tasks: {
           b: {
             ...ok,
-            inputs: { files: [] },
-            cache: {
-              outputs: { files: [] },
-              inputStability: { severity: 'fail' },
-            },
+            inputs: { files: [], stability: { severity: 'fail' } },
+            outputs: { files: [] },
+            cache: true,
           },
         },
       }),
   ],
   [
-    'cache.outputs.files must be an array',
+    'outputs.files must be an array',
     () =>
       validated({
-        tasks: { b: { ...ok, inputs: { files: [] }, cache: { outputs: { files: {} } } } },
+        tasks: { b: { ...ok, inputs: { files: [] }, outputs: { files: {} }, cache: true } },
       }),
   ],
   [
@@ -380,7 +397,7 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
     () =>
       validated({
         tasks: {
-          b: { ...ok, inputs: { files: ['!**/*.spec.ts'] }, cache: { outputs: { files: [] } } },
+          b: { ...ok, inputs: { files: ['!**/*.spec.ts'] }, outputs: { files: [] }, cache: true },
         },
       }),
   ],
@@ -407,27 +424,29 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
           b: {
             ...ok,
             inputs: { files: ['**/*', '!!vendor/**'] },
-            cache: { outputs: { files: [] } },
+            outputs: { files: [] },
+            cache: true,
           },
         },
       }),
   ],
   [
-    'cache.outputs.files: "<glob>" covers the project\'s own <file>',
+    'outputs.files: "<glob>" covers the project\'s own <file>',
     () =>
       validated({
-        tasks: { b: { ...ok, inputs: { files: [] }, cache: { outputs: { files: ['**'] } } } },
+        tasks: { b: { ...ok, inputs: { files: [] }, outputs: { files: ['**'] }, cache: true } },
       }),
   ],
   [
-    'cache.outputs.files: "<glob>" is under workspace-outputs/',
+    'outputs.files: "<glob>" is under workspace-outputs/',
     () =>
       validated({
         tasks: {
           b: {
             ...ok,
             inputs: { files: [] },
-            cache: { outputs: { files: ['workspace-outputs/**'] } },
+            outputs: { files: ['workspace-outputs/**'] },
+            cache: true,
           },
         },
       }),
@@ -440,28 +459,32 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
           b: {
             ...ok,
             inputs: { files: ['src/**', '!src/gen/**', 'src/gen/keep.ts'] },
-            cache: {
-              outputs: { files: [] },
-            },
+            outputs: { files: [] },
+            cache: true,
           },
         },
       }),
   ],
   [
-    'cache.outputs.files: every entry is a negation, which selects NOTHING',
+    'outputs.files: every entry is a negation, which selects NOTHING',
     () =>
       validated({
         tasks: {
-          b: { ...ok, inputs: { files: [] }, cache: { outputs: { files: ['!dist/x'] } } },
+          b: { ...ok, inputs: { files: [] }, outputs: { files: ['!dist/x'] }, cache: true },
         },
       }),
   ],
   [
-    'cache.outputs.files: "<file>" is taken back by "!<glob>"',
+    'outputs.files: "<file>" is taken back by "!<glob>"',
     () =>
       validated({
         tasks: {
-          b: { ...ok, inputs: { files: [] }, cache: { outputs: { files: ['out/f', '!out/**'] } } },
+          b: {
+            ...ok,
+            inputs: { files: [] },
+            outputs: { files: ['out/f', '!out/**'] },
+            cache: true,
+          },
         },
       }),
   ],
@@ -677,7 +700,7 @@ describe('docs/schema.md unknown-field rejection', () => {
     // The value of rejecting unknown keys is that the message is actionable —
     // a bare "unknown field" leaves a user guessing which spelling was right.
     const message = validated({
-      tasks: { b: { ...ok, inputs: { files: [], workspaceFile: [] }, cache: { outputs: {} } } },
+      tasks: { b: { ...ok, inputs: { files: [], workspaceFile: [] }, outputs: {}, cache: true } },
     })
     expect(message).toContain('workspaceFile')
     expect(message).toContain('workspaceFiles')
@@ -689,7 +712,9 @@ describe('docs/schema.md unknown-field rejection', () => {
     const message = await workspaceConfig('{ plugin: [{ name: "p", setup() {} }] }')()
     expect(message).toContain('has unknown field "plugin"')
     expect(message).toContain('did you mean plugins?')
-    expect(message).toContain('(allowed: baseBranch, cache, lock, plugins, run, watch)')
+    expect(message).toContain(
+      '(allowed: baseBranch, cache, inputs, lock, outputs, plugins, run, watch)',
+    )
   })
 })
 

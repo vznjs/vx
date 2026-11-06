@@ -1,15 +1,12 @@
-// wireit's `files` / `output` and include-style spellings in a cache or
-// inputs block name vx's home (D-118).
+// wireit's `files` / `output` / `dependencies` on a task, and include-style
+// spellings in an inputs or outputs block, name vx's home (D-118).
 import { expect, it } from 'bun:test'
 import { validateProjectConfig } from '../src/workspace/config-schema.js'
 
-const hint = (
-  cache: Record<string, unknown>,
-  inputs: Record<string, unknown> = { files: ['src/**'] },
-): string | undefined => {
+const hint = (task: Record<string, unknown>): string | undefined => {
   try {
     validateProjectConfig(
-      { tasks: { t: { exec: { command: 'x' }, inputs, cache } } } as never,
+      { tasks: { t: { exec: { command: 'x' }, inputs: { files: ['src/**'] }, ...task } } } as never,
       'vx.config.ts',
     )
   } catch (err) {
@@ -17,32 +14,29 @@ const hint = (
   }
   return undefined
 }
-const ok = { outputs: { files: [] } }
+const ok = { outputs: { files: [] }, cache: true }
 
-it("names vx's home for a cache key another tool spells", () => {
+it("names vx's home for a task key another tool spells", () => {
   expect({
     files: hint({ ...ok, files: ['src/**'] }),
     output: hint({ ...ok, output: ['dist/**'] }),
     env: hint({ ...ok, env: ['CI'] }),
     dependencies: hint({ ...ok, dependencies: ['build'] }),
-    enabled: hint({ ...ok, enabled: true }),
-    inputGlobs: hint(ok, { files: ['a'], globs: ['b'] }),
-    inputInclude: hint(ok, { include: ['b'] }),
-    inputPatterns: hint(ok, { files: ['a'], patterns: ['b'] }),
-    inputExclude: hint(ok, { files: ['a'], exclude: ['b'] }),
-    inputIgnore: hint(ok, { files: ['a'], ignore: ['b'] }),
+    inputGlobs: hint({ ...ok, inputs: { files: ['a'], globs: ['b'] } }),
+    inputInclude: hint({ ...ok, inputs: { include: ['b'] } }),
+    inputPatterns: hint({ ...ok, inputs: { files: ['a'], patterns: ['b'] } }),
+    inputExclude: hint({ ...ok, inputs: { files: ['a'], exclude: ['b'] } }),
+    inputIgnore: hint({ ...ok, inputs: { files: ['a'], ignore: ['b'] } }),
     outputGlobs: hint({ ...ok, outputs: { files: [], globs: ['b'] } }),
     outputInclude: hint({ ...ok, outputs: { include: ['b'] } }),
     outputExclude: hint({ ...ok, outputs: { files: ['d/**'], exclude: ['b'] } }),
     // CONTROL: a typo still gets the nearest spelling.
     typo: hint({ ...ok, outputz: {} }),
   }).toEqual({
-    files: "vx spells it the task's `inputs.files`",
+    files: 'vx spells it `inputs.files`',
     output: 'vx spells it `outputs.files`',
-    env: "vx spells it the task's `inputs.env`",
-    dependencies: "vx spells it the task's `dependsOn` (an upstream's key goes into this one)",
-    enabled:
-      'vx spells it no field: a task with a `cache` block caches, one without runs every time',
+    env: 'vx spells it `inputs.env` (to key the task on a variable) or `exec.env` (to pass one)',
+    dependencies: "vx spells it `dependsOn` (an upstream's key goes into this one)",
     inputGlobs: 'vx spells it `files`',
     inputInclude: 'vx spells it `files`',
     inputPatterns: 'vx spells it `files`',

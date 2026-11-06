@@ -1,5 +1,5 @@
 // An absolute link is saved and restored only into one of the task's
-// `cache.outputs.mount` paths: there the dependant's sandbox lays the tree,
+// `outputs.mount` paths: there the dependant's sandbox lays the tree,
 // so the link means the same on every machine. Anywhere else it names this
 // machine, and an artifact carrying one is refused at restore, nothing
 // written.
@@ -54,7 +54,7 @@ describe('absolute links into a declared mount', () => {
   it('a restore that declares no such mount refuses it, writing nothing', async () => {
     const bytes = await pack('/nix/store/abc-node/bin/node', ['/nix/store'])
     await expect(restore(bytes)).rejects.toThrow(ArchiveSecurityError)
-    await expect(restore(bytes, ['/opt/tools'])).rejects.toThrow(/no cache.outputs.mount declares/)
+    await expect(restore(bytes, ['/opt/tools'])).rejects.toThrow(/no outputs.mount declares/)
   })
 
   it('a save refuses one outside its mounts', async () => {

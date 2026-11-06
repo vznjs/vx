@@ -8,7 +8,10 @@ import type { TaskNode } from '../src/graph/task-graph.js'
 
 function outcome(id: string, status: TaskOutcome['status'], cache?: object): TaskOutcome {
   return {
-    node: { id, config: { exec: { command: 'noop' }, ...(cache ? { cache } : {}) } } as TaskNode,
+    node: {
+      id,
+      config: { exec: { command: 'noop' }, ...(cache ? { cache: true } : {}) },
+    } as TaskNode,
     status,
     exitCode: status === 'failed' ? 1 : 0,
     durationMs: 100,

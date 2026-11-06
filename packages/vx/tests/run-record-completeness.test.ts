@@ -38,7 +38,7 @@ import {
 } from '../src/history/index.js'
 import { run } from './helpers/orchestrator.js'
 
-const TIMEOUT = 20_000
+const TIMEOUT = 30_000
 
 interface Fixture {
   root: string

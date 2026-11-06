@@ -7,7 +7,7 @@ import { existsSync } from 'node:fs'
 import { lstat, mkdir, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
-import type { CacheOutputs, ExecConfig } from '../config.js'
+import type { TaskOutputs, ExecConfig } from '../config.js'
 import {
   bindableWrites,
   initSandbox,
@@ -334,7 +334,7 @@ export async function dependencyReads(
 ): Promise<string[]> {
   const reads = new Set<string>()
   for (const dep of deps) {
-    const outputs = dep.config.cache?.outputs
+    const outputs = dep.config.outputs
     if (outputs === undefined) continue
     const globs = [
       ...outputs.files.map((g) => [dep.projectDir, g] as const),
@@ -355,13 +355,13 @@ export async function dependencyReads(
   return [...reads]
 }
 
-/** A task's own `cache.outputs.mount` paths: where an absolute link of its outputs may point. */
-export function mountPaths(outputs: CacheOutputs | undefined): string[] {
+/** A task's own `outputs.mount` paths: where an absolute link of its outputs may point. */
+export function mountPaths(outputs: TaskOutputs | undefined): string[] {
   return Object.keys(outputs?.mount ?? {}).map((t) => t.replace(/\/+$/, ''))
 }
 
 /**
- * The `cache.outputs.mount`s of the tasks a task's key folds
+ * The `outputs.mount`s of the tasks a task's key folds
  * (`readableDeps`), as its sandbox lays them out: each path filled from the
  * dependency's output directory. Refused for a task outside the Linux
  * sandbox, which has no way to put them there.
@@ -373,14 +373,14 @@ export function dependencyMounts(
 ): SandboxMount[] {
   const mounts: SandboxMount[] = []
   for (const dep of deps) {
-    for (const [target, source] of Object.entries(dep.config.cache?.outputs.mount ?? {})) {
+    for (const [target, source] of Object.entries(dep.config.outputs?.mount ?? {})) {
       mounts.push({ target: target.replace(/\/+$/, ''), source: path.join(dep.projectDir, source) })
     }
   }
   if (mounts.length > 0 && !(sandboxed && process.platform === 'linux')) {
-    const named = deps.find((d) => d.config.cache?.outputs.mount !== undefined)!
+    const named = deps.find((d) => d.config.outputs?.mount !== undefined)!
     throw new UserError(
-      `${node.id} depends on ${named.id}, whose cache.outputs.mount puts ${mounts[0]!.target} in ` +
+      `${node.id} depends on ${named.id}, whose outputs.mount puts ${mounts[0]!.target} in ` +
         `its dependants' view, and only the Linux exec.sandbox can lay it there — run ${node.id} ` +
         `in exec.sandbox on Linux`,
     )
@@ -854,13 +854,13 @@ export type WriteReach = 'none' | 'project' | 'workspace'
  * names — the files whose run-start facts (the git snapshot, its index
  * OIDs) a later key must not reuse (item 743).
  *
- * A cached task declares its outputs and is held to them. A task with no
- * `cache` block can declare none, so it may have written anywhere
- * `commandWriteReach` says. An unsandboxed write into another project is
+ * A cached task declares its outputs and is held to them: its save checks
+ * them. A task with no `cache: true` is held to nothing, even when it
+ * declares outputs, so it may have written anywhere `commandWriteReach` says. An unsandboxed write into another project is
  * out of contract, as it is for a cached task.
  */
 export function undeclaredWriteReach(node: TaskNode, workspaceRoot: string): WriteReach {
-  if (node.config.cache !== undefined) return 'none'
+  if (node.config.cache === true) return 'none'
   return commandWriteReach(node, workspaceRoot)
 }
 

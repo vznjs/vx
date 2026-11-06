@@ -27,7 +27,7 @@ export default defineProject({
           ignore: { write: ['*.bun-build'] },
         },
       },
-      inputs: { files: ['src/**', 'index.html'] }, cache: { outputs: { files: ['dist/**'] } },
+      inputs: { files: ['src/**', 'index.html'] }, outputs: { files: ['dist/**'] }, cache: true,
     },
   },
 })
@@ -91,7 +91,7 @@ build: {
     command: 'mkdir -p dist && cat tsconfig.json src/a.ts > dist/out.js',
     sandbox: { allow: { read: ['src/'] } },
   },
-  inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+  inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
 },
 ```
 
@@ -191,7 +191,7 @@ moves with them.
 build: {
   dependsOn: ['tools#node'],
   exec: {
-    command: 'node build.js', // tools#node declares cache.outputs.bin: 'out/bin'
+    command: 'node build.js', // tools#node declares outputs.bin: 'out/bin'
     sandbox: { hermetic: true, allow: { read: ['.'] } },
   },
 },

@@ -19,7 +19,7 @@ import { noticed } from './helpers/notice.js'
 
 // `vx lock`, then the verb: show and info read the lock.
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
-const TIMEOUT = 20_000
+const TIMEOUT = 30_000
 
 const APP_CONFIG = `
   export default {
@@ -29,9 +29,8 @@ const APP_CONFIG = `
         exec: { command: 'echo build' },
         dependsOn: ['^build'],
         inputs: { files: ['src/**'], env: ['NODE_ENV'] },
-        cache: {
-          outputs: { files: ['dist/**'] },
-        },
+        outputs: { files: ['dist/**'] },
+        cache: true,
       },
       dev: {
         exec: {
@@ -49,9 +48,8 @@ const APP_CONFIG = `
           remote: 'only',
         },
         inputs: { files: ['src/**/*.ts'], workspaceFiles: ['tsconfig.base.json'], runtime: ['node -v'] },
-        cache: {
-          outputs: { files: [] },
-        },
+        outputs: { files: [] },
+        cache: true,
       },
     },
   }
@@ -219,9 +217,8 @@ describe('vx show (e2e)', () => {
         exec: { command: 'echo build' },
         dependsOn: ['^build'],
         inputs: { files: ['src/**'], env: ['NODE_ENV'] },
-        cache: {
-          outputs: { files: ['dist/**'] },
-        },
+        outputs: { files: ['dist/**'] },
+        cache: true,
       })
     },
     TIMEOUT,

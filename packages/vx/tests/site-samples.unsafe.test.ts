@@ -359,7 +359,7 @@ describe('the flaky-tasks post shows the rows a run prints', () => {
       id,
       projectName,
       taskName,
-      config: { exec: { command: 'noop' }, cache: {} },
+      config: { exec: { command: 'noop' }, cache: true },
     } as TaskNode
     const o: TaskOutcome = {
       node,
@@ -1093,7 +1093,7 @@ describe('the workspace-config guide documents every WorkspaceConfig field', () 
     const decl = /export interface WorkspaceConfig \{([\s\S]*?)\n\}/.exec(src)
     expect(decl).not.toBeNull()
     const fields = [...decl![1]!.matchAll(/^  (\w+)\?:/gm)].map((m) => m[1]!)
-    expect(fields.length).toBe(6)
+    expect(fields.length).toBe(8)
     const page = readFileSync(path.join(DOCS, 'docs', 'workspace.mdx'), 'utf8')
     expect(page).toContain('plugins: [')
     // A row names a setting by its path (`run.timeout`); its group is the field.
@@ -1812,7 +1812,7 @@ describe('the cascade post names every way a key is preliminary', () => {
     )
     const cases: [string, string][] = [
       ['outputs.workspaceFiles', "an upstream's root-anchored `outputs.workspaceFiles`"],
-      ['undeclaredWriteReach', 'an upstream with no `cache` block that may write in the project'],
+      ['undeclaredWriteReach', 'an upstream with no `cache: true` that may write in the project'],
       [
         'commandWriteReach',
         'rewrites its own inputs in place (a formatter) whose key this one does not fold',

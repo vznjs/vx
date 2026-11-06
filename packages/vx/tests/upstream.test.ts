@@ -289,7 +289,7 @@ describe('keyUpstream', () => {
           files: { 'src/index.js': 'export const ui = 1\n' },
           config: `export default { tasks: { build: {
             exec: { command: 'true' },
-            inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+            inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
           } } }`,
         })
         await addProject(fixture.root, '@x/app', {
@@ -298,12 +298,12 @@ describe('keyUpstream', () => {
             gen: {
               exec: { command: 'true' },
               dependsOn: ['^build'],
-              inputs: { files: ['src/**'], tasks: [] }, cache: { outputs: { files: [] } },
+              inputs: { files: ['src/**'], tasks: [] }, outputs: { files: [] }, cache: true,
             },
             test: {
               exec: { command: 'true' },
               dependsOn: ['gen'],
-              inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+              inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
             },
           } }`,
         })
@@ -335,16 +335,17 @@ describe('inputs.tasks through a group', () => {
       await addProject(fixture.root, '@x/a', {
         files: { 'src/a.js': '1\n' },
         config: `const inputs = { files: ['src/**'] }
-          const cache = { outputs: { files: [] } }
+          const outputs = { files: [] }
           export default { tasks: {
-            'build.a': { exec: { command: 'true' }, inputs, cache },
-            'build.b': { exec: { command: 'true' }, inputs, cache },
+            'build.a': { exec: { command: 'true' }, inputs, outputs, cache: true },
+            'build.b': { exec: { command: 'true' }, inputs, outputs, cache: true },
             build: { dependsOn: ['build.*'] },
             test: {
               exec: { command: 'true' },
               dependsOn: ${JSON.stringify(dependsOn)},
               inputs: { ...inputs, tasks: ${JSON.stringify(filter)} },
-              cache,
+              outputs,
+              cache: true,
             },
           } }`,
       })
@@ -395,20 +396,20 @@ describe('inputs.tasks: an exact entry naming no dependency', () => {
     const fixture = await makeWorkspace('vx-filter-cross-', { '@x/a': ['@x/b'] })
     try {
       const inputs = `{ files: ['src/**'] }`
-      const cache = `{ outputs: { files: [] } }`
+      const cache = `outputs: { files: [] }, cache: true`
       await addProject(fixture.root, '@x/b', {
         files: { 'src/b.js': '1\n' },
-        config: `export default { tasks: { build: { exec: { command: 'true' }, inputs: ${inputs}, cache: ${cache} } } }`,
+        config: `export default { tasks: { build: { exec: { command: 'true' }, inputs: ${inputs}, ${cache} } } }`,
       })
       await addProject(fixture.root, '@x/a', {
         files: { 'src/a.js': '1\n' },
         config: `export default { tasks: {
-            build: { exec: { command: 'true' }, inputs: ${inputs}, cache: ${cache} },
+            build: { exec: { command: 'true' }, inputs: ${inputs}, ${cache} },
             test: {
               exec: { command: 'true' },
               dependsOn: ${JSON.stringify(dependsOn)},
               inputs: { files: ['src/**'], tasks: ${JSON.stringify(filter)} },
-              cache: ${cache},
+              ${cache},
             },
           } }`,
       })

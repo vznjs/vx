@@ -14,12 +14,12 @@ import type { Logger } from './logger.js'
 import type { RunContext } from './summary.js'
 
 /**
- * A task no cache answered for: it declares no `cache`, or the run's policy
+ * A task no cache answered for: it has no `cache: true`, or the run's policy
  * read and wrote nothing. Its run is `no-cache`, never a miss, on every
  * surface — `--dry`'s plan, the frame, the footer, the run history.
  */
 export function ranNoCache(o: { node: TaskNode; cacheOff?: boolean }): boolean {
-  return o.node.config.cache === undefined || o.cacheOff === true
+  return o.node.config.cache !== true || o.cacheOff === true
 }
 
 /** Payload of the `run:start` event — mirrors the Logger.runStart hook. */
@@ -281,7 +281,7 @@ export interface OutcomeView {
    * and counting groups as executed tasks drifts from the terminal.
    */
   isGroup?: boolean
-  /** Executed with no `cache` block: never consulted the cache, not a miss. */
+  /** Executed without `cache: true`: never consulted the cache, not a miss. */
   noCache?: boolean
   /** Cache hits only: the exec time the entry was stored with — the work
    *  this hit skipped, as opposed to `durationMs`, the restore it cost. */

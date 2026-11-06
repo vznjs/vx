@@ -575,7 +575,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
         tasks: {
           hello: {
             exec: { command: "echo hello-cli" },
-            inputs: { files: ['**/*'] }, cache: { outputs: { files: [] } },
+            inputs: { files: ['**/*'] }, outputs: { files: [] }, cache: true,
           },
         },
       }`,
@@ -991,7 +991,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
         tasks: {
           hello: {
             exec: { command: "echo hello-cli" },
-            inputs: { files: ['**/*'] }, cache: { outputs: { files: [] } },
+            inputs: { files: ['**/*'] }, outputs: { files: [] }, cache: true,
           },
           all: { dependsOn: ['hello'] },
         },
@@ -1194,7 +1194,7 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
         tasks: {
           hello: {
             exec: { command: "cat src/index.txt" },
-            inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+            inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
           },
         },
       }`,
@@ -1482,9 +1482,8 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
             hello: {
               exec: { command: "cat ../../shared/base.txt" },
               inputs: { files: ['src/**'], workspaceFiles: ['shared/**'] },
-              cache: {
-                outputs: { files: [] },
-              },
+              outputs: { files: [] },
+              cache: true,
             },
           },
         }`,

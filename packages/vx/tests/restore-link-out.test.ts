@@ -60,7 +60,7 @@ describe('restoring into an output directory that links out of the project', () 
             tasks: {
               build: {
                 exec: { command: 'mkdir -p dist && cat src/x.txt > dist/o.txt' },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
               },
             },
           }
@@ -125,7 +125,7 @@ function buildWriting(
         tasks: {
           build: {
             exec: { command: 'mkdir -p ${path.dirname(entry)} && cat src/x.txt > ${entry}' },
-            inputs: { files: ['src/**'] }, cache: { outputs: { files: ['${outputs}'] } },
+            inputs: { files: ['src/**'] }, outputs: { files: ['${outputs}'] }, cache: true,
           },
         },
       }
@@ -261,12 +261,12 @@ describe('restoring through a dangling link inside the project', () => {
             tasks: {
               codegen: {
                 exec: { command: 'cp src/seed.txt generated.txt' },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['generated.txt'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['generated.txt'] }, cache: true,
               },
               build: {
                 dependsOn: ['codegen'],
                 exec: { command: 'mkdir -p dist && cat generated.txt > dist/o.txt' },
-                inputs: { files: ['generated.txt'], tasks: [] }, cache: { outputs: { files: ['dist/**'] } },
+                inputs: { files: ['generated.txt'], tasks: [] }, outputs: { files: ['dist/**'] }, cache: true,
               },
             },
           }

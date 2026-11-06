@@ -64,7 +64,7 @@ describe('an output that covers the project’s own package.json', () => {
   tasks: {
     build: {
       exec: { command: 'b' },
-      inputs: { files: ['src/**'] }, cache: { outputs: { files: [${JSON.stringify(g)}] } },
+      inputs: { files: ['src/**'] }, outputs: { files: [${JSON.stringify(g)}] }, cache: true,
     },
   },
 }
@@ -112,13 +112,11 @@ describe('an output that covers the project’s own package.json', () => {
       persistentTodo: 'PERSIST',
     })
     const t = m.projects[0]!.tasks[0]!
-    expect([t.name, t.task?.['inputs'], t.task?.['cache'], t.todos]).toEqual([
+    expect([t.name, t.task?.['inputs'], t.task?.['outputs'], t.task?.['cache'], t.todos]).toEqual([
       'build',
-      { files: ['**/*'] },
-      {
-        outputs: { files: ['dist/**', '!package.json'] },
-        inputStability: { strategy: 'mutable' },
-      },
+      { files: ['**/*'], stability: { strategy: 'mutable' } },
+      { files: ['dist/**', '!package.json'] },
+      true,
       [],
     ])
   })
@@ -149,14 +147,12 @@ describe('an output that covers the project’s own package.json', () => {
       { cacheable: new Set<string>() },
     )
     const t = m.projects[0]!.tasks.find((x) => x.name === 'build')!
-    const cache = t.task?.['cache'] as { outputs: { files: string[] } }
-    expect(cache.outputs.files).toEqual(['dist', '!package.json'])
+    const outputs = t.task?.['outputs'] as { files: string[] }
+    expect(outputs.files).toEqual(['dist', '!package.json'])
     expect(t.todos).not.toContain(TODO)
     // The loader takes it.
     const file = path.join(a.dir, 'vx.config.mjs')
     await writeFile(file, `export default { tasks: { build: ${JSON.stringify(t.task)} } }\n`)
-    expect((await loadProjectConfig(file)).tasks?.['build']?.cache?.outputs.files).toEqual(
-      cache.outputs.files,
-    )
+    expect((await loadProjectConfig(file)).tasks?.['build']?.outputs?.files).toEqual(outputs.files)
   })
 })

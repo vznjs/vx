@@ -52,7 +52,7 @@ describe('a keyed group in a config', () => {
           test: {
             exec: { command: 'echo ran' },
             dependsOn: ['fixtures'],
-            inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } },
+            inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true,
           },
         } }
       `,

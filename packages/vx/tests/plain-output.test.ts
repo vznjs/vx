@@ -149,7 +149,7 @@ describe('a plain run', () => {
     await addProject(
       root,
       'app',
-      `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['nomatch/**'] }, cache: { outputs: { files: [] } } } } }\n`,
+      `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['nomatch/**'] }, outputs: { files: [] }, cache: true } } }\n`,
     )
   })
   afterAll(async () => {

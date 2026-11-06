@@ -17,7 +17,7 @@ import { loadProjectConfig } from '../src/workspace/project-loader.js'
 
 process.env['VX_TEST_KILL_GRACE'] = '200ms'
 
-const TIMEOUT = 15_000
+const TIMEOUT = 30_000
 
 interface Fixture {
   root: string
@@ -65,7 +65,7 @@ describe('exec.timeout — normal task', () => {
           tasks: {
             build: {
               exec: { command: 'echo $$ > pid.txt && exec sleep 30', timeout: '1s' },
-              inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } },
+              inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true,
             },
           },
         }

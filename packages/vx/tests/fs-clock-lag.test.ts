@@ -73,7 +73,7 @@ const BUILD = `
     tasks: {
       build: {
         exec: { command: 'touch started; while [ ! -f go ]; do sleep 0.01; done; mkdir -p dist; cat src/a.ts > dist/out.js' },
-        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+        inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
       },
     },
   }
@@ -96,7 +96,7 @@ describe('a file system clock behind the process', () => {
       await pending
       // Before the fix: no line, and the entry held `EDITED` under X's key.
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#build: `packages/app/src/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs',
+        '[vx] app#build: `packages/app/src/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in outputs',
       ])
 
       gitIn(root)('checkout', '--', 'packages/app/src/a.ts')

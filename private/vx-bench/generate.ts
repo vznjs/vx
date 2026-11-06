@@ -69,12 +69,12 @@ for (let i = 0; i < count; i++) {
   tasks: {
     build: {
       exec: { command: 'mkdir -p dist && cp src/index.js dist/out.js' },
-      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+      inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
     },
     test: {
       dependsOn: ['build'],
       exec: { command: 'node -e "process.exit(0)"' },
-      inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+      inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
     },
     install: { dependsOn: ['^build'] },
   },

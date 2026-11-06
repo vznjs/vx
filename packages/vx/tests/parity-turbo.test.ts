@@ -233,12 +233,12 @@ describe('Turbo parity — caching (`inputs`, `outputs`, `env`, `cache: false`)'
         'lint: {',
         `env: {
         exec: { command: 'echo mode=$MODE token=$TOKEN', env: { passThrough: ['MODE', 'TOKEN'] } },
-        inputs: { files: ['src/**'], env: ['MODE'] }, cache: { outputs: { files: [] } },
+        inputs: { files: ['src/**'], env: ['MODE'] }, outputs: { files: [] }, cache: true,
       },
       uncached: { exec: { command: "printf 'streamed-%s\\\\n' out" } },
       args: {
         exec: { command: 'echo args' },
-        inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+        inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
       },
       lint: {`,
       ),
@@ -333,7 +333,7 @@ describe('Turbo parity — caching (`inputs`, `outputs`, `env`, `cache: false`)'
   // turborepo#1010: flipping a cached task to `cache: false` replayed the
   // entry it had saved while it was cached.
   it(
-    'a task that loses its `cache` block moves its key and executes instead of replaying the old entry',
+    'a task that loses its `cache: true` moves its key and executes instead of replaying the old entry',
     async () => {
       const own = await makeParityWorkspace('vx-parity-turbo-uncache-')
       try {
@@ -344,7 +344,7 @@ describe('Turbo parity — caching (`inputs`, `outputs`, `env`, `cache: false`)'
 
         const cfg = await readFile(config, 'utf8')
         const lint =
-          "lint: {\n        exec: { command: 'echo lint-lib' },\n        inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },\n      },"
+          "lint: {\n        exec: { command: 'echo lint-lib' },\n        inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,\n      },"
         expect(cfg).toContain(lint)
         await writeFile(config, cfg.replace(lint, "lint: { exec: { command: 'echo lint-lib' } },"))
         const [uncached] = await dry(own, ['lib#lint'])
@@ -613,7 +613,7 @@ describe('Turbo parity — glob characters in paths are names', () => {
     root = await makeWorkspace({ dir: parent, prefix: '[br] (x){y}-', git: false })
     const config = `export default { tasks: { build: {
       exec: { command: 'mkdir -p dist && cat src/*/page.ts > dist/o' },
-      inputs: { files: ['src/\\\\[id\\\\]/**'] }, cache: { outputs: { files: ['dist/**'] } },
+      inputs: { files: ['src/\\\\[id\\\\]/**'] }, outputs: { files: ['dist/**'] }, cache: true,
     } } }`
     dir = await addProject(root, '[c]x', {
       config,

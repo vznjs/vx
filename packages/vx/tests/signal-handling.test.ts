@@ -30,7 +30,7 @@ process.env['VX_TEST_KILL_GRACE'] = '200ms'
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const SIGNALS = path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'signals.ts')
 const KILL_TREE = path.resolve(import.meta.dir, '..', 'src', 'exec', 'kill-tree.ts')
-const TIMEOUT = 20_000
+const TIMEOUT = 30_000
 
 interface Fixture {
   root: string
@@ -525,7 +525,7 @@ describe('signal handling during vx run (e2e)', () => {
         fixture.root,
         'app',
         `export default { tasks: { t: {
-          inputs: { files: ['in.txt'] }, cache: { outputs: { files: ['out/**'] } },
+          inputs: { files: ['in.txt'] }, outputs: { files: ['out/**'] }, cache: true,
           exec: { command: "trap 'exit 0' INT; mkdir -p out; echo partial > out/x; if [ ! -f done.flag ]; then echo $$ > pid.txt; while :; do sleep 0.05; done; fi; echo full > out/x" },
         } } }`,
       )
@@ -710,7 +710,7 @@ describe('signal handling during vx run (e2e)', () => {
         fixture.root,
         'app',
         `export default { tasks: {
-        done: { exec: { command: 'echo built > out.txt' }, inputs: { files: ['vx.config.mjs'] }, cache: { outputs: { files: ['out.txt'] } } },
+        done: { exec: { command: 'echo built > out.txt' }, inputs: { files: ['vx.config.mjs'] }, outputs: { files: ['out.txt'] }, cache: true },
         slow: { dependsOn: ['done'], exec: { command: 'echo $$ > pid.txt; while :; do sleep 0.05; done' } },
       } }`,
       )

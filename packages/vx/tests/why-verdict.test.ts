@@ -17,7 +17,7 @@ const CONFIG = `
     tasks: {
       build: {
         exec: { command: 'cat src/a.txt > out.txt', env: { passThrough: ['MODE'] } },
-        inputs: { files: ['src/**'], env: ['MODE'] }, cache: { outputs: { files: ['out.txt'] } },
+        inputs: { files: ['src/**'], env: ['MODE'] }, outputs: { files: ['out.txt'] }, cache: true,
       },
     },
   }
@@ -138,7 +138,7 @@ describe('vx why names what moved the key', () => {
 // it joined or left the graph.
 describe('vx why advice for an upstream row leads somewhere', () => {
   const LIB = `export default { tasks: {
-    build: { exec: { command: 'cat src.txt > out.txt' }, inputs: { files: ['src.txt'] }, cache: { outputs: { files: ['out.txt'] } } },
+    build: { exec: { command: 'cat src.txt > out.txt' }, inputs: { files: ['src.txt'] }, outputs: { files: ['out.txt'] }, cache: true },
   } }`
   const todo = (out: string): string[] =>
     out
@@ -160,7 +160,7 @@ describe('vx why advice for an upstream row leads somewhere', () => {
           'app',
           `export default { tasks: {
             all: { dependsOn: ['^build'] },
-            pack: { exec: { command: 'cat ../lib/out.txt > packed.txt' }, dependsOn: ['all'], inputs: { files: ['vx.config.mjs'], tasks: ['all'] }, cache: { outputs: { files: ['packed.txt'] } } },
+            pack: { exec: { command: 'cat ../lib/out.txt > packed.txt' }, dependsOn: ['all'], inputs: { files: ['vx.config.mjs'], tasks: ['all'] }, outputs: { files: ['packed.txt'] }, cache: true },
           } }`,
         ],
       ] as const) {
@@ -196,7 +196,7 @@ describe('vx why advice for an upstream row leads somewhere', () => {
           [
             'app',
             `export default { tasks: {
-              build: { exec: { command: 'echo x > packed.txt' }, dependsOn: ['^build'], inputs: { files: ['vx.config.mjs'] }, cache: { outputs: { files: ['packed.txt'] } } },
+              build: { exec: { command: 'echo x > packed.txt' }, dependsOn: ['^build'], inputs: { files: ['vx.config.mjs'] }, outputs: { files: ['packed.txt'] }, cache: true },
             } }`,
           ],
         ] as const) {
@@ -245,7 +245,7 @@ describe('vx why names the task with no inputs that keeps a key from hitting', (
         build: {
           dependsOn: ['gate'],
           exec: { command: 'echo hi > out.txt' },
-          inputs: { files: ['vx.config.mjs'] }, cache: { outputs: { files: ['out.txt'] } },
+          inputs: { files: ['vx.config.mjs'] }, outputs: { files: ['out.txt'] }, cache: true,
         },
       } }`,
     )
@@ -288,8 +288,8 @@ describe('vx why after a run that left a dependency out', () => {
         await writeFile(
           path.join(app, 'vx.config.mjs'),
           `export default { tasks: {
-            build: { exec: { command: 'true' }, inputs: { files: ['a.txt'] }, cache: { outputs: { files: [] } } },
-            test: { dependsOn: ['build'], exec: { command: 'true' }, inputs: { files: ['a.txt'] }, cache: { outputs: { files: [] } } },
+            build: { exec: { command: 'true' }, inputs: { files: ['a.txt'] }, outputs: { files: [] }, cache: true },
+            test: { dependsOn: ['build'], exec: { command: 'true' }, inputs: { files: ['a.txt'] }, outputs: { files: [] }, cache: true },
           } }`,
         )
         const git = gitIn(root)

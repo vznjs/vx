@@ -54,12 +54,12 @@ const CONFIG = `export default {
     build: {
       dependsOn: ['^build'],
       exec: { command: 'mkdir -p dist && cp src/index.ts dist/out.txt' },
-      inputs: { files: ['src/**', '!src/**/*.test.ts'] }, cache: { outputs: { files: ['dist/**'] } },
+      inputs: { files: ['src/**', '!src/**/*.test.ts'] }, outputs: { files: ['dist/**'] }, cache: true,
     },
     test: {
       dependsOn: ['build'],
       exec: { command: 'true' },
-      inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+      inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
     },
     lint: { exec: { command: 'true' } },
   },
@@ -318,7 +318,7 @@ describe('--affected follows task edges (2026-10-04)', () => {
       // keyed on every file of lib (2026-10-04).
       await write(
         path.join(root, 'pkgs/lib/vx.config.mjs'),
-        `export default { tasks: { test: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } } }\n`,
+        `export default { tasks: { test: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true } } }\n`,
       )
       git(root, 'add', '-A')
       git(root, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'no build')

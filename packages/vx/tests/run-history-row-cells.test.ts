@@ -58,7 +58,8 @@ it("a run stores each row's waited, outputs and blocks", async () => {
         gen: {
           exec: { command: 'sleep 0.2 && mkdir -p out && printf 12345 > out/x.txt' },
           inputs: { files: ['vx.config.mjs'] },
-          cache: { outputs: { files: ['out/**'] } },
+          outputs: { files: ['out/**'] },
+          cache: true,
         },
         other: { exec: { command: 'sleep 0.2' } },
         use: { exec: { command: 'true' }, dependsOn: ['gen'] },
@@ -88,7 +89,7 @@ it("an outcome's waited, outputs, blocks and flaky record reach its RunRecord", 
     id: 'p#t',
     projectName: 'p',
     taskName: 't',
-    config: { exec: { command: 'x' }, cache: {} },
+    config: { exec: { command: 'x' }, cache: true },
   } as unknown as TaskNode
   const outcome: TaskOutcome = {
     node,
@@ -139,7 +140,8 @@ it('a forced miss over a kept entry still reports its outputs', async () => {
         gen: {
           exec: { command: 'mkdir -p out && printf 12345 > out/x.txt' },
           inputs: { files: ['vx.config.mjs'] },
-          cache: { outputs: { files: ['out/**'] } },
+          outputs: { files: ['out/**'] },
+          cache: true,
         },
       },
     }
@@ -167,7 +169,8 @@ it('a miss that saves nothing still reports the outputs it wrote', async () => {
           exec: { command: 'mkdir -p out && printf 1234567 > out/x.txt' },
           dependsOn: ['link'],
           inputs: { files: ['vx.config.mjs'] },
-          cache: { outputs: { files: ['out/**'] } },
+          outputs: { files: ['out/**'] },
+          cache: true,
         },
       },
     }

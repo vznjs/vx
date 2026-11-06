@@ -133,7 +133,7 @@ describe('local cache short-circuit', () => {
             tasks: {
               build: {
                 exec: { command: "mkdir -p dist && node -e 'process.stdout.write(String(Date.now()))' > dist/out.txt" },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
               },
             },
           }
@@ -147,7 +147,7 @@ describe('local cache short-circuit', () => {
               build: {
                 dependsOn: ['^build'],
                 exec: { command: "mkdir -p dist && node -e 'process.stdout.write(String(Date.now()))' > dist/built.txt" },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
               },
             },
           }
@@ -187,15 +187,15 @@ describe('local cache short-circuit', () => {
             tasks: {
               say: {
                 exec: { command: 'echo hi' },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+                inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
               },
               keep: {
                 exec: { command: 'mkdir -p dist/k && echo kept > dist/k/out.txt' },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/k/**'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['dist/k/**'] }, cache: true,
               },
               edit: {
                 exec: { command: 'mkdir -p dist/e && echo built > dist/e/out.txt' },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/e/**'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['dist/e/**'] }, cache: true,
               },
             },
           }
@@ -252,12 +252,12 @@ describe('local cache short-circuit', () => {
             tasks: {
               codegen: {
                 exec: { command: "node -e 'process.stdout.write(String(Date.now()))' > generated.txt" },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['generated.txt'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['generated.txt'] }, cache: true,
               },
               consume: {
                 dependsOn: ['codegen'],
                 exec: { command: "node -e 'process.stdout.write(String(Date.now()))' > out.txt" },
-                inputs: { files: ['**/*'], tasks: [] }, cache: { outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*'], tasks: [] }, outputs: { files: ['out.txt'] }, cache: true,
               },
             },
           }
@@ -298,12 +298,12 @@ describe('local cache short-circuit', () => {
             tasks: {
               build: {
                 exec: { command: 'mkdir -p dist && cp src/a.txt dist/a.txt' },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
               },
               test: {
                 dependsOn: ['build'],
                 exec: { command: 'true' },
-                inputs: { files: ['**/*', '!dist/**'] }, cache: { outputs: { files: [] } },
+                inputs: { files: ['**/*', '!dist/**'] }, outputs: { files: [] }, cache: true,
               },
             },
           }
@@ -338,7 +338,7 @@ describe('local cache short-circuit', () => {
             tasks: {
               gen: {
                 exec: { command: "mkdir -p gen && cp src/seed.txt gen/lib.txt" },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['gen/**'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['gen/**'] }, cache: true,
               },
             },
           }
@@ -353,9 +353,8 @@ describe('local cache short-circuit', () => {
                 dependsOn: ['pkga#gen'],
                 exec: { command: "cp ../pkga/gen/lib.txt out.txt" },
                 inputs: { files: ['src/**'], tasks: [], workspaceFiles: ['packages/pkga/gen/**'] },
-                cache: {
-                  outputs: { files: ['out.txt'] },
-                },
+                outputs: { files: ['out.txt'] },
+                cache: true,
               },
             },
           }
@@ -401,7 +400,7 @@ describe('local cache short-circuit', () => {
             tasks: {
               build: {
                 exec: { command: "mkdir -p ../../shared && echo x > ../../shared/g.txt" },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: [], workspaceFiles: ['shared/g.txt'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['shared/g.txt'] }, cache: true,
               },
             },
           }
@@ -415,7 +414,7 @@ describe('local cache short-circuit', () => {
               build: {
                 dependsOn: ['^build'],
                 exec: { command: "node -e 'process.stdout.write(String(Date.now()))' > out.txt" },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
               },
             },
           }
@@ -463,12 +462,12 @@ describe('local cache short-circuit', () => {
             tasks: {
               codegen: {
                 exec: { command: "node -e 'process.stdout.write(String(Date.now()))' > generated.txt" },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['generated.txt'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['generated.txt'] }, cache: true,
               },
               consume: {
                 dependsOn: ['b#mid'],
                 exec: { command: "node -e 'process.stdout.write(String(Date.now()))' > out.txt" },
-                inputs: { files: ['**/*'], tasks: [] }, cache: { outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*'], tasks: [] }, outputs: { files: ['out.txt'] }, cache: true,
               },
             },
           }
@@ -482,7 +481,7 @@ describe('local cache short-circuit', () => {
               mid: {
                 dependsOn: ['a#codegen'],
                 exec: { command: 'true' },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+                inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
               },
             },
           }
@@ -534,12 +533,12 @@ describe('local cache short-circuit', () => {
             tasks: {
               codegen: {
                 exec: { command: "node -e 'process.stdout.write(String(Date.now()))' > generated.txt" },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['generated.txt'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['generated.txt'] }, cache: true,
               },
               read: {
                 dependsOn: ['codegen'],
                 exec: { command: 'true' },
-                inputs: { files: ['**/*'], tasks: [] }, cache: { outputs: { files: [] } },
+                inputs: { files: ['**/*'], tasks: [] }, outputs: { files: [] }, cache: true,
               },
             },
           }
@@ -553,7 +552,7 @@ describe('local cache short-circuit', () => {
               app: {
                 dependsOn: ['ia#read'],
                 exec: { command: "node -e 'process.stdout.write(String(Date.now()))' > out.txt" },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
               },
             },
           }
@@ -595,12 +594,12 @@ describe('local cache short-circuit', () => {
             tasks: {
               codegen: {
                 exec: { command: "node -e 'process.stdout.write(String(Date.now()))' > generated.txt" },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['generated.txt'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['generated.txt'] }, cache: true,
               },
               read: {
                 dependsOn: ['codegen'],
                 exec: { command: 'true' },
-                inputs: { files: ['**/*'], tasks: [] }, cache: { outputs: { files: [] } },
+                inputs: { files: ['**/*'], tasks: [] }, outputs: { files: [] }, cache: true,
               },
               all: { dependsOn: ['read'] },
             },
@@ -615,7 +614,7 @@ describe('local cache short-circuit', () => {
               app: {
                 dependsOn: ['ga#all'],
                 exec: { command: "node -e 'process.stdout.write(String(Date.now()))' > out.txt" },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
               },
             },
           }
@@ -654,13 +653,13 @@ describe('local cache short-circuit', () => {
             tasks: {
               gen: {
                 exec: { command: "mkdir -p ../../shared && echo x > ../../shared/g.txt" },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: [], workspaceFiles: ['shared/g.txt'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['shared/g.txt'] }, cache: true,
               },
               all: { dependsOn: ['gen'] },
               consume: {
                 dependsOn: ['all'],
                 exec: { command: "node -e 'process.stdout.write(String(Date.now()))' > out.txt" },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
               },
             },
           }
@@ -699,7 +698,7 @@ describe('local cache short-circuit', () => {
           tasks: {
             build: {
               exec: { command: "node -e 'process.stdout.write(String(Date.now()))' > out.txt" },
-              inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
+              inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
             },
           },
         }
@@ -710,7 +709,7 @@ describe('local cache short-circuit', () => {
         tasks: {
           build: {
             exec: { command: "mkdir -p ../../shared ../solo/gen && echo x > ../../shared/g.txt && echo y > ../solo/gen/g.txt" },
-            inputs: { files: ['src/**'] }, cache: { outputs: ${o} },
+            inputs: { files: ['src/**'] }, outputs: ${o}, cache: true,
           },
         },
       }
@@ -823,17 +822,17 @@ describe('local cache short-circuit', () => {
             tasks: {
               build: {
                 exec: { command: 'mkdir -p dist && cp src/a.txt dist/a.txt' },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
               },
               test: {
                 dependsOn: ['build'],
                 exec: { command: 'true' },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+                inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
               },
               e2e: {
                 dependsOn: ['build'],
                 exec: { command: 'true' },
-                inputs: { files: ['dist/**'], tasks: [] }, cache: { outputs: { files: [] } },
+                inputs: { files: ['dist/**'], tasks: [] }, outputs: { files: [] }, cache: true,
               },
             },
           }
@@ -938,7 +937,7 @@ describe('local cache short-circuit', () => {
         files: { 'src/a.md': 'a' },
         config: `export default { tasks: { build: {
           exec: { command: "node -e 'process.stdout.write(String(Date.now()))' > out.txt" },
-          inputs: { files: ['src/*.md'] }, cache: { outputs: { files: ['out.txt'] } },
+          inputs: { files: ['src/*.md'] }, outputs: { files: ['out.txt'] }, cache: true,
         } } }`,
       })
       const cold = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
@@ -967,7 +966,7 @@ describe('local cache short-circuit', () => {
               build: {
                 dependsOn: ['^build'],
                 exec: { command: "node -e 'process.stdout.write(String(Date.now()))' > out.txt" },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
               },
             },
           }
@@ -981,7 +980,7 @@ describe('local cache short-circuit', () => {
       // CONTROL: with the writer's output out of solo's tree, dep is in.
       await Bun.write(
         path.join(fixture.root, 'packages', 'wsw', 'vx.config.mjs'),
-        `export default { tasks: { build: { exec: { command: "mkdir -p ../../shared && echo x > ../../shared/g.txt" }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [], workspaceFiles: ['shared/g.txt'] } } } } }`,
+        `export default { tasks: { build: { exec: { command: "mkdir -p ../../shared && echo x > ../../shared/g.txt" }, inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['shared/g.txt'] }, cache: true } } }`,
       )
       expect((await classify(fixture, ['build'])).restoreTier.has('dep#build')).toBe(true)
     },
@@ -1031,7 +1030,7 @@ describe('local cache short-circuit', () => {
       await Bun.write(path.join(fixture.root, 'root.txt'), 'r')
       await Bun.write(
         path.join(fixture.root, 'vx.config.mjs'),
-        `export default { tasks: { build: { exec: { command: 'cp root.txt root.out' }, inputs: { files: ['root.txt'] }, cache: { outputs: { files: ['root.out'] } } } } }`,
+        `export default { tasks: { build: { exec: { command: 'cp root.txt root.out' }, inputs: { files: ['root.txt'] }, outputs: { files: ['root.out'] }, cache: true } } }`,
       )
       expect(
         (await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })).ok,
@@ -1059,7 +1058,7 @@ describe('local cache short-circuit', () => {
                 build: {
                   dependsOn: ['^build'],
                   exec: { command: 'cp src/c.txt out.txt' },
-                  inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
+                  inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
                 },
               },
             }
@@ -1099,7 +1098,7 @@ describe('local cache short-circuit', () => {
             tasks: {
               build: {
                 exec: { command: "mkdir -p dist && echo a > dist/a.txt" },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
               },
             },
           }
@@ -1113,7 +1112,7 @@ describe('local cache short-circuit', () => {
               build: {
                 dependsOn: ['^build'],
                 exec: { command: "echo b > ../a/dist/b.txt" },
-                inputs: { files: ['src/**'], tasks: [] }, cache: { outputs: { files: [], workspaceFiles: ['packages/a/dist/b.txt'] } },
+                inputs: { files: ['src/**'], tasks: [] }, outputs: { files: [], workspaceFiles: ['packages/a/dist/b.txt'] }, cache: true,
               },
             },
           }
@@ -1140,7 +1139,7 @@ describe('local cache short-circuit', () => {
             tasks: {
               build: {
                 exec: { command: "node -e 'process.stdout.write(String(Date.now()))' > out.txt" },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
               },
               top: {
                 dependsOn: ['build'],
@@ -1181,7 +1180,7 @@ describe('local cache short-circuit', () => {
             tasks: {
               build: {
                 exec: { command: "mkdir -p dist && echo x > dist/o.txt" },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
               },
             },
           }
@@ -1195,7 +1194,7 @@ describe('local cache short-circuit', () => {
               build: {
                 dependsOn: ['^build'],
                 exec: { command: "mkdir -p dist && echo y > dist/o.txt" },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
               },
             },
           }
@@ -1257,7 +1256,7 @@ describe('local cache short-circuit', () => {
               build: {
                 dependsOn: ['^prep'],
                 exec: { command: "mkdir -p dist && echo built > dist/o.txt" },
-                inputs: { files: ['src/**'], tasks: [] }, cache: { outputs: { files: ['dist/**'] } },
+                inputs: { files: ['src/**'], tasks: [] }, outputs: { files: ['dist/**'] }, cache: true,
               },
             },
           }
@@ -1300,7 +1299,7 @@ describe('local cache short-circuit', () => {
             tasks: {
               build: {
                 exec: { command: "node -e 'process.stdout.write(String(Date.now()))' > out.txt" },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
               },
             },
           }
@@ -1339,7 +1338,7 @@ describe('local cache short-circuit', () => {
       for (let i = 0; i < DEPTH - 1; i++) tasks.push(`t${i}: { dependsOn: ['t${i + 1}'] }`)
       tasks.push(`t${DEPTH - 1}: {
         exec: { command: 'true' },
-        inputs: { files: ['src/**'] }, cache: { outputs: { files: [], workspaceFiles: ['gen/**'] } },
+        inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['gen/**'] }, cache: true,
       }`)
       await addProject(fixture.root, 'app', {
         files: { 'src/a.txt': 'a' },
@@ -1374,7 +1373,7 @@ describe('local cache short-circuit', () => {
               build: {
                 dependsOn: ['^build'],
                 exec: { command: 'mkdir -p dist && echo built > dist/built.txt' },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
               },
             },
           }
@@ -1420,7 +1419,7 @@ describe('local cache short-circuit', () => {
     await addProject(fixture.root, 'lib', {
       files: { 'src/a.txt': 'a' },
       config: `export default { tasks: { build: {
-        exec: { command: 'true' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+        exec: { command: 'true' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
       } } }`,
     })
     let gets = 0

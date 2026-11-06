@@ -37,7 +37,7 @@ import { MAX_TIMEOUT_MS } from '../src/util/index.js'
 import { settingEnv } from '../src/settings.js'
 import { workspaceWith } from './helpers/local-workspace.js'
 
-const TIMEOUT = 20_000
+const TIMEOUT = 30_000
 
 /** Long enough that spawn jitter can never fake an overlap or a serialization. */
 const SPAN_SECONDS = '0.3'
@@ -397,7 +397,7 @@ describe('run-level knobs are never folded into a cache key', () => {
           tasks: {
             build: {
               exec: { command: 'echo x >> count.txt && echo built' },
-              inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } },
+              inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true,
             },
           },
         }`,

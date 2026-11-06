@@ -43,7 +43,7 @@ export function forgetUndeclaredWrites(
 export function taskBinDirs(
   node: TaskNode,
   workspaceRoot: string,
-  /** The dependencies' `cache.outputs.bin` directories (`dependencyBins`): first. */
+  /** The dependencies' `outputs.bin` directories (`dependencyBins`): first. */
   depBins: readonly string[] = [],
 ): string[] {
   const bins = [...depBins, path.join(node.projectDir, 'node_modules', '.bin')]
@@ -97,7 +97,7 @@ export function taskEnv(
 }
 
 /**
- * The `cache.outputs.bin` directories of the tasks a task's key folds
+ * The `outputs.bin` directories of the tasks a task's key folds
  * (`readableDeps`), for the front of its PATH. Read when the task runs,
  * after they ran or were restored. Two holding one program name refuse the
  * task, naming both: PATH order would pick one silently. With no two
@@ -107,7 +107,7 @@ export async function dependencyBins(deps: readonly TaskNode[]): Promise<string[
   const dirs: string[] = []
   const owner = new Map<string, string>()
   for (const dep of deps) {
-    const bin = dep.config.cache?.outputs.bin
+    const bin = dep.config.outputs?.bin
     if (bin === undefined) continue
     const dir = path.join(dep.projectDir, bin)
     dirs.push(dir)
@@ -115,7 +115,7 @@ export async function dependencyBins(deps: readonly TaskNode[]): Promise<string[
       const first = owner.get(name)
       if (first !== undefined && first !== dep.id) {
         throw new UserError(
-          `${first} and ${dep.id} both put '${name}' on this task's PATH (cache.outputs.bin) — ` +
+          `${first} and ${dep.id} both put '${name}' on this task's PATH (outputs.bin) — ` +
             `depend on one, or rename the program in one of them`,
         )
       }

@@ -27,7 +27,7 @@ const WEB = `
       build: {
         exec: { command: 'cat ../lib/dist.txt > out.txt' },
         dependsOn: ['^build'],
-        inputs: { files: ['package.json'] }, cache: { outputs: { files: ['out.txt'] } },
+        inputs: { files: ['package.json'] }, outputs: { files: ['out.txt'] }, cache: true,
       },
     },
   }

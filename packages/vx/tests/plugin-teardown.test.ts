@@ -639,7 +639,7 @@ describe('the lifecycle is reached on a run that never started', () => {
   // teardown and the cache close (the CLI refuses it before any run).
   for (const [name, value, plans] of [
     ['VX_RUN_CONCURRENCY', 'many', true],
-    ['VX_CACHE_INPUT_STABILITY_STRATEGY', 'sometimes', false],
+    ['VX_INPUTS_STABILITY_STRATEGY', 'sometimes', false],
   ] as const) {
     it(`a refused ${name} tears every plugin down and closes the cache`, async () => {
       await withPlugins('')

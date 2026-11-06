@@ -68,7 +68,7 @@ async function fixture(cacheSettings = ''): Promise<void> {
     path.join(root, 'lib/vx.config.mjs'),
     `export default { tasks: { test: {
       exec: { command: 'mkdir -p reports && echo "1 failing" && echo boom > reports/junit.xml && exit 1' },
-      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['reports/**'] } },
+      inputs: { files: ['src/**'] }, outputs: { files: ['reports/**'] }, cache: true,
     } } }`,
   )
   await Bun.write(path.join(root, 'lib/src/i.js'), 'x')
@@ -80,7 +80,7 @@ async function fixture(cacheSettings = ''): Promise<void> {
     path.join(root, 'gen/vx.config.mjs'),
     `export default { tasks: { build: {
       exec: { command: 'echo generated' },
-      inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+      inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
     } } }`,
   )
   await Bun.write(path.join(root, 'gen/src/i.js'), 'x')

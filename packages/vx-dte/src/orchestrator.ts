@@ -888,7 +888,7 @@ export class Orchestrator {
     let d = of.get(id)
     if (d === undefined) {
       const n = nodes.get(id)
-      const outs = n?.config.cache?.outputs
+      const outs = n?.config.cache === true ? n.config.outputs : undefined
       d =
         n === undefined || outs === undefined
           ? null
@@ -2447,7 +2447,7 @@ function sandboxConfigs(nodes: ReadonlyMap<string, TaskNode> | undefined): Sandb
  * pinning every dependant to its worker held a run's shards on one.
  */
 function leaves(node: TaskNode): boolean {
-  if (node.config.cache !== undefined) return false
+  if (node.config.cache === true) return false
   const sandbox = node.config.exec?.sandbox
   return sandbox === undefined || (sandbox.allow?.write?.length ?? 0) > 0
 }

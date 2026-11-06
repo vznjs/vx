@@ -26,7 +26,7 @@ function node(
   deps: string[] = [],
 ): TaskNode {
   const [projectName, taskName] = id.split('#') as [string, string]
-  const { inputs, ...cache } = spec ?? {}
+  const { inputs, ...outputs } = spec ?? {}
   return {
     id,
     projectName,
@@ -36,7 +36,7 @@ function node(
     config: {
       exec: { command: 'true' },
       ...(inputs === undefined ? {} : { inputs }),
-      ...(spec === undefined || Object.keys(cache).length === 0 ? {} : { cache }),
+      ...(Object.keys(outputs).length === 0 ? {} : { ...outputs, cache: true }),
     },
   } as unknown as TaskNode
 }
@@ -414,7 +414,7 @@ async function fixture(
     `export default { tasks: {
        gen: {
          exec: { command: 'true' },
-         inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out/**'] } },
+         inputs: { files: ['src/**'] }, outputs: { files: ['out/**'] }, cache: true,
        },
      } }`,
   )
@@ -455,7 +455,7 @@ async function fixture(
          use: {
            exec: { command: 'cat ../pkg-a/out/gen.txt > used.txt' },
            dependsOn: ['${opts.chain === true ? '^mid' : '^gen'}'],
-           inputs: { files: ['src/**'] }, cache: { outputs: { files: ['used.txt'] } },
+           inputs: { files: ['src/**'] }, outputs: { files: ['used.txt'] }, cache: true,
          },
        } }`,
     )
@@ -704,12 +704,12 @@ describe('--cache-download end to end', () => {
         `export default { tasks: {
            gen: {
              exec: { command: 'true' },
-             inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out/**'] } },
+             inputs: { files: ['src/**'] }, outputs: { files: ['out/**'] }, cache: true,
            },
            reader: {
              dependsOn: ['gen'],
              exec: { command: 'true' },
-             inputs: { files: ['out/**'], tasks: [] }, cache: { outputs: { files: ['d/**'] } },
+             inputs: { files: ['out/**'], tasks: [] }, outputs: { files: ['d/**'] }, cache: true,
            },
          } }`,
       )
@@ -743,12 +743,12 @@ describe('--cache-download end to end', () => {
         `export default { tasks: {
            gen: {
              exec: { command: 'true' },
-             inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out/**'] } },
+             inputs: { files: ['src/**'] }, outputs: { files: ['out/**'] }, cache: true,
            },
            reader: {
              dependsOn: ['gen'],
              exec: { command: 'true' },
-             inputs: { files: ['out/**'], tasks: [] }, cache: { outputs: { files: ['d/**'] } },
+             inputs: { files: ['out/**'], tasks: [] }, outputs: { files: ['d/**'] }, cache: true,
            },
          } }`,
       )
@@ -1034,15 +1034,14 @@ async function sameProjectFixture(
     `export default { tasks: {
        gen: {
          exec: { command: 'true' },
-         inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out/**'] } },
+         inputs: { files: ['src/**'] }, outputs: { files: ['out/**'] }, cache: true,
        },
        use: {
          exec: { command: 'cat out/gen.txt > used.txt' },
          dependsOn: ['gen'],
          inputs: { files: ${JSON.stringify([readGlob])}, tasks: [] },
-         cache: {
-           outputs: { files: ['used.txt'] },
-         },
+         outputs: { files: ['used.txt'] },
+         cache: true,
        },
      } }`,
   )

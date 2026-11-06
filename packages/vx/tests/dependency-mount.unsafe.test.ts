@@ -1,4 +1,4 @@
-// `cache.outputs.mount`: a task's outputs hold a tree its programs expect at
+// `outputs.mount`: a task's outputs hold a tree its programs expect at
 // a fixed absolute path (Nix's `/nix/store`), and each sandboxed task that
 // depends on it sees that tree mounted there, read-only. vx caches and
 // restores the tree like any output; only the dependant's view moves it.
@@ -39,7 +39,8 @@ const tool = (target: string, entry: string, prog: string, word: string): string
         build: {
           exec: { command: ${JSON.stringify(cmd)}, platforms: ['linux-x64', 'linux-arm64'] },
           inputs: { files: ['src/**'] },
-          cache: { outputs: { files: ['out/**'], bin: 'out/bin', mount: { ${JSON.stringify(target)}: 'out/store' } } },
+          outputs: { files: ['out/**'], bin: 'out/bin', mount: { ${JSON.stringify(target)}: 'out/store' } },
+          cache: true,
         },
       },
     }
@@ -153,7 +154,7 @@ describe.skipIf(!available)('a dependency’s declared mount is where its depend
       const r = await use(['node#build'], '')
       expect(r.ok).toBe(false)
       expect(r.log).not.toContain('NODE')
-      expect(r.log).toContain('cache.outputs.mount')
+      expect(r.log).toContain('outputs.mount')
       expect(r.log).toContain('exec.sandbox')
     },
     TIMEOUT,
@@ -220,7 +221,8 @@ describe.skipIf(!available)('a link out of a mount is still refused', () => {
                   platforms: ['linux-x64', 'linux-arm64'],
                 },
                 inputs: { files: ['src/**'] },
-                cache: { outputs: { files: ['out/**'], mount: { '/nix/store': 'out/store' } } },
+                outputs: { files: ['out/**'], mount: { '/nix/store': 'out/store' } },
+                cache: true,
               },
             },
           }

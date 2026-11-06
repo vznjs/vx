@@ -54,7 +54,7 @@ const CONFIG = `export default {
   tasks: {
     build: {
       exec: { command: 'mkdir -p dist && cp src/x.txt dist/out.txt' },
-      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+      inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
     },
   },
 }`
@@ -265,7 +265,7 @@ async function vendoredFixture(root: string): Promise<string> {
       tasks: {
         build: {
           exec: { command: 'mkdir -p dist && cat vendor/lib/x.txt vendor/loose/y.txt > dist/out.txt' },
-          inputs: { files: ['**/*'] }, cache: { outputs: { files: ['dist/**'] } },
+          inputs: { files: ['**/*'] }, outputs: { files: ['dist/**'] }, cache: true,
         },
       },
     }`,

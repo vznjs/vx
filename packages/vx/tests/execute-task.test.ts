@@ -160,7 +160,7 @@ describe('execute-task — the pre-exec output wipe is gated on WRITES, not read
         'ro',
         `export default { tasks: { t: {
           exec: { command: 'mkdir -p dist && echo made > dist/made.txt' },
-          inputs: { files: ['package.json'] }, cache: { outputs: { files: ['dist/**'] } },
+          inputs: { files: ['package.json'] }, outputs: { files: ['dist/**'] }, cache: true,
         } } }`,
       )
       await mkdir(path.join(dir, 'dist'), { recursive: true })
@@ -196,7 +196,7 @@ describe('execute-task — the pre-exec output wipe is gated on WRITES, not read
         'forced',
         `export default { tasks: { t: {
           exec: { command: 'mkdir -p dist && echo made > dist/made.txt' },
-          inputs: { files: ['package.json'] }, cache: { outputs: { files: ['dist/**'] } },
+          inputs: { files: ['package.json'] }, outputs: { files: ['dist/**'] }, cache: true,
         } } }`,
       )
       await mkdir(path.join(dir, 'dist'), { recursive: true })
@@ -241,7 +241,7 @@ describe('execute-task — the READ half of the same asymmetry', () => {
         'warm',
         `export default { tasks: { t: {
           exec: { command: 'mkdir -p dist && echo x >> runs.txt && echo made > dist/made.txt' },
-          inputs: { files: ['package.json'] }, cache: { outputs: { files: ['dist/**'] } },
+          inputs: { files: ['package.json'] }, outputs: { files: ['dist/**'] }, cache: true,
         } } }`,
       )
       const once = { cwd: fixture.root, tasks: ['t'], projects: ['warm'] }
@@ -287,7 +287,8 @@ describe("execute-task — exec.remote:'only' with no remote executor", () => {
       const n = node(b, {
         exec: { command: 'echo should-not-run' },
         inputs: { files: ['package.json'] },
-        cache: { outputs: { files: [] } },
+        outputs: { files: [] },
+        cache: true,
       })
       const o = await executeTask({
         ...baseArgs(b, n, log),
@@ -324,7 +325,8 @@ describe('execute-task — what the outcome and the request carry', () => {
       const cached = node(b, {
         exec: { command: 'true' },
         inputs: { files: ['package.json'] },
-        cache: { outputs: { files: [] } },
+        outputs: { files: [] },
+        cache: true,
       })
       await executeTask({ ...baseArgs(b, cached, log), executor: recorder })
       // A task that will not write an entry retains nothing.
@@ -360,7 +362,8 @@ describe('execute-task — what the outcome and the request carry', () => {
       const cached = node(b, {
         exec: { command: 'true' },
         inputs: { files: ['package.json'] },
-        cache: { outputs: { files: [] } },
+        outputs: { files: [] },
+        cache: true,
       })
       const run = (extra: object) =>
         executeTask({ ...baseArgs(b, cached, log), executor: recorder, ...extra })
@@ -399,7 +402,8 @@ describe('execute-task — what the outcome and the request carry', () => {
       const cached = node(b, {
         exec: { command: 'true' },
         inputs: { files: ['package.json'] },
-        cache: { outputs: { files: [] } },
+        outputs: { files: [] },
+        cache: true,
       })
       const run = (changed: string[]) =>
         executeTask({ ...baseArgs(b, cached, log), executor: elsewhere(changed) })
@@ -570,7 +574,8 @@ describe('execute-task — what the outcome and the request carry', () => {
         {
           exec: { command: 'true' },
           inputs: { files: [] },
-          cache: { outputs: { files: [] } },
+          outputs: { files: [] },
+          cache: true,
         },
         'proj#bare',
       )
@@ -584,7 +589,8 @@ describe('execute-task — what the outcome and the request carry', () => {
         {
           exec: { command: 'true' },
           inputs: { files: ['nowhere/**'] },
-          cache: { outputs: { files: [] } },
+          outputs: { files: [] },
+          cache: true,
         },
         'proj#declared',
       )
@@ -623,9 +629,8 @@ describe('execute-task — what the clean and the fetch must NOT skip', () => {
       const n = node(b, {
         exec: { command: 'true' },
         inputs: { files: ['package.json'] },
-        cache: {
-          outputs: { files: [], workspaceFiles: ['shared/**'] },
-        },
+        outputs: { files: [], workspaceFiles: ['shared/**'] },
+        cache: true,
       })
       await executeTask({ ...baseArgs(b, n, log), executor: localExecutor(), gitFilesCache })
       markSpy.mockRestore()
@@ -702,7 +707,7 @@ describe('execute-task — output cleaning across retry attempts', () => {
       command: 'mkdir -p dist; if test -f m; then echo final > dist/final.txt; else touch m; echo partial > dist/partial.txt; exit 1; fi',
       retries: 1,
     },
-    inputs: { files: ['package.json'] }, cache: { outputs: { files: ['dist/**'] } },
+    inputs: { files: ['package.json'] }, outputs: { files: ['dist/**'] }, cache: true,
   } } }`
 
   it(
@@ -845,7 +850,7 @@ describe('execute-task — retry loop control flow: abort vs timeout', () => {
         'abc',
         `export default { tasks: { t: {
           exec: { command: 'echo x >> tries.txt; mkdir -p dist; echo partial > dist/p.txt; touch started; sleep 5' },
-          inputs: { files: ['package.json'] }, cache: { outputs: { files: ['dist/**'] } },
+          inputs: { files: ['package.json'] }, outputs: { files: ['dist/**'] }, cache: true,
         } } }`,
       )
       const first = await runStoppedOnce(dir, 'abc')
@@ -912,7 +917,8 @@ describe('execute-task — retry loop control flow: abort vs timeout', () => {
         {
           exec: { command: 'true', retries: 2 },
           inputs: { files: ['package.json'] },
-          cache: { outputs: { files: ['dist/**'] } },
+          outputs: { files: ['dist/**'] },
+          cache: true,
         },
         'proj#flaky',
       )
@@ -957,7 +963,8 @@ describe('execute-task — retry loop control flow: abort vs timeout', () => {
         {
           exec: { command: 'true', retries: 2 },
           inputs: { files: ['package.json'] },
-          cache: { outputs: { files: ['dist/**'] } },
+          outputs: { files: ['dist/**'] },
+          cache: true,
         },
         'proj#flaky',
       )
@@ -1159,7 +1166,7 @@ describe('execute-task — cache-hit materialization', () => {
         's',
         `export default { tasks: { t: {
           exec: { command: 'mkdir -p dist && echo v1 > dist/o.txt' },
-          inputs: { files: ['package.json'] }, cache: { outputs: { files: ['dist/**'] } },
+          inputs: { files: ['package.json'] }, outputs: { files: ['dist/**'] }, cache: true,
         } } }`,
       )
       await run({ cwd: fixture.root, tasks: ['t'], projects: ['s'], log: capturingLogger(fixture) })
@@ -1200,7 +1207,7 @@ describe('execute-task — cache-hit materialization', () => {
         'lintish',
         `export default { tasks: { t: {
           exec: { command: 'echo linted' },
-          inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } },
+          inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true,
         } } }`,
       )
       await run({
@@ -1234,7 +1241,8 @@ describe('execute-task — restoreHit classification (entry shapes a run() canno
   const NO_OUTPUT_TASK = {
     exec: { command: 'echo should-not-run' },
     inputs: { files: [] },
-    cache: { outputs: { files: [] } },
+    outputs: { files: [] },
+    cache: true,
   }
 
   /** Save a real artifact so `restoreOutputs` has bytes to extract, then hand
@@ -1350,7 +1358,8 @@ describe('execute-task — what restoreHit reads and records', () => {
   const DIST_TASK = {
     exec: { command: 'echo should-not-run' },
     inputs: { files: [] },
-    cache: { outputs: { files: ['dist/**'] } },
+    outputs: { files: ['dist/**'] },
+    cache: true,
   }
   const out = (): string => path.join(b.dir, 'dist', 'o.txt')
   const quiet = (): Logger => capturingLogger({ root: '', out: [], err: [] })
@@ -1450,7 +1459,8 @@ describe('execute-task — preProbed reuse (the two-tier scheduler contract)', (
   const CACHEABLE = {
     exec: { command: 'echo executed > out.txt' },
     inputs: { files: ['package.json'] },
-    cache: { outputs: { files: ['out.txt'] } },
+    outputs: { files: ['out.txt'] },
+    cache: true,
   }
 
   it('a remote-WRITE-only policy still saves — willWrite reads both write axes', async () => {
@@ -1965,7 +1975,8 @@ describe('execute-task — a group is transparent to the executor input set', ()
           {
             exec: { command: 'mkdir -p dist && echo built > dist/lib.js' },
             inputs: { files: ['package.json'] },
-            cache: { outputs: { files: ['dist/**'] } },
+            outputs: { files: ['dist/**'] },
+            cache: true,
           },
           'proj#compile',
         )
@@ -1994,7 +2005,8 @@ describe('execute-task — a group is transparent to the executor input set', ()
             dependsOn: ['install'],
             exec: { command: 'true' },
             inputs: { files: ['package.json'] },
-            cache: { outputs: { files: [] } },
+            outputs: { files: [] },
+            cache: true,
           },
           'proj#bundle',
         )
@@ -2032,7 +2044,8 @@ describe('execute-task — a group is transparent to the executor input set', ()
             dependsOn: ['install'],
             exec: { command: 'true' },
             inputs: { files: ['package.json'] },
-            cache: { outputs: { files: [] } },
+            outputs: { files: [] },
+            cache: true,
           },
           'proj#bundle',
         )
@@ -2083,9 +2096,8 @@ describe('execute-task — the executor input set is ADDRESSED and ORDERED', () 
                 'mkdir -p dist ../shared && echo p > dist/lib.js && echo w > ../shared/gen.txt',
             },
             inputs: { files: ['package.json'] },
-            cache: {
-              outputs: { files: ['dist/**'], workspaceFiles: ['shared/**'] },
-            },
+            outputs: { files: ['dist/**'], workspaceFiles: ['shared/**'] },
+            cache: true,
           },
           'proj#compile',
         )
@@ -2106,7 +2118,8 @@ describe('execute-task — the executor input set is ADDRESSED and ORDERED', () 
             dependsOn: ['compile'],
             exec: { command: 'true' },
             inputs: { files: ['package.json'] },
-            cache: { outputs: { files: [] } },
+            outputs: { files: [] },
+            cache: true,
           },
           'proj#bundle',
         )
@@ -2140,7 +2153,8 @@ describe('execute-task — the executor input set is ADDRESSED and ORDERED', () 
           {
             exec: { command: 'mkdir -p dist && echo p > dist/lib.js' },
             inputs: { files: ['package.json'] },
-            cache: { outputs: { files: ['dist/**'] } },
+            outputs: { files: ['dist/**'] },
+            cache: true,
           },
           'proj#compile',
         )
@@ -2169,7 +2183,8 @@ describe('execute-task — the executor input set is ADDRESSED and ORDERED', () 
               dependsOn: ['compile'],
               exec: { command: `echo ${id}` },
               inputs: { files: ['package.json'] },
-              cache: { outputs: { files: [] } },
+              outputs: { files: [] },
+              cache: true,
             },
             `proj#${id}`,
           )
@@ -2210,7 +2225,8 @@ describe('execute-task — the executor input set is ADDRESSED and ORDERED', () 
             dependsOn: ['alpha', 'beta'],
             exec: { command: 'true' },
             inputs: { files: ['package.json'] },
-            cache: { outputs: { files: [] } },
+            outputs: { files: [] },
+            cache: true,
           },
           'proj#bundle',
         )
@@ -2264,7 +2280,8 @@ describe('execute-task — inputs.tasks filters the KEY, not the input set', () 
           {
             exec: { command: 'mkdir -p dist && echo built > dist/lib.js' },
             inputs: { files: ['package.json'] },
-            cache: { outputs: { files: ['dist/**'] } },
+            outputs: { files: ['dist/**'] },
+            cache: true,
           },
           'proj#compile',
         )
@@ -2286,7 +2303,8 @@ describe('execute-task — inputs.tasks filters the KEY, not the input set', () 
             exec: { command: 'true' },
             // Decoupled from every upstream KEY — and still depends on compile.
             inputs: { files: ['package.json'], tasks: [] },
-            cache: { outputs: { files: [] } },
+            outputs: { files: [] },
+            cache: true,
           },
           'proj#bundle',
         )
@@ -2319,7 +2337,8 @@ describe('execute-task — inputs.tasks filters the KEY, not the input set', () 
             dependsOn: ['compile'],
             exec: { command: 'true' },
             inputs: { files: ['package.json'], tasks: [] },
-            cache: { outputs: { files: [] } },
+            outputs: { files: [] },
+            cache: true,
           },
           'proj#bundle',
         )
@@ -2446,7 +2465,8 @@ describe('execute-task — `--force` reaches a remote executor through `refresh`
   const cacheable: TaskNode['config'] = {
     exec: { command: 'true' },
     inputs: { files: ['package.json'] },
-    cache: { outputs: { files: [] } },
+    outputs: { files: [] },
+    cache: true,
   }
 
   it(
@@ -2514,7 +2534,8 @@ describe('execute-task edges', () => {
     ({
       exec: { command, ...extra },
       inputs: { files: ['src.txt'] },
-      cache: { outputs: { files: ['out.txt'] } },
+      outputs: { files: ['out.txt'] },
+      cache: true,
     }) as TaskNode['config']
 
   it('saves nothing over a folded upstream whose key no longer describes it', async () => {
@@ -2566,7 +2587,8 @@ describe('execute-task edges', () => {
     const cfg = {
       exec: { command: 'echo v2 > src.txt && mkdir -p ../gen && echo x > ../gen/w.txt' },
       inputs: { files: ['src.txt'] },
-      cache: { outputs: { files: [], workspaceFiles: ['gen/**'] } },
+      outputs: { files: [], workspaceFiles: ['gen/**'] },
+      cache: true,
     } as TaskNode['config']
     await executeTask({
       ...baseArgs(b, node(b, cfg), log),
@@ -2650,7 +2672,8 @@ describe('execute-task edges', () => {
     const cfg = {
       exec: { command: 'true' },
       inputs: { files: ['src.txt'] },
-      cache: { outputs: { files: [], workspaceFiles: ['gen/**'] } },
+      outputs: { files: [], workspaceFiles: ['gen/**'] },
+      cache: true,
     } as TaskNode['config']
     await executeTask({ ...baseArgs(b, node(b, cfg), log), cachePolicy: READ_ONLY })
     expect(await readFile(stray, 'utf8')).toBe('mine')

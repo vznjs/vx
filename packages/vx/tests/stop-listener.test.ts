@@ -135,7 +135,8 @@ describe("an attempt's listener on the run's stop signal", () => {
       config: {
         exec: { command: 'true' },
         inputs: { files: ['package.json'] },
-        cache: { outputs: { files: ['dist/**'] } },
+        outputs: { files: ['dist/**'] },
+        cache: true,
       },
     }
     const outcome = await run(n, executor, stop.signal)

@@ -5,8 +5,8 @@ description: Declare what a task reads and writes, so vx runs it once per set of
 
 import { Aside } from '@astrojs/starlight/components'
 
-A task with a `cache` block runs once per set of inputs. List what the
-command reads under `inputs`, and what it writes under `cache.outputs`
+A task with `cache: true` runs once per set of inputs. List what the
+command reads under `inputs`, and what it writes under `outputs`
 (`[]` for test or lint).
 
 ```sh
@@ -30,9 +30,8 @@ export default defineProject({
         env: ['NODE_ENV'],
         workspaceFiles: ['tsconfig.base.json'], // from the workspace root
       },
-      cache: {
-        outputs: { files: ['dist/**'] },
-      },
+      outputs: { files: ['dist/**'] },
+      cache: true,
     },
   },
 })
@@ -54,7 +53,7 @@ flowchart LR
   files. A workspace read outside it fails the task and names the file.
 </Aside>
 
-A task with no `cache` block is keyed on its `inputs` all the same, so a
+A task with no `cache: true` is keyed on its `inputs` all the same, so a
 cached task behind it re-runs when they change. One that declares no
 `inputs` has no key, and every task behind it misses.
 
@@ -82,7 +81,7 @@ Every part, in order: [Caching in depth](../../caching/).
 - A hit rewrites only the files that differ from the entry, then removes
   the ones it does not hold, so `dist/` ends as the cache stored it. A
   hit that finds them already as stored writes nothing.
-- A restore writes only files the task's `cache.outputs` declare.
+- A restore writes only files the task's `outputs` declare.
 - A failed task is never saved.
 - `--force` runs and refreshes the cache; `--no-cache` ignores it.
 
@@ -121,8 +120,8 @@ A hit after you changed something means that something is not declared.
 | `cache key unchanged — re-executed on the same key though this run read the cache; vx cannot name the cause` | none of the above; vx cannot name the cause |
 | `cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)` | no invocation recorded this run's cache policy, so vx cannot rule the flags out |
 | `cache key unchanged — this run recorded no cache outcome, so whether it re-ran is unknown` | vx does not guess |
-| `` this task declares no `cache` block — it runs on every invocation; its key is folded by dependents only `` | not cached at all |
-| `` this task declares no `cache` block — it runs on every invocation; it declares no `inputs` either, so each run derives a new key and every task that depends on it misses; declare its `inputs` `` | not cached, and no task depending on it can hit |
+| `` this task declares no `cache: true` — it runs on every invocation; its key is folded by dependents only `` | not cached at all |
+| `` this task declares no `cache: true` — it runs on every invocation; it declares no `inputs` either, so each run derives a new key and every task that depends on it misses; declare its `inputs` `` | not cached, and no task depending on it can hit |
 | `this task recorded no cache key (skipped, or a persistent task) — nothing to compare` | no key to compare |
 | `no prior run for this (project, task)` | nothing to compare with yet |
 

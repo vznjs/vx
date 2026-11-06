@@ -427,7 +427,7 @@ reapi({
 A cache-only server (bazel-remote advertises `exec_enabled: false`) makes the
 plugin **decline the executor with a warning** rather than submit work that
 will never be answered. Only cacheable tasks are eligible — a task with no
-`cache` block has no described inputs, so a worker would run it against an
+`cache: true` has no described inputs, so a worker would run it against an
 empty input root. A cacheable task's root holds its declared input files.
 
 Verified end-to-end against a live NativeLink scheduler + worker: input tree
@@ -452,14 +452,13 @@ the packages a build needs. The answer is the design doc's §7.4 recipe,
 install: {
   exec: { command: 'bun install --frozen-lockfile', remote: 'only' },
   inputs: { files: ['package.json', 'bun.lock'] },
-  cache: {
-    outputs: { files: ['node_modules/**'] },
-  },
+  outputs: { files: ['node_modules/**'] },
+  cache: true,
 },
 build: {
   dependsOn: ['install'],
   exec: { command: 'tsc -p .' },
-  inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+  inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
 },
 ```
 

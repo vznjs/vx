@@ -57,11 +57,10 @@
           "tsconfig.json"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "lint.oxfmt": {
       "description": "oxfmt --check (no rewrite; CI-safe)",
@@ -87,11 +86,10 @@
           "package.json"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test": {
       "dependsOn": [
@@ -141,11 +139,10 @@
           "package.json"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.local-e2e": {
       "description": "bun test ./tests/local-e2e.test.ts",
@@ -185,11 +182,10 @@
           "package.json"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.local-e2e-saves": {
       "description": "bun test ./tests/local-e2e-saves.test.ts",
@@ -229,11 +225,10 @@
           "package.json"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.units": {
       "description": "bun test ./tests/units.test.ts",
@@ -273,11 +268,10 @@
           "package.json"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.gitlab": {
       "description": "bun test ./tests/gitlab.test.ts",
@@ -317,11 +311,10 @@
           "package.json"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.rest": {
       "description": "bun test the files no other shard runs",
@@ -361,11 +354,10 @@
           "package.json"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     }
   }
 }

@@ -45,7 +45,7 @@ describe('sh absent from PATH', () => {
           tasks: {
             build: {
               exec: { command: 'echo built' },
-              inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+              inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
             },
           },
         }
@@ -86,7 +86,7 @@ describe('sh absent from PATH', () => {
           tasks: {
             build: {
               exec: { command: 'echo built' },
-              inputs: { files: ['src/**'], runtime: ['echo v1'] }, cache: { outputs: { files: [] } },
+              inputs: { files: ['src/**'], runtime: ['echo v1'] }, outputs: { files: [] }, cache: true,
             },
           },
         }

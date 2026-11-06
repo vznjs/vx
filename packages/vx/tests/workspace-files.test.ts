@@ -50,8 +50,8 @@ function git(cwd: string, ...args: string[]): void {
 
 describe('workspaceFiles loader validation', () => {
   /** `spec` is the task's `inputs` and its `cache` fields in one object. */
-  const cfgWith = ({ inputs, ...cache }: Record<string, unknown>): Record<string, unknown> => ({
-    tasks: { build: { exec: { command: 'true' }, inputs, cache } },
+  const cfgWith = (spec: Record<string, unknown>): Record<string, unknown> => ({
+    tasks: { build: { exec: { command: 'true' }, ...spec, cache: true } },
   })
   const validate = (spec: Record<string, unknown>): void => {
     validateProjectConfig(cfgWith(spec), '/ws/pkg/vx.config.ts')
@@ -293,7 +293,7 @@ describe('inputs.workspaceFiles resolution', () => {
   it('a task own outputs.workspaceFiles leave its KEY alone — the wire, not just resolveInputs', async () => {
     // The row above pins the EXCLUSION, by calling `resolveInputs` with
     // `ownWorkspaceOutputs` itself. What nothing held is the WIRE:
-    // `task-hash.ts` passing `cache.outputs.workspaceFiles` down to it.
+    // `task-hash.ts` passing `outputs.workspaceFiles` down to it.
     // Hand it `[]` there and the exclusion is perfect and never reached —
     // the task folds its own generated file, so its key moves after every
     // run and it never hits again.
@@ -316,9 +316,8 @@ describe('inputs.workspaceFiles resolution', () => {
             config: {
               exec: { command: 'gen' },
               inputs: { files: [], workspaceFiles: ['shared/**'] },
-              cache: {
-                outputs: { files: [], workspaceFiles: ['shared/generated.json'] },
-              },
+              outputs: { files: [], workspaceFiles: ['shared/generated.json'] },
+              cache: true,
             },
             deps: [],
             requested: false,
@@ -523,9 +522,8 @@ describe('GitFilesCache workspace-wide partition', () => {
             config: {
               exec: { command: 'build' },
               inputs: { files: [], workspaceFiles: ['shared/**'] },
-              cache: {
-                outputs: { files: [] },
-              },
+              outputs: { files: [] },
+              cache: true,
             },
             deps: [],
             requested: false,
@@ -704,9 +702,8 @@ describe('workspaceFiles e2e', () => {
               gen: {
                 exec: { command: 'echo done > out.txt' },
                 inputs: { files: ['src/**'], workspaceFiles: ['shared/**'] },
-                cache: {
-                  outputs: { files: ['out.txt'] },
-                },
+                outputs: { files: ['out.txt'] },
+                cache: true,
               },
             },
           }
@@ -737,9 +734,8 @@ describe('workspaceFiles e2e', () => {
               gen: {
                 exec: { command: 'echo done > out.txt' },
                 inputs: { files: ['src/**'], workspaceFiles: ['packages/pkg-b/data/**'] },
-                cache: {
-                  outputs: { files: ['out.txt'] },
-                },
+                outputs: { files: ['out.txt'] },
+                cache: true,
               },
             },
           }
@@ -775,9 +771,8 @@ describe('workspaceFiles e2e', () => {
               gen: {
                 exec: { command: ${JSON.stringify(genCmd)} },
                 inputs: { files: ['src/**'] },
-                cache: {
-                  outputs: { files: ['dist/**'], workspaceFiles: ['generated/**'] },
-                },
+                outputs: { files: ['dist/**'], workspaceFiles: ['generated/**'] },
+                cache: true,
               },
             },
           }
@@ -818,9 +813,8 @@ describe('workspaceFiles e2e', () => {
               gen: {
                 exec: { command: ${JSON.stringify(genCmd)} },
                 inputs: { files: ['src/**'] },
-                cache: {
-                  outputs: { files: ['out.txt'], workspaceFiles: ['generated/**'] },
-                },
+                outputs: { files: ['out.txt'], workspaceFiles: ['generated/**'] },
+                cache: true,
               },
             },
           }

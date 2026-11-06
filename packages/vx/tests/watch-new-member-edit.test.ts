@@ -39,7 +39,7 @@ it('an edit in a project added mid-watch, made while its first cycle still runs,
   await addProject(root, 'fresh', {
     config: `export default { tasks: { build: {
       exec: { command: 'mkdir -p dist && cp src/a.txt dist/ && echo "fresh $(cat src/a.txt)" >> ${log}' },
-      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+      inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
     } } }`,
     files: { 'src/a.txt': '1' },
   })

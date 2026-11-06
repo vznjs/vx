@@ -889,7 +889,7 @@ other persistent task`), and a non-zero exit makes the run exit 1
      and blank on a hit. `—` is always a value vx cannot know; blank is
      one that does not apply.
    - **status** and **cache**: `running` and `miss`, or `no-cache` for a
-     task with no `cache` block (or a `--no-cache` run); finished rows
+     task with no `cache: true` (or a `--no-cache` run); finished rows
      say `local` or `remote` on a hit.
    - **cpu** and **mem**: the task's process tree's average cores since
      it started and its peak memory so far, looked at every 500 ms only
@@ -1165,7 +1165,7 @@ Row legend (the run's own glyphs and words):
 | `⇢`   | `cached` `local`  | entry already in `<cacheDir>/`                                                |
 | `⇣`   | `cached` `remote` | entry would be fetched from the layer                                         |
 | `⏺`   | `run` `miss`      | task would execute (under `--force` too: nothing is read, what runs is saved) |
-| `⏺`   | `run` `no-cache`  | task opts out (no `cache` block, or `--no-cache`)                             |
+| `⏺`   | `run` `no-cache`  | task opts out (no `cache: true`, or `--no-cache`)                             |
 | `·`   | `noop`            | task would not run anywhere                                                   |
 | `◌`   | `not run`         | a server you did not request whose every dependant is a hit, local or remote  |
 | `⊘`   | `skipped`         | `exec.platforms` leave this machine out, or a task it depends on is skipped   |
@@ -1303,7 +1303,8 @@ export default {
         },
       },
       inputs: { files: ['src/**'] },
-      cache: { outputs: { files: ['dist/**'] } },
+      outputs: { files: ['dist/**'] },
+      cache: true,
     },
   },
 }
@@ -1418,7 +1419,7 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    top level moved its mtime, which macOS reports to the parent
    (`watch-project-dir-write.test.ts`). Under `--filter` or
    `--affected` the scope is the one resolved at start, and a new
-   project joins it only as a dependency of it. A task's own declared outputs (`cache.outputs.files`,
+   project joins it only as a dependency of it. A task's own declared outputs (`outputs.files`,
    `outputs.workspaceFiles`; a plugin's `project` stage counts, as in
    a run) never trigger a re-run — a cycle that writes `dist/` is not
    an edit, nor is the `dist` directory itself coming and going (a
@@ -1430,7 +1431,7 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    reaches through `dependsOn` are asked, so an unwatched `lint` reading
    `**/*` beside `vx watch build` asks nothing) — and neither do `node_modules`,
    `.git` or the cache directory. A write the task did NOT declare (a
-   task with no `cache` block declares nothing) is caught by state,
+   task with no `cache: true` declares nothing) is caught by state,
    judged once the bytes have settled: a file whose bytes and mode did
    not change since the loop last saw it is not an edit (a `chmod` is one,
    as the key reads the executable bit), nor is a directory
@@ -2802,10 +2803,10 @@ it's an array of `{ name, dir, tags: string[], tasks: string[] }`.
 `project#task`, with every field the run reads: description, command (`(group)` for group tasks), `dependsOn`,
 `timeout`, `retries`, `env.passThrough` / `env.define` / `env.secret`,
 `remote`, `platforms`, `sandbox`, `persistent`, `interactive` (`yes` /
-`no`), and the cache block
+`no`), and `cache: true`
 (`inputs.files` / `.workspaceFiles` / `.env` / `.tasks` / `.runtime` /
 `.workspaceRuntime`, `outputs.files` / `.workspaceFiles` / `.clean`
-(`yes` / `no`), `inputStability.strategy` / `.severity`). Fields the
+(`yes` / `no`), `inputs.stability.strategy` / `.severity`). Fields the
 task does not set are not printed, an empty list prints `none`; a value that spans lines (a
 multi-line command) continues under its first line. `--format json` emits `{ name, dir,
 config }` with the config exactly as resolved. `vx show <pkg>#<task>`
@@ -2947,7 +2948,7 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   cache key that failed after it had passed, most failures first, with
   the outcomes over those keys. A cache hit counts as a pass (it
   replayed one), and a pass that took a retry counts too, its failed
-  attempts counted as failures. A task with no cache block keys on its
+  attempts counted as failures. A task with no `cache: true` keys on its
   config alone, so its key says nothing about its inputs: it is never
   listed. A pass or a failure behind a failed dependency, in a run that
   continues past failures, is not its key's and counts on no key. `none` when
@@ -3172,7 +3173,7 @@ names the hash change and says the component diff is unavailable. When
 only the previous run failed, or passed beside a failed task
 (`--continue`, never saved), the diff is taken against the last run
 that saved an entry instead, and the detail line names that run. A
-task with `inputs` and no `cache` block derives a key too — it is what
+task with `inputs` and no `cache: true` derives a key too — it is what
 dependents fold — but saves no entry, so for it the verb can only report
 the key change and says so.
 
@@ -3275,7 +3276,7 @@ for after it (`128 + SIGKILL`; the shell's convention, so a
 command that exits 137 on its own reads the same). Where the run's
 footer gave a reason, the row ends with it instead: `timed out`,
 `never ready: exited`, `src/a.ts changed during the run` (an
-`inputStability.severity: 'error'` failure, read from its kept output),
+`inputs.stability.severity: 'error'` failure, read from its kept output),
 `2 sandbox violations`, and for a skipped task
 `after lib#build failed` (the v27 columns; rows older than them read
 as before), or, for a platform skip, `needs another platform` and
@@ -3482,7 +3483,7 @@ granted its denials, the same grants the terminal prints as `fix:`;
 a cached task, `inputs` the reads of its project no `inputs.files`
 glob matches (the terminal's `and, if the output depends on them, …`
 line). A task
-failed by `inputStability.severity: 'error'` adds `inputMoved`, the
+failed by `inputs.stability.severity: 'error'` adds `inputMoved`, the
 input that changed during the run. They live in cache.db's `failures`
 rows, the newest 50 failed runs; past those, or when the write was
 refused, a failed row reads `output: ''` and `locations: []`.
@@ -3625,37 +3626,37 @@ what a TASK sees is `exec.env` in `docs/schema.md`.
 
 <!-- variables table: generated by tests/settings.test.ts -->
 
-| Variable                            | Setting                                               | What it does                                                                                                                                                                                     |
-| ----------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `VX_BASE_BRANCH`                    | [`baseBranch`](schema.md#settings)                    | The default branch: a run on it has no cache scope and a bare `--affected` no base; elsewhere both use the merge base with `origin/<baseBranch>`. Named alone: `main`, not `origin/main`.        |
-| `VX_AFFECTED_BASE`                  | [`affectedBase`](schema.md#settings)                  | The commit a bare `--affected` compares with, on the base branch too. `--affected=<base>` beats it; it beats a plugin's base commit. Env only: a committed base would be stale on the next push. |
-| `VX_RUN_CONCURRENCY`                | [`run.concurrency`](schema.md#settings)               | Tasks at once: a positive integer, or a share of the cores (`'50%'`).                                                                                                                            |
-| `VX_RUN_SCHEDULE`                   | [`run.schedule`](schema.md#settings)                  | Which ready task starts first when there are more than workers.                                                                                                                                  |
-| `VX_RUN_BRANCH`                     | [`run.branch`](schema.md#settings)                    | The branch a run records in its history and forecasts from. Flag and env only: a committed branch would be wrong on every other branch.                                                          |
-| `VX_RUN_TIMEOUT`                    | [`run.timeout`](schema.md#settings)                   | A task's time limit, for tasks without their own `exec.timeout` (`'30m'`).                                                                                                                       |
-| `VX_RUN_RETRIES`                    | [`run.retries`](schema.md#settings)                   | Re-runs of a failed task, for tasks without their own `exec.retries`.                                                                                                                            |
-| `VX_RUN_CONTINUE`                   | [`run.continue`](schema.md#settings)                  | What a failed task takes down: `never` stops the run, `deps-ok` skips its dependents, `always` runs them too.                                                                                    |
-| `VX_RUN_OUTPUT_LOGS`                | [`run.outputLogs`](schema.md#settings)                | Which task output the run prints. Chosen before the workspace loads, so flag and env only.                                                                                                       |
-| `VX_RUN_RULES_EXCLUSIVE_OUTPUTS`    | [`run.rules.exclusiveOutputs`](schema.md#settings)    | Refuse two tasks whose outputs overlap even when an edge orders them.                                                                                                                            |
-| `VX_CACHE_DIR`                      | [`cache.dir`](schema.md#settings)                     | Where the cache lives, relative to the workspace root; named, it holds the whole cache.                                                                                                          |
-| `VX_CACHE_POLICY`                   | [`cache.policy`](schema.md#settings)                  | Which layers a run reads and writes (`'local:rw,remote:r'`); `--no-cache` and `--force` apply on top.                                                                                            |
-| `VX_CACHE_SCOPE`                    | [`cache.scope`](schema.md#settings)                   | The branch scope plugin entries are keyed under (`'vznjs/vx:feat-x'`); task keys never carry it. Empty: no scope.                                                                                |
-| `VX_CACHE_CONCURRENCY_DOWNLOAD`     | [`cache.concurrency.download`](schema.md#settings)    | Remote downloads at once.                                                                                                                                                                        |
-| `VX_CACHE_CONCURRENCY_UPLOAD`       | [`cache.concurrency.upload`](schema.md#settings)      | Uploads at once, per remote.                                                                                                                                                                     |
-| `VX_CACHE_CONCURRENCY_RESTORE`      | [`cache.concurrency.restore`](schema.md#settings)     | Local hits restoring outputs at once.                                                                                                                                                            |
-| `VX_CACHE_DOWNLOAD`                 | [`cache.download`](schema.md#settings)                | Which remote hits land on disk: every one, only the requested tasks, or none.                                                                                                                    |
-| `VX_CACHE_INPUT_STABILITY_STRATEGY` | [`cache.inputStability.strategy`](schema.md#settings) | What a write to an input during the command means for the save, for tasks without their own.                                                                                                     |
-| `VX_CACHE_INPUT_STABILITY_SEVERITY` | [`cache.inputStability.severity`](schema.md#settings) | Whether a skipped save warns or fails the task, for tasks without their own.                                                                                                                     |
-| `VX_CACHE_STORE_EMBEDDINGS`         | [`cache.store.embeddings`](schema.md#settings)        | Keep an entry up to this size inside the cache index, one zstd tar, rather than as files; `false` keeps none.                                                                                    |
-| `VX_CACHE_STORE_DECOMPRESS`         | [`cache.store.decompress`](schema.md#settings)        | Keep a larger entry as its plain files, which a hit copies or clones out; off, as one `.tar.zst`.                                                                                                |
-| `VX_LOCK_REVIEW_FILES`              | [`lock.reviewFiles`](schema.md#settings)              | `vx lock` writes each project's resolved config, pretty, to `vx.lock.json` beside its `vx.config`, for review; vx never reads it.                                                                |
-| `VX_WATCH_POLL`                     | [`watch.poll`](schema.md#settings)                    | Poll for changes from the start instead of the OS watcher.                                                                                                                                       |
-| `VX_CONFIG_WORKER_TIMEOUT`          | [`config.workerTimeout`](schema.md#settings)          | How long one config evaluation may take.                                                                                                                                                         |
-| `VX_DEBUG_TIMING`                   | [`debug.timing`](schema.md#settings)                  | Print the run's stage timings to stderr.                                                                                                                                                         |
-| `VX_DEBUG_WATCH`                    | [`debug.watch`](schema.md#settings)                   | `vx watch`: say on stderr each time the loop arms, with the projects it watches.                                                                                                                 |
-| `VX_DEBUG_DUMPABLE`                 | [`debug.dumpable`](schema.md#settings)                | Linux: keep vx dumpable, so strace or a debugger can read its memory and `/proc/<pid>/fd`, and an unsandboxed task its env.                                                                      |
-| `VX_HANDED_OFF`                     | —                                                     | Set by a global vx that hands the call to the project's own (§ Which vx runs): the path of the vx that handed off, so the receiver does not hand off again.                                      |
-| `VX_RUN_WORKSPACE`, `VX_RUN_TASK`   | —                                                     | Set by vx on every task (below); a `vx run` a task starts reads them back.                                                                                                                       |
+| Variable                          | Setting                                            | What it does                                                                                                                                                                                     |
+| --------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `VX_BASE_BRANCH`                  | [`baseBranch`](schema.md#settings)                 | The default branch: a run on it has no cache scope and a bare `--affected` no base; elsewhere both use the merge base with `origin/<baseBranch>`. Named alone: `main`, not `origin/main`.        |
+| `VX_AFFECTED_BASE`                | [`affectedBase`](schema.md#settings)               | The commit a bare `--affected` compares with, on the base branch too. `--affected=<base>` beats it; it beats a plugin's base commit. Env only: a committed base would be stale on the next push. |
+| `VX_RUN_CONCURRENCY`              | [`run.concurrency`](schema.md#settings)            | Tasks at once: a positive integer, or a share of the cores (`'50%'`).                                                                                                                            |
+| `VX_RUN_SCHEDULE`                 | [`run.schedule`](schema.md#settings)               | Which ready task starts first when there are more than workers.                                                                                                                                  |
+| `VX_RUN_BRANCH`                   | [`run.branch`](schema.md#settings)                 | The branch a run records in its history and forecasts from. Flag and env only: a committed branch would be wrong on every other branch.                                                          |
+| `VX_RUN_TIMEOUT`                  | [`run.timeout`](schema.md#settings)                | A task's time limit, for tasks without their own `exec.timeout` (`'30m'`).                                                                                                                       |
+| `VX_RUN_RETRIES`                  | [`run.retries`](schema.md#settings)                | Re-runs of a failed task, for tasks without their own `exec.retries`.                                                                                                                            |
+| `VX_RUN_CONTINUE`                 | [`run.continue`](schema.md#settings)               | What a failed task takes down: `never` stops the run, `deps-ok` skips its dependents, `always` runs them too.                                                                                    |
+| `VX_RUN_OUTPUT_LOGS`              | [`run.outputLogs`](schema.md#settings)             | Which task output the run prints. Chosen before the workspace loads, so flag and env only.                                                                                                       |
+| `VX_RUN_RULES_EXCLUSIVE_OUTPUTS`  | [`run.rules.exclusiveOutputs`](schema.md#settings) | Refuse two tasks whose outputs overlap even when an edge orders them.                                                                                                                            |
+| `VX_CACHE_DIR`                    | [`cache.dir`](schema.md#settings)                  | Where the cache lives, relative to the workspace root; named, it holds the whole cache.                                                                                                          |
+| `VX_CACHE_POLICY`                 | [`cache.policy`](schema.md#settings)               | Which layers a run reads and writes (`'local:rw,remote:r'`); `--no-cache` and `--force` apply on top.                                                                                            |
+| `VX_CACHE_SCOPE`                  | [`cache.scope`](schema.md#settings)                | The branch scope plugin entries are keyed under (`'vznjs/vx:feat-x'`); task keys never carry it. Empty: no scope.                                                                                |
+| `VX_CACHE_CONCURRENCY_DOWNLOAD`   | [`cache.concurrency.download`](schema.md#settings) | Remote downloads at once.                                                                                                                                                                        |
+| `VX_CACHE_CONCURRENCY_UPLOAD`     | [`cache.concurrency.upload`](schema.md#settings)   | Uploads at once, per remote.                                                                                                                                                                     |
+| `VX_CACHE_CONCURRENCY_RESTORE`    | [`cache.concurrency.restore`](schema.md#settings)  | Local hits restoring outputs at once.                                                                                                                                                            |
+| `VX_CACHE_DOWNLOAD`               | [`cache.download`](schema.md#settings)             | Which remote hits land on disk: every one, only the requested tasks, or none.                                                                                                                    |
+| `VX_INPUTS_STABILITY_STRATEGY`    | [`inputs.stability.strategy`](schema.md#settings)  | What a write to an input during the command means for the save, for tasks without their own.                                                                                                     |
+| `VX_INPUTS_STABILITY_SEVERITY`    | [`inputs.stability.severity`](schema.md#settings)  | Whether a skipped save warns or fails the task, for tasks without their own.                                                                                                                     |
+| `VX_CACHE_STORE_EMBEDDINGS`       | [`cache.store.embeddings`](schema.md#settings)     | Keep an entry up to this size inside the cache index, one zstd tar, rather than as files; `false` keeps none.                                                                                    |
+| `VX_CACHE_STORE_DECOMPRESS`       | [`cache.store.decompress`](schema.md#settings)     | Keep a larger entry as its plain files, which a hit copies or clones out; off, as one `.tar.zst`.                                                                                                |
+| `VX_LOCK_REVIEW_FILES`            | [`lock.reviewFiles`](schema.md#settings)           | `vx lock` writes each project's resolved config, pretty, to `vx.lock.json` beside its `vx.config`, for review; vx never reads it.                                                                |
+| `VX_WATCH_POLL`                   | [`watch.poll`](schema.md#settings)                 | Poll for changes from the start instead of the OS watcher.                                                                                                                                       |
+| `VX_CONFIG_WORKER_TIMEOUT`        | [`config.workerTimeout`](schema.md#settings)       | How long one config evaluation may take.                                                                                                                                                         |
+| `VX_DEBUG_TIMING`                 | [`debug.timing`](schema.md#settings)               | Print the run's stage timings to stderr.                                                                                                                                                         |
+| `VX_DEBUG_WATCH`                  | [`debug.watch`](schema.md#settings)                | `vx watch`: say on stderr each time the loop arms, with the projects it watches.                                                                                                                 |
+| `VX_DEBUG_DUMPABLE`               | [`debug.dumpable`](schema.md#settings)             | Linux: keep vx dumpable, so strace or a debugger can read its memory and `/proc/<pid>/fd`, and an unsandboxed task its env.                                                                      |
+| `VX_HANDED_OFF`                   | —                                                  | Set by a global vx that hands the call to the project's own (§ Which vx runs): the path of the vx that handed off, so the receiver does not hand off again.                                      |
+| `VX_RUN_WORKSPACE`, `VX_RUN_TASK` | —                                                  | Set by vx on every task (below); a `vx run` a task starts reads them back.                                                                                                                       |
 
 <!-- /variables table -->
 
@@ -3789,7 +3790,7 @@ SIGTERM, SIGHUP) stopped records nothing, so its footer names no id. The
 only — a hit's restore time never enters it. The footer never says a
 fact twice: a spread value already on the row is left out, so one
 executed task shows no spread, and there is no closing `result` row
-repeating the tasks, cache and time rows. A task with no `cache` block,
+repeating the tasks, cache and time rows. A task with no `cache: true`,
 or any task of a run whose `--cache-policy` reads and writes nothing
 (`--no-cache`), could never hit, so it is counted apart (`1 no-cache`
 for `vx run dev`), as `--dry` labels it. A test renders this run and
@@ -3812,7 +3813,7 @@ with them, as do a frame's section rules, so none wraps onto a second
 row. Off a terminal they keep their width.
 
 **Warnings on stderr.** A run's warnings, such as `[vx] app#build:
-cache.outputs matched no files …` or a plugin's, go to stderr. Stdout
+outputs matched no files …` or a plugin's, go to stderr. Stdout
 carries only the rows, the frames and the footer, so `vx run build >
 log.txt` keeps them out of the log.
 
@@ -3869,7 +3870,7 @@ key that never passed is a break and carries no note, every retry of it
 failed too — a changed input
 that fails is what a red run usually means — and the first pass after
 only failures is a recovery (a missing tool installed), not a flake.
-Only tasks with a `cache` block are judged: "same inputs, red after
+Only tasks with `cache: true` are judged: "same inputs, red after
 green" is a claim
 only declared inputs can back, and a task without them keys on its
 config alone. It is judged as the task finishes, so the row carries

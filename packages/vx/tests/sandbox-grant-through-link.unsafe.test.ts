@@ -35,7 +35,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
           command: '(cat 2>/dev/null < ${file} || echo default) > out/r.txt${after}',
           sandbox: { allow: { read: ${JSON.stringify(read)}, write: ${JSON.stringify(write)} } },
         },
-        inputs: { files: ['conf/**'] }, cache: { outputs: { files: ['out/**'] } },
+        inputs: { files: ['conf/**'] }, outputs: { files: ['out/**'] }, cache: true,
       } } }\n`,
       })
       await mkdir(path.join(dir, 'conf'))

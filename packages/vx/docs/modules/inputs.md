@@ -10,7 +10,7 @@ can hash:
 - sorted `[command, output]` pairs for `inputs.runtime` and
   `workspaceRuntime` (each command run once per run through a memo)
 
-Plus the helpers that resolve and clean `cache.outputs.files` and
+Plus the helpers that resolve and clean `outputs.files` and
 `outputs.workspaceFiles`.
 
 ## Public surface
@@ -302,7 +302,7 @@ other walker: a project outside a git work tree is a `UserError`
 5. **Boundary ignores** — a path under a nested project's directory
    (relative to this project), by ancestor lookup, not a glob (A-11).
    Cross-project isolation contract.
-6. **Own outputs** — declared `cache.outputs.files` are excluded, and so
+6. **Own outputs** — declared `outputs.files` are excluded, and so
    are the task's `outputs.workspaceFiles` that land in its project; a
    `workspaceFiles` input drops both namespaces too. Prevents
    self-invalidation: an output one namespace reached through the other

@@ -41,7 +41,7 @@ describe('vx cache clean', () => {
     await addProject(root, 'app', {
       config: `export default { tasks: { build: {
         exec: { command: 'mkdir -p dist && echo built > dist/out.txt' },
-        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+        inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
       } } }\n`,
     })
     await Bun.write(path.join(root, 'packages', 'app', 'src', 'i.txt'), 'x\n')

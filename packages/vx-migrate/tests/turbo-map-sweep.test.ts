@@ -413,10 +413,12 @@ describe('turbo-map: what the sweep found unheld', () => {
       { tasks: { build: {}, lint: { outputs: [] } } },
       { a: { scripts: { build: 'b', lint: 'l' } } },
     )
-    expect(t.projects[0]!.tasks.map((x) => [x.name, x.task!['cache']])).toEqual([
-      ['build', { outputs: { files: [] } }],
-      ['lint', { outputs: { files: [] } }],
-    ])
+    expect(t.projects[0]!.tasks.map((x) => [x.name, x.task!['outputs'], x.task!['cache']])).toEqual(
+      [
+        ['build', { files: [] }, true],
+        ['lint', { files: [] }, true],
+      ],
+    )
   })
 
   // vercel/turborepo#2064: Turbo sorts `outputs` and `dependsOn` before
@@ -441,7 +443,7 @@ describe('turbo-map: what the sweep found unheld', () => {
     const one = all.find((t) => t['dependsOn'] !== undefined)!
     // A `!` entry takes back from the positives in any order (core's
     // outputMatcher), so the negations sorting last changes nothing.
-    expect(one['cache']).toEqual({ outputs: { files: ['a/**', 'b/**', '!a/tmp/**', '!b/tmp/**'] } })
+    expect(one['outputs']).toEqual({ files: ['a/**', 'b/**', '!a/tmp/**', '!b/tmp/**'] })
     expect(one['dependsOn']).toEqual(['lint', 'test'])
   })
 
@@ -969,7 +971,9 @@ describe('turbo-map: turbo 1 `$NAME` env dependencies', () => {
 // deleted a hand-written `src/env.d.ts`.
 describe('turbo-map: Turbo’s glob grammar', () => {
   const cacheOf = (t: TurboMappedTask) =>
-    t.task!['cache'] as { outputs?: { files: string[] } } | undefined
+    t.task!['cache'] === true
+      ? { outputs: t.task!['outputs'] as { files: string[] } | undefined }
+      : undefined
 
   it('inputs keep classes and translate extglobs; one with no safe form widens to every file', async () => {
     const t = await taskOf(
@@ -1285,12 +1289,13 @@ describe('turbo-map: a package config that extends another package', () => {
     const task = t.task as {
       dependsOn?: string[]
       inputs?: { files?: string[]; env?: string[] }
-      cache?: { outputs?: { files?: string[] } }
+      outputs?: { files?: string[] }
+      cache?: boolean
     }
     return [
       t.name,
       task.inputs?.files ?? [],
-      task.cache?.outputs?.files ?? [],
+      task.outputs?.files ?? [],
       task.inputs?.env ?? [],
       task.dependsOn ?? [],
     ]
@@ -1572,10 +1577,9 @@ describe('turbo-map: a field of the wrong type is refused by name (L-15)', () =>
 
 describe('turbo-map: `!` outputs take paths back (A-44)', () => {
   const outputsOf = async (outputs: string[]) =>
-    (
-      (await taskOf({ tasks: { build: { outputs } } }, { a: { scripts: { build: 'b' } } })).task!
-        .cache as { outputs: unknown }
-    ).outputs
+    (await taskOf({ tasks: { build: { outputs } } }, { a: { scripts: { build: 'b' } } })).task![
+      'outputs'
+    ]
 
   it('a negation rides beside its positives, at the package or the root', async () => {
     expect(
@@ -1932,7 +1936,7 @@ describe('turbo-map: a workspace output two projects declare', () => {
     )
     const [a, b] = m.projects.map((p) => p.tasks[0]!)
     expect([
-      (a!.task!['cache'] as { outputs: { workspaceFiles: string[] } }).outputs.workspaceFiles,
+      (a!.task!['outputs'] as { workspaceFiles: string[] }).workspaceFiles,
       b!.task?.['cache'],
       b!.todos,
     ]).toEqual([

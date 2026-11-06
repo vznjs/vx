@@ -51,11 +51,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-2": {
       "description": "bun test, shard 2 of 46 (dealt by scripts/test-shard.ts)",
@@ -108,11 +107,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-3": {
       "description": "bun test, shard 3 of 46 (dealt by scripts/test-shard.ts)",
@@ -165,11 +163,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-4": {
       "description": "bun test, shard 4 of 46 (dealt by scripts/test-shard.ts)",
@@ -222,11 +219,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-5": {
       "description": "bun test, shard 5 of 46 (dealt by scripts/test-shard.ts)",
@@ -279,11 +275,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-6": {
       "description": "bun test, shard 6 of 46 (dealt by scripts/test-shard.ts)",
@@ -336,11 +331,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-7": {
       "description": "bun test, shard 7 of 46 (dealt by scripts/test-shard.ts)",
@@ -393,11 +387,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-8": {
       "description": "bun test, shard 8 of 46 (dealt by scripts/test-shard.ts)",
@@ -450,11 +443,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-9": {
       "description": "bun test, shard 9 of 46 (dealt by scripts/test-shard.ts)",
@@ -507,11 +499,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-10": {
       "description": "bun test, shard 10 of 46 (dealt by scripts/test-shard.ts)",
@@ -564,11 +555,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-11": {
       "description": "bun test, shard 11 of 46 (dealt by scripts/test-shard.ts)",
@@ -621,11 +611,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-12": {
       "description": "bun test, shard 12 of 46 (dealt by scripts/test-shard.ts)",
@@ -678,11 +667,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-13": {
       "description": "bun test, shard 13 of 46 (dealt by scripts/test-shard.ts)",
@@ -735,11 +723,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-14": {
       "description": "bun test, shard 14 of 46 (dealt by scripts/test-shard.ts)",
@@ -792,11 +779,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-15": {
       "description": "bun test, shard 15 of 46 (dealt by scripts/test-shard.ts)",
@@ -849,11 +835,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-16": {
       "description": "bun test, shard 16 of 46 (dealt by scripts/test-shard.ts)",
@@ -906,11 +891,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-17": {
       "description": "bun test, shard 17 of 46 (dealt by scripts/test-shard.ts)",
@@ -963,11 +947,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-18": {
       "description": "bun test, shard 18 of 46 (dealt by scripts/test-shard.ts)",
@@ -1020,11 +1003,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-19": {
       "description": "bun test, shard 19 of 46 (dealt by scripts/test-shard.ts)",
@@ -1077,11 +1059,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-20": {
       "description": "bun test, shard 20 of 46 (dealt by scripts/test-shard.ts)",
@@ -1134,11 +1115,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-21": {
       "description": "bun test, shard 21 of 46 (dealt by scripts/test-shard.ts)",
@@ -1191,11 +1171,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-22": {
       "description": "bun test, shard 22 of 46 (dealt by scripts/test-shard.ts)",
@@ -1248,11 +1227,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-23": {
       "description": "bun test, shard 23 of 46 (dealt by scripts/test-shard.ts)",
@@ -1305,11 +1283,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-24": {
       "description": "bun test, shard 24 of 46 (dealt by scripts/test-shard.ts)",
@@ -1362,11 +1339,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-25": {
       "description": "bun test, shard 25 of 46 (dealt by scripts/test-shard.ts)",
@@ -1419,11 +1395,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-26": {
       "description": "bun test, shard 26 of 46 (dealt by scripts/test-shard.ts)",
@@ -1476,11 +1451,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-27": {
       "description": "bun test, shard 27 of 46 (dealt by scripts/test-shard.ts)",
@@ -1533,11 +1507,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-28": {
       "description": "bun test, shard 28 of 46 (dealt by scripts/test-shard.ts)",
@@ -1590,11 +1563,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-29": {
       "description": "bun test, shard 29 of 46 (dealt by scripts/test-shard.ts)",
@@ -1647,11 +1619,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-30": {
       "description": "bun test, shard 30 of 46 (dealt by scripts/test-shard.ts)",
@@ -1704,11 +1675,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-31": {
       "description": "bun test, shard 31 of 46 (dealt by scripts/test-shard.ts)",
@@ -1761,11 +1731,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-32": {
       "description": "bun test, shard 32 of 46 (dealt by scripts/test-shard.ts)",
@@ -1818,11 +1787,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-33": {
       "description": "bun test, shard 33 of 46 (dealt by scripts/test-shard.ts)",
@@ -1875,11 +1843,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-34": {
       "description": "bun test, shard 34 of 46 (dealt by scripts/test-shard.ts)",
@@ -1932,11 +1899,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-35": {
       "description": "bun test, shard 35 of 46 (dealt by scripts/test-shard.ts)",
@@ -1989,11 +1955,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-36": {
       "description": "bun test, shard 36 of 46 (dealt by scripts/test-shard.ts)",
@@ -2046,11 +2011,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-37": {
       "description": "bun test, shard 37 of 46 (dealt by scripts/test-shard.ts)",
@@ -2103,11 +2067,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-38": {
       "description": "bun test, shard 38 of 46 (dealt by scripts/test-shard.ts)",
@@ -2160,11 +2123,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-39": {
       "description": "bun test, shard 39 of 46 (dealt by scripts/test-shard.ts)",
@@ -2217,11 +2179,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-40": {
       "description": "bun test, shard 40 of 46 (dealt by scripts/test-shard.ts)",
@@ -2274,11 +2235,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-41": {
       "description": "bun test, shard 41 of 46 (dealt by scripts/test-shard.ts)",
@@ -2331,11 +2291,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-42": {
       "description": "bun test, shard 42 of 46 (dealt by scripts/test-shard.ts)",
@@ -2388,11 +2347,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-43": {
       "description": "bun test, shard 43 of 46 (dealt by scripts/test-shard.ts)",
@@ -2445,11 +2403,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-44": {
       "description": "bun test, shard 44 of 46 (dealt by scripts/test-shard.ts)",
@@ -2502,11 +2459,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-45": {
       "description": "bun test, shard 45 of 46 (dealt by scripts/test-shard.ts)",
@@ -2559,11 +2515,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.shard-46": {
       "description": "bun test, shard 46 of 46 (dealt by scripts/test-shard.ts)",
@@ -2616,11 +2571,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.platform.shard-1": {
       "description": "bun test --platform, shard 1 of 6 (dealt by scripts/test-shard.ts)",
@@ -2676,11 +2630,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.platform.shard-2": {
       "description": "bun test --platform, shard 2 of 6 (dealt by scripts/test-shard.ts)",
@@ -2736,11 +2689,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.platform.shard-3": {
       "description": "bun test --platform, shard 3 of 6 (dealt by scripts/test-shard.ts)",
@@ -2796,11 +2748,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.platform.shard-4": {
       "description": "bun test --platform, shard 4 of 6 (dealt by scripts/test-shard.ts)",
@@ -2856,11 +2807,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.platform.shard-5": {
       "description": "bun test --platform, shard 5 of 6 (dealt by scripts/test-shard.ts)",
@@ -2916,11 +2866,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.platform.shard-6": {
       "description": "bun test --platform, shard 6 of 6 (dealt by scripts/test-shard.ts)",
@@ -2976,11 +2925,10 @@
           "skills/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.unsafe.shard-1": {
       "description": "bun test — the files a sandbox cannot host, shard 1 of 10",
@@ -3055,11 +3003,10 @@
           "!private/vx-docs/src/content/docs/plugins/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.unsafe.shard-2": {
       "description": "bun test — the files a sandbox cannot host, shard 2 of 10",
@@ -3134,11 +3081,10 @@
           "!private/vx-docs/src/content/docs/plugins/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.unsafe.shard-3": {
       "description": "bun test — the files a sandbox cannot host, shard 3 of 10",
@@ -3213,11 +3159,10 @@
           "!private/vx-docs/src/content/docs/plugins/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.unsafe.shard-4": {
       "description": "bun test — the files a sandbox cannot host, shard 4 of 10",
@@ -3292,11 +3237,10 @@
           "!private/vx-docs/src/content/docs/plugins/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.unsafe.shard-5": {
       "description": "bun test — the files a sandbox cannot host, shard 5 of 10",
@@ -3371,11 +3315,10 @@
           "!private/vx-docs/src/content/docs/plugins/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.unsafe.shard-6": {
       "description": "bun test — the files a sandbox cannot host, shard 6 of 10",
@@ -3450,11 +3393,10 @@
           "!private/vx-docs/src/content/docs/plugins/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.unsafe.shard-7": {
       "description": "bun test — the files a sandbox cannot host, shard 7 of 10",
@@ -3529,11 +3471,10 @@
           "!private/vx-docs/src/content/docs/plugins/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.unsafe.shard-8": {
       "description": "bun test — the files a sandbox cannot host, shard 8 of 10",
@@ -3608,11 +3549,10 @@
           "!private/vx-docs/src/content/docs/plugins/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.unsafe.shard-9": {
       "description": "bun test — the files a sandbox cannot host, shard 9 of 10",
@@ -3687,11 +3627,10 @@
           "!private/vx-docs/src/content/docs/plugins/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.bun.unsafe.shard-10": {
       "description": "bun test — the files a sandbox cannot host, shard 10 of 10",
@@ -3766,11 +3705,10 @@
           "!private/vx-docs/src/content/docs/plugins/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.platform.unsafe.shard-1": {
       "description": "bun test --platform — the files a sandbox cannot host, shard 1 of 3",
@@ -3848,11 +3786,10 @@
           "!private/vx-docs/src/content/docs/plugins/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.platform.unsafe.shard-2": {
       "description": "bun test --platform — the files a sandbox cannot host, shard 2 of 3",
@@ -3930,11 +3867,10 @@
           "!private/vx-docs/src/content/docs/plugins/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.platform.unsafe.shard-3": {
       "description": "bun test --platform — the files a sandbox cannot host, shard 3 of 3",
@@ -4012,11 +3948,10 @@
           "!private/vx-docs/src/content/docs/plugins/**"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "release.stamp": {
       "description": "stamp VX_RELEASE_VERSION into package.json, the manifest the binary inlines",
@@ -4529,11 +4464,10 @@
           "bun --version"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "check.binary.linux-arm64": {
       "description": "compile the host binary the way release.yml does; it must launch and report the manifest version",
@@ -4585,11 +4519,10 @@
           "bun --version"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "check.binary.darwin-arm64": {
       "description": "compile the host binary the way release.yml does; it must launch and report the manifest version",
@@ -4641,11 +4574,10 @@
           "bun --version"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "lint": {
       "dependsOn": [
@@ -4705,11 +4637,10 @@
           "package.json"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "lint.oxfmt": {
       "description": "oxfmt --check (no rewrite; CI-safe)",
@@ -4738,11 +4669,10 @@
           "package.json"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "lint.oxfmt.fix": {
       "description": "oxfmt . — rewrite formatting in place",
@@ -4815,13 +4745,12 @@
           "bun --version"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": [
-            "dist/vx-linux-x64"
-          ]
-        }
-      }
+      "outputs": {
+        "files": [
+          "dist/vx-linux-x64"
+        ]
+      },
+      "cache": true
     },
     "build.bun.linux-arm64": {
       "description": "compile standalone binary (linux arm64)",
@@ -4866,13 +4795,12 @@
           "bun --version"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": [
-            "dist/vx-linux-arm64"
-          ]
-        }
-      }
+      "outputs": {
+        "files": [
+          "dist/vx-linux-arm64"
+        ]
+      },
+      "cache": true
     },
     "build.bun.darwin-x64": {
       "description": "compile standalone binary (darwin x64)",
@@ -4917,13 +4845,12 @@
           "bun --version"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": [
-            "dist/vx-darwin-x64"
-          ]
-        }
-      }
+      "outputs": {
+        "files": [
+          "dist/vx-darwin-x64"
+        ]
+      },
+      "cache": true
     },
     "build.bun.darwin-arm64": {
       "description": "compile standalone binary (darwin arm64)",
@@ -4968,13 +4895,12 @@
           "bun --version"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": [
-            "dist/vx-darwin-arm64"
-          ]
-        }
-      }
+      "outputs": {
+        "files": [
+          "dist/vx-darwin-arm64"
+        ]
+      },
+      "cache": true
     }
   }
 }

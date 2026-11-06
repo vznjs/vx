@@ -20,9 +20,8 @@ export default defineProject({
       inputs: {
         files: ['*.ts', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
       },
-      cache: {
-        outputs: { files: [] },
-      },
+      outputs: { files: [] },
+      cache: true,
     },
 
     'lint.oxfmt': {
@@ -35,9 +34,8 @@ export default defineProject({
       inputs: {
         files: ['**/*'],
       },
-      cache: {
-        outputs: { files: [] },
-      },
+      outputs: { files: [] },
+      cache: true,
     },
 
     // worker-url.ts: which relay and cache server a CI run uses; what
@@ -52,9 +50,8 @@ export default defineProject({
       },
       dependsOn: ['install'],
       inputs: { files: ['*.ts', 'tests/**', 'compose.yaml', 'package.json'] },
-      cache: {
-        outputs: { files: [] },
-      },
+      outputs: { files: [] },
+      cache: true,
     },
 
     // compose.yaml up, each server answering, a clean stop. No sandbox:
@@ -79,9 +76,8 @@ export default defineProject({
           'packages/vx-devtools/src/**',
         ],
       },
-      cache: {
-        outputs: { files: [] },
-      },
+      outputs: { files: [] },
+      cache: true,
     },
   },
 })

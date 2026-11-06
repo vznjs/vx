@@ -39,7 +39,7 @@ const config = (gen: string): string => `
       build: {
         dependsOn: ['gen'],
         exec: { command: 'mkdir -p dist && cat config.json > dist/out.txt' },
-        inputs: { files: ['config.json'], tasks: [] }, cache: { outputs: { files: ['dist/**'] } },
+        inputs: { files: ['config.json'], tasks: [] }, outputs: { files: ['dist/**'] }, cache: true,
       },
     },
   }
@@ -129,9 +129,8 @@ describe('the run-start facts a producer can contradict, each one', () => {
                 dependsOn: ['gen'],
                 exec: { command: 'mkdir -p dist && cat package.json > dist/out.txt' },
                 inputs: { files: ['src/**', 'package.json'], tasks: [] },
-                cache: {
-                  outputs: { files: ['dist/**'] },
-                },
+                outputs: { files: ['dist/**'] },
+                cache: true,
               },
             },
           }
@@ -169,9 +168,8 @@ describe('the run-start facts a producer can contradict, each one', () => {
                 dependsOn: ['^gen'],
                 exec: { command: 'mkdir -p dist && cat ../lib/config.json > dist/out.txt' },
                 inputs: { files: [], workspaceFiles: ['packages/lib/config.json'], tasks: [] },
-                cache: {
-                  outputs: { files: ['dist/**'] },
-                },
+                outputs: { files: ['dist/**'] },
+                cache: true,
               },
             },
           }
@@ -306,7 +304,8 @@ describe('execute-task drops what the command may have written, and nothing else
       const cached = {
         exec: { command: 'true' },
         inputs: { files: ['package.json'] },
-        cache: { outputs: { files: [] } },
+        outputs: { files: [] },
+        cache: true,
       }
       expect(await survivors(cached, ranHere)).toEqual(all)
     },
@@ -343,7 +342,7 @@ describe('undeclaredWriteReach — where a task may have written that nothing de
   it('a cached task is held to its declared outputs; a group runs nothing', () => {
     expect(
       undeclaredWriteReach(
-        node({ exec: { command: 'x' }, inputs: {}, cache: { outputs: { files: [] } } }),
+        node({ exec: { command: 'x' }, inputs: {}, outputs: { files: [] }, cache: true }),
         ws,
       ),
     ).toBe('none')
@@ -418,7 +417,7 @@ describe('the stability gate reads the reach', () => {
             build: {
               dependsOn: ['^gen'],
               exec: { command: 'true' },
-              inputs: { files: ['**'] }, cache: { outputs: { files: [] } },
+              inputs: { files: ['**'] }, outputs: { files: [] }, cache: true,
             },
           },
         }
@@ -467,7 +466,7 @@ describe('the stability gate reads the reach', () => {
             build: {
               dependsOn: ${buildDeps},
               exec: { command: 'true' },
-              inputs: { files: ['config.json']${buildInputs} }, cache: { outputs: { files: ['dist/**'] } },
+              inputs: { files: ['config.json']${buildInputs} }, outputs: { files: ['dist/**'] }, cache: true,
             },
           },
         }
@@ -499,7 +498,7 @@ describe('the stability gate reads the reach', () => {
     async () => {
       expect(
         await throughChain(
-          `fmt: { exec: { command: 'true' }, inputs: { files: ['**', '!dist/**'] }, cache: { outputs: { files: [] } } },
+          `fmt: { exec: { command: 'true' }, inputs: { files: ['**', '!dist/**'] }, outputs: { files: [] }, cache: true },
            mid: { dependsOn: ['fmt'], ...${QUIET} },
            mid2: { dependsOn: ['mid'], ...${QUIET} },`,
           "['mid2']",
@@ -518,7 +517,7 @@ describe('the stability gate reads the reach', () => {
         await throughChain(
           `fmt: {
              exec: { command: 'true', sandbox: { allow: { read: ['.'], write: ['../other/**'] } } },
-             inputs: { files: ['**', '!dist/**'] }, cache: { outputs: { files: [] } },
+             inputs: { files: ['**', '!dist/**'] }, outputs: { files: [] }, cache: true,
            },
            mid: { dependsOn: ['fmt'], ...${QUIET} },`,
           "['mid']",

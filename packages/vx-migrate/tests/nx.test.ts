@@ -174,15 +174,15 @@ describe('nx(): a wildcard-first output', () => {
       const cacheOf = async (id: string) =>
         (await planRun({ cwd: root, tasks: ['test', 'gen'], log: silent() })).tasks.find(
           (t) => t.node.id === id,
-        )!.node.config.cache
-      expect((await cacheOf('lib#test'))?.outputs.files).toEqual(['*.xml'])
-      expect((await cacheOf('lib#gen'))?.outputs.files).toEqual(['*.mjs'])
-      expect((await cacheOf('app#test'))?.outputs.files).toEqual(['**/*.xml'])
+        )!.node.config.outputs
+      expect((await cacheOf('lib#test'))?.files).toEqual(['*.xml'])
+      expect((await cacheOf('lib#gen'))?.files).toEqual(['*.mjs'])
+      expect((await cacheOf('app#test'))?.files).toEqual(['**/*.xml'])
       await writeFile(
         path.join(root, 'packages', 'lib', 'vx.config.mjs'),
         'export default { tasks: {} }\n',
       )
-      expect((await cacheOf('lib#gen'))?.outputs.files).toEqual(['*.mjs', '!vx.config.mjs'])
+      expect((await cacheOf('lib#gen'))?.files).toEqual(['*.mjs', '!vx.config.mjs'])
       // The clean removes what the glob reaches and git does not track.
       await mkdir(path.join(app, 'reports'), { recursive: true })
       await writeFile(path.join(app, 'reports', 'stale.xml'), '<old/>\n')
@@ -283,7 +283,7 @@ describe('nx()', () => {
         `nx-exec @acme/compile:run --project app --target build --configuration production --options '{"writeFile":"dist/app.js","mode":"prod"}'`,
       )
       expect(app.config.inputs?.files).toEqual(['src/**/*'])
-      expect(app.config.cache?.outputs.files).toEqual(['dist'])
+      expect(app.config.outputs?.files).toEqual(['dist'])
       const lint = plan.tasks.find((t) => t.node.id === 'lib#lint')!.node
       expect(lint.config.exec?.command).toBe('echo lint-ran > lint.log')
       expect(lint.config.cache).toBeUndefined()

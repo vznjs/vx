@@ -24,7 +24,8 @@ function task(inputs: string[], outputs: string[], extra: Partial<TaskConfig> = 
   return {
     exec: { command: 'x' },
     inputs: { files: inputs },
-    cache: { outputs: { files: outputs } },
+    outputs: { files: outputs },
+    cache: true,
     ...extra,
   }
 }
@@ -33,9 +34,8 @@ function wsTask(inputs: string[], outputs: string[]): TaskConfig {
   return {
     exec: { command: 'x' },
     inputs: { files: [], workspaceFiles: inputs },
-    cache: {
-      outputs: { files: [], workspaceFiles: outputs },
-    },
+    outputs: { files: [], workspaceFiles: outputs },
+    cache: true,
   }
 }
 
@@ -187,7 +187,8 @@ describe('vx lock passes what reads no other task’s outputs', () => {
     const group = {
       dependsOn: ['^build'],
       inputs: { files: ['**'] },
-      cache: { outputs: { files: [] } },
+      outputs: { files: [] },
+      cache: true,
     } as unknown as TaskConfig
     expect(refusal(app({ build, dev: { exec: { command: 'dev' } }, bundle: group }))).toBeNull()
   })
@@ -197,12 +198,12 @@ describe('input overlaps end to end', () => {
   const config = `export default { tasks: {
     build: {
       exec: { command: 'mkdir -p dist && cp src/a.txt dist/a.txt' },
-      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+      inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
     },
     test: {
       dependsOn: ['build'],
       exec: { command: 'cat dist/a.txt > out.txt' },
-      inputs: { files: ['**'] }, cache: { outputs: { files: ['out.txt'] } },
+      inputs: { files: ['**'] }, outputs: { files: ['out.txt'] }, cache: true,
     },
   } }`
 
@@ -239,14 +240,14 @@ describe('input overlaps end to end', () => {
       await addProject(root, 'lib', {
         config: `export default { tasks: { test: {
           exec: { command: 'true' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['coverage/**'] } },
+          inputs: { files: ['src/**'] }, outputs: { files: ['coverage/**'] }, cache: true,
         } } }`,
       })
       await addProject(root, 'app', {
         config: `export default { tasks: { build: {
           dependsOn: ['^build'],
           exec: { command: 'true' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+          inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
         } } }`,
       })
       const plan = await planRun({ cwd: root, tasks: ['app#build', 'lib#test'], log: silent })
@@ -348,9 +349,8 @@ describe('input overlaps stay near-linear over a shared input', () => {
         tasks[`t${t}`] = {
           exec: { command: 'x' },
           inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] },
-          cache: {
-            outputs: { files: [`out/t${t}/**`] },
-          },
+          outputs: { files: [`out/t${t}/**`] },
+          cache: true,
         }
       }
       projects[`p${p}`] = tasks

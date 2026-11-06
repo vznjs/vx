@@ -41,8 +41,8 @@ it('an output a cache hit restores starts no cycle', async () => {
   const log = path.join(outside, 'runs.log')
   const dir = await addProject(root, 'app', {
     config: `export default { tasks: {
-      build: { exec: { command: 'mkdir -p dist && cp src/a.txt dist/a.txt' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } } },
-      check: { dependsOn: ['build'], exec: { command: 'true' }, inputs: { files: ['**/*'] }, cache: { outputs: { files: [] } } },
+      build: { exec: { command: 'mkdir -p dist && cp src/a.txt dist/a.txt' }, inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true },
+      check: { dependsOn: ['build'], exec: { command: 'true' }, inputs: { files: ['**/*'] }, outputs: { files: [] }, cache: true },
       types: { dependsOn: ['check'], exec: { command: 'echo run >> ${log}' } },
     } }\n`,
     files: { 'src/a.txt': 'a1\n', '.gitignore': 'dist/\n' },

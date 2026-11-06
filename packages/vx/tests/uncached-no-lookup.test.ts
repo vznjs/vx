@@ -96,7 +96,8 @@ it(
           dependsOn: ['gen'],
           exec: { command: 'cat gen.txt > out.txt' },
           inputs: { files: ['src/**'] },
-          cache: { outputs: { files: ['out.txt'] } },
+          outputs: { files: ['out.txt'] },
+          cache: true,
         },
       } }\n`,
     })

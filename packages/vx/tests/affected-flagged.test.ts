@@ -19,7 +19,7 @@ beforeEach(async () => {
   for (const name of ['a', 'b']) {
     await addProject(root, name, {
       config:
-        "export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['**'] }, cache: { outputs: { files: [] } } } } }\n",
+        "export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['**'] }, outputs: { files: [] }, cache: true } } }\n",
       files: { 'src/index.js': 'export {}\n' },
     })
   }

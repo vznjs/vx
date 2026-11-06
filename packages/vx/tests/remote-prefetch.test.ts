@@ -27,7 +27,7 @@ const CACHED = (command: string, outputs: string): string => `
     tasks: {
       build: {
         exec: { command: ${JSON.stringify(command)} },
-        inputs: { files: ['src/**'] }, cache: { outputs: ${outputs} },
+        inputs: { files: ['src/**'] }, outputs: ${outputs}, cache: true,
       },
     },
   }

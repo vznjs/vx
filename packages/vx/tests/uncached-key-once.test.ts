@@ -62,7 +62,7 @@ describe('an uncached task key is derived once', () => {
           t4: { exec: { command: 'true' }, inputs: { files: ['**'] } },
           seed: {
             exec: { command: 'true' },
-            inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } },
+            inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true,
           },
         } }
       `,
@@ -111,9 +111,8 @@ describe('an uncached task key is derived once', () => {
           gen: {
             exec: { command: 'mkdir -p ../e/gen && echo g > ../e/gen/f' },
             inputs: { files: ['package.json'] },
-            cache: {
-              outputs: { files: [], workspaceFiles: ['packages/e/gen/**'] },
-            },
+            outputs: { files: [], workspaceFiles: ['packages/e/gen/**'] },
+            cache: true,
           },
         } }
       `,

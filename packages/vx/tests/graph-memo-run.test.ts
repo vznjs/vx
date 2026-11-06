@@ -17,12 +17,12 @@ const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 let root = ''
 
 const A = `export default { tasks: {
-  build: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } },
-  lint: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } },
+  build: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true },
+  lint: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true },
 } }\n`
 const B = (dependsOn = "['a#build']"): string => `export default { tasks: {
-  build: { dependsOn: ${dependsOn}, exec: { command: 'true' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } },
-  lint: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } },
+  build: { dependsOn: ${dependsOn}, exec: { command: 'true' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true },
+  lint: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true },
 } }\n`
 
 beforeEach(async () => {

@@ -57,11 +57,10 @@
           "tsconfig.json"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "lint.oxfmt": {
       "description": "oxfmt --check (no rewrite; CI-safe)",
@@ -87,11 +86,10 @@
           "package.json"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test": {
       "dependsOn": [
@@ -151,11 +149,10 @@
           "VX_REQUIRE_NONROOT"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.shard-2": {
       "description": "bun test, shard 2 of 4",
@@ -210,11 +207,10 @@
           "VX_REQUIRE_NONROOT"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.shard-3": {
       "description": "bun test, shard 3 of 4",
@@ -269,11 +265,10 @@
           "VX_REQUIRE_NONROOT"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.shard-4": {
       "description": "bun test, shard 4 of 4",
@@ -328,11 +323,10 @@
           "VX_REQUIRE_NONROOT"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.live": {
       "description": "bun test, the live Nx files, against the install in .nx-live",

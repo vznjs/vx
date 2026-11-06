@@ -48,11 +48,10 @@
           "VX_BENCH_BASE"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "perf.update": {
       "description": "perf-guard.ts --update: rewrite perf-baseline.json for this platform",
@@ -115,13 +114,12 @@
           "edges.ts"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": [
-            "site/vx.json"
-          ]
-        }
-      }
+      "outputs": {
+        "files": [
+          "site/vx.json"
+        ]
+      },
+      "cache": true
     },
     "bench.turbo": {
       "description": "compare.ts: turbo on the 9,603-task head-to-head → site/turbo.json",
@@ -153,13 +151,12 @@
           "package.json"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": [
-            "site/turbo.json"
-          ]
-        }
-      }
+      "outputs": {
+        "files": [
+          "site/turbo.json"
+        ]
+      },
+      "cache": true
     },
     "bench.nx": {
       "description": "compare.ts: nx on the 9,603-task head-to-head → site/nx.json",
@@ -191,13 +188,12 @@
           "package.json"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": [
-            "site/nx.json"
-          ]
-        }
-      }
+      "outputs": {
+        "files": [
+          "site/nx.json"
+        ]
+      },
+      "cache": true
     },
     "bench.vite-task": {
       "description": "compare.ts: vite-task on the 9,603-task head-to-head → site/vite-task.json",
@@ -229,13 +225,12 @@
           "package.json"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": [
-            "site/vite-task.json"
-          ]
-        }
-      }
+      "outputs": {
+        "files": [
+          "site/vite-task.json"
+        ]
+      },
+      "cache": true
     },
     "site.numbers": {
       "description": "every runner of the head-to-head, the rows the site reads",
@@ -276,11 +271,10 @@
           "tsconfig.json"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "lint.oxfmt": {
       "description": "oxfmt --check (no rewrite; CI-safe)",
@@ -306,11 +300,10 @@
           "package.json"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test": {
       "description": "bun test",
@@ -344,11 +337,10 @@
           "package.json"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "build": {
       "dependsOn": [

@@ -269,7 +269,7 @@ git checkout packages`) was no event to its own arm, nor to the
      `.vx/tmp` (restore staging), the `~` suffix (editor swap files), the RESOLVED
      cache directory (a relocated `cache.dir` would otherwise re-trigger
      every cycle), and each project's declared outputs
-     (`cache.outputs.files`, root-relative `workspaceFiles`) — a cycle
+     (`outputs.files`, root-relative `workspaceFiles`) — a cycle
      that writes `dist/` is not an edit, and neither is `dist` itself;
      a path a task the watch reaches declares as an input is never
      dropped, whoever declares it as an output (item 946) — the
@@ -302,7 +302,7 @@ git checkout packages`) was no event to its own arm, nor to the
      judgement saw a half-rebuilt `dist`: `rm -rf dist && tsc` with no
      outputs declared looped forever (`tests/watch-loop-uncached.test.ts`,
      the delete-and-recreate pair). The prior text:
-   - Catch UNDECLARED writes by content: a task with no `cache` block
+   - Catch UNDECLARED writes by content: a task with no `cache: true`
      declares no outputs and still writes into its project, and its
      own write re-triggered the cycle without end (the init walkthrough,
      2026-09-04). When the debounce timer fires, every path that fired

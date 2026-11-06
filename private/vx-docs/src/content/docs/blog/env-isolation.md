@@ -94,7 +94,7 @@ Some variables change the build output, like `NODE_OPTIONS` loading a
 loader. vx doesn't guess which. Name it, and its value joins the key:
 
 ```ts
-inputs: { files: ['src/**'], env: ['NODE_OPTIONS'] }, cache: { outputs: { files: ['dist/**'] } }
+inputs: { files: ['src/**'], env: ['NODE_OPTIONS'] }, outputs: { files: ['dist/**'] }, cache: true
 ```
 
 ## Hygiene, not a wall

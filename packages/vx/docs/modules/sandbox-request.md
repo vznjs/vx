@@ -56,8 +56,8 @@ export async function dependencyReads(
   deps: readonly TaskNode[],
   workspaceRoot: string,
 ): Promise<string[]>
-// cache.outputs.mount's targets, trailing slashes dropped
-export function mountPaths(outputs: CacheOutputs | undefined): string[]
+// outputs.mount's targets, trailing slashes dropped
+export function mountPaths(outputs: TaskOutputs | undefined): string[]
 // each dependency's mounts, absolute; throws for an unsandboxed or non-Linux dependant
 export function dependencyMounts(
   node: TaskNode,
@@ -120,7 +120,7 @@ export function mayWriteFingerprint(
   `*.tsbuildinfo` never grants the dependency's whole project. Asked when
   the task runs, after its dependencies ran or were restored.
 - `dependencyMounts` lists, for each dependency declaring
-  `cache.outputs.mount`, where its output directory is laid in the
+  `outputs.mount`, where its output directory is laid in the
   dependant's sandbox. A dependant without `exec.sandbox`, or off Linux,
   is refused: only bwrap can mount, and a task outside the sandbox would
   see an empty path.
@@ -144,7 +144,7 @@ export function mayWriteFingerprint(
   reaches no input). The stability gate (`stable-keys.md`) and
   execute-task's fact drop (`execute-task.md`) both read it, so the up-
   front key and the live one agree on what a producer can contradict.
-- `commandWriteReach` is the same answer with the `cache` block ignored:
+- `commandWriteReach` is the same answer with `cache: true` ignored:
   where a command may write at all. `undeclaredWriteReach` is it for an
   uncached task and `'none'` for a cached one; the stability gate reads
   it for a cached task too, as where that task may rewrite its own

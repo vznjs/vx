@@ -39,7 +39,7 @@ export interface RunSummaryRow {
   cacheHit: boolean | null
   /** On a hit: true when outputs were restored, false when up-to-date (v31); null otherwise. */
   restored: boolean | null
-  /** Whether the task declared a `cache` block; null on rows older than the column. */
+  /** Whether the task declared `cache: true`; null on rows older than the column. */
   cached: boolean | null
   hash: string
   cpuMs: number | null
@@ -382,7 +382,7 @@ export interface WhyDidThisRerun {
     cacheHit: boolean | null
     /** On a hit: outputs restored (true) or up-to-date (false); null otherwise. */
     restored: boolean | null
-    /** Whether the task declared a `cache` block; null on rows older than the column. */
+    /** Whether the task declared `cache: true`; null on rows older than the column. */
     cached: boolean | null
     startedAt: number
   }
@@ -614,9 +614,9 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
           // one's is new each run, so every dependent misses: "folded by
           // dependents" read as if they could hit.
           this_.keylessBy === null
-          ? 'this task declares no `cache` block — it runs on every invocation; its key is folded by dependents only'
+          ? 'this task declares no `cache: true` — it runs on every invocation; its key is folded by dependents only'
           : this_.keylessBy === taskId
-            ? 'this task declares no `cache` block — it runs on every invocation; it declares no `inputs` either, so each run derives a new key and every task that depends on it misses; declare its `inputs`'
+            ? 'this task declares no `cache: true` — it runs on every invocation; it declares no `inputs` either, so each run derives a new key and every task that depends on it misses; declare its `inputs`'
             : `this task declares no \`cache\` block — it runs on every invocation; its key includes ${this_.keylessBy}, which declares no \`inputs\`, so each run derives a new key and every task that depends on it misses; declare inputs on ${this_.keylessBy}`
         : this_.keylessBy !== null
           ? keylessNote(taskId, this_.keylessBy)
@@ -889,7 +889,7 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
         this_.cached === 0
           ? // The verdict already says the task is uncached; this line says
             // why no input can be named.
-            'with no `cache` block it saves no entry, so no input fingerprints are kept to say which of its `inputs` moved its key; with no `inputs`, every run gives it a new key'
+            'without `cache: true` it saves no entry, so no input fingerprints are kept to say which of its `inputs` moved its key; with no `inputs`, every run gives it a new key'
           : unsaved !== null
             ? `cache key changed but input fingerprints are unavailable — ${unsaved} and saved no entry; only the key change is known`
             : 'cache key changed but input fingerprints are unavailable — the entry was pruned (or the row predates the `cached` column); only the key change is known',

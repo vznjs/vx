@@ -17,7 +17,8 @@ globs `**/*.ts` won't rebuild when you edit a package under it:
 count: {
   exec: { command: "find . -name '*.ts' -not -path './node_modules/*' | wc -l" },
   inputs: { files: ['**/*.ts'] },
-  cache: { outputs: { files: [] } },
+  outputs: { files: [] },
+  cache: true,
 }
 ```
 
@@ -83,7 +84,7 @@ caching a result that wouldn't rerun.
 
 ## The escape hatch
 
-`inputs.workspaceFiles` and `cache.outputs.workspaceFiles` start at the
+`inputs.workspaceFiles` and `outputs.workspaceFiles` start at the
 workspace root and have no fence. Use them for root files like a shared
 `tsconfig.base.json`.
 

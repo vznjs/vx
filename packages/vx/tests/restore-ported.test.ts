@@ -318,7 +318,7 @@ it('a file beside the outputs that no glob names does not make a hit restore', a
   const proj = await addProject(root, 'app', {
     config: `export default { tasks: { build: {
       exec: { command: 'mkdir -p dist && echo a > dist/a.txt' },
-      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/*.txt'] } },
+      inputs: { files: ['src/**'] }, outputs: { files: ['dist/*.txt'] }, cache: true,
     } } }`,
     files: { 'src/in.txt': 'v1\n' },
   })
@@ -352,7 +352,7 @@ for (const change of [
     const proj = await addProject(root, 'app', {
       config: `export default { tasks: { build: {
         exec: { command: 'mkdir -p dist && echo archived > dist/out.txt && echo a > dist/a.txt && echo b > dist/b.txt && ln -sf a.txt dist/link && ln -sf missing dist/dangling' },
-        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+        inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
       } } }`,
       files: { 'src/in.txt': 'v1\n' },
     })
@@ -386,7 +386,7 @@ it('a hit replaces a link where the entry holds a directory, and writes nothing 
   const proj = await addProject(root, 'app', {
     config: `export default { tasks: { build: {
       exec: { command: 'mkdir -p dist/runtime && echo built > dist/runtime/x.js' },
-      inputs: { files: ['src/in.txt'] }, cache: { outputs: { files: ['dist/**'] } },
+      inputs: { files: ['src/in.txt'] }, outputs: { files: ['dist/**'] }, cache: true,
     } } }`,
     files: { 'src/in.txt': 'v1\n', 'src/runtime/x.js': 'source\n' },
   })

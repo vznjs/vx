@@ -35,7 +35,8 @@ describe('./-prefixed globs', () => {
         export default { tasks: { build: {
           exec: { command: 'mkdir -p dist && cat src/a.txt gen/g.txt > dist/out.txt' },
           inputs: ${inputs},
-          cache: { outputs: ${outputs} },
+          outputs: ${outputs},
+          cache: true,
         } } }
       `,
     )
@@ -127,8 +128,8 @@ describe('./-prefixed globs', () => {
       const file = path.join(dir, 'vx.config.mjs')
       const spec =
         field === 'inputs'
-          ? `inputs: { files: [${entry}] }, cache: { outputs: { files: ['dist/**'] } }`
-          : `inputs: { files: ['src/**'] }, cache: { outputs: { files: [${entry}] } }`
+          ? `inputs: { files: [${entry}] }, outputs: { files: ['dist/**'] }, cache: true`
+          : `inputs: { files: ['src/**'] }, outputs: { files: [${entry}] }, cache: true`
       await writeFile(
         file,
         `export default { tasks: { build: { exec: { command: 'true' }, ${spec} } } }\n`,

@@ -17,7 +17,7 @@ const flip = (name: string, exec: string, fail = 'exit 1'): string => `
     tasks: {
       test: {
         exec: { command: 'if test -f ../../once-${name}; then rm ../../once-${name}; ${fail}; fi'${exec} },
-        inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+        inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
       },
     },
   }

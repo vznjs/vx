@@ -14,7 +14,7 @@ import { definePlugin } from '../src/index.js'
 import { noticed } from './helpers/notice.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
-const TIMEOUT = 20_000
+const TIMEOUT = 30_000
 
 interface VxResult {
   code: number

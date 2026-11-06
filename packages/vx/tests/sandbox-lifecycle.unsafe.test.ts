@@ -923,7 +923,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
                     command: 'echo OUT > g/a.txt',
                     sandbox: { allow: { read: ['src/**'], write: ['g/{a,b}.txt'] } },
                   },
-                  inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+                  inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
                 },
               },
             }

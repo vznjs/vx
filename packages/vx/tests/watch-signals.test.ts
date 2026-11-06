@@ -361,6 +361,6 @@ describe('vx watch under a signal (e2e)', () => {
     ).toEqual(want)
   }
 
-  it('SIGINT during the initial run reaches its task as SIGINT', reachesAsSigint(false), 20_000)
-  it('SIGINT while idle reaches the dev server it holds as SIGINT', reachesAsSigint(true), 20_000)
+  it('SIGINT during the initial run reaches its task as SIGINT', reachesAsSigint(false), 30_000)
+  it('SIGINT while idle reaches the dev server it holds as SIGINT', reachesAsSigint(true), 30_000)
 })

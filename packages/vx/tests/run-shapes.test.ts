@@ -59,7 +59,8 @@ describe('a cache directory named with shell syntax', () => {
           build: {
             exec: { command: 'mkdir -p out && echo built > out/o.txt' },
             inputs: { files: ['src/**'] },
-            cache: { outputs: { files: ['out/**'] } },
+            outputs: { files: ['out/**'] },
+            cache: true,
           },
         },
       }
@@ -104,7 +105,8 @@ describe('a runtime input', () => {
           build: {
             exec: { command: 'true' },
             inputs: { files: ['src/**'], runtime: ['pwd'] },
-            cache: { outputs: { files: [] } },
+            outputs: { files: [] },
+            cache: true,
           },
         },
       }

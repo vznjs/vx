@@ -168,7 +168,7 @@ export function useWatchFixture(): WatchFixture {
           tasks: {
             build: {
               exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${f.log}' },
-              inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+              inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
             },
           },
         }

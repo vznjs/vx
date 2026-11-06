@@ -292,7 +292,7 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
  * input changed and changed BACK while the command ran matched its digest
  * again, and the entry saved the other content's output under the key (item
  * 1015). A write before it — an upstream's — is judged by content, as before.
- * `byBytes` (`inputStability.strategy: 'mutable'`) judges a write during
+ * `byBytes` (`inputs.stability.strategy: 'mutable'`) judges a write during
  * the command by content too, when it answers true for that file and its
  * ctime: the task says the same bytes are its own identical rewrite
  * (tsdown's package.json), not an edit undone, unless another command that
@@ -353,14 +353,14 @@ export function taskFilesToken(
 /** What `resolveInputs` is asked for a task's key. */
 function inputsArgs(args: ComputeHashArgs): ResolveInputsArgs {
   const cfg = args.node.config
-  const cacheCfg = cfg.cache
+  const cfgOut = cfg.outputs
   return {
     projectDir: args.node.projectDir,
     workspaceRoot: args.workspaceRoot,
     envSource: process.env,
     inputs: cfg.inputs,
-    ownOutputs: cacheCfg?.outputs.files ?? [],
-    ownWorkspaceOutputs: cacheCfg?.outputs.workspaceFiles ?? [],
+    ownOutputs: cfgOut?.files ?? [],
+    ownWorkspaceOutputs: cfgOut?.workspaceFiles ?? [],
     nestedProjectDirs: args.nestedProjectDirs,
     ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
     ...(args.probesAfterWrites?.has(args.node.id) === true ? { runtimeScope: args.node.id } : {}),

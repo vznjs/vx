@@ -51,7 +51,7 @@ async function addProject(name: string, tasks: string[]): Promise<void> {
     .map(
       (t) => `${t}: {
         exec: { command: 'echo ${t} > ${t}.txt' },
-        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['${t}.txt'] } },
+        inputs: { files: ['src/**'] }, outputs: { files: ['${t}.txt'] }, cache: true,
       }`,
     )
     .join(',\n')

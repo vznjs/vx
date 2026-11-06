@@ -53,7 +53,7 @@ function vx(root: string, args: string[]) {
 }
 
 const task = (inputs: string[], outputs: string[] = []) =>
-  `{ exec: { command: 'cat app/*/page.ts' }, inputs: { files: ${JSON.stringify(inputs)} }, cache: { outputs: { files: ${JSON.stringify(outputs)} } } }`
+  `{ exec: { command: 'cat app/*/page.ts' }, inputs: { files: ${JSON.stringify(inputs)} }, outputs: { files: ${JSON.stringify(outputs)} }, cache: true }`
 
 describe('vx lock refuses a bracket class that names an existing path', () => {
   it(

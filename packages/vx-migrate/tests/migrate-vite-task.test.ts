@@ -148,9 +148,8 @@ describe('vx-migrate (vite-task)', () => {
         workspaceFiles: ['tsconfig.base.json'],
         env: ['NODE_ENV'],
       },
-      cache: {
-        outputs: { files: ['dist/**', '!dist/cache/**'] },
-      },
+      outputs: { files: ['dist/**', '!dist/cache/**'] },
+      cache: true,
     })
     expect(result.out).toContain('cache.env "VITE_*": vx takes exact env names')
   })
@@ -181,7 +180,7 @@ describe('vx-migrate (vite-task)', () => {
     expect(app['lintAll']!.exec!.command).toBe('eslint .')
     expect(result.out).toContain("cache: Vite Task traced this task's inputs and outputs")
     expect(result.out).toContain(
-      'cache: Vite Task traced this task\'s inputs and vx infers none — add `inputs: { files: [...] }, cache: { outputs: { files: [...] } }` with the real ones (declared so far: `{"outputs":{"files":[]}}`)',
+      'cache: Vite Task traced this task\'s inputs and vx infers none — add `inputs: { files: [...] }, outputs: { files: [...] }, cache: true` with the real ones (declared so far: `{"outputs":{"files":[]}}`)',
     )
   })
 
@@ -190,15 +189,17 @@ describe('vx-migrate (vite-task)', () => {
     expect(app['gen']).toEqual({
       exec: { command: 'node gen.mjs', env: { passThrough: ['API'] } },
       inputs: { files: ['gen/**'], env: ['API'] },
-      cache: { outputs: { files: ['out/**'] } },
+      outputs: { files: ['out/**'] },
+      cache: true,
     })
   })
 
   it('a root task keys the workspace’s files', async () => {
     const ws = (await loadProjectConfig(path.join(root, 'vx.config.ts'))).tasks!
-    expect([ws['check-all']!.inputs, ws['check-all']!.cache]).toEqual([
+    expect([ws['check-all']!.inputs, ws['check-all']!.outputs, ws['check-all']!.cache]).toEqual([
       { files: [], workspaceFiles: ['**/*.ts', '!dist/**'] },
-      { outputs: { files: [] } },
+      { files: [] },
+      true,
     ])
   })
 

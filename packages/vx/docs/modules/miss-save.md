@@ -40,8 +40,8 @@ export interface SaveMissArgs {
   workspaceRoot: string
   nestedProjectDirs: string[]
   gitFilesCache?: GitFilesCache | undefined
-  outputs: readonly string[] // declared cache.outputs.files
-  wsOutputs: readonly string[] // declared cache.outputs.workspaceFiles
+  outputs: readonly string[] // declared outputs.files
+  wsOutputs: readonly string[] // declared outputs.workspaceFiles
   ownOutputFiles?: string[] | undefined // an ADDITIVE task's own set, in place of the glob walk (item 588)
   ownWsOutputFiles?: string[] | undefined // the same for `workspaceFiles` (A-43)
   captured: readonly TaskInputComponent[] // Tier-3 rows from the pre-exec describe
@@ -108,7 +108,7 @@ the upstream's output rows, which the save writes.
 
 1. `resolveOutputs` / `resolveWorkspaceOutputs` — the files as they are
    NOW, after the command.
-2. The empty-set warning (`cache.outputs matched no files`) — a status
+2. The empty-set warning (`outputs matched no files`) — a status
    line, once, on this miss; `outputs: []` is a deliberate cached no-op
    and says nothing. When the task declares `exec.sandbox` and no
    `allow.write`, the line names that as the cause: its writes were

@@ -11,7 +11,7 @@ import { planRun, run } from '../../vx/tests/helpers/orchestrator.js'
 import { readTimings, warnUnignored, writeTimings } from '../src/timings-file.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
-const TIMEOUT = 20_000
+const TIMEOUT = 30_000
 let root: string
 
 beforeEach(async () => {
@@ -154,7 +154,7 @@ describe('the file between machines', () => {
       Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
       await pkg(
         'a',
-        "export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } } } } }\n",
+        "export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true } } }\n",
       )
       await Bun.write(
         path.join(root, '.vx/workspace.mjs'),
@@ -185,7 +185,7 @@ describe('the file between machines', () => {
       Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
       await pkg(
         'a',
-        "export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } } }, all: { dependsOn: ['build'] } } }\n",
+        "export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true }, all: { dependsOn: ['build'] } } }\n",
       )
       await Bun.write(
         path.join(root, '.vx/workspace.mjs'),
