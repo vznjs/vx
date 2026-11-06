@@ -32,8 +32,12 @@ export function configErrorFrame(message: string, cwd: string): string | undefin
   const rest = message.slice(head[0].length)
   // The field the refusal is about, past the path that leads to it:
   // `has unknown field "comand"`, or `tasks.build: \`cache\` is not allowed`.
-  const named =
-    colon === ':' ? /^`([^`]+)`/.exec(rest) : /^has (?:unknown )?field "([^"]+)"/.exec(rest)
+  // A refused key is quoted: `tasks.b.exec.env.define: "A=B" is not …`.
+  const said =
+    colon === ':'
+      ? /^(?:`([^`]+)`|("(?:[^"\\\n]|\\.)*"))/.exec(rest)
+      : /^has (?:unknown )?field "([^"]+)"/.exec(rest)
+  const named = said === null ? null : [said[0], said[1] ?? JSON.parse(said[2]!)]
   // `plugins[2].name`: an element of an array, framed at the element (a
   // plugin is a call, so no key inside it is searched).
   const element = setting === undefined ? null : /^([^[]+)\[(\d+)\]/.exec(setting)
