@@ -597,7 +597,13 @@ export function validateProjectConfig(
     }
     if (exec !== undefined) {
       if (typeof exec !== 'object' || exec === null) {
-        throw new UserError(`${where}.exec must be an object with a \`command\` string`)
+        // A command written as the exec itself, as the task-as-a-string
+        // refusal above spells its fix.
+        throw new UserError(
+          typeof exec === 'string'
+            ? `${where}.exec must be an object — a command is { exec: { command: ${JSON.stringify(exec)} } }`
+            : `${where}.exec must be an object with a \`command\` string`,
+        )
       }
       assertKnownFields(exec, EXEC_FIELDS, `${where}.exec`)
       const sandbox = (exec as { sandbox?: unknown }).sandbox

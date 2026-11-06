@@ -98,6 +98,12 @@ it.each([
     ),
   ],
   [
+    // As a task written as a string is told (`a command is …`).
+    'an exec written as the command',
+    task("exec: 'tsc -b'"),
+    framed(36, 'tasks.build.exec must be an object — a command is { exec: { command: "tsc -b" } }'),
+  ],
+  [
     'a timeout with no unit',
     task("exec: { command: 'x', timeout: 5000 }"),
     framed(
