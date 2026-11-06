@@ -268,13 +268,22 @@ const MEM_COL = 6 // "412MB", "1.1GB", "1023MB"
 const OUT_COL = 7 // `outputs`: "12MB", "900B"
 const WORKER_COL = 12 // `local`, or a plugin's name for the machine, cut at 12
 
+// A row's padding, built once: `' '.repeat` per cell was ~7 ms of an
+// 8,002-hit warm run's rows, the largest single cost of writing them.
+const SPACES = Array.from({ length: 33 }, (_, n) => ' '.repeat(n))
+
+/** `n` spaces (none below 1). */
+function pad(n: number): string {
+  return n <= 0 ? '' : (SPACES[n] ?? ' '.repeat(n))
+}
+
 /** Right-align the duration in a TIME_COL cell (pad on the left). */
 function timeCell(ms: number | null, colors: ColorSupport): string {
   let raw = ms === null ? '' : formatElapsed(ms)
   // `1000.00s` is wider than the cell; minutes fit it up to `99m 59s`.
   if (ms !== null && raw.length > TIME_COL) raw = formatElapsed(ms, true)
   // The time is the row's fact (value level); the cells around it are meta.
-  return ' '.repeat(Math.max(0, TIME_COL - raw.length)) + paint('value', raw, colors)
+  return pad(TIME_COL - raw.length) + paint('value', raw, colors)
 }
 
 /**
@@ -284,7 +293,7 @@ function timeCell(ms: number | null, colors: ColorSupport): string {
  */
 function cell(text: string, color: Style | '', width: number, colors: ColorSupport): string {
   const painted = text === '' ? '' : paint(color === '' ? 'muted' : color, text, colors)
-  return painted + ' '.repeat(Math.max(0, width - text.length))
+  return painted + pad(width - text.length)
 }
 
 /** The cache-shape glyph (task-shape for non-success). */
@@ -364,7 +373,7 @@ export function formatTaskRow(
   // `aborting` runs one into the cache cell, which is blank beside it.
   const ca = cell(cache, cacheColor, CACHE_COL - Math.max(0, status.length - STATUS_COL), colors)
   const usual = cells.usual ?? { text: '', painted: '' }
-  const us = `${' '.repeat(Math.max(0, USUAL_COL - usual.text.length))}${usual.painted}`
+  const us = `${pad(USUAL_COL - usual.text.length)}${usual.painted}`
   const cpu =
     cells.cpu === undefined ? '' : cells.cpu === null ? UNKNOWN : `${Math.round(cells.cpu * 100)}%`
   const mem =
@@ -379,8 +388,8 @@ export function formatTaskRow(
   return (
     ` ${glyph} ${timeCell(ms, colors)} ${us} ${st} ${ca} ` +
     `${right(cpu, CPU_COL, colors)} ${right(mem, MEM_COL, colors)} ${right(out, OUT_COL, colors)} ` +
-    `${' '.repeat(Math.max(0, BLOCKED_COL - blocks.length))}${paint(blocks === '0' ? 'muted' : 'value', blocks, colors)} ` +
-    `${placeCell(worker, colors)}${' '.repeat(WORKER_COL - worker.length)} ${paintedId}`
+    `${pad(BLOCKED_COL - blocks.length)}${paint(blocks === '0' ? 'muted' : 'value', blocks, colors)} ` +
+    `${placeCell(worker, colors)}${pad(WORKER_COL - worker.length)} ${paintedId}`
   )
 }
 
@@ -407,7 +416,7 @@ export interface RowCells {
 }
 
 function right(text: string, width: number, colors: ColorSupport): string {
-  return ' '.repeat(Math.max(0, width - text.length)) + paint('muted', text, colors)
+  return pad(width - text.length) + paint('muted', text, colors)
 }
 
 /** `900B`, `412MB`, `1.1GB`: one width for a size, whatever it is. */

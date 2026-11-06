@@ -316,3 +316,11 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   deaf again while any other watch opens or closes, and a close proves
   nothing after it. Count a change's watch churn before trusting an arm
   (2026-11-04, `watch-recreated-dirs`).
+- A `VX_UPDATE_CONTRACT=1` regen must write the bytes it would check, or
+  write nothing. plugin-templates.ts was regenerated raw (JSON's quoted
+  keys) over its formatted copy, and the CLI surface regen running beside
+  it harvested no seam from the quoted keys: `init --plugin` lost four
+  values (2026-11-06).
+- The suite runs with `FORCE_COLOR=0` because vx.config.ts sets it; a bare
+  `bun test` gets it from the `color-env.ts` preload. A test that sets
+  `CI=1` for a child gets colour otherwise (2026-11-06).

@@ -19,7 +19,7 @@
 //   bun src/bin.ts run lint.oxfmt.fix
 
 import { describe, expect, it } from 'bun:test'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import type {
   CacheConfig,
@@ -42,6 +42,7 @@ import type {
   WorkspaceConfig,
 } from '../src/config.js'
 import { validateProjectConfig, validateWorkspace } from '../src/workspace/config-schema.js'
+import { updateJsonRecord } from './helpers/contract-record.js'
 
 const RECORD = path.join(import.meta.dir, 'contract', 'config-schema.json')
 const PROJECT_PATH = '/ws/pkg/vx.config.ts'
@@ -571,9 +572,7 @@ describe('the config schema contract (versioning-1.0.md)', () => {
   })
 
   it('the validator agrees with tests/contract/config-schema.json', () => {
-    if (process.env['VX_UPDATE_CONTRACT'] === '1' && process.env['CI'] !== 'true') {
-      writeFileSync(RECORD, JSON.stringify(live(), null, 2) + '\n')
-    }
+    updateJsonRecord(RECORD, live())
     const recorded = JSON.parse(readFileSync(RECORD, 'utf8')) as unknown
     // On a failure, the diff below IS the schema change: regenerate the
     // record (header) only if the change is meant to ship, and say so in
@@ -583,9 +582,7 @@ describe('the config schema contract (versioning-1.0.md)', () => {
 
   it('the rules between fields agree with tests/contract/config-schema-rules.json', () => {
     const rules = taskRules()
-    if (process.env['VX_UPDATE_CONTRACT'] === '1' && process.env['CI'] !== 'true') {
-      writeFileSync(RULES_RECORD, JSON.stringify(rules, null, 2) + '\n')
-    }
+    updateJsonRecord(RULES_RECORD, rules)
     expect(rules).toEqual(JSON.parse(readFileSync(RULES_RECORD, 'utf8')) as typeof rules)
   })
 })

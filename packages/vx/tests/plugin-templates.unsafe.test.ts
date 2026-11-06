@@ -41,19 +41,19 @@ function fromExamples(): Record<string, { plugin: string; test: string }> {
 
 it("core's plugin templates are the examples' files, every seam", () => {
   const want = fromExamples()
-  if (process.env['VX_UPDATE_CONTRACT'] === '1') {
-    writeFileSync(
-      OUT,
-      [
-        '// Generated from private/vx-plugin-examples/plugins by',
-        '// tests/plugin-templates.unsafe.test.ts; edit the examples, then',
-        '// VX_UPDATE_CONTRACT=1 that test. `vx init --plugin <seam>` writes these.',
-        '',
-        `export const PLUGIN_TEMPLATES: Readonly<Record<string, { plugin: string; test: string }>> = ${JSON.stringify(want, null, 2)}`,
-        '',
-      ].join('\n'),
-    )
-  }
+  // The committed file is byte for byte what this writes, so a regeneration
+  // beside other tests changes nothing they read: the CLI surface record
+  // harvests `vx init --plugin`'s seams from this file's text.
+  const text = [
+    '// Generated from private/vx-plugin-examples/plugins by',
+    '// tests/plugin-templates.unsafe.test.ts; edit the examples, then',
+    '// VX_UPDATE_CONTRACT=1 that test. `vx init --plugin <seam>` writes these.',
+    '',
+    `export const PLUGIN_TEMPLATES: Readonly<Record<string, { plugin: string; test: string }>> = ${JSON.stringify(want, null, 2)}`,
+    '',
+  ].join('\n')
+  if (process.env['VX_UPDATE_CONTRACT'] === '1') writeFileSync(OUT, text)
   expect(Object.keys(want)).toHaveLength(9)
   expect(PLUGIN_TEMPLATES).toEqual(want)
+  expect(readFileSync(OUT, 'utf8')).toBe(text)
 })

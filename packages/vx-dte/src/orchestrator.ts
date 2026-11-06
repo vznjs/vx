@@ -1206,7 +1206,15 @@ export class Orchestrator {
     a.done.push(task)
     a.usage.record(head, job.sentAt)
     const share = shareOf(head.cpuShare)
-    const held = Math.max(1, job.startedAt === undefined ? head.durationMs : endAt - job.startedAt)
+    // At least as long as it ran: begun here once its batch's send resolved,
+    // which can be after its worker began it, it was seen for less, and its
+    // CPU over that read as more cores than it had (#5036: 1.001 each, so
+    // two that ran side by side on 2 cores replayed one after the other).
+    const held = Math.max(
+      1,
+      head.durationMs,
+      job.startedAt === undefined ? 0 : endAt - job.startedAt,
+    )
     this.took.set(task, {
       ms: held,
       cores:

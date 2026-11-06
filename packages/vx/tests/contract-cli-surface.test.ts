@@ -37,7 +37,11 @@ const GRAMMAR = [
   ...['k=v', 'k'],
 ]
 
-/** Every lower-case word the CLI's source quotes or keys an object with. */
+/**
+ * Every lower-case word the CLI's source quotes or keys an object with. A
+ * key counts quoted or bare: generated sources (plugin-templates.ts, where
+ * `vx init --plugin`'s seams live) keep JSON's quoted keys.
+ */
 function words(): Set<string> {
   const out = new Set<string>()
   // settings.ts spells the enums of the flags it names (`--schedule`).
@@ -50,7 +54,9 @@ function words(): Set<string> {
     ),
   ]
   for (const file of files)
-    for (const m of readFileSync(file, 'utf8').matchAll(/'([a-z][a-z-]*)'|^\s+([a-z][a-z-]*): /gm))
+    for (const m of readFileSync(file, 'utf8').matchAll(
+      /'([a-z][a-z-]*)'|^\s+"?([a-z][a-z-]*)"?: /gm,
+    ))
       out.add((m[1] ?? m[2])!)
   return out
 }
