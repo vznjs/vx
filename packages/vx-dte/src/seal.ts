@@ -193,12 +193,16 @@ const REPLAY = Symbol('replay')
 
 /**
  * The size a body is padded to, so the relay learns its size class, not
- * its size: a power of two from 256 bytes, then whole transport messages.
+ * its size: a power of two from 64 bytes, then whole transport messages.
+ * From 256, each `start`, `ran` and `end`, some 30 bytes compressed
+ * against the ones before, sealed eight times its size, and their order
+ * already says which is which (2026-11-06).
  */
 function padded(n: number): number {
   if (n >= MAX_PLAINTEXT) return Math.ceil(n / MAX_PLAINTEXT) * MAX_PLAINTEXT
-  return Math.min(2 ** Math.ceil(Math.log2(Math.max(n, 256))), MAX_PLAINTEXT)
+  return Math.min(2 ** Math.ceil(Math.log2(Math.max(n, MIN_CLASS))), MAX_PLAINTEXT)
 }
+const MIN_CLASS = 64
 
 /**
  * One worker and the orchestrator after their handshake. Each body is

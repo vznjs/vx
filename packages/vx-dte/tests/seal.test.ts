@@ -143,7 +143,7 @@ it('pads each body to its size class, so the relay learns no size within one', a
   await o.send(a.id, { type: 'welcome' })
   await until(a)
   const sent = r.bodies.length
-  for (const task of ['a', noise(150), noise(600), noise(100_000)]) {
+  for (const task of ['a', noise(25), noise(600), noise(100_000)]) {
     await a.send('orchestrator', { type: 'ran', task })
     expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'ran', task }])
   }
@@ -151,6 +151,8 @@ it('pads each body to its size class, so the relay learns no size within one', a
   const sizes = r.bodies.slice(sent).map((b) => JSON.stringify(sealOf(b)).length)
   expect(sizes[0]).toBe(sizes[1]!)
   expect(sizes[2]).toBeGreaterThan(sizes[1]!)
+  // The smallest class is 64 bytes: a `ran` sealed in 256 cost 364 of base64.
+  expect(sizes[0]).toBeLessThan(120)
   // Past one transport message, whole ones: 100 000 bytes fill two.
   expect(sealOf(r.bodies.at(-1)!)).toHaveLength(2)
 })

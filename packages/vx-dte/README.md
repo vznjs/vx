@@ -92,7 +92,7 @@ task's name, said before cost a few bytes. A body whose length is not
 the receiver's own count was sealed after one it never opened, which the
 relay kept back, and loses its sender. It
 is padded with trailing spaces to its size class, a power of two from
-256 bytes, then whole transport messages, so the relay learns no size
+64 bytes, then whole transport messages, so the relay learns no size
 within a class. Inside, each send is numbered and acknowledged
 end to end, and a quiet worker reports (Switchboard § Delivery, § Liveness).
 
