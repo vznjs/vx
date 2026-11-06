@@ -700,10 +700,7 @@ async function runOnBus(
   // `run.timeout` (ms), for any task WITHOUT its own `exec.timeout`.
   const taskTimeoutDefault = options.timeout
 
-  // The held servers this run took over, spared by a `CYCLE_INTERRUPT`.
-  const handed = new Set<ReturnType<typeof Bun.spawn>>()
   const stop = runStop({
-    handed: (child) => handed.has(child),
     log,
     cache,
     external: options.signal,
@@ -1305,7 +1302,6 @@ async function runOnBus(
       heldBefore.kept.delete(node.id)
       if (hasEnded(server.child)) return undefined
       server.handOver()
-      handed.add(server.child)
       server.out.bus = bus
       serverOuts.set(node.id, server.out)
       persistentRegistry.set(node.id, server.child)
