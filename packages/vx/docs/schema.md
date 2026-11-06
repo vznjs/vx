@@ -1958,8 +1958,9 @@ export default defineWorkspace({
 The workspace holds settings in groups (`run`, `cache`, `inputs`, `outputs`, `lock`, `watch`) and the
 `plugins`. Every setting has one path, and its environment variable and
 flag derive from it: `run.timeout` is `VX_RUN_TIMEOUT` and
-`vx run --timeout`. A flag beats its variable, which beats this file,
-which beats the built-in. A setting a task can set itself
+`vx run --timeout`. A flag beats its variable (a variable its flag
+beats is not read, so a bad value there is not refused), which beats
+this file, which beats the built-in. A setting a task can set itself
 (`exec.timeout`, `exec.retries`, `inputs.stability`) takes the
 task's value over all of them; the input-stability variables are the one
 exception, overriding every task for the run. A duration carries its

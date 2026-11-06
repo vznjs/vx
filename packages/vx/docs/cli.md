@@ -3647,7 +3647,8 @@ Every setting has a variable derived from its path (`run.timeout` →
 table in `docs/schema.md` § Settings gives each value's form and
 default. Each is checked once before any verb runs: an empty one is
 unset, a value its kind does not take is refused naming the form, and a
-variable vx does not read is ignored. A
+variable vx does not read is ignored, as is one whose flag is given (the
+flag beats it). A
 plugin's own (the REAPI endpoints, the GitHub token) are in its README;
 what a TASK sees is `exec.env` in `docs/schema.md`.
 
