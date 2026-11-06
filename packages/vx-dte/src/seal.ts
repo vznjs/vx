@@ -194,9 +194,9 @@ const REPLAY = Symbol('replay')
 /**
  * The size a body is padded to, so the relay learns its size class, not
  * its size: a power of two from 64 bytes, then whole transport messages.
- * From 256, each `start`, `ran` and `end`, some 30 bytes compressed
- * against the ones before, sealed eight times its size, and their order
- * already says which is which (2026-11-06).
+ * From 256, each `ran`, `end` and `report`, mostly some 100 bytes, sealed
+ * in two to eight times its size, and their order and timing already
+ * say which is which (2026-11-06).
  */
 function padded(n: number): number {
   if (n >= MAX_PLAINTEXT) return Math.ceil(n / MAX_PLAINTEXT) * MAX_PLAINTEXT
@@ -238,8 +238,8 @@ class Session {
    * sealing is async, and a big body sealed first reached the wire after a
    * small one sealed next (a worker's `end` before its `ran`, 2026-10-26).
    * The wire numbers a send as it is handed over, so only the handing waits.
-   * Bodies that wait together go as one: a worker's `start` of each task
-   * a batch began was a send, a relay frame and its answer of its own.
+   * Bodies that wait together go as one: each was a send, a relay frame
+   * and its answer of its own.
    */
   send(body: unknown, wire: (sealed: string[]) => Promise<void>): Promise<void> {
     const json = JSON.stringify(body)

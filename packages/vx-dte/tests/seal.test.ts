@@ -123,8 +123,8 @@ it('sends bodies in the order they were asked for, however long each takes to se
   expect((await until(o, 2)).map((m) => (m.body as { type: string }).type)).toEqual(['ran', 'end'])
 })
 
-// A worker's `start` of each task a batch began went as a send, a relay
-// frame and its answer of its own (2026-11-06).
+// Messages asked for together each went as a send, a relay frame and
+// its answer of their own (2026-11-06).
 it('seals the bodies asked for together as one send, each delivered in order', async () => {
   const { r, o, a } = await pair()
   await until(o)
