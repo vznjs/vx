@@ -13,6 +13,7 @@ import {
   VX_RUN_TASK_ENV,
   VX_RUN_WORKSPACE_ENV,
   type ServerSpec,
+  toRealPath,
 } from '../exec/index.js'
 import type { TaskNode } from '../graph/index.js'
 import { parseDuration, UserError } from '../util/index.js'
@@ -75,7 +76,9 @@ export function taskEnv(
   workspaceRoot: string,
   depBins: readonly string[] = [],
 ): NodeJS.ProcessEnv {
-  const bins = taskBinDirs(node, workspaceRoot, depBins)
+  // Real paths: a hermetic macOS sandbox denies `/`, so the kernel cannot
+  // walk a link on the way (`/var` -> `/private/var`) to the program.
+  const bins = taskBinDirs(node, workspaceRoot, depBins.map(toRealPath))
   const env = buildIsolatedEnv({
     passThrough: step.env?.passThrough ?? [],
     define: step.env?.define ?? {},
