@@ -137,8 +137,13 @@ describe('VxCacheLayer', () => {
     // The download names the ref the check found it under.
     const got = await c.get('aa11')
     expect([await got!.body.text(), srv.seen.at(-1)!.scope]).toEqual(['hello', main])
+    // Unchecked, one download names every ref's scope, in order.
     expect(await c.get('bb22')).toBeNull()
-    expect(srv.seen.slice(-2).map((r) => r.scope)).toEqual([f, main])
+    expect(srv.seen.at(-1)!.scope).toBe(`${f}, ${main}`)
+    const unchecked = layer(srv.url, write, ['refs/heads/f', MAIN])
+    const before2 = srv.seen.length
+    expect(await (await unchecked.get('aa11'))!.body.text()).toBe('hello')
+    expect(srv.seen.slice(before2).map((r) => r.scope)).toEqual([`${f}, ${main}`])
     // A ref goes on the wire percent-encoded: its slashes never split its folder.
     expect(srv.seen.filter((r) => `${r.body} ${r.scope}`.includes('refs/'))).toEqual([])
   })
@@ -201,6 +206,21 @@ describe('VxCacheLayer', () => {
         ]),
       )
       expect(await (await c.get('c1'))!.body.text()).toBe('feature')
+      // Unchecked, before any answer named the limits: refused for its
+      // scopes, then sent in as many as the refusal names, in order.
+      const scopes: (string | null)[] = []
+      const seen: typeof fetch = Object.assign(
+        (input: string | URL | Request, init?: RequestInit) => {
+          scopes.push(new Headers(init?.headers).get('vx-scope'))
+          return fetch(input, init)
+        },
+        { preconnect: fetch.preconnect },
+      )
+      const refs = ['refs/heads/a', 'refs/heads/b', BRANCH_JOB.ref, MAIN]
+      const fresh = layer(url, main, refs, seen)
+      expect(await (await fresh.get('c1'))!.body.text()).toBe('feature')
+      const [a, b, f, m] = refs.map((r) => encodeURIComponent(r))
+      expect(scopes).toEqual([`${a}, ${b}, ${f}, ${m}`, `${a}, ${b}`, `${f}, ${m}`])
     } finally {
       await srv.stop(true)
     }

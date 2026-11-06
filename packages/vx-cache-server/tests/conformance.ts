@@ -170,6 +170,33 @@ export function conformance(name: string, target: Target): void {
       expect((await head(FEATURE)).status).toBe(404)
     })
 
+    // A branch's run reads its own scope, then main's: one request per
+    // scope cost a round-trip for each before the one that held it.
+    it('answers a read naming several scopes from the first that holds it', async () => {
+      const [a, b] = [key(), key()]
+      await put(a, 'main')
+      await put(a, 'mine', branch)
+      await put(b, 'only main')
+      const both = `${FEATURE}, ${MAIN}`
+      const answer = async (k: string, scopes: string, method = 'GET') => {
+        const res = await call(`/v1/artifacts/${k}`, { method, headers: { 'vx-scope': scopes } })
+        return [res.status, await res.text(), res.headers.get('cache-control')]
+      }
+      const immutable = 'private, max-age=31536000, immutable'
+      expect(await answer(a, both)).toEqual([200, 'mine', immutable])
+      expect(await answer(a, `${MAIN},${FEATURE}`)).toEqual([200, 'main', immutable])
+      // Not the first's: it changes once the first holds the hash.
+      expect(await answer(b, both)).toEqual([200, 'only main', 'private, no-cache'])
+      expect(await answer(b, both, 'HEAD')).toEqual([200, '', 'private, no-cache'])
+      expect((await answer(key(), both))[0]).toBe(404)
+      expect((await answer(key(), both, 'HEAD'))[0]).toBe(404)
+      const many = Array(target.maxCheckHashes + 1)
+        .fill(MAIN)
+        .join(', ')
+      expect((await answer(b, many))[0]).toBe(400)
+      expect((await answer(b, `${MAIN}, refs/heads/main`))[0]).toBe(400)
+    })
+
     it('answers an upload of a held hash before reading its bytes', async () => {
       const a = key()
       await put(a, 'held')

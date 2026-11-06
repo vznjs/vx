@@ -96,7 +96,8 @@ Every read names scopes, each a ref, percent-encoded. A check names the run's re
 branch it merges into, then the default branch; on CI `github()` or
 `gitlab()` from `@vzn/vx-ci` names them, so declare it too: without it
 a run reads git's branch and the default branch only), and the first ref
-holding a hash answers it; its download names that ref. A ref longer
+holding a hash answers it; its download names that ref, and one the
+check has not answered yet names them all in one request. A ref longer
 than a scope may be (512 characters, percent-encoded) is said and not
 read; the others are. A run that reads no ref says so and stays local. The server is asked nothing until a
 check, a download or an upload, so a run the local cache answers sends

@@ -259,8 +259,8 @@ Turbo's routes under `/v1`, each read naming the branches it reads
 
 | Route | Does |
 | --- | --- |
-| `GET /v1/artifacts/<hash>` | one result's bytes, its branch in `vx-scope` |
-| `HEAD /v1/artifacts/<hash>` | whether a branch holds it, and its size |
+| `GET /v1/artifacts/<hash>` | one result's bytes, from the first of the branches in `vx-scope` holding it |
+| `HEAD /v1/artifacts/<hash>` | whether one of those branches holds it, and its size |
 | `PUT /v1/artifacts/<hash>` | one result's bytes, to the token's branch |
 | `POST /v1/artifacts` | `{ hashes, scopes }`: each hash's size and the first branch holding it |
 | `GET /v1/capabilities` | the limits |

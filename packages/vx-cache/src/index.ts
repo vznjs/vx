@@ -391,6 +391,13 @@ export class VxCacheLayer implements RemoteCacheLayer {
   private writesRefused = false
   /** The refs a read names, in order: the first holding a hash answers it. */
   refs: readonly string[] = []
+  private scoped: { refs: readonly string[]; scopes: readonly string[] } | undefined
+  /** `refs` as the wire names them (`scopeOf`), encoded once. */
+  private get scopes(): readonly string[] {
+    if (this.scoped?.refs !== this.refs)
+      this.scoped = { refs: this.refs, scopes: this.refs.map(scopeOf) }
+    return this.scoped.scopes
+  }
   /** The ref a check found each hash under, which its download names. */
   private readonly found = new Map<string, string>()
   /**
@@ -661,7 +668,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
     const held = new Map<string, ArtifactInfo>()
     this.sayUnsaid()
     if (this.disabled || this.refs.length === 0) return null
-    const scopes = this.refs.map(scopeOf)
+    const scopes = this.scopes
     const ask = [...new Set(hashes)]
     const checks = (max: number, again: boolean) => {
       // More refs than one check takes: each hash's scopes span several
@@ -745,23 +752,40 @@ export class VxCacheLayer implements RemoteCacheLayer {
     return out
   }
 
-  /** The scope a check found it under, else each ref's in order until one holds it. */
+  /**
+   * The scope a check found it under, else every ref's in order in one
+   * request, the first holding it answering: one by one, a branch's run
+   * paid a round-trip and a 404 for its own scope before each download of
+   * main's (2026-11-06). More refs than the server's `maxCheckHashes` go
+   * in several, in order.
+   */
   async get(hash: string): Promise<{ body: Response; durationMs: undefined } | null> {
     this.sayUnsaid()
     const at = this.found.get(hash)
-    for (const scope of at === undefined ? this.refs.map(scopeOf) : [at]) {
+    const scopes = at === undefined ? this.scopes : [at]
+    for (let next = 0; next < scopes.length;) {
       if (this.disabled) return null
+      const some = scopes.slice(next, next + (this.limits?.maxCheckHashes ?? scopes.length))
       const res = await this.request(`/v1/artifacts/${hash}`, {
         method: 'GET',
-        headers: { 'vx-scope': scope },
+        headers: { 'vx-scope': some.join(', ') },
         streamed: true,
       })
       if (res === undefined) return null
       if (res.status === 404) {
         await res.body?.cancel()
+        next += some.length
         continue
       }
-      if (res.status !== 200) throw await refusal(res)
+      if (res.status !== 200) {
+        // Refused for its scopes: sent again in as many as the refusal names.
+        const max = limitsNamed(res)?.maxCheckHashes
+        if (max !== undefined && some.length > max) {
+          await res.body?.cancel()
+          continue
+        }
+        throw await refusal(res)
+      }
       return { body: res, durationMs: undefined }
     }
     return null
