@@ -101,7 +101,9 @@ function positionFrame(message: string, cwd: string): string | undefined {
   const unprovided = UNPROVIDED.exec(message)
   if (unprovided !== null) {
     const [, file, said, pkg] = unprovided as unknown as [string, string, string, string]
-    const spec = new RegExp(`(?<=\\b(?:from|import|import\\(|require\\()\\s*)(['"])${escapeRe(pkg)}\\1`)
+    const spec = new RegExp(
+      `(?<=\\b(?:from|import|import\\(|require\\()\\s*)(['"])${escapeRe(pkg)}\\1`,
+    )
     return sourceFrame(file, (src) => spec.exec(src)?.index ?? -1, `: ${said}`, cwd)
   }
   const notObject = NOT_OBJECT.exec(message)
