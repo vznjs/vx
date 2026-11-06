@@ -167,15 +167,25 @@ function expiryOf(jwt: string): number {
 const isCount = (n: unknown): n is number =>
   typeof n === 'number' && Number.isSafeInteger(n) && n >= 0
 
-interface Limits {
-  readonly maxUploadTimings: number
-  readonly maxQueryHashes: number
+/**
+ * A request refused for its size, its refusal naming a smaller limit
+ * (`vx-max-*`): sent again in parts of at most `max`.
+ */
+class TooMany extends Error {
+  constructor(readonly max: number) {
+    super(`at most ${max} a request`)
+  }
+}
+
+/** The limit `header` names, when it is a whole number above 0. */
+function limitOf(res: Response, header: string): number | undefined {
+  const n = Number(res.headers.get(header) ?? NaN)
+  return Number.isSafeInteger(n) && n > 0 ? n : undefined
 }
 
 export class HistoryServer {
   private token: Promise<string> | undefined
   private held: { jwt: string; exp: number } | undefined
-  private limits: Promise<Limits> | undefined
   // A refused token is refused again: the run's later calls stay unasked and unsaid.
   private refused = false
 
@@ -263,7 +273,17 @@ export class HistoryServer {
     )
   }
 
-  private async call(path: string, body?: unknown, signal?: AbortSignal): Promise<Response> {
+  /**
+   * One request. `sized`: its body's count of items and the `vx-max-*`
+   * header that limits them; a refusal naming a smaller limit throws
+   * `TooMany`.
+   */
+  private async call(
+    path: string,
+    body?: unknown,
+    signal?: AbortSignal,
+    sized?: { count: number; header: string },
+  ): Promise<Response> {
     const bearer = this.writes ? await this.bearer(signal) : ''
     const json = body === undefined ? undefined : JSON.stringify(body)
     // A 500 is the server's own failure, maybe after the fold: sent again, a
@@ -306,62 +326,93 @@ export class HistoryServer {
         `${err.message}: the token was refused (this workspace names ${this.named.repository} at ${this.named.issuer}; the server's ALLOW must name it, and the token's audience be ${new URL(this.url).origin}); the history server is off for this run`,
       )
     }
-    if (!res.ok) throw await refusal(res)
+    if (!res.ok) {
+      const max = sized === undefined ? undefined : limitOf(res, sized.header)
+      if (max !== undefined && sized!.count > max) {
+        await res.body?.cancel()
+        throw new TooMany(max)
+      }
+      throw await refusal(res)
+    }
     return res
   }
 
-  /** `/v1/capabilities`, asked once a run, and again after a failed ask: nothing is guessed. */
-  private limitsNow(): Promise<Limits> {
-    const asked = (this.limits ??= (async () => {
-      const body = (await jsonOf(
-        await this.call('/v1/capabilities'),
-        '/v1/capabilities',
-      )) as Partial<Limits> | null
-      const n = (v: unknown) => (typeof v === 'number' && Number.isSafeInteger(v) && v > 0 ? v : 0)
-      const limits = {
-        maxUploadTimings: n(body?.maxUploadTimings),
-        maxQueryHashes: n(body?.maxQueryHashes),
+  /**
+   * `items` in requests of `send`, whole until an answer names the limit
+   * (`vx-max-*`): one refused for its size is sent again in parts of the
+   * limit it names, each a smaller one than the last. Nothing is asked apart: `/v1/capabilities` cost
+   * every run a request, and the query a round-trip (2026-11-06). A query
+   * sends its parts at once; an upload one after another, so a refused
+   * part resends no part the server folded.
+   */
+  private async parts<T, R>(
+    items: readonly T[],
+    header: string,
+    atOnce: boolean,
+    send: (part: readonly T[], sized?: { count: number; header: string }) => Promise<R>,
+  ): Promise<R[]> {
+    let per = this.limits.get(header) ?? items.length
+    const sized = (part: readonly T[]) => ({ count: part.length, header })
+    const learn = (err: unknown): void => {
+      if (!(err instanceof TooMany) || this.limits.get(header) === err.max) throw err
+      this.limits.set(header, err.max)
+      per = err.max
+    }
+    const split = (from: readonly T[]) =>
+      Array.from({ length: Math.ceil(from.length / per) }, (_, i) =>
+        from.slice(i * per, (i + 1) * per),
+      )
+    if (atOnce) {
+      const first = await Promise.allSettled(split(items).map((p) => send(p, sized(p))))
+      const refused = first.flatMap((r) => (r.status === 'rejected' ? [r.reason as unknown] : []))
+      const failed = refused.find((err) => !(err instanceof TooMany))
+      if (failed !== undefined) throw failed
+      if (refused.length === 0) return first.map((r) => (r as PromiseFulfilledResult<R>).value)
+      learn(refused[0])
+      return Promise.all(split(items).map((p) => send(p)))
+    }
+    const out: R[] = []
+    for (let at = 0; at < items.length;) {
+      const part = items.slice(at, at + per)
+      try {
+        out.push(await send(part, sized(part)))
+        at += part.length
+      } catch (err) {
+        learn(err)
       }
-      if (limits.maxUploadTimings === 0 || limits.maxQueryHashes === 0) {
-        throw new Error('/v1/capabilities named no maxUploadTimings or maxQueryHashes')
-      }
-      return limits
-    })())
-    // quiet: the awaited ask rethrows it; this only forgets it
-    asked.catch(() => {
-      if (this.limits === asked) this.limits = undefined
-    })
-    return asked
+    }
+    return out
   }
+
+  /** The limits a refusal named this run, by header: later requests keep to them. */
+  private readonly limits = new Map<string, number>()
 
   /** Each held hash's numbers under the first of `refs` that holds them, and the flaky ones: one request a run. */
   async query(refs: readonly string[], hashes: readonly string[]): Promise<Answer> {
     if (hashes.length === 0 || this.refused) return { timings: new Map(), flaky: new Set() }
-    const per = (await this.limitsNow()).maxQueryHashes
-    const parts = await Promise.all(
-      Array.from({ length: Math.ceil(hashes.length / per) }, async (_, i) => {
-        const res = await this.call('/v1/timings/query', {
-          ...this.named,
-          refs,
-          hashes: hashes.slice(i * per, (i + 1) * per),
-        })
-        const body = (await jsonOf(res, '/v1/timings/query')) as {
-          timings?: unknown
-          flaky?: unknown
-        } | null
-        if (typeof body?.timings !== 'object' || body.timings === null) {
-          throw new Error('the query answered no `timings` object')
-        }
-        // A server before the flaky record answers none: nothing is flaky.
-        const flaky = Array.isArray(body.flaky)
-          ? body.flaky.filter((h): h is string => typeof h === 'string')
-          : []
-        return {
-          timings: Object.entries(body.timings as Record<string, ServerTiming | null>),
-          flaky,
-        }
-      }),
-    )
+    const parts = await this.parts(hashes, 'vx-max-query-hashes', true, async (part, sized) => {
+      const res = await this.call(
+        '/v1/timings/query',
+        { ...this.named, refs, hashes: part },
+        undefined,
+        sized,
+      )
+      const body = (await jsonOf(res, '/v1/timings/query')) as {
+        timings?: unknown
+        flaky?: unknown
+      } | null
+      if (typeof body?.timings !== 'object' || body.timings === null) {
+        throw new Error('the query answered no `timings` object')
+      }
+      // A server before the flaky record answers none: nothing is flaky.
+      const flaky = Array.isArray(body.flaky)
+        ? body.flaky.filter((h): h is string => typeof h === 'string')
+        : []
+      return {
+        timings: Object.entries(body.timings as Record<string, ServerTiming | null>),
+        flaky,
+      }
+    })
     // Only numbers a server folds (PROTOCOL.md): `1e309` parses to Infinity,
     // and kept as a forecast it made a NaN weight that failed every later
     // run of the cache in `schedule`.
@@ -381,7 +432,7 @@ export class HistoryServer {
 
   /**
    * The run's timings, by task definition hash, and its outcomes, in
-   * uploads of at most `maxUploadTimings` of each; `stop` abandons them.
+   * uploads the server takes; `stop` abandons them.
    */
   async upload(
     timings: ReadonlyMap<string, ServerTiming>,
@@ -389,15 +440,19 @@ export class HistoryServer {
     outcomes: readonly ServerOutcome[] = [],
   ): Promise<void> {
     if ((timings.size === 0 && outcomes.length === 0) || this.refused) return
-    const per = (await this.limitsNow()).maxUploadTimings
     const all = [...timings].map(([hash, t]) => ({ hash, ...t }))
-    for (let i = 0; i < Math.max(all.length, outcomes.length); i += per) {
-      const part = outcomes.slice(i, i + per)
-      await this.call(
+    const at = Array.from({ length: Math.max(all.length, outcomes.length) }, (_, i) => i)
+    // A refused upload folded nothing: sent again in parts, none counts twice.
+    await this.parts(at, 'vx-max-upload-timings', false, (part, sized) => {
+      const from = part[0] ?? 0
+      const to = from + part.length
+      const some = outcomes.slice(from, to)
+      return this.call(
         '/v1/timings/upload',
-        { timings: all.slice(i, i + per), ...(part.length > 0 ? { outcomes: part } : {}) },
+        { timings: all.slice(from, to), ...(some.length > 0 ? { outcomes: some } : {}) },
         stop,
+        sized,
       )
-    }
+    })
   }
 }
