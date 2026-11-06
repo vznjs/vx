@@ -22,8 +22,6 @@ describe('a flaky record on the history server', () => {
       hostname: '127.0.0.1',
       fetch: async (req) => {
         const at = new URL(req.url).pathname
-        if (at === '/v1/capabilities')
-          return Response.json({ maxUploadTimings: 100, maxQueryHashes: 100 })
         const body = (await req.json()) as {
           hashes?: string[]
           outcomes?: { hash: string; key: string; outcome: string }[]

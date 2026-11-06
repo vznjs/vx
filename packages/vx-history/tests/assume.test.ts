@@ -22,8 +22,6 @@ beforeAll(async () => {
     port: 0,
     hostname: '127.0.0.1',
     fetch: async (req) => {
-      if (new URL(req.url).pathname === '/v1/capabilities')
-        return Response.json({ maxUploadTimings: 100, maxQueryHashes: 100 })
       const { hashes } = (await req.json()) as { hashes: string[] }
       return Response.json({
         timings: Object.fromEntries(hashes.map((h) => [h, { durationMs: 500 }])),
