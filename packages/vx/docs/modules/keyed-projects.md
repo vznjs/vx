@@ -16,7 +16,16 @@ export function keyedProjects(
   nodes: ReadonlyMap<string, TaskNode>,
   keyOnly?: ReadonlyMap<string, TaskNode>,
 ): (node: TaskNode) => ReadonlySet<string>
+export function readableDeps(
+  nodes: ReadonlyMap<string, TaskNode>,
+  keyOnly?: ReadonlyMap<string, TaskNode>,
+): (node: TaskNode) => readonly TaskNode[]
 ```
+
+`readableDeps` is the one-step version for outputs: the exec tasks a
+task's key folds directly, through a group to its members. A sandboxed
+task may read their declared outputs (`dependencyReads`), since its key
+moves with every file that made them.
 
 The step the walk repeats is `foldedDeps` (`graph/folds.ts`): the
 dependencies one task's key folds. `stable-keys.ts`' `probesAfterWrites`

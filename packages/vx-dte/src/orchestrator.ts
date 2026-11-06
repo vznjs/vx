@@ -954,6 +954,11 @@ export class Orchestrator {
                 ...(req.sandbox.keyed === undefined
                   ? {}
                   : { keyed: req.sandbox.keyed.map((d) => path.relative(this.o.root, d)) }),
+                ...(req.sandbox.dependencyReads === undefined
+                  ? {}
+                  : {
+                      reads: req.sandbox.dependencyReads.map((d) => path.relative(this.o.root, d)),
+                    }),
               },
             }),
         ...runtimeOrders(req),

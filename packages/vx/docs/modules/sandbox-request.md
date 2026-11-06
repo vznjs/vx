@@ -49,7 +49,12 @@ export async function sandboxRequestFor(
   keyed: ReadonlySet<string> | undefined, // keyed-projects.ts's set; undefined for a task with no `cache`
   nested?: readonly string[], // dirs of the projects nested in this one: a wall its grants do not reach
   cacheDir?: string, // the run's cache dir, walled wherever it is
+  dependencyOutputs?: readonly string[], // dependencyReads(): the dependencies' outputs it may read
 ): Promise<SandboxRequest>
+export async function dependencyReads(
+  deps: readonly TaskNode[],
+  workspaceRoot: string,
+): Promise<string[]>
 
 export async function sweepPlaceholders(placeholders: readonly Placeholder[]): Promise<string[]>
 // One shared sweep: every caller gets the same answer, whoever asked first
@@ -100,6 +105,11 @@ export function mayWriteFingerprint(
   profile the others run under.
 - `sandboxRequestFor` builds the sandbox half of one request, plus the
   placeholders.
+- `dependencyReads` lists what a task may read of the outputs of the
+  tasks its key folds (`readableDeps`, keyed-projects.ts): each output
+  glob's fixed head, or the files a glob with none matches, so
+  `*.tsbuildinfo` never grants the dependency's whole project. Asked when
+  the task runs, after its dependencies ran or were restored.
 - `sweepPlaceholders` removes the placeholders the task never wrote
   (still empty, mtime untouched) and returns their paths. execute-task
   calls it after every attempt of a one-shot task, and when a

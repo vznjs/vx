@@ -1746,6 +1746,18 @@ grants never depend on it. The key answers for the package, not the
 file: an edge to `ui#build` (inputs `src/**`) covers a read of
 `ui/README.md` too.
 
+**A task reads the outputs it depends on.** A sandboxed task may read
+the declared `cache.outputs` of every task its key folds through
+`dependsOn` (as `inputs.tasks` selects them), in any project. Its key
+moves with every file that made them, so the read replays nothing stale.
+
+That is how one project serves a tool to the rest: `tools#node` builds
+Node into `out/`, and `app#build` with `dependsOn: ['tools#node']` runs
+`../tools/out/bin/node`, `hermetic` or not. The dependency's sources stay
+hidden. Each output glob grants its fixed head (`out/**` grants `out/`);
+a glob with none (`*.tsbuildinfo`) grants only the files it matches.
+Pinned in `tests/sandbox-dependency-outputs.unsafe.test.ts`.
+
 **A missing write grant fails the task.** On macOS seatbelt refuses the
 write and reports it. On Linux the write meets a read-only bind or a
 read-only mask: the empty directory the sandbox lays over what it hides

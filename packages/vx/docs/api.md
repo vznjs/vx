@@ -793,6 +793,7 @@ export interface ExecuteSandbox {
   readonly reportLinked: readonly string[]
   readonly config: ResolvedSandboxConfig
   readonly keyed?: readonly string[]
+  readonly dependencyReads?: readonly string[]
 }
 ```
 
@@ -2704,6 +2705,10 @@ anyone's (2026-09-24): `keyed` is the set of project directories the
 task's key answers for (keyed-projects.ts), and `undefined` for a task
 with no `cache`, which has no key to be stale.
 
+The other is the outputs of the tasks its key folds
+(`dependencyOutputs`, 2026-11-06): an edge the user drew, whose files
+this key already answers for, so the read can replay nothing stale.
+
 ```ts
 export async function sandboxRequestFor(
   node: Pick<TaskNode, 'projectDir'>,
@@ -2712,6 +2717,7 @@ export async function sandboxRequestFor(
   keyed: ReadonlySet<string> | undefined,
   nested: readonly string[] = [],
   cacheDir?: string,
+  dependencyOutputs: readonly string[] = [],
 ): Promise<SandboxRequest>
 ```
 
