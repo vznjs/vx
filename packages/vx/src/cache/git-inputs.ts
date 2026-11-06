@@ -222,6 +222,24 @@ interface PartitionDigest {
 }
 
 /**
+ * `compute`'s answer, computed on the first ask, after which `compute` is
+ * let go: a digest's records are a rope of three strings per file, ~3.7 MB
+ * of heap at 1,601 projects, held to the end of the run otherwise. Built
+ * here, not in the caller, so the caller's scope (which holds `compute`)
+ * is not the getter's.
+ */
+function once<T>(compute: (() => T) | undefined): () => T | undefined {
+  let value: T | undefined
+  return () => {
+    if (compute !== undefined) {
+      value = compute()
+      compute = undefined
+    }
+    return value
+  }
+}
+
+/**
  * A partition's trusted OIDs, built on first read: a warm run whose keys
  * come back from the fold memo reads none, and building 125,000 abs-path
  * entries up front was ~90 ms of a 5,000-project warm run.
@@ -543,11 +561,10 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     snapshot: readonly string[],
     digest: () => string | undefined,
   ): void {
-    let memo: { value: string | undefined } | undefined
     this.digests.set(projectDir, {
       snapshot,
       oids: this.oids.get(projectDir),
-      digest: () => (memo ??= { value: digest() }).value,
+      digest: once(digest),
     })
   }
 
@@ -564,6 +581,20 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   setLazyOids(projectDir: string, build: () => Map<string, string>): void {
     this.oids.set(projectDir, new OidSlot(build))
   }
+
+  /**
+   * Each file of `snapshot` by its absolute path, filled as callers spell
+   * them: one string per file for the run, however many memo keys resolve
+   * it and whether the OID map names it too. Each spelled its own: a cold
+   * 9,603-task run held ~96,000 path strings for ~32,000 files.
+   */
+  absPaths(snapshot: readonly string[]): Array<string | undefined> {
+    let paths = this.abs.get(snapshot)
+    if (paths === undefined) this.abs.set(snapshot, (paths = []))
+    return paths
+  }
+
+  private readonly abs = new WeakMap<readonly string[], Array<string | undefined>>()
 
   /** Snapshot if still valid for these input globs; undefined → re-spawn. */
   snapshotFor(projectDir: string, inputGlobs: readonly Bun.Glob[]): readonly string[] | undefined {
@@ -2300,10 +2331,13 @@ export async function applyGitEnumeration(
       relPrefix === spelled ? abs : (rel: string) => path.join(projectDir, rel.slice(prefix.length))
     const projOids = (): Map<string, string> => {
       const oids = new Map<string, string>()
+      // `resolveFiles` spells `matches[j]` the same, so both take one string.
+      const paths = base !== undefined && projAbs === abs ? cache.absPaths(matches) : undefined
       for (let i = start; i < end; i++) {
         const rel = sorted[i]!
         const oid = trusted.get(rel)
-        if (oid !== undefined) oids.set(projAbs(rel), oid)
+        if (oid === undefined) continue
+        oids.set(paths === undefined ? projAbs(rel) : (paths[i - start] ??= abs(rel)), oid)
       }
       return oids
     }

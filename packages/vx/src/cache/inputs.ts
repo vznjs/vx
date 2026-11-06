@@ -2194,22 +2194,24 @@ async function resolveFiles(
   const verdicts = plan.verdicts
   const committed = committedFiles(args.gitFilesCache, args.projectDir)
   const oids = args.gitFilesCache?.oidsFor(args.projectDir)
-  for (const rel of gitFiles) {
+  const paths = base === undefined ? undefined : args.gitFilesCache?.absPaths(gitFiles)
+  for (let i = 0; i < gitFiles.length; i++) {
+    const rel = gitFiles[i]!
     let input = verdicts.get(rel)
     if (input === undefined) {
       input = isPositive(rel) && !isExcluded(rel) && !ownOutput(rel)
       verdicts.set(rel, input)
     }
     if (nested(rel) || ownWsOutput(rel)) continue
-    const abs = base === undefined ? path.resolve(args.projectDir, rel) : base + rel
+    const abs = base === undefined ? path.resolve(args.projectDir, rel) : (paths?.[i] ?? base + rel)
     if (!input && !ownOnly(plan, rel)) {
       if (plan.mayHold(rel) && !isExcluded(rel) && !ownOutput(rel) && dirLinkInput(abs, oids)) {
-        candidates.push(abs)
+        candidates.push(paths === undefined ? abs : (paths[i] = abs))
       }
       continue
     }
     if (!input && !committed(abs)) continue
-    candidates.push(abs)
+    candidates.push(paths === undefined ? abs : (paths[i] = abs))
   }
   const reach = ignoredReach(plan, gitFiles, { dir: args.projectDir, cache: args.gitFilesCache })
   refuseUndecodable(candidates, undecodable, args.projectDir, 'files')

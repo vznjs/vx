@@ -961,7 +961,9 @@ export class Cache implements CacheLayer {
   private heldTimer: ReturnType<typeof setTimeout> | undefined
   /** Saves' index writes waiting for this turn's one transaction (`indexInBatch`). */
   private indexQueue: Array<{ write: () => void; settle: (err?: unknown) => void }> = []
-  private heldRest: () => Array<[string, number]> = () => []
+  /** The held sizes being stored, and how many are: fields, not a closure's, so the store lets them go. */
+  private storing: Array<[string, number]> | undefined
+  private stored = 0
   private readonly insertEntryInput: ReturnType<Database['prepare']>
   /** The per-file (mtime, size) → blob-OID memo behind `hashFile`. */
   private readonly files: FileHashStore
@@ -1679,13 +1681,25 @@ export class Cache implements CacheLayer {
     const held = this.heldBlobSizes
     this.heldBlobSizes = undefined
     if (held === undefined || held.length === 0) return
-    let at = 0
-    const step = (): void => {
-      this.guard(() => this.files.rememberBlobSizes(new Map(held.slice(at, (at += HELD_SLICE)))))
-      this.heldTimer = at < held.length ? setTimeout(step, 0) : undefined
+    this.storing = held
+    this.stored = 0
+    this.heldTimer = setTimeout(this.storeHeldSlice, 0)
+  }
+
+  // A closure over the sizes kept all of them while anything held it (the
+  // rest's getter, a fired timer's callback): a cold 9,603-task run's
+  // 38,331 to its end, ~5 MB of heap (2026-11-06).
+  private readonly storeHeldSlice = (): void => {
+    const held = this.storing
+    if (held === undefined) return
+    const at = this.stored
+    this.stored = at + HELD_SLICE
+    this.guard(() => this.files.rememberBlobSizes(new Map(held.slice(at, this.stored))))
+    if (this.stored < held.length) this.heldTimer = setTimeout(this.storeHeldSlice, 0)
+    else {
+      this.heldTimer = undefined
+      this.storing = undefined
     }
-    this.heldRest = () => held.slice(at)
-    this.heldTimer = setTimeout(step, 0)
   }
   /** `BlobSizeMemo`: the paths an index with this digest distrusts, when known. */
   blobVerdict(digest: string): string[] | undefined {
@@ -3693,8 +3707,9 @@ export class Cache implements CacheLayer {
     try {
       this.flushIndex()
       clearTimeout(this.heldTimer)
-      const held = this.heldBlobSizes ?? (this.heldTimer !== undefined ? this.heldRest() : [])
+      const held = this.heldBlobSizes ?? this.storing?.slice(this.stored) ?? []
       this.heldBlobSizes = undefined
+      this.storing = undefined
       this.heldTimer = undefined
       if (held.length > 0) this.files.rememberBlobSizes(new Map(held))
       this.flushAccessed()

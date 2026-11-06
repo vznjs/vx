@@ -71,4 +71,40 @@ describe('a task spawns off the scheduler thread', () => {
     }).catch((e: NodeJS.ErrnoException) => e)
     expect((err as NodeJS.ErrnoException).code).toBe('ENOENT')
   })
+
+  // A spare's spawn is awaited when its task is handed over (`runOnSpare`),
+  // and an unheld thread held nothing then: a cold 9,603-task run drained
+  // mid-graph with every slot waiting on a spare, about one run in two
+  // under a socket stdout (2026-11-06).
+  it('holds the run while a spawn it did not hold awaits its answer', async () => {
+    // The thread exists before the count starts: its creation unrefs it.
+    await (
+      await spawnOff({ cmd: ['true'], stdio: ['ignore', 'ignore', 'ignore'] })
+    ).exited
+    const proto = Worker.prototype
+    const { ref, unref } = proto
+    const calls: string[] = []
+    proto.ref = function (this: Worker) {
+      calls.push('ref')
+      return ref.call(this)
+    }
+    proto.unref = function (this: Worker) {
+      calls.push('unref')
+      return unref.call(this)
+    }
+    try {
+      const spare = await spawnOff({
+        cmd: ['true'],
+        stdio: ['ignore', 'ignore', 'ignore'],
+        held: false,
+      })
+      expect(calls).toEqual(['ref', 'unref'])
+      spare.hold()
+      await spare.exited
+      expect(calls).toEqual(['ref', 'unref', 'ref', 'unref'])
+    } finally {
+      proto.ref = ref
+      proto.unref = unref
+    }
+  })
 })
