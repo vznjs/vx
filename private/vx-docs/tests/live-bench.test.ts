@@ -1,6 +1,7 @@
 // scripts/live-bench.ts against a fake GitHub: main's deploy builds the
 // site from the newest numbers Bench measured on main.
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { deflateRawSync } from 'node:zlib'
 import { expect, it } from 'bun:test'
@@ -107,16 +108,40 @@ it('fails when main has no measured numbers', async () => {
   }
 })
 
-// src/bench/data.ts imports the committed copy; the deploy's build
-// points that one import at the fetched file (astro.config.mjs).
-it('points the site’s one bench import at VX_DOCS_BENCH', () => {
+// Every page reads the figures through src/bench/data.ts, the markdown
+// plugin too, which astro.config.mjs loads outside Vite: the deploy's
+// numbers reach it by VX_DOCS_BENCH, never by a Vite alias, which left
+// every markdown page on the committed copy (2026-11-06).
+it('fills every figure from VX_DOCS_BENCH when it is set', () => {
+  const dir = path.join(import.meta.dir, '..')
+  const committed = JSON.parse(readFileSync(path.join(dir, 'src/data/bench.json'), 'utf8'))
+  const tmp = mkdtempSync(path.join(os.tmpdir(), 'live-bench-'))
+  const live = path.join(tmp, 'live.json')
+  writeFileSync(live, JSON.stringify({ ...committed, packages: 7777 }))
+  const read = (env: Record<string, string>): string =>
+    Bun.spawnSync(
+      [
+        'bun',
+        '-e',
+        "import { fillBench } from './src/bench/data.ts'; console.log(fillBench('%bench.projects%'))",
+      ],
+      { cwd: dir, env: { ...process.env, ...env } },
+    )
+      .stdout.toString()
+      .trim()
+  expect(read({ VX_DOCS_BENCH: live })).toBe('7,777')
+  expect(read({})).toBe(Number(committed.packages).toLocaleString('en-US'))
+})
+
+// Astro's content store keeps each markdown page as rendered: the deploy
+// renders into a store of its own, emptied first, or the build's copy
+// with the committed figures ships (2026-11-06).
+it('renders the deploy from an empty content store of its own', () => {
   const dir = path.join(import.meta.dir, '..')
   const config = readFileSync(path.join(dir, 'astro.config.mjs'), 'utf8')
-  const find = /find: (\/.+\/),/.exec(config)![1]!
-  const re = new RegExp(find.slice(1, -1))
-  const data = readFileSync(path.join(dir, 'src/bench/data.ts'), 'utf8')
-  const imports = [...data.matchAll(/from '([^']*bench\.json)'/g)].map((m) => m[1])
-  expect(imports).toEqual(['../data/bench.json'])
-  expect(re.test(imports[0]!)).toBe(true)
-  expect(config).toContain('process.env.VX_DOCS_BENCH')
+  expect(config).toContain(
+    "cacheDir: process.env.VX_DOCS_BENCH ? './.astro/live' : './.astro/cache'",
+  )
+  const tasks = readFileSync(path.join(dir, 'vx.config.ts'), 'utf8')
+  expect(tasks).toContain('bun scripts/live-bench.ts && rm -rf .astro/live && ${ASTRO_BUILD}')
 })

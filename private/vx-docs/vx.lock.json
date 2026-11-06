@@ -461,7 +461,7 @@
         "build.images"
       ],
       "exec": {
-        "command": "bun scripts/live-bench.ts && mkdir -p .astro/bin && ln -sf \"$(command -v bun)\" .astro/bin/node && PATH=\"$PWD/.astro/bin:$PATH\" bun --bun astro build --outDir dist-live && bun scripts/deploy-pages.ts dist-live",
+        "command": "bun scripts/live-bench.ts && rm -rf .astro/live && mkdir -p .astro/bin && ln -sf \"$(command -v bun)\" .astro/bin/node && PATH=\"$PWD/.astro/bin:$PATH\" bun --bun astro build --outDir dist-live && bun scripts/deploy-pages.ts dist-live",
         "env": {
           "define": {
             "ASTRO_TELEMETRY_DISABLED": "1",
