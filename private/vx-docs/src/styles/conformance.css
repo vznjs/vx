@@ -319,10 +319,11 @@
 .vx-landing .cfm .cfm-meta a:hover {
   color: var(--text-hi);
 }
+/* Each mark sits at the left of its column, under its tool's score. */
 .vx-landing .cfm-cases td {
   position: relative;
-  padding: 12px 4px;
-  text-align: center;
+  padding: 12px 8px;
+  text-align: left;
   font: var(--fw-bold) 18px / 1.2 var(--font-body);
 }
 .vx-landing .cfm-cases td[data-status='pass'] {
@@ -342,6 +343,9 @@
   padding: 0 6px;
   border-radius: var(--radius-xs);
   border-bottom: 1px dashed currentColor;
+}
+.vx-landing .cfm-cases td summary {
+  margin-left: -6px;
 }
 .vx-landing .cfm-cases summary::-webkit-details-marker {
   display: none;
@@ -434,7 +438,7 @@
     font-size: 11px;
   }
   .vx-landing .cfm-cases td {
-    padding: 12px 2px;
+    padding: 12px 4px;
     font-size: 16px;
   }
   .vx-landing .cfm-why {
