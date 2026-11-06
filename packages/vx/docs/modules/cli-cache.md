@@ -43,7 +43,7 @@ vx cache clean --max-size 1G --dry               # say what the policy would rea
 vx cache clean --max-size 1G --format json       # schemas/cache.json
 vx cache clean --older-than 30d --cache-dir <path>
 vx cache clean                                   # no bound: clear the cache
-vx cache clean --global                          # and every repo's store
+vx cache clean --global                          # and every workspace's store
 ```
 
 Neither bound may be zero — a policy that would evict every entry is

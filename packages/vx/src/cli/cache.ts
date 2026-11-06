@@ -105,7 +105,7 @@ interface PruneArgs {
   format?: 'pretty' | 'json'
   /** `--cache-dir`: prune the cache a run with the same flag uses. */
   cacheDir?: string
-  /** `--global`: clear every repository's store under `~/.vx`. */
+  /** `--global`: clear every workspace's store under `~/.vx`. */
   global?: boolean
   error?: string
 }
@@ -181,7 +181,7 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
   }
   if (out.global === true && (out.olderThanMs !== undefined || out.maxBytes !== undefined)) {
     return {
-      error: `--global clears every repository's store and takes no --older-than or --max-size${seeHelp('cache')}`,
+      error: `--global clears every workspace's store and takes no --older-than or --max-size${seeHelp('cache')}`,
     }
   }
   if (out.global === true && out.cacheDir !== undefined) {
