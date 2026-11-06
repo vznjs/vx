@@ -237,7 +237,7 @@ class Session {
    * Bodies that wait together go as one: a worker's `start` of each task
    * a batch began was a send, a relay frame and its answer of its own.
    */
-  send(body: unknown, wire: (sealed: { seal: string[] }) => Promise<void>): Promise<void> {
+  send(body: unknown, wire: (sealed: string[]) => Promise<void>): Promise<void> {
     const json = JSON.stringify(body)
     const g = this.group
     if (g !== undefined && g.bytes + json.length <= GROUP_BYTES) {
@@ -258,7 +258,7 @@ class Session {
     return mine.sent
   }
 
-  private async seal(bodies: string): Promise<{ seal: string[] }> {
+  private async seal(bodies: string): Promise<string[]> {
     const json = text.encode(bodies)
     const plain = squeeze(json, this.sealed)
     this.sealed.add(json)
@@ -272,12 +272,11 @@ class Session {
       const c = await this.tx.encrypt(n, ad, bytes.subarray(at, at + MAX_PLAINTEXT))
       out.push(`${n}.${b64(c)}`)
     }
-    return { seal: out }
+    return out
   }
 
   /** Its bodies; `REPLAY` for one delivered before; undefined for one that does not open. */
-  async open(body: unknown): Promise<unknown[] | typeof REPLAY | undefined> {
-    const s = (body as { seal?: unknown } | null)?.seal
+  async open(s: unknown): Promise<unknown[] | typeof REPLAY | undefined> {
     if (!Array.isArray(s) || s.length === 0) return undefined
     const parts: { n: number; c: string }[] = []
     for (const p of s) {

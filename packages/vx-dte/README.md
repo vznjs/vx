@@ -69,7 +69,7 @@ the initiator.
 | worker `join` | `info: { "noise": <message 1>, "token"? }`              |
 | orchestrator  | `{ "type": "hello", "noise": <message 2>, "token"? }`   |
 | orchestrator  | `{ "type": "refused", "reason" }`, plain, then `remove` |
-| either, then  | `{ "seal": ["<n>.<ciphertext>", …] }`                   |
+| either, then  | `["<n>.<ciphertext>", …]`                               |
 
 The orchestrator checks each worker the moment the relay says it joined,
 and `remove`s one whose handshake fails. Message 1's payload is the
@@ -94,7 +94,7 @@ relay kept back, and loses its sender. It
 is padded with trailing spaces to its size class, a power of two from
 64 bytes, then whole transport messages, so the relay learns no size
 within a class. Inside, each send is numbered and acknowledged
-end to end, and a quiet worker reports (Switchboard § Delivery, § Liveness).
+end to end (`{ "n", "b", "a"? }`: its number, body and ack), and a quiet worker reports (Switchboard § Delivery, § Liveness).
 
 ## Try it
 
