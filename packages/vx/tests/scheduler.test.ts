@@ -1772,7 +1772,7 @@ describe('runGraph — priorities override', () => {
       ]),
       new Map([['p#scored', 1]]),
     )
-    expect(out.get('p#scored')!).toBeGreaterThan(out.get('p#hub')!)
+    expect(out('p#scored')).toBeGreaterThan(out('p#hub'))
   })
 
   // A weight of 0 (a task whose recorded p50 rounds to 0 ms) scaled to 0
@@ -1792,7 +1792,7 @@ describe('runGraph — priorities override', () => {
         ['p#one', 1],
       ]),
     )
-    const rank = ['p#one', 'p#zero', 'p#neg', 'p#hub'].map((id) => out.get(id)!)
+    const rank = ['p#one', 'p#zero', 'p#neg', 'p#hub'].map(out)
     expect(rank).toEqual([...rank].sort((a, b) => b - a))
     expect(new Set(rank).size).toBe(4)
   })

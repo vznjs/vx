@@ -250,7 +250,7 @@ describe('resolveDownloadModes', () => {
     const r = resolveDownloadModes({
       nodes,
       policy: 'all',
-      localPlaced: new Set(),
+      localPlaced: () => false,
       remoteOnly: new Set(),
     })
     expect([...r.modeOf.values()]).toEqual(['eager', 'eager'])
@@ -261,7 +261,7 @@ describe('resolveDownloadModes', () => {
     const r = resolveDownloadModes({
       nodes,
       policy: 'none',
-      localPlaced: new Set(['a#local']),
+      localPlaced: (id) => id === 'a#local',
       remoteOnly: new Set(),
     })
     expect(r.modeOf.get('a#gen')).toBe('deferred')
@@ -282,7 +282,7 @@ describe('resolveDownloadModes', () => {
     const r = resolveDownloadModes({
       nodes: requested,
       policy: 'toplevel',
-      localPlaced: new Set(),
+      localPlaced: () => false,
       remoteOnly: new Set(),
     })
     expect(r.modeOf.get('a#ship')).toBe('eager')
@@ -308,7 +308,7 @@ describe('resolveDownloadModes', () => {
     const r = resolveDownloadModes({
       nodes: nodes3,
       policy: 'toplevel',
-      localPlaced: new Set(),
+      localPlaced: () => false,
       remoteOnly: new Set(),
     })
     expect(r.modeOf.get('a#build')).toBe('eager')
@@ -332,7 +332,7 @@ describe('resolveDownloadModes', () => {
     const r = resolveDownloadModes({
       nodes: nodes2,
       policy: 'toplevel',
-      localPlaced: new Set(),
+      localPlaced: () => false,
       remoteOnly: new Set(),
     })
     expect(r.modeOf.get('a#gen')).toBe('eager')
@@ -351,7 +351,7 @@ describe('resolveDownloadModes', () => {
     const r = resolveDownloadModes({
       nodes: graph(...nodes.values(), group),
       policy: 'none',
-      localPlaced: new Set(),
+      localPlaced: () => false,
       remoteOnly: new Set(),
     })
     expect([...r.modeOf.keys()].sort()).toEqual(['a#gen', 'a#local'])
@@ -361,7 +361,7 @@ describe('resolveDownloadModes', () => {
     const r = resolveDownloadModes({
       nodes,
       policy: 'none',
-      localPlaced: new Set(),
+      localPlaced: () => false,
       remoteOnly: new Set(['a#gen']),
     })
     expect(r.modeOf.get('a#gen')).toBe('never')

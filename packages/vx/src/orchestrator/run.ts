@@ -689,13 +689,17 @@ async function runOnBus(
   // `cache.download` (default `all`) decides ONCE per task, here, whether a
   // remote execution's outputs come home.
   const downloadPolicy = options.download ?? 'all'
-  const localPlaced = locallyPlaced(placements, nodes.keys())
-  const download = resolveDownloadModes({
-    nodes,
-    policy: downloadPolicy,
-    localPlaced,
-    remoteOnly: placements.remoteOnly,
-  })
+  const localPlaced = locallyPlaced(placements)
+  // `all` keeps every task eager: no per-task map to say so, as `--dry`'s.
+  const download =
+    downloadPolicy === 'all'
+      ? undefined
+      : resolveDownloadModes({
+          nodes,
+          policy: downloadPolicy,
+          localPlaced,
+          remoteOnly: placements.remoteOnly,
+        })
 
   // `run.timeout` (ms), for any task WITHOUT its own `exec.timeout`.
   const taskTimeoutDefault = options.timeout
@@ -876,7 +880,7 @@ async function runOnBus(
             (n) =>
               n.config.exec?.sandbox !== undefined &&
               (n.config.exec.persistent === undefined
-                ? localPlaced.has(n.id)
+                ? localPlaced(n.id)
                 : !placements.carried.has(n.id)),
           )
     let prewarming: Promise<void> | undefined
@@ -1220,7 +1224,7 @@ async function runOnBus(
       log: (node) => (node.config.exec?.persistent !== undefined ? serverLog(node.id) : log),
       placements,
       nestedDirsByProject,
-      downloadModeOf: download.modeOf,
+      downloadModeOf: download?.modeOf,
       shortCircuit,
       dependedOn: depended,
       holders,

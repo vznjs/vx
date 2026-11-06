@@ -35,7 +35,8 @@ export interface TaskFacts {
   log: (node: TaskNode) => Logger
   placements: Placements
   nestedDirsByProject: ReadonlyMap<string, string[]>
-  downloadModeOf: ReadonlyMap<string, DownloadMode>
+  /** None under `cache.download: all`: every task eager. */
+  downloadModeOf: ReadonlyMap<string, DownloadMode> | undefined
   shortCircuit: Pick<ShortCircuit, 'preProbed' | 'uncachedKeys' | 'groupKeys'>
   /** Tasks some other task depends on. */
   dependedOn: ReadonlySet<string>
@@ -66,7 +67,7 @@ export function executeArgsOf(
     const probe = reuseProbe ? shortCircuit.preProbed.get(id) : undefined
     const upfrontKey = shortCircuit.uncachedKeys.get(id)
     const upfrontGroupKey = shortCircuit.groupKeys.get(id)
-    if (facts.downloadModeOf.get(id) === 'deferred') a.download = 'deferred'
+    if (facts.downloadModeOf?.get(id) === 'deferred') a.download = 'deferred'
     if (placements.remoteOnlyNoop.has(id)) a.remoteOnlyNoop = true
     if (placements.remoteOnly.has(id)) a.remoteOnly = true
     if (placements.carried.has(id)) a.carried = true

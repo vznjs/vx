@@ -347,10 +347,14 @@ export function strategyPriorities(
   return out
 }
 
+/**
+ * A task's merged weight, read as asked: a merged copy held an entry per
+ * task of the run beside the two maps it was made of.
+ */
 export function mergePriorities(
   baseline: ReadonlyMap<string, number>,
   overrides: ReadonlyMap<string, number>,
-): ReadonlyMap<string, number> {
+): (id: string) => number {
   // The override caller scored "expected critical-path duration" in ms.
   // Baseline reverse-deps counts are bounded by N; scale the override so
   // it sorts above the baseline for any node it covers, and add the
@@ -361,10 +365,9 @@ export function mergePriorities(
   const SCALE = 1 << 20
   let lo = 0
   for (const w of overrides.values()) if (w < lo) lo = w
-  const out = new Map(baseline)
-  for (const [id, w] of overrides) {
+  return (id) => {
     const b = baseline.get(id) ?? 0
-    out.set(id, (w - lo + 1) * SCALE + b)
+    const w = overrides.get(id)
+    return w === undefined ? b : (w - lo + 1) * SCALE + b
   }
-  return out
 }
