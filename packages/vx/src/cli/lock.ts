@@ -19,6 +19,7 @@ import {
 import { resolveSetting, runRules } from '../settings.js'
 import {
   DOT_VX_GITATTRIBUTES,
+  DOT_VX_GITIGNORE,
   fsRefusalHint,
   isFsRefusal,
   isOutOfFds,
@@ -454,6 +455,9 @@ async function writeLock(
   await writeLockfile(root, check.fresh)
   if (check.dependencies !== null) await writeDependenciesLock(root, check.dependencies)
   await writeIfMissing(path.join(root, '.vx', '.gitattributes'), DOT_VX_GITATTRIBUTES)
+  // A run writes it on its first cache open, after the lock was committed:
+  // an untracked file failed `git diff --exit-code` on CI.
+  await writeIfMissing(path.join(root, '.vx', '.gitignore'), DOT_VX_GITIGNORE)
   const n = metas.length
   say(`${n} project config${n === 1 ? '' : 's'} → ${LOCKFILE_NAME}${bareNote(bare)}`)
   // A second config beside the one read was edited and nothing changed.
