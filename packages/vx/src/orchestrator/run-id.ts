@@ -8,15 +8,25 @@ import { UserError } from '../util/index.js'
  * The recorded run `raw` names: itself when recorded, else the one run
  * whose id starts with it. Null when none does; a prefix several runs share
  * is refused with those runs, since picking one would replay the wrong run.
+ * A run a stop ended keeps task rows but no header (item 854), and `vx why`
+ * and `vx last --log` print its id, so its rows name it too.
  */
 export function resolveRunId(db: Database, raw: string, verb: string): string | null {
   // Run ids are lower-case UUIDs; one typed or pasted in upper case is the same id.
   const id = raw.toLowerCase()
-  const exact = db.query('SELECT 1 FROM invocations WHERE run_id = ?').get(id)
+  const exact = db
+    .query(
+      'SELECT 1 FROM invocations WHERE run_id = ?1 UNION ALL SELECT 1 FROM runs WHERE run_id = ?1 LIMIT 1',
+    )
+    .get(id)
   if (exact !== null) return id
+  // A range on `runs`, so its run_id index answers: `substr` read every row.
+  // `~` sorts after every character of an id.
   const rows = db
     .query(
-      'SELECT run_id FROM invocations WHERE substr(run_id, 1, ?) = ? ORDER BY run_id DESC LIMIT 6',
+      `SELECT run_id FROM invocations WHERE substr(run_id, 1, ?1) = ?2
+       UNION SELECT run_id FROM runs WHERE run_id >= ?2 AND run_id < ?2 || '~'
+       ORDER BY run_id DESC LIMIT 6`,
     )
     .all(id.length, id) as Array<{ run_id: string }>
   if (rows.length === 0) return null

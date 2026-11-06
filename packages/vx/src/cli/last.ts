@@ -917,12 +917,21 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
       return 0
     }
 
+    const named = parsed.runId === undefined ? null : resolveRunId(db, parsed.runId, 'vx last')
     const inv =
       parsed.runId !== undefined
-        ? getInvocation(db, resolveRunId(db, parsed.runId, 'vx last') ?? parsed.runId)
+        ? getInvocation(db, named ?? parsed.runId)
         : parsed.failed === true
           ? (failedInvocations(db, 1)[0] ?? null)
           : (listInvocations(db, { limit: 1 })[0] ?? null)
+    // A run with rows and no header is one a stop ended (item 854): `vx why`
+    // printed its id, so it is named, not called unrecorded.
+    if (named !== null && (inv === null || inv === undefined)) {
+      throw new UserError(
+        `vx last: run ${named} was stopped before it finished, so vx kept its tasks but no summary: \`vx last ${named} --log <task>\` prints one's output`,
+        'VX_E_NO_HISTORY',
+      )
+    }
     if ((inv === null || inv === undefined) && noRuns()) {
       throw refusal(
         { tone: 'info', headline: 'no runs yet', fix: 'vx run' },

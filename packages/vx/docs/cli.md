@@ -3212,8 +3212,13 @@ latest cache entry's key. `roots` is the root-cause walk (`chain`,
 
 `vx last` replays a recorded run's summary from the local history: no
 re-execution, no cache probe, no config evaluation. A run a Ctrl-C (or
-SIGTERM, SIGHUP) stopped records nothing, so `vx last` still shows the
-run before it; nor does a `vx watch` cycle one stopped.
+SIGTERM, SIGHUP) stopped records the tasks that ended before the stop
+(their rows, timings and failed output) but no summary, so `vx last`
+still shows the run before it; nor does a `vx watch` cycle one stopped.
+Its id, which `vx why` and `vx last --log` print, works wherever a run id
+does: `vx last RUNID --log <task>` prints a task's output, `vx why
+<task> --run RUNID` explains it, and `vx last RUNID` says the run was
+stopped.
 
 ### Usage
 
@@ -3253,9 +3258,9 @@ vx last --sql "SELECT task, AVG(peak_rss_bytes) FROM runs GROUP BY task"
 
 ### Arguments
 
-| Argument | Meaning                                                                                                                                                                                |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `RUNID`  | replay that run instead of the latest. A run id may be typed as a unique prefix; a prefix several runs share fails and lists them. An unknown run id fails loud and points at `--list` |
+| Argument | Meaning                                                                                                                                                                                                                     |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RUNID`  | replay that run instead of the latest. A run id may be typed as a unique prefix; a prefix several runs share fails and lists them. An unknown run id fails loud and points at `--list`; a stopped run's says it was stopped |
 
 ### Options
 
@@ -3802,7 +3807,8 @@ plugin's failed flush) gets a yellow `warn` row above `info`,
 warnings themselves are said once, where they happened. The
 `info` row ends with `run <id>`: the
 run's whole id, as `vx last <id>` takes it; a run a Ctrl-C (or
-SIGTERM, SIGHUP) stopped records nothing, so its footer names no id. The
+SIGTERM, SIGHUP) stopped records no summary for `vx last <id>` to
+replay, so its footer names no id. The
 `time` row is the wall time, then the spread over executed tasks
 only — a hit's restore time never enters it. The footer never says a
 fact twice: a spread value already on the row is left out, so one
