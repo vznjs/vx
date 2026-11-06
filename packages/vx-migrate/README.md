@@ -384,7 +384,7 @@ root's `vite: workspace:*`) also waits on that package's build
 edge); `dev` / `start` / `serve` / `watch` /
 `preview` become persistent tasks, with a TODO to add `readyWhen` when
 another task depends on one, and so does a watcher: a `watch` segment in the script's name (`build:watch`),
-a `--watch` flag, `tsc -w` / `rollup -w`, or nodemon (D-40), and a server:
+a `--watch` flag (not `--watch=false` / `--watchAll false`), `tsc -w` / `rollup -w`, or nodemon (D-40), and a server:
 `serve <dir>`, `http-server`, bare `vite`, a tool's `dev` / `serve` /
 `start` / `preview` verb (`next start`, `netlify dev`), or a script that
 runs such a script of its package by name (`cross-env X=1 pnpm start`) or

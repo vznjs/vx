@@ -899,6 +899,18 @@ describe('migrateScripts', () => {
         watcher: 'node watcher-report.js',
       }),
     ).toEqual([])
+    // An explicit false is a run that exits: CRA's `react-scripts test
+    // --watchAll=false` was persistent, never cached, and its dependents
+    // unblocked on spawn.
+    expect(
+      persistent({
+        cra: 'react-scripts test --watchAll=false',
+        vt: 'vitest --watch=false',
+        jt: 'jest --watch false --ci',
+        ja: 'jest --watchAll false',
+        on: 'vitest --watch=true',
+      }),
+    ).toEqual(['on'])
     // D-91: a server, by its command or a persistent script it runs by name
     // (docusaurus's `serve website`, `cross-env … pnpm start`, vitest's `vite`).
     expect(

@@ -228,12 +228,13 @@ function npmEnv(
  * name (`build:watch`, `watch-css`), a `--watch` flag, `tsc -w` /
  * `rollup -w`, or nodemon. Run as a plain task it held its dependents
  * forever. A bare `-w` elsewhere is not read: `npm run x -w pkg` is a
- * workspace.
+ * workspace. `--watch=false` / `--watchAll false` turn watching off (CRA's
+ * `react-scripts test --watchAll=false`): a run that exits.
  */
 function isWatcher(name: string, command: string): boolean {
   if (name.split(/[:\-_.]/).includes('watch')) return true
   return (
-    /(?:^|\s)--watch(?:All)?(?:[=\s]|$)/.test(command) ||
+    /(?:^|\s)--watch(?:All)?(?![=\s]false(?:[\s&|;]|$))(?:[=\s]|$)/.test(command) ||
     /\b(?:tsc|rollup)\b[^&|;]*\s-w(?:\s|$)/.test(command) ||
     /(?:^|[\s&|;])nodemon\b/.test(command)
   )
