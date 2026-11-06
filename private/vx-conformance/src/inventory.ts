@@ -854,6 +854,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'cache-perf',
     'cache-save-batch',
     'cache-save-lock',
+    'cache-stdout-bytes',
     'cache-store',
     'cache-store-moved',
     'cache-unreadable',

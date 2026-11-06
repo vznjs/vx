@@ -3,7 +3,7 @@
 // cache.db's `failures` (cache/run-notes.ts), the newest 50 failed runs kept.
 
 import type { Database } from 'bun:sqlite'
-import { indexDb, type Cache, keepRunNotes, keptFailures } from '../cache/index.js'
+import { indexDb, type Cache, keepRunNotes, keptFailures, storedLog } from '../cache/index.js'
 import { isGroupTask, type TaskOutcome } from '../graph/index.js'
 import { decodeOutputLog } from './output-log.js'
 import { PASS_STATUSES } from '../history/index.js'
@@ -214,7 +214,7 @@ export function taskLog(db: Database, taskId: string, runId?: string): TaskLog |
         ? ''
         : `${before}${attemptHeading(tries, tries, 'passed')}`
     const stored = db.query('SELECT stdout FROM entry_stdout WHERE hash = ?').get(row.hash) as {
-      stdout: string
+      stdout: Uint8Array
     } | null
     if (stored !== null) {
       // An entry saved before masking, or by another machine, can hold a
@@ -223,7 +223,7 @@ export function taskLog(db: Database, taskId: string, runId?: string): TaskLog |
       // `env.define` / `env.secret` values are not known here.
       const output = maskedLine(
         Bun.stripANSI(
-          decodeOutputLog(stored.stdout)
+          decodeOutputLog(storedLog(stored.stdout))
             .map((c) => c.text)
             .join(''),
         ),

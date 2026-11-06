@@ -1712,7 +1712,7 @@ keep). The artifacts stay: each is indexed again from its own bytes
 when its task next asks for its key (below).
 
 ```sql
--- src/cache/schema.ts (SCHEMA_VERSION = 'v51', in cache.ts)
+-- src/cache/schema.ts (SCHEMA_VERSION = 'v52', in cache.ts)
 -- With a shared store, entries, entry_stdout, output_files, entry_inputs,
 -- store_meta, task_durations, task_outcomes, blob_sizes, plugin_blobs and remote_hits live in its store.db, attached as `store`; the rest is
 -- the workspace's cache.db. A named cache dir holds all of them.
@@ -1741,7 +1741,7 @@ CREATE TABLE entries (
 -- of 1 MB cost the run's close 125-150 ms.
 CREATE TABLE entry_stdout (
   hash   TEXT PRIMARY KEY,         -- FK entries(hash) ON DELETE CASCADE
-  stdout TEXT NOT NULL             -- captured stdout (pure-SQL hit replay); no row = ''
+  stdout BLOB NOT NULL             -- v52: zstd frame of the captured stdout's UTF-8; no row = ''
 );
 
 CREATE TABLE runs (
