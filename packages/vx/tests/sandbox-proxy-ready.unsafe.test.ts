@@ -1,4 +1,4 @@
-// A networked task's first dial of the run's proxy (M-20). SRT starts its
+// A sandboxed task's first dial of the run's proxy (M-20). SRT starts its
 // in-sandbox bridges (`socat TCP-LISTEN:3128`, `:1080`) in the background
 // and runs the command at once, so on a loaded box curl met "connection
 // refused" (`000`) where the proxy's own 403 was due. A fake `socat` first
@@ -66,12 +66,25 @@ describe.skipIf(!available || process.platform !== 'linux' || realSocat === null
       expect(await dial({ allow: { network: ['a.test'] } })).toEqual([0, '403'])
     })
 
-    // Control: a task with no network is not held for a bridge it cannot
-    // use; its dial is refused at once, as before.
-    it('a task with no network declared is not held for the bridge (control)', async () => {
-      const start = performance.now()
-      const r = await dial({})
-      expect([r, performance.now() - start < 450]).toEqual([[7, '000'], true])
+    // A task with no network waits too: the proxy's refusal is what names
+    // the host and fails it. Held back, it met the closed port, swallowed
+    // the error and passed with nothing reported (2026-11-06).
+    it('a task with no network declared meets the proxy too, which names the host', async () => {
+      const r = await runSandboxed({
+        command: `curl -s -m 5 -o /dev/null -w '%{http_code}' http://b.test/`,
+        cwd: dir,
+        env: process.env,
+        baseAllowRead: [dir],
+        baseDenyRead: [],
+        reportWithin: dir,
+        reportLinked: [],
+        config: resolveSandboxConfig({}, dir),
+      })
+      expect([r.exitCode, r.stdout, r.violations.map((v) => v.line)]).toEqual([
+        0,
+        '403',
+        ['deny network-outbound b.test:80 (host is not on the allow list)'],
+      ])
     })
   },
 )
