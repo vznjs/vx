@@ -73,8 +73,8 @@ export interface Dispatching {
 
 /**
  * Where the `waiting` tasks go now: ordered (`ordered`), gated, and placed
- * (`assign`). The one rule of the live run (`Orchestrator.pump`, at each
- * message) and of the sims (`tests/sim.ts`, at each event): each kept its
+ * (`assign`). The one rule of the live run and of the sims, which keep
+ * their waiting tasks in a `Queue` placing as this does: each kept its
  * own, and the sims passed while runs placed otherwise (2026-11-05).
  * `left`: the ones that stay waiting, in order.
  */
@@ -338,6 +338,16 @@ export interface Bounds {
   cores: number
   /** The least memory free on one. */
   memory: number
+  /** The same of each platform's own: a task naming one fits only those. */
+  of?: Map<string, Room>
+}
+
+/** What `Bounds` says of a set of bins. */
+interface Room {
+  open: boolean
+  free: number
+  cores: number
+  memory: number
 }
 
 function boundsOf(
@@ -351,14 +361,28 @@ function boundsOf(
   out.free = -Infinity
   out.cores = Infinity
   out.memory = Infinity
+  out.of?.clear()
   for (const b of bins) {
     if (held.has(b)) continue
     if (floor !== undefined && fits(b, floor)) out.done = false
-    if (b.running === 0) out.open = true
-    out.free = Math.max(out.free, b.cores - b.used.cores)
-    out.cores = Math.min(out.cores, b.cores)
-    out.memory = Math.min(out.memory, b.memory - b.used.memory)
+    room(out, b)
+    if (b.platform === undefined) continue
+    out.of ??= new Map()
+    let p = out.of.get(b.platform)
+    if (p === undefined)
+      out.of.set(
+        b.platform,
+        (p = { open: false, free: -Infinity, cores: Infinity, memory: Infinity }),
+      )
+    room(p, b)
   }
+}
+
+function room(r: Room, b: Bin): void {
+  if (b.running === 0) r.open = true
+  r.free = Math.max(r.free, b.cores - b.used.cores)
+  r.cores = Math.min(r.cores, b.cores)
+  r.memory = Math.min(r.memory, b.memory - b.used.memory)
 }
 
 /**
@@ -367,14 +391,11 @@ function boundsOf(
  * the bin, fits its memory, and wants more cores than are free.
  */
 export function dead(need: Need, b: Bounds): boolean {
-  return (
-    need.platform === undefined &&
-    need.above === undefined &&
-    !b.open &&
-    need.cores > b.free + 1e-9 &&
-    need.cores < b.cores &&
-    need.memory <= b.memory
-  )
+  if (need.above !== undefined) return false
+  // Of its platform's bins: with none free of a hold, no ask of it does a thing.
+  const r = need.platform === undefined ? b : b.of?.get(need.platform)
+  if (r === undefined) return true
+  return !r.open && need.cores > r.free + 1e-9 && need.cores < r.cores && need.memory <= r.memory
 }
 
 /** How well `need` suits `b` by `place`: the higher, the better. */
@@ -396,4 +417,327 @@ function fit(b: Bin, need: Need, place: Strategy['place'], index: number): numbe
       return cores * freeCores + memory * freeMemory
     }
   }
+}
+
+/**
+ * The live run's waiting tasks, kept across its passes in the order
+ * `ordered` gives (`critical-path`, `fifo`) and grouped by platform and
+ * cores' class: a pass places exactly as `dispatch` over the whole list,
+ * but passes a group whole while no worker has room for any of it, where
+ * each pass ordered and read every waiting task, a fifth of a 10 000-task
+ * sim (2026-11-06). `graphene` ranks by the longest waiting tail, which
+ * moves as tasks leave: it keeps the list and `dispatch`.
+ */
+export class Queue {
+  private list: string[] | undefined
+  private readonly groups = new Map<string, Group>()
+  private readonly of = new Map<string, Entry>()
+  private front = 0
+  private back = 0
+
+  constructor(
+    private readonly how: Strategy,
+    private readonly tail: ((id: string) => number) | undefined,
+    private readonly need: (id: string) => Need,
+  ) {
+    if (how.order === 'graphene' && tail !== undefined) this.list = []
+  }
+
+  get size(): number {
+    return this.list?.length ?? this.of.size
+  }
+
+  has(id: string): boolean {
+    return this.list?.includes(id) ?? this.of.has(id)
+  }
+
+  /** In the order a pass reads them. */
+  ids(): string[] {
+    if (this.list !== undefined) return [...this.list]
+    return [...this.of.values()].sort((a, b) => (before(a, b) ? -1 : 1)).map((e) => e.id)
+  }
+
+  /** `ids` join, in order, behind every one ranked as high, or `front` before all. */
+  add(ids: readonly string[], front = false): void {
+    if (this.list !== undefined) {
+      if (front) this.list.unshift(...ids)
+      else this.list.push(...ids)
+      return
+    }
+    if (front) this.front -= ids.length
+    let seq = front ? this.front : this.back
+    for (const id of ids) {
+      const need = this.need(id)
+      const e: Entry = {
+        id,
+        rank: this.how.order === 'fifo' || this.tail === undefined ? 0 : -this.tail(id),
+        seq: seq++,
+        need,
+        group: undefined!,
+      }
+      const odd = need.above !== undefined || need.ask !== undefined || need.cores === Infinity
+      const key = `${need.platform}\0${odd ? 'odd' : Math.floor(Math.log2(Math.max(need.cores, 1e-6)) * CLASSES)}`
+      let g = this.groups.get(key)
+      if (g === undefined) this.groups.set(key, (g = new Group(odd, need.platform)))
+      e.group = g
+      g.add(e)
+      this.of.set(id, e)
+    }
+    if (!front) this.back = seq
+  }
+
+  delete(id: string): boolean {
+    if (this.list !== undefined) {
+      const at = this.list.indexOf(id)
+      if (at >= 0) this.list.splice(at, 1)
+      return at >= 0
+    }
+    const e = this.of.get(id)
+    if (e === undefined) return false
+    this.drop(e)
+    return true
+  }
+
+  private drop(e: Entry): void {
+    this.of.delete(e.id)
+    e.gone = true
+    if (e.group.drop() === 0)
+      for (const [k, g] of this.groups) if (g === e.group) this.groups.delete(k)
+  }
+
+  /**
+   * Where the waiting tasks go now, as `dispatch` places them; the ones
+   * placed or found done leave. `book`, if given, must keep a need's
+   * order by cores among needs alike but for cores.
+   */
+  pass<B extends Bin>(
+    bins: readonly B[],
+    o: Omit<Dispatching, 'how' | 'tail' | 'need'>,
+  ): Map<string, B> {
+    if (this.list !== undefined) {
+      const { to, left } = dispatch(this.list, bins, {
+        ...o,
+        how: this.how,
+        tail: this.tail,
+        need: this.need,
+      })
+      this.list = left
+      return to
+    }
+    return this.place(bins, o)
+  }
+
+  private place<B extends Bin>(
+    bins: readonly B[],
+    o: Omit<Dispatching, 'how' | 'tail' | 'need'>,
+  ): Map<string, B> {
+    const book = o.book ?? ((n: Need): Need => n)
+    const gs = [...this.groups.values()]
+    const floor = { cores: Infinity, memory: Infinity }
+    for (const g of gs) {
+      g.at = g.head()
+      const low = g.low()
+      if (low === undefined) continue
+      // Booked as its least: what each of its tasks books is at least this.
+      g.lo = g.odd ? Infinity : book(low).cores
+      floor.cores = Math.min(floor.cores, g.odd ? g.oddFloor(book) : g.lo)
+      floor.memory = Math.min(floor.memory, g.memory())
+    }
+    const bounds: Bounds = { done: false, open: true, free: 0, cores: 0, memory: 0 }
+    const done: Entry[] = []
+    let cursor: Entry | undefined
+    function* asks(): Generator<Ask> {
+      for (;;) {
+        if (bounds.done) return
+        // The group whose next is first, past any no worker has room for now.
+        let g: Group | undefined
+        let second: Entry | undefined
+        for (const x of gs) {
+          if (x.at >= x.q.length) continue
+          if (!x.odd && x.full(bounds)) continue
+          if (cursor !== undefined && !before(cursor, x.q[x.at]!)) x.at = x.after(cursor)
+          x.at = x.skip(x.at)
+          const e = x.q[x.at]
+          if (e === undefined) continue
+          if (g === undefined || before(e, g.q[g.at]!)) {
+            if (g !== undefined && (second === undefined || before(g.q[g.at]!, second)))
+              second = g.q[g.at]!
+            g = x
+          } else if (second === undefined || before(e, second)) second = e
+        }
+        if (g === undefined) return
+        // Its run up to the next group's first, read one by one as before.
+        for (;;) {
+          const e = g.q[g.at]
+          if (e === undefined || (second !== undefined && !before(e, second))) break
+          g.at = g.skip(g.at + 1)
+          cursor = e
+          if (bounds.done) return
+          const need = book(e.need)
+          if (dead(need, bounds)) continue
+          const gate = o.gate?.(e.id) ?? {}
+          if (gate === 'done') {
+            done.push(e)
+            continue
+          }
+          if (gate === 'wait') continue
+          yield { id: e.id, need, up: o.deps(e.id) ?? [], ...gate }
+          break
+        }
+      }
+    }
+    const to = assign(asks(), bins, o.waits, this.how.place, { floor, kinds: Infinity, bounds })
+    for (const e of done) if (!e.gone) this.drop(e)
+    for (const id of to.keys()) this.drop(this.of.get(id)!)
+    return to
+  }
+}
+
+/** Classes a doubling of cores spans (`Queue`'s groups). */
+const CLASSES = 4
+
+interface Entry {
+  readonly id: string
+  /** The lower first, then the lower `seq`. */
+  readonly rank: number
+  readonly seq: number
+  readonly need: Need
+  group: Group
+  gone?: boolean
+}
+
+function before(a: Entry, b: Entry): boolean {
+  return a.rank < b.rank || (a.rank === b.rank && a.seq < b.seq)
+}
+
+/** Waiting tasks of one platform and cores' class, in rank order; gone ones linger until half are. */
+class Group {
+  q: Entry[] = []
+  private gone = 0
+  /** Where a pass reads next. */
+  at = 0
+  /** The least any of it books, this pass. */
+  lo = Infinity
+  /** The most cores and memory one asked: kept as they joined until it is read again without the gone. */
+  private hiCores = -Infinity
+  private hiMemory = -Infinity
+  /** Its least cores and memory, gone ones lazily left off the top. */
+  private readonly byCores: Entry[] = []
+  private readonly byMemory: Entry[] = []
+
+  constructor(
+    readonly odd: boolean,
+    readonly platform: string | undefined,
+  ) {}
+
+  add(e: Entry): void {
+    let lo = 0
+    let hi = this.q.length
+    // Most join last: a search from the end.
+    if (hi === 0 || before(this.q[hi - 1]!, e)) lo = hi
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1
+      if (before(this.q[mid]!, e)) lo = mid + 1
+      else hi = mid
+    }
+    this.q.splice(lo, 0, e)
+    this.hiCores = Math.max(this.hiCores, e.need.cores)
+    this.hiMemory = Math.max(this.hiMemory, e.need.memory)
+    push(this.byCores, e, (x) => x.need.cores)
+    push(this.byMemory, e, (x) => x.need.memory)
+  }
+
+  /** One of it left: how many are left. */
+  drop(): number {
+    this.gone++
+    const left = this.q.length - this.gone
+    if (this.gone > left) {
+      this.q = this.q.filter((e) => !e.gone)
+      this.gone = 0
+      this.hiCores = -Infinity
+      this.hiMemory = -Infinity
+      for (const e of this.q) {
+        this.hiCores = Math.max(this.hiCores, e.need.cores)
+        this.hiMemory = Math.max(this.hiMemory, e.need.memory)
+      }
+    }
+    return left
+  }
+
+  head(): number {
+    return this.skip(0)
+  }
+
+  skip(p: number): number {
+    while (p < this.q.length && this.q[p]!.gone === true) p++
+    return p
+  }
+
+  /** The first place ranked past `cursor`. */
+  after(cursor: Entry): number {
+    let p = this.at
+    let hi = this.q.length
+    while (p < hi) {
+      const mid = (p + hi) >> 1
+      if (!before(cursor, this.q[mid]!)) p = mid + 1
+      else hi = mid
+    }
+    return p
+  }
+
+  low(): Need | undefined {
+    return top(this.byCores, (x) => x.need.cores)?.need
+  }
+
+  memory(): number {
+    return top(this.byMemory, (x) => x.need.memory)?.need.memory ?? Infinity
+  }
+
+  /** An odd group's least booked: read one by one, as books of each differ. */
+  oddFloor(book: (n: Need) => Need): number {
+    let least = Infinity
+    for (let p = this.at; p < this.q.length; p++)
+      if (this.q[p]!.gone !== true) least = Math.min(least, book(this.q[p]!.need).cores)
+    return least
+  }
+
+  /** No worker of its platform has room for any of it now, as `dead` says of each. */
+  full(b: Bounds): boolean {
+    const r = this.platform === undefined ? b : b.of?.get(this.platform)
+    if (r === undefined) return true
+    return !r.open && this.lo > r.free + 1e-9 && this.hiCores < r.cores && this.hiMemory <= r.memory
+  }
+}
+
+/** A binary min-heap of entries by `by`. */
+function push(h: Entry[], e: Entry, by: (e: Entry) => number): void {
+  h.push(e)
+  let i = h.length - 1
+  while (i > 0) {
+    const p = (i - 1) >> 1
+    if (by(h[p]!) <= by(h[i]!)) break
+    ;[h[p], h[i]] = [h[i]!, h[p]!]
+    i = p
+  }
+}
+
+/** The least of `h` not gone, the gone ones above it popped. */
+function top(h: Entry[], by: (e: Entry) => number): Entry | undefined {
+  while (h.length > 0 && h[0]!.gone === true) {
+    const last = h.pop()!
+    if (h.length === 0) break
+    h[0] = last
+    let i = 0
+    for (;;) {
+      const l = 2 * i + 1
+      const r = l + 1
+      let m = i
+      if (l < h.length && by(h[l]!) < by(h[m]!)) m = l
+      if (r < h.length && by(h[r]!) < by(h[m]!)) m = r
+      if (m === i) break
+      ;[h[m], h[i]] = [h[i]!, h[m]!]
+      i = m
+    }
+  }
+  return h[0]
 }

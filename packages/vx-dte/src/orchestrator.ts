@@ -53,7 +53,7 @@ import {
   type WarmUp,
 } from './planner.js'
 import { Usage, type UsageStats } from './usage.js'
-import { dispatch, type Need } from './dispatch.js'
+import { type Need, Queue } from './dispatch.js'
 import { DEFAULT_STRATEGY, type Strategy } from './strategy.js'
 import { RelayError, unsent, type Participant } from './wire.js'
 import { ORCHESTRATOR, Trace } from './trace.js'
@@ -286,7 +286,9 @@ export class Orchestrator {
   private readonly workers = new Map<string, Worker>()
   /** The run tree's files, workspace-relative, listed when a task first asks. */
   private inTree?: Promise<Tree | undefined>
-  private readonly queue: Job[] = []
+  /** Waiting tasks, by id, in the order a pump reads them (`Queue`). */
+  private readonly waiting = new Map<string, Job>()
+  private readonly queue: Queue
   /** Where a worker saved each task it ran: its cache key or its run key. */
   private readonly savedAs = new Map<string, string>()
   /** Keys the run's requests named for their dependencies. */
@@ -386,6 +388,7 @@ export class Orchestrator {
 
   constructor(private readonly o: OrchestratorOptions) {
     this.sent = o.sent ?? new Map()
+    this.queue = new Queue(o.how ?? DEFAULT_STRATEGY, o.tail, (id) => this.waiting.get(id)!.need)
     // A root that is gone fails the run's own reads first.
     this.realRoot = (() => {
       try {
@@ -449,7 +452,7 @@ export class Orchestrator {
       // A signal aborted already fires no `abort`.
       if (req.signal?.aborted === true) return resolve(stopped())
       req.signal?.addEventListener('abort', () => this.abort(job), { once: true })
-      this.queue.push(job)
+      this.enqueue([job])
       this.pumpSoon()
     })
   }
@@ -525,9 +528,9 @@ export class Orchestrator {
   }
 
   private abort(job: Job): void {
-    const at = this.queue.indexOf(job)
-    if (at >= 0) {
-      this.queue.splice(at, 1)
+    if (this.waiting.get(job.req.taskId) === job) {
+      this.waiting.delete(job.req.taskId)
+      this.queue.delete(job.req.taskId)
       job.resolve(stopped())
     } else if (job.worker !== undefined) {
       const a = this.workers.get(job.worker)
@@ -545,14 +548,22 @@ export class Orchestrator {
     })
   }
 
+  /** `jobs` wait, in order, behind the waiting tasks or, `front`, before them. */
+  private enqueue(jobs: readonly Job[], front = false): void {
+    for (const j of jobs) this.waiting.set(j.req.taskId, j)
+    this.queue.add(
+      jobs.map((j) => j.req.taskId),
+      front,
+    )
+  }
+
   private pump(): void {
     const batches = new Map<Worker, Job[]>()
     // Core asks in its critical-path order, but only as tasks get ready: a
     // long chain ready a moment late queued behind 46 shards ready at once,
     // and its 41 s build began 47 s in, the run's end (main, 2026-10-23).
-    const waiting = this.queue.splice(0)
     const workers = [...this.workers.values()].filter((a) => !a.faulty)
-    const byId = new Map(waiting.map((j) => [j.req.taskId, j]))
+    const byId = this.waiting
     const bins = workers.map((a) => {
       let running = 0
       for (const j of a.busy.values()) if (j.held !== undefined) running++
@@ -568,26 +579,22 @@ export class Orchestrator {
       }
     })
     const nodes = this.o.nodes()
-    const { to, left } = dispatch(
-      waiting.map((j) => j.req.taskId),
-      bins,
-      {
-        how: this.o.how ?? DEFAULT_STRATEGY,
-        tail: this.o.tail,
-        need: (id) => byId.get(id)!.need,
-        book: (need) => this.booking(need),
-        deps: (id) => (byId.get(id)!.deps ??= nodes?.get(id)?.deps),
-        gate: (id) => {
-          const job = byId.get(id)!
-          const up =
-            job.up ??
-            (nodes?.has(id) === true ? (job.up = upstream(nodes, id)) : upstream(nodes, id))
-          return this.pin(job, up)
-        },
-        waits: (above, platform) => this.bigger(above, platform),
+    const to = this.queue.pass(bins, {
+      book: (need) => this.booking(need),
+      deps: (id) => (byId.get(id)!.deps ??= nodes?.get(id)?.deps),
+      gate: (id) => {
+        const job = byId.get(id)!
+        const up =
+          job.up ?? (nodes?.has(id) === true ? (job.up = upstream(nodes, id)) : upstream(nodes, id))
+        const pin = this.pin(job, up)
+        // It ended: the queue lets it go.
+        if (pin === 'done') byId.delete(id)
+        return pin
       },
-    )
+      waits: (above, platform) => this.bigger(above, platform),
+    })
     const placed = [...to.keys()].map((id) => byId.get(id)!)
+    for (const id of to.keys()) byId.delete(id)
     for (const job of placed) {
       const a = to.get(job.req.taskId)!.a
       job.worker = a.id
@@ -612,7 +619,6 @@ export class Orchestrator {
       if (batch === undefined) batches.set(a, [job])
       else batch.push(job)
     }
-    this.queue.push(...left.map((id) => byId.get(id)!))
     for (const [a, jobs] of batches) this.send(a, jobs)
   }
 
@@ -695,24 +701,31 @@ export class Orchestrator {
         this.pumpSoon()
       }
       this.pumpSoon()
-      this.queue.unshift({
-        req: k.req,
-        need: where.platform === undefined ? k.need : { ...k.need, platform: where.platform },
-        queuedAt: performance.now(),
-        pinnedAt: performance.now(),
-        again: {
-          ...(where.only === undefined ? {} : { only: where.only }),
-          ...(where.avoid === undefined ? {} : { avoid: where.avoid }),
-        },
-        resolve: (r) =>
-          done(
-            r.exitCode === 0 ? undefined : `${id} ran again for it and failed (exit ${r.exitCode})`,
-          ),
-        reject: (err) =>
-          done(
-            `${id} ran again for it and failed: ${err instanceof Error ? err.message : String(err)}`,
-          ),
-      })
+      this.enqueue(
+        [
+          {
+            req: k.req,
+            need: where.platform === undefined ? k.need : { ...k.need, platform: where.platform },
+            queuedAt: performance.now(),
+            pinnedAt: performance.now(),
+            again: {
+              ...(where.only === undefined ? {} : { only: where.only }),
+              ...(where.avoid === undefined ? {} : { avoid: where.avoid }),
+            },
+            resolve: (r) =>
+              done(
+                r.exitCode === 0
+                  ? undefined
+                  : `${id} ran again for it and failed (exit ${r.exitCode})`,
+              ),
+            reject: (err) =>
+              done(
+                `${id} ran again for it and failed: ${err instanceof Error ? err.message : String(err)}`,
+              ),
+          },
+        ],
+        true,
+      )
       if (where.only !== undefined || where.avoid !== undefined)
         setTimeout(() => this.pumpSoon(), this.pinWaitMs + 50).unref?.()
     }
@@ -1164,7 +1177,7 @@ export class Orchestrator {
         a.started.delete(task)
         const again = this.retry(a, job, `could not read ${head.unread.join(', ')}`)
         if (again !== undefined) {
-          this.queue.unshift(again)
+          this.enqueue([again], true)
           this.pumpSoon()
         }
         return
@@ -1469,7 +1482,7 @@ export class Orchestrator {
       const again = this.retry(a, j, 'lost')
       if (again !== undefined) back.push(again)
     }
-    this.queue.unshift(...back)
+    this.enqueue(back, true)
     this.o.lost?.(a.label)
     // Workers that join on their own may yet join; ones this run starts
     // are all it gets.
@@ -1528,7 +1541,7 @@ export class Orchestrator {
                 if (again !== undefined) back.push(again)
               }
             if (back.length > 0) {
-              this.queue.unshift(...back)
+              this.enqueue(back, true)
               this.o.faulted?.()
               if (this.spawnedAt.size > 0)
                 this.stranded(`${a.label} no longer runs a task it began and no worker is left`)
@@ -1549,7 +1562,7 @@ export class Orchestrator {
             if (j === undefined) continue
             // It began it whether or not its `start` came first.
             this.begun(a, m.task)
-            if (this.retry(a, j, m.reason) !== undefined) this.queue.unshift(j)
+            if (this.retry(a, j, m.reason) !== undefined) this.enqueue([j], true)
             if (a.faulty) this.o.faulted?.()
             if (a.faulty && this.spawnedAt.size > 0)
               this.stranded(
@@ -1598,7 +1611,7 @@ export class Orchestrator {
   where(taskId: string): string | null | undefined {
     for (const a of this.workers.values())
       if (a.busy.has(taskId)) return a.started.has(taskId) ? a.label : null
-    return this.queue.some((j) => j.req.taskId === taskId) ? null : undefined
+    return this.waiting.has(taskId) ? null : undefined
   }
 
   /**
@@ -1920,7 +1933,11 @@ export class Orchestrator {
   private fail(reason: string): void {
     for (const a of this.workers.values())
       for (const j of a.busy.values()) j.reject(new Error(reason))
-    for (const j of this.queue.splice(0)) j.reject(new Error(reason))
+    for (const [id, j] of this.waiting) {
+      this.queue.delete(id)
+      j.reject(new Error(reason))
+    }
+    this.waiting.clear()
     this.workers.clear()
     this.lost = reason
   }

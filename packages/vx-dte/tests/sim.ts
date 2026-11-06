@@ -1,12 +1,12 @@
 // A distributed run played on a virtual clock: core hands over each task
 // that misses as its dependencies end, the run decides (`decide`) and
-// places (`dispatch`, as `Orchestrator.pump`) with the plugin's own code at every event, and
+// places (`Queue`, as `Orchestrator.pump`) with the plugin's own code at every event, and
 // workers join after their warm-up and run tasks for as long as they
 // took. Pure and deterministic: a run of minutes plays in milliseconds.
 // What the summary's Workers table would say comes back with it.
 
 import type { TaskNode } from '@vzn/vx'
-import { dispatch as place, type Need } from '../src/dispatch.js'
+import { type Need, Queue } from '../src/dispatch.js'
 import { needOf } from '../src/plugin.js'
 import { booked, DEFAULT_STRATEGY, type Strategy } from '../src/strategy.js'
 import {
@@ -159,7 +159,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
 
   let now = 0
   const done = new Set<string>()
-  const queue: string[] = []
+  const queue = new Queue(how, tail, need)
   const executed = new Set<string>()
   const workers: Live[] = []
   const started = new Map<string, number>()
@@ -197,7 +197,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     if (t.exec && t.ran !== undefined) {
       readyAt.set(id, now)
       executed.add(id)
-      queue.push(id)
+      queue.add([id])
     } else if (t.ran === undefined && t.cache && (options.restoreMs ?? 0) > 0)
       restoring.set(id, now + options.restoreMs!)
     else end(id)
@@ -238,13 +238,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       }
     })
     // The live run's own rule (`Orchestrator.pump`).
-    const { to, left } = place(queue, bins, {
-      how,
-      tail,
-      need,
-      deps: (id) => byId.get(id)!.deps,
-    })
-    queue.splice(0, queue.length, ...left)
+    const to = queue.pass(bins, { deps: (id) => byId.get(id)!.deps })
     for (const [id, bin] of to) {
       const w = bin.w
       if (overloaded.has(w.id)) overSent++
@@ -433,7 +427,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     for (const w of starting()) next = Math.min(next, joinAt.get(w.id)!)
     if (again !== undefined) next = Math.min(next, again)
     for (const at of restoring.values()) next = Math.min(next, at)
-    if (next === Infinity) throw new Error(`sim: stuck at ${now} ms with ${queue.length} queued`)
+    if (next === Infinity) throw new Error(`sim: stuck at ${now} ms with ${queue.size} queued`)
     const dt = next - now
     for (const w of joined()) {
       const rate = rateOf(w)
@@ -447,7 +441,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       if (w.running.size > 0) w.busyMs += dt
       else {
         w.idleMs += dt
-        if (queue.length > 0) w.idleQueuedMs += dt
+        if (queue.size > 0) w.idleQueuedMs += dt
       }
     }
     now = next
