@@ -251,3 +251,34 @@ it('a cycle interrupted on readiness keeps the servers it was handed', async () 
     api.kill('SIGKILL')
   }
 }, 30_000)
+
+// The initial run of `vx watch` is handed no servers: an edit while one
+// server still started stopped the run, and the one already ready went
+// down with it and restarted. A server ready within the interrupted run
+// is spared and handed back, as a handed one is.
+it('a run interrupted on readiness keeps the servers it made ready', async () => {
+  await addProject(root, 'app', {
+    config: `export default { tasks: {
+      api: { exec: { command: 'echo READY; exec sleep 30', persistent: { readyWhen: 'READY' } } },
+      web: { exec: { command: 'echo booting; exec sleep 30', persistent: { readyWhen: 'READY' } } },
+    } }`,
+  })
+  const quiet: Logger = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
+  const interrupt = new AbortController()
+  setTimeout(() => interrupt.abort(CYCLE_INTERRUPT), 500)
+  const r = await run({
+    cwd: root,
+    tasks: ['api', 'web'],
+    projects: ['app'],
+    log: quiet,
+    handleSignals: false,
+    holdPersistent: true,
+    signal: interrupt.signal,
+  })
+  const api = r.persistent?.servers.get('app#api')?.child
+  try {
+    expect([r.persistent?.ids, api?.exitCode, api?.signalCode]).toEqual([['app#api'], null, null])
+  } finally {
+    await r.persistent?.stop()
+  }
+}, 30_000)

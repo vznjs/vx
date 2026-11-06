@@ -26,10 +26,11 @@ import {
 type Child = ReturnType<typeof Bun.spawn>
 
 /**
- * The abort reason that stops a run's own work and spares the servers it
- * was handed (`RunOptions.keep`), which it hands back. `vx watch` stops a
- * cycle waiting on a server that never becomes ready (WD-15); any other
- * stop took the unchanged servers down with it, and they restarted.
+ * The abort reason that stops a run's own work and spares its ready
+ * servers, handed in (`RunOptions.keep`) or made ready by the run, which
+ * it hands back. `vx watch` stops a cycle waiting on a server that never
+ * becomes ready (WD-15); any other stop took the unchanged servers down
+ * with it, and they restarted.
  */
 export const CYCLE_INTERRUPT = 'vx:cycle-interrupt'
 
@@ -81,8 +82,6 @@ export function runStop(args: {
   teardowns: number
   /** Called first when the run is stopped. */
   onStop: () => void
-  /** A server the run was handed: a `CYCLE_INTERRUPT` leaves it running. */
-  handed: (child: Child) => boolean
 }): RunStop {
   const { log, external } = args
   const liveChildren = new Set<Child>()
@@ -136,7 +135,11 @@ export function runStop(args: {
   const onAbort = (): void => {
     args.onStop()
     endedBeforeStop = new Set([...persistentRegistry.values()].filter(hasEnded))
-    const spare = controller.signal.reason === CYCLE_INTERRUPT ? args.handed : () => false
+    // Every ready server is in the registry, the handed ones included: the
+    // initial watch run is handed none, and its ready servers restarted.
+    const ready = new Set(persistentRegistry.values())
+    const spare = (c: Child): boolean =>
+      controller.signal.reason === CYCLE_INTERRUPT && ready.has(c)
     aborting = terminateChildren(
       () => [...liveChildren, ...persistentRegistry.values()].filter((c) => !spare(c)),
       forwardedSignal(controller.signal.reason),
