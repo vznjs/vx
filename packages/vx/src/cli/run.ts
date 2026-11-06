@@ -423,7 +423,14 @@ async function scopeFilters(
   const filterStrings = [...parsed.filters]
   let affectedFilter: string | undefined
   if (parsed.affected !== undefined) {
-    const f = await affectedFilterFor(cwd, parsed.affected)
+    // With --all given, "run --all" is advice already taken.
+    const f = await affectedFilterFor(
+      cwd,
+      parsed.affected,
+      parsed.all
+        ? 'drop --affected, --all runs every project (the cache skips what did not change)'
+        : undefined,
+    )
     if (typeof f === 'object') return f
     affectedFilter = f
     filterStrings.unshift(affectedFilter)
