@@ -222,6 +222,24 @@ interface PartitionDigest {
 }
 
 /**
+ * `compute`'s answer, computed on the first ask, after which `compute` is
+ * let go: a digest's records are a rope of three strings per file, ~3.7 MB
+ * of heap at 1,601 projects, held to the end of the run otherwise. Built
+ * here, not in the caller, so the caller's scope (which holds `compute`)
+ * is not the getter's.
+ */
+function once<T>(compute: (() => T) | undefined): () => T | undefined {
+  let value: T | undefined
+  return () => {
+    if (compute !== undefined) {
+      value = compute()
+      compute = undefined
+    }
+    return value
+  }
+}
+
+/**
  * A partition's trusted OIDs, built on first read: a warm run whose keys
  * come back from the fold memo reads none, and building 125,000 abs-path
  * entries up front was ~90 ms of a 5,000-project warm run.
@@ -543,11 +561,10 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     snapshot: readonly string[],
     digest: () => string | undefined,
   ): void {
-    let memo: { value: string | undefined } | undefined
     this.digests.set(projectDir, {
       snapshot,
       oids: this.oids.get(projectDir),
-      digest: () => (memo ??= { value: digest() }).value,
+      digest: once(digest),
     })
   }
 

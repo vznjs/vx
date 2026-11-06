@@ -251,3 +251,28 @@ it("a run's own row is read alone, and every task's row once a task asks", () =>
   expect(asked.length).toBe(3)
   db.close()
 })
+
+// The probe's digest closes over the records it reads: three strings per
+// file, ~3.7 MB at 1,601 projects, held to the end of the run while
+// anything kept the computation.
+it('a files digest, once asked, lets go of what it was computed from', async () => {
+  const cache = new GitFilesCache()
+  const refs: WeakRef<string[]>[] = []
+  const note = (dir: string): void => {
+    const records = Array.from({ length: 100 }, (_, i) => `${dir}/${i}`)
+    refs.push(new WeakRef(records))
+    const snapshot = [`${dir}/a.ts`]
+    cache.set(dir, snapshot)
+    cache.noteFilesDigest(dir, snapshot, () => String(records.length))
+    expect(cache.filesDigest(dir, snapshot)).toBe('100')
+  }
+  for (let i = 0; i < 50; i++) note(`/w/p${i}`)
+  // Across turns, and a few allowed: a conservative stack scan can still
+  // see the last records made.
+  for (let i = 0; i < 3; i++) {
+    await Bun.sleep(5)
+    Bun.gc(true)
+  }
+  expect(cache.filesDigest('/w/p0', cache.get('/w/p0')!)).toBe('100')
+  expect(refs.filter((r) => r.deref() !== undefined).length).toBeLessThan(10)
+})
