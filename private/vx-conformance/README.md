@@ -75,6 +75,11 @@ names the vx tests the case is drawn from. `needs` names a feature a
 tool may lack (affected, timeout, retries, persistent tasks, watch…); a tool
 without it scores the case not applicable.
 
+A score is cases passed, of every case in the group. A case not applicable
+to a tool counts as not passed: it is a behaviour that tool's users cannot
+get. Counting only what a tool can express made a tool that expresses one
+case of eleven read 100%.
+
 ## Adapters
 
 An adapter writes the tool's own config from the neutral workspace and

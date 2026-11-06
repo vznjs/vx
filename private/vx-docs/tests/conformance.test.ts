@@ -14,6 +14,7 @@ import {
   note,
   percent,
   RESULTS,
+  supports,
   TOOLS,
 } from '../src/conformance/data.ts'
 
@@ -124,7 +125,7 @@ describe('the conformance page', () => {
     expect(fails).toBeGreaterThan(0)
   })
 
-  it('scores each tool in every group, a group with no case as –', () => {
+  it('scores each tool in every group: passed and supported, both of every case', () => {
     const groups = ['all', ...CATEGORIES]
     const wrong: string[] = []
     for (const g of groups) {
@@ -134,18 +135,23 @@ describe('the conformance page', () => {
         const s = RESULTS.scores[t]?.[g]
         const td = new RegExp(`<td data-tool="${t}"[^>]*>([\\s\\S]*?)</td>`).exec(tr)?.[1] ?? ''
         const of = s && s.of > 0 ? `${s.pass}/${s.of}` : '–'
-        if (!td.includes(`>${percent(s)}<`) || !td.includes(`>${of}<`))
+        if (
+          !td.includes(`>${percent(s)}<`) ||
+          !td.includes(`>${of}<`) ||
+          !td.includes(`>supports ${supports(s)}<`)
+        )
           wrong.push(`${g} ${t}: ${td}`)
       }
     }
     expect(wrong).toEqual([])
-    expect(percent({ pass: 0, of: 0 })).toBe('–')
+    expect(percent({ pass: 0, can: 0, of: 0 })).toBe('–')
+    expect(supports({ pass: 0, can: 10, of: 11 })).toBe('90%')
   })
 
   it('prints 100% only when every case passed', () => {
-    expect(percent({ pass: 859, of: 860 })).toBe('99%')
-    expect(percent({ pass: 860, of: 860 })).toBe('100%')
-    expect(percent({ pass: 1, of: 200 })).toBe('0%')
+    expect(percent({ pass: 859, can: 860, of: 860 })).toBe('99%')
+    expect(percent({ pass: 860, can: 860, of: 860 })).toBe('100%')
+    expect(percent({ pass: 1, can: 200, of: 200 })).toBe('0%')
   })
 
   it('names each tool’s version, where the cases come from and the method', () => {

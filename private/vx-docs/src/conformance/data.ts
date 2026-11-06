@@ -15,6 +15,8 @@ export interface Outcome {
 
 export interface Score {
   pass: number
+  /** Cases the tool can express at all. */
+  can: number
   of: number
 }
 
@@ -106,6 +108,10 @@ export const CATEGORIES = unique(RESULTS.cases.map((c) => c.category))
 /** A score as the page prints it: a whole percentage, rounded down so one failure never reads 100%, or `–` when no case applies. */
 export const percent = (s: Score | undefined): string =>
   s === undefined || s.of === 0 ? '–' : `${Math.floor((s.pass / s.of) * 100)}%`
+
+/** The share of all cases a tool can express at all, rounded down like {@link percent}. */
+export const supports = (s: Score | undefined): string =>
+  s === undefined || s.of === 0 ? '–' : `${Math.floor((s.can / s.of) * 100)}%`
 
 /** Whether every tool that can express the case got the same result. */
 export function agree(c: Case): boolean {

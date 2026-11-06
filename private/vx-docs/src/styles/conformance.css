@@ -118,6 +118,11 @@
   font: 12px / 1.3 var(--font-mono);
   color: var(--text-faint);
 }
+.vx-landing .cfm-sup {
+  display: block;
+  font: 12px / 1.3 var(--font-mono);
+  color: var(--text-faint);
+}
 .vx-landing .cfm-all .cfm-pct {
   font-size: 26px;
 }

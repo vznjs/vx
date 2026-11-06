@@ -969,311 +969,386 @@
     "vx": {
       "all": {
         "pass": 962,
+        "can": 962,
         "of": 962
       },
       "correctness": {
         "pass": 790,
+        "can": 790,
         "of": 790
       },
       "efficiency": {
         "pass": 163,
+        "can": 163,
         "of": 163
       },
       "data": {
         "pass": 9,
+        "can": 9,
         "of": 9
       },
       "graph": {
         "pass": 149,
+        "can": 149,
         "of": 149
       },
       "config": {
         "pass": 8,
+        "can": 8,
         "of": 8
       },
       "failure": {
         "pass": 73,
+        "can": 73,
         "of": 73
       },
       "affected": {
         "pass": 95,
+        "can": 95,
         "of": 95
       },
       "cache": {
         "pass": 40,
+        "can": 40,
         "of": 40
       },
       "inputs": {
         "pass": 299,
+        "can": 299,
         "of": 299
       },
       "env": {
         "pass": 29,
+        "can": 29,
         "of": 29
       },
       "outputs": {
         "pass": 220,
+        "can": 220,
         "of": 220
       },
       "report": {
         "pass": 9,
+        "can": 9,
         "of": 9
       },
       "sandbox": {
         "pass": 11,
+        "can": 11,
         "of": 11
       },
       "watch": {
         "pass": 29,
+        "can": 29,
         "of": 29
       }
     },
     "turbo": {
       "all": {
         "pass": 619,
-        "of": 890
+        "can": 890,
+        "of": 962
       },
       "correctness": {
         "pass": 500,
-        "of": 724
+        "can": 724,
+        "of": 790
       },
       "efficiency": {
         "pass": 115,
-        "of": 158
+        "can": 158,
+        "of": 163
       },
       "data": {
         "pass": 4,
-        "of": 8
+        "can": 8,
+        "of": 9
       },
       "graph": {
         "pass": 91,
-        "of": 130
+        "can": 130,
+        "of": 149
       },
       "config": {
         "pass": 4,
-        "of": 4
+        "can": 4,
+        "of": 8
       },
       "failure": {
         "pass": 24,
-        "of": 46
+        "can": 46,
+        "of": 73
       },
       "affected": {
         "pass": 67,
+        "can": 95,
         "of": 95
       },
       "cache": {
         "pass": 32,
+        "can": 40,
         "of": 40
       },
       "inputs": {
         "pass": 187,
-        "of": 290
+        "can": 290,
+        "of": 299
       },
       "env": {
         "pass": 25,
+        "can": 29,
         "of": 29
       },
       "outputs": {
         "pass": 158,
-        "of": 218
+        "can": 218,
+        "of": 220
       },
       "report": {
         "pass": 4,
-        "of": 8
+        "can": 8,
+        "of": 9
       },
       "sandbox": {
         "pass": 1,
-        "of": 1
+        "can": 1,
+        "of": 11
       },
       "watch": {
         "pass": 26,
+        "can": 29,
         "of": 29
       }
     },
     "nx": {
       "all": {
         "pass": 631,
-        "of": 914
+        "can": 914,
+        "of": 962
       },
       "correctness": {
         "pass": 477,
-        "of": 744
+        "can": 744,
+        "of": 790
       },
       "efficiency": {
         "pass": 150,
-        "of": 162
+        "can": 162,
+        "of": 163
       },
       "data": {
         "pass": 4,
-        "of": 8
+        "can": 8,
+        "of": 9
       },
       "graph": {
         "pass": 113,
-        "of": 136
+        "can": 136,
+        "of": 149
       },
       "config": {
         "pass": 1,
-        "of": 7
+        "can": 7,
+        "of": 8
       },
       "failure": {
         "pass": 35,
-        "of": 54
+        "can": 54,
+        "of": 73
       },
       "affected": {
         "pass": 55,
+        "can": 95,
         "of": 95
       },
       "cache": {
         "pass": 36,
-        "of": 38
+        "can": 38,
+        "of": 40
       },
       "inputs": {
         "pass": 184,
+        "can": 299,
         "of": 299
       },
       "env": {
         "pass": 23,
+        "can": 29,
         "of": 29
       },
       "outputs": {
         "pass": 154,
-        "of": 218
+        "can": 218,
+        "of": 220
       },
       "report": {
         "pass": 4,
-        "of": 8
+        "can": 8,
+        "of": 9
       },
       "sandbox": {
         "pass": 0,
-        "of": 1
+        "can": 1,
+        "of": 11
       },
       "watch": {
         "pass": 26,
+        "can": 29,
         "of": 29
       }
     },
     "vite-task": {
       "all": {
         "pass": 494,
-        "of": 733
+        "can": 733,
+        "of": 962
       },
       "correctness": {
         "pass": 407,
-        "of": 607
+        "can": 607,
+        "of": 790
       },
       "efficiency": {
         "pass": 85,
-        "of": 118
+        "can": 118,
+        "of": 163
       },
       "data": {
         "pass": 2,
-        "of": 8
+        "can": 8,
+        "of": 9
       },
       "graph": {
         "pass": 86,
-        "of": 115
+        "can": 115,
+        "of": 149
       },
       "config": {
         "pass": 4,
-        "of": 4
+        "can": 4,
+        "of": 8
       },
       "failure": {
         "pass": 28,
-        "of": 34
+        "can": 34,
+        "of": 73
       },
       "affected": {
         "pass": 0,
-        "of": 0
+        "can": 0,
+        "of": 95
       },
       "cache": {
         "pass": 33,
-        "of": 34
+        "can": 34,
+        "of": 40
       },
       "inputs": {
         "pass": 176,
-        "of": 291
+        "can": 291,
+        "of": 299
       },
       "env": {
         "pass": 27,
-        "of": 28
+        "can": 28,
+        "of": 29
       },
       "outputs": {
         "pass": 137,
-        "of": 218
+        "can": 218,
+        "of": 220
       },
       "report": {
         "pass": 2,
-        "of": 8
+        "can": 8,
+        "of": 9
       },
       "sandbox": {
         "pass": 1,
-        "of": 1
+        "can": 1,
+        "of": 11
       },
       "watch": {
         "pass": 0,
-        "of": 0
+        "can": 0,
+        "of": 29
       }
     },
     "nix": {
       "all": {
         "pass": 453,
-        "of": 675
+        "can": 675,
+        "of": 962
       },
       "correctness": {
         "pass": 389,
-        "of": 556
+        "can": 556,
+        "of": 790
       },
       "efficiency": {
         "pass": 62,
-        "of": 111
+        "can": 111,
+        "of": 163
       },
       "data": {
         "pass": 2,
-        "of": 8
+        "can": 8,
+        "of": 9
       },
       "graph": {
         "pass": 57,
-        "of": 64
+        "can": 64,
+        "of": 149
       },
       "config": {
         "pass": 0,
-        "of": 1
+        "can": 1,
+        "of": 8
       },
       "failure": {
         "pass": 17,
-        "of": 35
+        "can": 35,
+        "of": 73
       },
       "affected": {
         "pass": 0,
-        "of": 0
+        "can": 0,
+        "of": 95
       },
       "cache": {
         "pass": 27,
-        "of": 34
+        "can": 34,
+        "of": 40
       },
       "inputs": {
         "pass": 173,
-        "of": 290
+        "can": 290,
+        "of": 299
       },
       "env": {
         "pass": 19,
-        "of": 26
+        "can": 26,
+        "of": 29
       },
       "outputs": {
         "pass": 157,
-        "of": 216
+        "can": 216,
+        "of": 220
       },
       "report": {
         "pass": 2,
-        "of": 8
+        "can": 8,
+        "of": 9
       },
       "sandbox": {
         "pass": 1,
-        "of": 1
+        "can": 1,
+        "of": 11
       },
       "watch": {
         "pass": 0,
-        "of": 0
+        "can": 0,
+        "of": 29
       }
     }
   },
