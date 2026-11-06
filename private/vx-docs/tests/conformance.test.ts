@@ -76,7 +76,7 @@ describe('the conformance page', () => {
     expect(wrong).toEqual([])
   })
 
-  it('shows each category closed, its summary giving every tool’s score', () => {
+  it('shows each category closed, its summary only its name and count', () => {
     const wrong: string[] = []
     for (const id of CATEGORIES) {
       const at = html.indexOf(`<details class="cfm-cat" id="${id}"`)
@@ -86,14 +86,26 @@ describe('the conformance page', () => {
       }
       const head = html.slice(at, html.indexOf('</summary>', at))
       if (/^<details[^>]*\sopen[\s>=]/.test(head)) wrong.push(`${id}: open`)
-      for (const t of TOOLS)
-        if (!head.includes(`>${percent(RESULTS.scores[t]?.[id])}</strong>`))
-          wrong.push(`${id}: ${t} score`)
+      if (head.includes('%')) wrong.push(`${id}: score in summary`)
+      if (head.includes('cfm-cat-about')) wrong.push(`${id}: description in summary`)
     }
     expect(wrong).toEqual([])
   })
 
-  it('says on each category, closed, what it checks and why it matters', () => {
+  it('heads each tool column of a category with that tool’s score', () => {
+    const wrong: string[] = []
+    for (const id of CATEGORIES) {
+      const at = html.indexOf(`<details class="cfm-cat" id="${id}"`)
+      const thead = html.slice(html.indexOf('<thead', at), html.indexOf('</thead>', at))
+      const cols = [...thead.matchAll(/<th[^>]*data-tool="([^"]+)"[^>]*>([\s\S]*?)<\/th>/g)]
+      const want = TOOLS.map((t) => [t, percent(RESULTS.scores[t]?.[id])])
+      const got = cols.map((m) => [m[1], />([^<]*%|–)<\/span>/.exec(m[2]!)?.[1]])
+      if (JSON.stringify(got) !== JSON.stringify(want)) wrong.push(`${id}: ${JSON.stringify(got)}`)
+    }
+    expect(wrong).toEqual([])
+  })
+
+  it('says on each category, once opened, what it checks and why it matters', () => {
     const wrong: string[] = []
     for (const id of CATEGORIES) {
       const text = about(id)
@@ -103,8 +115,8 @@ describe('the conformance page', () => {
       }
       if (text.length > 200) wrong.push(`${id}: over 200 chars`)
       const at = html.indexOf(`<details class="cfm-cat" id="${id}"`)
-      const head = html.slice(at, html.indexOf('</summary>', at))
-      if (!head.includes(`<p class="cfm-cat-about">${inline(text)}</p>`))
+      const body = html.slice(html.indexOf('</summary>', at), html.indexOf('<table', at))
+      if (!body.includes(`<p class="cfm-cat-about">${inline(text)}</p>`))
         wrong.push(`${id}: not shown`)
     }
     expect(wrong).toEqual([])

@@ -1,8 +1,9 @@
 ---
 // The conformance table: every case of @vzn/vx-conformance and what each
 // tool did with it, from src/data/conformance.json (src/conformance/data.ts).
-// No JavaScript: each category is a <details>, closed on its summary (its
-// count and each tool's score), a failing cell opens its detail as one, and the
+// No JavaScript: each category is a <details>, closed on its name and count;
+// open, it says what it checks and heads each tool's column with that tool's
+// score in it. A failing cell opens its detail as one, and the
 // "only where tools differ" switch is a checkbox the stylesheet reads.
 import FeaturesPage from '../../components/features/FeaturesPage.astro'
 import {
@@ -146,25 +147,19 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'cannot express it' } as con
               <summary>
                 <h3>{groupName(s.id)}</h3>
                 <span class="cfm-cat-count">{s.cases.length} cases</span>
-                <span class="cfm-cat-scores">
-                  {TOOLS.map((t) => (
-                    <span class="cfm-cat-score" data-tool={t}>
-                      {toolName(t)} <strong>{percent(scores[t]?.[s.id])}</strong>
-                    </span>
-                  ))}
-                </span>
-                <p class="cfm-cat-about" set:html={inline(about(s.id))} />
               </summary>
+              <p class="cfm-cat-about" set:html={inline(about(s.id))} />
               <table class="cfm-cases">
                 <thead>
                   <tr>
                     <th scope="col">Case</th>
                     {TOOLS.map((t) => (
-                      <th scope="col" class="cfm-tool" title={toolName(t)}>
+                      <th scope="col" class="cfm-tool" data-tool={t} title={toolName(t)}>
                         <span class="cfm-long">{toolName(t)}</span>
                         <span class="cfm-short" aria-hidden="true">
                           {toolShort(t)}
                         </span>
+                        <span class="cfm-col-score">{percent(scores[t]?.[s.id])}</span>
                       </th>
                     ))}
                   </tr>

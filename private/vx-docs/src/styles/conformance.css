@@ -213,19 +213,18 @@
 .vx-landing .cfm-cat-count {
   opacity: 0.7;
 }
-.vx-landing .cfm-cat-scores {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 14px;
-  margin-left: auto;
-  font-size: 14px;
-}
 .vx-landing .cfm-cat-about {
-  flex-basis: 100%;
-  margin: 0;
+  margin: 14px 0 0;
   max-width: 70ch;
   font-size: 15px;
   opacity: 0.8;
+}
+.vx-landing .cfm-col-score {
+  display: block;
+  margin-top: 2px;
+  font: var(--fw-bold) 14px / 1.2 var(--font-body);
+  letter-spacing: 0;
+  color: var(--text-hi);
 }
 .vx-landing .cfm-cat[open] > .cfm-cases {
   margin-top: 14px;
@@ -243,10 +242,9 @@
 .vx-landing .cfm-short {
   display: none;
 }
-/* An open category keeps its name, then the tools' names, under the
-   site's header while its cases scroll. One line each, so the header row
-   knows where the name ends: its scores drop on a narrow screen, where the
-   header row names the tools anyway. */
+/* An open category keeps its name, then the tools' names and scores,
+   under the site's header while its cases scroll. The summary is one line,
+   so the header row knows where it ends. */
 .vx-landing .cfm-cat[open] > summary {
   position: sticky;
   top: var(--sl-nav-height, 64px);
@@ -256,11 +254,6 @@
   flex-wrap: nowrap;
   overflow: hidden;
   background: var(--bg-page);
-}
-@media (max-width: 799px) {
-  .vx-landing .cfm-cat[open] > summary .cfm-cat-scores {
-    display: none;
-  }
 }
 .vx-landing .cfm .cfm-cases thead th {
   position: sticky;
@@ -396,6 +389,9 @@
   }
   .vx-landing .cfm-short {
     display: inline;
+  }
+  .vx-landing .cfm-col-score {
+    font-size: 11px;
   }
   .vx-landing .cfm-cases td {
     padding: 12px 2px;
