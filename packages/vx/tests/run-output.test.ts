@@ -13,7 +13,11 @@ import {
   maskCaptured,
 } from '../src/exec/runner.js'
 import { MASKED, secretMask } from '../src/util/index.js'
-import { decodeOutputLog, failedOutputLog } from '../src/orchestrator/output-log.js'
+import {
+  decodeOutputLog,
+  encodeOutputLog,
+  failedOutputLog,
+} from '../src/orchestrator/output-log.js'
 import { fileLocations } from '../src/ui/links.js'
 import { gitInitCommit, makeWorkspace } from './helpers/workspace.js'
 
@@ -68,6 +72,33 @@ describe('BoundedCapture bounds', () => {
     small.push('out')
     small.push('err', true)
     expect(failedOutputLog(small, false)).toBe('out\x1eeerr')
+  })
+})
+
+describe('a capture fed a capture', () => {
+  // A distributed miss replays the worker's entry, already cut, into core's
+  // capture: its dropped line was kept as text and cut as the new middle,
+  // and the entry said `98 B of output not kept` for 13 MB.
+  it('keeps the count of the dropped line it was given', () => {
+    const first = new BoundedCapture()
+    first.push('h'.repeat(9 * 1024 * 1024))
+    first.push('t'.repeat(12 * 1024 * 1024))
+    first.push('END\n', true)
+    const again = new BoundedCapture()
+    for (const c of decodeOutputLog(encodeOutputLog(first.chunks()))) again.push(c.text, c.err)
+    expect(again.chunks()).toEqual(first.chunks())
+    // Under a failure's bounds the worker's count is added to its own cut.
+    const failed = new BoundedCapture(8 * 1024, 56 * 1024)
+    for (const c of first.chunks()) failed.push(c.text, c.err)
+    expect(failed.chunks()[1]!.text).toBe(
+      droppedOutputLine(21 * 1024 * 1024 + 4 - 64 * 1024, 8 * 1024, 56 * 1024),
+    )
+  })
+
+  it("keeps a task's own line that is not at the head's end", () => {
+    const c = new BoundedCapture()
+    c.push(`out${droppedOutputLine(5)}more`)
+    expect(c.text()).toBe(`out${droppedOutputLine(5)}more`)
   })
 })
 

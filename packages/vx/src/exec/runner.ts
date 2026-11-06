@@ -1334,6 +1334,12 @@ export function maskCaptured(text: string, secrets: SecretMask): string {
 }
 
 const DROPPED_LINE = /^\n\[vx\] [\d.]+ [KMGTP]?B of output not kept — /
+const SIZE = '[\\d.]+ [KMGTP]?B'
+const OWN_DROPPED_LINE = new RegExp(
+  `\\n\\[vx\\] ([\\d.]+) ([KMGTP]?B) of output not kept — vx keeps the first ${SIZE} and the last ${SIZE} of a task's output\\n`,
+  'y',
+)
+const UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
 
 /** Whether `chunk` is the line a `BoundedCapture` puts where its dropped middle was. */
 export function isDroppedOutputChunk(chunk: CapturedChunk): boolean {
@@ -1361,6 +1367,7 @@ export class BoundedCapture {
   private readonly tail: CapturedChunk[] = []
   private tailLen = 0
   private dropped = 0
+  private seen = 0
 
   constructor(
     private readonly headChars = CAPTURE_HEAD_CHARS,
@@ -1368,6 +1375,29 @@ export class BoundedCapture {
   ) {}
 
   push(text: string, err = false): void {
+    // A capture's own output replayed into another (a distributed miss
+    // replays the worker's entry): its dropped line, where a capture puts
+    // it, is counted, not kept. Kept as text, it fell into the new middle
+    // and the entry said `98 B of output not kept` for 13 MB.
+    const at = CAPTURE_HEAD_CHARS - this.seen
+    this.seen += text.length
+    if (!err && at >= 0 && at <= text.length) {
+      // At the head's end, or a unit short of it (a surrogate pair's split).
+      for (const i of [at, at - 1]) {
+        if (i < 0) continue
+        OWN_DROPPED_LINE.lastIndex = i
+        const m = OWN_DROPPED_LINE.exec(text)
+        if (m === null) continue
+        this.dropped += Math.round(Number(m[1]) * 1024 ** UNITS.indexOf(m[2]!))
+        this.add(text.slice(0, i), err)
+        text = text.slice(i + m[0].length)
+        break
+      }
+    }
+    this.add(text, err)
+  }
+
+  private add(text: string, err: boolean): void {
     // Once the tail has begun the head is closed, even a unit short of its
     // bound (the surrogate case below): a later short chunk fit there and
     // was retained ahead of the chunk before it.
