@@ -71,6 +71,7 @@ export interface TaskOutcome {
   restored?: boolean // cache hits: false = tree already current (up-to-date)
   attempts?: number // set only when `retries` / `--retries` ran it more than once
   failedAttempts?: readonly { endedAt: number; exitCode: number; timedOut?: true }[] // the attempts that were run again
+  attemptOutputs?: readonly string[] // each of failedAttempts' output, encoded as failedOutput: vx last --log
   flaky?: { passes: number; failures: number } // the run proved it flaky; its row says so
   sandboxViolations?: number
   sandboxViolationLines?: string[]

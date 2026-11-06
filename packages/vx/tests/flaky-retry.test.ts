@@ -43,6 +43,13 @@ describe('a known-flaky task is retried once', () => {
   const once = (p: string) => writeFile(path.join(root, `once-${p}`), '')
   beforeAll(async () => {
     root = await makeWorkspace({ prefix: 'vx-flaky-retry-' })
+    await addProject(root, 'twice', {
+      config: `export default { tasks: { test: {
+        exec: { command: 'echo said-before-exit; exit 2', retries: 1 },
+        inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+      } } }`,
+      files: { 'src/input.txt': 'v1\n' },
+    })
     for (const p of ['app', 'fresh', 'off', 'slow'])
       await addProject(root, p, {
         config:
@@ -73,6 +80,10 @@ describe('a known-flaky task is retried once', () => {
       const flake = await vx(root, ['run', 'test', '--filter', 'app', '--force'])
       expect(flake.code).toBe(0)
       expect(flake.text).toContain('app#test flaky - 2 attempts')
+      // Its log keeps the failed attempt, then the pass.
+      const log = await vx(root, ['last', '--log', 'app#test'])
+      expect(log.text).toContain('── attempt 1 of 2 · exit 1 ──')
+      expect(log.text).toContain('── attempt 2 of 2 · passed ──')
 
       // Known flaky now: a failure on a NEW key is retried too.
       await writeFile(path.join(root, 'packages', 'app', 'src', 'input.txt'), 'v2\n')
@@ -106,6 +117,19 @@ describe('a known-flaky task is retried once', () => {
       expect(r.code).toBe(1)
       expect(r.text).not.toContain('retrying')
       expect(r.text).not.toContain('attempts')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "a task that failed every attempt keeps each attempt's output",
+    async () => {
+      const r = await vx(root, ['run', 'test', '--filter', 'twice'])
+      expect(r.code).toBe(1)
+      const log = await vx(root, ['last', '--log', 'twice#test'])
+      expect(log.text).toContain(
+        '── attempt 1 of 2 · exit 2 ──\nsaid-before-exit\n── attempt 2 of 2 · exit 2 ──\nsaid-before-exit',
+      )
     },
     TIMEOUT,
   )

@@ -3053,6 +3053,7 @@ export interface TaskOutcome {
   restored?: boolean
   attempts?: number
   failedAttempts?: readonly { endedAt: number; exitCode: number; timedOut?: true }[]
+  attemptOutputs?: readonly string[]
   flaky?: { passes: number; failures: number }
   sandboxViolations?: number
   sandboxViolationLines?: string[]

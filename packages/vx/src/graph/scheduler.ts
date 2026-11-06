@@ -231,6 +231,8 @@ export interface TaskOutcome {
   attempts?: number
   /** The attempts that failed and were run again, in order: when each ended (epoch ms) and how. */
   failedAttempts?: readonly { endedAt: number; exitCode: number; timedOut?: true }[]
+  /** Each of `failedAttempts`' output, as `failedOutput` encodes it: what `vx last --log` shows. */
+  attemptOutputs?: readonly string[]
   /**
    * Set when this run proved the task flaky: its key failed after it had
    * passed (this run's included) or it passed only on a retry. Its row carries it.
