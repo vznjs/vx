@@ -36,7 +36,11 @@ describe.skipIf(!available)('a sandboxed task reads the outputs it depends on', 
     await rm(fixture.root, { recursive: true, force: true })
   })
 
-  const peek = async (use: string, sandbox = `{ allow: { read: ['.'] } }`): Promise<string[]> => {
+  const peek = async (
+    use: string,
+    sandbox = `{ allow: { read: ['.'] } }`,
+    cache = 'cache: true,',
+  ): Promise<string[]> => {
     await addProject(fixture.root, 'tools', {
       files: { 'src/s.txt': 'SRC\n' },
       config: `
@@ -46,7 +50,7 @@ describe.skipIf(!available)('a sandboxed task reads the outputs it depends on', 
               exec: { command: 'mkdir -p out/bin && echo OUT > out/bin/tool.txt && echo ROOT > root.txt' },
               inputs: { files: ['src/**'] },
               outputs: { files: ['out/**', '*.txt'] },
-              cache: true,
+              ${cache}
             },
           },
         }
@@ -89,6 +93,18 @@ describe.skipIf(!available)('a sandboxed task reads the outputs it depends on', 
     'with the edge, its outputs are readable and its sources are not',
     async () => {
       expect(await peek(`dependsOn: ['tools#node'],`)).toEqual(['OUT', 'NOSRC', 'ROOT'])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'an uncached dependency’s outputs are readable too',
+    async () => {
+      expect(await peek(`dependsOn: ['tools#node'],`, undefined, '')).toEqual([
+        'OUT',
+        'NOSRC',
+        'ROOT',
+      ])
     },
     TIMEOUT,
   )

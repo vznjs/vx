@@ -151,6 +151,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'task-typo-verb',
     'timeout-bounds',
     'uncached-no-lookup',
+    'uncached-outputs',
     'uncached-upstream-key',
     'undeclared-writes',
     'unkeyed-upstream',

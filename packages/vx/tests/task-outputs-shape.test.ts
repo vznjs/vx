@@ -1,5 +1,7 @@
 // A task's `outputs` and its `inputs.stability` sit beside `cache`, which is
-// only the switch: `cache: true`. Each key lives with what it describes.
+// only the switch: `cache: true`. Each key lives with what it describes, so
+// neither needs the other: an uncached task declares outputs too (its `bin`,
+// what its dependants read).
 import { describe, expect, it } from 'bun:test'
 import type { WorkspaceConfig } from '../src/config.js'
 import { validateProjectConfig, validateWorkspace } from '../src/workspace/config-schema.js'
@@ -38,11 +40,9 @@ describe('cache is the switch; outputs and stability sit beside it', () => {
     for (const c of [{}, { outputs: { files: ['dist/**'] } }, 'yes', null]) {
       expect(task({ ...BUILD, outputs: { files: ['dist/**'] }, cache: c })).toBe(must)
     }
-    // `false` is no cache, as absent is: outputs then have nothing to do.
+    // `false` is no cache, as absent is.
     expect(task({ ...BUILD, cache: false })).toBeNull()
-    expect(task({ ...BUILD, outputs: { files: ['dist/**'] }, cache: false })).toBe(
-      `${CFG}: tasks.t.outputs needs \`cache: true\` — vx saves and restores outputs only for a cached task`,
-    )
+    expect(task({ ...BUILD, outputs: { files: ['dist/**'] }, cache: false })).toBeNull()
   })
 
   it('cache: true needs outputs', () => {
@@ -51,14 +51,20 @@ describe('cache is the switch; outputs and stability sit beside it', () => {
     )
   })
 
-  it('outputs and inputs.stability need cache: true', () => {
-    expect(task({ ...BUILD, outputs: { files: ['dist/**'] } })).toBe(
-      `${CFG}: tasks.t.outputs needs \`cache: true\` — vx saves and restores outputs only for a cached task`,
-    )
+  it('outputs and inputs.stability load without cache', () => {
+    expect(task({ ...BUILD, outputs: { files: ['dist/**'], bin: 'dist/bin' } })).toBeNull()
     expect(
       task({ exec: { command: 'x' }, inputs: { files: [], stability: { strategy: 'mutable' } } }),
-    ).toBe(
-      `${CFG}: tasks.t.inputs.stability needs \`cache: true\` — it decides only whether a run's result is saved`,
+    ).toBeNull()
+    expect(task({ exec: { command: 'x' }, outputs: { files: ['dist/**'] } })).toBeNull()
+  })
+
+  it('outputs are still checked without cache', () => {
+    expect(task({ exec: { command: 'x' }, outputs: { files: ['/abs/**'] } })).toContain(
+      'tasks.t.outputs.files: absolute paths are not allowed',
+    )
+    expect(task({ exec: { command: 'x' }, outputs: { bin: 'out/bin' } })).toBe(
+      `${CFG}: tasks.t.outputs.files must be an array of glob strings`,
     )
   })
 
