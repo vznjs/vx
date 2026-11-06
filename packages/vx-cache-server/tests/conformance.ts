@@ -261,14 +261,18 @@ export function conformance(name: string, target: Target): void {
         Number(res.headers.get('vx-max-upload-bytes')),
       ]
       const too = Array.from({ length: target.maxCheckHashes + 1 }, key)
+      // A check past the bytes its lookups take, refused unread: a client
+      // that knew no limits sends its first check whole (PROTOCOL.md § Limits).
+      const long = Array.from({ length: 6 * target.maxCheckHashes }, () => key().repeat(4))
       const answers = [
         await json('/v1/artifacts', { hashes: too, scopes: [MAIN] }),
+        await json('/v1/artifacts', { hashes: long, scopes: [MAIN] }),
         await put(key(), new Uint8Array(target.maxUploadBytes + 1)),
         await put(key(), 'x'),
         await get(key()),
       ]
       expect(answers.map(named)).toEqual(
-        [400, 413, 204, 404].map((s) => [s, target.maxCheckHashes, target.maxUploadBytes]),
+        [400, 413, 413, 204, 404].map((s) => [s, target.maxCheckHashes, target.maxUploadBytes]),
       )
     })
 

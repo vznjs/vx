@@ -146,7 +146,7 @@ async function jsonUpTo(res: Response, max: number, what: string): Promise<unkno
   return JSON.parse(text)
 }
 
-/** Capabilities and a CI token are a few hundred bytes: room to spare. */
+/** A CI token's answer is a few hundred bytes: room to spare. */
 const SMALL_ANSWER_BYTES = 64 * 1024
 /**
  * A check's answer per hash asked: a hash (up to 128), a size and a scope
@@ -348,7 +348,7 @@ class Lane<T, R> {
   }
 }
 
-/** The limits a server names at `/v1/capabilities` and on each check (`vx-max-*`). */
+/** The limits a server names on each `/v1/artifacts` answer (`vx-max-*`). */
 interface Limits {
   readonly maxCheckHashes: number
   readonly maxUploadBytes: number
@@ -367,14 +367,11 @@ const chunks = <T>(all: readonly T[], size: number): T[][] =>
     all.slice(i * size, (i + 1) * size),
   )
 
-/** The limits an answer's `vx-max-*` headers name. */
-const limitsNamed = (res: Response): Limits | undefined =>
-  limitsOf((k) => Number(res.headers.get(LIMIT_HEADERS[k]) ?? NaN))
-
-/** Each limit, or undefined when one is missing or bad. */
-function limitsOf(read: (k: keyof Limits) => unknown): Limits | undefined {
-  const maxCheckHashes = count(read('maxCheckHashes'))
-  const maxUploadBytes = count(read('maxUploadBytes'))
+/** The limits an answer's `vx-max-*` headers name, or undefined when one is missing or bad. */
+function limitsNamed(res: Response): Limits | undefined {
+  const read = (k: keyof Limits) => count(Number(res.headers.get(LIMIT_HEADERS[k]) ?? NaN))
+  const maxCheckHashes = read('maxCheckHashes')
+  const maxUploadBytes = read('maxUploadBytes')
   return maxCheckHashes === undefined || maxUploadBytes === undefined
     ? undefined
     : { maxCheckHashes, maxUploadBytes }
@@ -396,12 +393,16 @@ export class VxCacheLayer implements RemoteCacheLayer {
   refs: readonly string[] = []
   /** The ref a check found each hash under, which its download names. */
   private readonly found = new Map<string, string>()
-  /** The limits the server named, at `/v1/capabilities` and on its last check; nothing is guessed. */
+  /**
+   * The limits the server's last answer named; none before its first.
+   * Nothing is guessed, nor asked apart: a check before any answer goes
+   * whole, and one refused for its size is sent again in the chunks its
+   * refusal names (`/v1/capabilities` cost every run a request, one
+   * round-trip before its first check, 2026-11-06).
+   */
   private limits: Limits | undefined
-  private asked: Promise<Limits | undefined> | undefined
   /** Where the layer says what is no failure of a request: core's `ctx.warn`. */
   warn: (message: string) => void = () => {}
-  private limitsMissing = false
 
   private readonly uploads = new Lane<{ hash: string; body: Blob }, void | false>((item) =>
     this.upload(item),
@@ -620,73 +621,29 @@ export class VxCacheLayer implements RemoteCacheLayer {
     })
   }
 
-  /**
-   * The server's limits: `/v1/capabilities`, asked once and kept, then
-   * whatever each check names. Unnamed, said once: checks go one hash at
-   * a time.
-   */
-  private async limitsNow(): Promise<Limits | undefined> {
-    if (this.limits !== undefined) return this.limits
-    const asked = (this.asked ??= (async () => {
-      const res = await this.request('/v1/capabilities', { method: 'GET' })
-      if (res === undefined) return undefined
-      if (res.status !== 200) throw await refusal(res)
-      const body = (await jsonOf(res, '/v1/capabilities', SMALL_ANSWER_BYTES)) as Record<
-        string,
-        unknown
-      > | null
-      const named = limitsOf((k) => body?.[k])
-      if (named === undefined) this.limitsUnnamed(`/v1/capabilities (HTTP ${res.status})`)
-      return named
-    })())
-    // A failed ask is asked again by the next check: kept, two failures
-    // while a server restarted failed every read of the run (2026-10-26).
-    // quiet: the awaited ask rethrows it; this only forgets it
-    asked.catch(() => {
-      if (this.asked === asked) this.asked = undefined
-    })
-    this.limits ??= await asked
-    return this.limits
-  }
-
-  private limitsUnnamed(where: string): void {
-    if (this.limitsMissing) return
-    this.limitsMissing = true
-    this.warn(
-      `[vx] vx-cache: ${where} named no limits (maxCheckHashes, maxUploadBytes); checks go one hash at a time`,
-    )
-  }
-
-  /** A refusal met while starting, which no call could throw: the next check or download does. */
+  /** A token refusal met by `open`'s ask, which no call could throw: the next check or download does. */
   private unsaid: Error | undefined
-  /** Refusals a call threw: a check that waited on the start's ask threw it too. */
-  private readonly said = new WeakSet<object>()
 
-  /** Throws the refusal met while starting, once. */
+  /** Throws the refusal `open`'s ask met, once. */
   private sayUnsaid(): void {
     const err = this.unsaid
     this.unsaid = undefined
-    if (err !== undefined && !this.said.has(err)) {
-      this.said.add(err)
-      throw err
-    }
+    if (err !== undefined) throw err
   }
 
   /**
    * Core's `open`: called only when the run's policy reads or writes this
-   * remote, so a `--no-cache` run or a plan asks the server (and GitHub)
-   * nothing.
+   * remote, so a `--no-cache` run or a plan asks GitHub nothing. Starts
+   * asking for the job's token, so the first check need not wait on
+   * GitHub; the server is asked nothing until a check, a download or an
+   * upload, so a run the local cache answers sends it none.
    */
   async open(): Promise<void> {
-    this.start()
-  }
-
-  /** Starts asking for the limits, so the first check need not wait for them. */
-  start(): void {
-    this.limitsNow().catch((err: unknown) => {
-      // A refusal turned the layer off, and is said only once: the first
-      // check says it. Anything else, the first check asks again and says.
-      if (this.disabled) this.unsaid = err instanceof Error ? err : new Error(String(err))
+    this.bearer().catch((err: unknown) => {
+      // Said by the first call; the requests that shared the ask say nothing.
+      if (this.tokenFailed) return
+      this.tokenFailed = true
+      this.unsaid = err instanceof Error ? err : new Error(String(err))
     })
   }
 
@@ -706,27 +663,32 @@ export class VxCacheLayer implements RemoteCacheLayer {
     if (this.disabled || this.refs.length === 0) return null
     const scopes = this.refs.map(scopeOf)
     const ask = [...new Set(hashes)]
-    let limits: Limits | undefined
-    try {
-      limits = await this.limitsNow()
-    } catch (err) {
-      // A refusal turned the layer off: each waiter shares it, the first says it.
-      if (this.disabled && err instanceof Error) {
-        if (this.said.has(err)) return null
-        this.said.add(err)
-      }
-      throw err
+    const checks = (max: number, again: boolean) => {
+      // More refs than one check takes: each hash's scopes span several
+      // checks, the first in order holding it answering (a check of every
+      // scope at once was refused, every time).
+      const span = Math.min(scopes.length, max)
+      const per = Math.max(1, Math.floor(max / span))
+      const spans = chunks(scopes, span)
+      return chunks(ask, per).flatMap((some) => spans.map((s) => this.check(s, some, again)))
     }
-    const max = limits?.maxCheckHashes ?? scopes.length
-    // More refs than one check takes: each hash's scopes span several
-    // checks, the first in order holding it answering (a check of every
-    // scope at once was refused, every time).
-    const span = Math.min(scopes.length, max)
-    const per = Math.max(1, Math.floor(max / span))
-    const spans = chunks(scopes, span)
-    const parts = await Promise.all(
-      chunks(ask, per).flatMap((some) => spans.map((s) => this.check(s, some))),
+    // None named yet: one check of every lookup.
+    const first = await Promise.allSettled(
+      checks(this.limits?.maxCheckHashes ?? Math.max(1, ask.length * scopes.length), true),
     )
+    const refused = first.flatMap((r) => (r.status === 'rejected' ? [r.reason as unknown] : []))
+    const failed = refused.find((err) => !(err instanceof TooMany))
+    if (failed !== undefined) throw failed
+    const parts =
+      refused.length === 0
+        ? first.map(
+            (r) =>
+              (r as PromiseFulfilledResult<Map<string, { size: number; scope: string }>>).value,
+          )
+        : await Promise.all(checks(Math.min(...refused.map((err) => (err as TooMany).max)), false))
+    // A token refused to `open`'s ask, which a check here shared.
+    this.sayUnsaid()
+    if (this.disabled) return null
     for (const part of parts)
       for (const [hash, { size, scope }] of part) {
         if (held.has(hash)) continue
@@ -736,15 +698,27 @@ export class VxCacheLayer implements RemoteCacheLayer {
     return held
   }
 
-  /** `POST /v1/artifacts` (Turbo's batch query): the size and scope of each hash held. */
+  /**
+   * `POST /v1/artifacts` (Turbo's batch query): the size and scope of each
+   * hash held. One refused for its size, its refusal naming a smaller
+   * `maxCheckHashes`, throws `TooMany` when `again`: the caller sends it
+   * in chunks.
+   */
   private async check(
     scopes: readonly string[],
     hashes: readonly string[],
+    again: boolean,
   ): Promise<Map<string, { size: number; scope: string }>> {
     const res = await this.json('/v1/artifacts', { hashes, scopes })
     if (res === undefined) return new Map()
-    if (res.status !== 200) throw await refusal(res)
-    if (limitsNamed(res) === undefined) this.limitsUnnamed(`the check (HTTP ${res.status})`)
+    if (res.status !== 200) {
+      const max = limitsNamed(res)?.maxCheckHashes
+      if (again && max !== undefined && hashes.length * scopes.length > max) {
+        await res.body?.cancel()
+        throw new TooMany(max)
+      }
+      throw await refusal(res)
+    }
     const body = (await jsonOf(
       res,
       '/v1/artifacts',
@@ -841,6 +815,13 @@ export class VxCacheLayer implements RemoteCacheLayer {
       await res.body?.cancel()
       await this.wait(1000 * attempt)
     }
+  }
+}
+
+/** A check refused for its size: sent again in checks of `max` lookups. */
+class TooMany extends Error {
+  constructor(readonly max: number) {
+    super(`a check is at most ${max} lookups`)
   }
 }
 

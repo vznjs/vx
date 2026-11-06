@@ -138,7 +138,12 @@ An operator sets each; `GET /v1/capabilities` names them:
 { "maxCheckHashes": 500, "maxUploadBytes": 100000000 }
 ```
 
-A client keeps to the limits the server names.
+A client keeps to the limits the server names. It need not ask them
+apart: every `/v1/artifacts` answer names them, so a client may send its
+first check whole and, refused for its size (`400` past
+`maxCheckHashes`, `413` past the bytes they take), send it again in
+chunks of the limits its refusal names. vx does: a run the local cache
+answers asks the server nothing.
 
 ## Errors
 
