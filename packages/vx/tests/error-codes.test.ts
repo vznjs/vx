@@ -267,9 +267,7 @@ describe('a refusal under --format json', () => {
       expect([r.code, doc.error.code, r.stderr.replaceAll(ws, '<root>')]).toEqual([
         1,
         'VX_E_CONFIG',
-        expect.stringContaining(
-          'Workspace config <root>/.vx/workspace.mjs threw: plugin(): issuer must be a URL',
-        ),
+        expect.stringContaining('.vx/workspace.mjs:1:34\n  threw: plugin(): issuer must be a URL'),
       ])
       expect(r.stderr).toContain('.vx/workspace.mjs:1:')
       expect(r.stderr).not.toContain('    at ')

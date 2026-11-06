@@ -54,8 +54,24 @@ export function configErrorFrame(message: string, cwd: string): string | undefin
 const POSITION =
   /^(?:Project|Workspace) config (\/[^\n]*?\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s):(\d+):(\d+)(: [^]*)$/
 
+// The loader's `Project config <file> threw: <message> (at <file>:<line>:<col>)`:
+// the config's own throw, placed by its stack in the config itself.
+const THREW =
+  /^(?:Project|Workspace) config (\/[^\n]*?\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s) threw: ([^\n]*?) \(at (\/[^\n]*?):(\d+):(\d+)\)([^]*)$/
+
 function positionFrame(message: string, cwd: string): string | undefined {
-  const pos = POSITION.exec(message)
+  const threw = THREW.exec(message)
+  const pos =
+    threw !== null && threw[3] === threw[1]
+      ? [
+          threw[0],
+          threw[1],
+          threw[4],
+          threw[5],
+          // A cause's own `(at …)` names the same file: relative there too.
+          `: threw: ${threw[2]}${threw[6]!.replaceAll(threw[1]!, path.relative(cwd, threw[1]!))}`,
+        ]
+      : POSITION.exec(message)
   if (pos === null) return undefined
   const [, file, line, col, rest] = pos as unknown as [string, string, string, string, string]
   let source: string

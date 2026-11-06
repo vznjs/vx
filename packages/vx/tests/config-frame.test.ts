@@ -245,6 +245,34 @@ describe('vx lock prints a config refusal with its frame', () => {
     }
   })
 
+  // A config's own throw named its file by absolute path and showed no
+  // line, though its stack placed it.
+  it('a config that throws, at the line it threw from', async () => {
+    const root = await realpath(await makeWorkspace({ prefix: 'vx-frame-throw-' }))
+    try {
+      const pkg = path.join(root, 'packages', 'b')
+      await mkdir(pkg, { recursive: true })
+      await writeFile(
+        path.join(pkg, 'vx.config.mjs'),
+        "const port = 1\nif (port) throw new Error('boom', { cause: new Error('deeper') })\nexport default { tasks: {} }\n",
+      )
+      const r = Bun.spawnSync(['bun', BIN, 'lock'], {
+        cwd: root,
+        env: { ...process.env, NO_COLOR: '1' },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      expect(r.exitCode).toBe(1)
+      const err = r.stderr.toString()
+      expect(err).toStartWith('✗ vx lock  lock not written\n\n  packages/b/vx.config.mjs:2:')
+      expect(err).toContain('threw: boom; caused by: deeper (at packages/b/vx.config.mjs:2:')
+      expect(err).toContain("  > 2 | if (port) throw new Error('boom'")
+      expect(err).not.toContain(root)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   // A rename after an upgrade refuses every config at once; naming one a run
   // made a large repo take a run per config.
   it('names every config that does not load, not only the first', async () => {

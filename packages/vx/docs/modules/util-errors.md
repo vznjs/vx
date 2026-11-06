@@ -121,4 +121,6 @@ required`, is placed at that object's key), and returns the message with the fil
 unless that climbs out) and the lines up to it with a caret; undefined
 when it cannot place the field, and the message prints as it was. The
 loader's syntax error (`Project config <file>:<line>:<col>: …`, Bun's
-position) is framed at that position.
+position) is framed at that position, and a config's own throw
+(`Project config <file> threw: … (at <file>:<line>:<col>)`) at the line
+its stack names in the config, a cause's `(at …)` made relative too.
