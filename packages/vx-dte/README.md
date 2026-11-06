@@ -130,7 +130,9 @@ index being committed is left as it is. When a worker fails, its row names
 the error line and the log that holds its whole stderr and all `prepare`
 printed. At the run's end,
 or on Ctrl-C, vx exits without waiting for the worktrees to be removed:
-a detached shell removes them and prunes git's records.
+a detached shell removes them and prunes git's records. A run whose vx
+was killed (`kill -9`) removes none; the next `local()` run in the
+repository removes them, once their run's process is gone.
 
 `docker()` starts each worker as a container held to its size: `--cpus`
 and `--memory` come from `cpu` and `memory`. The container clones this

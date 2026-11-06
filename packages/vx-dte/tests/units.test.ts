@@ -10,6 +10,7 @@ import {
   utimes,
   writeFile,
 } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
@@ -3899,6 +3900,69 @@ for (const hook of ['main', 'linked'] as const)
     const env = await readFile(seen, 'utf8')
     expect(env).not.toMatch(/^GIT_(INDEX_FILE|DIR)=/m)
   }, 30_000)
+
+// A run whose vx was killed never closed, and its worktrees stayed in the
+// repository for good (2026-11-06). The next local() run removes each
+// whose owner is gone, and keeps one whose run is alive.
+it('local() reclaims the worktrees of a run whose vx is gone, and keeps a live run’s', async () => {
+  const repo = await realpath(await tmp())
+  const git = (...args: string[]) => {
+    const p = Bun.spawnSync(['git', '-c', 'commit.gpgsign=false', ...args], { cwd: repo })
+    if (p.exitCode !== 0) throw new Error(p.stderr.toString())
+    return p.stdout.toString().trim()
+  }
+  git('init', '-q')
+  git('config', 'user.email', 't@vx.local')
+  git('config', 'user.name', 't')
+  await writeFile(path.join(repo, 'a.txt'), 'a')
+  git('add', 'a.txt')
+  git('commit', '-qm', 'init')
+  const commit = git('rev-parse', 'HEAD')
+  const done = Bun.spawn(['true'])
+  await done.exited
+  const left = async (owner: number): Promise<string> => {
+    const base = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-'))
+    dirs.push(base)
+    await writeFile(path.join(base, 'owner'), String(owner))
+    git('worktree', 'add', '-q', '--detach', path.join(base, '1'), commit)
+    return path.join(base, '1')
+  }
+  const dead = await left(done.pid)
+  const live = await left(process.pid)
+  const adapter = local({ prepare: 'exit 1' })
+  try {
+    await adapter.spawn({
+      run: R,
+      relay: 'http://127.0.0.1:9',
+      size: 's',
+      max: 1,
+      cpu: 1,
+      memory: 1e9,
+      index: 1,
+      id: 's#1',
+      workspaceRoot: repo,
+      commit,
+      env: {},
+      exited: () => {},
+    })
+  } catch {
+    // the prepare fails, so no worker starts
+  } finally {
+    await adapter.close?.()
+  }
+  const trees = () =>
+    git('worktree', 'list', '--porcelain')
+      .split('\n')
+      .filter((l) => l.startsWith('worktree '))
+      .map((l) => l.slice('worktree '.length))
+  const until = Date.now() + 10_000
+  while (trees().includes(dead) && Date.now() < until) await Bun.sleep(20)
+  expect([trees().includes(dead), existsSync(dead), trees().includes(live)]).toEqual([
+    false,
+    false,
+    true,
+  ])
+}, 30_000)
 
 it('a worker size or unmeasured with a key dte() does not read is refused', () => {
   // A typo of max left the size uncapped, without a word.
