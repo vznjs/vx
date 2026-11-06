@@ -336,3 +336,9 @@ export function defineCase(c: Case): Case {
 export function projectDir(name: string, p: ProjectSpec): string {
   return p.dir ?? `packages/${name}`
 }
+
+/**
+ * A directory of the case's home that tasks running at once share, to prove
+ * they overlapped. Every tool's tasks reach it; Nix binds it into its sandbox.
+ */
+export const MEET = '.home/meet'

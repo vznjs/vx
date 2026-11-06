@@ -6,9 +6,10 @@
 // marks a build makes reach its log (nix.ts's MARK), and the run appends
 // them to the tree's `.ran` as they come.
 // argv[2]: JSON { tasks, projects?, args?, concurrency?, dry? }.
-import { appendFileSync, existsSync } from 'node:fs'
+import { appendFileSync, chmodSync, existsSync, mkdirSync } from 'node:fs'
 import { readdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { MEET } from '../spec.ts'
 import { jsRegExp, MARK } from './nix.ts'
 
 interface Info {
@@ -52,6 +53,11 @@ const toolchain = [
   ),
 ]
 
+const meet = path.join(root, MEET)
+mkdirSync(meet, { recursive: true })
+// The sandbox's build user is not the case's owner.
+chmodSync(meet, 0o777)
+
 const run = JSON.stringify({
   tasks: req.tasks,
   ...(req.projects ? { projects: req.projects } : {}),
@@ -76,7 +82,7 @@ const common = [
   'false',
   '--option',
   'sandbox-paths',
-  toolchain.join(' '),
+  [...toolchain, `/meet=${meet}`].join(' '),
   path.join(root, 'default.nix'),
   '--argstr',
   'run',

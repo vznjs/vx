@@ -9,7 +9,7 @@
 import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { Adapter } from '../adapter.ts'
-import { projectDir, type TaskReport, type WorkspaceSpec } from '../spec.ts'
+import { MEET, projectDir, type TaskReport, type WorkspaceSpec } from '../spec.ts'
 
 const RUN = path.join(import.meta.dir, 'nix-run.ts')
 
@@ -172,13 +172,15 @@ export const MARK = '@vx-conformance-mark '
 // project's directory, then the files its declared outputs match copied to
 // `$out`. The build runs in Nix's sandbox, which sees no workspace: the
 // harness's marks (`.ran`, `.home/marks/ran`) are a pipe whose lines reach
-// the build log, and the run appends them to the tree's.
+// the build log, and the run appends them to the tree's. The case's meeting
+// directory (MEET) is bound in at /meet, so tasks at once still meet.
 const BUILDER = `set -e
 top=$NIX_BUILD_TOP/ws
 mkdir -p "$top/.home/marks"
 mkfifo "$NIX_BUILD_TOP/marks"
 ln -s "$NIX_BUILD_TOP/marks" "$top/.ran"
 ln -s "$NIX_BUILD_TOP/marks" "$top/.home/marks/ran"
+ln -s /meet "$top/${MEET}"
 while IFS= read -r m; do printf '\\n%s%s\\n' '${MARK}' "$m"; done < "$NIX_BUILD_TOP/marks" >&2 &
 reader=$!
 # Held open, so the reader outlives each command's own open and close.

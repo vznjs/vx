@@ -1276,7 +1276,7 @@
     },
     "nix": {
       "all": {
-        "pass": 459,
+        "pass": 460,
         "can": 684,
         "of": 962
       },
@@ -1286,7 +1286,7 @@
         "of": 790
       },
       "efficiency": {
-        "pass": 61,
+        "pass": 62,
         "can": 111,
         "of": 163
       },
@@ -1296,7 +1296,7 @@
         "of": 9
       },
       "graph": {
-        "pass": 56,
+        "pass": 57,
         "can": 64,
         "of": 149
       },
@@ -30230,9 +30230,7 @@
           "status": "pass"
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "packages/b/dist/met.txt is \"alone\\n\", expected \"together\\n\""
+          "status": "pass"
         }
       }
     },
