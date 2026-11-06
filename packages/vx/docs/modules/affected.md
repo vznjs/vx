@@ -48,6 +48,7 @@ export interface AffectedChanges {
   nested?: readonly string[] // changed nested repositories, workspace-relative: each stands for its files
   dirLinks?: ReadonlySet<string> // changed paths that are (or were) a link to a directory, workspace-relative
   dirLinksIn?: ReadonlyMap<string, ReadonlySet<string>> // project → its dirLinks, project-relative
+  untrackedIn?: ReadonlyMap<string, ReadonlySet<string>> // project → its untracked changed paths, project-relative
 }
 export function affectedChanges(args: AffectedArgs, perTask?: boolean): Promise<AffectedChanges> // perTask false: affectedProjects' set only
 

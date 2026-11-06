@@ -360,7 +360,8 @@ the projects it touches:
 - every task of a project when:
   - its `vx.config.*` changed;
   - it holds a changed path no task of its declares, since vx cannot
-    prove that path changes no key;
+    prove that path changes no key (an untracked file under a task's
+    `outputs` is none of its inputs: the key folds only a tracked one);
   - it holds a changed submodule or embedded repository;
   - a lockfile plugin or a config import names it (an install that
     added or removed a dependency shows as the lockfile's change);

@@ -31,6 +31,19 @@ beforeAll(async () => {
     files: { 'src/a.js': 'export {}\n' },
   })
   await addProject(root, 'other', { config: cached(), files: { 'src/a.js': 'export {}\n' } })
+  await addProject(root, 'gen', {
+    config: `export default {
+  tasks: {
+    build: {
+      exec: { command: 'true' },
+      inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+    },
+    test: { exec: { command: 'true' }, inputs: { files: ['test/**'] }, outputs: { files: [] }, cache: true },
+  },
+}
+`,
+    files: { 'src/a.js': 'export {}\n', 'dist/committed.js': 'export {}\n' },
+  })
   gitInitCommit(root)
   await writeFile(path.join(root, 'packages/lib/src/a.js'), 'export const a = 1\n')
 })
@@ -120,6 +133,45 @@ describe('vx run --affected --dry says why each requested task was kept', () => 
     }
   })
 
+  it('an untracked file under its own outputs is no input: the project is read whole', async () => {
+    // The key folds a file under a task's own outputs only when git tracks
+    // it; an untracked build output git does not ignore was still labelled
+    // `changed (an input)` and kept only the task whose outputs held it.
+    const built = path.join(root, 'packages/gen/dist/o.js')
+    await writeFile(built, 'built\n')
+    try {
+      const plan = JSON.parse(dry('build', 'test', '--dry=json')) as {
+        tasks: Array<{ id: string; affected?: unknown }>
+      }
+      const reason = { kind: 'project', file: 'packages/gen/dist/o.js' }
+      expect(Object.fromEntries(plan.tasks.map((t) => [t.id, t.affected]))).toMatchObject({
+        'gen#build': reason,
+        'gen#test': reason,
+      })
+      expect(dry('build', '--dry')).toContain(
+        'gen#build  affected: packages/gen/dist/o.js changed (in its project)',
+      )
+    } finally {
+      await rm(built)
+    }
+  })
+
+  it('CONTROL: a committed file under its own outputs that changed is an input', async () => {
+    const committed = path.join(root, 'packages/gen/dist/committed.js')
+    const before = await readFile(committed, 'utf8')
+    await writeFile(committed, 'export const changed = 1\n')
+    try {
+      const plan = JSON.parse(dry('build', 'test', '--dry=json')) as {
+        tasks: Array<{ id: string; affected?: unknown }>
+      }
+      const kept = Object.fromEntries(plan.tasks.map((t) => [t.id, t.affected]))
+      expect(kept['gen#build']).toEqual({ kind: 'input', file: 'packages/gen/dist/committed.js' })
+      expect(kept['gen#test']).toBeUndefined()
+    } finally {
+      await writeFile(committed, before)
+    }
+  })
+
   it('text: a control character in a changed file name is escaped, not printed raw', async () => {
     // A newline in the name broke the `affected:` line in two.
     const odd = path.join(root, 'packages/other/src/x\ny.js')
@@ -148,6 +200,7 @@ describe('vx run --affected --dry says why each requested task was kept', () => 
         'lib#build': reason,
         'app#build': reason,
         'other#build': reason,
+        'gen#build': reason,
       })
       expect(dry('build', '--filter', 'other', '--dry')).toContain(
         'affected: .vx/workspace.mjs changed (workspace-wide)',
