@@ -133,6 +133,15 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
   }
 
   return async (req) => {
+    const res = await answer(req)
+    // Every /v1/timings answer, a refusal too: a client learns the limits
+    // from its first request, and was asked none apart (2026-11-06).
+    if (new URL(req.url).pathname.startsWith('/v1/timings/'))
+      for (const [header, value] of limitHeaders) res.headers.set(header, value)
+    return res
+  }
+
+  async function answer(req: Request): Promise<Response> {
     const path = new URL(req.url).pathname
     try {
       const search = new URL(req.url).search
@@ -167,6 +176,13 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
     }
   }
 }
+
+/** The limits as every `/v1/timings` answer names them (PROTOCOL.md § Limits and errors). */
+const limitHeaders = [
+  ['vx-max-upload-timings', String(MAX_UPLOAD_TIMINGS)],
+  ['vx-max-query-hashes', String(MAX_QUERY_HASHES)],
+  ['vx-max-query-refs', String(MAX_QUERY_REFS)],
+] as const
 
 const field = (body: unknown, key: string): unknown =>
   typeof body === 'object' && body !== null ? (body as Record<string, unknown>)[key] : undefined

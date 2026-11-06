@@ -219,8 +219,8 @@ it('a quiet worker beats once each heartbeat and a half, its orchestrator only a
   frames.length = 0
   answers.length = 0
   await Bun.sleep(2_600)
-  const beat = new RegExp(`"sends":\\[\\{"to":"host","body":\\{"seq":\\d+(,"acked":\\d+)?\\}\\}\\]`)
-  const ack = new RegExp(`"sends":\\[\\{"to":"${a.id}","body":\\{"acked":\\d+\\}\\}\\]`)
+  const beat = new RegExp(`"sends":\\[\\{"to":"host","body":\\{"n":\\d+(,"a":\\d+)?\\}\\}\\]`)
+  const ack = new RegExp(`"sends":\\[\\{"to":"${a.id}","body":\\{"a":\\d+\\}\\}\\]`)
   const quiet = frames.splice(0)
   // 3.5 quiet spans of 1.5 heartbeats: the worker's beat each and the orchestrator's ack of it.
   const beats = quiet.filter((f) => beat.test(f)).length
@@ -254,8 +254,8 @@ it('the orchestrator acks a quiet worker’s beat at once, not half a heartbeat 
   const o = await join(url, R2, 'orchestrator', null, undefined)
   const a = await join(url, R2, 'worker', null, undefined)
   await o.poll()
-  const beat = /"sends":\[\{"to":"host","body":\{"seq":\d+(,"acked":\d+)?\}\}\]/
-  const ack = new RegExp(`"sends":\\[\\{"to":"${a.id}","body":\\{"acked":\\d+\\}\\}\\]`)
+  const beat = /"sends":\[\{"to":"host","body":\{"n":\d+(,"a":\d+)?\}\}\]/
+  const ack = new RegExp(`"sends":\\[\\{"to":"${a.id}","body":\\{"a":\\d+\\}\\}\\]`)
   frames.length = 0
   while (!frames.some((f) => beat.test(f))) await Bun.sleep(5)
   const t = performance.now()
@@ -278,9 +278,8 @@ it('the orchestrator answers a quiet worker’s report at once, and an order it 
   const a = await join(url, R2, 'worker', null, undefined)
   await o.poll()
   a.quiet(() => void a.send('orchestrator', { type: 'report' }))
-  const report =
-    /"sends":\[\{"to":"host","body":\{"seq":\d+(,"acked":\d+)?,"body":\{"type":"report"\}/
-  const ack = new RegExp(`"sends":\\[\\{"to":"${a.id}","body":\\{"acked":\\d+\\}\\}\\]`)
+  const report = /"sends":\[\{"to":"host","body":\{"n":\d+(,"a":\d+)?,"b":\{"type":"report"\}/
+  const ack = new RegExp(`"sends":\\[\\{"to":"${a.id}","body":\\{"a":\\d+\\}\\}\\]`)
   frames.length = 0
   while (!frames.some((f) => report.test(f))) await Bun.sleep(5)
   const t = performance.now()
@@ -300,9 +299,7 @@ it('the orchestrator answers a quiet worker’s report at once, and an order it 
   await reacting
   await a.poll()
   await Bun.sleep(1_200)
-  const order = new RegExp(
-    `"to":"${a.id}","body":\\{"seq":\\d+,"body":\\{"type":"batch"\\},"acked":\\d+\\}`,
-  )
+  const order = new RegExp(`"to":"${a.id}","body":\\{"n":\\d+,"b":\\{"type":"batch"\\},"a":\\d+\\}`)
   expect([frames.some((f) => order.test(f)), frames.filter((f) => ack.test(f))]).toEqual([true, []])
   await a.leave()
   await o.leave()
@@ -316,7 +313,7 @@ it('a worker that sends just before its next beat still hears its orchestrator',
   const o = await join(url, R2, 'orchestrator', null, undefined)
   const a = await join(url, R2, 'worker', null, undefined)
   await o.poll()
-  const probe = /"sends":\[\{"to":"host","body":\{"seq":\d+(,"acked":\d+)?\}\}\]/
+  const probe = /"sends":\[\{"to":"host","body":\{"n":\d+(,"a":\d+)?\}\}\]/
   frames.length = 0
   while (!frames.some((f) => probe.test(f))) await Bun.sleep(5)
   await Bun.sleep(700)

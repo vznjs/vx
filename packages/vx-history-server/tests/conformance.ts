@@ -281,6 +281,24 @@ export function conformance(name: string, target: Target): void {
         400,
         { code: 'bad_request', message: 'send the body as Content-Type: application/json' },
       ])
+      // Every /v1/timings answer names the limits, a refusal too: a client
+      // that asks none apart chunks by them (PROTOCOL.md § Limits and errors).
+      const limits = (res: Response) => [
+        res.status,
+        res.headers.get('vx-max-upload-timings'),
+        res.headers.get('vx-max-query-hashes'),
+        res.headers.get('vx-max-query-refs'),
+      ]
+      const many = Array.from({ length: 10_001 }, (_, i) => `h${i}`)
+      const answers = [
+        get,
+        text,
+        await post('/v1/timings/query', { ...named(), refs: ['refs/heads/main'], hashes: ['a'] }),
+        await post('/v1/timings/query', { ...named(), refs: ['refs/heads/main'], hashes: many }),
+      ]
+      expect(answers.map(limits)).toEqual(
+        [405, 400, 200, 400].map((s) => [s, '10000', '10000', '8']),
+      )
       const query = await call('/v1/capabilities?team=a')
       expect([query.status, await query.json()]).toEqual([
         400,

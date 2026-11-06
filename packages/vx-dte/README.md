@@ -69,7 +69,7 @@ the initiator.
 | worker `join` | `info: { "noise": <message 1>, "token"? }`              |
 | orchestrator  | `{ "type": "hello", "noise": <message 2>, "token"? }`   |
 | orchestrator  | `{ "type": "refused", "reason" }`, plain, then `remove` |
-| either, then  | `{ "seal": ["<n>.<ciphertext>", …] }`                   |
+| either, then  | `["<n>.<ciphertext>", …]`                               |
 
 The orchestrator checks each worker the moment the relay says it joined,
 and `remove`s one whose handshake fails. Message 1's payload is the
@@ -81,14 +81,22 @@ opens in another body, and a body's parts take consecutive nonces, so
 none is repeated or reordered in it. A body whose first nonce was seen before is a
 replay and is dropped; one older than a body already opened (the relay
 held it back: the wire's numbers are outside the seal) or that does not
-open loses its sender. The
-plaintext is JSON, or over 256 bytes and smaller so, a `0` byte, the
-zstd frame's length (4 bytes, big-endian) and the frame: compressed
-before sealing, since no relay or socket compresses what is sealed. It
+open loses its sender. The plaintext is a lead byte, the length of
+every body its sender sealed before (4 bytes, big-endian, mod 2³²), and
+then, `1`, its JSON, an array of the messages sent together (up to 64
+KiB), or `0`, when smaller so, its zstd frame's length (4 bytes) and
+the frame: compressed before sealing, since no
+relay or socket compresses what is sealed. The orchestrator's are
+compressed against the last 16 KiB of its bodies' JSON to that worker
+as their dictionary, so a batch's env and paths said before cost a few
+bytes; a worker's go without one, which would cost the orchestrator
+some 100 µs to open each. A body whose length is not
+the receiver's own count was sealed after one it never opened, which the
+relay kept back, and loses its sender. It
 is padded with trailing spaces to its size class, a power of two from
-256 bytes, then whole transport messages, so the relay learns no size
+64 bytes, then whole transport messages, so the relay learns no size
 within a class. Inside, each send is numbered and acknowledged
-end to end, and a quiet worker reports (Switchboard § Delivery, § Liveness).
+end to end (`{ "n", "b", "a"? }`: its number, body and ack), and a quiet worker reports (Switchboard § Delivery, § Liveness).
 
 ## Try it
 
@@ -679,7 +687,9 @@ An idle worker the rest of the run cannot keep busy leaves (`left`): one
 beyond the peak of the cores the remaining tasks keep busy, so a lull
 between two wide parts keeps it. One a remaining task needs for its size
 stays, and so does one a later task needs when its size's `max` is
-spent, since none could start in its place. A lost worker's tasks run again on
+spent, since none could start in its place. With that `max` spent, the
+last worker of its platform also stays while any task of that platform
+has not ended: a hit whose restore fails runs after all. A lost worker's tasks run again on
 another, and the run starts one in its place. A worker is lost when its
 socket closes, when it says nothing for 3 heartbeats (6 s), or at
 once when its adapter sees its process or job end. Workers start at the first

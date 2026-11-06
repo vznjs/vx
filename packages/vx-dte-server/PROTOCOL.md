@@ -118,7 +118,8 @@ socket, or a push that failed) is dropped. Delivery is the clients': a
 sender numbers each send, the receiver acknowledges it end to end, and
 the sender sends again what is not acknowledged, at once on a new socket.
 How they number and acknowledge is inside `body`, their own protocol;
-`@vzn/vx-dte` puts `{ "n" }` and `{ "acked" }` beside its payload.
+`@vzn/vx-dte` sends `{ "n", "b", "a"? }`: its number, its payload and
+its ack.
 
 Only the relay's notices wait, in memory, for the participant's next
 socket.
