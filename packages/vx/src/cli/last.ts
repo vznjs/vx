@@ -942,6 +942,13 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         { code: 'VX_E_NO_HISTORY', message: 'vx last: no recorded runs yet — run something first' },
       )
     }
+    // Nothing failed is no fault: said as `--list --failed` says it.
+    if ((inv === null || inv === undefined) && parsed.failed === true) {
+      throw refusal(
+        { tone: 'info', headline: 'no failed runs', fix: 'vx last' },
+        { code: 'VX_E_NO_HISTORY', message: 'vx last: no failed runs' },
+      )
+    }
     if (inv === null || inv === undefined) {
       throw new UserError(
         noRuns()
@@ -950,9 +957,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
             ? `vx last: ${parsed.runId} is a task, not a run id — \`vx last --log ${parsed.runId}\` prints its output, \`vx last --stats ${parsed.runId}\` its durations`
             : parsed.runId !== undefined
               ? `vx last: no recorded run ${parsed.runId} (vx last --list shows recent runs)`
-              : parsed.failed === true
-                ? 'vx last: no recorded run failed'
-                : 'vx last: no recorded runs yet — run something first',
+              : 'vx last: no recorded runs yet — run something first',
         'VX_E_NO_HISTORY',
       )
     }

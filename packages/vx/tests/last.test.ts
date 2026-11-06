@@ -396,7 +396,7 @@ describe('vx last (e2e)', () => {
         const r = await vx(clean, ['last', '--failed'])
         expect({ code: r.code, err: r.err.trim() }).toEqual({
           code: 1,
-          err: '✗ vx last  no recorded run failed',
+          err: '› vx last  no failed runs\n\n  fix  vx last',
         })
       } finally {
         await rm(clean, { recursive: true, force: true })
