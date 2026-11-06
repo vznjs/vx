@@ -34,9 +34,19 @@ export function configErrorFrame(message: string, cwd: string): string | undefin
   // `has unknown field "comand"`, or `tasks.build: \`cache\` is not allowed`.
   const named =
     colon === ':' ? /^`([^`]+)`/.exec(rest) : /^has (?:unknown )?field "([^"]+)"/.exec(rest)
+  // `plugins[2].name`: an element of an array, framed at the element (a
+  // plugin is a call, so no key inside it is searched).
+  const element = setting === undefined ? null : /^([^[]+)\[(\d+)\]/.exec(setting)
   const fieldPath =
-    taskName === undefined ? (tasksPath ?? setting)?.split('.') : ['tasks', JSON.parse(taskName)]
-  const segments = [...(fieldPath ?? []), ...(named === null ? [] : [named[1]!])]
+    taskName !== undefined
+      ? ['tasks', JSON.parse(taskName)]
+      : element !== null
+        ? element[1]!.split('.')
+        : (tasksPath ?? setting)?.split('.')
+  const segments = [
+    ...(fieldPath ?? []),
+    ...(named === null || element !== null ? [] : [named[1]!]),
+  ]
   if (segments.length === 0) return undefined
   let source: string
   try {
@@ -44,7 +54,7 @@ export function configErrorFrame(message: string, cwd: string): string | undefin
   } catch {
     return undefined
   }
-  const at = locate(source, segments)
+  const at = locate(source, segments, element === null ? undefined : Number(element[2]))
   if (at === undefined) return undefined
   return framed(file, source, at, message.slice(file.length), cwd)
 }
@@ -121,6 +131,8 @@ function framed(
 function locate(
   source: string,
   segments: readonly string[],
+  /** The element of the array the last segment holds; past its end, the key. */
+  index?: number,
 ): { line: number; col: number } | undefined {
   let pos = 0
   let end = source.length
@@ -153,6 +165,10 @@ function locate(
     i = next
   }
   if (found < 0) return undefined
+  if (index !== undefined && i === segments.length) {
+    const el = elementStart(source, pos, index)
+    if (el !== undefined) found = el
+  }
   const before = source.slice(0, found)
   const line = before.split('\n').length
   return { line, col: found - before.lastIndexOf('\n') }
@@ -186,6 +202,46 @@ function literalEnd(source: string, from: number): number {
     }
   }
   return source.length
+}
+
+/** Where element `index` of the array literal at `from` (past blanks) starts, if it has one. */
+function elementStart(source: string, from: number, index: number): number | undefined {
+  let i = from
+  while (i < source.length && /\s/.test(source[i]!)) i++
+  if (source[i] !== '[') return undefined
+  let depth = 0
+  let n = 0
+  // Each element starts at the first code past `[` or a top-level `,`.
+  let pending = true
+  for (i++; i < source.length; i++) {
+    const c = source[i]!
+    if (c === '/' && source[i + 1] === '/') {
+      i = source.indexOf('\n', i)
+      if (i < 0) return undefined
+      continue
+    }
+    if (c === '/' && source[i + 1] === '*') {
+      i = source.indexOf('*/', i + 2)
+      if (i < 0) return undefined
+      i++
+      continue
+    }
+    if (/\s/.test(c)) continue
+    if (depth === 0 && (c === ']' || c === ')' || c === '}')) return undefined
+    if (pending) {
+      if (n === index) return i
+      pending = false
+    }
+    if (c === '"' || c === "'" || c === '`') {
+      for (i++; i < source.length && source[i] !== c; i++) if (source[i] === '\\') i++
+    } else if (c === '{' || c === '[' || c === '(') depth++
+    else if (c === '}' || c === ']' || c === ')') depth--
+    else if (c === ',' && depth === 0) {
+      n++
+      pending = true
+    }
+  }
+  return undefined
 }
 
 function escapeRe(s: string): string {

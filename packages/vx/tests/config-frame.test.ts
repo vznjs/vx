@@ -154,6 +154,24 @@ describe('configErrorFrame', () => {
     )
     const atOdd = (m: string) =>
       configErrorFrame(m, path.join(dir, 'odd'))?.split('\n')[0]?.split(': ')[0]
+    // A plugin is an element: framed at it, not at the config's head.
+    const plugins = path.join(dir, 'plugins', '.vx', 'workspace.ts')
+    await mkdir(path.dirname(plugins), { recursive: true })
+    await writeFile(
+      plugins,
+      "export default {\n  plugins: [\n    a({ x: [1, 2] }), // b, c\n    's,t',\n    { name: 'p' },\n  ],\n}\n",
+    )
+    const atPlugin = (m: string) =>
+      configErrorFrame(m, path.join(dir, 'plugins'))?.split('\n')[0]?.split(': ')[0]
+    expect(atPlugin(`${plugins}: \`plugins[1]\` must be an object`)).toBe('.vx/workspace.ts:4:5')
+    expect(
+      atPlugin(`${plugins}: \`plugins[2].name\` overrides the package name ('p' over 'q')`),
+    ).toBe('.vx/workspace.ts:5:5')
+    expect(atPlugin(`${plugins}: \`plugins[0]\` must come from definePlugin`)).toBe(
+      '.vx/workspace.ts:3:5',
+    )
+    // Past the last element: the array itself.
+    expect(atPlugin(`${plugins}: \`plugins[7]\` must be an object`)).toBe('.vx/workspace.ts:2:3')
     expect(atOdd(`${odd}: task name "" is empty`)).toBe('vx.config.ts:4:6')
     expect(
       atOdd(`${odd}: task name ${JSON.stringify('\u001b[31mred')} holds a control character`),
