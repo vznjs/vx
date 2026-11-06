@@ -104,7 +104,7 @@ readers that reach it here.
   imported it, `writeFileSync('/dev/stdout')` opens the descriptor anew,
   and a child the config spawns inherits it, so all three printed ahead of
   `vx lock --check --format json`'s JSON. The worker shares the
-  descriptor, so a repeat load is covered by the same swap. Only `vx lock`
+  descriptor, so a repeat load is covered by the same swap. Only the lock verb
   evaluates project configs, so a run never binds libc for this. The
   workspace config, loaded on every run, gets the JS routes alone.
 - A config that throws something other than an Error (`throw 'no'`, a
@@ -154,7 +154,7 @@ readers that reach it here.
   `process.chdir()` left every relative path vx resolved after it reading
   from the config's choice; the working directory is put back and the load
   refused, naming `process.cwd (a chdir)` (D-120).
-- `vx lock` evaluates every project config with the workspace root as
+- The lock verb evaluates every project config with the workspace root as
   `process.cwd()`, wherever it was run, and puts the invoking directory
   back after the round. It saw the invoking directory before, so a config
   reading the cwd made the lock depend on where it ran, and
