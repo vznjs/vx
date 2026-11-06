@@ -663,12 +663,14 @@ export function validateProjectConfig(
         // the level the variable belongs at, not only the allowed fields.
         const plain = Array.isArray(env)
           ? undefined
-          : Object.entries(env).find(([k, v]) => !ENV_FIELDS.has(k) && typeof v === 'string')
+          : Object.entries(env).find(
+              ([k, v]) => !ENV_FIELDS.has(k) && ['string', 'number', 'boolean'].includes(typeof v),
+            )
         if (plain !== undefined) {
           throw new UserError(
             `${where}.exec.env has unknown field "${plain[0]}" ` +
               `(allowed: ${[...ENV_FIELDS].sort().join(', ')}) — vx spells it ` +
-              `exec.env.define: { ${plain[0]}: ${JSON.stringify(plain[1])} }`,
+              `exec.env.define: { ${plain[0]}: ${JSON.stringify(String(plain[1]))} }`,
           )
         }
         // `env: { set: {...} }` loaded and defined nothing — the one level
