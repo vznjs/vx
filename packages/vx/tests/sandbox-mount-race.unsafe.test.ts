@@ -5,6 +5,11 @@
 // "/newroot/tmp/containerd-mount…": No such file or directory`), and the
 // task failed in 23 ms having never started. Its command never ran, so it
 // is run once more. A fake `bwrap` first on PATH plays the race once.
+//
+// A path the wrap walls gone before bwrap mounts on it is the same race:
+// bwrap makes the mount point anew under a read-only parent and fails. The
+// no-scan directory every wrap walls was removed by a parallel shard's
+// test, and a task under the 10-shard load failed with no refusal named.
 
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { realpathSync } from 'node:fs'
@@ -18,6 +23,7 @@ const available = await sandboxAvailable('sandbox mount race test')
 const realBwrap = Bun.which('bwrap')
 const RACE =
   'bwrap: Can\'t bind mount /oldroot/ on /newroot/: Unable to apply mount flags: remount "/newroot/tmp/containerd-mount1": No such file or directory'
+const POINT_GONE = "bwrap: Can't mkdir /tmp/vx-noscan-0: Read-only file system"
 
 describe.skipIf(!available || process.platform !== 'linux' || realBwrap === null)(
   'a sandboxed task whose sandbox lost a mount as it was set up',
@@ -60,9 +66,9 @@ describe.skipIf(!available || process.platform !== 'linux' || realBwrap === null
       await rm(dir, { recursive: true, force: true })
     })
 
-    const run = async (times: number) => {
+    const run = async (times: number, race = RACE) => {
       await writeFile(path.join(dir, 'times'), String(times))
-      await writeFile(path.join(dir, 'race'), `${RACE}\n`)
+      await writeFile(path.join(dir, 'race'), `${race}\n`)
       let streamed = ''
       const r = await runSandboxed({
         command: 'echo marker-ran',
@@ -88,6 +94,15 @@ describe.skipIf(!available || process.platform !== 'linux' || realBwrap === null
         exitCode: 0,
         stdout: 'marker-ran\n',
         streamed: `${RACE}\n[vx] a mount went away as the sandbox was set up; running the task again\n`,
+        races: 1,
+      })
+    }, 30_000)
+
+    it('is run once more when a path it walls went away before its mount', async () => {
+      expect(await run(1, POINT_GONE)).toEqual({
+        exitCode: 0,
+        stdout: 'marker-ran\n',
+        streamed: `${POINT_GONE}\n[vx] a mount went away as the sandbox was set up; running the task again\n`,
         races: 1,
       })
     }, 30_000)
