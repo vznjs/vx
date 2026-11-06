@@ -1,15 +1,16 @@
 # vx-history protocol, v1
 
-An HTTP API for the task timings a scheduler asks for. It is a history,
+An HTTP API for the task timings a scheduler asks for, and the flaky
+record a retry asks for. It is a history,
 not a log: a server keeps one row per task and ref, and folds each
 report into it. `@vzn/vx-history-server` speaks it on Bun, on Cloudflare
 Workers and as a Docker image; any server that does can take its place.
 
-| Route                     | What it does                      |
-| ------------------------- | --------------------------------- |
-| `POST /v1/timings/upload` | a run's timings, once at its end  |
-| `POST /v1/timings/query`  | each task's numbers, ready to use |
-| `GET /v1/capabilities`    | the server's limits               |
+| Route                     | What it does                                  |
+| ------------------------- | --------------------------------------------- |
+| `POST /v1/timings/upload` | a run's timings and outcomes, once at its end |
+| `POST /v1/timings/query`  | each task's numbers and the flaky ones        |
+| `GET /v1/capabilities`    | the server's limits                           |
 
 ## Repositories and tokens
 
@@ -54,23 +55,42 @@ each write costs, and the fold would move it under 1.5%.
 The first report sets the row; one without `cores` or `rssBytes` keeps
 the row's. A row not reported for `TIMING_DAYS` (30) is deleted.
 
+### Outcomes
+
+An upload may also carry `"outcomes": [{ "hash", "key", "outcome" }]`,
+up to 10 000, each task and key once: every cached task the run ran.
+`hash` is the task's definition, `key` its cache key (both up to 512
+characters), `outcome` one of:
+
+- `pass`, `fail`: how it ended.
+- `flaky`: it passed on a retry, so the run saw it flake.
+
+The server keeps, per repository (not per ref: a key is the same inputs
+on every branch), task and key, when each last came. A task is
+**flaky** when one key both passed and failed, or a run said `flaky`.
+A key with nothing for `TIMING_DAYS` is deleted.
+
 ## Query
 
 One request a run: `POST /v1/timings/query` with
 `{ "issuer", "repository", "refs": ["refs/heads/feature", "refs/heads/main"], "hashes": [ … ] }`,
 1 to 8 refs of up to 512 characters each and up to 10 000 hashes: each hash's row in the first ref
 named that holds one. A hash none holds is absent. The numbers are the
-scheduler's as they are:
+scheduler's as they are, and `flaky` lists the hashes asked that are
+flaky, by any ref:
 
 ```json
-{ "timings": { "3b0d…": { "durationMs": 4200, "cores": 1.8, "rssBytes": 310000000, "runs": 12 } } }
+{
+  "timings": { "3b0d…": { "durationMs": 4200, "cores": 1.8, "rssBytes": 310000000, "runs": 12 } },
+  "flaky": ["3b0d…"]
+}
 ```
 
 ## Limits and errors
 
 `GET /v1/capabilities`: `{ "maxUploadTimings": 10000, "maxQueryHashes": 10000, "maxQueryRefs": 8 }`.
 A server takes both at their limits, each hash 512 characters: an
-upload body up to 7 120 000 bytes, a query's up to 6 010 000. Past
+upload body up to 17 960 100 bytes, a query's up to 6 010 000. Past
 that, `413`.
 
 Every refusal is `{ code, message }`, the message saying what to fix. A

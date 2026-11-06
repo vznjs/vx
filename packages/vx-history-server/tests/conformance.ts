@@ -64,6 +64,42 @@ export function conformance(name: string, target: Target): void {
       })
     })
 
+    it('names a task flaky when one key passed and failed, or a run saw it flake, by any ref', async () => {
+      const [mixed, once, seen, other] = [hash(), hash(), hash(), hash()]
+      const report = (outcomes: unknown[], token = tokens.main) =>
+        post('/v1/timings/upload', { timings: [], outcomes }, token)
+      expect((await report([{ hash: mixed, key: 'k1', outcome: 'fail' }])).status).toBe(204)
+      // A pass on the same key from another branch's job: the same inputs.
+      expect(
+        (await report([{ hash: mixed, key: 'k1', outcome: 'pass' }], tokens.branch)).status,
+      ).toBe(204)
+      // A failure and a pass on DIFFERENT keys is a break, then a fix.
+      await report([
+        { hash: once, key: 'a', outcome: 'fail' },
+        { hash: other, key: 'x', outcome: 'pass' },
+      ])
+      await report([{ hash: once, key: 'b', outcome: 'pass' }])
+      await report([{ hash: seen, key: 'k', outcome: 'flaky' }])
+      const res = await ask(['refs/heads/main'], [mixed, once, seen, other])
+      const body = (await res.json()) as { flaky: string[] }
+      expect(body.flaky.sort()).toEqual([mixed, seen].sort())
+    })
+
+    it('refuses outcomes that are not some', async () => {
+      for (const outcomes of [
+        'x',
+        [{ hash: hash(), key: 'k', outcome: 'maybe' }],
+        [{ hash: hash(), outcome: 'pass' }],
+        [
+          { hash: 'h', key: 'k', outcome: 'pass' },
+          { hash: 'h', key: 'k', outcome: 'fail' },
+        ],
+      ]) {
+        const res = await post('/v1/timings/upload', { timings: [], outcomes }, tokens.main)
+        expect(res.status).toBe(400)
+      }
+    })
+
     it('skips a write that would not move the row', async () => {
       const h = hash()
       await upload([{ hash: h, durationMs: 1000, cores: 2, rssBytes: 1000 }])

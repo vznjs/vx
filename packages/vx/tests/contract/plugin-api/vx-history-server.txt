@@ -17,6 +17,12 @@ export interface Db {
   all<T>(sql: string, params: readonly unknown[]): Promise<T[]>
   run(sql: string, params: readonly unknown[]): Promise<number>
 }
+== type Outcome (src/store.ts)
+export interface Outcome {
+  readonly hash: string
+  readonly key: string
+  readonly outcome: 'pass' | 'fail' | 'flaky'
+}
 == type Repo (src/store.ts)
 export interface Repo {
   readonly issuer: string
@@ -41,6 +47,8 @@ export interface Store {
   init(): Promise<void>
   fold(repo: Repo, ref: string, now: number, reports: readonly Report[]): Promise<void>
   read(repo: Repo, refs: readonly string[], hashes: readonly string[]): Promise<Map<string, Timing>>
+  record(repo: Repo, now: number, outcomes: readonly Outcome[]): Promise<void>
+  flaky(repo: Repo, hashes: readonly string[]): Promise<string[]>
   sweptAt(): Promise<number>
   sweep(before: number, now: number): Promise<number>
 }

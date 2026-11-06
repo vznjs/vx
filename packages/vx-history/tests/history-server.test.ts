@@ -56,7 +56,7 @@ describe('HistoryServer', () => {
       '/v1/timings/upload',
     ])
     const got = await client.query(['refs/heads/feature', 'refs/heads/main'], ['a1', 'none'])
-    expect(got).toEqual(new Map([['a1', { durationMs: 100, cores: 2, rssBytes: 1000 }]]))
+    expect(got.timings).toEqual(new Map([['a1', { durationMs: 100, cores: 2, rssBytes: 1000 }]]))
   })
 
   // A run of groups alone has no hash to ask for: it still asked the
@@ -68,7 +68,7 @@ describe('HistoryServer', () => {
       throw new Error('connection refused')
     }) as unknown as typeof fetch
     const client = new HistoryServer(url, NAMED, {}, none)
-    expect(await client.query(['refs/heads/main'], [])).toEqual(new Map())
+    expect((await client.query(['refs/heads/main'], [])).timings).toEqual(new Map())
     await client.upload(new Map())
     expect(asked).toEqual([])
   })
@@ -81,7 +81,7 @@ describe('HistoryServer', () => {
             timings: { big: { durationMs: 1e308 }, ok: { durationMs: 5 } },
           })) as unknown as typeof fetch
     const client = new HistoryServer(url, NAMED, {}, answer)
-    expect(await client.query(['refs/heads/main'], ['big', 'ok'])).toEqual(
+    expect((await client.query(['refs/heads/main'], ['big', 'ok'])).timings).toEqual(
       new Map([['ok', { durationMs: 5 }]]),
     )
   })
@@ -99,7 +99,7 @@ describe('HistoryServer', () => {
     const client = new HistoryServer(url, NAMED, { VX_HISTORY_TOKEN: token }, flaky)
     await expect(client.query(['refs/heads/main'], ['c1'])).rejects.toThrow('connection reset')
     await client.upload(new Map([['c1', { durationMs: 3 }]]))
-    expect(await client.query(['refs/heads/main'], ['c1'])).toEqual(
+    expect((await client.query(['refs/heads/main'], ['c1'])).timings).toEqual(
       new Map([['c1', { durationMs: 3 }]]),
     )
   })
@@ -115,7 +115,9 @@ describe('HistoryServer', () => {
         ? Response.json({ maxUploadTimings: 9, maxQueryHashes: 9 })
         : new Response(body)) as unknown as typeof fetch
     const client = new HistoryServer('https://h.example', NAMED, { VX_HISTORY_TOKEN: 't' }, fake)
-    expect(await client.query(['refs/heads/main'], ['a', 'b', 'c', 'd', 'e', 'f'])).toEqual(
+    expect(
+      (await client.query(['refs/heads/main'], ['a', 'b', 'c', 'd', 'e', 'f'])).timings,
+    ).toEqual(
       new Map([
         ['b', { durationMs: 1 }],
         ['c', { durationMs: 1 }],
@@ -237,7 +239,7 @@ describe('HistoryServer', () => {
     )
     const before = seen.length
     await client.upload(new Map([['p1', { durationMs: 1 }]]))
-    expect(await client.query(['refs/heads/main'], ['p1'])).toEqual(new Map())
+    expect((await client.query(['refs/heads/main'], ['p1'])).timings).toEqual(new Map())
     expect(seen.length).toBe(before)
   })
 
@@ -387,7 +389,7 @@ describe('HistoryServer', () => {
     )
     expect(gone.sent).toEqual(['/v1/timings/upload reset'])
     const read = clientOf([429, 502, 200])
-    expect(await read.client.query(['refs/heads/main'], ['a'])).toEqual(
+    expect((await read.client.query(['refs/heads/main'], ['a'])).timings).toEqual(
       new Map([['a', { durationMs: 5 }]]),
     )
     const down = clientOf([504, 504, 504])
@@ -452,7 +454,7 @@ describe('HistoryServer', () => {
     }) as unknown as typeof fetch
     const client = new HistoryServer('https://h.example', NAMED, {}, fake)
     expect(client.writes).toBe(false)
-    expect(await client.query(['refs/heads/main'], ['p1'])).toEqual(
+    expect((await client.query(['refs/heads/main'], ['p1'])).timings).toEqual(
       new Map([['p1', { durationMs: 7 }]]),
     )
     expect(auths).toEqual([null, null])

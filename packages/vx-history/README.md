@@ -77,6 +77,15 @@ unset value is left out, and a name the request sets itself
 redirect is not followed (it would carry them on): it fails the request,
 naming where it pointed.
 
+The same upload carries the flaky record: each cached task the run
+ran, by definition and cache key, with how it ended (`pass`, `fail`,
+or `flaky` when it passed on a retry). The server names a task flaky
+when one key both passed and failed, or a run saw it flake, on any
+branch of the repository. The run's query answers which of its tasks
+are flaky, and core gives such a task one retry when it fails, as it
+does a task its local history knows as flaky. So a CI machine that
+starts empty still retries a known flake.
+
 ```ts
 export default {
   plugins: [

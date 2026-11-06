@@ -539,6 +539,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-history-server/start-line',
     'vx-history-server/worker',
     'vx-history/assume',
+    'vx-history/flaky-shared',
     'vx-history/history-e2e',
     'vx-history/history-schema',
     'vx-history/history-server',

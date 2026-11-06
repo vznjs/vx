@@ -521,6 +521,8 @@ export async function claimedExtraFiles(
 export interface ScheduleRun {
   readonly step?: <T>(id: string, work: () => Promise<T>) => Promise<T>
   readonly refined?: (merged: ReadonlyMap<string, number>) => void
+  /** Where `ctx.flaky` names go; none in a plan. */
+  readonly flaky?: (taskIds: Iterable<string>) => void
 }
 
 /**
@@ -533,7 +535,7 @@ export interface ScheduleRun {
 export async function applyScheduleHooks(
   plugins: readonly VxPlugin[],
   nodes: ReadonlyMap<string, TaskNode>,
-  ctx: Omit<ScheduleHookContext, 'cache' | 'refine' | 'onRefine' | 'refining'>,
+  ctx: Omit<ScheduleHookContext, 'cache' | 'refine' | 'onRefine' | 'refining' | 'flaky'>,
   cacheFor: (plugin: string) => PluginCache = () => absentPluginCache,
   run: ScheduleRun = {},
 ): Promise<ReadonlyMap<string, number>> {
@@ -586,7 +588,8 @@ export async function applyScheduleHooks(
     const onRefine = (listener: () => void): void => {
       if (run.refined !== undefined) listeners.push({ plugin, i, listener })
     }
-    const own = { ...ctx, cache: cacheFor(plugin.name), refine, onRefine, refining }
+    const flaky = (taskIds: Iterable<string>): void => run.flaky?.(taskIds)
+    const own = { ...ctx, cache: cacheFor(plugin.name), refine, onRefine, refining, flaky }
     const call = (): Promise<ReadonlyMap<string, number> | undefined> =>
       safe(plugin, 'schedule', () => plugin.schedule!(nodes, own))
     const weights = await (run.step === undefined
