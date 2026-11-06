@@ -426,7 +426,10 @@ export class HistoryStream<T> {
   add(item: T, record: RunRecord): void
   finish(): Promise<{ landed: Streamed<T>[]; unlanded: Streamed<T>[] }>
 }
-export const SCHEMA_VERSION = 'v47'
+export const SCHEMA_VERSION = 'v52'
+// An entry_stdout row's log, its zstd frame decoded (v52); null reads as ''.
+// `vx last --log` reads the row itself.
+export function storedLog(blob: Uint8Array | null): string
 // What vx wrote in a cache dir (index, artifacts, run history, its `*`
 // ignore): all a clear of a dir the user named may delete (item 968).
 export function vxCacheEntries(cacheDir: string): string[]
@@ -603,7 +606,8 @@ SQLite stores metadata, and the small artifacts above:
 - **`entries`** — one row per cached output:
   `(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at, cpu_ms, peak_rss_bytes)`.
 - **`entry_stdout`** — an entry's captured stdout, `(hash, stdout)`, apart
-  so the `accessed_at` bump does not rewrite it (v29).
+  so the `accessed_at` bump does not rewrite it (v29); a zstd frame of its
+  UTF-8 (v52), as text the logs outweighed every inline artifact.
 - **`runs`** — one row per task execution (hit or miss):
   `(id, hash, project, task, status, exit_code, duration_ms, forward_args, started_at, ended_at)`.
 - **`store_meta`** — the shared store's `SCHEMA_VERSION`. Another
@@ -781,7 +785,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
 `CACHE_VERSION` is currently `'vx-cache-v51'`; `SCHEMA_VERSION` is
-`'v51'`. Bump `CACHE_VERSION` when:
+`'v52'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside
   `key()`).

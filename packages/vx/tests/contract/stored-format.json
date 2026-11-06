@@ -1,6 +1,6 @@
 {
   "index": {
-    "version": "v51",
+    "version": "v52",
     "layout": [
       "CREATE INDEX invocations_branch  ON invocations(branch)",
       "",
@@ -65,7 +65,7 @@
       "",
       "CREATE TABLE entry_stdout (",
       "hash   TEXT PRIMARY KEY,",
-      "stdout TEXT NOT NULL,",
+      "stdout BLOB NOT NULL,",
       "FOREIGN KEY (hash) REFERENCES entries(hash) ON DELETE CASCADE",
       ")",
       "",
