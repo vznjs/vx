@@ -52,6 +52,25 @@ describe('deniedCalls › reads', () => {
     ])
   })
 
+  // musl's open() is the `open` syscall, which names no directory.
+  it('are the open calls too, read or refused', () => {
+    const calls = [
+      '10 open("o.txt", O_RDONLY) = 3</ws/o.txt>',
+      '10 open("p.txt", O_RDONLY) = 3',
+      '10 open("w.txt", O_WRONLY|O_CREAT, 0644) = 4</ws/w.txt>',
+      '10 open("s.txt", O_RDONLY <unfinished ...>',
+      '10 <... open resumed>) = 7</ws/s.txt>',
+      '10 open("gone.txt", O_RDONLY) = -1 ENOENT (No such file or directory)',
+      '',
+    ].join('\n')
+    expect(deniedCalls(calls, '/ws', true).map((c) => [c.syscall, c.rawPath, c.errno])).toEqual([
+      ['open', '/ws/o.txt', ''],
+      ['open', 'p.txt', ''],
+      ['open', '/ws/s.txt', ''],
+      ['open', 'gone.txt', 'ENOENT'],
+    ])
+  })
+
   it('CONTROL: are not asked for, and only the denial comes back', () => {
     expect(deniedCalls(trace, '/ws').map((c) => c.rawPath)).toEqual(['gone.txt'])
   })
@@ -97,6 +116,17 @@ describe.skipIf(!available || process.platform !== 'linux')(
         0,
         'as',
         [path.join(dir, 'proj', 'secret.txt')],
+      ])
+    })
+
+    // The raw `open` syscall, musl's open(): x64 has it, arm64 has none.
+    it.skipIf(process.arch !== 'x64')('is reported when opened by the open syscall', async () => {
+      // perl's syscall() takes its string argument as a writable buffer.
+      const open = `my $p = "secret.txt"; syscall(2, $p, 0) >= 0 or exit 1`
+      const r = await run(`perl -e '${open}' && touch out.txt`, ['out.txt'])
+      expect([r.exitCode, r.violations.map((v) => v.line.split('(')[0] + ' ' + v.target)]).toEqual([
+        0,
+        [`open ${path.join(dir, 'proj', 'secret.txt')}`],
       ])
     })
 

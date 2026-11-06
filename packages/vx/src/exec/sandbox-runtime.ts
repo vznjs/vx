@@ -1827,7 +1827,11 @@ function ownGroupCommand(
 }
 
 /**
- * What strace stops on: the reads, the execs and access probes (a refused
+ * What strace stops on: the reads (`openat`, and `open`, musl's open():
+ * traced as openat alone, a sibling under a widened write grant was read
+ * unreported and cached; arm64 has no `open`; an `openat2` never reaches
+ * strace, SRT's write observer takes each one first), the execs and
+ * access probes (a refused
  * `./gen.sh || fallback` passed unreported), and what moves or makes a
  * process's cwd. Not the stat family: a stop per stat cost oxlint 19% and
  * `git status` 30%, where the execs and probes cost nothing measurable, and
@@ -1836,7 +1840,7 @@ function ownGroupCommand(
  * nothing the trace sees.
  */
 const TRACED_CALLS =
-  'trace=openat,execve,?access,faccessat,?faccessat2,chdir,fchdir,clone,?clone3,?fork,?vfork'
+  'trace=openat,?open,execve,?access,faccessat,?faccessat2,chdir,fchdir,clone,?clone3,?fork,?vfork'
 
 /** The descriptor an in-sandbox strace writes its trace to (`ownGroupCommand`). */
 const TRACE_FD = 5
@@ -2488,7 +2492,7 @@ async function runSandboxedOnce(
   // share a stream. Skipped when strace isn't on PATH — bwrap still
   // enforces structurally; we just lose the structured violation list.
   //
-  // We trace `openat`, the read itself, plus `execve` and the access
+  // We trace the opens, the read itself, plus `execve` and the access
   // probes (`TRACED_CALLS`). Not `statx` / `newfstatat`: a stop per stat
   // is a tax on every stat-heavy task. A probe's ENOENT counts only where
   // the host has the path (`parseStraceViolations`), so a PATH walk past

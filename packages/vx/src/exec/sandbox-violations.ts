@@ -42,7 +42,7 @@ import type {
  * (`cStringPath` decodes it). Paths that are relative resolve against the
  * task's cwd (set by Bun.spawn).
  */
-const SYSCALLS = 'openat|execve|faccessat2|faccessat|access|statx|newfstatat'
+const SYSCALLS = 'openat|open|execve|faccessat2|faccessat|access|statx|newfstatat'
 const QUOTED = '"((?:[^"\\\\]|\\\\.)+)"'
 // The directory descriptor a call names, `-y`'s path included: taken up to
 // the `, "` that opens the path argument, since a directory's name may hold
@@ -79,21 +79,19 @@ const PROBES = new Set([
 /** A resumed call that SUCCEEDED — clears the pending entry, emits nothing. */
 const STRACE_RESUMED_OK_RE = new RegExp(`^(\\d+)\\s+<\\.\\.\\. (${SYSCALLS}) resumed>`)
 /**
- * An `openat` that succeeded, and not for writing alone: a read. Placed by
+ * An open that succeeded, and not for writing alone: a read. Placed by
  * the path `-y` prints for the descriptor it returned; without one, only
- * from the cwd (`AT_FDCWD`) or by an absolute path.
+ * from the cwd (`AT_FDCWD`, or `open`, which names no directory) or by an
+ * absolute path.
  */
 const READ_FLAGS = '(?![A-Z_|]*O_WRONLY)[A-Z_|]+'
-const OPEN_READ_RE = new RegExp(
-  `^(\\d+)\\s+openat\\((AT_FDCWD|\\d+)(?:<.*?>)?, ${QUOTED}, ${READ_FLAGS}[^)]*\\)\\s*=\\s*\\d+(?:<(.*)>)?$`,
-)
-const OPEN_READ_UNFINISHED_RE = new RegExp(
-  `^(\\d+)\\s+openat\\((AT_FDCWD|\\d+)(?:<.*?>)?, ${QUOTED}, ${READ_FLAGS}.*<unfinished`,
-)
+const OPEN_CALL = `(openat|open)\\((?:(AT_FDCWD|\\d+)(?:<.*?>)?, )?${QUOTED}, ${READ_FLAGS}`
+const OPEN_READ_RE = new RegExp(`^(\\d+)\\s+${OPEN_CALL}[^)]*\\)\\s*=\\s*\\d+(?:<(.*)>)?$`)
+const OPEN_READ_UNFINISHED_RE = new RegExp(`^(\\d+)\\s+${OPEN_CALL}.*<unfinished`)
 const RESUMED_FD_RE = /resumed>.*\)\s*=\s*(\d+)(?:<(.*)>)?$/
-/** Any `openat` that returned a descriptor: where a later `openat(N, …)` is. */
+/** Any open that returned a descriptor: where a later `openat(N, …)` is. */
 const OPENED_RE = new RegExp(
-  `^(\\d+)\\s+openat\\((AT_FDCWD|\\d+)(?:<.*?>)?, ${QUOTED}, [^)]*\\)\\s*=\\s*(\\d+)`,
+  `^(\\d+)\\s+(?:openat|open)\\((?:(AT_FDCWD|\\d+)(?:<.*?>)?, )?${QUOTED}, [^)]*\\)\\s*=\\s*(\\d+)`,
 )
 
 /** Where a successful read opened: `-y`'s path, else the call's own when placeable. */
@@ -245,16 +243,16 @@ export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCa
     const opener =
       line.includes('= -1') || line.includes('<unfinished') || line.includes('resumed>')
     if (!opener) {
-      if (numbered && line.includes('openat(')) {
+      if (numbered && line.includes('open')) {
         const m = OPENED_RE.exec(line)
-        if (m !== null) opened(m[1]!, m[2]!, cStringPath(m[3]!), m[4]!)
+        if (m !== null) opened(m[1]!, m[2] ?? 'AT_FDCWD', cStringPath(m[3]!), m[4]!)
       }
-      if (reads && line.includes('openat(')) {
+      if (reads && line.includes('open')) {
         const m = OPEN_READ_RE.exec(line)
         if (m !== null) {
-          const at = readPath(m[2]!, cStringPath(m[3]!), m[4])
+          const at = readPath(m[3] ?? 'AT_FDCWD', cStringPath(m[4]!), m[5])
           if (at !== undefined)
-            denied(m[1]!, { syscall: 'openat', rawPath: at, errno: '', read: true })
+            denied(m[1]!, { syscall: m[2]!, rawPath: at, errno: '', read: true })
           continue
         }
       }
@@ -299,7 +297,8 @@ export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCa
       // Only a resume that carries a DENIAL is a violation; a successful
       // resume just retires the pending entry.
       const fd =
-        held?.read === true || (numbered && held?.syscall === 'openat')
+        held?.read === true ||
+        (numbered && (held?.syscall === 'openat' || held?.syscall === 'open'))
           ? RESUMED_FD_RE.exec(line)
           : null
       if (held !== undefined && resumed?.[3] !== undefined) {
@@ -315,7 +314,7 @@ export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCa
         )
         continue
       }
-      if (numbered && held?.syscall === 'openat' && fd !== null) {
+      if (numbered && (held?.syscall === 'openat' || held?.syscall === 'open') && fd !== null) {
         opened(resumedOk[1], held.dirfd ?? 'AT_FDCWD', held.rawPath, fd[1]!)
       }
       if (held?.read === true && fd !== null) {
@@ -524,7 +523,7 @@ export async function parseStraceViolations(
             timestamp: new Date(),
             target: abs,
             path: abs,
-            // An openat is a read or a write depending on flags the parse
+            // An open is a read or a write depending on flags the parse
             // does not keep, and `access` may ask either — so either list
             // can silence it.
             ignorable: ['read', 'write'],
