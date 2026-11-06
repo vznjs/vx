@@ -82,9 +82,14 @@ none is repeated or reordered in it. A body whose first nonce was seen before is
 replay and is dropped; one older than a body already opened (the relay
 held it back: the wire's numbers are outside the seal) or that does not
 open loses its sender. The
-plaintext is JSON, or over 256 bytes and smaller so, a `0` byte, the
-zstd frame's length (4 bytes, big-endian) and the frame: compressed
-before sealing, since no relay or socket compresses what is sealed. It
+plaintext is JSON, or when smaller so, a `0` byte, the length of every
+body its sender sealed before (4 bytes, big-endian, mod 2³²), the zstd
+frame's length (4 bytes) and the frame: compressed before sealing, since
+no relay or socket compresses what is sealed, against the last 16 KiB of
+those bodies' JSON as its dictionary, so a batch's env and paths, or a
+task's name, said before cost a few bytes. One whose first length is not
+the receiver's own count, sealed after a body it never opened, loses its
+sender. It
 is padded with trailing spaces to its size class, a power of two from
 256 bytes, then whole transport messages, so the relay learns no size
 within a class. Inside, each send is numbered and acknowledged

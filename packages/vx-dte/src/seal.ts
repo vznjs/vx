@@ -7,6 +7,7 @@
 // opens no past run.
 
 import { createHash } from 'node:crypto'
+import { zstdCompressSync, zstdDecompressSync } from 'node:zlib'
 import { type Bytes, type CipherState, Handshake, MAX_PLAINTEXT } from './noise.js'
 import { RelayError, unsent as unsentBy, type Participant, type RelayMessage } from './wire.js'
 import { ui } from '@vzn/vx'
@@ -208,6 +209,9 @@ function padded(n: number): number {
  */
 class Session {
   private sent = 0
+  /** What this side sealed and what it opened: each next body's zstd dictionary. */
+  private readonly sealed = new History()
+  private readonly opened = new History()
   private readonly seen = new Set<number>()
   /** The last nonce of the newest body opened. */
   private newest = -1
@@ -238,7 +242,9 @@ class Session {
   }
 
   private async seal(body: unknown): Promise<{ seal: string[] }> {
-    const plain = squeeze(text.encode(JSON.stringify(body)))
+    const json = text.encode(JSON.stringify(body))
+    const plain = squeeze(json, this.sealed)
+    this.sealed.add(json)
     // Trailing spaces: JSON.parse reads past them, and `unsqueeze` stops before them.
     const bytes = new Uint8Array(padded(plain.length)).fill(0x20)
     bytes.set(plain)
@@ -277,7 +283,9 @@ class Session {
     try {
       const plain: Uint8Array[] = []
       for (const p of parts) plain.push(await this.rx.decrypt(p.n, ad, unb64(p.c)))
-      const body: unknown = JSON.parse(unsqueeze(Buffer.concat(plain)).toString())
+      const json = unsqueeze(Buffer.concat(plain), this.opened)
+      const body: unknown = JSON.parse(Buffer.from(json).toString())
+      this.opened.add(json)
       for (const p of parts) this.seen.add(p.n)
       this.newest = parts.at(-1)!.n
       return body
@@ -290,27 +298,71 @@ class Session {
 
 /** Leads a compressed body: no JSON starts with it. */
 const ZSTD = 0
+/** Its lead byte, its sender's history length and its zstd frame's. */
+const HEADER = 9
+/**
+ * The last this many bytes one side sealed to the other are its next
+ * body's zstd dictionary: each batch sent its tasks' env and paths again,
+ * and each `start`, `ran` and `end` the same names. 32 KiB sealed no less
+ * for 1.7 times the CPU (1000 tasks, 2026-11-06).
+ */
+const HISTORY_BYTES = 16 * 1024
 
 /**
- * A body over the smallest size class, zstd-compressed before it is sealed:
- * once sealed it is random bytes no relay or socket compression shrinks.
- * The padding still hides its size within a class.
+ * One direction's bodies, as JSON: both ends add each, in the order sealed,
+ * as the wire delivers each once and in order.
  */
-function squeeze(json: Uint8Array): Uint8Array {
-  if (json.length <= 256) return json
-  const z = Bun.zstdCompressSync(json)
-  if (z.length + 5 >= json.length) return json
-  const out = new Uint8Array(z.length + 5)
+class History {
+  window = new Uint8Array(0)
+  /**
+   * Every body's bytes, before the window too: a body names its sender's, so
+   * one sealed after a body the relay refused does not open against
+   * another dictionary.
+   */
+  total = 0
+  add(json: Uint8Array): void {
+    this.total = (this.total + json.length) >>> 0
+    const all = new Uint8Array(this.window.length + json.length)
+    all.set(this.window)
+    all.set(json, this.window.length)
+    this.window = all.subarray(Math.max(0, all.length - HISTORY_BYTES))
+  }
+}
+
+/**
+ * A body zstd-compressed against what this side sealed before, before it
+ * is sealed: sealed, it is random bytes no relay or socket compression
+ * shrinks. The padding still hides its size within a class.
+ */
+function squeeze(json: Uint8Array, h: History): Uint8Array {
+  const z =
+    h.window.length === 0
+      ? Bun.zstdCompressSync(json)
+      : zstdCompressSync(json, { dictionary: h.window })
+  if (z.length + HEADER >= json.length) return json
+  const out = new Uint8Array(z.length + HEADER)
   out[0] = ZSTD
-  new DataView(out.buffer).setUint32(1, z.length)
-  out.set(z, 5)
+  const v = new DataView(out.buffer)
+  v.setUint32(1, h.total)
+  v.setUint32(5, z.length)
+  out.set(z, HEADER)
   return out
 }
 
-function unsqueeze(plain: Uint8Array): Uint8Array {
-  if (plain[0] !== ZSTD) return plain
-  const n = new DataView(plain.buffer, plain.byteOffset).getUint32(1)
-  return Bun.zstdDecompressSync(plain.subarray(5, 5 + n))
+/** Its JSON, unpadded; throws for a body sealed after one this side never opened. */
+function unsqueeze(plain: Uint8Array, h: History): Uint8Array {
+  if (plain[0] !== ZSTD) {
+    // JSON.stringify ends no body with a space: what trails it is padding.
+    let end = plain.length
+    while (end > 0 && plain[end - 1] === 0x20) end--
+    return plain.subarray(0, end)
+  }
+  const v = new DataView(plain.buffer, plain.byteOffset)
+  if (v.getUint32(1) !== h.total) throw new Error('sealed after a body never opened')
+  const z = plain.subarray(HEADER, HEADER + v.getUint32(5))
+  return h.window.length === 0
+    ? Bun.zstdDecompressSync(z)
+    : zstdDecompressSync(z, { dictionary: h.window })
 }
 
 /** What each part of one body is sealed to: its first nonce and how many parts. */
