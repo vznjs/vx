@@ -16,8 +16,6 @@ function serve(timing: string, answered: string): Bun.Server<undefined> {
     port: 0,
     hostname: '127.0.0.1',
     fetch: async (req) => {
-      if (new URL(req.url).pathname === '/v1/capabilities')
-        return Response.json({ maxUploadTimings: 100, maxQueryHashes: 100 })
       const { hashes } = (await req.json()) as { hashes: string[] }
       const rows = hashes.map((h) => `${JSON.stringify(h)}:${timing}`)
       await writeFile(answered, '')
@@ -41,10 +39,7 @@ describe("a history server's answer", () => {
     const body = `{"timings":{${Object.entries(answers)
       .map(([h, t]) => `"${h}":${t}`)
       .join(',')}}}`
-    const fake = (async (u: string) =>
-      new URL(u).pathname === '/v1/capabilities'
-        ? Response.json({ maxUploadTimings: 9, maxQueryHashes: 9 })
-        : new Response(body)) as unknown as typeof fetch
+    const fake = (async () => new Response(body)) as unknown as typeof fetch
     const client = new HistoryServer('https://h.example', NAMED, {}, fake)
     expect((await client.query(['refs/heads/main'], Object.keys(answers))).timings).toEqual(
       new Map([

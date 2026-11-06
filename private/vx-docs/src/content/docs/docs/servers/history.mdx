@@ -203,7 +203,7 @@ All under `/v1`
 | --- | --- |
 | `POST /v1/timings/upload` | `{ timings: [{ hash, durationMs, cores?, rssBytes? }] }`, up to 10 000, each added to the token's branch's row; `204` |
 | `POST /v1/timings/query` | `{ issuer, repository, refs, hashes }`, 1 to 8 refs and up to 10 000 hashes: each hash's row in the first ref that holds one |
-| `GET /v1/capabilities` | `{ maxUploadTimings, maxQueryHashes, maxQueryRefs }` |
+| `GET /v1/capabilities` | `{ maxUploadTimings, maxQueryHashes, maxQueryRefs }`, which every `/v1/timings` answer names as `vx-max-*` headers too |
 
 A run asks once, with every hash. A query answers
 `{ timings: { <hash>: { durationMs, cores, rssBytes, runs } } }`; a hash

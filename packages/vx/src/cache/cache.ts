@@ -367,7 +367,10 @@ function cantOpenIndex(dbFile: string, err: unknown): UserError | undefined {
 //   v51: runs.queued_ms, output_bytes, blocks, flaky_passes and
 //        flaky_failures — the rest of what a results row shows, so `vx
 //        last --sql` reads it. The cache KEY is unchanged.
-export const SCHEMA_VERSION = 'v51'
+//   v52: entry_stdout.stdout is a zstd frame of the log's UTF-8, not its
+//        text: stored logs were half a store's bytes, more than every
+//        inline artifact. The cache KEY is unchanged.
+export const SCHEMA_VERSION = 'v52'
 
 /**
  * An entry's key components as its one `entry_inputs` row (v34): JSON
@@ -443,14 +446,14 @@ function indexOfAnotherSchema(dbFile: string): boolean {
 }
 
 /**
- * Each asked key's entry row with its stdout, which lives apart (v29), none
- * stored reading as '', and its inline artifact's last use, null when the
+ * Each asked key's entry row with its stored stdout, which lives apart
+ * (v29), null when none was stored, and its inline artifact's last use, null when the
  * artifact is a file. Driven by the keys, so a key with an inline artifact
  * and no row (a reset kept it) answers too, `hash` null: the miss learns
  * there is something to adopt in the statement that found no entry.
  */
 const selectEntries = (keys: string): string =>
-  `SELECT q.value AS key, e.*, COALESCE(s.stdout, '') AS stdout, a.at AS inline_at FROM ${keys} q LEFT JOIN entries e ON e.hash = q.value LEFT JOIN entry_stdout s ON s.hash = e.hash LEFT JOIN artifacts a ON a.hash = q.value WHERE e.hash IS NOT NULL OR a.at IS NOT NULL`
+  `SELECT q.value AS key, e.*, s.stdout AS stdout, a.at AS inline_at FROM ${keys} q LEFT JOIN entries e ON e.hash = q.value LEFT JOIN entry_stdout s ON s.hash = e.hash LEFT JOIN artifacts a ON a.hash = q.value WHERE e.hash IS NOT NULL OR a.at IS NOT NULL`
 const SELECT_ENTRY = selectEntries('(SELECT ? AS value)')
 const SELECT_ENTRIES = selectEntries('json_each(?)')
 
@@ -616,7 +619,7 @@ interface EntryRow {
   exit_code: number
   duration_ms: number
   size_bytes: number
-  stdout: string
+  stdout: Uint8Array | null
   created_at: number
   accessed_at: number
   cpu_ms: number | null
@@ -636,7 +639,7 @@ function entryOf(row: LiveRow, fileRows: OutputFileRow[]): CacheEntry {
     ...(row.peak_rss_bytes !== null ? { peakRssBytes: row.peak_rss_bytes } : {}),
     outputFiles: fileRows.map((r) => r.path),
     outputRows: fileRows,
-    stdout: row.stdout,
+    stdout: storedLog(row.stdout),
     storedAt: new Date(row.created_at).toISOString(),
     source: 'local',
   }
@@ -1317,7 +1320,7 @@ export class Cache implements CacheLayer {
     )
     this.upsertStdout = lazyStatement(
       this.db,
-      'INSERT INTO entry_stdout(hash, stdout) VALUES (?, CAST(? AS TEXT)) ON CONFLICT(hash) DO UPDATE SET stdout = excluded.stdout',
+      'INSERT INTO entry_stdout(hash, stdout) VALUES (?, ?) ON CONFLICT(hash) DO UPDATE SET stdout = excluded.stdout',
     )
     this.deleteStdout = lazyStatement(this.db, 'DELETE FROM entry_stdout WHERE hash = ?')
     this.selectEntry = lazyStatement(this.db, SELECT_ENTRY)
@@ -2301,10 +2304,9 @@ export class Cache implements CacheLayer {
 
   private stdoutText(hash: string): string {
     const row = this.db.query('SELECT stdout FROM entry_stdout WHERE hash = ?').get(hash) as {
-      stdout: string | Uint8Array
+      stdout: Uint8Array
     } | null
-    if (row === null) return ''
-    return typeof row.stdout === 'string' ? row.stdout : utf8Decode.decode(row.stdout)
+    return storedLog(row?.stdout ?? null)
   }
 
   /** Remove one entry: its artifact first, then its rows (as `prune` orders them). */
@@ -3160,7 +3162,10 @@ export class Cache implements CacheLayer {
         Bun.hash.crc32(bytes),
       ])
     }
-    const stdoutText = scanned.stdout
+    // Compressed before the write lock is taken: logs are most of what the
+    // index held as text (v52).
+    const stdoutBlob =
+      scanned.stdout === '' ? null : await zstdCompress(utf8.encode(scanned.stdout))
 
     const [project, task] = splitTaskId(meta.taskId)
     const now = Date.now()
@@ -3258,14 +3263,8 @@ export class Cache implements CacheLayer {
         scanned.exec?.cpuMs ?? null,
         scanned.exec?.peakRssBytes ?? null,
       )
-      if (stdoutText === '') deleteStdout.run(hash)
-      // bun:sqlite drops a leading U+FEFF from a bound string; its UTF-8
-      // bytes, cast to TEXT, keep it.
-      else
-        upsertStdout.run(
-          hash,
-          stdoutText.startsWith('\uFEFF') ? utf8.encode(stdoutText) : stdoutText,
-        )
+      if (stdoutBlob === null) deleteStdout.run(hash)
+      else upsertStdout.run(hash, stdoutBlob)
       outputBytes = outputs.replaceFileRows(hash, outputFileRows)
       // INSERT OR IGNORE: identical inputs derive this same hash, so a
       // re-save's row is identical — keep the first, skip the rest.
@@ -3853,6 +3852,15 @@ function inTree(p: string | undefined, tree: string): boolean {
 }
 
 const utf8Decode = new TextDecoder('utf-8', { ignoreBOM: true })
+
+/**
+ * An `entry_stdout` row's log (v52): a zstd frame of its UTF-8, which keeps
+ * a leading U+FEFF a bound string loses. Null, no row, reads as ''. The
+ * index is vx's own, so the frame is trusted, as a tree's files are.
+ */
+export function storedLog(blob: Uint8Array | null): string {
+  return blob === null ? '' : utf8Decode.decode(Bun.zstdDecompressSync(blob))
+}
 
 /**
  * Whether an artifact entry names one of the task's declared outputs, as

@@ -1006,10 +1006,13 @@ Skipped when:
   an older build is cached and restored everywhere. A retry cleans as
   usual; a hit's restore still removes what its entry does not hold.
 
-A declared output the process cannot remove (a `dist/` another user
-wrote, a read-only checkout) fails the task with `cannot remove declared
-output <path>: EACCES — …`, and a restore that cannot write into such a
-directory with `restore of <hash> into <dir> could not write its outputs
+A directory of this user's that withholds its own write (a task's
+`chmod 555 dist/ro`, which a hit restores too) gets owner write for the
+clean's remove, then its mode back, as a restore's write into it does.
+A declared output the process cannot remove even so (a `dist/` another
+user wrote, a read-only checkout) fails the task with `cannot remove
+declared output <path>: EACCES — …`, and a restore that cannot write
+into such a directory with `restore of <hash> into <dir> could not write its outputs
 (EACCES: …)`: the environment's failure, reported plainly, never as an
 internal error or a corrupt artifact.
 
@@ -1712,7 +1715,7 @@ keep). The artifacts stay: each is indexed again from its own bytes
 when its task next asks for its key (below).
 
 ```sql
--- src/cache/schema.ts (SCHEMA_VERSION = 'v51', in cache.ts)
+-- src/cache/schema.ts (SCHEMA_VERSION = 'v52', in cache.ts)
 -- With a shared store, entries, entry_stdout, output_files, entry_inputs,
 -- store_meta, task_durations, task_outcomes, blob_sizes, plugin_blobs and remote_hits live in its store.db, attached as `store`; the rest is
 -- the workspace's cache.db. A named cache dir holds all of them.
@@ -1741,7 +1744,7 @@ CREATE TABLE entries (
 -- of 1 MB cost the run's close 125-150 ms.
 CREATE TABLE entry_stdout (
   hash   TEXT PRIMARY KEY,         -- FK entries(hash) ON DELETE CASCADE
-  stdout TEXT NOT NULL             -- captured stdout (pure-SQL hit replay); no row = ''
+  stdout BLOB NOT NULL             -- v52: zstd frame of the captured stdout's UTF-8; no row = ''
 );
 
 CREATE TABLE runs (

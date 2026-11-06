@@ -114,7 +114,9 @@ The Bun server and its image do not start without an `ALLOW`.
 | `MAX_UPLOAD_BYTES` | 100 MB | the largest result it takes |
 | `EXPIRY_DAYS` | unset: every lookup asks R2 | Workers: your bucket's expiry in days, so a repeat check skips R2 ([How it stores results](#how-it-stores-results)) |
 
-vx asks the server for its limits once per run and stays within them.
+vx learns the limits from the server's answers. A check over them is
+refused and sent again in smaller ones.
+
 On Workers each lookup is one subrequest, so a higher
 `MAX_CHECK_HASHES` must fit your Cloudflare plan.
 
@@ -259,8 +261,8 @@ Turbo's routes under `/v1`, each read naming the branches it reads
 
 | Route | Does |
 | --- | --- |
-| `GET /v1/artifacts/<hash>` | one result's bytes, its branch in `vx-scope` |
-| `HEAD /v1/artifacts/<hash>` | whether a branch holds it, and its size |
+| `GET /v1/artifacts/<hash>` | one result's bytes, from the first of the branches in `vx-scope` holding it |
+| `HEAD /v1/artifacts/<hash>` | whether one of those branches holds it, and its size |
 | `PUT /v1/artifacts/<hash>` | one result's bytes, to the token's branch |
 | `POST /v1/artifacts` | `{ hashes, scopes }`: each hash's size and the first branch holding it |
 | `GET /v1/capabilities` | the limits |

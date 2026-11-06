@@ -21,7 +21,7 @@ export interface RunResult {
   cpuMs?: number // user + system, from Bun.spawn().resourceUsage()
   peakRssBytes?: number // maxRSS (bytes) when it rose above vx's own RSS high-water mark; on Linux else the tree's peak `watchTree` saw, if a look landed
   spawnFailed?: true // Bun.spawn threw: the 127 is vx's, no shell ran
-  leftRunning?: true // the drain bound cut a pipe a leftover process held: the result is not saved
+  leftRunning?: true // a leftover held a pipe past the drain bound or stayed in the group: not saved
 }
 
 // Which streams are retained onto the result. Both default to true.

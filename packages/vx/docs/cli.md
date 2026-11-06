@@ -68,7 +68,9 @@ in scope, the run and `--dry` both refuse, exit 1, and print to stderr:
 The refusal adds what helps:
 
 - `Did you mean <task>?` when a declared task (or, for `pkg#task`, a
-  runnable one) is within two edits.
+  runnable one) is within two edits. A `pkg` that is a project's
+  directory, relative to the root, names that project: `p/a#build` hints
+  `alpha#build` for `alpha` at `p/a`.
 - Otherwise what exists: `Tasks: build, test.`, `No
 project is named zzz; projects: a, b.`, or `a's tasks: build, test.`
 - Then ``A run reads the lock: after editing a
@@ -268,7 +270,9 @@ even though no plugin links `e2e` to `app`. There is no
 
 A filter that names no project (`...`, a bare `!`, an empty `{}`) is
 refused, and so is a path that climbs out of the root (`../`, `{..}`)
-or one holding a control character.
+or one holding a control character, and `^...` before a git ref
+(`app^...[main]`, which neither Turbo nor pnpm reads: `app[main]^...` is
+the dependencies of a changed app).
 One whose pattern matched but selected nothing says what it matched:
 `no projects selected: filter "...^core" matched core, and no
 project depends on it`.
@@ -706,7 +710,9 @@ So `--no-cache` always wins over `--force`. The common cases:
   background, which keys it holds; one that cannot is asked `has` per
   key before its upload. Held keys are not uploaded again (a probe that
   fails uploads, as before). Output globs ARE cleaned before each task,
-  so the disk holds this run's outputs.
+  so the disk holds this run's outputs. The next plain run then restores
+  a kept entry once (`↓`, not `✓`): the entry holds the earlier run's
+  bytes, and nothing proves this run wrote the same ones.
 
 `--cache-policy=<spec>` is a comma-separated list of `<layer>:<flags>`
 segments. `layer` is `local` or `remote`; `flags` is any subset of `r`
@@ -1217,9 +1223,11 @@ $ vx run build lint --affected=main --dry
 `kind` is `input` (a changed `file` is a declared input), `project` (its
 project changed and the task reads it whole: a task with no `inputs`, or a
 changed `file` no task of the project declares, often an output git does not
-ignore; no `file` for a config import), `workspace` (a workspace-wide
-`file` changed: the workspace config, or a root file a plugin claims such
-as a lockfile, reached every task of the project),
+ignore; no `file` for a config import), `workspace` (a `file` no project
+owns changed and reached every task of the project, shown as `changed
+(every task in its project)`: the workspace config reaches every project;
+a root file a plugin claims, such as a lockfile, or a directory it names
+reaches only the projects whose digest moved),
 `package` (a `^` edge passes a changed `project` with no such task),
 `named` (`pkg#task` beside a bare task) or `selected` (another filter
 selected its project). `via` is the `dependsOn` chain, nearest first, to
@@ -1327,6 +1335,9 @@ and forced to exit non-zero. No cache is written for a failed task. The
 task's `SANDBOX VIOLATIONS` section ends with a dimmed `fix:` line,
 the grants that would have allowed each denial, project-relative:
 `fix: exec.sandbox.allow: { read: ['tsconfig.json'], write: ['dist/'] }`.
+On Linux a refused open is a read or a write by the flags it asked
+with: a missing file opened to read is a read grant, never a file vx
+would create. A host `deny.network` holds gets no network grant.
 A write grants the top directory it landed in, so the next file there
 passes too, unless `inputs.files` reads that directory: then it
 grants the file alone, so the task cannot write its own inputs; a read the output depends on is a key input as well, and
@@ -2842,7 +2853,8 @@ Unknown project / task names exit `1` with the same near-miss hint
 every verb gives (two edits, or a partial name); a bare name that is
 neither reads `unknown project or task: "buidl" — did you mean build?`,
 and a `pkg#task` hints whole specs (`unknown task: "app#bui" — did you
-mean app#build?`). With nothing near, it lists what exists instead: `unknown
+mean app#build?`). A project's directory, relative to the root, hints
+that project (`p/a` hints `alpha`, `p/a#build` `alpha#build`). With nothing near, it lists what exists instead: `unknown
 project: "zzz"; projects: app, lib`, `; its tasks: app#build, app#test`,
 or `; projects and tasks: …` (M-57).
 
@@ -2891,7 +2903,7 @@ $ vx info
   memory            13 GB usable — cgroup limit; the machine has 16 GB
   cache dir         /work/repo/.vx/cache (8.2 MB, this workspace's run history)
   cache store       /home/me/.vx/3f2a9c1e7b4d5a60/cache (1.3 GB, shared by this workspace's checkouts)
-  cache versions    keys vx-cache-v51 · index schema v51
+  cache versions    keys vx-cache-v51 · index schema v52
   cache entries     42 (1.3 GB)
   orphans           3 artifacts (12 MB) the index does not know — `vx cache clean` reaps them
   task runs (24h)   7 (5 cache hits)

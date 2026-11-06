@@ -93,6 +93,10 @@ const KNOWN = new Set([
   'c92c5272220be7ce8b3371e485948819e3b5a6d8',
   // #4988's, 72 chars; the branch takes no force push.
   'ee28e8170e812e6596777ce3e0ddcdbe8b8a8af3',
+  // #5048's, 72 chars; the branch takes no force push.
+  '3cec53022bde9f3c63592509a1f2ee6b60087acd',
+  // #5048's, 78 chars; the branch takes no force push.
+  '62e8ba1558da069b7e201a43de7a8f577c61f6ad',
   // #5049's, 72 chars; the branch takes no force push.
   '0264bf0118d8c77550f1b764bb345dc5ba2d9dbf',
 ])

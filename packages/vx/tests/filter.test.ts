@@ -717,6 +717,24 @@ describe('a selector narrowed by a git range (D-44)', () => {
     ])
   })
 
+  // Neither Turbo nor pnpm reads `^...` before a ref (both keep it in the
+  // name). vx dropped it from `{dir}^...[ref]`, selecting the inverse, and
+  // refused the name and tag spellings as a no-match.
+  it('`<sel>^...[ref]` is refused in every spelling, naming the forms that exist', () => {
+    for (const raw of [
+      '{libs/core}^...[HEAD]',
+      '@s/lib^...[HEAD]',
+      'libs/core^...[HEAD]',
+      'tag:x^...[HEAD]',
+      '!core^...[HEAD]',
+    ])
+      expect(() => parseFilter(raw, ROOT)).toThrow(
+        `filter "${raw}" puts ^... before a git ref, which no form reads`,
+      )
+    // CONTROL: the walk after the ref is the dependencies of the changed ones.
+    expect(sel('@s/*[HEAD]^...', ['@s/lib'])).toEqual(['core'])
+  })
+
   it('CONTROL: an unbraced path keeps its brackets as a glob class', () => {
     const f = parseFilter('./libs/[c]ore', ROOT)
     expect([f.gitSince, f.isPath]).toEqual([undefined, true])

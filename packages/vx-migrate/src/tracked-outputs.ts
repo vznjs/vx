@@ -275,20 +275,16 @@ export function spareTrackedOutputs(
       ] as const) {
         const globs = outputs[key]
         if (!Array.isArray(globs) || globs.length === 0) continue
-        let strings = globs.filter((g): g is string => typeof g === 'string')
+        const strings = globs.filter((g): g is string => typeof g === 'string')
         // An output naming one committed file (eslint's
-        // `eslint-suppressions.json`) is a source: the entry goes, and so
-        // does the `!` a reader's inputs got for it, or every reader ran
-        // uncached (hono).
+        // `eslint-suppressions.json`, a codegen's `gen.ts`) is also a
+        // source: the `!` a reader's inputs got for it goes, or every
+        // reader ran uncached (hono). The entry stays: dropped, a task
+        // that rewrites the file never saved.
         const rootedOf = (g: string) => (key === 'files' && rel !== '' ? `${rel}/${g}` : g)
-        const sources = new Set(
-          strings.filter((g) => isLiteralPattern(g) && trackedSet.has(rootedOf(g))),
-        )
-        if (sources.size > 0) {
-          strings = strings.filter((g) => !sources.has(g.startsWith('!') ? g.slice(1) : g))
-          outputs[key] = strings
-          for (const g of sources) unhide(key === 'files' ? p : null, rootedOf(g))
-        }
+        for (const g of strings)
+          if (isLiteralPattern(g) && trackedSet.has(rootedOf(g)))
+            unhide(key === 'files' ? p : null, rootedOf(g))
         const hit = coveredTracked(strings, base)
         if (hit.length > 0) hits.push([key, hit])
       }

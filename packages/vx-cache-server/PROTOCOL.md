@@ -83,20 +83,23 @@ An artifact lives in one scope, and a key names both: `{ scope, hash }`.
 does (`refs/heads/main` is `refs%2Fheads%2Fmain`), at most 512
 characters. Any other spelling (a plain ref, another encoding of it, a
 name not under `refs/`) is `400`, so one ref is one scope.
-`GET` and `HEAD` name one scope in `vx-scope`; a check names
-its scopes in its body.
-`hash` is 1 to 128 hex digits. A read is exact: the server answers the scope named and no
-other, so a client that wants its branch's work and then main's asks
-for both. Every read names a scope.
+`GET` and `HEAD` name their scopes in `vx-scope`, in the order to read
+them (`<scope>, <scope>`), up to `maxCheckHashes`; a check names its
+scopes in its body.
+`hash` is 1 to 128 hex digits. A read is exact: the server answers the scopes named and no
+other, the first that holds the hash, so a client that wants its
+branch's work and then main's names both. Every read names a scope.
 
 An artifact is immutable. A server may expire one at any time: a
 download after a check that held it may miss, which a client reads as a
 miss.
 
 `GET /v1/artifacts/<hash>` (as Turbo's `GET /v8/artifacts/<hash>`) with
-`vx-scope: <scope>`: `200` with the bytes (`application/octet-stream`,
+`vx-scope: <scope>, …`: `200` with the bytes of the first scope that
+holds them (`application/octet-stream`; from the first scope named,
 `Cache-Control: private, max-age=31536000, immutable`: the bytes under a
-key never change), or `404`. `HEAD` is the same with no bytes, and names
+key never change; from a later one, `private, no-cache`: an earlier
+scope may come to hold the hash), or `404`. `HEAD` is the same with no bytes, and names
 the size as `Content-Length`. A download may come chunked with no
 `Content-Length` (Bun.serve sends any streamed answer so), so a body cut
 short can end as cleanly as a whole one: a client checks the bytes
@@ -138,7 +141,12 @@ An operator sets each; `GET /v1/capabilities` names them:
 { "maxCheckHashes": 500, "maxUploadBytes": 100000000 }
 ```
 
-A client keeps to the limits the server names.
+A client keeps to the limits the server names. It need not ask them
+apart: every `/v1/artifacts` answer names them, so a client may send its
+first check whole and, refused for its size (`400` past
+`maxCheckHashes`, `413` past the bytes they take), send it again in
+chunks of the limits its refusal names. vx does: a run the local cache
+answers asks the server nothing.
 
 ## Errors
 

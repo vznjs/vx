@@ -37,7 +37,7 @@ import {
   resolveOutputs,
   stampOutputs,
 } from '../src/cache/inputs.js'
-import { UserError, relPosix } from '../src/util/index.js'
+import { relPosix } from '../src/util/index.js'
 import { skipAsRoot } from './helpers/nonroot-gate.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { run } from './helpers/orchestrator.js'
@@ -77,21 +77,13 @@ describe('cleanOutputs — strict output-ownership contract', () => {
 
   // Root removes anything, so the case skips there — unless VX_REQUIRE_NONROOT says CI
   // expected to run it (helpers/nonroot-gate.ts).
-  it.skipIf(skipAsRoot("an output it cannot remove is the environment's failure, named as such"))(
-    "an output it cannot remove is the environment's failure, named as such",
+  it.skipIf(skipAsRoot("an output in this user's read-only directory is removed"))(
+    "an output in this user's read-only directory is removed, and the emptied directory pruned",
     async () => {
-      await write(path.join(projectDir, 'dist', 'a.js'))
-      const dist = path.join(projectDir, 'dist')
-      chmodSync(dist, 0o500)
-      try {
-        const clean = cleanOutputs({ projectDir, outputs: ['dist/**'], nestedProjectDirs: [] })
-        await expect(clean).rejects.toBeInstanceOf(UserError)
-        await expect(
-          cleanOutputs({ projectDir, outputs: ['dist/**'], nestedProjectDirs: [] }),
-        ).rejects.toThrow(/^cannot remove declared output dist\/a\.js: EACCES — /)
-      } finally {
-        chmodSync(dist, 0o700)
-      }
+      await write(path.join(projectDir, 'dist', 'ro', 'a.js'))
+      chmodSync(path.join(projectDir, 'dist', 'ro'), 0o500)
+      await cleanOutputs({ projectDir, outputs: ['dist/**'], nestedProjectDirs: [] })
+      expect(await readdir(path.join(projectDir, 'dist'))).toEqual([])
     },
   )
 
@@ -114,17 +106,22 @@ describe('cleanOutputs — strict output-ownership contract', () => {
       expect(await readFile(path.join(projectDir, 'src', 'x.js'), 'utf8')).toBe('source')
     })
 
-    it.skipIf(skipAsRoot(`${n} outputs: one it cannot remove is named`))(
-      `${n} outputs: one it cannot remove is named`,
+    it.skipIf(skipAsRoot(`${n} outputs: one in a read-only directory`))(
+      `${n} outputs: one in this user's read-only directory is removed, its mode given back`,
       async () => {
         for (let i = 0; i < n - 1; i++) await write(path.join(projectDir, 'dist', `a${i}.js`))
         await write(path.join(projectDir, 'locked', 'z.js'))
+        await write(path.join(projectDir, 'locked', 'kept.txt'))
         const locked = path.join(projectDir, 'locked')
         chmodSync(locked, 0o500)
         try {
-          await expect(
-            cleanOutputs({ projectDir, outputs: ['dist/**', 'locked/**'], nestedProjectDirs: [] }),
-          ).rejects.toThrow(/^cannot remove declared output locked\/z\.js: EACCES — /)
+          await cleanOutputs({
+            projectDir,
+            outputs: ['dist/**', 'locked/*.js'],
+            nestedProjectDirs: [],
+          })
+          expect(await readdir(locked)).toEqual(['kept.txt'])
+          expect((await stat(locked)).mode & 0o777).toBe(0o500)
         } finally {
           chmodSync(locked, 0o700)
         }

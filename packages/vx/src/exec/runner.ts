@@ -20,6 +20,7 @@ import {
 import {
   type Child,
   closeSignalChannel,
+  groupAlive,
   holdGroups,
   killTree,
   releaseGroup,
@@ -58,9 +59,10 @@ export interface RunResult {
   /** `Bun.spawn` threw: no shell ran, so its 127 is vx's and says nothing
    *  about the command (A-41). */
   spawnFailed?: true
-  /** The shell exited while a process it started still held its
-   *  stdout/stderr past the drain bound (`POST_EXIT_CUT_LINE`): that process
-   *  may still write the task's outputs, so the result is not saved. */
+  /** The shell exited while a process it started still ran: one holding
+   *  stdout/stderr past the drain bound (`POST_EXIT_CUT_LINE`), or one left
+   *  in the task's process group. It may still write the task's outputs,
+   *  so the result is not saved. */
   leftRunning?: true
 }
 
@@ -1196,6 +1198,10 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   const cutLine = ends.own(POST_EXIT_CUT_LINE)
   if (cut) opts.onStderr?.(cutLine)
   const stderr = cut ? streamed + cutLine : streamed
+  // A leftover with its stdio sent elsewhere holds no pipe for the drain to
+  // cut: its group, still not empty, is what says so. One kill(0) when the
+  // group is empty, as it is after any task that waits for what it starts.
+  const left = cut || groupAlive(proc)
   opts.liveChildren?.delete(proc)
   releaseGroup(proc)
   const exited = proc.exitCode ?? (proc.signalCode ? signalExitCode(proc.signalCode) : 1)
@@ -1226,7 +1232,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
     stderr,
     ...(proc.signalCode != null ? { signal: proc.signalCode } : {}),
     ...(timeout.timedOut() ? { timedOut: true } : {}),
-    ...(cut ? { leftRunning: true } : {}),
+    ...(left ? { leftRunning: true } : {}),
     ...usageOf(proc, watch?.stop()),
   }
 }

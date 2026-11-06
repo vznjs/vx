@@ -37,6 +37,7 @@ export {
   racyWindowMs,
   type SchemaReset,
   SCHEMA_VERSION,
+  storedLog,
   vxCacheEntries,
 } from './cache.js'
 export { ABSENT_INPUT, absentOr, CACHE_VERSION, foldHead } from './key-fold.js'

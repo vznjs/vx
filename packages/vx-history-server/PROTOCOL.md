@@ -90,6 +90,11 @@ flaky, by any ref:
 ## Limits and errors
 
 `GET /v1/capabilities`: `{ "maxUploadTimings": 10000, "maxQueryHashes": 10000, "maxQueryRefs": 8 }`.
+Every `/v1/timings` answer, a refusal too, names them as
+`vx-max-upload-timings`, `vx-max-query-hashes` and `vx-max-query-refs`,
+so a client need not ask them apart: vx sends a run's query and upload
+whole, and one refused for its size again in parts of the limit its
+refusal names.
 A server takes both at their limits, each hash 512 characters: an
 upload body up to 17 960 100 bytes, a query's up to 6 010 000. Past
 that, `413`.

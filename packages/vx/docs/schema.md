@@ -1511,7 +1511,7 @@ interface SandboxConfig {
 }
 
 interface SandboxGrants {
-  read?: readonly string[] // paths or globs, project-relative or absolute
+  read?: readonly string[] // paths or globs, project-relative, `~/`-relative or absolute
   write?: readonly string[] // paths or globs; a write grant is readable too
   network?: true | readonly string[] // an allowlist of domains; `true` adds none (below)
   systemInfo?: readonly string[] // sysctl names, e.g. 'vfs.disk-space'; each grants system-info and sysctl-read (macOS)
@@ -1559,6 +1559,11 @@ exec: {
   },
 }
 ```
+
+**Home.** In `allow` and `ignore`, `~` and `~/…` are the home
+directory; `~user/…` is refused when the config loads, naming the entry:
+vx does not look up another user's home (until 2026-11-06 `~root/x/` was
+read as `$HOME/root/x` and created there).
 
 **Globs.** `read` and `write` accept patterns. On macOS the pattern
 reaches the policy and matches files created during the run; on Linux a
@@ -1650,7 +1655,9 @@ own in front of it, so the task's list is checked first (until
 until 2026-11-06 the run's proxy refused every task's denies to every
 task. A refused request is a violation on both
 platforms, `deny network-outbound <host>:<port> (<reason>)` from the
-proxy, and fails the task even when it survived the refusal;
+proxy, and fails the task even when it survived the refusal (its `fix:`
+line names no `allow.network` entry for a host `deny.network` holds,
+which no allow lifts);
 `ignore: { network: ['<host>:<port>'] }` silences one, matched as the
 proxy matches: case-blind, a trailing dot dropped (until 2026-10-08 the
 client's spelling, `EXAMPLE.Com` or `example.com.`, escaped it). Until

@@ -38,6 +38,7 @@ export function planRun(options: RunOptions): Promise<RunPlan>
 export const CYCLE_INTERRUPT: 'vx:cycle-interrupt'
 export function nxProjectTarget(spec: string, projects): string | undefined // Nx's `web:build` as `web#build`, when web declares build
 export function projectNamed(typed: string, projects): string | undefined // `cart` as `@scope/cart`, when that is the one such project
+export function projectAtDir(typed: string, root: string, projects): string | undefined // the project whose directory `typed` is: `alpha` for `p/a`
 export function shouldShortCircuit(nodes, policy): boolean
 export function invocationCommand(line: readonly string[] | string): string // the args after `--` as `<n arguments>`; a string is split as sh splits words
 export function runLockPath(workspaceRoot: string, dir?: string): string // the lock directory
