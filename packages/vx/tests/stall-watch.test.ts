@@ -31,8 +31,8 @@ it('a frozen test process says how long it ran nothing, and when', async () => {
   expect(await stderrOf(1_600)).toMatch(
     /^stall: this test process's event loop did not turn for 1\.\d s \(\d\d:\d\d:\d\d\.\d{3} to \d\d:\d\d:\d\d\.\d{3} UTC\)/,
   )
-}, 15_000)
+})
 
 it('CONTROL: a process that keeps running says nothing', async () => {
   expect(await stderrOf(0)).toBe('')
-}, 15_000)
+})
