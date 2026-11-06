@@ -47,7 +47,7 @@ describe('formatPlanText', () => {
     expect(out).not.toContain('a#ci') // group hidden
     expect(out).toMatch(/ ⇢ +cached +local +0 local +a#lint\n/)
     expect(out).toMatch(/ ⇣ +cached +remote +0 local +a#test\n/)
-    expect(out).toMatch(/ ⏺\uFE0E +run +miss +0 local +a#build\n/)
+    expect(out).toMatch(/ ⏺\uFE0E +— run +miss +0 local +a#build\n/)
     expect(out).toContain('3 planned')
     expect(out).toContain('2 cache hits (1 local, 1 remote)')
     expect(out).toContain('1 would run')
@@ -182,6 +182,8 @@ describe('formatPlanText — time prediction', () => {
     const out = formatPlanText(plan)
     expect(out).toContain('predicted  ~1.20s wall')
     expect(out).toContain('1 task without history (+?)')
+    // Its usual cell is unknown, as a run's row says it, not blank.
+    expect(out.split('\n').find((l) => l.endsWith(' a#fresh'))).toMatch(/^ \S+ +\u2014 run /)
   })
 
   it('omits the footer when EVERY would-run task is unknown (nothing to say)', () => {

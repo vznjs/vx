@@ -588,8 +588,8 @@ export interface PlannedRow {
   tone: Style
   cache: string
   cacheTone: Style | ''
-  /** Its usual time, from history. */
-  usualMs?: number
+  /** Its usual time, from history; null for a task that runs and history never timed. */
+  usualMs?: number | null
   /** What a remote hit would download. */
   outputBytes?: number
   /** How many tasks are downstream of it. */
@@ -605,7 +605,12 @@ export function planList(rows: readonly PlannedRow[]): ui.Block {
     lines: (c) => [
       formatRunningHeader(c),
       ...rows.map((r) => {
-        const usual = r.usualMs === undefined ? undefined : formatExpected(r.usualMs)
+        const usual =
+          r.usualMs === undefined
+            ? undefined
+            : r.usualMs === null
+              ? UNKNOWN
+              : formatExpected(r.usualMs)
         const row = formatTaskRow(
           paint(r.tone, r.glyph, c),
           null,

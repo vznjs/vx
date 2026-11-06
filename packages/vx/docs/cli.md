@@ -72,8 +72,8 @@ The refusal adds what helps:
 - Otherwise what exists: `Tasks: build, test.`, `No
 project is named zzz; projects: a, b.`, or `a's tasks: build, test.`
 - With no task declared anywhere (right after `vx init`): ``No project
-  declares a task yet: add one under `tasks` in a vx.config, then run
-  `vx lock`.``
+declares a task yet: add one under `tasks` in a vx.config, then run
+`vx lock`.``
 - Otherwise ``A run reads the lock: after editing a
 vx.config, run `vx lock`.``, since a task added since the last lock is not in it.
 - `Only projects outside the selection declare <name> — pass
@@ -1213,8 +1213,8 @@ id, and its JSON object carries an `affected` reason:
 
 ```
 $ vx run build lint --affected=main --dry
- ⏺︎                 run     miss                                0 local        app#build  affected: packages/lib/src/a.ts changed (an input), via lib#build
- ⏺︎                 run     no-cache                            0 local        lib#lint  affected: packages/lib/src/a.ts changed (in its project)
+ ⏺︎               — run     miss                                0 local        app#build  affected: packages/lib/src/a.ts changed (an input), via lib#build
+ ⏺︎               — run     no-cache                            0 local        lib#lint  affected: packages/lib/src/a.ts changed (in its project)
 ```
 
 `kind` is `input` (a changed `file` is a declared input), `project` (its
@@ -3064,9 +3064,9 @@ app#build — run 01a1193a-7b39-75a9-870b-5c03e26d7104
 
 ### Arguments
 
-| Argument   | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PKG#TASK` | one project's task                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Argument   | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PKG#TASK` | one project's task                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `TASK`     | a bare task name: inside a project that declares it, that project's (`no runs of <project>#<task> yet` when it never ran), as `vx run` picks; elsewhere it resolves when exactly one project ran it (several → an error listing the candidates; unknown → include-match suggestions, or, with none near, a pointer to `vx last --list`, or word that nothing has run yet; after runs of only groups, which record no task row, that no run executed a task and to ask about one the group depends on, X-50) |
 
 ### Options
