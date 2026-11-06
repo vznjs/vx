@@ -666,8 +666,8 @@
   },
   {
     "key": "inputs: {externalDependencies}",
-    "status": "not-supported",
-    "reason": "Dropped: vx keys every task on the lockfile already. Silent for names the root package.json declares; a TODO names any other."
+    "status": "mapped",
+    "reason": "Core keys no lockfile. With a @vzn/vx-lockfile plugin, which keys the project's and the root's dependencies, dropped: silent for names the root package.json declares, a TODO names any other. With no plugin claiming the lockfile, the task keys the whole file."
   },
   {
     "key": "inputs: {dependentTasksOutputFiles, transitive}",

@@ -249,6 +249,13 @@ export interface MapNxOptions {
    * `nx-exec`. The live plugin's only: a migration writes no function.
    */
   readonly executors?: NxExecutors
+  /**
+   * The root lockfile when no plugin claims it (the live plugin's only):
+   * core keys no lockfile, so an `externalDependencies` input keys the
+   * file. Absent, a lockfile plugin keys the dependencies (a migration
+   * declares one).
+   */
+  readonly lockfile?: string
 }
 
 /** One target of a translated executor, as the graph resolved it. */
@@ -867,6 +874,7 @@ function buildTask(
     outputs: nxProjectOutputs(nodeMap[nodeName]?.data?.targets, projectRel, projectName),
     ...(opts.tracked === undefined ? {} : { tracked: opts.tracked }),
     rootDeps: opts.rootDeps,
+    ...(opts.lockfile === undefined ? {} : { lockfile: opts.lockfile }),
   }
   expandNxInputs(target.inputs ?? [], upstream.namedOf(nodeName), at, inputs, todos)
   const cacheWanted =

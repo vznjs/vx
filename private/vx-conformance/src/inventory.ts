@@ -639,6 +639,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-migrate/nx-exec-stale-graph',
     'vx-migrate/nx-executors',
     'vx-migrate/nx-export-lerna',
+    'vx-migrate/nx-external-dependencies',
     'vx-migrate/nx-extglob-outputs',
     'vx-migrate/nx-forward-todo',
     'vx-migrate/nx-graph-edges',
