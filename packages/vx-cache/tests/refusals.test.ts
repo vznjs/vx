@@ -31,6 +31,19 @@ it('refuses a bad option as a UserError', () => {
   expect(nameOf(() => resolveVxCacheConfig({ ...NAMED, url: 'https://c.example/v1' }, {}))).toBe(
     "UserError: vxCache(): url is the server's base, without /v1: https://c.example",
   )
+  // Each route is appended to the url: past a `?` or `#` it was query or
+  // fragment, and every request asked the server's root.
+  for (const url of ['https://c.example/?k=1', 'https://c.example#x', 'https://c.example/?k=1/'])
+    expect(nameOf(() => resolveVxCacheConfig({ ...NAMED, url }, {}))).toBe(
+      `UserError: vxCache(): url takes no ?query or #fragment: each route is appended to it, got ${url.replace(/\/+$/, '')}`,
+    )
+  // A scheme is any case and a url is one the request can parse.
+  expect(resolveVxCacheConfig({ ...NAMED, url: 'HTTPS://c.example' }, {})?.url).toBe(
+    'HTTPS://c.example',
+  )
+  expect(nameOf(() => resolveVxCacheConfig({ ...NAMED, url: 'https://c ex' }, {}))).toBe(
+    'UserError: vxCache(): url must be https (http only to 127.0.0.1, ::1 or localhost), got https://c ex',
+  )
   expect(
     nameOf(() =>
       resolveVxCacheConfig({ ...NAMED, url: 'https://c.example', headers: { 'a b': 'x' } }, {}),
