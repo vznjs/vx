@@ -18,7 +18,7 @@ import { planRun } from '../src/orchestrator/index.js'
 import { CORE_INDEX, localWorkspaceSource } from './helpers/local-workspace.js'
 import { pluginSource } from './helpers/plugin.js'
 
-const TIMEOUT = 20_000
+const TIMEOUT = 30_000
 const LOCK = '.vx/dependencies.lock.json'
 const g = globalThis as { __vxParses?: number; __vxNoParse?: boolean }
 let root: string

@@ -25,7 +25,7 @@ import {
 import type { VxPlugin } from '../src/orchestrator/index.js'
 import type { TaskNode } from '../src/graph/index.js'
 
-const TIMEOUT = 20_000
+const TIMEOUT = 30_000
 // A graph stage breaks the graph `vx lock` builds too, so the lock refuses first.
 const LOCK_REFUSED = '✗ vx lock  lock not written\n\n  '
 let root: string

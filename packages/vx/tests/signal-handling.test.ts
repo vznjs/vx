@@ -30,7 +30,7 @@ process.env['VX_TEST_KILL_GRACE'] = '200ms'
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const SIGNALS = path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'signals.ts')
 const KILL_TREE = path.resolve(import.meta.dir, '..', 'src', 'exec', 'kill-tree.ts')
-const TIMEOUT = 20_000
+const TIMEOUT = 30_000
 
 interface Fixture {
   root: string

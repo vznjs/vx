@@ -156,20 +156,49 @@ describe('every test file is launched by a task', () => {
 
   // A test's own timeout argument overrides the flag: 17 tests ran on 3
   // to 8 s of wall that way (2026-11-05). The test is found by walking
-  // back from its closing `}, N)` to the line that opened it.
+  // back from its closing `}, N)` to the line that opened it. N may be a
+  // file's own `const NAME = N`: 18 files held their tests to 10-20 s that
+  // way, and a Mac worker that stalled ~20 s failed one (2026-11-06).
   it('no test sets its own timeout under 30 s', () => {
     const short: string[] = []
     for (const top of ['packages', 'private']) {
       for (const file of new Bun.Glob('*/tests/**/*.test.ts').scanSync(path.join(repo, top))) {
-        const lines = readFileSync(path.join(repo, top, file), 'utf8').split('\n')
+        const text = readFileSync(path.join(repo, top, file), 'utf8')
+        const consts = new Map(
+          [...text.matchAll(/^const (\w+) = ([\d_]+)$/gm)].map((c) => [
+            c[1]!,
+            Number(c[2]!.replaceAll('_', '')),
+          ]),
+        )
+        const ms = (arg: string): number =>
+          /^[\d_]+$/.test(arg) ? Number(arg.replaceAll('_', '')) : (consts.get(arg) ?? Infinity)
+        const lines = text.split('\n')
         lines.forEach((line, i) => {
-          const m = /^\s*\}, *([\d_]+)\)\s*$/.exec(line)
-          if (m === null || Number(m[1]!.replaceAll('_', '')) >= 30_000) return
+          // One line: `it('…', fn, N)`.
+          const one = /^\s*(it|test)(\.\w+)*\(.*, *(\w+)\)\s*$/.exec(line)
+          if (one !== null && ms(one[3]!) < 30_000) {
+            short.push(`${top}/${file}:${i + 1}`)
+            return
+          }
+          // `}, N)`, or as the formatter breaks it: `},` / `N,` / `)`.
+          const arg =
+            /^\s*\}, *(\w+)\)\s*$/.exec(line)?.[1] ??
+            (/^\s*\},?\s*$/.test(line) && /^\s*\)/.test(lines[i + 2] ?? '')
+              ? /^\s*(\w+),?\s*$/.exec(lines[i + 1] ?? '')?.[1]
+              : undefined)
+          if (arg === undefined || ms(arg) >= 30_000) return
           let depth = 0
           for (let j = i; j >= 0; j--) {
             depth += lines[j]!.split('}').length - lines[j]!.split('{').length
             if (depth > 0) continue
-            if (/^\s*(it|test)(\.\w+)*\(/.test(lines[j]!)) short.push(`${top}/${file}:${i + 1}`)
+            // The opener holds `it(`, or the formatter put it a few lines up:
+            // `it(` / `'name',` / `async () => {`.
+            const opener = [0, 1, 2, 3].some((k) =>
+              k === 0
+                ? /^\s*(it|test)(\.\w+)*\(/.test(lines[j]!)
+                : /^\s*(it|test)(\.\w+)*\($/.test(lines[j - k] ?? ''),
+            )
+            if (opener) short.push(`${top}/${file}:${i + 1}`)
             return
           }
         })

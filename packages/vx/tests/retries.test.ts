@@ -15,7 +15,7 @@ import { run } from './helpers/orchestrator.js'
 import { parseRunArgs } from '../src/cli/run.js'
 import { loadProjectConfig } from '../src/workspace/project-loader.js'
 
-const TIMEOUT = 20_000
+const TIMEOUT = 30_000
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 interface Fixture {

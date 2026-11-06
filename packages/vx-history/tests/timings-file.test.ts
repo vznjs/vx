@@ -11,7 +11,7 @@ import { planRun, run } from '../../vx/tests/helpers/orchestrator.js'
 import { readTimings, warnUnignored, writeTimings } from '../src/timings-file.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
-const TIMEOUT = 20_000
+const TIMEOUT = 30_000
 let root: string
 
 beforeEach(async () => {

@@ -13,7 +13,7 @@ const gradientRule = (c: { enabled: boolean }, title: string): string => panelTo
 
 // `vx lock`, then `vx show`: show reads the lock.
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
-const TIMEOUT = 20_000
+const TIMEOUT = 30_000
 
 const CONFIG = `
   export default {
