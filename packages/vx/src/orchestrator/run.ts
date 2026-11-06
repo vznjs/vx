@@ -2055,6 +2055,13 @@ function didYouMean(
       .map(([t]) => t)
   const allTasks = new Set<string>()
   for (const p of projects.values()) for (const t of tasksOf(p)) allTasks.add(t)
+  // `packages/a#build`: the project's directory, typed where its name goes.
+  const inDir = (typed: string): string | undefined => {
+    const tail = `/${typed.replace(/^\.\/|\/+$/g, '')}`
+    if (tail === '/' || !typed.includes('/')) return undefined
+    const at = [...projects.values()].filter((e) => e.dir.endsWith(tail))
+    return at.length === 1 ? at[0]!.name : undefined
+  }
   // A Set: two typos of the same task hint it once, not once per typo.
   const hints = new Set<string>()
   // A typo past two edits named nothing to pick from (M-56): with no near
@@ -2099,7 +2106,7 @@ function didYouMean(
       continue
     }
     if (!projects.has(proj)) {
-      const p = projectNamed(proj, projects) ?? nearest(proj, projects.keys())
+      const p = projectNamed(proj, projects) ?? inDir(proj) ?? nearest(proj, projects.keys())
       if (p !== undefined) {
         const tasks = tasksOf(projects.get(p))
         const t = tasks.includes(task) ? task : nearest(task, tasks)

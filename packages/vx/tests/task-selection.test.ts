@@ -190,6 +190,9 @@ describe('task selection', () => {
         await said('aa#tset'),
         // CONTROL: a near miss still gets the one name, not the list.
         await said('biuld'),
+        // A project's directory where its name goes: `packages/a` is `a`.
+        await said('packages/a#build'),
+        await said('packages/a/#tset'),
       ]).toEqual([
         'no projects declare task(s): deploy. Tasks: build, test. A run reads the lock: after editing a vx.config, run `vx lock`.',
         'no projects declare task(s): zzz#build. No project is named zzz; projects: a, b. A run reads the lock: after editing a vx.config, run `vx lock`.',
@@ -197,6 +200,8 @@ describe('task selection', () => {
         "no projects declare task(s): aa#deploy. No project is named aa; a's tasks: build, test. A run reads the lock: after editing a vx.config, run `vx lock`.",
         'no projects declare task(s): aa#tset. Did you mean a#test?',
         'no projects declare task(s): biuld. Did you mean build?',
+        'no projects declare task(s): packages/a#build. Did you mean a#build?',
+        'no projects declare task(s): packages/a/#tset. Did you mean a#test?',
       ])
     },
     TIMEOUT,
