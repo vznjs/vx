@@ -173,6 +173,8 @@ export interface RunSummary {
     writing `Cache` handle on the cache directory, so `vx last` and the
     flaky list see the server's failure; an index another vx version
     reset during the session is reset back silently, as a run's open does.
+    Its telemetry summary (step 14) waits for that verdict too, after the
+    plugins' teardown, so a sink (vx-ci's job summary) reads the failure.
     Under `RunOptions.holdPersistent` (the watch loop) the same
     selection applies outside the foreground, and run() returns at
     once with the kept tasks on `RunSummary.persistent` (`holdServers`): the caller
@@ -204,7 +206,8 @@ export interface RunSummary {
     telemetry mirror — so all three carry the same task count by
     construction. Written in one transaction.
 14. **Telemetry summary.** When a sink is active: build + emit the
-    `RunSummaryRecord`, await `flush()` (crash-isolated).
+    `RunSummaryRecord`, await `flush()` (crash-isolated). A foreground
+    run holding a requested server does this after the wait (step 16).
 15. **Drain + close.** Await background prefetches, uploads and the
     run bytes `RunKeeper` (`run-report.ts`) sent as each task ended,
     then `reportOf` builds the `RunReport` plugin teardowns read;
