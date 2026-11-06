@@ -18,6 +18,8 @@ export interface TaskSpec {
   passThrough?: string[]
   /** Project-relative globs the task writes, stored and restored with it. Omitted: the tool's default; `[]`: none. */
   outputs?: string[]
+  /** A directory of `outputs` that holds programs: every task depending on this one runs them by name. */
+  bin?: string
   /** Workspace-root-relative globs that also key the task, in any directory. */
   rootInputs?: string[]
   /** Workspace-root-relative globs the task also writes, stored and restored with it. */
@@ -43,9 +45,11 @@ export interface TaskSpec {
   /**
    * The command runs isolated: it may read only its inputs (and its
    * dependencies' installs) plus `read`, write only its outputs plus
-   * `write`, and reach no network unless `network`.
+   * `write`, and reach no network unless `network`. `hermetic`: no file
+   * of the machine outside the workspace either, beyond what the shell
+   * needs to start.
    */
-  sandbox?: { read?: string[]; write?: string[]; network?: true }
+  sandbox?: { read?: string[]; write?: string[]; network?: true; hermetic?: true }
 }
 
 export interface ProjectSpec {
@@ -308,6 +312,8 @@ export type Feature =
   | 'watch'
   /** Projects selected by a tag they carry. */
   | 'select-tag'
+  /** A dependency's declared directory of programs on a dependant's PATH (`bin`). */
+  | 'dependency-bin'
 
 export interface Case {
   /** `category/slug`, unique. */

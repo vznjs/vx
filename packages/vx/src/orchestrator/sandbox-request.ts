@@ -7,7 +7,7 @@ import { existsSync } from 'node:fs'
 import { lstat, mkdir, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
-import type { ExecConfig } from '../config.js'
+import type { CacheOutputs, ExecConfig } from '../config.js'
 import {
   bindableWrites,
   initSandbox,
@@ -21,6 +21,7 @@ import {
   type ExecuteRequest,
   isMountableLiteral,
   atOrUnder,
+  type SandboxMount,
   type SandboxViolation,
 } from '../exec/index.js'
 import type { TaskNode } from '../graph/index.js'
@@ -183,6 +184,10 @@ export function prepareSandbox(nodes: Iterable<SandboxedNode>): SandboxArmer | n
  * anyone's (2026-09-24): `keyed` is the set of project directories the
  * task's key answers for (keyed-projects.ts), and `undefined` for a task
  * with no `cache`, which has no key to be stale.
+ *
+ * The other is the outputs of the tasks its key folds
+ * (`dependencyOutputs`, 2026-11-06): an edge the user drew, whose files
+ * this key already answers for, so the read can replay nothing stale.
  */
 export async function sandboxRequestFor(
   node: Pick<TaskNode, 'projectDir'>,
@@ -197,6 +202,10 @@ export async function sandboxRequestFor(
    * grant covered it could plant artifacts and index rows (L-24).
    */
   cacheDir?: string,
+  /** The dependencies' outputs it may read (`dependencyReads`): absolute paths. */
+  dependencyOutputs: readonly string[] = [],
+  /** The dependencies' mounts it sees (`dependencyMounts`). */
+  mounts: readonly SandboxMount[] = [],
 ): Promise<SandboxRequest> {
   // The runtime reads a path holding a bracket as a pattern: on Linux it
   // mounts no such write path (B-60); seatbelt's rules compile it as a
@@ -238,7 +247,7 @@ export async function sandboxRequestFor(
   // own `package.json` depends on (2026-09-05) — when the key
   // moves with it.
   const links = await linkedDeps(depDirs, node.projectDir, workspaceRoot, keyed)
-  depDirs.push(...links.granted)
+  depDirs.push(...links.granted, ...dependencyOutputs)
   // bwrap cannot --bind a path that does not exist: the bind silently
   // becomes a no-op and writes to it appear to succeed but never land.
   // Pre-create what the task said it will write — after the grants are
@@ -269,7 +278,8 @@ export async function sandboxRequestFor(
     throw err
   }
   const request: NonNullable<ExecuteRequest['sandbox']> = {
-    // Only what the task declared, plus node_modules. Write paths are
+    // Only what the task declared, plus node_modules and the outputs of
+    // the tasks its key folds (`dependencyReads`). Write paths are
     // readable too: a task that writes `dist/x` expects to read it back
     // (`tsc --incremental` re-reads .tsbuildinfo).
     baseAllowRead: depDirs,
@@ -304,8 +314,78 @@ export async function sandboxRequestFor(
     reportLinked: links.withheld.map((w) => w.dir),
     config,
     ...(keyed === undefined ? {} : { keyed: [...keyed] }),
+    ...(dependencyOutputs.length === 0 ? {} : { dependencyReads: [...dependencyOutputs] }),
+    ...(mounts.length === 0 ? {} : { mounts: [...mounts] }),
   }
   return { sandbox: request, placeholders, withheld: links.withheld }
+}
+
+/**
+ * The paths a sandboxed task may read of its dependencies' declared
+ * outputs (`readableDeps`): each output glob's fixed head, or, for a glob
+ * with none (`*.tsbuildinfo`), the files it matches now, so a root-level
+ * output never grants the dependency's whole project. Asked when the task
+ * runs, after its dependencies ran or were restored: a head that names
+ * nothing is left out, as bwrap binds no missing path.
+ */
+export async function dependencyReads(
+  deps: readonly TaskNode[],
+  workspaceRoot: string,
+): Promise<string[]> {
+  const reads = new Set<string>()
+  for (const dep of deps) {
+    const outputs = dep.config.cache?.outputs
+    if (outputs === undefined) continue
+    const globs = [
+      ...outputs.files.map((g) => [dep.projectDir, g] as const),
+      ...(outputs.workspaceFiles ?? []).map((g) => [workspaceRoot, g] as const),
+    ]
+    for (const [base, glob] of globs) {
+      if (glob.startsWith('!')) continue
+      const head = grantPrefix(glob)
+      if (head !== '' && head !== '.') {
+        const abs = path.join(base, head)
+        if (existsSync(abs)) reads.add(abs)
+        continue
+      }
+      for await (const f of new Bun.Glob(glob).scan({ cwd: base, onlyFiles: true, dot: true }))
+        reads.add(path.join(base, f))
+    }
+  }
+  return [...reads]
+}
+
+/** A task's own `cache.outputs.mount` paths: where an absolute link of its outputs may point. */
+export function mountPaths(outputs: CacheOutputs | undefined): string[] {
+  return Object.keys(outputs?.mount ?? {}).map((t) => t.replace(/\/+$/, ''))
+}
+
+/**
+ * The `cache.outputs.mount`s of the tasks a task's key folds
+ * (`readableDeps`), as its sandbox lays them out: each path filled from the
+ * dependency's output directory. Refused for a task outside the Linux
+ * sandbox, which has no way to put them there.
+ */
+export function dependencyMounts(
+  node: TaskNode,
+  deps: readonly TaskNode[],
+  sandboxed: boolean,
+): SandboxMount[] {
+  const mounts: SandboxMount[] = []
+  for (const dep of deps) {
+    for (const [target, source] of Object.entries(dep.config.cache?.outputs.mount ?? {})) {
+      mounts.push({ target: target.replace(/\/+$/, ''), source: path.join(dep.projectDir, source) })
+    }
+  }
+  if (mounts.length > 0 && !(sandboxed && process.platform === 'linux')) {
+    const named = deps.find((d) => d.config.cache?.outputs.mount !== undefined)!
+    throw new UserError(
+      `${node.id} depends on ${named.id}, whose cache.outputs.mount puts ${mounts[0]!.target} in ` +
+        `its dependants' view, and only the Linux exec.sandbox can lay it there — run ${node.id} ` +
+        `in exec.sandbox on Linux`,
+    )
+  }
+  return mounts
 }
 
 /**

@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 218,
+    "ported": 221,
     "rest": {
       "pending": [],
       "vx-only": [
@@ -76,6 +76,7 @@
         "executor-fallback",
         "executor-sync-result",
         "flaky",
+        "flaky-retry",
         "forecast",
         "forward-args-group",
         "frozen-deleted-config",
@@ -202,6 +203,7 @@
         "sandbox-lifecycle.unsafe",
         "sandbox-mkdir-ancestor.unsafe",
         "sandbox-network-patterns.unsafe",
+        "sandbox-network-per-task.unsafe",
         "sandbox-noscan-dir.unsafe",
         "sandbox-noscan-gone.unsafe",
         "sandbox-observer-drain.unsafe",
@@ -694,6 +696,7 @@
         "held-server-exit",
         "held-server-output",
         "hide-env.unsafe",
+        "history-stream",
         "home-guard",
         "index-schema-race",
         "index-write-wait",
@@ -969,14 +972,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 966,
-        "can": 966,
-        "of": 966
+        "pass": 973,
+        "can": 973,
+        "of": 973
       },
       "correctness": {
-        "pass": 793,
-        "can": 793,
-        "of": 793
+        "pass": 800,
+        "can": 800,
+        "of": 800
       },
       "efficiency": {
         "pass": 164,
@@ -1019,9 +1022,9 @@
         "of": 299
       },
       "env": {
-        "pass": 29,
-        "can": 29,
-        "of": 29
+        "pass": 31,
+        "can": 31,
+        "of": 31
       },
       "outputs": {
         "pass": 222,
@@ -1034,9 +1037,9 @@
         "of": 9
       },
       "sandbox": {
-        "pass": 11,
-        "can": 11,
-        "of": 11
+        "pass": 16,
+        "can": 16,
+        "of": 16
       },
       "watch": {
         "pass": 29,
@@ -1048,12 +1051,12 @@
       "all": {
         "pass": 622,
         "can": 894,
-        "of": 966
+        "of": 973
       },
       "correctness": {
         "pass": 503,
         "can": 727,
-        "of": 793
+        "of": 800
       },
       "efficiency": {
         "pass": 115,
@@ -1098,7 +1101,7 @@
       "env": {
         "pass": 25,
         "can": 29,
-        "of": 29
+        "of": 31
       },
       "outputs": {
         "pass": 160,
@@ -1113,7 +1116,7 @@
       "sandbox": {
         "pass": 1,
         "can": 1,
-        "of": 11
+        "of": 16
       },
       "watch": {
         "pass": 26,
@@ -1125,12 +1128,12 @@
       "all": {
         "pass": 634,
         "can": 918,
-        "of": 966
+        "of": 973
       },
       "correctness": {
         "pass": 479,
         "can": 747,
-        "of": 793
+        "of": 800
       },
       "efficiency": {
         "pass": 151,
@@ -1175,7 +1178,7 @@
       "env": {
         "pass": 23,
         "can": 29,
-        "of": 29
+        "of": 31
       },
       "outputs": {
         "pass": 156,
@@ -1190,7 +1193,7 @@
       "sandbox": {
         "pass": 0,
         "can": 1,
-        "of": 11
+        "of": 16
       },
       "watch": {
         "pass": 26,
@@ -1202,12 +1205,12 @@
       "all": {
         "pass": 496,
         "can": 735,
-        "of": 966
+        "of": 973
       },
       "correctness": {
         "pass": 409,
         "can": 609,
-        "of": 793
+        "of": 800
       },
       "efficiency": {
         "pass": 85,
@@ -1252,7 +1255,7 @@
       "env": {
         "pass": 27,
         "can": 28,
-        "of": 29
+        "of": 31
       },
       "outputs": {
         "pass": 139,
@@ -1267,7 +1270,7 @@
       "sandbox": {
         "pass": 1,
         "can": 1,
-        "of": 11
+        "of": 16
       },
       "watch": {
         "pass": 0,
@@ -1277,14 +1280,14 @@
     },
     "nix": {
       "all": {
-        "pass": 461,
-        "can": 686,
-        "of": 966
+        "pass": 467,
+        "can": 693,
+        "of": 973
       },
       "correctness": {
-        "pass": 397,
-        "can": 567,
-        "of": 793
+        "pass": 403,
+        "can": 574,
+        "of": 800
       },
       "efficiency": {
         "pass": 62,
@@ -1327,9 +1330,9 @@
         "of": 299
       },
       "env": {
-        "pass": 19,
-        "can": 26,
-        "of": 29
+        "pass": 20,
+        "can": 28,
+        "of": 31
       },
       "outputs": {
         "pass": 158,
@@ -1342,9 +1345,9 @@
         "of": 9
       },
       "sandbox": {
-        "pass": 8,
-        "can": 10,
-        "of": 11
+        "pass": 13,
+        "can": 15,
+        "of": 16
       },
       "watch": {
         "pass": 0,
@@ -1356,12 +1359,12 @@
       "all": {
         "pass": 576,
         "can": 880,
-        "of": 966
+        "of": 973
       },
       "correctness": {
         "pass": 448,
         "can": 722,
-        "of": 793
+        "of": 800
       },
       "efficiency": {
         "pass": 123,
@@ -1406,7 +1409,7 @@
       "env": {
         "pass": 25,
         "can": 29,
-        "of": 29
+        "of": 31
       },
       "outputs": {
         "pass": 122,
@@ -1421,7 +1424,7 @@
       "sandbox": {
         "pass": 0,
         "can": 1,
-        "of": 11
+        "of": 16
       },
       "watch": {
         "pass": 0,
@@ -33945,6 +33948,246 @@
         },
         "moon": {
           "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "sandbox/closed-machine-read-fails",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "A task closed off from the machine cannot read a system file",
+      "why": "A file of the machine, such as one under /etc, is an input no key holds and no other machine shares. A build that reads it can give different bytes on two machines under one key. A task closed off from the machine must fail that read, so the build depends only on what it declared.",
+      "from": [
+        "sandbox-hermetic.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        }
+      }
+    },
+    {
+      "id": "sandbox/closed-declared-reads-pass",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "A task closed off from the machine still runs when it reads only its inputs",
+      "why": "Closing off the machine must not stop the shell and its tools from starting. A task that reads only its inputs and writes only its outputs needs nothing more. A closed sandbox that fails it cannot be turned on for real builds.",
+      "from": [
+        "sandbox-hermetic.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        }
+      }
+    },
+    {
+      "id": "sandbox/home-write-fails",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task that writes into the home folder fails, and leaves nothing there",
+      "why": "A file a build drops in the home folder is never stored with the task, and the next build may read it. Runs then depend on what earlier runs left behind. Failing the write, and leaving nothing, keeps every build starting from the same machine.",
+      "from": [
+        "sandbox-grants.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        }
+      }
+    },
+    {
+      "id": "sandbox/dependency-output-readable",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task reads what the task it depends on built in another project",
+      "why": "A dependency’s outputs are what the task asked for by depending on it, and its key moves with them. Hiding them makes one project unable to build a tool that others run. An isolated task must read them, or isolation cannot be used for builds with a toolchain step.",
+      "from": [
+        "sandbox-dependency-outputs.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        }
+      }
+    },
+    {
+      "id": "sandbox/dependency-source-hidden",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task that depends on another project still cannot read its sources",
+      "why": "Depending on a task gives its outputs, not the files it was built from. A read of the dependency’s sources ties the build to files the edge never promised. Failing it keeps the edge meaning one thing: what the dependency built.",
+      "from": [
+        "sandbox-dependency-outputs.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        }
+      }
+    },
+    {
+      "id": "env/dependency-program-on-path",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A task runs by name a program the task it depends on built",
+      "why": "One project builds a tool, and the projects that depend on it run that tool. Calling it by a path into another project ties every command to that layout. Putting the dependency’s programs on PATH lets the command say only what it runs, and the edge says where it comes from.",
+      "from": [
+        "dependency-bin"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs dependency-bin"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs dependency-bin"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs dependency-bin"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "needs dependency-bin"
+        }
+      }
+    },
+    {
+      "id": "env/two-dependencies-one-program-refused",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A task whose two dependencies ship a program of one name fails instead of picking one",
+      "why": "When two dependencies both put a program of one name on PATH, the one that runs depends on the order they were listed in. Reordering the list then swaps the tool under the same key. Failing the task and naming both makes the choice explicit instead of an accident of order.",
+      "from": [
+        "dependency-bin"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs dependency-bin"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs dependency-bin"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs dependency-bin"
+        },
+        "nix": {
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "needs dependency-bin"
         }
       }
     },

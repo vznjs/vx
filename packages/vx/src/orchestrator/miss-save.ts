@@ -31,6 +31,7 @@ import {
 } from '../util/index.js'
 import { type Logger, warnOf } from '../report/index.js'
 import type { TaskInputComponent } from '../cache/index.js'
+import { mountPaths } from './sandbox-request.js'
 
 /** A snapshot request for `recordOutputDirs`, taken at run end. */
 export interface OutputDirSnapshot {
@@ -162,19 +163,38 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
   // An additive task owns only the files it wrote (item 588), no directory.
   const tree =
     a.ownOutputFiles !== undefined
-      ? { files: a.ownOutputFiles, emptyDirs: [] }
+      ? { files: a.ownOutputFiles, emptyDirs: [], special: [] }
       : await resolveOutputTree({
           projectDir: node.projectDir,
           outputs: a.outputs,
           nestedProjectDirs: a.nestedProjectDirs,
+          special: true,
         })
   const outputFiles = tree.files
   const wsTree =
     a.ownWsOutputFiles !== undefined
-      ? { files: a.ownWsOutputFiles, emptyDirs: [] }
-      : await resolveWorkspaceOutputTree({ workspaceRoot: a.workspaceRoot, outputs: a.wsOutputs })
+      ? { files: a.ownWsOutputFiles, emptyDirs: [], special: [] }
+      : await resolveWorkspaceOutputTree({
+          workspaceRoot: a.workspaceRoot,
+          outputs: a.wsOutputs,
+          special: true,
+        })
   const wsOutputFiles = wsTree.files
   endResolve()
+  // A FIFO, socket or device holds no bytes to store (opening a FIFO waits
+  // for a writer, nx#35228), so it stays out of the entry; said, because a
+  // hit restores the tree without it.
+  const special = [
+    ...tree.special.map((p) => relPosix(node.projectDir, p)),
+    ...wsTree.special.map((p) => relPosix(a.workspaceRoot, p)),
+  ]
+  if (special.length > 0) {
+    warnOf(log)(
+      `[vx] ${node.id}: ${special.join(', ')} ${special.length === 1 ? 'is' : 'are'} not a regular file or symlink ` +
+        `(a FIFO, socket or device): vx does not cache ${special.length === 1 ? 'it' : 'them'}, so a hit restores the outputs without ${special.length === 1 ? 'it' : 'them'} ` +
+        `— emit a file there, or take ${special.length === 1 ? 'it' : 'them'} back with a '!' entry`,
+    )
+  }
   // The mirror of the input warning: declared outputs that resolve to
   // nothing save an empty artifact, and the next hit "restores" it —
   // the build that ran nowhere looks like a build that ran. `files: []`
@@ -212,6 +232,7 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
     )
   }
   const facts: SaveFacts = {}
+  const mounts = mountPaths(node.config.cache?.outputs)
   const save = async (): Promise<void> => {
     const saveStart = a.measure === true ? performance.now() : 0
     const endSave = span('miss: save')
@@ -228,6 +249,7 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
       ...(wsOutputFiles.length > 0 ? { workspaceOutputFiles: wsOutputFiles } : {}),
       ...(wsTree.emptyDirs.length > 0 ? { workspaceOutputDirs: wsTree.emptyDirs } : {}),
       inputComponents: a.captured.map((c) => ({ entryHash: a.hash, ...c })),
+      ...(mounts.length === 0 ? {} : { mounts }),
       // No `exitCode`: the save only runs under `effectiveExitCode === 0`, and
       // the contract no longer accepts one — so the invariant is enforced by
       // the type rather than by every call site remembering the gate.

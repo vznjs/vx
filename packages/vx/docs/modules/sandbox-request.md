@@ -20,7 +20,7 @@ export function prepareSandbox(nodes: Iterable<TaskNode>): SandboxArmer | null
 
 export interface SandboxRunUnion {
   domains: string[] // every sandboxed task's `allow.network` list, deduped
-  deniedDomains: string[] // every sandboxed task's `deny.network` list, deduped: refused to every task (B-21)
+  deniedDomains: string[] // every sandboxed task's `deny.network` list, deduped: checked at init; each task's front refuses its own
   unixSockets: boolean // some task lifts SRT's AF_UNIX filter; each wrap sets it for its own task
   gitConfig: boolean // some task grants `gitConfig`; each wrap sets it for its own task (B-41)
   weakerNested: boolean // true only when EVERY sandboxed task accepts it
@@ -49,7 +49,21 @@ export async function sandboxRequestFor(
   keyed: ReadonlySet<string> | undefined, // keyed-projects.ts's set; undefined for a task with no `cache`
   nested?: readonly string[], // dirs of the projects nested in this one: a wall its grants do not reach
   cacheDir?: string, // the run's cache dir, walled wherever it is
+  dependencyOutputs?: readonly string[], // dependencyReads(): the dependencies' outputs it may read
+  mounts?: readonly SandboxMount[], // dependencyMounts(): the dependencies' mounts it sees
 ): Promise<SandboxRequest>
+export async function dependencyReads(
+  deps: readonly TaskNode[],
+  workspaceRoot: string,
+): Promise<string[]>
+// cache.outputs.mount's targets, trailing slashes dropped
+export function mountPaths(outputs: CacheOutputs | undefined): string[]
+// each dependency's mounts, absolute; throws for an unsandboxed or non-Linux dependant
+export function dependencyMounts(
+  node: TaskNode,
+  deps: readonly TaskNode[],
+  sandboxed: boolean,
+): SandboxMount[]
 
 export async function sweepPlaceholders(placeholders: readonly Placeholder[]): Promise<string[]>
 // One shared sweep: every caller gets the same answer, whoever asked first
@@ -100,6 +114,16 @@ export function mayWriteFingerprint(
   profile the others run under.
 - `sandboxRequestFor` builds the sandbox half of one request, plus the
   placeholders.
+- `dependencyReads` lists what a task may read of the outputs of the
+  tasks its key folds (`readableDeps`, keyed-projects.ts): each output
+  glob's fixed head, or the files a glob with none matches, so
+  `*.tsbuildinfo` never grants the dependency's whole project. Asked when
+  the task runs, after its dependencies ran or were restored.
+- `dependencyMounts` lists, for each dependency declaring
+  `cache.outputs.mount`, where its output directory is laid in the
+  dependant's sandbox. A dependant without `exec.sandbox`, or off Linux,
+  is refused: only bwrap can mount, and a task outside the sandbox would
+  see an empty path.
 - `sweepPlaceholders` removes the placeholders the task never wrote
   (still empty, mtime untouched) and returns their paths. execute-task
   calls it after every attempt of a one-shot task, and when a

@@ -51,6 +51,7 @@ export const vx: Adapter = {
                 ...(spec.sandbox
                   ? {
                       sandbox: {
+                        ...(spec.sandbox.hermetic ? { hermetic: true } : {}),
                         allow: {
                           read: [...(spec.inputs ?? []), ...(spec.sandbox.read ?? [])],
                           // The harness marks an isolated task's start and end there.
@@ -93,6 +94,7 @@ export const vx: Adapter = {
                       outputs: {
                         files: spec.outputs ?? [],
                         ...(spec.rootOutputs ? { workspaceFiles: spec.rootOutputs } : {}),
+                        ...(spec.bin ? { bin: spec.bin } : {}),
                       },
                     },
                   }

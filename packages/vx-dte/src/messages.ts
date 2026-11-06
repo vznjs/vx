@@ -27,7 +27,7 @@ export interface DepOrder {
   key: string
   /** Workspace-relative. */
   project: string
-  outputs: { files: string[]; workspaceFiles: string[] }
+  outputs: { files: string[]; workspaceFiles: string[]; mounts?: string[] }
 }
 
 /** One task a worker is sent. */
@@ -57,16 +57,24 @@ export interface RunOrder {
   /** Its `exec.env.secret`: the names in `env` whose values its saved output masks. */
   secret?: string[]
   timeoutMs?: number
-  outputs: { files: string[]; workspaceFiles: string[] }
+  outputs: { files: string[]; workspaceFiles: string[]; mounts?: string[] }
   /** Its recorded peak: the worker starts it when that much is free. */
   cores: number
   memory: number
   /**
    * Its `exec.sandbox`, and for a cached task the projects its key answers
    * for (workspace-relative): the worker builds the request on its own
-   * paths and OS (`sandboxRequestFor`), as its orchestrator may run another.
+   * paths and OS (`sandboxRequestFor`), as its orchestrator may run another;
+   * `reads`, the dependencies' outputs it may read (workspace-relative);
+   * `mounts`, the dependencies' `cache.outputs.mount`s (`source`
+   * workspace-relative).
    */
-  sandbox?: { config: SandboxConfig; keyed?: string[] }
+  sandbox?: {
+    config: SandboxConfig
+    keyed?: string[]
+    reads?: string[]
+    mounts?: { target: string; source: string }[]
+  }
   /** Its persistent dependencies (`ServerSpec`), `cwd` workspace-relative: the worker starts each once. */
   servers?: ServerOrder[]
   /** The runtime probes its key includes, as the orchestrator answered them: the worker's must answer the same. */
