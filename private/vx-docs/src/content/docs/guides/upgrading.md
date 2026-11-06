@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: list CorruptArtifactError on the cache page
+
+RemoteCacheLayer.put's meta may carry replace, which a layer honours by writing over its stored entry, and Cache.recordRuns takes the run's head.
+
 ## cache: store entry stdout as zstd, not text
 
 the local cache index is schema v52; logs cached before it are dropped on first open.

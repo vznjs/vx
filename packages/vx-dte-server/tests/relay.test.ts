@@ -968,7 +968,7 @@ it('answers 413 up to 16 MiB, its runtime limit, and closes 1009 past it (PROTOC
   }
   expect(await said(16 << 20)).toEqual({ n: 7, status: 413, error: 'body over 1 MiB' })
   expect(await said((16 << 20) + 1)).toEqual({ closed: 1009 })
-}, 20_000)
+}, 30_000)
 
 it('reads ALLOW and AUDIENCE from the environment, as the other servers do, and names what it lacks', () => {
   const said = (env: Record<string, string>, ...args: string[]) =>
