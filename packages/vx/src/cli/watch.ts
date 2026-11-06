@@ -539,7 +539,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   const runCycle = async (first: string | undefined, initial?: InitialCycle): Promise<void> => {
     try {
       let label: string | undefined = first
-      let lockAtRun = ''
+      /** The lock this cycle's run read; none for the initial run. */
+      let lockAtRun: string | undefined
       // The initial run is collected even after a stop: its server is the
       // loop's to stop.
       while (initial !== undefined || (label !== undefined && !stop.aborted)) {
@@ -612,13 +613,6 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
             // A config's own throw or a plugin's failure may quote a secret (L-11).
             const message = maskedLine(err instanceof Error ? err.message : String(err))
             sayNotice('error', 'vx watch', `cycle failed: ${message}`)
-          } finally {
-            // A re-lock since this cycle began: the re-arm below can
-            // close the watcher its event was still on its way to (FSEvents'
-            // latency, a poller's tick), and the new lock ran nothing until
-            // the next edit (macOS CI, 2026-10-23). A cycle that read the
-            // lock mid-write failed on it, and is the same case.
-            if (lockStamp() !== lockAtRun) rootFileEvent(LOCKFILE_NAME)
           }
         // After a failed cycle too: a package added with a config that does
         // not load yet fails its cycle, and unarmed, the fix to that config
@@ -627,6 +621,15 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
           reread = false
           await rearm()
         }
+        // A re-lock since this cycle began: the re-arm can close the watcher
+        // its event was still on its way to (FSEvents' latency, a poller's
+        // tick), and the new lock ran nothing until the next edit (macOS CI,
+        // 2026-10-23). A cycle that read the lock mid-write failed on it, and
+        // is the same case. Asked after the re-arm, not when the run ends: a
+        // lock written in between was the re-arm's to read, its new pollers
+        // took it as their baseline, and it was never an event (macOS CI,
+        // 2026-11-06).
+        if (lockAtRun !== undefined && lockStamp() !== lockAtRun) rootFileEvent(LOCKFILE_NAME)
         // What landed mid-run is judged on settled state, one window
         // after the run, under the label of what actually arrived.
         current = undefined
