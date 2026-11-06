@@ -36,7 +36,7 @@ import {
   ui,
 } from '@vzn/vx'
 import { nestedIn, Orchestrator, runKey } from '../src/orchestrator.js'
-import { assign, fits, type Need, ordered } from '../src/dispatch.js'
+import { assign, dispatch, fits, type Need, ordered } from '../src/dispatch.js'
 import { names, outputFiles } from '../src/outputs.js'
 import { Usage } from '../src/usage.js'
 import { plan, planTasks, tailsMs } from '../src/planner.js'
@@ -5329,4 +5329,37 @@ it('orders a queue that left in order plus what got ready since as one sort woul
   // Graphene: within a quarter of the longest, or half a worker wide, first.
   expect(ordered(ids, 'graphene', tail, need, 8)).toEqual(['h', 'a', 'e', 'd', 'b', 'c', 'f', 'g'])
   expect(ordered(['c', 'b'], 'critical-path', tail, need, 8)).toEqual(['c', 'b'])
+})
+
+// 2026-11-06: a task of the run's platform, which every live one names,
+// was never found dead, so each pass asked every bin for each queued task.
+it('makes no ask of a platform task no worker of its platform can take', () => {
+  const full = (id: string, platform: string) => ({
+    id,
+    cores: 4,
+    memory: 16e9,
+    used: { cores: 3.5, memory: 0 },
+    running: 2,
+    has: new Set<string>(),
+    platform,
+  })
+  const bins = [full('l', 'linux'), { ...full('m', 'darwin'), used: { cores: 0, memory: 0 } }]
+  const ids = Array.from({ length: 100 }, (_, i) => `t${i}`)
+  let asked = 0
+  const { to, left } = dispatch(ids, bins, {
+    how: { order: 'fifo', place: 'best-fit', book: 'measured', scale: 'plan' },
+    need: () => ({ cores: 2, memory: 1e9, platform: 'linux' }),
+    deps: () => {
+      asked++
+      return []
+    },
+  })
+  expect([to.size, left.length, asked]).toEqual([0, 100, 0])
+  // One that fits is still placed.
+  const one = dispatch(['x'], bins, {
+    how: { order: 'fifo', place: 'best-fit', book: 'measured', scale: 'plan' },
+    need: () => ({ cores: 0.5, memory: 1e9, platform: 'linux' }),
+    deps: () => [],
+  })
+  expect(one.to.get('x')?.id).toBe('l')
 })

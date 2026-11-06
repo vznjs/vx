@@ -338,6 +338,16 @@ export interface Bounds {
   cores: number
   /** The least memory free on one. */
   memory: number
+  /** The same of each platform's own: a task naming one fits only those. */
+  of?: Map<string, Room>
+}
+
+/** What `Bounds` says of a set of bins. */
+interface Room {
+  open: boolean
+  free: number
+  cores: number
+  memory: number
 }
 
 function boundsOf(
@@ -351,14 +361,28 @@ function boundsOf(
   out.free = -Infinity
   out.cores = Infinity
   out.memory = Infinity
+  out.of?.clear()
   for (const b of bins) {
     if (held.has(b)) continue
     if (floor !== undefined && fits(b, floor)) out.done = false
-    if (b.running === 0) out.open = true
-    out.free = Math.max(out.free, b.cores - b.used.cores)
-    out.cores = Math.min(out.cores, b.cores)
-    out.memory = Math.min(out.memory, b.memory - b.used.memory)
+    room(out, b)
+    if (b.platform === undefined) continue
+    out.of ??= new Map()
+    let p = out.of.get(b.platform)
+    if (p === undefined)
+      out.of.set(
+        b.platform,
+        (p = { open: false, free: -Infinity, cores: Infinity, memory: Infinity }),
+      )
+    room(p, b)
   }
+}
+
+function room(r: Room, b: Bin): void {
+  if (b.running === 0) r.open = true
+  r.free = Math.max(r.free, b.cores - b.used.cores)
+  r.cores = Math.min(r.cores, b.cores)
+  r.memory = Math.min(r.memory, b.memory - b.used.memory)
 }
 
 /**
@@ -367,14 +391,11 @@ function boundsOf(
  * the bin, fits its memory, and wants more cores than are free.
  */
 export function dead(need: Need, b: Bounds): boolean {
-  return (
-    need.platform === undefined &&
-    need.above === undefined &&
-    !b.open &&
-    need.cores > b.free + 1e-9 &&
-    need.cores < b.cores &&
-    need.memory <= b.memory
-  )
+  if (need.above !== undefined) return false
+  // Of its platform's bins: with none free of a hold, no ask of it does a thing.
+  const r = need.platform === undefined ? b : b.of?.get(need.platform)
+  if (r === undefined) return true
+  return !r.open && need.cores > r.free + 1e-9 && need.cores < r.cores && need.memory <= r.memory
 }
 
 /** How well `need` suits `b` by `place`: the higher, the better. */
