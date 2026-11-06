@@ -364,7 +364,7 @@ describe('vx lock prints a config refusal with its frame', () => {
       expect(r.exitCode).toBe(1)
       const err = r.stderr.toString()
       expect(err).toStartWith(
-        '✗ vx lock  lock not written\n\n  packages/a/vx.config.mjs:1:60\n  tasks.build.outputs must be an object (fields: bin, clean, files, mount, workspaceFiles), not an array',
+        '✗ vx lock  lock not written\n\n  packages/a/vx.config.mjs:1:60\n  tasks.build.outputs must be an object (fields: clean, files, workspaceFiles), not an array',
       )
       expect(err).toContain('  fix  use `{ files: [...] }`')
       expect(err.match(/^✗ vx lock {2}also refused$/gm)).toHaveLength(4)

@@ -15,6 +15,35 @@ export interface ServerTiming {
   readonly rssBytes?: number
 }
 
+/** One cached task's run, as the server's flaky record keeps it (PROTOCOL.md "Outcomes"). */
+export interface ServerOutcome {
+  /** The task's definition hash. */
+  readonly hash: string
+  /** The run's cache key. */
+  readonly key: string
+  readonly outcome: 'pass' | 'fail' | 'flaky'
+}
+
+/** What a query answers: each held hash's numbers, and the hashes asked that are flaky. */
+export interface Answer {
+  readonly timings: Map<string, ServerTiming>
+  readonly flaky: Set<string>
+}
+
+/**
+ * A cached task the run ran, as the flaky record takes it; else undefined.
+ * A hit ran nothing, and a task behind a failure ran on bytes its key never
+ * named: neither says anything of the key.
+ */
+export function outcomeOf(o: TaskOutcome, def: string): ServerOutcome | undefined {
+  if (o.node.config.cache === undefined || o.hash === undefined || o.hash === '') return undefined
+  if (o.blockedBy !== undefined) return undefined
+  if (o.status === 'failed') return { hash: def, key: o.hash, outcome: 'fail' }
+  if (o.status !== 'success') return undefined
+  const flaky = (o.attempts ?? 1) > 1 || o.flaky !== undefined
+  return { hash: def, key: o.hash, outcome: flaky ? 'flaky' : 'pass' }
+}
+
 /** Every request's deadline: a run never waits on history longer. */
 const DEADLINE_MS = 10_000
 /** Tries of a request, to the server or GitHub's OIDC endpoint, before it fails (`tried`). */
@@ -305,12 +334,9 @@ export class HistoryServer {
     return asked
   }
 
-  /** Each held hash's numbers under the first of `refs` that holds them: one request a run. */
-  async query(
-    refs: readonly string[],
-    hashes: readonly string[],
-  ): Promise<Map<string, ServerTiming>> {
-    if (hashes.length === 0 || this.refused) return new Map()
+  /** Each held hash's numbers under the first of `refs` that holds them, and the flaky ones: one request a run. */
+  async query(refs: readonly string[], hashes: readonly string[]): Promise<Answer> {
+    if (hashes.length === 0 || this.refused) return { timings: new Map(), flaky: new Set() }
     const per = (await this.limitsNow()).maxQueryHashes
     const parts = await Promise.all(
       Array.from({ length: Math.ceil(hashes.length / per) }, async (_, i) => {
@@ -319,18 +345,28 @@ export class HistoryServer {
           refs,
           hashes: hashes.slice(i * per, (i + 1) * per),
         })
-        const body = (await jsonOf(res, '/v1/timings/query')) as { timings?: unknown } | null
+        const body = (await jsonOf(res, '/v1/timings/query')) as {
+          timings?: unknown
+          flaky?: unknown
+        } | null
         if (typeof body?.timings !== 'object' || body.timings === null) {
           throw new Error('the query answered no `timings` object')
         }
-        return Object.entries(body.timings as Record<string, ServerTiming | null>)
+        // A server before the flaky record answers none: nothing is flaky.
+        const flaky = Array.isArray(body.flaky)
+          ? body.flaky.filter((h): h is string => typeof h === 'string')
+          : []
+        return {
+          timings: Object.entries(body.timings as Record<string, ServerTiming | null>),
+          flaky,
+        }
       }),
     )
     // Only numbers a server folds (PROTOCOL.md): `1e309` parses to Infinity,
     // and kept as a forecast it made a NaN weight that failed every later
     // run of the cache in `schedule`.
     const out = new Map<string, ServerTiming>()
-    for (const [hash, t] of parts.flat()) {
+    for (const [hash, t] of parts.flatMap((p) => p.timings)) {
       if (!isCount(t?.durationMs)) continue
       out.set(hash, {
         durationMs: t.durationMs,
@@ -340,16 +376,28 @@ export class HistoryServer {
         ...(isCount(t.rssBytes) ? { rssBytes: t.rssBytes } : {}),
       })
     }
-    return out
+    return { timings: out, flaky: new Set(parts.flatMap((p) => p.flaky)) }
   }
 
-  /** The run's timings, by task definition hash, in uploads of at most `maxUploadTimings`; `stop` abandons them. */
-  async upload(timings: ReadonlyMap<string, ServerTiming>, stop?: AbortSignal): Promise<void> {
-    if (timings.size === 0 || this.refused) return
+  /**
+   * The run's timings, by task definition hash, and its outcomes, in
+   * uploads of at most `maxUploadTimings` of each; `stop` abandons them.
+   */
+  async upload(
+    timings: ReadonlyMap<string, ServerTiming>,
+    stop?: AbortSignal,
+    outcomes: readonly ServerOutcome[] = [],
+  ): Promise<void> {
+    if ((timings.size === 0 && outcomes.length === 0) || this.refused) return
     const per = (await this.limitsNow()).maxUploadTimings
     const all = [...timings].map(([hash, t]) => ({ hash, ...t }))
-    for (let i = 0; i < all.length; i += per) {
-      await this.call('/v1/timings/upload', { timings: all.slice(i, i + per) }, stop)
+    for (let i = 0; i < Math.max(all.length, outcomes.length); i += per) {
+      const part = outcomes.slice(i, i + per)
+      await this.call(
+        '/v1/timings/upload',
+        { timings: all.slice(i, i + per), ...(part.length > 0 ? { outcomes: part } : {}) },
+        stop,
+      )
     }
   }
 }

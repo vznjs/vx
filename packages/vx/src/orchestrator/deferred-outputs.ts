@@ -20,7 +20,6 @@ import {
   type GitFilesCache,
 } from '../cache/index.js'
 import type { TaskNode } from '../graph/index.js'
-import { mountPaths } from './sandbox-request.js'
 
 export interface DeferredEntry {
   /** Fetches this task's outputs onto disk. At-most-once by construction. */
@@ -161,9 +160,6 @@ export class DeferredOutputs {
         workspaceRoot: this.args.workspaceRoot,
         outputFiles,
         ...(emptyDirs.length > 0 ? { outputDirs: emptyDirs } : {}),
-        ...(producer.config.outputs?.mount === undefined
-          ? {}
-          : { mounts: mountPaths(producer.config.outputs) }),
         entry: entry.entry,
       })
     }

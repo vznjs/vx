@@ -3353,7 +3353,9 @@ the run knows), so a passing task's log reads too, on a hit
 or in the run that saved it. An uncached task that passed, or a skip,
 kept none, nor does a failed task past the newest 50 failed runs:
 stdout is empty and stderr says so, exit 0. A kept log that is empty
-says the task printed nothing. With
+says the task printed nothing. A task that retried shows every
+attempt, each under a heading (`── attempt 1 of 2 · exit 1 ──`), the
+last `passed` when a retry passed. With
 `--format json` it is `{ runId, taskId, status, source, output }`,
 `source` `'failure'`, `'cache'` or `null`. A task no run recorded is
 refused, exit 1, naming a recorded task one or two edits away. A bare name (`--log build`) is the one project that ran

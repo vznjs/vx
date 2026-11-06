@@ -58,8 +58,6 @@ import { executorLabel, nameExecutorFailure } from './plugin-host.js'
 import type { CommandWindows } from './command-windows.js'
 import {
   commandWriteReach,
-  dependencyMounts,
-  mountPaths,
   dependencyReads,
   mayWriteFingerprint,
   type Placeholder,
@@ -105,7 +103,6 @@ import { executePersistentTask } from './persistent-task.js'
 import {
   forgetUndeclaredWrites,
   isAborted,
-  dependencyBins,
   taskBinDirs,
   serverSpec,
   taskEnv,
@@ -588,7 +585,6 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
 
   const outputs = cfgOut?.files ?? []
   const wsOutputs = cfgOut?.workspaceFiles ?? []
-  const mounts = mountPaths(cfgOut)
   const effectiveForwardArgs = node.requested ? (args.forwardArgs ?? []) : []
   // Per-task `exec.timeout` beats `run.timeout` (flag, variable,
   // workspace; resolved into `args.timeout` by run.ts).
@@ -780,13 +776,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
   }
 
-  const depBins = await dependencyBins(args.readableDeps?.(node) ?? [])
-  const depMounts = dependencyMounts(
-    node,
-    args.readableDeps?.(node) ?? [],
-    cfg.exec?.sandbox !== undefined,
-  )
-  const env = taskEnv(node, step, args.workspaceRoot, depBins)
+  const env = taskEnv(node, step, args.workspaceRoot)
   const wallclockStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
 
   // Miss path: describe the input set ONCE — the executor gets the values
@@ -1145,7 +1135,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         code,
         command: step.command,
         cwd: node.projectDir,
-        bins: taskBinDirs(node, args.workspaceRoot, depBins),
+        bins: taskBinDirs(node, args.workspaceRoot),
         signal: res.signal,
         hidden: req.sandbox && ((f: string) => !sandboxReads(req.sandbox!, f)),
       })
@@ -1196,6 +1186,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const storeMask = secrets ?? undefined
   const storedOutput = (): string => encodeOutputLog(output?.chunks() ?? [], storeMask)
   const failedAttempts: { endedAt: number; exitCode: number; timedOut?: true }[] = []
+  // Each failed attempt's output, beside `failedAttempts`: kept for `vx last --log`.
+  const attemptOutputs: string[] = []
   // The sampling of the attempt's process tree, stopped once it settles.
   let untrack: (() => TreeLoad | undefined) | undefined
   // What the last attempt's samples saw, for the run history.
@@ -1234,6 +1226,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     if (a.withdrawn) {
       attempt--
       failedAttempts.pop()
+      attemptOutputs.pop()
       break
     }
     forgetUndeclaredWrites(args, writeReach)
@@ -1295,6 +1288,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       exitCode: effectiveExitCode,
       ...(result.timedOut === true ? { timedOut: true as const } : {}),
     })
+    attemptOutputs.push(output === undefined ? '' : failedOutputLog(output, true, storeMask))
     log.taskStderr(
       node,
       `${midLine ? '\n' : ''}vx: retrying ${node.id} (attempt ${attempt + 1}/${maxAttempts}) after ${result.timedOut === true ? 'a timeout' : `exit ${effectiveExitCode}`}\n`,
@@ -1322,13 +1316,13 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     flushMasked = () => masked?.end()
     const base: ExecuteRequest = {
       taskId: node.id,
+      ...(attempt > 1 ? { attempt } : {}),
       workspaceRoot: args.workspaceRoot,
       command: step.command,
       forwardArgs: effectiveForwardArgs,
       cwd: node.projectDir,
       env,
       envDefine: step.env?.define ?? {},
-      ...(depBins.length === 0 ? {} : { binDirs: depBins }),
       capture,
       onStdout: masked ? masked.out : toOut,
       onStderr: masked ? masked.err : toErr,
@@ -1351,11 +1345,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       // `--force`/`--no-cache` reach a remote executor's private record
       // through this flag — the policy gates above only cover vx's OWN cache.
       ...(cfgCacheable && !(policy.localRead || policy.remoteRead) ? { refresh: true } : {}),
-      outputs: {
-        files: outputs,
-        workspaceFiles: wsOutputs,
-        ...(mounts.length === 0 ? {} : { mounts }),
-      },
+      outputs: { files: outputs, workspaceFiles: wsOutputs },
       ...(args.terminal === true ? { terminal: true as const } : {}),
       ...(args.servers === undefined
         ? {}
@@ -1379,7 +1369,6 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       args.nestedProjectDirs,
       args.cacheDir,
       await dependencyReads(args.readableDeps?.(node) ?? [], args.workspaceRoot),
-      depMounts,
     )
     placeholders = sb.placeholders
     withheld = sb.withheld
@@ -1621,7 +1610,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     durationMs: spentMs,
     hash,
     ...(attempt > 1 ? { attempts: attempt } : {}),
-    ...(failedAttempts.length > 0 ? { failedAttempts } : {}),
+    ...(failedAttempts.length > 0 ? { failedAttempts, attemptOutputs } : {}),
     ...(described !== undefined
       ? { inputFiles: captured.reduce((n, c) => (c.kind === 'file' ? n + 1 : n), 0) }
       : {}),

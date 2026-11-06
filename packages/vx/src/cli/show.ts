@@ -521,15 +521,6 @@ function taskRows(raw: TaskConfig): ui.FieldRow[] {
     add('outputs.files', list(outputs.files))
     add('outputs.workspaceFiles', list(outputs.workspaceFiles))
     add('outputs.clean', outputs.clean === undefined ? undefined : outputs.clean ? 'yes' : 'no')
-    add('outputs.bin', outputs.bin)
-    add(
-      'outputs.mount',
-      outputs.mount === undefined
-        ? undefined
-        : Object.entries(outputs.mount)
-            .map(([t, s]) => `${t} <- ${s}`)
-            .join(', '),
-    )
   }
   return rows
 }

@@ -80,6 +80,12 @@ export default { name: 'b', tasks: {
     cache: true,
   },
   slow: { exec: { command: 'touch started && sleep 60' } },
+  // Fails its first attempt and passes its retry, saying where each ran.
+  flake: { exec: {
+    command: 'pwd >> ' + ${JSON.stringify(path.join(root, 'flake.log'))} + ' && if [ ! -e ' + ${JSON.stringify(path.join(root, 'flaked'))} + ' ]; then touch ' + ${JSON.stringify(path.join(root, 'flaked'))} + '; sleep 1; exit 1; fi',
+    retries: 1,
+  } },
+  beside: { exec: { command: 'sleep 3' } },
   once: { exec: { command: 'if [ -e ' + once + ' ]; then echo again; else touch ' + once + ' && sleep 60; fi' } },
   env: { exec: {
     command: 'echo "shown=\${VX_E2E_SHOWN:-none} hidden=\${VX_E2E_HIDDEN:-none}"',

@@ -62,7 +62,6 @@ import {
   type CaptureConfig,
   type RunResult,
 } from './runner.js'
-import type { SandboxMount } from './executor.js'
 import { TaskPipes } from './pipes.js'
 import { startTaskProxy, type TaskProxy } from './task-proxy.js'
 import { watchTree } from './proc-sample.js'
@@ -1201,8 +1200,6 @@ export interface SandboxedRunArgs {
   readonly reportWithin: string
   /** Canonical directories whose denials are reported too (`ExecuteSandbox.reportLinked`). */
   readonly reportLinked: readonly string[]
-  /** The dependencies' mounts (`ExecuteSandbox.mounts`), laid out read-only. */
-  readonly mounts?: readonly SandboxMount[]
   /**
    * User-declared sandbox block (after path-resolution). Path lists are
    * unioned with the baselines; bool/object fields fall through to SRT.
@@ -1498,7 +1495,7 @@ function javaToolOptionsFix(host: string | undefined, task: string | undefined):
  */
 export async function wrapSandboxedCommand(
   args: Pick<SandboxedRunArgs, 'command' | 'cwd' | 'forwardArgs' | 'config' | 'env'> &
-    Pick<SandboxedRunArgs, 'baseAllowRead' | 'baseDenyRead' | 'mounts'> & {
+    Pick<SandboxedRunArgs, 'baseAllowRead' | 'baseDenyRead'> & {
       /** A persistent server: the sandbox outlives a run's reset until `releaseBridges(tag)`. */
       server?: boolean
       /** Trace the command's `openat` calls to descriptor TRACE_FD (Linux; `wantsStraceDetection`). */
@@ -1688,15 +1685,6 @@ async function wrapIn(
   // across them; only such a task, since git-aware tools read the variable
   // (vx's own repoFacts asks git instead of the disk under it). A value the
   // task's environment sets wins.
-  if ((args.mounts?.length ?? 0) > 0) {
-    try {
-      wrapped = withMounts(wrapped, args.mounts!)
-    } catch (err) {
-      releaseBridges(tag)
-      afterCommand(SandboxManager)
-      throw err
-    }
-  }
   if (process.platform === 'linux' && /^\S*bwrap /.test(wrapped)) {
     const gitGranted = [...args.config.allowRead, ...args.config.allowWrite].some((g) =>
       g.split(/[\\/]/).includes('.git'),
@@ -2063,54 +2051,6 @@ async function ownProxy(
   return at === -1
     ? wrapped.replace(bind!, own)
     : `${wrapped.slice(0, at + root.length)}${own} ${wrapped.slice(at + root.length)}`
-}
-
-/**
- * The dependencies' mounts, laid out last so no deny of the runtime's
- * covers them: a tmpfs on each path, then each source entry bound into it
- * read-only. Two dependencies mounting one path share it entry by entry,
- * the first holding a name keeping it: mounted trees name their entries by
- * content (`/nix/store/<hash>-name`). The tmpfs is remounted read-only with
- * the runtime's own (`readOnlyMasks`).
- */
-function withMounts(wrapped: string, mounts: readonly SandboxMount[]): string {
-  if (process.platform !== 'linux') {
-    throw new UserError(
-      `outputs.mount: ${mounts[0]!.target} can be laid out only by the Linux sandbox — ` +
-        'run this task on Linux',
-    )
-  }
-  const byTarget = new Map<string, Map<string, string>>()
-  for (const m of mounts) {
-    let entries = byTarget.get(m.target)
-    if (entries === undefined) byTarget.set(m.target, (entries = new Map()))
-    let names: string[] = []
-    try {
-      names = readdirSync(m.source)
-    } catch {
-      // A dependency that wrote nothing there: nothing to bind.
-    }
-    for (const n of names) if (!entries.has(n)) entries.set(n, path.join(m.source, n))
-  }
-  const words: string[] = []
-  for (const [target, entries] of byTarget) {
-    // bwrap makes no directory on the read-only root: the path must be there.
-    if (!existsSync(target)) {
-      throw new UserError(
-        `outputs.mount: ${target} does not exist on this machine, and the sandbox can lay a ` +
-          `mount only on a directory that is there — create it once, empty is enough ` +
-          `(sudo mkdir -p ${target})`,
-      )
-    }
-    words.push('--tmpfs', target)
-    for (const [n, src] of entries) words.push('--ro-bind', toRealPath(src), path.join(target, n))
-  }
-  for (const m of wrapped.matchAll(/(?:'[^']*'|"[^"]*"|[^\s'"])+/g)) {
-    if (m[0] !== '--') continue
-    const at = m.index
-    return `${wrapped.slice(0, at)}${words.map(shellQuote).join(' ')} ${wrapped.slice(at)}`
-  }
-  return wrapped
 }
 
 /** Where a bridge's unix socket lives: the sandbox tmpdir, bound read-write on both sides. */

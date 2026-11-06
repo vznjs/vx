@@ -127,9 +127,7 @@
           "properties": {
             "files": { "$ref": "#/$defs/stringList" },
             "workspaceFiles": { "$ref": "#/$defs/stringList" },
-            "clean": { "type": "boolean" },
-            "bin": { "type": "string" },
-            "mount": { "type": "object", "additionalProperties": { "type": "string" } }
+            "clean": { "type": "boolean" }
           }
         },
         "cache": { "type": "boolean" }

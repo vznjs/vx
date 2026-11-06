@@ -167,8 +167,6 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       files: true,
       workspaceFiles: true,
       clean: true,
-      bin: true,
-      mount: true,
     }),
     'tasks.*.inputs.stability': keys<InputStability>({ strategy: true, severity: true }),
   },
@@ -276,20 +274,6 @@ function projectSeed(): Record<string, unknown> {
         exec: { command: 'true', remote: 'only' },
         inputs: { files: [] },
         outputs: { files: [] },
-        cache: true,
-      },
-      // `bin` on its own task: a seed `files` probe beside it would read
-      // the bin rule as a refusal of `files`.
-      b: {
-        exec: { command: 'true' },
-        inputs: { files: ['src/**'] },
-        outputs: { files: ['out/**'], bin: 'out/bin' },
-        cache: true,
-      },
-      m: {
-        exec: { command: 'true', platforms: ['linux-x64'] },
-        inputs: { files: ['src/**'] },
-        outputs: { files: ['out/**'], mount: { '/nix/store': 'out/nix/store' } },
         cache: true,
       },
     },

@@ -31,8 +31,6 @@ import {
   hasControl,
   parseDependencySpec,
   DependencySpecError,
-  grantPrefix,
-  GLOB_WILDCARDS,
 } from '../util/index.js'
 import {
   parseSettingValue,
@@ -1056,94 +1054,7 @@ export function validateProjectConfig(
       if (wsOutputs !== undefined) {
         validateWorkspaceGlobs(wsOutputs, `${where}.outputs.workspaceFiles`, false)
       }
-      const bin = (outputs as { bin?: unknown }).bin
-      if (bin !== undefined) {
-        validateOutputDir(bin, outFiles as string[], `${where}.outputs.bin`, 'out/bin')
-      }
-      const mount = (outputs as { mount?: unknown }).mount
-      if (mount !== undefined) {
-        validateMount(mount, outFiles as string[], `${where}.outputs.mount`)
-        // Nix picks the system itself, so nothing in the command names it:
-        // without platforms the key holds none and another arch restores
-        // these binaries.
-        if ((exec as { platforms?: unknown } | undefined)?.platforms === undefined) {
-          throw new UserError(
-            `${where}.outputs.mount holds programs built for one platform — declare ` +
-              `exec.platforms, such as ['linux-x64', 'linux-arm64'], so each platform keeps its own cache entry`,
-          )
-        }
-      }
     }
-  }
-}
-
-/**
- * `outputs.bin` and a `mount` source: a plain project-relative
- * directory under the fixed head of a `files` glob. Under a head, a
- * dependant's sandbox reads it (`dependencyReads` grants heads) and a hit
- * restores it; a `:` would split it on PATH.
- */
-function validateOutputDir(
-  bin: unknown,
-  files: readonly string[],
-  where: string,
-  example: string,
-): void {
-  if (typeof bin !== 'string' || bin.trim() === '') {
-    throw new UserError(`${where} must be a directory name, such as '${example}'`)
-  }
-  const dir = bin.replace(/\/+$/, '')
-  if (
-    path.posix.isAbsolute(dir) ||
-    dir.split('/').includes('..') ||
-    GLOB_WILDCARDS.test(dir) ||
-    /[!:]/.test(dir)
-  ) {
-    throw new UserError(
-      `${where}: "${bin}" must be a plain project-relative directory, with no '..', ` +
-        `glob or ':' — such as '${example}'`,
-    )
-  }
-  const covered = files.some((g) => {
-    if (g.startsWith('!')) return false
-    const head = grantPrefix(g)
-    return head !== '' && head !== '.' && (dir === head || dir.startsWith(`${head}/`))
-  })
-  if (!covered) {
-    throw new UserError(
-      `${where}: "${bin}" is under no outputs.files directory — a dependant can ` +
-        `run only what this task saves, so declare it as an output too, such as '${dir}/**'`,
-    )
-  }
-}
-
-/**
- * `outputs.mount`: absolute paths a dependant sees, each filled
- * read-only from an output directory (`/nix/store` from `out/nix/store`).
- * A path is a plain absolute directory other than `/`: the sandbox lays a
- * tmpfs there and binds the entries in.
- */
-function validateMount(mount: unknown, files: readonly string[], where: string): void {
-  if (typeof mount !== 'object' || mount === null || Array.isArray(mount)) {
-    throw new UserError(
-      `${where} must be an object of absolute path to output directory, such as { '/nix/store': 'out/nix/store' }`,
-    )
-  }
-  for (const [target, source] of Object.entries(mount)) {
-    const dir = target.replace(/\/+$/, '')
-    if (
-      !path.posix.isAbsolute(dir) ||
-      dir === '' ||
-      dir.split('/').includes('..') ||
-      GLOB_WILDCARDS.test(dir) ||
-      /[\n:]/.test(dir)
-    ) {
-      throw new UserError(
-        `${where}: "${target}" must be a plain absolute directory other than '/', with no '..', ` +
-          `glob or ':' — such as '/nix/store'`,
-      )
-    }
-    validateOutputDir(source, files, `${where}["${target}"]`, 'out/nix/store')
   }
 }
 
@@ -1179,7 +1090,7 @@ const INPUT_FIELDS = new Set([
   'workspaceRuntime',
   'stability',
 ])
-const OUTPUT_FIELDS = new Set(['files', 'workspaceFiles', 'clean', 'bin', 'mount'])
+const OUTPUT_FIELDS = new Set(['files', 'workspaceFiles', 'clean'])
 
 /**
  * Another runner's spelling of a field vx has under another name, by the

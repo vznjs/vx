@@ -279,8 +279,6 @@ interface PackArgs {
   root?: string
   /** Where `outputs/` names lie, for the directory modes (`dirModes`); absent, none is recorded. */
   projectDir?: string
-  /** The task's `outputs.mount` paths: an absolute link into one is kept as written. */
-  mounts?: readonly string[] | undefined
 }
 
 /** The largest second count ustar's 12-byte mtime field holds: 11 octal digits. */
@@ -338,7 +336,6 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
         // enters the artifact, so a link to a file the task could not
         // read packs nothing of it (L-23).
         const to = await readlinkOf(abs)
-        if (path.isAbsolute(to) && intoMount(to, args.mounts)) return { name, link: to, abs, shown }
         if (path.isAbsolute(to)) {
           throw new UserError(
             `${shown} is a symlink to an absolute path (${to}): vx restores a link as written, and an absolute one names this machine's checkout — make it relative, or take it back with a '!' entry`,
@@ -821,9 +818,8 @@ function dirsOf(meta: MetaFile): string[] {
 
 /**
  * The sidecar's links, each name held to a file entry's rules and each
- * target to a path with no NUL, an absolute one in plain form: where it may
- * point is decided at the restore, which knows the workspace and the
- * task's mounts.
+ * target to a relative path with no NUL: where it may point is decided at
+ * the restore, which knows the workspace.
  */
 function linksOf(meta: MetaFile): Array<[string, string]> {
   const raw: unknown = meta.links
@@ -836,12 +832,7 @@ function linksOf(meta: MetaFile): Array<[string, string]> {
       throw new ArchiveSecurityError(`archive link is not an output: ${name}`)
     }
     assertSafeName(name)
-    if (
-      typeof to !== 'string' ||
-      to.length === 0 ||
-      to.includes('\0') ||
-      (path.isAbsolute(to) && path.posix.normalize(to) !== to)
-    ) {
+    if (typeof to !== 'string' || to.length === 0 || to.includes('\0') || path.isAbsolute(to)) {
       throw new ArchiveSecurityError(`archive link ${name} has an unsafe target: ${String(to)}`)
     }
     return [name, to]
@@ -915,16 +906,6 @@ function commonDir(a: string, b: string): string {
   return dir
 }
 
-/**
- * `to` (absolute) lies strictly under one of the task's mount paths: the
- * dependant's sandbox lays the mount there, so the link means the same on
- * every machine. A link to the mount path itself names nothing it holds.
- */
-const intoMount = (to: string, mounts: readonly string[] | undefined): boolean =>
-  mounts !== undefined &&
-  path.posix.normalize(to) === to &&
-  mounts.some((m) => to.startsWith(`${m.replace(/\/+$/, '')}/`))
-
 /** `p` is `root` or under it, lexically. */
 const inside = (p: string, root: string): boolean => {
   const r = path.resolve(root)
@@ -963,8 +944,6 @@ export async function extractArtifactStream(
   stageRoot?: string,
   /** Handed what `scanArtifact` would read of the same bytes, once their sum has checked. */
   onScan?: (scan: ArtifactScan) => void,
-  /** The task's `outputs.mount` paths: the one place an absolute link may point. */
-  mounts?: readonly string[],
 ): Promise<Set<string>> {
   // No `mkdir -p` of the destination here: `stage` creates each entry's
   // directory chain, the destination included, and the cache restores
@@ -1059,16 +1038,6 @@ export async function extractArtifactStream(
       if (dest === null || dest.rel.length === 0) continue
       const target = path.join(dest.base, dest.rel)
       await x.assertContained(dest.base, target, name)
-      if (path.isAbsolute(to)) {
-        if (!intoMount(to, mounts)) {
-          throw new ArchiveSecurityError(
-            `archive link ${name} points to an absolute path no outputs.mount declares: ${to}`,
-          )
-        }
-        await x.stageLink(name, dest.base, target, to)
-        provided.add(name)
-        continue
-      }
       const at = path.resolve(path.dirname(target), to)
       if (!inside(at, bound)) {
         throw new ArchiveSecurityError(`archive link ${name} points out of the workspace: ${to}`)

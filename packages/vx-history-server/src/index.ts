@@ -10,6 +10,7 @@ export {
 } from './server.js'
 export {
   type Db,
+  type Outcome,
   type Report,
   type Repo,
   RSS_DECAY,

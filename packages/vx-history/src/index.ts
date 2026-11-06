@@ -33,7 +33,7 @@ import {
 import type { CommandContext } from '@vzn/vx'
 import path from 'node:path'
 import type { HistoryRow } from './history-view.js'
-import type { HistoryServer, Named, ServerTiming } from './history-server.js'
+import type { HistoryServer, Named, ServerOutcome, ServerTiming } from './history-server.js'
 
 export interface VxHistoryOptions {
   /** How many recent invocations to learn from. Default 20. */
@@ -471,7 +471,8 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
         stopImport = () => (late = true)
         const weights = (async () => {
           const hashes = [...new Set(ids.flatMap((id) => defs.get(id) ?? []))]
-          const got = await server.query(refs, hashes)
+          const { timings: got, flaky } = await server.query(refs, hashes)
+          if (flaky.size > 0 && !late) ctx.flaky(ids.filter((id) => flaky.has(defs.get(id) ?? '')))
           const timings = new Map<string, number>()
           const needs = new Map<string, TaskResources>()
           for (const id of ids) {
@@ -544,17 +545,22 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
   hooks.setup = async (ctx) => {
     remote ??= await serverOf()
     if (remote?.writes === true) {
-      const { timingOf: timing } = await import('./history-server.js')
+      const { timingOf: timing, outcomeOf } = await import('./history-server.js')
       // Only the run that ran the tasks hears them: under DTE, the
       // orchestrator, with each worker's measurements.
       const timings = new Map<string, ServerTiming>()
-      const sent = (reported = { timings, warn: ctx.warn })
+      // Each task and key once, as the server takes them.
+      const outcomes = new Map<string, ServerOutcome>()
+      const sent = (reported = { timings, outcomes, warn: ctx.warn })
       const server = remote
       ctx.on('onTaskComplete', (node, outcome) => {
         if (node.config.exec?.command === undefined) return
         const def = taskDefinitions([node]).get(node.id)
+        if (def === undefined) return
         const t = timing(outcome)
-        if (def !== undefined && t !== undefined) timings.set(def, t)
+        if (t !== undefined) timings.set(def, t)
+        const o = outcomeOf(outcome, def)
+        if (o !== undefined) outcomes.set(`${o.hash}\0${o.key}`, o)
       })
       // Every outcome is known here, and core's own end of run (history
       // rows, cache uploads, telemetry) is still ahead: sent from teardown,
@@ -667,6 +673,7 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
 
 interface Reported {
   readonly timings: Map<string, ServerTiming>
+  readonly outcomes: ReadonlyMap<string, ServerOutcome>
   readonly warn: (m: string) => void
 }
 
@@ -685,13 +692,15 @@ const UPLOAD_WAIT_MS = 2_000
 
 function sendTimings(server: HistoryServer, sent: Reported): Upload {
   const stop = new AbortController()
-  const done = server.upload(sent.timings, stop.signal).catch((err: unknown) => {
-    // Abandoned by teardown, which says so itself.
-    if (stop.signal.aborted) return
-    sent.warn(
-      `[vx] vx-history: the timings were not sent to the history server at ${server.url}: ${err instanceof Error ? err.message : String(err)}`,
-    )
-  })
+  const done = server
+    .upload(sent.timings, stop.signal, [...sent.outcomes.values()])
+    .catch((err: unknown) => {
+      // Abandoned by teardown, which says so itself.
+      if (stop.signal.aborted) return
+      sent.warn(
+        `[vx] vx-history: the timings were not sent to the history server at ${server.url}: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    })
   return { done, stop }
 }
 

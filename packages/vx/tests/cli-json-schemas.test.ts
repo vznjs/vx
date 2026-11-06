@@ -113,7 +113,7 @@ const KITCHEN = `export default {
         workspaceRuntime: ['echo w'],
         stability: { strategy: 'mutable', severity: 'error' },
       },
-      outputs: { files: ['dist/**'], workspaceFiles: ['out.txt'], clean: false, bin: 'dist/bin', mount: { '/nix/store': 'dist/store' } },
+      outputs: { files: ['dist/**'], workspaceFiles: ['out.txt'], clean: false },
       cache: true,
     },
     dev: { exec: { command: 'echo dev', persistent: { readyWhen: 'ready' } } },
@@ -756,8 +756,6 @@ describe('each schema object is its source type', () => {
         files: true,
         workspaceFiles: true,
         clean: true,
-        bin: true,
-        mount: true,
       }),
     )
     expect(def('show', 'taskConfig', 'properties', 'inputs', 'properties', 'stability')).toEqual(

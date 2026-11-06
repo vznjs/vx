@@ -21,6 +21,16 @@ export interface Report {
   readonly rssBytes?: number
 }
 
+/** One run of a cached task, pass or fail, as a client reports it: its flaky record. */
+export interface Outcome {
+  /** The task's definition hash, as its timing names it. */
+  readonly hash: string
+  /** The run's cache key: one key that failed, then passed, is a flake. */
+  readonly key: string
+  /** `flaky`: the run saw the task flake itself (a retry that passed). */
+  readonly outcome: 'pass' | 'fail' | 'flaky'
+}
+
 /** What a scheduler reads for a task: the folded numbers and how many runs made them. */
 export interface Timing {
   readonly durationMs: number
@@ -59,6 +69,12 @@ export interface Repo {
 const DROP_OLD = 'DROP TABLE IF EXISTS task_timings'
 const SCHEMA = `CREATE TABLE IF NOT EXISTS timings (issuer TEXT NOT NULL, repository TEXT NOT NULL, ref TEXT NOT NULL, hash TEXT NOT NULL, duration_ms INTEGER NOT NULL, cores REAL, rss_bytes INTEGER, runs INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (issuer, repository, ref, hash)) WITHOUT ROWID`
 
+// The flaky record (2026-11-06): a row only for a task definition and
+// cache key that failed, and whether it flaked since. A pass with no row
+// writes nothing: passes are most outcomes. Kept by repository, not by
+// ref: a key is the same inputs on every branch.
+const OUTCOMES = `CREATE TABLE IF NOT EXISTS outcomes (issuer TEXT NOT NULL, repository TEXT NOT NULL, hash TEXT NOT NULL, key TEXT NOT NULL, flaky INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (issuer, repository, hash, key)) WITHOUT ROWID`
+
 // When the database was last swept, by whichever node: a Worker runs many
 // isolates and starts new ones all day, and each swept on its first upload.
 const SWEEPS =
@@ -83,6 +99,23 @@ WHERE abs(excluded.duration_ms - duration_ms) > duration_ms * ${NOISE}
   OR (excluded.rss_bytes IS NOT NULL AND (rss_bytes IS NULL OR excluded.rss_bytes > rss_bytes))
   OR excluded.updated_at - updated_at >= ${DAY_MS}`
 
+// A failure or a run's flake writes its row; a row already as it would
+// be is rewritten only when a day old, since each write is billed.
+const RECORD = `INSERT INTO outcomes (issuer, repository, hash, key, flaky, at)
+SELECT ?1, ?2, j.value ->> '$.hash', j.value ->> '$.key', j.value ->> '$.outcome' = 'flaky', ?3
+FROM json_each(?4) AS j WHERE j.value ->> '$.outcome' <> 'pass'
+ON CONFLICT (issuer, repository, hash, key) DO UPDATE SET flaky = max(flaky, excluded.flaky), at = excluded.at
+WHERE excluded.flaky > flaky OR excluded.at - at >= ${DAY_MS}`
+
+/** A pass of a key that failed: the key flaked. */
+const PASSED = `UPDATE outcomes SET flaky = 1, at = ?3
+WHERE issuer = ?1 AND repository = ?2 AND flaky = 0 AND (hash, key) IN
+  (SELECT j.value ->> '$.hash', j.value ->> '$.key' FROM json_each(?4) AS j WHERE j.value ->> '$.outcome' = 'pass')`
+
+/** The hashes asked that flaked: a key that failed and then passed, or a run that saw it. */
+const FLAKY = `SELECT DISTINCT hash FROM outcomes
+WHERE issuer = ?1 AND repository = ?2 AND hash IN (SELECT value FROM json_each(?3)) AND flaky = 1`
+
 /** The rows of `refs` for the hashes asked; a hash the first ref lacks reads the next. */
 const READ = `SELECT hash, ref, duration_ms, cores, rss_bytes, runs FROM timings
 WHERE issuer = ?1 AND repository = ?2 AND ref IN (SELECT value FROM json_each(?3)) AND hash IN (SELECT value FROM json_each(?4))`
@@ -93,6 +126,10 @@ export interface Store {
   fold(repo: Repo, ref: string, now: number, reports: readonly Report[]): Promise<void>
   /** Each hash's row in the first of `refs` that holds one. */
   read(repo: Repo, refs: readonly string[], hashes: readonly string[]): Promise<Map<string, Timing>>
+  /** Records each outcome in the repository's flaky record. */
+  record(repo: Repo, now: number, outcomes: readonly Outcome[]): Promise<void>
+  /** The hashes asked that the flaky record names flaky. */
+  flaky(repo: Repo, hashes: readonly string[]): Promise<string[]>
   /** When a node last swept the database; 0 before the first sweep. */
   sweptAt(): Promise<number>
   /** Deletes the rows not reported since `before`, and records the sweep at `now`; how many. */
@@ -131,6 +168,21 @@ export function sqliteStore(db: Db): Store {
       await db.run(DROP_OLD, [])
       await db.run(SCHEMA, [])
       await db.run(SWEEPS, [])
+      await db.run(OUTCOMES, [])
+    },
+    async record(repo, now, outcomes) {
+      for (const part of jsonParams(outcomes)) {
+        await db.run(PASSED, [repo.issuer, repo.repository, now, part])
+        await db.run(RECORD, [repo.issuer, repo.repository, now, part])
+      }
+    },
+    async flaky(repo, hashes) {
+      const rows = await Promise.all(
+        jsonParams(hashes).map((part) =>
+          db.all<{ hash: string }>(FLAKY, [repo.issuer, repo.repository, part]),
+        ),
+      )
+      return rows.flat().map((r) => r.hash)
     },
     async fold(repo, ref, now, reports) {
       for (const part of jsonParams(reports))
@@ -168,6 +220,7 @@ export function sqliteStore(db: Db): Store {
       // A report that would not move its row is not written for up to a
       // day (FOLD): a row's write time lags its last report by up to that.
       const deleted = await db.run('DELETE FROM timings WHERE updated_at < ?1', [before - DAY_MS])
+      await db.run('DELETE FROM outcomes WHERE at < ?1', [before - DAY_MS])
       await db.run(
         'INSERT INTO sweeps (id, at) VALUES (1, ?1) ON CONFLICT (id) DO UPDATE SET at = excluded.at',
         [now],
