@@ -20,7 +20,7 @@ export function prepareSandbox(nodes: Iterable<TaskNode>): SandboxArmer | null
 
 export interface SandboxRunUnion {
   domains: string[] // every sandboxed task's `allow.network` list, deduped
-  deniedDomains: string[] // every sandboxed task's `deny.network` list, deduped: refused to every task (B-21)
+  deniedDomains: string[] // every sandboxed task's `deny.network` list, deduped: checked at init; each task's front refuses its own
   unixSockets: boolean // some task lifts SRT's AF_UNIX filter; each wrap sets it for its own task
   gitConfig: boolean // some task grants `gitConfig`; each wrap sets it for its own task (B-41)
   weakerNested: boolean // true only when EVERY sandboxed task accepts it

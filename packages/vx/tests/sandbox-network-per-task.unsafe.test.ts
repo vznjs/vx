@@ -57,4 +57,31 @@ describe.skipIf(!available)('a network grant', () => {
     const b = r.outcomes.find((o) => o.node.id.endsWith('#b'))
     expect(b?.status).toBe('success')
   })
+
+  it("is not refused by another task's deny", async () => {
+    await addProject(root, 'app', {
+      config: `export default { tasks: {
+        a: { exec: { command: 'true', sandbox: { allow: { read: ['.'], network: ['a.example.com'] }, deny: { network: ['b.example.com'] } } } },
+        b: { exec: { command: ${fetching('b.example.com')}, sandbox: { allow: { read: ['.'], network: ['b.example.com'] } } } },
+      } }\n`,
+    })
+    const r = await run({ cwd: root, tasks: ['a', 'b'], log: quiet })
+    const b = r.outcomes.find((o) => o.node.id.endsWith('#b'))
+    expect([b?.status, b?.sandboxViolationLines ?? []]).toEqual(['success', []])
+  })
+
+  it('refuses its own deny under network: true', async () => {
+    await addProject(root, 'app', {
+      config: `export default { tasks: {
+        a: { exec: { command: 'true', sandbox: { allow: { read: ['.'], network: ['*.example.com'] } } } },
+        b: { exec: { command: ${fetching('b.example.com')}, sandbox: { allow: { read: ['.'], network: true }, deny: { network: ['b.example.com'] } } } },
+      } }\n`,
+    })
+    const r = await run({ cwd: root, tasks: ['a', 'b'], log: quiet })
+    const b = r.outcomes.find((o) => o.node.id.endsWith('#b'))
+    expect([b?.status, b?.sandboxViolationLines]).toEqual([
+      'failed',
+      ['deny network-outbound b.example.com:443 (host is on the deny list)'],
+    ])
+  })
 })
