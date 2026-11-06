@@ -99,7 +99,10 @@ describe.skipIf(!available)(
       TIMEOUT,
     )
 
-    it(
+    // Linux only: there the proxy is a socket bridged into the task's own
+    // network namespace, and the probe reads /proc. macOS hands the task the
+    // host's loopback proxy, which no read wall touches.
+    it.skipIf(process.platform !== 'linux')(
       "with it and a domain, the task still reaches the runtime's proxy",
       async () => {
         // The proxy's socket and the wait for its bridge (grep, sleep) are
