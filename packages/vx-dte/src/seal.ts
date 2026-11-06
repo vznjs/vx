@@ -217,6 +217,8 @@ class Session {
   private newest = -1
   /** The last send handed to the wire, or still sealing: the next waits on it. */
   private turn: Promise<unknown> = Promise.resolve()
+  /** Bodies asked for in this turn of the event loop, or while the send before seals: sealed as one. */
+  private group: { bodies: string[]; bytes: number; sent: Promise<void> } | undefined
 
   constructor(
     private readonly tx: CipherState,
@@ -228,21 +230,32 @@ class Session {
    * sealing is async, and a big body sealed first reached the wire after a
    * small one sealed next (a worker's `end` before its `ran`, 2026-10-26).
    * The wire numbers a send as it is handed over, so only the handing waits.
+   * Bodies that wait together go as one: a worker's `start` of each task
+   * a batch began was a send, a relay frame and its answer of its own.
    */
-  async send(body: unknown, wire: (sealed: { seal: string[] }) => Promise<void>): Promise<void> {
-    let sent: Promise<void> | undefined
-    const mine = this.turn.then(async () => {
-      sent = wire(await this.seal(body))
+  send(body: unknown, wire: (sealed: { seal: string[] }) => Promise<void>): Promise<void> {
+    const json = JSON.stringify(body)
+    const g = this.group
+    if (g !== undefined && g.bytes + json.length <= GROUP_BYTES) {
+      g.bodies.push(json)
+      g.bytes += json.length
+      return g.sent
+    }
+    const mine = { bodies: [json], bytes: json.length, sent: Promise.resolve() }
+    this.group = mine
+    let handed: Promise<void> | undefined
+    const sealed = this.turn.then(async () => {
+      if (this.group === mine) this.group = undefined
+      handed = wire(await this.seal(`[${mine.bodies.join(',')}]`))
     })
-    // quiet: `await mine` below hands the caller this error; the next turn
-    // must not inherit it.
-    this.turn = mine.catch(() => undefined)
-    await mine
-    await sent
+    // quiet: `sent` hands each caller this error; the next turn must not inherit it.
+    this.turn = sealed.catch(() => undefined)
+    mine.sent = sealed.then(() => handed)
+    return mine.sent
   }
 
-  private async seal(body: unknown): Promise<{ seal: string[] }> {
-    const json = text.encode(JSON.stringify(body))
+  private async seal(bodies: string): Promise<{ seal: string[] }> {
+    const json = text.encode(bodies)
     const plain = squeeze(json, this.sealed)
     this.sealed.add(json)
     // Trailing spaces: JSON.parse reads past them, and `unsqueeze` stops before them.
@@ -258,8 +271,8 @@ class Session {
     return { seal: out }
   }
 
-  /** The body; `REPLAY` for one delivered before; undefined for one that does not open. */
-  async open(body: unknown): Promise<unknown> {
+  /** Its bodies; `REPLAY` for one delivered before; undefined for one that does not open. */
+  async open(body: unknown): Promise<unknown[] | typeof REPLAY | undefined> {
     const s = (body as { seal?: unknown } | null)?.seal
     if (!Array.isArray(s) || s.length === 0) return undefined
     const parts: { n: number; c: string }[] = []
@@ -284,11 +297,12 @@ class Session {
       const plain: Uint8Array[] = []
       for (const p of parts) plain.push(await this.rx.decrypt(p.n, ad, unb64(p.c)))
       const json = unsqueeze(Buffer.concat(plain), this.opened)
-      const body: unknown = JSON.parse(Buffer.from(json).toString())
+      const bodies: unknown = JSON.parse(Buffer.from(json).toString())
+      if (!Array.isArray(bodies)) return undefined
       this.opened.add(json)
       for (const p of parts) this.seen.add(p.n)
       this.newest = parts.at(-1)!.n
-      return body
+      return bodies
       // quiet: a body that does not open is the relay's tampering, which the caller says
     } catch {
       return undefined
@@ -299,6 +313,11 @@ class Session {
 /** Leads a body zstd-compressed, and one as its JSON. */
 const ZSTD = 0
 const RAW = 1
+/**
+ * Bodies of up to this much JSON go sealed as one; each body of more goes
+ * alone, and the wire keeps a frame under the relay's limit by its own.
+ */
+const GROUP_BYTES = 64 * 1024
 /** The lead byte and its sender's history length; a compressed one's frame length next. */
 const HEADER = 5
 /**
@@ -486,7 +505,7 @@ export function sealOrchestrator(
           out.push({ from: 'relay', body: { type: 'lost', id: m.from } })
           continue
         }
-        out.push({ from: m.from, body })
+        for (const one of body) out.push({ from: m.from, body: one })
       }
       return out
     },
@@ -563,7 +582,7 @@ export async function sealWorker(
           throw new SealError(
             'a message from the orchestrator did not open: the relay changed or replayed it',
           )
-        out.push({ from: m.from, body })
+        for (const one of body) out.push({ from: m.from, body: one })
       }
       return out
     },

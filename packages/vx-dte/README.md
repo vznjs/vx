@@ -83,8 +83,9 @@ replay and is dropped; one older than a body already opened (the relay
 held it back: the wire's numbers are outside the seal) or that does not
 open loses its sender. The plaintext is a lead byte, the length of
 every body its sender sealed before (4 bytes, big-endian, mod 2³²), and
-then, `1`, the body's JSON, or `0`, when smaller so, its zstd frame's
-length (4 bytes) and the frame: compressed before sealing, since no
+then, `1`, its JSON, an array of the messages sent together (up to 64
+KiB), or `0`, when smaller so, its zstd frame's length (4 bytes) and
+the frame: compressed before sealing, since no
 relay or socket compresses what is sealed, against the last 16 KiB of
 those bodies' JSON as its dictionary, so a batch's env and paths, or a
 task's name, said before cost a few bytes. A body whose length is not
