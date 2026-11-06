@@ -95,3 +95,21 @@ it('vx lock --check is described as what it does', () => {
     '                       it prints {upToDate, audited, notAudited, problems}.',
   ])
 })
+
+// A section shared by several verbs printed whole for each: `vx why --help`
+// listed show, info and last too. A verb's cut keeps its own entries and
+// the shared flags that name it.
+it("a shared section cuts to the verb's own entries", () => {
+  const text = verbHelpText('why')
+  const at = text.indexOf('Introspection:')
+  expect(text.slice(at, text.indexOf('\n\n', at)).split('\n')).toEqual([
+    'Introspection:',
+    "  vx why <task>        Why did this task re-run? Compares the task's latest",
+    '                       run (or --run RUNID) against its previous run: names the',
+    '                       exact changed cache-key components (files / env / runtime',
+    '                       / upstream) from the persisted input fingerprints.',
+    '      --format <fmt>   pretty (default) | json.',
+    '  info, why and last:',
+    '      --cache-dir <path>  Read the cache a run with the same flag uses.',
+  ])
+})

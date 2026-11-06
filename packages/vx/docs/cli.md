@@ -102,7 +102,8 @@ affected: the change reaches no test task.`
 There is no `-V`; use `vx --version`, as in Turbo.
 
 `vx <verb> --help` (also `-h`, `vx help <verb>` and `vx --help <verb>`) prints this
-reference for that verb: its usage lines and sections, then
+reference for that verb: its usage lines and sections (of a section several
+verbs share, only its own entries), then
 `Full reference: vx help`. Every argument error points at it.
 `vx help <plugin verb>` is `vx <plugin verb> --help`: the plugin answers.
 

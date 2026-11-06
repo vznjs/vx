@@ -90,10 +90,31 @@ export function verbHelpText(verb: string): string {
       if (own.length > 0) kept.push(['Usage:', ...own].join('\n'))
       continue
     }
-    if (lines.some(names)) kept.push(block)
+    if (lines.some(names)) kept.push(own(lines, names, quoted))
   }
   if (kept.length === 0) return helpText()
   return [title, ...kept, 'Full reference: vx help', ''].join('\n\n')
+}
+
+/**
+ * A section's entries for one verb, when the section holds several verbs'
+ * entries (Introspection): an entry is a two-space line and the deeper
+ * lines under it; a shared one (`info, why and last:`) stays if it names
+ * the verb. A one-verb or `(for <verb>)` section stays whole.
+ */
+function own(lines: string[], names: (line: string) => boolean, quoted: string): string {
+  const entries: string[][] = []
+  for (const line of lines.slice(1)) {
+    if (/^ {2}\S/.test(line) || entries.length === 0) entries.push([line])
+    else entries.at(-1)!.push(line)
+  }
+  const verbs = new Set(entries.map((e) => /^ {2}vx ([\w-]+)/.exec(e[0]!)?.[1]).filter(Boolean))
+  if (verbs.size < 2) return lines.join('\n')
+  const word = new RegExp(`\\b${quoted}\\b`)
+  const mine = entries.filter(
+    (e) => names(e[0]!) || (!e[0]!.startsWith('  vx ') && word.test(e[0]!)),
+  )
+  return [lines[0]!, ...mine.flat()].join('\n')
 }
 
 export function helpText(pluginCommands: readonly string[] = []): string {
