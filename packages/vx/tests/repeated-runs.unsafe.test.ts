@@ -4,8 +4,10 @@
 // sandboxed task, alternating `handleSignals` and `holdPersistent`: from
 // the fifth run on, the open descriptors never grow and the process's
 // signal and exit listeners hold steady. A probe of 200 such runs found
-// them steady and RSS flat at ~108 MB (C-83). Unsafe: it reads this process's
-// /proc/self/fd, which a sandboxed shard's /proc is not.
+// them steady and RSS flat at ~108 MB (C-83). On macOS too, where an Nx
+// dev task kept a pty master per command until the system ran out
+// (2026-11-06). Unsafe: it reads this process's descriptors, which a
+// sandboxed shard's /dev/fd is not.
 
 import { readdirSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
@@ -41,36 +43,33 @@ beforeAll(async () => {
 afterAll(() => rm(root, { recursive: true, force: true }))
 
 const held = () => ({
-  fds: readdirSync('/proc/self/fd').length,
+  // Linux and macOS alike list the reader's own descriptors here.
+  fds: readdirSync('/dev/fd').length,
   SIGINT: process.listenerCount('SIGINT'),
   SIGTERM: process.listenerCount('SIGTERM'),
   SIGHUP: process.listenerCount('SIGHUP'),
   exit: process.listenerCount('exit'),
 })
 
-it.skipIf(process.platform !== 'linux')(
-  'twenty runs in one process hold their descriptors and listeners steady',
-  async () => {
-    let steady: ReturnType<typeof held> | undefined
-    for (let i = 0; i < 20; i++) {
-      const r = await run({
-        cwd: root,
-        tasks: sandboxed ? ['a#t', 'a#sb'] : ['a#t'],
-        log: silent,
-        handleSignals: i % 2 === 0,
-        holdPersistent: i % 3 === 0,
-      })
-      expect(r.ok).toBe(true)
-      await r.persistent?.stop()
-      if (i === 4) steady = held()
-    }
-    // The claim is no growth: a descriptor still closing at the fifth run
-    // can be gone by the twentieth, and an exact count failed on CI at
-    // 18 → 17. Descriptors may fall, never rise; listeners hold exactly.
-    const { fds, ...listeners } = held()
-    const { fds: steadyFds, ...steadyListeners } = steady!
-    expect(listeners).toEqual(steadyListeners)
-    expect(fds).toBeLessThanOrEqual(steadyFds)
-  },
-  60_000,
-)
+it('twenty runs in one process hold their descriptors and listeners steady', async () => {
+  let steady: ReturnType<typeof held> | undefined
+  for (let i = 0; i < 20; i++) {
+    const r = await run({
+      cwd: root,
+      tasks: sandboxed ? ['a#t', 'a#sb'] : ['a#t'],
+      log: silent,
+      handleSignals: i % 2 === 0,
+      holdPersistent: i % 3 === 0,
+    })
+    expect(r.ok).toBe(true)
+    await r.persistent?.stop()
+    if (i === 4) steady = held()
+  }
+  // The claim is no growth: a descriptor still closing at the fifth run
+  // can be gone by the twentieth, and an exact count failed on CI at
+  // 18 → 17. Descriptors may fall, never rise; listeners hold exactly.
+  const { fds, ...listeners } = held()
+  const { fds: steadyFds, ...steadyListeners } = steady!
+  expect(listeners).toEqual(steadyListeners)
+  expect(fds).toBeLessThanOrEqual(steadyFds)
+}, 60_000)
