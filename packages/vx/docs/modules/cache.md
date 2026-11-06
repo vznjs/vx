@@ -416,6 +416,16 @@ export interface FoldMemo {
 // Core's own readers (`vx last`, `vx why`, the history provider) take the
 // index handle from `indexDb(cache)`, never from a `Cache` member.
 export function indexDb(cache: Cache): Database
+// The files a second connection writes a run's hits through; undefined
+// when the store keeps no history on disk.
+export function historyFiles(cache: Cache): { index: string; store?: string } | undefined
+// A run's hits written on a thread while the graph runs, 512 to a
+// transaction; `finish` hands back what did not land, for the bundle.
+export class HistoryStream<T> {
+  constructor(files: { index: string; store?: string })
+  add(item: T, record: RunRecord): void
+  finish(): Promise<{ landed: Streamed<T>[]; unlanded: Streamed<T>[] }>
+}
 export const SCHEMA_VERSION = 'v47'
 // What vx wrote in a cache dir (index, artifacts, run history, its `*`
 // ignore): all a clear of a dir the user named may delete (item 968).
