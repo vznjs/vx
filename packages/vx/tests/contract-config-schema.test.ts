@@ -263,7 +263,6 @@ function projectSeed(): Record<string, unknown> {
             files: ['dist/**'],
             workspaceFiles: ['out/**'],
             clean: false,
-            bin: 'dist/bin',
           },
           inputStability: { strategy: 'mutable', severity: 'error' },
         },
@@ -273,6 +272,13 @@ function projectSeed(): Record<string, unknown> {
         exec: { command: 'true', remote: 'only' },
         inputs: { files: [] },
         cache: { outputs: { files: [] } },
+      },
+      // `bin` on its own task: a seed `files` probe beside it would read
+      // the bin rule as a refusal of `files`.
+      b: {
+        exec: { command: 'true' },
+        inputs: { files: ['src/**'] },
+        cache: { outputs: { files: ['out/**'], bin: 'out/bin' } },
       },
     },
   }

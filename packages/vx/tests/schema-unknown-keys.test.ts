@@ -147,7 +147,7 @@ describe('an array where an object is expected names the shape, not `unknown fie
         'f',
       ),
     ).toThrow(
-      'f: tasks.c.cache.outputs must be an object (fields: clean, files, workspaceFiles), not an array — did you mean `{ files: [...] }`?',
+      'f: tasks.c.cache.outputs must be an object (fields: bin, clean, files, workspaceFiles), not an array — did you mean `{ files: [...] }`?',
     )
   })
 

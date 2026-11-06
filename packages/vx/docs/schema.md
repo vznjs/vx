@@ -1405,18 +1405,20 @@ so a `tools` project builds Node once and the others run `node`:
 
 ```ts
 // packages/tools/vx.config.ts
-node: {
-  exec: { command: './build-node.sh' },
-  inputs: { files: ['build-node.sh'] },
-  cache: { outputs: { files: ['out/**'], bin: 'out/bin' } },
-},
-// packages/app/vx.config.ts
-build: {
-  dependsOn: ['tools#node'],
-  exec: { command: 'node build.js' },
-  // ...
-},
+import { defineProject } from '@vzn/vx/config'
+
+export default defineProject({
+  tasks: {
+    node: {
+      exec: { command: './build-node.sh' },
+      inputs: { files: ['build-node.sh'] },
+      cache: { outputs: { files: ['out/**'], bin: 'out/bin' } },
+    },
+  },
+})
 ```
+
+A task with `dependsOn: ['tools#node']` then runs `node build.js`.
 
 It is declared, never read from a layout. It must sit under the fixed
 head of a `files` glob, so a hit restores it and a sandboxed dependant

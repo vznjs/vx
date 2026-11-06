@@ -32,6 +32,7 @@ import {
   parseDependencySpec,
   DependencySpecError,
   grantPrefix,
+  GLOB_WILDCARDS,
 } from '../util/index.js'
 import {
   parseSettingValue,
@@ -1062,7 +1063,12 @@ function validateBinDir(bin: unknown, files: readonly string[], where: string): 
     throw new UserError(`${where} must be a directory name, such as 'out/bin'`)
   }
   const dir = bin.replace(/\/+$/, '')
-  if (path.posix.isAbsolute(dir) || dir.split('/').includes('..') || /[*?[\]{}!:]/.test(dir)) {
+  if (
+    path.posix.isAbsolute(dir) ||
+    dir.split('/').includes('..') ||
+    GLOB_WILDCARDS.test(dir) ||
+    /[!:]/.test(dir)
+  ) {
     throw new UserError(
       `${where}: "${bin}" must be a plain project-relative directory, with no '..', ` +
         `glob or ':' — such as 'out/bin'`,

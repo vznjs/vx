@@ -516,6 +516,7 @@ function taskRows(raw: TaskConfig): ui.FieldRow[] {
       'outputs.clean',
       cache.outputs.clean === undefined ? undefined : cache.outputs.clean ? 'yes' : 'no',
     )
+    add('outputs.bin', cache.outputs.bin)
     add('inputStability.strategy', cache.inputStability?.strategy)
     add('inputStability.severity', cache.inputStability?.severity)
   }

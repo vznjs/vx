@@ -6,6 +6,7 @@
 // stay behind the project wall.
 import { rm } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { taskShell } from '../src/util/index.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 import { addProject } from './helpers/workspace.js'
 import { run } from './helpers/orchestrator.js'
@@ -122,6 +123,10 @@ describe.skipIf(!available)('a hermetic task runs a program its dependency built
     await rm(fixture.root, { recursive: true, force: true })
   })
 
+  // The task shell is the one interpreter a hermetic task reads unnamed;
+  // macOS's `/bin/sh` is a stub that is not it.
+  const SHELL = taskShell()
+
   it(
     'by name, from the dependency’s cache.outputs.bin',
     async () => {
@@ -132,7 +137,7 @@ describe.skipIf(!available)('a hermetic task runs a program its dependency built
             tasks: {
               node: {
                 exec: { command: ${JSON.stringify(
-                  `mkdir -p out/bin && printf '#!/bin/sh\\necho TOOLRAN\\n' > out/bin/hello && chmod +x out/bin/hello`,
+                  `mkdir -p out/bin && printf '#!${SHELL}\\necho TOOLRAN\\n' > out/bin/hello && chmod +x out/bin/hello`,
                 )} },
                 inputs: { files: ['src/**'] },
                 cache: { outputs: { files: ['out/**'], bin: 'out/bin' } },
