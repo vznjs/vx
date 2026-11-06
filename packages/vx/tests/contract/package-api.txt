@@ -1747,6 +1747,7 @@ export interface RunResult {
   stderr: string
   signal?: string | number
   timedOut?: boolean
+  killedAfterGrace?: true
   cpuMs?: number
   peakRssBytes?: number
   spawnFailed?: true
