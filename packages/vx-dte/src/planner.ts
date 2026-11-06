@@ -740,16 +740,20 @@ export function plan(
     // And a task given at its end runs through: work counted as cores
     // spread over the rest asked too few workers for a few long tasks.
     tasks.reduce((most, t) => Math.max(most, t.ms ?? UNKNOWN_MS), 0)
-  const run = (ws: readonly PlanWorker[]): ReturnType<typeof play> => play(tasks, ws, how, horizon)
+  // Each set of workers played once a plan: the count search, the drop
+  // pass, the releases and the final play each played the same set again.
+  const plays = new Map<string, ReturnType<typeof play>>()
+  const run = (ws: readonly PlanWorker[]): ReturnType<typeof play> => {
+    const key = ws.map((w) => `${w.id}\0${w.at}`).join('\n')
+    let p = plays.get(key)
+    if (p === undefined) plays.set(key, (p = play(tasks, ws, how, horizon)))
+    return p
+  }
   // Given no task in the play, and none past its window.
   const unused = (p: ReturnType<typeof play>, id: string): boolean =>
     !p.first.has(id) && p.cut !== true
-  const played = new Map<number, number>()
-  const endOf = (n: number): number => {
-    let e = played.get(n)
-    if (e === undefined) played.set(n, (e = run([...workers, ...added.slice(0, n)]).end))
-    return e
-  }
+  const playOf = (n: number): ReturnType<typeof play> => run([...workers, ...added.slice(0, n)])
+  const endOf = (n: number): number => playOf(n).end
   const floor = chainMs(tasks, workers)
   const none = endOf(0)
   const best = none <= floor ? none : Math.min(none, endOf(candidates.length))
@@ -776,7 +780,7 @@ export function plan(
   // Dropped only when neither the end nor its platform's moves past the
   // margin: to the run's end alone, a 110 s guess of an unmeasured chain
   // cut every other platform to it.
-  let before = best < Infinity && n > 0 ? run(kept) : undefined
+  let before = best < Infinity && n > 0 ? playOf(n) : undefined
   if (before !== undefined)
     for (let i = n - 1, dropped = false; i >= 0; i--) {
       // Its twin after it stayed, and nothing moved since: without this
@@ -785,6 +789,12 @@ export function plan(
       if (i < n - 1 && !dropped && twins(added[i]!, added[i + 1]!)) continue
       const platform = added[i]!.platform
       const without = kept.filter((k) => k !== added[i])
+      // Given no task in a whole play, the play without it is the same.
+      if (unused(before, added[i]!.id)) {
+        kept = without
+        dropped = true
+        continue
+      }
       const after = run(without)
       dropped =
         after.end <= before.end &&
