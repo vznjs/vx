@@ -125,3 +125,6 @@ loader's syntax error (`Project config <file>:<line>:<col>: …`, Bun's
 position) is framed at that position, and a config's own throw
 (`Project config <file> threw: … (at <file>:<line>:<col>)`) at the line
 its stack names in the config, a cause's `(at …)` made relative too.
+An import nothing provides (`<kind> config <file>: cannot find '<pkg>'`)
+is framed at its specifier, and a default export that is no object at
+its `export default`.

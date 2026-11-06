@@ -69,7 +69,51 @@ const POSITION =
 const THREW =
   /^(?:Project|Workspace) config (\/[^\n]*?\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s) threw: ([^\n]*?) \(at (\/[^\n]*?):(\d+):(\d+)\)([^]*)$/
 
+// The loader's `<kind> config <file>: cannot find '<pkg>' …`: placed at the
+// specifier. And `<kind> config at <file> did not export a default object`:
+// at the `export default` that exported something else, when there is one.
+const UNPROVIDED =
+  /^(?:Project|Workspace) config (\/[^\n]*?\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s): (cannot find '([^'\n]+)'[^]*)$/
+const NOT_OBJECT =
+  /^(?:Project|Workspace) config at (\/[^\n]*?\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s) (did not export a default object[^]*)$/
+
+/** The file, the source offset `find` places in it, and what follows `<file>:<line>:<col>`. */
+function sourceFrame(
+  file: string,
+  find: (source: string) => number,
+  rest: string,
+  cwd: string,
+): string | undefined {
+  let source: string
+  try {
+    source = readFileSync(file, 'utf8')
+  } catch {
+    return undefined
+  }
+  const at = find(source)
+  if (at < 0) return undefined
+  const before = source.slice(0, at)
+  const line = before.split('\n').length
+  return framed(file, source, { line, col: at - before.lastIndexOf('\n') }, rest, cwd)
+}
+
 function positionFrame(message: string, cwd: string): string | undefined {
+  const unprovided = UNPROVIDED.exec(message)
+  if (unprovided !== null) {
+    const [, file, said, pkg] = unprovided as unknown as [string, string, string, string]
+    const spec = new RegExp(`(?<=\\b(?:from|import|import\\(|require\\()\\s*)(['"])${escapeRe(pkg)}\\1`)
+    return sourceFrame(file, (src) => spec.exec(src)?.index ?? -1, `: ${said}`, cwd)
+  }
+  const notObject = NOT_OBJECT.exec(message)
+  if (notObject !== null) {
+    const [, file, said] = notObject as unknown as [string, string, string]
+    return sourceFrame(
+      file,
+      (src) => /^export\s+default\b/m.exec(src)?.index ?? -1,
+      `: ${said}`,
+      cwd,
+    )
+  }
   const threw = THREW.exec(message)
   const pos =
     threw !== null && threw[3] === threw[1]

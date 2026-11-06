@@ -106,6 +106,38 @@ describe('configErrorFrame', () => {
     )
   })
 
+  it('frames an import nothing provides at its specifier, and a default that is no object', async () => {
+    const imports = path.join(dir, 'imports', '.vx', 'workspace.ts')
+    await mkdir(path.dirname(imports), { recursive: true })
+    await writeFile(
+      imports,
+      "import { a } from './a'\nimport x from 'nope-pkg'\n\nexport default defineConfig(() => ({}))\n",
+    )
+    const cwd = path.join(dir, 'imports')
+    expect(
+      configErrorFrame(
+        `Workspace config ${imports}: cannot find 'nope-pkg' — no node_modules above the config provides it; install the workspace's dependencies first`,
+        cwd,
+      ),
+    ).toBe(
+      ".vx/workspace.ts:2:15: cannot find 'nope-pkg' — no node_modules above the config provides it; install the workspace's dependencies first\n\n" +
+        "  1 | import { a } from './a'\n" +
+        "> 2 | import x from 'nope-pkg'\n" +
+        '    |               ^',
+    )
+    expect(
+      configErrorFrame(
+        `Workspace config at ${imports} did not export a default object: it exports a function`,
+        cwd,
+      )?.split('\n')[0],
+    ).toBe('.vx/workspace.ts:4:1: did not export a default object: it exports a function')
+    // No `export default` to point at: the message as it was.
+    await writeFile(imports, 'export const config = {}\n')
+    expect(
+      configErrorFrame(`Workspace config at ${imports} did not export a default object`, cwd),
+    ).toBeUndefined()
+  })
+
   it('frames a .vx/workspace.ts field too', async () => {
     await mkdir(path.join(dir, '.vx'), { recursive: true })
     const ws = path.join(dir, '.vx', 'workspace.ts')
