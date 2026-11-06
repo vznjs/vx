@@ -46,7 +46,7 @@ function cells(r: string): [string, string, string][] {
 describe('the conformance page', () => {
   it('has the data to hold it to', () => {
     expect(RESULTS.cases.length).toBeGreaterThan(50)
-    expect(TOOLS).toEqual(['vx', 'turbo', 'nx', 'vite-task', 'nix'])
+    expect(TOOLS).toEqual(['vx', 'turbo', 'nx', 'vite-task', 'nix', 'moon'])
     expect(
       RESULTS.cases.some((c) => Object.values(c.outcomes).some((o) => o.status === 'fail')),
     ).toBe(true)

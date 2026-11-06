@@ -22,7 +22,7 @@ export default defineProject({
     // bubblewrap sandbox of its own, which vx's sandbox cannot nest.
     conformance: {
       description:
-        'bun src/cli.ts: every case against vx, Turborepo, Nx, Vite Task and Nix → vx-docs/src/data/conformance.json',
+        'bun src/cli.ts: every case against vx, Turborepo, Nx, Vite Task, Nix and moon → vx-docs/src/data/conformance.json',
       dependsOn: ['install'],
       exec: {
         command: 'bun src/cli.ts',

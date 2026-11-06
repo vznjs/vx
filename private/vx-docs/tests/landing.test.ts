@@ -379,7 +379,7 @@ describe('the landing page', () => {
         return [toolName(t), percent(all), `supports ${supports(all)}`]
       }),
     )
-    expect(shown.map((s) => s[0])).toEqual(['vx', 'Turborepo', 'Nx', 'Vite Task', 'Nix'])
+    expect(shown.map((s) => s[0])).toEqual(['vx', 'Turborepo', 'Nx', 'Vite Task', 'Nix', 'moon'])
     expect(hrefs(cfm)).toEqual([`${BASE}conformance/`])
     expect(cfm).not.toContain('<table')
   })
