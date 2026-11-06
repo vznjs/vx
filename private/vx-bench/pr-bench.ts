@@ -65,6 +65,13 @@ const REACH = 1.25
 /** The commit this checkout is held to (CI: the PR's base, or main before the push); unset times no base. */
 const BASE = process.env.VX_BENCH_BASE || undefined
 
+/**
+ * Whether the base's vx times beside this one. A change to the config
+ * schema leaves the base unable to read this checkout's configs: its arm
+ * is dropped and said so, since the change cannot be timed against it.
+ */
+let baseOn = BASE !== undefined
+
 type Tool = 'vx' | 'base' | Rival
 /** A pair as quiet.ts judges it, with each tool's CPU. */
 type CpuPair = Pair & { cpu: Partial<Record<Tool, number>> }
@@ -115,14 +122,22 @@ async function bench(
   await linkRivals(ws)
   must([vx, 'lock'], ws)
   gitInit(ws)
-  const tools: Tool[] = baseVx === undefined ? ['vx', ...rivals] : ['vx', 'base', ...rivals]
+  const tools: Tool[] = baseOn ? ['vx', 'base', ...rivals] : ['vx', ...rivals]
   const dirs = {} as Record<Tool, string>
   for (const tool of tools) {
     dirs[tool] = `${ws}-${tool}`
     scratch.push(dirs[tool])
     copyWorkspace(ws, dirs[tool])
   }
-  if (baseVx !== undefined) must([baseVx, 'lock'], dirs.base)
+  if (baseOn) {
+    const locked = sh([baseVx!, 'lock'], dirs.base)
+    if (!locked.ok) {
+      baseOn = false
+      console.log(
+        `BASE SKIPPED: the base's vx refuses this checkout's configs, so the change is not timed against it:\n${locked.out.slice(0, 600)}`,
+      )
+    }
+  }
   const vxRun = ['run', ...RUN_TASKS, '--all', '--concurrency', String(CONCURRENCY)]
   const runs = { vx: [vx, ...vxRun], base: [baseVx ?? '', ...vxRun] } as Record<Tool, string[]>
   for (const rival of rivals) runs[rival] = rivalRuns(dirs[rival], CONCURRENCY)[rival].run
@@ -172,7 +187,7 @@ try {
   )
   const site = await bench('site', all, vx, baseVx, ['turbo'])
   const benchOf = (arm: Arm): Bench => (SITE_ARMS.includes(arm) ? site : small)
-  const paired: readonly Tool[] = BASE === undefined ? ['vx', 'turbo'] : ['vx', 'base', 'turbo']
+  const paired: readonly Tool[] = baseOn ? ['vx', 'base', 'turbo'] : ['vx', 'turbo']
 
   const time = async (tool: Tool, arm: Arm, b = benchOf(arm)): Promise<Best> => {
     if (arm === 'cold') await b.clear(tool)
@@ -198,10 +213,10 @@ try {
     const busy0 = machineBusyMs()
     const own0 = ownCpuMs()
     const t0 = Bun.nanoseconds()
-    const baseFirst = BASE !== undefined && rep % 2 === 1
+    const baseFirst = baseOn && rep % 2 === 1
     const early = baseFirst ? await time('base', arm) : undefined
     const v = await time('vx', arm)
-    const base = BASE === undefined ? undefined : (early ?? (await time('base', arm)))
+    const base = baseOn ? (early ?? (await time('base', arm))) : undefined
     const turbo = await time('turbo', arm)
     const busy1 = machineBusyMs()
     const wall = (Bun.nanoseconds() - t0) / 1e6
@@ -234,7 +249,7 @@ try {
       (a) =>
         pairs.get(a)!.length < REPS ||
         !enoughQuiet(pairs.get(a)!, REPS, QUIET_CORES) ||
-        (BASE !== undefined && undecided(quietBase(a))),
+        (baseOn && undecided(quietBase(a))),
     )
     if (left.length === 0) break
     for (const arm of left) pairs.get(arm)!.push(await pair(arm, rep))
@@ -256,7 +271,7 @@ try {
     const b: { vx: Best; base?: Best } & Partial<Record<Rival, Match>> = {
       vx: vxBest,
       turbo: { vx: vxBest, rival: of('turbo') },
-      ...(BASE === undefined ? {} : { base: of('base') }),
+      ...(baseOn ? { base: of('base') } : {}),
     }
     // vx on the cold workspace in this arm, the yardstick of the rivals timed there.
     const vxSmall =
@@ -278,7 +293,7 @@ try {
     const vsBase = quietBase(arm)
     console.log(
       `${arm}: ${ran.length} pairs, the ${kept.length} quietest with ≤ ${others.toFixed(2)} cores busy beside them` +
-        (BASE === undefined
+        (!baseOn
           ? ''
           : `; vx slower than the base in ${vsBase.filter((p) => p.vx > p.base).length} of ${vsBase.length} quiet pairs`),
     )
@@ -288,7 +303,7 @@ try {
       )
   }
 
-  const tools: readonly Tool[] = BASE === undefined ? ['vx', ...RIVALS] : ['vx', 'base', ...RIVALS]
+  const tools: readonly Tool[] = baseOn ? ['vx', 'base', ...RIVALS] : ['vx', ...RIVALS]
   console.log(`case      ${tools.map((t) => t.padStart(18)).join('')}   (wall ms / CPU ms)`)
   for (const arm of HELD) {
     const b = best.get(arm)!
