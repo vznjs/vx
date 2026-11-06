@@ -441,7 +441,8 @@ the report says so and names `nodeLinker: node-modules` or `yarn exec
 A script reading `$npm_package_version`, `$npm_package_name` or
 `$npm_lifecycle_event`, which every manager sets and vx does not, gets
 them under `exec.env.define`, the first two read from an imported
-`package.json` so a version bump reaches them; any other `$npm_*` it
+`package.json` so a version bump reaches them (a field the manifest
+lacks stays unset, as npm leaves it); any other `$npm_*` it
 reads gets a TODO (D-34). Among several packages, a workspace root
 script that runs the members (`pnpm -r build`, `--filter`, `-C`, pnpm's `pn` alias
 included (D-97), Yarn's

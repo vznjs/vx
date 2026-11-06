@@ -202,12 +202,15 @@ const MANIFEST_IMPORT = "import pkg from './package.json' with { type: 'json' }"
  * and the script's name) and vx sets none, so a migrated `echo
  * $npm_package_version` printed nothing (D-34). The name and version are
  * read from the manifest at evaluation, so a bump reaches them; the event
- * is the script's own name, which a folded hook does not share.
+ * is the script's own name, which a folded hook does not share. A field
+ * the manifest lacks is left unset, as npm leaves it: `pkg.version` would
+ * be undefined, which `vx lock` refuses.
  */
 function npmEnv(
   command: string,
   script: string,
   folded: boolean,
+  manifest: { readonly name?: unknown; readonly version?: unknown },
 ): { define: Record<string, unknown>; unset: string[]; readsManifest: boolean } {
   const define: Record<string, unknown> = {}
   const unset: string[] = []
@@ -215,7 +218,9 @@ function npmEnv(
   for (const [, v] of command.matchAll(/\$\{?(npm_[A-Za-z0-9_]+)/g)) {
     if (v! in define || unset.includes(v!)) continue
     if (v === 'npm_package_name' || v === 'npm_package_version') {
-      define[v] = { raw: v === 'npm_package_name' ? 'pkg.name' : 'pkg.version' }
+      const key = v === 'npm_package_name' ? 'name' : 'version'
+      if (typeof manifest[key] !== 'string') continue
+      define[v] = { raw: `pkg.${key}` }
       readsManifest = true
     } else if (v === 'npm_lifecycle_event' && !folded) define[v] = script
     else unset.push(v!)
@@ -931,7 +936,7 @@ export function migrateScripts(
         )
       }
       const exec: Record<string, unknown> = { command }
-      const npm = npmEnv(command, name, hooks.length > 0)
+      const npm = npmEnv(command, name, hooks.length > 0, meta.packageJson)
       if (Object.keys(npm.define).length > 0) exec['env'] = { define: npm.define }
       if (npm.readsManifest) readsManifest = true
       for (const v of npm.unset) {
