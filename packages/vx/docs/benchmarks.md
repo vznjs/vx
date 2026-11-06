@@ -374,11 +374,10 @@ single run move it by seconds. Nx's is one run: its overhead is minutes,
 so seconds move no comparison. It
 uploads `measured/bench.json` as the `bench-data` artifact.
 
-`site.yml` deploys the site on each main push and again when a Bench
-run ends. It copies the newest `bench-data` from main over
-`src/data/bench.json` and runs `@vzn/vx-docs#deploy.pages`. A site change
-is live in minutes; its numbers follow once Bench has measured them.
-It never ships the committed copy, older than the live one.
+Main's DTE run deploys the site (`@vzn/vx-docs#deploy.pages`, part of
+`release`). It fetches the newest `bench-data` from main and builds the
+site with it, so it never waits on Bench and never ships the committed
+copy, older than the live one. New numbers go live with the next main push.
 
 No build depends on the
 benchmarks, so neither the DTE run, where a worker is packed beside

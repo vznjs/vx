@@ -1,5 +1,6 @@
-# Astro build output + generated types
+# Astro build output + generated types; dist-live/ is main's deploy's build
 dist/
+dist-live/
 .astro/
 
 # Reference pages generated from the repo's docs/ tree by

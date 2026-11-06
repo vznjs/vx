@@ -54,10 +54,13 @@ jobs:
     if: github.event.action != 'closed' && github.event.pull_request.stack.position == github.event.pull_request.stack.size
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    # A push to main deploys the site (@vzn/vx-docs#deploy.pages).
+    environment: ${{ github.event_name == 'push' && 'github-pages' || '' }}
     permissions:
       id-token: write
-      # Dispatching and cancelling the workers.
+      # Dispatching and cancelling the workers; reading Bench's numbers.
       actions: write
+      pages: write
       # release.sync gives each GitHub release its post's body.
       contents: write
       # The relay's Workers Builds check names a PR's Preview.
@@ -110,13 +113,24 @@ jobs:
         if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
         id: cache
         run: bun private/vx-servers/worker-url.ts private/vx-cache-service VX_CACHE_URL
+      # The Pages deploy is a task of the run (@vzn/vx-docs#deploy.pages,
+      # 2026-10-24). GitHub hands the job's runtime token, which
+      # uploads the site's artifact, only to JavaScript actions: this hands
+      # it to the run, whose env isolation passes it to that task alone.
+      - name: Hand the Pages token to the run
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN)
+            core.exportVariable('ACTIONS_RESULTS_URL', process.env.ACTIONS_RESULTS_URL)
       # Plans the graph, starts the workers its width needs, then
       # orchestrates them. A PR runs what its diff affects, inputs outside
       # a project included (2026-10-23); main runs everything.
       # The tasks say what each needs: `ci` is every change's checks, the
       # platform's own tests on Mac workers included, and main's `release`
-      # adds the release binaries, their launch checks and the release
-      # notes. The site deploys from site.yml, the numbers from bench.yml.
+      # adds the release binaries, their launch checks, the release notes
+      # and the site's deploy, with the newest numbers bench.yml measured.
       - name: vx run
         env:
           VX_DTE_RELAY: ${{ steps.relay.outputs.url || env.VX_DTE_RELAY }}

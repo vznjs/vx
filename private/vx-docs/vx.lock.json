@@ -447,14 +447,26 @@
         }
       }
     },
-    "deploy.pages": {
-      "description": "deploy dist/ to GitHub Pages (GitHub Actions only)",
+    "release": {
       "dependsOn": [
-        "ci"
+        "deploy.pages"
+      ]
+    },
+    "deploy.pages": {
+      "description": "build the site with main's newest bench numbers → dist-live/ and deploy it to GitHub Pages (GitHub Actions only)",
+      "dependsOn": [
+        "ci",
+        "install",
+        "import",
+        "build.images"
       ],
       "exec": {
-        "command": "bun scripts/deploy-pages.ts",
+        "command": "bun scripts/live-bench.ts && mkdir -p .astro/bin && ln -sf \"$(command -v bun)\" .astro/bin/node && PATH=\"$PWD/.astro/bin:$PATH\" bun --bun astro build --outDir dist-live && bun scripts/deploy-pages.ts dist-live",
         "env": {
+          "define": {
+            "ASTRO_TELEMETRY_DISABLED": "1",
+            "VX_DOCS_BENCH": "measured/live.json"
+          },
           "passThrough": [
             "ACTIONS_RUNTIME_TOKEN",
             "ACTIONS_RESULTS_URL",
@@ -475,6 +487,18 @@
           "allow": {
             "read": [
               "**/*"
+            ],
+            "write": [
+              "measured/live.json",
+              "dist-live/**",
+              ".astro/**"
+            ],
+            "systemInfo": [
+              "vfs.disk-space",
+              "net.link.addr"
+            ],
+            "machLookup": [
+              "com.apple.SystemConfiguration.DNSConfiguration"
             ],
             "network": [
               "*.actions.githubusercontent.com",
