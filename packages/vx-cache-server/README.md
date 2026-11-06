@@ -113,6 +113,9 @@ artifact (a check, a `HEAD`, an upload's skip) is asked of R2, never
 of that copy: it can outlive R2's, and a writer told "held" there would
 skip an upload another data center then cannot read. An upload drops
 the copy in the data center it reaches: R2 had let those bytes go.
+A read R2 answers "try again" (10001, 10058) is asked up to three
+times before the request fails `502`. The deploy clears any cron: the
+Worker has no `scheduled()`.
 
 Set `EXPIRY_DAYS` to the bucket's lifecycle rule (below) and R2's
 "held" is kept in the data center's cache too: an upload, R2's

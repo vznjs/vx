@@ -52,6 +52,28 @@ export interface Env {
   readonly EXPIRY_DAYS?: string | number
 }
 
+/**
+ * R2's answers that ask to be sent again: 10001 "internal error, please
+ * try again" and 10058 "reduce your rate of simultaneous reads on the
+ * same object". Each failed a check, a download or an upload's skip 502
+ * (2026-11-01 to 11-06: 57 in the dashboard's Issues), so the client lost
+ * a hit or sent its bytes again.
+ */
+const AGAIN = /\((10001|10058)\)$/
+const R2_TRIES = 3
+
+/** A read of R2, asked up to three times while R2 says to ask again, 50 then 100 ms apart. */
+async function again<T>(ask: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await ask()
+    } catch (err) {
+      if (attempt === R2_TRIES || !AGAIN.test(String((err as Error)?.message))) throw err
+      await new Promise((r) => setTimeout(r, 50 * attempt))
+    }
+  }
+}
+
 /** An object's key in the data center's cache. */
 const keyOf = (name: string): Request => new Request(`https://vx-cache.blobs/${name}`)
 /** The key of the mark that R2 holds an object, and its size. */
@@ -111,7 +133,7 @@ export function r2Blobs(
       const hit = await (await cache).match(key)
       // No mark from this copy: it can outlive R2's.
       if (hit?.body) return { body: hit.body, size: Number(hit.headers.get('content-length')) }
-      const o = await bucket.get(name)
+      const o = await again(() => bucket.get(name))
       if (o === null) return null
       mark(name, o.size, o.uploaded.getTime())
       // The copy is R2 read again, never a tee of the client's body: a tee
@@ -119,14 +141,18 @@ export function r2Blobs(
       // held a download for 19 minutes (main, 2026-10-28).
       ctx.waitUntil(
         (async () => {
-          const again = await bucket.get(name)
-          if (again === null) return
+          const copy = await again(() => bucket.get(name))
+          if (copy === null) return
           const headers = {
-            'content-length': String(again.size),
+            'content-length': String(copy.size),
             'cache-control': 'public, max-age=31536000, immutable',
           }
-          await (await cache).put(key, new Response(again.body, { headers }))
-        })(),
+          await (await cache).put(key, new Response(copy.body, { headers }))
+        })().catch((err: unknown) =>
+          // The client has its bytes; only the copy failed. Thrown, it was
+          // an uncaught exception in the dashboard's Issues (2026-11-01).
+          console.warn(`vx-cache-server: the data center's copy of ${name}: ${String(err)}`),
+        ),
       )
       return { body: o.body, size: o.size }
     },
@@ -140,7 +166,7 @@ export function r2Blobs(
         const held = await (await cache).match(heldOf(name))
         if (held !== undefined) return Number(held.headers.get(SIZE))
       }
-      const o = await bucket.head(name)
+      const o = await again(() => bucket.head(name))
       if (o === null) return null
       mark(name, o.size, o.uploaded.getTime())
       return o.size

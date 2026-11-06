@@ -487,6 +487,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'upgrade-write-preflight',
     'vx-cache-server/bun',
     'vx-cache-server/oidc',
+    'vx-cache-server/r2-again',
     'vx-cache-server/r2-blobs',
     'vx-cache-server/r2-held',
     'vx-cache-server/r2-put',
