@@ -454,7 +454,9 @@ On a hit:
    takes the group its directory gives new files (setgid on Linux, any
    directory on macOS), ACLs are not copied. The next run removes
    the staging a killed run left. A process reading the output tree during the
-   restore never finds a declared output missing or half-written, and a
+   restore never finds a declared output missing or half-written (the
+   tree form's copy into a folder that stands excepted, see
+   [§ Storage layout](#storage-layout)), and a
    restore that fails first (a full disk, a damaged entry) leaves the
    outputs as they were. Then the declared outputs the entry does not
    hold are removed — see
@@ -1447,8 +1449,15 @@ unpacked once at save (or at ingest of a remote hit, decoded once straight
 into the tree), so a restore copies
 each file out (`copy_file_range`, a clone on a filesystem that has one;
 never a hard link: a later write to a restored output must not reach the
-store). A restore into outputs already on disk, a workspace output or a
-symlink takes the archive extractor, fed the tree packed back into its
+store). A missing folder (a cleaned `dist/`, a fresh checkout) is built
+whole in the workspace's `.vx/tmp/` and renamed in once, as the
+extractor stages, so a reader meets it complete or not at all (copied
+straight to its place, its files were there empty, then short). A
+missing file in a folder that stands is copied straight to its place: a
+reader can meet it short while it copies, as the price of a restore
+that renaming each such file in made a fifth to a third slower (3,000
+files, 2026-11-06). A restore into outputs already on disk, a workspace output, a
+symlink, or a folder on another filesystem than `.vx/tmp/` takes the archive extractor, fed the tree packed back into its
 tar. An upload packs the tree into the tar.zst in the upload queue, off
 the save. A hit trusts the tree and checks none of its files' bytes: the store
 is vx's own, and a check could not stop a write to it. Each file's size

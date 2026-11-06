@@ -260,6 +260,49 @@ describe('a tree hit under a source directory', () => {
   })
 })
 
+describe('a tree hit into absent outputs', () => {
+  // The copy-out wrote each file at its final path, so a reader met it
+  // empty or short until the copy finished; the tar form stages and renames.
+  // A file into a folder that stands is still copied in place (cheaper).
+  it.each([
+    ['staged in the workspace', true],
+    ['with no workspace root', false],
+  ])('a reader never finds an output short in a missing folder (%s)', async (_, withRoot) => {
+    const { cache, proj } = await saved({ embeddings: 0, decompress: true }, LARGE)
+    const out = path.join(proj, 'out/a.bin')
+    const real = Bun.write
+    const write = spyOn(Bun, 'write').mockImplementation((async (
+      ...args: Parameters<typeof real>
+    ) => {
+      // A copy's open makes its target empty first; the copy lands later.
+      await writeFile(args[0] as string, '')
+      await Bun.sleep(40)
+      return real(...args)
+    }) as typeof Bun.write)
+    const seen = new Set<number>()
+    let done = false
+    const poll = (async () => {
+      while (!done) {
+        const st = statSync(out, { throwIfNoEntry: false })
+        if (st !== undefined) seen.add(st.size)
+        await Bun.sleep(1)
+      }
+    })()
+    try {
+      await cache.restoreOutputs(HASH, proj, withRoot ? root : undefined)
+    } finally {
+      done = true
+      await poll
+      write.mockRestore()
+    }
+    expect([...seen].filter((n) => n !== LARGE.byteLength)).toEqual([])
+    expect(new Uint8Array(await readFile(out))).toEqual(LARGE)
+    expect(readdirSync(proj).sort()).toEqual(['out'])
+    expect(readdirSync(path.join(proj, 'out'))).toEqual(['a.bin'])
+    cache.close()
+  })
+})
+
 describe('a tree no row names', () => {
   it('is an orphan the sweep sizes and reaps; an indexed tree stays', async () => {
     const { cache, proj } = await saved({ embeddings: 0, decompress: true }, LARGE)
