@@ -495,8 +495,9 @@ to a machine that runs its tasks, such as a `@vzn/vx-dte` worker.
 ### Signed artifacts
 
 A wrapper can make a shared cache trust its writers, not its store: it
-hashes each download and fails it unless a trusted key signed it. A
-body failed with `CorruptArtifactError` is a miss whose rebuild is sent
+hashes each download and fails it unless a trusted key signed it.
+
+A body failed with `CorruptArtifactError` is a miss whose rebuild is sent
 over the bad copy (`put` gets `replace`). Only main's CI holds the
 private key:
 

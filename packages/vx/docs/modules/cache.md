@@ -165,6 +165,12 @@ export class ArtifactVanishedError extends Error {
   readonly hash: string
 }
 
+// A body whose bytes are wrong, not cut short: the hit is a miss and the
+// re-run's save is sent over that remote's copy (`put` gets `replace`).
+export class CorruptArtifactError extends Error {
+  readonly hash: string
+}
+
 // The run's remote traffic, filled by each remote lane and the run keeper
 // (a kept task counts under its id): what the footer's remote part counts.
 export interface RemoteTraffic {
