@@ -665,6 +665,103 @@ function hostHelpers(): { dirs: string[]; files: string[] } {
   return { dirs: unique(dirs), files: files.map(toRealPath) }
 }
 
+/**
+ * What a hermetic task reads outside the workspace without naming it: the
+ * programs vx and the runtime run around its command (the runtime's bash,
+ * the task shell, setsid, strace, env, the seccomp helper) and what the
+ * loader maps for them. Anything else outside the workspace is the task's
+ * to grant. Learned once per PATH: the files a host's shell links are
+ * fixed for the process.
+ */
+interface HermeticReads {
+  /** What is denied: `/`, spelled as the runtime can mount it. */
+  deny: string[]
+  allow: string[]
+}
+let hermeticMemo: { path: string; reads: Promise<HermeticReads> } | undefined
+function hermeticReads(): Promise<HermeticReads> {
+  const PATH = process.env['PATH'] ?? ''
+  if (hermeticMemo?.path !== PATH) hermeticMemo = { path: PATH, reads: learnHermeticReads() }
+  return hermeticMemo.reads
+}
+
+async function learnHermeticReads(): Promise<HermeticReads> {
+  return { deny: rootDenies(), allow: await hermeticAllows() }
+}
+
+/**
+ * `/` as the runtime can deny it. Given `/`, it lays a tmpfs over every
+ * entry of the root, and bwrap cannot mount one on a link: a merged-/usr
+ * host's `/sbin -> usr/sbin` failed every hermetic task. A link at the
+ * root leads into a directory denied here, so it is left as it is. `/proc`,
+ * `/dev` and `/sys` are the runtime's own mounts; macOS denies by path, so
+ * `/` stands.
+ */
+function rootDenies(): string[] {
+  if (process.platform !== 'linux') return ['/']
+  const skip = new Set(['proc', 'dev', 'sys'])
+  return readdirSync('/', { withFileTypes: true })
+    .filter((e) => !skip.has(e.name) && !e.isSymbolicLink())
+    .map((e) => `/${e.name}`)
+}
+
+async function hermeticAllows(): Promise<string[]> {
+  const programs: string[] = []
+  for (const name of ['bash', 'setsid', 'strace', 'env', 'socat']) {
+    try {
+      programs.push(executablePath(name))
+    } catch {
+      // The runtime's dependency check names a missing one.
+    }
+  }
+  programs.push(taskShell())
+  if (process.platform === 'darwin') {
+    // dyld and the shared cache every macOS binary maps.
+    return unique([...programs.flatMap(bothSpellings), '/usr/lib', '/System'])
+  }
+  const { getApplySeccompBinaryPath } =
+    await import('@anthropic-ai/sandbox-runtime/dist/sandbox/generate-seccomp-filter.js')
+  const seccomp = getApplySeccompBinaryPath(undefined)
+  if (seccomp) programs.push(seccomp)
+  const files = [...programs]
+  // The loader and the libraries each program links, by `ldd`'s answer.
+  let ldd: string
+  try {
+    ldd = executablePath('ldd')
+  } catch {
+    throw new UserError(
+      'exec.sandbox.hermetic: no `ldd` on PATH, so vx cannot tell which libraries the ' +
+        "task's shell needs — install it (glibc's libc-bin), or drop hermetic",
+    )
+  }
+  const r = Bun.spawnSync({ cmd: [ldd, ...programs], stdout: 'pipe', stderr: 'ignore' })
+  for (const m of r.stdout.toString().matchAll(/(\/\S+)\s+\(0x/g)) files.push(m[1]!)
+  return unique(files.flatMap(bothSpellings))
+}
+
+/**
+ * Every spelling the loader walks from `p` to its file: a link (the
+ * loader's `/lib64/ld-linux-x86-64.so.2` is one, then `/usr/lib64`'s is
+ * another) is bound as the file it reaches, so each hop needs its own
+ * grant, named under its directory's real path, where the mount lands.
+ */
+function bothSpellings(p: string): string[] {
+  const hops: string[] = []
+  for (let at = p; hops.length < 40;) {
+    const here = path.join(toRealPath(path.dirname(at)), path.basename(at))
+    hops.push(here)
+    let next: string
+    try {
+      if (!lstatSync(here).isSymbolicLink()) break
+      next = path.resolve(path.dirname(here), readlinkSync(here))
+    } catch {
+      break
+    }
+    at = next
+  }
+  return hops
+}
+
 function linuxToolPaths(): { bwrapPath?: string; socatPath?: string } {
   if (process.platform !== 'linux') return {}
   const paths: { bwrapPath?: string; socatPath?: string } = {}
@@ -1109,6 +1206,8 @@ export interface ResolvedSandboxConfig {
   gitConfig?: boolean
   weakerWhenNested?: boolean
   weakerNetworkIsolation?: boolean
+  /** Reads outside the workspace are refused too (`hermeticReads`). */
+  hermetic?: boolean
   /** macOS: the walls a glob grant reaches, by kind (`darwinWallRules`). */
   wallsReached?: { read: readonly string[]; write: readonly string[] }
   ignore?: {
@@ -1267,6 +1366,7 @@ export function resolveSandboxConfig(
   if (cfg.weakerNetworkIsolation !== undefined) {
     r.weakerNetworkIsolation = cfg.weakerNetworkIsolation
   }
+  if (cfg.hermetic === true) r.hermetic = true
   if (cfg.ignore !== undefined) {
     // Relative patterns anchor at the project dir, `~` ones at the home
     // directory, as a grant's are (a `~` pattern kept as written matched no
@@ -1435,6 +1535,11 @@ async function wrapIn(
     baselines.cwd,
   )
   customConfig!.filesystem!.denyRead!.push(toRealPath(taskTmpRoot()))
+  if (args.config.hermetic === true) {
+    const reads = await hermeticReads()
+    customConfig!.filesystem!.denyRead!.push(...reads.deny)
+    customConfig!.filesystem!.allowRead!.push(...reads.allow)
+  }
   const helpers = hostHelpers()
   customConfig!.filesystem!.denyRead!.push(...helpers.dirs)
   customConfig!.filesystem!.allowRead!.push(...helpers.files)

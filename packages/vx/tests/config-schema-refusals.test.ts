@@ -746,6 +746,7 @@ describe('sandbox refusals the sweep found unheld (item 653)', () => {
       { weakerNetworkIsolation: 1 },
       `${W}.sandbox.weakerNetworkIsolation must be a boolean`,
     ],
+    ['hermetic', { hermetic: 'yes' }, `${W}.sandbox.hermetic must be a boolean`],
     ['allow', { allow: true }, `${W}.sandbox.allow must be an object`],
     [
       'allow.read',

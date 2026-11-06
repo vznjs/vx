@@ -185,6 +185,28 @@ empty temp directory.
 
 ---
 
+## Close off the machine
+
+By default a task reads anything outside the workspace: `/usr`,
+`~/.cache`, the system `node`. None of it is in the key.
+
+Set `hermetic: true` and the task reads outside the workspace only what
+`allow.read` names. vx still grants the shell it runs the command in.
+
+```ts title="packages/app/vx.config.ts"
+exec: {
+  command: '/opt/node-22/bin/node build.js',
+  sandbox: { hermetic: true, allow: { read: ['.', '/opt/node-22/'] } },
+},
+```
+
+:::tip
+Grant a tool with its libraries: `ldd $(command -v node)` lists them. Key
+the tool too, with `inputs.runtime`.
+:::
+
+---
+
 ## Requirements & platform support
 
 <Tabs>

@@ -1688,6 +1688,7 @@
       "tasks.*.exec.sandbox": [
         "allow",
         "deny",
+        "hermetic",
         "ignore",
         "weakerNetworkIsolation",
         "weakerWhenNested"
@@ -2437,7 +2438,7 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: tasks.t.exec.sandbox has unknown field \"x\" (allowed: allow, deny, ignore, weakerNetworkIsolation, weakerWhenNested)": [
+        "$CONFIG: tasks.t.exec.sandbox has unknown field \"x\" (allowed: allow, deny, hermetic, ignore, weakerNetworkIsolation, weakerWhenNested)": [
           "{\"x\":\"y\"}"
         ]
       },
@@ -3116,6 +3117,40 @@
       "tasks.*.exec.sandbox.weakerNetworkIsolation": {
         "ok": ["<absent>", "true", "false"],
         "$CONFIG: tasks.t.exec.sandbox.weakerNetworkIsolation must be a boolean": [
+          "null",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]",
+          "{}",
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "tasks.*.exec.sandbox.hermetic": {
+        "ok": ["<absent>", "true", "false"],
+        "$CONFIG: tasks.t.exec.sandbox.hermetic must be a boolean": [
           "null",
           "0",
           "1",

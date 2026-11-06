@@ -65,7 +65,7 @@ the values it takes and each refusal's exact words are recorded in
 | `tasks.<name>.exec`                 | `command`, `env`, `interactive`, `persistent`, `platforms`, `remote`, `retries`, `sandbox`, `timeout`     |
 | `tasks.<name>.exec.env`             | `define`, `passThrough`, `secret`                                                                         |
 | `tasks.<name>.exec.persistent`      | `readyWhen`                                                                                               |
-| `tasks.<name>.exec.sandbox`         | `allow`, `deny`, `ignore`, `weakerNetworkIsolation`, `weakerWhenNested`                                   |
+| `tasks.<name>.exec.sandbox`         | `allow`, `deny`, `hermetic`, `ignore`, `weakerNetworkIsolation`, `weakerWhenNested`                       |
 | `tasks.<name>.exec.sandbox.allow`   | `gitConfig`, `localBinding`, `machLookup`, `network`, `pty`, `read`, `systemInfo`, `unixSockets`, `write` |
 | `tasks.<name>.exec.sandbox.deny`    | `network`                                                                                                 |
 | `tasks.<name>.exec.sandbox.ignore`  | `network`, `read`, `systemInfo`, `write`                                                                  |

@@ -1492,6 +1492,7 @@ interface SandboxConfig {
   ignore?: SandboxIgnore // violations to leave out of the report
   weakerWhenNested?: boolean // Linux: let a sandboxed task sandbox (default false)
   weakerNetworkIsolation?: boolean // macOS: host-proxy net, lower isolation (default false)
+  hermetic?: boolean // refuse reads outside the workspace too (default false, below)
 }
 
 interface SandboxGrants {
@@ -1677,6 +1678,39 @@ vx's own stores are denied the same way: `~/.vx`, where every
 repository's shared store lives, and a cache directory outside the
 workspace (`VX_CACHE_DIR=~/.cache/vx`). Read, they handed a task every
 project's cached outputs, around the cross-project wall and its key.
+
+**`hermetic: true`** moves the read wall from the workspace root to `/`.
+Outside the workspace, the task reads only what `allow.read` names.
+
+vx still grants the programs it runs around the command (the task shell,
+`bash`, `setsid`, `strace`, `env`, `socat`) and the libraries they link.
+
+Any other tool is yours to grant, with its libraries: `ldd $(command -v
+node)` lists them. The task then cannot lean on the machine unseen.
+
+A grant says what a task may read; `inputs.runtime` says what moves its
+key. Declare both for a tool.
+
+```ts
+import { defineProject } from '@vzn/vx/config'
+
+export default defineProject({
+  tasks: {
+    build: {
+      exec: {
+        command: '/opt/node-22/bin/node build.js',
+        sandbox: { hermetic: true, allow: { read: ['.', '/opt/node-22/'], write: ['dist/'] } },
+      },
+      inputs: { files: ['build.js', 'src/**'], runtime: ['/opt/node-22/bin/node -v'] },
+      cache: { outputs: { files: ['dist/**'] } },
+    },
+  },
+})
+```
+
+On Linux, `ldd` must be on vx's PATH. Pinned in
+`tests/sandbox-hermetic.unsafe.test.ts`.
+
 Nothing is inherited from `cache` — `inputs` says what INVALIDATES a task, `sandbox.allow`
 says what it may TOUCH, and deriving one from the other made a
 declaration added for caching silently widen the sandbox. The one grant

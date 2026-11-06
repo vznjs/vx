@@ -113,6 +113,7 @@ const PERSISTENT = ['readyWhen'] as const satisfies readonly Keys<PersistentConf
 const SANDBOX = [
   'allow',
   'deny',
+  'hermetic',
   'ignore',
   'weakerNetworkIsolation',
   'weakerWhenNested',
