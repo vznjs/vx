@@ -412,6 +412,39 @@ describe('vx show (e2e)', () => {
   )
 })
 
+describe('vx show of a directory whose project has another name', () => {
+  let root: string
+  beforeAll(async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), 'vx-show-dir-'))
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}')
+    await Bun.write(
+      path.join(root, 'p/a/vx.config.mjs'),
+      `export default { name: 'alpha', tasks: { build: { exec: { command: 'echo a' } } } }`,
+    )
+    await Bun.write(
+      path.join(root, 'p/b/vx.config.mjs'),
+      `export default { tasks: { build: { exec: { command: 'echo b' } } } }`,
+    )
+  })
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  // `p/a` hinted `p/b` by edit distance, another project.
+  it(
+    'hints the project at that directory',
+    async () => {
+      const bare = await vx(root, ['show', 'p/a'])
+      const task = await vx(root, ['show', 'p/a#build'])
+      expect([bare.code, task.code]).toEqual([1, 1])
+      expect(bare.err).toContain('unknown project or task: "p/a"\n\n  fix  alpha\n')
+      expect(task.err).toContain('unknown project: "p/a"\n\n  fix  alpha#build\n')
+      expect(`${bare.err}${task.err}`).not.toContain('p/b')
+    },
+    TIMEOUT,
+  )
+})
+
 describe('vx show under a `project` plugin (e2e)', () => {
   let root: string
   beforeAll(async () => {

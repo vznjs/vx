@@ -203,6 +203,28 @@ describe('task selection', () => {
   )
 
   it(
+    "a project's directory typed for its name hints the project, not a near name",
+    async () => {
+      // `packages/a#build` hinted `packages/b`'s neighbour by edit distance
+      // (`b#build`): following it ran another project.
+      await addProject('b', ['build'])
+      await addProject('a', ['build'])
+      await writeFile(
+        path.join(root, 'packages', 'a', 'vx.config.mjs'),
+        `export default { name: 'alpha', tasks: { build: { exec: { command: 'echo a' } } } }`,
+      )
+      const r = await run({ cwd: root, tasks: ['packages/a#build'], log: silent() })
+      expect(r.refused).toContain(
+        'no projects declare task(s): packages/a#build. Did you mean alpha#build?',
+      )
+      // CONTROL: a name that is no directory keeps the near-name hint.
+      const near = await run({ cwd: root, tasks: ['bb#build'], log: silent() })
+      expect(near.refused).toContain('Did you mean b#build?')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a bare task declared by only SOME projects stays green (sparse tasks are normal)',
     async () => {
       await addProject('a', ['build', 'lint'])

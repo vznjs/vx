@@ -68,7 +68,9 @@ in scope, the run and `--dry` both refuse, exit 1, and print to stderr:
 The refusal adds what helps:
 
 - `Did you mean <task>?` when a declared task (or, for `pkg#task`, a
-  runnable one) is within two edits.
+  runnable one) is within two edits. A `pkg` that is a project's
+  directory, relative to the root, names that project: `p/a#build` hints
+  `alpha#build` for `alpha` at `p/a`.
 - Otherwise what exists: `Tasks: build, test.`, `No
 project is named zzz; projects: a, b.`, or `a's tasks: build, test.`
 - Then ``A run reads the lock: after editing a
@@ -2842,7 +2844,8 @@ Unknown project / task names exit `1` with the same near-miss hint
 every verb gives (two edits, or a partial name); a bare name that is
 neither reads `unknown project or task: "buidl" — did you mean build?`,
 and a `pkg#task` hints whole specs (`unknown task: "app#bui" — did you
-mean app#build?`). With nothing near, it lists what exists instead: `unknown
+mean app#build?`). A project's directory, relative to the root, hints
+that project (`p/a` hints `alpha`, `p/a#build` `alpha#build`). With nothing near, it lists what exists instead: `unknown
 project: "zzz"; projects: app, lib`, `; its tasks: app#build, app#test`,
 or `; projects and tasks: …` (M-57).
 
