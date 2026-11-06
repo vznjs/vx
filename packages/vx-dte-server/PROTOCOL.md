@@ -102,7 +102,9 @@ A participant sends:
   fails, `n` then `null`.
 - A frame that fails is answered `{ "n", "status", "error" }`; one that is
   no JSON object, or none of the above, `400`; one over 1 MiB `413`,
-  answered by its `n` when the frame starts `{"n":`.
+  answered by its `n` when the frame starts `{"n":`. One past its
+  runtime's own limit (16 MiB on Bun, 32 MiB on Workers) never reaches
+  the relay: the runtime closes the socket `1009`.
 - A send whose `body` the relay cannot pass (nested deeper than its
   runtime serializes) is `400` in its result; its receiver keeps its
   socket.

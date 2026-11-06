@@ -39,6 +39,11 @@ export function serveRelay(opts: ServeOptions): RelayServer {
     idleTimeout: 60,
     fetch: (req) => relay.fetch(req),
     websocket: {
+      // Bun's default, said here because PROTOCOL.md names it: past it Bun
+      // closes the socket 1009 before the relay sees the frame (Workers
+      // does so past 32 MiB). Under it a frame over 1 MiB is a 413; more
+      // would only hold more of a sender's bytes per socket.
+      maxPayloadLength: 16 << 20,
       // A socket with no frame in three heartbeats has no peer listening
       // either (each probes a quiet one within two): closed, it loses its
       // participant, as a half-open one on no other host would be.

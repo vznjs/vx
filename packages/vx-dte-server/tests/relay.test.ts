@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import path from 'node:path'
 import {
   createProver,
+  PROOF_HEADER,
   createRelay,
   serveRelay,
   type Prover,
@@ -941,6 +942,33 @@ beforeAll(() => {
 })
 afterAll(() => served?.stop())
 conformance('the Bun relay', { base: () => served!.url, headers: () => ({}) })
+
+it('answers 413 up to 16 MiB, its runtime limit, and closes 1009 past it (PROTOCOL.md § Frames)', async () => {
+  const said = async (bytes: number) => {
+    const prover = await createProver()
+    const p = `/v1/sessions/${crypto.randomUUID()}/socket?join=${encodeURIComponent(JSON.stringify({ role: 'host', key: prover.key }))}`
+    const ws = new WebSocket(new URL(p, served!.url).href.replace(/^http/, 'ws'), {
+      headers: { [PROOF_HEADER]: await prover.proof('GET', p, '') },
+      protocols: ['switchboard.v1'],
+    } as never)
+    const frames: unknown[] = []
+    return new Promise<unknown>((resolve) => {
+      ws.onmessage = (e) => {
+        frames.push(JSON.parse(String(e.data)))
+        if (frames.length === 1) {
+          const head = '{"n":7,"sends":[{"to":"x","body":"'
+          ws.send(`${head}${'a'.repeat(bytes - head.length - 4)}"}]}`)
+        } else {
+          resolve(frames[1])
+          ws.close()
+        }
+      }
+      ws.onclose = (e) => resolve({ closed: e.code })
+    })
+  }
+  expect(await said(16 << 20)).toEqual({ n: 7, status: 413, error: 'body over 1 MiB' })
+  expect(await said((16 << 20) + 1)).toEqual({ closed: 1009 })
+}, 20_000)
 
 it('reads ALLOW and AUDIENCE from the environment, as the other servers do, and names what it lacks', () => {
   const said = (env: Record<string, string>, ...args: string[]) =>
