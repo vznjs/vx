@@ -199,7 +199,7 @@ export interface RunRecord {
   restored?: boolean
   attempts?: number // >1 when the task retried; the direct within-run flaky signal
   /**
-   * Whether the task declared a `cache` block. An uncached task executes
+   * Whether the task declared `cache: true`. An uncached task executes
    * on every run and its key exists only for dependents to fold, so a
    * reader (`vx why`, `vx last`) must not present its re-run as a cache
    * decision. Absent on rows written before the column existed.
@@ -358,7 +358,7 @@ export interface PruneResult {
 
 /**
  * Artifact + `output_files` namespace prefix for workspace-root-
- * anchored outputs (`cache.outputs.workspaceFiles`). Project outputs
+ * anchored outputs (`outputs.workspaceFiles`). Project outputs
  * keep their bare project-relative `path` rows; workspace rows store
  * the full `workspace-outputs/<rel-to-root>` tar entry name as the
  * discriminator — least-invasive row format, no schema change. A
@@ -467,7 +467,7 @@ export interface CacheGetContext {
   taskId: string
   command: string
   /**
-   * The task's declared `cache.outputs`. A remote artifact is ingested
+   * The task's declared `outputs`. A remote artifact is ingested
    * only when every file it carries is one of them: bytes off the network
    * named `outputs/src/in.txt` or `workspace-outputs/.git/hooks/…` wrote
    * an input and a git hook on a green `cache-hit-remote` (item 942).
@@ -480,8 +480,6 @@ export interface CacheGetContext {
 export interface DeclaredOutputs {
   files: readonly string[]
   workspaceFiles: readonly string[]
-  /** Its `cache.outputs.mount` paths: an absolute link may point only under one. */
-  mounts?: readonly string[]
 }
 
 /** Metadata supplied at ingest time — values the artifact does not carry. */
@@ -796,8 +794,6 @@ export interface CacheLayer {
     inputComponents?: readonly TaskInputRow[]
     /** No remote held `hash` when the run asked: an upload asks none first. */
     absent?: boolean
-    /** Its `cache.outputs.mount` paths: an absolute link under one is saved as written. */
-    mounts?: readonly string[]
   }): Promise<void>
   /**
    * Adopt an artifact produced elsewhere — the remote-hit path. Streams

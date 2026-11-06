@@ -19,7 +19,8 @@ beforeAll(async () => {
       exec: { command: 'mkdir -p dist && cat src/in.txt > dist/out.txt && echo built-${name}' },
       dependsOn: ['^build'],
       inputs: { files: ['src/**'] },
-      cache: { outputs: { files: ['dist/**'] } },
+      outputs: { files: ['dist/**'] },
+      cache: true,
     },
   },
 }

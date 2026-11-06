@@ -44,14 +44,12 @@ export function deferralEligibility(nodes: Map<string, TaskNode>): Map<string, s
     if (list) list.push({ taskId: n.id, prefixes, via })
     else readersByProject.set(n.projectName, [{ taskId: n.id, prefixes, via }])
   }
-  // A task with no `cache` block keys on its inputs, and a cached task that
+  // A task without `cache: true` keys on its inputs, and a cached task that
   // depends on it folds that key: deferring a producer there moved both
   // keys with the transfer flag. Only such a task is a reader — one nothing
   // cached folds keys nothing that lasts.
   const folded = new Set<string>()
-  const stack = [...nodes.values()]
-    .filter((n) => n.config.cache !== undefined)
-    .flatMap((n) => n.deps)
+  const stack = [...nodes.values()].filter((n) => n.config.cache === true).flatMap((n) => n.deps)
   for (let id = stack.pop(); id !== undefined; id = stack.pop()) {
     if (folded.has(id)) continue
     folded.add(id)
@@ -63,7 +61,7 @@ export function deferralEligibility(nodes: Map<string, TaskNode>): Map<string, s
     const inputs = n.config.inputs
     // A task with no inputs has no key to read; an uncached one with inputs
     // is read only for the cached tasks that fold its key.
-    if (inputs === undefined || (n.config.cache === undefined && !folded.has(n.id))) continue
+    if (inputs === undefined || (n.config.cache !== true && !folded.has(n.id))) continue
     if ((inputs?.workspaceFiles?.length ?? 0) > 0) workspaceReader ??= n.id
     // A `runtime` input is a SHELL COMMAND whose reads are unknowable —
     // the same reason vx refuses to infer inputs by tracing. It can `cat` a
@@ -86,11 +84,11 @@ export function deferralEligibility(nodes: Map<string, TaskNode>): Map<string, s
   }
 
   for (const n of nodes.values()) {
-    const outputs = n.config.cache?.outputs
+    const outputs = n.config.outputs
     if ((outputs?.workspaceFiles?.length ?? 0) > 0) {
       ineligible.set(
         n.id,
-        'declares cache.outputs.workspaceFiles — root-anchored outputs can land where any project-relative input reads',
+        'declares outputs.workspaceFiles — root-anchored outputs can land where any project-relative input reads',
       )
       continue
     }

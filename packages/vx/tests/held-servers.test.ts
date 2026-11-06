@@ -43,7 +43,8 @@ const test = (name: string) => `
         dependsOn: ['svc#srv'],
         exec: { command: 'cat ${name}.txt > ${name}.out' },
         inputs: { files: ['${name}.txt'] },
-        cache: { outputs: { files: ['${name}.out'] } },
+        outputs: { files: ['${name}.out'] },
+        cache: true,
       },`
 
 describe('a server behind remote hits', () => {

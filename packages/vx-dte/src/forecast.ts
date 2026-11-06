@@ -62,7 +62,6 @@ export function likelyMisses(
     return c
   }
   for (const [id, n] of nodes)
-    if (n.config.exec?.command !== undefined && n.config.cache !== undefined && changes(id))
-      out.add(id)
+    if (n.config.exec?.command !== undefined && n.config.cache === true && changes(id)) out.add(id)
   return out
 }

@@ -70,7 +70,7 @@ $ vx cache clean --max-size 10
 ```
 
 A zero or a bare number is usually a mistake. To clear everything, run
-`vx cache clean` with no bound. `--global` clears every repo's store.
+`vx cache clean` with no bound. `--global` clears every workspace's store.
 
 ## Files no index knows
 

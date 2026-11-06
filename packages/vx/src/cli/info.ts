@@ -97,7 +97,7 @@ function infoReport(f: InfoFacts): ui.Block {
       'cache store',
       f.cacheStore === null
         ? 'none: the cache dir holds the entries'
-        : `${tildePath(f.cacheStore)} (${formatBytes(f.cacheStoreBytes ?? 0)}, shared by this repo's checkouts)`,
+        : `${tildePath(f.cacheStore)} (${formatBytes(f.cacheStoreBytes ?? 0)}, shared by this workspace's checkouts)`,
     ],
     ['cache versions', `keys ${f.cacheVersion} · index schema ${f.schemaVersion}`],
     ['cache entries', describeEntries(f)],

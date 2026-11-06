@@ -118,7 +118,7 @@ describe('the save lane in a run', () => {
           files: { 'src/in.txt': name },
           config: `export default { tasks: { build: {
               exec: { command: 'echo exec-${name} >> ${orderLog} && cat src/in.txt > out.txt' },
-              inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
+              inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
             } } }`,
         })
       }
@@ -171,7 +171,7 @@ describe('the save lane in a run', () => {
         files: { 'src/in.txt': 'a' },
         config: `export default { tasks: { build: {
             exec: { command: 'cat src/in.txt > out.txt' },
-            inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
+            inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
           } } }`,
       })
       const lines: string[] = []

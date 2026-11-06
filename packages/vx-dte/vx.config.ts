@@ -34,9 +34,8 @@ const testTask = (files: string) => ({
   },
   dependsOn: ['install'] as const,
   inputs: { files: ['src/**', 'tests/**', 'package.json'] },
-  cache: {
-    outputs: { files: [] as string[] },
-  },
+  outputs: { files: [] as string[] },
+  cache: true,
 })
 
 export default defineProject({
@@ -76,9 +75,8 @@ export default defineProject({
           'tsconfig.json',
         ],
       },
-      cache: {
-        outputs: { files: [] },
-      },
+      outputs: { files: [] },
+      cache: true,
     },
 
     'lint.oxfmt': {
@@ -91,9 +89,8 @@ export default defineProject({
       inputs: {
         files: ['**/*'],
       },
-      cache: {
-        outputs: { files: [] },
-      },
+      outputs: { files: [] },
+      cache: true,
     },
 
     test: {

@@ -507,26 +507,14 @@ function taskRows(raw: TaskConfig): ui.FieldRow[] {
     add('inputs.tasks', list(inputs.tasks))
     add('inputs.runtime', list(inputs.runtime))
     add('inputs.workspaceRuntime', list(inputs.workspaceRuntime))
+    add('inputs.stability.strategy', inputs.stability?.strategy)
+    add('inputs.stability.severity', inputs.stability?.severity)
   }
-  const cache = task.cache
-  if (cache !== undefined) {
-    add('outputs.files', list(cache.outputs.files))
-    add('outputs.workspaceFiles', list(cache.outputs.workspaceFiles))
-    add(
-      'outputs.clean',
-      cache.outputs.clean === undefined ? undefined : cache.outputs.clean ? 'yes' : 'no',
-    )
-    add('outputs.bin', cache.outputs.bin)
-    add(
-      'outputs.mount',
-      cache.outputs.mount === undefined
-        ? undefined
-        : Object.entries(cache.outputs.mount)
-            .map(([t, s]) => `${t} <- ${s}`)
-            .join(', '),
-    )
-    add('inputStability.strategy', cache.inputStability?.strategy)
-    add('inputStability.severity', cache.inputStability?.severity)
+  const outputs = task.outputs
+  if (outputs !== undefined) {
+    add('outputs.files', list(outputs.files))
+    add('outputs.workspaceFiles', list(outputs.workspaceFiles))
+    add('outputs.clean', outputs.clean === undefined ? undefined : outputs.clean ? 'yes' : 'no')
   }
   return rows
 }

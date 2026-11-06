@@ -1275,7 +1275,7 @@ export async function stampOutputs(args: {
   return stampFiles(await resolveOutputs(args))
 }
 
-/** `stampOutputs` for root-anchored `cache.outputs.workspaceFiles` (A-43). */
+/** `stampOutputs` for root-anchored `outputs.workspaceFiles` (A-43). */
 export async function stampWorkspaceOutputs(args: {
   workspaceRoot: string
   outputs: readonly string[]
@@ -1315,7 +1315,7 @@ export async function ownOutputsSince(
   return changedSince(await resolveOutputs(args), before)
 }
 
-/** `ownOutputsSince` for root-anchored `cache.outputs.workspaceFiles` (A-43). */
+/** `ownOutputsSince` for root-anchored `outputs.workspaceFiles` (A-43). */
 export async function ownWorkspaceOutputsSince(
   args: { workspaceRoot: string; outputs: readonly string[] },
   before: ReadonlyMap<string, OutputStamp>,
@@ -1990,7 +1990,7 @@ export function declaresInput(
     // A changed path under the task's own outputs is a committed file
     // (`git diff` lists only what git tracks) or a stray `git status`
     // lists: either way it may be an input, so it counts.
-    const plan = filesPlan(inputs.files, task.cache?.outputs.files ?? [])
+    const plan = filesPlan(inputs.files, task.outputs?.files ?? [])
     if (plan !== null && (inPlan(plan, projectRel) || ownOnly(plan, projectRel))) return true
     if (plan !== null && dirLink && plan.mayHold(projectRel) && !plan.isExcluded(projectRel)) {
       return true
@@ -2020,8 +2020,7 @@ export function workspaceFilesReachInto(task: TaskConfig, dir: string): boolean 
  */
 export function namedOutright(task: TaskConfig): { files: string[]; workspaceFiles: string[] } {
   const inputs = task.inputs
-  const plan =
-    inputs === undefined ? null : filesPlan(inputs.files, task.cache?.outputs.files ?? [])
+  const plan = inputs === undefined ? null : filesPlan(inputs.files, task.outputs?.files ?? [])
   const ws = inputs?.workspaceFiles ?? []
   return {
     files: plan === null ? [] : outright(plan),
@@ -2267,7 +2266,7 @@ function listingFor(
 function refuseUndecodableOutput(abs: string): void {
   if (!undecodableOnDisk(abs)) return
   throw new UserError(
-    `cache.outputs matched ${JSON.stringify(abs)}: the name is not valid UTF-8 (shown with ` +
+    `outputs matched ${JSON.stringify(abs)}: the name is not valid UTF-8 (shown with ` +
       `\ufffd), and vx cannot save a file by it. Rename it, or keep it out of the outputs.`,
   )
 }

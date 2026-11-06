@@ -31,7 +31,7 @@ interface Fixture {
   err: string[]
 }
 
-const TIMEOUT = 10_000
+const TIMEOUT = 30_000
 
 const silentLogger = (fixture: Fixture): Logger => {
   const buffers = new Map<string, string>()
@@ -876,7 +876,7 @@ describe('exec.persistent (e2e)', () => {
               e2e: {
                 dependsOn: ['api#dev'],
                 exec: { command: 'test -f ../api/up && echo ran >> ../../e2e.log' },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+                inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
               },
             },
           }

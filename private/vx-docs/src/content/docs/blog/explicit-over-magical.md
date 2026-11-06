@@ -17,7 +17,8 @@ task copies `notes.md`, but its inputs name only `src/**`:
 notes: {
   exec: { command: 'mkdir -p out && cp notes.md out/notes.md' },
   inputs: { files: ['src/**'] },
-  cache: { outputs: { files: ['out/**'] } },
+  outputs: { files: ['out/**'] },
+  cache: true,
 }
 ```
 

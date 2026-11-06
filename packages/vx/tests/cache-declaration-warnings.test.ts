@@ -62,29 +62,29 @@ describe('cache declarations that match nothing', () => {
       `export default { tasks: {
         // Both globs against directories that do not exist.
         lost: { exec: { command: 'true' },
-          inputs: { files: ['lib/**'] }, cache: { outputs: { files: ['build/**'] } } },
+          inputs: { files: ['lib/**'] }, outputs: { files: ['build/**'] }, cache: true },
         // The control: matching inputs, matching outputs.
         found: { exec: { command: 'mkdir -p dist && echo x > dist/a.js' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } } },
+          inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true },
         // A deliberate cached no-op: empty outputs say nothing.
         noop: { exec: { command: 'true' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } },
+          inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true },
         // Root-anchored outputs that match nothing. The warning counts
         // BOTH output arrays on each side — declared and resolved — and
         // every fixture above declares only \`files\`, so a task whose
         // whole output declaration is root-anchored went unwarned.
         wslost: { exec: { command: 'true' },
           inputs: { files: ['src/**'] },
-          cache: { 
-            outputs: { files: [], workspaceFiles: ['nowhere/**'] } } },
+          outputs: { files: [], workspaceFiles: ['nowhere/**'] },
+          cache: true },
         // The other side of the sum: \`files\` matches nothing but the
         // root-anchored glob DOES match, so the outputs are not empty and
         // there is nothing to warn about. Not \`build/**\`: the lock refuses
         // two tasks declaring one output.
         wsfound: { exec: { command: 'mkdir -p ../../shared && echo x > ../../shared/a.js' },
           inputs: { files: ['src/**'] },
-          cache: { 
-            outputs: { files: ['out/**'], workspaceFiles: ['shared/**'] } } },
+          outputs: { files: ['out/**'], workspaceFiles: ['shared/**'] },
+          cache: true },
       } }\n`,
     )
     await gitInit(root)
@@ -111,7 +111,7 @@ describe('cache declarations that match nothing', () => {
     const first = await runTask('lost')
     expect(first).toEqual([
       "[vx] app#lost: inputs matched no files (lib/**) — the key will not change when this project's source does",
-      '[vx] app#lost: cache.outputs matched no files (build/**) — an empty artifact is saved; a later hit restores nothing',
+      '[vx] app#lost: outputs matched no files (build/**) — an empty artifact is saved; a later hit restores nothing',
     ])
     // The hit says nothing: the warning belongs to the run that saved.
     expect(await runTask('lost')).toEqual([])
@@ -132,7 +132,7 @@ describe('cache declarations that match nothing', () => {
         await writeFile(
           path.join(root, 'packages', 'app', 'vx.config.mjs'),
           `export default { tasks: { linked: { exec: { command: 'ln -sfn ${outside} dist' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: [${JSON.stringify(output)}] } } } } }\n`,
+          inputs: { files: ['src/**'] }, outputs: { files: [${JSON.stringify(output)}] }, cache: true } } }\n`,
         )
         const lines: string[] = []
         const summary = await run({
@@ -167,10 +167,10 @@ describe('cache declarations that match nothing', () => {
       await writeFile(
         path.join(root, 'packages', 'app', 'vx.config.mjs'),
         `export default { tasks: { linked: { exec: { command: 'ln -sfn ${outside} ../../shared' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: [], workspaceFiles: ['shared/**'] } } } } }\n`,
+          inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['shared/**'] }, cache: true } } }\n`,
       )
       expect(await runTask('linked')).toEqual([
-        `[vx] app#linked: cache.outputs matched no files (shared/**) — an empty artifact is saved; a later hit restores nothing — shared is a symlink to ${realpathSync(outside)}, outside the workspace, and vx keeps only outputs inside it: make shared a directory`,
+        `[vx] app#linked: outputs matched no files (shared/**) — an empty artifact is saved; a later hit restores nothing — shared is a symlink to ${realpathSync(outside)}, outside the workspace, and vx keeps only outputs inside it: make shared a directory`,
       ])
     } finally {
       await rm(outside, { recursive: true, force: true })
@@ -231,7 +231,7 @@ describe('cache declarations that match nothing', () => {
     // clause's own rows live in `sandbox-grants.unsafe.test.ts`, which
     // needs a real sandbox; this is the half that runs everywhere.
     const lines = await runTask('lost')
-    const out = lines.find((l) => l.includes('cache.outputs'))
+    const out = lines.find((l) => l.includes('outputs'))
     expect(out).toBeDefined()
     expect(out).not.toContain('exec.sandbox.allow.write')
   })
@@ -240,13 +240,13 @@ describe('cache declarations that match nothing', () => {
     // Declared only as workspaceFiles, matching nothing: the warning names
     // the root-anchored glob. Reading only `outputs.files` on the declared
     // side leaves this task silent about an empty artifact.
-    expect((await runTask('wslost')).filter((l) => l.includes('cache.outputs'))).toEqual([
-      '[vx] app#wslost: cache.outputs matched no files (nowhere/**) — an empty artifact is saved; a later hit restores nothing',
+    expect((await runTask('wslost')).filter((l) => l.includes('outputs'))).toEqual([
+      '[vx] app#wslost: outputs matched no files (nowhere/**) — an empty artifact is saved; a later hit restores nothing',
     ])
     // And the resolved side: `files` matched nothing, but the root-anchored
     // glob did, so the artifact is NOT empty and nothing is said. Reading
     // only `outputFiles` here would warn about a task that saved outputs.
-    expect((await runTask('wsfound')).filter((l) => l.includes('cache.outputs'))).toEqual([])
+    expect((await runTask('wsfound')).filter((l) => l.includes('outputs'))).toEqual([])
   })
 
   it('a bracket glob naming a file that exists says to escape it', async () => {
@@ -262,10 +262,10 @@ describe('cache declarations that match nothing', () => {
       path.join(app, 'vx.config.mjs'),
       `export default { tasks: {
         route: { exec: { command: "mkdir -p 'out/[slug]' && echo x > 'out/[slug]/page.js'" },
-          inputs: { files: ['src/[id].txt'] }, cache: { outputs: { files: ['out/[slug]/**'] } } },
+          inputs: { files: ['src/[id].txt'] }, outputs: { files: ['out/[slug]/**'] }, cache: true },
         // A bracket glob naming nothing on disk keeps the plain warning.
         cls: { exec: { command: 'true' },
-          inputs: { files: ['lib/[ab].txt'] }, cache: { outputs: { files: ['build/[ab]/**'] } } },
+          inputs: { files: ['lib/[ab].txt'] }, outputs: { files: ['build/[ab]/**'] }, cache: true },
       } }\n`,
     )
     await lock(root)
@@ -273,12 +273,12 @@ describe('cache declarations that match nothing', () => {
     expect(await runTask('route', false)).toEqual([
       "[vx] app#route: inputs matched no files (src/[id].txt) — the key will not change when this project's source does — " +
         '[ starts a character class and src/[id].txt exists: write src/\\[id\\].txt to name it',
-      '[vx] app#route: cache.outputs matched no files (out/[slug]/**) — an empty artifact is saved; a later hit restores nothing — ' +
+      '[vx] app#route: outputs matched no files (out/[slug]/**) — an empty artifact is saved; a later hit restores nothing — ' +
         '[ starts a character class and out/[slug] exists: write out/\\[slug\\]/** to name it',
     ])
     expect(await runTask('cls', false)).toEqual([
       "[vx] app#cls: inputs matched no files (lib/[ab].txt) — the key will not change when this project's source does",
-      '[vx] app#cls: cache.outputs matched no files (build/[ab]/**) — an empty artifact is saved; a later hit restores nothing',
+      '[vx] app#cls: outputs matched no files (build/[ab]/**) — an empty artifact is saved; a later hit restores nothing',
     ])
   })
 

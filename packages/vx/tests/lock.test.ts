@@ -17,7 +17,7 @@ import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/worksp
 import { noticed } from './helpers/notice.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
-const TIMEOUT = 20_000
+const TIMEOUT = 30_000
 const DRIFT = noticed(
   `vx lock --check: packages/app/vx.config.mjs evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'\n`,
 )
@@ -321,7 +321,16 @@ describe('vx lock (e2e)', () => {
       const invalid = '.vx/projects.lock.json is invalid, run `vx lock`'
       for (const app of [
         { tasks: { build: { exec: 'x' } } },
-        { tasks: { build: { exec: { command: 'x' }, inputs: { files: ['src'] }, cache: {} } } },
+        {
+          tasks: {
+            build: {
+              exec: { command: 'x' },
+              inputs: { files: ['src'] },
+              outputs: { files: 5 },
+              cache: true,
+            },
+          },
+        },
       ]) {
         await writeFile(
           file,

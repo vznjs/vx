@@ -64,7 +64,7 @@ export default { plugins: [${edgesSource({ app: ['lib'] })}, ${pluginSource(
           build: {
             dependsOn: ['^build'],
             exec: { command: 'true' },
-            inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+            inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
           },
         },
       }

@@ -19,7 +19,7 @@ function config(inputs: string, command = 'true', extra = ''): string {
   tasks: {
     t: {
       exec: { command: ${JSON.stringify(command)} },
-      inputs: ${inputs}, cache: { outputs: { files: [] } },
+      inputs: ${inputs}, outputs: { files: [] }, cache: true,
     },
     ${extra}
   },
@@ -312,10 +312,10 @@ describe('Turbo parity — file hashing: globs and literals (turborepo-scm manua
         config: config(
           "{ files: ['src/**', '!**/*.md'], workspaceFiles: ['shared/**'] }",
           'true',
-          `dir: { exec: { command: 'true' }, inputs: { files: ['src'] }, cache: { outputs: { files: [] } } },
-    reversed: { exec: { command: 'true' }, inputs: { files: ['!**/*.md', 'src/**'] }, cache: { outputs: { files: [] } } },
-    missing: { exec: { command: 'true' }, inputs: { files: ['src/**', 'nope.txt'] }, cache: { outputs: { files: [] } } },
-    plain: { exec: { command: 'true' }, inputs: { files: ['src/**', 'gen/**', 'logs/**', '!gen', '!logs/**', '!src/skip.txt'] }, cache: { outputs: { files: [] } } },`,
+          `dir: { exec: { command: 'true' }, inputs: { files: ['src'] }, outputs: { files: [] }, cache: true },
+    reversed: { exec: { command: 'true' }, inputs: { files: ['!**/*.md', 'src/**'] }, outputs: { files: [] }, cache: true },
+    missing: { exec: { command: 'true' }, inputs: { files: ['src/**', 'nope.txt'] }, outputs: { files: [] }, cache: true },
+    plain: { exec: { command: 'true' }, inputs: { files: ['src/**', 'gen/**', 'logs/**', '!gen', '!logs/**', '!src/skip.txt'] }, outputs: { files: [] }, cache: true },`,
         ),
         files: {
           'src/a.txt': 'a\n',

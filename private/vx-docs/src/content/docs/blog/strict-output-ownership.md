@@ -75,5 +75,5 @@ extracted, and it costs more.
 
 ## You get a clean git status
 
-A task with no `cache` block owns nothing, and vx leaves its files
+A task with no `cache: true` owns nothing, and vx leaves its files
 alone. More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

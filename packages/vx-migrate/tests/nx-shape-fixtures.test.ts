@@ -208,7 +208,7 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
       api: ['build', 'deploy', 'deploy:staging'],
       shared: ['build', 'inputs:default', 'inputs:production'],
     })
-    const outputs = (t: Record<string, unknown>) => t['cache'] as { outputs: unknown }
+    const outputs = (t: Record<string, unknown>) => ({ outputs: t['outputs'] })
     expect(outputs(r.configs['web']!['build']!).outputs).toEqual({
       files: [],
       workspaceFiles: ['dist/apps/web'],
@@ -258,7 +258,7 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
     expect(r.code).toBe(0)
     expect(r.tasks).toEqual({ lib: ['build', 'docs', 'size'] })
     const lib = r.configs['lib']!
-    expect((lib['build']!['cache'] as { outputs: unknown }).outputs).toEqual({
+    expect(lib['build']!['outputs'] as unknown).toEqual({
       files: ['dist'],
       workspaceFiles: ['coverage/libs/lib'],
     })
@@ -313,7 +313,7 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
       '@ts/core': ['build', 'build-deps', 'typecheck', 'watch-deps'],
     })
     const build = r.configs['@ts/core']!['build']!
-    expect([build['inputs'], build['cache']]).toEqual([
+    expect([build['inputs'], { outputs: build['outputs'] }]).toEqual([
       {
         files: [
           'package.json',
@@ -350,9 +350,9 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
       '@ja/ui': ['inputs:production', 'test'],
     })
     const auth = r.configs['@ja/auth']!
-    expect([auth['test']!['inputs'], auth['test']!['cache']]).toEqual([
+    expect([auth['test']!['inputs'], auth['test']!['outputs']]).toEqual([
       { files: ['**/*'], workspaceFiles: ['jest.preset.js'] },
-      { outputs: { files: [], workspaceFiles: ['coverage/libs/auth'] } },
+      { files: [], workspaceFiles: ['coverage/libs/auth'] },
     ])
     expect(auth['test-ci']).toEqual({
       dependsOn: ['test-ci--src/lib/login.spec.ts', 'test-ci--src/lib/token.spec.ts'],

@@ -35,9 +35,8 @@ beforeEach(async () => {
     description: 'deploys ${TOKEN} ${PAT}',
     exec: { command: 'true', env: { secret: ['GH_PAT'] } },
     inputs: { files: ['package.json'], runtime: ['echo ${TOKEN} $(cat stamp)', 'echo ${PAT} $(cat stamp)'] },
-    cache: {
-      outputs: { files: [] },
-    },
+    outputs: { files: [] },
+    cache: true,
   },
   srv: { exec: { command: 'true', persistent: { readyWhen: 'up ${TOKEN}' } } },
   wait: { exec: {

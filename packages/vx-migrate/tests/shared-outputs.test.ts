@@ -15,7 +15,8 @@ function task(name: string, outputs: string[], dependsOn: string[] = []): Genera
       exec: { command: name },
       ...(dependsOn.length > 0 ? { dependsOn } : {}),
       inputs: { files: ['**/*'] },
-      cache: { outputs: { files: outputs } },
+      outputs: { files: outputs },
+      cache: true,
     },
   }
 }
@@ -72,7 +73,7 @@ describe('resolveSharedOutputs — two targets on one output path', () => {
       task('emit', ['.cache/tsbuildinfo.json', 'lib/**']),
     ])
     const outputs = (t: GeneratedTask) =>
-      (t.task!['cache'] as { outputs: { files: string[] } } | undefined)?.outputs.files
+      (t.task!['outputs'] as { files: string[] } | undefined)?.files
     expect(tasks.map((t) => [t.name, outputs(t), t.todos.length])).toEqual([
       ['build', ['.cache/tsbuildinfo.json', 'dist/**'], 0],
       ['typecheck', [], 0],
@@ -116,7 +117,7 @@ describe('resolveSharedOutputs — two targets on one output path', () => {
       task('coverage', ['coverage/**']),
     ])
     const outputs = (t: GeneratedTask) =>
-      (t.task!['cache'] as { outputs: { files: string[] } } | undefined)?.outputs.files
+      (t.task!['outputs'] as { files: string[] } | undefined)?.files
     expect(tasks.map((t) => [t.name, outputs(t), t.todos.length])).toEqual([
       [
         'build',
@@ -222,7 +223,8 @@ describe('resolveSharedWorkspaceOutputs — the clashes the prefix index finds',
     task: {
       exec: { command: name },
       inputs: { files: ['**/*'] },
-      cache: { outputs: { files: [], workspaceFiles: outputs } },
+      outputs: { files: [], workspaceFiles: outputs },
+      cache: true,
     },
   })
   const clashes = (projects: { name: string; tasks: GeneratedTask[] }[]): string[] => {
@@ -307,9 +309,8 @@ describe('excludeWorkspaceOutputs — workspace inputs against every output (X-5
       task: {
         exec: { command: 'gen' },
         inputs: { files: ['**/*'], workspaceFiles: ['tools/**'] },
-        cache: {
-          outputs: { workspaceFiles: ['tools/out/**'] },
-        },
+        outputs: { workspaceFiles: ['tools/out/**'] },
+        cache: true,
       },
     }
     const r = reader('test', ['src/**'], ['packages/**', 'tools/**', 'other/**'])
@@ -342,7 +343,8 @@ describe('excludeWorkspaceOutputs — workspace inputs against every output (X-5
       task: {
         exec: { command: 'gen' },
         inputs: { files: ['src/**'] },
-        cache: { outputs: { workspaceFiles: [out] } },
+        outputs: { workspaceFiles: [out] },
+        cache: true,
       },
     })
     const lib = reader('build', ['**/*'])
@@ -367,7 +369,8 @@ describe('excludeWorkspaceOutputs — workspace inputs against every output (X-5
       task: {
         exec: { command: 'gen' },
         inputs: { files: ['src/**'] },
-        cache: { outputs: { workspaceFiles: ['**/gen/**'] } },
+        outputs: { workspaceFiles: ['**/gen/**'] },
+        cache: true,
       },
     }
     const literal = reader('test', ['gen/a.ts'])

@@ -60,11 +60,10 @@
           "VX_REQUIRE_REAPI_EXEC"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "test.live": {
       "description": "bun test, the live REAPI files, against services.cache and services.exec",
@@ -154,11 +153,10 @@
           "tsconfig.json"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "lint.oxfmt": {
       "description": "oxfmt --check (no rewrite; CI-safe)",
@@ -184,11 +182,10 @@
           "package.json"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     }
   }
 }

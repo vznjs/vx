@@ -209,7 +209,7 @@ folded the old digest) is not probed, and the task runs.
 
 ## What a command may have written
 
-A task with no `cache` block declares no outputs, so after its command
+A task with no `cache: true` declares no outputs, so after its command
 exits — pass or fail — and after a persistent task becomes ready, the
 run drops the facts it holds about where `undeclaredWriteReach`
 (`sandbox-request.md`) says the task may have written: `'project'`
@@ -283,7 +283,7 @@ The pieces folded into `cache.key(...)`:
 | `taskConfigHash` | `xxh3(JSON.stringify(hashableConfig(node.config)))` (internal `hashTaskConfig`; the projection drops `exec.remote`, which is placement, not key material) |
 | `envValues`      | `resolveInputs` reads host env for declared `inputs.env` names                                                                                            |
 | `inputFiles`     | `resolveInputs` glob result (gitignore + boundary-filtered, sorted)                                                                                       |
-| `upstreamHashes` | `filterUpstreamHashes(upstream, cacheCfg?.inputs?.tasks, ...)`                                                                                            |
+| `upstreamHashes` | `filterUpstreamHashes(upstream, cfg.inputs?.tasks, ...)`                                                                                                  |
 | `forwardArgs`    | `node.requested ? (args.forwardArgs ?? []) : []`                                                                                                          |
 
 `forwardArgs` are scoped to user-requested tasks. The reason it's

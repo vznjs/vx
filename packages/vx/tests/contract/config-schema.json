@@ -1,24 +1,16 @@
 {
   "workspace": {
     "levels": {
-      "": ["baseBranch", "cache", "lock", "plugins", "run", "watch"],
+      "": ["baseBranch", "cache", "inputs", "lock", "outputs", "plugins", "run", "watch"],
       "run": ["concurrency", "continue", "retries", "rules", "schedule", "timeout"],
       "run.rules": ["dependencies", "exclusiveOutputs"],
-      "cache": [
-        "concurrency",
-        "dir",
-        "download",
-        "inputStability",
-        "outputs",
-        "policy",
-        "store",
-        "upload"
-      ],
-      "cache.inputStability": ["severity", "strategy"],
-      "cache.outputs": ["clean"],
+      "cache": ["concurrency", "dir", "download", "policy", "store", "upload"],
       "cache.upload": ["failures"],
       "cache.store": ["decompress", "embeddings"],
       "cache.concurrency": ["download", "restore", "upload"],
+      "inputs": ["stability"],
+      "inputs.stability": ["severity", "strategy"],
+      "outputs": ["clean"],
       "lock": ["reviewFiles"],
       "watch": ["poll"]
     },
@@ -634,7 +626,7 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: `cache` has unknown field \"x\" (allowed: concurrency, dir, download, inputStability, outputs, policy, store, upload)": [
+        "$CONFIG: `cache` has unknown field \"x\" (allowed: concurrency, dir, download, policy, store, upload)": [
           "{\"x\":\"y\"}"
         ]
       },
@@ -773,296 +765,6 @@
         ],
         "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got {})": ["{}"],
         "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got {\"x\":\"y\"})": [
-          "{\"x\":\"y\"}"
-        ]
-      },
-      "cache.inputStability": {
-        "ok": ["<absent>", "{}", "<seed>"],
-        "$CONFIG: `cache.inputStability` must be an object (fields: strategy, severity)": [
-          "null",
-          "true",
-          "false",
-          "0",
-          "1",
-          "1.5",
-          "-1",
-          "65536",
-          "2147483648",
-          "\"\"",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
-          "\"10\"",
-          "[]",
-          "[\"x\"]",
-          "[\"\"]",
-          "[1]",
-          "[3000]",
-          "[\"/x\"]",
-          "[\"!/x\"]",
-          "[\"../x\"]",
-          "[\"!x\"]",
-          "[\"!!x\",\"y\"]",
-          "[\".\"]",
-          "[\"**\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]"
-        ],
-        "$CONFIG: `cache.inputStability` has unknown field \"x\" (allowed: severity, strategy)": [
-          "{\"x\":\"y\"}"
-        ]
-      },
-      "cache.inputStability.strategy": {
-        "ok": ["<absent>", "\"mutable\""],
-        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got null)": [
-          "null"
-        ],
-        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got true)": [
-          "true"
-        ],
-        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got false)": [
-          "false"
-        ],
-        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got 0)": [
-          "0"
-        ],
-        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got 1)": [
-          "1"
-        ],
-        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got 1.5)": [
-          "1.5"
-        ],
-        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got -1)": [
-          "-1"
-        ],
-        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got 65536)": [
-          "65536"
-        ],
-        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got 2147483648)": [
-          "2147483648"
-        ],
-        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got \"\")": [
-          "\"\""
-        ],
-        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got \"x\")": [
-          "\"x\""
-        ],
-        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got \"(\")": [
-          "\"(\""
-        ],
-        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got \"30d\")": [
-          "\"30d\""
-        ],
-        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got \"10G\")": [
-          "\"10G\""
-        ],
-        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got \"10\")": [
-          "\"10\""
-        ],
-        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [])": [
-          "[]"
-        ],
-        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\"x\"])": [
-          "[\"x\"]"
-        ],
-        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\"\"])": [
-          "[\"\"]"
-        ],
-        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [1])": [
-          "[1]"
-        ],
-        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [3000])": [
-          "[3000]"
-        ],
-        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\"/x\"])": [
-          "[\"/x\"]"
-        ],
-        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\"!/x\"])": [
-          "[\"!/x\"]"
-        ],
-        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\"../x\"])": [
-          "[\"../x\"]"
-        ],
-        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\"!x\"])": [
-          "[\"!x\"]"
-        ],
-        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\"!!x\",\"y\"])": [
-          "[\"!!x\",\"y\"]"
-        ],
-        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\".\"])": [
-          "[\".\"]"
-        ],
-        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\"**\"])": [
-          "[\"**\"]"
-        ],
-        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\"A=B\"])": [
-          "[\"A=B\"]"
-        ],
-        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\"A*\"])": [
-          "[\"A*\"]"
-        ],
-        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got {})": [
-          "{}"
-        ],
-        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got {\"x\":\"y\"})": [
-          "{\"x\":\"y\"}"
-        ]
-      },
-      "cache.inputStability.severity": {
-        "ok": ["<absent>", "\"error\""],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got null)": [
-          "null"
-        ],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got true)": [
-          "true"
-        ],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got false)": [
-          "false"
-        ],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got 0)": ["0"],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got 1)": ["1"],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got 1.5)": [
-          "1.5"
-        ],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got -1)": ["-1"],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got 65536)": [
-          "65536"
-        ],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got 2147483648)": [
-          "2147483648"
-        ],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got \"\")": [
-          "\"\""
-        ],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got \"x\")": [
-          "\"x\""
-        ],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got \"(\")": [
-          "\"(\""
-        ],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got \"30d\")": [
-          "\"30d\""
-        ],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got \"10G\")": [
-          "\"10G\""
-        ],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got \"10\")": [
-          "\"10\""
-        ],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [])": ["[]"],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [\"x\"])": [
-          "[\"x\"]"
-        ],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [\"\"])": [
-          "[\"\"]"
-        ],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [1])": [
-          "[1]"
-        ],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [3000])": [
-          "[3000]"
-        ],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [\"/x\"])": [
-          "[\"/x\"]"
-        ],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [\"!/x\"])": [
-          "[\"!/x\"]"
-        ],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [\"../x\"])": [
-          "[\"../x\"]"
-        ],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [\"!x\"])": [
-          "[\"!x\"]"
-        ],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [\"!!x\",\"y\"])": [
-          "[\"!!x\",\"y\"]"
-        ],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [\".\"])": [
-          "[\".\"]"
-        ],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [\"**\"])": [
-          "[\"**\"]"
-        ],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [\"A=B\"])": [
-          "[\"A=B\"]"
-        ],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [\"A*\"])": [
-          "[\"A*\"]"
-        ],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got {})": ["{}"],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got {\"x\":\"y\"})": [
-          "{\"x\":\"y\"}"
-        ]
-      },
-      "cache.outputs": {
-        "ok": ["<absent>", "{}", "<seed>"],
-        "$CONFIG: `cache.outputs` must be an object (fields: clean)": [
-          "null",
-          "true",
-          "false",
-          "0",
-          "1",
-          "1.5",
-          "-1",
-          "65536",
-          "2147483648",
-          "\"\"",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
-          "\"10\"",
-          "[]",
-          "[\"x\"]",
-          "[\"\"]",
-          "[1]",
-          "[3000]",
-          "[\"/x\"]",
-          "[\"!/x\"]",
-          "[\"../x\"]",
-          "[\"!x\"]",
-          "[\"!!x\",\"y\"]",
-          "[\".\"]",
-          "[\"**\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]"
-        ],
-        "$CONFIG: `cache.outputs` has unknown field \"x\" (allowed: clean)": ["{\"x\":\"y\"}"]
-      },
-      "cache.outputs.clean": {
-        "ok": ["<absent>", "true", "false"],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got null)": ["null"],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got 0)": ["0"],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got 1)": ["1"],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got 1.5)": ["1.5"],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got -1)": ["-1"],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got 65536)": ["65536"],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got 2147483648)": ["2147483648"],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got \"\")": ["\"\""],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got \"x\")": ["\"x\""],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got \"(\")": ["\"(\""],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got \"30d\")": ["\"30d\""],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got \"10G\")": ["\"10G\""],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got \"10\")": ["\"10\""],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got [])": ["[]"],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"x\"])": ["[\"x\"]"],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"\"])": ["[\"\"]"],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got [1])": ["[1]"],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got [3000])": ["[3000]"],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"/x\"])": ["[\"/x\"]"],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"!/x\"])": ["[\"!/x\"]"],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"../x\"])": ["[\"../x\"]"],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"!x\"])": ["[\"!x\"]"],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"!!x\",\"y\"])": [
-          "[\"!!x\",\"y\"]"
-        ],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got [\".\"])": ["[\".\"]"],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"**\"])": ["[\"**\"]"],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"A=B\"])": ["[\"A=B\"]"],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"A*\"])": ["[\"A*\"]"],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got {})": ["{}"],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },
@@ -1493,6 +1195,317 @@
           "{\"x\":\"y\"}"
         ]
       },
+      "inputs": {
+        "ok": ["<absent>", "{}", "<seed>"],
+        "$CONFIG: `inputs` must be an object (fields: stability)": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `inputs` has unknown field \"x\" (allowed: stability)": ["{\"x\":\"y\"}"]
+      },
+      "inputs.stability": {
+        "ok": ["<absent>", "{}", "<seed>"],
+        "$CONFIG: `inputs.stability` must be an object (fields: strategy, severity)": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `inputs.stability` has unknown field \"x\" (allowed: severity, strategy)": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "inputs.stability.strategy": {
+        "ok": ["<absent>", "\"mutable\""],
+        "$CONFIG: `inputs.stability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got null)": [
+          "null"
+        ],
+        "$CONFIG: `inputs.stability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got true)": [
+          "true"
+        ],
+        "$CONFIG: `inputs.stability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got false)": [
+          "false"
+        ],
+        "$CONFIG: `inputs.stability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got 0)": [
+          "0"
+        ],
+        "$CONFIG: `inputs.stability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got 1)": [
+          "1"
+        ],
+        "$CONFIG: `inputs.stability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `inputs.stability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got -1)": [
+          "-1"
+        ],
+        "$CONFIG: `inputs.stability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `inputs.stability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `inputs.stability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `inputs.stability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `inputs.stability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `inputs.stability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got \"30d\")": [
+          "\"30d\""
+        ],
+        "$CONFIG: `inputs.stability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `inputs.stability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `inputs.stability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [])": [
+          "[]"
+        ],
+        "$CONFIG: `inputs.stability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `inputs.stability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `inputs.stability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `inputs.stability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `inputs.stability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `inputs.stability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `inputs.stability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `inputs.stability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `inputs.stability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `inputs.stability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `inputs.stability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `inputs.stability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `inputs.stability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `inputs.stability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got {})": [
+          "{}"
+        ],
+        "$CONFIG: `inputs.stability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "inputs.stability.severity": {
+        "ok": ["<absent>", "\"error\""],
+        "$CONFIG: `inputs.stability.severity` must be one of 'warn', 'error' (got null)": ["null"],
+        "$CONFIG: `inputs.stability.severity` must be one of 'warn', 'error' (got true)": ["true"],
+        "$CONFIG: `inputs.stability.severity` must be one of 'warn', 'error' (got false)": [
+          "false"
+        ],
+        "$CONFIG: `inputs.stability.severity` must be one of 'warn', 'error' (got 0)": ["0"],
+        "$CONFIG: `inputs.stability.severity` must be one of 'warn', 'error' (got 1)": ["1"],
+        "$CONFIG: `inputs.stability.severity` must be one of 'warn', 'error' (got 1.5)": ["1.5"],
+        "$CONFIG: `inputs.stability.severity` must be one of 'warn', 'error' (got -1)": ["-1"],
+        "$CONFIG: `inputs.stability.severity` must be one of 'warn', 'error' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `inputs.stability.severity` must be one of 'warn', 'error' (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `inputs.stability.severity` must be one of 'warn', 'error' (got \"\")": ["\"\""],
+        "$CONFIG: `inputs.stability.severity` must be one of 'warn', 'error' (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `inputs.stability.severity` must be one of 'warn', 'error' (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `inputs.stability.severity` must be one of 'warn', 'error' (got \"30d\")": [
+          "\"30d\""
+        ],
+        "$CONFIG: `inputs.stability.severity` must be one of 'warn', 'error' (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `inputs.stability.severity` must be one of 'warn', 'error' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `inputs.stability.severity` must be one of 'warn', 'error' (got [])": ["[]"],
+        "$CONFIG: `inputs.stability.severity` must be one of 'warn', 'error' (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `inputs.stability.severity` must be one of 'warn', 'error' (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `inputs.stability.severity` must be one of 'warn', 'error' (got [1])": ["[1]"],
+        "$CONFIG: `inputs.stability.severity` must be one of 'warn', 'error' (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `inputs.stability.severity` must be one of 'warn', 'error' (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `inputs.stability.severity` must be one of 'warn', 'error' (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `inputs.stability.severity` must be one of 'warn', 'error' (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `inputs.stability.severity` must be one of 'warn', 'error' (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `inputs.stability.severity` must be one of 'warn', 'error' (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `inputs.stability.severity` must be one of 'warn', 'error' (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `inputs.stability.severity` must be one of 'warn', 'error' (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `inputs.stability.severity` must be one of 'warn', 'error' (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `inputs.stability.severity` must be one of 'warn', 'error' (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `inputs.stability.severity` must be one of 'warn', 'error' (got {})": ["{}"],
+        "$CONFIG: `inputs.stability.severity` must be one of 'warn', 'error' (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "outputs": {
+        "ok": ["<absent>", "{}", "<seed>"],
+        "$CONFIG: `outputs` must be an object (fields: clean)": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `outputs` has unknown field \"x\" (allowed: clean)": ["{\"x\":\"y\"}"]
+      },
+      "outputs.clean": {
+        "ok": ["<absent>", "true", "false"],
+        "$CONFIG: `outputs.clean` must be true or false (got null)": ["null"],
+        "$CONFIG: `outputs.clean` must be true or false (got 0)": ["0"],
+        "$CONFIG: `outputs.clean` must be true or false (got 1)": ["1"],
+        "$CONFIG: `outputs.clean` must be true or false (got 1.5)": ["1.5"],
+        "$CONFIG: `outputs.clean` must be true or false (got -1)": ["-1"],
+        "$CONFIG: `outputs.clean` must be true or false (got 65536)": ["65536"],
+        "$CONFIG: `outputs.clean` must be true or false (got 2147483648)": ["2147483648"],
+        "$CONFIG: `outputs.clean` must be true or false (got \"\")": ["\"\""],
+        "$CONFIG: `outputs.clean` must be true or false (got \"x\")": ["\"x\""],
+        "$CONFIG: `outputs.clean` must be true or false (got \"(\")": ["\"(\""],
+        "$CONFIG: `outputs.clean` must be true or false (got \"30d\")": ["\"30d\""],
+        "$CONFIG: `outputs.clean` must be true or false (got \"10G\")": ["\"10G\""],
+        "$CONFIG: `outputs.clean` must be true or false (got \"10\")": ["\"10\""],
+        "$CONFIG: `outputs.clean` must be true or false (got [])": ["[]"],
+        "$CONFIG: `outputs.clean` must be true or false (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `outputs.clean` must be true or false (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `outputs.clean` must be true or false (got [1])": ["[1]"],
+        "$CONFIG: `outputs.clean` must be true or false (got [3000])": ["[3000]"],
+        "$CONFIG: `outputs.clean` must be true or false (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `outputs.clean` must be true or false (got [\"!/x\"])": ["[\"!/x\"]"],
+        "$CONFIG: `outputs.clean` must be true or false (got [\"../x\"])": ["[\"../x\"]"],
+        "$CONFIG: `outputs.clean` must be true or false (got [\"!x\"])": ["[\"!x\"]"],
+        "$CONFIG: `outputs.clean` must be true or false (got [\"!!x\",\"y\"])": ["[\"!!x\",\"y\"]"],
+        "$CONFIG: `outputs.clean` must be true or false (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `outputs.clean` must be true or false (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `outputs.clean` must be true or false (got [\"A=B\"])": ["[\"A=B\"]"],
+        "$CONFIG: `outputs.clean` must be true or false (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `outputs.clean` must be true or false (got {})": ["{}"],
+        "$CONFIG: `outputs.clean` must be true or false (got {\"x\":\"y\"})": ["{\"x\":\"y\"}"]
+      },
       "lock": {
         "ok": ["<absent>", "{}", "<seed>"],
         "$CONFIG: `lock` must be an object (fields: reviewFiles)": [
@@ -1671,7 +1684,7 @@
   "project": {
     "levels": {
       "": ["name", "tags", "tasks"],
-      "tasks.*": ["cache", "dependsOn", "description", "exec", "inputs"],
+      "tasks.*": ["cache", "dependsOn", "description", "exec", "inputs", "outputs"],
       "tasks.*.exec": [
         "command",
         "env",
@@ -1706,12 +1719,19 @@
       ],
       "tasks.*.exec.sandbox.deny": ["network"],
       "tasks.*.exec.sandbox.ignore": ["network", "read", "systemInfo", "write"],
-      "tasks.*.inputs": ["env", "files", "runtime", "tasks", "workspaceFiles", "workspaceRuntime"],
-      "tasks.*.cache": ["inputStability", "outputs"],
-      "tasks.*.cache.outputs": ["bin", "clean", "files", "mount", "workspaceFiles"],
-      "tasks.*.cache.inputStability": ["severity", "strategy"]
+      "tasks.*.inputs": [
+        "env",
+        "files",
+        "runtime",
+        "stability",
+        "tasks",
+        "workspaceFiles",
+        "workspaceRuntime"
+      ],
+      "tasks.*.inputs.stability": ["severity", "strategy"],
+      "tasks.*.outputs": ["clean", "files", "workspaceFiles"]
     },
-    "records": ["tasks", "tasks.*.exec.env.define", "tasks.*.cache.outputs.mount"],
+    "records": ["tasks", "tasks.*.exec.env.define"],
     "fields": {
       "name": {
         "ok": ["<absent>", "\"x\"", "\"(\"", "\"30d\"", "\"10G\"", "\"10\"", "\"web\""],
@@ -1849,7 +1869,7 @@
         "$CONFIG: tasks.t must be an object — a command is { exec: { command: \"10\" } }": [
           "\"10\""
         ],
-        "$CONFIG: tasks.t must be an object (fields: cache, dependsOn, description, exec, inputs), not an array": [
+        "$CONFIG: tasks.t must be an object (fields: cache, dependsOn, description, exec, inputs, outputs), not an array": [
           "[]",
           "[\"x\"]",
           "[\"\"]",
@@ -1868,7 +1888,7 @@
         "$CONFIG: tasks.t: a task with no `exec` must declare `dependsOn` or `inputs` (group tasks exist to chain dependencies or carry a key)": [
           "{}"
         ],
-        "$CONFIG: tasks.t has unknown field \"x\" (allowed: cache, dependsOn, description, exec, inputs)": [
+        "$CONFIG: tasks.t has unknown field \"x\" (allowed: cache, dependsOn, description, exec, inputs, outputs)": [
           "{\"x\":\"y\"}"
         ]
       },
@@ -3313,7 +3333,7 @@
           "\"10G\"",
           "\"10\""
         ],
-        "$CONFIG: tasks.c.inputs must be an object (fields: env, files, runtime, tasks, workspaceFiles, workspaceRuntime), not an array — did you mean `{ files: [...] }`?": [
+        "$CONFIG: tasks.c.inputs must be an object (fields: env, files, runtime, stability, tasks, workspaceFiles, workspaceRuntime), not an array — did you mean `{ files: [...] }`?": [
           "[]",
           "[\"x\"]",
           "[\"\"]",
@@ -3330,7 +3350,7 @@
           "[\"A*\"]"
         ],
         "$CONFIG: tasks.c.inputs.files must be an array of glob strings": ["{}"],
-        "$CONFIG: tasks.c.inputs has unknown field \"x\" (allowed: env, files, runtime, tasks, workspaceFiles, workspaceRuntime)": [
+        "$CONFIG: tasks.c.inputs has unknown field \"x\" (allowed: env, files, runtime, stability, tasks, workspaceFiles, workspaceRuntime)": [
           "{\"x\":\"y\"}"
         ],
         "ok": ["<seed>"]
@@ -3596,9 +3616,120 @@
           "{\"x\":\"y\"}"
         ]
       },
-      "tasks.*.cache": {
-        "ok": ["<absent>", "<seed>"],
-        "$CONFIG: tasks.c.cache must be an object when present — `inputs: { files: [...] }, cache: { outputs: { files: [...] } }`, or no `cache` for a task that never caches": [
+      "tasks.*.inputs.stability": {
+        "ok": ["<absent>", "{}", "<seed>"],
+        "$CONFIG: tasks.c.inputs.stability must be an object — `stability: { strategy: 'mutable' }`": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]"
+        ],
+        "$CONFIG: tasks.c.inputs.stability has unknown field \"x\" (allowed: severity, strategy)": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "tasks.*.inputs.stability.strategy": {
+        "ok": ["<absent>", "\"mutable\""],
+        "$CONFIG: tasks.c.inputs.stability.strategy must be 'immutable', 'mutable' or 'unchecked'": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]",
+          "{}",
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "tasks.*.inputs.stability.severity": {
+        "ok": ["<absent>", "\"error\""],
+        "$CONFIG: tasks.c.inputs.stability.severity must be 'warn' or 'error'": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]",
+          "{}",
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "tasks.*.outputs": {
+        "$CONFIG: tasks.c: `cache` needs `outputs` — what the task produces, `outputs: { files: [...] }` (`[]` for none)": [
+          "<absent>"
+        ],
+        "$CONFIG: tasks.c.outputs must be an object — `outputs: { files: [...] }`": [
           "null",
           "true",
           "false",
@@ -3615,7 +3746,7 @@
           "\"10G\"",
           "\"10\""
         ],
-        "$CONFIG: tasks.c.cache must be an object (fields: inputStability, outputs), not an array": [
+        "$CONFIG: tasks.c.outputs must be an object (fields: clean, files, workspaceFiles), not an array — did you mean `{ files: [...] }`?": [
           "[]",
           "[\"x\"]",
           "[\"\"]",
@@ -3631,53 +3762,14 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: tasks.c.cache.outputs is required when `cache` is set": ["{}"],
-        "$CONFIG: tasks.c.cache has unknown field \"x\" (allowed: inputStability, outputs)": [
-          "{\"x\":\"y\"}"
-        ]
-      },
-      "tasks.*.cache.outputs": {
-        "$CONFIG: tasks.c.cache.outputs is required when `cache` is set": ["<absent>", "null"],
-        "$CONFIG: tasks.c.cache.outputs must be an object — `outputs: { files: [...] }`": [
-          "true",
-          "false",
-          "0",
-          "1",
-          "1.5",
-          "-1",
-          "65536",
-          "2147483648",
-          "\"\"",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
-          "\"10\""
-        ],
-        "$CONFIG: tasks.c.cache.outputs must be an object (fields: bin, clean, files, mount, workspaceFiles), not an array — did you mean `{ files: [...] }`?": [
-          "[]",
-          "[\"x\"]",
-          "[\"\"]",
-          "[1]",
-          "[3000]",
-          "[\"/x\"]",
-          "[\"!/x\"]",
-          "[\"../x\"]",
-          "[\"!x\"]",
-          "[\"!!x\",\"y\"]",
-          "[\".\"]",
-          "[\"**\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]"
-        ],
-        "$CONFIG: tasks.c.cache.outputs.files must be an array of glob strings": ["{}"],
-        "$CONFIG: tasks.c.cache.outputs has unknown field \"x\" (allowed: bin, clean, files, mount, workspaceFiles)": [
+        "$CONFIG: tasks.c.outputs.files must be an array of glob strings": ["{}"],
+        "$CONFIG: tasks.c.outputs has unknown field \"x\" (allowed: clean, files, workspaceFiles)": [
           "{\"x\":\"y\"}"
         ],
         "ok": ["<seed>"]
       },
-      "tasks.*.cache.outputs.files": {
-        "$CONFIG: tasks.c.cache.outputs.files must be an array of glob strings": [
+      "tasks.*.outputs.files": {
+        "$CONFIG: tasks.c.outputs.files must be an array of glob strings": [
           "<absent>",
           "null",
           "true",
@@ -3698,36 +3790,36 @@
           "{\"x\":\"y\"}"
         ],
         "ok": ["[]", "[\"x\"]", "[\"A=B\"]", "[\"A*\"]", "[\"dist/**\"]"],
-        "$CONFIG: tasks.c.cache.outputs.files must be an array of non-empty strings": [
+        "$CONFIG: tasks.c.outputs.files must be an array of non-empty strings": [
           "[\"\"]",
           "[1]",
           "[3000]"
         ],
-        "$CONFIG: tasks.c.cache.outputs.files: absolute paths are not allowed (got \"/x\") — outputs must be project-relative globs": [
+        "$CONFIG: tasks.c.outputs.files: absolute paths are not allowed (got \"/x\") — outputs must be project-relative globs": [
           "[\"/x\"]"
         ],
-        "$CONFIG: tasks.c.cache.outputs.files: absolute paths are not allowed (got \"!/x\") — outputs must be project-relative globs": [
+        "$CONFIG: tasks.c.outputs.files: absolute paths are not allowed (got \"!/x\") — outputs must be project-relative globs": [
           "[\"!/x\"]"
         ],
-        "$CONFIG: tasks.c.cache.outputs.files: '..' path segments are not allowed (got \"../x\") — outputs must stay within the project (vx clears a task's outputs before it runs, so a glob that escapes the project would delete files outside it)": [
+        "$CONFIG: tasks.c.outputs.files: '..' path segments are not allowed (got \"../x\") — outputs must stay within the project (vx clears a task's outputs before it runs, so a glob that escapes the project would delete files outside it)": [
           "[\"../x\"]"
         ],
-        "$CONFIG: tasks.c.cache.outputs.files: every entry is a negation, which selects NOTHING (got [\"!x\"]) — a '!' entry only takes back what a positive glob selected. Add the outputs the task produces, e.g. ['dist/**', \"!x\"], or declare [] for none.": [
+        "$CONFIG: tasks.c.outputs.files: every entry is a negation, which selects NOTHING (got [\"!x\"]) — a '!' entry only takes back what a positive glob selected. Add the outputs the task produces, e.g. ['dist/**', \"!x\"], or declare [] for none.": [
           "[\"!x\"]"
         ],
-        "$CONFIG: tasks.c.cache.outputs.files: '!!' is not a double negation (got \"!!x\") — it INVERTS the set. One '!' is stripped and the remainder is compiled as a glob, which applies its own leading-'!' negation, so this excludes everything EXCEPT \"x\" and keeps only that. Use \"!x\" to subtract it, or \"x\" to include it.": [
+        "$CONFIG: tasks.c.outputs.files: '!!' is not a double negation (got \"!!x\") — it INVERTS the set. One '!' is stripped and the remainder is compiled as a glob, which applies its own leading-'!' negation, so this excludes everything EXCEPT \"x\" and keeps only that. Use \"!x\" to subtract it, or \"x\" to include it.": [
           "[\"!!x\",\"y\"]"
         ],
-        "$CONFIG: tasks.c.cache.outputs.files: \".\" names the project directory itself and selects nothing — name the directory the task writes, such as \"dist/**\"": [
+        "$CONFIG: tasks.c.outputs.files: \".\" names the project directory itself and selects nothing — name the directory the task writes, such as \"dist/**\"": [
           "[\".\"]"
         ],
-        "$CONFIG: tasks.c.cache.outputs.files: \"**\" covers the project's own vx.config.ts — vx deletes a task's outputs before it runs and restores them on a hit, so the project would lose its config. Name the directory the task writes, such as \"dist/**\", or take the file back with \"!vx.config.ts\".": [
+        "$CONFIG: tasks.c.outputs.files: \"**\" covers the project's own vx.config.ts — vx deletes a task's outputs before it runs and restores them on a hit, so the project would lose its config. Name the directory the task writes, such as \"dist/**\", or take the file back with \"!vx.config.ts\".": [
           "[\"**\"]"
         ]
       },
-      "tasks.*.cache.outputs.workspaceFiles": {
+      "tasks.*.outputs.workspaceFiles": {
         "ok": ["<absent>", "[]", "[\"x\"]", "[\"**\"]", "[\"A=B\"]", "[\"A*\"]", "[\"out/**\"]"],
-        "$CONFIG: tasks.c.cache.outputs.workspaceFiles must be an array of glob strings": [
+        "$CONFIG: tasks.c.outputs.workspaceFiles must be an array of glob strings": [
           "null",
           "true",
           "false",
@@ -3746,33 +3838,33 @@
           "{}",
           "{\"x\":\"y\"}"
         ],
-        "$CONFIG: tasks.c.cache.outputs.workspaceFiles must be an array of non-empty strings": [
+        "$CONFIG: tasks.c.outputs.workspaceFiles must be an array of non-empty strings": [
           "[\"\"]",
           "[1]",
           "[3000]"
         ],
-        "$CONFIG: tasks.c.cache.outputs.workspaceFiles: absolute paths are not allowed (got \"/x\") — entries are workspace-root-relative globs": [
+        "$CONFIG: tasks.c.outputs.workspaceFiles: absolute paths are not allowed (got \"/x\") — entries are workspace-root-relative globs": [
           "[\"/x\"]"
         ],
-        "$CONFIG: tasks.c.cache.outputs.workspaceFiles: absolute paths are not allowed (got \"!/x\") — entries are workspace-root-relative globs": [
+        "$CONFIG: tasks.c.outputs.workspaceFiles: absolute paths are not allowed (got \"!/x\") — entries are workspace-root-relative globs": [
           "[\"!/x\"]"
         ],
-        "$CONFIG: tasks.c.cache.outputs.workspaceFiles: '..' path segments are not allowed (got \"../x\") — entries are workspace-root-relative and must stay within the workspace root": [
+        "$CONFIG: tasks.c.outputs.workspaceFiles: '..' path segments are not allowed (got \"../x\") — entries are workspace-root-relative and must stay within the workspace root": [
           "[\"../x\"]"
         ],
-        "$CONFIG: tasks.c.cache.outputs.workspaceFiles: every entry is a negation, which selects NOTHING (got [\"!x\"]) — a '!' entry only takes back what a positive glob selected. Add the outputs the task produces, e.g. ['dist/**', \"!x\"], or declare [] for none.": [
+        "$CONFIG: tasks.c.outputs.workspaceFiles: every entry is a negation, which selects NOTHING (got [\"!x\"]) — a '!' entry only takes back what a positive glob selected. Add the outputs the task produces, e.g. ['dist/**', \"!x\"], or declare [] for none.": [
           "[\"!x\"]"
         ],
-        "$CONFIG: tasks.c.cache.outputs.workspaceFiles: '!!' is not a double negation (got \"!!x\") — it INVERTS the set. One '!' is stripped and the remainder is compiled as a glob, which applies its own leading-'!' negation, so this excludes everything EXCEPT \"x\" and keeps only that. Use \"!x\" to subtract it, or \"x\" to include it.": [
+        "$CONFIG: tasks.c.outputs.workspaceFiles: '!!' is not a double negation (got \"!!x\") — it INVERTS the set. One '!' is stripped and the remainder is compiled as a glob, which applies its own leading-'!' negation, so this excludes everything EXCEPT \"x\" and keeps only that. Use \"!x\" to subtract it, or \"x\" to include it.": [
           "[\"!!x\",\"y\"]"
         ],
-        "$CONFIG: tasks.c.cache.outputs.workspaceFiles: \".\" names the workspace root itself and selects nothing — use \"**\" for everything under it": [
+        "$CONFIG: tasks.c.outputs.workspaceFiles: \".\" names the workspace root itself and selects nothing — use \"**\" for everything under it": [
           "[\".\"]"
         ]
       },
-      "tasks.*.cache.outputs.clean": {
+      "tasks.*.outputs.clean": {
         "ok": ["<absent>", "true", "false"],
-        "$CONFIG: tasks.c.cache.outputs.clean must be true or false": [
+        "$CONFIG: tasks.c.outputs.clean must be true or false": [
           "null",
           "0",
           "1",
@@ -3804,49 +3896,10 @@
           "{\"x\":\"y\"}"
         ]
       },
-      "tasks.*.cache.inputStability": {
-        "ok": ["<absent>", "{}", "<seed>"],
-        "$CONFIG: tasks.c.cache.inputStability must be an object — `inputStability: { strategy: 'mutable' }`": [
+      "tasks.*.cache": {
+        "ok": ["<absent>", "true", "false"],
+        "$CONFIG: tasks.c.cache must be true or false": [
           "null",
-          "true",
-          "false",
-          "0",
-          "1",
-          "1.5",
-          "-1",
-          "65536",
-          "2147483648",
-          "\"\"",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
-          "\"10\"",
-          "[]",
-          "[\"x\"]",
-          "[\"\"]",
-          "[1]",
-          "[3000]",
-          "[\"/x\"]",
-          "[\"!/x\"]",
-          "[\"../x\"]",
-          "[\"!x\"]",
-          "[\"!!x\",\"y\"]",
-          "[\".\"]",
-          "[\"**\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]"
-        ],
-        "$CONFIG: tasks.c.cache.inputStability has unknown field \"x\" (allowed: severity, strategy)": [
-          "{\"x\":\"y\"}"
-        ]
-      },
-      "tasks.*.cache.inputStability.strategy": {
-        "ok": ["<absent>", "\"mutable\""],
-        "$CONFIG: tasks.c.cache.inputStability.strategy must be 'immutable', 'mutable' or 'unchecked'": [
-          "null",
-          "true",
-          "false",
           "0",
           "1",
           "1.5",
@@ -3875,171 +3928,6 @@
           "[\"A*\"]",
           "{}",
           "{\"x\":\"y\"}"
-        ]
-      },
-      "tasks.*.cache.inputStability.severity": {
-        "ok": ["<absent>", "\"error\""],
-        "$CONFIG: tasks.c.cache.inputStability.severity must be 'warn' or 'error'": [
-          "null",
-          "true",
-          "false",
-          "0",
-          "1",
-          "1.5",
-          "-1",
-          "65536",
-          "2147483648",
-          "\"\"",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
-          "\"10\"",
-          "[]",
-          "[\"x\"]",
-          "[\"\"]",
-          "[1]",
-          "[3000]",
-          "[\"/x\"]",
-          "[\"!/x\"]",
-          "[\"../x\"]",
-          "[\"!x\"]",
-          "[\"!!x\",\"y\"]",
-          "[\".\"]",
-          "[\"**\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]",
-          "{}",
-          "{\"x\":\"y\"}"
-        ]
-      },
-      "tasks.*.cache.outputs.bin": {
-        "ok": ["<absent>", "\"out/bin\""],
-        "$CONFIG: tasks.b.cache.outputs.bin must be a directory name, such as 'out/bin'": [
-          "null",
-          "true",
-          "false",
-          "0",
-          "1",
-          "1.5",
-          "-1",
-          "65536",
-          "2147483648",
-          "\"\"",
-          "[]",
-          "[\"x\"]",
-          "[\"\"]",
-          "[1]",
-          "[3000]",
-          "[\"/x\"]",
-          "[\"!/x\"]",
-          "[\"../x\"]",
-          "[\"!x\"]",
-          "[\"!!x\",\"y\"]",
-          "[\".\"]",
-          "[\"**\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]",
-          "{}",
-          "{\"x\":\"y\"}"
-        ],
-        "$CONFIG: tasks.b.cache.outputs.bin: \"x\" is under no cache.outputs.files directory — a dependant can run only what this task saves, so declare it as an output too, such as 'x/**'": [
-          "\"x\""
-        ],
-        "$CONFIG: tasks.b.cache.outputs.bin: \"(\" is under no cache.outputs.files directory — a dependant can run only what this task saves, so declare it as an output too, such as '(/**'": [
-          "\"(\""
-        ],
-        "$CONFIG: tasks.b.cache.outputs.bin: \"30d\" is under no cache.outputs.files directory — a dependant can run only what this task saves, so declare it as an output too, such as '30d/**'": [
-          "\"30d\""
-        ],
-        "$CONFIG: tasks.b.cache.outputs.bin: \"10G\" is under no cache.outputs.files directory — a dependant can run only what this task saves, so declare it as an output too, such as '10G/**'": [
-          "\"10G\""
-        ],
-        "$CONFIG: tasks.b.cache.outputs.bin: \"10\" is under no cache.outputs.files directory — a dependant can run only what this task saves, so declare it as an output too, such as '10/**'": [
-          "\"10\""
-        ]
-      },
-      "tasks.*.cache.outputs.mount": {
-        "ok": ["<absent>", "{}", "<seed>"],
-        "$CONFIG: tasks.m.cache.outputs.mount must be an object of absolute path to output directory, such as { '/nix/store': 'out/nix/store' }": [
-          "null",
-          "true",
-          "false",
-          "0",
-          "1",
-          "1.5",
-          "-1",
-          "65536",
-          "2147483648",
-          "\"\"",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
-          "\"10\"",
-          "[]",
-          "[\"x\"]",
-          "[\"\"]",
-          "[1]",
-          "[3000]",
-          "[\"/x\"]",
-          "[\"!/x\"]",
-          "[\"../x\"]",
-          "[\"!x\"]",
-          "[\"!!x\",\"y\"]",
-          "[\".\"]",
-          "[\"**\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]"
-        ],
-        "$CONFIG: tasks.m.cache.outputs.mount: \"x\" must be a plain absolute directory other than '/', with no '..', glob or ':' — such as '/nix/store'": [
-          "{\"x\":\"y\"}"
-        ]
-      },
-      "tasks.*.cache.outputs.mount.*": {
-        "ok": ["<absent>", "\"out/nix/store\""],
-        "$CONFIG: tasks.m.cache.outputs.mount[\"/nix/store\"] must be a directory name, such as 'out/nix/store'": [
-          "null",
-          "true",
-          "false",
-          "0",
-          "1",
-          "1.5",
-          "-1",
-          "65536",
-          "2147483648",
-          "\"\"",
-          "[]",
-          "[\"x\"]",
-          "[\"\"]",
-          "[1]",
-          "[3000]",
-          "[\"/x\"]",
-          "[\"!/x\"]",
-          "[\"../x\"]",
-          "[\"!x\"]",
-          "[\"!!x\",\"y\"]",
-          "[\".\"]",
-          "[\"**\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]",
-          "{}",
-          "{\"x\":\"y\"}"
-        ],
-        "$CONFIG: tasks.m.cache.outputs.mount[\"/nix/store\"]: \"x\" is under no cache.outputs.files directory — a dependant can run only what this task saves, so declare it as an output too, such as 'x/**'": [
-          "\"x\""
-        ],
-        "$CONFIG: tasks.m.cache.outputs.mount[\"/nix/store\"]: \"(\" is under no cache.outputs.files directory — a dependant can run only what this task saves, so declare it as an output too, such as '(/**'": [
-          "\"(\""
-        ],
-        "$CONFIG: tasks.m.cache.outputs.mount[\"/nix/store\"]: \"30d\" is under no cache.outputs.files directory — a dependant can run only what this task saves, so declare it as an output too, such as '30d/**'": [
-          "\"30d\""
-        ],
-        "$CONFIG: tasks.m.cache.outputs.mount[\"/nix/store\"]: \"10G\" is under no cache.outputs.files directory — a dependant can run only what this task saves, so declare it as an output too, such as '10G/**'": [
-          "\"10G\""
-        ],
-        "$CONFIG: tasks.m.cache.outputs.mount[\"/nix/store\"]: \"10\" is under no cache.outputs.files directory — a dependant can run only what this task saves, so declare it as an output too, such as '10/**'": [
-          "\"10\""
         ]
       }
     },
@@ -4085,29 +3973,6 @@
           "\"!x\""
         ],
         "$CONFIG: tasks.t.exec.env.define: \"A=B\" is not an env var name (non-empty, no '=' or NUL)": [
-          "\"A=B\""
-        ]
-      },
-      "tasks.*.cache.outputs.mount": {
-        "$CONFIG: tasks.m.cache.outputs.mount: \"\" must be a plain absolute directory other than '/', with no '..', glob or ':' — such as '/nix/store'": [
-          "\"\""
-        ],
-        "$CONFIG: tasks.m.cache.outputs.mount: \" x\" must be a plain absolute directory other than '/', with no '..', glob or ':' — such as '/nix/store'": [
-          "\" x\""
-        ],
-        "$CONFIG: tasks.m.cache.outputs.mount: \"x#y\" must be a plain absolute directory other than '/', with no '..', glob or ':' — such as '/nix/store'": [
-          "\"x#y\""
-        ],
-        "$CONFIG: tasks.m.cache.outputs.mount: \"x*\" must be a plain absolute directory other than '/', with no '..', glob or ':' — such as '/nix/store'": [
-          "\"x*\""
-        ],
-        "$CONFIG: tasks.m.cache.outputs.mount: \"^x\" must be a plain absolute directory other than '/', with no '..', glob or ':' — such as '/nix/store'": [
-          "\"^x\""
-        ],
-        "$CONFIG: tasks.m.cache.outputs.mount: \"!x\" must be a plain absolute directory other than '/', with no '..', glob or ':' — such as '/nix/store'": [
-          "\"!x\""
-        ],
-        "$CONFIG: tasks.m.cache.outputs.mount: \"A=B\" must be a plain absolute directory other than '/', with no '..', glob or ':' — such as '/nix/store'": [
           "\"A=B\""
         ]
       }

@@ -9,7 +9,7 @@ const node = (id: string, dir: string, over: Record<string, unknown> = {}, deps:
       id,
       projectDir: `/w/${dir}`,
       deps,
-      config: { exec: { command: 'x' }, cache: {}, inputs: { files: ['src/**'] }, ...over },
+      config: { exec: { command: 'x' }, cache: true, inputs: { files: ['src/**'] }, ...over },
     } as unknown as TaskNode,
   ] as const
 

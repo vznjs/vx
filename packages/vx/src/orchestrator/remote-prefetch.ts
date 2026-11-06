@@ -25,7 +25,6 @@ import { maskedCommand } from '../util/index.js'
 import type { CacheLayer, GitFilesCache } from '../cache/index.js'
 import type { HashCache } from './task-hash.js'
 import { deriveStableKeys, type StableKey } from './stable-keys.js'
-import { mountPaths } from './sandbox-request.js'
 
 export interface PrefetchArgs {
   nodes: Map<string, TaskNode>
@@ -232,7 +231,7 @@ function fetchPool(
  * lookup, the other one that can reach a remote.
  */
 export function getContext(node: TaskNode, command: string) {
-  const outputs = node.config.cache?.outputs
+  const outputs = node.config.outputs
   let masked: string | undefined
   return {
     taskId: node.id,
@@ -244,10 +243,6 @@ export function getContext(node: TaskNode, command: string) {
     get command() {
       return (masked ??= maskedCommand(command, node.config.exec?.env))
     },
-    outputs: {
-      files: outputs?.files ?? [],
-      workspaceFiles: outputs?.workspaceFiles ?? [],
-      ...(outputs?.mount === undefined ? {} : { mounts: mountPaths(outputs) }),
-    },
+    outputs: { files: outputs?.files ?? [], workspaceFiles: outputs?.workspaceFiles ?? [] },
   }
 }

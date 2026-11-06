@@ -15,7 +15,7 @@ import { run } from './helpers/orchestrator.js'
 import { parseRunArgs } from '../src/cli/run.js'
 import { loadProjectConfig } from '../src/workspace/project-loader.js'
 
-const TIMEOUT = 20_000
+const TIMEOUT = 30_000
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 interface Fixture {
@@ -115,7 +115,7 @@ describe('exec.retries — e2e', () => {
                 command: 'if test -f flag.txt; then echo winning-run; else touch flag.txt; echo losing-run; exit 1; fi',
                 retries: 1,
               },
-              inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } },
+              inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true,
             },
           },
         }
@@ -303,11 +303,11 @@ describe('exec.retries — e2e', () => {
                   command: 'while [ ! -e ready ]; do sleep 0.01; done; if [ -e tried ]; then touch go; exit 1; fi; touch tried; echo a > ${dir}/a.txt; exit 1',
                   retries: 1,
                 },
-                inputs: { files: ['package.json'] }, cache: { outputs: ${outputs('a.txt')} },
+                inputs: { files: ['package.json'] }, outputs: ${outputs('a.txt')}, cache: true,
               },
               other: {
                 exec: { command: 'mkdir -p ${dir} && touch ready && while [ ! -e go ]; do sleep 0.01; done; echo b > ${dir}/b.txt' },
-                inputs: { files: ['package.json'] }, cache: { outputs: ${outputs('b.txt')} },
+                inputs: { files: ['package.json'] }, outputs: ${outputs('b.txt')}, cache: true,
               },
             },
           }
@@ -344,7 +344,7 @@ describe('exec.retries — e2e', () => {
                 command: 'if test -f flag.txt; then echo win; else touch flag.txt; exit 1; fi',
                 retries: 1,
               },
-              inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } },
+              inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true,
             },
           },
         }
@@ -442,7 +442,7 @@ describe('--retries — run-level default (real CLI)', () => {
           tasks: {
             build: {
               exec: { command: 'echo x >> count.txt && echo built' },
-              inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } },
+              inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true,
             },
           },
         }

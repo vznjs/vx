@@ -142,7 +142,6 @@ export interface ArtifactTask {
   readonly outputs: {
     readonly files: readonly string[]
     readonly workspaceFiles: readonly string[]
-    readonly mounts?: readonly string[]
   }
   readonly nestedProjectDirs?: readonly string[]
   readonly others?: ReadonlySet<string>
@@ -292,7 +291,6 @@ export class Cache implements CacheLayer {
     workspaceOutputDirs?: string[]
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
-    mounts?: readonly string[]
   }): Promise<void>
   get localWritesEnabled(): boolean
   packArtifactBytes(args: SaveArgs): Promise<Uint8Array>
@@ -310,17 +308,6 @@ export class Cache implements CacheLayer {
   async prune(options: PruneOptions): Promise<PruneResult>
   async orphanStats(): Promise<{ orphans: number; orphanBytes: number }>
   close(): void
-}
-```
-
-## `CacheConfig`
-
-type · `src/config.ts`
-
-```ts
-export interface CacheConfig {
-  outputs: CacheOutputs
-  inputStability?: InputStability
 }
 ```
 
@@ -432,7 +419,6 @@ export interface CacheLayer {
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
     absent?: boolean
-    mounts?: readonly string[]
   }): Promise<void>
   ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
@@ -443,20 +429,6 @@ export interface CacheLayer {
   outputBytes?(hash: string): number | undefined
   prune(options: PruneOptions): Promise<PruneResult>
   close(): void
-}
-```
-
-## `CacheOutputs`
-
-type · `src/config.ts`
-
-```ts
-export interface CacheOutputs {
-  files: readonly string[]
-  workspaceFiles?: readonly string[]
-  bin?: string
-  mount?: Readonly<Record<string, string>>
-  clean?: boolean
 }
 ```
 
@@ -494,8 +466,6 @@ export interface CacheSettings {
   dir?: string
   policy?: string
   download?: 'all' | 'toplevel' | 'none'
-  inputStability?: InputStability
-  outputs?: { clean?: boolean }
   upload?: { failures?: 'ci' | 'local' | 'always' }
   store?: { embeddings?: false | string; decompress?: boolean }
   concurrency?: { download?: number; upload?: number; restore?: number }
@@ -632,9 +602,7 @@ export function defineProject<const T extends ProjectConfig>(
           dependsOn?: readonly DependsOnEntry<Extract<keyof NonNullable<T['tasks']>, string>>[]
           exec?: Known<At<NonNullable<T['tasks']>[K], 'exec'>, ExecConfig>
           inputs?: Known<At<NonNullable<T['tasks']>[K], 'inputs'>, InputsConfig>
-          cache?: Known<At<NonNullable<T['tasks']>[K], 'cache'>, CacheConfig> & {
-            outputs?: Known<At<At<NonNullable<T['tasks']>[K], 'cache'>, 'outputs'>, CacheOutputs>
-          }
+          outputs?: Known<At<NonNullable<T['tasks']>[K], 'outputs'>, TaskOutputs>
         }
       }
     },
@@ -652,9 +620,11 @@ export function defineWorkspace<T extends WorkspaceConfig>(
       run?: Known<At<T, 'run'>, RunSettings> & {
         rules?: Known<At<At<T, 'run'>, 'rules'>, WorkspaceRules>
       }
-      cache?: Known<At<T, 'cache'>, CacheSettings> & {
-        inputStability?: Known<At<At<T, 'cache'>, 'inputStability'>, InputStability>
+      cache?: Known<At<T, 'cache'>, CacheSettings>
+      inputs?: Known<At<T, 'inputs'>, WorkspaceInputs> & {
+        stability?: Known<At<At<T, 'inputs'>, 'stability'>, InputStability>
       }
+      outputs?: Known<At<T, 'outputs'>, WorkspaceOutputs>
       lock?: Known<At<T, 'lock'>, LockSettings>
       watch?: Known<At<T, 'watch'>, WatchSettings>
     },
@@ -748,14 +718,12 @@ export interface ExecuteRequest {
   readonly outputs: {
     readonly files: readonly string[]
     readonly workspaceFiles: readonly string[]
-    readonly mounts?: readonly string[]
   }
   readonly command: string
   readonly forwardArgs: readonly string[]
   readonly cwd: string
   readonly env: NodeJS.ProcessEnv
   readonly envDefine: Readonly<Record<string, string>>
-  readonly binDirs?: readonly string[]
   readonly capture: CaptureConfig
   readonly timeoutMs?: number
   readonly onStdout: (chunk: string) => void
@@ -802,7 +770,6 @@ export interface ExecuteSandbox {
   readonly config: ResolvedSandboxConfig
   readonly keyed?: readonly string[]
   readonly dependencyReads?: readonly string[]
-  readonly mounts?: readonly SandboxMount[]
 }
 ```
 
@@ -1067,6 +1034,7 @@ export interface InputsConfig {
   tasks?: readonly string[]
   runtime?: readonly string[]
   workspaceRuntime?: readonly string[]
+  stability?: InputStability
 }
 ```
 
@@ -2615,7 +2583,7 @@ INVALIDATES a task, `allow` says what it may TOUCH, and deriving one
 from the other coupled them both ways — a declaration added for
 caching silently widened the sandbox, and a path the task needed had
 to be laundered through the cache key to get it (2026-09-05).
-A declared `cache.outputs` is NOT a write grant; the request
+A declared `outputs` is NOT a write grant; the request
 `sandbox-request.ts` builds carries no write of its own and binds
 `allow.write` alone. This comment claimed the opposite — here and on
 both grant fields — while the file beside it and `schema.md` both said
@@ -2727,7 +2695,6 @@ export async function sandboxRequestFor(
   nested: readonly string[] = [],
   cacheDir?: string,
   dependencyOutputs: readonly string[] = [],
-  mounts: readonly SandboxMount[] = [],
 ): Promise<SandboxRequest>
 ```
 
@@ -2878,7 +2845,8 @@ export interface TaskConfig {
   exec?: ExecConfig
   dependsOn?: readonly string[]
   inputs?: InputsConfig
-  cache?: CacheConfig
+  outputs?: TaskOutputs
+  cache?: boolean
 }
 ```
 
@@ -3084,6 +3052,18 @@ export interface TaskOutcome {
     withheld?: string[]
     inputs?: string[]
   }
+}
+```
+
+## `TaskOutputs`
+
+type · `src/config.ts`
+
+```ts
+export interface TaskOutputs {
+  files: readonly string[]
+  workspaceFiles?: readonly string[]
+  clean?: boolean
 }
 ```
 
@@ -3523,6 +3503,8 @@ export interface WorkspaceConfig {
   baseBranch?: string
   run?: RunSettings
   cache?: CacheSettings
+  inputs?: WorkspaceInputs
+  outputs?: WorkspaceOutputs
   lock?: LockSettings
   watch?: WatchSettings
   plugins?: readonly (Plugin | undefined | null | false)[]
@@ -3552,5 +3534,29 @@ export interface WorkspaceIdentity {
   name: string
   repository?: string
   path?: string
+}
+```
+
+## `WorkspaceInputs`
+
+type · `src/config.ts`
+
+`WorkspaceConfig.inputs`.
+
+```ts
+export interface WorkspaceInputs {
+  stability?: InputStability
+}
+```
+
+## `WorkspaceOutputs`
+
+type · `src/config.ts`
+
+`WorkspaceConfig.outputs`.
+
+```ts
+export interface WorkspaceOutputs {
+  clean?: boolean
 }
 ```

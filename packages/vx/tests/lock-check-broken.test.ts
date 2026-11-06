@@ -33,7 +33,7 @@ it('a config that no longer loads is the one problem, not every locked project',
   expect(problems[0]).toContain('packages/a/vx.config.mjs')
 })
 
-const T = `{ exec: { command: 'true' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } } }`
+const T = `{ exec: { command: 'true' }, inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true }`
 
 it('a graph-rule refusal still names a gone project and a stray review copy', async () => {
   const ws = await makeWorkspace({ prefix: 'vx-lock-check-rule-' })
@@ -92,8 +92,8 @@ it('every config that does not load is named, root-relative, with its frame', as
   await rm(ws, { recursive: true, force: true })
   const { problems } = JSON.parse(json.stdout.toString()) as { problems: string[] }
   expect(problems.filter((p) => p.includes('unknown field "bad"'))).toEqual([
-    'packages/a/vx.config.mjs: tasks.b has unknown field "bad" (allowed: cache, dependsOn, description, exec, inputs)',
-    'packages/b/vx.config.mjs: tasks.b has unknown field "bad" (allowed: cache, dependsOn, description, exec, inputs)',
+    'packages/a/vx.config.mjs: tasks.b has unknown field "bad" (allowed: cache, dependsOn, description, exec, inputs, outputs)',
+    'packages/b/vx.config.mjs: tasks.b has unknown field "bad" (allowed: cache, dependsOn, description, exec, inputs, outputs)',
   ])
   const err = pretty.stderr.toString()
   expect(pretty.exitCode).toBe(1)

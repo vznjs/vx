@@ -12,7 +12,7 @@ import { affectedIds, commitAll } from './helpers/affected.js'
 const CORE_BIN = path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts')
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 const BUILD =
-  "export default { tasks: { build: { exec: { command: 'echo built' }, dependsOn: ['^build'], inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } } }\n"
+  "export default { tasks: { build: { exec: { command: 'echo built' }, dependsOn: ['^build'], inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true } } }\n"
 
 const made: string[] = []
 afterEach(async () => {

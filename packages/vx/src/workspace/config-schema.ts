@@ -31,8 +31,6 @@ import {
   hasControl,
   parseDependencySpec,
   DependencySpecError,
-  grantPrefix,
-  GLOB_WILDCARDS,
 } from '../util/index.js'
 import {
   parseSettingValue,
@@ -117,7 +115,7 @@ const oneOf = (values: readonly string[]): string =>
 
 function validateInputStability(stability: unknown, at: string): void {
   if (typeof stability !== 'object' || stability === null || Array.isArray(stability)) {
-    throw new UserError(`${at} must be an object — \`inputStability: { strategy: 'mutable' }\``)
+    throw new UserError(`${at} must be an object — \`stability: { strategy: 'mutable' }\``)
   }
   assertKnownFields(stability, INPUT_STABILITY_FIELDS, at)
   const { strategy, severity } = stability as Record<string, unknown>
@@ -130,13 +128,13 @@ function validateInputStability(stability: unknown, at: string): void {
 }
 
 /**
- * `VX_CACHE_INPUT_STABILITY_STRATEGY` and `_SEVERITY`, which override every
- * task's `cache.inputStability` for the run: each undefined when unset or
+ * `VX_INPUTS_STABILITY_STRATEGY` and `_SEVERITY`, which override every
+ * task's `inputs.stability` for the run: each undefined when unset or
  * empty, refused when it names no value.
  */
 export function inputStabilityEnv(): InputStability {
-  const strategy = settingEnv('cache.inputStability.strategy') as InputStability['strategy']
-  const severity = settingEnv('cache.inputStability.severity') as InputStability['severity']
+  const strategy = settingEnv('inputs.stability.strategy') as InputStability['strategy']
+  const severity = settingEnv('inputs.stability.severity') as InputStability['severity']
   return {
     ...(strategy !== undefined ? { strategy } : {}),
     ...(severity !== undefined ? { severity } : {}),
@@ -594,6 +592,9 @@ export function validateProjectConfig(
     const exec = (task as { exec?: unknown }).exec
     const dependsOn = (task as { dependsOn?: unknown }).dependsOn
     const cache = (task as { cache?: unknown }).cache
+    if (cache !== undefined && typeof cache !== 'boolean') {
+      throw new UserError(`${where}.cache must be true or false`)
+    }
     if (exec !== undefined) {
       if (typeof exec !== 'object' || exec === null) {
         throw new UserError(`${where}.exec must be an object with a \`command\` string`)
@@ -627,9 +628,9 @@ export function validateProjectConfig(
       // Documented and never held: an uncached 'only' task loaded, and the
       // REAPI executor refused it at run time for want of described inputs
       // (item 1001).
-      if (remote === 'only' && cache === undefined) {
+      if (remote === 'only' && cache !== true) {
         throw new UserError(
-          `${where}.exec.remote 'only' needs \`cache\`: its inputs are what a worker reproduces ` +
+          `${where}.exec.remote 'only' needs \`cache: true\`: its inputs are what a worker reproduces ` +
             `and its key is the address of its remote record`,
         )
       }
@@ -716,7 +717,7 @@ export function validateProjectConfig(
         throw new UserError(`${where}.exec.interactive must be a boolean (or omitted)`)
       }
       if (interactive === true) {
-        if (cache !== undefined) {
+        if (cache === true) {
           throw new UserError(
             `${where}: \`cache\` is not allowed on an interactive task — what it does ` +
               `depends on what is typed, which no key holds`,
@@ -769,7 +770,7 @@ export function validateProjectConfig(
             )
           }
         }
-        if (cache !== undefined) {
+        if (cache === true) {
           throw new UserError(
             `${where}: \`cache\` is not allowed on a persistent task — persistent tasks ` +
               `don't terminate, so there's no exit to cache`,
@@ -947,16 +948,8 @@ export function validateProjectConfig(
         validateWorkspaceGlobs(wsInputs, `${where}.inputs.workspaceFiles`, true)
       }
     }
-    if (cache !== undefined) {
-      if (typeof cache !== 'object' || cache === null) {
-        throw new UserError(
-          `${where}.cache must be an object when present — \`inputs: { files: [...] }, cache: { outputs: { files: [...] } }\`, or no \`cache\` for a task that never caches`,
-        )
-      }
-      assertKnownFields(cache, CACHE_FIELDS, `${where}.cache`)
-      const stability = (cache as { inputStability?: unknown }).inputStability
-      if (stability !== undefined)
-        validateInputStability(stability, `${where}.cache.inputStability`)
+    const outputs = (task as { outputs?: unknown }).outputs
+    if (cache === true) {
       // The key is the task's inputs, and a group runs nothing to cache.
       if (exec === undefined) {
         throw new UserError(
@@ -968,23 +961,38 @@ export function validateProjectConfig(
           `${where}: \`cache\` needs \`inputs\` — the key is the task's inputs, \`inputs: { files: [...] }\``,
         )
       }
-      const outputs = (cache as { outputs?: unknown }).outputs
-      if (outputs === undefined || outputs === null) {
-        throw new UserError(`${where}.cache.outputs is required when \`cache\` is set`)
-      }
-      if (typeof outputs !== 'object') {
+      if (outputs === undefined) {
         throw new UserError(
-          `${where}.cache.outputs must be an object — \`outputs: { files: [...] }\``,
+          `${where}: \`cache\` needs \`outputs\` — what the task produces, \`outputs: { files: [...] }\` (\`[]\` for none)`,
         )
       }
-      assertKnownFields(outputs, CACHE_OUTPUT_FIELDS, `${where}.cache.outputs`)
+    }
+    const stability = (inputs as { stability?: unknown } | undefined)?.stability
+    if (stability !== undefined) {
+      validateInputStability(stability, `${where}.inputs.stability`)
+      if (exec === undefined) {
+        throw new UserError(
+          `${where}.inputs.stability needs \`exec\` — a task with no command runs nothing that could write its inputs`,
+        )
+      }
+    }
+    if (outputs !== undefined) {
+      if (outputs === null || typeof outputs !== 'object') {
+        throw new UserError(`${where}.outputs must be an object — \`outputs: { files: [...] }\``)
+      }
+      assertKnownFields(outputs, OUTPUT_FIELDS, `${where}.outputs`)
+      if (exec === undefined) {
+        throw new UserError(
+          `${where}.outputs needs \`exec\` — a task with no command writes nothing`,
+        )
+      }
       const clean = (outputs as { clean?: unknown }).clean
       if (clean !== undefined && typeof clean !== 'boolean') {
-        throw new UserError(`${where}.cache.outputs.clean must be true or false`)
+        throw new UserError(`${where}.outputs.clean must be true or false`)
       }
       const outFiles = (outputs as { files?: unknown }).files
       if (!Array.isArray(outFiles)) {
-        throw new UserError(`${where}.cache.outputs.files must be an array of glob strings`)
+        throw new UserError(`${where}.outputs.files must be an array of glob strings`)
       }
       // Reject zero-length strings and absolute paths up front.
       // Both reach `resolveOutputs` as undefined behavior; the error
@@ -992,26 +1000,26 @@ export function validateProjectConfig(
       // at the user's config. Fail loud at load time.
       for (const g of outFiles as unknown[]) {
         if (typeof g !== 'string' || g.length === 0) {
-          throw new UserError(`${where}.cache.outputs.files must be an array of non-empty strings`)
+          throw new UserError(`${where}.outputs.files must be an array of non-empty strings`)
         }
         if (isAbsoluteGlob(g)) {
           throw new UserError(
-            `${where}.cache.outputs.files: absolute paths are not allowed (got "${g}") — ` +
+            `${where}.outputs.files: absolute paths are not allowed (got "${g}") — ` +
               `outputs must be project-relative globs`,
           )
         }
         if (hasParentSegment(g)) {
           throw new UserError(
-            `${where}.cache.outputs.files: '..' path segments are not allowed (got "${g}") — ` +
+            `${where}.outputs.files: '..' path segments are not allowed (got "${g}") — ` +
               `outputs must stay within the project (vx clears a task's outputs before it runs, ` +
               `so a glob that escapes the project would delete files outside it)`,
           )
         }
-        assertPosixGlob(g, `${where}.cache.outputs.files`, 'project')
-        assertNoForeignToken(g, `${where}.cache.outputs.files`)
+        assertPosixGlob(g, `${where}.outputs.files`, 'project')
+        assertNoForeignToken(g, `${where}.outputs.files`)
         if (namesDirItself(g)) {
           throw new UserError(
-            `${where}.cache.outputs.files: "${g}" names the project directory itself and selects nothing — ` +
+            `${where}.outputs.files: "${g}" names the project directory itself and selects nothing — ` +
               `name the directory the task writes, such as "dist/**"`,
           )
         }
@@ -1020,120 +1028,33 @@ export function validateProjectConfig(
         // a "corrupt artifact", dropped and run again.
         if (!g.startsWith('!') && normalizeGlob(g).split('/')[0] === 'workspace-outputs') {
           throw new UserError(
-            `${where}.cache.outputs.files: "${g}" is under workspace-outputs/, a name vx's ` +
+            `${where}.outputs.files: "${g}" is under workspace-outputs/, a name vx's ` +
               `artifacts reserve for outputs.workspaceFiles — write the task's files to another directory`,
           )
         }
         // A `!` entry takes a path back from the outputs (A-44): it is not
         // cleaned, saved or restored, and it stays an input.
-        assertNotDoubleNegated(g, `${where}.cache.outputs.files`)
+        assertNotDoubleNegated(g, `${where}.outputs.files`)
         // Taken back by a `!`, the file is never cleaned or restored.
         const own = g.startsWith('!')
           ? undefined
           : ownFilesCovered(g, ownConfig).find((f) => !takenBack(outFiles as unknown[], f))
         if (own !== undefined) {
           throw new UserError(
-            `${where}.cache.outputs.files: "${g}" covers the project's own ${own} — vx deletes a ` +
+            `${where}.outputs.files: "${g}" covers the project's own ${own} — vx deletes a ` +
               `task's outputs before it runs and restores them on a hit, so the project would lose ` +
               `its config. Name the directory the task writes, such as "dist/**", ` +
               `or take the file back with "!${own}".`,
           )
         }
       }
-      assertOutputsNotNegationOnly(outFiles as string[], `${where}.cache.outputs.files`)
-      assertNoLiteralTakenBack(outFiles as string[], `${where}.cache.outputs.files`, OUTPUT_LOST)
+      assertOutputsNotNegationOnly(outFiles as string[], `${where}.outputs.files`)
+      assertNoLiteralTakenBack(outFiles as string[], `${where}.outputs.files`, OUTPUT_LOST)
       const wsOutputs = (outputs as { workspaceFiles?: unknown }).workspaceFiles
       if (wsOutputs !== undefined) {
-        validateWorkspaceGlobs(wsOutputs, `${where}.cache.outputs.workspaceFiles`, false)
-      }
-      const bin = (outputs as { bin?: unknown }).bin
-      if (bin !== undefined) {
-        validateOutputDir(bin, outFiles as string[], `${where}.cache.outputs.bin`, 'out/bin')
-      }
-      const mount = (outputs as { mount?: unknown }).mount
-      if (mount !== undefined) {
-        validateMount(mount, outFiles as string[], `${where}.cache.outputs.mount`)
-        // Nix picks the system itself, so nothing in the command names it:
-        // without platforms the key holds none and another arch restores
-        // these binaries.
-        if ((exec as { platforms?: unknown } | undefined)?.platforms === undefined) {
-          throw new UserError(
-            `${where}.cache.outputs.mount holds programs built for one platform — declare ` +
-              `exec.platforms, such as ['linux-x64', 'linux-arm64'], so each platform keeps its own cache entry`,
-          )
-        }
+        validateWorkspaceGlobs(wsOutputs, `${where}.outputs.workspaceFiles`, false)
       }
     }
-  }
-}
-
-/**
- * `cache.outputs.bin` and a `mount` source: a plain project-relative
- * directory under the fixed head of a `files` glob. Under a head, a
- * dependant's sandbox reads it (`dependencyReads` grants heads) and a hit
- * restores it; a `:` would split it on PATH.
- */
-function validateOutputDir(
-  bin: unknown,
-  files: readonly string[],
-  where: string,
-  example: string,
-): void {
-  if (typeof bin !== 'string' || bin.trim() === '') {
-    throw new UserError(`${where} must be a directory name, such as '${example}'`)
-  }
-  const dir = bin.replace(/\/+$/, '')
-  if (
-    path.posix.isAbsolute(dir) ||
-    dir.split('/').includes('..') ||
-    GLOB_WILDCARDS.test(dir) ||
-    /[!:]/.test(dir)
-  ) {
-    throw new UserError(
-      `${where}: "${bin}" must be a plain project-relative directory, with no '..', ` +
-        `glob or ':' — such as '${example}'`,
-    )
-  }
-  const covered = files.some((g) => {
-    if (g.startsWith('!')) return false
-    const head = grantPrefix(g)
-    return head !== '' && head !== '.' && (dir === head || dir.startsWith(`${head}/`))
-  })
-  if (!covered) {
-    throw new UserError(
-      `${where}: "${bin}" is under no cache.outputs.files directory — a dependant can ` +
-        `run only what this task saves, so declare it as an output too, such as '${dir}/**'`,
-    )
-  }
-}
-
-/**
- * `cache.outputs.mount`: absolute paths a dependant sees, each filled
- * read-only from an output directory (`/nix/store` from `out/nix/store`).
- * A path is a plain absolute directory other than `/`: the sandbox lays a
- * tmpfs there and binds the entries in.
- */
-function validateMount(mount: unknown, files: readonly string[], where: string): void {
-  if (typeof mount !== 'object' || mount === null || Array.isArray(mount)) {
-    throw new UserError(
-      `${where} must be an object of absolute path to output directory, such as { '/nix/store': 'out/nix/store' }`,
-    )
-  }
-  for (const [target, source] of Object.entries(mount)) {
-    const dir = target.replace(/\/+$/, '')
-    if (
-      !path.posix.isAbsolute(dir) ||
-      dir === '' ||
-      dir.split('/').includes('..') ||
-      GLOB_WILDCARDS.test(dir) ||
-      /[\n:]/.test(dir)
-    ) {
-      throw new UserError(
-        `${where}: "${target}" must be a plain absolute directory other than '/', with no '..', ` +
-          `glob or ':' — such as '/nix/store'`,
-      )
-    }
-    validateOutputDir(source, files, `${where}["${target}"]`, 'out/nix/store')
   }
 }
 
@@ -1146,7 +1067,7 @@ function validateMount(mount: unknown, files: readonly string[], where: string):
 // `tasks` first: `nearest` breaks a tie by order, and `taks` is one edit
 // from both.
 const PROJECT_FIELDS = new Set(['name', 'tasks', 'tags'])
-const TASK_FIELDS = new Set(['description', 'exec', 'dependsOn', 'inputs', 'cache'])
+const TASK_FIELDS = new Set(['description', 'exec', 'dependsOn', 'inputs', 'outputs', 'cache'])
 const EXEC_FIELDS = new Set([
   'command',
   'env',
@@ -1160,7 +1081,6 @@ const EXEC_FIELDS = new Set([
 ])
 const PERSISTENT_FIELDS = new Set(['readyWhen'])
 const ENV_FIELDS = new Set(['passThrough', 'define', 'secret'])
-const CACHE_FIELDS = new Set(['outputs', 'inputStability'])
 const INPUT_FIELDS = new Set([
   'files',
   'workspaceFiles',
@@ -1168,8 +1088,9 @@ const INPUT_FIELDS = new Set([
   'tasks',
   'runtime',
   'workspaceRuntime',
+  'stability',
 ])
-const CACHE_OUTPUT_FIELDS = new Set(['files', 'workspaceFiles', 'clean', 'bin', 'mount'])
+const OUTPUT_FIELDS = new Set(['files', 'workspaceFiles', 'clean'])
 
 /**
  * Another runner's spelling of a field vx has under another name, by the
@@ -1181,8 +1102,10 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
   [
     TASK_FIELDS,
     {
-      outputs: '`cache.outputs.files`',
       env: '`inputs.env` (to key the task on a variable) or `exec.env` (to pass one)',
+      // wireit's script keys.
+      output: '`outputs.files`',
+      dependencies: "`dependsOn` (an upstream's key goes into this one)",
       passThroughEnv: '`exec.env.passThrough`',
       command: '`exec.command`',
       cmd: '`exec.command`',
@@ -1219,18 +1142,6 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       shell: 'no field: `command` always runs in a shell',
     },
   ],
-  // wireit's `files` / `output` and include-style spellings written into
-  // a cache block, refused with no word on where they go (D-118).
-  [
-    CACHE_FIELDS,
-    {
-      files: "the task's `inputs.files`",
-      output: '`outputs.files`',
-      env: "the task's `inputs.env`",
-      dependencies: "the task's `dependsOn` (an upstream's key goes into this one)",
-      enabled: 'no field: a task with a `cache` block caches, one without runs every time',
-    },
-  ],
   [
     INPUT_FIELDS,
     {
@@ -1242,7 +1153,7 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
     },
   ],
   [
-    CACHE_OUTPUT_FIELDS,
+    OUTPUT_FIELDS,
     {
       globs: '`files`',
       include: '`files`',
@@ -1267,12 +1178,11 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       sourceRoot: "a task's `inputs.files`",
       projectType: 'no field: vx runs every project alike',
       ...Object.fromEntries(
-        ['dependsOn', 'inputs', 'cache', 'exec', 'description'].map((k) => [
+        ['dependsOn', 'inputs', 'outputs', 'cache', 'exec', 'description'].map((k) => [
           k,
           `\`tasks.<name>.${k}\`: a project holds tasks, and each task its own \`${k}\``,
         ]),
       ),
-      outputs: '`tasks.<name>.cache.outputs.files`',
       env: '`tasks.<name>.inputs.env` (to key a task on it) or `tasks.<name>.exec.env`',
     },
   ],
@@ -1343,7 +1253,7 @@ function nestedHome(allowed: ReadonlySet<string>, key: string): string | undefin
   for (const [field, own] of [
     ['exec', EXEC_FIELDS],
     ['inputs', INPUT_FIELDS],
-    ['cache', CACHE_FIELDS],
+    ['outputs', OUTPUT_FIELDS],
   ] as const) {
     if (own.has(key)) return `\`${field}.${key}\``
   }
@@ -1629,7 +1539,7 @@ function assertInputGlob(glob: string, where: string): void {
   if (glob.replace(/^!/, '').split('/').includes('.git')) {
     throw new UserError(
       `${where}: "${glob}" names a path under .git, which git never lists, so it keys nothing — ` +
-        `inputs are the repository's files`,
+        `inputs are the workspace's files`,
     )
   }
 }

@@ -30,7 +30,7 @@ it(
       files: { 'src/a.txt': 'a', '.gitignore': 'dist/\n' },
       config: `export default { tasks: { build: {
         exec: { command: 'mkdir -p dist; echo early > dist/early.txt; (sleep 1; echo late > dist/late.txt) &' },
-        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+        inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
       } } }`,
     })
     const fx = { root, log: [] as string[], err: [] as string[] }

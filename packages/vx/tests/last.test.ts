@@ -29,9 +29,8 @@ const APP_CONFIG = `
             'bun -e "const fs = require(\\'fs\\'); const b = Buffer.alloc(150 * 1024 * 1024, 1); fs.writeFileSync(\\'out.txt\\', fs.readFileSync(\\'src/input.txt\\')); console.log(b.length)"',
         },
         inputs: { files: ['src/**'] },
-        cache: {
-          outputs: { files: ['out.txt'] },
-        },
+        outputs: { files: ['out.txt'] },
+        cache: true,
       },
       boom: {
         exec: { command: 'exit 3' },

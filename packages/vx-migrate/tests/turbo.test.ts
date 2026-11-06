@@ -111,7 +111,7 @@ describe('turbo()', () => {
       const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
       // `^build` reached lib, `codegen` is a same-package edge.
       expect(app.deps.sort()).toEqual(['app#codegen', 'lib#build'])
-      const cache = app.config.cache!
+      const outputs = app.config.outputs!
       const inputs = app.config.inputs!
       // `codegen`'s outputs taken back (core X-54).
       expect(inputs.files).toEqual(['**/*', '!**/*.md', '!src/gen/**'])
@@ -119,7 +119,7 @@ describe('turbo()', () => {
       // file; the mapper sees both strings and lists it once.
       expect(inputs.workspaceFiles).toEqual(['tsconfig.base.json'])
       expect(notTurbos(inputs.env!)).toEqual(['GLOBAL_MODE', 'NODE_ENV'])
-      expect(cache.outputs.files).toEqual(['dist/**'])
+      expect(outputs.files).toEqual(['dist/**'])
       expect(notTurbos(app.config.exec!.env!.passThrough!)).toEqual([
         'GLOBAL_MODE',
         'AWS_PROFILE',
@@ -689,7 +689,7 @@ describe('a committed file under an output', () => {
       const log = silent()
       const plan = await planRun({ cwd: root, tasks: ['app#build'], log })
       const node = plan.tasks.find((t) => t.node.id === 'app#build')!.node
-      expect(node.config.cache!.outputs.files).toEqual(['data/**'])
+      expect(node.config.outputs!.files).toEqual(['data/**'])
       expect((await lockWarnings()).join('\n')).not.toContain('committed')
       const opts = { cwd: root, tasks: ['app#build'], log: silent(), handleSignals: false }
       const status = (r: Awaited<ReturnType<typeof run>>) =>
@@ -813,7 +813,7 @@ describe('output negation', () => {
       const warned = (await lockWarnings()).join('\n')
       const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
       const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
-      expect(app.config.cache?.outputs.files).toEqual([
+      expect(app.config.outputs?.files).toEqual([
         '*',
         '*/**',
         '.medusa/**',
@@ -848,7 +848,7 @@ describe('output negation', () => {
       Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
       const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
       const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
-      expect(app.config.cache?.outputs.files).toEqual([
+      expect(app.config.outputs?.files).toEqual([
         '*',
         '*/**',
         '!node_modules/**',
@@ -887,10 +887,10 @@ describe('output negation', () => {
       Bun.spawnSync({ cmd: ['git', 'add', '-f', 'packages/lib/src/dist/keep.js'], cwd: root })
       const log = silent()
       const plan = await planRun({ cwd: root, tasks: ['build'], log })
-      const cacheOf = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.cache
-      expect(cacheOf('app#build')?.outputs.files).toEqual(['**/dist', '**/dist/**'])
+      const cacheOf = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.outputs
+      expect(cacheOf('app#build')?.files).toEqual(['**/dist', '**/dist/**'])
       // CONTROL: lib commits a file the glob reaches; the output stays as declared.
-      expect(cacheOf('lib#build')?.outputs.files).toEqual(['**/dist', '**/dist/**'])
+      expect(cacheOf('lib#build')?.files).toEqual(['**/dist', '**/dist/**'])
       const build = () => run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
       const nested = path.join(root, 'packages', 'app', 'rsc', 'dist', 'r.js')
       expect((await build()).ok).toBe(true)
@@ -917,10 +917,10 @@ describe('output negation', () => {
       Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
       const log = silent()
       const plan = await planRun({ cwd: root, tasks: ['test'], log })
-      const cacheOf = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.cache
-      expect(cacheOf('app#test')?.outputs.files).toEqual(['*.xml', 'coverage/**'])
+      const cacheOf = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.outputs
+      expect(cacheOf('app#test')?.files).toEqual(['*.xml', 'coverage/**'])
       // CONTROL: lib commits a file the glob reaches; the output stays as declared.
-      expect(cacheOf('lib#test')?.outputs.files).toEqual(['*.xml', 'coverage/**'])
+      expect(cacheOf('lib#test')?.files).toEqual(['*.xml', 'coverage/**'])
       const test = () => run({ cwd: root, tasks: ['test'], log: silent(), handleSignals: false })
       const report = path.join(root, 'packages', 'app', 'junit.xml')
       expect((await test()).ok).toBe(true)
@@ -949,10 +949,10 @@ describe('output negation', () => {
       Bun.spawnSync({ cmd: ['git', 'add', '-f', 'packages/lib/dist-types/keep.d.ts'], cwd: root })
       const log = silent()
       const plan = await planRun({ cwd: root, tasks: ['build'], log })
-      const cacheOf = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.cache
-      expect(cacheOf('app#build')?.outputs.files).toEqual(['dist-*', 'dist-*/**'])
+      const cacheOf = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.outputs
+      expect(cacheOf('app#build')?.files).toEqual(['dist-*', 'dist-*/**'])
       // CONTROL: lib commits a file the glob reaches; the output stays as declared.
-      expect(cacheOf('lib#build')?.outputs.files).toEqual(['dist-*', 'dist-*/**'])
+      expect(cacheOf('lib#build')?.files).toEqual(['dist-*', 'dist-*/**'])
       const build = () => run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
       const out = path.join(root, 'packages', 'app', 'dist-esm', 'a.js')
       expect((await build()).ok).toBe(true)
@@ -977,15 +977,15 @@ describe('output negation', () => {
       const cacheOf = async () =>
         (await planRun({ cwd: root, tasks: ['app#build'], log: silent() })).tasks.find(
           (t) => t.node.id === 'app#build',
-        )!.node.config.cache
-      expect((await cacheOf())?.outputs.files).toEqual(['*.mjs', 'lib/**'])
+        )!.node.config.outputs
+      expect((await cacheOf())?.files).toEqual(['*.mjs', 'lib/**'])
       // A config the mapped task now lives beside: the kept mapping is
       // re-made, and the output takes the config back.
       await writeFile(
         path.join(root, 'packages', 'app', 'vx.config.mjs'),
         'export default { tasks: {} }\n',
       )
-      expect((await cacheOf())?.outputs.files).toEqual(['*.mjs', 'lib/**', '!vx.config.mjs'])
+      expect((await cacheOf())?.files).toEqual(['*.mjs', 'lib/**', '!vx.config.mjs'])
     },
     TIMEOUT,
   )
@@ -1070,7 +1070,7 @@ describe('per-package turbo.json', () => {
       const warned = (await lockWarnings()).join('\n')
       const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
       const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
-      const cache = app.config.cache!
+      const outputs = app.config.outputs!
       const inputs = app.config.inputs!
       expect(inputs.files).toEqual(['src/**', 'package.json', '!src/gen/**'])
       expect(inputs.workspaceFiles).toEqual([
@@ -1078,8 +1078,8 @@ describe('per-package turbo.json', () => {
         'packages/lib/src/**',
         '!packages/lib/src/**/*.test.ts',
       ])
-      expect(cache.outputs.files).toEqual(['dist/**'])
-      expect(cache.outputs.workspaceFiles).toEqual(['packages/lib/generated/**'])
+      expect(outputs.files).toEqual(['dist/**'])
+      expect(outputs.workspaceFiles).toEqual(['packages/lib/generated/**'])
       expect(warned).toContain(
         'output "../../../elsewhere/**": leaves the workspace — map manually',
       )

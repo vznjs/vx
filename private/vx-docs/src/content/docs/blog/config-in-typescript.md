@@ -27,9 +27,9 @@ import type { ProjectConfig } from '@vzn/vx/config'
 
 export default {
   tasks: {
-    // TODO(vx-migrate): cache: add `inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } }` with this package's real inputs and outputs — …
+    // TODO(vx-migrate): cache: add `inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true` with this package's real inputs and outputs — …
     build: {
-      // inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+      // inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
       exec: {
         command: 'tsc -b',
       },
@@ -62,7 +62,7 @@ A shared preset is a file:
 export const lib = (entry: string) => ({
   build: {
     exec: { command: `tsup ${entry}` },
-    inputs: { files: ['src/**', 'tsup.config.ts'] }, cache: { outputs: { files: ['dist/**'] } },
+    inputs: { files: ['src/**', 'tsup.config.ts'] }, outputs: { files: ['dist/**'] }, cache: true,
   },
 })
 ```

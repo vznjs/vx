@@ -600,6 +600,17 @@ describe('HistoryServer', () => {
       "vxHistory(): url is the server's base, without /v1: https://h.example",
     )
     expect(refusal({ url: 'https://h.example/' })).toBe('taken')
+    // Each route is appended to the url: past a `?` or `#` every request asked the root.
+    expect(refusal({ url: 'https://h.example/?k=1' })).toBe(
+      'vxHistory(): url takes no ?query or #fragment: each route is appended to it, got https://h.example/?k=1',
+    )
+    expect(refusal({ url: 'https://h.example#x' })).toBe(
+      'vxHistory(): url takes no ?query or #fragment: each route is appended to it, got https://h.example#x',
+    )
+    expect(refusal({ url: 'HTTPS://h.example' })).toBe('taken')
+    expect(refusal({ url: 'https://h ex' })).toBe(
+      'vxHistory(): url must be https (http only to 127.0.0.1, ::1 or localhost), got https://h ex',
+    )
   })
 
   // nx#37667 kept credentials out of printed URLs: a refusal goes to the CI log.

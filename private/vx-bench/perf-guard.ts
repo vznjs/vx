@@ -120,12 +120,12 @@ async function workspace(n: number, settled: boolean): Promise<string> {
     build: {
       dependsOn: ['^build'],
       exec: { command: 'mkdir -p dist && cat src/*.js > dist/out.js${settled ? ` && sleep ${RACY_MS / 1000}` : ''}' },
-      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+      inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
     },
     test: {
       dependsOn: ['build'],
       exec: { command: 'true' },
-      inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+      inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
     },
   },
 }

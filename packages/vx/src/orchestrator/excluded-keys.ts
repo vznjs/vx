@@ -117,7 +117,7 @@ export function excludedTaint(nodes: ReadonlyMap<string, TaskNode>): {
   let unsaved = 0
   for (const id of reached) {
     const cfg = nodes.get(id)!.config
-    if (cfg.cache !== undefined && cfg.exec?.persistent === undefined) unsaved++
+    if (cfg.cache === true && cfg.exec?.persistent === undefined) unsaved++
   }
   return { seeds, unsaved }
 }

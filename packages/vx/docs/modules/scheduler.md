@@ -58,7 +58,7 @@ export interface TaskOutcome {
   runLog?: string // run keeps bytes in a remote and this task saved no entry: its whole output log, masked
   notReady?: 'timeout' | 'exited' | 'spawn' // failed persistent task: why it never became ready
   serverExit?: number // ready persistent task whose child exited on its own mid-run (a setup step's 0 at ready, a crash's code): no label calls it running
-  inputMoved?: string // failed by inputStability.severity 'error': the input that changed ('' unnamed)
+  inputMoved?: string // failed by inputs.stability.severity 'error': the input that changed ('' unnamed)
   where?: string // executor-reported placement, when not this host
   carried?: true // a persistent task each dependant's executor starts where it runs: nothing ran here
   whereCores?: number // that machine's cores and memory (ExecuteResult.machine)

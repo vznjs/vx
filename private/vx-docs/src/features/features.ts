@@ -232,9 +232,8 @@ export default defineProject({
     build: {
       exec: { command: 'vite build' },
       inputs: { files: ['src/**', 'index.html'] },
-      cache: {
-        outputs: { files: ['dist/**'] }, // wiped before run and restore
-      },
+      outputs: { files: ['dist/**'] }, // wiped before run and restore
+      cache: true,
     },
   },
 })`,
@@ -267,9 +266,8 @@ export default defineProject({
         sandbox: { allow: { read: ['.'], write: ['dist/**'] } },
       },
       inputs: { files: ['src/**', 'index.html'] },
-      cache: {
-        outputs: { files: ['dist/**'] },
-      },
+      outputs: { files: ['dist/**'] },
+      cache: true,
     },
   },
 })`,
@@ -659,7 +657,7 @@ export default defineProject({
     category: 'adoption',
     hook: 'Init, run.',
     body: [
-      '`bunx @vzn/vx init` installs vx globally and in your repo, then writes a root project to declare tasks in; in a Turborepo or Nx repo it writes a `vx.config.ts` per package through `@vzn/vx-migrate`. Add a cache block to a task, and its second run is up-to-date in milliseconds.',
+      '`bunx @vzn/vx init` installs vx globally and in your repo, then writes a root project to declare tasks in; in a Turborepo or Nx repo it writes a `vx.config.ts` per package through `@vzn/vx-migrate`. Add `cache: true` to a task, and its second run is up-to-date in milliseconds.',
       'No account, no service to sign up for: the cache is a directory on your machine.',
     ],
     example: {

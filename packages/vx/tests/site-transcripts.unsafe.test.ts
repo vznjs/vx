@@ -96,7 +96,8 @@ beforeAll(async () => {
     build: {
       exec: { command: 'mkdir -p dist && cat src/a.ts > dist/a.js' },
       inputs: { files: ['src/**'] },
-      cache: { outputs: { files: ['dist/**'] } },
+      outputs: { files: ['dist/**'] },
+      cache: true,
     },
   },
 }
@@ -171,7 +172,8 @@ describe('the one-task guides show what vx prints', () => {
       dependsOn: [${dependsOn}],
       exec: { command: 'mkdir -p dist && cat src/index.ts > dist/index.js' },
       inputs: { files: ['src/**'] },
-      cache: { outputs: { files: ['dist/**'] } },
+      outputs: { files: ['dist/**'] },
+      cache: true,
     },
   },
 }
@@ -299,7 +301,7 @@ describe("the caching page's verdict table", () => {
 // The sandbox needs bwrap, so the guide's two failures are rendered by the
 // frame renderer from the records the sandbox writes: `mkdir(<abs>) = a
 // write no grant covers  [<abs>]` (sandbox-runtime's "declaring
-// cache.outputs grants no write") and strace's `openat(<raw>) = -1 ENOENT
+// outputs grants no write") and strace's `openat(<raw>) = -1 ENOENT
 // [<abs>]`. The tabs left out the frame's lines and the write's path.
 describe("the sandboxing guide's failures", () => {
   const command = 'mkdir -p dist && cat tsconfig.json src/a.ts > dist/out.js'
@@ -392,7 +394,8 @@ describe("the quickstart's output", () => {
     build: {
       exec: { command: 'mkdir -p dist && cp src/index.ts dist/' },
       inputs: { files: ['src/**', 'tsconfig.json'] },
-      cache: { outputs: { files: ['dist/**'] } },
+      outputs: { files: ['dist/**'] },
+      cache: true,
     },
   },
 }

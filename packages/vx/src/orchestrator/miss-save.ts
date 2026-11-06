@@ -31,7 +31,6 @@ import {
 } from '../util/index.js'
 import { type Logger, warnOf } from '../report/index.js'
 import type { TaskInputComponent } from '../cache/index.js'
-import { mountPaths } from './sandbox-request.js'
 
 /** A snapshot request for `recordOutputDirs`, taken at run end. */
 export interface OutputDirSnapshot {
@@ -110,7 +109,7 @@ export interface SaveMissArgs {
   workspaceRoot: string
   nestedProjectDirs: string[]
   gitFilesCache?: GitFilesCache | undefined
-  /** Declared `cache.outputs.files` / `.workspaceFiles`. */
+  /** Declared `outputs.files` / `.workspaceFiles`. */
   outputs: readonly string[]
   wsOutputs: readonly string[]
   /**
@@ -120,7 +119,7 @@ export interface SaveMissArgs {
    * would also take the upstream's files the task adds beside.
    */
   ownOutputFiles?: string[] | undefined
-  /** `ownOutputFiles` for `cache.outputs.workspaceFiles` (A-43). */
+  /** `ownOutputFiles` for `outputs.workspaceFiles` (A-43). */
   ownWsOutputFiles?: string[] | undefined
   /** The Tier-3 input fingerprint rows captured by the pre-exec describe. */
   captured: readonly TaskInputComponent[]
@@ -211,14 +210,14 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
     // (project dir === workspace root) the write SUCCEEDS into that
     // scratch and the task exits 0, so this warning is the only thing that
     // says the build produced nothing (item 444). A declared
-    // `cache.outputs` is not a write grant; `exec.sandbox.allow.write` is.
+    // `outputs` is not a write grant; `exec.sandbox.allow.write` is.
     const sandboxed = node.config.exec?.sandbox !== undefined
     const grantsWrite = (node.config.exec?.sandbox?.allow?.write?.length ?? 0) > 0
     // A `workspaceFiles` directory linked out of the workspace drops every
     // file (M-65); a project one is refused by the resolver (X-88).
     const linkedOut = outputDirLinkedOut(a.workspaceRoot, a.wsOutputs)
     warnOf(log)(
-      `[vx] ${node.id}: cache.outputs matched no files (${[...a.outputs, ...a.wsOutputs].join(', ')}) — ` +
+      `[vx] ${node.id}: outputs matched no files (${[...a.outputs, ...a.wsOutputs].join(', ')}) — ` +
         `an empty artifact is saved; a later hit restores nothing` +
         (linkedOut !== undefined
           ? ` — ${linkedOut.dir} is a symlink to ${linkedOut.target}, outside ${linkedOut.base}, and vx keeps only outputs inside it: make ${linkedOut.dir} a directory`
@@ -232,7 +231,6 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
     )
   }
   const facts: SaveFacts = {}
-  const mounts = mountPaths(node.config.cache?.outputs)
   const save = async (): Promise<void> => {
     const saveStart = a.measure === true ? performance.now() : 0
     const endSave = span('miss: save')
@@ -249,7 +247,6 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
       ...(wsOutputFiles.length > 0 ? { workspaceOutputFiles: wsOutputFiles } : {}),
       ...(wsTree.emptyDirs.length > 0 ? { workspaceOutputDirs: wsTree.emptyDirs } : {}),
       inputComponents: a.captured.map((c) => ({ entryHash: a.hash, ...c })),
-      ...(mounts.length === 0 ? {} : { mounts }),
       // No `exitCode`: the save only runs under `effectiveExitCode === 0`, and
       // the contract no longer accepts one — so the invariant is enforced by
       // the type rather than by every call site remembering the gate.
@@ -369,7 +366,7 @@ function sizeOf(base: string, files: readonly string[]): number {
  * these paths. On a 1000-package cold run this removes ~one synchronous
  * `git ls-files` spawn per project (the single largest cold-run cost —
  * 22% of CPU in profiling). Contract: outputs must be declared — an
- * executed task that writes files outside `cache.outputs.files` which a
+ * executed task that writes files outside `outputs.files` which a
  * same-project downstream task reads is undeclared behavior (the restore
  * path already assumes it).
  */

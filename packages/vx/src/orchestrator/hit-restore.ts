@@ -9,7 +9,6 @@
 // 2026-09-10 as pure code motion, the mirror of miss-save.ts.
 
 import path from 'node:path'
-import type { CacheConfig } from '../config.js'
 import {
   type CacheEntry,
   cleanOutputPaths,
@@ -34,7 +33,6 @@ import {
 import type { ExecuteArgs } from './execute-task.js'
 import { entryHolds } from './miss-save.js'
 import { decodeOutputLog, maskStreams } from './output-log.js'
-import { mountPaths } from './sandbox-request.js'
 
 export interface RestoreHitArgs {
   args: ExecuteArgs
@@ -59,9 +57,9 @@ export interface RestoreHitArgs {
 export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
   const { args, hash } = given
   const { node } = args
-  const cacheCfg: CacheConfig | undefined = node.config.cache
-  const outputs = cacheCfg?.outputs.files ?? []
-  const wsOutputs = cacheCfg?.outputs.workspaceFiles ?? []
+  const cfgOut = node.config.outputs
+  const outputs = cfgOut?.files ?? []
+  const wsOutputs = cfgOut?.workspaceFiles ?? []
   const anyOutputs = outputs.length > 0 || wsOutputs.length > 0
   // A layer that handed no rows: one SELECT, read by both paths below.
   const restore =
@@ -314,11 +312,9 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
         }
       }
     }
-    const mounts = mountPaths(node.config.cache?.outputs)
     await args.cache.restoreOutputs(hash, node.projectDir, args.workspaceRoot, {
       files: outputs,
       workspaceFiles: wsOutputs,
-      ...(mounts.length === 0 ? {} : { mounts }),
     })
     if (staleRels.length > 0 || staleDirs.length > 0) {
       await cleanOutputPaths({
@@ -402,8 +398,8 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
 export function currentHit(restore: RestoreHitArgs): (() => TaskOutcome) | undefined {
   const { args, hash, hit } = restore
   const { node } = args
-  const outputs = node.config.cache?.outputs.files ?? []
-  if ((node.config.cache?.outputs.workspaceFiles?.length ?? 0) > 0) return undefined
+  const outputs = node.config.outputs?.files ?? []
+  if ((node.config.outputs?.workspaceFiles?.length ?? 0) > 0) return undefined
   if (outputs.length > 0) {
     const dirPrefixes = dirPrefixesOf(outputs)
     if (dirPrefixes === null || args.cache.outputDirsCurrent === undefined) return undefined

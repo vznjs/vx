@@ -89,7 +89,7 @@ describe('the bound reaches the cache entry and its replay', () => {
             tasks: {
               test: {
                 exec: { command: ${JSON.stringify(printer(40_000_000))} },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+                inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
               },
             },
           }
@@ -153,7 +153,7 @@ describe('a secret the bound cuts', () => {
                   command: ${JSON.stringify(command)},
                   env: { define: { API_TOKEN: ${JSON.stringify(secret)} } },
                 },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+                inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
               },
             },
           }

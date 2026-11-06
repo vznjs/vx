@@ -44,21 +44,21 @@ const configFor = (dependantOutputs: string): string => `
     tasks: {
       build: {
         exec: { command: 'mkdir -p dist && cp src/a.txt dist/a.txt && cp src/a.txt dist/a2.txt' },
-        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist'] } },
+        inputs: { files: ['src/**'] }, outputs: { files: ['dist'] }, cache: true,
       },
       individual: {
         dependsOn: ['build'],
         exec: { command: 'mkdir -p dist/individual && cp srcb/b.txt dist/individual/b.txt' },
         // Detached from build's key (inputs.tasks: []) so it can HIT while
         // build misses — the arrangement the note names as the hazard.
-        inputs: { files: ['srcb/**'], tasks: [] }, cache: { outputs: { files: ${dependantOutputs} } },
+        inputs: { files: ['srcb/**'], tasks: [] }, outputs: { files: ${dependantOutputs} }, cache: true,
       },
       noop: {
         // Third in the chain, as strapi's build → build:code → build:types:
         // an overlap with individual too, ordered by this edge.
         dependsOn: ['individual'],
         exec: { command: 'true' },
-        inputs: { files: ['srcb/**'], tasks: [] }, cache: { outputs: { files: ['dist/noop'] } },
+        inputs: { files: ['srcb/**'], tasks: [] }, outputs: { files: ['dist/noop'] }, cache: true,
       },
     },
   }
@@ -281,15 +281,14 @@ describe('overlapping outputs, addition shape at the workspace root', () => {
       tasks: {
         build: {
           exec: { command: 'mkdir -p ../../gen && cp src/a.txt ../../gen/a.txt' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: [], workspaceFiles: ['gen'] } },
+          inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['gen'] }, cache: true,
         },
         individual: {
           dependsOn: ['build'],
           exec: { command: 'mkdir -p ../../gen/individual && cp srcb/b.txt ../../gen/individual/b.txt' },
           inputs: { files: ['srcb/**'], tasks: [] },
-          cache: {
-            outputs: { files: [], workspaceFiles: ['gen/individual'] },
-          },
+          outputs: { files: [], workspaceFiles: ['gen/individual'] },
+          cache: true,
         },
       },
     }
@@ -329,15 +328,14 @@ describe('overlapping outputs, same tree at the workspace root', () => {
       tasks: {
         build: {
           exec: { command: 'mkdir -p ../../gen && cp src/a.txt ../../gen/a.txt' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: [], workspaceFiles: ['gen'] } },
+          inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['gen'] }, cache: true,
         },
         individual: {
           dependsOn: ['build'],
           exec: { command: 'cp ../../gen/a.txt ../../gen/b.txt && cat srcb/b.txt >> ../../gen/b.txt' },
           inputs: { files: ['srcb/**'], tasks: [] },
-          cache: {
-            outputs: { files: [], workspaceFiles: ['gen'] },
-          },
+          outputs: { files: [], workspaceFiles: ['gen'] },
+          cache: true,
         },
       },
     }
@@ -390,7 +388,7 @@ describe("overlapping outputs: a root-anchored upstream under a project's depend
         files: { 'src/a.txt': 'A1' },
         config: `export default { tasks: { build: {
           exec: { command: 'mkdir -p ../b/dist && cp src/a.txt ../b/dist/a.txt' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: [], workspaceFiles: ['packages/b/dist'] } },
+          inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['packages/b/dist'] }, cache: true,
         } } }`,
       })
       const b = await addProject(root, 'b', {
@@ -398,7 +396,7 @@ describe("overlapping outputs: a root-anchored upstream under a project's depend
         config: `export default { tasks: { build: {
           dependsOn: ['a#build'],
           exec: { command: 'cp src/b.txt dist/b.txt' },
-          inputs: { files: ['src/**'], tasks: [] }, cache: { outputs: { files: ['dist'] } },
+          inputs: { files: ['src/**'], tasks: [] }, outputs: { files: ['dist'] }, cache: true,
         } } }`,
       })
       const byId = (r: Awaited<ReturnType<typeof run>>): Record<string, string> =>
@@ -428,12 +426,12 @@ describe('overlapping outputs: the run-end snapshot of each side', () => {
       tasks: {
         build: {
           exec: { command: 'mkdir -p dist && cp src/a.txt dist/a.txt' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+          inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
         },
         individual: {
           dependsOn: ['build'],
           exec: { command: 'cp srcb/b.txt dist/b.txt' },
-          inputs: { files: ['srcb/**'], tasks: [] }, cache: { outputs: { files: ['dist/**'] } },
+          inputs: { files: ['srcb/**'], tasks: [] }, outputs: { files: ['dist/**'] }, cache: true,
         },
         tail: {
           dependsOn: ['individual'],
@@ -494,12 +492,12 @@ describe('overlapping outputs: a dependant that removes an upstream file', () =>
       tasks: {
         build: {
           exec: { command: 'mkdir -p dist && cp src/a.txt dist/a.js && echo mid > dist/tmp.js' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+          inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
         },
         post: {
           dependsOn: ['build'],
           exec: { command: 'rm dist/tmp.js && echo bundle > dist/bundle.js' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+          inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
         },
       },
     }
@@ -542,12 +540,12 @@ describe('overlapping outputs: a dependant that removes an upstream file', () =>
           tasks: {
             build: {
               exec: { command: 'mkdir -p ../../gen && cp src/a.txt ../../gen/a.js && echo mid > ../../gen/tmp.js' },
-              inputs: { files: ['src/**'] }, cache: { outputs: { files: [], workspaceFiles: ['gen'] } },
+              inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['gen'] }, cache: true,
             },
             post: {
               dependsOn: ['build'],
               exec: { command: 'rm ../../gen/tmp.js && echo bundle > ../../gen/bundle.js' },
-              inputs: { files: ['src/**'] }, cache: { outputs: { files: [], workspaceFiles: ['gen'] } },
+              inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['gen'] }, cache: true,
             },
           },
         }
@@ -579,7 +577,7 @@ describe('overlapping outputs: a same-size rewrite that keeps the mtime', () => 
       tasks: {
         build: {
           exec: { command: 'mkdir -p dist && cat src/a.txt > dist/a.txt && touch -t 200101010000 dist/a.txt' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+          inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
         },
         types: {
           dependsOn: ['build'],
@@ -588,7 +586,7 @@ describe('overlapping outputs: a same-size rewrite that keeps the mtime', () => 
               'tr a-z A-Z < dist/a.txt > dist/up && cat dist/up > dist/a.txt && rm dist/up && ' +
               'touch -t 200101010000 dist/a.txt && echo t > dist/types.d.ts',
           },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+          inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
         },
       },
     }

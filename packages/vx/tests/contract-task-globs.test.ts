@@ -1,5 +1,5 @@
 // Task-glob semantics are a 1.0 contract surface (docs/design/versioning-1.0.md):
-// which paths a `inputs.files` or `cache.outputs.files` pattern
+// which paths a `inputs.files` or `outputs.files` pattern
 // selects. The answer is core's resolver over `Bun.Glob`, so it can move
 // without a line of vx changing: a Bun upgrade that reads `[`, a brace or a
 // dotfile differently re-keys or un-keys files, and a file dropped from a
@@ -12,13 +12,14 @@
 //   VX_UPDATE_CONTRACT=1 bun test tests/contract-task-globs.test.ts
 
 import { afterAll, beforeAll, describe, expect, it, setDefaultTimeout } from 'bun:test'
-import { readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { readFileSync, realpathSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { resolveInputs, resolveOutputs } from '../src/cache/inputs.js'
 import { relPosix, UserError } from '../src/util/index.js'
 import { validateProjectConfig } from '../src/workspace/config-schema.js'
+import { updateJsonRecord } from './helpers/contract-record.js'
 
 // A git init plus ~40 resolutions; the default hook budget is tight under
 // a loaded shard (inputs-resolution.test.ts does the same).
@@ -184,7 +185,8 @@ async function selections(): Promise<Selections> {
               t: {
                 exec: { command: 'x' },
                 inputs: { files: [...files] },
-                cache: { outputs: { files: [] } },
+                outputs: { files: [] },
+                cache: true,
               },
             },
           },
@@ -215,9 +217,7 @@ async function selections(): Promise<Selections> {
 describe('task-glob semantics (versioning-1.0.md)', () => {
   it('every pattern selects what tests/contract/task-globs.json records', async () => {
     const live = await selections()
-    if (process.env['VX_UPDATE_CONTRACT'] === '1' && process.env['CI'] !== 'true') {
-      writeFileSync(RECORD, JSON.stringify(live, null, 2) + '\n')
-    }
+    updateJsonRecord(RECORD, live)
     // On a failure, the diff below IS a change in what a key covers: if it
     // came from a Bun upgrade, it is a stale-hit risk before it is a record
     // to regenerate.

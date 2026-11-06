@@ -118,7 +118,7 @@ export const SETTINGS: readonly Setting[] = [
   {
     path: 'cache.dir',
     kind: { type: 'string' },
-    default: '.vx/cache, entries in ~/.vx/<repo>/cache',
+    default: '.vx/cache, entries in ~/.vx/<id>/cache',
     doc: 'Where the cache lives, relative to the workspace root; named, it holds the whole cache.',
     flag: { verb: 'run', name: '--cache-dir' },
   },
@@ -165,25 +165,25 @@ export const SETTINGS: readonly Setting[] = [
     flag: { verb: 'run', name: '--cache-download' },
   },
   {
-    path: 'cache.inputStability.strategy',
+    path: 'inputs.stability.strategy',
     kind: { type: 'enum', values: ['immutable', 'mutable', 'unchecked'] },
     default: 'immutable',
     doc: 'What a write to an input during the command means for the save, for tasks without their own.',
-    task: 'cache.inputStability.strategy',
+    task: 'inputs.stability.strategy',
   },
   {
-    path: 'cache.inputStability.severity',
+    path: 'inputs.stability.severity',
     kind: { type: 'enum', values: ['warn', 'error'] },
     default: 'warn',
     doc: 'Whether a skipped save warns or fails the task, for tasks without their own.',
-    task: 'cache.inputStability.severity',
+    task: 'inputs.stability.severity',
   },
   {
-    path: 'cache.outputs.clean',
+    path: 'outputs.clean',
     kind: { type: 'bool' },
     default: 'true',
     doc: "Remove a task's declared outputs before it runs on a miss, for tasks without their own.",
-    task: 'cache.outputs.clean',
+    task: 'outputs.clean',
     env: false,
   },
   {
@@ -249,7 +249,7 @@ export const SETTINGS: readonly Setting[] = [
 ]
 
 /** The `.vx/workspace` groups that hold settings; `baseBranch` and `plugins` are the other keys. */
-export const SETTING_GROUPS = ['run', 'cache', 'lock', 'watch'] as const
+export const SETTING_GROUPS = ['run', 'cache', 'inputs', 'outputs', 'lock', 'watch'] as const
 
 const BY_PATH = new Map(SETTINGS.map((s) => [s.path, s]))
 

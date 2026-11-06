@@ -20,7 +20,7 @@ function config(inputs: string, command = 'true', extra = ''): string {
   tasks: {
     t: {
       exec: { command: ${JSON.stringify(command)} },
-      inputs: ${inputs}, cache: { outputs: { files: [] } },
+      inputs: ${inputs}, outputs: { files: [] }, cache: true,
     },
     ${extra}
   },
@@ -179,20 +179,20 @@ describe('Turbo parity — task hash and global hash (turborepo-task-hash)', () 
     build: {
       exec: { command: 'mkdir -p dist && cat src/in.txt > dist/out.txt && date +%N >> dist/out.txt' },
       dependsOn: ['^build'],
-      inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] }, cache: { outputs: { files: ['dist/**'] } },
+      inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] }, outputs: { files: ['dist/**'] }, cache: true,
     },
     gen: {
       exec: { command: 'mkdir -p gen && cp schema.txt gen/out.txt' },
-      inputs: { files: ['schema.txt'] }, cache: { outputs: { files: ['gen/**'] } },
+      inputs: { files: ['schema.txt'] }, outputs: { files: ['gen/**'] }, cache: true,
     },
     use: {
       exec: { command: 'cat gen/out.txt' },
       dependsOn: ['gen'],
-      inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+      inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
     },
     lint: {
       exec: { command: 'echo lint-${name}' },
-      inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+      inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
     },
   },
 }

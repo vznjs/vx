@@ -80,9 +80,10 @@ describe('migrateTurbo: a `tsc -b` build', () => {
         { name: 'a', dir, packageJson: { name: 'a', scripts } as never, configPath: null },
       ]
       const t = (await migrateTurbo(root, metas)).projects[0]!.tasks[0]!.task as {
-        cache: { outputs: { files: unknown } }
+        outputs: { files: unknown }
+        cache: true
       }
-      expect(t.cache.outputs.files).toEqual(['dist/**', 'tsconfig.tsbuildinfo'])
+      expect(t.outputs.files).toEqual(['dist/**', 'tsconfig.tsbuildinfo'])
     } finally {
       await rm(root, { recursive: true, force: true })
     }

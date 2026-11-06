@@ -10,13 +10,12 @@
           "package.json"
         ]
       },
-      "cache": {
-        "outputs": {
+      "outputs": {
           "files": [
             "dist/**"
           ]
-        }
-      }
+        },
+      "cache": true
     }
   }
 }

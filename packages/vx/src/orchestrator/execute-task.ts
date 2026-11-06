@@ -1,5 +1,5 @@
 import path from 'node:path'
-import type { ExecConfig, TaskConfig, CacheConfig, InputStability } from '../config.js'
+import type { ExecConfig, TaskConfig, InputsConfig, InputStability } from '../config.js'
 import {
   ArtifactVanishedError,
   type CacheEntry,
@@ -58,8 +58,6 @@ import { executorLabel, nameExecutorFailure } from './plugin-host.js'
 import type { CommandWindows } from './command-windows.js'
 import {
   commandWriteReach,
-  dependencyMounts,
-  mountPaths,
   dependencyReads,
   mayWriteFingerprint,
   type Placeholder,
@@ -105,7 +103,6 @@ import { executePersistentTask } from './persistent-task.js'
 import {
   forgetUndeclaredWrites,
   isAborted,
-  dependencyBins,
   taskBinDirs,
   serverSpec,
   taskEnv,
@@ -199,11 +196,11 @@ export interface ExecuteArgs {
    */
   timeout?: number
   /**
-   * The run's `inputStability` layers around the task's own: `run` from
+   * The run's `inputs.stability` layers around the task's own: `run` from
    * the env vars (above the task), `workspace` from `.vx/workspace` (below).
    */
   inputStability?: { run: InputStability; workspace?: InputStability }
-  /** `cache.outputs.clean` for tasks without their own: `.vx/workspace`. */
+  /** `outputs.clean` for tasks without their own: `.vx/workspace`. */
   cleanOutputs?: boolean
   /** Per-run memo for `git ls-files` (one entry per project dir). */
   gitFilesCache?: GitFilesCache
@@ -360,7 +357,7 @@ function readsCache(args: ExecuteArgs): boolean {
   const policy = args.cachePolicy ?? FULL_CACHE_POLICY
   return (
     args.remoteOnly !== true &&
-    args.node.config.cache !== undefined &&
+    args.node.config.cache === true &&
     (policy.localRead || policy.remoteRead)
   )
 }
@@ -412,16 +409,16 @@ async function restoreOrMiss(
 
 /**
  * What a write to an input during the command means, each field highest
- * first: the env var (`layers.run`), the task's `cache.inputStability`,
+ * first: the env var (`layers.run`), the task's `inputs.stability`,
  * the workspace's, then `'immutable'` and `'warn'` (2026-10-12), so
  * by default any such write withholds the save, on CI too, since a
  * concurrent task can change an input and put it back.
  */
 function inputStabilityOf(
-  cache: CacheConfig | undefined,
+  inputs: InputsConfig | undefined,
   layers: ExecuteArgs['inputStability'],
 ): Required<InputStability> {
-  const task = cache?.inputStability
+  const task = inputs?.stability
   return {
     strategy: layers?.run.strategy ?? task?.strategy ?? layers?.workspace?.strategy ?? 'immutable',
     severity: layers?.run.severity ?? task?.severity ?? layers?.workspace?.severity ?? 'warn',
@@ -533,9 +530,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const { node, upstream, cache, log } = args
   const cfg: TaskConfig = node.config
   const step = cfg.exec as ExecConfig // dispatcher guarantees exec is present
-  const cacheCfg: CacheConfig | undefined = cfg.cache
+  const cfgOut = cfg.outputs
   const policy = args.cachePolicy ?? FULL_CACHE_POLICY
-  const cfgCacheable = cacheCfg !== undefined
+  const cfgCacheable = cfg.cache === true
   // We may READ when at least one read axis is on (the cache layer
   // refines local vs remote), and WRITE when at least one write axis is
   // on. Output management (clean before exec) keys off writes — so
@@ -586,9 +583,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const deferralRequested = args.download === 'deferred'
   const capture: CaptureConfig = { stdout: false, stderr: false }
 
-  const outputs = cacheCfg?.outputs.files ?? []
-  const wsOutputs = cacheCfg?.outputs.workspaceFiles ?? []
-  const mounts = mountPaths(cacheCfg?.outputs)
+  const outputs = cfgOut?.files ?? []
+  const wsOutputs = cfgOut?.workspaceFiles ?? []
   const effectiveForwardArgs = node.requested ? (args.forwardArgs ?? []) : []
   // Per-task `exec.timeout` beats `run.timeout` (flag, variable,
   // workspace; resolved into `args.timeout` by run.ts).
@@ -751,12 +747,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const additive = (node.addsToOutputsOf?.length ?? 0) > 0
   let stampedBefore: ReadonlyMap<string, OutputStamp> | undefined
   let wsStampedBefore: ReadonlyMap<string, OutputStamp> | undefined
-  // `cache.outputs.clean: false` leaves the outputs to the first attempt's
+  // `outputs.clean: false` leaves the outputs to the first attempt's
   // command, and the save stores whatever they hold after it, a leftover
   // included: the user opted out of the clean-tree guarantee
   // (2026-10-15). A retry still starts clean. An additive task never cleans
   // by glob anyway.
-  const keepOutputs = !additive && (cacheCfg?.outputs.clean ?? args.cleanOutputs ?? true) === false
+  const keepOutputs = !additive && (cfgOut?.clean ?? args.cleanOutputs ?? true) === false
 
   // Cache lookup. On hit, time the user-perceived restore op
   // (clean+restore+log-replay) — that's what the framed-block footer
@@ -780,13 +776,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
   }
 
-  const depBins = await dependencyBins(args.readableDeps?.(node) ?? [])
-  const depMounts = dependencyMounts(
-    node,
-    args.readableDeps?.(node) ?? [],
-    cfg.exec?.sandbox !== undefined,
-  )
-  const env = taskEnv(node, step, args.workspaceRoot, depBins)
+  const env = taskEnv(node, step, args.workspaceRoot)
   const wallclockStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
 
   // Miss path: describe the input set ONCE — the executor gets the values
@@ -1145,7 +1135,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         code,
         command: step.command,
         cwd: node.projectDir,
-        bins: taskBinDirs(node, args.workspaceRoot, depBins),
+        bins: taskBinDirs(node, args.workspaceRoot),
         signal: res.signal,
         hidden: req.sandbox && ((f: string) => !sandboxReads(req.sandbox!, f)),
       })
@@ -1333,7 +1323,6 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       cwd: node.projectDir,
       env,
       envDefine: step.env?.define ?? {},
-      ...(depBins.length === 0 ? {} : { binDirs: depBins }),
       capture,
       onStdout: masked ? masked.out : toOut,
       onStderr: masked ? masked.err : toErr,
@@ -1356,11 +1345,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       // `--force`/`--no-cache` reach a remote executor's private record
       // through this flag — the policy gates above only cover vx's OWN cache.
       ...(cfgCacheable && !(policy.localRead || policy.remoteRead) ? { refresh: true } : {}),
-      outputs: {
-        files: outputs,
-        workspaceFiles: wsOutputs,
-        ...(mounts.length === 0 ? {} : { mounts }),
-      },
+      outputs: { files: outputs, workspaceFiles: wsOutputs },
       ...(args.terminal === true ? { terminal: true as const } : {}),
       ...(args.servers === undefined
         ? {}
@@ -1384,7 +1369,6 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       args.nestedProjectDirs,
       args.cacheDir,
       await dependencyReads(args.readableDeps?.(node) ?? [], args.workspaceRoot),
-      depMounts,
     )
     placeholders = sb.placeholders
     withheld = sb.withheld
@@ -1393,7 +1377,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
 
   const wallclockEndNs = process.hrtime.bigint() - args.runStartHrTimeNs
 
-  const stability = inputStabilityOf(args.node.config.cache, args.inputStability)
+  const stability = inputStabilityOf(args.node.config.inputs, args.inputStability)
   let movedFails: string | undefined
   let own: Awaited<ReturnType<typeof ownOutputs>>
   let saved = false
@@ -1589,11 +1573,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     const hint =
       moved === null || rewroteBy !== undefined
         ? ''
-        : '; if the task writes it, declare it in cache.outputs'
+        : '; if the task writes it, declare it in outputs'
     if (stability.severity === 'error') {
       warnOf(log)(
         `[vx] ${node.id}: ${what} — the result is not saved, ` +
-          `and inputStability.severity is 'error', so the task fails${hint}`,
+          `and inputs.stability.severity is 'error', so the task fails${hint}`,
       )
       movedFails = moved === null ? '' : printable(relPosix(args.workspaceRoot, moved))
     } else {

@@ -56,9 +56,8 @@ describe('runtime inputs — e2e', () => {
           build: {
             exec: { command: "echo built >> ${log}" },
             inputs: { files: [], workspaceRuntime: ['cat marker'] },
-            cache: {
-              outputs: { files: [] },
-            },
+            outputs: { files: [] },
+            cache: true,
           },
         },
       }`,
@@ -91,9 +90,8 @@ describe('runtime inputs — e2e', () => {
           build: {
             exec: { command: "echo built >> ${log}" },
             inputs: { files: [], workspaceRuntime: ['cat marker'] },
-            cache: {
-              outputs: { files: [] },
-            },
+            outputs: { files: [] },
+            cache: true,
           },
         },
       }`,
@@ -120,9 +118,8 @@ describe('runtime inputs — e2e', () => {
           build: {
             exec: { command: "echo built >> ${log}" },
             inputs: { files: [], workspaceRuntime: ['cat marker'] },
-            cache: {
-              outputs: { files: [] },
-            },
+            outputs: { files: [] },
+            cache: true,
           },
         },
       }`,
@@ -152,7 +149,7 @@ describe('runtime inputs — e2e', () => {
         tasks: {
           build: {
             exec: { command: "echo hi" },
-            inputs: { files: [], runtime: ['sh -c "exit 7"'] }, cache: { outputs: { files: [] } },
+            inputs: { files: [], runtime: ['sh -c "exit 7"'] }, outputs: { files: [] }, cache: true,
           },
         },
       }`,
@@ -174,9 +171,8 @@ describe('runtime inputs — e2e', () => {
         build: {
           exec: { command: "echo ${n}" },
           inputs: { files: [], workspaceRuntime: ["sh -c 'printf x >> ${counter}; echo v1'"] },
-          cache: {
-            outputs: { files: [] },
-          },
+          outputs: { files: [] },
+          cache: true,
         },
       },
     }`
@@ -211,16 +207,14 @@ describe('runtime inputs — e2e', () => {
           build: {
             exec: { command: 'true', env: { define: { MY_PROBE: 'a' } } },
             inputs: { files: [], runtime: ['printenv MY_PROBE >> ${log} || echo unset >> ${log}'] },
-            cache: {
-              outputs: { files: [] },
-            },
+            outputs: { files: [] },
+            cache: true,
           },
           test: {
             exec: { command: 'true', env: { define: { MY_PROBE: 'b' } } },
             inputs: { files: [], runtime: ['printenv MY_PROBE >> ${log} || echo unset >> ${log}'] },
-            cache: {
-              outputs: { files: [] },
-            },
+            outputs: { files: [] },
+            cache: true,
           },
         },
       }
@@ -244,7 +238,8 @@ describe('runtime inputs — e2e', () => {
         build: {
           exec: { command: 'mkdir -p dist; (cat .env.local 2>/dev/null || echo none) > dist/env' },
           inputs: { files: ['src/**'], runtime: [${runtime}] },
-          cache: { outputs: { files: ['dist/**'] } },
+          outputs: { files: ['dist/**'] },
+          cache: true,
         },
       },
     }`

@@ -95,7 +95,7 @@ it('a later run keeps an unchanged held server, rebuilds its deps, and replaces 
   const lib = await addProject(root, 'lib', {
     config: `export default { tasks: { build: {
       exec: { command: 'echo built >> ../../built.log' },
-      inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+      inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
     } } }`,
     files: { 'src/a.txt': 'v1' },
   })
@@ -171,7 +171,7 @@ it("a kept server's key still reaches its cached dependant", async () => {
     config: `export default { tasks: {
       dev: { inputs: { files: ['src/**'] }, exec: { command: 'echo READY; exec sleep 30', persistent: { readyWhen: 'READY' } } },
       e2e: {
-        dependsOn: ['dev'], inputs: { files: ['e2e.txt'] }, cache: { outputs: { files: [] } },
+        dependsOn: ['dev'], inputs: { files: ['e2e.txt'] }, outputs: { files: [] }, cache: true,
         exec: { command: 'echo ran >> ../../e2e.log' },
       },
     } }`,

@@ -119,7 +119,7 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 | Pass-through env                                                            | `passThroughEnv`                                     | (always pass through)                                    | `untrackedEnv` (passed, no hash)   | `exec.env.passThrough`                                                                                                              |
 | Define / literal env                                                        | (no; rely on globalEnv)                              | (via executor options)                                   | (no; in script)                    | `exec.env.define`                                                                                                                   |
 | Workspace-level env inputs                                                  | `globalEnv`, `globalPassThroughEnv`                  | workspace `namedInputs` + `inputs`                       | (no)                               | rejected by design — TS presets compose                                                                                             |
-| Output declarations                                                         | `outputs: [...]`                                     | `outputs: [...]`                                         | `output: glob` or `{pattern,base}` | `cache.outputs.files: string[]`                                                                                                     |
+| Output declarations                                                         | `outputs: [...]`                                     | `outputs: [...]`                                         | `output: glob` or `{pattern,base}` | `outputs.files: string[]`                                                                                                           |
 | Output cleaning before exec / restore                                       | (no — additive)                                      | (no — additive)                                          | (via materialized artifacts)       | **yes** — strict                                                                                                                    |
 | Implicit-dependency hash (project `package.json`)                           | yes — `package.json` is a default input              | `externalDependencies`                                   | (via lockfile)                     | via `@vzn/vx-lockfile` — an input of every cached task                                                                              |
 | Lockfile-aware invalidation (only the projects a dependency change reaches) | per package: the lockfile changes that affect it     | yes — pruned lockfile per project, in the daemon's graph | (whole lockfile)                   | **`@vzn/vx-lockfile`** — per-project closure digest, recorded by `vx lock` and held to the lockfile's hash; `--affected` follows it |
@@ -418,7 +418,7 @@ Things `@vzn/vx` does that the others don't:
   package. `vx lock` records the digests and a run keys from that
   record, holding the lockfile to its hash, so no run parses for its
   key: a warm run pays a read and a hash.
-- **Strict output ownership.** Declared `cache.outputs.files` are
+- **Strict output ownership.** Declared `outputs.files` are
   wiped before exec AND before cache restore. Both Turbo and Nx
   restore additively; stale files from a prior build survive a cache
   hit there.

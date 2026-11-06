@@ -533,7 +533,7 @@ export interface ReapiExecutorOptions {
 
 /**
  * A task is remote-eligible only if vx can DESCRIBE its inputs — that is the
- * miss path of a cacheable task. A task with no `cache` block ships nothing,
+ * miss path of a cacheable task. A task without `cache: true` ships nothing,
  * so a worker would run it against an empty input root and produce garbage:
  * decline it and let a later executor (the local one) take it.
  */
@@ -709,7 +709,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
 
       const projectRel = toPosix(path.relative(req.workspaceRoot, req.cwd))
       // REAPI `output_paths` are relative to `working_directory`, so a
-      // ROOT-anchored output (`cache.outputs.workspaceFiles`) declared by a
+      // ROOT-anchored output (`outputs.workspaceFiles`) declared by a
       // NESTED project can only be spelled with `..` — `packages/vx/../..
       // /node_modules`. The spec allows `..` in SYMLINK targets but servers
       // are entitled to refuse it in output paths, and NativeLink does
@@ -1341,17 +1341,9 @@ function fullCommand(req: ExecuteRequest, cdInto: string, projectRel: string): s
   // Quoted as the forwarded args are: a project directory is a name like
   // any other, and `it's` ended the quote and ran the rest as script (L-7).
   const cd = cdInto === '' ? '' : `cd '${cdInto.replaceAll("'", `'\\''`)}' || exit 1; `
-  // A dependency's `cache.outputs.bin` goes first, as core's taskBinDirs
-  // puts it, rebuilt from the root as the rest is.
-  const deps = (req.binDirs ?? [])
-    .map(
-      (d) =>
-        `$VX_ROOT/${toPosix(path.relative(req.workspaceRoot, d)).replace(/["$`\\]/g, '\\$&')}:`,
-    )
-    .join('')
   return (
     `VX_ROOT=${root}; ${cd}` +
-    `export PATH="${deps}$PWD/node_modules/.bin:$VX_ROOT/node_modules/.bin:$PATH"; ` +
+    `export PATH="$PWD/node_modules/.bin:$VX_ROOT/node_modules/.bin:$PATH"; ` +
     command
   )
 }

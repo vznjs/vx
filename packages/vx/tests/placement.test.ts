@@ -60,7 +60,8 @@ describe('pinnedLocalSet', () => {
         config: {
           ...n.config,
           inputs: { files: ['src/**'], ...inputs },
-          cache: { outputs: { files: [] } },
+          outputs: { files: [] },
+          cache: true,
         },
       } as TaskNode
     }
@@ -190,7 +191,7 @@ describe('placeTasks (item 650)', () => {
   it('an executor is told whether the task it is offered is cacheable', () => {
     const { executor, asks } = seen()
     const cached = node('a#build', {})
-    ;(cached.config as { cache?: unknown }).cache = { inputs: { files: ['src/**'] } }
+    ;(cached.config as { cache?: unknown }).cache = true
     placeTasks(graph(cached, node('b#lint', {})), [executor])
     expect(asks.sort((x, y) => x[0].localeCompare(y[0]))).toEqual([
       ['a#build', true],
@@ -395,7 +396,7 @@ describe('placeTasks — what an executor is offered, and where a task lands', (
   it('accepts() is offered the task as placement describes it', () => {
     const offered: TaskPlacement[] = []
     const lib = node('lib#build', { command: 'tsc -b', sandbox: {} })
-    ;(lib.config as { cache?: unknown }).cache = { inputs: { files: ['src/**'] } }
+    ;(lib.config as { cache?: unknown }).cache = true
     placeTasks(graph(lib, node('app#lint', { command: 'oxlint' })), [taker('x', {}, offered)])
     expect(offered).toEqual([
       {

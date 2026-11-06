@@ -36,7 +36,8 @@ A recorded p50 always wins over an assumption, and assumptions never feed the wo
 `url` (or `VX_HISTORY_URL`), its base URL without `/v1`, names a
 [`@vzn/vx-history-server`](https://github.com/vznjs/vx/tree/main/packages/vx-history-server),
 over `https://` (`http://` only to `127.0.0.1`, `::1` or `localhost`: every
-request carries the CI token).
+request carries the CI token), with no `?query` or `#fragment` (each
+route is appended to it).
 On a CI job with a token (GitHub's OIDC token, which needs
 `permissions: id-token: write` to set `ACTIONS_ID_TOKEN_REQUEST_URL`
 and `ACTIONS_ID_TOKEN_REQUEST_TOKEN`, or a GitLab `id_tokens` entry

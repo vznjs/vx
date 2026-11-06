@@ -56,6 +56,24 @@ describe('configErrorFrame', () => {
     )
   })
 
+  it('frames a refused key at the key, a refused value at its field', async () => {
+    const env = path.join(dir, 'env', 'vx.config.ts')
+    await mkdir(path.dirname(env), { recursive: true })
+    await writeFile(
+      env,
+      "export default {\n  tasks: {\n    b: { exec: { command: 'x', env: {\n      define: { OK: '1', 'A=B': 'x' },\n      passThrough: ['my.var'],\n    } } },\n  },\n}\n",
+    )
+    const at = (m: string) =>
+      configErrorFrame(m, path.join(dir, 'env'))?.split('\n')[0]?.split(': ')[0]
+    expect(at(`${env}: tasks.b.exec.env.define: "A=B" is not an env var name`)).toBe(
+      'vx.config.ts:4:27',
+    )
+    // An array holds no key: its field.
+    expect(at(`${env}: tasks.b.exec.env.passThrough: "my.var" is not a shell variable name`)).toBe(
+      'vx.config.ts:5:7',
+    )
+  })
+
   it('leaves a message it cannot place as it was', () => {
     expect(configErrorFrame(`${file}: tasks.nope.exec has unknown field "x"`, dir)).toBeUndefined()
     expect(configErrorFrame(`${file}: \`tags\` must be an array`, dir)).toBeUndefined()
@@ -69,7 +87,7 @@ describe('configErrorFrame', () => {
     ).toBe(`${file}:4:7: tasks.build: \`exec\` is odd`)
   })
   // A field the task leaves out was found in the NEXT task that has it:
-  // `tasks.after.cache.outputs is required` framed noout's `outputs`.
+  // `tasks.after.outputs is required` framed noout's `outputs`.
   it('frames a missing field at its parent, never at a later task that has it', async () => {
     const other = path.join(dir, 'missing-field', 'vx.config.ts')
     await mkdir(path.dirname(other), { recursive: true })
@@ -77,8 +95,8 @@ describe('configErrorFrame', () => {
       other,
       `export default {
   tasks: {
-    after: { cache: {}, exec: { command: 'x' } },
-    noout: { cache: { outputs: { files: ['dist/**'] } } },
+    after: { cache: true, exec: { command: 'x' } },
+    noout: { outputs: { files: ['dist/**'] }, cache: true },
     plain: { exec: 'x' },
     later: { exec: { timeout: 1 } },
   },
@@ -86,8 +104,8 @@ describe('configErrorFrame', () => {
 `,
     )
     const at = (m: string) => configErrorFrame(`${other}: ${m}`, dir)?.split('\n')[0]
-    expect(at('tasks.after.cache.outputs is required when `cache` is set')).toBe(
-      'missing-field/vx.config.ts:3:14: tasks.after.cache.outputs is required when `cache` is set',
+    expect(at('tasks.after.outputs is required when `cache` is set')).toBe(
+      'missing-field/vx.config.ts:3:5: tasks.after.outputs is required when `cache` is set',
     )
     // A value that is no object literal holds no field to search.
     expect(at('tasks.plain.exec.timeout must be a positive integer')).toBe(
@@ -104,6 +122,38 @@ describe('configErrorFrame', () => {
         "> 7 |       exec: { comand: 'x', timeout: -1 },\n" +
         '    |               ^',
     )
+  })
+
+  it('frames an import nothing provides at its specifier, and a default that is no object', async () => {
+    const imports = path.join(dir, 'imports', '.vx', 'workspace.ts')
+    await mkdir(path.dirname(imports), { recursive: true })
+    await writeFile(
+      imports,
+      "import { a } from './a'\nimport x from 'nope-pkg'\n\nexport default defineConfig(() => ({}))\n",
+    )
+    const cwd = path.join(dir, 'imports')
+    expect(
+      configErrorFrame(
+        `Workspace config ${imports}: cannot find 'nope-pkg' — no node_modules above the config provides it; install the workspace's dependencies first`,
+        cwd,
+      ),
+    ).toBe(
+      ".vx/workspace.ts:2:15: cannot find 'nope-pkg' — no node_modules above the config provides it; install the workspace's dependencies first\n\n" +
+        "  1 | import { a } from './a'\n" +
+        "> 2 | import x from 'nope-pkg'\n" +
+        '    |               ^',
+    )
+    expect(
+      configErrorFrame(
+        `Workspace config at ${imports} did not export a default object: it exports a function`,
+        cwd,
+      )?.split('\n')[0],
+    ).toBe('.vx/workspace.ts:4:1: did not export a default object: it exports a function')
+    // No `export default` to point at: the message as it was.
+    await writeFile(imports, 'export const config = {}\n')
+    expect(
+      configErrorFrame(`Workspace config at ${imports} did not export a default object`, cwd),
+    ).toBeUndefined()
   })
 
   it('frames a .vx/workspace.ts field too', async () => {
@@ -154,6 +204,24 @@ describe('configErrorFrame', () => {
     )
     const atOdd = (m: string) =>
       configErrorFrame(m, path.join(dir, 'odd'))?.split('\n')[0]?.split(': ')[0]
+    // A plugin is an element: framed at it, not at the config's head.
+    const plugins = path.join(dir, 'plugins', '.vx', 'workspace.ts')
+    await mkdir(path.dirname(plugins), { recursive: true })
+    await writeFile(
+      plugins,
+      "export default {\n  plugins: [\n    a({ x: [1, 2] }), // b, c\n    's,t',\n    { name: 'p' },\n  ],\n}\n",
+    )
+    const atPlugin = (m: string) =>
+      configErrorFrame(m, path.join(dir, 'plugins'))?.split('\n')[0]?.split(': ')[0]
+    expect(atPlugin(`${plugins}: \`plugins[1]\` must be an object`)).toBe('.vx/workspace.ts:4:5')
+    expect(
+      atPlugin(`${plugins}: \`plugins[2].name\` overrides the package name ('p' over 'q')`),
+    ).toBe('.vx/workspace.ts:5:5')
+    expect(atPlugin(`${plugins}: \`plugins[0]\` must come from definePlugin`)).toBe(
+      '.vx/workspace.ts:3:5',
+    )
+    // Past the last element: the array itself.
+    expect(atPlugin(`${plugins}: \`plugins[7]\` must be an object`)).toBe('.vx/workspace.ts:2:3')
     expect(atOdd(`${odd}: task name "" is empty`)).toBe('vx.config.ts:4:6')
     expect(
       atOdd(`${odd}: task name ${JSON.stringify('\u001b[31mred')} holds a control character`),
@@ -245,6 +313,34 @@ describe('vx lock prints a config refusal with its frame', () => {
     }
   })
 
+  // A config's own throw named its file by absolute path and showed no
+  // line, though its stack placed it.
+  it('a config that throws, at the line it threw from', async () => {
+    const root = await realpath(await makeWorkspace({ prefix: 'vx-frame-throw-' }))
+    try {
+      const pkg = path.join(root, 'packages', 'b')
+      await mkdir(pkg, { recursive: true })
+      await writeFile(
+        path.join(pkg, 'vx.config.mjs'),
+        "const port = 1\nif (port) throw new Error('boom', { cause: new Error('deeper') })\nexport default { tasks: {} }\n",
+      )
+      const r = Bun.spawnSync(['bun', BIN, 'lock'], {
+        cwd: root,
+        env: { ...process.env, NO_COLOR: '1' },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      expect(r.exitCode).toBe(1)
+      const err = r.stderr.toString()
+      expect(err).toStartWith('✗ vx lock  lock not written\n\n  packages/b/vx.config.mjs:2:')
+      expect(err).toContain('threw: boom; caused by: deeper (at packages/b/vx.config.mjs:2:')
+      expect(err).toContain("  > 2 | if (port) throw new Error('boom'")
+      expect(err).not.toContain(root)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   // A rename after an upgrade refuses every config at once; naming one a run
   // made a large repo take a run per config.
   it('names every config that does not load, not only the first', async () => {
@@ -268,9 +364,9 @@ describe('vx lock prints a config refusal with its frame', () => {
       expect(r.exitCode).toBe(1)
       const err = r.stderr.toString()
       expect(err).toStartWith(
-        '✗ vx lock  lock not written\n\n  packages/a/vx.config.mjs:1:60\n  tasks.build has unknown field "outputs"\n  allowed: cache, dependsOn, description, exec, inputs',
+        '✗ vx lock  lock not written\n\n  packages/a/vx.config.mjs:1:60\n  tasks.build.outputs must be an object (fields: clean, files, workspaceFiles), not an array',
       )
-      expect(err).toContain('  fix  use `cache.outputs.files`')
+      expect(err).toContain('  fix  use `{ files: [...] }`')
       expect(err.match(/^✗ vx lock {2}also refused$/gm)).toHaveLength(4)
       for (const name of ['b', 'c', 'd', 'e'])
         expect(err).toContain(`packages/${name}/vx.config.mjs:1:60`)

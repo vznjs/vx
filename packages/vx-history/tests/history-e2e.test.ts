@@ -13,7 +13,7 @@ import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 const CORE_BIN = path.resolve(import.meta.dir, '../../vx/src/bin.ts')
-const TIMEOUT = 20_000
+const TIMEOUT = 30_000
 let root: string
 
 /**

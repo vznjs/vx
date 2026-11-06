@@ -36,7 +36,7 @@ describe('a temp directory that is not there', () => {
           tasks: {
             build: {
               exec: { command: 'echo built' },
-              inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+              inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
             },
           },
         }

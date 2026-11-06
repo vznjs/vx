@@ -30,9 +30,8 @@ export default defineProject({
       inputs: {
         files: ['src/**', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
       },
-      cache: {
-        outputs: { files: [] },
-      },
+      outputs: { files: [] },
+      cache: true,
     },
 
     'lint.oxfmt': {
@@ -45,9 +44,8 @@ export default defineProject({
       inputs: {
         files: ['**/*'],
       },
-      cache: {
-        outputs: { files: [] },
-      },
+      outputs: { files: [] },
+      cache: true,
     },
 
     test: {
@@ -74,9 +72,8 @@ export default defineProject({
       },
       dependsOn: ['install'],
       inputs: { files: ['src/**', 'tests/**', 'package.json'] },
-      cache: {
-        outputs: { files: [] },
-      },
+      outputs: { files: [] },
+      cache: true,
     },
 
     // The image `docker run` serves, built, held to the conformance suite
@@ -89,9 +86,8 @@ export default defineProject({
         files: ['Dockerfile', 'src/**', 'tests/**'],
         workspaceFiles: ['packages/vx-devtools/package.json', 'packages/vx-devtools/src/**'],
       },
-      cache: {
-        outputs: { files: [] },
-      },
+      outputs: { files: [] },
+      cache: true,
     },
   },
 })

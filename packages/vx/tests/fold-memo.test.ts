@@ -21,7 +21,7 @@ let pkg = ''
 let git: (...args: string[]) => string
 
 const config = (files: string[]): string =>
-  `export default { tasks: { build: { inputs: { files: ${JSON.stringify(files)} }, exec: { command: 'cat src/x.txt > out.txt && echo ran >> ../../runs.log' }, cache: { outputs: { files: ['out.txt'] } } } } }\n`
+  `export default { tasks: { build: { inputs: { files: ${JSON.stringify(files)} }, exec: { command: 'cat src/x.txt > out.txt && echo ran >> ../../runs.log' }, outputs: { files: ['out.txt'] }, cache: true } } }\n`
 
 beforeEach(async () => {
   root = await makeWorkspace({ prefix: 'vx-fold-memo-' })
@@ -172,7 +172,7 @@ it('a dirty input or committed output, edited twice, runs the task twice', async
   // A committed file the outputs name is an input too (resolveFiles keeps it).
   await writeFile(
     path.join(pkg, 'vx.config.mjs'),
-    `export default { tasks: { build: { inputs: { files: ['src/**'] }, exec: { command: 'cat src/x.txt src/gen.txt > out.txt && echo ran >> ../../runs.log' }, cache: { outputs: { files: ['out.txt', 'src/gen.txt'] } } } } }\n`,
+    `export default { tasks: { build: { inputs: { files: ['src/**'] }, exec: { command: 'cat src/x.txt src/gen.txt > out.txt && echo ran >> ../../runs.log' }, outputs: { files: ['out.txt', 'src/gen.txt'] }, cache: true } } }\n`,
   )
   await writeFile(path.join(pkg, 'src', 'gen.txt'), 'g1\n')
   git('add', '-A')

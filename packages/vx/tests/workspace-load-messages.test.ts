@@ -1,6 +1,6 @@
 // The words a user reads when a workspace file is broken, pinned whole: a
-// config that throws names its own line, and a missing import names the
-// specifier. A config is evaluated only by `vx lock`, so its words are the
+// config that throws is framed at its own line, and a missing import at
+// the specifier. A config is evaluated only by `vx lock`, so its words are the
 // lock's. Core reads no manifest; @vzn/vx-migrate's suite pins its words.
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -41,7 +41,7 @@ const vx = async (files: Record<string, string | Uint8Array>, args: string[]) =>
 it('a config that throws names the error and its own line', async () => {
   expect(await vx({ 'p/vx.config.ts': "\nthrow new Error('boom')\n" }, ['lock'])).toEqual({
     code: 1,
-    err: '✗ vx lock  lock not written\n\n  Project config <root>/p/vx.config.ts threw: boom (at <root>/p/vx.config.ts:2:11)',
+    err: "✗ vx lock  lock not written\n\n  p/vx.config.ts:2:11\n  threw: boom\n\n    1 | \n  > 2 | throw new Error('boom')\n      |           ^",
     planned: false,
   })
 })
@@ -50,14 +50,10 @@ it('a config that throws names the error and its own line', async () => {
 // reason in the cause, and vx printed only the wrapper.
 it('a config that throws a wrapped error names its cause too', async () => {
   const body = "\nthrow new Error('outer', { cause: new Error('inner') })\n"
-  const want = (kind: string, file: string) =>
-    `✗ vx lock  lock not written\n\n  ${kind} config <root>/${file} threw: outer (at <root>/${file}:2:11); caused by: inner (at <root>/${file}:2:39)`
-  expect((await vx({ 'p/vx.config.ts': body }, ['lock'])).err).toBe(
-    want('Project', 'p/vx.config.ts'),
-  )
-  expect((await vx({ '.vx/workspace.mjs': body }, ['lock'])).err).toBe(
-    want('Workspace', '.vx/workspace.mjs'),
-  )
+  const want = (file: string) =>
+    `✗ vx lock  lock not written\n\n  ${file}:2:11\n  threw: outer; caused by: inner (at ${file}:2:39)\n\n    1 | \n  > 2 | ${body.trim()}\n      |           ^`
+  expect((await vx({ 'p/vx.config.ts': body }, ['lock'])).err).toBe(want('p/vx.config.ts'))
+  expect((await vx({ '.vx/workspace.mjs': body }, ['lock'])).err).toBe(want('.vx/workspace.mjs'))
 })
 
 it('a config importing a missing file names the specifier', async () => {
@@ -65,7 +61,7 @@ it('a config importing a missing file names the specifier', async () => {
     await vx({ 'p/vx.config.ts': "import x from './nope.ts'\nexport default x\n" }, ['lock']),
   ).toEqual({
     code: 1,
-    err: "✗ vx lock  lock not written\n\n  Project config <root>/p/vx.config.ts: cannot find './nope.ts'",
+    err: "✗ vx lock  lock not written\n\n  p/vx.config.ts:1:15\n  cannot find './nope.ts'\n\n  > 1 | import x from './nope.ts'\n      |               ^",
     planned: false,
   })
 })

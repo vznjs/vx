@@ -192,7 +192,8 @@ describe('the key, over random hosts and configs', () => {
       config: {
         exec: { command: 'build', env: { passThrough: s.c.passThrough, define: s.c.define } },
         inputs: { files: [], env: s.keyed },
-        cache: { outputs: { files: [] } },
+        outputs: { files: [] },
+        cache: true,
       },
       deps: [],
       requested: true,

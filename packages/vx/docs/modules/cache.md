@@ -117,7 +117,7 @@ export interface CacheLayer {
   loadOutputDirsBatch?(hashes: readonly string[]): Map<string, OutputDirRow[]>
   outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): boolean
   // workspaceRoot anchors the artifact's `workspace-outputs/` entries
-  // (cache.outputs.workspaceFiles); omitted → only `outputs/` restores.
+  // (outputs.workspaceFiles); omitted → only `outputs/` restores.
   // outputs: the task's declared globs; an entry outside them fails the
   // whole restore (restorableOutput).
   restoreOutputs(

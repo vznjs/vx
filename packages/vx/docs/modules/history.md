@@ -220,7 +220,7 @@ The same rule, applied at the end of every run and by the doctor:
 - `detectFlaky(db, candidates)` — each a `FlakyCandidate`
   (`{ project, task, hash, status, attempts }`): the run's executed, keyed,
   cache-declaring outcomes (`run.ts` builds the list; a hit, a skip, a
-  group or a task with no `cache` block is not one), judged BEFORE the
+  group or a task with no `cache: true` is not one), judged BEFORE the
   run's own rows land. A failure on a key that passed before, a pass on
   a key that already failed after a pass, or a within-run retry is a
   `FlakyFinding` (a first pass after only failures is a recovery)

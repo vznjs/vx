@@ -67,7 +67,8 @@ function node(over: Partial<TaskNode> = {}, cfgOver: Partial<TaskConfig> = {}): 
   const config: TaskConfig = {
     exec: { command: 'build' },
     inputs: { files: [] },
-    cache: { outputs: { files: [] } },
+    outputs: { files: [] },
+    cache: true,
     ...cfgOver,
   }
   return {
@@ -236,7 +237,8 @@ describe('computeTaskHash — what the config contributes', () => {
       exec: { command: 'other' },
       dependsOn: ['^build'],
       inputs: { files: ['nope/**'] },
-      cache: { outputs: { files: ['dist/**'] } },
+      outputs: { files: ['dist/**'] },
+      cache: false,
     }
     // A field added to either set without a value here fails on this line,
     // which is what makes the two loops below a claim about the whole list.
@@ -299,10 +301,10 @@ describe('computeTaskHash — what the config contributes', () => {
     // even in a project with no `src/` — which is what stops a user's
     // narrowing edit from silently reusing the broader run's artifact.
     const wide = await key({
-      node: node({}, { inputs: { files: ['nope/**'] }, cache: { outputs: { files: [] } } }),
+      node: node({}, { inputs: { files: ['nope/**'] }, outputs: { files: [] }, cache: true }),
     })
     const narrow = await key({
-      node: node({}, { inputs: { files: [] }, cache: { outputs: { files: [] } } }),
+      node: node({}, { inputs: { files: [] }, outputs: { files: [] }, cache: true }),
     })
     expect(wide).not.toBe(narrow)
   })
@@ -343,7 +345,7 @@ describe('computeTaskHash — forwardArgs are scoped to REQUESTED tasks', () => 
     // keyed on it that never saw them (app#build, not requested).
     const defaultBuild: TaskNode = {
       ...node({ requested: true }),
-      config: { dependsOn: ['^build'], inputs: { files: [] }, cache: { outputs: { files: [] } } },
+      config: { dependsOn: ['^build'], inputs: { files: [] }, outputs: { files: [] }, cache: true },
     }
     const groupKey = (forwardArgs: readonly string[]) =>
       computeGroupKey({
@@ -414,7 +416,8 @@ describe('computeTaskHash — upstream folding', () => {
     // key while changing `pkg#a` must.
     const cfg: Partial<TaskConfig> = {
       inputs: { files: [], tasks: ['a'] },
-      cache: { outputs: { files: [] } },
+      outputs: { files: [] },
+      cache: true,
     }
     const n = node({}, cfg)
     const base = await key({
@@ -438,7 +441,7 @@ describe('computeTaskHash — upstream folding', () => {
     // genuinely dangerous declaration — the user is asserting that no
     // upstream's output can affect this task — so it must be exact rather
     // than approximately-honoured.
-    const n = node({}, { inputs: { files: [], tasks: [] }, cache: { outputs: { files: [] } } })
+    const n = node({}, { inputs: { files: [], tasks: [] }, outputs: { files: [] }, cache: true })
     const none = await key({ node: n, upstream: [] })
     const some = await key({ node: n, upstream: [outcome('pkg#a', 'ha')] })
     expect(some).toBe(none)
@@ -475,7 +478,7 @@ describe('computeTaskHash — core keys no package file', () => {
 
   it('SENSITIVITY: a package.json an input glob names moves the key', async () => {
     // CONTROL for the row above: the file is an input like any other.
-    const n = node({}, { inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } } })
+    const n = node({}, { inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true })
     const pkgPath = path.join(root, 'package.json')
     const original = await Bun.file(pkgPath).text()
     try {
@@ -577,9 +580,8 @@ describe('computeTaskHash — the trusted-OID fast path for an input file', () =
   }
   const reads = (files: string[], workspaceFiles?: string[]): Partial<TaskConfig> => ({
     inputs: { files, ...(workspaceFiles !== undefined ? { workspaceFiles } : {}) },
-    cache: {
-      outputs: { files: [] },
-    },
+    outputs: { files: [] },
+    cache: true,
   })
 
   it('a trusted index OID short-circuits before any file read', async () => {
@@ -753,9 +755,8 @@ describe('computeTaskHash — the folds only a digest held', () => {
       {},
       {
         inputs: { files: [], workspaceRuntime: ['cat ws-rt.txt'] },
-        cache: {
-          outputs: { files: [] },
-        },
+        outputs: { files: [] },
+        cache: true,
       },
     )
     await writeFile(path.join(root, 'ws-rt.txt'), 'one')

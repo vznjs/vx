@@ -9,6 +9,14 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## config: remove outputs.bin and outputs.mount
+
+outputs.bin and outputs.mount are refused as unknown fields. Call a tool by path, or install it outside vx and key on its version with inputs.runtime.
+
+## config: move outputs and stability beside cache: true
+
+No migration note.
+
 ## orchestrator: key runs from the dependencies lock
 
 a run refuses when a claimed lockfile changed since `vx lock` or .vx/dependencies.lock.json is missing; run `vx lock` after each install. The lock is version 3 (files record extras), and KeyHookContext gains locked(file), FingerprintDigests gains extras.

@@ -276,7 +276,7 @@ it("the next run sweeps a killed run's staging and leaves a live run's", async (
   await addProject(root, 'app', {
     config: `export default { tasks: { build: {
         exec: { command: 'mkdir -p dist && echo a > dist/a.txt' },
-        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+        inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
       } } }`,
     files: { 'src/in.txt': 'v1\n' },
   })

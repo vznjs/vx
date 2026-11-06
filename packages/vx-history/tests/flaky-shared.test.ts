@@ -45,11 +45,11 @@ describe('a flaky record on the history server', () => {
   a: { exec: { command: 'until [ -e ../answered ]; do sleep 0.05; done' }, inputs: { files: [] } },
   t: {
     exec: { command: 'if [ -e ../once-t ]; then rm ../once-t; exit 1; fi' },
-    dependsOn: ['a'], inputs: { files: [] }, cache: { outputs: { files: [] } },
+    dependsOn: ['a'], inputs: { files: [] }, outputs: { files: [] }, cache: true,
   },
   u: {
     exec: { command: 'if [ -e ../once-u ]; then rm ../once-u; exit 1; fi' },
-    dependsOn: ['a'], inputs: { files: [] }, cache: { outputs: { files: [] } },
+    dependsOn: ['a'], inputs: { files: [] }, outputs: { files: [] }, cache: true,
   },
 } }
 `,

@@ -515,7 +515,8 @@ describe("a sibling's bin on the PATH vx inherits, end to end", () => {
               probe: {
                 exec: { command: 'command -v tool > seen.txt || echo none > seen.txt' },
                 inputs: { files: ['src/**'], runtime: ['command -v tool || echo none'] },
-                cache: { outputs: { files: ['seen.txt'] } },
+                outputs: { files: ['seen.txt'] },
+                cache: true,
               },
             },
           }

@@ -102,7 +102,7 @@ describe('a root project in a workspace below the git top-level', () => {
       const ws = await makeWorkspace({ dir: repo, prefix: 'code-', git: false })
       await writeFile(
         path.join(ws, 'vx.config.mjs'),
-        `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['**'] }, cache: { outputs: { files: [] } } } } }\n`,
+        `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['**'] }, outputs: { files: [] }, cache: true } } }\n`,
       )
       await writeFile(path.join(ws, 'in.txt'), 'v1')
       await writeFile(path.join(repo, 'beside.txt'), 'v1')
@@ -195,7 +195,7 @@ describe('workspace inside a linked git worktree', () => {
           tasks: {
             build: {
               exec: { command: 'cat src/in.txt > out.txt' },
-              inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
+              inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
             },
           },
         }
@@ -244,9 +244,8 @@ describe('workspace inside a linked git worktree', () => {
             build: {
               exec: { command: 'cat src/in.txt > out.txt' },
               inputs: { files: ['src/**'], workspaceFiles: ['shared/**'] },
-              cache: {
-                outputs: { files: ['out.txt'] },
-              },
+              outputs: { files: ['out.txt'] },
+              cache: true,
             },
           },
         }
@@ -308,7 +307,7 @@ describe('vx run inside a git pre-commit hook', () => {
           tasks: {
             lint: {
               exec: { command: 'cat src/*.txt' },
-              inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+              inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
             },
           },
         }
@@ -410,9 +409,8 @@ describe('vx watch over a workspace in a git subdirectory', () => {
               build: {
                 exec: { command: 'cat src/in.txt > out.txt && echo run >> ${log}' },
                 inputs: { files: ['src/**'], workspaceFiles: ['shared/**'] },
-                cache: {
-                  outputs: { files: ['out.txt'] },
-                },
+                outputs: { files: ['out.txt'] },
+                cache: true,
               },
             },
           }

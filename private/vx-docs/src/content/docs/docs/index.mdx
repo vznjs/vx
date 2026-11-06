@@ -25,7 +25,8 @@ export default defineProject({
       dependsOn: ['^build'],
       exec: { command: 'tsc -b' },
       inputs: { files: ['src/**', 'tsconfig.json'] },
-      cache: { outputs: { files: ['dist/**'] } },
+      outputs: { files: ['dist/**'] },
+      cache: true,
     },
   },
 })
@@ -49,7 +50,7 @@ vx runs on [Bun](https://bun.com), on macOS and Linux (glibc). On Windows, use W
 | keep a Turborepo or Nx config       | `@vzn/vx-migrate` runs it unchanged ([Migrate](../guides/migrate/))            |
 
 Nothing is inferred. A task is cached only when it says what it reads
-(`inputs`) and what it writes (`cache.outputs`).
+(`inputs`) and what it writes (`outputs`).
 
 ---
 

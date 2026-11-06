@@ -13,13 +13,12 @@
           "package.json"
         ]
       },
-      "cache": {
-        "outputs": {
+      "outputs": {
           "files": [
             "dist/**"
           ]
-        }
-      }
+        },
+      "cache": true
     },
     "test": {
       "dependsOn": [
@@ -34,11 +33,10 @@
           "package.json"
         ]
       },
-      "cache": {
-        "outputs": {
+      "outputs": {
           "files": []
-        }
-      }
+        },
+      "cache": true
     },
     "ci": {
       "dependsOn": [

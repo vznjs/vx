@@ -27,7 +27,7 @@ async function workspace(command: string): Promise<{ root: string; dir: string }
         tasks: {
           build: {
             exec: { command: ${JSON.stringify(command)} },
-            inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+            inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
           },
         },
       }
@@ -144,7 +144,7 @@ it(
       path.join(dir, 'vx.config.mjs'),
       `export default { tasks: { build: {
         exec: { command: 'mkdir -p out && echo a > out/a.txt' },
-        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out/a.txt'] } },
+        inputs: { files: ['src/**'] }, outputs: { files: ['out/a.txt'] }, cache: true,
       } } }`,
     )
     const cacheDir = path.join(root, '.cache')

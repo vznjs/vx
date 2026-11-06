@@ -24,7 +24,7 @@ beforeEach(async () => {
   root = await makeWorkspace({ prefix: 'vx-branch-scope-', git: false })
   await addProject(root, 'app', {
     files: { 'src/in.txt': 'v1', 'README.md': 'one' },
-    config: `export default { tasks: { build: { exec: { command: 'cat src/in.txt > out.txt' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } } } } }`,
+    config: `export default { tasks: { build: { exec: { command: 'cat src/in.txt > out.txt' }, inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true } } }`,
   })
   git = gitIn(root)
   git('init', '-q', '-b', 'main')

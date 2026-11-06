@@ -38,7 +38,7 @@ it('every git vx runs sees the git and locale variables, not the rest', async ()
   await writeFile(path.join(ws, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
   await writeFile(
     path.join(ws, 'packages', 'a', 'vx.config.mjs'),
-    `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } } } } }\n`,
+    `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true } } }\n`,
   )
   expect(Bun.spawnSync({ cmd: [real, 'init', '-q'], cwd: ws }).exitCode).toBe(0)
   const r = Bun.spawnSync({
@@ -110,7 +110,7 @@ it('a hook-exported GIT_DIR finds the top-level a plain git does', async () => {
       await writeFile(path.join(dir, 'src', 'in.txt'), name)
       await writeFile(
         path.join(dir, 'vx.config.mjs'),
-        `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } } }\n`,
+        `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true } } }\n`,
       )
     }
     await writeFile(

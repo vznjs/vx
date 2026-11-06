@@ -57,6 +57,8 @@ export function plainOutput(sink: Logger): Logger {
       if (text !== '' || chunk === '') sink.taskStderr(node, text)
     },
     taskComplete(node, outcome) {
+      // Nearly every task ends with no escape held: its keys go unbuilt.
+      if (held.size === 0) return sink.taskComplete(node, outcome)
       flush(node, `${node.id}\0out`, (n, c) => sink.taskStdout(n, c))
       flush(node, `${node.id}\0err`, (n, c) => sink.taskStderr(n, c))
       sink.taskComplete(node, outcome)

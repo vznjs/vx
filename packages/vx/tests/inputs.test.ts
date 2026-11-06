@@ -1384,7 +1384,7 @@ describe('a named pipe under an input or output glob (e2e)', () => {
             tasks: {
               build: {
                 exec: { command: 'mkdir -p dist && cat src/a.txt > dist/out.txt' },
-                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['dist/**'] } },
+                inputs: { files: ['**/*'] }, outputs: { files: ['dist/**'] }, cache: true,
               },
             },
           }

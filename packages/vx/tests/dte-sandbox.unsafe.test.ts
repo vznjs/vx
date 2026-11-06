@@ -43,17 +43,20 @@ export default { plugins: [dte({ workers: { small: { max: 1, cpu: 2, memory: '1G
   gen: {
     exec: { command: 'mkdir -p out && pwd > out/where.txt', sandbox: { allow: { read: ['.'], write: ['out/'] } } },
     inputs: { files: ['vx.config.mjs'] },
-    cache: { outputs: { files: ['out/**'] } },
+    outputs: { files: ['out/**'] },
+    cache: true,
   },
   stamp: {
     exec: { command: 'sleep 0.1; : > stamp', sandbox: { allow: { read: ['.'], write: ['stamp'] } } },
     inputs: { files: ['vx.config.mjs'] },
-    cache: { outputs: { files: ['stamp'] } },
+    outputs: { files: ['stamp'] },
+    cache: true,
   },
   peek: {
     exec: { command: 'cat ../secret/s.txt', sandbox: { allow: { read: ['.'] } } },
     inputs: { files: ['vx.config.mjs'] },
-    cache: { outputs: { files: [] } },
+    outputs: { files: [] },
+    cache: true,
   },
 } }
 `,

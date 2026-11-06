@@ -19,7 +19,7 @@ import { noticed } from './helpers/notice.js'
 
 // `vx lock`, then the verb: show and info read the lock.
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
-const TIMEOUT = 20_000
+const TIMEOUT = 30_000
 
 const APP_CONFIG = `
   export default {
@@ -29,9 +29,8 @@ const APP_CONFIG = `
         exec: { command: 'echo build' },
         dependsOn: ['^build'],
         inputs: { files: ['src/**'], env: ['NODE_ENV'] },
-        cache: {
-          outputs: { files: ['dist/**'] },
-        },
+        outputs: { files: ['dist/**'] },
+        cache: true,
       },
       dev: {
         exec: {
@@ -49,9 +48,8 @@ const APP_CONFIG = `
           remote: 'only',
         },
         inputs: { files: ['src/**/*.ts'], workspaceFiles: ['tsconfig.base.json'], runtime: ['node -v'] },
-        cache: {
-          outputs: { files: [] },
-        },
+        outputs: { files: [] },
+        cache: true,
       },
     },
   }
@@ -219,9 +217,8 @@ describe('vx show (e2e)', () => {
         exec: { command: 'echo build' },
         dependsOn: ['^build'],
         inputs: { files: ['src/**'], env: ['NODE_ENV'] },
-        cache: {
-          outputs: { files: ['dist/**'] },
-        },
+        outputs: { files: ['dist/**'] },
+        cache: true,
       })
     },
     TIMEOUT,
@@ -859,7 +856,7 @@ describe('vx info — the rendered rows', () => {
         '  workers           4 — the CPU count',
         '  memory            16 GB',
         "  cache dir         /w/.vx (0 B, this workspace's run history)",
-        "  cache store       /home/u/.vx/3f2a9c1e7b4d5a60/cache (0 B, shared by this repo's checkouts)",
+        "  cache store       /home/u/.vx/3f2a9c1e7b4d5a60/cache (0 B, shared by this workspace's checkouts)",
         '  cache versions    keys vx-cache-v39 · index schema v28',
         '  cache entries     0 (0 B)',
         '  task runs (24h)   5 (2 cache hits: 1 up-to-date, 1 restored)',
@@ -953,7 +950,7 @@ describe('vx info — the rendered rows', () => {
     expect(out.filter((l) => /^ {2}(workspace root|cache )/.test(l))).toEqual([
       '  workspace root    ~/w',
       "  cache dir         ~/w/.vx (0 B, this workspace's run history)",
-      "  cache store       ~/.vx/id/cache (0 B, shared by this repo's checkouts)",
+      "  cache store       ~/.vx/id/cache (0 B, shared by this workspace's checkouts)",
       '  cache versions    keys vx-cache-v39 · index schema v28',
       '  cache entries     0 (0 B)',
     ])

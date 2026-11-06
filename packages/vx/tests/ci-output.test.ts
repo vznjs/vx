@@ -42,7 +42,7 @@ describe('a CI log receives the CLI coloured, never redrawn', () => {
           tasks: {
             build: {
               exec: { command: 'echo building && mkdir -p dist && echo hi > dist/out.txt' },
-              inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+              inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
             },
             fail: { exec: { command: 'echo boom >&2; exit 3' } },
             fc: { exec: { command: 'echo "FC=[$FORCE_COLOR]"' } },

@@ -246,6 +246,12 @@ export function dte(options: DteOptions = {}) {
       `dte() option "relay" must be an http(s) URL, got ${JSON.stringify(shown(options.relay))}`,
     )
   }
+  const unrouted = options.relay === undefined ? undefined : unroutable(options.relay)
+  if (unrouted !== undefined) {
+    throw new UserError(
+      `dte() option "relay" ${unrouted}, got ${JSON.stringify(shown(options.relay!))}`,
+    )
+  }
   // On GitHub Actions with none given, one for the relay's URL.
   const token = async (relay: string): Promise<string | undefined> =>
     (await options.token?.()) ??
@@ -388,6 +394,9 @@ export function dte(options: DteOptions = {}) {
           }
           if (!/^https?:\/\//.test(relay))
             throw new UserError(`vx dte worker: VX_DTE_RELAY must be http(s), got ${shown(relay)}`)
+          const unroutedEnv = unroutable(relay)
+          if (unroutedEnv !== undefined)
+            throw new UserError(`vx dte worker: VX_DTE_RELAY ${unroutedEnv}, got ${shown(relay)}`)
           const secret = givenSecret()
           if (secret === undefined && !onGitHub()) {
             throw new UserError(
@@ -1031,6 +1040,16 @@ export async function changedSinceParent(workspaceRoot: string): Promise<string[
 export function homeOf(sizes: readonly Size[], host: string): string | undefined {
   const of = new Set(sizes.filter((s) => s.max > 0).map((s) => s.platform))
   return of.has(host) && of.size > 1 ? host : undefined
+}
+
+/**
+ * Why a relay url no route can be appended to is refused: past a `?` or
+ * `#` every socket asked the relay's root, and one naming /v1 asked /v1/v1/….
+ */
+function unroutable(url: string): string | undefined {
+  if (/[?#]/.test(url)) return 'takes no ?query or #fragment: each route is appended to it'
+  if (/\/v1\/*$/.test(url)) return "is the relay's base, without /v1"
+  return undefined
 }
 
 /** A relay URL as a refusal may print it: a `user:pass@` would reach the CI log. */

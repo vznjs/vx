@@ -43,21 +43,17 @@ const setting = (p: string): Setting => SETTINGS.find((s) => s.path === p)!
 describe('the settings list', () => {
   it('derives each variable from its path', () => {
     expect(envName('run.timeout')).toBe('VX_RUN_TIMEOUT')
-    expect(envName('cache.inputStability.strategy')).toBe('VX_CACHE_INPUT_STABILITY_STRATEGY')
+    expect(envName('inputs.stability.strategy')).toBe('VX_INPUTS_STABILITY_STRATEGY')
     expect(envName('debug.timing')).toBe('VX_DEBUG_TIMING')
   })
 
-  it('reads no variable for cache.outputs.clean: config only (2026-10-15)', () => {
-    const env = { VX_CACHE_OUTPUTS_CLEAN: 'false' }
-    expect(settingEnv('cache.outputs.clean', env)).toBeUndefined()
-    expect(
-      resolveSetting(
-        'cache.outputs.clean',
-        { cache: { outputs: { clean: true } } },
-        undefined,
-        env,
-      ),
-    ).toEqual({ value: true, source: 'workspace' })
+  it('reads no variable for outputs.clean: config only (2026-10-15)', () => {
+    const env = { VX_OUTPUTS_CLEAN: 'false' }
+    expect(settingEnv('outputs.clean', env)).toBeUndefined()
+    expect(resolveSetting('outputs.clean', { outputs: { clean: true } }, undefined, env)).toEqual({
+      value: true,
+      source: 'workspace',
+    })
   })
 
   it('derives no variable vx sets for tasks, and no two settings share one', () => {
@@ -95,6 +91,8 @@ describe('the settings list', () => {
       ),
       ...fieldsOf('RunSettings').map((f) => `run.${f}`),
       ...fieldsOf('CacheSettings').map((f) => `cache.${f}`),
+      ...fieldsOf('WorkspaceInputs').map((f) => `inputs.${f}`),
+      ...fieldsOf('WorkspaceOutputs').map((f) => `outputs.${f}`),
       ...fieldsOf('LockSettings').map((f) => `lock.${f}`),
       ...fieldsOf('WatchSettings').map((f) => `watch.${f}`),
     ].sort()
@@ -106,7 +104,7 @@ describe('the settings list', () => {
       ),
     ].sort()
     expect(declared).toEqual(listed)
-    expect([...SETTING_GROUPS]).toEqual(['run', 'cache', 'lock', 'watch'])
+    expect([...SETTING_GROUPS]).toEqual(['run', 'cache', 'inputs', 'outputs', 'lock', 'watch'])
   })
 
   it('gives every flag on its verb', () => {

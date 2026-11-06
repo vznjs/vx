@@ -91,7 +91,7 @@ describe('stale cache hits', () => {
         path.join(root, 'a/vx.config.mjs'),
         `export default { tasks: { build: {
            exec: { command: 'cat src/* > out.txt' },
-           inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
+           inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
          } } }`,
       )
       const file = path.join(root, 'a/src/zaż "ó"\tx.txt')
@@ -136,7 +136,7 @@ describe('stale cache hits', () => {
            tasks: {
              build: {
                exec: { command: 'cp data/sponsors.json data/sponsors.json.tmp && mv data/sponsors.json.tmp data/sponsors.json && mkdir -p data && cp data/sponsors.json data/gen.json' },
-               inputs: { files: ['**/*'] }, cache: { outputs: { files: ['data'] } },
+               inputs: { files: ['**/*'] }, outputs: { files: ['data'] }, cache: true,
              },
            },
          }`,
@@ -176,7 +176,7 @@ describe('stale cache hits', () => {
            tasks: {
              build: {
                exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt' },
-               inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+               inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
              },
            },
          }`,
@@ -216,11 +216,9 @@ describe('stale cache hits', () => {
            tasks: {
              build: {
                exec: { command: 'ls routes > src/routeTree.gen.ts' },
-               inputs: { files: ['routes/**', 'src/**'] },
-               cache: {
-                 outputs: { files: ['src/routeTree.gen.ts'] },
-                 inputStability: { severity: 'error' },
-               },
+               inputs: { files: ['routes/**', 'src/**'], stability: { severity: 'error' } },
+               outputs: { files: ['src/routeTree.gen.ts'] },
+               cache: true,
              },
            },
          }`,
@@ -259,17 +257,15 @@ describe('stale cache hits', () => {
              codegen: {
                exec: { command: 'sh emit.sh' },
                inputs: { files: ['emit.sh'] },
-               cache: {
-                 outputs: { files: [], workspaceFiles: ['gen/**'] },
-               },
+               outputs: { files: [], workspaceFiles: ['gen/**'] },
+               cache: true,
              },
              consume: {
                dependsOn: ['codegen'],
                exec: { command: 'mkdir -p out && cat gen/*.ts > out/all.txt 2>/dev/null || : > out/all.txt' },
                inputs: { files: [], workspaceFiles: ['gen/*.ts'], tasks: [] },
-               cache: {
-                 outputs: { files: ['out/**'] },
-               },
+               outputs: { files: ['out/**'] },
+               cache: true,
              },
            },
          }`,
@@ -313,7 +309,7 @@ describe('stale cache hits', () => {
            tasks: {
              build: {
                exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt' },
-               inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+               inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
              },
            },
          }`,
@@ -365,7 +361,7 @@ describe('stale cache hits', () => {
            tasks: {
              build: {
                exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt' },
-               inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+               inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
              },
            },
          }`,
@@ -420,7 +416,7 @@ describe('stale cache hits', () => {
            tasks: {
              build: {
                exec: { command: 'mkdir -p dist && wc -c < src/a.txt > dist/out.txt' },
-               inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+               inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
              },
            },
          }`,
@@ -471,7 +467,7 @@ describe('stale cache hits', () => {
            tasks: {
              build: {
                exec: { command: 'mkdir -p dist && wc -c < src/a.txt > dist/out.txt' },
-               inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+               inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
              },
            },
          }`,
@@ -531,7 +527,7 @@ describe('stale cache hits', () => {
             path.join(root, 'vx.config.mjs'),
             `export default { tasks: { build: {
                exec: { command: 'mkdir -p dist && wc -c < src/a.txt > dist/out.txt' },
-               inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+               inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
              } } }`,
           )
           await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
@@ -589,7 +585,7 @@ describe('stale cache hits', () => {
            tasks: {
              build: {
                exec: { command: 'mkdir -p dist && wc -c < src/a.txt > dist/out.txt' },
-               inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+               inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
              },
            },
          }`,
@@ -632,7 +628,7 @@ describe('stale cache hits', () => {
              tasks: {
                build: {
                  exec: { command: 'mkdir -p dist && cat src/a.txt > dist/out.txt' },
-                 inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+                 inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
                },
              },
            }`,
@@ -823,7 +819,7 @@ describe('stale cache hits', () => {
   it(
     'a workspace-anchored OUTPUT landing in the consumer project is not classified stable',
     async () => {
-      // `cache.outputs.workspaceFiles` is root-anchored and deliberately
+      // `outputs.workspaceFiles` is root-anchored and deliberately
       // boundary-IGNORING — it may write inside ANOTHER project's dir. So a
       // consumer in that project, reading the same path with an ordinary
       // PROJECT-RELATIVE `inputs.files`, has a preliminary key until the
@@ -852,9 +848,8 @@ describe('stale cache hits', () => {
           'export default { tasks: { codegen: {',
           '  exec: { command: "mkdir -p ../app/gen out && cat src/version.txt > ../app/gen/out.txt && cp src/version.txt out/marker.txt" },',
           '  inputs: { files: ["src/**"] },',
-          '  cache: {',
-          '    outputs: { files: ["out/**"], workspaceFiles: ["pkgs/app/gen/**"] },',
-          '  },',
+          '  outputs: { files: ["out/**"], workspaceFiles: ["pkgs/app/gen/**"] },',
+          '  cache: true,',
           '} } }',
           '',
         ].join('\n'),
@@ -869,7 +864,7 @@ describe('stale cache hits', () => {
           // content-invalidation pattern. Without it the upstream's own input
           // key cascades into this key and masks the defect, which is exactly
           // how the 2026-07-19 stale hit had to be reproduced too.
-          '  inputs: { files: ["gen/**"], tasks: [] }, cache: { outputs: { files: ["dist/**"] } },',
+          '  inputs: { files: ["gen/**"], tasks: [] }, outputs: { files: ["dist/**"] }, cache: true,',
           '} } }',
           '',
         ].join('\n'),
@@ -926,7 +921,7 @@ describe('stale cache hits', () => {
              tasks: {
                build: {
                  exec: { command: 'cat src/a.txt' },
-                 inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+                 inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
                },
              },
            }`,
@@ -974,7 +969,7 @@ describe('stale cache hits', () => {
            tasks: {
              build: {
                exec: { command: 'mkdir -p dist && for f in src/*.ts; do cp "$f" "dist/$(basename "$f" .ts).js"; done' },
-               inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+               inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
              },
            },
          }`,
@@ -1040,7 +1035,7 @@ describe.skipIf(process.platform === 'darwin')('a name that is not UTF-8', () =>
       path.join(root, 'vx.config.mjs'),
       `export default { tasks: { build: {
          exec: { command: ${JSON.stringify(command)} },
-         inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+         inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
        } } }\n`,
     )
     await write(path.join(root, 'src', 'a'), 'v1')
@@ -1082,7 +1077,7 @@ describe.skipIf(process.platform === 'darwin')('a name that is not UTF-8', () =>
         await write(path.join(root, 'pkgs', p, 'package.json'), `{"name":"${p}"}`)
         await write(
           path.join(root, 'pkgs', p, 'vx.config.mjs'),
-          `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } } }\n`,
+          `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true } } }\n`,
         )
         await write(path.join(root, 'pkgs', p, 'src', 'i'), '1')
       }
@@ -1146,7 +1141,7 @@ describe.skipIf(process.platform === 'darwin')('a name that is not UTF-8', () =>
         path.join(root, 'vx.config.mjs'),
         `export default { tasks: { build: {
            exec: { command: 'mkdir -p dist && cat shared/* > dist/all' },
-           inputs: { files: ['src/**'], workspaceFiles: ['shared/**'] }, cache: { outputs: { files: ['dist/**'] } },
+           inputs: { files: ['src/**'], workspaceFiles: ['shared/**'] }, outputs: { files: ['dist/**'] }, cache: true,
          } } }\n`,
       )
       await write(path.join(root, 'shared', 'ok'), 'o')

@@ -128,7 +128,7 @@ describe('ci.yml', () => {
     expect(steps[cache]?.id).toBe('cache')
     expect(run.env).toEqual({
       VX_DTE_RELAY: '${{ steps.relay.outputs.url || env.VX_DTE_RELAY }}',
-      VX_CACHE_URL: '${{ steps.cache.outputs.url || env.VX_CACHE_URL }}',
+      VX_CACHE_URL: '${{ steps.outputs.url || env.VX_CACHE_URL }}',
     })
   })
 

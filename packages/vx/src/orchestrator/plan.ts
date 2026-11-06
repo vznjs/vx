@@ -25,7 +25,7 @@ export type CacheStatus =
   | 'hit-local' // entry exists in local cache
   | 'hit-remote' // entry exists in the remote layer (would be fetched)
   | 'miss' // caching enabled but no entry — would execute
-  | 'no-cache' // task opts out of caching (no `cache` block) or --no-cache
+  | 'no-cache' // task opts out of caching (no `cache: true`) or --no-cache
   | 'group' // no `exec`; just an aggregator
   | 'not-started' // a server every dependant of which restores early: the run never spawns it
   | 'skipped' // `exec.platforms` leave this machine out, or a task it depends on is skipped
@@ -186,7 +186,7 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
       // so nothing is probed. Whether that run is a miss or no cache at all
       // is the WRITE axes': `--force` and `--cache-policy=local:w` save what they
       // run, and the plan called them `no-cache`, the label a task with no
-      // `cache` block gets (item 991). The probe below routes through the
+      // `cache: true` gets (item 991). The probe below routes through the
       // policy-aware cache layer, which itself respects read gating.
       const policy = args.cachePolicy ?? FULL_CACHE_POLICY
       const reads = policy.localRead || policy.remoteRead

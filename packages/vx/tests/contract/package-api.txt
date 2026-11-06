@@ -88,7 +88,6 @@ export class Cache implements CacheLayer {
     workspaceOutputDirs?: string[]
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
-    mounts?: readonly string[]
   }): Promise<void>
   get localWritesEnabled(): boolean
   packArtifactBytes(args: SaveArgs): Promise<Uint8Array>
@@ -266,9 +265,7 @@ export function defineProject<const T extends ProjectConfig>(
           dependsOn?: readonly DependsOnEntry<Extract<keyof NonNullable<T['tasks']>, string>>[]
           exec?: Known<At<NonNullable<T['tasks']>[K], 'exec'>, ExecConfig>
           inputs?: Known<At<NonNullable<T['tasks']>[K], 'inputs'>, InputsConfig>
-          cache?: Known<At<NonNullable<T['tasks']>[K], 'cache'>, CacheConfig> & {
-            outputs?: Known<At<At<NonNullable<T['tasks']>[K], 'cache'>, 'outputs'>, CacheOutputs>
-          }
+          outputs?: Known<At<NonNullable<T['tasks']>[K], 'outputs'>, TaskOutputs>
         }
       }
     },
@@ -280,9 +277,11 @@ export function defineWorkspace<T extends WorkspaceConfig>(
       run?: Known<At<T, 'run'>, RunSettings> & {
         rules?: Known<At<At<T, 'run'>, 'rules'>, WorkspaceRules>
       }
-      cache?: Known<At<T, 'cache'>, CacheSettings> & {
-        inputStability?: Known<At<At<T, 'cache'>, 'inputStability'>, InputStability>
+      cache?: Known<At<T, 'cache'>, CacheSettings>
+      inputs?: Known<At<T, 'inputs'>, WorkspaceInputs> & {
+        stability?: Known<At<At<T, 'inputs'>, 'stability'>, InputStability>
       }
+      outputs?: Known<At<T, 'outputs'>, WorkspaceOutputs>
       lock?: Known<At<T, 'lock'>, LockSettings>
       watch?: Known<At<T, 'watch'>, WatchSettings>
     },
@@ -416,7 +415,6 @@ export async function sandboxRequestFor(
   nested: readonly string[] = [],
   cacheDir?: string,
   dependencyOutputs: readonly string[] = [],
-  mounts: readonly SandboxMount[] = [],
 ): Promise<SandboxRequest>
 == function say (src/ui/terminal.ts)
 export function say(t: Tone, line: string, stream: StreamName = 'err'): void
@@ -513,7 +511,6 @@ export interface ArtifactTask {
   readonly outputs: {
     readonly files: readonly string[]
     readonly workspaceFiles: readonly string[]
-    readonly mounts?: readonly string[]
   }
   readonly nestedProjectDirs?: readonly string[]
   readonly others?: ReadonlySet<string>
@@ -536,11 +533,6 @@ export interface BranchFacts {
   base?: string
   trusted?: boolean
   refs?: readonly string[]
-}
-== type CacheConfig (src/config.ts)
-export interface CacheConfig {
-  outputs: CacheOutputs
-  inputStability?: InputStability
 }
 == type CacheContext (src/orchestrator/plugin.ts)
 export interface CacheContext extends BaseContext {
@@ -660,7 +652,6 @@ export interface CacheLayer {
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
     absent?: boolean
-    mounts?: readonly string[]
   }): Promise<void>
   ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
@@ -671,14 +662,6 @@ export interface CacheLayer {
   outputBytes?(hash: string): number | undefined
   prune(options: PruneOptions): Promise<PruneResult>
   close(): void
-}
-== type CacheOutputs (src/config.ts)
-export interface CacheOutputs {
-  files: readonly string[]
-  workspaceFiles?: readonly string[]
-  bin?: string
-  mount?: Readonly<Record<string, string>>
-  clean?: boolean
 }
 == type CachePolicy (src/cache/policy.ts)
 export interface CachePolicy {
@@ -692,8 +675,6 @@ export interface CacheSettings {
   dir?: string
   policy?: string
   download?: 'all' | 'toplevel' | 'none'
-  inputStability?: InputStability
-  outputs?: { clean?: boolean }
   upload?: { failures?: 'ci' | 'local' | 'always' }
   store?: { embeddings?: false | string; decompress?: boolean }
   concurrency?: { download?: number; upload?: number; restore?: number }
@@ -771,7 +752,6 @@ export type ContinueMode = 'never' | 'deps-ok' | 'always'
 export interface DeclaredOutputs {
   files: readonly string[]
   workspaceFiles: readonly string[]
-  mounts?: readonly string[]
 }
 == type DependencyRule (src/config.ts)
 export interface DependencyRule {
@@ -838,14 +818,12 @@ export interface ExecuteRequest {
   readonly outputs: {
     readonly files: readonly string[]
     readonly workspaceFiles: readonly string[]
-    readonly mounts?: readonly string[]
   }
   readonly command: string
   readonly forwardArgs: readonly string[]
   readonly cwd: string
   readonly env: NodeJS.ProcessEnv
   readonly envDefine: Readonly<Record<string, string>>
-  readonly binDirs?: readonly string[]
   readonly capture: CaptureConfig
   readonly timeoutMs?: number
   readonly onStdout: (chunk: string) => void
@@ -878,7 +856,6 @@ export interface ExecuteSandbox {
   readonly config: ResolvedSandboxConfig
   readonly keyed?: readonly string[]
   readonly dependencyReads?: readonly string[]
-  readonly mounts?: readonly SandboxMount[]
 }
 == type ExecutorContext (src/orchestrator/plugin.ts)
 export interface ExecutorContext extends BaseContext {
@@ -1027,6 +1004,7 @@ export interface InputsConfig {
   tasks?: readonly string[]
   runtime?: readonly string[]
   workspaceRuntime?: readonly string[]
+  stability?: InputStability
 }
 == type InputStability (src/config.ts)
 export interface InputStability {
@@ -1847,11 +1825,6 @@ export interface SandboxIgnore {
   systemInfo?: readonly string[]
   network?: readonly string[]
 }
-== type SandboxMount (src/exec/executor.ts)
-export interface SandboxMount {
-  readonly target: string
-  readonly source: string
-}
 == type SandboxRequest (src/orchestrator/sandbox-request.ts)
 export interface SandboxRequest {
   sandbox: NonNullable<ExecuteRequest['sandbox']>
@@ -1961,7 +1934,8 @@ export interface TaskConfig {
   exec?: ExecConfig
   dependsOn?: readonly string[]
   inputs?: InputsConfig
-  cache?: CacheConfig
+  outputs?: TaskOutputs
+  cache?: boolean
 }
 == type TaskExecutor (src/exec/executor.ts)
 export interface TaskExecutor {
@@ -2108,6 +2082,12 @@ export interface TaskOutcome {
     withheld?: string[]
     inputs?: string[]
   }
+}
+== type TaskOutputs (src/config.ts)
+export interface TaskOutputs {
+  files: readonly string[]
+  workspaceFiles?: readonly string[]
+  clean?: boolean
 }
 == type TaskPlacement (src/exec/executor.ts)
 export interface TaskPlacement {
@@ -2323,6 +2303,8 @@ export interface WorkspaceConfig {
   baseBranch?: string
   run?: RunSettings
   cache?: CacheSettings
+  inputs?: WorkspaceInputs
+  outputs?: WorkspaceOutputs
   lock?: LockSettings
   watch?: WatchSettings
   plugins?: readonly (Plugin | undefined | null | false)[]
@@ -2342,6 +2324,14 @@ export interface WorkspaceIdentity {
   name: string
   repository?: string
   path?: string
+}
+== type WorkspaceInputs (src/config.ts)
+export interface WorkspaceInputs {
+  stability?: InputStability
+}
+== type WorkspaceOutputs (src/config.ts)
+export interface WorkspaceOutputs {
+  clean?: boolean
 }
 == type WorkspacePlugin (src/workspace/migration.ts)
 export interface WorkspacePlugin {

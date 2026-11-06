@@ -148,11 +148,10 @@ export default {
         files: ['src/**', 'package.json'],
         env: [...globalEnvInputs],
       },
-      cache: {
-        outputs: {
-          files: ['dist/**'],
-        },
+      outputs: {
+        files: ['dist/**'],
       },
+      cache: true,
     },
   },
 } satisfies ProjectConfig
@@ -189,10 +188,10 @@ vx run test --all      # local 3✓
 | `tasks` / `pipeline`                                        | `tasks`                                                                  |
 | `dependsOn`                                                 | `dependsOn`, the same `'build'`, `'^build'`, `'pkg#build'` syntax        |
 | `inputs`                                                    | `inputs.files`; a glob that reaches a nested workspace package also in `inputs.workspaceFiles` |
-| `outputs`                                                   | `cache.outputs.files`, plus the `.tsbuildinfo` a `tsc -b` writes outside them |
+| `outputs`                                                   | `outputs.files`, plus the `.tsbuildinfo` a `tsc -b` writes outside them |
 | `env`                                                       | `inputs.env` **and** `exec.env.passThrough`                        |
 | `passThroughEnv`                                            | `exec.env.passThrough`                                                   |
-| `cache: false`                                              | no `cache` block: the task always runs, keyed on its `inputs`            |
+| `cache: false`                                              | no `cache: true`: the task always runs, keyed on its `inputs`            |
 | `persistent: true`                                          | `exec.persistent: { … }`                                                 |
 | `with` | `dependsOn` a persistent sidecar, started beside the task |
 | `interactive: true` | `exec.interactive: true`: the task gets the terminal, alone |
@@ -303,11 +302,10 @@ export default {
       inputs: {
         files: ['src/**/*'],
       },
-      cache: {
-        outputs: {
-          files: ['dist'],
-        },
+      outputs: {
+        files: ['dist'],
       },
+      cache: true,
     },
   },
 } satisfies ProjectConfig
@@ -331,7 +329,7 @@ test: { exec: { command: `nx-exec @nx/jest:jest --project a --target test --opti
 | `{ "env": "VAR" }`                   | `inputs.env` **and** `exec.env.passThrough`         |
 | `{ "runtime": "<cmd>" }`             | `inputs.workspaceRuntime`: it runs at the workspace root, as Nx's does |
 | `{ "json": "<file>", "fields": … }`  | the whole file in `files` / `workspaceFiles`: a superset of the fields |
-| `outputs`                            | `cache.outputs.files` (or `workspaceFiles` for `dist/<project>`) |
+| `outputs`                            | `outputs.files` (or `workspaceFiles` for `dist/<project>`) |
 | `nx build app`                       | `vx run app#build`                                        |
 | `nx run app:build:production`        | `vx run app#build:production`                             |
 | `nx affected -t test`                | `vx run test --affected` (`nx()` takes `NX_BASE` or `defaultBase` as its base) |
@@ -359,7 +357,7 @@ The field-by-field mapping is in the `@vzn/vx-migrate` README.
 ## Common problems
 
 - **A project is missing.** A project is a directory holding a `vx.config.ts`; `bunx @vzn/vx-migrate` writes one for every project and prints any directory to add to your workspace globs.
-- **A task always runs.** vx caches only a task with a `cache` block. `vx-migrate` fills it from `turbo.json` or the Nx graph; a Turbo task with `cache: false` has none.
+- **A task always runs.** vx caches only a task with `cache: true`. `vx-migrate` fills it from `turbo.json` or the Nx graph; a Turbo task with `cache: false` has none.
 - **An env var is missing in the command.** vx isolates the environment: list it in `exec.env.passThrough` ([Environment variables](../../docs/environment-variables/)).
 - **`vx run build` ran one package.** Without `--all`, vx runs the package you are in.
 

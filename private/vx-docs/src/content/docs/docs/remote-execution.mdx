@@ -29,7 +29,7 @@ export default defineWorkspace({
 `--dry` says where each task runs (`@vx/reapi` or `@local`).
 
 - `exec.remote: false`, sandboxed and persistent tasks, and what depends
-  on them, stay here, as do tasks with no `cache` block.
+  on them, stay here, as do tasks with no `cache: true`.
 - Workers have no `node_modules`: make the install a `remote: 'only'` task
   the others depend on. The image needs `/bin/sh` and your toolchain.
 - A worker gets only what `inputs` declares.

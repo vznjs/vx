@@ -179,8 +179,8 @@ interface Cached {
 function cachedOutputs(t: GeneratedTask, index: number): Cached | null {
   const task = t.task
   if (task === null) return null
-  const cache = task['cache'] as { outputs?: { files?: unknown } } | undefined
-  const files = cache?.outputs?.files
+  const outputs = task['outputs'] as { files?: unknown } | undefined
+  const files = outputs?.files
   if (!Array.isArray(files)) return null
   // Where a task's outputs might land is its positive globs, as core reads
   // them: a `!` compiled as a glob is true of every other path.
@@ -267,9 +267,7 @@ export function resolveSharedOutputs(tasks: GeneratedTask[]): GeneratedTask[] {
         for (const { k, gb } of pairs) {
           if (k.back.has(gb)) continue
           k.back.add(gb)
-          ;(tasks[k.index]!.task!['cache'] as { outputs: { files: string[] } }).outputs.files.push(
-            `!${gb}`,
-          )
+          ;(tasks[k.index]!.task!['outputs'] as { files: string[] }).files.push(`!${gb}`)
         }
         kept.push(c)
         continue
@@ -289,14 +287,14 @@ export function resolveSharedOutputs(tasks: GeneratedTask[]): GeneratedTask[] {
         sharedFiles.every((g) => isLiteralPattern(g) && TSBUILDINFO.test(g))
       ) {
         c.files = c.files.filter((g) => !sharedFiles.includes(g))
-        const outputs = (t.task!['cache'] as { outputs: { files: string[] } }).outputs
+        const outputs = t.task!['outputs'] as { files: string[] }
         outputs.files = outputs.files.filter((g) => !sharedFiles.includes(g))
         kept.push(c)
         continue
       }
       dropped.add(c.index)
       const shared = c.files.find((gb) => clash.files.some((ga) => hits(clash, ga, gb)))!
-      delete t.task!['cache']
+      uncache(t.task!)
       t.todos.push(
         `declares the output ${JSON.stringify(shared)} that ${JSON.stringify(clash.name)} also ` +
           "declares — vx cleans a task's outputs before it runs and before a restore, so two " +
@@ -369,8 +367,16 @@ export const isKeyedGroup = (t: { readonly task: Record<string, unknown> | null 
  * alone, its incomplete key still let a dependant hit stale.
  */
 export function unkey(task: Record<string, unknown>): void {
-  delete task['cache']
+  uncache(task)
   delete task['inputs']
+}
+
+/** No cache: `outputs` and `inputs.stability` go with it, as they mean nothing without. */
+export function uncache(task: Record<string, unknown>): void {
+  delete task['cache']
+  delete task['outputs']
+  const inputs = task['inputs'] as Record<string, unknown> | undefined
+  if (inputs !== undefined) delete inputs['stability']
 }
 
 /** A task's `inputs` block, when it has one with a `files` list. */
@@ -457,11 +463,11 @@ export function resolveSharedWorkspaceOutputs(
   for (const p of projects) {
     const rel = relPosix(root, p.dir)
     for (const t of p.tasks) {
-      const cache = t.task?.['cache'] as
-        | { outputs?: { files?: unknown; workspaceFiles?: unknown } }
+      const outputs = t.task?.['outputs'] as
+        | { files?: unknown; workspaceFiles?: unknown }
         | undefined
-      const ws = positive(cache?.outputs?.workspaceFiles)
-      const own = positive(cache?.outputs?.files).map((g) =>
+      const ws = positive(outputs?.workspaceFiles)
+      const own = positive(outputs?.files).map((g) =>
         rel === '' ? g.replace(/^(\.\/)+/, '') : `${rel}/${g.replace(/^(\.\/)+/, '')}`,
       )
       if (ws.length === 0 && own.length === 0) continue
@@ -485,7 +491,7 @@ export function resolveSharedWorkspaceOutputs(
         kept.push({ id: `${p.name}#${t.name}`, project: p.name, ws, own })
         continue
       }
-      delete t.task!['cache']
+      uncache(t.task!)
       t.todos.push(
         `declares the workspace output ${JSON.stringify(shared)} that ${clash.id} also declares — ` +
           "vx cleans a task's outputs before it runs and before a restore, so two cached tasks " +
@@ -525,9 +531,9 @@ export function excludeWorkspaceOutputs(
   for (const p of projects) {
     const rel = relPosix(root, p.dir)
     for (const t of p.tasks) {
-      const outputs = (
-        t.task?.['cache'] as { outputs?: { files?: unknown; workspaceFiles?: unknown } } | undefined
-      )?.outputs
+      const outputs = t.task?.['outputs'] as
+        | { files?: unknown; workspaceFiles?: unknown }
+        | undefined
       const globs = [
         ...positive(outputs?.workspaceFiles),
         ...positive(outputs?.files).map((g) =>

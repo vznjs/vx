@@ -32,7 +32,7 @@
 //   - Only STABLE-key, cacheable, local-read tasks are classified. A
 //     stable miss stays in the normal (dep-gated) schedule; an unstable
 //     task is never probed here.
-//   - A task that declares `cache.outputs.workspaceFiles` (the
+//   - A task that declares `outputs.workspaceFiles` (the
 //     boundary-ignoring escape hatch) can write where a restore touches,
 //     so every task whose project directory a workspace-output glob's
 //     static prefix REACHES stays out of the restore tier, and so does
@@ -261,7 +261,7 @@ export function restoreTierExclusions(
   const prefixes: string[] = []
   let everything = false
   for (const node of nodes.values()) {
-    for (const raw of node.config.cache?.outputs.workspaceFiles ?? []) {
+    for (const raw of node.config.outputs?.workspaceFiles ?? []) {
       // A `!` entry needs no skip: its prefix (`!gen`) names no directory,
       // so it excludes nothing (A-44; the `continue` that stood here was
       // dropped in item 640).

@@ -94,13 +94,11 @@ function genInputs(r: R, dependsOn: string[] | undefined): Obj {
   })
 }
 
-function genCache(r: R): Obj {
-  return {
-    outputs: fields({
-      files: pick(r, [['dist/**'], ['dist/**', '!dist/cache/**'], []]),
-      workspaceFiles: maybe(r, () => ['reports/pkg/**']),
-    }),
-  }
+function genOutputs(r: R): Obj {
+  return fields({
+    files: pick(r, [['dist/**'], ['dist/**', '!dist/cache/**'], []]),
+    workspaceFiles: maybe(r, () => ['reports/pkg/**']),
+  })
 }
 
 function genTask(r: R): Obj {
@@ -115,7 +113,8 @@ function genTask(r: R): Obj {
   // Inputs key a task whether it caches or not; `cache` needs them.
   const inputs =
     mode === 'cached' ? genInputs(r, dependsOn) : maybe(r, () => genInputs(r, dependsOn))
-  const cache = mode === 'cached' ? genCache(r) : undefined
+  const outputs = mode === 'cached' ? genOutputs(r) : undefined
+  const cache = mode === 'cached' ? true : undefined
   const exec = fields({
     command: pick(r, ['bun test', 'tsc -b', 'echo "hi" && exit 0']),
     timeout: maybe(r, () => pick(r, ['1ms', '1m', `${MAX_TIMEOUT_MS}ms`])),
@@ -129,7 +128,7 @@ function genTask(r: R): Obj {
         : undefined,
     sandbox: mode === 'interactive' ? undefined : maybe(r, () => genSandbox(r)),
   })
-  return fields({ description, exec, dependsOn, inputs, cache })
+  return fields({ description, exec, dependsOn, inputs, outputs, cache })
 }
 
 function genProject(r: R): Obj {
@@ -161,7 +160,11 @@ function genWorkspace(r: R): Obj {
         dir: maybe(r, () => '.vx-cache'),
         policy: maybe(r, () => pick(r, ['local:rw,remote:r', 'remote:', 'local:r'])),
         download: maybe(r, () => pick(r, ['all', 'none'])),
-        inputStability: maybe(r, () =>
+      }),
+    ),
+    inputs: maybe(r, () =>
+      fields({
+        stability: maybe(r, () =>
           fields({
             strategy: maybe(r, () => pick(r, ['immutable', 'mutable', 'unchecked'])),
             severity: maybe(r, () => pick(r, ['warn', 'error'])),

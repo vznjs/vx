@@ -17,7 +17,7 @@ const flip = (name: string, exec: string, fail = 'exit 1'): string => `
     tasks: {
       test: {
         exec: { command: 'if test -f ../../once-${name}; then rm ../../once-${name}; ${fail}; fi'${exec} },
-        inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+        inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
       },
     },
   }
@@ -46,7 +46,7 @@ describe('a known-flaky task is retried once', () => {
     await addProject(root, 'twice', {
       config: `export default { tasks: { test: {
         exec: { command: 'echo said-before-exit; exit 2', retries: 1 },
-        inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+        inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
       } } }`,
       files: { 'src/input.txt': 'v1\n' },
     })

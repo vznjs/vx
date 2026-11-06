@@ -912,7 +912,7 @@ export class Orchestrator {
     let d = of.get(id)
     if (d === undefined) {
       const n = nodes.get(id)
-      const outs = n?.config.cache?.outputs
+      const outs = n?.config.cache === true ? n.config.outputs : undefined
       d =
         n === undefined || outs === undefined
           ? null
@@ -967,7 +967,6 @@ export class Orchestrator {
         outputs: {
           files: [...req.outputs.files],
           workspaceFiles: [...req.outputs.workspaceFiles],
-          ...(req.outputs.mounts === undefined ? {} : { mounts: [...req.outputs.mounts] }),
         },
         cores: job.held?.cores ?? 1,
         memory: job.held?.memory ?? 0,
@@ -983,14 +982,6 @@ export class Orchestrator {
                   ? {}
                   : {
                       reads: req.sandbox.dependencyReads.map((d) => path.relative(this.o.root, d)),
-                    }),
-                ...(req.sandbox.mounts === undefined
-                  ? {}
-                  : {
-                      mounts: req.sandbox.mounts.map((m) => ({
-                        target: m.target,
-                        source: path.relative(this.o.root, m.source),
-                      })),
                     }),
               },
             }),
@@ -1230,7 +1221,15 @@ export class Orchestrator {
     a.done.push(task)
     a.usage.record(head, job.sentAt)
     const share = shareOf(head.cpuShare)
-    const held = Math.max(1, job.startedAt === undefined ? head.durationMs : endAt - job.startedAt)
+    // At least as long as it ran: begun here once its batch's send resolved,
+    // which can be after its worker began it, it was seen for less, and its
+    // CPU over that read as more cores than it had (#5036: 1.001 each, so
+    // two that ran side by side on 2 cores replayed one after the other).
+    const held = Math.max(
+      1,
+      head.durationMs,
+      job.startedAt === undefined ? 0 : endAt - job.startedAt,
+    )
     this.took.set(task, {
       ms: held,
       cores:
@@ -2464,7 +2463,7 @@ function sandboxConfigs(nodes: ReadonlyMap<string, TaskNode> | undefined): Sandb
  * pinning every dependant to its worker held a run's shards on one.
  */
 function leaves(node: TaskNode): boolean {
-  if (node.config.cache !== undefined) return false
+  if (node.config.cache === true) return false
   const sandbox = node.config.exec?.sandbox
   return sandbox === undefined || (sandbox.allow?.write?.length ?? 0) > 0
 }

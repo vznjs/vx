@@ -32,11 +32,25 @@ export function configErrorFrame(message: string, cwd: string): string | undefin
   const rest = message.slice(head[0].length)
   // The field the refusal is about, past the path that leads to it:
   // `has unknown field "comand"`, or `tasks.build: \`cache\` is not allowed`.
-  const named =
-    colon === ':' ? /^`([^`]+)`/.exec(rest) : /^has (?:unknown )?field "([^"]+)"/.exec(rest)
+  // A refused key is quoted: `tasks.b.exec.env.define: "A=B" is not …`.
+  const said =
+    colon === ':'
+      ? /^(?:`([^`]+)`|("(?:[^"\\\n]|\\.)*"))/.exec(rest)
+      : /^has (?:unknown )?field "([^"]+)"/.exec(rest)
+  const named = said === null ? null : [said[0], said[1] ?? JSON.parse(said[2]!)]
+  // `plugins[2].name`: an element of an array, framed at the element (a
+  // plugin is a call, so no key inside it is searched).
+  const element = setting === undefined ? null : /^([^[]+)\[(\d+)\]/.exec(setting)
   const fieldPath =
-    taskName === undefined ? (tasksPath ?? setting)?.split('.') : ['tasks', JSON.parse(taskName)]
-  const segments = [...(fieldPath ?? []), ...(named === null ? [] : [named[1]!])]
+    taskName !== undefined
+      ? ['tasks', JSON.parse(taskName)]
+      : element !== null
+        ? element[1]!.split('.')
+        : (tasksPath ?? setting)?.split('.')
+  const segments = [
+    ...(fieldPath ?? []),
+    ...(named === null || element !== null ? [] : [named[1]!]),
+  ]
   if (segments.length === 0) return undefined
   let source: string
   try {
@@ -44,7 +58,7 @@ export function configErrorFrame(message: string, cwd: string): string | undefin
   } catch {
     return undefined
   }
-  const at = locate(source, segments)
+  const at = locate(source, segments, element === null ? undefined : Number(element[2]))
   if (at === undefined) return undefined
   return framed(file, source, at, message.slice(file.length), cwd)
 }
@@ -54,8 +68,70 @@ export function configErrorFrame(message: string, cwd: string): string | undefin
 const POSITION =
   /^(?:Project|Workspace) config (\/[^\n]*?\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s):(\d+):(\d+)(: [^]*)$/
 
+// The loader's `Project config <file> threw: <message> (at <file>:<line>:<col>)`:
+// the config's own throw, placed by its stack in the config itself.
+const THREW =
+  /^(?:Project|Workspace) config (\/[^\n]*?\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s) threw: ([^\n]*?) \(at (\/[^\n]*?):(\d+):(\d+)\)([^]*)$/
+
+// The loader's `<kind> config <file>: cannot find '<pkg>' …`: placed at the
+// specifier. And `<kind> config at <file> did not export a default object`:
+// at the `export default` that exported something else, when there is one.
+const UNPROVIDED =
+  /^(?:Project|Workspace) config (\/[^\n]*?\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s): (cannot find '([^'\n]+)'[^]*)$/
+const NOT_OBJECT =
+  /^(?:Project|Workspace) config at (\/[^\n]*?\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s) (did not export a default object[^]*)$/
+
+/** The file, the source offset `find` places in it, and what follows `<file>:<line>:<col>`. */
+function sourceFrame(
+  file: string,
+  find: (source: string) => number,
+  rest: string,
+  cwd: string,
+): string | undefined {
+  let source: string
+  try {
+    source = readFileSync(file, 'utf8')
+  } catch {
+    return undefined
+  }
+  const at = find(source)
+  if (at < 0) return undefined
+  const before = source.slice(0, at)
+  const line = before.split('\n').length
+  return framed(file, source, { line, col: at - before.lastIndexOf('\n') }, rest, cwd)
+}
+
 function positionFrame(message: string, cwd: string): string | undefined {
-  const pos = POSITION.exec(message)
+  const unprovided = UNPROVIDED.exec(message)
+  if (unprovided !== null) {
+    const [, file, said, pkg] = unprovided as unknown as [string, string, string, string]
+    const spec = new RegExp(
+      `(?<=\\b(?:from|import|import\\(|require\\()\\s*)(['"])${escapeRe(pkg)}\\1`,
+    )
+    return sourceFrame(file, (src) => spec.exec(src)?.index ?? -1, `: ${said}`, cwd)
+  }
+  const notObject = NOT_OBJECT.exec(message)
+  if (notObject !== null) {
+    const [, file, said] = notObject as unknown as [string, string, string]
+    return sourceFrame(
+      file,
+      (src) => /^export\s+default\b/m.exec(src)?.index ?? -1,
+      `: ${said}`,
+      cwd,
+    )
+  }
+  const threw = THREW.exec(message)
+  const pos =
+    threw !== null && threw[3] === threw[1]
+      ? [
+          threw[0],
+          threw[1],
+          threw[4],
+          threw[5],
+          // A cause's own `(at …)` names the same file: relative there too.
+          `: threw: ${threw[2]}${threw[6]!.replaceAll(threw[1]!, path.relative(cwd, threw[1]!))}`,
+        ]
+      : POSITION.exec(message)
   if (pos === null) return undefined
   const [, file, line, col, rest] = pos as unknown as [string, string, string, string, string]
   let source: string
@@ -105,6 +181,8 @@ function framed(
 function locate(
   source: string,
   segments: readonly string[],
+  /** The element of the array the last segment holds; past its end, the key. */
+  index?: number,
 ): { line: number; col: number } | undefined {
   let pos = 0
   let end = source.length
@@ -137,6 +215,10 @@ function locate(
     i = next
   }
   if (found < 0) return undefined
+  if (index !== undefined && i === segments.length) {
+    const el = elementStart(source, pos, index)
+    if (el !== undefined) found = el
+  }
   const before = source.slice(0, found)
   const line = before.split('\n').length
   return { line, col: found - before.lastIndexOf('\n') }
@@ -170,6 +252,46 @@ function literalEnd(source: string, from: number): number {
     }
   }
   return source.length
+}
+
+/** Where element `index` of the array literal at `from` (past blanks) starts, if it has one. */
+function elementStart(source: string, from: number, index: number): number | undefined {
+  let i = from
+  while (i < source.length && /\s/.test(source[i]!)) i++
+  if (source[i] !== '[') return undefined
+  let depth = 0
+  let n = 0
+  // Each element starts at the first code past `[` or a top-level `,`.
+  let pending = true
+  for (i++; i < source.length; i++) {
+    const c = source[i]!
+    if (c === '/' && source[i + 1] === '/') {
+      i = source.indexOf('\n', i)
+      if (i < 0) return undefined
+      continue
+    }
+    if (c === '/' && source[i + 1] === '*') {
+      i = source.indexOf('*/', i + 2)
+      if (i < 0) return undefined
+      i++
+      continue
+    }
+    if (/\s/.test(c)) continue
+    if (depth === 0 && (c === ']' || c === ')' || c === '}')) return undefined
+    if (pending) {
+      if (n === index) return i
+      pending = false
+    }
+    if (c === '"' || c === "'" || c === '`') {
+      for (i++; i < source.length && source[i] !== c; i++) if (source[i] === '\\') i++
+    } else if (c === '{' || c === '[' || c === '(') depth++
+    else if (c === '}' || c === ']' || c === ')') depth--
+    else if (c === ',' && depth === 0) {
+      n++
+      pending = true
+    }
+  }
+  return undefined
 }
 
 function escapeRe(s: string): string {

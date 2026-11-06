@@ -33,7 +33,7 @@ beforeEach(async () => {
   const build = `build: {
       dependsOn: ['^build'],
       exec: { command: 'true' },
-      inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+      inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
     },`
   await pkg('lib', `export default { tasks: { ${build} } }\n`)
   await pkg(
@@ -43,7 +43,7 @@ beforeEach(async () => {
     ${build}
     lint: {
       exec: { command: 'true' },
-      inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+      inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
     },
   },
 }

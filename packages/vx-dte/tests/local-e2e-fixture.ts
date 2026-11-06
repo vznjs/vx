@@ -28,11 +28,13 @@ export default { plugins: [dte({ workers: { small: { max: 2, cpu: 1, memory: '1G
     'a/vx.config.mjs': `export default { name: 'a', tasks: { gen: {
   exec: { command: 'mkdir -p out && echo made > out/a.txt' },
   inputs: { files: ['vx.config.mjs'] },
-  cache: { outputs: { files: ['out/**'] } },
+  outputs: { files: ['out/**'] },
+  cache: true,
 }, ro: {
   exec: { command: 'mkdir -p out && echo far > out/ro.txt', remote: 'only' },
   inputs: { files: ['vx.config.mjs'] },
-  cache: { outputs: { files: ['out/ro.txt'] } },
+  outputs: { files: ['out/ro.txt'] },
+  cache: true,
 } } }
 `,
     // The marker lives outside every worktree, so the worker that runs the
@@ -44,24 +46,28 @@ export default { name: 'b', tasks: {
     dependsOn: ['a#gen'],
     exec: { command: 'mkdir -p out && cat ../a/out/a.txt > out/b.txt && pwd > out/where.txt && echo used' },
     inputs: { files: ['vx.config.mjs'] },
-    cache: { outputs: { files: ['out/**'] } },
+    outputs: { files: ['out/**'] },
+    cache: true,
   },
   fail: { exec: { command: 'echo oops >&2; exit 3' } },
   trap: {
     exec: { command: "trap 'exit 0' TERM; echo > t.txt; sleep 10 & wait", timeout: '1s' },
     inputs: { files: ['vx.config.mjs'] },
-    cache: { outputs: { files: ['t.txt'] } },
+    outputs: { files: ['t.txt'] },
+    cache: true,
   },
   far: { dependsOn: ['a#ro'], exec: { command: 'cat ../a/out/ro.txt' } },
   away: {
     exec: { command: 'rm -f away && ln -s / away' },
     inputs: { files: ['vx.config.mjs'] },
-    cache: { outputs: { files: ['away/**'] } },
+    outputs: { files: ['away/**'] },
+    cache: true,
   },
   bg: {
     exec: { command: 'echo a > bg.txt && (sleep 1; echo late > late.txt) &' },
     inputs: { files: ['vx.config.mjs'] },
-    cache: { outputs: { files: ['bg.txt', 'late.txt'] } },
+    outputs: { files: ['bg.txt', 'late.txt'] },
+    cache: true,
   },
   timed: { exec: { command: 'sleep 0.5 && echo timed-ok', timeout: '2s' } },
   halt: {
@@ -70,7 +76,8 @@ export default { name: 'b', tasks: {
       env: { passThrough: ['VX_E2E_HALT'] },
     },
     inputs: { files: ['vx.config.mjs'] },
-    cache: { outputs: { files: ['h.txt'] } },
+    outputs: { files: ['h.txt'] },
+    cache: true,
   },
   slow: { exec: { command: 'touch started && sleep 60' } },
   // Fails its first attempt and passes its retry, saying where each ran.
@@ -87,7 +94,8 @@ export default { name: 'b', tasks: {
   pat: {
     exec: { command: 'echo "auth=$VX_E2E_PAT"', env: { passThrough: ['VX_E2E_PAT'], secret: ['VX_E2E_PAT'] } },
     inputs: { files: ['vx.config.mjs'] },
-    cache: { outputs: { files: [] } },
+    outputs: { files: [] },
+    cache: true,
   },
 } }
 `,
@@ -108,7 +116,8 @@ export default { name: 's', tasks: {
 const t = (probe) => ({
   exec: { command: 'echo "$PWD" >> ' + log },
   inputs: { files: ['vx.config.mjs'], runtime: [probe] },
-  cache: { outputs: { files: [] } },
+  outputs: { files: [] },
+  cache: true,
 })
 export default { name: 'r', tasks: { same: t('echo 1.4.2'), root: t('pwd'), here: t('git rev-parse --git-dir') } }
 `,
@@ -126,14 +135,14 @@ export default { name: 'p', tasks: {
     // A committed file under a task's output glob: never its output.
     'g/gen/keep.txt': 'tracked\n',
     'g/vx.config.mjs': `export default { name: 'g', tasks: {
-  gen: { exec: { command: 'echo made > gen/out.txt' }, inputs: { files: ['vx.config.mjs'] }, cache: { outputs: { files: ['gen/**'] } } },
+  gen: { exec: { command: 'echo made > gen/out.txt' }, inputs: { files: ['vx.config.mjs'] }, outputs: { files: ['gen/**'] }, cache: true },
   use: { dependsOn: ['gen'], exec: { command: 'cat gen/keep.txt gen/out.txt' } },
 } }
 `,
     // A task that rewrites its own input, as a formatter does.
     'f/in.txt': '1\n',
     'f/vx.config.mjs': `export default { name: 'f', tasks: {
-  fmt: { exec: { command: 'echo x >> in.txt && mkdir -p out && cp in.txt out/f.txt' }, inputs: { files: ['in.txt'] }, cache: { outputs: { files: ['out/**'] } } },
+  fmt: { exec: { command: 'echo x >> in.txt && mkdir -p out && cp in.txt out/f.txt' }, inputs: { files: ['in.txt'] }, outputs: { files: ['out/**'] }, cache: true },
 } }
 `,
     // Two uncached generators, long enough to run on two workers, and a

@@ -41,7 +41,7 @@ Both edit rows: vx 5b2b0a1, same machine, min of 3. By default vx
 deletes a task's outputs before a miss, tsc's `tsbuildinfo` too, so tsc
 rebuilds from scratch.
 
-`cache.outputs.clean: false` on the three tsc tasks keeps it.
+`outputs.clean: false` on the three tsc tasks keeps it.
 
 ### react-email vs Turborepo 2.9.14
 

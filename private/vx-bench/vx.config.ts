@@ -72,9 +72,8 @@ export default defineProject({
         // A new base is a new yardstick: the bench runs again against it.
         env: ['VX_BENCH_BASE'],
       },
-      cache: {
-        outputs: { files: [] },
-      },
+      outputs: { files: [] },
+      cache: true,
     },
 
     // Records this platform's numbers after a change meant to move them.
@@ -129,9 +128,8 @@ export default defineProject({
           inputs: {
             files: [...HARNESS, ...(runner === 'vx' ? ['edges.ts'] : [])],
           },
-          cache: {
-            outputs: { files: [`site/${runner}.json`] },
-          },
+          outputs: { files: [`site/${runner}.json`] },
+          cache: true,
         },
       ]),
     ),
@@ -160,9 +158,8 @@ export default defineProject({
       inputs: {
         files: ['*.ts', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
       },
-      cache: {
-        outputs: { files: [] },
-      },
+      outputs: { files: [] },
+      cache: true,
     },
 
     'lint.oxfmt': {
@@ -175,9 +172,8 @@ export default defineProject({
       inputs: {
         files: ['**/*'],
       },
-      cache: {
-        outputs: { files: [] },
-      },
+      outputs: { files: [] },
+      cache: true,
     },
 
     test: {
@@ -194,9 +190,8 @@ export default defineProject({
       },
       dependsOn: ['install'],
       inputs: { files: ['*.ts', 'tests/**', 'package.json'] },
-      cache: {
-        outputs: { files: [] },
-      },
+      outputs: { files: [] },
+      cache: true,
     },
   },
 })

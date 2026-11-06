@@ -44,7 +44,7 @@ afterEach(async () => {
 /** `a#build` copies `read` to out.txt, keyed on `src/**`; `src` holds the links. */
 async function project(
   read: string,
-  task = `inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },`,
+  task = `inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,`,
 ): Promise<void> {
   app = await addProject(root, 'a', {
     config: `export default { tasks: { build: { exec: { command: 'cat ${read} > out.txt' }, ${task} } } }`,
@@ -85,7 +85,7 @@ describe('a symlinked input keys what it points to', () => {
     "a glob whose directory is a link: an edit behind it, and a workspace input's",
     async () => {
       app = await addProject(root, 'a', {
-        config: `export default { tasks: { build: { exec: { command: 'cat lib/x.txt ${path.join(root, 'ws', 'x.txt')} > out.txt' }, inputs: { files: ['lib/**'], workspaceFiles: ['ws/**'] }, cache: { outputs: { files: ['out.txt'] } } } } }`,
+        config: `export default { tasks: { build: { exec: { command: 'cat lib/x.txt ${path.join(root, 'ws', 'x.txt')} > out.txt' }, inputs: { files: ['lib/**'], workspaceFiles: ['ws/**'] }, outputs: { files: ['out.txt'] }, cache: true } } }`,
       })
       await symlink(path.relative(app, path.join(root, 'shared')), path.join(app, 'lib'))
       await mkdir(path.join(root, 'other'))
@@ -112,7 +112,7 @@ describe('a symlinked input keys what it points to', () => {
       await mkdir(path.join(root, 'other'))
       await writeFile(path.join(root, 'other', 'z.txt'), 'W1\n')
       app = await addProject(root, 'a', {
-        config: `export default { tasks: { build: { exec: { command: 'cat src/v/x.txt lib/y.txt ../../ws/l/z.txt > out.txt' }, inputs: { files: ['src/**/*.txt', '**/*.txt'], workspaceFiles: ['ws/**/*.txt'] }, cache: { outputs: { files: ['out.txt'] } } } } }`,
+        config: `export default { tasks: { build: { exec: { command: 'cat src/v/x.txt lib/y.txt ../../ws/l/z.txt > out.txt' }, inputs: { files: ['src/**/*.txt', '**/*.txt'], workspaceFiles: ['ws/**/*.txt'] }, outputs: { files: ['out.txt'] }, cache: true } } }`,
       })
       await mkdir(path.join(app, 'src'))
       await symlink('../../../shared', path.join(app, 'src', 'v'))
@@ -141,7 +141,7 @@ describe('a symlinked input keys what it points to', () => {
       // none: `{lib,src}/**` and `{lib/**,src/**}` matched no file behind
       // `lib -> ../shared`, so an edit there was a hit.
       app = await addProject(root, 'a', {
-        config: `export default { tasks: { build: { exec: { command: 'cat lib/x.txt etc/x.txt > out.txt' }, inputs: { files: ['{lib,src}/**', '{etc/**,src/**}'] }, cache: { outputs: { files: ['out.txt'] } } } } }`,
+        config: `export default { tasks: { build: { exec: { command: 'cat lib/x.txt etc/x.txt > out.txt' }, inputs: { files: ['{lib,src}/**', '{etc/**,src/**}'] }, outputs: { files: ['out.txt'] }, cache: true } } }`,
       })
       await mkdir(path.join(root, 'other'))
       await writeFile(path.join(root, 'other', 'x.txt'), 'W1\n')
@@ -166,7 +166,7 @@ describe('a symlinked input keys what it points to', () => {
       await mkdir(path.join(root, 'other'))
       await writeFile(path.join(root, 'other', 'z.txt'), 'W1\n')
       app = await addProject(root, 'a', {
-        config: `export default { tasks: { build: { exec: { command: 'cat gen/v/x.txt ../../gen/l/z.txt > out.txt' }, inputs: { files: ['gen/**/*.txt'], workspaceFiles: ['gen/**/*.txt'] }, cache: { outputs: { files: ['out.txt'] } } } } }`,
+        config: `export default { tasks: { build: { exec: { command: 'cat gen/v/x.txt ../../gen/l/z.txt > out.txt' }, inputs: { files: ['gen/**/*.txt'], workspaceFiles: ['gen/**/*.txt'] }, outputs: { files: ['out.txt'] }, cache: true } } }`,
       })
       await mkdir(path.join(app, 'gen'))
       await symlink('../../../shared', path.join(app, 'gen', 'v'))

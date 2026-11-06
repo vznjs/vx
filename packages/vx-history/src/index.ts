@@ -290,10 +290,12 @@ function shown(url: string): string {
  * http:// to another host sent it in clear.
  */
 function secure(url: string): boolean {
-  if (/^https:\/\/\S/.test(url)) return true
-  if (!/^http:\/\/\S/.test(url)) return false
-  const host = URL.parse(url)?.hostname
-  return host === '127.0.0.1' || host === '[::1]' || host === 'localhost'
+  // Parsed as the request will be: a scheme in any case, no url it cannot carry.
+  const u = URL.parse(url)
+  if (u === null || u.host === '') return false
+  if (u.protocol === 'https:') return true
+  if (u.protocol !== 'http:') return false
+  return u.hostname === '127.0.0.1' || u.hostname === '[::1]' || u.hostname === 'localhost'
 }
 
 /** `VX_HISTORY_URL` under the option, trailing slashes dropped; undefined when neither names one. */
@@ -308,6 +310,12 @@ function serverUrlOf(
   if (!secure(url))
     throw new UserError(
       `vxHistory(): ${from} must be https (http only to 127.0.0.1, ::1 or localhost), got ${shown(url)}`,
+    )
+  // Each route is appended to the url: past a `?` or `#` it was query or
+  // fragment, and every request asked the server's root.
+  if (/[?#]/.test(url))
+    throw new UserError(
+      `vxHistory(): ${from} takes no ?query or #fragment: each route is appended to it, got ${shown(url)}`,
     )
   // Each route is the server's /v1/…: one that names /v1 asked /v1/v1/…, and every answer was a 404.
   if (url.endsWith('/v1'))

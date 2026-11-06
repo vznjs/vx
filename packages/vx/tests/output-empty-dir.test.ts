@@ -30,7 +30,7 @@ async function workspace(outputs: string[]): Promise<{ root: string; dir: string
         tasks: {
           build: {
             exec: { command: 'rm -rf dist && mkdir -p dist/empty dist/a/b && echo real > dist/real.txt' },
-            inputs: { files: ['src/**'] }, cache: { outputs: { files: ${JSON.stringify(outputs)} } },
+            inputs: { files: ['src/**'] }, outputs: { files: ${JSON.stringify(outputs)} }, cache: true,
           },
         },
       }
@@ -162,7 +162,7 @@ it(
       config: `
         export default { tasks: { build: {
           exec: { command: 'cd ../.. && rm -rf gen && mkdir -p gen/empty && echo real > gen/real.txt' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: [], workspaceFiles: ['gen/**'] } },
+          inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['gen/**'] }, cache: true,
         } } }`,
       files: { 'src/in.txt': 'v1\n' },
     })
@@ -194,7 +194,7 @@ it(
       config: `
         export default { tasks: { build: {
           exec: { command: 'cd ../.. && rm -rf gen && mkdir -p gen/empty && echo real > gen/real.txt' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: [], workspaceFiles: ['gen/**'] } },
+          inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['gen/**'] }, cache: true,
         } } }`,
       files: { 'src/in.txt': 'v1\n' },
     })
@@ -227,7 +227,7 @@ it(
       config: `
         export default { tasks: { build: {
           exec: { command: 'mkdir -p dist && cp src/in.txt dist/real.txt' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+          inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
         } } }`,
       files: { 'src/in.txt': 'v1\n' },
     })
@@ -257,7 +257,7 @@ it(
       config: `
         export default { tasks: { build: {
           exec: { command: 'cd ../.. && mkdir -p gen && echo real > gen/real.txt' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: [], workspaceFiles: ['gen/**'] } },
+          inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['gen/**'] }, cache: true,
         } } }`,
       files: { 'src/in.txt': 'v1\n' },
     })
@@ -317,7 +317,7 @@ it(
       config: `
         export default { tasks: { build: {
           exec: { command: 'cd ../.. && mkdir -p gen && echo real > gen/real.txt' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: [], workspaceFiles: ['gen/**'] } },
+          inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['gen/**'] }, cache: true,
         } } }`,
       files: { 'src/in.txt': 'v1\n' },
     })

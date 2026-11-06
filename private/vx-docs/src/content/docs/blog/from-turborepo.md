@@ -70,11 +70,10 @@ export default {
       inputs: {
         files: ['src/**'],
       },
-      cache: {
-        outputs: {
+      outputs: {
           files: ['dist/**'],
         },
-      },
+      cache: true,
     },
     test: {
       dependsOn: ['build'],
@@ -129,10 +128,10 @@ Both use the same mapper.
 | ---------------------------------------------- | ------------------------------------------------------- |
 | `tasks` / `pipeline`                           | `tasks`                                                 |
 | `dependsOn`                                    | `dependsOn`, identical syntax                           |
-| `inputs` / `outputs`                           | `inputs.files` / `cache.outputs.files`            |
+| `inputs` / `outputs`                           | `inputs.files` / `outputs.files`            |
 | `env`                                          | `inputs.env` **and** `exec.env.passThrough`       |
 | `passThroughEnv`                               | `exec.env.passThrough`                                  |
-| `cache: false`                                 | omit the `cache` block                                  |
+| `cache: false`                                 | omit `cache: true`                                  |
 | `persistent: true`                             | `exec.persistent: {}`, with a TODO to set `readyWhen` when a task depends on it |
 | `with` | `dependsOn` a persistent sidecar, started beside the task |
 | `interactive: true` | `exec.interactive: true`: the task gets the terminal, alone |

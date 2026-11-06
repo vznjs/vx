@@ -1720,18 +1720,13 @@ it('replays what each task took on every worker the sizes allow: the ideal end',
     await Bun.sleep(50)
     const runs = [h.o.execute(h.req('t1')), h.o.execute(h.req('t2'))]
     await w.batches()
-    await Bun.sleep(200)
     const done = { exitCode: 0, durationMs: 200, cpuMs: 200 }
     await w.finish('t1', 'k-t1', done)
-    await Bun.sleep(200)
     await w.finish('t2', 'k-t2', { ...done, durationMs: 400, cpuMs: 400 })
     await Promise.all(runs)
     // Side by side the longer ends it; one after the other, both.
-    const apart = h.o.idealMs(() => [], sizes)!
-    const chained = h.o.idealMs((id) => (id === 't2' ? ['t1'] : []), sizes)!
-    expect(apart).toBeGreaterThanOrEqual(380)
-    expect(apart).toBeLessThan(600)
-    expect(chained - apart).toBeGreaterThanOrEqual(180)
+    expect(h.o.idealMs(() => [], sizes)).toBe(400)
+    expect(h.o.idealMs((id) => (id === 't2' ? ['t1'] : []), sizes)).toBe(600)
   } finally {
     await h.stop()
   }
@@ -1749,7 +1744,6 @@ it('advises the workers that would have run it best, from the same replay', asyn
     await Bun.sleep(50)
     const runs = [h.o.execute(h.req('t1')), h.o.execute(h.req('t2'))]
     await w.batches()
-    await Bun.sleep(200)
     const done = { exitCode: 0, durationMs: 200, cpuMs: 200 }
     await w.finish('t1', 'k-t1', done)
     await w.finish('t2', 'k-t2', done)
@@ -1761,8 +1755,7 @@ it('advises the workers that would have run it best, from the same replay', asyn
       ['any', [{ count: 1, cores: 2, memoryBytes: 5e9 }]],
     ])
     // Both end as the ideal does: every worker the sizes allow ends it no sooner.
-    const ideal = Math.round(h.o.idealMs(() => [], sizes)!)
-    expect(advice.map((a) => a.endMs)).toEqual([ideal, ideal])
+    expect(advice.map((a) => a.endMs)).toEqual([200, 200])
   } finally {
     await h.stop()
   }
@@ -1771,20 +1764,24 @@ it('advises the workers that would have run it best, from the same replay', asyn
 // Main 6a7224f: ideal 127.8 s above real 111.0 s. Mac shards ran five
 // side by side at a 0.22 share; the replay kept their crowded length and
 // booked the cores they would use free, so it ran them one at a time.
+// PR #5036's CI: ideal 799 ms. The orchestrator marks a task begun once
+// its batch's send resolves, which can be after its worker began it: it
+// saw 399.5 ms of a 400 ms task on 400 ms of CPU, 1.001 cores each, and
+// the two no longer fit side by side on their 2 cores. No sleep here: the
+// orchestrator sees each for ~0 ms of the 400 ms its worker timed.
 it('replays a crowded task with the cores it used, never above the real run', async () => {
   const h = await harness(new Map([node('t1'), node('t2')]))
   try {
     const sizes = [{ name: 'small', max: 1, cpu: 2, memory: 1e10 }]
     const w = await h.worker(2)
-    await Bun.sleep(50)
     const runs = [h.o.execute(h.req('t1')), h.o.execute(h.req('t2'))]
     await w.batches()
-    await Bun.sleep(400)
     const crowded = { exitCode: 0, durationMs: 400, cpuMs: 400, cpuShare: 0.5 }
     await w.finish('t1', 'k-t1', crowded)
     await w.finish('t2', 'k-t2', crowded)
     await Promise.all(runs)
-    expect(h.o.idealMs(() => [], sizes)!).toBeLessThan(600)
+    expect(h.o.finished(() => undefined).map((t) => t.took)).toEqual([400, 400])
+    expect(h.o.idealMs(() => [], sizes)).toBe(400)
   } finally {
     await h.stop()
   }
@@ -2127,7 +2124,7 @@ it('an order lists each dependency after its own dependencies', async () => {
         id,
         deps,
         projectDir: '/ws/a',
-        config: { cache: { outputs: { files: ['dist/**'] } } },
+        config: { outputs: { files: ['dist/**'] }, cache: true },
       } as unknown as TaskNode,
     ] as const
   const h = await harness(
@@ -2156,7 +2153,7 @@ it('an order names its key and each dependency’s; the result comes back by the
         id,
         deps,
         projectDir: `/ws/${id}`,
-        config: { cache: { outputs: { files: ['dist/**'] } } },
+        config: { outputs: { files: ['dist/**'] }, cache: true },
       } as unknown as TaskNode,
     ] as const
   const h = await harness(
@@ -2513,7 +2510,7 @@ it('an order names every dependency, held by its worker or not', async () => {
         id,
         deps,
         projectDir: `/ws/${id}`,
-        config: { cache: { outputs: { files: ['dist/**'] } } },
+        config: { outputs: { files: ['dist/**'] }, cache: true },
       } as unknown as TaskNode,
     ] as const
   const h = await harness(new Map([cached('t1'), cached('x'), cached('w'), cached('y', ['x'])]))
@@ -2688,7 +2685,7 @@ it('a cached task’s dependant goes wherever it fits: a cache carries its outpu
   const cached = (id: string, deps: string[] = []) =>
     [
       id,
-      { id, deps, projectDir: '/ws', config: { cache: { outputs: { files: ['out/**'] } } } },
+      { id, deps, projectDir: '/ws', config: { outputs: { files: ['out/**'] }, cache: true } },
     ] as unknown as readonly [string, TaskNode]
   const h = await harness(new Map([cached('g'), cached('x'), cached('u', ['g'])]))
   try {
@@ -4794,7 +4791,7 @@ it('takes a key that reads a dependency’s outputs, which its worker restores',
         id,
         deps,
         projectDir: path.join(root, 'a'),
-        config: outputs === undefined ? {} : { cache: { outputs: { files: outputs } } },
+        config: outputs === undefined ? {} : { outputs: { files: outputs }, cache: true },
       } as unknown as TaskNode,
     ] as const
   const nodes = new Map([node('a#gen', [], ['dist/**']), node('a#use', ['a#gen'])])
@@ -4969,7 +4966,7 @@ it('sends an order too long for one frame with its deps ahead, all of them arriv
         id,
         deps: id === 'final' ? ids : [],
         projectDir: '/ws',
-        config: { cache: { outputs: out } },
+        config: { outputs: out, cache: true },
       } as unknown as TaskNode,
     ]),
   )

@@ -11,6 +11,7 @@ import { indexDb, Cache, type InvocationRecord, type RunRecord } from '../src/ca
 import { taskDefinition, taskDefinitions } from '../src/graph/definition.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 import { LocalHistoryProvider } from '../src/history/index.js'
+import { xxh3hex } from '../src/util/index.js'
 
 const node = (config: object): TaskNode =>
   ({ id: 'p#t', projectName: 'p', taskName: 't', config }) as TaskNode
@@ -130,6 +131,15 @@ it('a definition is the command and env.define, in any key order', () => {
   expect(taskDefinition(node({}))).toBeUndefined()
   expect(taskDefinition(BEFORE)).toBe(taskDefinition(INPUTS_EDITED)!)
   expect(taskDefinition(BEFORE)).not.toBe(taskDefinition(COMMAND_CHANGED)!)
+})
+
+// The rows a history holds were taken under these hashes: a task with no
+// values hashes as it always has, or every timing starts over.
+it('a task with no env.define keeps the definition its rows were taken under', () => {
+  const want = xxh3hex(`p#t\0bun test\0[]`)
+  expect(taskDefinition(BEFORE)).toBe(want)
+  expect(taskDefinition(node({ exec: { command: 'bun test', env: { define: {} } } }))).toBe(want)
+  expect(taskDefinition(DEFINE_CHANGED)).toBe(xxh3hex(`p#t\0bun test\0[["MODE","slow"]]`))
 })
 
 // PR #4150's first run: main's shared timings carried no definitions, and

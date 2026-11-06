@@ -17,7 +17,8 @@ string:
 color: {
   exec: { command: "printf 'step 1\\rstep 2\\rdone\\n'" },
   inputs: { files: [] },
-  cache: { outputs: { files: [] } },
+  outputs: { files: [] },
+  cache: true,
 }
 ```
 

@@ -50,15 +50,17 @@ describe('computeGroupHash', () => {
 it('keys a config whatever order it spells its keys in, all the way down', () => {
   const a = {
     exec: { command: 'x', env: { define: { A: '1', B: '2' } } },
-    cache: { outputs: { files: ['dist/**'] } },
+    outputs: { files: ['dist/**'] },
+    cache: true,
   }
   const b = {
-    cache: { outputs: { files: ['dist/**'] } },
+    outputs: { files: ['dist/**'] },
+    cache: true,
     exec: { env: { define: { B: '2', A: '1' } }, command: 'x' },
   }
   expect(hashTaskConfig(b as never)).toBe(hashTaskConfig(a as never))
   // An array keeps its order: it says something.
-  const c = { ...a, cache: { outputs: { files: ['b', 'a'] } } }
-  const d = { ...a, cache: { outputs: { files: ['a', 'b'] } } }
+  const c = { ...a, outputs: { files: ['b', 'a'] }, cache: true }
+  const d = { ...a, outputs: { files: ['a', 'b'] }, cache: true }
   expect(hashTaskConfig(c as never)).not.toBe(hashTaskConfig(d as never))
 })

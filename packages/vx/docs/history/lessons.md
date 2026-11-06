@@ -9,6 +9,10 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   pass both ways. A surviving mutation means the test is wrong at least as
   often as the claim — and suspect a second copy of the rule first.
 - A skip is a silent pass. Gate on an env var CI sets.
+- A process a test waits on can be held by the Mac scheduler for
+  seconds. A witness that acts after a fixed sleep raced the kill-tree
+  guard and lost once in 48 runs (2026-11-06). Wait on the helper's exit,
+  then ask the witness, never a clock.
 - Assert the exact expected set, not the absence of one string.
 - A test that expects a failure passes on any failure. The credential-store
   test in `dte-sandbox.unsafe.test.ts` expected exit 1, and its config was
@@ -316,3 +320,11 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   deaf again while any other watch opens or closes, and a close proves
   nothing after it. Count a change's watch churn before trusting an arm
   (2026-11-04, `watch-recreated-dirs`).
+- A `VX_UPDATE_CONTRACT=1` regen must write the bytes it would check, or
+  write nothing. plugin-templates.ts was regenerated raw (JSON's quoted
+  keys) over its formatted copy, and the CLI surface regen running beside
+  it harvested no seam from the quoted keys: `init --plugin` lost four
+  values (2026-11-06).
+- The suite runs with `FORCE_COLOR=0` because vx.config.ts sets it; a bare
+  `bun test` gets it from the `color-env.ts` preload. A test that sets
+  `CI=1` for a child gets colour otherwise (2026-11-06).

@@ -186,7 +186,7 @@ export interface TaskOutcome {
   serverExit?: number
   /**
    * The input that changed while the command ran, failing the task under
-   * `inputStability.severity: 'error'` (workspace-relative; '' when vx
+   * `inputs.stability.severity: 'error'` (workspace-relative; '' when vx
    * could not name it). The exit is vx's 1; the label reads this instead.
    */
   inputMoved?: string

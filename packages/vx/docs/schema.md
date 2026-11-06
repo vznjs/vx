@@ -120,7 +120,8 @@ interface TaskConfig {
   exec?: ExecConfig // omit to declare a group task
   dependsOn?: readonly string[] // Turbo/Nx micro-syntax
   inputs?: InputsConfig // what the task reads: its key, cached or not
-  cache?: CacheConfig // caching is opt-in; needs `exec` and `inputs`
+  outputs?: TaskOutputs // what it writes, cached or not
+  cache?: boolean // caching is opt-in; needs `exec`, `inputs` and `outputs`
 }
 ```
 
@@ -168,9 +169,8 @@ test: {
   description: 'bun test against the tests/ tree',
   exec: { command: 'bun test' },
   inputs: { files: ['src/**', 'tests/**'] },
-  cache: {
-    outputs: { files: [] },
-  },
+  outputs: { files: [] },
+  cache: true,
 }
 ```
 
@@ -383,9 +383,8 @@ daemon, a Docker socket, a device, a VPN-only host.
   install: {
     exec: { command: 'bun install --frozen-lockfile', remote: 'only' },
     inputs: { files: ['package.json', 'bun.lock'] },
-    cache: {
-      outputs: { files: ['node_modules/**'] },
-    },
+    outputs: { files: ['node_modules/**'] },
+    cache: true,
   },
   build: { dependsOn: ['install'], /* … */ },
   ```
@@ -638,7 +637,7 @@ highest priority:
    build; if one does, say so explicitly:
 
    ```ts
-   inputs: { files: ['src/**'], env: ['NODE_OPTIONS'] }, cache: { outputs: { files: [] } }
+   inputs: { files: ['src/**'], env: ['NODE_OPTIONS'] }, outputs: { files: [] }, cache: true
    ```
 
    That folds its value into the key. The two axes are orthogonal on
@@ -872,6 +871,7 @@ interface InputsConfig {
   runtime?: readonly string[] // optional; project-dir shell commands
   workspaceRuntime?: readonly string[] // optional; workspace-root shell commands
   tasks?: readonly string[] // optional; same micro-syntax as dependsOn
+  stability?: InputStability // optional
 }
 ```
 
@@ -1247,33 +1247,18 @@ task's outputs. Typical case: an integration-test task `dependsOn`s
 `build` for ordering, but its inputs are only the test source — so
 `inputs.tasks: []` to keep `build` from invalidating it.
 
-### `cache` (optional)
-
-`cache` makes a task cached: `outputs` lists what it writes, which a
-hit restores. A task with no `cache` block always runs.
+##### `inputs.stability` (optional)
 
 ```ts
-build: {
-  exec: { command: 'tsc -b' },
-  inputs: { files: ['src/**', 'tsconfig.json'] },
-  cache: { outputs: { files: ['dist/**'] } },
-}
-```
-
-```ts
-interface CacheConfig {
-  outputs: CacheOutputs // required when `cache` is provided
-  inputStability?: InputStability // optional
-}
-
 interface InputStability {
   strategy?: 'immutable' | 'mutable' | 'unchecked' // default 'immutable'
   severity?: 'warn' | 'error' // default 'warn'
 }
 ```
 
-`inputStability` says what a write to an input while the command runs
-means. `strategy` says which writes count:
+`inputs.stability` says what a write to an input while the command runs
+means for the save. An uncached task saves nothing, so there it changes
+nothing. `strategy` says which writes count:
 
 - `'immutable'` (the default, on CI too): any write. An edit undone
   mid-run, or another task changing the file and putting it back, cannot
@@ -1302,12 +1287,12 @@ moved file as an input withholds its own.
 
 Each field is resolved on its own, highest first:
 
-1. `VX_CACHE_INPUT_STABILITY_STRATEGY` (`immutable`, `mutable`,
-   `unchecked`) and `VX_CACHE_INPUT_STABILITY_SEVERITY` (`warn`, `error`), for the whole run
+1. `VX_INPUTS_STABILITY_STRATEGY` (`immutable`, `mutable`,
+   `unchecked`) and `VX_INPUTS_STABILITY_SEVERITY` (`warn`, `error`), for the whole run
    (a CI job that wants `error` sets it without editing configs); any
    other value is refused before a task runs;
-2. the task's own `cache.inputStability`;
-3. the workspace's `inputStability` (`.vx/workspace.ts`);
+2. the task's own `inputs.stability`;
+3. the workspace's `inputs.stability` (`.vx/workspace.ts`);
 4. the default, `'immutable'` and `'warn'`.
 
 Never folded into a cache key.
@@ -1321,38 +1306,28 @@ export default defineProject({
       // tsdown rewrites package.json with the same bytes on every build;
       // different bytes fail the run rather than rebuild next time.
       exec: { command: 'tsdown' },
-      inputs: { files: ['src/**', 'package.json'] },
-      cache: {
-        outputs: { files: ['dist/**'] },
-        inputStability: { strategy: 'mutable', severity: 'error' },
+      inputs: {
+        files: ['src/**', 'package.json'],
+        stability: { strategy: 'mutable', severity: 'error' },
       },
+      outputs: { files: ['dist/**'] },
+      cache: true,
     },
   },
 })
 ```
 
-**Caching is opt-in.** Omit `cache` and the task always runs (no read,
-no write). Provide it and caching is active for that task. The
-project loader requires `exec`, the task's `inputs` and `cache.outputs`
-when `cache` is set: declaring "what does this read?" and "what does
-it produce?" is a deliberate, conscious choice, and a task with no
-command produces nothing to cache.
+### `outputs` (optional)
 
-**Why opt-in?** Defaulting caching to ON with implicit "all files / no
-outputs" silently produces stale builds the moment a user forgets
-to revisit the config. The cost of a single forgotten cache miss
-(re-run a task) is much less than the cost of a stale cache hit
-(ship broken artifacts).
-
-#### `CacheOutputs`
+What the task produces, cached or not. On an uncached task, dependants'
+sandbox reads work the same; nothing is saved or restored, and nothing is
+cleaned, since there is no snapshot to keep exact.
 
 ```ts
-interface CacheOutputs {
+interface TaskOutputs {
   files: readonly string[] // required
   workspaceFiles?: readonly string[] // optional; workspace-root-relative
   clean?: boolean // optional; false keeps outputs on a miss
-  bin?: string // optional; a dir of programs on every dependant's PATH
-  mount?: Record<string, string> // optional; absolute path -> output dir, in each dependant's sandbox
 }
 ```
 
@@ -1402,90 +1377,7 @@ first, for a tool that reads its own last output (tsc's
 stores every file the outputs match after the run, so a file an older
 build left behind is cached and restored on every machine. A retry
 still starts clean, and a hit still restores bit-identically. Omitted → the workspace's
-`cache.outputs.clean`, else `true`.
-
-**`bin: 'out/bin'`** names the directory of the outputs that holds
-programs. Every task that depends on this one gets it first on `PATH`,
-so a `tools` project builds Node once and the others run `node`:
-
-```ts
-// packages/tools/vx.config.ts
-import { defineProject } from '@vzn/vx/config'
-
-export default defineProject({
-  tasks: {
-    node: {
-      exec: { command: './build-node.sh' },
-      inputs: { files: ['build-node.sh'] },
-      cache: { outputs: { files: ['out/**'], bin: 'out/bin' } },
-    },
-  },
-})
-```
-
-A task with `dependsOn: ['tools#node']` then runs `node build.js`.
-
-It is declared, never read from a layout. It must sit under the fixed
-head of a `files` glob, so a hit restores it and a sandboxed dependant
-reads it (`exec.sandbox` reads what it depends on). Two dependencies
-holding one program name fail the dependant, naming both: `PATH` order
-would pick one silently. The dependant's key folds the dependency's, so
-a new tool runs it again. Pinned in `tests/dependency-bin.test.ts`.
-
-**`mount: { '/nix/store': 'out/nix/store' }`** is for programs that name
-their files by a fixed absolute path, as everything Nix builds does. Each
-sandboxed task that depends on this one sees the output directory at that
-path, read-only. vx caches and shares the tree like any output, so Nix is
-only the build command:
-
-```ts
-// packages/tools/vx.config.ts
-import { defineProject } from '@vzn/vx/config'
-
-const nixpkgs = 'https://github.com/NixOS/nixpkgs/archive/<commit>.tar.gz'
-
-export default defineProject({
-  tasks: {
-    node: {
-      exec: {
-        command: [
-          `p=$(nix build --store "$PWD/.nix" --option sandbox false --impure --print-out-paths --no-link --expr 'with import (fetchTarball "${nixpkgs}") {}; nodejs_22')`,
-          // The copy's own database is this machine's: only the store is the output.
-          `nix copy --from "$PWD/.nix" --to "local?root=$PWD/out" "$p" --no-check-sigs && rm -rf out/nix/var`,
-          `mkdir -p out/bin && ln -s "../nix/store/\${p#/nix/store/}/bin/node" out/bin/node`,
-        ].join(' && '),
-        // Nix builds for this machine: the key holds which one.
-        platforms: ['linux-x64', 'linux-arm64'],
-        sandbox: {
-          allow: {
-            network: ['cache.nixos.org', 'github.com', 'codeload.github.com'],
-            unixSockets: true, // curl, inside Nix
-            write: ['.nix/', 'out/', '~/.cache/nix'],
-          },
-          ignore: { read: ['build', 'copy'], write: ['build', 'copy'] },
-        },
-      },
-      inputs: { files: [] },
-      cache: {
-        outputs: { files: ['out/**'], bin: 'out/bin', mount: { '/nix/store': 'out/nix/store' } },
-      },
-    },
-  },
-})
-```
-
-The nixpkgs commit sits in the command, so the key moves with it.
-Nix picks the system itself, so a mount needs `exec.platforms`: each
-platform keeps its own entry, and an arm64 machine never restores x64
-binaries.
-`--option substituters ''` builds from source instead of downloading
-Nix's prebuilt packages. The dependant runs in `exec.sandbox` on Linux:
-the mount is a bind, which an unsandboxed task or macOS cannot make, and
-vx refuses either, naming the mount. The path must exist on its machine
-(an empty `sudo mkdir -p /nix/store` is enough). An absolute link into a
-mount path is saved as written; any other absolute link is refused. Two
-dependencies mounting one path share it entry by entry. Pinned in
-`tests/dependency-mount.unsafe.test.ts`.
+`outputs.clean`, else `true`.
 
 A **`!` entry takes a path back** from what the positive globs select
 (A-44; a scratch dir under `dist` stays out of the clean this way; a
@@ -1518,7 +1410,7 @@ positive globs, so a task with a `!` entry keeps it (A-46).
   restored, and is in the task's key even when no `inputs.files` glob
   reaches it, so an edit to it moves the key.
 
-Skipped when `cache.outputs.files` is empty (nothing declared as
+Skipped when `outputs.files` is empty (nothing declared as
 output) and when no cache-write axis is enabled (e.g. `--no-cache`,
 or a read-only `--cache-policy=local:r`) — the user is debugging and
 managing the tree themselves. `--force` keeps writes on, so it does
@@ -1571,6 +1463,33 @@ tree (`caching.md` § Additive outputs, item 588). Across the two namespaces
 an upstream `files` task is told the dependant's globs in its own
 project's terms, so a workspace glob that does not start inside that
 project (`**/a.txt`) is refused even with the edge.
+
+### `cache` (optional)
+
+`cache: true` makes a task cached: `outputs` lists what it writes, which a
+hit restores. A task without `cache: true` always runs.
+
+```ts
+build: {
+  exec: { command: 'tsc -b' },
+  inputs: { files: ['src/**', 'tsconfig.json'] },
+  outputs: { files: ['dist/**'] },
+  cache: true,
+}
+```
+
+**Caching is opt-in.** Omit `cache` (or set it `false`) and the task always runs (no read,
+no write). `cache: true` turns caching on for that task. The
+project loader requires `exec`, the task's `inputs` and `outputs`
+when `cache` is set: declaring "what does this read?" and "what does
+it produce?" is a deliberate, conscious choice, and a task with no
+command produces nothing to cache.
+
+**Why opt-in?** Defaulting caching to ON with implicit "all files / no
+outputs" silently produces stale builds the moment a user forgets
+to revisit the config. The cost of a single forgotten cache miss
+(re-run a task) is much less than the cost of a stale cache hit
+(ship broken artifacts).
 
 ### `exec.sandbox` (optional)
 
@@ -1802,7 +1721,8 @@ export default defineProject({
         sandbox: { hermetic: true, allow: { read: ['.', '/opt/node-22/'], write: ['dist/'] } },
       },
       inputs: { files: ['build.js', 'src/**'], runtime: ['/opt/node-22/bin/node -v'] },
-      cache: { outputs: { files: ['dist/**'] } },
+      outputs: { files: ['dist/**'] },
+      cache: true,
     },
   },
 })
@@ -1836,7 +1756,7 @@ file: an edge to `ui#build` (inputs `src/**`) covers a read of
 `ui/README.md` too.
 
 **A task reads the outputs it depends on.** A sandboxed task may read
-the declared `cache.outputs` of every task its key folds through
+the declared `outputs` of every task its key folds through
 `dependsOn` (as `inputs.tasks` selects them), in any project. Its key
 moves with every file that made them, so the read replays nothing stale.
 
@@ -1941,7 +1861,7 @@ Nx `^production`-style input and each Turbo transit node.
 ```ts
 // `test` re-runs when a file under fixtures/ changes; nothing spawns for it
 fixtures: { inputs: { files: ['fixtures/**'] } },
-test: { exec: { command: 'bun test' }, dependsOn: ['fixtures'], cache: { /* … */ } },
+test: { exec: { command: 'bun test' }, dependsOn: ['fixtures'], cache: true /* … */ },
 ```
 
 Bare `--exclude-dependencies` keeps a group's edges for the same reason:
@@ -2010,24 +1930,24 @@ export default defineWorkspace({
     dir: 'build/.vx-cache',
     download: 'all',
     policy: 'local:rw,remote:r',
-    inputStability: { strategy: 'immutable', severity: 'warn' },
-    outputs: { clean: true },
     upload: { failures: 'ci' },
     store: { embeddings: '32KiB', decompress: true },
     concurrency: { download: 64, upload: 64, restore: 16 },
   },
+  inputs: { stability: { strategy: 'immutable', severity: 'warn' } },
+  outputs: { clean: true },
   lock: { reviewFiles: true },
   watch: { poll: false },
   plugins: [otel()],
 })
 ```
 
-The workspace holds settings in groups (`run`, `cache`, `lock`, `watch`) and the
+The workspace holds settings in groups (`run`, `cache`, `inputs`, `outputs`, `lock`, `watch`) and the
 `plugins`. Every setting has one path, and its environment variable and
 flag derive from it: `run.timeout` is `VX_RUN_TIMEOUT` and
 `vx run --timeout`. A flag beats its variable, which beats this file,
 which beats the built-in. A setting a task can set itself
-(`exec.timeout`, `exec.retries`, `cache.inputStability`) takes the
+(`exec.timeout`, `exec.retries`, `inputs.stability`) takes the
 task's value over all of them; the input-stability variables are the one
 exception, overriding every task for the run. A duration carries its
 unit (`'500ms'`, `'30s'`, `'10m'`, `'2h'`, `'30d'`), and a bare number is
@@ -2041,37 +1961,37 @@ default and where it came from.
 
 <!-- settings table: generated by tests/settings.test.ts -->
 
-| Setting                                        | Variable                            | Flag                           | Value                                                                   | Default                                                                       | What it does                                                                                                                                                                                     |
-| ---------------------------------------------- | ----------------------------------- | ------------------------------ | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `baseBranch`                                   | `VX_BASE_BRANCH`                    | —                              | a non-blank string                                                      | origin/HEAD's branch, then main, then master                                  | The default branch: a run on it has no cache scope and a bare `--affected` no base; elsewhere both use the merge base with `origin/<baseBranch>`. Named alone: `main`, not `origin/main`.        |
-| `affectedBase` (variable or flag only)         | `VX_AFFECTED_BASE`                  | —                              | a non-blank string                                                      | a plugin's base commit, else the merge base with `baseBranch`                 | The commit a bare `--affected` compares with, on the base branch too. `--affected=<base>` beats it; it beats a plugin's base commit. Env only: a committed base would be stale on the next push. |
-| `run.concurrency`                              | `VX_RUN_CONCURRENCY`                | `--concurrency`                | a positive integer, or a share of the cores like '50%'                  | the cores this process may use                                                | Tasks at once: a positive integer, or a share of the cores (`'50%'`).                                                                                                                            |
-| `run.schedule`                                 | `VX_RUN_SCHEDULE`                   | `--schedule`                   | one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' | most-work                                                                     | Which ready task starts first when there are more than workers.                                                                                                                                  |
-| `run.branch` (variable or flag only)           | `VX_RUN_BRANCH`                     | `--branch`                     | a non-blank string                                                      | git's branch, then the CI provider's                                          | The branch a run records in its history and forecasts from. Flag and env only: a committed branch would be wrong on every other branch.                                                          |
-| `run.timeout`                                  | `VX_RUN_TIMEOUT`                    | `--timeout`                    | a duration like '500ms', '30s' or '5m', at most 24 days                 | none                                                                          | A task's time limit, for tasks without their own `exec.timeout` (`'30m'`). A task's own `exec.timeout` beats it.                                                                                 |
-| `run.retries`                                  | `VX_RUN_RETRIES`                    | `--retries`                    | a non-negative integer                                                  | 0                                                                             | Re-runs of a failed task, for tasks without their own `exec.retries`. A task's own `exec.retries` beats it.                                                                                      |
-| `run.continue`                                 | `VX_RUN_CONTINUE`                   | `--continue`                   | one of 'never', 'deps-ok', 'always'                                     | deps-ok                                                                       | What a failed task takes down: `never` stops the run, `deps-ok` skips its dependents, `always` runs them too.                                                                                    |
-| `run.outputLogs` (variable or flag only)       | `VX_RUN_OUTPUT_LOGS`                | `--output-logs`                | one of 'full', 'errors-only', 'hash-only', 'none'                       | `full` on CI, else by what the run selects                                    | Which task output the run prints. Chosen before the workspace loads, so flag and env only.                                                                                                       |
-| `run.rules.exclusiveOutputs`                   | `VX_RUN_RULES_EXCLUSIVE_OUTPUTS`    | —                              | true or false                                                           | true                                                                          | Refuse two tasks whose outputs overlap even when an edge orders them.                                                                                                                            |
-| `cache.dir`                                    | `VX_CACHE_DIR`                      | `--cache-dir`                  | a non-blank string                                                      | .vx/cache, entries in ~/.vx/<repo>/cache                                      | Where the cache lives, relative to the workspace root; named, it holds the whole cache.                                                                                                          |
-| `cache.policy`                                 | `VX_CACHE_POLICY`                   | `--cache-policy`               | a non-blank string                                                      | every layer reads and writes                                                  | Which layers a run reads and writes (`'local:rw,remote:r'`); `--no-cache` and `--force` apply on top.                                                                                            |
-| `cache.scope` (variable or flag only)          | `VX_CACHE_SCOPE`                    | —                              | a non-blank string                                                      | the branch's, `<owner>/<repo>:<branch>`, with a remote cache off `baseBranch` | The branch scope plugin entries are keyed under (`'vznjs/vx:feat-x'`); task keys never carry it. Empty: no scope.                                                                                |
-| `cache.concurrency.download`                   | `VX_CACHE_CONCURRENCY_DOWNLOAD`     | `--cache-concurrency-download` | an integer ≥ 1                                                          | min(96, max(cores × 3, 64))                                                   | Remote downloads at once.                                                                                                                                                                        |
-| `cache.concurrency.upload`                     | `VX_CACHE_CONCURRENCY_UPLOAD`       | `--cache-concurrency-upload`   | an integer ≥ 1                                                          | min(96, max(cores × 3, 64))                                                   | Uploads at once, per remote.                                                                                                                                                                     |
-| `cache.concurrency.restore`                    | `VX_CACHE_CONCURRENCY_RESTORE`      | `--cache-concurrency-restore`  | an integer ≥ 1                                                          | twice `run.concurrency`                                                       | Local hits restoring outputs at once.                                                                                                                                                            |
-| `cache.download`                               | `VX_CACHE_DOWNLOAD`                 | `--cache-download`             | one of 'all', 'toplevel', 'none'                                        | all                                                                           | Which remote hits land on disk: every one, only the requested tasks, or none.                                                                                                                    |
-| `cache.inputStability.strategy`                | `VX_CACHE_INPUT_STABILITY_STRATEGY` | —                              | one of 'immutable', 'mutable', 'unchecked'                              | immutable                                                                     | What a write to an input during the command means for the save, for tasks without their own. A task's own `cache.inputStability.strategy` beats it.                                              |
-| `cache.inputStability.severity`                | `VX_CACHE_INPUT_STABILITY_SEVERITY` | —                              | one of 'warn', 'error'                                                  | warn                                                                          | Whether a skipped save warns or fails the task, for tasks without their own. A task's own `cache.inputStability.severity` beats it.                                                              |
-| `cache.outputs.clean`                          | —                                   | —                              | true or false                                                           | true                                                                          | Remove a task's declared outputs before it runs on a miss, for tasks without their own. A task's own `cache.outputs.clean` beats it.                                                             |
-| `cache.store.embeddings`                       | `VX_CACHE_STORE_EMBEDDINGS`         | —                              | false, or a size like '32KiB'                                           | '32KiB'                                                                       | Keep an entry up to this size inside the cache index, one zstd tar, rather than as files; `false` keeps none.                                                                                    |
-| `cache.store.decompress`                       | `VX_CACHE_STORE_DECOMPRESS`         | —                              | true or false                                                           | true                                                                          | Keep a larger entry as its plain files, which a hit copies or clones out; off, as one `.tar.zst`.                                                                                                |
-| `cache.upload.failures`                        | —                                   | —                              | one of 'ci', 'local', 'always'                                          | ci                                                                            | Where a failed task's log and outputs are kept in the remote: CI runs, local runs, or both.                                                                                                      |
-| `lock.reviewFiles`                             | `VX_LOCK_REVIEW_FILES`              | —                              | true or false                                                           | true                                                                          | `vx lock` writes each project's resolved config, pretty, to `vx.lock.json` beside its `vx.config`, for review; vx never reads it.                                                                |
-| `watch.poll`                                   | `VX_WATCH_POLL`                     | `vx watch --poll`              | true or false                                                           | false                                                                         | Poll for changes from the start instead of the OS watcher.                                                                                                                                       |
-| `config.workerTimeout` (variable or flag only) | `VX_CONFIG_WORKER_TIMEOUT`          | —                              | a duration like '500ms', '30s' or '5m', at most 24 days                 | 30s                                                                           | How long one config evaluation may take.                                                                                                                                                         |
-| `debug.timing` (variable or flag only)         | `VX_DEBUG_TIMING`                   | —                              | true or false                                                           | false                                                                         | Print the run's stage timings to stderr.                                                                                                                                                         |
-| `debug.watch` (variable or flag only)          | `VX_DEBUG_WATCH`                    | —                              | true or false                                                           | false                                                                         | `vx watch`: say on stderr each time the loop arms, with the projects it watches.                                                                                                                 |
-| `debug.dumpable` (variable or flag only)       | `VX_DEBUG_DUMPABLE`                 | —                              | true or false                                                           | false                                                                         | Linux: keep vx dumpable, so strace or a debugger can read its memory and `/proc/<pid>/fd`, and an unsandboxed task its env.                                                                      |
+| Setting                                        | Variable                         | Flag                           | Value                                                                   | Default                                                                       | What it does                                                                                                                                                                                     |
+| ---------------------------------------------- | -------------------------------- | ------------------------------ | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `baseBranch`                                   | `VX_BASE_BRANCH`                 | —                              | a non-blank string                                                      | origin/HEAD's branch, then main, then master                                  | The default branch: a run on it has no cache scope and a bare `--affected` no base; elsewhere both use the merge base with `origin/<baseBranch>`. Named alone: `main`, not `origin/main`.        |
+| `affectedBase` (variable or flag only)         | `VX_AFFECTED_BASE`               | —                              | a non-blank string                                                      | a plugin's base commit, else the merge base with `baseBranch`                 | The commit a bare `--affected` compares with, on the base branch too. `--affected=<base>` beats it; it beats a plugin's base commit. Env only: a committed base would be stale on the next push. |
+| `run.concurrency`                              | `VX_RUN_CONCURRENCY`             | `--concurrency`                | a positive integer, or a share of the cores like '50%'                  | the cores this process may use                                                | Tasks at once: a positive integer, or a share of the cores (`'50%'`).                                                                                                                            |
+| `run.schedule`                                 | `VX_RUN_SCHEDULE`                | `--schedule`                   | one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' | most-work                                                                     | Which ready task starts first when there are more than workers.                                                                                                                                  |
+| `run.branch` (variable or flag only)           | `VX_RUN_BRANCH`                  | `--branch`                     | a non-blank string                                                      | git's branch, then the CI provider's                                          | The branch a run records in its history and forecasts from. Flag and env only: a committed branch would be wrong on every other branch.                                                          |
+| `run.timeout`                                  | `VX_RUN_TIMEOUT`                 | `--timeout`                    | a duration like '500ms', '30s' or '5m', at most 24 days                 | none                                                                          | A task's time limit, for tasks without their own `exec.timeout` (`'30m'`). A task's own `exec.timeout` beats it.                                                                                 |
+| `run.retries`                                  | `VX_RUN_RETRIES`                 | `--retries`                    | a non-negative integer                                                  | 0                                                                             | Re-runs of a failed task, for tasks without their own `exec.retries`. A task's own `exec.retries` beats it.                                                                                      |
+| `run.continue`                                 | `VX_RUN_CONTINUE`                | `--continue`                   | one of 'never', 'deps-ok', 'always'                                     | deps-ok                                                                       | What a failed task takes down: `never` stops the run, `deps-ok` skips its dependents, `always` runs them too.                                                                                    |
+| `run.outputLogs` (variable or flag only)       | `VX_RUN_OUTPUT_LOGS`             | `--output-logs`                | one of 'full', 'errors-only', 'hash-only', 'none'                       | `full` on CI, else by what the run selects                                    | Which task output the run prints. Chosen before the workspace loads, so flag and env only.                                                                                                       |
+| `run.rules.exclusiveOutputs`                   | `VX_RUN_RULES_EXCLUSIVE_OUTPUTS` | —                              | true or false                                                           | true                                                                          | Refuse two tasks whose outputs overlap even when an edge orders them.                                                                                                                            |
+| `cache.dir`                                    | `VX_CACHE_DIR`                   | `--cache-dir`                  | a non-blank string                                                      | .vx/cache, entries in ~/.vx/<id>/cache                                        | Where the cache lives, relative to the workspace root; named, it holds the whole cache.                                                                                                          |
+| `cache.policy`                                 | `VX_CACHE_POLICY`                | `--cache-policy`               | a non-blank string                                                      | every layer reads and writes                                                  | Which layers a run reads and writes (`'local:rw,remote:r'`); `--no-cache` and `--force` apply on top.                                                                                            |
+| `cache.scope` (variable or flag only)          | `VX_CACHE_SCOPE`                 | —                              | a non-blank string                                                      | the branch's, `<owner>/<repo>:<branch>`, with a remote cache off `baseBranch` | The branch scope plugin entries are keyed under (`'vznjs/vx:feat-x'`); task keys never carry it. Empty: no scope.                                                                                |
+| `cache.concurrency.download`                   | `VX_CACHE_CONCURRENCY_DOWNLOAD`  | `--cache-concurrency-download` | an integer ≥ 1                                                          | min(96, max(cores × 3, 64))                                                   | Remote downloads at once.                                                                                                                                                                        |
+| `cache.concurrency.upload`                     | `VX_CACHE_CONCURRENCY_UPLOAD`    | `--cache-concurrency-upload`   | an integer ≥ 1                                                          | min(96, max(cores × 3, 64))                                                   | Uploads at once, per remote.                                                                                                                                                                     |
+| `cache.concurrency.restore`                    | `VX_CACHE_CONCURRENCY_RESTORE`   | `--cache-concurrency-restore`  | an integer ≥ 1                                                          | twice `run.concurrency`                                                       | Local hits restoring outputs at once.                                                                                                                                                            |
+| `cache.download`                               | `VX_CACHE_DOWNLOAD`              | `--cache-download`             | one of 'all', 'toplevel', 'none'                                        | all                                                                           | Which remote hits land on disk: every one, only the requested tasks, or none.                                                                                                                    |
+| `inputs.stability.strategy`                    | `VX_INPUTS_STABILITY_STRATEGY`   | —                              | one of 'immutable', 'mutable', 'unchecked'                              | immutable                                                                     | What a write to an input during the command means for the save, for tasks without their own. A task's own `inputs.stability.strategy` beats it.                                                  |
+| `inputs.stability.severity`                    | `VX_INPUTS_STABILITY_SEVERITY`   | —                              | one of 'warn', 'error'                                                  | warn                                                                          | Whether a skipped save warns or fails the task, for tasks without their own. A task's own `inputs.stability.severity` beats it.                                                                  |
+| `outputs.clean`                                | —                                | —                              | true or false                                                           | true                                                                          | Remove a task's declared outputs before it runs on a miss, for tasks without their own. A task's own `outputs.clean` beats it.                                                                   |
+| `cache.store.embeddings`                       | `VX_CACHE_STORE_EMBEDDINGS`      | —                              | false, or a size like '32KiB'                                           | '32KiB'                                                                       | Keep an entry up to this size inside the cache index, one zstd tar, rather than as files; `false` keeps none.                                                                                    |
+| `cache.store.decompress`                       | `VX_CACHE_STORE_DECOMPRESS`      | —                              | true or false                                                           | true                                                                          | Keep a larger entry as its plain files, which a hit copies or clones out; off, as one `.tar.zst`.                                                                                                |
+| `cache.upload.failures`                        | —                                | —                              | one of 'ci', 'local', 'always'                                          | ci                                                                            | Where a failed task's log and outputs are kept in the remote: CI runs, local runs, or both.                                                                                                      |
+| `lock.reviewFiles`                             | `VX_LOCK_REVIEW_FILES`           | —                              | true or false                                                           | true                                                                          | `vx lock` writes each project's resolved config, pretty, to `vx.lock.json` beside its `vx.config`, for review; vx never reads it.                                                                |
+| `watch.poll`                                   | `VX_WATCH_POLL`                  | `vx watch --poll`              | true or false                                                           | false                                                                         | Poll for changes from the start instead of the OS watcher.                                                                                                                                       |
+| `config.workerTimeout` (variable or flag only) | `VX_CONFIG_WORKER_TIMEOUT`       | —                              | a duration like '500ms', '30s' or '5m', at most 24 days                 | 30s                                                                           | How long one config evaluation may take.                                                                                                                                                         |
+| `debug.timing` (variable or flag only)         | `VX_DEBUG_TIMING`                | —                              | true or false                                                           | false                                                                         | Print the run's stage timings to stderr.                                                                                                                                                         |
+| `debug.watch` (variable or flag only)          | `VX_DEBUG_WATCH`                 | —                              | true or false                                                           | false                                                                         | `vx watch`: say on stderr each time the loop arms, with the projects it watches.                                                                                                                 |
+| `debug.dumpable` (variable or flag only)       | `VX_DEBUG_DUMPABLE`              | —                              | true or false                                                           | false                                                                         | Linux: keep vx dumpable, so strace or a debugger can read its memory and `/proc/<pid>/fd`, and an unsandboxed task its env.                                                                      |
 
 <!-- /settings table -->
 
@@ -2079,6 +1999,8 @@ default and where it came from.
 interface WorkspaceConfig {
   baseBranch?: string
   run?: RunSettings
+  inputs?: { stability?: InputStability }
+  outputs?: { clean?: boolean }
   cache?: CacheSettings
   lock?: LockSettings
   watch?: { poll?: boolean }
@@ -2108,8 +2030,6 @@ interface CacheSettings {
   dir?: string
   policy?: string
   download?: 'all' | 'toplevel' | 'none'
-  inputStability?: InputStability
-  outputs?: { clean?: boolean }
   upload?: { failures?: 'ci' | 'local' | 'always' }
   store?: { embeddings?: false | string; decompress?: boolean }
   concurrency?: { download?: number; upload?: number; restore?: number }
@@ -2233,9 +2153,9 @@ interface CacheSettings {
   their ties. The default costs what it did; another strategy is
   computed only when named. Any other value is refused. Never folded
   into a cache key.
-- **`cache.inputStability`** — the `cache.inputStability` of every task that
+- **`inputs.stability`** — the `inputs.stability` of every task that
   does not set its own field, same shape (`{ strategy, severity }`, §
-  `cache`). `VX_CACHE_INPUT_STABILITY_STRATEGY` and `_SEVERITY` still
+  `cache`). `VX_INPUTS_STABILITY_STRATEGY` and `_SEVERITY` still
   override every task for the run. Never folded
   into a cache key.
 - **`run.rules`** — checks on the task graph, each on unless set to
@@ -2402,9 +2322,8 @@ export default defineProject({
         files: ['src/**', '!**/*.test.ts', 'tsconfig.json'],
         env: ['NODE_ENV'],
       },
-      cache: {
-        outputs: { files: ['dist/**'] },
-      },
+      outputs: { files: ['dist/**'] },
+      cache: true,
     },
 
     // Cached, depends on upstream build; CI is in passThrough only
@@ -2414,9 +2333,8 @@ export default defineProject({
       exec: { command: 'bun test', env: { passThrough: ['CI'] } },
       dependsOn: ['build'],
       inputs: { files: ['src/**', 'tests/**'] },
-      cache: {
-        outputs: { files: [] },
-      },
+      outputs: { files: [] },
+      cache: true,
     },
 
     // Cross-project edges. The pkg.tgz from one project's build is
@@ -2429,9 +2347,8 @@ export default defineProject({
         files: ['package.json'],
         tasks: ['build', '^build'], // hash these upstream too
       },
-      cache: {
-        outputs: { files: ['pkg/*.tgz'] },
-      },
+      outputs: { files: ['pkg/*.tgz'] },
+      cache: true,
     },
 
     // Persistent dev server. Downstream tasks unblock on the
@@ -2460,13 +2377,15 @@ export default defineProject({
       description: 'oxlint',
       exec: { command: 'oxlint .' },
       inputs: { files: ['src/**', '.oxlintrc.json'] },
-      cache: { outputs: { files: [] } },
+      outputs: { files: [] },
+      cache: true,
     },
     'format-check': {
       description: 'oxfmt --check',
       exec: { command: 'oxfmt --check .' },
       inputs: { files: ['src/**', '.oxfmtrc.json'] },
-      cache: { outputs: { files: [] } },
+      outputs: { files: [] },
+      cache: true,
     },
 
     // Pure group task — `vx run ci` fans out, the group itself is
@@ -2520,9 +2439,8 @@ export default defineProject({
         runtime: ['playwright --version'],
         workspaceRuntime: ['node -v'],
       },
-      cache: {
-        outputs: { files: ['test-results/**'] },
-      },
+      outputs: { files: ['test-results/**'] },
+      cache: true,
     },
   },
 })
@@ -2546,12 +2464,14 @@ export default defineProject({
     build: {
       exec: { command: 'tsc' },
       inputs: { files: srcInputs },
-      cache: { outputs: { files: ['dist/**'] } },
+      outputs: { files: ['dist/**'] },
+      cache: true,
     },
     test: {
       exec: { command: 'bun test' },
       inputs: { files: [...srcInputs, 'tests/**'] },
-      cache: { outputs: { files: [] } },
+      outputs: { files: [] },
+      cache: true,
     },
   },
 })
@@ -2570,9 +2490,8 @@ export function tsBuild(opts?: { tsconfig?: string }): TaskConfig {
     description: 'compile TypeScript',
     exec: { command: `tsc -b ${opts?.tsconfig ?? ''}`.trim() },
     inputs: { files: ['src/**', opts?.tsconfig ?? 'tsconfig.json'] },
-    cache: {
-      outputs: { files: ['dist/**'] },
-    },
+    outputs: { files: ['dist/**'] },
+    cache: true,
   }
 }
 ```
@@ -2589,7 +2508,8 @@ export default defineProject({
       exec: { command: 'bun test' },
       dependsOn: ['build'],
       inputs: { files: ['src/**'] },
-      cache: { outputs: { files: [] } },
+      outputs: { files: [] },
+      cache: true,
     },
   },
 })
@@ -2615,9 +2535,8 @@ e2e: {
     files: ['e2e/**'],
     tasks: [],   // dev's hash does not affect e2e's cache identity
   },
-  cache: {
-    outputs: { files: ['playwright-report/**'] },
-  },
+  outputs: { files: ['playwright-report/**'] },
+  cache: true,
 }
 ```
 
@@ -2633,7 +2552,7 @@ when:
   the key, so they form their own entry anyway).
 
 It applies to the whole run; per-task opt-out belongs in config (omit
-the `cache` block).
+`cache: true`).
 
 ## Schema validation errors
 
@@ -2703,18 +2622,21 @@ a user meets most:
 | `inputs.tasks must be an array of non-empty strings`                                                                                  | Non-string / empty entry, or a bare string.                                                                                                                                                                                    |
 | `inputs.tasks: "<name>" names no task in <task>.dependsOn`                                                                            | An exact entry no `dependsOn` entry of its form names.                                                                                                                                                                         |
 | `invalid inputs.tasks "<entry>": <reason>`                                                                                            | A malformed entry (`^`, `a#`, `#x`, `!`, `^a#b`), refused at load with the parser's reason.                                                                                                                                    |
-| `cache.outputs is required when cache is set`                                                                                         | Forgot `outputs`.                                                                                                                                                                                                              |
-| `cache.inputStability must be an object`                                                                                              | A bare string (`inputStability: 'mutable'`).                                                                                                                                                                                   |
-| `cache.inputStability.strategy must be 'immutable', 'mutable' or 'unchecked'`                                                         | Any other value (`'content'`, `false`).                                                                                                                                                                                        |
-| `cache.inputStability.severity must be 'warn' or 'error'`                                                                             | Any other value (`'fail'`, `true`).                                                                                                                                                                                            |
-| `cache.outputs must be an object`                                                                                                     | Present but not an object: a string (`outputs: 'dist'`). An array is the row above.                                                                                                                                            |
-| `cache.outputs.files must be an array`                                                                                                | Wrong shape.                                                                                                                                                                                                                   |
+| `cache must be true or false`                                                                                                         | `cache: {...}` or `'yes'`; caching is a switch.                                                                                                                                                                                |
+| `cache needs outputs — what the task produces, outputs: { files: [...] } ([] for none)`                                               | Forgot `outputs` on a cached task.                                                                                                                                                                                             |
+| `outputs needs exec — a task with no command writes nothing`                                                                          | `outputs` on a group task.                                                                                                                                                                                                     |
+| `inputs.stability needs exec — a task with no command runs nothing that could write its inputs`                                       | `inputs.stability` on a group task.                                                                                                                                                                                            |
+| `inputs.stability must be an object`                                                                                                  | A bare string (`stability: 'mutable'`).                                                                                                                                                                                        |
+| `inputs.stability.strategy must be 'immutable', 'mutable' or 'unchecked'`                                                             | Any other value (`'content'`, `false`).                                                                                                                                                                                        |
+| `inputs.stability.severity must be 'warn' or 'error'`                                                                                 | Any other value (`'fail'`, `true`).                                                                                                                                                                                            |
+| `outputs must be an object`                                                                                                           | Present but not an object: a string (`outputs: 'dist'`). An array is the row above.                                                                                                                                            |
+| `outputs.files must be an array`                                                                                                      | Wrong shape.                                                                                                                                                                                                                   |
 | `inputs.files: every entry is a negation, which selects NOTHING`                                                                      | Only `!` globs — nothing to subtract from.                                                                                                                                                                                     |
 | `inputs.files: "<file>" is taken back by "!<glob>"`                                                                                   | A literal input a `!` entry covers: the negation subtracts wherever it sits, so the file never entered the key.                                                                                                                |
-| `cache.outputs.files: every entry is a negation, which selects NOTHING`                                                               | Only `!` globs: a `!` entry only takes back what a positive glob selected (A-44).                                                                                                                                              |
-| `cache.outputs.files: "<file>" is taken back by "!<glob>"`                                                                            | A literal output a `!` entry covers: it is never saved, so a hit left it missing and said up-to-date.                                                                                                                          |
-| `cache.outputs.files: "<glob>" covers the project's own <file>`                                                                       | An output glob that matches the project's own `vx.config.*` (`**`, `*.ts`): the clean before a run would delete it. A `!` entry that takes the file back (`!vx.config.ts`) lets it load.                                       |
-| `cache.outputs.files: "<glob>" is under workspace-outputs/`                                                                           | A project output named into the artifact's namespace for `outputs.workspaceFiles`: every hit read it back as a workspace output.                                                                                               |
+| `outputs.files: every entry is a negation, which selects NOTHING`                                                                     | Only `!` globs: a `!` entry only takes back what a positive glob selected (A-44).                                                                                                                                              |
+| `outputs.files: "<file>" is taken back by "!<glob>"`                                                                                  | A literal output a `!` entry covers: it is never saved, so a hit left it missing and said up-to-date.                                                                                                                          |
+| `outputs.files: "<glob>" covers the project's own <file>`                                                                             | An output glob that matches the project's own `vx.config.*` (`**`, `*.ts`): the clean before a run would delete it. A `!` entry that takes the file back (`!vx.config.ts`) lets it load.                                       |
+| `outputs.files: "<glob>" is under workspace-outputs/`                                                                                 | A project output named into the artifact's namespace for `outputs.workspaceFiles`: every hit read it back as a workspace output.                                                                                               |
 | `inputs.files: '!!' is not a double negation`                                                                                         | `!!x` inverts the set — it folds only `x`.                                                                                                                                                                                     |
 | `exec.timeout of <value> exceeds the maximum timer delay`                                                                             | Past 2^31-1 ms a timer fires at once, not never.                                                                                                                                                                               |
 | `description must be a string`                                                                                                        | Non-string description.                                                                                                                                                                                                        |
@@ -2723,7 +2645,7 @@ a user meets most:
 **Unknown fields are rejected**, not ignored, at every object level —
 the project's top level (`tasks`), the task itself, `exec`, `exec.env`,
 `exec.persistent`, `exec.sandbox` and its `allow` /
-`deny` / `ignore` blocks, `cache`, `inputs`, and `cache.outputs`
+`deny` / `ignore` blocks, `cache`, `inputs`, and `outputs`
 (`tests/schema-unknown-keys.test.ts` walks every one) — and at the top
 of `.vx/workspace.ts`,
 where `plugin:` (singular) would otherwise declare no plugins and run
@@ -2742,10 +2664,10 @@ on the task names vx's home for it instead (D-37): Turbo's `outputs`,
 `parallelism` and `configurations` (D-89), and a `command`
 (`cmd`, `script`) on the task or `cmd` on `exec`, and on `exec` Nx
 run-commands' `cwd`, `args`, `commands`, `parallel` and `shell`
-(D-100), and in a `cache` block wireit's `files` / `output`,
+(D-100), and in `cache: true` wireit's `files` / `output`,
 `env`, `dependencies`, `enabled`, and `globs` / `include` / `patterns` /
 `exclude` / `ignore` under `inputs` or `outputs` (D-118). So `outputs` on a task
-ends `— vx spells it cache.outputs.files` in code quotes. A field of
+ends `— vx spells it outputs.files` in code quotes. A field of
 `exec`, `inputs` or `cache` written on the task itself (`retries`,
 `timeout`, `files`) names the level it belongs to (`exec.retries`). A `cache` that
 is no object (Turbo's `cache: false`) and a `persistent` that is none

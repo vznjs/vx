@@ -34,6 +34,7 @@ import {
   resolveSharedWorkspaceOutputs,
   wildcardOutput,
   wildcardTodo,
+  uncache,
 } from '../shared-outputs.js'
 import type { TrackedKinds } from '../tracked-outputs.js'
 import { isRecord, packageScripts, relPosix } from '../paths.js'
@@ -596,7 +597,7 @@ export async function mapNxWorkspace(
       dropUnheldDeps(t, meta.name, emitted, emittedIds)
       const reader = dependentReaders.get(t)
       if (reader !== undefined && !reachesProducer(t, meta.name, emittedIds, reached)) {
-        delete t.task!['cache']
+        uncache(t.task!)
         t.todos.push(orphanReaderTodo(reader.globs, reader.dependsOn))
       }
     }
@@ -663,10 +664,7 @@ function resolveAtomizedWorkspaceOutputs(
   const cached = (ps: readonly { name: string; dir: string; tasks: GeneratedTask[] }[]): number => {
     const copy = structuredClone(ps.map((p) => ({ name: p.name, dir: p.dir, tasks: p.tasks })))
     resolveSharedWorkspaceOutputs(root, copy)
-    return copy.reduce(
-      (n, p) => n + p.tasks.filter((t) => t.task?.['cache'] !== undefined).length,
-      0,
-    )
+    return copy.reduce((n, p) => n + p.tasks.filter((t) => t.task?.['cache'] === true).length, 0)
   }
   const better = split.size > 0 && cached(last) > cached(projects)
   resolveSharedWorkspaceOutputs(root, better ? last : projects)
@@ -1061,7 +1059,8 @@ function buildTask(
   if (cacheEnabled) {
     const outputs: Record<string, unknown> = { files: takingBack(outFiles) }
     if (wsOutFiles.length > 0) outputs.workspaceFiles = takingBack(wsOutFiles)
-    task.cache = { outputs }
+    task.outputs = outputs
+    task.cache = true
   }
 
   const generated: GeneratedTask = { name: variant.name, todos, task }

@@ -186,7 +186,7 @@ const BUILD_CONFIG = `
     tasks: {
       build: {
         exec: { command: 'echo built > out.txt' },
-        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
+        inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
       },
     },
   }
@@ -207,7 +207,7 @@ const heavyBuildConfig = (mb: number): string => `
     tasks: {
       build: {
         exec: { command: 'bun -e "const b = Buffer.alloc(${mb} * 1024 * 1024, 1); require(\\'fs\\').writeFileSync(\\'out.txt\\', \\'built\\'); console.log(b.length)"' },
-        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
+        inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
       },
     },
   }
@@ -450,7 +450,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
                     command: 'echo tok-l27-secret > /dev/null; echo built > out.txt',
                     env: { define: { L27_TOKEN: 'tok-l27-secret' }, secret: ['L27_TOKEN'] },
                   },
-                  inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
+                  inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
                 },
               },
             }
@@ -882,12 +882,12 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
               tasks: {
                 codegen: {
                   exec: { command: 'echo gen > generated.txt' },
-                  inputs: { files: ['src/**'] }, cache: { outputs: { files: ['generated.txt'] } },
+                  inputs: { files: ['src/**'] }, outputs: { files: ['generated.txt'] }, cache: true,
                 },
                 build: {
                   dependsOn: ['codegen'],
                   exec: { command: 'cat generated.txt > out.txt' },
-                  inputs: { files: ['**/*'], tasks: [] }, cache: { outputs: { files: ['out.txt'] } },
+                  inputs: { files: ['**/*'], tasks: [] }, outputs: { files: ['out.txt'] }, cache: true,
                 },
               },
             }
@@ -1022,7 +1022,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
                 build: {
                   dependsOn: ['^build'],
                   exec: { command: 'echo built > out.txt' },
-                  inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
+                  inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
                 },
               },
             }
@@ -1341,7 +1341,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
               tasks: {
                 build: {
                   exec: { command: "node -e 'process.stdout.write(String(Math.random()))' > out.txt" },
-                  inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
+                  inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
                 },
               },
             }
@@ -1391,7 +1391,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
               tasks: {
                 build: {
                   exec: { command: 'echo built > out.txt' },
-                  inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
+                  inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
                 },
                 deploy: { exec: { command: 'cat out.txt' }, dependsOn: ['build'] },
               },
@@ -1442,7 +1442,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
               tasks: {
                 build: {
                   exec: { command: 'echo built > out.txt && echo run >> ../../runs.txt' },
-                  inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
+                  inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
                 },
               },
             }
@@ -1947,7 +1947,7 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
               tasks: {
                 build: {
                   exec: { command: 'echo built > out.txt' },
-                  inputs: { files: ['src/**'] }, cache: { outputs: { files: ['*.txt'] } },
+                  inputs: { files: ['src/**'] }, outputs: { files: ['*.txt'] }, cache: true,
                 },
               },
             }
@@ -2078,7 +2078,7 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
               tasks: {
                 build: {
                   exec: { command: 'mkdir -p dist && echo built > dist/out.txt' },
-                  inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+                  inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
                 },
               },
             }

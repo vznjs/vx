@@ -264,7 +264,7 @@ export async function generate(
         : `    ${t}: {
       exec: { command: ${JSON.stringify(cmd(t))} },
       dependsOn: ${JSON.stringify(DEPENDS_ON[t])},
-      inputs: { files: ['src/**'] }, cache: { outputs: { files: ${t === 'build' ? "['dist/**']" : '[]'} } },
+      inputs: { files: ['src/**'] }, outputs: { files: ${t === 'build' ? "['dist/**']" : '[]'} }, cache: true,
     },`
     await writeFile(
       path.join(abs, 'vx.config.ts'),

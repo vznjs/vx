@@ -1418,7 +1418,7 @@ describe('list headers', () => {
       id: 'p#a',
       projectName: 'p',
       taskName: 'a',
-      config: { exec: { command: 'x' }, cache: {} },
+      config: { exec: { command: 'x' }, cache: true },
     } as unknown as TaskNode
     const MB = 1024 * 1024
     const row = formatTaskExecutedLine(

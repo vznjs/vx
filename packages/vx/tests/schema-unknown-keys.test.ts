@@ -36,9 +36,8 @@ function full(): Record<string, unknown> {
       c: {
         exec: { command: 'true' },
         inputs: { files: ['src/**'], env: ['A'] },
-        cache: {
-          outputs: { files: ['dist/**'] },
-        },
+        outputs: { files: ['dist/**'] },
+        cache: true,
       },
     },
   }
@@ -77,8 +76,7 @@ describe('an unknown key is refused at every object level of a config', () => {
       'tasks.c',
       'tasks.c.exec',
       'tasks.c.inputs',
-      'tasks.c.cache',
-      'tasks.c.cache.outputs',
+      'tasks.c.outputs',
     ])
 
     // The list above pins the FIXTURE — it says what `full()` builds, which
@@ -136,18 +134,18 @@ describe('an unknown key is refused at every object level of a config', () => {
 })
 
 describe('an array where an object is expected names the shape, not `unknown field "0"`', () => {
-  /** `spec` is the task's `inputs` and its `cache` fields in one object. */
-  const withCache = ({ inputs, ...cache }: Record<string, unknown>): Config =>
-    ({ tasks: { c: { exec: { command: 'true' }, inputs, cache } } }) as unknown as Config
+  /** A cached task with `task`'s fields. */
+  const withCache = (task: Record<string, unknown>): Config =>
+    ({ tasks: { c: { exec: { command: 'true' }, ...task, cache: true } } }) as unknown as Config
 
-  it('`cache.outputs: [...]` (the Turbo spelling) says what it must be and what was meant', () => {
+  it('`outputs: [...]` (the Turbo spelling) says what it must be and what was meant', () => {
     expect(() =>
       validateProjectConfig(
         withCache({ inputs: { files: ['src/**'] }, outputs: ['dist/**'] }),
         'f',
       ),
     ).toThrow(
-      'f: tasks.c.cache.outputs must be an object (fields: bin, clean, files, mount, workspaceFiles), not an array — did you mean `{ files: [...] }`?',
+      'f: tasks.c.outputs must be an object (fields: clean, files, workspaceFiles), not an array — did you mean `{ files: [...] }`?',
     )
   })
 

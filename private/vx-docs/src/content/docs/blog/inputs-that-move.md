@@ -17,7 +17,7 @@ source.
 $ (sleep 0.5; echo "// saved mid-build" >> packages/a/src/index.ts) &
 $ vx run packages/a#slow
 ┌─ packages/a#slow > $ sleep 1 && mkdir -p gen && cp src/index.ts gen/copy.ts
-[vx] packages/a#slow: `packages/a/src/index.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs
+[vx] packages/a#slow: `packages/a/src/index.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in outputs
 └─ packages/a#slow ── (1.01s) success
   tasks     1 success · 1 total
   cache     1 not saved
@@ -66,11 +66,9 @@ to compare bytes for that task:
 ```ts
 build: {
   exec: { command: 'tsdown' },
-  inputs: { files: ['src/**', 'package.json'] },
-  cache: {
-    outputs: { files: ['dist/**'] },
-    inputStability: { strategy: 'mutable' },
-  },
+  inputs: { files: ['src/**', 'package.json'], stability: { strategy: 'mutable' } },
+  outputs: { files: ['dist/**'] },
+  cache: true,
 },
 ```
 
@@ -80,8 +78,8 @@ build: {
 | `strategy: 'unchecked'` | no check |
 | `severity: 'error'` | fails the task instead of warning |
 
-The env vars `VX_CACHE_INPUT_STABILITY_STRATEGY` and
-`VX_CACHE_INPUT_STABILITY_SEVERITY` set the default.
+The env vars `VX_INPUTS_STABILITY_STRATEGY` and
+`VX_INPUTS_STABILITY_SEVERITY` set the default.
 
 A failed task's line names the file, and `vx last --failed --format
 json` reports `inputMoved`. If the file is generated, declare it as an

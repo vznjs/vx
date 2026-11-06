@@ -28,7 +28,7 @@ beforeAll(async () => {
     'a',
     `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
   )
-  const out = `inputs: { files: ['in/**'] }, cache: { outputs: { files: ['dist/**'] } }`
+  const out = `inputs: { files: ['in/**'] }, outputs: { files: ['dist/**'] }, cache: true`
   for (const [name, config] of Object.entries({
     cycle: `export default { tasks: {
       x: { exec: { command: 'true' }, dependsOn: ['y'] },
@@ -40,7 +40,7 @@ beforeAll(async () => {
       q: { exec: { command: 'true' }, ${out} },
     } }\n`,
     inputIsOutput: `export default { tasks: {
-      s: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: ['src/**'] } } },
+      s: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, outputs: { files: ['src/**'] }, cache: true },
     } }\n`,
     config: `export default { tasks: { b: { exec: { command: 'true' }, nope: 1 } } }\n`,
   })) {
@@ -113,7 +113,7 @@ describe('a refusal under --format json', () => {
       refusal(['run', 'build', '--all', '--cache-policy=disk:r', '--dry=json']),
       refusal(['run', 'build', '--all', '--dry=json'], root, { VX_CACHE_POLICY: 'disk:r' }),
       refusal(['run', 'build', '--all', '--dry=json'], root, {
-        VX_CACHE_INPUT_STABILITY_STRATEGY: 'bogus',
+        VX_INPUTS_STABILITY_STRATEGY: 'bogus',
       }),
     ])
     const names = [
@@ -267,9 +267,7 @@ describe('a refusal under --format json', () => {
       expect([r.code, doc.error.code, r.stderr.replaceAll(ws, '<root>')]).toEqual([
         1,
         'VX_E_CONFIG',
-        expect.stringContaining(
-          'Workspace config <root>/.vx/workspace.mjs threw: plugin(): issuer must be a URL',
-        ),
+        expect.stringContaining('.vx/workspace.mjs:1:34\n  threw: plugin(): issuer must be a URL'),
       ])
       expect(r.stderr).toContain('.vx/workspace.mjs:1:')
       expect(r.stderr).not.toContain('    at ')
@@ -340,7 +338,7 @@ describe('a refusal under --format json', () => {
       await addProject(
         ws,
         'a',
-        `export default { tasks: { b: { exec: { command: 'true' }, inputs: { files: ['**'] }, cache: { outputs: { files: [] } } } } }\n`,
+        `export default { tasks: { b: { exec: { command: 'true' }, inputs: { files: ['**'] }, outputs: { files: [] }, cache: true } } }\n`,
       )
       const first = await vx(['run', 'b', '--all', '--dry'], ws)
       expect([first.code, first.stderr]).toEqual([0, ''])

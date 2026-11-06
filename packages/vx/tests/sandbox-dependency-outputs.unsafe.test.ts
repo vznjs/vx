@@ -36,7 +36,11 @@ describe.skipIf(!available)('a sandboxed task reads the outputs it depends on', 
     await rm(fixture.root, { recursive: true, force: true })
   })
 
-  const peek = async (use: string, sandbox = `{ allow: { read: ['.'] } }`): Promise<string[]> => {
+  const peek = async (
+    use: string,
+    sandbox = `{ allow: { read: ['.'] } }`,
+    cache = 'cache: true,',
+  ): Promise<string[]> => {
     await addProject(fixture.root, 'tools', {
       files: { 'src/s.txt': 'SRC\n' },
       config: `
@@ -45,7 +49,8 @@ describe.skipIf(!available)('a sandboxed task reads the outputs it depends on', 
             node: {
               exec: { command: 'mkdir -p out/bin && echo OUT > out/bin/tool.txt && echo ROOT > root.txt' },
               inputs: { files: ['src/**'] },
-              cache: { outputs: { files: ['out/**', '*.txt'] } },
+              outputs: { files: ['out/**', '*.txt'] },
+              ${cache}
             },
           },
         }
@@ -93,6 +98,18 @@ describe.skipIf(!available)('a sandboxed task reads the outputs it depends on', 
   )
 
   it(
+    'an uncached dependency’s outputs are readable too',
+    async () => {
+      expect(await peek(`dependsOn: ['tools#node'],`, undefined, '')).toEqual([
+        'OUT',
+        'NOSRC',
+        'ROOT',
+      ])
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a hermetic task reads them too',
     async () => {
       expect(
@@ -128,7 +145,7 @@ describe.skipIf(!available)('a hermetic task runs a program its dependency built
   const SHELL = taskShell()
 
   it(
-    'by name, from the dependency’s cache.outputs.bin',
+    'by its path in the dependency’s outputs',
     async () => {
       await addProject(fixture.root, 'tools', {
         files: { 'src/s.txt': 'SRC\n' },
@@ -140,7 +157,8 @@ describe.skipIf(!available)('a hermetic task runs a program its dependency built
                   `mkdir -p out/bin && printf '#!${SHELL}\\necho TOOLRAN\\n' > out/bin/hello && chmod +x out/bin/hello`,
                 )} },
                 inputs: { files: ['src/**'] },
-                cache: { outputs: { files: ['out/**'], bin: 'out/bin' } },
+                outputs: { files: ['out/**'] },
+                cache: true,
               },
             },
           }
@@ -152,7 +170,7 @@ describe.skipIf(!available)('a hermetic task runs a program its dependency built
           export default {
             tasks: {
               use: {
-                exec: { command: 'hello', sandbox: { hermetic: true, allow: { read: ['.'] } } },
+                exec: { command: '../tools/out/bin/hello', sandbox: { hermetic: true, allow: { read: ['.'] } } },
                 dependsOn: ['tools#node'],
               },
             },

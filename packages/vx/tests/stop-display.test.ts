@@ -29,7 +29,7 @@ const node = (task: string): TaskNode =>
     projectName: 'p',
     taskName: task,
     requested: true,
-    config: { exec: { command: 'true' }, cache: {} },
+    config: { exec: { command: 'true' }, cache: true },
   }) as unknown as TaskNode
 const region = (out: { text(): string }): string => out.text().slice(out.text().lastIndexOf(ERASE))
 

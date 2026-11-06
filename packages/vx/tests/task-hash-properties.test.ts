@@ -303,9 +303,8 @@ describe('computeTaskHash over random resolved configs', () => {
       ...(r() < 0.5 ? { description: str(r, NAME_CHARS) } : {}),
       exec,
       inputs: { files: [], ...(r() < 0.5 ? { env: [...ENV] } : {}) },
-      cache: {
-        outputs: { files: [] },
-      },
+      outputs: { files: [] },
+      cache: true,
     }
   }
 

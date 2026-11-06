@@ -16,7 +16,7 @@ afterEach(async () => {
 })
 
 const task = (inputs: string, extra = '') =>
-  `{ exec: { command: 'true' }, ${extra} inputs: ${inputs}, cache: { outputs: { files: [] } } }`
+  `{ exec: { command: 'true' }, ${extra} inputs: ${inputs}, outputs: { files: [] }, cache: true }`
 
 async function workspace(
   tasks: Record<string, string>,
@@ -192,7 +192,7 @@ it(
   async () => {
     root = await workspace(
       {
-        build: `{ exec: { command: 'true' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } } }`,
+        build: `{ exec: { command: 'true' }, inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true }`,
         t: task("{ files: ['src/**', 'dist/**'] }"),
       },
       {},
@@ -207,7 +207,7 @@ it(
   TIMEOUT,
 )
 
-const producer = `{ exec: { command: 'mkdir -p dist && cat src/a.txt > dist/out.txt' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } } }`
+const producer = `{ exec: { command: 'mkdir -p dist && cat src/a.txt > dist/out.txt' }, inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true }`
 
 it(
   'a task may read a dependency’s ignored outputs its key does not fold: it hashes the bytes',
@@ -215,7 +215,7 @@ it(
     root = await workspace(
       {
         build: producer,
-        t: `{ exec: { command: 'cat dist/out.txt' }, dependsOn: ['build'], inputs: { files: ['dist/**'], tasks: [] }, cache: { outputs: { files: [] } } }`,
+        t: `{ exec: { command: 'cat dist/out.txt' }, dependsOn: ['build'], inputs: { files: ['dist/**'], tasks: [] }, outputs: { files: [] }, cache: true }`,
       },
       { 'src/b.txt': 'b\n' },
       'dist/\n',
@@ -241,7 +241,7 @@ it(
   'vx lock refuses a read of outputs the reader’s key folds, directly or through another task',
   async () => {
     const reader = (deps: string, tasks: string) =>
-      `{ exec: { command: 'true' }, dependsOn: [${deps}], inputs: { files: ['dist/**']${tasks} }, cache: { outputs: { files: [] } } }`
+      `{ exec: { command: 'true' }, dependsOn: [${deps}], inputs: { files: ['dist/**']${tasks} }, outputs: { files: [] }, cache: true }`
     const lock = async (tasks: Record<string, string>) => {
       root = await workspace({ build: producer, ...tasks }, {}, 'dist/\n')
       const r = await vx(root, ['lock'])
@@ -252,7 +252,7 @@ it(
     expect(await lock({ t: reader("'build'", '') })).toContain(refusal)
     expect(await lock({ t: reader("'build'", ", tasks: ['build']") })).toContain(refusal)
     // `mid` folds `build`, and `t` folds `mid`: `build`'s key reaches `t`'s.
-    const mid = `{ exec: { command: 'true' }, dependsOn: ['build'], inputs: { files: [] }, cache: { outputs: { files: [] } } }`
+    const mid = `{ exec: { command: 'true' }, dependsOn: ['build'], inputs: { files: [] }, outputs: { files: [] }, cache: true }`
     expect(await lock({ mid, t: reader("'mid'", ", tasks: ['mid']") })).toContain(refusal)
     // CONTROL: `mid` folds nothing, so `build` reaches `t` only as an order.
     const midBare = mid.replace('files: [] }', 'files: [], tasks: [] }')
