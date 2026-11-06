@@ -568,10 +568,19 @@ export class ConfigsRefused extends UserError {
  * one evaluated (in the order given, so a failure names the first broken
  * file the way a one-by-one load did). A single-path load is the
  * one-element case. Only `vx lock` evaluates; every run reads the lock.
+ *
+ * Each evaluates with the workspace root, `root`, as `process.cwd()`: the
+ * invoking directory made the lock depend on where `vx lock` ran, and
+ * `--check` from a subdirectory failed a lock written at the root. Not the
+ * project's own directory: the cwd is the process's, the worker's too, and
+ * the loads overlap. Without `root`, the cwd is left as it is.
  */
 const LOAD_WIDTH = 128
 
-export async function loadProjectConfigs(configPaths: readonly string[]): Promise<ProjectConfig[]> {
+export async function loadProjectConfigs(
+  configPaths: readonly string[],
+  root?: string,
+): Promise<ProjectConfig[]> {
   const prepared = await Promise.all(
     configPaths.map(async (configPath) => ({
       configPath,
@@ -583,8 +592,10 @@ export async function loadProjectConfigs(configPaths: readonly string[]): Promis
   let builtins: BuiltinSnapshot | undefined
   let env: Readonly<Record<string, string | undefined>> = {}
   let cwd = ''
+  let invokedIn = ''
   let umask = -1
   let unredirect: (() => void) | undefined
+  let unredirectFd: (() => void) | undefined
   // More than one evaluation in flight: a change seen after one load may
   // be another's.
   let overlapping = false
@@ -652,8 +663,11 @@ export async function loadProjectConfigs(configPaths: readonly string[]): Promis
     const results: Array<ProjectConfig | { failed: unknown }> = []
     if (prepared.length > 0) {
       unredirect = stdoutToStderr()
+      unredirectFd = fdOneToStderr()
       builtins = builtinSnapshot()
       env = { ...process.env }
+      invokedIn = process.cwd()
+      if (root !== undefined && root !== invokedIn) process.chdir(root)
       cwd = process.cwd()
       umask = currentUmask()
     }
@@ -711,6 +725,8 @@ export async function loadProjectConfigs(configPaths: readonly string[]): Promis
       throw builtinsChanged(changed, prepared.length === 1 ? prepared[0]!.configPath : undefined)
     return results as ProjectConfig[]
   } finally {
+    if (invokedIn !== '' && process.cwd() !== invokedIn) process.chdir(invokedIn)
+    unredirectFd?.()
     unredirect?.()
     endRound()
   }
@@ -783,6 +799,67 @@ function stdoutToStderr(): () => void {
   if (redirectHolders++ === 0) undoRedirect = installRedirect()
   return () => {
     if (--redirectHolders === 0) undoRedirect()
+  }
+}
+
+/**
+ * fd 1 itself made stderr's while a round of project configs evaluates;
+ * returns the release. The JS routes above cannot reach the rest: Bun's
+ * ESM `import { writeSync } from 'node:fs'` is a copy taken when vx first
+ * imported it, `writeFileSync('/dev/stdout')` opens the descriptor anew,
+ * and a child a config spawns inherits it. `vx lock --check --format json`
+ * printed all three ahead of its JSON. Only `vx lock` evaluates project
+ * configs, so a run never binds libc for this. The worker shares the
+ * descriptor table, so a repeat load is covered too. Counted, as the
+ * redirect is. Where libc will not bind, the JS routes alone.
+ */
+let fdHolders = 0
+let undoFdRedirect = (): void => {}
+
+function fdOneToStderr(): () => void {
+  if (fdHolders++ === 0) undoFdRedirect = swapFdOne()
+  return () => {
+    if (--fdHolders === 0) undoFdRedirect()
+  }
+}
+
+interface FdCalls {
+  dup: (fd: number) => number
+  dup2: (from: number, to: number) => number
+  close: (fd: number) => number
+}
+let fdCalls: FdCalls | null | undefined
+
+/** libc's `dup`, `dup2` and `close`, bound once (~0.7 ms); null where libc will not load. */
+function boundFdCalls(): FdCalls | null {
+  if (fdCalls !== undefined) return fdCalls
+  fdCalls = null
+  try {
+    // Loaded here, not with the module: every run loads this module.
+    const { dlopen, FFIType } = require('bun:ffi') as typeof import('bun:ffi')
+    const fd = { args: [FFIType.i32], returns: FFIType.i32 } as const
+    // glibc's soname; musl's loader answers any `libc.` name with itself.
+    fdCalls = dlopen(process.platform === 'darwin' ? '/usr/lib/libSystem.B.dylib' : 'libc.so.6', {
+      dup: fd,
+      close: fd,
+      dup2: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 },
+    }).symbols
+  } catch {}
+  return fdCalls
+}
+
+function swapFdOne(): () => void {
+  const calls = boundFdCalls()
+  if (calls === null) return () => {}
+  const saved = calls.dup(1)
+  if (saved < 0) return () => {}
+  if (calls.dup2(2, 1) < 0) {
+    calls.close(saved)
+    return () => {}
+  }
+  return () => {
+    calls.dup2(saved, 1)
+    calls.close(saved)
   }
 }
 

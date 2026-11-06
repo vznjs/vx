@@ -160,7 +160,10 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     out.strayReviews = strayReviews
     out.shadowed = shadowed
     // The one load that evaluates: every reader reads the lock this writes.
-    const configs = await loadProjectConfigs(found.map((f) => f.configPath))
+    const configs = await loadProjectConfigs(
+      found.map((f) => f.configPath),
+      root,
+    )
     // In the lock's form: a field left `undefined` is a key the stored JSON
     // never has. Entries, not assignment: a directory named `__proto__` is
     // a key of its own (D-152).
