@@ -22,6 +22,7 @@ export interface FoldMemo {
 
 export class IndexFoldMemo implements FoldMemo {
   private rows: Map<string, FoldMemoRow> | undefined
+  private readonly runRows = new Map<string, FoldMemoRow | null>()
   private readonly dirty = new Map<string, FoldMemoRow>()
 
   constructor(
@@ -32,18 +33,37 @@ export class IndexFoldMemo implements FoldMemo {
 
   /** The key remembered for `taskId` under `probe`, if that is the probe it was folded under. */
   get(taskId: string, probe: string): string | undefined {
-    // One read of every row: a warm run asks for nearly all of them.
+    const row = this.dirty.get(taskId) ?? this.read(taskId)
+    return row?.probe === probe ? row.key : undefined
+  }
+
+  private read(taskId: string): FoldMemoRow | null | undefined {
+    // A run's own rows (`\0run\0…`, the graph's) are read one each: a warm
+    // run whose keys are remembered whole asks for no task's row, and
+    // reading all of them held every task's row to the end of the run.
+    if (taskId.startsWith('\0')) {
+      let row = this.runRows.get(taskId)
+      if (row === undefined) {
+        row = this.db
+          .query('SELECT probe, key FROM fold_memo WHERE task_id = ?')
+          .get(taskId) as FoldMemoRow | null
+        this.runRows.set(taskId, row)
+      }
+      return row
+    }
+    // One read of every task's row: a run that folds asks for nearly all of them.
     this.rows ??= new Map(
       (
-        this.db.query('SELECT task_id, probe, key FROM fold_memo').all() as Array<{
+        this.db
+          .query('SELECT task_id, probe, key FROM fold_memo WHERE task_id >= ?')
+          .all('\u0001') as Array<{
           task_id: string
           probe: string
           key: string
         }>
       ).map((r) => [r.task_id, { probe: r.probe, key: r.key }]),
     )
-    const row = this.dirty.get(taskId) ?? this.rows.get(taskId)
-    return row?.probe === probe ? row.key : undefined
+    return this.rows.get(taskId)
   }
 
   set(taskId: string, probe: string, key: string): void {

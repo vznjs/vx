@@ -9,6 +9,7 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it, spyOn } from 'bun:test'
 import { FILE_HASH_RACY_MS, racyWindowMs } from '../src/cache/index.js'
+import { IndexFoldMemo } from '../src/cache/fold-memo.js'
 import { GitFilesCache } from '../src/cache/git-inputs.js'
 import type { Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
@@ -221,3 +222,32 @@ it('an untracked input keeps the memo, by its stat; rewriting it runs the task',
   expect(await runs()).toBe(3)
   expect(await readFile(path.join(pkg, 'out.txt'), 'utf8')).toBe('one\n')
 }, 60_000)
+
+// A warm run whose keys are remembered whole asks only for the run's own
+// rows; reading every task's row for them held all of them (9,603 at the
+// site's size) to the end of the run.
+it("a run's own row is read alone, and every task's row once a task asks", () => {
+  const db = new Database(':memory:')
+  db.run('CREATE TABLE fold_memo (task_id TEXT PRIMARY KEY, probe TEXT, key TEXT, seen_at INTEGER)')
+  const insert = db.prepare('INSERT INTO fold_memo VALUES (?, ?, ?, 0)')
+  insert.run('\0run\0x', 'p0', 'k0')
+  insert.run('a#build', 'p1', 'k1')
+  insert.run('b#build', 'p2', 'k2')
+  const memo = new IndexFoldMemo(db, true)
+  const asked: string[] = []
+  const query = db.query.bind(db)
+  spyOn(db, 'query').mockImplementation(((sql: string) => {
+    asked.push(sql)
+    return query(sql)
+  }) as typeof db.query)
+  expect(memo.get('\0run\0x', 'p0')).toBe('k0')
+  expect(memo.get('\0run\0x', 'p0')).toBe('k0')
+  expect(asked).toEqual(['SELECT probe, key FROM fold_memo WHERE task_id = ?'])
+  expect(memo.get('a#build', 'p1')).toBe('k1')
+  expect(memo.get('b#build', 'p2')).toBe('k2')
+  // The bulk read leaves the run's rows to their own read.
+  expect(memo.get('\0run\0x', 'p1')).toBeUndefined()
+  expect(memo.get('\0run\0y', 'p0')).toBeUndefined()
+  expect(asked.length).toBe(3)
+  db.close()
+})
