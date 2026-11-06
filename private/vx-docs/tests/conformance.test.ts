@@ -76,7 +76,7 @@ describe('the conformance page', () => {
     expect(wrong).toEqual([])
   })
 
-  it('shows each category closed, its summary giving every tool’s score', () => {
+  it('shows each category closed, its summary its row of the score board', () => {
     const wrong: string[] = []
     for (const id of CATEGORIES) {
       const at = html.indexOf(`<details class="cfm-cat" id="${id}"`)
@@ -86,14 +86,14 @@ describe('the conformance page', () => {
       }
       const head = html.slice(at, html.indexOf('</summary>', at))
       if (/^<details[^>]*\sopen[\s>=]/.test(head)) wrong.push(`${id}: open`)
-      for (const t of TOOLS)
-        if (!head.includes(`>${percent(RESULTS.scores[t]?.[id])}</strong>`))
-          wrong.push(`${id}: ${t} score`)
+      if (!head.includes(`<summary class="cfm-row" data-group="${id}"`))
+        wrong.push(`${id}: summary is not its scores`)
+      if (head.includes('cfm-cat-about')) wrong.push(`${id}: description in summary`)
     }
     expect(wrong).toEqual([])
   })
 
-  it('says on each category, closed, what it checks and why it matters', () => {
+  it('says on each category, once opened, what it checks and why it matters', () => {
     const wrong: string[] = []
     for (const id of CATEGORIES) {
       const text = about(id)
@@ -103,8 +103,8 @@ describe('the conformance page', () => {
       }
       if (text.length > 200) wrong.push(`${id}: over 200 chars`)
       const at = html.indexOf(`<details class="cfm-cat" id="${id}"`)
-      const head = html.slice(at, html.indexOf('</summary>', at))
-      if (!head.includes(`<p class="cfm-cat-about">${inline(text)}</p>`))
+      const body = html.slice(html.indexOf('</summary>', at), html.indexOf('<table', at))
+      if (!body.includes(`<p class="cfm-cat-about">${inline(text)}</p>`))
         wrong.push(`${id}: not shown`)
     }
     expect(wrong).toEqual([])
@@ -129,11 +129,13 @@ describe('the conformance page', () => {
     const groups = ['all', ...CATEGORIES]
     const wrong: string[] = []
     for (const g of groups) {
-      const start = html.indexOf(`<tr data-group="${g}"`)
-      const tr = html.slice(start, html.indexOf('</tr>', start))
+      const start = html.indexOf(`data-group="${g}"`)
+      const tr = html.slice(start, html.indexOf(g === 'all' ? '<details' : '</summary>', start))
       for (const t of TOOLS) {
         const s = RESULTS.scores[t]?.[g]
-        const td = new RegExp(`<td data-tool="${t}"[^>]*>([\\s\\S]*?)</td>`).exec(tr)?.[1] ?? ''
+        const at = tr.indexOf(`<span class="cfm-cell" data-tool="${t}"`)
+        const next = tr.indexOf('<span class="cfm-cell"', at + 1)
+        const td = at < 0 ? '' : tr.slice(at, next < 0 ? undefined : next)
         const of = s && s.of > 0 ? `${s.pass}/${s.of}` : '–'
         if (
           !td.includes(`>${percent(s)}<`) ||

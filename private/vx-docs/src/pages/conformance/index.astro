@@ -1,8 +1,9 @@
 ---
 // The conformance table: every case of @vzn/vx-conformance and what each
 // tool did with it, from src/data/conformance.json (src/conformance/data.ts).
-// No JavaScript: each category is a <details>, closed on its summary (its
-// count and each tool's score), a failing cell opens its detail as one, and the
+// No JavaScript: the score board's rows are the categories, each a <details>
+// whose summary is its scores; open, it says what it checks and lists its
+// cases in the same columns. A failing cell opens its detail as one, and the
 // "only where tools differ" switch is a checkbox the stylesheet reads.
 import FeaturesPage from '../../components/features/FeaturesPage.astro'
 import {
@@ -12,19 +13,16 @@ import {
   groupName,
   inline,
   note,
-  percent,
   RESULTS,
-  supports,
   TOOLS,
   toolName,
   toolShort,
 } from '../../conformance/data.ts'
+import Cell from '../../components/conformance/Cell.astro'
 import '../../styles/conformance.css'
 
 const README = 'https://github.com/vznjs/vx/blob/main/private/vx-conformance/README.md'
-// Categories split the cases, so each case counts in one row only.
-const GROUPS = ['all', ...CATEGORIES]
-const { cases, scores, tools } = RESULTS
+const { cases, tools } = RESULTS
 const differ = cases.filter((c) => !agree(c)).length
 const sections = CATEGORIES.map((id) => ({
   id,
@@ -80,140 +78,108 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'cannot express it' } as con
           tool can express at all; one it cannot counts as not passed, as its users cannot get
           that behaviour.
         </p>
-        <div class="cfm-scroll">
-          <table class="cfm-scores">
-            <thead>
-              <tr>
-                <th scope="col"><span class="sr-only">Group</span></th>
-                {TOOLS.map((t) => <th scope="col">{toolName(t)}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {
-                GROUPS.map((g) => (
-                  <tr
-                    data-group={g}
-                    class:list={[
-                      g === 'all' && 'cfm-all',
-                      g === CATEGORIES[0] && 'cfm-break',
-                    ]}
-                  >
-                    <th scope="row">{groupName(g)}</th>
-                    {TOOLS.map((t) => {
-                      const s = scores[t]?.[g]
-                      const pct = s && s.of > 0 ? (s.pass / s.of) * 100 : 0
-                      return (
-                        <td data-tool={t} style={`--pct:${pct}%`}>
-                          <span class="cfm-pct">{percent(s)}</span>
-                          <span class="cfm-of">{s && s.of > 0 ? `${s.pass}/${s.of}` : '–'}</span>
-                          <span class="cfm-sup">supports {supports(s)}</span>
-                        </td>
-                      )
-                    })}
-                  </tr>
-                ))
-              }
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-
-    <section class="cfm-section" id="cases">
-      <div class="container">
-        <h2>Every case</h2>
         <p class="cfm-sub">
-          ✓ passes, ✗ fails, – the tool cannot express it. Open a ✗ to see what the tool did instead.
+          Open a group to see its cases: ✓ passes, ✗ fails, – the tool cannot express it. Open a ✗
+          to see what the tool did instead.
         </p>
         <input type="checkbox" id="cfm-differ" class="cfm-toggle" />
         <label for="cfm-differ" class="cfm-switch">
           Only the {differ} cases where tools differ
         </label>
-        <ul class="chips cfm-cats" aria-label="Categories">
+        <div class="cfm-board">
+          <div class="cfm-row cfm-head" aria-hidden="true">
+            <span class="cfm-name" />
+            {
+              TOOLS.map((t) => (
+                <span class="cfm-tool">
+                  <span class="cfm-long">{toolName(t)}</span>
+                  <span class="cfm-short">{toolShort(t)}</span>
+                </span>
+              ))
+            }
+          </div>
+          <div class="cfm-row cfm-all" data-group="all">
+            <span class="cfm-name">{groupName('all')}</span>
+            {TOOLS.map((t) => <Cell t={t} g="all" />)}
+          </div>
           {
             sections.map((s) => (
-              <li>
-                <a href={`#${s.id}`}>
-                  {groupName(s.id)} <span class="count">{s.cases.length}</span>
-                </a>
-              </li>
+              <details
+                class="cfm-cat"
+                id={s.id}
+                data-agree={s.cases.every(agree) ? '' : undefined}
+              >
+                <summary class="cfm-row" data-group={s.id}>
+                  <span class="cfm-name">
+                    <h3>{groupName(s.id)}</h3>
+                    <span class="cfm-cat-count">{s.cases.length} cases</span>
+                  </span>
+                  {TOOLS.map((t) => (
+                    <Cell t={t} g={s.id} />
+                  ))}
+                </summary>
+                <p class="cfm-cat-about" set:html={inline(about(s.id))} />
+                <table class="cfm-cases">
+                  <colgroup>
+                    <col />
+                    <col span={TOOLS.length} class="cfm-col" />
+                  </colgroup>
+                  <thead class="cfm-sr">
+                    <tr>
+                      <th scope="col">Case</th>
+                      {TOOLS.map((t) => (
+                        <th scope="col" class="cfm-tool">
+                          {toolName(t)}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {s.cases.map((c) => (
+                      <tr id={c.id} data-case={c.id} data-agree={agree(c) ? '' : undefined}>
+                        <th scope="row">
+                          <span class="cfm-title" set:html={inline(c.title)} />
+                          <details class="cfm-why">
+                            <summary>Why this is right</summary>
+                            <p set:html={inline(c.why)} />
+                          </details>
+                          <span class="cfm-meta">
+                            <a href={`#${c.id}`}>{c.id}</a> · {c.kind}
+                          </span>
+                        </th>
+                        {TOOLS.map((t) => {
+                          const o = c.outcomes[t] ?? { status: 'n/a' as const }
+                          const label = `${toolName(t)} ${SAY[o.status]}`
+                          return (
+                            <td data-tool={t} data-status={o.status}>
+                              {o.status === 'fail' ? (
+                                <details>
+                                  <summary aria-label={label} title={note(o)}>
+                                    {MARK.fail}
+                                  </summary>
+                                  <p class="cfm-detail">
+                                    <strong>{toolName(t)}</strong> {note(o)}
+                                  </p>
+                                </details>
+                              ) : (
+                                <span
+                                  aria-label={label}
+                                  title={o.status === 'n/a' ? note(o) || undefined : undefined}
+                                >
+                                  {MARK[o.status]}
+                                </span>
+                              )}
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </details>
             ))
           }
-        </ul>
-        {
-          sections.map((s) => (
-            <details class="cfm-cat" id={s.id} data-agree={s.cases.every(agree) ? '' : undefined}>
-              <summary>
-                <h3>{groupName(s.id)}</h3>
-                <span class="cfm-cat-count">{s.cases.length} cases</span>
-                <span class="cfm-cat-scores">
-                  {TOOLS.map((t) => (
-                    <span class="cfm-cat-score" data-tool={t}>
-                      {toolName(t)} <strong>{percent(scores[t]?.[s.id])}</strong>
-                    </span>
-                  ))}
-                </span>
-                <p class="cfm-cat-about" set:html={inline(about(s.id))} />
-              </summary>
-              <table class="cfm-cases">
-                <thead>
-                  <tr>
-                    <th scope="col">Case</th>
-                    {TOOLS.map((t) => (
-                      <th scope="col" class="cfm-tool" title={toolName(t)}>
-                        <span class="cfm-long">{toolName(t)}</span>
-                        <span class="cfm-short" aria-hidden="true">
-                          {toolShort(t)}
-                        </span>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {s.cases.map((c) => (
-                    <tr id={c.id} data-case={c.id} data-agree={agree(c) ? '' : undefined}>
-                      <th scope="row">
-                        <span class="cfm-title" set:html={inline(c.title)} />
-                        <details class="cfm-why">
-                          <summary>Why this is right</summary>
-                          <p set:html={inline(c.why)} />
-                        </details>
-                        <span class="cfm-meta">
-                          <a href={`#${c.id}`}>{c.id}</a> · {c.kind}
-                        </span>
-                      </th>
-                      {TOOLS.map((t) => {
-                        const o = c.outcomes[t] ?? { status: 'n/a' as const }
-                        const label = `${toolName(t)} ${SAY[o.status]}`
-                        return (
-                          <td data-tool={t} data-status={o.status}>
-                            {o.status === 'fail' ? (
-                              <details>
-                                <summary aria-label={label} title={note(o)}>
-                                  {MARK.fail}
-                                </summary>
-                                <p class="cfm-detail">
-                                  <strong>{toolName(t)}</strong> {note(o)}
-                                </p>
-                              </details>
-                            ) : (
-                              <span
-                                aria-label={label}
-                                title={o.status === 'n/a' ? note(o) || undefined : undefined}
-                              >
-                                {MARK[o.status]}
-                              </span>
-                            )}
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </details>
-          ))
-        }
+        </div>
       </div>
     </section>
   </div>
