@@ -1042,7 +1042,6 @@ export function homeOf(sizes: readonly Size[], host: string): string | undefined
   return of.has(host) && of.size > 1 ? host : undefined
 }
 
-/** A relay URL as a refusal may print it: a `user:pass@` would reach the CI log. */
 /**
  * Why a relay url no route can be appended to is refused: past a `?` or
  * `#` every socket asked the relay's root, and one naming /v1 asked /v1/v1/….
@@ -1053,6 +1052,7 @@ function unroutable(url: string): string | undefined {
   return undefined
 }
 
+/** A relay URL as a refusal may print it: a `user:pass@` would reach the CI log. */
 function shown(url: string): string {
   return url.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/?#]*@/i, '$1***@')
 }
