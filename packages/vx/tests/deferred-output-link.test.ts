@@ -29,7 +29,7 @@ it('a fetched deferred output keeps a link the eager save keeps', async () => {
       taskName: 'build',
       projectDir,
       deps: [],
-      config: { exec: { command: 'true' }, cache: { outputs: { files: ['dist/**'] } } },
+      config: { exec: { command: 'true' }, outputs: { files: ['dist/**'] }, cache: true },
     } as unknown as TaskNode
     const consumer = {
       ...producer,

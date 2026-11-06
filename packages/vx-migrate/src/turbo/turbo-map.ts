@@ -24,6 +24,7 @@ import {
   resolveSharedOutputs,
   resolveSharedWorkspaceOutputs,
   takingBack,
+  uncache,
   unkey,
   wildcardCleanTodo,
   wildcardOutput,
@@ -1606,7 +1607,7 @@ function sortOrderFree(projects: readonly TurboMappedProject[]): void {
       const task = t.task
       if (task === null) continue
       if (Array.isArray(task['dependsOn'])) task['dependsOn'] = [...task['dependsOn']].sort(byText)
-      const outputs = (task['cache'] as { outputs?: Record<string, unknown> } | undefined)?.outputs
+      const outputs = task['outputs'] as Record<string, unknown> | undefined
       if (outputs === undefined) continue
       for (const k of ['files', 'workspaceFiles'])
         if (Array.isArray(outputs[k])) outputs[k] = [...outputs[k]].sort(negationsLast)
@@ -1822,16 +1823,12 @@ function keyOnlyGroup(t: TurboMappedTask): TurboMappedTask {
   if (task === null) return t
   const exec = task['exec'] as Record<string, unknown>
   if (exec['persistent'] !== undefined || exec['interactive'] !== undefined) return t
-  const cache = task['cache'] as
-    | { outputs: { files: unknown[]; workspaceFiles?: unknown[] } }
-    | undefined
+  const outputs = task['outputs'] as { files: unknown[]; workspaceFiles?: unknown[] } | undefined
   if (task['inputs'] === undefined && task['dependsOn'] === undefined) return t
-  if (
-    cache !== undefined &&
-    (cache.outputs.files.length > 0 || cache.outputs.workspaceFiles !== undefined)
-  )
+  if (outputs !== undefined && (outputs.files.length > 0 || outputs.workspaceFiles !== undefined))
     return t
-  const { exec: _exec, cache: _cache, ...group } = task
+  const { exec: _exec, ...group } = task
+  uncache(group)
   return { ...t, task: group }
 }
 
@@ -2216,7 +2213,7 @@ function buildTask(
     } else if (o.includes('$TURBO_ROOT$')) {
       todos.push(
         `output ${JSON.stringify(o)}: $TURBO_ROOT$ only maps as a '$TURBO_ROOT$/<path>' ` +
-          'prefix (→ cache.outputs.workspaceFiles) — map manually',
+          'prefix (→ outputs.workspaceFiles) — map manually',
       )
     } else outFiles.push(...signed(o))
   }
@@ -2255,9 +2252,13 @@ function buildTask(
   const outputs: Record<string, unknown> = { files: takingBack(outFiles).sort(negationsLast) }
   const ws = takingBack(wsOutFiles).sort(negationsLast)
   if (ws.length > 0) outputs.workspaceFiles = ws
-  task.cache = {
-    outputs,
-    ...(rewritesManifest ? { inputStability: { strategy: 'mutable' } } : {}),
+  task.outputs = outputs
+  task.cache = true
+  if (rewritesManifest) {
+    task.inputs = {
+      ...(task.inputs as Record<string, unknown>),
+      stability: { strategy: 'mutable' },
+    }
   }
 
   return { name, todos, task, uses }

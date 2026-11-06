@@ -106,9 +106,8 @@ describe('config import closure freshness', () => {
           `    build: {\n` +
           `      exec: { command: COMMAND },\n` +
           `      inputs: { files: ['src/**'] },\n` +
-          `      cache: {\n` +
-          `        outputs: { files: ['out.txt'] },\n` +
-          `      },\n` +
+          `      outputs: { files: ['out.txt'] },\n` +
+          `      cache: true,\n` +
           `    },\n` +
           `  },\n` +
           `}\n`,
@@ -174,9 +173,8 @@ describe('worker-evaluated repeat loads', () => {
           env: { passThrough: ['HOME'], define: { A: 'b' } },
         },
         inputs: { files: ['src/**'], env: ['CI'], tasks: ['^build'], runtime: ['node -v'] },
-        cache: {
-          outputs: { files: ['dist/**'] },
-        },
+        outputs: { files: ['dist/**'] },
+        cache: true,
       },
       gen: { exec: { command: 'echo gen' } },
     },
@@ -237,7 +235,7 @@ describe('worker-evaluated repeat loads', () => {
   it('report a validation error with the same text a first load gives', async () => {
     const bad = `export default { tasks: { build: {
       exec: { command: 'echo hi' },
-      inputs: { files: ['src/**'], workspaceFile: ['x'] }, cache: { outputs: { files: ['o'] } },
+      inputs: { files: ['src/**'], workspaceFile: ['x'] }, outputs: { files: ['o'] }, cache: true,
     } } }\n`
 
     const viaFirst = await write(bad)
@@ -297,9 +295,8 @@ describe('a typo in a cache-key field', () => {
             build: {
               exec: { command: 'cat shared.txt > out.txt' },
               inputs: { files: ['pkg/**'], workspaceFile: ['shared.txt'] },
-              cache: {
-                outputs: { files: ['out.txt'] },
-              },
+              outputs: { files: ['out.txt'] },
+              cache: true,
             },
           },
         }\n`,

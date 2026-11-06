@@ -26,8 +26,8 @@ beforeAll(async () => {
     root,
     'a',
     `export default { tasks: {
-  lost: { exec: { command: 'true' }, inputs: { files: ['lib/**'] }, cache: { outputs: { files: [] } } },
-  quiet: { exec: { command: 'true' }, inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } } },
+  lost: { exec: { command: 'true' }, inputs: { files: ['lib/**'] }, outputs: { files: [] }, cache: true },
+  quiet: { exec: { command: 'true' }, inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true },
 } }
 `,
   )

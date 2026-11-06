@@ -107,7 +107,7 @@
   {
     "key": "turbo.json tasks.*.cache",
     "status": "supported",
-    "reason": "`cache: false` means no cache block: the task always runs."
+    "reason": "`cache: false` stays `cache: false`: the task always runs."
   },
   {
     "key": "turbo.json tasks.*.dependsOn",
@@ -617,7 +617,7 @@
   {
     "key": "project.json targets.*.cache",
     "status": "supported",
-    "reason": "`cache: true` (or `cacheableOperations`) gives a cache block; persistent tasks stay uncached."
+    "reason": "`cache: true` (or `cacheableOperations`) stays `cache: true`; persistent tasks stay uncached."
   },
   {
     "key": "project.json targets.*.continuous",

@@ -55,7 +55,7 @@ vx run build --filter @demo/ap
 - **`0 tasks · build has no command in these projects`.** No selected
   package gives `build` a command, so vx ran only its default group.
   Give `build` an `exec.command` in the packages that build.
-- **A task runs every time.** It has no `cache` block. `vx-migrate` leaves
+- **A task runs every time.** It has no `cache: true`. `vx-migrate` leaves
   a `TODO(vx-migrate)` where it could not write one. Or a task it depends on declares no
   `inputs`: that task has no key, so nothing behind it hits. Give it
   `inputs`.
@@ -66,7 +66,7 @@ vx run build --filter @demo/ap
 - **`inputs matched no files`.** The globs name nothing in the
   project, so the key ignores its source. Fix the paths; they are
   relative to the project directory.
-- **`cache.outputs matched no files`.** The task wrote elsewhere, so a
+- **`outputs matched no files`.** The task wrote elsewhere, so a
   hit restores nothing. Point `outputs.files` at what the task writes;
   a sandboxed task also needs `exec.sandbox.allow.write` for it.
 - **`not ready after …: waiting for a line matching`.** A persistent

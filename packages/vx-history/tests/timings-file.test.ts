@@ -154,7 +154,7 @@ describe('the file between machines', () => {
       Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
       await pkg(
         'a',
-        "export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } } } } }\n",
+        "export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true } } }\n",
       )
       await Bun.write(
         path.join(root, '.vx/workspace.mjs'),
@@ -185,7 +185,7 @@ describe('the file between machines', () => {
       Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
       await pkg(
         'a',
-        "export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } } }, all: { dependsOn: ['build'] } } }\n",
+        "export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true }, all: { dependsOn: ['build'] } } }\n",
       )
       await Bun.write(
         path.join(root, '.vx/workspace.mjs'),

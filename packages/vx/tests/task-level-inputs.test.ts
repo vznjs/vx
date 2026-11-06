@@ -80,7 +80,8 @@ async function fixture(gen: string): Promise<void> {
       dependsOn: ['a#gen'],
       exec: { command: 'cat src/gen.txt > out.txt && echo b >> ../runs.log' },
       inputs: { files: ['**/*'] },
-      cache: { outputs: { files: ['out.txt'] } },
+      outputs: { files: ['out.txt'] },
+      cache: true,
     } } }\n`,
   )
   await write('b/src/.keep', '')
@@ -164,7 +165,8 @@ describe('a keyed group is a task with `inputs` and no command', () => {
           dependsOn: ['a#gen'],
           exec: { command: 'cat ../shared/schema.txt > out.txt' },
           inputs: { files: ['src/**'] },
-          cache: { outputs: { files: ['out.txt'] } },
+          outputs: { files: ['out.txt'] },
+          cache: true,
         } } }\n`,
       )
       git('add', '-A')
@@ -189,22 +191,27 @@ describe('the schema', () => {
   }
   it('refuses `cache` without a command, and without inputs', () => {
     expect(
-      refusal({ dependsOn: ['x'], inputs: { files: [] }, cache: { outputs: { files: [] } } }),
+      refusal({ dependsOn: ['x'], inputs: { files: [] }, outputs: { files: [] }, cache: true }),
     ).toContain('`cache` needs `exec`')
-    expect(refusal({ exec: { command: 'x' }, cache: { outputs: { files: [] } } })).toBe(
+    expect(refusal({ exec: { command: 'x' }, outputs: { files: [] }, cache: true })).toBe(
       "p: tasks.t: `cache` needs `inputs` — the key is the task's inputs, `inputs: { files: [...] }`",
     )
     // CONTROL: both spelled, and inputs alone, load.
     expect(
-      refusal({ exec: { command: 'x' }, inputs: { files: [] }, cache: { outputs: { files: [] } } }),
+      refusal({
+        exec: { command: 'x' },
+        inputs: { files: [] },
+        outputs: { files: [] },
+        cache: true,
+      }),
     ).toBeNull()
     expect(refusal({ exec: { command: 'x' }, inputs: { files: ['src/**'] } })).toBeNull()
     expect(refusal({ inputs: { files: ['src/**'] } })).toBeNull()
   })
 
-  it('refuses `inputs` under `cache`', () => {
+  it('refuses `inputs` under `cache`, which is a switch', () => {
     expect(
-      refusal({ exec: { command: 'x' }, cache: { inputs: { files: [] }, outputs: { files: [] } } }),
-    ).toContain('unknown field "inputs"')
+      refusal({ exec: { command: 'x' }, cache: { inputs: { files: [] } }, outputs: { files: [] } }),
+    ).toContain('tasks.t.cache must be true or false')
   })
 })

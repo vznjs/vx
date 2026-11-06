@@ -22,7 +22,7 @@ const config = (read: string) => `
           command: 'ln -sf ../.env dist/x',
           sandbox: { allow: { read: [${JSON.stringify(read)}], write: ['dist/'] } },
         },
-        inputs: { files: ['package.json'] }, cache: { outputs: { files: ['dist/**'] } },
+        inputs: { files: ['package.json'] }, outputs: { files: ['dist/**'] }, cache: true,
       },
     },
   }

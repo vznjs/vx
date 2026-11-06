@@ -71,20 +71,23 @@ it.each([
     framed(44, 'tasks.build.exec.command must be a non-empty string'),
   ],
   [
-    'a string `cache.outputs`',
-    task(`exec: { command: 'x' }, ${CACHE_IN}, cache: { outputs: 'dist' }`),
-    framed(100, 'tasks.build.cache.outputs must be an object — `outputs: { files: [...] }`'),
+    'a string `outputs`',
+    task(`exec: { command: 'x' }, ${CACHE_IN}, outputs: 'dist', cache: true`),
+    framed(91, 'tasks.build.outputs must be an object — `outputs: { files: [...] }`'),
   ],
   [
     'a string `inputs`',
-    task(`exec: { command: 'x' }, inputs: 'src/**', cache: { outputs: { files: [] } }`),
+    task(`exec: { command: 'x' }, inputs: 'src/**', outputs: { files: [] }, cache: true`),
     framed(60, 'tasks.build.inputs must be an object — `inputs: { files: [...] }`'),
   ],
   [
-    'a missing `cache.outputs`',
-    task(`exec: { command: 'x' }, ${CACHE_IN}, cache: {}`),
-    // Framed at the `cache` that leaves it out.
-    framed(91, 'tasks.build.cache.outputs is required when `cache` is set'),
+    'a missing `outputs`',
+    task(`exec: { command: 'x' }, ${CACHE_IN}, cache: true`),
+    // Framed at the `cache` that asks for it.
+    framed(
+      91,
+      'tasks.build: `cache` needs `outputs` — what the task produces, `outputs: { files: [...] }` (`[]` for none)',
+    ),
   ],
   [
     'a string `dependsOn`',

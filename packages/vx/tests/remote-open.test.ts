@@ -20,7 +20,7 @@ const BUILD_CONFIG = `
     tasks: {
       build: {
         exec: { command: 'echo built > out.txt' },
-        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
+        inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
       },
     },
   }

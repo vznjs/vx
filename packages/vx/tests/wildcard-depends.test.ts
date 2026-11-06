@@ -124,15 +124,14 @@ describe('dependsOn patterns e2e', () => {
         tasks: {
           'build.x': {
             exec: { command: "cp src.txt out.txt" },
-            inputs: { files: ['src.txt'] }, cache: { outputs: { files: ['out.txt'] } },
+            inputs: { files: ['src.txt'] }, outputs: { files: ['out.txt'] }, cache: true,
           },
           top: {
             dependsOn: ['build.*'],
             exec: { command: "cp out.txt final.txt" },
             inputs: { files: ['top-src.txt'], tasks: ['build.*'] },
-            cache: {
-              outputs: { files: ['final.txt'] },
-            },
+            outputs: { files: ['final.txt'] },
+            cache: true,
           },
         },
       }
@@ -164,7 +163,7 @@ describe('dependsOn patterns e2e', () => {
         tasks: {
           build: {
             exec: { command: 'cp src.txt out.txt' },
-            inputs: { files: ['src.txt'] }, cache: { outputs: { files: ['out.txt'] } },
+            inputs: { files: ['src.txt'] }, outputs: { files: ['out.txt'] }, cache: true,
           },
         },
       }
@@ -179,9 +178,8 @@ describe('dependsOn patterns e2e', () => {
             dependsOn: ['^build'],
             exec: { command: 'echo ran >> ran.log && cp src.txt out.txt' },
             inputs: { files: ['src.txt'], tasks: ['acme-*#build'] },
-            cache: {
-              outputs: { files: ['out.txt'] },
-            },
+            outputs: { files: ['out.txt'] },
+            cache: true,
           },
         },
       }

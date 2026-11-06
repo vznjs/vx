@@ -34,7 +34,7 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `tags` | supported | A package's own `tags` (Turbo 2.11.6) become its vx project `tags`, so `--filter tag:<label>` selects its tasks as Turbo's does; the root's label the root project, and none is inherited. |
 | `tasks` | supported | Each task (or Turbo 1 `pipeline`) becomes a vx task for the packages that declare the script, and a key-only one where a `^` edge reaches a package without it (`dependsOn`, below); a task no package has a script for is a group task in each package that defines it, as Turbo runs a no-op node there and exits 0. A script that names `$npm_package_name`, `$npm_package_version` or `$npm_lifecycle_event` gets it defined, as the package manager Turbo runs it through sets it. A task's key holds its own mapped definition, not all of turbo.json: an edit to another task's definition keeps its hits, where Turbo's global hash misses every task. |
 | `ui` | not applicable | Terminal UI choice. |
-| `tasks.*.cache` | supported | `cache: false` means no cache block: the task always runs. |
+| `tasks.*.cache` | supported | `cache: false` stays `cache: false`: the task always runs. |
 | `tasks.*.dependsOn` | mapped, with a note | Same syntax; edges to tasks nobody runs are dropped; `$TURBO_ROOT$` deps get a TODO; `$NAME` becomes env. A package without the script of a `^` task others run keys it as Turbo's no-op node does: a cached `true` task with no outputs, its own edges kept. A task name no package has a script for (`ci: { dependsOn: ["lint", "build"] }`) is a group wherever it has an edge, so `vx run ci` runs them as `turbo run ci` does. Written sorted, as Turbo sorts it before hashing, so a reorder keeps the hit. |
 | `tasks.*.description` | supported | Copied to the task's `description`. |
 | `tasks.*.env` | mapped, with a note | Goes to `inputs.env` and `exec.env.passThrough`; under `turbo()` a `*` name expands over the run's environment, as Turbo does; the CLI lists the names the package's files spell, and a wildcard nothing spells gets a TODO. A `$NAME` entry is refused, as Turbo refuses it. |
@@ -149,7 +149,7 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `targets.*.inputs` | mapped, with a note | Expanded into `inputs`; none means `default` and `^default`; forms without an equivalent get TODOs. |
 | `targets.*.dependsOn` | mapped, with a note | `project:target` becomes `pkg#target`; project patterns and tags resolved; a target glob (`test:e2e--*`) expands over the workspace's target names, as Nx 19.5+ does, a same-project one over its own; `params: forward` gets a TODO. |
 | `targets.*.command` | mapped, with a note | Run as the `run-commands` shorthand: one POSIX sh line. |
-| `targets.*.cache` | supported | `cache: true` (or `cacheableOperations`) gives a cache block; persistent tasks stay uncached. |
+| `targets.*.cache` | supported | `cache: true` (or `cacheableOperations`) stays `cache: true`; persistent tasks stay uncached. |
 | `targets.*.continuous` | supported | An uncached `exec.persistent` task, ready on spawn: Nx starts its dependents once it has started, and so does vx. A run-commands `readyWhen` becomes `exec.persistent.readyWhen`. |
 | `targets.*.parallelism` | not supported | `parallelism: false` gets a TODO to run with `--concurrency 1`; vx has no per-task exclusivity. |
 | `targets.*.metadata` | mapped, with a note | Only `nonAtomizedTarget` is read, to find `.env` files. |

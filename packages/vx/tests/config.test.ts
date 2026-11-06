@@ -19,11 +19,12 @@ describe('defineProject', () => {
         build: {
           exec: { command: 'tsc' },
           inputs: { files: ['src/**'] },
-          cache: { outputs: { files: ['dist/**'] } },
+          outputs: { files: ['dist/**'] },
+          cache: true,
         },
       },
     })
-    expect(cfg.tasks?.build?.cache?.outputs.files).toEqual(['dist/**'])
+    expect(cfg.tasks?.build?.outputs?.files).toEqual(['dist/**'])
     // The claim is about the TYPE, and the line above is a runtime one that
     // holds whether or not the generic narrows. `const T` is what keeps the
     // command a literal rather than widening it to `string`; this line is
@@ -64,7 +65,7 @@ describe('defineProject', () => {
       pipeline: {},
     })
     defineProject({
-      // @ts-expect-error vx spells it `cache.outputs.files`.
+      // @ts-expect-error vx spells it `outputs.files`.
       tasks: { build: { exec: { command: 'tsc' }, outputs: ['dist/**'] } },
     })
     defineProject({
@@ -76,8 +77,9 @@ describe('defineProject', () => {
         build: {
           exec: { command: 'tsc' },
           inputs: { files: [] },
-          // @ts-expect-error `remote` is not a CacheConfig key.
-          cache: { outputs: { files: [] }, remote: true },
+          // @ts-expect-error `cache` is true or false, not an object.
+          cache: { remote: true },
+          outputs: { files: [] },
         },
       },
     })
@@ -87,7 +89,8 @@ describe('defineProject', () => {
           exec: { command: 'tsc' },
           // @ts-expect-error `globs` is not a InputsConfig key.
           inputs: { files: [], globs: [] },
-          cache: { outputs: { files: [] } },
+          outputs: { files: [] },
+          cache: true,
         },
       },
     })
@@ -96,8 +99,9 @@ describe('defineProject', () => {
         build: {
           exec: { command: 'tsc' },
           inputs: { files: [] },
-          // @ts-expect-error `logs` is not a CacheOutputs key.
-          cache: { outputs: { files: [], logs: 1 } },
+          // @ts-expect-error `logs` is not a TaskOutputs key.
+          outputs: { files: [], logs: 1 },
+          cache: true,
         },
       },
     })
@@ -111,7 +115,8 @@ describe('defineProject', () => {
           dependsOn: ['^build'],
           exec: { command: 'tsc', env: { passThrough: ['A'] }, ...(ci ? { timeout: '1s' } : {}) },
           inputs: { files: ['src/**'], env: ['X'] },
-          cache: { outputs: { files: ['dist/**'] } },
+          outputs: { files: ['dist/**'] },
+          cache: true,
         },
         lint: { exec: { command: 'x' }, dependsOn: ['build'] },
       },
@@ -234,7 +239,7 @@ describe('defineProject', () => {
     defineProject({
       tasks: {
         // @ts-expect-error `files` is required on inputs.
-        build: { exec: { command: 'tsc' }, inputs: {}, cache: { outputs: { files: [] } } },
+        build: { exec: { command: 'tsc' }, inputs: {}, outputs: { files: [] }, cache: true },
       },
     })
     // CONTROL: the same task with an explicit (even empty) files list is fine.
@@ -243,7 +248,8 @@ describe('defineProject', () => {
         build: {
           exec: { command: 'tsc' },
           inputs: { files: [] },
-          cache: { outputs: { files: [] } },
+          outputs: { files: [] },
+          cache: true,
         },
       },
     })
@@ -277,7 +283,7 @@ describe('defineWorkspace', () => {
     // @ts-expect-error Turbo's `pipeline` is not a WorkspaceConfig key.
     defineWorkspace({ cache: { dir: '.vx' }, pipeline: {} })
     // @ts-expect-error `severty` is a typo of `severity`.
-    defineWorkspace({ cache: { inputStability: { strategy: 'immutable', severty: 'warn' } } })
+    defineWorkspace({ inputs: { stability: { strategy: 'immutable', severty: 'warn' } } })
     // @ts-expect-error `exclusiveOutput` is a typo of `exclusiveOutputs` (D-155).
     defineWorkspace({ run: { rules: { exclusiveOutput: false } } })
     // @ts-expect-error a duration carries its unit.
@@ -297,8 +303,8 @@ describe('defineWorkspace', () => {
         dir: '.vx',
         policy: 'local:rw',
         download: 'all',
-        inputStability: { strategy: 'mutable', severity: 'error' },
       },
+      inputs: { stability: { strategy: 'mutable', severity: 'error' } },
       watch: { poll: true },
       plugins: [],
     })

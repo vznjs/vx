@@ -86,7 +86,7 @@ async function scenario(mode: ContinueMode, seed: number, iter: number): Promise
         ...(s.kind === 'timeout' ? { timeout: '500ms' } : {}),
       }
       return `${t}: { dependsOn: ${JSON.stringify(deps.get(t))}, exec: ${JSON.stringify(exec)},
-        inputs: { files: ['src/${t}.txt'] }, cache: { outputs: { files: ['out/${t}.txt'] } } }`
+        inputs: { files: ['src/${t}.txt'] }, outputs: { files: ['out/${t}.txt'] }, cache: true }`
     })
     .join(',\n')
   await writeFile(path.join(p, 'vx.config.mjs'), `export default { tasks: { ${pTasks} } }\n`)

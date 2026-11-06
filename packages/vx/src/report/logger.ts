@@ -373,7 +373,7 @@ export function defaultLogger(
   let slots: (WorkerSlot | null)[] = []
   const slotQueue: WorkerSlot[] = []
   let succeeded = 0
-  // Executed with no `cache` block: never a miss, counted apart.
+  // Executed without `cache: true`: never a miss, counted apart.
   let noCache = 0
   let upToDate = 0
   let restoredLocal = 0

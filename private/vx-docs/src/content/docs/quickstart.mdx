@@ -39,7 +39,8 @@ Cache your first task in two minutes, in a repo you already have.
        build: {
          exec: { command: 'tsc' },
          inputs: { files: ['src/**', 'tsconfig.json'] },
-         cache: { outputs: { files: ['dist/**'] } },
+         outputs: { files: ['dist/**'] },
+         cache: true,
        },
      },
    } satisfies ProjectConfig

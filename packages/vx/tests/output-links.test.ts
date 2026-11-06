@@ -38,7 +38,7 @@ async function workspace(command: string): Promise<{ root: string; dir: string }
   const dir = await addProject(root, 'app', {
     config: `export default { tasks: { build: {
       exec: { command: ${JSON.stringify(command)} },
-      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+      inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
     } } }`,
     files: { 'src/in.txt': 'v1\n', '.gitignore': 'dist/\n' },
   })

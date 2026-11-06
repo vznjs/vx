@@ -394,7 +394,7 @@ describe('the watch fixture', () => {
     expect(await text(path.join(f.dir, 'dist', 'out.txt'))).toBe('a1\nb1\n')
     expect(await executions(f.log)).toBe(2)
     expect(config).toContain(
-      "inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } }",
+      "inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true",
     )
     expect(f.watch).toBeUndefined()
   })

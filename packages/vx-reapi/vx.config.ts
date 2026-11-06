@@ -63,9 +63,8 @@ export default defineProject({
           'VX_REQUIRE_REAPI_EXEC',
         ],
       },
-      cache: {
-        outputs: { files: [] },
-      },
+      outputs: { files: [] },
+      cache: true,
     },
 
     // Only the files that dial a real server (`*-e2e.test.ts`); `test` runs
@@ -130,9 +129,8 @@ export default defineProject({
       inputs: {
         files: ['src/**', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
       },
-      cache: {
-        outputs: { files: [] },
-      },
+      outputs: { files: [] },
+      cache: true,
     },
 
     'lint.oxfmt': {
@@ -145,9 +143,8 @@ export default defineProject({
       inputs: {
         files: ['**/*'],
       },
-      cache: {
-        outputs: { files: [] },
-      },
+      outputs: { files: [] },
+      cache: true,
     },
   },
 })

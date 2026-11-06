@@ -87,7 +87,7 @@ it('a cacheable task that ran counts the files its key read; a hit and an uncach
       tasks: {
         build: {
           exec: { command: 'true' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+          inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
         },
         plain: { exec: { command: 'true' } },
       },
@@ -128,7 +128,7 @@ it('a miss names what its key changed since the last entry saved for it', async 
       tasks: {
         build: {
           exec: { command: 'true' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+          inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
         },
       },
     }

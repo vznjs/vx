@@ -42,39 +42,39 @@ the values it takes and each refusal's exact words are recorded in
 
 `.vx/workspace.ts`:
 
-| Level                  | Fields                                                                                     |
-| ---------------------- | ------------------------------------------------------------------------------------------ |
-| (top)                  | `baseBranch`, `cache`, `lock`, `plugins`, `run`, `watch`                                   |
-| `run`                  | `concurrency`, `continue`, `retries`, `rules`, `schedule`, `timeout`                       |
-| `lock`                 | `reviewFiles`                                                                              |
-| `run.rules`            | `dependencies`, `exclusiveOutputs`                                                         |
-| `cache`                | `concurrency`, `dir`, `download`, `inputStability`, `outputs`, `policy`, `store`, `upload` |
-| `cache.inputStability` | `severity`, `strategy`                                                                     |
-| `cache.outputs`        | `clean`                                                                                    |
-| `cache.concurrency`    | `download`, `restore`, `upload`                                                            |
-| `cache.store`          | `decompress`, `embeddings`                                                                 |
-| `cache.upload`         | `failures`                                                                                 |
-| `watch`                | `poll`                                                                                     |
+| Level               | Fields                                                                        |
+| ------------------- | ----------------------------------------------------------------------------- |
+| (top)               | `baseBranch`, `cache`, `inputs`, `lock`, `outputs`, `plugins`, `run`, `watch` |
+| `run`               | `concurrency`, `continue`, `retries`, `rules`, `schedule`, `timeout`          |
+| `lock`              | `reviewFiles`                                                                 |
+| `run.rules`         | `dependencies`, `exclusiveOutputs`                                            |
+| `cache`             | `concurrency`, `dir`, `download`, `policy`, `store`, `upload`                 |
+| `cache.concurrency` | `download`, `restore`, `upload`                                               |
+| `cache.store`       | `decompress`, `embeddings`                                                    |
+| `cache.upload`      | `failures`                                                                    |
+| `watch`             | `poll`                                                                        |
+| `inputs`            | `stability`                                                                   |
+| `inputs.stability`  | `severity`, `strategy`                                                        |
+| `outputs`           | `clean`                                                                       |
 
 `vx.config.ts`:
 
-| Level                               | Fields                                                                                                    |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| (top)                               | `name`, `tags`, `tasks`                                                                                   |
-| `tasks.<name>`                      | `cache`, `dependsOn`, `description`, `exec`, `inputs`                                                     |
-| `tasks.<name>.exec`                 | `command`, `env`, `interactive`, `persistent`, `platforms`, `remote`, `retries`, `sandbox`, `timeout`     |
-| `tasks.<name>.exec.env`             | `define`, `passThrough`, `secret`                                                                         |
-| `tasks.<name>.exec.persistent`      | `readyWhen`                                                                                               |
-| `tasks.<name>.exec.sandbox`         | `allow`, `deny`, `hermetic`, `ignore`, `weakerNetworkIsolation`, `weakerWhenNested`                       |
-| `tasks.<name>.exec.sandbox.allow`   | `gitConfig`, `localBinding`, `machLookup`, `network`, `pty`, `read`, `systemInfo`, `unixSockets`, `write` |
-| `tasks.<name>.exec.sandbox.deny`    | `network`                                                                                                 |
-| `tasks.<name>.exec.sandbox.ignore`  | `network`, `read`, `systemInfo`, `write`                                                                  |
-| `tasks.<name>.inputs`               | `env`, `files`, `runtime`, `tasks`, `workspaceFiles`, `workspaceRuntime`                                  |
-| `tasks.<name>.cache`                | `outputs`, `inputStability`                                                                               |
-| `tasks.<name>.cache.outputs`        | `bin`, `clean`, `files`, `mount`, `workspaceFiles`                                                        |
-| `tasks.<name>.cache.inputStability` | `severity`, `strategy`                                                                                    |
+| Level                              | Fields                                                                                                    |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| (top)                              | `name`, `tags`, `tasks`                                                                                   |
+| `tasks.<name>`                     | `cache`, `dependsOn`, `description`, `exec`, `inputs`, `outputs`                                          |
+| `tasks.<name>.exec`                | `command`, `env`, `interactive`, `persistent`, `platforms`, `remote`, `retries`, `sandbox`, `timeout`     |
+| `tasks.<name>.exec.env`            | `define`, `passThrough`, `secret`                                                                         |
+| `tasks.<name>.exec.persistent`     | `readyWhen`                                                                                               |
+| `tasks.<name>.exec.sandbox`        | `allow`, `deny`, `hermetic`, `ignore`, `weakerNetworkIsolation`, `weakerWhenNested`                       |
+| `tasks.<name>.exec.sandbox.allow`  | `gitConfig`, `localBinding`, `machLookup`, `network`, `pty`, `read`, `systemInfo`, `unixSockets`, `write` |
+| `tasks.<name>.exec.sandbox.deny`   | `network`                                                                                                 |
+| `tasks.<name>.exec.sandbox.ignore` | `network`, `read`, `systemInfo`, `write`                                                                  |
+| `tasks.<name>.inputs`              | `env`, `files`, `runtime`, `stability`, `tasks`, `workspaceFiles`, `workspaceRuntime`                     |
+| `tasks.<name>.inputs.stability`    | `severity`, `strategy`                                                                                    |
+| `tasks.<name>.outputs`             | `bin`, `clean`, `files`, `mount`, `workspaceFiles`                                                        |
 
-Keyed by name: `tasks`, `tasks.<name>.cache.outputs.mount`, `tasks.<name>.exec.env.define`.
+Keyed by name: `tasks`, `tasks.<name>.outputs.mount`, `tasks.<name>.exec.env.define`.
 
 `sandbox.ignore` takes only the four classes a denial is reported in
 (D-4); any other grant name is refused as an unknown field.

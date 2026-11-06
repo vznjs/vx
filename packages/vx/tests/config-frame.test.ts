@@ -69,7 +69,7 @@ describe('configErrorFrame', () => {
     ).toBe(`${file}:4:7: tasks.build: \`exec\` is odd`)
   })
   // A field the task leaves out was found in the NEXT task that has it:
-  // `tasks.after.cache.outputs is required` framed noout's `outputs`.
+  // `tasks.after.outputs is required` framed noout's `outputs`.
   it('frames a missing field at its parent, never at a later task that has it', async () => {
     const other = path.join(dir, 'missing-field', 'vx.config.ts')
     await mkdir(path.dirname(other), { recursive: true })
@@ -77,8 +77,8 @@ describe('configErrorFrame', () => {
       other,
       `export default {
   tasks: {
-    after: { cache: {}, exec: { command: 'x' } },
-    noout: { cache: { outputs: { files: ['dist/**'] } } },
+    after: { cache: true, exec: { command: 'x' } },
+    noout: { outputs: { files: ['dist/**'] }, cache: true },
     plain: { exec: 'x' },
     later: { exec: { timeout: 1 } },
   },
@@ -86,8 +86,8 @@ describe('configErrorFrame', () => {
 `,
     )
     const at = (m: string) => configErrorFrame(`${other}: ${m}`, dir)?.split('\n')[0]
-    expect(at('tasks.after.cache.outputs is required when `cache` is set')).toBe(
-      'missing-field/vx.config.ts:3:14: tasks.after.cache.outputs is required when `cache` is set',
+    expect(at('tasks.after.outputs is required when `cache` is set')).toBe(
+      'missing-field/vx.config.ts:3:5: tasks.after.outputs is required when `cache` is set',
     )
     // A value that is no object literal holds no field to search.
     expect(at('tasks.plain.exec.timeout must be a positive integer')).toBe(
@@ -346,9 +346,9 @@ describe('vx lock prints a config refusal with its frame', () => {
       expect(r.exitCode).toBe(1)
       const err = r.stderr.toString()
       expect(err).toStartWith(
-        '✗ vx lock  lock not written\n\n  packages/a/vx.config.mjs:1:60\n  tasks.build has unknown field "outputs"\n  allowed: cache, dependsOn, description, exec, inputs',
+        '✗ vx lock  lock not written\n\n  packages/a/vx.config.mjs:1:60\n  tasks.build.outputs must be an object (fields: bin, clean, files, mount, workspaceFiles), not an array',
       )
-      expect(err).toContain('  fix  use `cache.outputs.files`')
+      expect(err).toContain('  fix  use `{ files: [...] }`')
       expect(err.match(/^✗ vx lock {2}also refused$/gm)).toHaveLength(4)
       for (const name of ['b', 'c', 'd', 'e'])
         expect(err).toContain(`packages/${name}/vx.config.mjs:1:60`)

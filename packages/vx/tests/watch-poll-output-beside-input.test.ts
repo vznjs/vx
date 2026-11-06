@@ -45,7 +45,7 @@ describe('vx watch --poll: outputs beside inputs', () => {
           tasks: {
             build: {
               exec: { command: 'cat src/a.ts > src/a.js && echo run >> ${log}' },
-              inputs: { files: ['src/**/*.ts'] }, cache: { outputs: { files: ['src/**/*.js'] } },
+              inputs: { files: ['src/**/*.ts'] }, outputs: { files: ['src/**/*.js'] }, cache: true,
             },
           },
         }

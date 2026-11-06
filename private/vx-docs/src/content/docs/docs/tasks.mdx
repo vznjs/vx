@@ -16,7 +16,7 @@ export default defineProject({
   tasks: {
     codegen: {
       exec: { command: 'graphql-codegen' },
-      inputs: { files: ['schema.graphql'] }, cache: { outputs: { files: ['src/gen/**'] } },
+      inputs: { files: ['schema.graphql'] }, outputs: { files: ['src/gen/**'] }, cache: true,
     },
     build: {
       description: 'compile TypeScript to dist/',
@@ -24,7 +24,7 @@ export default defineProject({
       exec: { command: 'tsc -b' },
       // codegen's output reaches this key through codegen's own key; a key
       // that read it could not be known until codegen ran, so vx refuses it.
-      inputs: { files: ['src/**', '!src/gen/**'] }, cache: { outputs: { files: ['dist/**'] } },
+      inputs: { files: ['src/**', '!src/gen/**'] }, outputs: { files: ['dist/**'] }, cache: true,
     },
     e2e: {
       dependsOn: ['build', 'api#build'],

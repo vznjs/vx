@@ -125,15 +125,15 @@ export default defineProject({
       // can't see is incoherent.
       exec: { command: 'tsc -p .', env: { passThrough: ['NODE_ENV'] } },
       inputs: { files: ['src/**'], env: ['NODE_ENV'] },
-      cache: {
-        outputs: { files: ['dist/**'] },
-      },
+      outputs: { files: ['dist/**'] },
+      cache: true,
     },
     test: {
       dependsOn: ['build'],
       exec: { command: 'bun test' },
       inputs: { files: ['src/**', 'tests/**'] },
-      cache: { outputs: { files: [] } },
+      outputs: { files: [] },
+      cache: true,
     },
     dev: {
       exec: { command: 'vite', timeout: '30s', persistent: { readyWhen: 'Local:' } },

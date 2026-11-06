@@ -313,7 +313,7 @@ describe('loadProjectConfig', () => {
       const file = path.join(dir, 'vx.config.mjs')
       await writeFile(
         file,
-        `export default { tasks: { dev: { exec: { command: 'vite', persistent: {} }, inputs: { files: [] }, cache: { outputs: { files: [] } } } } }`,
+        `export default { tasks: { dev: { exec: { command: 'vite', persistent: {} }, inputs: { files: [] }, outputs: { files: [] }, cache: true } } }`,
       )
       await expect(loadProjectConfig(file)).rejects.toThrow(
         /cache.*not allowed on a persistent task/,
@@ -348,7 +348,7 @@ describe('loadProjectConfig', () => {
     it('rejects `cache` on a keyed group (a group writes nothing)', async () => {
       const message = (outputs: string) =>
         `export default { tasks: { g: {
-          inputs: { files: ['**'] }, cache: { outputs: ${outputs} },
+          inputs: { files: ['**'] }, outputs: ${outputs}, cache: true,
         } } }`
       const file = path.join(dir, 'vx.config.mjs')
       for (const outputs of [
@@ -380,7 +380,7 @@ describe('loadProjectConfig', () => {
           file,
           `export default { tasks: { build: {
             exec: { command: 'tsc' },
-            inputs: { files: ['src/**'], env: [${JSON.stringify(name)}] }, cache: { outputs: { files: [] } },
+            inputs: { files: ['src/**'], env: [${JSON.stringify(name)}] }, outputs: { files: [] }, cache: true,
           } } }`,
         )
         await expect(loadProjectConfig(file)).rejects.toThrow(/wildcards.*env names.*not supported/)
@@ -393,7 +393,7 @@ describe('loadProjectConfig', () => {
         file,
         `export default { tasks: { build: {
           exec: { command: 'tsc' },
-          inputs: { files: ['src/**'], env: [42] }, cache: { outputs: { files: [] } },
+          inputs: { files: ['src/**'], env: [42] }, outputs: { files: [] }, cache: true,
         } } }`,
       )
       await expect(loadProjectConfig(file)).rejects.toThrow(/env.*non-empty/)
@@ -407,7 +407,7 @@ describe('loadProjectConfig', () => {
         file,
         `export default { tasks: { build: {
           exec: { command: 'tsc' },
-          inputs: { files: ['src/**'], env: ['MODE\\0x'] }, cache: { outputs: { files: [] } },
+          inputs: { files: ['src/**'], env: ['MODE\\0x'] }, outputs: { files: [] }, cache: true,
         } } }`,
       )
       await expect(loadProjectConfig(file)).rejects.toThrow(
@@ -415,25 +415,25 @@ describe('loadProjectConfig', () => {
       )
     })
 
-    it('rejects empty-string entries in cache.outputs.files', async () => {
+    it('rejects empty-string entries in outputs.files', async () => {
       const file = path.join(dir, 'vx.config.mjs')
       await writeFile(
         file,
         `export default { tasks: { build: {
           exec: { command: 'tsc' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: [''] } },
+          inputs: { files: ['src/**'] }, outputs: { files: [''] }, cache: true,
         } } }`,
       )
       await expect(loadProjectConfig(file)).rejects.toThrow(/outputs.files.*non-empty/)
     })
 
-    it('rejects absolute paths in cache.outputs.files (must be project-relative)', async () => {
+    it('rejects absolute paths in outputs.files (must be project-relative)', async () => {
       const file = path.join(dir, 'vx.config.mjs')
       await writeFile(
         file,
         `export default { tasks: { build: {
           exec: { command: 'tsc' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['/tmp/leak.js'] } },
+          inputs: { files: ['src/**'] }, outputs: { files: ['/tmp/leak.js'] }, cache: true,
         } } }`,
       )
       await expect(loadProjectConfig(file)).rejects.toThrow(/absolute paths are not allowed/)
@@ -454,7 +454,7 @@ describe('loadProjectConfig', () => {
           file,
           `export default { tasks: { build: {
             exec: { command: 'tsc' },
-            inputs: { files: ${JSON.stringify(inputs)} }, cache: { outputs: { files: ${JSON.stringify(outputs)} } },
+            inputs: { files: ${JSON.stringify(inputs)} }, outputs: { files: ${JSON.stringify(outputs)} }, cache: true,
           } } }`,
         )
         await expect(loadProjectConfig(file)).rejects.toThrow(/path segments are not allowed/)
@@ -484,7 +484,7 @@ describe('loadProjectConfig', () => {
           file,
           `export default { tasks: { build: {
             exec: { command: 'tsc' },
-            inputs: { files: ${JSON.stringify(inputs)} }, cache: { outputs: { files: ${JSON.stringify(outputs)} } },
+            inputs: { files: ${JSON.stringify(inputs)} }, outputs: { files: ${JSON.stringify(outputs)} }, cache: true,
           } } }`,
         )
         return loadProjectConfig(file)
@@ -511,7 +511,7 @@ describe('loadProjectConfig', () => {
         file,
         `export default { tasks: { build: {
           exec: { command: 'tsc' },
-          inputs: { files: ['..foo/**'] }, cache: { outputs: { files: ['dist/**'] } },
+          inputs: { files: ['..foo/**'] }, outputs: { files: ['dist/**'] }, cache: true,
         } } }`,
       )
       const cfg = await loadProjectConfig(file)
@@ -527,7 +527,7 @@ describe('loadProjectConfig', () => {
           file,
           `export default { tasks: { build: {
             exec: { command: 'tsc' },
-            inputs: { files: ['src/**'] }, cache: { outputs: { files: ${JSON.stringify(outputs)} } },
+            inputs: { files: ['src/**'] }, outputs: { files: ${JSON.stringify(outputs)} }, cache: true,
           } } }`,
         )
         return loadProjectConfig(file)
@@ -536,7 +536,7 @@ describe('loadProjectConfig', () => {
         /'\.\.' path segments are not allowed/,
       )
       const literal = ['%2e%2e/t.txt', '．．/t.txt', '~/t.txt', 'dist/**']
-      expect((await load(literal)).tasks?.['build']?.cache?.outputs?.files).toEqual(literal)
+      expect((await load(literal)).tasks?.['build']?.outputs?.files).toEqual(literal)
     })
 
     it('the directory-itself refusal also strips a leading `!`', async () => {
@@ -548,7 +548,7 @@ describe('loadProjectConfig', () => {
         file,
         `export default { tasks: { build: {
           exec: { command: 'tsc' },
-          inputs: { files: ['!.'] }, cache: { outputs: { files: ['dist/**'] } },
+          inputs: { files: ['!.'] }, outputs: { files: ['dist/**'] }, cache: true,
         } } }`,
       )
       await expect(loadProjectConfig(file)).rejects.toThrow(/names the project directory itself/)
@@ -574,7 +574,7 @@ describe('loadProjectConfig', () => {
         file,
         `export default { tasks: { build: {
           exec: { command: 'tsc' },
-          inputs: { files: ['!**/*.spec.ts'] }, cache: { outputs: { files: ['dist/**'] } },
+          inputs: { files: ['!**/*.spec.ts'] }, outputs: { files: ['dist/**'] }, cache: true,
         } } }`,
       )
       await expect(loadProjectConfig(file)).rejects.toThrow(/every entry is a negation/)
@@ -594,9 +594,8 @@ describe('loadProjectConfig', () => {
         `export default { tasks: { build: {
           exec: { command: 'tsc' },
           inputs: { files: ['src/**', '!**/*.spec.ts'] },
-          cache: {
-            outputs: { files: ['dist/**'] },
-          },
+          outputs: { files: ['dist/**'] },
+          cache: true,
         } } }`,
       )
       await expect(loadProjectConfig(file)).resolves.toBeDefined()
@@ -611,19 +610,19 @@ describe('loadProjectConfig', () => {
         file,
         `export default { tasks: { build: {
           exec: { command: 'tsc' },
-          inputs: { files: [] }, cache: { outputs: { files: ['dist/**'] } },
+          inputs: { files: [] }, outputs: { files: ['dist/**'] }, cache: true,
         } } }`,
       )
       await expect(loadProjectConfig(file)).resolves.toBeDefined()
     })
 
-    it('takes a negation in cache.outputs.files back from the outputs, and refuses a list of only negations (A-44)', async () => {
+    it('takes a negation in outputs.files back from the outputs, and refuses a list of only negations (A-44)', async () => {
       const file = path.join(dir, 'vx.config.mjs')
       await writeFile(
         file,
         `export default { tasks: { build: {
           exec: { command: 'tsc' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**', '!dist/*.map'] } },
+          inputs: { files: ['src/**'] }, outputs: { files: ['dist/**', '!dist/*.map'] }, cache: true,
         } } }`,
       )
       await expect(loadProjectConfig(file)).resolves.toBeDefined()
@@ -632,11 +631,11 @@ describe('loadProjectConfig', () => {
         only,
         `export default { tasks: { build: {
           exec: { command: 'tsc' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['!dist/*.map'] } },
+          inputs: { files: ['src/**'] }, outputs: { files: ['!dist/*.map'] }, cache: true,
         } } }`,
       )
       await expect(loadProjectConfig(only)).rejects.toThrow(
-        /cache\.outputs\.files: every entry is a negation/,
+        /outputs\.files: every entry is a negation/,
       )
     })
 
@@ -652,9 +651,8 @@ describe('loadProjectConfig', () => {
         `export default { tasks: { build: {
           exec: { command: 'tsc' },
           inputs: { files: ['src/**'], workspaceFiles: ['!tsconfig.json'] },
-          cache: {
-            outputs: { files: ['dist/**'] },
-          },
+          outputs: { files: ['dist/**'] },
+          cache: true,
         } } }`,
       )
       await expect(loadProjectConfig(inputsOnly)).rejects.toThrow(/every entry is a negation/)
@@ -665,23 +663,22 @@ describe('loadProjectConfig', () => {
         `export default { tasks: { build: {
           exec: { command: 'tsc' },
           inputs: { files: ['src/**'] },
-          cache: {
-            outputs: { files: ['dist/**'], workspaceFiles: ['!generated/x'] },
-          },
+          outputs: { files: ['dist/**'], workspaceFiles: ['!generated/x'] },
+          cache: true,
         } } }`,
       )
       await expect(loadProjectConfig(outNeg)).rejects.toThrow(
-        /cache\.outputs\.workspaceFiles: every entry is a negation/,
+        /outputs\.workspaceFiles: every entry is a negation/,
       )
     })
 
-    it('rejects non-string entries in cache.outputs.files', async () => {
+    it('rejects non-string entries in outputs.files', async () => {
       const file = path.join(dir, 'vx.config.mjs')
       await writeFile(
         file,
         `export default { tasks: { build: {
           exec: { command: 'tsc' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: [42] } },
+          inputs: { files: ['src/**'] }, outputs: { files: [42] }, cache: true,
         } } }`,
       )
       await expect(loadProjectConfig(file)).rejects.toThrow(/outputs.files.*non-empty/)
@@ -690,13 +687,13 @@ describe('loadProjectConfig', () => {
     // A `..` output glob escapes the project dir; `cleanOutputs` rm()s resolved
     // output paths before every run, so an accepted `../victim/**` would delete
     // files OUTSIDE the project. Reject at load (the boundary is hard).
-    it('rejects `..` path segments in cache.outputs.files (data-loss vector)', async () => {
+    it('rejects `..` path segments in outputs.files (data-loss vector)', async () => {
       const file = path.join(dir, 'vx.config.mjs')
       await writeFile(
         file,
         `export default { tasks: { build: {
           exec: { command: 'tsc' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['../victim/**'] } },
+          inputs: { files: ['src/**'] }, outputs: { files: ['../victim/**'] }, cache: true,
         } } }`,
       )
       await expect(loadProjectConfig(file)).rejects.toThrow(/'\.\.' path segments are not allowed/)
@@ -708,7 +705,7 @@ describe('loadProjectConfig', () => {
         file,
         `export default { tasks: { build: {
           exec: { command: 'tsc' },
-          inputs: { files: ['../sibling/**'] }, cache: { outputs: { files: [] } },
+          inputs: { files: ['../sibling/**'] }, outputs: { files: [] }, cache: true,
         } } }`,
       )
       await expect(loadProjectConfig(file)).rejects.toThrow(/'\.\.' path segments are not allowed/)
@@ -717,13 +714,13 @@ describe('loadProjectConfig', () => {
     // workspaceFiles are workspace-root-relative and deliberately boundary-free
     // WITHIN the workspace — but `..` escapes ABOVE the root (deletes outside
     // the repo). Reject it while still allowing cross-project workspace globs.
-    it('rejects `..` in cache.outputs.workspaceFiles (escapes the workspace root)', async () => {
+    it('rejects `..` in outputs.workspaceFiles (escapes the workspace root)', async () => {
       const file = path.join(dir, 'vx.config.mjs')
       await writeFile(
         file,
         `export default { tasks: { build: {
           exec: { command: 'tsc' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: [], workspaceFiles: ['../above.txt'] } },
+          inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['../above.txt'] }, cache: true,
         } } }`,
       )
       await expect(loadProjectConfig(file)).rejects.toThrow(/'\.\.' path segments are not allowed/)
@@ -736,7 +733,7 @@ describe('loadProjectConfig', () => {
         file,
         `export default { tasks: { build: {
           exec: { command: 'tsc' },
-          inputs: { files: ['src/a..b.ts'] }, cache: { outputs: { files: [] } },
+          inputs: { files: ['src/a..b.ts'] }, outputs: { files: [] }, cache: true,
         } } }`,
       )
       await expect(loadProjectConfig(file)).resolves.toBeDefined()
@@ -795,7 +792,7 @@ describe('loadProjectConfig', () => {
         file,
         `export default { tasks: { build: {
           exec: { command: 'tsc' },
-          inputs: { files: ['/etc/passwd'] }, cache: { outputs: { files: [] } },
+          inputs: { files: ['/etc/passwd'] }, outputs: { files: [] }, cache: true,
         } } }`,
       )
       await expect(loadProjectConfig(file)).rejects.toThrow(/absolute paths are not allowed/)
@@ -807,7 +804,7 @@ describe('loadProjectConfig', () => {
         file,
         `export default { tasks: { build: {
           exec: { command: 'tsc' },
-          inputs: { files: [''] }, cache: { outputs: { files: [] } },
+          inputs: { files: [''] }, outputs: { files: [] }, cache: true,
         } } }`,
       )
       await expect(loadProjectConfig(file)).rejects.toThrow(/inputs.files.*non-empty/)
@@ -820,9 +817,8 @@ describe('loadProjectConfig', () => {
         `export default { tasks: { build: {
           exec: { command: 'echo hi' },
           inputs: { files: ['src/**'], runtime: ['node -v'], workspaceRuntime: ['uname -s'] },
-          cache: {
-            outputs: { files: [] },
-          },
+          outputs: { files: [] },
+          cache: true,
         } } }`,
       )
       const cfg = await loadProjectConfig(file)
@@ -836,7 +832,7 @@ describe('loadProjectConfig', () => {
         file,
         `export default { tasks: { build: {
           exec: { command: 'x' },
-          inputs: { files: [], runtime: [123] }, cache: { outputs: { files: [] } },
+          inputs: { files: [], runtime: [123] }, outputs: { files: [] }, cache: true,
         } } }`,
       )
       await expect(loadProjectConfig(file)).rejects.toThrow(
@@ -850,7 +846,7 @@ describe('loadProjectConfig', () => {
         file,
         `export default { tasks: { build: {
           exec: { command: 'x' },
-          inputs: { files: [], workspaceRuntime: [''] }, cache: { outputs: { files: [] } },
+          inputs: { files: [], workspaceRuntime: [''] }, outputs: { files: [] }, cache: true,
         } } }`,
       )
       await expect(loadProjectConfig(file)).rejects.toThrow(
@@ -888,9 +884,8 @@ describe('loadProjectConfig', () => {
         cfg(`{
           exec: { command: 'true' },
           inputs: { files: ['src/**'], workspaceFile: ['../shared.txt'] },
-          cache: {
-            outputs: { files: [] },
-          },
+          outputs: { files: [] },
+          cache: true,
         }`),
       )
       await expect(loadProjectConfig(file)).rejects.toThrow(
@@ -969,30 +964,30 @@ describe('loadProjectConfig', () => {
       await expect(loadProjectConfig(file)).resolves.toBeDefined()
     })
 
-    it('rejects unknown keys at the cache level', async () => {
+    it('rejects a cache that is not true or false', async () => {
       const file = path.join(dir, 'vx.config.mjs')
       await writeFile(
         file,
         cfg(`{
           exec: { command: 'true' },
-          inputs: { files: [] }, cache: { outputs: { files: [] }, caches: true },
-        }`),
-      )
-      await expect(loadProjectConfig(file)).rejects.toThrow(/cache has unknown field "caches"/)
-    })
-
-    it('rejects unknown keys at the cache.outputs level', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
-      await writeFile(
-        file,
-        cfg(`{
-          exec: { command: 'true' },
-          inputs: { files: [] }, cache: { outputs: { files: [], dirs: ['dist'] } },
+          inputs: { files: [] }, cache: { caches: true }, outputs: { files: [] },
         }`),
       )
       await expect(loadProjectConfig(file)).rejects.toThrow(
-        /cache\.outputs has unknown field "dirs"/,
+        /tasks\.build\.cache must be true or false/,
       )
+    })
+
+    it('rejects unknown keys at the outputs level', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        cfg(`{
+          exec: { command: 'true' },
+          inputs: { files: [] }, outputs: { files: [], dirs: ['dist'] }, cache: true,
+        }`),
+      )
+      await expect(loadProjectConfig(file)).rejects.toThrow(/outputs has unknown field "dirs"/)
     })
 
     it('rejects a tasks ARRAY (Object.entries would name the task "0")', async () => {
@@ -1025,9 +1020,8 @@ describe('loadProjectConfig', () => {
             runtime: ['node -v'],
             workspaceRuntime: ['uname -sm'],
           },
-          cache: {
-            outputs: { files: ['dist/**'], workspaceFiles: ['generated/**'] },
-          },
+          outputs: { files: ['dist/**'], workspaceFiles: ['generated/**'] },
+          cache: true,
         }`),
       )
       await expect(loadProjectConfig(file)).resolves.toBeDefined()
@@ -1039,8 +1033,7 @@ describe('loadProjectConfig', () => {
   // TypeError that named neither the task nor the config.
   describe('inputs.tasks', () => {
     const withTasks = (literal: string): string =>
-      `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: [], tasks: ${literal} }, cache: {
- outputs: { files: [] } } } } }`
+      `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: [], tasks: ${literal} }, outputs: { files: [] }, cache: true } } }`
 
     it('rejects a bare string instead of a list', async () => {
       const file = path.join(dir, 'vx.config.mjs')
@@ -1069,8 +1062,7 @@ describe('loadProjectConfig', () => {
     })
 
     const withDeps = (deps: string, literal: string): string =>
-      `export default { tasks: { build: { exec: { command: 'true' }, dependsOn: ${deps}, inputs: { files: [], tasks: ${literal} }, cache: {
- outputs: { files: [] } } } } }`
+      `export default { tasks: { build: { exec: { command: 'true' }, dependsOn: ${deps}, inputs: { files: [], tasks: ${literal} }, outputs: { files: [] }, cache: true } } }`
 
     it('accepts the documented filter forms', async () => {
       const file = path.join(dir, 'vx.config.mjs')

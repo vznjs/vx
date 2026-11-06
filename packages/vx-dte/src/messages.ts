@@ -66,7 +66,7 @@ export interface RunOrder {
    * for (workspace-relative): the worker builds the request on its own
    * paths and OS (`sandboxRequestFor`), as its orchestrator may run another;
    * `reads`, the dependencies' outputs it may read (workspace-relative);
-   * `mounts`, the dependencies' `cache.outputs.mount`s (`source`
+   * `mounts`, the dependencies' `outputs.mount`s (`source`
    * workspace-relative).
    */
   sandbox?: {

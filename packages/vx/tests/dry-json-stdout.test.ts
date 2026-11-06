@@ -92,7 +92,7 @@ it('`vx lock` and the run over its lock each print a stage warning once', () => 
 it('--dry=json stdout parses with a remote cache layer, answering or failing', () => {
   writeFileSync(
     path.join(root, 'pkgs', 'app', 'vx.config.mjs'),
-    `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } } } } }\n`,
+    `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true } } }\n`,
   )
   const plan = (fail: boolean) => {
     writeFileSync(

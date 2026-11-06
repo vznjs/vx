@@ -8,7 +8,7 @@ Pure types + two identity helpers; no runtime logic.
 Defines every interface the rest of the codebase consumes:
 `ProjectConfig`, `TaskConfig`, `ExecConfig`, `ExecEnv`,
 `PersistentConfig`, `SandboxConfig` (with its `SandboxGrants`,
-`SandboxDenials` and `SandboxIgnore`), `CacheConfig`, `InputsConfig`, `CacheOutputs`, `InputStability`,
+`SandboxDenials` and `SandboxIgnore`), `InputsConfig`, `TaskOutputs`, `InputStability`,
 `WorkspaceConfig` — and the plugin contract a workspace file declares:
 `Plugin`, the `PLUGIN_HOOKS` list every table and host reads (with
 `PluginHook` and the function-valued subset `PLUGIN_FUNCTION_HOOKS`),
@@ -29,9 +29,11 @@ config, measured 2026-09-10). The scaffolds still write the type-only
 ```ts
 // Types
 export interface ProjectConfig
-export interface WorkspaceConfig // { run, cache, lock, watch, plugins }
+export interface WorkspaceConfig // { run, cache, inputs, outputs, lock, watch, plugins }
 export interface RunSettings // `run`: concurrency, schedule, timeout, retries, rules …
-export interface CacheSettings // `cache`: dir, retention, policy, scope, download, inputStability, outputs
+export interface CacheSettings // `cache`: dir, retention, policy, scope, download
+export interface WorkspaceInputs // `inputs`: stability
+export interface WorkspaceOutputs // `outputs`: clean
 export interface LockSettings // `lock`: reviewFiles
 export interface WatchSettings // `watch`: poll
 export interface WorkspaceRules // `run.rules`: graph checks, each on unless false (X-53); `dependencies`, checked by `vx lock`
@@ -45,9 +47,8 @@ export interface SandboxConfig
 export interface SandboxGrants
 export interface SandboxDenials
 export interface SandboxIgnore
-export interface CacheConfig
 export interface InputsConfig
-export interface CacheOutputs
+export interface TaskOutputs
 export interface InputStability
 
 // The plugin contract
@@ -72,11 +73,11 @@ typo in a same-project dependency is a type error at the call site;
 key the schema does not declare as `never`, at the top, on each task,
 and in its `exec`, `exec.env`, `exec.persistent`, `exec.sandbox` (and
 its `allow`, `deny`, `ignore`, D-156), `cache`, `inputs` and
-`cache.outputs`: a
+`outputs`: a
 generic argument skips TypeScript's excess-property check, so a
 Turbo-shaped `outputs` on a task or a `cwd` in `exec` type-checked and
 failed only when vx loaded the config (D-69). `defineWorkspace` does
-the same for its keys, `cache.inputStability`'s and `rules`': a lone unknown key failed
+the same for its keys, `inputs.stability`'s and `rules`': a lone unknown key failed
 TypeScript's weak-type check, but a typo beside a known one
 (`{ plugins, concurency }`, D-70; `rules: { exclusiveOutput }`,
 D-155) type-checked.
@@ -115,7 +116,7 @@ The function body is a one-liner today and that's by design.
 - The types and `config-schema.ts` name the same keys at every level
   (workspace, project, task, `exec`, `exec.env`,
   `exec.persistent`, `exec.sandbox` and its `allow` / `deny` /
-  `ignore`, `cache`, `inputs`, `cache.outputs`):
+  `ignore`, `cache`, `inputs`, `outputs`):
   `tests/config-types-schema.test.ts` holds each list to the type with
   the type-checker and to the validator by its own refusal (D-71). With
   undeclared keys typed `never` (D-69, D-70), a drift either way is a
@@ -123,7 +124,7 @@ The function body is a one-liner today and that's by design.
   Internal modules import them; user code imports them via `@vzn/vx`.
 - No field is optional in the schema if it's required for correctness.
   When `cache` is provided, `inputs.files` and
-  `cache.outputs.files` are required by the type system (not just at
+  `outputs.files` are required by the type system (not just at
   runtime).
 - The types are JSON-serializable. No `Function` fields, no
   `Date` objects. This is what makes the task-config digest —

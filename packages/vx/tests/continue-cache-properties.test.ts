@@ -75,7 +75,7 @@ async function scenario(mode: ContinueMode, seed: number, iter: number): Promise
       const ins = ['src/' + t + '.txt', ...deps.get(t)!.map(read)].join(' ')
       const cmd = `mkdir -p out && if [ -e ${flags}/${t} ]; then echo PARTIAL > out/${t}.txt; exit 1; fi; cat ${ins} > out/${t}.txt`
       return `${t}: { dependsOn: ${JSON.stringify(deps.get(t))}, exec: { command: ${JSON.stringify(cmd)} },
-        inputs: { files: ['src/${t}.txt'] }, cache: { outputs: { files: ['out/${t}.txt'] } } }`
+        inputs: { files: ['src/${t}.txt'] }, outputs: { files: ['out/${t}.txt'] }, cache: true }`
     })
     .join(',\n')
   await writeFile(path.join(p, 'vx.config.mjs'), `export default { tasks: { ${pTasks} } }\n`)

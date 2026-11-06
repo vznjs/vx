@@ -249,7 +249,7 @@ describe('RunOptions.signal aborts a run in flight', () => {
       'app',
       `export default { tasks: { t: {
         exec: { command: 'true' },
-        inputs: { files: ['package.json'], runtime: ['echo $$ > probe.pid; exec sleep 30'] }, cache: { outputs: { files: [] } },
+        inputs: { files: ['package.json'], runtime: ['echo $$ > probe.pid; exec sleep 30'] }, outputs: { files: [] }, cache: true,
       } } }`,
     )
     const ac = new AbortController()
@@ -338,7 +338,7 @@ describe('RunOptions.signal aborts a run in flight', () => {
   it("one run's stop leaves another run's runtime probe alone", async () => {
     const config = (pidFile: string, rest: string) => `export default { tasks: { t: {
       exec: { command: 'true' },
-      inputs: { files: ['package.json'], runtime: ['echo $$ > ${pidFile}; ${rest}'] }, cache: { outputs: { files: [] } },
+      inputs: { files: ['package.json'], runtime: ['echo $$ > ${pidFile}; ${rest}'] }, outputs: { files: [] }, cache: true,
     } } }`
     const a = await addProject(root, 'app', config('probe.pid', 'exec sleep 30'))
     const otherRoot = await makeWorkspace({ prefix: 'vx-abort-other-' })

@@ -32,7 +32,7 @@ it(
       files: { 'static/logo.txt': 'committed', 'src/a.txt': 'v1', '.gitignore': 'public\n' },
       config: `export default { tasks: { build: {
         exec: { command: 'cp src/a.txt public/a.txt' },
-        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['public/**'] } },
+        inputs: { files: ['src/**'] }, outputs: { files: ['public/**'] }, cache: true,
       } } }`,
     })
     const git = gitIn(f.root)

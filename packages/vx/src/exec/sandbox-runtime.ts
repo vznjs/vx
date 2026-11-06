@@ -2069,7 +2069,7 @@ async function ownProxy(
 function withMounts(wrapped: string, mounts: readonly SandboxMount[]): string {
   if (process.platform !== 'linux') {
     throw new UserError(
-      `cache.outputs.mount: ${mounts[0]!.target} can be laid out only by the Linux sandbox — ` +
+      `outputs.mount: ${mounts[0]!.target} can be laid out only by the Linux sandbox — ` +
         'run this task on Linux',
     )
   }
@@ -2090,7 +2090,7 @@ function withMounts(wrapped: string, mounts: readonly SandboxMount[]): string {
     // bwrap makes no directory on the read-only root: the path must be there.
     if (!existsSync(target)) {
       throw new UserError(
-        `cache.outputs.mount: ${target} does not exist on this machine, and the sandbox can lay a ` +
+        `outputs.mount: ${target} does not exist on this machine, and the sandbox can lay a ` +
           `mount only on a directory that is there — create it once, empty is enough ` +
           `(sudo mkdir -p ${target})`,
       )

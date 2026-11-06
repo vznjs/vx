@@ -281,7 +281,7 @@ function cantOpenIndex(dbFile: string, err: unknown): UserError | undefined {
 //        the memo simply stops answering wrongly, so an affected task's
 //        key moves from a WRONG value to the right one: it misses once,
 //        re-runs, re-caches. Self-healing, never a wrong hit.
-//   v25: runs.cached — whether the task declared a `cache` block. An
+//   v25: runs.cached — whether the task declared `cache: true`. An
 //        uncached task's row looked like any executed miss, so `vx why`
 //        headlined "cache key changed (inputs differ)" for a task that
 //        runs every time by design, and `vx last` could not mark it the
@@ -2882,7 +2882,7 @@ export class Cache implements CacheLayer {
     if (plan.size > this.artifactCeiling) {
       throw new Error(
         `${args.entry.taskId} is not cached: its outputs pack to ${formatBytes(plan.size)}, past the ` +
-          `${formatBytes(this.artifactCeiling)} artifact ceiling a restore enforces — narrow cache.outputs.files`,
+          `${formatBytes(this.artifactCeiling)} artifact ceiling a restore enforces — narrow outputs.files`,
       )
     }
     return plan
@@ -2977,7 +2977,7 @@ export class Cache implements CacheLayer {
      * scanned as is rather than decoded back out of the bytes just encoded.
      */
     tar?: Uint8Array,
-    /** A save's `cache.outputs.mount` paths; an ingest's come with `meta.outputs`. */
+    /** A save's `outputs.mount` paths; an ingest's come with `meta.outputs`. */
     savedMounts?: readonly string[],
   ): Promise<number> {
     const mounts = savedMounts ?? meta.outputs?.mounts

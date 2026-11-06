@@ -77,7 +77,7 @@ it('a restoring CLI run waits for its thread', async () => {
   const tasks = Array.from(
     { length: 600 },
     (_, i) =>
-      `t${i}: { exec: { command: 'mkdir -p o${i} && echo ${i} > o${i}/f' }, inputs: { files: ['package.json'] }, cache: { outputs: { files: ['o${i}/**'] } } }`,
+      `t${i}: { exec: { command: 'mkdir -p o${i} && echo ${i} > o${i}/f' }, inputs: { files: ['package.json'] }, outputs: { files: ['o${i}/**'] }, cache: true }`,
   )
   const proj = await addProject(root, 'p', `export default { tasks: { ${tasks.join(', ')} } }`)
   const names = Array.from({ length: 600 }, (_, i) => `t${i}`)
@@ -123,7 +123,7 @@ it('records each task of a warm run once, the streamed hits beside the bundle', 
   const tasks = Array.from(
     { length: 600 },
     (_, i) =>
-      `t${i}: { exec: { command: 'true' }, inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } } }`,
+      `t${i}: { exec: { command: 'true' }, inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true }`,
   )
   await addProject(root, 'p', `export default { tasks: { ${tasks.join(', ')} } }`)
   const names = Array.from({ length: 600 }, (_, i) => `t${i}`)

@@ -29,7 +29,7 @@ const BUILD = `export default {
   tasks: {
     build: {
       exec: { command: 'cat in.txt > out.txt' },
-      inputs: { files: ['in.txt'] }, cache: { outputs: { files: ['out.txt'] } },
+      inputs: { files: ['in.txt'] }, outputs: { files: ['out.txt'] }, cache: true,
     },
   },
 }

@@ -232,7 +232,7 @@ function fetchPool(
  * lookup, the other one that can reach a remote.
  */
 export function getContext(node: TaskNode, command: string) {
-  const outputs = node.config.cache?.outputs
+  const outputs = node.config.outputs
   let masked: string | undefined
   return {
     taskId: node.id,

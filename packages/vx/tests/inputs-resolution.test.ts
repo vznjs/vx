@@ -219,7 +219,7 @@ describe('negation composes by subtraction only — it is not gitignore', () => 
     await writeFile(
       path.join(dir, 'vx.config.mjs'),
       'export default { tasks: { build: { exec: { command: "true" }, ' +
-        'inputs: { files: ["**/*", "!!vendor/**"] }, cache: { outputs: { files: [] } } } } }',
+        'inputs: { files: ["**/*", "!!vendor/**"] }, outputs: { files: [] }, cache: true } } }',
     )
     await expect(loadProjectConfig(path.join(dir, 'vx.config.mjs'))).rejects.toThrow(
       /'!!' is not a double negation/,
@@ -239,7 +239,8 @@ describe('negation composes by subtraction only — it is not gitignore', () => 
             build: {
               exec: { command: 'true' },
               inputs: { files: ['**/*', '!!vendor/**'] },
-              cache: { outputs: { files: [] } },
+              outputs: { files: [] },
+              cache: true,
             },
           },
         },
@@ -265,9 +266,8 @@ describe('negation composes by subtraction only — it is not gitignore', () => 
             build: {
               exec: { command: 'true' },
               inputs: { files: [], workspaceFiles: ['**/*', '!!pkg/vendor/**'] },
-              cache: {
-                outputs: { files: [] },
-              },
+              outputs: { files: [] },
+              cache: true,
             },
           },
         },
@@ -286,9 +286,8 @@ describe('negation composes by subtraction only — it is not gitignore', () => 
             build: {
               exec: { command: 'true' },
               inputs: { files: ['**/*', '!vendor/**'], workspaceFiles: ['a/**', '!a/b/**'] },
-              cache: {
-                outputs: { files: ['dist/**'] },
-              },
+              outputs: { files: ['dist/**'] },
+              cache: true,
             },
           },
         },

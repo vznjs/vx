@@ -22,11 +22,11 @@ export interface ArtifactTask {
   /** Absolute. */
   readonly projectDir: string
   readonly command: string
-  /** Its `cache.outputs`: project-relative `files`, root-relative `workspaceFiles`. */
+  /** Its `outputs`: project-relative `files`, root-relative `workspaceFiles`. */
   readonly outputs: {
     readonly files: readonly string[]
     readonly workspaceFiles: readonly string[]
-    /** Its `cache.outputs.mount` paths: an absolute link under one is saved as written. */
+    /** Its `outputs.mount` paths: an absolute link under one is saved as written. */
     readonly mounts?: readonly string[]
   }
   /** The projects inside `projectDir` (absolute), whose files are not its outputs. */

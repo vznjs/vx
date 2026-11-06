@@ -19,10 +19,10 @@ const vx = (...args: string[]) => {
 
 beforeAll(async () => {
   root = await makeWorkspace({ prefix: 'vx-last-stats-' })
-  const config = `const cache = { outputs: { files: [] } }
+  const config = `const outputs = { files: [] }
 const inputs = { files: ['package.json'] }
 export default { tasks: {
-  build: { exec: { command: 'echo built' }, inputs, cache },
+  build: { exec: { command: 'echo built' }, inputs, outputs, cache: true },
   bad: { exec: { command: 'exit 3' } },
 } }
 `

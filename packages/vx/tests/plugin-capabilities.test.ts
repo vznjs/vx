@@ -840,7 +840,7 @@ describe('executor capability — end-to-end via run()', () => {
         path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
         `export default { tasks: { hello: {
            exec: { command: 'echo hi > out.txt' },
-           inputs: { files: ['package.json'] }, cache: { outputs: { files: ['out.txt'] } },
+           inputs: { files: ['package.json'] }, outputs: { files: ['out.txt'] }, cache: true,
          } } }`,
       )
       await Bun.write(
@@ -898,7 +898,7 @@ describe('executor capability — end-to-end via run()', () => {
         path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
         `export default { tasks: { hello: {
            exec: { command: 'echo hi > out.txt' },
-           inputs: { files: ['package.json'] }, cache: { outputs: { files: ['out.txt'] } },
+           inputs: { files: ['package.json'] }, outputs: { files: ['out.txt'] }, cache: true,
          } } }`,
       )
       const remote = (name: string) =>
@@ -951,15 +951,14 @@ describe('executor capability — end-to-end via run()', () => {
         `export default { tasks: {
            codegen: {
              exec: { command: 'echo gen > gen.txt' },
-             inputs: { files: ['src.txt'] }, cache: { outputs: { files: ['gen.txt'] } },
+             inputs: { files: ['src.txt'] }, outputs: { files: ['gen.txt'] }, cache: true,
            },
            hello: {
              exec: { command: 'echo hi > out.txt' },
              dependsOn: ['codegen'],
              inputs: { files: ['src.txt'], env: ['VX_TEST_INPUT'], runtime: ['echo tool-1.2'], tasks: ['codegen'] },
-             cache: {
-               outputs: { files: ['out.txt'] },
-             },
+             outputs: { files: ['out.txt'] },
+             cache: true,
            },
          } }`,
       )
@@ -1264,7 +1263,7 @@ describe('executor capability — end-to-end via run()', () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       const task = (name: string) =>
-        `${name}: { exec: { command: 'true' }, inputs: { files: ['${name}.txt'] }, cache: { outputs: { files: [] } } },`
+        `${name}: { exec: { command: 'true' }, inputs: { files: ['${name}.txt'] }, outputs: { files: [] }, cache: true },`
       await Bun.write(
         path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
         `export default { tasks: { ${task('a')} ${task('b')} ${task('c')} } }`,
@@ -1414,11 +1413,11 @@ describe('executor capability — end-to-end via run()', () => {
         `export default { tasks: {
            install: {
              exec: { command: 'echo i', remote: 'only' },
-             inputs: { files: ['package.json'] }, cache: { outputs: { files: ['deps/**'] } },
+             inputs: { files: ['package.json'] }, outputs: { files: ['deps/**'] }, cache: true,
            },
            hello: {
              exec: { command: 'echo hi' },
-             inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+             inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
            },
          } }`,
       )
@@ -1466,7 +1465,7 @@ describe('executor capability — end-to-end via run()', () => {
         `export default { tasks: {
            install: {
              exec: { command: 'echo i', remote: 'only' },
-             inputs: { files: ['package.json'] }, cache: { outputs: { files: ['deps/**'] } },
+             inputs: { files: ['package.json'] }, outputs: { files: ['deps/**'] }, cache: true,
            },
          } }`,
       )
@@ -1571,7 +1570,7 @@ describe('executor capability — end-to-end via run()', () => {
         `export default { tasks: {
            install: {
              exec: { command: 'echo i', remote: 'only' },
-             inputs: { files: ['package.json'] }, cache: { outputs: { files: ['deps/**'] } },
+             inputs: { files: ['package.json'] }, outputs: { files: ['deps/**'] }, cache: true,
            },
            hello: { exec: { command: 'echo hi' } },
          } }`,
@@ -1606,12 +1605,12 @@ describe('executor capability — end-to-end via run()', () => {
         `export default { tasks: {
            install: {
              exec: { command: 'echo ran > tombstone.txt && exit 1', remote: 'only' },
-             inputs: { files: ['package.json'] }, cache: { outputs: { files: ['deps/**'] } },
+             inputs: { files: ['package.json'] }, outputs: { files: ['deps/**'] }, cache: true,
            },
            build: {
              exec: { command: 'cat deps/ambient.txt > out.txt' },
              dependsOn: ['install'],
-             inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
+             inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
            },
          } }`,
       )
@@ -1658,12 +1657,12 @@ describe('executor capability — end-to-end via run()', () => {
         `export default { tasks: {
            install: {
              exec: { command: 'exit 1', remote: 'only' },
-             inputs: { files: ['package.json'] }, cache: { outputs: { files: ['deps/**'] } },
+             inputs: { files: ['package.json'] }, outputs: { files: ['deps/**'] }, cache: true,
            },
            build: {
              exec: { command: 'cat deps/ambient.txt > out.txt' },
              dependsOn: ['install'],
-             inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
+             inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
            },
          } }`,
       )
@@ -1703,12 +1702,12 @@ describe('executor capability — end-to-end via run()', () => {
         `export default { tasks: {
            install: {
              exec: { command: 'echo ran > tombstone.txt', remote: 'only' },
-             inputs: { files: ['package.json'] }, cache: { outputs: { files: ['deps/**'] } },
+             inputs: { files: ['package.json'] }, outputs: { files: ['deps/**'] }, cache: true,
            },
            build: {
              exec: { command: 'echo b > out.txt' },
              dependsOn: ['install'],
-             inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
+             inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
            },
          } }`,
       )
@@ -1744,7 +1743,7 @@ describe('executor capability — end-to-end via run()', () => {
         `export default { tasks: {
            install: {
              exec: { command: 'echo remote-made > deps/lib.txt', remote: 'only' },
-             inputs: { files: ['package.json'] }, cache: { outputs: { files: ['deps/**'] } },
+             inputs: { files: ['package.json'] }, outputs: { files: ['deps/**'] }, cache: true,
            },
          } }`,
       )

@@ -28,7 +28,8 @@ export default defineProject({
       dependsOn: ['codegen'],
       exec: { command: 'mkdir -p dist && cat gen/api.ts > dist/app.js' },
       inputs: { files: ['src/**'] },
-      cache: { outputs: { files: ['dist/**'] } },
+      outputs: { files: ['dist/**'] },
+      cache: true,
     },
   },
 })
@@ -68,8 +69,8 @@ flowchart LR
 ## Inputs live on the task
 
 `inputs` sits on the task, next to `exec`. It sets the key whether the
-task caches or not, as in Turbo and Nx. `cache` holds only `outputs`
-and `inputStability`.
+task caches or not, as in Turbo and Nx. `cache: true` turns caching on,
+and `outputs` says what it saves.
 
 A task with a command and no `inputs` has no key. vx won't guess one.
 Every task after it runs again and saves nothing:

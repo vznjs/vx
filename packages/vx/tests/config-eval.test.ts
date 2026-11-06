@@ -679,7 +679,7 @@ describe('validation stays in the parent process', () => {
     const bad =
       `export default { tasks: { build: {\n` +
       `  exec: { command: 'echo hi' },\n` +
-      `  inputs: { files: ['src/**'], workspaceFile: ['x'] }, cache: { outputs: { files: ['o'] } },\n` +
+      `  inputs: { files: ['src/**'], workspaceFile: ['x'] }, outputs: { files: ['o'] }, cache: true,\n` +
       `} } }\n`
 
     const firstFile = await write(bad)
@@ -761,7 +761,7 @@ describe('validation stays in the parent process', () => {
     const bad =
       `export default { tasks: { build: {\n` +
       `  exec: { command: 'echo hi' },\n` +
-      `  inputs: { files: ['src/**'], workspaceFile: undefined }, cache: { outputs: { files: ['o'] } },\n` +
+      `  inputs: { files: ['src/**'], workspaceFile: undefined }, outputs: { files: ['o'] }, cache: true,\n` +
       `} } }\n`
 
     const firstFile = await write(bad)
@@ -1169,10 +1169,10 @@ describe('a config is JSON data, on every path (item 701)', () => {
     // `JSON.stringify`. The literal is what 107a8f8b (before the rule)
     // produced for this file on both paths.
     const file = await write(
-      `const shared = ['src/**', 'package.json']\nexport default {\n  tasks: {\n    build: {\n      description: 'büild — "quoted"',\n      exec: { command: 'bun run build', timeout: '1m', env: { passThrough: ['HOME'], define: { MODE: 'prod' } } },\n      dependsOn: ['^build'],\n      inputs: { files: shared, env: ['API_URL'] }, cache: { outputs: { files: ['dist/**'] } },\n    },\n    ci: { dependsOn: ['build'], description: undefined },\n  },\n}\n`,
+      `const shared = ['src/**', 'package.json']\nexport default {\n  tasks: {\n    build: {\n      description: 'büild — "quoted"',\n      exec: { command: 'bun run build', timeout: '1m', env: { passThrough: ['HOME'], define: { MODE: 'prod' } } },\n      dependsOn: ['^build'],\n      inputs: { files: shared, env: ['API_URL'] }, outputs: { files: ['dist/**'] }, cache: true,\n    },\n    ci: { dependsOn: ['build'], description: undefined },\n  },\n}\n`,
     )
     const json =
-      '{"tasks":{"build":{"description":"büild — \\"quoted\\"","exec":{"command":"bun run build","timeout":"1m","env":{"passThrough":["HOME"],"define":{"MODE":"prod"}}},"dependsOn":["^build"],"inputs":{"files":["src/**","package.json"],"env":["API_URL"]},"cache":{"outputs":{"files":["dist/**"]}}},"ci":{"dependsOn":["build"]}}}'
+      '{"tasks":{"build":{"description":"büild — \\"quoted\\"","exec":{"command":"bun run build","timeout":"1m","env":{"passThrough":["HOME"],"define":{"MODE":"prod"}}},"dependsOn":["^build"],"inputs":{"files":["src/**","package.json"],"env":["API_URL"]},"outputs":{"files":["dist/**"]},"cache":true},"ci":{"dependsOn":["build"]}}}'
     expect(JSON.stringify(await loadProjectConfig(file))).toBe(json)
     expect(JSON.stringify(await loadProjectConfig(file))).toBe(json)
   })

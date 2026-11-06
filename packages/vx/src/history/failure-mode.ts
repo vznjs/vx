@@ -30,7 +30,7 @@ export type FailureMode = 'stable' | 'flaky-recoverable' | 'flaky-fatal'
  * `status`, `cache_hit`, `cached` columns) with how often it failed, how often it
  * passed — an executed success or a cache hit, which replays a success —
  * and how often it failed AFTER its first pass (`relapses`). A task with
- * no cache block keys on its config alone and runs every time, so its key
+ * no `cache: true` keys on its config alone and runs every time, so its key
  * says nothing about its inputs: no reader counts it, as no run's row
  * calls it flaky. Nor is a row that names a `blocked_by`: it ran behind a
  * failure (`--continue=always`), on bytes its key never named, so its

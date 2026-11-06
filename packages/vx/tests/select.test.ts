@@ -31,8 +31,8 @@ beforeAll(async () => {
     deps: { lib: 'workspace:*' },
     config: `export default { tasks: { build: { exec: { command: 'true' },
       inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] },
-      cache: { 
-        outputs: { files: [] } } } } }\n`,
+      outputs: { files: [] },
+      cache: true } } }\n`,
   })
   // A sibling that shares the member's name as a PREFIX and is no project.
   await mkdir(path.join(root, 'packages', 'app-e2e'), { recursive: true })

@@ -80,7 +80,7 @@ without failing the run:
 
 | Case                                         | Runs where       |
 | -------------------------------------------- | ---------------- |
-| task with no `cache` block                   | here             |
+| task with no `cache: true`                   | here             |
 | persistent task, and what depends on it      | here             |
 | sandboxed task, and what depends on it       | here, sandboxed  |
 | remote cache errors or times out             | miss on that layer, warning |

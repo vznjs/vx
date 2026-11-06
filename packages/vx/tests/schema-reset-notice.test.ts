@@ -115,7 +115,7 @@ describe('an upgrade resets the cache in silence', () => {
     await writeFile(
       path.join(app, 'vx.config.mjs'),
       `export default { tasks: { build: { exec: { command: 'true' },
-        inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } } }\n`,
+        inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true } } }\n`,
     )
     await Bun.spawn(['git', 'init', '-q'], { cwd: root }).exited
   })
@@ -176,7 +176,7 @@ describe('an upgrade resets the cache in silence', () => {
     await writeFile(
       path.join(root, 'packages', 'app', 'vx.config.mjs'),
       `export default { tasks: { build: { exec: { command: 'head -c 49152 /dev/urandom > out.bin' },
-        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.bin'] } } } } }\n`,
+        inputs: { files: ['src/**'] }, outputs: { files: ['out.bin'] }, cache: true } } }\n`,
     )
   }
 

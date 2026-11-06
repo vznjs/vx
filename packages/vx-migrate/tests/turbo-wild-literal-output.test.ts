@@ -65,9 +65,7 @@ describe('turbo-map: a wildcard-first output with a literal rest', () => {
         tracked: trackedKinds(tracked.map((f) => `a/${f}`)),
       })
       const t = m.projects[0]!.tasks[0]!
-      return (
-        (t.task!['cache'] as { outputs: { files: unknown } } | undefined)?.outputs.files ?? null
-      )
+      return (t.task!['outputs'] as { files: unknown } | undefined)?.files ?? null
     } finally {
       await rm(dir, { recursive: true, force: true })
     }

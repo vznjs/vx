@@ -3,13 +3,13 @@ import { spareTrackedOutputs, trackedKinds } from '../src/tracked-outputs.js'
 
 const task = (outputs: Record<string, string[]>) => ({
   name: 'build',
-  task: { exec: { command: 'x' }, inputs: { files: ['**/*'] }, cache: { outputs } } as Record<
+  task: { exec: { command: 'x' }, inputs: { files: ['**/*'] }, outputs, cache: true } as Record<
     string,
     unknown
   >,
 })
 const outputsOf = (t: ReturnType<typeof task>) =>
-  (t.task['cache'] as { outputs: Record<string, string[]> } | undefined)?.outputs
+  t.task['outputs'] as Record<string, string[]> | undefined
 
 describe('spareTrackedOutputs', () => {
   // Core never cleans a committed file (2026-10-14).
@@ -74,9 +74,8 @@ describe('spareTrackedOutputs — an output naming one committed file', () => {
       task: {
         exec: { command: 'eslint' },
         inputs: { files: ['**/*'] },
-        cache: {
-          outputs: { files: ['.cache/.eslintcache', 'eslint-suppressions.json'] },
-        },
+        outputs: { files: ['.cache/.eslintcache', 'eslint-suppressions.json'] },
+        cache: true,
       } as Record<string, unknown>,
     }
     const build = reader({ files: ['**/*', '!eslint-suppressions.json', '!dist/**'] })
@@ -95,13 +94,13 @@ describe('spareTrackedOutputs — an output naming one committed file', () => {
       ['packages/a/eslint-suppressions.json', 'packages/a/src/index.ts'],
     )
     expect([
-      lint.task['cache'],
+      lint.task['outputs'],
       build.task['inputs'],
       rootReader.task['inputs'],
       other.task['inputs'],
       todos,
     ]).toEqual([
-      { outputs: { files: ['.cache/.eslintcache'] } },
+      { files: ['.cache/.eslintcache'] },
       { files: ['**/*', '!dist/**'] },
       { files: ['src/**'], workspaceFiles: ['packages/a/**'] },
       { files: ['**/*', '!eslint-suppressions.json'] },

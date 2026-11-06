@@ -223,7 +223,7 @@ describe('task timeout — cache key stability', () => {
           tasks: {
             run: {
               exec: { command: 'echo done' },
-              inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } },
+              inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true,
             },
           },
         }`,
@@ -323,7 +323,7 @@ describe('task timeout — classification + escalation', () => {
         'a',
         `export default { tasks: { run: {
           exec: { command: "trap 'echo TRAPPED >> out.txt; exit 0' TERM; echo PARTIAL > out.txt; sleep 30 & wait; echo COMPLETE >> out.txt", timeout: '1s' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
+          inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
         } } }`,
       )
       await mkdir(path.join(dir, 'src'), { recursive: true })

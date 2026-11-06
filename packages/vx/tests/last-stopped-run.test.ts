@@ -35,7 +35,7 @@ beforeAll(async () => {
     'a',
     `export default { tasks: {
   bad: { exec: { command: 'echo boom; exit 3' } },
-  build: { exec: { command: 'echo built' }, inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } } },
+  build: { exec: { command: 'echo built' }, inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true },
   slow: { exec: { command: 'echo $$ > pid.txt; exec sleep 30' } },
 } }
 `,

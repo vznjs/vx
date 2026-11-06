@@ -34,9 +34,8 @@ function task(outputs: string[], wsOutputs?: string[]): TaskConfig {
   return {
     exec: { command: 'build' },
     inputs: { files: [] },
-    cache: {
-      outputs: { files: outputs, ...(wsOutputs ? { workspaceFiles: wsOutputs } : {}) },
-    },
+    outputs: { files: outputs, ...(wsOutputs ? { workspaceFiles: wsOutputs } : {}) },
+    cache: true,
   }
 }
 
@@ -123,7 +122,7 @@ describe('rules.exclusiveOutputs refuses an overlap WITH an edge (X-53)', () => 
   it("refuses twenty's shape by default, naming the rule", () => {
     expect(() => graph(twenty)).toThrow(
       'app#build and app#individual both declare the output "dist" / "dist/individual" in ' +
-        "cache.outputs.files — vx cleans a task's declared outputs before it runs and before a " +
+        "outputs.files — vx cleans a task's declared outputs before it runs and before a " +
         "cache-hit restore, so whichever of these runs second DELETES the other's output. Give " +
         'each task its own output path, or set run.rules.exclusiveOutputs: false in ' +
         ".vx/workspace.ts to let a dependant add to its upstream's outputs.",
@@ -150,7 +149,7 @@ describe('rules.exclusiveOutputs refuses an overlap WITH an edge (X-53)', () => 
         a: { build: task([], ['shared/**']) },
         b: { build: { ...task([], ['shared/b.txt']), dependsOn: ['a#build'] } as TaskConfig },
       }),
-    ).toThrow(/in cache\.outputs\.workspaceFiles .*exclusiveOutputs: false/)
+    ).toThrow(/in outputs\.workspaceFiles .*exclusiveOutputs: false/)
   })
 
   it("refuses a root-anchored output inside another project's tree, either edge", () => {
@@ -160,7 +159,7 @@ describe('rules.exclusiveOutputs refuses an overlap WITH an edge (X-53)', () => 
         b: { build: task(['dist/**']) },
       }),
     ).toThrow(
-      `a#build declares the output "b/dist/a.txt" in cache.outputs.workspaceFiles, inside b#build's "dist/**" in cache.outputs.files — vx cleans a task's declared outputs before it runs and before a cache-hit restore, so whichever of these runs second DELETES the other's output. Give each task its own output path, or set run.rules.exclusiveOutputs: false`,
+      `a#build declares the output "b/dist/a.txt" in outputs.workspaceFiles, inside b#build's "dist/**" in outputs.files — vx cleans a task's declared outputs before it runs and before a cache-hit restore, so whichever of these runs second DELETES the other's output. Give each task its own output path, or set run.rules.exclusiveOutputs: false`,
     )
     expect(() =>
       graph({
@@ -275,7 +274,7 @@ describe("a workspaceFiles output inside another project's files output", () => 
         b: { build: task(['dist/**']) },
       }),
     ).toThrow(
-      `a#build declares the output "b/dist/a.txt" in cache.outputs.workspaceFiles, inside b#build's "dist/**" in cache.outputs.files`,
+      `a#build declares the output "b/dist/a.txt" in outputs.workspaceFiles, inside b#build's "dist/**" in outputs.files`,
     )
   })
 
@@ -310,7 +309,7 @@ describe("a workspaceFiles output inside another project's files output", () => 
       ),
     ).toThrow(
       `whichever of these runs second DELETES the other's output. a#build depends on b#build, ` +
-        `but adding to its output needs every cache.outputs.workspaceFiles entry inside b, and ` +
+        `but adding to its output needs every outputs.workspaceFiles entry inside b, and ` +
         `"other/**" is not. Give each task its own output path.`,
     )
   })
@@ -347,7 +346,7 @@ describe('two tasks cannot claim the same output', () => {
     expect(msg).toContain('app#build')
     expect(msg).toContain('app#bundle')
     expect(msg).toContain('DELETES')
-    expect(msg).toContain('cache.outputs.files')
+    expect(msg).toContain('outputs.files')
   })
 
   it('refuses a glob that swallows another task’s literal output', () => {
@@ -706,7 +705,7 @@ describe('workspaceFiles outputs ignore project boundaries, so any two tasks can
         a: { gen: task([], ['generated/schema.ts']) },
         b: { gen: task([], ['generated/schema.ts']) },
       }),
-    ).toThrow(/cache\.outputs\.workspaceFiles/)
+    ).toThrow(/outputs\.workspaceFiles/)
   })
 
   it('allows distinct workspace outputs across projects', () => {
@@ -815,7 +814,7 @@ describe('the path index finds every pair the rule refuses', () => {
         /both declare the output/,
       )
       expect(() => graph({ p: { a: task([], [glob]) }, q: { b: task([], [literal]) } })).toThrow(
-        /cache\.outputs\.workspaceFiles/,
+        /outputs\.workspaceFiles/,
       )
     })
   }
@@ -872,7 +871,7 @@ describe('the path index finds every pair the rule refuses', () => {
     } catch (e) {
       msg = (e as Error).message
     }
-    expect(msg.slice(0, msg.indexOf(' in cache.'))).toBe(
+    expect(msg.slice(0, msg.indexOf(' in outputs.'))).toBe(
       'app#w and app#t both declare the output "x/1.js"',
     )
   })
@@ -979,14 +978,14 @@ describe('the path index finds every pair the rule refuses', () => {
 // A leading `!` takes a path back (A-44): no place an output lands, so the
 // rule compares the positive entries only.
 const outputsOf = (n: TaskNode, ws: boolean): readonly string[] =>
-  ((ws ? n.config.cache?.outputs.workspaceFiles : n.config.cache?.outputs.files) ?? []).filter(
+  ((ws ? n.config.outputs?.workspaceFiles : n.config.outputs?.files) ?? []).filter(
     (g) => !g.startsWith('!'),
   )
 
 /** The rule for one pair of globs: they overlap and neither task's `!` entries take the other's back. */
 const collides = (a: TaskNode, b: TaskNode, ga: string, gb: string, ws: boolean): boolean => {
   const back = (n: TaskNode): string[] =>
-    ((ws ? n.config.cache?.outputs.workspaceFiles : n.config.cache?.outputs.files) ?? [])
+    ((ws ? n.config.outputs?.workspaceFiles : n.config.outputs?.files) ?? [])
       .filter((g) => g.startsWith('!'))
       .map((g) => g.slice(1))
   return outputsOverlap(ga, gb) && !outputTakenBack(gb, back(a)) && !outputTakenBack(ga, back(b))
@@ -1034,7 +1033,7 @@ function firstRefusal(order: readonly TaskNode[], ws: boolean): string | null {
           return (
             `${a.id} and ${b.id} both declare the output ${JSON.stringify(ga)}` +
             (ga === gb ? '' : ` / ${JSON.stringify(gb)}`) +
-            ` in cache.outputs.${ws ? 'workspaceFiles' : 'files'}`
+            ` in outputs.${ws ? 'workspaceFiles' : 'files'}`
           )
         }
       }

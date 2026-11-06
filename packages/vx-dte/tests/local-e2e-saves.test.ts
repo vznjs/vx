@@ -284,8 +284,8 @@ it('leaves an upstream’s files in place for an additive task on its worker', a
     path.join(root, 'ad/vx.config.mjs'),
     `const outputs = { files: ['dist/**'] }
 export default { name: 'ad', tasks: {
-  up: { exec: { command: 'mkdir -p dist && echo up > dist/a.txt' }, inputs: { files: ['vx.config.mjs'] }, cache: { outputs } },
-  dep: { dependsOn: ['up'], exec: { command: 'mkdir -p dist/ind && cp dist/a.txt dist/ind/b.txt' }, inputs: { files: ['vx.config.mjs'] }, cache: { outputs } },
+  up: { exec: { command: 'mkdir -p dist && echo up > dist/a.txt' }, inputs: { files: ['vx.config.mjs'] }, outputs, cache: true },
+  dep: { dependsOn: ['up'], exec: { command: 'mkdir -p dist/ind && cp dist/a.txt dist/ind/b.txt' }, inputs: { files: ['vx.config.mjs'] }, outputs, cache: true },
 } }
 `,
   )
@@ -319,8 +319,8 @@ it('saves only the files an additive task wrote on its worker', async () => {
     path.join(root, 'ad/vx.config.mjs'),
     `const outputs = { files: ['dist/**'] }
 export default { name: 'ad', tasks: {
-  up: { exec: { command: 'mkdir -p dist && cp v.txt dist/a.txt' }, inputs: { files: ['v.txt'] }, cache: { outputs } },
-  add: { dependsOn: ['up'], exec: { command: 'echo b > dist/b.txt' }, inputs: { files: ['vx.config.mjs'], tasks: [] }, cache: { outputs } },
+  up: { exec: { command: 'mkdir -p dist && cp v.txt dist/a.txt' }, inputs: { files: ['v.txt'] }, outputs, cache: true },
+  add: { dependsOn: ['up'], exec: { command: 'echo b > dist/b.txt' }, inputs: { files: ['vx.config.mjs'], tasks: [] }, outputs, cache: true },
 } }
 `,
   )
@@ -360,8 +360,8 @@ it('saves no entry for an additive task that removed an upstream’s file', asyn
     path.join(root, 'ad/vx.config.mjs'),
     `const outputs = { files: ['dist/**'] }
 export default { name: 'ad', tasks: {
-  up: { exec: { command: 'mkdir -p dist && echo up > dist/a.txt' }, inputs: { files: ['vx.config.mjs'] }, cache: { outputs } },
-  prune: { dependsOn: ['up'], exec: { command: 'rm dist/a.txt && echo b > dist/b.txt' }, inputs: { files: ['vx.config.mjs'] }, cache: { outputs } },
+  up: { exec: { command: 'mkdir -p dist && echo up > dist/a.txt' }, inputs: { files: ['vx.config.mjs'] }, outputs, cache: true },
+  prune: { dependsOn: ['up'], exec: { command: 'rm dist/a.txt && echo b > dist/b.txt' }, inputs: { files: ['vx.config.mjs'] }, outputs, cache: true },
 } }
 `,
   )

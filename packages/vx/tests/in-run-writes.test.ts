@@ -82,12 +82,12 @@ const FORMATTER = `
     tasks: {
       fmt: {
         exec: { command: 'cp seed.txt a.ts' },
-        inputs: { files: ['seed.txt', 'a.ts'] }, cache: { outputs: { files: [] } },
+        inputs: { files: ['seed.txt', 'a.ts'] }, outputs: { files: [] }, cache: true,
       },
       build: {
         dependsOn: ['fmt'],
         exec: { command: 'mkdir -p dist && cat a.ts > dist/out.txt' },
-        inputs: { files: ['a.ts'], tasks: [] }, cache: { outputs: { files: ['dist/**'] } },
+        inputs: { files: ['a.ts'], tasks: [] }, outputs: { files: ['dist/**'] }, cache: true,
       },
     },
   }
@@ -147,12 +147,12 @@ describe('a cached task that runs but does not save', () => {
             tasks: {
               gen: {
                 exec: { command: 'cp seed.txt gen.txt' },
-                inputs: { files: ['seed.txt'] }, cache: { outputs: { files: ['gen.txt'] } },
+                inputs: { files: ['seed.txt'] }, outputs: { files: ['gen.txt'] }, cache: true,
               },
               build: {
                 dependsOn: ['gen'],
                 exec: { command: 'mkdir -p dist && cat gen.txt > dist/out.txt' },
-                inputs: { files: ['gen.txt'], tasks: [] }, cache: { outputs: { files: ['dist/**'] } },
+                inputs: { files: ['gen.txt'], tasks: [] }, outputs: { files: ['dist/**'] }, cache: true,
               },
             },
           }
@@ -182,12 +182,12 @@ describe('a cached task that runs but does not save', () => {
             tasks: {
               gen: {
                 exec: { command: 'printf G > gen.txt' },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['gen.txt'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['gen.txt'] }, cache: true,
               },
               build: {
                 dependsOn: ['gen'],
                 exec: { command: 'mkdir -p dist && cat gen.txt > dist/out.txt' },
-                inputs: { files: ['gen.txt'], tasks: [] }, cache: { outputs: { files: ['dist/**'] } },
+                inputs: { files: ['gen.txt'], tasks: [] }, outputs: { files: ['dist/**'] }, cache: true,
               },
             },
           }
@@ -235,12 +235,12 @@ describe('a task that rewrites the lockfile a plugin folds', () => {
             build: {
               dependsOn: ['fixture-root#install'],
               exec: { command: 'mkdir -p dist && cat ../../node_modules/.dep > dist/out.txt' },
-              inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+              inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
             },
             pack: {
               dependsOn: ['fixture-root#install'],
               exec: { command: 'mkdir -p pkg && cat ../../node_modules/.dep > pkg/out.txt' },
-              inputs: { files: ['src/**'] }, cache: { outputs: { files: ['pkg/**'] } },
+              inputs: { files: ['src/**'] }, outputs: { files: ['pkg/**'] }, cache: true,
             },
           },
         }
@@ -348,9 +348,8 @@ describe('the contract for `inputs.runtime`: an answer about the environment, ta
                   runtime: ['echo x >> ../../spawns.log; cat ver.txt'],
                   tasks: [],
                 },
-                cache: {
-                  outputs: { files: ['dist/**'] },
-                },
+                outputs: { files: ['dist/**'] },
+                cache: true,
               },
             },
           }
@@ -397,15 +396,14 @@ describe('the stability gate: which readers are keyed before a rewriter ran', ()
 
   const FMT = `{
     exec: { command: 'true' },
-    inputs: { files: ['a.ts'] }, cache: { outputs: { files: [] } },
+    inputs: { files: ['a.ts'] }, outputs: { files: [] }, cache: true,
   }`
   const reader = (dependsOn: string, tasks?: string) => `{
     dependsOn: ['${dependsOn}'],
     exec: { command: 'true' },
     inputs: { files: ['a.ts']${tasks === undefined ? '' : `, tasks: ${tasks}`} },
-    cache: {
-      outputs: { files: [] },
-    },
+    outputs: { files: [] },
+    cache: true,
   }`
 
   /** `app#fmt` (cached, may rewrite `a.ts`) → `between`, if any → `app#build`, folding `tasks`. */
@@ -455,7 +453,7 @@ describe('the stability gate: which readers are keyed before a rewriter ran', ()
       const pre = `{
         dependsOn: ['fmt'],
         exec: { command: 'true', sandbox: { allow: { read: ['.'] } } },
-        inputs: { files: ['a.ts'] }, cache: { outputs: { files: [] } },
+        inputs: { files: ['a.ts'] }, outputs: { files: [] }, cache: true,
       }`
       expect(await sameProject(pre, '[]')).toBe(false)
       await fresh()
@@ -470,7 +468,7 @@ describe('the stability gate: which readers are keyed before a rewriter ran', ()
       const pre = `{
         dependsOn: ['fmt'],
         exec: { command: 'true', sandbox: { allow: { read: ['.'] } } },
-        inputs: { files: ['a.ts'], tasks: [] }, cache: { outputs: { files: [] } },
+        inputs: { files: ['a.ts'], tasks: [] }, outputs: { files: [] }, cache: true,
       }`
       expect(await sameProject(pre, "['pre']")).toBe(false)
     },
@@ -504,7 +502,7 @@ describe('the stability gate: which readers are keyed before a rewriter ran', ()
               pre: {
                 dependsOn: ['app#fmt'],
                 exec: { command: 'true', sandbox: { allow: { read: ['.'] } } },
-                inputs: { files: ['package.json'], tasks: [] }, cache: { outputs: { files: [] } },
+                inputs: { files: ['package.json'], tasks: [] }, outputs: { files: [] }, cache: true,
               },
             },
           }
@@ -551,7 +549,7 @@ describe('the stability gate: which readers are keyed before a rewriter ran', ()
             tasks: {
               fmt: {
                 exec: { command: 'true', sandbox: { allow: { read: ['.'] } } },
-                inputs: { files: ['a.ts'] }, cache: { outputs: { files: [] } },
+                inputs: { files: ['a.ts'] }, outputs: { files: [] }, cache: true,
               },
               build: ${reader('fmt', '[]')},
             },
@@ -574,7 +572,7 @@ describe('the stability gate: which readers are keyed before a rewriter ran', ()
               tasks: {
                 gen: {
                   exec: { command: 'true', sandbox: { allow: { read: ['.'], write: ['../app/gen/**'] } } },
-                  inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } },
+                  inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true,
                 },
               },
             }
@@ -636,7 +634,7 @@ describe('the stability gate: which readers are keyed before a rewriter ran', ()
     async () => {
       const install = `{
         exec: { command: 'true' },
-        inputs: { files: ['pnpm-lock.yaml'] }, cache: { outputs: { files: [] } },
+        inputs: { files: ['pnpm-lock.yaml'] }, outputs: { files: [] }, cache: true,
       }`
       await writeFile(path.join(root, 'pnpm-lock.yaml'), 'X')
       expect(await underRoot(install, '[]')).toBe(false)
@@ -662,7 +660,7 @@ describe('the stability gate: which readers are keyed before a rewriter ran', ()
             tasks: {
               install: {
                 exec: { command: 'true' },
-                inputs: { files: ['pnpm-lock.yaml'] }, cache: { outputs: { files: [] } },
+                inputs: { files: ['pnpm-lock.yaml'] }, outputs: { files: [] }, cache: true,
               },
             },
           }
@@ -675,7 +673,7 @@ describe('the stability gate: which readers are keyed before a rewriter ran', ()
               pre: {
                 dependsOn: ['fixture-root#install'],
                 exec: { command: 'true', sandbox: { allow: { read: ['.'] } } },
-                inputs: { files: ['a.ts'], tasks: [] }, cache: { outputs: { files: [] } },
+                inputs: { files: ['a.ts'], tasks: [] }, outputs: { files: [] }, cache: true,
               },
               build: ${reader('pre', "['pre']")},
             },
@@ -702,7 +700,7 @@ describe('commandWriteReach and mayWriteFingerprint — where a command may writ
   const ws = '/ws'
   const node = (config: Record<string, unknown>, projectDir = '/ws/packages/app'): TaskNode =>
     ({ id: 'app#t', projectName: 'app', projectDir, config }) as unknown as TaskNode
-  const cached = { inputs: {}, outputs: { files: [] } }
+  const cached = { inputs: {}, outputs: { files: [] }, cache: true }
   const sandboxed = (write?: string[], projectDir?: string) =>
     node(
       {
@@ -710,19 +708,19 @@ describe('commandWriteReach and mayWriteFingerprint — where a command may writ
           command: 'x',
           sandbox: { allow: write === undefined ? { read: ['.'] } : { read: ['.'], write } },
         },
-        cache: cached,
+        ...cached,
       },
       projectDir,
     )
 
   it('a cached task reaches what an uncached one does; a group nothing', () => {
-    expect(commandWriteReach(node({ exec: { command: 'x' }, cache: cached }), ws)).toBe('project')
+    expect(commandWriteReach(node({ exec: { command: 'x' }, ...cached }), ws)).toBe('project')
     expect(commandWriteReach(sandboxed(), ws)).toBe('none')
     expect(commandWriteReach(sandboxed(['dist/**']), ws)).toBe('project')
     expect(commandWriteReach(sandboxed(['../lib/gen/**']), ws)).toBe('workspace')
     expect(commandWriteReach(node({}), ws)).toBe('none')
     // What item 743's forget reads is unchanged: a cached task is held to its outputs.
-    expect(undeclaredWriteReach(node({ exec: { command: 'x' }, cache: cached }), ws)).toBe('none')
+    expect(undeclaredWriteReach(node({ exec: { command: 'x' }, ...cached }), ws)).toBe('none')
   })
 
   it('the claimed files sit at the root: only the root project, or a grant over one', () => {
@@ -810,7 +808,7 @@ describe('a runtime probe that reads an upstream output', () => {
   const lib = `
     export default { tasks: { gen: {
       exec: { command: 'cp seed.txt out.txt' },
-      inputs: { files: ['seed.txt'] }, cache: { outputs: { files: ['out.txt'] } },
+      inputs: { files: ['seed.txt'] }, outputs: { files: ['out.txt'] }, cache: true,
     } } }
   `
   const app = (probe: string, sibling = ''): string => `
@@ -818,7 +816,7 @@ describe('a runtime probe that reads an upstream output', () => {
       build: {
         dependsOn: ['lib#gen'],
         exec: { command: 'mkdir -p dist && cat ../lib/out.txt > dist/out.txt' },
-        inputs: { files: [], tasks: [], ${probe} }, cache: { outputs: { files: ['dist/**'] } },
+        inputs: { files: [], tasks: [], ${probe} }, outputs: { files: ['dist/**'] }, cache: true,
       },
       ${sibling}
     } }
@@ -879,7 +877,7 @@ describe('a runtime probe that reads an upstream output', () => {
           probe,
           `lint: {
             exec: { command: 'true' },
-            inputs: { files: [], ${probe} }, cache: { outputs: { files: [] } },
+            inputs: { files: [], ${probe} }, outputs: { files: [] }, cache: true,
           },`,
         ),
       )
@@ -917,7 +915,7 @@ describe('a runtime probe that reads an upstream output', () => {
       await addProject(root, 'lib', {
         config: `export default { tasks: { gen: {
           exec: { command: 'cp seed.txt out.txt', sandbox: {} },
-          inputs: { files: ['seed.txt'] }, cache: { ${outputs} },
+          inputs: { files: ['seed.txt'] }, ${outputs}, cache: true,
         } } }`,
         files: { 'seed.txt': 'X' },
       })
@@ -948,12 +946,12 @@ describe('a runtime probe that reads an upstream output', () => {
           mid: {
             dependsOn: ['lib#gen'],
             exec: { command: 'true', sandbox: {} },
-            inputs: { files: [], tasks: [] }, cache: { outputs: { files: [] } },
+            inputs: { files: [], tasks: [] }, outputs: { files: [] }, cache: true,
           },
           build: {
             dependsOn: ['mid'],
             exec: { command: 'true' },
-            inputs: { files: [], runtime: ['cat ../lib/out.txt'] }, cache: { outputs: { files: [] } },
+            inputs: { files: [], runtime: ['cat ../lib/out.txt'] }, outputs: { files: [] }, cache: true,
           },
         } }`,
       })

@@ -51,7 +51,7 @@ export interface TaskFailure {
   taskId: string
   exitCode: number
   timedOut?: true
-  inputMoved?: string // the input that changed during the run (inputStability 'error')
+  inputMoved?: string // the input that changed during the run (inputs.stability 'error')
   output: string // '' when the run kept none
   locations: OutputLocation[]
   sandboxFix?: NonNullable<TaskOutcome['sandboxFix']> // the grants that would have allowed its sandbox denials

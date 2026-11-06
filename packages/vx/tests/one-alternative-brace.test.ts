@@ -49,7 +49,7 @@ async function resolve(inputs: InputsConfig): Promise<string[]> {
 function refusal(inputs: InputsConfig): string {
   try {
     validateProjectConfig(
-      { tasks: { t: { exec: { command: 'x' }, inputs, cache: { outputs: { files: [] } } } } },
+      { tasks: { t: { exec: { command: 'x' }, inputs, outputs: { files: [] }, cache: true } } },
       'vx.config.ts',
     )
   } catch (err) {

@@ -38,7 +38,8 @@ const quiet = new Proxy({}, { get: () => () => undefined }) as Logger
 const DIST_TASK = {
   exec: { command: 'echo should-not-run' },
   inputs: { files: [] },
-  cache: { outputs: { files: ['dist/**'] } },
+  outputs: { files: ['dist/**'] },
+  cache: true,
 }
 const node = (): TaskNode => ({
   id: 'proj#build',

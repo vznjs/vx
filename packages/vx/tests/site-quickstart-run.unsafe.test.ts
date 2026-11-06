@@ -64,7 +64,7 @@ describe('the quickstart Run block', () => {
   tasks: {
     build: {
       exec: { command: 'mkdir -p dist && cp src/a.ts dist/' },
-      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+      inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
     },
   },
 }

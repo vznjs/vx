@@ -28,6 +28,10 @@ export interface WorkspaceConfig {
   baseBranch?: string
   run?: RunSettings
   cache?: CacheSettings
+  /** Input defaults for every task. */
+  inputs?: WorkspaceInputs
+  /** Output defaults for every task. */
+  outputs?: WorkspaceOutputs
   lock?: LockSettings
   watch?: WatchSettings
   /**
@@ -76,6 +80,18 @@ export interface RunSettings {
   rules?: WorkspaceRules
 }
 
+/** `WorkspaceConfig.inputs`. */
+export interface WorkspaceInputs {
+  /** The `inputs.stability` of every task that does not set its own. */
+  stability?: InputStability
+}
+
+/** `WorkspaceConfig.outputs`. */
+export interface WorkspaceOutputs {
+  /** The `outputs.clean` of every task that does not set its own. */
+  clean?: boolean
+}
+
 /** `WorkspaceConfig.cache`: where the cache lives and what a run does with it. */
 export interface CacheSettings {
   /**
@@ -93,10 +109,6 @@ export interface CacheSettings {
   policy?: string
   /** Which remote hits land on disk: `all` (the default), only the requested tasks' (`toplevel`), or `none`. */
   download?: 'all' | 'toplevel' | 'none'
-  /** The `cache.inputStability` of every task that does not set its own. */
-  inputStability?: InputStability
-  /** The `cache.outputs.clean` of every task that does not set its own. */
-  outputs?: { clean?: boolean }
   /**
    * Which runs keep a failed task's log and the files its outputs left in
    * the remote: CI runs (`'ci'`, the default), runs off CI (`'local'`), or
@@ -305,13 +317,15 @@ export interface TaskConfig {
    * keyed group: its inputs are a key its dependents fold, with no process.
    */
   inputs?: InputsConfig
+  /** What the task produces: saved on a miss, restored on a hit. Needs `cache: true`. */
+  outputs?: TaskOutputs
   /**
-   * Caching configuration. **Caching is opt-in.** If this field is omitted,
-   * the task always runs and nothing is read from or written to the cache.
-   * Requires `exec` and `inputs`: the key is the task's inputs, and a group
-   * runs nothing to cache.
+   * `true` caches the task. **Caching is opt-in.** Omitted or `false`, the
+   * task always runs and nothing is read from or written to the cache.
+   * Requires `exec`, `inputs` and `outputs`: the key is the task's inputs,
+   * and a group runs nothing to cache.
    */
-  cache?: CacheConfig
+  cache?: boolean
 }
 
 /**
@@ -335,7 +349,7 @@ export interface TaskConfig {
  * from the other coupled them both ways — a declaration added for
  * caching silently widened the sandbox, and a path the task needed had
  * to be laundered through the cache key to get it (2026-09-05).
- * A declared `cache.outputs` is NOT a write grant; the request
+ * A declared `outputs` is NOT a write grant; the request
  * `sandbox-request.ts` builds carries no write of its own and binds
  * `allow.write` alone. This comment claimed the opposite — here and on
  * both grant fields — while the file beside it and `schema.md` both said
@@ -417,9 +431,9 @@ export interface SandboxGrants {
   read?: readonly string[]
   /**
    * Writable paths or globs. The task can write NOTHING without these:
-   * declaring `cache.outputs.files` grants no write, and a task whose
+   * declaring `outputs.files` grants no write, and a task whose
    * only declaration is its outputs writes into a tmpfs that evaporates
-   * (vx then warns that `cache.outputs` matched no files).
+   * (vx then warns that `outputs` matched no files).
    */
   write?: readonly string[]
   /**
@@ -592,17 +606,6 @@ export interface ExecEnv {
   secret?: readonly string[]
 }
 
-export interface CacheConfig {
-  /** What this task produces. Captured for restore on a cache hit. */
-  outputs: CacheOutputs
-  /**
-   * What a write to an input while the command runs means. Each field,
-   * highest first: its env var, this, the workspace's `inputStability`,
-   * the default (`'immutable'`, `'warn'`).
-   */
-  inputStability?: InputStability
-}
-
 export interface InputStability {
   /**
    * `'immutable'` (the default): any write to an input during the command
@@ -622,7 +625,7 @@ export interface InputStability {
   severity?: 'warn' | 'error'
 }
 
-export interface CacheOutputs {
+export interface TaskOutputs {
   /**
    * Files produced by this task, as project-relative globs. Pass `[]`
    * when the task has no files to capture (e.g. `lint`, `typecheck`).
@@ -664,7 +667,7 @@ export interface CacheOutputs {
    * (tsc's `.tsbuildinfo`) instead of removing them first. A run that
    * leaves a file it found untouched saves nothing, so an entry holds only
    * what a clean run would leave. A retry still starts clean. Omitted →
-   * the workspace's `cache.outputs.clean`, else `true`.
+   * the workspace's `outputs.clean`, else `true`.
    */
   clean?: boolean
 }
@@ -740,6 +743,13 @@ export interface InputsConfig {
    * tool versions, OS info, etc.
    */
   workspaceRuntime?: readonly string[]
+  /**
+   * What a write to an input while the command runs means for the save.
+   * Each field, highest first: its env var, this, the workspace's
+   * `inputs.stability`, the default (`'immutable'`, `'warn'`). Needs
+   * `cache: true`.
+   */
+  stability?: InputStability
 }
 
 /**
@@ -809,9 +819,7 @@ export function defineProject<const T extends ProjectConfig>(
           dependsOn?: readonly DependsOnEntry<Extract<keyof NonNullable<T['tasks']>, string>>[]
           exec?: Known<At<NonNullable<T['tasks']>[K], 'exec'>, ExecConfig>
           inputs?: Known<At<NonNullable<T['tasks']>[K], 'inputs'>, InputsConfig>
-          cache?: Known<At<NonNullable<T['tasks']>[K], 'cache'>, CacheConfig> & {
-            outputs?: Known<At<At<NonNullable<T['tasks']>[K], 'cache'>, 'outputs'>, CacheOutputs>
-          }
+          outputs?: Known<At<NonNullable<T['tasks']>[K], 'outputs'>, TaskOutputs>
         }
       }
     },
@@ -825,9 +833,11 @@ export function defineWorkspace<T extends WorkspaceConfig>(
       run?: Known<At<T, 'run'>, RunSettings> & {
         rules?: Known<At<At<T, 'run'>, 'rules'>, WorkspaceRules>
       }
-      cache?: Known<At<T, 'cache'>, CacheSettings> & {
-        inputStability?: Known<At<At<T, 'cache'>, 'inputStability'>, InputStability>
+      cache?: Known<At<T, 'cache'>, CacheSettings>
+      inputs?: Known<At<T, 'inputs'>, WorkspaceInputs> & {
+        stability?: Known<At<At<T, 'inputs'>, 'stability'>, InputStability>
       }
+      outputs?: Known<At<T, 'outputs'>, WorkspaceOutputs>
       lock?: Known<At<T, 'lock'>, LockSettings>
       watch?: Known<At<T, 'watch'>, WatchSettings>
     },

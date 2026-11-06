@@ -22,7 +22,7 @@ beforeAll(async () => {
   await writeFile(
     path.join(a, 'vx.config.mjs'),
     `export default { tasks: {
-  build: { exec: { command: 'echo built > out.txt' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } } },
+  build: { exec: { command: 'echo built > out.txt' }, inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true },
   bad: { exec: { command: 'echo boom >&2; exit 2' } },
 } }
 `,

@@ -62,11 +62,11 @@ export interface SummaryStats {
   restoredRemote: number
   /** Ran here and saved to the cache: the legend's `↑`. */
   saved?: number
-  /** Ran here with a `cache` block, succeeded, and saved nothing. */
+  /** Ran here with `cache: true`, succeeded, and saved nothing. */
   notSaved?: number
-  /** Tasks that executed (success + failed) with a `cache` block — the misses. */
+  /** Tasks that executed (success + failed) with `cache: true` — the misses. */
   miss: number
-  /** Executed with no `cache` block: never consulted the cache, not a miss. */
+  /** Executed without `cache: true`: never consulted the cache, not a miss. */
   noCache?: number
   /** Still to run (live section only; 0 in the final summary) — renders
    *  as a gray ▱ remainder so the live meters FILL toward the final. */
@@ -582,7 +582,7 @@ function tableStatusColor(o: TaskOutcome): Style {
 
 // Local byte formatter — the orchestrator can't import cli/format.ts
 // (module boundary), and the footer only needs one compact form.
-/** Ran here with a `cache` block, succeeded, and its result was not saved. */
+/** Ran here with `cache: true`, succeeded, and its result was not saved. */
 export function ranUnsaved(o: TaskOutcome): boolean {
   return o.status === 'success' && !ranNoCache(o) && o.saved !== true && o.where === undefined
 }
@@ -593,7 +593,7 @@ export function formatRunSummary(
   colors: ColorSupport = NO_COLOR,
   context?: RunContext,
 ): string[] {
-  // Counted here, not in the Tally: a task with no `cache` block never
+  // Counted here, not in the Tally: a task without `cache: true` never
   // consulted the cache, so it is not a miss.
   const noCache = outcomes.filter(
     (o) =>

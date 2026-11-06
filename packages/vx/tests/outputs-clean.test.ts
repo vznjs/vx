@@ -1,4 +1,4 @@
-// `cache.outputs.clean: false` (2026-10-15): a miss leaves the declared
+// `outputs.clean: false` (2026-10-15): a miss leaves the declared
 // outputs in place for the command (tsc's `.tsbuildinfo`), and the save
 // stores every file the outputs match after the run, a leftover included.
 // "You opt out of security" (M, 07:44): the clean-tree guarantee is off.
@@ -21,13 +21,13 @@ const task = (command: string, outputs: string, extra = ''): string => `
     tasks: {
       build: {
         exec: { command: ${JSON.stringify(command)}, ${extra} },
-        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**']${outputs} } },
+        inputs: { files: ['src/**'] }, outputs: { files: ['dist/**']${outputs} }, cache: true,
       },
     },
   }
 `
 
-describe('cache.outputs.clean', () => {
+describe('outputs.clean', () => {
   let f: Fixture
   beforeEach(async () => {
     f = await makeWorkspace('vx-outputs-clean-')
@@ -91,7 +91,7 @@ describe('cache.outputs.clean', () => {
     async () => {
       await writeFile(
         path.join(f.root, '.vx/workspace.mjs'),
-        'export default { cache: { outputs: { clean: false } } }\n',
+        'export default { outputs: { clean: false } }\n',
       )
       const kept = await addProject(f.root, 'kept', {
         files: { 'src/a.txt': 'v1' },
@@ -139,7 +139,7 @@ describe('cache.outputs.clean', () => {
         files: { 'src/a.txt': 'v1' },
         config: task('true', ", clean: 'no'"),
       })
-      await expect(build()).rejects.toThrow('cache.outputs.clean must be true or false')
+      await expect(build()).rejects.toThrow('outputs.clean must be true or false')
     },
     TIMEOUT,
   )

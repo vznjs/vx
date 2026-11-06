@@ -290,7 +290,7 @@ describe('project stage', () => {
             config.tasks ??= {}
             config.tasks.lint = {
               exec: { command: 'echo lint ' + ctx.name },
-              inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+              inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
             }
           },
         }`,
@@ -308,7 +308,7 @@ describe('project stage', () => {
         'a',
         `export default { tasks: {
           build: { exec: { command: 'echo build' } },
-          lint: { exec: { command: 'echo lint a' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } },
+          lint: { exec: { command: 'echo lint a' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true },
         } }\n`,
       )
       const byHand = await planRun({ cwd: root, tasks: ['lint'], log: silent() })
@@ -446,7 +446,7 @@ describe('project stage', () => {
       await pkg('a', build)
       await pkg('b', build)
       const outputs = (globs: string[]) =>
-        `{ inputs: { files: ['src/**'] }, cache: { outputs: { files: ${JSON.stringify(globs)} } } }`
+        `{ inputs: { files: ['src/**'] }, outputs: { files: ${JSON.stringify(globs)} }, cache: true }`
       await workspace([
         pluginSource(
           'org/x',
@@ -462,7 +462,7 @@ describe('project stage', () => {
         ),
       ])
       const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
-      expect(plan.tasks.map((t) => t.node.config.cache?.outputs.files)).toEqual([
+      expect(plan.tasks.map((t) => t.node.config.outputs?.files)).toEqual([
         ['*', '!package.json', '!vx.config.mjs'],
         ['*', '!package.json', '!vx.config.mjs'],
       ])
@@ -473,7 +473,7 @@ describe('project stage', () => {
         ),
       ])
       await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
-        /\(after plugin 'org\/x'\): tasks\.build\.cache\.outputs\.files: "\*" covers the project's own vx\.config\.mjs/,
+        /\(after plugin 'org\/x'\): tasks\.build\.outputs\.files: "\*" covers the project's own vx\.config\.mjs/,
       )
     },
     TIMEOUT,
@@ -631,8 +631,8 @@ describe('graph stage', () => {
       await pkg(
         'a',
         `export default { tasks: {
-          gen: { exec: { command: 'mkdir -p dist && echo g > dist/gen.txt' }, inputs: { files: [] }, cache: { outputs: { files: ['dist/**'] } } },
-          extra: { exec: { command: 'mkdir -p dist && echo e > dist/extra.txt' }, dependsOn: ['gen'], inputs: { files: [] }, cache: { outputs: { files: ['dist/**'] } } },
+          gen: { exec: { command: 'mkdir -p dist && echo g > dist/gen.txt' }, inputs: { files: [] }, outputs: { files: ['dist/**'] }, cache: true },
+          extra: { exec: { command: 'mkdir -p dist && echo e > dist/extra.txt' }, dependsOn: ['gen'], inputs: { files: [] }, outputs: { files: ['dist/**'] }, cache: true },
         } }\n`,
       )
       await workspace([
@@ -779,7 +779,7 @@ describe('key stage', () => {
     async () => {
       await pkg(
         'a',
-        "export default { tasks: { build: { exec: { command: 'echo b' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } } }\n",
+        "export default { tasks: { build: { exec: { command: 'echo b' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true } } }\n",
       )
       await mkdir(path.join(root, 'packages', 'a', 'src'), { recursive: true })
       await writeFile(path.join(root, 'packages', 'a', 'src', 'x.js'), 'x')
@@ -835,7 +835,7 @@ describe('key stage', () => {
       // both arms in `lockfile.ts`. Here it was covered on neither.
       await pkg(
         'a',
-        "export default { tasks: { build: { exec: { command: 'echo b' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } } }\n",
+        "export default { tasks: { build: { exec: { command: 'echo b' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true } } }\n",
       )
       await mkdir(path.join(root, 'packages', 'a', 'src'), { recursive: true })
       await writeFile(path.join(root, 'packages', 'a', 'src', 'x.js'), 'x')
@@ -879,7 +879,7 @@ describe('key stage', () => {
       // `{ a: 'b\0c' }` folded the same bytes: two materials, one key.
       await pkg(
         'a',
-        "export default { tasks: { build: { exec: { command: 'echo b' }, inputs: { files: [] }, cache: { outputs: { files: [] } } } } }\n",
+        "export default { tasks: { build: { exec: { command: 'echo b' }, inputs: { files: [] }, outputs: { files: [] }, cache: true } } }\n",
       )
       await workspace([pluginSource('org/tool', `{ key() { return { 'a\\0b': 'c' } } }`)])
       await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
@@ -904,7 +904,7 @@ describe('key stage', () => {
       // input.
       await pkg(
         'a',
-        "export default { tasks: { build: { exec: { command: 'echo b' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } } }\n",
+        "export default { tasks: { build: { exec: { command: 'echo b' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true } } }\n",
       )
       await mkdir(path.join(root, 'packages', 'a', 'src'), { recursive: true })
       await writeFile(path.join(root, 'packages', 'a', 'src', 'x.js'), 'x')
@@ -941,7 +941,7 @@ describe('key stage — two plugins of one package', () => {
       // but `vx why` could not say which.
       await pkg(
         'a',
-        "export default { tasks: { build: { exec: { command: 'echo b' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } } }\n",
+        "export default { tasks: { build: { exec: { command: 'echo b' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true } } }\n",
       )
       await mkdir(path.join(root, 'packages', 'a', 'src'), { recursive: true })
       await writeFile(path.join(root, 'packages', 'a', 'src', 'x.js'), 'x')
@@ -978,7 +978,7 @@ describe('key stage — two plugins of one package', () => {
 
 describe('fingerprint claim — a plugin keys a lockfile per project', () => {
   const BUILD =
-    "export default { tasks: { build: { exec: { command: 'echo b' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } } }\n"
+    "export default { tasks: { build: { exec: { command: 'echo b' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true } } }\n"
   const CLAIM = (deps: string) =>
     pluginSource(
       'org/pm',
@@ -1074,7 +1074,7 @@ describe('key stage — explainability', () => {
       // the real verb: two runs with different material, then the diff.
       await pkg(
         'a',
-        "export default { tasks: { build: { exec: { command: 'echo b' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } } }\n",
+        "export default { tasks: { build: { exec: { command: 'echo b' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true } } }\n",
       )
       await mkdir(path.join(root, 'packages', 'a', 'src'), { recursive: true })
       await writeFile(path.join(root, 'packages', 'a', 'src', 'x.js'), 'x')
@@ -1466,7 +1466,7 @@ describe('schedule stage', () => {
       // The stage read history (148 ms at 8,002 tasks) to order work a
       // nothing-changed run never dispatches: its restores take no weight.
       const cached = `export default { tasks: { build: { exec: { command: 'echo build' },
-        inputs: { files: ['*.txt'] }, cache: { outputs: { files: [] } } } } }\n`
+        inputs: { files: ['*.txt'] }, outputs: { files: [] }, cache: true } } }\n`
       await pkg('a', cached)
       await pkg('b', cached)
       const asked = path.join(root, 'asked.log')

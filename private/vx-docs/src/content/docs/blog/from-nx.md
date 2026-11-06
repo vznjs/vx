@@ -57,11 +57,10 @@ export default {
       inputs: {
         files: ['src/**/*'],
       },
-      cache: {
-        outputs: {
+      outputs: {
           files: ['dist'],
         },
-      },
+      cache: true,
     },
   },
 } satisfies ProjectConfig
@@ -102,7 +101,7 @@ as the real command when you want Nx gone:
 ```ts
 build: {
   exec: { command: 'tsc -b tsconfig.lib.json' },
-  inputs: { files: ['src/**', 'tsconfig.lib.json'] }, cache: { outputs: { files: ['dist/**'] } },
+  inputs: { files: ['src/**', 'tsconfig.lib.json'] }, outputs: { files: ['dist/**'] }, cache: true,
 }
 ```
 
@@ -123,7 +122,7 @@ any target Nx marks `continuous`:
 | `dependsOn` (`^build`, …)             | `dependsOn`, same syntax                      |
 | `inputs` / `namedInputs` (resolved)   | `inputs.files`                          |
 | `{workspaceRoot}/file`                | `inputs.workspaceFiles`                 |
-| `outputs`                             | `cache.outputs.files`                         |
+| `outputs`                             | `outputs.files`                         |
 | `nx affected`                         | `vx run … --affected[=<base>]`                |
 | `nx run-many --projects`              | `vx run … --filter`                           |
 | `parallelism: false`                  | a TODO naming `--concurrency 1`               |

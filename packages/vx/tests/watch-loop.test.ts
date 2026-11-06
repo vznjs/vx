@@ -277,7 +277,7 @@ describe('vx watch loop (e2e)', () => {
     await writeFile(
       path.join(f.dir, 'vx.config.mjs'),
       `export default { tasks: {
-        show: { exec: { command: 'echo run >> ${f.log}' }, inputs: { files: ['.env.local'] }, cache: { outputs: { files: [] } } },
+        show: { exec: { command: 'echo run >> ${f.log}' }, inputs: { files: ['.env.local'] }, outputs: { files: [] }, cache: true },
       } }\n`,
     )
     f.watch = startWatch(f.root, ['--all'], {}, 'show')
@@ -494,7 +494,7 @@ describe('vx watch in a single-project repository (e2e)', () => {
           tasks: {
             build: {
               exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${log}' },
-              inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+              inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
             },
           },
         }`,

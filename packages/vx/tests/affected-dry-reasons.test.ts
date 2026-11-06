@@ -9,7 +9,7 @@ const cached = (extra = '') => `export default {
   tasks: {
     build: {
       exec: { command: 'true' },${extra}
-      inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+      inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
     },
     lint: { exec: { command: 'true' } },
   },

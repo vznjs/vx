@@ -397,7 +397,7 @@ describe('run-level knobs are never folded into a cache key', () => {
           tasks: {
             build: {
               exec: { command: 'echo x >> count.txt && echo built' },
-              inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } },
+              inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true,
             },
           },
         }`,

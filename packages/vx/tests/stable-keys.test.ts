@@ -29,9 +29,8 @@ const node = (
         ? {}
         : {
             inputs: { files: cache.files ?? ['**'], workspaceFiles: cache.workspaceFiles ?? [] },
-            cache: {
-              outputs: { files: [] },
-            },
+            outputs: { files: [] },
+            cache: true,
           },
   }) as unknown as TaskNode
 
@@ -56,9 +55,8 @@ describe('dependsOnSiblingOutputs — restore-tier stability gate', () => {
           projectName: 'B',
           config: {
             inputs: { files: inputs },
-            cache: {
-              outputs: { files: [] },
-            },
+            outputs: { files: [] },
+            cache: true,
           },
         } as unknown as TaskNode,
         new Set(['B']),
@@ -87,7 +85,7 @@ describe('dependsOnSiblingOutputs — restore-tier stability gate', () => {
         dependsOnSiblingOutputs(
           {
             projectName: 'B',
-            config: { inputs: { files: ['src/**'] }, cache: { outputs: { files: outputs } } },
+            config: { inputs: { files: ['src/**'] }, outputs: { files: outputs }, cache: true },
           } as unknown as TaskNode,
           new Set(['B']),
           false,
@@ -232,7 +230,8 @@ describe('gatedOutputs — the outputs a same-project reader reaches', () => {
       config: {
         exec: { command: 'true' },
         inputs: { files: inputs },
-        cache: { outputs: { files: outputs } },
+        outputs: { files: outputs },
+        cache: true,
       },
     } as unknown as TaskNode,
   ]
@@ -251,7 +250,7 @@ describe('gatedOutputs — the outputs a same-project reader reaches', () => {
         task(`p#r${i}`, r(2) === 0 ? [glob(), glob()] : [glob()], []),
       ),
     ])
-    const all = [...nodes.values()].flatMap((n) => n.config.cache!.outputs.files)
+    const all = [...nodes.values()].flatMap((n) => n.config.outputs!.files)
     const want = new Set<string>()
     for (const n of nodes.values())
       for (const o of n.config.inputs!.files!.length === 0 ? [] : all) {

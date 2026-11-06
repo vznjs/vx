@@ -55,7 +55,7 @@ check-ignore` over their directories (`util/git-ignored.ts`) that
   reads `inputs.workspaceFiles` whose literal prefixes reach an
   upstream `outputs.files` producer's directory.
   Transitive because a producer reached through a no-output intermediate
-  still poisons the key. A task with no `cache` block is a producer too,
+  still poisons the key. A task with no `cache: true` is a producer too,
   where `undeclaredWriteReach` (`sandbox-request.md`) says it may write:
   its own project counts as an `outputs.files` project, the rest of the
   workspace as an `outputs.workspaceFiles` producer, and a sandboxed one

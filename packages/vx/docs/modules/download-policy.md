@@ -51,11 +51,11 @@ matters:
   shell command's reads cannot be bounded, and deferral SKIPS the output
   clean, so a stale prior build is exactly what it would sample;
 - any task declaring `inputs.workspaceFiles` (boundary-free);
-- the producer declaring `cache.outputs.workspaceFiles` (root-anchored).
+- the producer declaring `outputs.workspaceFiles` (root-anchored).
 
 A leading wildcard yields prefix `.` and reaches everything; a task with
 empty `inputs.files` counts as reading its whole project. A task with
-`inputs` and no `cache` block counts as a reader when a cached task
+`inputs` and no `cache: true` counts as a reader when a cached task
 depends on it (the cached task folds its key); one with no `inputs` has
 no key to read. The
 prefixes are compared as PATHS, not as strings: `staticPrefix` normalizes

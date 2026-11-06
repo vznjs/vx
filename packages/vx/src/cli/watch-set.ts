@@ -132,8 +132,8 @@ export async function sweepConfigs(
   }
   const foldTasks = (dir: string, config: ProjectConfig, names: Set<string> | null): void => {
     for (const [name, task] of Object.entries(config.tasks ?? {})) {
-      add(dir, task.cache?.outputs?.files)
-      add(workspaceRoot, task.cache?.outputs?.workspaceFiles)
+      add(dir, task.outputs?.files)
+      add(workspaceRoot, task.outputs?.workspaceFiles)
       if (names !== null && !names.has(name)) continue
       if (
         task.inputs === undefined &&
@@ -147,8 +147,8 @@ export async function sweepConfigs(
         for (const rel of named.workspaceFiles) namedIgnored.add(path.join(workspaceRoot, rel))
       }
       for (const g of task.inputs?.workspaceFiles ?? []) workspaceInputs.add(g)
-      addInputs(dir, task.inputs?.files, task.cache?.outputs?.files)
-      addInputs(workspaceRoot, task.inputs?.workspaceFiles, task.cache?.outputs?.workspaceFiles)
+      addInputs(dir, task.inputs?.files, task.outputs?.files)
+      addInputs(workspaceRoot, task.inputs?.workspaceFiles, task.outputs?.workspaceFiles)
     }
   }
   const result = (staged: Map<string, ProjectEntry> | null): ConfigSweep => ({

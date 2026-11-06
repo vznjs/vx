@@ -381,7 +381,7 @@ describe('a cached target that declares no outputs', () => {
       [...t].map(([id, g]) => [
         id,
         {
-          outputs: (g.task?.['cache'] as { outputs?: unknown } | undefined)?.outputs,
+          outputs: g.task?.['outputs'],
           todos: g.todos,
         },
       ]),
@@ -417,7 +417,7 @@ describe('a cached target that declares no outputs', () => {
     const mapped = async (files: string[]) => {
       const m = await mapNxWorkspace(root, [b], graph, { ...OPTS, tracked: trackedKinds(files) })
       const t = m.projects[0]!.tasks.find((x) => x.name === 'build')!
-      return { outputs: (t.task!['cache'] as { outputs?: unknown }).outputs, todos: t.todos }
+      return { outputs: t.task!['outputs'] as unknown, todos: t.todos }
     }
     expect(await mapped(['packages/b/src/a.ts', 'packages/b/package.json'])).toEqual({
       outputs: { files: ['dist', 'build', 'public'], workspaceFiles: ['dist/packages/b'] },
@@ -766,8 +766,7 @@ describe('nx-map: a workspace output two projects declare', () => {
       b: node('packages/b', { gen }),
     })
     expect([
-      (t.get('a#gen')!.task!['cache'] as { outputs: { workspaceFiles: string[] } }).outputs
-        .workspaceFiles,
+      (t.get('a#gen')!.task!['outputs'] as { workspaceFiles: string[] }).workspaceFiles,
       t.get('b#gen')!.task!['cache'],
       t.get('b#gen')!.todos.filter((x) => x.includes('workspace output')).length,
     ]).toEqual([['node_modules/.prisma'], undefined, 1])

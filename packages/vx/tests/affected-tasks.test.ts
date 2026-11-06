@@ -10,7 +10,8 @@ import type { AffectedChanges, PackageGraph, ProjectEntry } from '../src/workspa
 const cached = (file: string) => ({
   exec: { command: 'true' },
   inputs: { files: [file] },
-  cache: { outputs: { files: [] } },
+  outputs: { files: [] },
+  cache: true,
 })
 
 function node(id: string, file: string, deps: string[] = []): TaskNode {

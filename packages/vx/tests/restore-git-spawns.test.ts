@@ -80,12 +80,12 @@ async function addProject(root: string, name: string, testInputs: string): Promi
       tasks: {
         build: {
           exec: { command: 'mkdir -p dist && echo built > dist/out.txt' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+          inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
         },
         test: {
           dependsOn: ['build'],
           exec: { command: 'echo ran >> ../../.stamp-${name}' },
-          inputs: { files: ${testInputs}${reads ? ', tasks: []' : ''} }, cache: { outputs: { files: [] } },
+          inputs: { files: ${testInputs}${reads ? ', tasks: []' : ''} }, outputs: { files: [] }, cache: true,
         },
       },
     }

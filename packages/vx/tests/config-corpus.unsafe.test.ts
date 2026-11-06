@@ -97,6 +97,38 @@ const RECORDS = new Map([
     'private/vx-docs/src/content/docs/releases/vx-0-0-644.md#1',
     '`cache.store.verify`, since removed',
   ],
+  [
+    'private/vx-docs/src/content/docs/releases/vx-0-0-21.md#1',
+    '`cache: { outputs, inputStability }`, since `outputs`, `inputs.stability` and `cache: true`',
+  ],
+  [
+    'private/vx-docs/src/content/docs/releases/vx-0-0-21.md#3',
+    '`cache: { outputs, inputStability }`, since `outputs`, `inputs.stability` and `cache: true`',
+  ],
+  [
+    'private/vx-docs/src/content/docs/releases/vx-0-0-199.md#2',
+    '`cache: { outputs, inputStability }`, since `outputs`, `inputs.stability` and `cache: true`',
+  ],
+  [
+    'private/vx-docs/src/content/docs/releases/vx-0-0-636.md#1',
+    '`cache: { outputs, inputStability }`, since `outputs`, `inputs.stability` and `cache: true`',
+  ],
+  [
+    'private/vx-docs/src/content/docs/releases/vx-0-0-637.md#1',
+    '`cache: { outputs, inputStability }`, since `outputs`, `inputs.stability` and `cache: true`',
+  ],
+  [
+    'private/vx-docs/src/content/docs/releases/vx-0-0-638.md#1',
+    '`cache: { outputs, inputStability }`, since `outputs`, `inputs.stability` and `cache: true`',
+  ],
+  [
+    'private/vx-docs/src/content/docs/releases/vx-0-0-639.md#1',
+    '`cache: { outputs, inputStability }`, since `outputs`, `inputs.stability` and `cache: true`',
+  ],
+  [
+    'private/vx-docs/src/content/docs/releases/vx-0-0-640.md#1',
+    '`cache: { outputs, inputStability }`, since `outputs`, `inputs.stability` and `cache: true`',
+  ],
 ])
 
 function corpus(): Sample[] {
@@ -192,7 +224,7 @@ describe('the documented configs load under the current schema', () => {
           s.workspace
             ? validateWorkspace(mod.default as WorkspaceConfig, s.where)
             : validateProjectConfig(mod.default as ProjectConfig, s.where)
-        expect(load).toThrow('unknown field')
+        expect(load).toThrow(/unknown field|cache must be true or false/)
       })
       continue
     }

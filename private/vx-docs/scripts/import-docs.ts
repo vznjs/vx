@@ -303,6 +303,7 @@ const SCHEMA_PAGES: readonly SplitPage[] = [
   { page: 'sandbox', title: 'exec.sandbox', headings: ['`exec.sandbox` (optional)'] },
   { page: 'depends-on', title: 'dependsOn', headings: ['`dependsOn` (optional)'] },
   { page: 'inputs', title: 'inputs', headings: ['`inputs` (optional)'] },
+  { page: 'outputs', title: 'outputs', headings: ['`outputs` (optional)'] },
   { page: 'cache', title: 'cache', headings: ['`cache` (optional)'] },
   {
     page: 'workspace',

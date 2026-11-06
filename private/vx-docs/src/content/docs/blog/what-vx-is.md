@@ -50,11 +50,12 @@ caches on your machine.
 build: {
   exec: { command: 'tsc -b' },
   inputs: { files: ['src/**', 'tsconfig.json'] },
-  cache: { outputs: { files: ['dist/**'] } },
+  outputs: { files: ['dist/**'] },
+  cache: true,
 }
 ```
 
-- **Caching is opt-in.** No `cache` block, no cache. vx never guesses
+- **Caching is opt-in.** No `cache: true`, no cache. vx never guesses
   what a task reads.
 - **One command per task.** A plugin may change *where* it runs, never
   *what* it is.

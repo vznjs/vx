@@ -550,7 +550,7 @@ describe('a parent-scoped `resolutions` override (vercel/turborepo#14499)', () =
       await writeFile(path.join(dir, 'src', 'index.js'), `// ${name}\n`)
       await writeFile(
         path.join(dir, 'vx.config.mjs'),
-        "export default { tasks: { build: { exec: { command: 'echo built' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } } }\n",
+        "export default { tasks: { build: { exec: { command: 'echo built' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true } } }\n",
       )
     }
     await writeFile(path.join(root, 'yarn.lock'), LOCK)
@@ -720,7 +720,7 @@ ${newer}:
 describe('yarn() declared', () => {
   let root: string
   const BUILD =
-    "export default { tasks: { build: { exec: { command: 'echo built' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } } }\n"
+    "export default { tasks: { build: { exec: { command: 'echo built' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true } } }\n"
   beforeEach(async () => {
     root = await mkdtemp(path.join(tmpdir(), 'vx-yarn-'))
     await writeFile(
@@ -836,7 +836,7 @@ describe('yarn() in a repo with no workspaces field', () => {
     await writeFile(path.join(root, 'src', 'index.js'), '// app\n')
     await writeFile(
       path.join(root, 'vx.config.mjs'),
-      "export default { tasks: { build: { exec: { command: 'echo built' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } } }\n",
+      "export default { tasks: { build: { exec: { command: 'echo built' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true } } }\n",
     )
     await writeFile(path.join(root, 'yarn.lock'), classic())
     await Bun.write(

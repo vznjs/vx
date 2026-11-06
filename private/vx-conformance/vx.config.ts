@@ -44,7 +44,8 @@ export default defineProject({
       },
       dependsOn: ['install'],
       inputs: { files: [...SUITE, 'tests/**', '*.ts', '.oxlintrc.json', 'tsconfig.json'] },
-      cache: { outputs: { files: [] } },
+      outputs: { files: [] },
+      cache: true,
     },
 
     'lint.oxfmt': {
@@ -55,7 +56,8 @@ export default defineProject({
       },
       dependsOn: ['install'],
       inputs: { files: ['**/*'] },
-      cache: { outputs: { files: [] } },
+      outputs: { files: [] },
+      cache: true,
     },
 
     // The harness's own tests: the sandbox holds, the checks judge right,
@@ -72,7 +74,8 @@ export default defineProject({
         // The inventory test lists every package's test files.
         workspaceFiles: ['packages/*/tests/*.test.ts'],
       },
-      cache: { outputs: { files: [] } },
+      outputs: { files: [] },
+      cache: true,
     },
   },
 })

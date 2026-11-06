@@ -41,9 +41,8 @@ async function project(): Promise<void> {
     `export default { tasks: { t: {
       exec: { command: 'true', env: { secret: ['GH_PAT'] } },
       inputs: { files: ['package.json'], runtime: ['echo "saw $(cat tok)"; exit 3'] },
-      cache: {
-        outputs: { files: [] },
-      },
+      outputs: { files: [] },
+      cache: true,
     } } }`,
   )
   await Bun.write(path.join(root, 'packages', 'app', 'tok'), `${SECRET} ${PAT}`)

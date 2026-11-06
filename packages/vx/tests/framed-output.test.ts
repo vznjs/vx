@@ -145,7 +145,7 @@ describe('the compact one-liners', () => {
   )
   const cached = {
     ...node('@vzn/vx#lint', 'oxlint .'),
-    config: { exec: { command: 'oxlint .' }, cache: {} },
+    config: { exec: { command: 'oxlint .' }, cache: true },
   } as unknown as TaskNode
 
   it('a restored local hit is ⇢ · time · success · local · id', () => {

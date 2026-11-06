@@ -37,7 +37,7 @@ describe('a task without a cache block is `no-cache`, never `miss`', () => {
     await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
     await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource())
     for (const [name, cache] of [
-      ['cached', "inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },"],
+      ['cached', "inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,"],
       ['plain', ''],
     ] as const) {
       const dir = path.join(root, 'packages', name)

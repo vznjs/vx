@@ -396,7 +396,7 @@ function autoTodo(what: string, known?: Record<string, unknown>): string {
   const have = known === undefined ? '' : ` (declared so far: \`${JSON.stringify(known)}\`)`
   return (
     `cache: Vite Task traced this task's ${what} and vx infers none — add ` +
-    `\`inputs: { files: [...] }, cache: { outputs: { files: [...] } }\` with the real ones${have}; ` +
+    `\`inputs: { files: [...] }, outputs: { files: [...] }, cache: true\` with the real ones${have}; ` +
     'without it the task always runs'
   )
 }
@@ -481,7 +481,8 @@ function mapTask(name: string, def: TaskDef, ctx: TaskCtx): GeneratedTask {
     todos.push(ownFileTodo(ownFile))
     return { name, todos, task }
   }
-  task['cache'] = { outputs: outputs.lists }
+  task['outputs'] = outputs.lists
+  task['cache'] = true
   return { name, todos, task }
 }
 

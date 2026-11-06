@@ -89,7 +89,7 @@ export async function liveRun(
         id: t.id,
         deps: [...t.deps],
         projectDir: `/ws/${t.id.split('#')[0]}`,
-        config: { exec: { command: 'x' }, cache: { outputs: { files: ['dist/**'] } } },
+        config: { exec: { command: 'x' }, outputs: { files: ['dist/**'] }, cache: true },
       } as unknown as TaskNode,
     ]),
   )

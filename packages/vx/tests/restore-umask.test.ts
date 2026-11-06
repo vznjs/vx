@@ -25,7 +25,7 @@ it.skipIf(process.platform === 'win32')(
     const app = await addProject(root, 'app', {
       config: `export default { tasks: { build: {
         exec: { command: 'mkdir -p dist && cp src/a.txt dist/out.txt && printf "#!/bin/sh\\\\n" > dist/run.sh && chmod +x dist/run.sh' },
-        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+        inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
       } } }`,
       files: { 'src/a.txt': 'a\n', '.gitignore': 'dist/\n' },
     })

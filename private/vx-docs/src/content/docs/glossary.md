@@ -106,7 +106,7 @@ them, and the choice decides what it can prove.
 **The files a task produces**, which a cache stores and restores. Terminal
 output is usually stored too, so a replayed task prints what it printed.
 
-- vx: `cache.outputs` ([caching](../caching/))
+- vx: `outputs` ([caching](../caching/))
 - Turborepo: `outputs` ([configuration](https://turborepo.com/docs/reference/configuration#outputs))
 - Nx: cache outputs ([glossary](https://nx.dev/docs/reference/glossary#cache-outputs))
 - Bazel: the declared output [artifacts](https://bazel.build/reference/glossary#artifact) of an action

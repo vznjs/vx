@@ -34,9 +34,8 @@ it('a runtime probe running when vx exits on SIGINT is gone with its tree', asyn
               files: ['**'],
               runtime: ['sleep 300 & echo "$$ $!" > probe.pids; wait'],
             },
-            cache: {
-              outputs: { files: [] },
-            },
+            outputs: { files: [] },
+            cache: true,
           },
         },
       }

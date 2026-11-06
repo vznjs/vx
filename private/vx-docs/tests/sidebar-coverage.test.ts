@@ -79,7 +79,7 @@ describe('docs site sidebar coverage', () => {
       .filter((l) => l.startsWith('/src/content/docs/'))
       .map((l) => l.slice(1).replace(/\/$/, '/**'))
       .sort()
-    const outputs = config.tasks?.import?.cache?.outputs?.files ?? []
+    const outputs = config.tasks?.import?.outputs?.files ?? []
     expect([...outputs].sort()).toEqual(ignored)
   })
 

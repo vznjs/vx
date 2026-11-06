@@ -123,7 +123,7 @@ describe.if(CHUNKING_SUPPORTED)('the command line a worker runs', () => {
     expect(args).toEqual(["it's", 'a b'])
   })
 
-  // A dependency's `cache.outputs.bin` leads PATH locally (core's
+  // A dependency's `outputs.bin` leads PATH locally (core's
   // taskBinDirs); a worker without it ran `node` from its own image.
   it("puts a dependency's declared bin dir first, from the root, as the local executor does", async () => {
     await runOne(request({ command: PRINT, binDirs: [path.join(root, 'tools', 'out', 'bin')] }))

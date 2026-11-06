@@ -54,7 +54,7 @@ beforeAll(async () => {
     'a',
     `export default { tasks: {
   quick: { exec: { command: 'echo quick' } },
-  lost: { exec: { command: 'true' }, inputs: { files: ['nowhere/**'] }, cache: { outputs: { files: [] } } },
+  lost: { exec: { command: 'true' }, inputs: { files: ['nowhere/**'] }, outputs: { files: [] }, cache: true },
   slow: { exec: { command: ${JSON.stringify(wait)} } },
   after: { exec: { command: 'true' }, dependsOn: ['slow'] },
   all: { dependsOn: ['quick', 'lost', 'after'] },

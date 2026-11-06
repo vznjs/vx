@@ -27,7 +27,7 @@ export interface SummaryStats {
   restoredLocal: number
   restoredRemote: number
   saved?: number // ran here and saved: the legend's `↑`
-  notSaved?: number // ran here with a `cache` block, succeeded, saved nothing
+  notSaved?: number // ran here with `cache: true`, succeeded, saved nothing
   miss: number
   noCache?: number // a task no cache answered for (`ranNoCache`) never consulted one
   left?: number // still to run: the live section's gray remainder; 0 in the final summary

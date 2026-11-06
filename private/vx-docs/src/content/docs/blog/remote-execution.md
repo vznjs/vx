@@ -52,7 +52,7 @@ cores.
 
 ## What stays local
 
-- **Only cacheable tasks go.** A task with no `cache` block has no
+- **Only cacheable tasks go.** A task with no `cache: true` has no
   declared inputs to ship.
 - **Not persistent tasks, or anything depending on one.** A worker
   cannot reach a port on your machine.
@@ -73,14 +73,13 @@ worker.
 install: {
   exec: { command: 'bun install --frozen-lockfile', remote: 'only' },
   inputs: { files: ['package.json', 'bun.lock'] },
-  cache: {
-    outputs: { files: ['node_modules/**'] },
-  },
+  outputs: { files: ['node_modules/**'] },
+  cache: true,
 },
 build: {
   dependsOn: ['install'],
   exec: { command: 'tsc -p .' },
-  inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+  inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
 },
 ```
 

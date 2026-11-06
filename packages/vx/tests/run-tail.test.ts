@@ -56,7 +56,7 @@ describe('uploads still running at the end of a run', () => {
       projectName: 'p',
       taskName: 'a',
       requested: true,
-      config: { exec: { command: 'true' }, cache: {} },
+      config: { exec: { command: 'true' }, cache: true },
     } as unknown as TaskNode
     log.taskStart?.(a)
     log.taskComplete(a, {
@@ -126,7 +126,7 @@ describe("vx's own steps", () => {
       projectName: 'p',
       taskName: 'a',
       requested: true,
-      config: { exec: { command: 'true' }, cache: {} },
+      config: { exec: { command: 'true' }, cache: true },
     } as unknown as TaskNode
     log.taskStart?.(a)
     log.stepStart?.('vx:uploads')

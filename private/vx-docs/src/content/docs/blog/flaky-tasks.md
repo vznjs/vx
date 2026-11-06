@@ -17,7 +17,8 @@ passes, then fails, on the same inputs:
 flip: {
   exec: { command: 'bun flip.ts' },   // fails when a marker is absent, passes and removes it when present
   inputs: { files: ['flip.ts'] },
-  cache: { outputs: { files: [] } },
+  outputs: { files: [] },
+  cache: true,
 }
 ```
 
@@ -53,7 +54,7 @@ flowchart LR
 | key passed after only failures      | a recovery       |
 | key failed after it passed          | flaky            |
 | passed on a retry                   | flaky            |
-| task has no `cache` block           | not judged       |
+| task has no `cache: true`           | not judged       |
 
 Without declared inputs, vx can't tell two runs had the same inputs, so
 it doesn't judge.

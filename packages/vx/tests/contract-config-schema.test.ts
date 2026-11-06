@@ -22,9 +22,10 @@ import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import type {
-  CacheConfig,
   InputsConfig,
-  CacheOutputs,
+  TaskOutputs,
+  WorkspaceInputs,
+  WorkspaceOutputs,
   CacheSettings,
   RunSettings,
   LockSettings,
@@ -62,6 +63,8 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       baseBranch: true,
       run: true,
       cache: true,
+      inputs: true,
+      outputs: true,
       lock: true,
       watch: true,
       plugins: true,
@@ -82,14 +85,13 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       dir: true,
       policy: true,
       download: true,
-      inputStability: true,
-      outputs: true,
       upload: true,
       store: true,
       concurrency: true,
     }),
-    'cache.inputStability': keys<InputStability>({ strategy: true, severity: true }),
-    'cache.outputs': keys<NonNullable<CacheSettings['outputs']>>({ clean: true }),
+    inputs: keys<WorkspaceInputs>({ stability: true }),
+    'inputs.stability': keys<InputStability>({ strategy: true, severity: true }),
+    outputs: keys<WorkspaceOutputs>({ clean: true }),
     'cache.upload': keys<NonNullable<CacheSettings['upload']>>({ failures: true }),
     'cache.concurrency': keys<NonNullable<CacheSettings['concurrency']>>({
       download: true,
@@ -110,6 +112,7 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       exec: true,
       dependsOn: true,
       inputs: true,
+      outputs: true,
       cache: true,
     }),
     'tasks.*.exec': keys<ExecConfig>({
@@ -151,7 +154,6 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       systemInfo: true,
     }),
     'tasks.*.exec.sandbox.deny': keys<SandboxDenials>({ network: true }),
-    'tasks.*.cache': keys<CacheConfig>({ outputs: true, inputStability: true }),
     'tasks.*.inputs': keys<InputsConfig>({
       files: true,
       workspaceFiles: true,
@@ -159,15 +161,16 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       tasks: true,
       runtime: true,
       workspaceRuntime: true,
+      stability: true,
     }),
-    'tasks.*.cache.outputs': keys<CacheOutputs>({
+    'tasks.*.outputs': keys<TaskOutputs>({
       files: true,
       workspaceFiles: true,
       clean: true,
       bin: true,
       mount: true,
     }),
-    'tasks.*.cache.inputStability': keys<InputStability>({ strategy: true, severity: true }),
+    'tasks.*.inputs.stability': keys<InputStability>({ strategy: true, severity: true }),
   },
 }
 
@@ -190,12 +193,12 @@ function workspaceSeed(): Record<string, unknown> {
       dir: '.vx/cache',
       policy: 'local:rw,remote:r',
       download: 'all',
-      inputStability: { strategy: 'mutable', severity: 'error' },
-      outputs: { clean: false },
       upload: { failures: 'always' },
       store: { embeddings: '32KiB', decompress: true },
       concurrency: { download: 64, upload: 64, restore: 16 },
     },
+    inputs: { stability: { strategy: 'mutable', severity: 'error' } },
+    outputs: { clean: false },
     lock: { reviewFiles: false },
     watch: { poll: true },
     plugins: [],
@@ -259,33 +262,35 @@ function projectSeed(): Record<string, unknown> {
           tasks: [],
           runtime: ['node -v'],
           workspaceRuntime: ['bun -v'],
+          stability: { strategy: 'mutable', severity: 'error' },
         },
-        cache: {
-          outputs: {
-            files: ['dist/**'],
-            workspaceFiles: ['out/**'],
-            clean: false,
-          },
-          inputStability: { strategy: 'mutable', severity: 'error' },
+        outputs: {
+          files: ['dist/**'],
+          workspaceFiles: ['out/**'],
+          clean: false,
         },
+        cache: true,
       },
       g: { dependsOn: ['t'] },
       r: {
         exec: { command: 'true', remote: 'only' },
         inputs: { files: [] },
-        cache: { outputs: { files: [] } },
+        outputs: { files: [] },
+        cache: true,
       },
       // `bin` on its own task: a seed `files` probe beside it would read
       // the bin rule as a refusal of `files`.
       b: {
         exec: { command: 'true' },
         inputs: { files: ['src/**'] },
-        cache: { outputs: { files: ['out/**'], bin: 'out/bin' } },
+        outputs: { files: ['out/**'], bin: 'out/bin' },
+        cache: true,
       },
       m: {
         exec: { command: 'true', platforms: ['linux-x64'] },
         inputs: { files: ['src/**'] },
-        cache: { outputs: { files: ['out/**'], mount: { '/nix/store': 'out/nix/store' } } },
+        outputs: { files: ['out/**'], mount: { '/nix/store': 'out/nix/store' } },
+        cache: true,
       },
     },
   }

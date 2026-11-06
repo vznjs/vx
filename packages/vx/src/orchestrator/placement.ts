@@ -337,7 +337,7 @@ export function placeTasks(
         projectDir: node.projectDir,
         command: node.config.exec!.command,
         pinnedLocal: pinned.has(node.id),
-        cacheable: node.config.cache !== undefined,
+        cacheable: node.config.cache === true,
       },
       executorLabel,
       (e) => pinsOf(e).has(node.id) || !routes(e),

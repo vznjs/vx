@@ -207,7 +207,8 @@ describe('excludedTaint — which scheduled tasks build on a skipped key', () =>
         ? {
             exec: { command: 'x' },
             inputs: { files: ['src/**'] },
-            cache: { outputs: { files: [] } },
+            outputs: { files: [] },
+            cache: true,
           }
         : {},
     }) as unknown as TaskNode

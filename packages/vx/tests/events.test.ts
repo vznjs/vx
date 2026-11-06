@@ -341,12 +341,9 @@ describe('projectOutcome', () => {
     })
   })
 
-  it('a task with a cache block carries no noCache flag; a group carries neither', () => {
+  it('a cached task carries no noCache flag; a group carries neither', () => {
     const cached = mkNode({ id: 'a#b', command: 'x' })
-    ;(cached.config as { cache?: unknown }).cache = {
-      inputs: { files: [] },
-      outputs: { files: [] },
-    }
+    ;(cached.config as { cache?: unknown }).cache = true
     expect(projectOutcome(mkOutcome(cached)).noCache).toBeUndefined()
     expect(projectOutcome(mkOutcome(mkNode({ id: 'pkg#ci' }))).noCache).toBeUndefined()
   })
@@ -393,7 +390,7 @@ describe('projectOutcome', () => {
     // here, so dropping either left the suite green (654). The whole view
     // is compared, so a field copied under a wrong name reddens it too.
     const node = mkNode({ id: 'a#build', command: 'x' })
-    ;(node.config as { cache?: unknown }).cache = { inputs: { files: [] } }
+    ;(node.config as { cache?: unknown }).cache = true
     const view = projectOutcome(
       mkOutcome(node, {
         status: 'failed',
