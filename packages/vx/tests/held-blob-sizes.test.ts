@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { generateHeapSnapshot } from 'bun'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { Cache } from '../src/cache/index.js'
@@ -47,27 +48,61 @@ it('held blob sizes are stored while the run goes on, not when remembered', asyn
   cache.close()
 })
 
+// An entry the test can find in a heap snapshot by its class name.
+class HeldSize {
+  0: string
+  1: number
+  constructor(oid: string, size: number) {
+    this[0] = oid
+    this[1] = size
+  }
+}
+
+// Whether any `from` object reaches a `to` object by the heap's edges,
+// closures' scopes included. A WeakRef count was GC-dependent: the
+// collector scans the stack conservatively, and one stale slot naming the
+// held array kept all 600 alive on CI (2026-11-06).
+function reaches(from: string, to: string): boolean {
+  const snap = generateHeapSnapshot() as unknown as {
+    nodes: number[]
+    nodeClassNames: string[]
+    edges: number[]
+  }
+  const fromClass = snap.nodeClassNames.indexOf(from)
+  const toClass = snap.nodeClassNames.indexOf(to)
+  if (fromClass < 0 || toClass < 0) return false
+  const classOf = new Map<number, number>()
+  for (let i = 0; i < snap.nodes.length; i += 4) classOf.set(snap.nodes[i]!, snap.nodes[i + 2]!)
+  const out = new Map<number, number[]>()
+  for (let i = 0; i < snap.edges.length; i += 4) {
+    const list = out.get(snap.edges[i]!)
+    if (list === undefined) out.set(snap.edges[i]!, [snap.edges[i + 1]!])
+    else list.push(snap.edges[i + 1]!)
+  }
+  const stack = [...classOf].filter(([, c]) => c === fromClass).map(([id]) => id)
+  const seen = new Set<number>()
+  while (stack.length > 0) {
+    const id = stack.pop()!
+    if (seen.has(id)) continue
+    seen.add(id)
+    if (classOf.get(id) === toClass) return true
+    for (const next of out.get(id) ?? []) stack.push(next)
+  }
+  return false
+}
+
 it('stored blob sizes are let go, not held to the end of the run', async () => {
   const cache = open()
   cache.holdBlobSizes()
-  const refs: WeakRef<[string, number]>[] = []
-  const entries = function* (): Generator<[string, number]> {
-    for (let i = 0; i < 600; i++) {
-      const e: [string, number] = [`oid${i}`, i]
-      refs.push(new WeakRef(e))
-      yield e
-    }
+  const entries = function* (): Generator<HeldSize> {
+    for (let i = 0; i < 600; i++) yield new HeldSize(`oid${i}`, i)
   }
   cache.rememberBlobSizes({ [Symbol.iterator]: entries } as unknown as Map<string, number>)
+  expect(reaches('Cache', 'HeldSize')).toBe(true)
   cache.storeHeldBlobSizes()
   for (let i = 0; i < 6; i++) await turn()
   expect(stored()).toBe(600)
-  for (let i = 0; i < 3; i++) {
-    await Bun.sleep(5)
-    Bun.gc(true)
-  }
-  // The collector scans the stack conservatively: a few may stay.
-  expect(refs.filter((r) => r.deref() !== undefined).length).toBeLessThan(100)
+  expect(reaches('Cache', 'HeldSize')).toBe(false)
   cache.close()
 })
 
