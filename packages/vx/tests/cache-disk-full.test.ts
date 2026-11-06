@@ -226,6 +226,33 @@ describe('a full disk', () => {
     }
   })
 
+  it('a restore that meets a full disk names the code once', async () => {
+    // Bun's message opens with the code: `(ENOSPC: ENOSPC: …)` read as a stutter.
+    const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
+      embeddings: 0,
+      decompress: true,
+    })
+    await save(cache, 'h1', true)
+    rmSync(path.join(proj, 'dist'), { recursive: true })
+    const spy = spyOn(Bun, 'write').mockImplementation((async (to: unknown) => {
+      throw Object.assign(new Error('ENOSPC: no space left on device, write'), {
+        code: 'ENOSPC',
+        path: String(to),
+      })
+    }) as typeof Bun.write)
+    try {
+      const err = await cache.restoreOutputs('h1', proj).then(
+        () => null,
+        (e: unknown) => e as Error,
+      )
+      expect(err?.message).toContain('could not write its outputs (ENOSPC: no space left')
+      expect(err?.message).not.toContain('ENOSPC: ENOSPC')
+    } finally {
+      spy.mockRestore()
+      cache.close()
+    }
+  })
+
   it('the access-time flush gives way to a full index (A-37)', async () => {
     const cache = new Cache(cacheDir)
     try {

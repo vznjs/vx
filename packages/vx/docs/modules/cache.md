@@ -702,8 +702,9 @@ Reads via `get()` are non-blocking thanks to WAL.
   after the probe: a `vx cache clean` in another shell, another
   workspace's retention on a shared `--cache-dir`) — the caller treats
   that entry as a miss and runs the task. An artifact that is not a
-  readable archive or lacks an output the index recorded
-  (`CorruptArtifactError`) is dropped, unless the cache is read-only,
+  readable archive or lacks an output the index recorded, or a tree
+  still in place that lacks one of its files (`CorruptArtifactError`,
+  `<rel> is missing from its stored tree`), is dropped, unless the cache is read-only,
   and throws `ArtifactVanishedError` the same way (A-52). So is one
   holding an unsafe name or an escape by name (`ArchiveSecurityError`,
   as the `CorruptArtifactError`'s cause): the save proved every name

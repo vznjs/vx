@@ -535,9 +535,9 @@ export function isCorruptArtifact(err: unknown): boolean {
 }
 
 /**
- * `restoreOutputs` found no artifact where the probe found one: it was
- * removed in between — a `vx cache clean` in another shell, or one for
- * another workspace sharing the cache directory. The
+ * `restoreOutputs` found no artifact where the probe found one: another
+ * process removed or replaced it in between — a prune or a clean for a
+ * workspace sharing the cache directory, a re-save of the key. The
  * bytes are not wrong, they are gone, so the entry is a MISS and the task
  * runs (execute-task.ts); nothing about the cache needs throwing away.
  * Also thrown, with its `reason`, for an artifact whose bytes ARE wrong
@@ -553,7 +553,8 @@ export class ArtifactVanishedError extends Error {
     cause?: unknown,
   ) {
     super(
-      reason ?? `its cache artifact ${hash} vanished before the restore (a vx cache clean)`,
+      reason ??
+        `its cache artifact ${hash} vanished before the restore (another process removed or replaced it)`,
       cause === undefined ? undefined : { cause },
     )
     this.name = 'ArtifactVanishedError'
