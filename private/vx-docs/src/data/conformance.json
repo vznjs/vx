@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 218,
+    "ported": 219,
     "rest": {
       "pending": [],
       "vx-only": [
@@ -202,6 +202,7 @@
         "sandbox-lifecycle.unsafe",
         "sandbox-mkdir-ancestor.unsafe",
         "sandbox-network-patterns.unsafe",
+        "sandbox-network-per-task.unsafe",
         "sandbox-noscan-dir.unsafe",
         "sandbox-noscan-gone.unsafe",
         "sandbox-observer-drain.unsafe",
@@ -694,6 +695,7 @@
         "held-server-exit",
         "held-server-output",
         "hide-env.unsafe",
+        "history-stream",
         "home-guard",
         "index-schema-race",
         "index-write-wait",
@@ -969,14 +971,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 966,
-        "can": 966,
-        "of": 966
+        "pass": 969,
+        "can": 969,
+        "of": 969
       },
       "correctness": {
-        "pass": 793,
-        "can": 793,
-        "of": 793
+        "pass": 796,
+        "can": 796,
+        "of": 796
       },
       "efficiency": {
         "pass": 164,
@@ -1034,9 +1036,9 @@
         "of": 9
       },
       "sandbox": {
-        "pass": 11,
-        "can": 11,
-        "of": 11
+        "pass": 14,
+        "can": 14,
+        "of": 14
       },
       "watch": {
         "pass": 29,
@@ -1048,12 +1050,12 @@
       "all": {
         "pass": 622,
         "can": 894,
-        "of": 966
+        "of": 969
       },
       "correctness": {
         "pass": 503,
         "can": 727,
-        "of": 793
+        "of": 796
       },
       "efficiency": {
         "pass": 115,
@@ -1113,7 +1115,7 @@
       "sandbox": {
         "pass": 1,
         "can": 1,
-        "of": 11
+        "of": 14
       },
       "watch": {
         "pass": 26,
@@ -1125,12 +1127,12 @@
       "all": {
         "pass": 634,
         "can": 918,
-        "of": 966
+        "of": 969
       },
       "correctness": {
         "pass": 479,
         "can": 747,
-        "of": 793
+        "of": 796
       },
       "efficiency": {
         "pass": 151,
@@ -1190,7 +1192,7 @@
       "sandbox": {
         "pass": 0,
         "can": 1,
-        "of": 11
+        "of": 14
       },
       "watch": {
         "pass": 26,
@@ -1202,12 +1204,12 @@
       "all": {
         "pass": 496,
         "can": 735,
-        "of": 966
+        "of": 969
       },
       "correctness": {
         "pass": 409,
         "can": 609,
-        "of": 793
+        "of": 796
       },
       "efficiency": {
         "pass": 85,
@@ -1267,7 +1269,7 @@
       "sandbox": {
         "pass": 1,
         "can": 1,
-        "of": 11
+        "of": 14
       },
       "watch": {
         "pass": 0,
@@ -1277,14 +1279,14 @@
     },
     "nix": {
       "all": {
-        "pass": 461,
-        "can": 686,
-        "of": 966
+        "pass": 464,
+        "can": 689,
+        "of": 969
       },
       "correctness": {
-        "pass": 397,
-        "can": 567,
-        "of": 793
+        "pass": 400,
+        "can": 570,
+        "of": 796
       },
       "efficiency": {
         "pass": 62,
@@ -1342,9 +1344,9 @@
         "of": 9
       },
       "sandbox": {
-        "pass": 8,
-        "can": 10,
-        "of": 11
+        "pass": 11,
+        "can": 13,
+        "of": 14
       },
       "watch": {
         "pass": 0,
@@ -1356,12 +1358,12 @@
       "all": {
         "pass": 576,
         "can": 880,
-        "of": 966
+        "of": 969
       },
       "correctness": {
         "pass": 448,
         "can": 722,
-        "of": 793
+        "of": 796
       },
       "efficiency": {
         "pass": 123,
@@ -1421,7 +1423,7 @@
       "sandbox": {
         "pass": 0,
         "can": 1,
-        "of": 11
+        "of": 14
       },
       "watch": {
         "pass": 0,
@@ -33945,6 +33947,108 @@
         },
         "moon": {
           "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "sandbox/closed-machine-read-fails",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "A task closed off from the machine cannot read a system file",
+      "why": "A file of the machine, such as one under /etc, is an input no key holds and no other machine shares. A build that reads it can give different bytes on two machines under one key. A task closed off from the machine must fail that read, so the build depends only on what it declared.",
+      "from": [
+        "sandbox-hermetic.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        }
+      }
+    },
+    {
+      "id": "sandbox/closed-declared-reads-pass",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "A task closed off from the machine still runs when it reads only its inputs",
+      "why": "Closing off the machine must not stop the shell and its tools from starting. A task that reads only its inputs and writes only its outputs needs nothing more. A closed sandbox that fails it cannot be turned on for real builds.",
+      "from": [
+        "sandbox-hermetic.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        }
+      }
+    },
+    {
+      "id": "sandbox/home-write-fails",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task that writes into the home folder fails, and leaves nothing there",
+      "why": "A file a build drops in the home folder is never stored with the task, and the next build may read it. Runs then depend on what earlier runs left behind. Failing the write, and leaving nothing, keeps every build starting from the same machine.",
+      "from": [
+        "sandbox-grants.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "needs sandbox"
         }
       }
     },

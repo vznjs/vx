@@ -43,9 +43,11 @@ export interface TaskSpec {
   /**
    * The command runs isolated: it may read only its inputs (and its
    * dependencies' installs) plus `read`, write only its outputs plus
-   * `write`, and reach no network unless `network`.
+   * `write`, and reach no network unless `network`. `hermetic`: no file
+   * of the machine outside the workspace either, beyond what the shell
+   * needs to start.
    */
-  sandbox?: { read?: string[]; write?: string[]; network?: true }
+  sandbox?: { read?: string[]; write?: string[]; network?: true; hermetic?: true }
 }
 
 export interface ProjectSpec {
