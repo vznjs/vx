@@ -195,6 +195,7 @@ here, itself or in a brace group.
 |                                              | `src/exec/sandbox-binds.ts` — bwrap-honourable write grants, read-grant punching, the SRT custom config.              |
 |                                              | `src/exec/sandbox-paths.ts` — `toRealPath`, `absolutize`, `atOrUnder`, `isUnderAny`, `sandboxReads`, `unique`.        |
 |                                              | `src/exec/sandbox-deny-scan.ts` — SRT's mandatory write denies, scanned within each task's write grants.              |
+|                                              | `src/exec/task-proxy.ts` — `startTaskProxy`: one task's own network proxy, its list before the run's.                 |
 | [`executor.md`](./executor.md)               | `src/exec/executor.ts` — `TaskExecutor` contract + `selectExecutor`.                                                  |
 |                                              | `src/exec/local-executor.ts` — the floor: run it here (see executor.md, plugins.md).                                  |
 

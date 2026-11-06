@@ -83,8 +83,8 @@ export function mayWriteFingerprint(
   platform lacks, and a throw from the runtime itself (its bridge
   needs `socat`, which the dependency check does not cover; a temp
   directory it cannot write) is the same one-line verdict, never a
-  stack. The proxy allowlist is the union of every sandboxed task's
-  domains. Whether any task asks for unix sockets (a `localBinding`
+  stack. The run's proxy allowlist is the union of every sandboxed task's
+  domains; each task's own front narrows it to the task's list. Whether any task asks for unix sockets (a `localBinding`
   port list, or `unixSockets`) is armed the same way, but the lift
   itself is set per task at its wrap, never for the run's other tasks
   (L-6).

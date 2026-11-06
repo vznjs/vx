@@ -63,6 +63,7 @@ import {
   type RunResult,
 } from './runner.js'
 import { TaskPipes } from './pipes.js'
+import { startTaskProxy, type TaskProxy } from './task-proxy.js'
 import { watchTree } from './proc-sample.js'
 import {
   BUN_GLOB_WILDCARDS,
@@ -934,8 +935,8 @@ function assertDomains(
  * @param opts.allowedDomains every domain any sandboxed task in this run
  * declared. SRT's filtering proxy is per-RUN and reads its allowlist from
  * this call, never from the per-task config, so the union is the only
- * place a domain list can take effect. Per-task precision survives where
- * it matters: a task that declared none is never handed the proxy port.
+ * place a domain list can take effect; each task's own front
+ * (`ownProxy`) narrows it to the task's list.
  */
 export async function initSandbox(opts?: {
   allowedDomains?: readonly string[]
@@ -981,6 +982,7 @@ export async function initSandbox(opts?: {
     ...(scopedDenyScan ? scopedScanConfig() : {}),
     ...bundledJavaAgent(),
   }
+  runAllowsHosts = config.network.allowedDomains.length > 0
   const wasUp = srtUp
   if (!wasUp) await unlinkStaleMuxSockets()
   const listening = srtCleanupAdopted ? undefined : cleanupListeners()
@@ -1644,6 +1646,15 @@ async function wrapIn(
       )
     }
   }
+  if (runAllowsHosts && args.config.network !== true) {
+    try {
+      wrapped = await ownProxy(SandboxManager, wrapped, inner, tag, args.config)
+    } catch (err) {
+      releaseBridges(tag)
+      afterCommand(SandboxManager)
+      throw err
+    }
+  }
   if (process.platform === 'darwin') {
     const rules = [
       ...macProfileRules(args.config),
@@ -1963,6 +1974,70 @@ export function bridgedPorts(c: Pick<ResolvedSandboxConfig, 'localBinding'>): nu
 const PROXY_BRIDGE_WAIT =
   "( i=0; until grep -qsE ':0C38 [0-9A-F]+:0000 0A' /proc/net/tcp /proc/net/tcp6 && grep -qsE ':0438 [0-9A-F]+:0000 0A' /proc/net/tcp /proc/net/tcp6; do [ $i -ge 500 ] && break; i=$((i+1)); sleep 0.01; done );"
 
+/** Each networked task's own proxy front, by tag, closed when its bridges go. */
+const taskProxies = new Map<string, TaskProxy>()
+/** Whether the run's proxy allows any host: one that allows none refuses every task alike, front or not. */
+let runAllowsHosts = false
+
+/**
+ * A networked task's own proxy front (task-proxy.ts). The runtime's proxy
+ * is the run's and filters by the union of every task's lists, so a task
+ * reached a host only another task of the run declared. The front judges
+ * by this task's own lists and passes what it allows on to the run's
+ * proxy. Linux: it listens on a socket in the task's tmpdir, bound over
+ * the runtime's bridge socket, so the task's side dials the same path.
+ * macOS: it listens on a loopback port of its own, and the task's proxy
+ * variables and profile name that port in place of the run's, so the
+ * profile refuses the run's. A task that lists no network gets a front
+ * that refuses every host; `network: true` names no list and keeps the
+ * run's proxy. Fails closed: a task the front cannot take does not run.
+ */
+async function ownProxy(
+  SandboxManager: SrtModule['SandboxManager'],
+  wrapped: string,
+  inner: string,
+  tag: string,
+  config: ResolvedSandboxConfig,
+): Promise<string> {
+  const port = SandboxManager.getProxyPort()
+  const token = SandboxManager.getProxyAuthToken()
+  const linux = process.platform === 'linux'
+  const bridge = linux ? SandboxManager.getLinuxHttpSocketPath() : undefined
+  const bind = bridge === undefined ? undefined : `--bind ${bridge} ${bridge}`
+  const runPort = new RegExp(`localhost:${port}(?!\\d)`, 'g')
+  const handed =
+    port !== undefined &&
+    token !== undefined &&
+    (linux ? bind !== undefined && wrapped.includes(bind) : runPort.test(wrapped))
+  // A task that lists no network is handed the run's proxy too when another
+  // task of the run lists some; it gets a front that refuses every host.
+  if (!handed) {
+    if (config.network === undefined) return wrapped
+    throw new Error('sandbox: the runtime gave this networked task no proxy to replace')
+  }
+  const socket = path.join(taskTmpdir(tag), 'vx-net.sock')
+  const key = Buffer.from(inner.slice(0, 100)).toString('base64')
+  const front = await startTaskProxy({
+    endpoint: linux ? socket : 0,
+    allowed: config.network === undefined ? [] : (config.network as string[]),
+    denied: config.denyNetwork ?? [],
+    runProxyPort: port!,
+    token: token!,
+    encodedCommand: key,
+    refused: (line) => collecting.get(key)?.push({ line, timestamp: new Date() }),
+  })
+  taskProxies.set(tag, front)
+  if (!linux) return wrapped.replace(runPort, `localhost:${front.port}`)
+  // After the root's read-only bind, which would mask a bind made before it
+  // with the host's own file: the runtime's socket, reachable as itself.
+  const own = `--bind ${socket} ${bridge}`
+  const root = ' --ro-bind / / '
+  const at = wrapped.indexOf(root)
+  return at === -1
+    ? wrapped.replace(bind!, own)
+    : `${wrapped.slice(0, at + root.length)}${own} ${wrapped.slice(at + root.length)}`
+}
+
 /** Where a bridge's unix socket lives: the sandbox tmpdir, bound read-write on both sides. */
 export function portBridgeSocket(tag: string, port: number): string {
   return path.join(taskTmpdir(tag), `vx-port-${tag}-${port}.sock`)
@@ -2145,6 +2220,12 @@ export function releaseBridges(tag: string): void {
     // kept every later task's stubs in the workspace until the reset.
     afterCommand(srtLoaded!.SandboxManager)
     if (liveServers.size === 0 && resetDeferred) void resetSandbox().catch(() => {})
+  }
+  const front = taskProxies.get(tag)
+  if (front !== undefined) {
+    taskProxies.delete(tag)
+    // quiet: a front that will not close holds only its own socket, gone with the tmpdir
+    void front.close().catch(() => undefined)
   }
   const bridges = hostBridges.get(tag)
   if (bridges === undefined) return
