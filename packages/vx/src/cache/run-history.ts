@@ -48,21 +48,22 @@ const RUN_COLUMNS = [
   'flaky_failures',
 ]
 
-const INSERT_RUNS = `INSERT INTO runs(${RUN_COLUMNS.join(', ')}) VALUES `
-const RUN_TUPLE = `(${RUN_COLUMNS.map(() => '?').join(', ')})`
-
-/** An INSERT of `n` `runs` rows. */
-function insertRunsSql(n: number): string {
-  return INSERT_RUNS + Array(n).fill(RUN_TUPLE).join(', ')
+/**
+ * An INSERT of `n` `runs` rows over the columns `kept` names (indexes into
+ * `RUN_COLUMNS`); a column it leaves out is NULL, as no `runs` column has
+ * a default.
+ */
+function insertRunsSql(kept: readonly number[], n: number): string {
+  const tuple = `(${kept.map(() => '?').join(', ')})`
+  return `INSERT INTO runs(${kept.map((i) => RUN_COLUMNS[i]).join(', ')}) VALUES ${Array(n).fill(tuple).join(', ')}`
 }
 
 /**
- * Rows per INSERT: as many as stay within 999 bound variables, the oldest
- * default ceiling, read off the column count (33 rows were sized for 30
- * columns and bound 1,023 at 31). A statement per row was 8.7 ms of 1,000
- * rows, 40 at a time 6.4 (2026-10-03).
+ * Bound variables per INSERT: within 999, the oldest default ceiling. A
+ * statement per row was 8.7 ms of 1,000 rows, 40 at a time 6.4
+ * (2026-10-03).
  */
-const RUNS_PER_INSERT = Math.floor(999 / RUN_COLUMNS.length)
+const VARIABLES_PER_INSERT = 999
 
 /** Rows per `task_durations` INSERT: 7 variables each, under 999. */
 const DURATIONS_PER_INSERT = 140
@@ -209,7 +210,13 @@ export class RunHistory {
     }
   }
 
-  /** `runs` as few INSERTs; each distinct forward-args list digested once. */
+  /**
+   * `runs` as few INSERTs; each distinct forward-args list digested once.
+   * Only the columns some row fills are bound: a hit leaves half of them
+   * NULL, and binding 18 of 36 took the 8,002 rows of a warm run from
+   * 31.7 to 24.0 ms alone, the whole record stage 86.8 to 83.3 ms (median
+   * of 15 interleaved runs, 2026-11-06).
+   */
   private insertRuns(runs: readonly RunRecord[]): void {
     const digests = new Map<string, string>()
     const digest = (value: string): string => {
@@ -217,12 +224,19 @@ export class RunHistory {
       if (d === undefined) digests.set(value, (d = this.digestValue(value)))
       return d
     }
-    for (let i = 0; i < runs.length; i += RUNS_PER_INSERT) {
-      const block = runs.slice(i, i + RUNS_PER_INSERT)
+    const bound = runs.map((r) => bindRun(r, digest))
+    const filled = RUN_COLUMNS.map(() => false)
+    for (const row of bound)
+      for (let c = 0; c < row.length; c++) if (row[c] !== null) filled[c] = true
+    const kept: number[] = []
+    for (let c = 0; c < filled.length; c++) if (filled[c]) kept.push(c)
+    const perInsert = Math.floor(VARIABLES_PER_INSERT / kept.length)
+    for (let i = 0; i < bound.length; i += perInsert) {
+      const block = bound.slice(i, i + perInsert)
       const params: SQLQueryBindings[] = []
-      for (const r of block) for (const v of bindRun(r, digest)) params.push(v)
+      for (const row of block) for (const c of kept) params.push(row[c] as SQLQueryBindings)
       // `query` caches by text: one statement for every full block.
-      this.db.query(insertRunsSql(block.length)).run(...params)
+      this.db.query(insertRunsSql(kept, block.length)).run(...params)
     }
   }
 
@@ -287,7 +301,7 @@ export class RunHistory {
   }
 }
 
-/** Bind a RunRecord to one `RUN_TUPLE`'s positional parameters, in `RUN_COLUMNS` order. */
+/** A RunRecord as one value per `RUN_COLUMNS` entry, in its order. */
 function bindRun(run: RunRecord, digestValue: (v: string) => string): SQLQueryBindings[] {
   return [
     // The ONE place the no-key sentinel is applied, so the column's

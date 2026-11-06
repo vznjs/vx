@@ -127,6 +127,48 @@ it('binds at most 999 variables in any history INSERT', () => {
   expect(widest).toBeLessThanOrEqual(999)
 })
 
+// A warm run is thousands of hits, each leaving half the columns NULL:
+// binding those NULLs was a quarter of the history write (2026-11-06).
+it('binds only the runs columns some row fills', () => {
+  const cache = new Cache(path.join(dir, 'cache'))
+  const db = indexDb(cache)
+  const sql: string[] = []
+  const query = db.query.bind(db)
+  db.query = ((text: string) => {
+    sql.push(text)
+    return query(text)
+  }) as typeof db.query
+  cache.recordRunBundle({
+    runs: [runB, { ...runB, hash: 'c'.repeat(16), task: 'lint' }],
+    invocation,
+  })
+  const stored = db.query('SELECT task, cpu_ms, blocked_by FROM runs ORDER BY task').all()
+  cache.close()
+  const columns = sql
+    .filter((t) => /^\s*INSERT INTO runs\b/.test(t))
+    .map((t) => /INSERT INTO runs\(([^)]*)\)/.exec(t)![1]!.split(', '))
+  expect(columns).toEqual([
+    [
+      'hash',
+      'project',
+      'task',
+      'status',
+      'exit_code',
+      'duration_ms',
+      'started_at',
+      'ended_at',
+      'run_id',
+      'cache_hit',
+      'cached',
+      'restored',
+    ],
+  ])
+  expect(stored).toEqual([
+    { task: 'lint', cpu_ms: null, blocked_by: null },
+    { task: 'test', cpu_ms: null, blocked_by: null },
+  ])
+})
+
 describe('the run history stores each field in its own column', () => {
   it('a run bundle reads back field by field', () => {
     const cache = new Cache(path.join(dir, 'cache'))
