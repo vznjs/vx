@@ -64,14 +64,15 @@ describe('readTimings / writeTimings', () => {
     expect((await readdir(root)).sort()).toEqual(['is-a-dir', 'new'])
   })
 
-  it('an absent file is empty; one that is not a timings file warns and is empty', async () => {
+  // Undefined, not empty: the run's end wrote timings over what it ignored.
+  it('an absent file is empty; one that is not a timings file warns and is undefined', async () => {
     const warnings: string[] = []
     expect(readTimings(path.join(root, 'none.json'), (m) => warnings.push(m))).toEqual({})
     expect(warnings).toEqual([])
     const file = path.join(root, 'bad.json')
     for (const body of ['{', '{"version":2,"tasks":{}}', '{"version":1,"tasks":[]}']) {
       await writeFile(file, body)
-      expect(readTimings(file, (m) => warnings.push(m))).toEqual({})
+      expect(readTimings(file, (m) => warnings.push(m))).toBeUndefined()
     }
     expect(warnings).toHaveLength(3)
     await writeFile(file, '{"version":1,"tasks":{"a":1,"b":"2","c":-1,"d":null}}')
@@ -121,7 +122,7 @@ describe('the file between machines', () => {
       const first = silent()
       expect((await run({ ...opts, log: first })).ok).toBe(true)
       expect(first.started[0]).toBe('a#build')
-      const written = readTimings(file, () => {})
+      const written = readTimings(file, () => {}) ?? {}
       expect(Object.keys(written)).toEqual(['a#build', 'a#test', 'b#build', 'b#test'])
       expect(written['b#build']!).toBeGreaterThan(written['a#build']! + 100)
 
@@ -164,12 +165,47 @@ describe('the file between machines', () => {
       const opts = { cwd: root, tasks: ['build'], handleSignals: false }
       const file = path.join(root, 'timings.json')
       expect((await run({ ...opts, log: silent() })).ok).toBe(true)
-      expect(Object.keys(readTimings(file, () => {}))).toEqual(['a#build'])
+      expect(Object.keys(readTimings(file, () => {}) ?? {})).toEqual(['a#build'])
       const complete = '{"version":1,"tasks":{"a#build":777}}'
       await writeFile(file, complete)
       const summary = await run({ ...opts, log: silent() })
       expect(summary.outcomes.map((o) => o.status)).toEqual(['cache-hit'])
       expect(await readFile(file, 'utf8')).toBe(complete)
+    },
+    TIMEOUT,
+  )
+
+  // Core asks no `schedule` when every task is a confirmed local hit, and
+  // the file was learned there only: a CI cache that lost it never got it
+  // back while the runner's own cache restored everything.
+  it(
+    'an all-cached run writes a file that is missing',
+    async () => {
+      await writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ name: 'ws', private: true }),
+      )
+      await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+      await writeFile(path.join(root, '.gitignore'), 'timings.json\n')
+      Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+      await pkg(
+        'a',
+        "export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true } } }\n",
+      )
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
+        `import { vxHistory } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+          "export default { cache: { dir: '.cache' }, plugins: [vxHistory({ file: 'timings.json' })] }\n",
+      )
+      const opts = { cwd: root, tasks: ['build'], handleSignals: false }
+      const file = path.join(root, 'timings.json')
+      expect((await run({ ...opts, log: silent() })).ok).toBe(true)
+      await rm(file)
+      const said: string[] = []
+      const summary = await run({ ...opts, log: silent(said) })
+      expect(summary.outcomes.map((o) => o.status)).toEqual(['cache-hit'])
+      expect(Object.keys(readTimings(file, () => {}) ?? {})).toEqual(['a#build'])
+      expect(said.filter((m) => m.includes('vx-history'))).toEqual([])
     },
     TIMEOUT,
   )
@@ -195,7 +231,7 @@ describe('the file between machines', () => {
       const opts = { cwd: root, tasks: ['all'], handleSignals: false }
       const file = path.join(root, 'timings.json')
       expect((await run({ ...opts, log: silent() })).ok).toBe(true)
-      expect(Object.keys(readTimings(file, () => {}))).toEqual(['a#build'])
+      expect(Object.keys(readTimings(file, () => {}) ?? {})).toEqual(['a#build'])
       const complete = '{"version":1,"tasks":{"a#build":777}}'
       await writeFile(file, complete)
       const summary = await run({ ...opts, log: silent() })
@@ -285,6 +321,41 @@ it(
   TIMEOUT,
 )
 
+// `file` naming a file that is not a timings file warned it was ignored,
+// then the run's end wrote timings over it: a mistyped option lost a
+// package.json.
+it(
+  'a file that is not a timings file is warned of once and never written',
+  async () => {
+    const pkgJson = `${JSON.stringify({ name: 'ws', private: true }, null, 2)}\n`
+    await writeFile(path.join(root, 'package.json'), pkgJson)
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+    await mkdir(path.join(root, 'a'), { recursive: true })
+    await writeFile(
+      path.join(root, 'a', 'vx.config.mjs'),
+      "export default { name: 'a', tasks: { build: { exec: { command: 'true' } } } }\n",
+    )
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      `import { vxHistory } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+        "export default { cache: { dir: '.cache' }, plugins: [vxHistory({ file: 'package.json' })] }\n",
+    )
+    const said: string[] = []
+    const summary = await run({
+      cwd: root,
+      tasks: ['build'],
+      handleSignals: false,
+      log: silent(said),
+    })
+    expect(summary.ok).toBe(true)
+    expect(await readFile(path.join(root, 'package.json'), 'utf8')).toBe(pkgJson)
+    expect(said.filter((m) => m.includes('vx-history'))).toEqual([
+      `[vx] vx-history: timings file ${path.join(root, 'package.json')} ignored: not { "version": 1, "tasks": { id: ms } }`,
+    ])
+  },
+  TIMEOUT,
+)
+
 // The README's `.vx-timings.json` sat untracked at the root, where a root
 // project's `**` keyed it: each rewrite missed the next run, unsaid.
 it('says a timings file git does not ignore re-keys the tasks over it', async () => {
@@ -348,7 +419,7 @@ it(
       ['[vx] vx-history: assume ignores "a#lint" — each must be a number of ms from 0 to 2^53'],
     ])
     // The rewrite keeps no such duration either.
-    const kept = readTimings(path.join(root, 't.json'), () => {})
+    const kept = readTimings(path.join(root, 't.json'), () => {}) ?? {}
     expect([kept['a#build'] !== undefined && kept['a#build'] < 1e6, kept['a#x']]).toEqual([true, 5])
   },
   TIMEOUT,
@@ -381,7 +452,7 @@ it(
     await writeFile(path.join(root, 't.json'), '{"version":1,"tasks":{"c#build":7}}')
     const summary = await run({ cwd: root, tasks: ['build'], handleSignals: false, log: silent() })
     expect(summary.ok).toBe(true)
-    expect(Object.keys(readTimings(path.join(root, 't.json'), () => {}))).toEqual([
+    expect(Object.keys(readTimings(path.join(root, 't.json'), () => {}) ?? {})).toEqual([
       'a#build',
       'b#build',
       'c#build',

@@ -411,7 +411,7 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
       const carried =
         file === undefined
           ? {}
-          : carriedOf((await import('./timings-file.js')).readTimings(file, ctx.warn))
+          : carriedOf((await import('./timings-file.js')).readTimings(file, ctx.warn) ?? {})
       const defs = taskDefinitions(nodes.values())
       if (file !== undefined)
         scheduled = {
@@ -537,11 +537,20 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
         defs: ReadonlyMap<string, string>
       }
     | undefined
-  let inRun = false
-  // A run that executed nothing and restored only tasks the file already
-  // times leaves it as it was: an all-cached CI run re-reads no history.
-  let changed = false
-  let fileWarn: { root: string; warn: (m: string) => void } | undefined
+  // The run's side of the file, from `setup`: the tasks it decided, and
+  // what reads the history when core asked no `schedule` (every task a
+  // confirmed local hit), so a missing file is written then too.
+  let fileRun:
+    | {
+        file: string
+        root: string
+        warn: (m: string) => void
+        cacheDir: string
+        branch: string | null
+        nodes: Map<string, TaskNode>
+        ran: boolean
+      }
+    | undefined
   hooks.setup = async (ctx) => {
     remote ??= await serverOf()
     if (remote?.writes === true) {
@@ -581,16 +590,22 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
       )
     }
     if (options.file === undefined) return
-    fileWarn = { root: ctx.workspaceRoot, warn: ctx.warn }
-    inRun = true
-    changed = false
+    const run: NonNullable<typeof fileRun> = {
+      file: path.resolve(ctx.workspaceRoot, options.file),
+      root: ctx.workspaceRoot,
+      warn: ctx.warn,
+      cacheDir: ctx.cacheDir,
+      branch: ctx.branch,
+      nodes: new Map(),
+      ran: false,
+    }
+    fileRun = run
     ctx.on('onTaskComplete', (node, outcome) => {
       // A group runs nothing and is never timed: counting it rewrote the
       // file on every all-cached run that went through one.
       if (node.config.exec?.command === undefined) return
-      if (outcome.status === 'success' || !(node.id in (scheduled?.carried ?? {}))) {
-        changed = true
-      }
+      run.nodes.set(node.id, node)
+      if (outcome.status === 'success') run.ran = true
     })
   }
   // After the run's history is recorded and before its cache closes.
@@ -605,33 +620,54 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
     uploading = undefined
     // Counted from here: the file's write below shares the bound.
     const waited = server !== undefined && sent !== undefined ? waitFor(UPLOAD_WAIT_MS) : undefined
-    const done = scheduled
-    const wrote = inRun && changed
+    const sched = scheduled
+    const done = fileRun
     scheduled = undefined
-    inRun = false
+    fileRun = undefined
     // The file first: core bounds a teardown (3 s), and an upload ahead of
     // it held the write hostage to the server's network. A failed write
     // still sends.
     try {
-      if (wrote && done !== undefined) {
-        const table = await readHistory(done.cache, done.ids, options, done.branch, done.defs)
+      if (done !== undefined && done.nodes.size > 0) {
         const timings = await import('./timings-file.js')
-        // Over the file as it is now: a time another writer (a run in another
-        // worktree sharing it) put there since `schedule` read it is kept. Its
-        // fault, if any, was said when the run read it.
-        const now = timings.readTimings(done.file, () => {})
-        let written = true
-        try {
-          timings.writeTimings(done.file, { ...done.carried, ...now }, table)
-        } catch (err) {
-          // Only the file is lost: said as the read is, not as a plugin failure.
-          written = false
-          fileWarn?.warn(
-            `[vx] vx-history: timings file ${done.file} not written: ${err instanceof Error ? err.message : String(err)}`,
-          )
+        // With no `schedule`, the file is first read here, and its fault said here.
+        let now = sched === undefined ? timings.readTimings(done.file, done.warn) : undefined
+        const carried = sched?.carried ?? carriedOf(now ?? {})
+        // A run that executed nothing and restored only tasks the file already
+        // times leaves it as it was: an all-cached CI run re-reads no history.
+        if (done.ran || [...done.nodes.keys()].some((id) => !(id in carried))) {
+          // Over the file as it is now: a time another writer (a run in another
+          // worktree sharing it) put there since `schedule` read it is kept. Its
+          // fault, if any, was said when the run read it.
+          if (sched !== undefined) now = timings.readTimings(done.file, () => {})
+          // Not a timings file (a mistyped `file`): never written over.
+          if (now !== undefined) {
+            const cache = sched?.cache ?? new Cache(done.cacheDir)
+            let table: ReadonlyMap<string, TaskResources>
+            try {
+              table = await readHistory(
+                cache,
+                sched?.ids ?? [...done.nodes.keys()],
+                options,
+                sched?.branch ?? done.branch,
+                sched?.defs ?? taskDefinitions(done.nodes.values()),
+              )
+            } finally {
+              if (sched === undefined) cache.close()
+            }
+            let written = true
+            try {
+              timings.writeTimings(done.file, { ...carried, ...now }, table)
+            } catch (err) {
+              // Only the file is lost: said as the read is, not as a plugin failure.
+              written = false
+              done.warn(
+                `[vx] vx-history: timings file ${done.file} not written: ${err instanceof Error ? err.message : String(err)}`,
+              )
+            }
+            if (written) timings.warnUnignored(done.file, done.root, done.warn)
+          }
         }
-        if (written && fileWarn !== undefined)
-          timings.warnUnignored(done.file, fileWarn.root, fileWarn.warn)
       }
     } finally {
       if (server !== undefined && sent !== undefined && waited !== undefined) {
