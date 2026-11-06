@@ -19,6 +19,7 @@ import { warnOf } from '../report/index.js'
 import type { ExecuteArgs } from './execute-task.js'
 import {
   commandWriteReach,
+  dependencyReads,
   mayWriteFingerprint,
   type Placeholder,
   placeholderSweeper,
@@ -135,6 +136,7 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
       undefined,
       args.nestedProjectDirs,
       args.cacheDir,
+      await dependencyReads(args.readableDeps?.(node) ?? [], args.workspaceRoot),
     )
     placeholders = sb.placeholders
     serverSandbox = sb.sandbox

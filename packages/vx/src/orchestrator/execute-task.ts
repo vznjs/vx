@@ -58,6 +58,7 @@ import { executorLabel, nameExecutorFailure } from './plugin-host.js'
 import type { CommandWindows } from './command-windows.js'
 import {
   commandWriteReach,
+  dependencyReads,
   mayWriteFingerprint,
   type Placeholder,
   reachedWithheld,
@@ -236,6 +237,11 @@ export interface ExecuteArgs {
    * granted a linked workspace package only when it is in this set.
    */
   keyedProjects: (node: TaskNode) => ReadonlySet<string>
+  /**
+   * The run's lookup of the tasks whose outputs a sandboxed task may read
+   * (keyed-projects.ts `readableDeps`). Absent: none.
+   */
+  readableDeps?: (node: TaskNode) => readonly TaskNode[]
   /**
    * Run-scoped list the miss path appends its output-directory snapshot
    * request to, taken at run end (run.ts) instead of right after the save:
@@ -1336,6 +1342,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       cfgCacheable ? args.keyedProjects(node) : undefined,
       args.nestedProjectDirs,
       args.cacheDir,
+      await dependencyReads(args.readableDeps?.(node) ?? [], args.workspaceRoot),
     )
     placeholders = sb.placeholders
     withheld = sb.withheld
