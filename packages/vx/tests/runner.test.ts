@@ -26,6 +26,7 @@ import {
   OPEN_LINE_HOLD_CHARS,
   OPEN_LINE_WAIT_MS,
 } from '../src/exec/runner.js'
+import { killTree } from '../src/exec/kill-tree.js'
 
 /**
  * A deadline a fresh shell's first command (an `echo`, a `trap`) meets on
@@ -666,6 +667,7 @@ describe('runPersistent', () => {
   // The exit can land before the readers take the marker the task printed:
   // `echo READY; exit` read as never ready under CI load. A grandchild that
   // prints just after the shell exits opens the same gap on an idle box.
+  // A clean exit is ready either way; the row below is the non-zero one.
   it('a marker read after the shell exited, inside the drain bound, is ready', async () => {
     const spawn = runPersistent({
       command: '(sleep 0.05; echo READY) & exit 0',
@@ -675,6 +677,25 @@ describe('runPersistent', () => {
     })
     await spawn.ready
     await spawn.child!.exited
+  })
+
+  // A non-zero exit before the match wins: a leftover child printing the
+  // marker inside the drain made a server that exited 3 ready, its
+  // dependant skipped as blocked and no failure frame shown.
+  it('a marker read after a non-zero exit is no readiness', async () => {
+    const spawn = runPersistent({
+      command: '(sleep 0.05; echo READY; sleep 5) & exit 3',
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+      readyWhen: 'READY',
+    })
+    try {
+      await expect(spawn.ready).rejects.toThrow(
+        'persistent task exited before becoming ready (exit 3) — readyWhen pattern never matched',
+      )
+    } finally {
+      killTree(spawn.child!, 'SIGKILL')
+    }
   })
 })
 

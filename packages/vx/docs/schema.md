@@ -471,8 +471,7 @@ for it to exit. Instead it considers the task "ready":
   (colour, OSC titles), so `^` and `$` anchor to a line as you read
   it and `Local:` matches Vite's bold `Local` under `FORCE_COLOR`.
   The trailing partial line is tested too, so prompt-style banners
-  without a newline (`printf 'Listening on :3000'`) count, and so does
-  output read up to 250 ms after the shell exits. A server
+  without a newline (`printf 'Listening on :3000'`) count. A server
   not ready after 10 s is said once, naming
   the pattern it waits for, and whether `exec.timeout` bounds the wait.
 
@@ -528,7 +527,8 @@ Semantics:
 - **Exit before ready.** A persistent task that exits 0 before
   `readyWhen` matches is ready: a setup step (migrate, seed) that did its
   work, and its dependants run. One that crashes or exits non-zero first
-  is reported as `failed`.
+  is reported as `failed`, even when a process it left running prints
+  the marker after the exit.
 - **Crash after ready ⇒ failed run.** A persistent task that exits
   non-zero (or is killed) on its own after it became ready fails the
   run, and vx names it: `vx: <id> exited with code <n>` (a signal death

@@ -801,6 +801,9 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   // When the readiness wait gave up: the wait's length, not the kill grace
   // a TERM-trapping server runs out after it.
   let gaveUpAt: number | undefined
+  // The shell exited non-zero before a match: a marker read after it, from
+  // a child it left running, cannot make an exited server ready.
+  let failedExit = false
 
   // Pattern compiled once; thrown errors surface synchronously so the
   // caller can wrap with a user-facing message.
@@ -876,7 +879,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
 
   const markReady = (): void => {
     // A marker printed on the way down, once the wait gave up, is not ready.
-    if (readyAt === undefined && gaveUpAt === undefined) {
+    if (readyAt === undefined && gaveUpAt === undefined && !failedExit) {
       readyAt = Date.now()
       if (readyTimer !== undefined) clearTimeout(readyTimer)
       resolveReady()
@@ -1012,8 +1015,8 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     opts.liveChildren?.delete(child)
     releaseServerGroup(child)
     if (readyTimer !== undefined) clearTimeout(readyTimer)
-    // The exit can land before the readers took the marker it printed on
-    // the way out: `echo READY; exit` read as never ready under load. The
+    if (code !== 0) failedExit = true
+    // What the shell wrote reaches the frame before the failure line. The
     // drain is bounded, as a task's is, for a grandchild holding the pipe.
     if (readyAt === undefined && gaveUpAt === undefined) {
       await Promise.race([
