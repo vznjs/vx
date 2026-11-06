@@ -382,7 +382,12 @@ export function formatTaskRow(
       : cells.memBytes === null
         ? UNKNOWN
         : formatSize(cells.memBytes)
-  const out = cells.outputBytes === undefined ? '' : formatSize(cells.outputBytes)
+  const out =
+    cells.outputBytes === undefined
+      ? ''
+      : cells.outputBytes === null
+        ? UNKNOWN
+        : formatSize(cells.outputBytes)
   const blocks = cells.blocks ?? ''
   const worker = workerName(cells.worker ?? '')
   return (
@@ -408,7 +413,7 @@ export interface RowCells {
   /** Resident memory now (live) or at its peak (after). */
   memBytes?: number | null
   /** The bytes of the task's outputs: what its save stored, or its hit restored. */
-  outputBytes?: number
+  outputBytes?: number | null
   /** How many tasks are downstream. */
   blocks?: string
   /** The machine it runs or ran on: `local`, or the executor's name for it. */
@@ -700,7 +705,8 @@ function ranCells(o: TaskOutcome, blocks: number | undefined): RowCells {
     // A skip reached no machine.
     ...(o.status === 'skipped' ? {} : { worker: o.where ?? 'local' }),
     ...(blocks !== undefined ? { blocks: String(blocks) } : {}),
-    ...(o.outputBytes !== undefined ? { outputBytes: o.outputBytes } : {}),
+    // A row with no outputs size says so (`—`); blank read as a column left out.
+    ...(o.status === 'skipped' ? {} : { outputBytes: o.outputBytes ?? null }),
   }
 }
 

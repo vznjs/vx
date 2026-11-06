@@ -613,7 +613,7 @@ describe('defaultLogger status line integration', () => {
     log.taskComplete(bad, mkOutcome(bad, 'failed'))
     // ✗ marker is permanent scrollback, not a region pin.
     expect(s2.text()).toContain(
-      'failed  no-cache     —      —                 local        one#boom',
+      'failed  no-cache     —      —       —         local        one#boom',
     )
     expect(s2.text()).not.toContain('┌─ one#boom')
     log.runEnd?.()
@@ -1405,7 +1405,7 @@ describe('list headers', () => {
       false,
       3,
     ).replace('\uFE0E', '')
-    expect(row).toEndWith(' no-cache     —      —               3 local        p#a')
+    expect(row).toEndWith(' no-cache     —      —       —       3 local        p#a')
     expect(head.indexOf('blocks') + 'blocks'.length).toBe(row.indexOf('3 local') + 1)
     expect(head.indexOf('task')).toBe(row.indexOf('p#a'))
     expect(head.indexOf('status')).toBe(row.indexOf('success'))
