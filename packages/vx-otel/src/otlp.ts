@@ -116,6 +116,7 @@ const VX_ATTR = {
   runTaskCount: 'vx.run.task_count',
   runFailedCount: 'vx.run.failed_count',
   runAbortedCount: 'vx.run.aborted_count',
+  runNotRunCount: 'vx.run.not_run_count',
   runHitCount: 'vx.run.hit_count',
   runHitLocalCount: 'vx.run.hit_local_count',
   runHitRemoteCount: 'vx.run.hit_remote_count',
@@ -405,6 +406,7 @@ export function runSpanAttributes(run: RunContextRecord, summary?: RunSummaryRec
       intAttr(VX_ATTR.runTaskCount, summary.taskCount),
       intAttr(VX_ATTR.runFailedCount, summary.failedCount),
       intAttr(VX_ATTR.runAbortedCount, summary.abortedCount),
+      intAttr(VX_ATTR.runNotRunCount, summary.notRunCount ?? 0),
       intAttr(VX_ATTR.runHitCount, summary.hitCount),
       intAttr(VX_ATTR.runHitLocalCount, summary.hitLocalCount),
       intAttr(VX_ATTR.runHitRemoteCount, summary.hitRemoteCount),
@@ -428,11 +430,13 @@ export function runSpanAttributes(run: RunContextRecord, summary?: RunSummaryRec
 
 /**
  * `cicd.pipeline.result`, the task enum's run-level twin. A red run with
- * nothing failed and something aborted is a stopped one.
+ * nothing failed and something aborted or not run is a stopped one.
  */
 function pipelineResult(s: RunSummaryRecord): string {
   if (s.exitOk) return 'success'
-  return s.failedCount === 0 && s.abortedCount > 0 ? 'cancellation' : 'failure'
+  return s.failedCount === 0 && s.abortedCount + (s.notRunCount ?? 0) > 0
+    ? 'cancellation'
+    : 'failure'
 }
 
 /** The root span is ERROR when the run is red: UNSET read as a clean run. */

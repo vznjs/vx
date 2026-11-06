@@ -1152,6 +1152,7 @@ describe('OTLP losslessness', () => {
       taskCount: 7,
       failedCount: 1,
       abortedCount: 4,
+      notRunCount: 2,
       hitCount: 3,
       hitLocalCount: 2,
       hitRemoteCount: 1,
@@ -1175,6 +1176,7 @@ describe('OTLP losslessness', () => {
     expect(a['vx.run.task_count']).toBe('7')
     expect(a['vx.run.failed_count']).toBe('1')
     expect(a['vx.run.aborted_count']).toBe('4')
+    expect(a['vx.run.not_run_count']).toBe('2')
     expect(a['vx.run.hit_count']).toBe('3')
     expect(a['vx.run.hit_local_count']).toBe('2')
     expect(a['vx.run.hit_remote_count']).toBe('1')
@@ -2022,12 +2024,22 @@ describe('the run span says how the run ended', () => {
     exitCode: status === 'failed' ? 1 : 0,
     durationMs: 40,
   })
-  const ended = async (exitOk: boolean, abortedCount: number, tasks: TaskTelemetry[]) => {
+  const ended = async (
+    exitOk: boolean,
+    abortedCount: number,
+    tasks: TaskTelemetry[],
+    notRunCount?: number,
+  ) => {
     const { cfg, calls } = mkConfig({ metricsEnabled: false, logsEnabled: false })
     const sink = new OtelSink(cfg)
     sink.onRecord({ v: 1, kind: 'run.start', run: RUN, total: 1, ts: 1000 } as TelemetryRecord)
     sink.onRecord({ v: 1, kind: 'run.end', runId: 'run-1', ts: 1100 } as TelemetryRecord)
-    sink.onRunSummary({ ...summaryFor(RUN, tasks), exitOk, abortedCount })
+    sink.onRunSummary({
+      ...summaryFor(RUN, tasks),
+      exitOk,
+      abortedCount,
+      ...(notRunCount === undefined ? {} : { notRunCount }),
+    })
     await sink.flush()
     const spans = (
       calls[0]!.body as {
@@ -2048,15 +2060,17 @@ describe('the run span says how the run ended', () => {
     return [root.status.code, result, root.kind]
   }
 
-  it('green, failed, stopped, and red with nothing failed', async () => {
+  it('green, failed, stopped, stopped before a start, and red with nothing failed', async () => {
     expect([
       await ended(true, 0, [task('success')]),
       await ended(false, 0, [task('failed')]),
       await ended(false, 1, [task('aborted')]),
+      await ended(false, 0, [], 2),
       await ended(false, 0, []),
     ]).toEqual([
       [0, 'success', 1],
       [2, 'failure', 1],
+      [2, 'cancellation', 1],
       [2, 'cancellation', 1],
       [2, 'failure', 1],
     ])

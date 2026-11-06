@@ -781,6 +781,28 @@ describe('the summary, as its second sweep found it unheld', () => {
     expect(md).not.toContain('- **b#build**')
   })
 
+  // A stopped run said `2 aborted` where the terminal said `1 aborted ·
+  // 1 not run`, and its table left out the task the stop cut short.
+  it('a stopped run counts as the terminal does, and lists the task the stop cut short', () => {
+    const stopped = renderJobSummary(
+      summary(
+        [
+          task({ taskId: 'c#build', durationMs: 23 }),
+          task({ status: 'aborted' as TaskTelemetry['status'], exitCode: 130, durationMs: 1280 }),
+        ],
+        { abortedCount: 1, notRunCount: 1, exitOk: false },
+      ),
+    ).split('\n')
+    expect([stopped[0], stopped[2], stopped.find((l) => l.startsWith('| a#build'))]).toEqual([
+      '## ⏹️ vx run',
+      '**2** tasks · **1** executed · **0** cache hits · **1** aborted · **1** not run · 4.3s',
+      '| a#build | 🛑 aborted | 1.3s |',
+    ])
+    // Stopped before anything started: still a stop, not a failure.
+    const early = renderJobSummary(summary([], { notRunCount: 2, exitOk: false }))
+    expect(early.split('\n')[0]).toBe('## ⏹️ vx run')
+  })
+
   it('violations: none says nothing, one is singular, two plural', () => {
     const failure = (sandboxViolations: number) =>
       line(
