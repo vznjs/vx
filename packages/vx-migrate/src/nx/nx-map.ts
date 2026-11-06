@@ -1123,9 +1123,14 @@ function keyUncachedProducerOutputs(
           if (outs.length === 0) continue
           unfold.push(`!${filter}`)
           for (const o of outs)
-            for (const g of reader.globs)
-              // `**/<name>` is a find under the output; any other glob, every file there.
-              rels.push(/^\*\*\/[^/]+$/.test(g) ? `${o}/${g}` : `${o}/**/*`)
+            // A glob output (`dist/**/*.{js,d.ts}{,.map}`): every file under
+            // its literal head, which the probe can walk.
+            if (/[*?[{]/.test(o)) rels.push(`${globHead(o)}/**/*`)
+            else
+              for (const g of reader.globs)
+                // `**/<name>` is a find under the output; any other glob (a brace, a
+                // class), every file there.
+                rels.push(/^\*\*\/[^/*?[{]*\*?[^/*?[{]*$/.test(g) ? `${o}/${g}` : `${o}/**/*`)
         }
       }
       if (rels.length === 0) continue
@@ -1152,6 +1157,12 @@ function keyUncachedProducerOutputs(
  * ProductsApi no node once @nx/dotnet failed to load), and the key saw
  * nothing the task reads (Growth, nx-codegen-dropped-producer.sh).
  */
+function globHead(glob: string): string {
+  const segs = glob.split('/')
+  const i = segs.findIndex((s) => /[*?[{]/.test(s))
+  return segs.slice(0, i).join('/')
+}
+
 const dependentReaders = new WeakMap<GeneratedTask, { globs: string[]; dependsOn: unknown }>()
 
 function orphanReaderTodo(globs: readonly string[], dependsOn: unknown): string {
