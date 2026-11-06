@@ -37,7 +37,11 @@ function assertDefaultObject(mod: unknown, kind: string, configPath: string): vo
     // the bare refusal did not say what was there instead (D-110).
     throw new UserError(
       `${kind} config at ${configPath} did not export a default object` +
-        (typeof mod === 'function' ? `: ${EXPORTED_A_FUNCTION}` : ''),
+        (typeof mod === 'function'
+          ? `: ${EXPORTED_A_FUNCTION}`
+          : mod === undefined
+            ? ': it has no `export default` — write `export default { … }`'
+            : ''),
     )
   }
 }

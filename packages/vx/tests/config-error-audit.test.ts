@@ -58,7 +58,10 @@ it.each([
   [
     'named exports and no default',
     'export const config = { tasks: {} }\n',
-    `${REFUSED}Project config at <root>/p/vx.config.ts did not export a default object`,
+    framed(
+      1,
+      'did not export a default object: it has no `export default` — write `export default { … }`',
+    ),
   ],
   [
     'an unknown top-level field',
