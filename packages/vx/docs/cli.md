@@ -1778,7 +1778,11 @@ A prune that deletes waits for a `vx run` on the same workspace to
 finish first (the run's lock; it says `[vx] waiting for another vx run
 (pid N) on this workspace to finish…` after a second), so it never
 evicts what that run is restoring. One started by a task of that run
-is refused instead: the run holds the lock until the task ends. A run it cannot see — another
+is refused instead: the run holds the lock until the task ends. A run
+in another checkout of the repository takes no lock of this one's but
+holds the shared store open from start to end: the prune waits for
+every process holding the store (`[vx] waiting for another vx process
+using the cache store <dir> to finish…`). A run it cannot see — another
 workspace sharing the `--cache-dir` — survives a prune anyway: an
 artifact that vanishes before its restore is a miss, and the task runs
 ([caching](./caching.md#concurrent-runs)).
@@ -1844,7 +1848,8 @@ $ vx cache clean --global --dry
 ```
 
 It waits for a `vx run` on this workspace to finish first (the run's
-lock), as a trim does. With `--format json` it prints
+lock), and for every vx process holding a store it deletes open (a run
+in another checkout of the repository), as a trim does. With `--format json` it prints
 `{ dry, cleared, bytesFreed }` (`schemas/cache.json`), `cleared`
 listing the directories.
 

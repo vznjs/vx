@@ -223,6 +223,39 @@ describe('vx cache clean with no bound clears the cache', () => {
     },
     TIMEOUT,
   )
+  // The store is shared by every checkout of the repository, and each one's
+  // run lock is its own: a clean in one deleted store.db under a run in
+  // another, and that run's entries went with it. A run holds the store
+  // open from start to end; the clean and the trim wait for it to close.
+  it.each([
+    ['a clear', ['cache', 'clean']],
+    ['a trim', ['cache', 'clean', '--max-size', '1B']],
+  ])(
+    '%s waits for a process that holds the store open (a run in another checkout)',
+    async (_, args) => {
+      expect((await vx(['run', 'build', '--all'])).code).toBe(0)
+      const st = store()
+      const held = new Database(path.join(st, 'store.db'))
+      held.query('SELECT count(*) FROM entries').get()
+      let done = false
+      const clean = vx(args).finally(() => {
+        done = true
+      })
+      try {
+        await Bun.sleep(1500)
+        expect([done, existsSync(path.join(st, 'store.db'))]).toEqual([false, true])
+        expect((held.query('SELECT count(*) AS n FROM entries').get() as { n: number }).n).toBe(1)
+      } finally {
+        held.close()
+      }
+      const r = await clean
+      expect(r.code).toBe(0)
+      expect(r.err).toContain(`waiting for another vx process using the cache store ${st}`)
+      if (args.length === 2) expect(existsSync(st)).toBe(false)
+      else expect(r.out).toContain('1 entry')
+    },
+    TIMEOUT,
+  )
   it(
     'a .vx/cache that is a symlink: clears what it points at, not only the link',
     async () => {

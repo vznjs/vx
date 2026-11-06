@@ -3776,6 +3776,52 @@ export function closeDb(db: Database): void {
 }
 
 /**
+ * Wait until no other connection has the shared store in `storeDir` open,
+ * then hold it alone until the release. Every checkout of a repository
+ * shares its store and each has a run lock of its own, so a clean in one
+ * deleted store.db under a run in another. A run holds the store open from
+ * its start to its end, and in WAL mode every open connection keeps a
+ * shared lock on the file: SQLite grants an exclusive one only to a sole
+ * holder, and a holder's lock dies with its process. The run path pays
+ * nothing. Holds nothing where the store has no readable file.
+ */
+export async function holdStore(
+  storeDir: string,
+  log: (line: string) => void,
+): Promise<() => void> {
+  const file = path.join(storeDir, 'store.db')
+  if (!existsSync(file)) return () => {}
+  let db: Database
+  try {
+    db = new Database(file)
+    db.exec('PRAGMA busy_timeout = 0')
+    db.exec('PRAGMA locking_mode = EXCLUSIVE')
+  } catch {
+    return () => {}
+  }
+  const started = Date.now()
+  let said = false
+  for (;;) {
+    try {
+      db.exec('BEGIN EXCLUSIVE')
+      break
+    } catch (err) {
+      if ((err as { code?: string }).code !== 'SQLITE_BUSY') {
+        // Not a store SQLite reads: nothing opens it to wait for.
+        closeDb(db)
+        return () => {}
+      }
+    }
+    if (!said && Date.now() - started >= 1_000) {
+      said = true
+      log(`[vx] waiting for another vx process using the cache store ${storeDir} to finish…`)
+    }
+    await Bun.sleep(50)
+  }
+  return () => closeDb(db)
+}
+
+/**
  * Refuse an artifact whose file names no restore can materialise as one
  * tree, or (given the task's declared outputs) that names a file outside
  * them. Both reached the tree before: `outputs/out.txt` beside

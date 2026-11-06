@@ -1297,9 +1297,12 @@ either way (a restore renames into place only once the whole archive
 has staged). Machines sharing a workspace over a network file system
 do not share a temp directory, so they do not share the lock.
 
-An eviction can still land between a hit's probe and its restore: a
-`vx cache clean` in another shell, or one run for another
-workspace that shares the `--cache-dir` (a different workspace, so a
+A `vx cache clean` in any checkout of the repository waits for every
+vx process holding the shared store open (a run holds it from start to
+end), so it never deletes the store under a run in a sibling checkout,
+whose own lock it never took. An eviction can still land between a
+hit's probe and its restore: a clean or a run for another workspace
+that shares the `--cache-dir` (a different workspace, so a
 different lock), which cannot see this run's pending `accessed_at`
 bumps and reads its fresh hits as old. The restore then finds no
 artifact, and that entry is a **miss**: the run says `[vx] <id>: its
