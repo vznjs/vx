@@ -34,6 +34,7 @@ import { computeTaskHash } from './task-hash.js'
 import {
   forgetUndeclaredWrites,
   isAborted,
+  dependencyBins,
   taskBinDirs,
   taskEnv,
   taskTimeoutMs,
@@ -86,7 +87,8 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
     persistent: NonNullable<ExecConfig['persistent']>
   }
   const effectiveForwardArgs = node.requested ? (args.forwardArgs ?? []) : []
-  const env = taskEnv(node, step, args.workspaceRoot)
+  const depBins = await dependencyBins(args.readableDeps?.(node) ?? [])
+  const env = taskEnv(node, step, args.workspaceRoot, depBins)
   const wallclockStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
   const hash = await serverKey(args)
 
@@ -305,7 +307,7 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
         code: err.exitCode,
         command: step.command,
         cwd: node.projectDir,
-        bins: taskBinDirs(node, args.workspaceRoot),
+        bins: taskBinDirs(node, args.workspaceRoot, depBins),
         signal: signal ?? undefined,
         hidden: serverSandbox && ((f: string) => !sandboxReads(serverSandbox, f)),
       })

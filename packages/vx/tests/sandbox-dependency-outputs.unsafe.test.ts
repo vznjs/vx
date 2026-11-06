@@ -111,3 +111,53 @@ describe.skipIf(!available)('a sandboxed task reads the outputs it depends on', 
     TIMEOUT,
   )
 })
+
+describe.skipIf(!available)('a hermetic task runs a program its dependency built', () => {
+  let fixture: Fixture
+
+  beforeEach(async () => {
+    fixture = await makeWorkspace()
+  })
+  afterEach(async () => {
+    await rm(fixture.root, { recursive: true, force: true })
+  })
+
+  it(
+    'by name, from the dependency’s cache.outputs.bin',
+    async () => {
+      await addProject(fixture.root, 'tools', {
+        files: { 'src/s.txt': 'SRC\n' },
+        config: `
+          export default {
+            tasks: {
+              node: {
+                exec: { command: ${JSON.stringify(
+                  `mkdir -p out/bin && printf '#!/bin/sh\\necho TOOLRAN\\n' > out/bin/hello && chmod +x out/bin/hello`,
+                )} },
+                inputs: { files: ['src/**'] },
+                cache: { outputs: { files: ['out/**'], bin: 'out/bin' } },
+              },
+            },
+          }
+        `,
+      })
+      await addProject(fixture.root, 'app', {
+        files: { 'src/a.txt': 'A\n' },
+        config: `
+          export default {
+            tasks: {
+              use: {
+                exec: { command: 'hello', sandbox: { hermetic: true, allow: { read: ['.'] } } },
+                dependsOn: ['tools#node'],
+              },
+            },
+          }
+        `,
+      })
+      const r = await run({ cwd: fixture.root, tasks: ['use'], log: collectingLogger(fixture) })
+      if (!r.ok) throw new Error(`run failed:\n${fixture.log.join('\n')}`)
+      expect(fixture.log.join('\n')).toContain('TOOLRAN')
+    },
+    TIMEOUT,
+  )
+})

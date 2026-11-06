@@ -1,14 +1,14 @@
 {
   "exec task": {
     "alone": {
-      "cache={\"outputs\":{\"files\":[\"dist/**\"],\"workspaceFiles\":[\"out/**\"],\"clean\":false},\"inputStability\":{\"strategy\":\"mutable\",\"severity\":\"error\"}}": "$CONFIG: tasks.t: `cache` needs `inputs` — the key is the task's inputs, `inputs: { files: [...] }`",
+      "cache={\"outputs\":{\"files\":[\"dist/**\"],\"workspaceFiles\":[\"out/**\"],\"clean\":false,\"bin\":\"dist/bin\"},\"inputStability\":{\"strategy\":\"mutable\",\"severity\":\"error\"}}": "$CONFIG: tasks.t: `cache` needs `inputs` — the key is the task's inputs, `inputs: { files: [...] }`",
       "cache={\"outputs\":{\"files\":[]}}": "$CONFIG: tasks.t: `cache` needs `inputs` — the key is the task's inputs, `inputs: { files: [...] }`",
       "exec.remote=\"only\"": "$CONFIG: tasks.t.exec.remote 'only' needs `cache`: its inputs are what a worker reproduces and its key is the address of its remote record",
       "exec=<absent>": "$CONFIG: tasks.t: a task with no `exec` must declare `dependsOn` or `inputs` (group tasks exist to chain dependencies or carry a key)"
     },
     "pairs": {
-      "cache={\"outputs\":{\"files\":[\"dist/**\"],\"workspaceFiles\":[\"out/**\"],\"clean\":false},\"inputStability\":{\"strategy\":\"mutable\",\"severity\":\"error\"}} + inputs={\"files\":[\"src/**\"],\"workspaceFiles\":[\"tsconfig.json\"],\"env\":[\"A\"],\"tasks\":[],\"runtime\":[\"node -v\"],\"workspaceRuntime\":[\"bun -v\"]}": "ok",
-      "cache={\"outputs\":{\"files\":[\"dist/**\"],\"workspaceFiles\":[\"out/**\"],\"clean\":false},\"inputStability\":{\"strategy\":\"mutable\",\"severity\":\"error\"}} + inputs={\"files\":[]}": "ok",
+      "cache={\"outputs\":{\"files\":[\"dist/**\"],\"workspaceFiles\":[\"out/**\"],\"clean\":false,\"bin\":\"dist/bin\"},\"inputStability\":{\"strategy\":\"mutable\",\"severity\":\"error\"}} + inputs={\"files\":[\"src/**\"],\"workspaceFiles\":[\"tsconfig.json\"],\"env\":[\"A\"],\"tasks\":[],\"runtime\":[\"node -v\"],\"workspaceRuntime\":[\"bun -v\"]}": "ok",
+      "cache={\"outputs\":{\"files\":[\"dist/**\"],\"workspaceFiles\":[\"out/**\"],\"clean\":false,\"bin\":\"dist/bin\"},\"inputStability\":{\"strategy\":\"mutable\",\"severity\":\"error\"}} + inputs={\"files\":[]}": "ok",
       "cache={\"outputs\":{\"files\":[]}} + inputs={\"files\":[\"src/**\"],\"workspaceFiles\":[\"tsconfig.json\"],\"env\":[\"A\"],\"tasks\":[],\"runtime\":[\"node -v\"],\"workspaceRuntime\":[\"bun -v\"]}": "ok",
       "cache={\"outputs\":{\"files\":[]}} + inputs={\"files\":[]}": "ok",
       "dependsOn=[\"^t\"] + exec=<absent>": "ok",
@@ -22,7 +22,7 @@
   },
   "group task": {
     "alone": {
-      "cache={\"outputs\":{\"files\":[\"dist/**\"],\"workspaceFiles\":[\"out/**\"],\"clean\":false},\"inputStability\":{\"strategy\":\"mutable\",\"severity\":\"error\"}}": "$CONFIG: tasks.t: `cache` needs `exec` — a task with no command produces nothing to cache",
+      "cache={\"outputs\":{\"files\":[\"dist/**\"],\"workspaceFiles\":[\"out/**\"],\"clean\":false,\"bin\":\"dist/bin\"},\"inputStability\":{\"strategy\":\"mutable\",\"severity\":\"error\"}}": "$CONFIG: tasks.t: `cache` needs `exec` — a task with no command produces nothing to cache",
       "cache={\"outputs\":{\"files\":[]}}": "$CONFIG: tasks.t: `cache` needs `exec` — a task with no command produces nothing to cache"
     },
     "pairs": {}

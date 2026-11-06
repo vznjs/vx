@@ -451,6 +451,7 @@ type · `src/config.ts`
 export interface CacheOutputs {
   files: readonly string[]
   workspaceFiles?: readonly string[]
+  bin?: string
   clean?: boolean
 }
 ```
@@ -748,6 +749,7 @@ export interface ExecuteRequest {
   readonly cwd: string
   readonly env: NodeJS.ProcessEnv
   readonly envDefine: Readonly<Record<string, string>>
+  readonly binDirs?: readonly string[]
   readonly capture: CaptureConfig
   readonly timeoutMs?: number
   readonly onStdout: (chunk: string) => void

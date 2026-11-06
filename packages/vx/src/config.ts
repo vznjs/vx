@@ -643,6 +643,14 @@ export interface CacheOutputs {
    */
   workspaceFiles?: readonly string[]
   /**
+   * The directory of the outputs that holds programs (`out/bin`), project-
+   * relative, under a `files` glob's fixed head. Every task that depends on
+   * this one gets it first on PATH: one `tools` project builds Node, the
+   * others run `node`. Two dependencies holding one program name refuse
+   * the dependant, naming both.
+   */
+  bin?: string
+  /**
    * `false`: a miss leaves the declared outputs in place for the command
    * (tsc's `.tsbuildinfo`) instead of removing them first. A run that
    * leaves a file it found untouched saves nothing, so an entry holds only

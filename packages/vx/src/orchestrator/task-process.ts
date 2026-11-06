@@ -2,6 +2,7 @@
 // undeclared write costs the run's memos. Shared by the one-shot path
 // (execute-task.ts) and the server path (persistent-task.ts).
 
+import { readdir } from 'node:fs/promises'
 import path from 'node:path'
 import type { ExecConfig } from '../config.js'
 import type { GitFilesCache } from '../cache/index.js'
@@ -14,7 +15,7 @@ import {
   type ServerSpec,
 } from '../exec/index.js'
 import type { TaskNode } from '../graph/index.js'
-import { parseDuration } from '../util/index.js'
+import { parseDuration, UserError } from '../util/index.js'
 
 /**
  * Drop the run's facts about files a task may have written without
@@ -38,12 +39,17 @@ export function forgetUndeclaredWrites(
 }
 
 /** The two bin directories a task's PATH starts with: its own, then the root's (once when they coincide). */
-export function taskBinDirs(node: TaskNode, workspaceRoot: string): string[] {
-  const bins = [path.join(node.projectDir, 'node_modules', '.bin')]
+export function taskBinDirs(
+  node: TaskNode,
+  workspaceRoot: string,
+  /** The dependencies' `cache.outputs.bin` directories (`dependencyBins`): first. */
+  depBins: readonly string[] = [],
+): string[] {
+  const bins = [...depBins, path.join(node.projectDir, 'node_modules', '.bin')]
   const rootBin = path.join(workspaceRoot, 'node_modules', '.bin')
   // Identical when the root is itself a project — dedupe rather than list it
   // twice, so PATH reads the same either way.
-  if (rootBin !== bins[0]) bins.push(rootBin)
+  if (rootBin !== bins[depBins.length]) bins.push(rootBin)
   return bins
 }
 
@@ -67,8 +73,9 @@ export function taskEnv(
   node: TaskNode,
   step: ExecConfig,
   workspaceRoot: string,
+  depBins: readonly string[] = [],
 ): NodeJS.ProcessEnv {
-  const bins = taskBinDirs(node, workspaceRoot)
+  const bins = taskBinDirs(node, workspaceRoot, depBins)
   const env = buildIsolatedEnv({
     passThrough: step.env?.passThrough ?? [],
     define: step.env?.define ?? {},
@@ -84,6 +91,35 @@ export function taskEnv(
     if (manager !== null) env[PM_EXEC_ENV] = manager
   }
   return env
+}
+
+/**
+ * The `cache.outputs.bin` directories of the tasks a task's key folds
+ * (`readableDeps`), for the front of its PATH. Read when the task runs,
+ * after they ran or were restored. Two holding one program name refuse the
+ * task, naming both: PATH order would pick one silently. With no two
+ * alike, their order on PATH decides nothing.
+ */
+export async function dependencyBins(deps: readonly TaskNode[]): Promise<string[]> {
+  const dirs: string[] = []
+  const owner = new Map<string, string>()
+  for (const dep of deps) {
+    const bin = dep.config.cache?.outputs.bin
+    if (bin === undefined) continue
+    const dir = path.join(dep.projectDir, bin)
+    dirs.push(dir)
+    for (const name of await readdir(dir).catch(() => [])) {
+      const first = owner.get(name)
+      if (first !== undefined && first !== dep.id) {
+        throw new UserError(
+          `${first} and ${dep.id} both put '${name}' on this task's PATH (cache.outputs.bin) — ` +
+            `depend on one, or rename the program in one of them`,
+        )
+      }
+      owner.set(name, dep.id)
+    }
+  }
+  return dirs
 }
 
 /** A task's own `exec.timeout` in ms; the schema has checked its form. */

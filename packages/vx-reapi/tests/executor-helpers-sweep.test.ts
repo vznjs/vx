@@ -123,6 +123,17 @@ describe.if(CHUNKING_SUPPORTED)('the command line a worker runs', () => {
     expect(args).toEqual(["it's", 'a b'])
   })
 
+  // A dependency's `cache.outputs.bin` leads PATH locally (core's
+  // taskBinDirs); a worker without it ran `node` from its own image.
+  it("puts a dependency's declared bin dir first, from the root, as the local executor does", async () => {
+    await runOne(request({ command: PRINT, binDirs: [path.join(root, 'tools', 'out', 'bin')] }))
+    const { out } = sh(lastScript(), path.join(root, 'pkg'))
+    const [vxRoot, PATH] = out.trimEnd().split('\n')
+    expect(PATH).toBe(
+      `${vxRoot}/tools/out/bin:${path.join(root, 'pkg')}/node_modules/.bin:${vxRoot}/node_modules/.bin:/usr/bin:/bin`,
+    )
+  })
+
   // The local executor puts the project's bin before the root's (core's
   // taskBinDirs): a worker that put the root's first ran the root's
   // version of a tool the project pins, under the same key.

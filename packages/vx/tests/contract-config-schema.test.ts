@@ -159,7 +159,12 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       runtime: true,
       workspaceRuntime: true,
     }),
-    'tasks.*.cache.outputs': keys<CacheOutputs>({ files: true, workspaceFiles: true, clean: true }),
+    'tasks.*.cache.outputs': keys<CacheOutputs>({
+      files: true,
+      workspaceFiles: true,
+      clean: true,
+      bin: true,
+    }),
     'tasks.*.cache.inputStability': keys<InputStability>({ strategy: true, severity: true }),
   },
 }
@@ -254,7 +259,12 @@ function projectSeed(): Record<string, unknown> {
           workspaceRuntime: ['bun -v'],
         },
         cache: {
-          outputs: { files: ['dist/**'], workspaceFiles: ['out/**'], clean: false },
+          outputs: {
+            files: ['dist/**'],
+            workspaceFiles: ['out/**'],
+            clean: false,
+            bin: 'dist/bin',
+          },
           inputStability: { strategy: 'mutable', severity: 'error' },
         },
       },
