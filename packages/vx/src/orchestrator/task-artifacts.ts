@@ -26,6 +26,8 @@ export interface ArtifactTask {
   readonly outputs: {
     readonly files: readonly string[]
     readonly workspaceFiles: readonly string[]
+    /** Its `cache.outputs.mount` paths: an absolute link under one is saved as written. */
+    readonly mounts?: readonly string[]
   }
   /** The projects inside `projectDir` (absolute), whose files are not its outputs. */
   readonly nestedProjectDirs?: readonly string[]
@@ -116,6 +118,7 @@ export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArt
         ...(ws.length > 0 ? { workspaceOutputFiles: ws } : {}),
         ...(wsTree.emptyDirs.length > 0 ? { workspaceOutputDirs: wsTree.emptyDirs } : {}),
         ...(run.absent === true ? { absent: true } : {}),
+        ...(task.outputs.mounts === undefined ? {} : { mounts: task.outputs.mounts }),
         entry: {
           taskId: task.id,
           command: mask?.mask(task.command) ?? task.command,

@@ -480,6 +480,8 @@ export interface CacheGetContext {
 export interface DeclaredOutputs {
   files: readonly string[]
   workspaceFiles: readonly string[]
+  /** Its `cache.outputs.mount` paths: an absolute link may point only under one. */
+  mounts?: readonly string[]
 }
 
 /** Metadata supplied at ingest time — values the artifact does not carry. */
@@ -794,6 +796,8 @@ export interface CacheLayer {
     inputComponents?: readonly TaskInputRow[]
     /** No remote held `hash` when the run asked: an upload asks none first. */
     absent?: boolean
+    /** Its `cache.outputs.mount` paths: an absolute link under one is saved as written. */
+    mounts?: readonly string[]
   }): Promise<void>
   /**
    * Adopt an artifact produced elsewhere — the remote-hit path. Streams

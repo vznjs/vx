@@ -943,6 +943,7 @@ export class Orchestrator {
         outputs: {
           files: [...req.outputs.files],
           workspaceFiles: [...req.outputs.workspaceFiles],
+          ...(req.outputs.mounts === undefined ? {} : { mounts: [...req.outputs.mounts] }),
         },
         cores: job.held?.cores ?? 1,
         memory: job.held?.memory ?? 0,
@@ -958,6 +959,14 @@ export class Orchestrator {
                   ? {}
                   : {
                       reads: req.sandbox.dependencyReads.map((d) => path.relative(this.o.root, d)),
+                    }),
+                ...(req.sandbox.mounts === undefined
+                  ? {}
+                  : {
+                      mounts: req.sandbox.mounts.map((m) => ({
+                        target: m.target,
+                        source: path.relative(this.o.root, m.source),
+                      })),
                     }),
               },
             }),

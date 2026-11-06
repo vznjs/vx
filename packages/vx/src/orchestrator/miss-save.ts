@@ -31,6 +31,7 @@ import {
 } from '../util/index.js'
 import { type Logger, warnOf } from '../report/index.js'
 import type { TaskInputComponent } from '../cache/index.js'
+import { mountPaths } from './sandbox-request.js'
 
 /** A snapshot request for `recordOutputDirs`, taken at run end. */
 export interface OutputDirSnapshot {
@@ -231,6 +232,7 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
     )
   }
   const facts: SaveFacts = {}
+  const mounts = mountPaths(node.config.cache?.outputs)
   const save = async (): Promise<void> => {
     const saveStart = a.measure === true ? performance.now() : 0
     const endSave = span('miss: save')
@@ -247,6 +249,7 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
       ...(wsOutputFiles.length > 0 ? { workspaceOutputFiles: wsOutputFiles } : {}),
       ...(wsTree.emptyDirs.length > 0 ? { workspaceOutputDirs: wsTree.emptyDirs } : {}),
       inputComponents: a.captured.map((c) => ({ entryHash: a.hash, ...c })),
+      ...(mounts.length === 0 ? {} : { mounts }),
       // No `exitCode`: the save only runs under `effectiveExitCode === 0`, and
       // the contract no longer accepts one — so the invariant is enforced by
       // the type rather than by every call site remembering the gate.

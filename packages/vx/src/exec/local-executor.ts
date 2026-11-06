@@ -56,6 +56,7 @@ export function localExecutor(): TaskExecutor {
         baseDenyRead: req.sandbox.baseDenyRead,
         reportWithin: req.sandbox.reportWithin,
         reportLinked: req.sandbox.reportLinked,
+        ...(req.sandbox.mounts === undefined ? {} : { mounts: req.sandbox.mounts }),
         config: req.sandbox.config,
       })
     },

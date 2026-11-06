@@ -164,6 +164,7 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       workspaceFiles: true,
       clean: true,
       bin: true,
+      mount: true,
     }),
     'tasks.*.cache.inputStability': keys<InputStability>({ strategy: true, severity: true }),
   },
@@ -279,6 +280,11 @@ function projectSeed(): Record<string, unknown> {
         exec: { command: 'true' },
         inputs: { files: ['src/**'] },
         cache: { outputs: { files: ['out/**'], bin: 'out/bin' } },
+      },
+      m: {
+        exec: { command: 'true' },
+        inputs: { files: ['src/**'] },
+        cache: { outputs: { files: ['out/**'], mount: { '/nix/store': 'out/nix/store' } } },
       },
     },
   }

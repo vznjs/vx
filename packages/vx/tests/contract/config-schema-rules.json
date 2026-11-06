@@ -3,6 +3,7 @@
     "alone": {
       "cache={\"outputs\":{\"files\":[\"dist/**\"],\"workspaceFiles\":[\"out/**\"],\"clean\":false},\"inputStability\":{\"strategy\":\"mutable\",\"severity\":\"error\"}}": "$CONFIG: tasks.t: `cache` needs `inputs` — the key is the task's inputs, `inputs: { files: [...] }`",
       "cache={\"outputs\":{\"files\":[\"out/**\"],\"bin\":\"out/bin\"}}": "$CONFIG: tasks.t: `cache` needs `inputs` — the key is the task's inputs, `inputs: { files: [...] }`",
+      "cache={\"outputs\":{\"files\":[\"out/**\"],\"mount\":{\"/nix/store\":\"out/nix/store\"}}}": "$CONFIG: tasks.t: `cache` needs `inputs` — the key is the task's inputs, `inputs: { files: [...] }`",
       "cache={\"outputs\":{\"files\":[]}}": "$CONFIG: tasks.t: `cache` needs `inputs` — the key is the task's inputs, `inputs: { files: [...] }`",
       "exec.remote=\"only\"": "$CONFIG: tasks.t.exec.remote 'only' needs `cache`: its inputs are what a worker reproduces and its key is the address of its remote record",
       "exec=<absent>": "$CONFIG: tasks.t: a task with no `exec` must declare `dependsOn` or `inputs` (group tasks exist to chain dependencies or carry a key)"
@@ -14,6 +15,9 @@
       "cache={\"outputs\":{\"files\":[\"out/**\"],\"bin\":\"out/bin\"}} + inputs={\"files\":[\"src/**\"],\"workspaceFiles\":[\"tsconfig.json\"],\"env\":[\"A\"],\"tasks\":[],\"runtime\":[\"node -v\"],\"workspaceRuntime\":[\"bun -v\"]}": "ok",
       "cache={\"outputs\":{\"files\":[\"out/**\"],\"bin\":\"out/bin\"}} + inputs={\"files\":[\"src/**\"]}": "ok",
       "cache={\"outputs\":{\"files\":[\"out/**\"],\"bin\":\"out/bin\"}} + inputs={\"files\":[]}": "ok",
+      "cache={\"outputs\":{\"files\":[\"out/**\"],\"mount\":{\"/nix/store\":\"out/nix/store\"}}} + inputs={\"files\":[\"src/**\"],\"workspaceFiles\":[\"tsconfig.json\"],\"env\":[\"A\"],\"tasks\":[],\"runtime\":[\"node -v\"],\"workspaceRuntime\":[\"bun -v\"]}": "ok",
+      "cache={\"outputs\":{\"files\":[\"out/**\"],\"mount\":{\"/nix/store\":\"out/nix/store\"}}} + inputs={\"files\":[\"src/**\"]}": "ok",
+      "cache={\"outputs\":{\"files\":[\"out/**\"],\"mount\":{\"/nix/store\":\"out/nix/store\"}}} + inputs={\"files\":[]}": "ok",
       "cache={\"outputs\":{\"files\":[]}} + inputs={\"files\":[\"src/**\"],\"workspaceFiles\":[\"tsconfig.json\"],\"env\":[\"A\"],\"tasks\":[],\"runtime\":[\"node -v\"],\"workspaceRuntime\":[\"bun -v\"]}": "ok",
       "cache={\"outputs\":{\"files\":[]}} + inputs={\"files\":[\"src/**\"]}": "ok",
       "cache={\"outputs\":{\"files\":[]}} + inputs={\"files\":[]}": "ok",
@@ -31,6 +35,7 @@
     "alone": {
       "cache={\"outputs\":{\"files\":[\"dist/**\"],\"workspaceFiles\":[\"out/**\"],\"clean\":false},\"inputStability\":{\"strategy\":\"mutable\",\"severity\":\"error\"}}": "$CONFIG: tasks.t: `cache` needs `exec` — a task with no command produces nothing to cache",
       "cache={\"outputs\":{\"files\":[\"out/**\"],\"bin\":\"out/bin\"}}": "$CONFIG: tasks.t: `cache` needs `exec` — a task with no command produces nothing to cache",
+      "cache={\"outputs\":{\"files\":[\"out/**\"],\"mount\":{\"/nix/store\":\"out/nix/store\"}}}": "$CONFIG: tasks.t: `cache` needs `exec` — a task with no command produces nothing to cache",
       "cache={\"outputs\":{\"files\":[]}}": "$CONFIG: tasks.t: `cache` needs `exec` — a task with no command produces nothing to cache"
     },
     "pairs": {}

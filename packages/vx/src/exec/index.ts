@@ -62,6 +62,7 @@ export {
   type ExecuteRequest,
   type ExecuteResult,
   type ExecuteSandbox,
+  type SandboxMount,
   type InputFile,
   type MachineReport,
   type WorkerAdvice,

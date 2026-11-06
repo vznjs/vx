@@ -91,6 +91,7 @@ const OUTPUTS = [
   'bin',
   'clean',
   'files',
+  'mount',
   'workspaceFiles',
 ] as const satisfies readonly Keys<CacheOutputs>[]
 const WORKSPACE_CACHE = [
@@ -359,6 +360,7 @@ describe('a config built from readonly lists type-checks and loads', () => {
             files: ['dist/**'] as const,
             workspaceFiles: ['out/x'] as const,
             bin: 'dist/bin',
+            mount: { '/nix/store': 'dist/store' },
           },
         },
       },

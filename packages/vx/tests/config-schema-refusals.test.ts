@@ -509,6 +509,39 @@ describe('task refusals the sweep found unheld (item 653)', () => {
     for (const b of ['out', 'out/bin', 'out/bin/']) expect(bin(b)).toBeNull()
   })
 
+  // `cache.outputs.mount` lays an output dir at an absolute path in each
+  // dependant's sandbox: a relative, root, climbing, glob or `:` path has
+  // no single place to land, and the source is held to `bin`'s rules.
+  it('a mount path that is not a plain absolute directory, or a source outside the outputs, is refused', () => {
+    const mount = (m: unknown, files = ['out/**']) =>
+      taskRefusal({
+        exec: { command: 'x' },
+        inputs: { files: [] },
+        cache: { outputs: { files, mount: m } },
+      })
+    const shape =
+      `${CFG}: tasks.t.cache.outputs.mount must be an object of absolute path to output directory, ` +
+      `such as { '/nix/store': 'out/nix/store' }`
+    for (const m of [[], 'out/nix/store', null]) expect(mount(m)).toBe(shape)
+    const plain = (t: string) =>
+      `${CFG}: tasks.t.cache.outputs.mount: "${t}" must be a plain absolute directory other than '/', ` +
+      `with no '..', glob or ':' — such as '/nix/store'`
+    for (const t of ['nix/store', '/', '/nix/../etc', '/nix/*', '/a:b']) {
+      expect(mount({ [t]: 'out/store' })).toBe(plain(t))
+    }
+    expect(mount({ '/nix/store': 'store' })).toBe(
+      `${CFG}: tasks.t.cache.outputs.mount["/nix/store"]: "store" is under no cache.outputs.files ` +
+        `directory — a dependant can run only what this task saves, so declare it as an output too, such as 'store/**'`,
+    )
+    expect(mount({ '/nix/store': 1 })).toBe(
+      `${CFG}: tasks.t.cache.outputs.mount["/nix/store"] must be a directory name, such as 'out/nix/store'`,
+    )
+    // Controls: one path, two, and a trailing slash on either side.
+    expect(mount({ '/nix/store': 'out/nix/store' })).toBeNull()
+    expect(mount({ '/nix/store': 'out/a', '/opt/t': 'out/b' })).toBeNull()
+    expect(mount({ '/nix/store/': 'out/nix/store/' })).toBeNull()
+  })
+
   // `outputs: ['**']` loaded, and the clean before the run deleted the
   // project's source, package.json and vx.config while the run reported
   // success; the message for '.' had suggested `**` (item 1002).
