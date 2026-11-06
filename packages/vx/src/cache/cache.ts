@@ -2125,7 +2125,6 @@ export class Cache implements CacheLayer {
     workspaceRoot: string | undefined,
     verify: (provided: ReadonlySet<string>) => void,
     accept: ((name: string) => boolean) | undefined,
-    mounts: readonly string[] | undefined,
   ): Promise<void> {
     const files = rows.filter((r) => !r.path.endsWith('/') && r.mode !== LINK_MODE)
     let bytes = 0
@@ -2144,8 +2143,6 @@ export class Cache implements CacheLayer {
       verify,
       accept,
       workspaceRoot,
-      undefined,
-      mounts,
     )
   }
 
@@ -2423,28 +2420,10 @@ export class Cache implements CacheLayer {
       // the other three (1,000-project restore row 1.1–1.2 s → 1.5 s).
       const accept = outputs === undefined ? undefined : declaredName(outputs)
       if (tree !== undefined) {
-        await this.restoreTree(
-          hash,
-          tree,
-          rows,
-          projectDir,
-          workspaceRoot,
-          verify,
-          accept,
-          outputs?.mounts,
-        )
+        await this.restoreTree(hash, tree, rows, projectDir, workspaceRoot, verify, accept)
       } else {
         const tar = await decodedTar(inline ?? Bun.file(src), hash, this.artifactCeiling)
-        await extractArtifactStream(
-          tar,
-          projectDir,
-          workspaceRoot,
-          verify,
-          accept,
-          workspaceRoot,
-          undefined,
-          outputs?.mounts,
-        )
+        await extractArtifactStream(tar, projectDir, workspaceRoot, verify, accept, workspaceRoot)
       }
       for (const [dir, mode] of moded) await chmod(dir, restoredMode(mode))
     } catch (err) {
@@ -2603,7 +2582,6 @@ export class Cache implements CacheLayer {
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
     /** See `CacheLayer.save`. */
-    mounts?: readonly string[]
   }): Promise<void> {
     // Layout (v17, extended additively for workspaceFiles): one
     // `<hash>.tar.zst` per entry. Tar carries ONLY the things you'd
@@ -2662,7 +2640,6 @@ export class Cache implements CacheLayer {
           ...(args.inputComponents !== undefined ? { inputComponents: args.inputComponents } : {}),
         },
         'tar' in packed ? packed.tar : undefined,
-        args.mounts,
       ),
     )
     this.savedBytes.set(args.hash, bytes)
@@ -2846,7 +2823,6 @@ export class Cache implements CacheLayer {
     workspaceOutputFiles?: string[]
     workspaceOutputDirs?: string[]
     workspaceRoot?: string
-    mounts?: readonly string[]
   }): Promise<Uint8Array> {
     // stdout is ALWAYS present in the artifact, even if empty, so the
     // layout is predictable: a successful read finds `stdout` and
@@ -2877,7 +2853,6 @@ export class Cache implements CacheLayer {
       exec: usageOfEntry(args.entry),
       root: args.workspaceRoot ?? args.projectDir,
       projectDir: args.projectDir,
-      mounts: args.mounts,
     })
     if (plan.size > this.artifactCeiling) {
       throw new Error(
@@ -2977,10 +2952,7 @@ export class Cache implements CacheLayer {
      * scanned as is rather than decoded back out of the bytes just encoded.
      */
     tar?: Uint8Array,
-    /** A save's `outputs.mount` paths; an ingest's come with `meta.outputs`. */
-    savedMounts?: readonly string[],
   ): Promise<number> {
-    const mounts = savedMounts ?? meta.outputs?.mounts
     // Validate BEFORE anything touches the final path. `ingest()` feeds
     // us a temp of network bytes; a truncated/garbage body that went live first
     // would leave a corrupt `<hash>.tar.zst` behind (with no SQL row,
@@ -3055,7 +3027,6 @@ export class Cache implements CacheLayer {
           (s) => {
             scan = s
           },
-          mounts,
         )
         scanned = scan!
         await sealTree(dir, scanned)
@@ -3120,11 +3091,6 @@ export class Cache implements CacheLayer {
           await decodedTar(source, hash, this.artifactCeiling),
           path.join(dir, 'outputs'),
           path.join(dir, WORKSPACE_OUTPUT_PREFIX),
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          mounts,
         )
         await sealTree(dir, scanned)
       } catch (err) {

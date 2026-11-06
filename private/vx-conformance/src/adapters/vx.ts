@@ -26,7 +26,11 @@ export const vx: Adapter = {
   name: 'vx',
   pkg: '@vzn/vx',
   bins: ['vx'],
-  lacks: [],
+  lacks: [
+    // vx calls the tools a machine has and installs none: a task names no
+    // programs for its dependants' PATH.
+    'dependency-bin',
+  ],
   env: { NO_COLOR: '1' },
   installed: [[VX, 'lock']],
   async configure(dir, ws, command) {
@@ -93,7 +97,6 @@ export const vx: Adapter = {
                     outputs: {
                       files: spec.outputs ?? [],
                       ...(spec.rootOutputs ? { workspaceFiles: spec.rootOutputs } : {}),
-                      ...(spec.bin ? { bin: spec.bin } : {}),
                     },
                     cache: true,
                   }

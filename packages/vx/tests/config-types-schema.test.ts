@@ -91,13 +91,7 @@ const INPUTS = [
   'workspaceFiles',
   'workspaceRuntime',
 ] as const satisfies readonly Keys<InputsConfig>[]
-const OUTPUTS = [
-  'bin',
-  'clean',
-  'files',
-  'mount',
-  'workspaceFiles',
-] as const satisfies readonly Keys<TaskOutputs>[]
+const OUTPUTS = ['clean', 'files', 'workspaceFiles'] as const satisfies readonly Keys<TaskOutputs>[]
 const WORKSPACE_INPUTS = ['stability'] as const satisfies readonly Keys<WorkspaceInputs>[]
 const WORKSPACE_OUTPUTS = ['clean'] as const satisfies readonly Keys<WorkspaceOutputs>[]
 const WORKSPACE_CACHE = [
@@ -367,8 +361,6 @@ describe('a config built from readonly lists type-checks and loads', () => {
         outputs: {
           files: ['dist/**'] as const,
           workspaceFiles: ['out/x'] as const,
-          bin: 'dist/bin',
-          mount: { '/nix/store': 'dist/store' },
         },
         cache: true,
       },

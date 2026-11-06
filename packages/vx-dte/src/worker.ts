@@ -445,10 +445,6 @@ export async function runWorker(opts: {
               m.nested.map((n) => path.join(opts.root, n)),
               undefined,
               (m.sandbox.reads ?? []).map((r) => path.join(opts.root, r)),
-              (m.sandbox.mounts ?? []).map((x) => ({
-                target: x.target,
-                source: path.join(opts.root, x.source),
-              })),
             )
       const output = new BoundedCapture()
       const req: ExecuteRequest = {

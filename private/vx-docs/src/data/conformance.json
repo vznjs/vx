@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 221,
+    "ported": 220,
     "rest": {
       "pending": [],
       "vx-only": [
@@ -972,13 +972,13 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 973,
-        "can": 973,
+        "pass": 971,
+        "can": 971,
         "of": 973
       },
       "correctness": {
-        "pass": 800,
-        "can": 800,
+        "pass": 798,
+        "can": 798,
         "of": 800
       },
       "efficiency": {
@@ -1022,8 +1022,8 @@
         "of": 299
       },
       "env": {
-        "pass": 31,
-        "can": 31,
+        "pass": 29,
+        "can": 29,
         "of": 31
       },
       "outputs": {
@@ -34128,11 +34128,12 @@
       "title": "A task runs by name a program the task it depends on built",
       "why": "One project builds a tool, and the projects that depend on it run that tool. Calling it by a path into another project ties every command to that layout. Putting the dependency’s programs on PATH lets the command say only what it runs, and the edge says where it comes from.",
       "from": [
-        "dependency-bin"
+        "task-shell"
       ],
       "outcomes": {
         "vx": {
-          "status": "pass"
+          "status": "n/a",
+          "detail": "needs dependency-bin"
         },
         "turbo": {
           "status": "n/a",
@@ -34162,11 +34163,12 @@
       "title": "A task whose two dependencies ship a program of one name fails instead of picking one",
       "why": "When two dependencies both put a program of one name on PATH, the one that runs depends on the order they were listed in. Reordering the list then swaps the tool under the same key. Failing the task and naming both makes the choice explicit instead of an accident of order.",
       "from": [
-        "dependency-bin"
+        "task-shell"
       ],
       "outcomes": {
         "vx": {
-          "status": "pass"
+          "status": "n/a",
+          "detail": "needs dependency-bin"
         },
         "turbo": {
           "status": "n/a",
