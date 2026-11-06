@@ -137,6 +137,7 @@ async function writeWorkspace(root: string, ws: WorkspaceSpec): Promise<void> {
       '.turbo',
       '.nx',
       '.vx/cache',
+      '.moon/cache',
       'dist',
       '',
     ].join('\n'),

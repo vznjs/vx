@@ -1,7 +1,7 @@
 # @vzn/vx-conformance
 
 One suite of task-runner behaviours, run against **vx**, **Turborepo**, **Nx**,
-**Vite Task** and **Nix**. Each case is a small workspace and the outcome a user
+**Vite Task**, **Nix** and **moon**. Each case is a small workspace and the outcome a user
 sees: which commands ran, the files left on disk, the exit code, and the
 data the tool reports about the run. The results (every case, what each
 tool did, each tool's score) are the site's conformance page, written to
@@ -120,6 +120,23 @@ mean the same thing, the adapter uses the one its docs teach:
   variables, dependency inputs off, continue, force, read-only cache
   and watch. It needs Nix on the PATH (`nix-build`,
   `nix-instantiate`); its version is `nix --version`.
+- **moon**: `.moon/workspace.yml` maps each project to its directory; each
+  project's `moon.yml` holds its `dependsOn` (the edges moon's
+  JavaScript toolchain infers from each package.json, written out: that
+  toolchain is a download) and its tasks: a `script` (a `command` for one that takes
+  forwarded args), `deps` as targets (`^:build`, `~:lint`, `lib:build`),
+  `inputs` (`/` for root globs, `$NAME` for keyed variables, moon's `**/*`
+  kept when omitted), `outputs`, and `options` (`cache`, `timeout`,
+  `retryCount`). Each dependency keys its dependant (`cacheStrategy: hash`;
+  moon's own default keys only one with outputs), or not (`ignored`) when
+  the case says so. A runtime input is a `fingerprint` check; a persistent
+  task is the `server` preset, and a dependant `wait`s on it. No toolchain
+  is configured, so every task runs on the system toolchain and moon
+  downloads nothing. Selectors are a `--query` over project fields,
+  `--continue` is `moon exec --on-failure continue`, affected is
+  `--affected --base --downstream deep --include-relations`. The report is
+  `.moon/cache/runReport.json`. It lacks project-graph walks in a selection, task patterns, a ready line, a
+  sandbox, watch and dry runs.
 - **vx**: a vx.config.mjs per project, `bun()` for the edges, `vx lock`,
   and its default cache store (in the case's home, so a linked worktree
   shares it). An isolated task is `exec.sandbox`. The report is
