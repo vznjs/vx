@@ -51,7 +51,13 @@ import {
 } from 'node:fs'
 import { chmod, lstat, mkdir, readdir, rm, stat, unlink, utimes, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { createArtifactTables, createTables, inHashes, lazyStatement } from './schema.js'
+import {
+  createArtifactTables,
+  createTables,
+  inHashes,
+  lazyStatement,
+  SQLITE_FCNTL_PERSIST_WAL,
+} from './schema.js'
 import {
   UserError,
   DOT_VX_GITIGNORE,
@@ -3727,8 +3733,16 @@ export class Cache implements CacheLayer {
   }
 }
 
-/** SQLite's file-control opcode (sqlite3.h). */
-export const SQLITE_FCNTL_PERSIST_WAL = 10
+/**
+ * The files a second connection writes a run's hits through
+ * (history-stream.ts); undefined when the store keeps no history on disk.
+ * A function, as `indexDb` is: no plugin writes the history.
+ */
+export function historyFiles(cache: Cache): { index: string; store?: string } | undefined {
+  if (cache['empty'] || cache['writeBlocked'] !== null || cache['inspecting']) return undefined
+  if (cache.storeDir === undefined) return { index: cache['dbFile'] }
+  return { index: cache['dbFile'], store: path.join(cache.storeDir, 'store.db') }
+}
 
 /**
  * The cache's `bun:sqlite` handle, for core's own readers (`vx last`, `vx

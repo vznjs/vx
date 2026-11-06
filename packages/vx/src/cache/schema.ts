@@ -6,6 +6,9 @@
 
 import type { Database, SQLQueryBindings } from 'bun:sqlite'
 
+/** SQLite's file-control opcode (sqlite3.h). */
+export const SQLITE_FCNTL_PERSIST_WAL = 10
+
 /**
  * A statement prepared on its first `run` or `get`. A warm run executes few
  * of the index's statements, and preparing every one at the open cost each

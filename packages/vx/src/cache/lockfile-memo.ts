@@ -11,7 +11,8 @@
 import { Database } from 'bun:sqlite'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { closeDb, SCHEMA_VERSION, SQLITE_FCNTL_PERSIST_WAL } from './cache.js'
+import { closeDb, SCHEMA_VERSION } from './cache.js'
+import { SQLITE_FCNTL_PERSIST_WAL } from './schema.js'
 
 /** One claimant's parse of one lockfile's content. */
 export interface LockfileMemo {

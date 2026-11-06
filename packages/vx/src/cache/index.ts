@@ -18,6 +18,7 @@ export {
   type CachePolicy,
   cachesNothing,
   EXECUTED_RUNS_SQL,
+  historyFiles,
   indexDb,
   formatCachePolicy,
   FULL_CACHE_POLICY,
@@ -104,6 +105,7 @@ export {
 } from './plugin-cache.js'
 export { packRunOutputs, putRunEntry, runEntryName, writesRunStore } from './run-store.js'
 export { branchSource } from './run-history.js'
+export { HistoryStream } from './history-stream.js'
 export {
   type KeptFailure,
   keepRunNotes,
