@@ -57,9 +57,11 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
     -- carries so it survives a remote round trip; a local hit replays it
     -- from here. Its own table: an UPDATE rewrites a whole record, and the
     -- accessed_at bump rewrote up to 16 MB a hit. No row: empty stdout.
+    -- v52: a zstd frame of the UTF-8 (storedLog); as text, logs were most
+    -- of a store's bytes.
     CREATE TABLE IF NOT EXISTS ${store}.entry_stdout (
       hash   TEXT PRIMARY KEY,
-      stdout TEXT NOT NULL,
+      stdout BLOB NOT NULL,
       FOREIGN KEY (hash) REFERENCES entries(hash) ON DELETE CASCADE
     );
     CREATE TABLE IF NOT EXISTS main.runs (

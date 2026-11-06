@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: store entry stdout as zstd, not text
+
+the local cache index is schema v52; logs cached before it are dropped on first open.
+
 ## config: remove outputs.bin and outputs.mount
 
 outputs.bin and outputs.mount are refused as unknown fields. Call a tool by path, or install it outside vx and key on its version with inputs.runtime.
