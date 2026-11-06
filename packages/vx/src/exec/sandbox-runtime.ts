@@ -817,8 +817,8 @@ function assertDomains(
  * @param opts.allowedDomains every domain any sandboxed task in this run
  * declared. SRT's filtering proxy is per-RUN and reads its allowlist from
  * this call, never from the per-task config, so the union is the only
- * place a domain list can take effect. Per-task precision survives where
- * it matters: a task that declared none is never handed the proxy port.
+ * place a domain list can take effect; each task's own front
+ * (`ownProxy`) narrows it to the task's list.
  */
 export async function initSandbox(opts?: {
   allowedDomains?: readonly string[]
@@ -864,6 +864,7 @@ export async function initSandbox(opts?: {
     ...(scopedDenyScan ? scopedScanConfig() : {}),
     ...bundledJavaAgent(),
   }
+  runAllowsHosts = config.network.allowedDomains.length > 0
   const wasUp = srtUp
   if (!wasUp) await unlinkStaleMuxSockets()
   const listening = srtCleanupAdopted ? undefined : cleanupListeners()
@@ -1504,7 +1505,7 @@ async function wrapIn(
     ports.length > 0 || asksUnixSockets(args.config),
     args.config.gitConfig === true,
   )
-  if (process.platform !== 'win32' && args.config.network !== true) {
+  if (runAllowsHosts && args.config.network !== true) {
     try {
       wrapped = await ownProxy(SandboxManager, wrapped, inner, tag, args.config)
     } catch (err) {
@@ -1834,6 +1835,8 @@ const PROXY_BRIDGE_WAIT =
 
 /** Each networked task's own proxy front, by tag, closed when its bridges go. */
 const taskProxies = new Map<string, TaskProxy>()
+/** Whether the run's proxy allows any host: one that allows none refuses every task alike, front or not. */
+let runAllowsHosts = false
 
 /**
  * A networked task's own proxy front (task-proxy.ts). The runtime's proxy

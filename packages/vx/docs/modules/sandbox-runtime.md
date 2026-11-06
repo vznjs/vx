@@ -173,7 +173,8 @@ empty, and a deny refused nothing, until B-21 (schema.md §
 and port, and the command's name rides in the proxy username, which the
 sandboxed process writes, so one task could claim another's list.
 
-So each task with a network list, or none, gets a front of its own
+So in a run whose proxy allows any host, each task with a network list,
+or none, gets a front of its own
 (`task-proxy.ts`, built from SRT's own proxy modules): it filters by the
 task's lists and passes what it allows on to the run's proxy as its
 parent, which applies the union and its address guard again. The socket
