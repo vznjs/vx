@@ -56,6 +56,24 @@ describe('configErrorFrame', () => {
     )
   })
 
+  it('frames a refused key at the key, a refused value at its field', async () => {
+    const env = path.join(dir, 'env', 'vx.config.ts')
+    await mkdir(path.dirname(env), { recursive: true })
+    await writeFile(
+      env,
+      "export default {\n  tasks: {\n    b: { exec: { command: 'x', env: {\n      define: { OK: '1', 'A=B': 'x' },\n      passThrough: ['my.var'],\n    } } },\n  },\n}\n",
+    )
+    const at = (m: string) =>
+      configErrorFrame(m, path.join(dir, 'env'))?.split('\n')[0]?.split(': ')[0]
+    expect(at(`${env}: tasks.b.exec.env.define: "A=B" is not an env var name`)).toBe(
+      'vx.config.ts:4:27',
+    )
+    // An array holds no key: its field.
+    expect(at(`${env}: tasks.b.exec.env.passThrough: "my.var" is not a shell variable name`)).toBe(
+      'vx.config.ts:5:7',
+    )
+  })
+
   it('leaves a message it cannot place as it was', () => {
     expect(configErrorFrame(`${file}: tasks.nope.exec has unknown field "x"`, dir)).toBeUndefined()
     expect(configErrorFrame(`${file}: \`tags\` must be an array`, dir)).toBeUndefined()
