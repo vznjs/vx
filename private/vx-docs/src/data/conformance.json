@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 217,
+    "ported": 218,
     "rest": {
       "pending": [],
       "vx-only": [
@@ -314,6 +314,7 @@
         "vx-dte/planner",
         "vx-dte/planner-properties",
         "vx-dte/plugin-order",
+        "vx-dte/queue",
         "vx-dte/run-id",
         "vx-dte/seal",
         "vx-dte/sim",
@@ -612,7 +613,6 @@
         "always-dead-server-taint",
         "archive-extract-meta",
         "archive-security",
-        "artifact-ceiling",
         "artifact-checksum",
         "artifact-pack-properties",
         "bin-reader-gone",
@@ -968,19 +968,19 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 962,
-        "can": 962,
-        "of": 962
+        "pass": 966,
+        "can": 966,
+        "of": 966
       },
       "correctness": {
-        "pass": 790,
-        "can": 790,
-        "of": 790
+        "pass": 793,
+        "can": 793,
+        "of": 793
       },
       "efficiency": {
-        "pass": 163,
-        "can": 163,
-        "of": 163
+        "pass": 164,
+        "can": 164,
+        "of": 164
       },
       "data": {
         "pass": 9,
@@ -1003,14 +1003,14 @@
         "of": 73
       },
       "affected": {
-        "pass": 95,
-        "can": 95,
-        "of": 95
+        "pass": 96,
+        "can": 96,
+        "of": 96
       },
       "cache": {
-        "pass": 40,
-        "can": 40,
-        "of": 40
+        "pass": 41,
+        "can": 41,
+        "of": 41
       },
       "inputs": {
         "pass": 299,
@@ -1023,9 +1023,9 @@
         "of": 29
       },
       "outputs": {
-        "pass": 220,
-        "can": 220,
-        "of": 220
+        "pass": 222,
+        "can": 222,
+        "of": 222
       },
       "report": {
         "pass": 9,
@@ -1045,19 +1045,19 @@
     },
     "turbo": {
       "all": {
-        "pass": 619,
-        "can": 890,
-        "of": 962
+        "pass": 622,
+        "can": 894,
+        "of": 966
       },
       "correctness": {
-        "pass": 500,
-        "can": 724,
-        "of": 790
+        "pass": 503,
+        "can": 727,
+        "of": 793
       },
       "efficiency": {
         "pass": 115,
-        "can": 158,
-        "of": 163
+        "can": 159,
+        "of": 164
       },
       "data": {
         "pass": 4,
@@ -1081,13 +1081,13 @@
       },
       "affected": {
         "pass": 67,
-        "can": 95,
-        "of": 95
+        "can": 96,
+        "of": 96
       },
       "cache": {
-        "pass": 32,
-        "can": 40,
-        "of": 40
+        "pass": 33,
+        "can": 41,
+        "of": 41
       },
       "inputs": {
         "pass": 187,
@@ -1100,9 +1100,9 @@
         "of": 29
       },
       "outputs": {
-        "pass": 158,
-        "can": 218,
-        "of": 220
+        "pass": 160,
+        "can": 220,
+        "of": 222
       },
       "report": {
         "pass": 4,
@@ -1122,19 +1122,19 @@
     },
     "nx": {
       "all": {
-        "pass": 631,
-        "can": 914,
-        "of": 962
+        "pass": 634,
+        "can": 918,
+        "of": 966
       },
       "correctness": {
-        "pass": 477,
-        "can": 744,
-        "of": 790
+        "pass": 479,
+        "can": 747,
+        "of": 793
       },
       "efficiency": {
-        "pass": 150,
-        "can": 162,
-        "of": 163
+        "pass": 151,
+        "can": 163,
+        "of": 164
       },
       "data": {
         "pass": 4,
@@ -1157,14 +1157,14 @@
         "of": 73
       },
       "affected": {
-        "pass": 55,
-        "can": 95,
-        "of": 95
+        "pass": 56,
+        "can": 96,
+        "of": 96
       },
       "cache": {
         "pass": 36,
-        "can": 38,
-        "of": 40
+        "can": 39,
+        "of": 41
       },
       "inputs": {
         "pass": 184,
@@ -1177,9 +1177,9 @@
         "of": 29
       },
       "outputs": {
-        "pass": 154,
-        "can": 218,
-        "of": 220
+        "pass": 156,
+        "can": 220,
+        "of": 222
       },
       "report": {
         "pass": 4,
@@ -1199,19 +1199,19 @@
     },
     "vite-task": {
       "all": {
-        "pass": 494,
-        "can": 733,
-        "of": 962
+        "pass": 496,
+        "can": 735,
+        "of": 966
       },
       "correctness": {
-        "pass": 407,
-        "can": 607,
-        "of": 790
+        "pass": 409,
+        "can": 609,
+        "of": 793
       },
       "efficiency": {
         "pass": 85,
         "can": 118,
-        "of": 163
+        "of": 164
       },
       "data": {
         "pass": 2,
@@ -1236,12 +1236,12 @@
       "affected": {
         "pass": 0,
         "can": 0,
-        "of": 95
+        "of": 96
       },
       "cache": {
         "pass": 33,
         "can": 34,
-        "of": 40
+        "of": 41
       },
       "inputs": {
         "pass": 176,
@@ -1254,9 +1254,9 @@
         "of": 29
       },
       "outputs": {
-        "pass": 137,
-        "can": 218,
-        "of": 220
+        "pass": 139,
+        "can": 220,
+        "of": 222
       },
       "report": {
         "pass": 2,
@@ -1276,19 +1276,19 @@
     },
     "nix": {
       "all": {
-        "pass": 460,
-        "can": 684,
-        "of": 962
+        "pass": 461,
+        "can": 686,
+        "of": 966
       },
       "correctness": {
-        "pass": 396,
-        "can": 565,
-        "of": 790
+        "pass": 397,
+        "can": 567,
+        "of": 793
       },
       "efficiency": {
         "pass": 62,
         "can": 111,
-        "of": 163
+        "of": 164
       },
       "data": {
         "pass": 2,
@@ -1313,12 +1313,12 @@
       "affected": {
         "pass": 0,
         "can": 0,
-        "of": 95
+        "of": 96
       },
       "cache": {
         "pass": 27,
         "can": 34,
-        "of": 40
+        "of": 41
       },
       "inputs": {
         "pass": 173,
@@ -1331,9 +1331,9 @@
         "of": 29
       },
       "outputs": {
-        "pass": 157,
-        "can": 216,
-        "of": 220
+        "pass": 158,
+        "can": 218,
+        "of": 222
       },
       "report": {
         "pass": 2,
@@ -30287,6 +30287,128 @@
         },
         "nix": {
           "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/read-only-output-replaced-on-hit",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A read-only output file left by a newer build is replaced by the cached one, still read-only",
+      "why": "Some tools write their outputs read-only, as generated sources or vendored files often are. When the inputs go back to an earlier state, the cache must put the earlier file back over the read-only one on disk. A restore that cannot overwrite it either fails the run or leaves the newer file under a green replay. The file comes back as the task wrote it, read-only.",
+      "from": [
+        "restore-in-place",
+        "artifact-roundtrip"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/dist/out.txt has mode 644, expected 444"
+        }
+      }
+    },
+    {
+      "id": "outputs/many-empty-and-equal-files-restored",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "Six thousand output files, half empty and half with the same content, all come back on a hit",
+      "why": "A bundler can write thousands of chunks, many empty or byte-identical. A cache that stores each content once must still put every path back, and an empty file is a file, not a missing one. A restore that drops the empty files, writes one copy of a shared content, or stops at a size limit leaves a partial tree under a green replay.",
+      "from": [
+        "artifact-roundtrip",
+        "artifact-ceiling"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/forced-run-after-edit-saves-under-new-inputs",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A forced run after an input edit saves under the new inputs, and the old inputs never replay its result",
+      "why": "Forcing a run after editing a source must file the fresh result under the edited inputs, so the next run with those inputs replays it. Filing it under the entry the last run used means that putting the source back replays the result of the edit: a stale hit under a green run. A force that saves nothing leaves the next run to build the same thing again.",
+      "from": [
+        "restore-in-place",
+        "cli"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 7,
+          "detail": "ran a#build, expected it replayed or left out"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs force"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "needs force"
+        }
+      }
+    },
+    {
+      "id": "affected/task-reading-no-files-not-selected",
+      "category": "affected",
+      "kind": "efficiency",
+      "title": "A change to a file another task of the project reads does not select its task that reads no files",
+      "why": "A task that declares empty inputs says no file in the project changes its result, as a task that only prints a version does. Here the changed file is one the project’s `test` declares, so the tool knows what reads it, and it cannot make `build` stale. Selecting `build` anyway reruns work on every commit that touches the project, while the task in another project that reads its own changed file is still selected.",
+      "from": [
+        "affected-tasks",
+        "affected"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "ran a#build, expected it replayed or left out"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs affected"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "needs affected"
         }
       }
     }
