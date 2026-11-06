@@ -1833,6 +1833,7 @@ const SANDBOX_FIELDS = new Set([
   'ignore',
   'weakerWhenNested',
   'weakerNetworkIsolation',
+  'hermetic',
 ])
 const GRANT_PATH_FIELDS = ['read', 'write'] as const
 const GRANT_NAME_FIELDS = ['systemInfo', 'machLookup'] as const
@@ -1876,7 +1877,7 @@ function validateSandbox(sandbox: unknown, where: string): void {
   assertKnownFields(sandbox, SANDBOX_FIELDS, `${where}.sandbox`)
   const obj = sandbox as Record<string, unknown>
 
-  for (const flag of ['weakerWhenNested', 'weakerNetworkIsolation']) {
+  for (const flag of ['weakerWhenNested', 'weakerNetworkIsolation', 'hermetic']) {
     if (obj[flag] !== undefined && typeof obj[flag] !== 'boolean') {
       throw new UserError(`${where}.sandbox.${flag} must be a boolean`)
     }

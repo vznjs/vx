@@ -398,6 +398,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'sandbox-grant-remove.unsafe',
     'sandbox-grant-through-link.unsafe',
     'sandbox-grants.unsafe',
+    'sandbox-hermetic.unsafe',
     'sandbox-helper-env.unsafe',
     'sandbox-hidden-reads.unsafe',
     'sandbox-hint',
