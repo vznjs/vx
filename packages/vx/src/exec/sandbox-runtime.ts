@@ -1616,11 +1616,13 @@ async function wrapIn(
       ? ownGroupCommand(tag, inTmp, args.trace, args.tracePaths === true)
       : { command: taggedCommand, forwards: false, traced: false }
   // The tag leads: SRT keys a record by the wrap's first 100 characters,
-  // and the proxy wait below is the same 190 for every networked task.
+  // and the proxy wait below is the same 190 for every task.
   const inner = [
     process.platform === 'linux' ? `: 'vx-${tag}';` : '',
     ports.length > 0 ? portBridgeInner(ports, tag) : '',
-    process.platform === 'linux' && args.config.network !== undefined ? PROXY_BRIDGE_WAIT : '',
+    process.platform === 'linux' && SandboxManager.getLinuxHttpSocketPath() !== undefined
+      ? PROXY_BRIDGE_WAIT
+      : '',
     grouped.command,
   ]
     .filter((part) => part !== '')
@@ -1978,6 +1980,13 @@ export function bridgedPorts(c: Pick<ResolvedSandboxConfig, 'localBinding'>): nu
  * command, until both listen in the task's network namespace, read off
  * /proc/net (IPv4 or IPv6, state 0A). Bounded at ~5 s: a bridge that never
  * listens leaves the command to meet the refusal it met before.
+ *
+ * Every task the run's bridge reaches waits, not only one that lists a
+ * network: one that lists none dials the same proxy, which refuses and
+ * names the host, and that refusal fails it. Waited for only by networked
+ * tasks, it met the closed port instead under load, swallowed the error
+ * and passed with nothing reported (2026-11-06). The wait costs ~4 ms, the
+ * socat's own start.
  */
 const PROXY_BRIDGE_WAIT =
   "( i=0; until grep -qsE ':0C38 [0-9A-F]+:0000 0A' /proc/net/tcp /proc/net/tcp6 && grep -qsE ':0438 [0-9A-F]+:0000 0A' /proc/net/tcp /proc/net/tcp6; do [ $i -ge 500 ] && break; i=$((i+1)); sleep 0.01; done );"
