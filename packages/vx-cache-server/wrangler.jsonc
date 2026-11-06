@@ -13,6 +13,10 @@
   // EXPIRY_DAYS: the bucket's lifecycle rule in days, so a repeat check
   // skips R2 (README.md § On Cloudflare Workers); never above the rule.
   "vars": { "ALLOW": "" },
+  // No cron: the Worker exports no scheduled(). Unset, wrangler leaves a
+  // dashboard's or an old deploy's cron in place, which failed daily
+  // (2026-10-26 to 11-06); an empty list clears it on every deploy.
+  "triggers": { "crons": [] },
   // Expiry is the bucket's lifecycle rules (README.md § Expiry).
   "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "vx-cache" }],
 }
