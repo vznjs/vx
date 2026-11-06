@@ -812,9 +812,12 @@ export function validateProjectConfig(
     }
     if (dependsOn !== undefined) {
       if (!Array.isArray(dependsOn) || dependsOn.some((s) => typeof s !== 'string')) {
+        // One name, not in a list: the fix is that list.
         throw new UserError(
-          `${where}.dependsOn must be an array of strings ` +
-            `(Turbo/Nx micro-syntax: 'name', '^name', 'pkg#name')`,
+          typeof dependsOn === 'string'
+            ? `${where}.dependsOn must be an array — write dependsOn: [${JSON.stringify(dependsOn)}]`
+            : `${where}.dependsOn must be an array of strings ` +
+                `(Turbo/Nx micro-syntax: 'name', '^name', 'pkg#name')`,
         )
       }
     }

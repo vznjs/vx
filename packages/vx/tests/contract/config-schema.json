@@ -1949,17 +1949,17 @@
           "-1",
           "65536",
           "2147483648",
-          "\"\"",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
-          "\"10\"",
           "[1]",
           "[3000]",
           "{}",
           "{\"x\":\"y\"}"
-        ]
+        ],
+        "$CONFIG: tasks.t.dependsOn must be an array — write dependsOn: [\"\"]": ["\"\""],
+        "$CONFIG: tasks.t.dependsOn must be an array — write dependsOn: [\"x\"]": ["\"x\""],
+        "$CONFIG: tasks.t.dependsOn must be an array — write dependsOn: [\"(\"]": ["\"(\""],
+        "$CONFIG: tasks.t.dependsOn must be an array — write dependsOn: [\"30d\"]": ["\"30d\""],
+        "$CONFIG: tasks.t.dependsOn must be an array — write dependsOn: [\"10G\"]": ["\"10G\""],
+        "$CONFIG: tasks.t.dependsOn must be an array — write dependsOn: [\"10\"]": ["\"10\""]
       },
       "tasks.*.exec": {
         "ok": ["<absent>", "<seed>"],

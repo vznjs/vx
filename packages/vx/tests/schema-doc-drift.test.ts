@@ -232,7 +232,7 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
   ],
   [
     'dependsOn must be an array of strings',
-    () => validated({ tasks: { b: { ...ok, dependsOn: 'build' } } }),
+    () => validated({ tasks: { b: { ...ok, dependsOn: [1] } } }),
   ],
   [
     'inputs must be an object',

@@ -92,10 +92,7 @@ it.each([
   [
     'a string `dependsOn`',
     task("exec: { command: 'x' }, dependsOn: '^build'"),
-    framed(
-      60,
-      "tasks.build.dependsOn must be an array of strings (Turbo/Nx micro-syntax: 'name', '^name', 'pkg#name')",
-    ),
+    framed(60, 'tasks.build.dependsOn must be an array — write dependsOn: ["^build"]'),
   ],
   [
     // As a task written as a string is told (`a command is …`).
