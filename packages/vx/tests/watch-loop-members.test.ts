@@ -402,6 +402,60 @@ describe('vx watch loop (e2e): the watched set', () => {
     await until(async () => (await executions(f.log)) >= 2, "the new lock's cycle")
   }, 40_000)
 
+  it('a re-lock that lands while the re-arm reads the workspace is a cycle', async () => {
+    // The re-lock check ran when the run ended, before the re-arm: a lock
+    // written after it was read by the re-arm, whose new pollers took it
+    // as their baseline, and the new lock ran nothing (macOS CI,
+    // 2026-11-06). A `discover` hook writes it during the re-arm's own
+    // read, the one window the run's end could not see.
+    const outside = path.dirname(f.log)
+    const go = path.join(outside, 'go')
+    const next = path.join(outside, 'next.lock.json')
+    const lock = path.join(f.root, '.vx/projects.lock.json')
+    const RELOCK = pluginSource(
+      'vx-test-relock-in-rearm',
+      `{
+  config() {
+    const fs = require('node:fs')
+    if (!fs.existsSync(${JSON.stringify(go)})) return
+    fs.rmSync(${JSON.stringify(go)})
+    fs.copyFileSync(${JSON.stringify(next)}, ${JSON.stringify(lock + '.tmp')})
+    fs.renameSync(${JSON.stringify(lock + '.tmp')}, ${JSON.stringify(lock)})
+  },
+}`,
+    )
+    await writeFile(
+      path.join(f.root, '.vx/workspace.mjs'),
+      `${PLUGIN_IMPORT}export default { plugins: [${packagesSource()}, ${RELOCK}] }\n`,
+    )
+    await writeFile(path.join(f.root, 'tsconfig.base.json'), '{"a":1}\n')
+    // Uncached, so the config edit's cycle runs it: once armed, the run
+    // asks for the re-lock the re-arm after it writes.
+    const config = (extra: string): string => `export default {
+      tasks: {
+        build: {
+          exec: { command: 'echo run >> ${f.log}; if [ -f ${outside}/armed ]; then touch ${go}; fi' },
+          inputs: { files: ['src/**']${extra} },
+        },
+      },
+    }\n`
+    const file = path.join(f.dir, 'vx.config.mjs')
+    await writeFile(file, config(", workspaceFiles: ['tsconfig.base.json']"))
+    relock()
+    await writeFile(next, await readFile(lock, 'utf8'))
+    await writeFile(file, config(''))
+    relock()
+    f.watch = startWatch(f.root, ['--all'], { ...ARMS, VX_WATCH_POLL: '1' })
+    const w = f.watch
+    await until(() => w.out().includes('watching 1 project '), 'the per-project arm')
+    await initialOnly(w, f.log)
+
+    await writeFile(path.join(outside, 'armed'), '')
+    await writeFile(file, `${config('')}// edited\n`)
+    await until(async () => (await executions(f.log)) >= 2, "the config edit's cycle")
+    await until(async () => (await executions(f.log)) >= 3, "the new lock's cycle")
+  }, 40_000)
+
   it('a project added with a broken config waits for a lock: once fixed and locked its edits are cycles', async () => {
     // A config the lock does not hold is no project yet; `vx lock` refuses
     // it and leaves the lock as it was. The lock the fix lets it write is
