@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { indexDb, Cache, HistoryStream, type RunRecord } from '../src/cache/index.js'
+import { historyFiles, indexDb, Cache, HistoryStream, type RunRecord } from '../src/cache/index.js'
 import { run } from './helpers/orchestrator.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import type { Logger } from '../src/report/index.js'
@@ -44,7 +44,7 @@ afterEach(async () => {
 
 it('writes full batches on its thread and hands back the rest', async () => {
   const cache = new Cache(path.join(dir, 'cache'))
-  const stream = new HistoryStream<number>(cache.historyFiles()!)
+  const stream = new HistoryStream<number>(historyFiles(cache)!)
   for (let i = 0; i < 1_100; i++) stream.add(i, hit(i))
   const { landed, unlanded } = await stream.finish()
   const db = indexDb(cache)
@@ -71,7 +71,7 @@ it('writes full batches on its thread and hands back the rest', async () => {
 
 it('leaves a run with fewer hits than a batch to its bundle', async () => {
   const cache = new Cache(path.join(dir, 'cache'))
-  const stream = new HistoryStream<number>(cache.historyFiles()!)
+  const stream = new HistoryStream<number>(historyFiles(cache)!)
   for (let i = 0; i < 10; i++) stream.add(i, hit(i))
   const { landed, unlanded } = await stream.finish()
   cache.close()
@@ -87,7 +87,7 @@ it('hands back every row when its thread cannot write', async () => {
 
 it('keeps no history files for a store that writes none', () => {
   const cache = new Cache(path.join(dir, 'cache'), undefined, undefined, undefined, 'inspect')
-  const files = cache.historyFiles()
+  const files = historyFiles(cache)
   cache.close()
   expect(files).toBeUndefined()
 })

@@ -18,6 +18,7 @@ export {
   type CachePolicy,
   cachesNothing,
   EXECUTED_RUNS_SQL,
+  historyFiles,
   indexDb,
   formatCachePolicy,
   FULL_CACHE_POLICY,

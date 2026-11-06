@@ -47,7 +47,7 @@ and key derivation logic live here.
 - `history-stream.ts` / `history-writer.ts` — `HistoryStream`: a run's
   hits written on a thread of their own while the graph runs, 512 to a
   transaction, through a second connection on the same files
-  (`Cache.historyFiles()`). A run with fewer hits writes none there; a
+  (`historyFiles(cache)`). A run with fewer hits writes none there; a
   batch the thread does not land comes back and goes in the bundle. The
   writer is a second `bun build --compile` entry point.
 - `run-notes.ts` — `keepRunNotes` / `keptSteps` / `keptWarnings` /

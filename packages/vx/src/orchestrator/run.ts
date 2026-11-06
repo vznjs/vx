@@ -8,6 +8,7 @@ import { EMPTY_LOCK, inputStabilityEnv, LOCK_INVALID, lockEntryBroken } from '..
 import { realpathSync } from 'node:fs'
 import path from 'node:path'
 import {
+  historyFiles,
   indexDb,
   Cache,
   type CachePolicy,
@@ -33,6 +34,7 @@ import type { MachineReport, TaskExecutor, WorkerAdvice } from '../exec/index.js
 import {
   deadServerBehind,
   declaredTask,
+  isCacheHit,
   isGroupTask,
   markSurfacedDeps,
   runGraph,
@@ -1303,13 +1305,12 @@ async function runOnBus(
     // A hit's row is whole when it finishes, so it is written while the
     // graph runs (history-stream.ts); every other row waits for the bundle.
     // A row with forward args is the bundle's too: only it digests them.
-    const historyFiles = prepared.localCache.historyFiles()
-    const stream =
-      historyFiles === undefined ? undefined : new HistoryStream<TaskOutcome>(historyFiles)
+    const historyAt = historyFiles(prepared.localCache)
+    const stream = historyAt === undefined ? undefined : new HistoryStream<TaskOutcome>(historyAt)
     const forwards = (options.forwardArgs?.length ?? 0) > 0
     const streamHit = (o: TaskOutcome): void => {
       if (stream === undefined || isGroupTask(o.node)) return
-      if (o.status !== 'cache-hit' && o.status !== 'cache-hit-remote') return
+      if (!isCacheHit(o.status)) return
       if (o.wallclockStartNs === undefined || o.wallclockEndNs === undefined) return
       if (forwards && o.node.requested) return
       stream.add(

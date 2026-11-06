@@ -3396,15 +3396,6 @@ export class Cache implements CacheLayer {
     if (this.writeBlocked !== null) return
     return this.guard(() => this.history.recordRuns(runs))
   }
-  /**
-   * The files a second connection writes this run's hits through
-   * (history-stream.ts); undefined when this store keeps no history on disk.
-   */
-  historyFiles(): { index: string; store?: string } | undefined {
-    if (this.empty || this.writeBlocked !== null || this.inspecting) return undefined
-    if (this.storeDir === undefined) return { index: this.dbFile }
-    return { index: this.dbFile, store: path.join(this.storeDir, 'store.db') }
-  }
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void {
     if (this.writeBlocked !== null) return
     return this.guard(() => this.history.recordRunBundle(bundle))
@@ -3740,6 +3731,17 @@ export class Cache implements CacheLayer {
     }
     return undefined
   }
+}
+
+/**
+ * The files a second connection writes a run's hits through
+ * (history-stream.ts); undefined when the store keeps no history on disk.
+ * A function, as `indexDb` is: no plugin writes the history.
+ */
+export function historyFiles(cache: Cache): { index: string; store?: string } | undefined {
+  if (cache['empty'] || cache['writeBlocked'] !== null || cache['inspecting']) return undefined
+  if (cache.storeDir === undefined) return { index: cache['dbFile'] }
+  return { index: cache['dbFile'], store: path.join(cache.storeDir, 'store.db') }
 }
 
 /**
