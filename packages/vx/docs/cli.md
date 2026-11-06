@@ -710,7 +710,9 @@ So `--no-cache` always wins over `--force`. The common cases:
   background, which keys it holds; one that cannot is asked `has` per
   key before its upload. Held keys are not uploaded again (a probe that
   fails uploads, as before). Output globs ARE cleaned before each task,
-  so the disk holds this run's outputs.
+  so the disk holds this run's outputs. The next plain run then restores
+  a kept entry once (`↓`, not `✓`): the entry holds the earlier run's
+  bytes, and nothing proves this run wrote the same ones.
 
 `--cache-policy=<spec>` is a comma-separated list of `<layer>:<flags>`
 segments. `layer` is `local` or `remote`; `flags` is any subset of `r`
