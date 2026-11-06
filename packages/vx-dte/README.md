@@ -873,9 +873,11 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     That margin is spent once: later plans keep its deadline until new
     work is known. A task waiting on one that runs waits until it ends.
     Then the run follows that plan: a start it wants later is asked when
-    due, and a worker idle with its planned work done goes. It plays again
+    due, and a worker idle with its planned work done goes, once every
+    task planned on it has started. It plays again
     only when reality leaves the plan: new work, work that leaves without
-    running, a worker that joins, leaves or warms up off plan, a task past
+    running, a worker idle at its planned end with a task planned on it not
+    started, a worker that joins, leaves or warms up off plan, a task past
     its time or ending sooner, one of no known time ending, a task starting
     with its time, CPU or memory more than 5% off (1 s, 0.05 cores, 64 MiB
     at least), or its window moving on.
