@@ -130,6 +130,24 @@ describe('vx why names what moved the key', () => {
     },
     TIMEOUT,
   )
+
+  // From a project whose build never ran, the one project that ran
+  // `build` was explained in its place, unsaid: `vx run build` there runs
+  // this project's own.
+  it(
+    'a bare name inside a project that never ran it names that project',
+    async () => {
+      const web = path.join(root, 'packages', 'web')
+      await mkdir(web, { recursive: true })
+      await writeFile(path.join(web, 'package.json'), JSON.stringify({ name: 'web' }))
+      await writeFile(path.join(web, 'vx.config.mjs'), CONFIG)
+      await vx(root, ['show']) // locks it, as a user would
+      const r = Bun.spawnSync({ cmd: [process.execPath, BIN, 'why', 'build'], cwd: web })
+      expect([r.exitCode, r.stdout.toString()]).toEqual([1, ''])
+      expect(r.stderr.toString()).toContain('no runs of web#build yet')
+    },
+    TIMEOUT,
+  )
 })
 
 // An upstream row's advice named the task to ask next even where asking

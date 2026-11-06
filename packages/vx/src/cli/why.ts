@@ -156,6 +156,7 @@ async function resolveTarget(
   target: string,
   cwdProject: () => Promise<string | null>,
   declared: () => Promise<boolean>,
+  declaresId: (id: string) => Promise<boolean>,
 ): Promise<string> {
   const db = indexDb(cache)
   if (target.includes('#')) {
@@ -176,10 +177,21 @@ async function resolveTarget(
         project: string
       }[]
     ).map((r) => `${r.project}#${target}`)
+    const here = matches.length > 0 ? await cwdProject() : null
+    if (here !== null) {
+      const own = `${here}#${target}`
+      if (matches.includes(own)) return own
+      // `vx run build` here runs this project's own: another project's
+      // runs were explained in its place, unsaid.
+      if (await declaresId(own)) {
+        throw refusal(
+          { tone: 'info', headline: `no runs of ${own} yet`, fix: `vx run ${target}` },
+          { code: 'VX_E_NO_HISTORY', message: `vx why: no recorded runs for "${own}"` },
+        )
+      }
+    }
     if (matches.length === 1) return matches[0]!
     if (matches.length > 1) {
-      const here = await cwdProject()
-      if (here !== null && matches.includes(`${here}#${target}`)) return `${here}#${target}`
       throw new UserError(
         `vx why: "${target}" ran in ${matches.length} projects — pick one:\n` +
           matches.map((m) => `  ${m}`).join('\n'),
@@ -271,6 +283,7 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
       target,
       () => findCwdProject(process.cwd()),
       () => declares(root, target),
+      (id) => declares(root, id),
     )
     let runId: string | null
     if (parsed.runId !== undefined) {
