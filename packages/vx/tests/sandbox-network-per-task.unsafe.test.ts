@@ -45,4 +45,16 @@ describe.skipIf(!available)('a network grant', () => {
     const b = r.outcomes.find((o) => o.node.id.endsWith('#b'))
     expect(b?.status).toBe('failed')
   })
+
+  it('lets an ignored refusal of its own front pass', async () => {
+    await addProject(root, 'app', {
+      config: `export default { tasks: {
+        a: { exec: { command: 'true', sandbox: { allow: { read: ['.'], network: ['a.example.com'] } } } },
+        b: { exec: { command: ${fetching('a.example.com')}, sandbox: { allow: { read: ['.'], network: ['b.example.com'] }, ignore: { network: ['a.example.com:443'] } } } },
+      } }\n`,
+    })
+    const r = await run({ cwd: root, tasks: ['a', 'b'], log: quiet })
+    const b = r.outcomes.find((o) => o.node.id.endsWith('#b'))
+    expect(b?.status).toBe('success')
+  })
 })
