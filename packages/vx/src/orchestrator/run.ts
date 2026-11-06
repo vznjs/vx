@@ -1357,6 +1357,9 @@ async function runOnBus(
       onFailFast: () => failFast.abort(),
       signal: stop.signal,
       onStart: (node) => {
+        // A platform skip never starts, like a skip blocked upstream: its
+        // start opened a single task's frame that nothing closed.
+        if (placements.otherPlatform.has(node.id)) return
         log.taskStart?.(node)
       },
       onFinish: (o) => {
