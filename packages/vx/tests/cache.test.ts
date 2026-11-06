@@ -808,7 +808,7 @@ describe('Cache storage (v10)', () => {
         )
         expect(err).toBeInstanceOf(UserError)
         expect((err as Error).message).toBe(
-          `restore of h-unread could not read its artifact (EACCES: EACCES: permission denied, open '${artifact}'). ` +
+          `restore of h-unread could not read its artifact (EACCES: permission denied, open '${artifact}'). ` +
             `Make the cache directory readable by this user, or point cacheDir / --cache-dir at one that is.`,
         )
       } finally {
