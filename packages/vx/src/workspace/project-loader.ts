@@ -452,7 +452,12 @@ export function configLoadError(err: unknown, configPath: string, kind: string):
   // printed `vx: JSON Parse error: Expected '}'` and named nothing. A
   // config's own `JSON.parse` has its line in the stack and passes through.
   if (name === 'SyntaxError' && !NAMED_FRAME.test(String((err as { stack?: unknown }).stack))) {
-    return new UserError(`${kind} config ${configPath}: an import does not parse: ${message}`)
+    // A missing named export is a SyntaxError too, though nothing failed to
+    // parse: "does not parse" sent the user looking for a typo.
+    const what = message.startsWith('Export named ')
+      ? 'an import names an export its module lacks'
+      : 'an import does not parse'
+    return new UserError(`${kind} config ${configPath}: ${what}: ${message}`)
   }
   if (name === 'ResolveMessage') {
     const spec = /Cannot find (?:package|module) ['"]([^'"]+)['"]/.exec(message)?.[1]
