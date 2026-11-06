@@ -108,10 +108,42 @@ const printable = (s: string): string =>
   // oxlint-disable-next-line no-control-regex
   s.replace(/[\x00-\x1f\x7f-\x9f]/g, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`)
 
+/**
+ * A body's first `max` bytes as text, the rest cancelled unread, and
+ * whether there was more: a server's endless answer grew vx to 3 GB in
+ * 10 s (vx-cache's `upTo`).
+ */
+async function upTo(res: Response, max: number): Promise<{ text: string; over: boolean }> {
+  const reader = res.body?.getReader()
+  if (reader === undefined) return { text: '', over: false }
+  const parts: Uint8Array[] = []
+  let n = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    parts.push(value)
+    n += value.byteLength
+    if (n > max) {
+      // quiet: the answer is refused for its size; its cancel adds nothing
+      await reader.cancel().catch(() => {})
+      return { text: Buffer.concat(parts).subarray(0, max).toString('utf8'), over: true }
+    }
+  }
+  return { text: Buffer.concat(parts).toString('utf8'), over: false }
+}
+
+/** Capabilities and a CI token are a few hundred bytes: room to spare. */
+const SMALL_ANSWER_BYTES = 64 * 1024
+/**
+ * A query's answer per hash asked: its row (the hash, up to 512 bytes, and
+ * four numbers) and its place in `flaky` are under 1 200 bytes in JSON.
+ */
+const QUERY_BYTES_PER_HASH = 2048
+
 /** A refusal, named by its status and the server's own `message`. */
 async function refusal(res: Response): Promise<Error> {
   // quiet: with the body unread, the status alone names the refusal
-  const text = (await res.text().catch(() => '')).slice(0, 2048)
+  const { text } = await upTo(res, 2048).catch(() => ({ text: '' }))
   let said = text
   try {
     const m = (JSON.parse(text) as { message?: unknown }).message
@@ -123,9 +155,10 @@ async function refusal(res: Response): Promise<Error> {
   return new Error(`HTTP ${res.status}${said === '' ? '' : `: ${said}`}`)
 }
 
-/** A 200's JSON; one that is none (a website's page) names the likely fault, the url. */
-async function jsonOf(res: Response, path: string): Promise<unknown> {
-  const text = await res.text()
+/** A 200's JSON of at most `max` bytes; one that is none (a website's page) names the likely fault, the url. */
+async function jsonOf(res: Response, path: string, max: number): Promise<unknown> {
+  const { text, over } = await upTo(res, max)
+  if (over) throw new Error(`${path} answered over ${max} bytes`)
   try {
     return JSON.parse(text)
   } catch {
@@ -210,8 +243,14 @@ export class HistoryServer {
       u.searchParams.set('audience', new URL(this.url).origin)
       const res = await this.askGithub(u, signal)
       if (!res.ok) throw new Error(`GitHub's OIDC endpoint: ${(await refusal(res)).message}`)
-      // quiet: a body that is not JSON holds no token, said below
-      const jwt = ((await res.json().catch(() => null)) as { value?: unknown } | null)?.value
+      const { text, over } = await upTo(res, SMALL_ANSWER_BYTES)
+      if (over) throw new Error(`GitHub's OIDC endpoint: answered over ${SMALL_ANSWER_BYTES} bytes`)
+      let jwt: unknown
+      try {
+        jwt = (JSON.parse(text) as { value?: unknown } | null)?.value
+      } catch {
+        // quiet: a body that is not JSON holds no token, said below
+      }
       if (typeof jwt !== 'string' || jwt === '') throw new Error("GitHub's OIDC endpoint: no token")
       return { jwt, exp: expiryOf(jwt) }
     })()
@@ -316,6 +355,7 @@ export class HistoryServer {
       const body = (await jsonOf(
         await this.call('/v1/capabilities'),
         '/v1/capabilities',
+        SMALL_ANSWER_BYTES,
       )) as Partial<Limits> | null
       const n = (v: unknown) => (typeof v === 'number' && Number.isSafeInteger(v) && v > 0 ? v : 0)
       const limits = {
@@ -340,12 +380,10 @@ export class HistoryServer {
     const per = (await this.limitsNow()).maxQueryHashes
     const parts = await Promise.all(
       Array.from({ length: Math.ceil(hashes.length / per) }, async (_, i) => {
-        const res = await this.call('/v1/timings/query', {
-          ...this.named,
-          refs,
-          hashes: hashes.slice(i * per, (i + 1) * per),
-        })
-        const body = (await jsonOf(res, '/v1/timings/query')) as {
+        const part = hashes.slice(i * per, (i + 1) * per)
+        const res = await this.call('/v1/timings/query', { ...this.named, refs, hashes: part })
+        const max = SMALL_ANSWER_BYTES + part.length * QUERY_BYTES_PER_HASH
+        const body = (await jsonOf(res, '/v1/timings/query', max)) as {
           timings?: unknown
           flaky?: unknown
         } | null

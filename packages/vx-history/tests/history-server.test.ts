@@ -346,6 +346,63 @@ describe('HistoryServer', () => {
     )
   })
 
+  // A 200 that never ended grew vx to 3 GB in 10 s, and the run warned
+  // only "no answer within 10000 ms": every answer is read to a bound.
+  it("reads no answer past the protocol's largest, and says it was too long", async () => {
+    let pulled = 0
+    const endless = (status: number) =>
+      new Response(
+        new ReadableStream({
+          pull(c) {
+            pulled += 1 << 20
+            c.enqueue(new Uint8Array(1 << 20).fill(32))
+          },
+        }),
+        { status },
+      )
+    const env = {
+      ACTIONS_ID_TOKEN_REQUEST_URL: 'https://oidc.example/token',
+      ACTIONS_ID_TOKEN_REQUEST_TOKEN: 't',
+    }
+    const exp = Math.floor(Date.now() / 1000) + 3600
+    const jwt = `h.${Buffer.from(JSON.stringify({ exp })).toString('base64url')}.s`
+    const clientOf = (endlessAt: string, status: number) =>
+      new HistoryServer('https://h.example', NAMED, env, (async (input: string | URL) => {
+        const u = new URL(String(input))
+        const at = u.hostname === 'oidc.example' ? 'oidc' : u.pathname
+        if (at === endlessAt) return endless(status)
+        if (at === 'oidc') return Response.json({ value: jwt })
+        if (at === '/v1/capabilities')
+          return Response.json({ maxUploadTimings: 10, maxQueryHashes: 10 })
+        return Response.json({ timings: {} })
+      }) as typeof fetch)
+    for (const [at, status, message] of [
+      ['/v1/capabilities', 200, '/v1/capabilities answered over 65536 bytes'],
+      ['/v1/timings/query', 200, '/v1/timings/query answered over 69632 bytes'],
+      ['oidc', 200, "GitHub's OIDC endpoint: answered over 65536 bytes"],
+      ['/v1/timings/query', 400, 'HTTP 400'],
+    ] as const) {
+      pulled = 0
+      await expect(clientOf(at, status).query(['refs/heads/main'], ['a', 'b'])).rejects.toThrow(
+        new Error(message),
+      )
+      expect(pulled).toBeLessThanOrEqual(2 << 20)
+    }
+    // The bound holds the largest answer a server gives: every hash 512
+    // characters, every number at its longest, every hash flaky.
+    const token = await iss.sign('main', new URL(url).origin)
+    const real = new HistoryServer(url, NAMED, { VX_HISTORY_TOKEN: token })
+    const hashes = Array.from({ length: 200 }, (_, i) => `${i}`.padStart(512, 'L'))
+    const most = { durationMs: 2 ** 53 - 1, cores: 1.2345678901234567, rssBytes: 2 ** 53 - 1 }
+    await real.upload(
+      new Map(hashes.map((h) => [h, most])),
+      undefined,
+      hashes.map((h) => ({ hash: h, key: h, outcome: 'flaky' as const })),
+    )
+    const got = await real.query(['refs/heads/main'], hashes)
+    expect([got.timings.size, got.flaky.size]).toEqual([200, 200])
+  })
+
   // One 503 from the server's edge at the run's end lost every timing the
   // run measured. A 500 is the server's own failure, maybe after the fold:
   // sent again, a run would count twice.
