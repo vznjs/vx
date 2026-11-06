@@ -523,6 +523,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-dte/planner',
     'vx-dte/planner-properties',
     'vx-dte/plugin-order',
+    'vx-dte/queue',
     'vx-dte/run-id',
     'vx-dte/seal',
     'vx-dte/sim',
