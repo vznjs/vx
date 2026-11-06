@@ -8,6 +8,7 @@ export {
   applyCacheFlags,
   ArtifactVanishedError,
   Cache,
+  CorruptArtifactError,
   DEFAULT_STORE,
   type StoreOptions,
   type CacheFlags,

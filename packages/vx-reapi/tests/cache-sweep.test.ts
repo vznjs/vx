@@ -219,6 +219,34 @@ describe.if(CHUNKING_SUPPORTED)('the cache layer, past the sweep', () => {
     ])
   })
 
+  // Core's `replace`: the stored bytes did not read back. Kept, the bad
+  // entry was a rebuild on every machine, every run (2026-10-24).
+  it('a replacing put writes over a stored entry', async () => {
+    entry('k-unreadable', 'not a vx artifact')
+    await cache.put('k-unreadable', new Blob([bytes('the rebuilt artifact')]), {
+      durationMs: 1,
+      replace: true,
+    })
+    expect(await restored('k-unreadable')).toEqual(['the rebuilt artifact', 1])
+  })
+
+  // A blob whose bytes are not its digest, and the rebuild's artifact has
+  // that digest: the server said it held the blob, so none was sent.
+  it('a body that is not its digest is refused as corrupt, and its put sends the bytes over', async () => {
+    const good = new Uint8Array(300 * 1024).map((_, i) => i % 251)
+    const digest = fake.put(good)
+    fake.actions.set(actionDigestFor('k-bad-blob').hash, {
+      exit_code: 0,
+      output_files: [{ path: ARTIFACT, digest, is_executable: false }],
+    })
+    const bad = good.slice()
+    bad[100] = 7
+    fake.blobs.set(digest.hash, bad)
+    const refusal = await restored('k-bad-blob').catch((e: Error) => e.name)
+    await cache.put('k-bad-blob', new Blob([good]), { durationMs: 1, replace: true })
+    expect([refusal, fake.blobs.get(digest.hash)?.[100]]).toEqual(['CorruptArtifactError', 100])
+  })
+
   // A kept entry whose blob CAS evicted missed every run, and each run's
   // put kept it again: the key never hit on that server.
   it('a put of a stored key whose blob is gone writes its own result', async () => {

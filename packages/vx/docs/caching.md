@@ -687,17 +687,19 @@ Hard invariants of the remote prefetch:
   overwrite checks inside (`turboCache()` asks HEAD unless a 404 or a
   batch answer this run said the key is absent; `reapi()` looks the
   action up beside its upload and keeps a stored result; Nx servers
-  answer 409). `ctx.cache.put` and a run's own entries send the `put`
-  alone.
+  answer 409). A `put` told `replace` (the stored bytes did not read
+  back) writes over them. `ctx.cache.put` and a run's own entries send
+  the `put` alone.
 - **`--dry` batches too.** The plan derives every key first, then asks
   each remote with `hasMany` once, and keeps the hits for the run that
   follows; a remote without it is asked `has` per key.
 - **Never fail.** Every remote path (get / put / ingest / prefetch)
   catches all errors and degrades to a cache miss. A remote 500, a
   network drop, a corrupt artifact, or a failed integrity check can
-  never fail a run. A key whose remote bytes do not read back is
-  uploaded again after the task re-runs, held or not, so a remote that
-  replaces on `put` heals.
+  never fail a run. A key whose remote bytes do not read back (a
+  `CorruptArtifactError`, core's or a layer's own digest or signature
+  check) is uploaded again after the task re-runs, held or not, with
+  `replace`, so the remote heals.
 - **Said once, and said whole.** The warning names the operation
   (`probe`, `download`, `upload`), the artifact and the layer's
   `endpoint`, with a URL's credentials, query and fragment dropped:

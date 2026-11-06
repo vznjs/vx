@@ -109,6 +109,14 @@ export class Cache implements CacheLayer {
   async orphanStats(): Promise<{ orphans: number; orphanBytes: number }>
   close(): void
 }
+== class CorruptArtifactError (src/cache/layer.ts)
+export class CorruptArtifactError extends Error {
+  constructor(
+    public readonly hash: string,
+    reason: string,
+    public override readonly cause?: unknown,
+  )
+}
 == class FingerprintWatch (src/orchestrator/fingerprint-watch.ts)
 export class FingerprintWatch {
   constructor(
@@ -1483,7 +1491,7 @@ export interface RemoteCacheLayer {
   has(hash: string): Promise<ArtifactInfo | null>
   hasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
   get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
-  put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void | false>
+  put(hash: string, body: Blob, meta: { durationMs: number; replace?: true }): Promise<void | false>
   missing?(hash: string): void
 }
 == type RemoteHit (src/cache/remote-hits.ts)

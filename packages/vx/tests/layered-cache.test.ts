@@ -347,6 +347,41 @@ describe('LayeredCache', () => {
     expect(remote.puts).toBe(1)
   })
 
+  // A layer that checks bytes as they pass (vx-reapi's digest) refuses them
+  // at the body's end, and a plugin may load its own copy of core: such a
+  // refusal named CorruptArtifactError is bad bytes there, as core's own
+  // is, while any other body error (a dropped socket) leaves the key held.
+  it('a body refused as a CorruptArtifactError by a layer is sent over again', async () => {
+    const bodyFails = (err: Error) => async () => ({
+      body: new Response(
+        new ReadableStream<Uint8Array>({
+          start: (c) => c.enqueue(new Uint8Array([1, 2, 3])),
+          pull: (c) => c.error(err),
+        }),
+      ),
+      durationMs: undefined,
+    })
+    class ForeignCorrupt extends Error {
+      override name = 'CorruptArtifactError'
+    }
+    const metas: object[] = []
+    const put = remote.layer.put.bind(remote.layer)
+    remote.layer.put = (hash, body, meta) => (metas.push(meta), put(hash, body, meta))
+    const puts = async (err: Error, hash: string): Promise<object[]> => {
+      remote.layer.get = bodyFails(err)
+      const layered = makeLayered()
+      expect(await layered.get(hash)).toBeNull()
+      await saveSample(layered, hash)
+      await layered.drainUploads()
+      return metas.splice(0)
+    }
+    // `replace` tells a wire that keeps a held key's bytes to send these over them.
+    expect([
+      await puts(new ForeignCorrupt('digest mismatch'), 'h-refused'),
+      await puts(new Error('socket reset'), 'h-reset'),
+    ]).toEqual([[{ durationMs: 5, replace: true }], []])
+  })
+
   // A plugin's shape is a boundary (item 252): the line names the call
   // and the shape, never "corrupt artifact" for a body that is a string.
   it('get() that resolves the wrong shape is named as the plugin bug and degraded to a miss', async () => {

@@ -118,6 +118,9 @@ describe('package boundaries', () => {
     const expected = [
       'BoundedCapture',
       'Cache',
+      // Widened 2026-11-06: a remote layer that checks its bytes (vx-reapi's
+      // digest) refuses them with it, so the re-run's save repairs the key.
+      'CorruptArtifactError',
       'LOG_WIRE_VERSION',
       // LayeredCache left (0.0.637): core builds every layer; a plugin returns the remote.
       'PERSISTENT_TODO',
