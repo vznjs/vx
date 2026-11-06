@@ -40,6 +40,7 @@ export interface AffectedChanges {
   dirLinks?: ReadonlySet<string>
   dirLinksIn?: ReadonlyMap<string, ReadonlySet<string>>
   untrackedIn?: ReadonlyMap<string, ReadonlySet<string>>
+  untracked?: ReadonlySet<string>
 }
 ```
 

@@ -699,11 +699,12 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
         options.affected,
         projects,
         packageGraph,
+        workspaceRoot,
         {
           named: new Set(tasks.filter((t) => t.includes('#'))),
           outright: new Set(options.selectedOutright),
         },
-        options.affectedReasons && { workspaceRoot, reasons: options.affectedReasons },
+        options.affectedReasons && { reasons: options.affectedReasons },
       )
       if (kept.length === 0) return emptyRun('none-affected')
       if (before !== null) {

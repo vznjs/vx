@@ -27,6 +27,7 @@ import { applyGraphStage } from './graph-stage.js'
 import { hasHook } from './plugin-host.js'
 import type { VxPlugin } from './plugin.js'
 import { isDefaultBuild } from '../graph/index.js'
+import { relPosix } from '../util/index.js'
 
 /** Every file in this set re-keys each of its project's tasks, whatever their inputs. */
 const KEYED_BY_EVERY_TASK: ReadonlySet<string> = new Set(PROJECT_CONFIG_FILENAMES)
@@ -85,7 +86,6 @@ export interface AffectedReason {
 
 /** Collects each kept task's `AffectedReason` when given; a run without one pays nothing. */
 export interface AffectedExplain {
-  workspaceRoot: string
   reasons: Map<string, AffectedReason>
 }
 
@@ -104,6 +104,7 @@ export function affectedRoots(
   changes: AffectedChanges,
   projects: ReadonlyMap<string, ProjectEntry>,
   packageGraph: PackageGraph,
+  workspaceRoot: string,
   explain?: AffectedExplain,
   /** Only what moves a key: a changed path no task declares reaches no task. */
   byKeys = false,
@@ -119,7 +120,7 @@ export function affectedRoots(
         ? { kind: 'workspace', file, wide: true }
         : { kind: 'workspace', file }
     }
-    const dir = path.relative(explain!.workspaceRoot, projects.get(name)!.dir)
+    const dir = path.relative(workspaceRoot, projects.get(name)!.dir)
     return { kind: 'project', file: dir === '' ? rel : path.posix.join(dir, rel) }
   }
   // The builder's `^name` walk (task-graph.ts), keeping only the packages
@@ -155,9 +156,12 @@ export function affectedRoots(
     // Asked of every node, not only the changed projects' (the
     // `workspaceFiles` owners): a `graph` hook may have given the glob.
     if (keyed) {
-      const file = changes.changed.find((rel) =>
-        declaresInput(task, null, rel, changes.dirLinks?.has(rel)),
-      )
+      let projectDir: string | undefined
+      const file = changes.changed.find((rel) => {
+        const untracked = changes.untracked?.has(rel) === true
+        if (untracked) projectDir ??= relPosix(workspaceRoot, n.projectDir)
+        return declaresInput(task, null, rel, changes.dirLinks?.has(rel), untracked, projectDir)
+      })
       const dir =
         file === undefined
           ? (changes.nested ?? []).find((d) => workspaceFilesReachInto(task, d))
@@ -252,11 +256,14 @@ export function keptByAffected<R extends { project: string; task: string }>(
   changes: AffectedChanges,
   projects: ReadonlyMap<string, ProjectEntry>,
   packageGraph: PackageGraph,
+  workspaceRoot: string,
   keep: { named?: ReadonlySet<string>; outright?: ReadonlySet<string> } = {},
   explain?: AffectedExplain,
 ): R[] {
   const ids = requested.map((r) => `${r.project}#${r.task}`)
-  const reached = new Set(affectedRoots(nodes, ids, changes, projects, packageGraph, explain))
+  const reached = new Set(
+    affectedRoots(nodes, ids, changes, projects, packageGraph, workspaceRoot, explain),
+  )
   return requested.filter((r, i) => {
     const id = ids[i]!
     const why: AffectedReason['kind'] | null =
@@ -298,8 +305,14 @@ export async function affectedTaskProjects(args: {
     rules: args.rules,
   })
   if (hasHook(args.plugins, 'graph')) await applyGraphStage(args.plugins, nodes, args)
-  const kept = keptByAffected(nodes, requested, args.changes, args.projects, args.packageGraph, {
-    outright: new Set(args.outright),
-  })
+  const kept = keptByAffected(
+    nodes,
+    requested,
+    args.changes,
+    args.projects,
+    args.packageGraph,
+    args.workspaceRoot,
+    { outright: new Set(args.outright) },
+  )
   return kept.map((r) => r.project)
 }

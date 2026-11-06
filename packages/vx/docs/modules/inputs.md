@@ -33,6 +33,7 @@ export function declaresInput(
   workspaceRel: string | null,
   dirLink?: boolean, // the path is a link to a directory: a glob that may reach below it counts
   untracked?: boolean, // git does not track it: under the task's own outputs it is no input
+  projectDir?: string, // the task's project, workspace-relative: its outputs.files a workspaceFiles glob reaches
 ): boolean
 
 /** May `inputs.workspaceFiles` name a file under `dir` (workspace-relative)?
