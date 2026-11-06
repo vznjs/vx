@@ -651,6 +651,15 @@ export interface CacheOutputs {
    */
   bin?: string
   /**
+   * Absolute paths each sandboxed dependant sees filled from an output
+   * directory, read-only: `{ '/nix/store': 'out/nix/store' }` for programs
+   * that name their files by a fixed path. The path must exist on the
+   * dependant's machine (an empty directory is enough); the dependant runs
+   * in `exec.sandbox` on Linux. An absolute link into a mount path is saved
+   * as written. Two dependencies mounting one path share it entry by entry.
+   */
+  mount?: Readonly<Record<string, string>>
+  /**
    * `false`: a miss leaves the declared outputs in place for the command
    * (tsc's `.tsbuildinfo`) instead of removing them first. A run that
    * leaves a file it found untouched saves nothing, so an entry holds only

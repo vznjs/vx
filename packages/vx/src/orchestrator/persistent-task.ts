@@ -19,6 +19,7 @@ import { warnOf } from '../report/index.js'
 import type { ExecuteArgs } from './execute-task.js'
 import {
   commandWriteReach,
+  dependencyMounts,
   dependencyReads,
   mayWriteFingerprint,
   type Placeholder,
@@ -88,6 +89,11 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
   }
   const effectiveForwardArgs = node.requested ? (args.forwardArgs ?? []) : []
   const depBins = await dependencyBins(args.readableDeps?.(node) ?? [])
+  const depMounts = dependencyMounts(
+    node,
+    args.readableDeps?.(node) ?? [],
+    step.sandbox !== undefined,
+  )
   const env = taskEnv(node, step, args.workspaceRoot, depBins)
   const wallclockStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
   const hash = await serverKey(args)
@@ -139,6 +145,7 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
       args.nestedProjectDirs,
       args.cacheDir,
       await dependencyReads(args.readableDeps?.(node) ?? [], args.workspaceRoot),
+      depMounts,
     )
     placeholders = sb.placeholders
     serverSandbox = sb.sandbox

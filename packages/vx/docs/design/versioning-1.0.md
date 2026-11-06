@@ -71,10 +71,10 @@ the values it takes and each refusal's exact words are recorded in
 | `tasks.<name>.exec.sandbox.ignore`  | `network`, `read`, `systemInfo`, `write`                                                                  |
 | `tasks.<name>.inputs`               | `env`, `files`, `runtime`, `tasks`, `workspaceFiles`, `workspaceRuntime`                                  |
 | `tasks.<name>.cache`                | `outputs`, `inputStability`                                                                               |
-| `tasks.<name>.cache.outputs`        | `bin`, `clean`, `files`, `workspaceFiles`                                                                 |
+| `tasks.<name>.cache.outputs`        | `bin`, `clean`, `files`, `mount`, `workspaceFiles`                                                        |
 | `tasks.<name>.cache.inputStability` | `severity`, `strategy`                                                                                    |
 
-Keyed by name: `tasks`, `tasks.<name>.exec.env.define`.
+Keyed by name: `tasks`, `tasks.<name>.cache.outputs.mount`, `tasks.<name>.exec.env.define`.
 
 `sandbox.ignore` takes only the four classes a denial is reported in
 (D-4); any other grant name is refused as an unknown field.

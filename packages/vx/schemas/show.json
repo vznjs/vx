@@ -125,7 +125,8 @@
                 "files": { "$ref": "#/$defs/stringList" },
                 "workspaceFiles": { "$ref": "#/$defs/stringList" },
                 "clean": { "type": "boolean" },
-                "bin": { "type": "string" }
+                "bin": { "type": "string" },
+                "mount": { "type": "object", "additionalProperties": { "type": "string" } }
               }
             },
             "inputStability": {

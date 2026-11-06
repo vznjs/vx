@@ -1708,10 +1708,10 @@
       "tasks.*.exec.sandbox.ignore": ["network", "read", "systemInfo", "write"],
       "tasks.*.inputs": ["env", "files", "runtime", "tasks", "workspaceFiles", "workspaceRuntime"],
       "tasks.*.cache": ["inputStability", "outputs"],
-      "tasks.*.cache.outputs": ["bin", "clean", "files", "workspaceFiles"],
+      "tasks.*.cache.outputs": ["bin", "clean", "files", "mount", "workspaceFiles"],
       "tasks.*.cache.inputStability": ["severity", "strategy"]
     },
-    "records": ["tasks", "tasks.*.exec.env.define"],
+    "records": ["tasks", "tasks.*.exec.env.define", "tasks.*.cache.outputs.mount"],
     "fields": {
       "name": {
         "ok": ["<absent>", "\"x\"", "\"(\"", "\"30d\"", "\"10G\"", "\"10\"", "\"web\""],
@@ -3654,7 +3654,7 @@
           "\"10G\"",
           "\"10\""
         ],
-        "$CONFIG: tasks.c.cache.outputs must be an object (fields: bin, clean, files, workspaceFiles), not an array — did you mean `{ files: [...] }`?": [
+        "$CONFIG: tasks.c.cache.outputs must be an object (fields: bin, clean, files, mount, workspaceFiles), not an array — did you mean `{ files: [...] }`?": [
           "[]",
           "[\"x\"]",
           "[\"\"]",
@@ -3671,7 +3671,7 @@
           "[\"A*\"]"
         ],
         "$CONFIG: tasks.c.cache.outputs.files must be an array of glob strings": ["{}"],
-        "$CONFIG: tasks.c.cache.outputs has unknown field \"x\" (allowed: bin, clean, files, workspaceFiles)": [
+        "$CONFIG: tasks.c.cache.outputs has unknown field \"x\" (allowed: bin, clean, files, mount, workspaceFiles)": [
           "{\"x\":\"y\"}"
         ],
         "ok": ["<seed>"]
@@ -3958,6 +3958,89 @@
         "$CONFIG: tasks.b.cache.outputs.bin: \"10\" is under no cache.outputs.files directory — a dependant can run only what this task saves, so declare it as an output too, such as '10/**'": [
           "\"10\""
         ]
+      },
+      "tasks.*.cache.outputs.mount": {
+        "ok": ["<absent>", "{}", "<seed>"],
+        "$CONFIG: tasks.m.cache.outputs.mount must be an object of absolute path to output directory, such as { '/nix/store': 'out/nix/store' }": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]"
+        ],
+        "$CONFIG: tasks.m.cache.outputs.mount: \"x\" must be a plain absolute directory other than '/', with no '..', glob or ':' — such as '/nix/store'": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "tasks.*.cache.outputs.mount.*": {
+        "ok": ["<absent>", "\"out/nix/store\""],
+        "$CONFIG: tasks.m.cache.outputs.mount[\"/nix/store\"] must be a directory name, such as 'out/nix/store'": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]",
+          "{}",
+          "{\"x\":\"y\"}"
+        ],
+        "$CONFIG: tasks.m.cache.outputs.mount[\"/nix/store\"]: \"x\" is under no cache.outputs.files directory — a dependant can run only what this task saves, so declare it as an output too, such as 'x/**'": [
+          "\"x\""
+        ],
+        "$CONFIG: tasks.m.cache.outputs.mount[\"/nix/store\"]: \"(\" is under no cache.outputs.files directory — a dependant can run only what this task saves, so declare it as an output too, such as '(/**'": [
+          "\"(\""
+        ],
+        "$CONFIG: tasks.m.cache.outputs.mount[\"/nix/store\"]: \"30d\" is under no cache.outputs.files directory — a dependant can run only what this task saves, so declare it as an output too, such as '30d/**'": [
+          "\"30d\""
+        ],
+        "$CONFIG: tasks.m.cache.outputs.mount[\"/nix/store\"]: \"10G\" is under no cache.outputs.files directory — a dependant can run only what this task saves, so declare it as an output too, such as '10G/**'": [
+          "\"10G\""
+        ],
+        "$CONFIG: tasks.m.cache.outputs.mount[\"/nix/store\"]: \"10\" is under no cache.outputs.files directory — a dependant can run only what this task saves, so declare it as an output too, such as '10/**'": [
+          "\"10\""
+        ]
       }
     },
     "keys": {
@@ -4002,6 +4085,29 @@
           "\"!x\""
         ],
         "$CONFIG: tasks.t.exec.env.define: \"A=B\" is not an env var name (non-empty, no '=' or NUL)": [
+          "\"A=B\""
+        ]
+      },
+      "tasks.*.cache.outputs.mount": {
+        "$CONFIG: tasks.m.cache.outputs.mount: \"\" must be a plain absolute directory other than '/', with no '..', glob or ':' — such as '/nix/store'": [
+          "\"\""
+        ],
+        "$CONFIG: tasks.m.cache.outputs.mount: \" x\" must be a plain absolute directory other than '/', with no '..', glob or ':' — such as '/nix/store'": [
+          "\" x\""
+        ],
+        "$CONFIG: tasks.m.cache.outputs.mount: \"x#y\" must be a plain absolute directory other than '/', with no '..', glob or ':' — such as '/nix/store'": [
+          "\"x#y\""
+        ],
+        "$CONFIG: tasks.m.cache.outputs.mount: \"x*\" must be a plain absolute directory other than '/', with no '..', glob or ':' — such as '/nix/store'": [
+          "\"x*\""
+        ],
+        "$CONFIG: tasks.m.cache.outputs.mount: \"^x\" must be a plain absolute directory other than '/', with no '..', glob or ':' — such as '/nix/store'": [
+          "\"^x\""
+        ],
+        "$CONFIG: tasks.m.cache.outputs.mount: \"!x\" must be a plain absolute directory other than '/', with no '..', glob or ':' — such as '/nix/store'": [
+          "\"!x\""
+        ],
+        "$CONFIG: tasks.m.cache.outputs.mount: \"A=B\" must be a plain absolute directory other than '/', with no '..', glob or ':' — such as '/nix/store'": [
           "\"A=B\""
         ]
       }
