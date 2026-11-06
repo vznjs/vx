@@ -3,8 +3,7 @@
     "alone": {
       "cache=true": "$CONFIG: tasks.t: `cache` needs `inputs` — the key is the task's inputs, `inputs: { files: [...] }`",
       "exec.remote=\"only\"": "$CONFIG: tasks.t.exec.remote 'only' needs `cache: true`: its inputs are what a worker reproduces and its key is the address of its remote record",
-      "exec=<absent>": "$CONFIG: tasks.t: a task with no `exec` must declare `dependsOn` or `inputs` (group tasks exist to chain dependencies or carry a key)",
-      "outputs={\"files\":[\"out/**\"],\"mount\":{\"/nix/store\":\"out/nix/store\"}}": "$CONFIG: tasks.t.outputs.mount holds programs built for one platform — declare exec.platforms, such as ['linux-x64', 'linux-arm64'], so each platform keeps its own cache entry"
+      "exec=<absent>": "$CONFIG: tasks.t: a task with no `exec` must declare `dependsOn` or `inputs` (group tasks exist to chain dependencies or carry a key)"
     },
     "pairs": {
       "dependsOn=[\"^t\"] + exec=<absent>": "ok",
@@ -12,9 +11,6 @@
       "exec.interactive=true + exec.persistent={\"readyWhen\":\"ready\"}": "$CONFIG: tasks.t: `persistent.readyWhen` is not allowed on an interactive task — its output goes to the terminal, so vx reads none of it; it is ready once spawned",
       "exec.interactive=true + exec.sandbox={\"allow\":{\"read\":[\".\"],\"write\":[\"dist\"],\"network\":[\"example.com\"],\"systemInfo\":[\"vfs.disk-space\"],\"unixSockets\":[\"/run/x.sock\"],\"localBinding\":[3000],\"machLookup\":[\"com.apple.x\"],\"pty\":true,\"gitConfig\":false},\"deny\":{\"network\":[\"example.org\"]},\"ignore\":{\"read\":[\".\"],\"write\":[\"dist\"],\"network\":[\"example.com\"],\"systemInfo\":[\"vfs.disk-space\"]},\"weakerWhenNested\":true,\"weakerNetworkIsolation\":false,\"hermetic\":false}": "$CONFIG: tasks.t: `sandbox` is not allowed on an interactive task — a sandboxed task's output passes through vx, and an interactive one writes to the terminal",
       "exec.persistent={\"readyWhen\":\"ready\"} + exec.retries=1": "$CONFIG: tasks.t: `retries` is not allowed on a persistent task — persistent tasks don't terminate, so there's no failed exit to retry",
-      "exec.platforms=[\"linux-x64\",\"darwin-arm64\"] + outputs={\"files\":[\"out/**\"],\"mount\":{\"/nix/store\":\"out/nix/store\"}}": "ok",
-      "exec.platforms=[\"linux-x64\"] + outputs={\"files\":[\"out/**\"],\"mount\":{\"/nix/store\":\"out/nix/store\"}}": "ok",
-      "exec=<absent> + inputs={\"files\":[\"src/**\"]}": "ok",
       "exec=<absent> + inputs={\"files\":[]}": "ok"
     }
   },
@@ -23,8 +19,6 @@
       "cache=true": "$CONFIG: tasks.t: `cache` needs `exec` — a task with no command produces nothing to cache",
       "inputs={\"files\":[\"src/**\"],\"workspaceFiles\":[\"tsconfig.json\"],\"env\":[\"A\"],\"tasks\":[],\"runtime\":[\"node -v\"],\"workspaceRuntime\":[\"bun -v\"],\"stability\":{\"strategy\":\"mutable\",\"severity\":\"error\"}}": "$CONFIG: tasks.t.inputs.stability needs `exec` — a task with no command runs nothing that could write its inputs",
       "outputs={\"files\":[\"dist/**\"],\"workspaceFiles\":[\"out/**\"],\"clean\":false}": "$CONFIG: tasks.t.outputs needs `exec` — a task with no command writes nothing",
-      "outputs={\"files\":[\"out/**\"],\"bin\":\"out/bin\"}": "$CONFIG: tasks.t.outputs needs `exec` — a task with no command writes nothing",
-      "outputs={\"files\":[\"out/**\"],\"mount\":{\"/nix/store\":\"out/nix/store\"}}": "$CONFIG: tasks.t.outputs needs `exec` — a task with no command writes nothing",
       "outputs={\"files\":[]}": "$CONFIG: tasks.t.outputs needs `exec` — a task with no command writes nothing"
     },
     "pairs": {}

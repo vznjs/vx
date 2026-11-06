@@ -1,7 +1,7 @@
 // A task's `outputs` and its `inputs.stability` sit beside `cache`, which is
 // only the switch: `cache: true`. Each key lives with what it describes, so
-// neither needs the other: an uncached task declares outputs too (its `bin`,
-// what its dependants read).
+// neither needs the other: an uncached task declares outputs too (what its
+// dependants read).
 import { describe, expect, it } from 'bun:test'
 import type { WorkspaceConfig } from '../src/config.js'
 import { validateProjectConfig, validateWorkspace } from '../src/workspace/config-schema.js'
@@ -29,7 +29,7 @@ describe('cache is the switch; outputs and stability sit beside it', () => {
       task({
         exec: { command: 'x' },
         inputs: { files: ['src/**'], stability: { strategy: 'mutable', severity: 'error' } },
-        outputs: { files: ['dist/**'], clean: false, bin: 'dist/bin' },
+        outputs: { files: ['dist/**'], clean: false },
         cache: true,
       }),
     ).toBeNull()
@@ -52,7 +52,7 @@ describe('cache is the switch; outputs and stability sit beside it', () => {
   })
 
   it('outputs and inputs.stability load without cache', () => {
-    expect(task({ ...BUILD, outputs: { files: ['dist/**'], bin: 'dist/bin' } })).toBeNull()
+    expect(task({ ...BUILD, outputs: { files: ['dist/**'] } })).toBeNull()
     expect(
       task({ exec: { command: 'x' }, inputs: { files: [], stability: { strategy: 'mutable' } } }),
     ).toBeNull()
@@ -63,9 +63,17 @@ describe('cache is the switch; outputs and stability sit beside it', () => {
     expect(task({ exec: { command: 'x' }, outputs: { files: ['/abs/**'] } })).toContain(
       'tasks.t.outputs.files: absolute paths are not allowed',
     )
-    expect(task({ exec: { command: 'x' }, outputs: { bin: 'out/bin' } })).toBe(
+    expect(task({ exec: { command: 'x' }, outputs: { clean: false } })).toBe(
       `${CFG}: tasks.t.outputs.files must be an array of glob strings`,
     )
+  })
+
+  it('outputs name files only: vx installs no tools, so no bin or mount', () => {
+    for (const field of ['bin', 'mount']) {
+      expect(
+        task({ exec: { command: 'x' }, outputs: { files: ['out/**'], [field]: 'out/bin' } }),
+      ).toContain(`tasks.t.outputs has unknown field "${field}"`)
+    }
   })
 
   it('a group task declares neither: it runs no command', () => {

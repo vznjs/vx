@@ -234,7 +234,6 @@ export interface SandboxedRunArgs {
   reportWithin: string // projectDir — only denials in here are worth reporting
   reportLinked: readonly string[] // withheld linked packages (canonical) — reported too
   config: ResolvedSandboxConfig // its allowWrite is the whole write set: none is derived
-  mounts?: readonly SandboxMount[] // ExecuteSandbox.mounts: bwrap lays each source's entries at its target (Linux only)
 }
 
 export interface SandboxViolation {

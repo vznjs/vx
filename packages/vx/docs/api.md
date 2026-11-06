@@ -142,7 +142,6 @@ export interface ArtifactTask {
   readonly outputs: {
     readonly files: readonly string[]
     readonly workspaceFiles: readonly string[]
-    readonly mounts?: readonly string[]
   }
   readonly nestedProjectDirs?: readonly string[]
   readonly others?: ReadonlySet<string>
@@ -292,7 +291,6 @@ export class Cache implements CacheLayer {
     workspaceOutputDirs?: string[]
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
-    mounts?: readonly string[]
   }): Promise<void>
   get localWritesEnabled(): boolean
   packArtifactBytes(args: SaveArgs): Promise<Uint8Array>
@@ -421,7 +419,6 @@ export interface CacheLayer {
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
     absent?: boolean
-    mounts?: readonly string[]
   }): Promise<void>
   ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
@@ -720,14 +717,12 @@ export interface ExecuteRequest {
   readonly outputs: {
     readonly files: readonly string[]
     readonly workspaceFiles: readonly string[]
-    readonly mounts?: readonly string[]
   }
   readonly command: string
   readonly forwardArgs: readonly string[]
   readonly cwd: string
   readonly env: NodeJS.ProcessEnv
   readonly envDefine: Readonly<Record<string, string>>
-  readonly binDirs?: readonly string[]
   readonly capture: CaptureConfig
   readonly timeoutMs?: number
   readonly onStdout: (chunk: string) => void
@@ -774,7 +769,6 @@ export interface ExecuteSandbox {
   readonly config: ResolvedSandboxConfig
   readonly keyed?: readonly string[]
   readonly dependencyReads?: readonly string[]
-  readonly mounts?: readonly SandboxMount[]
 }
 ```
 
@@ -2700,7 +2694,6 @@ export async function sandboxRequestFor(
   nested: readonly string[] = [],
   cacheDir?: string,
   dependencyOutputs: readonly string[] = [],
-  mounts: readonly SandboxMount[] = [],
 ): Promise<SandboxRequest>
 ```
 
@@ -3067,8 +3060,6 @@ type · `src/config.ts`
 export interface TaskOutputs {
   files: readonly string[]
   workspaceFiles?: readonly string[]
-  bin?: string
-  mount?: Readonly<Record<string, string>>
   clean?: boolean
 }
 ```
