@@ -51,6 +51,23 @@ const held = () => ({
   exit: process.listenerCount('exit'),
 })
 
+/**
+ * The open descriptors once those still closing have closed, up to 5 s.
+ * On macOS the sandbox's reset SIGTERMs its `log stream` child (the
+ * violation feed) without waiting for it, so its three pipes can outlive
+ * the run by a few ms: a reading taken then saw 10 → 13 on CI
+ * (2026-11-06). A leak stays open past the wait and still fails.
+ */
+async function settledFds(limit: number): Promise<number> {
+  const deadline = Date.now() + 5_000
+  let fds = readdirSync('/dev/fd').length
+  while (fds > limit && Date.now() < deadline) {
+    await Bun.sleep(20)
+    fds = readdirSync('/dev/fd').length
+  }
+  return fds
+}
+
 it('twenty runs in one process hold their descriptors and listeners steady', async () => {
   let steady: ReturnType<typeof held> | undefined
   for (let i = 0; i < 20; i++) {
@@ -68,8 +85,8 @@ it('twenty runs in one process hold their descriptors and listeners steady', asy
   // The claim is no growth: a descriptor still closing at the fifth run
   // can be gone by the twentieth, and an exact count failed on CI at
   // 18 → 17. Descriptors may fall, never rise; listeners hold exactly.
-  const { fds, ...listeners } = held()
   const { fds: steadyFds, ...steadyListeners } = steady!
+  const { fds: _, ...listeners } = held()
   expect(listeners).toEqual(steadyListeners)
-  expect(fds).toBeLessThanOrEqual(steadyFds)
+  expect(await settledFds(steadyFds)).toBeLessThanOrEqual(steadyFds)
 }, 60_000)
