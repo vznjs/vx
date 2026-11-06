@@ -15,6 +15,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
 import { benchEnv } from '../bench-env.js'
+import { vxCompileEntries } from '../compile-entries.js'
 
 interface Repo {
   name: string
@@ -142,7 +143,7 @@ must(
     '--compile',
     '--minify',
     '--bytecode',
-    'packages/vx/src/bin.ts',
+    ...vxCompileEntries(path.join(REPO_ROOT, 'packages/vx/src/bin.ts')),
     '--outfile',
     vxBin,
   ],

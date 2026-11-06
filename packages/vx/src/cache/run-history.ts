@@ -153,6 +153,21 @@ export class RunHistory {
       .immediate()
   }
 
+  /**
+   * Hits written while the run goes on (history-stream.ts): their rows and
+   * the flaky record's first hit of a key. A hit times nothing, so it
+   * leaves no `task_durations` row; IMMEDIATE, as `recordRunBundle` says.
+   */
+  recordHits(runs: readonly RunRecord[]): void {
+    if (runs.length === 0) return
+    this.db
+      .transaction(() => {
+        this.insertRuns(runs)
+        this.insertOutcomes(runs)
+      })
+      .immediate()
+  }
+
   /** One `task_durations` row per executed success, as if run alone: what a forecast reads. */
   private insertDurations(runs: readonly RunRecord[], source: string, sha: string | null): void {
     const done = runs.filter(

@@ -51,7 +51,13 @@ import {
 } from 'node:fs'
 import { chmod, lstat, mkdir, readdir, rm, stat, unlink, utimes, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { createArtifactTables, createTables, inHashes, lazyStatement } from './schema.js'
+import {
+  createArtifactTables,
+  createTables,
+  inHashes,
+  lazyStatement,
+  SQLITE_FCNTL_PERSIST_WAL,
+} from './schema.js'
 import {
   UserError,
   DOT_VX_GITIGNORE,
@@ -3390,6 +3396,15 @@ export class Cache implements CacheLayer {
     if (this.writeBlocked !== null) return
     return this.guard(() => this.history.recordRuns(runs))
   }
+  /**
+   * The files a second connection writes this run's hits through
+   * (history-stream.ts); undefined when this store keeps no history on disk.
+   */
+  historyFiles(): { index: string; store?: string } | undefined {
+    if (this.empty || this.writeBlocked !== null || this.inspecting) return undefined
+    if (this.storeDir === undefined) return { index: this.dbFile }
+    return { index: this.dbFile, store: path.join(this.storeDir, 'store.db') }
+  }
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void {
     if (this.writeBlocked !== null) return
     return this.guard(() => this.history.recordRunBundle(bundle))
@@ -3726,9 +3741,6 @@ export class Cache implements CacheLayer {
     return undefined
   }
 }
-
-/** SQLite's file-control opcode (sqlite3.h). */
-export const SQLITE_FCNTL_PERSIST_WAL = 10
 
 /**
  * The cache's `bun:sqlite` handle, for core's own readers (`vx last`, `vx

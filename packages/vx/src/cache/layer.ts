@@ -804,9 +804,9 @@ export interface CacheLayer {
    */
   ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
   /**
-   * The ONE run-history write: a whole `vx run` atomically, the per-task
-   * `runs` rows and the one `invocations` header row — in a SINGLE
-   * transaction (one fsync). Input-fingerprint rows are NOT written here — they
+   * The run-history write at a run's end, atomically: the per-task `runs`
+   * rows (less the hits a `HistoryStream` already wrote) and the one
+   * `invocations` header row — in a SINGLE transaction (one fsync). Input-fingerprint rows are NOT written here — they
    * ride the entry-save transaction (`save`/`ingest`) so a warm
    * all-cache-hit run writes nothing.
    */

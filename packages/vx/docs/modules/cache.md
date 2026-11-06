@@ -41,9 +41,15 @@ and key derivation logic live here.
 - `output-index.ts` — `OutputIndex`: `output_files` / `output_dirs` rows
   and the two proofs a hit runs before skipping a restore.
 - `run-history.ts` — `RunHistory`: `runs` + `invocations` writes (one
-  transaction per run), the SQL binders, and the 30-day retention (run
-  by a prune only, never a run's close; a dry-run prune deletes nothing,
-  item 1004).
+  transaction per run, plus one per streamed batch of hits), the SQL
+  binders, and the 30-day retention (run by a prune only, never a run's
+  close; a dry-run prune deletes nothing, item 1004).
+- `history-stream.ts` / `history-writer.ts` — `HistoryStream`: a run's
+  hits written on a thread of their own while the graph runs, 512 to a
+  transaction, through a second connection on the same files
+  (`Cache.historyFiles()`). A run with fewer hits writes none there; a
+  batch the thread does not land comes back and goes in the bundle. The
+  writer is a second `bun build --compile` entry point.
 - `run-notes.ts` — `keepRunNotes` / `keptSteps` / `keptWarnings` /
   `keptFailures`: what a run said beside its rows (`steps`, `warnings`,
   `failures`), the newest 50 runs per table (metrics.md), one `RunNotes`.
@@ -122,7 +128,7 @@ export interface CacheLayer {
   ): Promise<void>
   save(args: SaveArgs): Promise<void>
   ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void> // adopt an artifact a remote served
-  // The ONE run-history write: a whole `vx run` atomically, the per-task
+  // The run-history write at a run's end, atomically: the per-task
   // `runs` rows + one `invocations` header row in ONE transaction. The
   // input-fingerprint rows (entry_inputs) do NOT live here — they ride
   // the entry-save transaction (miss path only), so a warm run is free.
@@ -712,10 +718,14 @@ Reads via `get()` are non-blocking thanks to WAL.
 
 ## Run history & stats
 
-`recordRunBundle()` is the one run-history write: one `runs` row for
-every task — cache hits and misses, successes and failures — and one
-`invocations` header row (command, git/CI/host context, run-level
-counts) **atomically in one transaction**, with one shared-store
+`recordRunBundle()` is the run-history write at a run's end: one `runs`
+row for every task — cache hits and misses, successes and failures — and
+one `invocations` header row (command, git/CI/host context, run-level
+counts) **atomically in one transaction**, less the hits a
+`HistoryStream` already wrote while the graph ran (a warm run's 8,002
+rows were the main thread's last ~65 ms; their batches land beside the
+graph instead, and the header still comes last, so `vx last` lists a
+run only once all its rows are in), with one shared-store
 `task_durations` row per executed success, tagged `branchSource(branch)`
 (`'branch:<name>'`, `'branch:'` with none) and the commit: what a
 duration forecast reads (`history.md`). The per-row `recordRun` /
