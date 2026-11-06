@@ -114,7 +114,9 @@ The Bun server and its image do not start without an `ALLOW`.
 | `MAX_UPLOAD_BYTES` | 100 MB | the largest result it takes |
 | `EXPIRY_DAYS` | unset: every lookup asks R2 | Workers: your bucket's expiry in days, so a repeat check skips R2 ([How it stores results](#how-it-stores-results)) |
 
-vx learns the limits from the server's answers and stays within them: a check over them is refused and sent again in smaller ones.
+vx learns the limits from the server's answers. A check over them is
+refused and sent again in smaller ones.
+
 On Workers each lookup is one subrequest, so a higher
 `MAX_CHECK_HASHES` must fit your Cloudflare plan.
 
