@@ -673,6 +673,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-migrate/nx-task-env',
     'vx-migrate/nx-tracked-output-input',
     'vx-migrate/nx-uncached-outputs',
+    'vx-migrate/nx-uncached-producer',
     'vx-migrate/nx-unknown-named-input',
     'vx-migrate/nx-unlisted-projects',
     'vx-migrate/nx-upstream',

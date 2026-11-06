@@ -672,7 +672,7 @@
   {
     "key": "inputs: {dependentTasksOutputFiles, transitive}",
     "status": "supported",
-    "reason": "Nothing to map: vx folds each dependency's cache key (its inputs, transitively) through `dependsOn`, and an output follows from its inputs."
+    "reason": "vx folds each dependency's cache key (its inputs, transitively) through `dependsOn`, and a cached task's output follows from its inputs. An uncached producer's matching files are an `inputs.workspaceRuntime` probe, answered after it ran."
   },
   {
     "key": "inputs: {json, fields, excludeFields}",
