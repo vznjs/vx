@@ -138,6 +138,8 @@ import { behindLink } from './linked-inputs.js'
  */
 // About 1.3 ms of inserts per turn: a task's exit waits at most that.
 const HELD_SLICE = 250
+const byOid = (a: [string, number], b: [string, number]): number =>
+  a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0
 
 const ORPHAN_GRACE_MS = 60 * 60 * 1000
 
@@ -1681,6 +1683,11 @@ export class Cache implements CacheLayer {
     const held = this.heldBlobSizes
     this.heldBlobSizes = undefined
     if (held === undefined || held.length === 0) return
+    // In OID order, so each slice appends at the key index's right edge:
+    // in git's path order every slice dirtied pages across the whole
+    // index, and the 160 commits of a cold 9,603-task run cost its main
+    // thread ~5x more (2026-11-06).
+    held.sort(byOid)
     this.storing = held
     this.stored = 0
     this.heldTimer = setTimeout(this.storeHeldSlice, 0)

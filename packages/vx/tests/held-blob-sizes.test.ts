@@ -86,6 +86,25 @@ it('close stores what is still held, stored or not', () => {
   expect(open().knownBlobSizes(['x599'])).toEqual(new Map([['x599', 599]]))
 })
 
+it('held blob sizes are stored in OID order, the key index appended at its edge', async () => {
+  const cache = open()
+  cache.holdBlobSizes()
+  // Path order is not OID order: remembered descending.
+  cache.rememberBlobSizes(new Map(Array.from({ length: 600 }, (_, i) => [`oid${999 - i}`, i])))
+  cache.storeHeldBlobSizes()
+  for (let i = 0; i < 5; i++) await turn()
+  const db = new Database(path.join(dir, 'cache.db'), { readonly: true })
+  try {
+    const rows = db.query('SELECT oid FROM blob_sizes ORDER BY rowid').all() as Array<{
+      oid: string
+    }>
+    expect(rows.map((r) => r.oid)).toEqual(Array.from({ length: 600 }, (_, i) => `oid${400 + i}`))
+  } finally {
+    db.close()
+  }
+  cache.close()
+})
+
 it('an empty memo answers no size', () => {
   const cache = open()
   expect(cache.knownBlobSizes(['a', 'b'])).toEqual(new Map())
