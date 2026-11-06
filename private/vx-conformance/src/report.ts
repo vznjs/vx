@@ -96,7 +96,7 @@ export function scores(tools: string[], rows: Row[]): Results['scores'] {
 const percent = (s: Score | undefined) =>
   s === undefined || s.of === 0
     ? '–'
-    : `${s.can === 0 ? '–' : `${Math.floor((s.pass / s.can) * 100)}% (${s.pass}/${s.can})`}, supports ${Math.floor((s.can / s.of) * 100)}%`
+    : `${Math.round((s.pass / s.of) * 100)}% (${s.pass}/${s.of}), supports ${Math.round((s.can / s.of) * 100)}%`
 
 /** The score table, as the CLI prints it. */
 export function scoreTable(r: Pick<Results, 'tools' | 'scores'>): string {

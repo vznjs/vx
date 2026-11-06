@@ -110,9 +110,9 @@ export const about = (g: string): string => ABOUT[g] ?? ''
 const unique = (xs: string[]): string[] => [...new Set(xs)]
 export const CATEGORIES = unique(RESULTS.cases.map((c) => c.category))
 
-/** A score as the page prints it: the share of the cases a tool can express that it passes, rounded down so one failure never reads 100%, or `–` when it can express none. A missing feature is the supports figure's to show, not a failure. */
+/** A score as the page prints it: a whole percentage, rounded down so one failure never reads 100%, or `–` when no case applies. */
 export const percent = (s: Score | undefined): string =>
-  s === undefined || s.can === 0 ? '–' : `${Math.floor((s.pass / s.can) * 100)}%`
+  s === undefined || s.of === 0 ? '–' : `${Math.floor((s.pass / s.of) * 100)}%`
 
 /** The share of all cases a tool can express at all, rounded down like {@link percent}. */
 export const supports = (s: Score | undefined): string =>

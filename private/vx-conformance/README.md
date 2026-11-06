@@ -75,10 +75,10 @@ names the vx tests the case is drawn from. `needs` names a feature a
 tool may lack (affected, timeout, retries, persistent tasks, watch…); a tool
 without it scores the case not applicable.
 
-A score is cases passed, of the cases in the group the tool can express:
-a missing feature is not a failure. Beside it, "supports" is the share of
-every case in the group the tool can express at all, so a tool that
-expresses one case of eleven reads 100%, supports 9%.
+A score is cases passed, of every case in the group. A case not applicable
+to a tool counts as not passed: it is a behaviour that tool's users cannot
+get. Counting only what a tool can express made a tool that expresses one
+case of eleven read 100%.
 
 ## Adapters
 
