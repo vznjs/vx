@@ -1946,10 +1946,8 @@ applied), pretty, to `vx.lock.json` beside its `vx.config`; vx never reads
 it, it is no task's input, and `lock.reviewFiles: false`
 (`VX_LOCK_REVIEW_FILES`) turns it off. `vx lock` also writes
 `.vx/.gitattributes` (`projects.lock.json linguist-generated=true`) when it is
-missing, so GitHub collapses the machine lock in a diff, and
-`.vx/.gitignore` (`/cache`, `/tmp`) when it is missing, so the first run
-leaves no untracked file beside the committed lock; `vx init` writes
-both too, and an existing one is never edited.
+missing, so GitHub collapses the machine lock in a diff; `vx init` does
+too, and an existing one is never edited.
 
 A project with no `vx.config.*` — its tasks from a plugin's `project`
 stage (`turbo()` from `@vzn/vx-migrate`), or none at all — has nothing

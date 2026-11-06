@@ -1,7 +1,6 @@
 // `vx lock` writes the lock vx reads minified, a pretty `vx.lock.json`
 // beside each project's config for review (2026-10-14), and
-// `.vx/.gitattributes` so GitHub collapses the machine lock, and the
-// `.vx/.gitignore` a run would otherwise add after the lock is committed.
+// `.vx/.gitattributes` so GitHub collapses the machine lock.
 
 import { mkdir, rm } from 'node:fs/promises'
 import path from 'node:path'
@@ -51,9 +50,6 @@ it('writes the lock minified, a pretty review copy per config, and .vx/.gitattri
   expect(await text(path.join(r, '.vx', '.gitattributes'))).toBe(
     'projects.lock.json linguist-generated=true\n',
   )
-  // And its .gitignore: the first run wrote it after the lock was
-  // committed, an untracked file that failed `git diff --exit-code` on CI.
-  expect(await text(path.join(r, '.vx', '.gitignore'))).toBe('/cache\n/tmp\n')
   expect(vx(r, 'lock', '--check').code).toBe(0)
 })
 
