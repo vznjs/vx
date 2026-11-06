@@ -369,6 +369,7 @@ function renderList(
       tags: projects.get(meta.name)?.config.tags ?? [],
       tasks: Object.keys(tasks),
       onlyDefault: Object.values(tasks).every((t) => isDefaultBuild(t)),
+      hasDefault: Object.values(tasks).some((t) => isDefaultBuild(t)),
       configured: meta.configPath !== null,
     }
   })
@@ -383,7 +384,9 @@ function renderList(
     // A package with no config file has only tasks a plugin gave it, or the
     // default `build` a configured dependant's closure gave it.
     const tasks = r.configured
-      ? count
+      ? r.tasks.length > 0 && r.hasDefault
+        ? `${count}, default build`
+        : count
       : n === 0
         ? 'no vx config'
         : r.onlyDefault
@@ -418,7 +421,12 @@ function renderProject(
     ...(tasks.length === 0 && hasConfigFile ? [['tasks', 'none declared'] as const] : []),
   ]
   const blocks = tasks.map(([taskName, task]) =>
-    joined([ui.text(ui.id(`${name}#${taskName}`)), ui.fields(taskRows(task))]),
+    joined([
+      isDefaultBuild(task)
+        ? ui.line('  ', ui.id(`${name}#${taskName}`), ui.dim('  default'))
+        : ui.text(ui.id(`${name}#${taskName}`)),
+      ui.fields(taskRows(task)),
+    ]),
   )
   return [ui.section(name, ui.fields(head), ...blocks)]
 }

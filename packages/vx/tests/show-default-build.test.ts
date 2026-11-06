@@ -71,7 +71,7 @@ describe('vx show and the default build of a dependency', () => {
         [
           `─ Projects 3 ${'─'.repeat(49)}`,
           '  project  dir            tasks',
-          '  app      packages/app   2 tasks',
+          '  app      packages/app   2 tasks, default build',
           '  lib      packages/lib   1 task, default build (no vx config)',
           '  lone     packages/lone  no vx config',
           '',
@@ -120,6 +120,8 @@ describe('vx show and the default build of a dependency', () => {
       const run = await vx(root, ['run', 'lone#build'])
       expect([run.code, run.err]).toEqual([1, expect.stringContaining('lone has no vx config')])
       expect((await vx(root, ['show', 'lib#build'])).code).toBe(0)
+      // The project view marks it, as the list does.
+      expect((await vx(root, ['show', 'app'])).out).toContain('\n  app#build  default\n')
       expect((await vx(root, ['run', 'lib#build'])).code).toBe(0)
     },
     TIMEOUT,

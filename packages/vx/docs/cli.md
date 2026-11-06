@@ -2796,7 +2796,9 @@ task count, and `no vx config` for config-less packages; one whose
 tasks all come from plugins reads `N tasks from plugins (no vx
 config)`, and one a configured project depends on reads `1 task,
 default build (no vx config)`: a run loads it for that dependant's
-`^build` (X-48). One nothing configured reaches has no task in any
+`^build` (X-48). A configured project that declares no `build` reads
+`N tasks, default build`, and `vx show <project>` marks that task
+`<project>#build  default`. One nothing configured reaches has no task in any
 view: `vx show bare` lists none, and `vx run bare#build` refuses it. A `tags` column appears when any project has tags. With `--format json`
 it's an array of `{ name, dir, tags: string[], tasks: string[] }`.
 

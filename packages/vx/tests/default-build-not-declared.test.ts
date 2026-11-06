@@ -76,8 +76,8 @@ describe('the default build is no declared task', () => {
       [
         panelTop('Projects', { enabled: false }, '2'),
         '  project  dir         tasks',
-        '  x        packages/x  2 tasks',
-        '  y        packages/y  2 tasks',
+        '  x        packages/x  2 tasks, default build',
+        '  y        packages/y  2 tasks, default build',
         '',
       ].join('\n'),
     )
