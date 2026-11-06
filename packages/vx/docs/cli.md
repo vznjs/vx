@@ -1661,7 +1661,7 @@ vx cache clean ... --dry                    # Say what either policy would reap;
 vx cache clean ... --format json            # { dry, evicted, bytesFreed, orphans, orphanBytes }
 vx cache clean ... --cache-dir <path>       # The cache a run with the same flag uses.
 vx cache clean                              # No bound: clear the whole cache (below).
-vx cache clean --global                     # Also clear every other repository's store.
+vx cache clean --global                     # Also clear every other workspace's store.
 ```
 
 ### Examples
@@ -1685,14 +1685,14 @@ $ vx cache clean --older-than 30d --dry
 
 ### Options
 
-| Option                    | Meaning                                                  |
-| ------------------------- | -------------------------------------------------------- |
-| `--older-than <duration>` | drop entries last used before now minus the duration     |
-| `--max-size <size>`       | then evict the least recently used until under the size  |
-| `--dry`                   | say what would go; delete nothing                        |
-| `--global`                | with no bound, also clear every other repository's store |
-| `--format json`           | the result as one object                                 |
-| `--cache-dir <path>`      | the cache a run with the same flag uses                  |
+| Option                    | Meaning                                                 |
+| ------------------------- | ------------------------------------------------------- |
+| `--older-than <duration>` | drop entries last used before now minus the duration    |
+| `--max-size <size>`       | then evict the least recently used until under the size |
+| `--dry`                   | say what would go; delete nothing                       |
+| `--global`                | with no bound, also clear every other workspace's store |
+| `--format json`           | the result as one object                                |
+| `--cache-dir <path>`      | the cache a run with the same flag uses                 |
 
 Both bounds may be combined: age-based eviction runs first, then LRU eviction if the
 total is still over the size cap. No run evicts anything: to bound the
@@ -1789,9 +1789,9 @@ the whole cache: the cache directory (`.vx/cache`, or `cache.dir` /
 `--cache-dir`: the index and this workspace's run history, so `vx last`
 and `vx why` start over), the store a run opens and the one its index
 last named, if another (a changed HOME, an origin added), where the
-entries live (`~/.vx/<id>/cache`, shared by this repository's
+entries live (`~/.vx/<id>/cache`, shared by this workspace's
 checkouts, so their entries go too). `--global` also clears every other
-repository's store under `~/.vx` (`~/.vx/*/cache`); it takes no bound
+workspace's store under `~/.vx` (`~/.vx/*/cache`); it takes no bound
 and no `--cache-dir`. `.vx/workspace.ts`, the lock and `.vx/.gitignore`
 sit outside them and stay; a `cache.dir` that holds them (`.vx`, the
 workspace root) is refused. A `cache.dir` you named may be shared
@@ -2889,7 +2889,7 @@ $ vx info
   workers           2 — cgroup CPU quota 2 of 8 cores
   memory            13 GB usable — cgroup limit; the machine has 16 GB
   cache dir         /work/repo/.vx/cache (8.2 MB, this workspace's run history)
-  cache store       /home/me/.vx/3f2a9c1e7b4d5a60/cache (1.3 GB, shared by this repo's checkouts)
+  cache store       /home/me/.vx/3f2a9c1e7b4d5a60/cache (1.3 GB, shared by this workspace's checkouts)
   cache versions    keys vx-cache-v51 · index schema v51
   cache entries     42 (1.3 GB)
   orphans           3 artifacts (12 MB) the index does not know — `vx cache clean` reaps them
@@ -2958,7 +2958,7 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   those.
 - `cache dir` holds the index and this workspace's run history; its size
   is on disk. `cache store` is where the entries and their artifacts
-  live: the store shared by this repo's checkouts (`docs/caching.md`),
+  live: the store shared by this workspace's checkouts (`docs/caching.md`),
   with its size on disk, or `none: the cache dir holds the entries` when
   the workspace names its cache dir. Before a first run it is the store a
   run would open. A bare `vx cache clean` frees both sizes.

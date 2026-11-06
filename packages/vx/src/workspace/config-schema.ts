@@ -1629,7 +1629,7 @@ function assertInputGlob(glob: string, where: string): void {
   if (glob.replace(/^!/, '').split('/').includes('.git')) {
     throw new UserError(
       `${where}: "${glob}" names a path under .git, which git never lists, so it keys nothing — ` +
-        `inputs are the repository's files`,
+        `inputs are the workspace's files`,
     )
   }
 }

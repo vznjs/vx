@@ -653,7 +653,7 @@ function wallOff(
     if (wall === undefined) continue
     throw new UserError(
       `exec.sandbox.allow.write: the grant binding ${bind} would make ${wall} writable — another ` +
-        `project's directory, the repository or vx's own. A file grant binds its directory; ` +
+        `project's directory, .git or vx's own. A file grant binds its directory; ` +
         `grant a directory of the task's own instead, such as "dist/".`,
     )
   }

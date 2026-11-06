@@ -118,7 +118,7 @@ export const SETTINGS: readonly Setting[] = [
   {
     path: 'cache.dir',
     kind: { type: 'string' },
-    default: '.vx/cache, entries in ~/.vx/<repo>/cache',
+    default: '.vx/cache, entries in ~/.vx/<id>/cache',
     doc: 'Where the cache lives, relative to the workspace root; named, it holds the whole cache.',
     flag: { verb: 'run', name: '--cache-dir' },
   },

@@ -81,7 +81,7 @@ describe('a brace of one alternative', () => {
 
   it('a path under .git is refused, in files and workspaceFiles', () => {
     expect(refusal({ files: ['.git/config'] })).toStartWith(
-      'inputs.files: ".git/config" names a path under .git, which git never lists, so it keys nothing — inputs are the repository\'s files',
+      'inputs.files: ".git/config" names a path under .git, which git never lists, so it keys nothing — inputs are the workspace\'s files',
     )
     expect(refusal({ files: [], workspaceFiles: ['.git/HEAD'] })).toStartWith(
       'inputs.workspaceFiles: ".git/HEAD" names a path under .git',
