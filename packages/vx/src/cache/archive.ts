@@ -1371,17 +1371,7 @@ class Extractor {
     }
     if (top === undefined) return undefined
     const staging = await stagingDir(this.stageRoot)
-    const st = statSync(staging)
-    const parent = statSync(probe, { throwIfNoEntry: false })
-    if (
-      parent === undefined ||
-      !parent.isDirectory() ||
-      parent.dev !== st.dev ||
-      ((parent.mode | st.mode) & 0o2000) !== 0 ||
-      (INHERITS_GROUP && parent.gid !== st.gid)
-    ) {
-      return undefined
-    }
+    if (!stagesInto(statSync(staging), statSync(probe, { throwIfNoEntry: false }))) return undefined
     const at = path.join(staging, (tmpSeq++).toString(36))
     this.trees.set(top, { at, base, dirs: [] })
     return at + abs.slice(top.length)
@@ -2003,6 +1993,34 @@ async function stagingDir(root: string): Promise<string> {
   }
   stagingMade.add(own)
   return own
+}
+
+/**
+ * Where a tree restore's copy-out stages: this process's directory under
+ * `root`'s `.vx/tmp/`, its stats, and a fresh name in it per call of
+ * `temp`. With no root each temp sits beside its target.
+ */
+export async function copyStaging(
+  root: string | undefined,
+): Promise<{ stats: Stats | undefined; temp: (target: string) => string }> {
+  if (root === undefined) return { stats: undefined, temp: siblingTemp }
+  const dir = await stagingDir(root)
+  return { stats: statSync(dir), temp: () => path.join(dir, (tmpSeq++).toString(36)) }
+}
+
+/**
+ * Whether what is made in the directory `staging` names keeps, renamed
+ * into `dir`, what a write in place would give it: the same filesystem
+ * (a rename across fails), and the same group.
+ */
+export function stagesInto(staging: Stats, dir: Stats | undefined): boolean {
+  return (
+    dir !== undefined &&
+    dir.isDirectory() &&
+    dir.dev === staging.dev &&
+    ((dir.mode | staging.mode) & 0o2000) === 0 &&
+    (!INHERITS_GROUP || dir.gid === staging.gid)
+  )
 }
 
 /**

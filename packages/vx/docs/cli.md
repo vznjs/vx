@@ -360,7 +360,8 @@ the projects it touches:
 - every task of a project when:
   - its `vx.config.*` changed;
   - it holds a changed path no task of its declares, since vx cannot
-    prove that path changes no key;
+    prove that path changes no key (an untracked file under a task's
+    `outputs` is none of its inputs: the key folds only a tracked one);
   - it holds a changed submodule or embedded repository;
   - a lockfile plugin or a config import names it (an install that
     added or removed a dependency shows as the lockfile's change);
@@ -3936,7 +3937,9 @@ already sees a `FORCE_COLOR` (any value, `0` included) or a non-empty
 `NO_COLOR`. The cache stores the coloured bytes, and wherever vx's own
 output is plain (a pipe, CI without `FORCE_COLOR`, `NO_COLOR`) it
 strips the escapes from task output, live and replayed alike, an
-escape cut across two chunks included (`tests/plain-output.test.ts`,
+escape cut across two chunks included; an unterminated string escape
+(a stray `\e]0;title` with no terminator) ends at its line, so it never
+swallows the lines after it (`tests/plain-output.test.ts`,
 `tests/cli-colors-e2e.test.ts`). A custom `log` passed to `run()` gets
 task output as written. A task that writes its own output to a file
 and wants it plain sets `env: { define: { FORCE_COLOR: '0' } }`.

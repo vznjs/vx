@@ -17,7 +17,7 @@
 // each importer's `package.json` to its tasks' inputs.
 //
 // Imports core only through the public `@vzn/vx` specifier.
-import { readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import {
@@ -133,6 +133,8 @@ interface Manager {
   readonly unrecorded?: (text: string) => (name: string, pkg: Record<string, unknown>) => boolean
   /** The manager reads package.json as JSONC (trailing commas, comments): bun does. */
   readonly jsoncManifests?: true
+  /** The file names a manifest may have (default `package.json` alone). */
+  readonly manifests?: readonly [string, ...string[]]
   /**
    * Importers a format leaves out of the lockfile (yarn classic), from the
    * workspace's manifests through `manifest`; undefined where the file
@@ -172,15 +174,18 @@ const MANAGERS = {
     recorded: (t) => pnpmLock().recordedImporters(t),
     // pnpm's walk skips bower_components as it does node_modules (pnpm 10).
     skippedDirs: ['node_modules', 'bower_components'],
-    // The root package.json for its `pnpm` field: pnpm reads install
+    // The root manifest for its `pnpm` field: pnpm reads install
     // settings there that the lockfile does not record.
-    settings: ['pnpm-workspace.yaml', '.npmrc', 'package.json'],
+    settings: ['pnpm-workspace.yaml', '.npmrc', 'package.json', 'package.json5', 'package.yaml'],
     settingsText: (file, text) =>
       file === 'pnpm-workspace.yaml'
         ? pnpmSettings().workspaceSettings(text)
-        : file === 'package.json'
-          ? pnpmSettings().packageSettings(text)
+        : file.startsWith('package.')
+          ? pnpmSettings().packageSettings(text, file)
           : undefined,
+    // pnpm reads a package.json5 or package.yaml where there is no
+    // package.json, and records its dependencies like any other's.
+    manifests: ['package.json', 'package.json5', 'package.yaml'],
     peersInManifest: true,
     // Read from their blocks alone: a whole parse here was on every warm run.
     linksUnrecorded: (t) => pnpmLock().excludesLinks(t),
@@ -295,6 +300,7 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
     )
   }
   const extraFiles = manager.extraFiles
+  const manifests = manager.manifests ?? ['package.json']
   const guardedFor = (file: string) => {
     // The parsers name their own file, so prefixing unconditionally said it
     // twice — "bun.lock: bun.lock: Failed to parse JSONC" (2026-09-20).
@@ -458,10 +464,10 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
         : { ...deps, ...folded }
     },
     async discover(ctx) {
-      const manifest = manifestReader(ctx.workspaceRoot, manager.jsoncManifests === true)
+      const manifest = manifestReader(ctx.workspaceRoot, manifests, manager.jsoncManifests === true)
       // The staleness check's walk overlaps the lockfile read.
       const dirs = workspaceGlobs(ctx.workspaceRoot, manager.name, manifest).then((globs) =>
-        workspaceDirs(ctx.workspaceRoot, globs, manager.skippedDirs),
+        workspaceDirs(ctx.workspaceRoot, globs, manager.skippedDirs, manifests),
       )
       dirs.catch(() => {})
       const read = await readImporters(ctx, manifest)
@@ -535,19 +541,24 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       if (importers === undefined) {
         importers = importersOf(
           ctx,
-          manifestReader(ctx.workspaceRoot, manager.jsoncManifests === true),
+          manifestReader(ctx.workspaceRoot, manifests, manager.jsoncManifests === true),
         )
         perRun.set(ctx.projects, importers)
       }
       if ((await importers)?.has(importerOf(ctx.workspaceRoot, ctx.dir)) !== true) return
+      // A stat per project, and only where a manifest may have another name.
+      const file =
+        manifests.length === 1
+          ? manifests[0]
+          : (manifests.find((f) => existsSync(path.join(ctx.dir, f))) ?? manifests[0])
       const tasks = config.tasks ?? {}
       for (const [name, task] of Object.entries(tasks)) {
         const inputs = task.inputs
-        if (inputs === undefined || inputs.files.includes('package.json')) continue
+        if (inputs === undefined || inputs.files.includes(file)) continue
         // A copy: a loaded config may be shared or frozen.
         tasks[name] = {
           ...task,
-          inputs: { ...inputs, files: [...inputs.files, 'package.json'] },
+          inputs: { ...inputs, files: [...inputs.files, file] },
         }
       }
     },
@@ -603,40 +614,62 @@ function importerOf(workspaceRoot: string, dir: string): string {
 }
 
 /**
- * An importer's `package.json`, or null where it has none. One that does
- * not parse refuses, named: read as none, a conflicted manifest lost its
- * dependencies and its dependents hit with old bytes (Turbo and Nx refuse).
+ * An importer's manifest (the one of `names` present), or null where it
+ * has none. One that does not parse refuses, named: read as none, a
+ * conflicted manifest lost its dependencies and its dependents hit with
+ * old bytes (Turbo and Nx refuse). So do two in one directory: pnpm 10.28
+ * lists such a package by its package.json and installs the package.yaml's
+ * dependencies.
  */
 async function manifestOf(
   root: string,
   dir: string,
+  names: readonly string[],
   jsonc: boolean,
 ): Promise<Record<string, unknown> | null> {
-  const file = path.join(dir, 'package.json')
-  const name = path.relative(root, file).split(path.sep).join('/')
-  let text: string
-  try {
-    text = await Bun.file(file).text()
-  } catch (err) {
-    // As readSettings: one there but unreadable read as none, and its
-    // workspace globs and names dropped out of the staleness check. A
-    // lockfile importer whose directory is now a file has none either.
-    const code = (err as NodeJS.ErrnoException).code
-    if (code === 'ENOENT' || code === 'ENOTDIR') return null
+  const found: { name: string; text: string }[] = []
+  for (const base of names) {
+    const file = path.join(dir, base)
+    const name = path.relative(root, file).split(path.sep).join('/')
+    try {
+      found.push({ name, text: await Bun.file(file).text() })
+    } catch (err) {
+      // As readSettings: one there but unreadable read as none, and its
+      // workspace globs and names dropped out of the staleness check. A
+      // lockfile importer whose directory is now a file has none either.
+      const code = (err as NodeJS.ErrnoException).code
+      if (code === 'ENOENT' || code === 'ENOTDIR') continue
+      throw new UserError(
+        `${name}: cannot be read (${err instanceof Error ? err.message : String(err)})`,
+      )
+    }
+  }
+  if (found.length === 0) return null
+  if (found.length > 1) {
+    const rel = path.relative(root, dir).split(path.sep).join('/') || '.'
+    const bases = found.map((f) => path.posix.basename(f.name))
     throw new UserError(
-      `${name}: cannot be read (${err instanceof Error ? err.message : String(err)})`,
+      `${rel}: holds ${bases.slice(0, -1).join(', ')} and ${bases.at(-1)}, two manifests — keep one`,
     )
   }
+  const { name, text } = found[0]!
   if (CONFLICT.test(text))
     throw new UserError(`${name}: holds git merge conflict markers — resolve them`)
+  const [kind, parse]: [string, (t: string) => unknown] = name.endsWith('.yaml')
+    ? ['YAML', (t) => Bun.YAML.parse(t)]
+    : name.endsWith('.json5')
+      ? ['JSON5', (t) => Bun.JSON5.parse(t)]
+      : ['JSON', (t) => (jsonc ? Bun.JSONC.parse(t) : JSON.parse(t))]
   let pkg: unknown
   try {
-    pkg = jsonc ? Bun.JSONC.parse(text) : JSON.parse(text)
+    pkg = parse(text)
   } catch (err) {
-    throw new UserError(`${name}: not JSON (${err instanceof Error ? err.message : String(err)})`)
+    throw new UserError(
+      `${name}: not ${kind} (${err instanceof Error ? err.message : String(err)})`,
+    )
   }
   if (pkg === null || typeof pkg !== 'object' || Array.isArray(pkg)) {
-    throw new UserError(`${name}: not a JSON object`)
+    throw new UserError(`${name}: not a ${kind === 'YAML' ? 'YAML mapping' : `${kind} object`}`)
   }
   return pkg as Record<string, unknown>
 }
@@ -644,13 +677,14 @@ async function manifestOf(
 /** `manifestOf`, each directory read once. */
 function manifestReader(
   root: string,
+  names: readonly string[],
   jsonc: boolean,
 ): (dir: string) => Promise<Record<string, unknown> | null> {
   const read = new Map<string, Promise<Record<string, unknown> | null>>()
   return (dir) => {
     let pkg = read.get(dir)
     if (pkg === undefined) {
-      pkg = manifestOf(root, dir, jsonc)
+      pkg = manifestOf(root, dir, names, jsonc)
       read.set(dir, pkg)
     }
     return pkg
@@ -725,14 +759,17 @@ async function workspaceGlobs(
 }
 
 /**
- * The directories the globs name that hold a `package.json`, root-relative
- * POSIX, sorted; none a `!` glob excludes, none under a `skipped` dir.
+ * The directories the globs name that hold a manifest (one of `names`),
+ * root-relative POSIX, sorted; none a `!` glob excludes, none under a
+ * `skipped` dir.
  */
 async function workspaceDirs(
   root: string,
   globs: readonly unknown[],
   skipped: readonly string[] = ['node_modules'],
+  names: readonly string[] = ['package.json'],
 ): Promise<string[]> {
+  const manifest = names.length === 1 ? names[0] : `{${names.join(',')}}`
   const strip = (p: string): string => p.replace(/^\.\//, '').replace(/\/+$/, '')
   const excluded = globs
     .filter((p): p is string => typeof p === 'string' && p.startsWith('!'))
@@ -743,7 +780,7 @@ async function workspaceDirs(
   const dirs = new Set<string>()
   for (const pattern of globs) {
     if (typeof pattern !== 'string' || pattern.startsWith('!')) continue
-    const glob = new Bun.Glob(`${strip(pattern)}/package.json`)
+    const glob = new Bun.Glob(`${strip(pattern)}/${manifest}`)
     for await (const file of glob.scan({ cwd: root, onlyFiles: true })) {
       const dir = path.dirname(file).split(path.sep).join('/')
       if (dir === '.' || dir.split('/').some((seg) => skipped.includes(seg))) continue

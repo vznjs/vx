@@ -2055,8 +2055,8 @@ function dirLinkInput(abs: string, oids: ReadonlyMap<string, string> | undefined
  * Whether a changed path is one of a task's declared file inputs:
  * `projectRel` (the path relative to the project that owns it) against
  * `files`, `workspaceRel` (relative to the workspace root) against
- * `workspaceFiles`; null skips that half, by the globs and `!` exclusions (a path under
- * the task's own outputs counts: a committed one is keyed). `--affected` seeds a task with it (2026-10-04).
+ * `workspaceFiles`; null skips that half, by the globs and `!` exclusions (a tracked path
+ * under the task's own outputs counts: a committed one is keyed). `--affected` seeds a task with it (2026-10-04).
  */
 export function declaresInput(
   task: TaskConfig,
@@ -2067,15 +2067,18 @@ export function declaresInput(
    * below it keys what is behind it, as `mayHoldMatch` says at key time.
    */
   dirLink = false,
+  /** Git does not track the path, so under the task's own outputs it is no input. */
+  untracked = false,
 ): boolean {
   const inputs = task.inputs
   if (inputs === undefined) return false
   if (projectRel !== null) {
-    // A changed path under the task's own outputs is a committed file
-    // (`git diff` lists only what git tracks) or a stray `git status`
-    // lists: either way it may be an input, so it counts.
+    // Under the task's own outputs the key folds only what git tracks
+    // (`committedFiles`); an untracked build output is not one.
     const plan = filesPlan(inputs.files, task.outputs?.files ?? [])
-    if (plan !== null && (inPlan(plan, projectRel) || ownOnly(plan, projectRel))) return true
+    if (plan !== null && (inPlan(plan, projectRel) || (!untracked && ownOnly(plan, projectRel)))) {
+      return true
+    }
     if (plan !== null && dirLink && plan.mayHold(projectRel) && !plan.isExcluded(projectRel)) {
       return true
     }

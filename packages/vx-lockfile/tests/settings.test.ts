@@ -23,7 +23,7 @@ const CASES = [
   {
     make: pnpm,
     files: ['pnpm-lock.yaml'],
-    settings: ['pnpm-workspace.yaml', '.npmrc', 'package.json'],
+    settings: ['pnpm-workspace.yaml', '.npmrc', 'package.json', 'package.json5', 'package.yaml'],
   },
   { make: bun, files: ['bun.lock'], settings: ['bunfig.toml', '.npmrc'] },
   { make: npm, files: ['npm-shrinkwrap.json', 'package-lock.json'], settings: ['.npmrc'] },

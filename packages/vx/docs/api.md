@@ -39,6 +39,7 @@ export interface AffectedChanges {
   nested?: readonly string[]
   dirLinks?: ReadonlySet<string>
   dirLinksIn?: ReadonlyMap<string, ReadonlySet<string>>
+  untrackedIn?: ReadonlyMap<string, ReadonlySet<string>>
 }
 ```
 

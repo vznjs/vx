@@ -49,7 +49,18 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs'
-import { chmod, lstat, mkdir, readdir, rm, stat, unlink, utimes, writeFile } from 'node:fs/promises'
+import {
+  chmod,
+  lstat,
+  mkdir,
+  readdir,
+  rename,
+  rm,
+  stat,
+  unlink,
+  utimes,
+  writeFile,
+} from 'node:fs/promises'
 import path from 'node:path'
 import {
   createArtifactTables,
@@ -77,6 +88,7 @@ import {
   ArchiveSecurityError,
   type ArtifactPlan,
   type ExecUsage,
+  copyStaging,
   extractArtifactStream,
   scanArtifact,
   scanTarBytes,
@@ -85,6 +97,7 @@ import {
   planArtifact,
   planOfTree,
   sealTree,
+  stagesInto,
   writeTree,
 } from './archive.js'
 import { readUmask, restoredMode } from './umask.js'
@@ -2152,7 +2165,7 @@ export class Cache implements CacheLayer {
         `its outputs hold ${formatBytes(bytes)}, past the ${formatBytes(this.artifactCeiling)} artifact ceiling`,
       )
     }
-    if (await this.copyTree(hash, tree, rows, files, projectDir, accept)) return
+    if (await this.copyTree(hash, tree, rows, files, projectDir, workspaceRoot, accept)) return
     await extractArtifactStream(
       packArtifactStream(this.treePlan(hash, tree, rows)),
       projectDir,
@@ -2194,7 +2207,12 @@ export class Cache implements CacheLayer {
    * and every directory on the way either is a real directory or is absent
    * and made here. solid's build outputs `store/dist/**` beside the sources
    * in `store/`; asking that each output's TOP be absent sent every such
-   * restore through the tar extractor, ~25 ms a task (2026-10-22).
+   * restore through the tar extractor, ~25 ms a task (2026-10-22). The
+   * files of each absent top directory are copied into the workspace's
+   * `.vx/tmp/` (`copyStaging`) and the directory renamed in once, so a
+   * reader finds it complete or not at all; one staging cannot rename into
+   * as a write in place would land (another filesystem, a setgid
+   * directory) is the extractor's.
    */
   private async copyTree(
     hash: string,
@@ -2202,6 +2220,7 @@ export class Cache implements CacheLayer {
     rows: readonly OutputFileRow[],
     files: readonly OutputFileRow[],
     projectDir: string,
+    workspaceRoot: string | undefined,
     accept: ((name: string) => boolean) | undefined,
   ): Promise<boolean> {
     for (const r of rows) {
@@ -2269,6 +2288,35 @@ export class Cache implements CacheLayer {
       chmodSync(dir, (st.mode & 0o7777) | 0o300)
       return true
     }
+    // A missing top directory is built whole in staging and renamed in
+    // once, as the extractor does: copied in place, a reader met its files
+    // empty, then short. A file missing from a directory that stands is
+    // copied straight to its place: a temp renamed in cost such a restore
+    // a fifth to a third more (tmpfs, 3,000 files, 2026-11-06).
+    if (roots.length === 0 && placed.length === 0) return true
+    // A restore into a project directory not there yet makes it, as the
+    // copy in place did.
+    if (!existsSync(projectDir)) await mkdir(projectDir, { recursive: true })
+    const staging = roots.length > 0 ? await copyStaging(workspaceRoot) : undefined
+    if (staging?.stats !== undefined) {
+      const fits = new Map<string, boolean>()
+      for (const rel of roots) {
+        const dir = path.dirname(path.join(projectDir, rel))
+        let fit = fits.get(dir)
+        if (fit === undefined) {
+          fit = stagesInto(staging.stats, statSync(dir, { throwIfNoEntry: false }))
+          fits.set(dir, fit)
+        }
+        if (!fit) return false
+      }
+    }
+    const temps = new Map(roots.map((rel) => [rel, staging!.temp(path.join(projectDir, rel))]))
+    const target = (rel: string): string => {
+      for (const d of roots) {
+        if (rel === d || rel.startsWith(`${d}/`)) return temps.get(d)! + rel.slice(d.length)
+      }
+      return path.join(projectDir, rel)
+    }
     const copy = async (to: string, from: string): Promise<number> => {
       try {
         return await Bun.write(to, Bun.file(from), { createPath: false })
@@ -2277,15 +2325,19 @@ export class Cache implements CacheLayer {
         return await Bun.write(to, Bun.file(from), { createPath: false })
       }
     }
+    const landed: string[] = []
+    let landing = false
     try {
       const dirs = new Set<string>()
       for (const r of rows) {
-        dirs.add(path.join(projectDir, r.path.endsWith('/') ? r.path : path.dirname(r.path)))
+        dirs.add(target(r.path.endsWith('/') ? r.path.slice(0, -1) : path.posix.dirname(r.path)))
       }
       for (const d of dirs) await mkdir(d, { recursive: true })
-      await Promise.all(
+      // Every copy settles before a failure is handled: one still in flight
+      // would write its file again after the cleanup removed it.
+      const copied = await Promise.allSettled(
         files.map(async (r) => {
-          const to = path.join(projectDir, r.path)
+          const to = target(r.path)
           const n = await copy(to, path.join(tree, treeName(r.path)))
           if (n !== r.size)
             throw new CorruptArtifactError(hash, `${r.path} holds ${n} bytes, recorded ${r.size}`)
@@ -2295,11 +2347,24 @@ export class Cache implements CacheLayer {
           await utimes(to, at, at)
         }),
       )
+      const failed = copied.find((c) => c.status === 'rejected')
+      if (failed !== undefined) throw failed.reason
       if (swapped()) throw new ArtifactVanishedError(hash)
+      landing = true
+      for (const rel of roots) {
+        await rename(temps.get(rel)!, path.join(projectDir, rel))
+        landed.push(rel)
+      }
     } catch (err) {
+      await Promise.all([...temps.values()].map((t) => rm(t, { recursive: true, force: true })))
+      // Something made at a missing directory's place since the walk: what
+      // landed holds the entry's bytes, and the extractor restores the rest.
+      const code = landing ? (err as NodeJS.ErrnoException).code : undefined
+      if (code === 'EEXIST' || code === 'ENOTEMPTY' || code === 'EISDIR' || code === 'ENOTDIR')
+        return false
       await Promise.all([
-        ...roots.map((d) => rm(path.join(projectDir, d), { recursive: true, force: true })),
-        ...placed.map((f) => rm(path.join(projectDir, f), { force: true })),
+        ...landed.map((rel) => rm(path.join(projectDir, rel), { recursive: true, force: true })),
+        ...placed.map((rel) => rm(path.join(projectDir, rel), { force: true })),
       ])
       if (!(err instanceof ArtifactVanishedError) && swapped())
         throw new ArtifactVanishedError(hash)

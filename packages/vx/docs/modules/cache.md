@@ -557,8 +557,11 @@ tar.zst, and otherwise it is `<hash>.tree/`: the same entries unpacked (`writeTr
 at save, the validated tar extracted at ingest, `sealTree`), stdout in
 its `entry_stdout` row. A tree restore checks nothing (the tree holds no
 `.vx-sum`; the archive's sum is checked when it is unpacked) and copies each file with `Bun.write` (copy_file_range, a clone where
-the filesystem has one; never a hard link). Into existing outputs, a
-workspace output or a link it feeds `extractArtifactStream` the
+the filesystem has one; never a hard link): a missing top directory is
+built in `.vx/tmp/` (`copyStaging`) and renamed into place once, a
+missing file in a directory that stands is copied straight to its place.
+Every copy settles before a failure's cleanup. Into existing outputs, a workspace output, a link, or
+where that rename would cross a filesystem or a setgid directory it feeds `extractArtifactStream` the
 tree packed back (`packArtifactStream(planOfTree(…))`). `pinArtifact`
 packs a tree into the upload's tar.zst.
 

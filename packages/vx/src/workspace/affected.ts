@@ -220,6 +220,11 @@ export interface AffectedChanges {
   dirLinks?: ReadonlySet<string>
   /** Project → its `dirLinks`, relative to the project's directory. */
   dirLinksIn?: ReadonlyMap<string, ReadonlySet<string>>
+  /**
+   * Project → its changed paths git does not track, relative to the
+   * project's directory: one under a task's own outputs is no input of it.
+   */
+  untrackedIn?: ReadonlyMap<string, ReadonlySet<string>>
 }
 
 /** `<base>...HEAD` / `<base>..HEAD`: the base alone, read as `affectedChanges` reads it. */
@@ -521,6 +526,8 @@ export async function affectedChanges(
   )
   const paths = new Map<string, string[]>()
   const dirLinksIn = new Map<string, Set<string>>()
+  const untrackedSet = new Set(untracked)
+  const untrackedIn = new Map<string, Set<string>>()
   const whole = new Set<string>(claimedOwned.keys())
   const owned = projectsContaining(
     args.workspaceRoot,
@@ -534,6 +541,11 @@ export async function affectedChanges(
             const list = paths.get(name)
             if (list) list.push(rel)
             else paths.set(name, [rel])
+            if (untrackedSet.has(wsRel)) {
+              const loose = untrackedIn.get(name)
+              if (loose) loose.add(rel)
+              else untrackedIn.set(name, new Set([rel]))
+            }
             if (!dirLinks.has(wsRel)) return
             const links = dirLinksIn.get(name)
             if (links) links.add(rel)
@@ -627,6 +639,7 @@ export async function affectedChanges(
     ...(claimedOwned.size > 0 ? { wholeBy: claimedOwned } : {}),
     ...(nestedDirs.length > 0 ? { nested: nestedDirs } : {}),
     ...(dirLinks.size > 0 ? { dirLinks, dirLinksIn } : {}),
+    ...(untrackedIn.size > 0 ? { untrackedIn } : {}),
   })
   if (changed.length === 0 || args.workspaceGlobOwners === undefined) return done()
   for (const name of await args.workspaceGlobOwners(changed, nestedDirs, dirLinks)) owned.add(name)

@@ -573,6 +573,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-lockfile/pnpm-exclude-links',
     'vx-lockfile/pnpm-ignored-optional',
     'vx-lockfile/pnpm-injected-workspace',
+    'vx-lockfile/pnpm-manifest-files',
     'vx-lockfile/pnpm-workspace-precise',
     'vx-lockfile/refusal-message',
     'vx-lockfile/rehoist-identity',

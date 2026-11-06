@@ -51,9 +51,10 @@ function wholeProjects(
       (t) => t.exec !== undefined && t.inputs !== undefined,
     )
     const links = changes.dirLinksIn?.get(name)
+    const loose = changes.untrackedIn?.get(name)
     const unclaimed = (rel: string): boolean =>
       KEYED_BY_EVERY_TASK.has(rel) ||
-      (!byKeys && !keyed.some((t) => declaresInput(t, rel, null, links?.has(rel))))
+      (!byKeys && !keyed.some((t) => declaresInput(t, rel, null, links?.has(rel), loose?.has(rel))))
     const rel = rels.find(unclaimed)
     if (rel !== undefined) whole.set(name, rel)
   }
@@ -181,7 +182,8 @@ export function affectedRoots(
       return true
     }
     const links = changes.dirLinksIn?.get(n.projectName)
-    const rel = rels.find((r) => declaresInput(task, r, null, links?.has(r)))
+    const loose = changes.untrackedIn?.get(n.projectName)
+    const rel = rels.find((r) => declaresInput(task, r, null, links?.has(r), loose?.has(r)))
     if (rel === undefined) return false
     if (seeds !== null) seeds.set(n.id, { ...inProject(n.projectName, rel), kind: 'input' })
     return true
