@@ -119,6 +119,7 @@ here, itself or in a brace group.
 | [`status-line.md`](./status-line.md)     | `src/report/status-line.ts` — serialized writer + dynamic bottom status line.                                       |
 | [`framed-output.md`](./framed-output.md) | `src/report/framed-output.ts` — `┌─ task ─┐` border helpers + one-liners.                                           |
 | [`ui.md`](./ui.md)                       | `src/report/plain-output.ts` — task output stripped of ANSI where no terminal reads it (see ui.md) .                |
+|                                          | `src/util/plain-text.ts` — `stripEscapes`: escapes stripped, an unterminated string escape ending at its line.      |
 | [`summary.md`](./summary.md)             | `src/report/summary.ts` — the footer: `projects` / `tasks` / `cache` meters, `info` and `time` rows.                |
 | [`tally.md`](./tally.md)                 | `src/report/tally.ts` — outcome tally for the end-of-run footer.                                                    |
 | [`events.md`](./events.md)               | `src/report/events.ts` — run event bus + serializable `WireEvent` contract.                                         |

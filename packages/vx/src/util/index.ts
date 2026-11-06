@@ -134,3 +134,4 @@ export {
   parseDependencySpec,
   type DependencySpec,
 } from './dependency-spec.js'
+export { stripEscapes } from './plain-text.js'
