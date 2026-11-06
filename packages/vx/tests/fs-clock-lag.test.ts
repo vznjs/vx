@@ -96,7 +96,7 @@ describe('a file system clock behind the process', () => {
       await pending
       // Before the fix: no line, and the entry held `EDITED` under X's key.
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#build: `packages/app/src/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in outputs',
+        "[vx] app#build: `packages/app/src/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task generates it, declare it in outputs; if it rewrites it in place, set inputs.stability: { strategy: 'mutable' }",
       ])
 
       gitIn(root)('checkout', '--', 'packages/app/src/a.ts')

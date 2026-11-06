@@ -857,10 +857,14 @@ key still lets a local consumer fetch its outputs, but the fetch saves
 no entry; until X-123 it saved them under the old key. A task
 that rewrites its own input to the SAME bytes (`sed -i` always writes)
 is not saved either: its write cannot be told from an edit reverted
-mid-run, so it pays a re-run each time rather than risk a stale entry;
-declare what it writes as an output, which the status line says when it
-names a file other than `package.json` (TanStack Router's committed
-`routeTree.gen.ts`, rewritten by every build). That holds on CI too: a
+mid-run, so it pays a re-run each time rather than risk a stale entry.
+The status line names the ways out: a file the task generates
+(TanStack Router's committed `routeTree.gen.ts`, rewritten by every
+build) is declared as an output; for a file the key read, also
+`inputs.stability: { strategy: 'mutable' }` below, the one a task that
+rewrites its sources in place takes (a formatter cannot declare them as
+outputs: vx deletes outputs before a run, and `vx lock` refuses an
+output entry that takes back an input entry whole). That holds on CI too: a
 task of the same project running alongside can change an input and put
 it back. A task that rewrites its own input to identical bytes (tsdown's
 `package.json`) sets `inputs.stability: { strategy: 'mutable' }`, and a write

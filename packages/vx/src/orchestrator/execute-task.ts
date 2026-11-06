@@ -1,6 +1,8 @@
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import type { ExecConfig, TaskConfig, InputsConfig, InputStability } from '../config.js'
 import {
+  ABSENT_INPUT,
   ArtifactVanishedError,
   type CacheEntry,
   type CacheLayer,
@@ -1570,10 +1572,20 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // A task that regenerates its own input (TanStack Router's committed
     // `routeTree.gen.ts`, rewritten to the same bytes by every build) is
     // never saved (item 1015), and the line said so without the way out.
+    // A file the key read may instead be one the task rewrites in place (a
+    // formatter's temp + rename), whose sources cannot be its outputs: vx
+    // deletes outputs before the command. Its way out is judging the write
+    // by its bytes. Neither is said of a file the task deleted.
+    const read =
+      moved !== null &&
+      keyedInputs(described!.facts).some((f) => f.path === moved && f.digest !== ABSENT_INPUT)
     const hint =
-      moved === null || rewroteBy !== undefined
+      moved === null || rewroteBy !== undefined || (read && !existsSync(moved))
         ? ''
-        : '; if the task writes it, declare it in outputs'
+        : '; if the task generates it, declare it in outputs' +
+          (read && stability.strategy !== 'mutable'
+            ? "; if it rewrites it in place, set inputs.stability: { strategy: 'mutable' }"
+            : '')
     if (stability.severity === 'error') {
       warnOf(log)(
         `[vx] ${node.id}: ${what} — the result is not saved, ` +

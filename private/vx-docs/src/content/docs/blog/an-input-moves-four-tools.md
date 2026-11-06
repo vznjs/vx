@@ -51,7 +51,7 @@ Writes by other processes are not traced
 ```sh frame="terminal"
 $ vx run packages/api#build
 ┌─ packages/api#build > $ echo "export const r = $RANDOM" > src/routes.gen.ts && mkdir -p out && cp src/index.ts out/
-[vx] packages/api#build: `packages/api/src/routes.gen.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in outputs
+[vx] packages/api#build: `packages/api/src/routes.gen.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task generates it, declare it in outputs; if it rewrites it in place, set inputs.stability: { strategy: 'mutable' }
 └─ packages/api#build ── (6ms) success
   cache     1 not saved
 ```
