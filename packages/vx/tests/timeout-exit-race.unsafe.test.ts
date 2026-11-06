@@ -15,16 +15,23 @@ const TIMEOUT_MS = 30
 // every later one is not. Each row repeats its case so all but one hit it.
 const TRIES = 4
 
-/** Hold the thread until `pid` has exited and the deadline has passed. */
-function stallPastDeadline(pid: number, spawnedAt: number): void {
+/**
+ * Hold the thread until `pid` has exited and the deadline has passed. The
+ * thread is held from before the deadline, so the timer cannot run before
+ * the exit, however long the child took: when the exit came on the clock
+ * does not matter, only that vx sees both in one turn. The deadline runs
+ * from `armedAt`, read in `onSpawn`, which runs in the turn the timer is
+ * armed: a clock read before the spawn counted the spawn thread's latency
+ * (37 ms of a 30 ms deadline on a loaded host).
+ */
+function stallPastDeadline(pid: number, armedAt: number): void {
   const bound = Date.now() + 5_000
   while (isAlive(pid)) if (Date.now() > bound) throw new Error(`${pid} never exited`)
-  expect(Date.now() - spawnedAt).toBeLessThan(TIMEOUT_MS)
-  while (Date.now() < spawnedAt + TIMEOUT_MS + 50) {}
+  while (Date.now() < armedAt + TIMEOUT_MS + 50) {}
 }
 
 describe.skipIf(process.platform !== 'linux')('a deadline seen after the child exited', () => {
-  it('a one-shot task that exited 0 in time is not timed out', async () => {
+  it('a one-shot task that exited 0 before vx saw its deadline is not timed out', async () => {
     expect(procfsIsOwn()).toBe(true)
     const seen: unknown[] = []
     for (let i = 0; i < TRIES; i++) {
@@ -32,16 +39,19 @@ describe.skipIf(process.platform !== 'linux')('a deadline seen after the child e
       // The child spawns on the spawn thread: its pid comes a turn later.
       let spawned!: (pid: number) => void
       const started = new Promise<number>((r) => (spawned = r))
-      const spawnedAt = Date.now()
+      let armedAt = 0
       const running = runCommand({
         command: 'true',
         cwd: os.tmpdir(),
         env: process.env,
         timeoutMs: TIMEOUT_MS,
-        onSpawn: (p) => spawned((pid = p)),
+        onSpawn: (p) => {
+          armedAt = Date.now()
+          spawned((pid = p))
+        },
       })
       await started
-      stallPastDeadline(pid, spawnedAt)
+      stallPastDeadline(pid, armedAt)
       const res = await running
       seen.push({ exitCode: res.exitCode, timedOut: res.timedOut })
     }
@@ -55,17 +65,20 @@ describe.skipIf(process.platform !== 'linux')('a deadline seen after the child e
       // The child spawns on the spawn thread: its pid comes a turn later.
       let spawned!: (pid: number) => void
       const started = new Promise<number>((r) => (spawned = r))
-      const spawnedAt = Date.now()
+      let armedAt = 0
       const running = runCommand({
         command: 'sleep 30',
         cwd: os.tmpdir(),
         env: process.env,
         timeoutMs: TIMEOUT_MS,
-        onSpawn: (p) => spawned((pid = p)),
+        onSpawn: (p) => {
+          armedAt = Date.now()
+          spawned((pid = p))
+        },
       })
       await started
       expect(isAlive(pid)).toBe(true)
-      while (Date.now() < spawnedAt + TIMEOUT_MS + 50) {}
+      while (Date.now() < armedAt + TIMEOUT_MS + 50) {}
       seen.push((await running).timedOut)
     }
     expect(seen).toEqual(Array(TRIES).fill(true))
@@ -78,17 +91,20 @@ describe.skipIf(process.platform !== 'linux')('a deadline seen after the child e
       // The child spawns on the spawn thread: its pid comes a turn later.
       let spawned!: (pid: number) => void
       const started = new Promise<number>((r) => (spawned = r))
-      const spawnedAt = Date.now()
+      let armedAt = 0
       const spawn = runPersistent({
         command: 'exit 3',
         cwd: os.tmpdir(),
         env: process.env,
         readyWhen: 'never-printed',
         timeoutMs: TIMEOUT_MS,
-        onSpawn: (p) => spawned((pid = p)),
+        onSpawn: (p) => {
+          armedAt = Date.now()
+          spawned((pid = p))
+        },
       })
       await started
-      stallPastDeadline(pid, spawnedAt)
+      stallPastDeadline(pid, armedAt)
       const err = await spawn.ready.then(
         () => undefined,
         (e: unknown) => e,
