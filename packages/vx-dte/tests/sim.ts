@@ -11,6 +11,7 @@ import { needOf } from '../src/plugin.js'
 import { booked, DEFAULT_STRATEGY, type Strategy } from '../src/strategy.js'
 import {
   decide,
+  keepLast,
   simulate as play,
   slowdown,
   tailsMs,
@@ -179,8 +180,20 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
   const dependants = new Map<string, string[]>()
   for (const t of graph)
     for (const d of t.deps) dependants.set(d, [...(dependants.get(d) ?? []), t.id])
+  // Tasks that run a command and have not ended, by platform: as the plugin counts them.
+  const leftOf = new Map<string, number>()
+  for (const t of graph)
+    if (t.exec) {
+      const p = t.platform ?? options.home ?? ''
+      leftOf.set(p, (leftOf.get(p) ?? 0) + 1)
+    }
   const end = (id: string): void => {
     done.add(id)
+    const t = byId.get(id)!
+    if (t.exec) {
+      const p = t.platform ?? options.home ?? ''
+      leftOf.set(p, leftOf.get(p)! - 1)
+    }
     for (const d of dependants.get(id) ?? []) {
       const n = waiting.get(d)! - 1
       waiting.set(d, n)
@@ -349,7 +362,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       executed: likely.size === 0 ? executed : new Set([...likely, ...executed]),
       need,
       durationMs: ms,
-      workers: planWorkers,
+      workers: keepLast(planWorkers, options.sizes, started, (p) => (leftOf.get(p) ?? 0) > 0),
       running,
       sizes: options.sizes,
       started,
