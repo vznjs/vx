@@ -3,7 +3,7 @@
 import type { AffectedReason, CacheStatus, RunPlan } from '../orchestrator/index.js'
 import { computeReverseDepCount } from '../graph/index.js'
 import { planList, type PlannedRow, skippedReason } from '../report/index.js'
-import { formatBytes, formatElapsed, maskedCommand } from '../util/index.js'
+import { formatBytes, formatElapsed, maskedCommand, printable } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import type { ColorSupport } from '../ui/index.js'
 
@@ -46,7 +46,7 @@ export function planReport(plan: RunPlan): ui.Block {
     if (t.cacheStatus === 'skipped') notes.push(skippedReason(t))
     const desc = shownDescription(t)
     if (desc !== undefined && desc !== '') notes.push(desc)
-    if (t.affected !== undefined) notes.push(`affected: ${describeReason(t.affected)}`)
+    if (t.affected !== undefined) notes.push(`affected: ${printable(describeReason(t.affected))}`)
     const executes = !skipped && (t.cacheStatus === 'miss' || t.cacheStatus === 'no-cache')
     rows.push({
       node: t.node,

@@ -120,6 +120,19 @@ describe('vx run --affected --dry says why each requested task was kept', () => 
     }
   })
 
+  it('text: a control character in a changed file name is escaped, not printed raw', async () => {
+    // A newline in the name broke the `affected:` line in two.
+    const odd = path.join(root, 'packages/other/src/x\ny.js')
+    await writeFile(odd, 'export {}\n')
+    try {
+      expect(dry('build', '--dry')).toContain(
+        'affected: packages/other/src/x\\x0ay.js changed (an input)',
+      )
+    } finally {
+      await rm(odd)
+    }
+  })
+
   it('json and text: a workspace-wide file names itself on every task it reached', async () => {
     // Agent trial 3, row 3: a changed workspace config made every task
     // `kind: project` with no `file`.
