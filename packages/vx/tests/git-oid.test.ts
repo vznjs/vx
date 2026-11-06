@@ -694,3 +694,46 @@ describe('semantic guardrails — key stability across dirty↔clean transitions
     expect(reads).toEqual([])
   })
 })
+
+describe('GitFilesCache — one path string per file', () => {
+  let root: string
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  // Each memo key and the OID map spelled its own: a cold 9,603-task run
+  // held ~96,000 path strings for ~32,000 files.
+  it("the OID map and every resolve take a file's path from its one slot", async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), 'vx-abs-slot-'))
+    initRepo(root)
+    const pkgDir = path.join(root, 'pkg')
+    await mkdir(path.join(pkgDir, 'src'), { recursive: true })
+    await writeFile(path.join(pkgDir, 'src', 'a.ts'), 'a\n')
+    await writeFile(path.join(pkgDir, 'src', 'b.ts'), 'b\n')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-qm', 'init')
+    const memo = new GitFilesCache()
+    await populateGitFilesCache(root, [pkgDir], memo)
+    const snapshot = memo.get(pkgDir)!
+    const paths = memo.absPaths(snapshot)
+    expect(memo.absPaths(snapshot)).toBe(paths)
+    // No spelling of a.ts gives this: whatever reads the slot answers it.
+    const marked = `${pkgDir}/src/../src/a.ts`
+    paths[snapshot.indexOf('src/a.ts')] = marked
+    expect([...memo.oidsFor(pkgDir)!.keys()]).toContain(marked)
+    const resolve = (ownOutputs: string[]) =>
+      resolveInputs({
+        projectDir: pkgDir,
+        workspaceRoot: root,
+        envSource: {},
+        inputs: { files: ['src/**'] },
+        ownOutputs,
+        nestedProjectDirs: [],
+        gitFilesCache: memo,
+      })
+    // Two memo keys: each reads the slot.
+    expect((await resolve([])).files).toContain(marked)
+    expect((await resolve(['dist/**'])).files).toContain(marked)
+    expect(paths[snapshot.indexOf('src/b.ts')]).toBe(path.join(pkgDir, 'src', 'b.ts'))
+  })
+})

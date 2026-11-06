@@ -147,6 +147,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   oidsFor(projectDir: string): ReadonlyMap<string, string> | undefined
   setOids(projectDir: string, oids: Map<string, string>): void
   setLazyOids(projectDir: string, build: () => Map<string, string>): void
+  absPaths(snapshot: readonly string[]): Array<string | undefined>
   snapshotFor(projectDir: string, inputGlobs: readonly Bun.Glob[]): readonly string[] | undefined
   override set(key: string, value: readonly string[]): this
   override delete(key: string): boolean

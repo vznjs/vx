@@ -582,6 +582,20 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     this.oids.set(projectDir, new OidSlot(build))
   }
 
+  /**
+   * Each file of `snapshot` by its absolute path, filled as callers spell
+   * them: one string per file for the run, however many memo keys resolve
+   * it and whether the OID map names it too. Each spelled its own: a cold
+   * 9,603-task run held ~96,000 path strings for ~32,000 files.
+   */
+  absPaths(snapshot: readonly string[]): Array<string | undefined> {
+    let paths = this.abs.get(snapshot)
+    if (paths === undefined) this.abs.set(snapshot, (paths = []))
+    return paths
+  }
+
+  private readonly abs = new WeakMap<readonly string[], Array<string | undefined>>()
+
   /** Snapshot if still valid for these input globs; undefined → re-spawn. */
   snapshotFor(projectDir: string, inputGlobs: readonly Bun.Glob[]): readonly string[] | undefined {
     const snap = this.get(projectDir)
@@ -2317,10 +2331,13 @@ export async function applyGitEnumeration(
       relPrefix === spelled ? abs : (rel: string) => path.join(projectDir, rel.slice(prefix.length))
     const projOids = (): Map<string, string> => {
       const oids = new Map<string, string>()
+      // `resolveFiles` spells `matches[j]` the same, so both take one string.
+      const paths = base !== undefined && projAbs === abs ? cache.absPaths(matches) : undefined
       for (let i = start; i < end; i++) {
         const rel = sorted[i]!
         const oid = trusted.get(rel)
-        if (oid !== undefined) oids.set(projAbs(rel), oid)
+        if (oid === undefined) continue
+        oids.set(paths === undefined ? projAbs(rel) : (paths[i - start] ??= abs(rel)), oid)
       }
       return oids
     }
