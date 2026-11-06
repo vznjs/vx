@@ -1354,19 +1354,19 @@
     },
     "moon": {
       "all": {
-        "pass": 572,
-        "can": 876,
-        "of": 962
+        "pass": 576,
+        "can": 880,
+        "of": 966
       },
       "correctness": {
-        "pass": 445,
-        "can": 719,
-        "of": 790
+        "pass": 448,
+        "can": 722,
+        "of": 793
       },
       "efficiency": {
-        "pass": 122,
-        "can": 148,
-        "of": 163
+        "pass": 123,
+        "can": 149,
+        "of": 164
       },
       "data": {
         "pass": 5,
@@ -1389,14 +1389,14 @@
         "of": 73
       },
       "affected": {
-        "pass": 67,
-        "can": 95,
-        "of": 95
+        "pass": 68,
+        "can": 96,
+        "of": 96
       },
       "cache": {
-        "pass": 36,
-        "can": 39,
-        "of": 40
+        "pass": 37,
+        "can": 40,
+        "of": 41
       },
       "inputs": {
         "pass": 192,
@@ -1409,9 +1409,9 @@
         "of": 29
       },
       "outputs": {
-        "pass": 120,
-        "can": 220,
-        "of": 220
+        "pass": 122,
+        "can": 222,
+        "of": 222
       },
       "report": {
         "pass": 5,
@@ -33975,6 +33975,9 @@
           "status": "fail",
           "step": 6,
           "detail": "packages/a/dist/out.txt has mode 644, expected 444"
+        },
+        "moon": {
+          "status": "pass"
         }
       }
     },
@@ -34002,6 +34005,9 @@
           "status": "pass"
         },
         "nix": {
+          "status": "pass"
+        },
+        "moon": {
           "status": "pass"
         }
       }
@@ -34035,6 +34041,9 @@
         "nix": {
           "status": "n/a",
           "detail": "needs force"
+        },
+        "moon": {
+          "status": "pass"
         }
       }
     },
@@ -34067,6 +34076,9 @@
         "nix": {
           "status": "n/a",
           "detail": "needs affected"
+        },
+        "moon": {
+          "status": "pass"
         }
       }
     }
