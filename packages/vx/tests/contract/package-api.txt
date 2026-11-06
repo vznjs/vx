@@ -414,6 +414,7 @@ export async function sandboxRequestFor(
   keyed: ReadonlySet<string> | undefined,
   nested: readonly string[] = [],
   cacheDir?: string,
+  dependencyOutputs: readonly string[] = [],
 ): Promise<SandboxRequest>
 == function say (src/ui/terminal.ts)
 export function say(t: Tone, line: string, stream: StreamName = 'err'): void
@@ -866,6 +867,7 @@ export interface ExecuteSandbox {
   readonly reportLinked: readonly string[]
   readonly config: ResolvedSandboxConfig
   readonly keyed?: readonly string[]
+  readonly dependencyReads?: readonly string[]
 }
 == type ExecutorContext (src/orchestrator/plugin.ts)
 export interface ExecutorContext extends BaseContext {

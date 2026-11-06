@@ -63,3 +63,31 @@ export function keyedProjects(
     return below.get(root.id)!
   }
 }
+
+/**
+ * A run's lookup of the exec tasks whose outputs a sandboxed task may read:
+ * those its key folds, through a group to its members, never past an exec
+ * task. Their outputs are what their keys answer for, and this key folds
+ * those keys, so a read of them can never replay stale (the toolchain
+ * rule: a `tools` project builds Node, every dependant runs it). A
+ * dependency `inputs.tasks` leaves out is ordered, not read.
+ */
+export function readableDeps(
+  nodes: ReadonlyMap<string, TaskNode>,
+  keyOnly: ReadonlyMap<string, TaskNode> = new Map(),
+): (node: TaskNode) => readonly TaskNode[] {
+  const nodeOf = (id: string): TaskNode => nodes.get(id) ?? keyOnly.get(id)!
+  return (root) => {
+    const out = new Map<string, TaskNode>()
+    const seen = new Set<string>()
+    const stack = foldedDeps(root, nodeOf).map((c) => c.node)
+    while (stack.length > 0) {
+      const dep = stack.pop()!
+      if (seen.has(dep.id)) continue
+      seen.add(dep.id)
+      if (!isGroupTask(dep)) out.set(dep.id, dep)
+      else for (const { node } of foldedDeps(dep, nodeOf)) stack.push(node)
+    }
+    return [...out.values()]
+  }
+}

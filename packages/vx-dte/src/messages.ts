@@ -64,9 +64,10 @@ export interface RunOrder {
   /**
    * Its `exec.sandbox`, and for a cached task the projects its key answers
    * for (workspace-relative): the worker builds the request on its own
-   * paths and OS (`sandboxRequestFor`), as its orchestrator may run another.
+   * paths and OS (`sandboxRequestFor`), as its orchestrator may run another;
+   * `reads`, the dependencies' outputs it may read (workspace-relative).
    */
-  sandbox?: { config: SandboxConfig; keyed?: string[] }
+  sandbox?: { config: SandboxConfig; keyed?: string[]; reads?: string[] }
   /** Its persistent dependencies (`ServerSpec`), `cwd` workspace-relative: the worker starts each once. */
   servers?: ServerOrder[]
   /** The runtime probes its key includes, as the orchestrator answered them: the worker's must answer the same. */

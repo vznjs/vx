@@ -43,6 +43,11 @@ export interface ExecuteSandbox {
    * machine's paths and platform, hands `sandboxRequestFor`.
    */
   readonly keyed?: readonly string[]
+  /**
+   * The dependencies' outputs it may read (absolute), which an executor
+   * that builds the request again hands `sandboxRequestFor` too.
+   */
+  readonly dependencyReads?: readonly string[]
 }
 
 /** One declared input file, as the cache key saw it. */

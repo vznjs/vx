@@ -183,6 +183,20 @@ A refused write outside the project names the directory to grant. Under
 the host's temp directory, it names `$TMPDIR` instead: the task's own
 empty temp directory.
 
+The one way through is an edge. A task reads the declared outputs of the
+tasks it depends on, in any project, never their sources. Its key already
+moves with them.
+
+```ts title="packages/app/vx.config.ts"
+build: {
+  dependsOn: ['tools#node'],
+  exec: {
+    command: '../tools/out/bin/node build.js',
+    sandbox: { hermetic: true, allow: { read: ['.'] } },
+  },
+},
+```
+
 ---
 
 ## Close off the machine

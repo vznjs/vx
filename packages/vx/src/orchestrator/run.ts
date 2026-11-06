@@ -68,7 +68,7 @@ function printTimings(): void {
   if (lines !== undefined) ui.print('err', ui.trace(lines))
 }
 import { detectColors, type ColorSupport } from '../ui/index.js'
-import { keyedProjects } from './keyed-projects.js'
+import { keyedProjects, readableDeps } from './keyed-projects.js'
 import { isDefaultBuild } from '../graph/index.js'
 import { commandWriteReach, prepareSandbox } from './sandbox-request.js'
 import { recordOutputDirSnapshots, type OutputDirSnapshot, type SaveFacts } from './miss-save.js'
@@ -883,6 +883,7 @@ async function runOnBus(
     }
     if (sandboxed.some(surelyRuns)) prewarm()
     const keyed = keyedProjects(nodes, prepared.keyOnly)
+    const readable = readableDeps(nodes, prepared.keyOnly)
     const outputDirSnapshots: OutputDirSnapshot[] = []
     // Saves run off the execution slot, twice the cap at once (memory:
     // each pack holds an artifact's bytes); a failed save is a miss next
@@ -1177,6 +1178,7 @@ async function runOnBus(
       probesAfterWrites: lateProbes,
       fingerprintWatch,
       keyedProjects: keyed,
+      readableDeps: readable,
       outputDirSnapshots,
       deferSave: saveLane.defer,
       deferredSaves,

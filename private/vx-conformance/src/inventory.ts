@@ -385,6 +385,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'sandbox-canary-home.unsafe',
     'sandbox-chdir-denied.unsafe',
     'sandbox-credential-stores.unsafe',
+    'sandbox-dependency-outputs.unsafe',
     'sandbox-deny-scan',
     'sandbox-deny-scan.unsafe',
     'sandbox-dirfd-quote.unsafe',
