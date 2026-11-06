@@ -515,7 +515,7 @@ describe('task refusals the sweep found unheld (item 653)', () => {
   it('a mount path that is not a plain absolute directory, or a source outside the outputs, is refused', () => {
     const mount = (m: unknown, files = ['out/**']) =>
       taskRefusal({
-        exec: { command: 'x' },
+        exec: { command: 'x', platforms: ['linux-x64'] },
         inputs: { files: [] },
         cache: { outputs: { files, mount: m } },
       })
@@ -540,6 +540,23 @@ describe('task refusals the sweep found unheld (item 653)', () => {
     expect(mount({ '/nix/store': 'out/nix/store' })).toBeNull()
     expect(mount({ '/nix/store': 'out/a', '/opt/t': 'out/b' })).toBeNull()
     expect(mount({ '/nix/store/': 'out/nix/store/' })).toBeNull()
+  })
+
+  // A mounted tree is programs built for one machine, and Nix picks the
+  // system itself: without `exec.platforms` the key holds no platform, so
+  // an arm64 machine would restore x64 binaries.
+  it('a mount without exec.platforms is refused, so each platform keeps its own entry', () => {
+    const task = (exec: object) =>
+      taskRefusal({
+        exec: { command: 'x', ...exec },
+        inputs: { files: [] },
+        cache: { outputs: { files: ['out/**'], mount: { '/nix/store': 'out/nix/store' } } },
+      })
+    expect(task({})).toBe(
+      `${CFG}: tasks.t.cache.outputs.mount holds programs built for one platform — declare ` +
+        `exec.platforms, such as ['linux-x64', 'linux-arm64'], so each platform keeps its own cache entry`,
+    )
+    expect(task({ platforms: ['linux-x64', 'linux-arm64'] })).toBeNull()
   })
 
   // `outputs: ['**']` loaded, and the clean before the run deleted the
