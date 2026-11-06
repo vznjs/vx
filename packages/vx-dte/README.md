@@ -902,7 +902,7 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
   - `adapter` is the `DteAdapter` that starts workers, of the sizes in
     `workers`: at least one with `max` above 0, or `dte()` is refused.
     Absent, the run starts none and uses the workers that join `relay`.
-  - `relay` is the relay's URL, http(s); absent, the adapter's own.
+  - `relay` is the relay's base URL, http(s), without `/v1`, `?query` or `#fragment`; absent, the adapter's own.
   - `token` answers the relay's bearer token (default `VX_DTE_TOKEN`). It
     is asked again a minute before the token's `exp`, when it has one.
   - `unmeasured`, `{ cpu, memory }` (default 2 cores, `'4GB'`), is what a

@@ -582,6 +582,23 @@ export default { plugins: [dte({ relay: ${JSON.stringify(relay)}, workers: { sma
   expect(said({})).toContain(
     'dte() option "relay" must be an http(s) URL, got "wss://***@relay.example.com"',
   )
+  // Each route is appended to the relay's url: past a `?` or `#` every
+  // socket asked the relay's root, and one naming /v1 asked /v1/v1/….
+  await workspace('https://relay.example.com/?k=1')
+  expect(said({})).toContain(
+    'dte() option "relay" takes no ?query or #fragment: each route is appended to it, got "https://relay.example.com/?k=1"',
+  )
+  await workspace('https://relay.example.com/v1/')
+  expect(said({})).toContain(
+    'dte() option "relay" is the relay\'s base, without /v1, got "https://relay.example.com/v1/"',
+  )
+  await workspace('https://relay.example.com')
+  expect(said({ VX_DTE_RELAY: 'https://relay.example.com#x' })).toStartWith(
+    '✗ vx dte worker  VX_DTE_RELAY takes no ?query or #fragment: each route is appended to it, got https://relay.example.com#x\n',
+  )
+  expect(said({ VX_DTE_RELAY: 'https://relay.example.com/v1' })).toStartWith(
+    "✗ vx dte worker  VX_DTE_RELAY is the relay's base, without /v1, got https://relay.example.com/v1\n",
+  )
 })
 
 it('vx dte worker names only what it lacks', async () => {

@@ -106,6 +106,38 @@ describe('configErrorFrame', () => {
     )
   })
 
+  it('frames an import nothing provides at its specifier, and a default that is no object', async () => {
+    const imports = path.join(dir, 'imports', '.vx', 'workspace.ts')
+    await mkdir(path.dirname(imports), { recursive: true })
+    await writeFile(
+      imports,
+      "import { a } from './a'\nimport x from 'nope-pkg'\n\nexport default defineConfig(() => ({}))\n",
+    )
+    const cwd = path.join(dir, 'imports')
+    expect(
+      configErrorFrame(
+        `Workspace config ${imports}: cannot find 'nope-pkg' — no node_modules above the config provides it; install the workspace's dependencies first`,
+        cwd,
+      ),
+    ).toBe(
+      ".vx/workspace.ts:2:15: cannot find 'nope-pkg' — no node_modules above the config provides it; install the workspace's dependencies first\n\n" +
+        "  1 | import { a } from './a'\n" +
+        "> 2 | import x from 'nope-pkg'\n" +
+        '    |               ^',
+    )
+    expect(
+      configErrorFrame(
+        `Workspace config at ${imports} did not export a default object: it exports a function`,
+        cwd,
+      )?.split('\n')[0],
+    ).toBe('.vx/workspace.ts:4:1: did not export a default object: it exports a function')
+    // No `export default` to point at: the message as it was.
+    await writeFile(imports, 'export const config = {}\n')
+    expect(
+      configErrorFrame(`Workspace config at ${imports} did not export a default object`, cwd),
+    ).toBeUndefined()
+  })
+
   it('frames a .vx/workspace.ts field too', async () => {
     await mkdir(path.join(dir, '.vx'), { recursive: true })
     const ws = path.join(dir, '.vx', 'workspace.ts')
@@ -154,6 +186,24 @@ describe('configErrorFrame', () => {
     )
     const atOdd = (m: string) =>
       configErrorFrame(m, path.join(dir, 'odd'))?.split('\n')[0]?.split(': ')[0]
+    // A plugin is an element: framed at it, not at the config's head.
+    const plugins = path.join(dir, 'plugins', '.vx', 'workspace.ts')
+    await mkdir(path.dirname(plugins), { recursive: true })
+    await writeFile(
+      plugins,
+      "export default {\n  plugins: [\n    a({ x: [1, 2] }), // b, c\n    's,t',\n    { name: 'p' },\n  ],\n}\n",
+    )
+    const atPlugin = (m: string) =>
+      configErrorFrame(m, path.join(dir, 'plugins'))?.split('\n')[0]?.split(': ')[0]
+    expect(atPlugin(`${plugins}: \`plugins[1]\` must be an object`)).toBe('.vx/workspace.ts:4:5')
+    expect(
+      atPlugin(`${plugins}: \`plugins[2].name\` overrides the package name ('p' over 'q')`),
+    ).toBe('.vx/workspace.ts:5:5')
+    expect(atPlugin(`${plugins}: \`plugins[0]\` must come from definePlugin`)).toBe(
+      '.vx/workspace.ts:3:5',
+    )
+    // Past the last element: the array itself.
+    expect(atPlugin(`${plugins}: \`plugins[7]\` must be an object`)).toBe('.vx/workspace.ts:2:3')
     expect(atOdd(`${odd}: task name "" is empty`)).toBe('vx.config.ts:4:6')
     expect(
       atOdd(`${odd}: task name ${JSON.stringify('\u001b[31mred')} holds a control character`),
@@ -239,6 +289,34 @@ describe('vx lock prints a config refusal with its frame', () => {
         '✗ vx lock  lock not written\n\n  packages/b/vx.config.mjs:2:12\n  Expected "}" but found end of file\n',
       )
       expect(err).toContain('  > 2 |   tasks: {}\n      |            ^\n')
+      expect(err).not.toContain(root)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  // A config's own throw named its file by absolute path and showed no
+  // line, though its stack placed it.
+  it('a config that throws, at the line it threw from', async () => {
+    const root = await realpath(await makeWorkspace({ prefix: 'vx-frame-throw-' }))
+    try {
+      const pkg = path.join(root, 'packages', 'b')
+      await mkdir(pkg, { recursive: true })
+      await writeFile(
+        path.join(pkg, 'vx.config.mjs'),
+        "const port = 1\nif (port) throw new Error('boom', { cause: new Error('deeper') })\nexport default { tasks: {} }\n",
+      )
+      const r = Bun.spawnSync(['bun', BIN, 'lock'], {
+        cwd: root,
+        env: { ...process.env, NO_COLOR: '1' },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      expect(r.exitCode).toBe(1)
+      const err = r.stderr.toString()
+      expect(err).toStartWith('✗ vx lock  lock not written\n\n  packages/b/vx.config.mjs:2:')
+      expect(err).toContain('threw: boom; caused by: deeper (at packages/b/vx.config.mjs:2:')
+      expect(err).toContain("  > 2 | if (port) throw new Error('boom'")
       expect(err).not.toContain(root)
     } finally {
       await rm(root, { recursive: true, force: true })
