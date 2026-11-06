@@ -47,6 +47,30 @@ it('held blob sizes are stored while the run goes on, not when remembered', asyn
   cache.close()
 })
 
+it('stored blob sizes are let go, not held to the end of the run', async () => {
+  const cache = open()
+  cache.holdBlobSizes()
+  const refs: WeakRef<[string, number]>[] = []
+  const entries = function* (): Generator<[string, number]> {
+    for (let i = 0; i < 600; i++) {
+      const e: [string, number] = [`oid${i}`, i]
+      refs.push(new WeakRef(e))
+      yield e
+    }
+  }
+  cache.rememberBlobSizes({ [Symbol.iterator]: entries } as unknown as Map<string, number>)
+  cache.storeHeldBlobSizes()
+  for (let i = 0; i < 6; i++) await turn()
+  expect(stored()).toBe(600)
+  for (let i = 0; i < 3; i++) {
+    await Bun.sleep(5)
+    Bun.gc(true)
+  }
+  // The collector scans the stack conservatively: a few may stay.
+  expect(refs.filter((r) => r.deref() !== undefined).length).toBeLessThan(100)
+  cache.close()
+})
+
 it('close stores what is still held, stored or not', () => {
   const never = open()
   never.holdBlobSizes()
