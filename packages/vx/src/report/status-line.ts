@@ -283,7 +283,7 @@ export function formatStatusRegion(
   // Panels top to bottom: what runs now, then the live Summary, the same panel the final printout is, so the region
   // BECOMES the summary when the run ends.
   const out: string[] = []
-  if (lines.length > 0) out.push(divider(colors), ...lines)
+  if (lines.length > 0) out.push(divider(colors), '', ...lines)
   out.push(...s.summaryLines)
   return out
 }
