@@ -3880,7 +3880,8 @@ only failures is a recovery (a missing tool installed), not a flake.
 Only tasks with `cache: true` are judged: "same inputs, red after
 green" is a claim
 only declared inputs can back, and a task without them keys on its
-config alone. It is judged as the task finishes, so the row carries
+config alone; such a task that needed a retry says only `2 attempts`
+on its row. It is judged as the task finishes, so the row carries
 it: zero cost for a hit or a skip, one probe of the failed-row index
 for a green miss; `vx info` keeps the standing list.
 

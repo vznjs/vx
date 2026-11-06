@@ -754,10 +754,14 @@ function placeNote(where: string, colors: ColorSupport = NO_COLOR): string {
 /**
  * The dim note a flaky task's row and frame carry (`flaky - failed 1×
  * before`): nothing prints below the footer, so the task's own line is
- * where the reader learns it. '' when the run did not prove it flaky.
+ * where the reader learns it. Not proved flaky: its attempts, when more
+ * than one; else ''.
  */
 export function flakyNote(o: TaskOutcome, colors: ColorSupport = NO_COLOR): string {
-  if (o.flaky === undefined) return ''
+  // A retry with no key to prove a flake (no `cache: true`) still ran:
+  // the row is the only place a live run says so (`vx last` did).
+  if (o.flaky === undefined)
+    return (o.attempts ?? 1) > 1 ? ` ${paint('muted', `${o.attempts} attempts`, colors)}` : ''
   const said: string[] = []
   if (o.status === 'failed' && o.flaky.passes > 0)
     said.push(`passed ${o.flaky.passes}\u00d7 before`)
