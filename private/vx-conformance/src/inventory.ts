@@ -1063,6 +1063,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'task-hash-derive',
     'task-hash-properties',
     'task-log-buffer',
+    'task-outputs-shape',
     'task-platforms',
     'task-verb',
     'term-dumb',
