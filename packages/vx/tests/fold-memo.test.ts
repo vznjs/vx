@@ -229,7 +229,7 @@ it('an untracked input keeps the memo, by its stat; rewriting it runs the task',
 it("a run's own row is read alone, and every task's row once a task asks", () => {
   const db = new Database(':memory:')
   db.run('CREATE TABLE fold_memo (task_id TEXT PRIMARY KEY, probe TEXT, key TEXT, seen_at INTEGER)')
-  const insert = db.prepare('INSERT INTO fold_memo VALUES (?, ?, ?, 0)')
+  const insert = db.query('INSERT INTO fold_memo VALUES (?, ?, ?, 0)')
   insert.run('\0run\0x', 'p0', 'k0')
   insert.run('a#build', 'p1', 'k1')
   insert.run('b#build', 'p2', 'k2')
