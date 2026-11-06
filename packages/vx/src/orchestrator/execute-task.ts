@@ -1310,6 +1310,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     flushMasked = () => masked?.end()
     const base: ExecuteRequest = {
       taskId: node.id,
+      ...(attempt > 1 ? { attempt } : {}),
       workspaceRoot: args.workspaceRoot,
       command: step.command,
       forwardArgs: effectiveForwardArgs,

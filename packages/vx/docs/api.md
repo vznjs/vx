@@ -738,6 +738,7 @@ export interface ExecuteRequest {
   readonly refresh?: boolean
   readonly remoteOnly?: boolean
   readonly platform?: string
+  readonly attempt?: number
   readonly download?: 'eager' | 'deferred'
   readonly outputs: {
     readonly files: readonly string[]

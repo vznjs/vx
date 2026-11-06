@@ -584,6 +584,11 @@ use your own instead.
   another. A task two such workers were sent fails, naming both; one whose
   send failed does not count. With no worker of the run left
   to take it and none starting, it fails at once.
+- A task that failed and retries (its `retries`, or the one retry a
+  known-flaky task gets) runs on another worker than the attempt that
+  failed, as core asks (`ExecuteRequest.attempt`): the worker, or what
+  ran beside it, may be the flake. With no other worker of its platform
+  in the run, it runs there again rather than wait.
 - A relay that answers nothing for 10 s, every try counted, fails every task not done
   (`the relay is unreachable`); none runs here, which may be far smaller
   than the workers. What finished is saved, so a rerun resumes from it.

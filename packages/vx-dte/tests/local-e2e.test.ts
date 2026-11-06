@@ -562,3 +562,14 @@ it.each(['SIGHUP', 'SIGINT'] as const)(
   },
   60_000,
 )
+
+// Nx's rule (2026-11-06): a retry runs on another agent, so neither the
+// worker nor what ran beside it is the flake. One worker left runs it there.
+it('runs a retry on another worker than the attempt that failed', async () => {
+  const run = vx(['run', 'b#flake', 'b#beside'], 'e2e-flake')
+  const out = run.stdout.toString() + run.stderr.toString()
+  expect([run.exitCode, out]).toEqual([0, expect.stringContaining('b#flake')])
+  const where = (await readFile(path.join(root, 'flake.log'), 'utf8')).trim().split('\n')
+  expect(where.length).toBe(2)
+  expect(where[0]).not.toBe(where[1])
+}, 60_000)
