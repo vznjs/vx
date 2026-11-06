@@ -296,10 +296,11 @@ class Session {
   }
 }
 
-/** Leads a compressed body: no JSON starts with it. */
+/** Leads a body zstd-compressed, and one as its JSON. */
 const ZSTD = 0
-/** Its lead byte, its sender's history length and its zstd frame's. */
-const HEADER = 9
+const RAW = 1
+/** The lead byte and its sender's history length; a compressed one's frame length next. */
+const HEADER = 5
 /**
  * The last this many bytes one side sealed to the other are its next
  * body's zstd dictionary: each batch sent its tasks' env and paths again,
@@ -315,9 +316,9 @@ const HISTORY_BYTES = 16 * 1024
 class History {
   window = new Uint8Array(0)
   /**
-   * Every body's bytes, before the window too: a body names its sender's, so
-   * one sealed after a body the relay refused does not open against
-   * another dictionary.
+   * Every body's bytes, before the window too: each body names its
+   * sender's, so one sealed after a body the relay kept back or refused
+   * does not open.
    */
   total = 0
   add(json: Uint8Array): void {
@@ -331,35 +332,44 @@ class History {
 
 /**
  * A body zstd-compressed against what this side sealed before, before it
- * is sealed: sealed, it is random bytes no relay or socket compression
- * shrinks. The padding still hides its size within a class.
+ * is sealed, when smaller so: sealed, it is random bytes no relay or
+ * socket compression shrinks. The padding still hides its size within a
+ * class.
  */
 function squeeze(json: Uint8Array, h: History): Uint8Array {
   const z =
     h.window.length === 0
       ? Bun.zstdCompressSync(json)
       : zstdCompressSync(json, { dictionary: h.window })
-  if (z.length + HEADER >= json.length) return json
-  const out = new Uint8Array(z.length + HEADER)
-  out[0] = ZSTD
+  const raw = z.length + 4 >= json.length
+  const out = new Uint8Array(HEADER + (raw ? json.length : 4 + z.length))
   const v = new DataView(out.buffer)
+  out[0] = raw ? RAW : ZSTD
   v.setUint32(1, h.total)
-  v.setUint32(5, z.length)
-  out.set(z, HEADER)
+  if (raw) out.set(json, HEADER)
+  else {
+    v.setUint32(HEADER, z.length)
+    out.set(z, HEADER + 4)
+  }
   return out
 }
 
-/** Its JSON, unpadded; throws for a body sealed after one this side never opened. */
+/**
+ * Its JSON, unpadded. Throws for one sealed after a body this side never
+ * opened: compressed, it decoded against another dictionary to other
+ * bytes, and either way the relay kept that body back.
+ */
 function unsqueeze(plain: Uint8Array, h: History): Uint8Array {
-  if (plain[0] !== ZSTD) {
-    // JSON.stringify ends no body with a space: what trails it is padding.
-    let end = plain.length
-    while (end > 0 && plain[end - 1] === 0x20) end--
-    return plain.subarray(0, end)
-  }
   const v = new DataView(plain.buffer, plain.byteOffset)
   if (v.getUint32(1) !== h.total) throw new Error('sealed after a body never opened')
-  const z = plain.subarray(HEADER, HEADER + v.getUint32(5))
+  if (plain[0] === RAW) {
+    // JSON.stringify ends no body with a space: what trails it is padding.
+    let end = plain.length
+    while (end > HEADER && plain[end - 1] === 0x20) end--
+    return plain.subarray(HEADER, end)
+  }
+  if (plain[0] !== ZSTD) throw new Error('no body')
+  const z = plain.subarray(HEADER + 4, HEADER + 4 + v.getUint32(HEADER))
   return h.window.length === 0
     ? Bun.zstdDecompressSync(z)
     : zstdDecompressSync(z, { dictionary: h.window })

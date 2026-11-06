@@ -251,7 +251,21 @@ it('a token it could not check refuses the worker by that cause, and says it', a
   expect(said).toEqual([`[vx] dte: refused a worker: ${reason}`])
 })
 
-it('loses a worker whose body the relay changed, and drops one it replays', async () => {
+it('loses a worker whose body the relay changed', async () => {
+  const { r, o, a } = await pair()
+  await until(o)
+  await o.send(a.id, { type: 'welcome', name: 'worker#1' })
+  await until(a)
+  r.tamperNext((b) =>
+    b.replace(/"seal":\["(\d+)\.(.)/, (_, n, c) => `"seal":["${n}.${c === 'A' ? 'B' : 'A'}`),
+  )
+  await a.send('orchestrator', { type: 'start', task: 'w' })
+  expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'lost', id: a.id }])
+})
+
+// A replay in a body's place was dropped and the next body taken: the
+// relay kept back any body it chose, unseen (2026-11-06).
+it('drops a body the relay replays, and loses its worker at the next, sealed after the one replaced', async () => {
   const { r, o, a } = await pair()
   await until(o)
   await o.send(a.id, { type: 'welcome', name: 'worker#1' })
@@ -267,11 +281,6 @@ it('loses a worker whose body the relay changed, and drops one it replays', asyn
   })
   await a.send('orchestrator', { type: 'ran', task: 'u' })
   await a.send('orchestrator', { type: 'ran', task: 'v' })
-  expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'ran', task: 'v' }])
-  r.tamperNext((b) =>
-    b.replace(/"seal":\["(\d+)\.(.)/, (_, n, c) => `"seal":["${n}.${c === 'A' ? 'B' : 'A'}`),
-  )
-  await a.send('orchestrator', { type: 'ran', task: 'w' })
   expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'lost', id: a.id }])
 })
 
@@ -346,15 +355,16 @@ it('loses a worker whose body the relay held back past a later one', async () =>
   })
   await a.send('orchestrator', { type: 'ran', task: 'a' })
   const held = sealOf(r.bodies.at(-1)!)
+  // The later body names what was sealed before it, the held one too.
   await a.send('orchestrator', { type: 'end', task: 'a' })
-  expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'end', task: 'a' }])
+  expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'lost', id: a.id }])
   r.tamperNext((b) => {
     const send = JSON.parse(b) as Envelope
     send.body.body.seal = held
     return JSON.stringify(send)
   })
-  await a.send('orchestrator', { type: 'ran', task: 'u' })
-  expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'lost', id: a.id }])
+  await a.send('orchestrator', { type: 'ran', task: 'u' }).catch(() => undefined)
+  expect(await o.poll()).toEqual([])
 })
 
 it('on GitHub, admits by OIDC tokens of this repository whose audience is the key, with no secret', async () => {
