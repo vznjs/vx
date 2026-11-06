@@ -127,6 +127,12 @@ describe('macProfileRules, capability by capability', () => {
     ],
     ['an empty unixSockets list', { unixSockets: [] }, []],
     ['machLookup', { machLookup: ['com.x'] }, ['(allow mach-lookup (global-name "com.x"))']],
+    [
+      'weakerNetworkIsolation',
+      { weakerNetworkIsolation: true },
+      ['(allow mach-lookup (global-name "com.apple.trustd.agent"))'],
+    ],
+    ['weakerNetworkIsolation: false', { weakerNetworkIsolation: false }, []],
   ]
   for (const [what, extra, want] of ROWS) {
     it(what, () => {

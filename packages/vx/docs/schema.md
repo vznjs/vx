@@ -317,6 +317,13 @@ server that fails before it is ready fails at once); explicit config
 always wins, including an explicit `retries: 0`. The CLI flag never
 affects cache keys.
 
+With neither set, a task the run history knows as **flaky** gets one
+more attempt when it fails: its key passed before, or one of its keys
+failed after it passed, or a pass took a retry, within the history's
+30 days. Only a cached task has that record, and a timeout always fails.
+The retry is decided at run time, so it never touches the key. Set
+`retries: 0` to turn it off.
+
 #### `remote` (optional)
 
 ```ts
@@ -1488,7 +1495,7 @@ unsandboxed.** Full walkthrough in the
 ```ts
 interface SandboxConfig {
   allow?: SandboxGrants // what the command may do
-  deny?: { network?: string[] } // domains to refuse; every task of the run (below)
+  deny?: { network?: string[] } // domains this task may not reach (below)
   ignore?: SandboxIgnore // violations to leave out of the report
   weakerWhenNested?: boolean // Linux: let a sandboxed task sandbox (default false)
   weakerNetworkIsolation?: boolean // macOS: host-proxy net, lower isolation (default false)
@@ -1630,10 +1637,10 @@ when another task of the run lists some. SRT runs one proxy per run that
 filters by the union of every task's list; vx puts a proxy of the task's
 own in front of it, so the task's list is checked first (until
 2026-11-06 a task reached any host another task of the run listed).
-`network: true` keeps the run's proxy: it reaches the union (nothing in
-a run with no list). `deny.network` is the task's own and also the
-run's: the run's proxy refuses the union of every task's denies to
-every task, checked before the allowlist (B-21). A refused request is a violation on both
+`network: true` reaches the union (nothing in a run with no list).
+`deny.network` is the task's own, checked before its allowlist (B-21);
+until 2026-11-06 the run's proxy refused every task's denies to every
+task. A refused request is a violation on both
 platforms, `deny network-outbound <host>:<port> (<reason>)` from the
 proxy, and fails the task even when it survived the refusal;
 `ignore: { network: ['<host>:<port>'] }` silences one, matched as the
@@ -1689,6 +1696,8 @@ libraries they link.
 
 Any other tool is yours to grant, with its libraries: `ldd $(command -v
 node)` lists them. The task then cannot lean on the machine unseen.
+A command the host has but no grant reads exits 127, and vx names its
+host path and the grant (`tests/shell-verdict-sandbox.test.ts`).
 
 A grant says what a task may read; `inputs.runtime` says what moves its
 key. Declare both for a tool.

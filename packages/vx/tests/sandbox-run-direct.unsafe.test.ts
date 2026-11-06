@@ -374,9 +374,8 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     expect([r.exitCode, r.stdout]).toEqual([0, '403'])
   })
 
-  // A task's `deny.network` is the run's: SRT's one proxy checks the
-  // denied list before the allowed one, and only from `initialize()`.
-  // Before B-21 the list never reached it, so a domain the allow glob
+  // A task's `deny.network` is checked before its allow list, by the
+  // task's own proxy front. Before B-21 the list never reached it, so a domain the allow glob
   // covered passed the proxy (a 502 from its failed lookup, never the
   // proxy's 403). The allowed control shows the glob does let one through.
   it('the proxy refuses a denied domain the allow glob covers', async () => {

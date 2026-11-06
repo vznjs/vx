@@ -754,15 +754,16 @@ describe.skipIf(!available || process.platform !== 'linux')('the runtime lifecyc
         ignoreViolations?: unknown
       }
       expect(cfg.network?.allowedDomains).toEqual(['a.test'])
-      // SRT's proxy checks this list first, for every task (B-21).
-      expect(cfg.network?.deniedDomains).toEqual(['ads.a.test'])
+      // A deny is each task's own front's: the run's proxy refusing it
+      // refused one task's host to every task.
+      expect(cfg.network?.deniedDomains).toEqual([])
       expect(cfg.ignoreViolations).toEqual({ '*': ['kern.iossupportversion'] })
     } finally {
       spy.mockRestore()
     }
   })
 
-  it("arming a run hands SRT every task's domains, denied ones included", async () => {
+  it("arming a run hands SRT every task's domains, and no task's denies", async () => {
     await resetSandbox()
     const node = (id: string, sandbox: Record<string, unknown>) =>
       ({ id, config: { exec: { command: 'true', sandbox } } }) as unknown as TaskNode
@@ -777,7 +778,7 @@ describe.skipIf(!available || process.platform !== 'linux')('the runtime lifecyc
       }
       expect([cfg.network?.allowedDomains, cfg.network?.deniedDomains]).toEqual([
         ['*.a.test', 'b.test'],
-        ['ads.a.test'],
+        [],
       ])
     } finally {
       spy.mockRestore()

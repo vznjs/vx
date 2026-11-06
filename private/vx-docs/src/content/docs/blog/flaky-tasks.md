@@ -96,7 +96,8 @@ under `~/.vx`, so every worktree of the repo shares it.
 
 ## What it is not
 
-- **Not a retry policy.** `exec.retries` is separate. A pass on retry
+- **Not a blind retry.** A task this record calls flaky gets one more
+  attempt when it fails; any other failure is final. A pass on retry
   is *reported*, not quietly made green.
 - **Not a quarantine.** Nothing is skipped, because a skip hides a
   failure.

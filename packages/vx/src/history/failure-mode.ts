@@ -198,6 +198,29 @@ export function detectFlaky(db: Database, candidates: readonly FlakyCandidate[])
   return out
 }
 
+/**
+ * Whether a task that just failed on `hash` is known to be flaky: this key
+ * passed before (the failure itself is the flake), or the retained history
+ * holds a key of the task that failed after it passed, or a pass that took
+ * a retry. Asked only after a failure, so a green run never reads it.
+ */
+export function knownFlaky(db: Database, project: string, task: string, hash: string): boolean {
+  const passed = db
+    .query(
+      `SELECT 1 FROM ${OUTCOMES} WHERE hash = ? AND project = ? AND task = ?
+       AND (status = 'success' OR status IN ${HIT_STATUSES}) LIMIT 1`,
+    )
+    .get(hash, project, task)
+  if (passed !== null) return true
+  const flaked = db
+    .query(
+      `SELECT 1 FROM (${keyOutcomesSql(OUTCOMES, ' AND project = ? AND task = ?')})
+       WHERE relapses > 0 OR retried_failures > 0 LIMIT 1`,
+    )
+    .get(project, task)
+  return flaked !== null
+}
+
 /** One task the recorded history shows failing on a key that had passed. */
 export interface FlakyTask {
   /** `project#task`. */

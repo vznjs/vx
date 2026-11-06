@@ -67,3 +67,28 @@ describe('a script the sandbox hides', () => {
     )
   })
 })
+
+// A hermetic task sees nothing outside its grants: `mkdir` on the host's
+// PATH is not there inside, and "install it in this package" sent the
+// reader after a tool every host has.
+describe('a program a hermetic sandbox hides', () => {
+  const hermetic = () => ({
+    ...sandbox([dir]),
+    config: { allowRead: [dir], allowWrite: [], hermetic: true },
+  })
+  const hidden = (f: string) => !sandboxReads(hermetic(), f)
+
+  it('is named by its host path, with the grant that reads it', () => {
+    const mkdirPath = Bun.which('mkdir')!
+    expect(shellVerdict({ code: 127, command: 'mkdir -p dist', cwd: dir, bins: [], hidden })).toBe(
+      `[vx] exit 127 is the shell's "command not found": mkdir is ${mkdirPath} on the host, but no sandbox grant reads it, so inside the sandbox it is not there — add it (or its directory) to exec.sandbox.allow.read`,
+    )
+  })
+
+  it('reads only what a grant holds, outside every denial too', () => {
+    expect([
+      sandboxReads(hermetic(), path.join(dir, 'build.sh')),
+      sandboxReads(hermetic(), path.join(`${dir}-other`, 'tool.sh')),
+    ]).toEqual([true, false])
+  })
+})

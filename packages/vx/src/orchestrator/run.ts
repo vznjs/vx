@@ -163,6 +163,7 @@ import {
   createMissExplainer,
   detectFlaky,
   type FlakyCandidate,
+  knownFlaky,
   LocalHistoryProvider,
 } from '../history/index.js'
 import type { RunOptions, RunSummary } from './options.js'
@@ -1187,6 +1188,14 @@ async function runOnBus(
       inputStability,
     }
     if (options.retries !== undefined) scope.retries = options.retries
+    scope.knownFlaky = (node, hash) => {
+      try {
+        return knownFlaky(indexDb(prepared.localCache), node.projectName, node.taskName, hash)
+      } catch {
+        // History is observability: an unreadable one retries nothing.
+        return false
+      }
+    }
     if (taskTimeoutDefault !== undefined) scope.timeout = taskTimeoutDefault
     if (cleanOutputs !== undefined) scope.cleanOutputs = cleanOutputs
     const sinkTrack = telemetry?.track

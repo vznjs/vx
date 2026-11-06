@@ -941,10 +941,8 @@ function assertDomains(
 export async function initSandbox(opts?: {
   allowedDomains?: readonly string[]
   /**
-   * Every domain any sandboxed task of the run denies. The proxy is the
-   * run's, so a deny refuses it for every task, as the allowlist is the
-   * union's; before B-21 the list was always empty and a `deny.network`
-   * refused nothing.
+   * Every domain any sandboxed task of the run denies, checked here and
+   * never handed to the run's proxy: each task's front refuses its own.
    */
   deniedDomains?: readonly string[]
   /**
@@ -973,7 +971,9 @@ export async function initSandbox(opts?: {
   const config: Parameters<typeof SandboxManager.initialize>[0] = {
     network: {
       allowedDomains: [...(opts?.allowedDomains ?? [])],
-      deniedDomains: [...(opts?.deniedDomains ?? [])],
+      // Each task's own front refuses its own denies; the run's proxy
+      // refusing the union denied one task's host to every task.
+      deniedDomains: [],
       ...(opts?.allowAllUnixSockets === true ? { allowAllUnixSockets: true } : {}),
     },
     filesystem: { denyRead: [], allowWrite: [], denyWrite: [] },
@@ -982,7 +982,8 @@ export async function initSandbox(opts?: {
     ...(scopedDenyScan ? scopedScanConfig() : {}),
     ...bundledJavaAgent(),
   }
-  runAllowsHosts = config.network.allowedDomains.length > 0
+  runAllowed = config.network.allowedDomains
+  runAllowsHosts = runAllowed.length > 0
   const wasUp = srtUp
   if (!wasUp) await unlinkStaleMuxSockets()
   const listening = srtCleanupAdopted ? undefined : cleanupListeners()
@@ -1646,7 +1647,7 @@ async function wrapIn(
       )
     }
   }
-  if (runAllowsHosts && args.config.network !== true) {
+  if (runAllowsHosts) {
     try {
       wrapped = await ownProxy(SandboxManager, wrapped, inner, tag, args.config)
     } catch (err) {
@@ -1978,6 +1979,8 @@ const PROXY_BRIDGE_WAIT =
 const taskProxies = new Map<string, TaskProxy>()
 /** Whether the run's proxy allows any host: one that allows none refuses every task alike, front or not. */
 let runAllowsHosts = false
+/** The run's union: what a `network: true` task's front allows. */
+let runAllowed: readonly string[] = []
 
 /**
  * A networked task's own proxy front (task-proxy.ts). The runtime's proxy
@@ -1989,8 +1992,8 @@ let runAllowsHosts = false
  * macOS: it listens on a loopback port of its own, and the task's proxy
  * variables and profile name that port in place of the run's, so the
  * profile refuses the run's. A task that lists no network gets a front
- * that refuses every host; `network: true` names no list and keeps the
- * run's proxy. Fails closed: a task the front cannot take does not run.
+ * that refuses every host; `network: true` gets one that allows the
+ * run's union. Each front refuses only its own task's denies. Fails closed: a task the front cannot take does not run.
  */
 async function ownProxy(
   SandboxManager: SrtModule['SandboxManager'],
@@ -2019,7 +2022,12 @@ async function ownProxy(
   const key = Buffer.from(inner.slice(0, 100)).toString('base64')
   const front = await startTaskProxy({
     endpoint: linux ? socket : 0,
-    allowed: config.network === undefined ? [] : (config.network as string[]),
+    allowed:
+      config.network === true
+        ? runAllowed
+        : config.network === undefined
+          ? []
+          : (config.network as string[]),
     denied: config.denyNetwork ?? [],
     runProxyPort: port!,
     token: token!,
@@ -2908,7 +2916,7 @@ function sbplToken(value: string, field: string): string {
  *
  * `systemInfo` has no SRT field at any level. The rest DO have fields,
  * but SRT reads `network.allowLocalBinding` / `allowUnixSockets` /
- * `allowMachLookup` off the config given to `initialize()` and never off
+ * `allowMachLookup` / `enableWeakerNetworkIsolation` off the config given to `initialize()` and never off
  * the per-call one (`sandbox-manager.js` getters, 0.0.75 and 0.0.76) — so a per-task
  * grant passed there is silently dropped. vx is per-task by definition,
  * so it emits them itself. The rule text mirrors SRT's own.
@@ -2930,6 +2938,9 @@ export function macProfileRules(c: ResolvedSandboxConfig): string[] {
     rules.push('(allow network-bind (local ip "*:*"))')
     rules.push('(allow network-inbound (local ip "*:*"))')
     rules.push('(allow network-outbound (remote ip "localhost:*"))')
+  }
+  if (c.weakerNetworkIsolation === true) {
+    rules.push('(allow mach-lookup (global-name "com.apple.trustd.agent"))')
   }
   if (c.unixSockets === true) {
     rules.push('(allow system-socket (socket-domain AF_UNIX))')
