@@ -410,7 +410,7 @@ describe('exec.timeout — loader validation', () => {
   }
 
   it('rejects a timeout that is no positive duration', async () => {
-    await expect(load(`{ command: 'x', timeout: '0s' }`)).rejects.toThrow(/must be a duration/)
+    await expect(load(`{ command: 'x', timeout: '0s' }`)).rejects.toThrow(/must be more than 0/)
     await expect(load(`{ command: 'x', timeout: 1500 }`)).rejects.toThrow(
       /takes a duration with its unit/,
     )

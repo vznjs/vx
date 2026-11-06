@@ -1968,7 +1968,7 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--timeout=1000ms']).settings['run.timeout']).toBe(1000)
     expect(parseRunArgs(['build']).settings['run.timeout']).toBeUndefined()
     // 0 / negative → refused.
-    expect(parseRunArgs(['build', '--timeout', '0ms']).error).toMatch(/must be a duration/)
+    expect(parseRunArgs(['build', '--timeout', '0ms']).error).toMatch(/must be more than 0/)
     expect(parseRunArgs(['build', '--timeout=-5']).error).toMatch(/must be a duration/)
     // Missing value.
     expect(parseRunArgs(['build', '--timeout']).error).toBe(

@@ -664,7 +664,11 @@ export function validateProjectConfig(
         const plain = Array.isArray(env)
           ? undefined
           : Object.entries(env).find(
-              ([k, v]) => !ENV_FIELDS.has(k) && ['string', 'number', 'boolean'].includes(typeof v),
+              ([k, v]) =>
+                !ENV_FIELDS.has(k) &&
+                // `passthrough` is a typo of a field, not a variable.
+                nearest(k, ENV_FIELDS) === undefined &&
+                ['string', 'number', 'boolean'].includes(typeof v),
             )
         if (plain !== undefined) {
           throw new UserError(
