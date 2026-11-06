@@ -6,6 +6,7 @@
 // "only where tools differ" switch is a checkbox the stylesheet reads.
 import FeaturesPage from '../../components/features/FeaturesPage.astro'
 import {
+  about,
   agree,
   CATEGORIES,
   groupName,
@@ -149,6 +150,7 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'not applicable' } as const
                     </span>
                   ))}
                 </span>
+                <p class="cfm-cat-about" set:html={inline(about(s.id))} />
               </summary>
               <table class="cfm-cases">
                 <thead>

@@ -215,6 +215,13 @@
   margin-left: auto;
   font-size: 14px;
 }
+.vx-landing .cfm-cat-about {
+  flex-basis: 100%;
+  margin: 0;
+  max-width: 70ch;
+  font-size: 15px;
+  opacity: 0.8;
+}
 .vx-landing .cfm-cat[open] > .cfm-cases {
   margin-top: 14px;
 }

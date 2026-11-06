@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { agree, CATEGORIES, note, percent, RESULTS, TOOLS } from '../src/conformance/data.ts'
+import { about, agree, CATEGORIES, inline, note, percent, RESULTS, TOOLS } from '../src/conformance/data.ts'
 
 const DIST = path.resolve(import.meta.dir, '../dist')
 const html = readFileSync(path.join(DIST, 'conformance/index.html'), 'utf8')
@@ -79,6 +79,22 @@ describe('the conformance page', () => {
       for (const t of TOOLS)
         if (!head.includes(`>${percent(RESULTS.scores[t]?.[id])}</strong>`))
           wrong.push(`${id}: ${t} score`)
+    }
+    expect(wrong).toEqual([])
+  })
+
+  it('says on each category, closed, what it checks and why it matters', () => {
+    const wrong: string[] = []
+    for (const id of CATEGORIES) {
+      const text = about(id)
+      if (!text) {
+        wrong.push(`${id}: no description`)
+        continue
+      }
+      if (text.length > 200) wrong.push(`${id}: over 200 chars`)
+      const at = html.indexOf(`<details class="cfm-cat" id="${id}"`)
+      const head = html.slice(at, html.indexOf('</summary>', at))
+      if (!head.includes(`<p class="cfm-cat-about">${inline(text)}</p>`)) wrong.push(`${id}: not shown`)
     }
     expect(wrong).toEqual([])
   })
