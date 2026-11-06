@@ -567,7 +567,9 @@ export async function writeTree(plan: ArtifactPlan, dir: string): Promise<Artifa
   }
   // A stdout-only entry writes no file to make the directory.
   await mkdir(dir, { recursive: true })
-  await Promise.all(
+  // Every write settles before a failure is thrown: the caller removes
+  // `dir`, and a write still in flight would make its parents again.
+  const settled = await Promise.allSettled(
     plan.inputs.map(async (i) => {
       if (!(i.body instanceof Blob)) return
       const to = path.join(dir, i.name)
@@ -579,6 +581,8 @@ export async function writeTree(plan: ArtifactPlan, dir: string): Promise<Artifa
       await utimes(to, at, at)
     }),
   )
+  const failed = settled.find((s) => s.status === 'rejected')
+  if (failed !== undefined) throw failed.reason
   await writeFile(path.join(dir, META_ENTRY), meta)
   return fold.result()
 }
