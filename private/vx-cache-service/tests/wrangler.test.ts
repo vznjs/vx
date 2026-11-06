@@ -15,3 +15,10 @@ it('gives a Preview the production ALLOW and bucket', () => {
   expect(cfg.previews.vars).toEqual(cfg.vars)
   expect(cfg.previews.r2_buckets).toEqual(cfg.r2_buckets)
 })
+
+// Workers Builds deploys this file, not the package's: unset, wrangler
+// left a stale cron that failed every night (no scheduled()).
+it('clears any cron on deploy', () => {
+  const file = path.resolve(import.meta.dir, '..', 'wrangler.jsonc')
+  expect(Bun.JSONC.parse(readFileSync(file, 'utf8'))).toMatchObject({ triggers: { crons: [] } })
+})
