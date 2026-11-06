@@ -93,6 +93,15 @@ const RESUMED_FD_RE = /resumed>.*\)\s*=\s*(\d+)(?:<(.*)>)?$/
 const OPENED_RE = new RegExp(
   `^(\\d+)\\s+(?:openat|open)\\((?:(AT_FDCWD|\\d+)(?:<.*?>)?, )?${QUOTED}, [^)]*\\)\\s*=\\s*(\\d+)`,
 )
+/** An open's flags, after its path. */
+const OPEN_FLAGS_RE = new RegExp(`^\\d+\\s+(?:openat|open)\\((?:${DIRFD})?${QUOTED}, ([A-Z0-9_|]+)`)
+const WRITE_FLAGS_RE = /O_WRONLY|O_RDWR|O_CREAT|O_TRUNC/
+
+/** Whether an open line asks to write or create, as its flags say. */
+function writeFlags(line: string): { writes?: true } {
+  const flags = OPEN_FLAGS_RE.exec(line)?.[4]
+  return flags !== undefined && WRITE_FLAGS_RE.test(flags) ? { writes: true } : {}
+}
 
 /** Where a successful read opened: `-y`'s path, else the call's own when placeable. */
 function readPath(dirfd: string, rawPath: string, opened: string | undefined): string | undefined {
@@ -140,6 +149,8 @@ export interface DeniedCall {
   errno: string
   /** A read that SUCCEEDED (`errno` empty): asked for by `deniedCalls`' `reads`. */
   read?: true
+  /** An `openat` whose flags ask to write or create. */
+  writes?: true
   /**
    * The directory a relative `rawPath` was opened from, when the trace
    * shows the process (or one it was forked from) changed into one; absent
@@ -194,7 +205,14 @@ type Op =
 export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCall[] {
   const pending = new Map<
     string,
-    { syscall: string; rawPath: string; read?: true; dirfd?: string; dir?: string }
+    {
+      syscall: string
+      rawPath: string
+      read?: true
+      writes?: true
+      dirfd?: string
+      dir?: string
+    }
   >()
   const out: DeniedCall[] = []
   const ops = new Map<string, Op[]>()
@@ -268,7 +286,13 @@ export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCa
       const rawPath = cStringPath(done[5])
       denied(
         done[1]!,
-        { syscall: done[2], rawPath, errno: done[6], ...within(done[4], rawPath) },
+        {
+          syscall: done[2],
+          rawPath,
+          errno: done[6],
+          ...within(done[4], rawPath),
+          ...writeFlags(line),
+        },
         done[3],
       )
       continue
@@ -284,6 +308,7 @@ export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCa
         syscall: unfinished[2],
         rawPath,
         ...within(unfinished[4], rawPath),
+        ...writeFlags(line),
         ...(reads && OPEN_READ_UNFINISHED_RE.test(line) ? { read: true as const } : {}),
         ...(unfinished[3] !== undefined ? { dirfd: unfinished[3] } : {}),
       })
@@ -309,6 +334,7 @@ export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCa
             rawPath: held.rawPath,
             errno: resumed[3],
             ...(held.dir !== undefined ? { dir: held.dir } : {}),
+            ...(held.writes === true ? { writes: true as const } : {}),
           },
           held.dirfd,
         )
@@ -475,7 +501,7 @@ export async function parseStraceViolations(
   const seen = new Set<string>()
   const judged = new Set<string>()
   const out: SandboxViolation[] = []
-  for (const { syscall, rawPath, errno, dir, read } of deniedCalls(
+  for (const { syscall, rawPath, errno, dir, read, writes } of deniedCalls(
     text,
     baselines.cwd,
     widened.size > 0,
@@ -484,7 +510,7 @@ export async function parseStraceViolations(
     // stats: a test shard's 44,788 calls held the event loop 2.9 s, and a
     // DTE worker that quiet for two heartbeats was lost (main, 2026-10-25).
     // Each call is judged once, and the loop yields between batches.
-    const call = `${syscall}\0${rawPath}\0${dir}\0${errno}\0${read}`
+    const call = `${syscall}\0${rawPath}\0${dir}\0${errno}\0${read}\0${writes}`
     if (judged.has(call)) continue
     judged.add(call)
     if (judged.size % JUDGED_PER_TURN === 0) await new Promise((r) => setImmediate(r))
@@ -503,7 +529,7 @@ export async function parseStraceViolations(
     // the host has the file.
     if (errno === 'ENOENT' && PROBES.has(syscall) && !lstatSync(abs, { throwIfNoEntry: false }))
       continue
-    const key = `${syscall}|${abs}`
+    const key = `${syscall}|${abs}|${writes}`
     if (seen.has(key)) continue
     seen.add(key)
     // The line is printed verbatim, and the trace's `\033` is decoded: a
@@ -527,6 +553,7 @@ export async function parseStraceViolations(
             // does not keep, and `access` may ask either — so either list
             // can silence it.
             ignorable: ['read', 'write'],
+            ...(syscall === 'openat' ? { opened: writes === true ? 'write' : 'read' } : {}),
             ...(via === undefined ? {} : { via }),
           },
     )

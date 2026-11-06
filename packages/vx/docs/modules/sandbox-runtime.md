@@ -244,6 +244,7 @@ export interface SandboxViolation {
   hint?: true // vx's own note, shown but never counted (B-20)
   path?: string
   via?: string // Linux: the unmounted directory holding a link the task opened through
+  opened?: 'read' | 'write' // Linux: what a refused openat's flags asked for
   ignorable?: readonly ('read' | 'write' | 'network' | 'systemInfo')[]
 }
 export interface SandboxedRunResult extends RunResult {
@@ -334,6 +335,7 @@ export interface DeniedCall {
   rawPath: string
   errno: string
   read?: true // a read that succeeded (`reads`)
+  writes?: true // an openat whose flags ask to write or create
   dir?: string // the dir a relative rawPath was opened from, after a chdir
 }
 export function deniedCalls(text: string, cwd?: string, reads?: boolean): DeniedCall[] // strace lines, split calls paired; paths follow each chdir from cwd; reads: successful opens too

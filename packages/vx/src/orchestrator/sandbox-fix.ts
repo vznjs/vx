@@ -68,12 +68,18 @@ function keyedBy(globs: readonly string[]): (rel: string) => boolean {
   return (rel) => take.some((g) => g.match(rel)) && !drop.some((g) => g.match(rel))
 }
 
+/** The task proxy's refusals an `allow.network` entry cannot lift (task-proxy.ts). */
+const REFUSED_ANYWAY = /\((?:host is on the deny list|malformed host)\)$/
+
 function kindOf(v: SandboxViolation): Kind | undefined {
   const can = v.ignorable ?? []
   if (can.length === 1) return can[0]
-  // Linux reports a refused `openat` as either: the flags the parse drops
-  // decide. A file the host has was hidden from a read; one it lacks was
-  // being created.
+  // Linux reports a refused `openat` as either: its flags decide. Judged by
+  // the host alone, `cat optional.cfg` of a file it lacks was named a
+  // write, and the grant made vx create an empty one.
+  if (v.opened !== undefined) return v.opened
+  // A probe (`access`) names no flags: a file the host has was hidden from
+  // a read; one it lacks was being created.
   if (can.includes('read') && can.includes('write') && v.path !== undefined)
     return lstatSync(v.path, { throwIfNoEntry: false }) !== undefined ? 'read' : 'write'
   return undefined
@@ -103,6 +109,8 @@ export function sandboxFix(
     if (v.hint === true || v.target === undefined) continue
     const kind = kindOf(v)
     if (kind === undefined) continue
+    // A host the deny list holds, or a malformed one, no allow grant admits.
+    if (kind === 'network' && REFUSED_ANYWAY.test(v.line)) continue
     if (kind === 'network') fix.network.add(v.target.replace(/:\d+$/, ''))
     else if (kind === 'systemInfo') fix.systemInfo.add(v.target)
     else if (v.path === undefined) continue

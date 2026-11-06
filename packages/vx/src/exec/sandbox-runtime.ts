@@ -1450,6 +1450,8 @@ export interface SandboxViolation {
    * leaves it hidden.
    */
   via?: string
+  /** Linux: what a refused `openat`'s flags asked for. */
+  opened?: 'read' | 'write'
   ignorable?: readonly ('read' | 'write' | 'network' | 'systemInfo')[]
 }
 

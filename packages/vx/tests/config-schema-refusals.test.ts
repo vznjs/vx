@@ -910,6 +910,22 @@ describe('sandbox refusals the sweep found unheld (item 653)', () => {
       expect(sandboxRefusal({ allow: { [f]: ['a/b'] } })).toBeNull()
     })
   }
+  // Only `~` and `~/…` mean the home: `~root/x/` was read as `$HOME/root/x`,
+  // and vx created that directory on the host.
+  for (const [list, f] of [
+    ['allow', 'read'],
+    ['allow', 'write'],
+    ['ignore', 'read'],
+    ['ignore', 'write'],
+  ] as const) {
+    it(`refuses a ~user path in ${list}.${f}, and takes ~ and ~/`, () => {
+      expect(sandboxRefusal({ [list]: { [f]: ['~/a', '~root/x/'] } })).toBe(
+        `${W}.sandbox.${list}.${f}: "~root/x/" names a user's home, which vx does not expand — ` +
+          `write '~/…' for your own home, or an absolute path`,
+      )
+      expect(sandboxRefusal({ [list]: { [f]: ['~', '~/a', 'a~b', '/x/~y'] } })).toBeNull()
+    })
+  }
   for (const [field, sandbox, message] of CASES) {
     it(`refuses a malformed ${field}`, () => {
       expect(sandboxRefusal(sandbox)).toBe(message)
