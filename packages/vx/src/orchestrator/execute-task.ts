@@ -103,6 +103,7 @@ import { executePersistentTask } from './persistent-task.js'
 import {
   forgetUndeclaredWrites,
   isAborted,
+  dependencyBins,
   taskBinDirs,
   serverSpec,
   taskEnv,
@@ -776,7 +777,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
   }
 
-  const env = taskEnv(node, step, args.workspaceRoot)
+  const depBins = await dependencyBins(args.readableDeps?.(node) ?? [])
+  const env = taskEnv(node, step, args.workspaceRoot, depBins)
   const wallclockStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
 
   // Miss path: describe the input set ONCE — the executor gets the values
@@ -1135,7 +1137,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         code,
         command: step.command,
         cwd: node.projectDir,
-        bins: taskBinDirs(node, args.workspaceRoot),
+        bins: taskBinDirs(node, args.workspaceRoot, depBins),
         signal: res.signal,
         hidden: req.sandbox && ((f: string) => !sandboxReads(req.sandbox!, f)),
       })
@@ -1318,6 +1320,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       cwd: node.projectDir,
       env,
       envDefine: step.env?.define ?? {},
+      ...(depBins.length === 0 ? {} : { binDirs: depBins }),
       capture,
       onStdout: masked ? masked.out : toOut,
       onStderr: masked ? masked.err : toErr,

@@ -479,6 +479,36 @@ describe('task refusals the sweep found unheld (item 653)', () => {
     }
   })
 
+  // `cache.outputs.bin` goes on dependants' PATH: a dir no output head
+  // covers is neither saved nor readable in a dependant's sandbox, and a
+  // `:` would split it on PATH.
+  it('a bin dir outside the outputs, absolute, climbing, a glob or holding `:` is refused', () => {
+    const bin = (b: unknown, files = ['out/**']) =>
+      taskRefusal({
+        exec: { command: 'x' },
+        inputs: { files: [] },
+        cache: { outputs: { files, bin: b } },
+      })
+    const plain = (b: string) =>
+      `${CFG}: tasks.t.cache.outputs.bin: "${b}" must be a plain project-relative directory, with no '..', ` +
+      `glob or ':' — such as 'out/bin'`
+    for (const b of ['/opt/bin', '../tools/bin', 'out/*', 'out/a:b']) expect(bin(b)).toBe(plain(b))
+    expect(bin('')).toBe(
+      `${CFG}: tasks.t.cache.outputs.bin must be a directory name, such as 'out/bin'`,
+    )
+    expect(bin(1)).toBe(
+      `${CFG}: tasks.t.cache.outputs.bin must be a directory name, such as 'out/bin'`,
+    )
+    const outside = (b: string) =>
+      `${CFG}: tasks.t.cache.outputs.bin: "${b}" is under no cache.outputs.files directory — a dependant can ` +
+      `run only what this task saves, so declare it as an output too, such as '${b}/**'`
+    expect(bin('bin')).toBe(outside('bin'))
+    expect(bin('out/bin', ['*.js'])).toBe(outside('out/bin'))
+    expect(bin('out/bin', ['!out/**', 'dist/**'])).toBe(outside('out/bin'))
+    // Controls: the head itself, below it, and a trailing slash.
+    for (const b of ['out', 'out/bin', 'out/bin/']) expect(bin(b)).toBeNull()
+  })
+
   // `outputs: ['**']` loaded, and the clean before the run deleted the
   // project's source, package.json and vx.config while the run reported
   // success; the message for '.' had suggested `**` (item 1002).

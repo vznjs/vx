@@ -88,6 +88,7 @@ const INPUTS = [
   'workspaceRuntime',
 ] as const satisfies readonly Keys<InputsConfig>[]
 const OUTPUTS = [
+  'bin',
   'clean',
   'files',
   'workspaceFiles',
@@ -354,7 +355,11 @@ describe('a config built from readonly lists type-checks and loads', () => {
           workspaceRuntime: ['git -v'] as const,
         },
         cache: {
-          outputs: { files: ['dist/**'] as const, workspaceFiles: ['out/x'] as const },
+          outputs: {
+            files: ['dist/**'] as const,
+            workspaceFiles: ['out/x'] as const,
+            bin: 'dist/bin',
+          },
         },
       },
     },

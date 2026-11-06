@@ -158,6 +158,7 @@ function specs(ws: WorkspaceSpec) {
         outDefault: spec.outputs === undefined ? '1' : '',
         outRe: outs.flatMap((o) => o.inc),
         outEx: outs.flatMap((o) => o.exc),
+        binDir: spec.bin ? path.posix.join(dir, spec.bin) : '',
       }
     }
   }
@@ -213,6 +214,9 @@ snap() {
   done | sort
 }
 [ -z "$outDefault" ] || snap > "$NIX_BUILD_TOP/before"
+dirs=$binPath
+while [ -n "$dirs" ]; do b=\${dirs%%:*}; PATH="$top/$b:$PATH"; [ "$b" = "$dirs" ] && dirs= || dirs=\${dirs#*:}; done
+export PATH
 cd "$top/$dir"
 status=0
 sh -c "$command" 3>&- || status=$?
@@ -288,10 +292,12 @@ const LIB = `
           then builtins.concatStringsSep "" (map (a: " " + quote a) (r.args or [ ])) else "");
         srcs = builtins.concatStringsSep "\\n" (builtins.attrValues (builtins.mapAttrs (rel: p: "\${p}\\t\${rel}") srcs));
         deps = builtins.concatStringsSep "\\n" (map (d: d.outPath) (closure deps));
+        # As nix-shell puts each input's bin/ on PATH: the direct dependencies' declared one.
+        binPath = builtins.concatStringsSep ":" (builtins.filter (b: b != "") (map (d: d.binDir) deps));
         outRe = builtins.concatStringsSep "\\n" s.outRe;
         outEx = builtins.concatStringsSep "\\n" s.outEx;
       } // builtins.listToAttrs env // (if s.cache then { } else { nonce = r.nonce; }));
-    in drv // { inherit id deps; outRe = s.outRe; outEx = s.outEx; };
+    in drv // { inherit id deps; outRe = s.outRe; outEx = s.outEx; binDir = s.binDir; };
   tasks = builtins.mapAttrs mk specs;
   selected = map (id: builtins.getAttr id tasks) requested;
 `

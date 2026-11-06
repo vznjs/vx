@@ -178,6 +178,12 @@ export interface ExecuteRequest {
    * everywhere and safe to forward.
    */
   readonly envDefine: Readonly<Record<string, string>>
+  /**
+   * The dependencies' `cache.outputs.bin` directories (absolute), already
+   * first on `env`'s PATH: an executor that builds PATH where it runs puts
+   * them first there too.
+   */
+  readonly binDirs?: readonly string[]
   readonly capture: CaptureConfig
   readonly timeoutMs?: number
   readonly onStdout: (chunk: string) => void

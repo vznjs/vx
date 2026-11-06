@@ -1708,7 +1708,7 @@
       "tasks.*.exec.sandbox.ignore": ["network", "read", "systemInfo", "write"],
       "tasks.*.inputs": ["env", "files", "runtime", "tasks", "workspaceFiles", "workspaceRuntime"],
       "tasks.*.cache": ["inputStability", "outputs"],
-      "tasks.*.cache.outputs": ["clean", "files", "workspaceFiles"],
+      "tasks.*.cache.outputs": ["bin", "clean", "files", "workspaceFiles"],
       "tasks.*.cache.inputStability": ["severity", "strategy"]
     },
     "records": ["tasks", "tasks.*.exec.env.define"],
@@ -3654,7 +3654,7 @@
           "\"10G\"",
           "\"10\""
         ],
-        "$CONFIG: tasks.c.cache.outputs must be an object (fields: clean, files, workspaceFiles), not an array — did you mean `{ files: [...] }`?": [
+        "$CONFIG: tasks.c.cache.outputs must be an object (fields: bin, clean, files, workspaceFiles), not an array — did you mean `{ files: [...] }`?": [
           "[]",
           "[\"x\"]",
           "[\"\"]",
@@ -3671,7 +3671,7 @@
           "[\"A*\"]"
         ],
         "$CONFIG: tasks.c.cache.outputs.files must be an array of glob strings": ["{}"],
-        "$CONFIG: tasks.c.cache.outputs has unknown field \"x\" (allowed: clean, files, workspaceFiles)": [
+        "$CONFIG: tasks.c.cache.outputs has unknown field \"x\" (allowed: bin, clean, files, workspaceFiles)": [
           "{\"x\":\"y\"}"
         ],
         "ok": ["<seed>"]
@@ -3911,6 +3911,52 @@
           "[\"A*\"]",
           "{}",
           "{\"x\":\"y\"}"
+        ]
+      },
+      "tasks.*.cache.outputs.bin": {
+        "ok": ["<absent>", "\"out/bin\""],
+        "$CONFIG: tasks.b.cache.outputs.bin must be a directory name, such as 'out/bin'": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]",
+          "{}",
+          "{\"x\":\"y\"}"
+        ],
+        "$CONFIG: tasks.b.cache.outputs.bin: \"x\" is under no cache.outputs.files directory — a dependant can run only what this task saves, so declare it as an output too, such as 'x/**'": [
+          "\"x\""
+        ],
+        "$CONFIG: tasks.b.cache.outputs.bin: \"(\" is under no cache.outputs.files directory — a dependant can run only what this task saves, so declare it as an output too, such as '(/**'": [
+          "\"(\""
+        ],
+        "$CONFIG: tasks.b.cache.outputs.bin: \"30d\" is under no cache.outputs.files directory — a dependant can run only what this task saves, so declare it as an output too, such as '30d/**'": [
+          "\"30d\""
+        ],
+        "$CONFIG: tasks.b.cache.outputs.bin: \"10G\" is under no cache.outputs.files directory — a dependant can run only what this task saves, so declare it as an output too, such as '10G/**'": [
+          "\"10G\""
+        ],
+        "$CONFIG: tasks.b.cache.outputs.bin: \"10\" is under no cache.outputs.files directory — a dependant can run only what this task saves, so declare it as an output too, such as '10/**'": [
+          "\"10\""
         ]
       }
     },

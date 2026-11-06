@@ -31,6 +31,8 @@ import {
   hasControl,
   parseDependencySpec,
   DependencySpecError,
+  grantPrefix,
+  GLOB_WILDCARDS,
 } from '../util/index.js'
 import {
   parseSettingValue,
@@ -1044,7 +1046,44 @@ export function validateProjectConfig(
       if (wsOutputs !== undefined) {
         validateWorkspaceGlobs(wsOutputs, `${where}.cache.outputs.workspaceFiles`, false)
       }
+      const bin = (outputs as { bin?: unknown }).bin
+      if (bin !== undefined) validateBinDir(bin, outFiles as string[], `${where}.cache.outputs.bin`)
     }
+  }
+}
+
+/**
+ * `cache.outputs.bin`: a plain project-relative directory under the fixed
+ * head of a `files` glob. Under a head, a dependant's sandbox reads it
+ * (`dependencyReads` grants heads) and a hit restores it; a `:` would
+ * split it on PATH.
+ */
+function validateBinDir(bin: unknown, files: readonly string[], where: string): void {
+  if (typeof bin !== 'string' || bin.trim() === '') {
+    throw new UserError(`${where} must be a directory name, such as 'out/bin'`)
+  }
+  const dir = bin.replace(/\/+$/, '')
+  if (
+    path.posix.isAbsolute(dir) ||
+    dir.split('/').includes('..') ||
+    GLOB_WILDCARDS.test(dir) ||
+    /[!:]/.test(dir)
+  ) {
+    throw new UserError(
+      `${where}: "${bin}" must be a plain project-relative directory, with no '..', ` +
+        `glob or ':' — such as 'out/bin'`,
+    )
+  }
+  const covered = files.some((g) => {
+    if (g.startsWith('!')) return false
+    const head = grantPrefix(g)
+    return head !== '' && head !== '.' && (dir === head || dir.startsWith(`${head}/`))
+  })
+  if (!covered) {
+    throw new UserError(
+      `${where}: "${bin}" is under no cache.outputs.files directory — a dependant can ` +
+        `run only what this task saves, so declare it as an output too, such as '${dir}/**'`,
+    )
   }
 }
 
@@ -1080,7 +1119,7 @@ const INPUT_FIELDS = new Set([
   'runtime',
   'workspaceRuntime',
 ])
-const CACHE_OUTPUT_FIELDS = new Set(['files', 'workspaceFiles', 'clean'])
+const CACHE_OUTPUT_FIELDS = new Set(['files', 'workspaceFiles', 'clean', 'bin'])
 
 /**
  * Another runner's spelling of a field vx has under another name, by the

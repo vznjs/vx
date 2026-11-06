@@ -1347,6 +1347,7 @@ interface CacheOutputs {
   files: readonly string[] // required
   workspaceFiles?: readonly string[] // optional; workspace-root-relative
   clean?: boolean // optional; false keeps outputs on a miss
+  bin?: string // optional; a dir of programs on every dependant's PATH
 }
 ```
 
@@ -1397,6 +1398,34 @@ stores every file the outputs match after the run, so a file an older
 build left behind is cached and restored on every machine. A retry
 still starts clean, and a hit still restores bit-identically. Omitted → the workspace's
 `cache.outputs.clean`, else `true`.
+
+**`bin: 'out/bin'`** names the directory of the outputs that holds
+programs. Every task that depends on this one gets it first on `PATH`,
+so a `tools` project builds Node once and the others run `node`:
+
+```ts
+// packages/tools/vx.config.ts
+import { defineProject } from '@vzn/vx/config'
+
+export default defineProject({
+  tasks: {
+    node: {
+      exec: { command: './build-node.sh' },
+      inputs: { files: ['build-node.sh'] },
+      cache: { outputs: { files: ['out/**'], bin: 'out/bin' } },
+    },
+  },
+})
+```
+
+A task with `dependsOn: ['tools#node']` then runs `node build.js`.
+
+It is declared, never read from a layout. It must sit under the fixed
+head of a `files` glob, so a hit restores it and a sandboxed dependant
+reads it (`exec.sandbox` reads what it depends on). Two dependencies
+holding one program name fail the dependant, naming both: `PATH` order
+would pick one silently. The dependant's key folds the dependency's, so
+a new tool runs it again. Pinned in `tests/dependency-bin.test.ts`.
 
 A **`!` entry takes a path back** from what the positive globs select
 (A-44; a scratch dir under `dist` stays out of the clean this way; a

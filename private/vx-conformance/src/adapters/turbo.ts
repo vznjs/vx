@@ -33,6 +33,8 @@ export const turbo: Adapter = {
   // A task always keys on its dependencies' hashes, and nothing keeps a
   // command from the files, network or home it never declared.
   lacks: [
+    // No task names a directory of programs its dependants get on PATH.
+    'dependency-bin',
     'task-pattern',
     'timeout',
     'retries',
