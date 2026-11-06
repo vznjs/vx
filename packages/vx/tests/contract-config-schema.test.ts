@@ -130,6 +130,7 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       ignore: true,
       weakerWhenNested: true,
       weakerNetworkIsolation: true,
+      hermetic: true,
     }),
     'tasks.*.exec.sandbox.allow': keys<SandboxGrants>({
       read: true,
@@ -237,6 +238,7 @@ function projectSeed(): Record<string, unknown> {
             ignore,
             weakerWhenNested: true,
             weakerNetworkIsolation: false,
+            hermetic: false,
           },
         },
       },

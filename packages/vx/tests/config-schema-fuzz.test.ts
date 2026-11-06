@@ -70,6 +70,7 @@ function genSandbox(r: R): Obj {
     ),
     weakerWhenNested: maybe(r, () => chance(r)),
     weakerNetworkIsolation: maybe(r, () => chance(r)),
+    hermetic: maybe(r, () => chance(r)),
   })
 }
 

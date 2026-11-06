@@ -2264,6 +2264,7 @@ export interface ResolvedSandboxConfig {
   gitConfig?: boolean
   weakerWhenNested?: boolean
   weakerNetworkIsolation?: boolean
+  hermetic?: boolean
   wallsReached?: { read: readonly string[]; write: readonly string[] }
   ignore?: {
     read?: readonly string[]
@@ -2628,6 +2629,7 @@ export interface SandboxConfig {
   ignore?: SandboxIgnore
   weakerWhenNested?: boolean
   weakerNetworkIsolation?: boolean
+  hermetic?: boolean
 }
 ```
 

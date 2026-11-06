@@ -121,6 +121,7 @@ exec: {
     ignore?: { read?, write?, systemInfo?, network? }, // what to leave out of the report
     weakerWhenNested?: boolean,       // Linux
     weakerNetworkIsolation?: boolean, // macOS
+    hermetic?: boolean,               // refuse reads outside the workspace too
   },
 }
 ```

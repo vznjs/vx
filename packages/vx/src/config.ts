@@ -391,6 +391,13 @@ export interface SandboxConfig {
   weakerWhenNested?: boolean
   /** Accept weaker network isolation (host proxy) for lower overhead. */
   weakerNetworkIsolation?: boolean
+  /**
+   * Refuse every read outside the workspace too (`/usr`, `~/.cache`, the
+   * system toolchain), not only the workspace's other projects. A path
+   * outside it is readable only when `allow.read` names it; the shell a
+   * task runs in stays readable, so a task can start.
+   */
+  hermetic?: boolean
 }
 
 /** The denials `sandbox.ignore` can leave out of the report: patterns per class. */
