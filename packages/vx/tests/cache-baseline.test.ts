@@ -466,6 +466,7 @@ describePerf('cache baseline: save + restore', () => {
     const origDecompress = Bun.zstdDecompress
     const origDecompressSync = Bun.zstdDecompressSync
     let decompressCount = 0
+    const decoded: string[] = []
     const bunMut = Bun as unknown as {
       zstdDecompress: typeof Bun.zstdDecompress
       zstdDecompressSync: typeof Bun.zstdDecompressSync
@@ -476,19 +477,23 @@ describePerf('cache baseline: save + restore', () => {
     }) as typeof Bun.zstdDecompress
     bunMut.zstdDecompressSync = ((input: Parameters<typeof Bun.zstdDecompressSync>[0]) => {
       decompressCount++
-      return origDecompressSync(input)
+      const out = origDecompressSync(input)
+      decoded.push(new TextDecoder().decode(out))
+      return out
     }) as typeof Bun.zstdDecompressSync
     try {
       decompressCount = 0
       const hit = await cache.get('sd-hot')
       expect(hit?.stdout).toBe('hello from the build') // served from SQL
       expect(hit?.outputFiles.length).toBeGreaterThan(0) // from output_files rows
-      expect(decompressCount).toBe(0)
+      // The one frame get() decodes is the stored log (v52), never the artifact.
+      expect(decoded).toEqual(['hello from the build'])
+      expect(decompressCount).toBe(1)
 
       const destA = path.join(tmpdir, 'sd-warm-A')
       await mkdir(destA, { recursive: true })
       await cache.restoreOutputs('sd-hot', destA)
-      expect(decompressCount).toBe(1)
+      expect(decompressCount).toBe(2)
     } finally {
       bunMut.zstdDecompress = origDecompress
       bunMut.zstdDecompressSync = origDecompressSync
