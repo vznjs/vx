@@ -5,8 +5,8 @@ description: "The .vx/workspace.ts file: the workspace root, its plugins and its
 
 import { Aside, FileTree } from '@astrojs/starlight/components'
 
-A workspace is a git repository with a `.vx/workspace.ts` at its root and a
-`vx.config.ts` in each project.
+A workspace is a directory in a git checkout with a `.vx/workspace.ts` at its
+root and a `vx.config.ts` in each project.
 
 <FileTree>
 - .vx/
@@ -36,7 +36,8 @@ name is the first of these that exists:
 ## The lock
 
 Runs read configs from `.vx/projects.lock.json`, never from the files.
-After you add or edit a `vx.config.ts`, run `vx lock` and commit the lock.
+After you add or edit a `vx.config.ts`, run `vx lock` and commit what it
+writes: the lock, and the `vx.lock.json` beside each config.
 
 ```sh
 vx lock

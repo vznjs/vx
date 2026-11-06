@@ -955,7 +955,7 @@ other persistent task`), and a non-zero exit makes the run exit 1
    reads history for it, and the final summary never shows it. A p50
    here is the median of the task's last five timings on this branch,
    else on any branch; the timings are shared by every worktree of the
-   repo, so a new one has a forecast on its first run.
+   workspace, so a new one has a forecast on its first run.
 
 In a terminal known to read them, the region also sends zero-width
 escapes: tab or taskbar progress (OSC 9;4: Ghostty, iTerm2 3.6+,
@@ -1654,7 +1654,7 @@ watch`.
 `vx cache clean` evicts old or oversized cache entries, or with no
 bound clears the cache. It operates on the entries and
 `<hash>.tar.zst` artifacts of the store a run opens
-(`~/.vx/<id>/cache`, shared by every checkout of the repository), or of
+(`~/.vx/<id>/cache`, shared by every checkout of the workspace), or of
 `<cacheDir>` itself when the workspace names one (`cache.dir`,
 `VX_CACHE_DIR`, `--cache-dir`).
 

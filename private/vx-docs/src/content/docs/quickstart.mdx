@@ -15,7 +15,7 @@ Cache your first task in two minutes, in a workspace you already have.
 
 1. **Set up vx**
 
-   Run this at the root of your git repository:
+   Run this at the root of your workspace, inside a git checkout:
 
    ```sh
    bunx @vzn/vx init
@@ -48,7 +48,8 @@ Cache your first task in two minutes, in a workspace you already have.
 
    In a monorepo, give each package its own `vx.config.ts` beside its
    `package.json`, and add `dependsOn: ['^build']` to build a package's
-   dependencies first. `vx show` lists every project vx found.
+   dependencies first. `vx show` lists every project vx found. At the root,
+   `vx run build --all` runs every package's build.
 
    Then save the change for every run to read:
 

@@ -423,7 +423,7 @@ async function starter(
 ): Promise<number> {
   if (args.mode !== undefined) {
     throw new UserError(
-      `vx init: --${args.mode} answers a Turbo or Nx repo's question, and there is no turbo.json or nx.json here`,
+      `vx init: --${args.mode} answers a Turbo or Nx workspace's question, and there is no turbo.json or nx.json here`,
       'VX_E_USAGE',
     )
   }

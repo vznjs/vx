@@ -27,8 +27,8 @@ exits `0`:
 In GitHub Actions, run it before the build:
 
 ```yaml title=".github/workflows/ci.yml"
-- run: vx lock --check
-- run: vx run build --all
+- run: bun vx lock --check
+- run: bun vx run build --all
 ```
 
 See [`vx lock`](../../../cli/lock/).
