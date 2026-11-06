@@ -98,7 +98,10 @@ export class Cache implements CacheLayer {
     | { plan: true; saved: SavedTree }
   >
   recordRun(run: RunRecord): void
-  recordRuns(runs: readonly RunRecord[]): void
+  recordRuns(
+    runs: readonly RunRecord[],
+    head?: Pick<InvocationRecord, 'branch' | 'commitSha'>,
+  ): void
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
   recordRemoteErrors(runId: string, errors: readonly (readonly [string, string])[]): void
   stats(opts: CacheStatsOptions = {}): CacheStats

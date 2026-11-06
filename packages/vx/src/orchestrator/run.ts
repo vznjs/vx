@@ -1611,7 +1611,7 @@ async function runOnBus(
       // measured, or the next run knows none of it (2026-10-21).
       const ended = list.filter((o) => o.status !== 'aborted' && o.status !== 'skipped')
       stepSync('vx:history', () => {
-        recordHistory(() => prepared.localCache.recordRuns(recordsOf(ended, false).runs))
+        recordHistory(() => prepared.localCache.recordRuns(recordsOf(ended, false).runs, head))
         recordFailures(ended)
       })
     }

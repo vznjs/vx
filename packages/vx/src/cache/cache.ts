@@ -3391,9 +3391,12 @@ export class Cache implements CacheLayer {
     if (this.writeBlocked !== null) return
     return this.guard(() => this.history.recordRun(run))
   }
-  recordRuns(runs: readonly RunRecord[]): void {
+  recordRuns(
+    runs: readonly RunRecord[],
+    head?: Pick<InvocationRecord, 'branch' | 'commitSha'>,
+  ): void {
     if (this.writeBlocked !== null) return
-    return this.guard(() => this.history.recordRuns(runs))
+    return this.guard(() => this.history.recordRuns(runs, head))
   }
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void {
     if (this.writeBlocked !== null) return
