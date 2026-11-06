@@ -41,7 +41,12 @@ describe.skipIf(!available || process.platform !== 'linux' || bwrap === null)(
       const r = Bun.spawnSync({
         cmd: [process.execPath, BIN, 'run', ...args],
         cwd: root,
-        env: { ...process.env, PATH: `${shims}:${process.env['PATH'] ?? ''}`, CI: '1' },
+        env: {
+          ...process.env,
+          PATH: `${shims}:${process.env['PATH'] ?? ''}`,
+          CI: '1',
+          NO_COLOR: '1',
+        },
         stdout: 'pipe',
         stderr: 'pipe',
         timeout: 30_000,
@@ -115,7 +120,12 @@ console.log('ok=' + r.ok)
       const r = Bun.spawnSync({
         cmd: [process.execPath, embedder],
         cwd: root,
-        env: { ...process.env, PATH: `${shims}:${process.env['PATH'] ?? ''}`, CI: '1' },
+        env: {
+          ...process.env,
+          PATH: `${shims}:${process.env['PATH'] ?? ''}`,
+          CI: '1',
+          NO_COLOR: '1',
+        },
         stdout: 'pipe',
         stderr: 'pipe',
         timeout: 30_000,
