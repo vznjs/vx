@@ -30,13 +30,13 @@ permissions:
   id-token: write
 
 # A newer push to the same PR supersedes an older run, which is cancelled:
-# its old head is never merged. Any other run (main, a dispatch) finishes
-# and only the queued runs between it and the tip are dropped, or a busy
-# main never completes a run, never releases (auto-release.yml) and never
-# says it is red.
+# its old head is never merged. Main runs every commit, one at a time in
+# push order (`queue: max`, up to 100 waiting), so each commit gets its own
+# verdict and none is dropped for a newer one (2026-11-06).
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  queue: ${{ github.event_name == 'pull_request' && 'single' || 'max' }}
 
 # A stack's top pull request holds every layer below it, and merging it
 # merges them all: only it runs CI, so a stack costs one run, not one per

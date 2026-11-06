@@ -85,6 +85,7 @@ describe('ci.yml', () => {
     expect(doc.concurrency).toEqual({
       group: '${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}',
       'cancel-in-progress': "${{ github.event_name == 'pull_request' }}",
+      queue: "${{ github.event_name == 'pull_request' && 'single' || 'max' }}",
     })
     expect(doc.jobs['linux']!.if).toStartWith("github.event.action != 'closed' && ")
   })
@@ -241,10 +242,11 @@ describe('ci.yml', () => {
     expect(JSON.stringify(doc.on ?? doc.true)).not.toMatch(/paths/)
   })
 
-  it('cancels a superseded run on a pull request only', () => {
+  it('cancels a superseded run on a pull request only; main queues every push', () => {
     expect(doc.concurrency).toEqual({
       group: '${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}',
       'cancel-in-progress': "${{ github.event_name == 'pull_request' }}",
+      queue: "${{ github.event_name == 'pull_request' && 'single' || 'max' }}",
     })
   })
 })
