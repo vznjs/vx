@@ -99,6 +99,9 @@ under `~/.vx`, so every worktree of the repo shares it.
 - **Not a blind retry.** A task this record calls flaky gets one more
   attempt when it fails; any other failure is final. A pass on retry
   is *reported*, not quietly made green.
+- **Not one machine's memory.** With a history server, every CI job
+  shares which keys failed and then passed, and a DTE retry runs on
+  another worker.
 - **Not a quarantine.** Nothing is skipped, because a skip hides a
   failure.
 
