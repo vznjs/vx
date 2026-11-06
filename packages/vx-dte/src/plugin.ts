@@ -281,6 +281,11 @@ export function dte(options: DteOptions = {}) {
   // Each finished task's cache key, a hit's too: what a worker restores a
   // dependency by.
   const keys = new Map<string, string>()
+  // Tasks that run a command and have not ended, by the platform they name
+  // ('' for none): a worker the run cannot start again stays while its
+  // platform has one (`keepLast`).
+  const leftOf = new Map<string, number>()
+  const ended = new Set<string>()
   let orchestrator: Orchestrator | undefined
   let closing: Promise<void> | undefined
 
@@ -432,6 +437,10 @@ export function dte(options: DteOptions = {}) {
       if (ctx.ci) keep = { cache: ctx.cache, root: ctx.workspaceRoot, warn: (m) => ctx.warn(m) }
       ctx.on('onTaskComplete', (node, outcome) => {
         if (outcome.hash !== undefined) keys.set(node.id, outcome.hash)
+        if (node.config.exec?.command === undefined || ended.has(node.id)) return
+        ended.add(node.id)
+        const p = node.platform ?? ''
+        leftOf.set(p, (leftOf.get(p) ?? 1) - 1)
       })
     },
 
@@ -444,6 +453,12 @@ export function dte(options: DteOptions = {}) {
       const ids = [...graph.values()]
         .filter((n) => n.config.exec?.command !== undefined)
         .map((n) => n.id)
+      leftOf.clear()
+      ended.clear()
+      for (const id of ids) {
+        const p = graph.get(id)!.platform ?? ''
+        leftOf.set(p, (leftOf.get(p) ?? 0) + 1)
+      }
       const read = async (): Promise<void> => {
         if (orchestrator === undefined) return
         try {
@@ -497,7 +512,7 @@ export function dte(options: DteOptions = {}) {
       const [
         { Orchestrator },
         { joinOffLoop },
-        { decide, knownMisses, slowdown, tailsMs, WARM_UP_MS },
+        { decide, keepLast, knownMisses, slowdown, tailsMs, WARM_UP_MS },
         { snapshot },
         seal,
       ] = await Promise.all([
@@ -657,7 +672,14 @@ export function dte(options: DteOptions = {}) {
           const m = p50(id)
           return m === undefined ? undefined : m * slow
         }
-        const { workers, running } = o.planState(ms, warmUp)
+        const state = o.planState(ms, warmUp)
+        const running = state.running
+        const workers = keepLast(
+          state.workers,
+          sizes,
+          started,
+          (p) => (leftOf.get(p) ?? 0) > 0 || (p === home && (leftOf.get('') ?? 0) > 0),
+        )
         const final = adapter === undefined
         const p = decide({
           remaining,
