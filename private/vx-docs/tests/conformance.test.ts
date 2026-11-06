@@ -15,6 +15,7 @@ import {
   percent,
   RESULTS,
   supports,
+  RANKED,
   TOOLS,
 } from '../src/conformance/data.ts'
 
@@ -66,7 +67,7 @@ describe('the conformance page', () => {
       if (!html.startsWith(`<details class="cfm-cat" id="${c.category}"`, section))
         wrong.push(`${c.id}: not under ${c.category}`)
       const got = cells(row(c.id)).map(([t, s]) => [t, s])
-      const want = TOOLS.map((t) => [t, c.outcomes[t]?.status ?? 'n/a'])
+      const want = RANKED.map((t) => [t, c.outcomes[t]?.status ?? 'n/a'])
       if (JSON.stringify(got) !== JSON.stringify(want))
         wrong.push(`${c.id}: ${JSON.stringify(got)}`)
       if (!c.why || !row(c.id).includes('<details class="cfm-why">')) wrong.push(`${c.id}: why`)
@@ -110,6 +111,19 @@ describe('the conformance page', () => {
     expect(wrong).toEqual([])
   })
 
+  it('lists the tools by cases passed, most first', () => {
+    const passed = (t: string) => RESULTS.scores[t]?.['all']?.pass ?? 0
+    expect([...RANKED].sort()).toEqual([...TOOLS].sort())
+    for (let i = 1; i < RANKED.length; i++)
+      expect(passed(RANKED[i - 1]!)).toBeGreaterThanOrEqual(passed(RANKED[i]!))
+    const all = html.slice(
+      html.indexOf('data-group="all"'),
+      html.indexOf('<details', html.indexOf('data-group="all"')),
+    )
+    const order = [...all.matchAll(/class="cfm-cell" data-tool="([^"]+)"/g)].map((m) => m[1])
+    expect(order).toEqual(RANKED)
+  })
+
   it('opens each failing cell onto its detail', () => {
     const wrong: string[] = []
     let fails = 0
@@ -125,7 +139,7 @@ describe('the conformance page', () => {
     expect(fails).toBeGreaterThan(0)
   })
 
-  it('scores each tool in every group: passed and supported, both of every case', () => {
+  it('scores each tool in every group: passed of every case, a bar of what it supports, and the counts', () => {
     const groups = ['all', ...CATEGORIES]
     const wrong: string[] = []
     for (const g of groups) {
@@ -136,11 +150,12 @@ describe('the conformance page', () => {
         const at = tr.indexOf(`<span class="cfm-cell" data-tool="${t}"`)
         const next = tr.indexOf('<span class="cfm-cell"', at + 1)
         const td = at < 0 ? '' : tr.slice(at, next < 0 ? undefined : next)
-        const of = s && s.of > 0 ? `${s.pass}/${s.of}` : '–'
+        const of = s ? `${s.pass} of ${s.of}` : '–'
         if (
           !td.includes(`>${percent(s)}<`) ||
           !td.includes(`>${of}<`) ||
-          !td.includes(`>supports ${supports(s)}<`)
+          !td.includes(`>${s?.can} supported<`) ||
+          td.includes('supports')
         )
           wrong.push(`${g} ${t}: ${td}`)
       }
@@ -154,6 +169,7 @@ describe('the conformance page', () => {
     expect(percent({ pass: 859, can: 860, of: 860 })).toBe('99%')
     expect(percent({ pass: 860, can: 860, of: 860 })).toBe('100%')
     expect(percent({ pass: 1, can: 200, of: 200 })).toBe('0%')
+    expect(percent({ pass: 1, can: 1, of: 11 })).toBe('9%')
   })
 
   it('names each tool’s version, where the cases come from and the method', () => {

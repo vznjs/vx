@@ -43,6 +43,10 @@ export interface Results {
 
 export const RESULTS = raw as Results
 export const TOOLS = Object.keys(RESULTS.tools)
+/** The tools as the page lists them: most cases passed first. */
+export const RANKED = [...TOOLS].sort(
+  (a, b) => (RESULTS.scores[b]?.['all']?.pass ?? 0) - (RESULTS.scores[a]?.['all']?.pass ?? 0),
+)
 
 const TOOL_NAMES: Record<string, string> = {
   vx: 'vx',

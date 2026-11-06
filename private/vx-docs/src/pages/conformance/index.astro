@@ -14,7 +14,7 @@ import {
   inline,
   note,
   RESULTS,
-  TOOLS,
+  RANKED,
   toolName,
   toolShort,
 } from '../../conformance/data.ts'
@@ -34,13 +34,13 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'cannot express it' } as con
 
 <FeaturesPage
   title="Conformance"
-  description={`${cases.length} task-runner behaviours, each run against ${TOOLS.map(toolName).join(', ')}: what each tool did, case by case.`}
+  description={`${cases.length} task-runner behaviours, each run against ${RANKED.map(toolName).join(', ')}: what each tool did, case by case.`}
   edit="src/pages/conformance/index.astro"
 >
   <div class="cfm">
     <section class="fhub-hero cfm-hero">
       <div class="container">
-        <p class="vx-kicker">// {cases.length} cases, {TOOLS.length} tools</p>
+        <p class="vx-kicker">// {cases.length} cases, {RANKED.length} tools</p>
         <h1>Conformance</h1>
         <p class="lede">
           One neutral suite of task-runner behaviours. Each case is a small workspace, run
@@ -55,7 +55,7 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'cannot express it' } as con
         </p>
         <ul class="chips" aria-label="Tool versions">
           {
-            TOOLS.map((t) => (
+            RANKED.map((t) => (
               <li>
                 <span class="cfm-chip">
                   {toolName(t)} <span class="count">{tools[t]}</span>
@@ -74,9 +74,8 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'cannot express it' } as con
       <div class="container">
         <h2>Scores</h2>
         <p class="cfm-sub">
-          Two numbers, both of every case. The big one is cases passed. “Supports” is cases the
-          tool can express at all; one it cannot counts as not passed, as its users cannot get
-          that behaviour.
+          Cases passed, of every case. The bar's faint part is what the tool supports at all,
+          so a missing feature reads as missing, not as failures.
         </p>
         <p class="cfm-sub">
           Open a group to see its cases: ✓ passes, ✗ fails, – the tool cannot express it. Open a ✗
@@ -90,7 +89,7 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'cannot express it' } as con
           <div class="cfm-row cfm-head" aria-hidden="true">
             <span class="cfm-name" />
             {
-              TOOLS.map((t) => (
+              RANKED.map((t) => (
                 <span class="cfm-tool">
                   <span class="cfm-long">{toolName(t)}</span>
                   <span class="cfm-short">{toolShort(t)}</span>
@@ -100,7 +99,7 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'cannot express it' } as con
           </div>
           <div class="cfm-row cfm-all" data-group="all">
             <span class="cfm-name">{groupName('all')}</span>
-            {TOOLS.map((t) => <Cell t={t} g="all" />)}
+            {RANKED.map((t) => <Cell t={t} g="all" />)}
           </div>
           {
             sections.map((s) => (
@@ -114,7 +113,7 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'cannot express it' } as con
                     <h3>{groupName(s.id)}</h3>
                     <span class="cfm-cat-count">{s.cases.length} cases</span>
                   </span>
-                  {TOOLS.map((t) => (
+                  {RANKED.map((t) => (
                     <Cell t={t} g={s.id} />
                   ))}
                 </summary>
@@ -122,12 +121,12 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'cannot express it' } as con
                 <table class="cfm-cases">
                   <colgroup>
                     <col />
-                    <col span={TOOLS.length} class="cfm-col" />
+                    <col span={RANKED.length} class="cfm-col" />
                   </colgroup>
                   <thead class="cfm-sr">
                     <tr>
                       <th scope="col">Case</th>
-                      {TOOLS.map((t) => (
+                      {RANKED.map((t) => (
                         <th scope="col" class="cfm-tool">
                           {toolName(t)}
                         </th>
@@ -147,7 +146,7 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'cannot express it' } as con
                             <a href={`#${c.id}`}>{c.id}</a> · {c.kind}
                           </span>
                         </th>
-                        {TOOLS.map((t) => {
+                        {RANKED.map((t) => {
                           const o = c.outcomes[t] ?? { status: 'n/a' as const }
                           const label = `${toolName(t)} ${SAY[o.status]}`
                           return (
