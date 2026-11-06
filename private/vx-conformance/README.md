@@ -75,6 +75,11 @@ names the vx tests the case is drawn from. `needs` names a feature a
 tool may lack (affected, timeout, retries, persistent tasks, watch…); a tool
 without it scores the case not applicable.
 
+A score is cases passed, of every case in the group. A case not applicable
+to a tool counts as not passed: it is a behaviour that tool's users cannot
+get. Counting only what a tool can express made a tool that expresses one
+case of eleven read 100%.
+
 ## Adapters
 
 An adapter writes the tool's own config from the neutral workspace and
@@ -105,11 +110,15 @@ mean the same thing, the adapter uses the one its docs teach:
   what its command wrote, go to `$out`, and the run copies each built
   task's `$out` back into the tree: the Nix store is the cache. The report
   is the derivations nix-build lists to build. Each case has its own store
-  in its home, so the builds run unsandboxed and without build users. It
+  in its home, built without build users. Every build runs in Nix's own
+  sandbox (`sandbox = true`, no fallback): it sees its inputs, the
+  system's tools and Bun, and no workspace, home or network; a granted
+  read is a source. The harness's marks reach the build log, and the run
+  appends them to the tree's. It
   lacks affected, every selector but a project list, task patterns,
   persistent tasks, timeouts, retries, runtime inputs, pass-through
-  variables, dependency inputs off, continue, force, read-only cache,
-  isolation and watch. It needs Nix on the PATH (`nix-build`,
+  variables, dependency inputs off, continue, force, read-only cache
+  and watch. It needs Nix on the PATH (`nix-build`,
   `nix-instantiate`); its version is `nix --version`.
 - **vx**: a vx.config.mjs per project, `bun()` for the edges, `vx lock`,
   and its default cache store (in the case's home, so a linked worktree
@@ -122,7 +131,12 @@ Every command a tool runs goes through bubblewrap: the filesystem
 read-only except the case's directory, no network, a fresh home inside
 the case, and its own PID namespace, so a daemon dies with the run. No
 case can read another's cache or reach a remote one. Without `bwrap` the
-suite refuses to run. A case that needs `sandbox` keeps the host's `/proc`
+suite refuses to run. The exception is a tool whose own sandbox isolates
+what it runs (`Adapter.sandboxed: false`, Nix): it runs outside
+bubblewrap with the same home and a temporary directory in the case.
+Every process it starts carries a per-run variable; those and all they
+started (a Nix build's sandbox) are killed when the run ends or times
+out, and are all a supervised run counts as left behind. A case that needs `sandbox` keeps the host's `/proc`
 and PID namespace, as a tool's own bwrap cannot mount a proc inside a
 fresh one and reads its own PIDs there.
 

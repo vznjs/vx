@@ -578,7 +578,7 @@ body:has(.vx-landing) {
 }
 .score-board li {
   display: grid;
-  grid-template-columns: 120px minmax(0, 1fr) 64px 96px;
+  grid-template-columns: 120px minmax(0, 1fr) 64px 120px;
   align-items: center;
   gap: 16px;
   padding: 16px 0;
@@ -589,16 +589,20 @@ body:has(.vx-landing) {
   color: var(--text-mut);
 }
 .score-bar {
+  position: relative;
   height: 12px;
   border-radius: 999px;
   background: var(--line-faint);
   overflow: hidden;
 }
 .score-bar span {
-  display: block;
-  height: 100%;
+  position: absolute;
+  inset: 0 auto 0 0;
   border-radius: inherit;
   background: var(--text-faint);
+}
+.score-bar .score-can {
+  opacity: 0.35;
 }
 .score-pct {
   font: var(--fw-semibold) 24px / 1 var(--font-display);
@@ -616,7 +620,7 @@ body:has(.vx-landing) {
 .score-board .vx .score-pct {
   color: var(--phosphor-bright);
 }
-.score-board .vx .score-bar span {
+.score-board .vx .score-bar .score-pass {
   background: var(--phosphor-bright);
 }
 .score-board .vx .score-count {
@@ -738,7 +742,9 @@ pre.code {
     font-size: 20px;
   }
   .score-count {
-    display: none;
+    grid-column: 2 / -1;
+    margin-top: -6px;
+    text-align: left;
   }
   .section {
     padding: 56px var(--gutter);

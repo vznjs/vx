@@ -19,6 +19,12 @@ export interface Adapter {
   bins: string[]
   /** The version the report names, for a tool with no `pkg`. */
   version?(): Promise<string>
+  /**
+   * `false`: the harness runs the tool outside bubblewrap, as its own
+   * sandbox isolates what it runs (Nix's build sandbox). It still sees only
+   * the case's home, and what it starts ends with each run.
+   */
+  sandboxed?: false
   /** What the tool's config cannot express: a case needing one is not applicable. */
   lacks: Feature[]
   /** Variables every invocation of the tool sees. */

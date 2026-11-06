@@ -3,7 +3,7 @@
 // evaluator, flakes, fetchers, daemon or log, or is a Nix design choice
 // (fixed-output early cutoff, read-only and normalised outputs, the
 // build-or-cancel policy on a failure), and stays out.
-import { defineCase, type TaskSpec } from '../src/spec.ts'
+import { defineCase, MEET, type TaskSpec } from '../src/spec.ts'
 
 const A = 'packages/a'
 
@@ -15,7 +15,7 @@ const A = 'packages/a'
  */
 const fanned = (deps: string[], letter: string, peers: string[] = []): TaskSpec => {
   const upstream = deps.map((d) => `../${d}/dist/out.txt`).join(' ')
-  const wait = peers.map((p) => `[ -e ../../.home/up-${p} ]`).join(' && ')
+  const wait = peers.map((p) => `[ -e ../../${MEET}/up-${p} ]`).join(' && ')
   return {
     command: [
       'mkdir -p dist',
@@ -23,7 +23,8 @@ const fanned = (deps: string[], letter: string, peers: string[] = []): TaskSpec 
       `printf ${letter} >> dist/out.txt`,
       ...(peers.length
         ? [
-            `touch ../../.home/up-${letter}`,
+            `mkdir -p ../../${MEET}`,
+            `touch ../../${MEET}/up-${letter}`,
             `i=0; while ! { ${wait}; } && [ $i -lt 100 ]; do sleep 0.1; i=$((i+1)); done`,
             `if ${wait}; then echo together; else echo alone; fi > dist/met.txt`,
           ]

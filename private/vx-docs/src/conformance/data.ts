@@ -15,6 +15,8 @@ export interface Outcome {
 
 export interface Score {
   pass: number
+  /** Cases the tool can express at all. */
+  can: number
   of: number
 }
 
@@ -73,12 +75,43 @@ const GROUP_NAMES: Record<string, string> = {
 }
 export const groupName = (g: string): string => GROUP_NAMES[g] ?? g
 
+// What each category checks and why it matters, shown on its section.
+const ABOUT: Record<string, string> = {
+  graph:
+    'Which tasks run, in what order, and how many at once. Get it wrong and a build reads files its dependency has not written yet.',
+  inputs:
+    'Which file changes make a task run again. Miss one and the cache replays an old result for new code: a green build that ships the wrong thing.',
+  outputs:
+    'The files a task leaves on disk, saved and brought back on a replay. A replay must leave the disk exactly as a real run would.',
+  env: 'Environment variables a task reads. A changed variable must run the task again, or a build made for one environment ships to another.',
+  cache:
+    'When a task is replayed instead of run. Replay too often and results are wrong; too rarely and every run pays the full time again.',
+  failure:
+    'What a failing task does to the rest of the run. Nothing that needs it may run, and the run must say it failed.',
+  config:
+    'Mistakes in the config, like depending on a task that does not exist. The tool must refuse them up front, not quietly skip the task.',
+  affected:
+    'Running only what a change touches. Miss a project and a broken change merges untested; pick too many and CI wastes time.',
+  report:
+    'The data a run hands back about each task: time, cache result, CPU, memory. Without it, nobody can see why CI is slow.',
+  sandbox:
+    'Whether a task is stopped from reading or writing what it never declared. Without that, the inputs list is a promise nobody checks.',
+  watch:
+    'Rerunning on save. Rebuild on every real change and only then, so you never wait on work that was not needed.',
+}
+/** What a category checks and why it matters, or '' for none. */
+export const about = (g: string): string => ABOUT[g] ?? ''
+
 const unique = (xs: string[]): string[] => [...new Set(xs)]
 export const CATEGORIES = unique(RESULTS.cases.map((c) => c.category))
 
 /** A score as the page prints it: a whole percentage, rounded down so one failure never reads 100%, or `–` when no case applies. */
 export const percent = (s: Score | undefined): string =>
   s === undefined || s.of === 0 ? '–' : `${Math.floor((s.pass / s.of) * 100)}%`
+
+/** The share of all cases a tool can express at all, rounded down like {@link percent}. */
+export const supports = (s: Score | undefined): string =>
+  s === undefined || s.of === 0 ? '–' : `${Math.floor((s.can / s.of) * 100)}%`
 
 /** Whether every tool that can express the case got the same result. */
 export function agree(c: Case): boolean {

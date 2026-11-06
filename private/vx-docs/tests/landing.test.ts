@@ -13,7 +13,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { FIGURES } from '../src/bench/data.ts'
-import { RESULTS, TOOLS, percent, toolName } from '../src/conformance/data.ts'
+import { RESULTS, TOOLS, percent, supports, toolName } from '../src/conformance/data.ts'
 import { CALLOUTS, oneRun } from '../src/components/landing/one-run.js'
 import { narrowOf, type Picture } from '../src/components/guide/diagram/diagram.js'
 
@@ -376,7 +376,7 @@ describe('the landing page', () => {
     expect(shown).toEqual(
       TOOLS.map((t) => {
         const all = RESULTS.scores[t]!.all!
-        return [toolName(t), percent(all), `${all.pass} / ${all.of}`]
+        return [toolName(t), percent(all), `supports ${supports(all)}`]
       }),
     )
     expect(shown.map((s) => s[0])).toEqual(['vx', 'Turborepo', 'Nx', 'Vite Task', 'Nix'])

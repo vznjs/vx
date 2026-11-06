@@ -118,6 +118,11 @@
   font: 12px / 1.3 var(--font-mono);
   color: var(--text-faint);
 }
+.vx-landing .cfm-sup {
+  display: block;
+  font: 12px / 1.3 var(--font-mono);
+  color: var(--text-faint);
+}
 .vx-landing .cfm-all .cfm-pct {
   font-size: 26px;
 }
@@ -214,6 +219,13 @@
   gap: 4px 14px;
   margin-left: auto;
   font-size: 14px;
+}
+.vx-landing .cfm-cat-about {
+  flex-basis: 100%;
+  margin: 0;
+  max-width: 70ch;
+  font-size: 15px;
+  opacity: 0.8;
 }
 .vx-landing .cfm-cat[open] > .cfm-cases {
   margin-top: 14px;

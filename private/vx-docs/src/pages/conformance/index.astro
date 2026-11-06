@@ -6,6 +6,7 @@
 // "only where tools differ" switch is a checkbox the stylesheet reads.
 import FeaturesPage from '../../components/features/FeaturesPage.astro'
 import {
+  about,
   agree,
   CATEGORIES,
   groupName,
@@ -13,6 +14,7 @@ import {
   note,
   percent,
   RESULTS,
+  supports,
   TOOLS,
   toolName,
   toolShort,
@@ -29,7 +31,7 @@ const sections = CATEGORIES.map((id) => ({
   cases: cases.filter((c) => c.category === id),
 }))
 const MARK = { pass: '✓', fail: '✗', 'n/a': '–' } as const
-const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'not applicable' } as const
+const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'cannot express it' } as const
 ---
 
 <FeaturesPage
@@ -74,8 +76,9 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'not applicable' } as const
       <div class="container">
         <h2>Scores</h2>
         <p class="cfm-sub">
-          Cases passed, of those a tool can express. A case a tool has no way to say is not
-          applicable and not counted.
+          Two numbers, both of every case. The big one is cases passed. “Supports” is cases the
+          tool can express at all; one it cannot counts as not passed, as its users cannot get
+          that behaviour.
         </p>
         <div class="cfm-scroll">
           <table class="cfm-scores">
@@ -103,6 +106,7 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'not applicable' } as const
                         <td data-tool={t} style={`--pct:${pct}%`}>
                           <span class="cfm-pct">{percent(s)}</span>
                           <span class="cfm-of">{s && s.of > 0 ? `${s.pass}/${s.of}` : '–'}</span>
+                          <span class="cfm-sup">supports {supports(s)}</span>
                         </td>
                       )
                     })}
@@ -119,7 +123,7 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'not applicable' } as const
       <div class="container">
         <h2>Every case</h2>
         <p class="cfm-sub">
-          ✓ passes, ✗ fails, – not applicable. Open a ✗ to see what the tool did instead.
+          ✓ passes, ✗ fails, – the tool cannot express it. Open a ✗ to see what the tool did instead.
         </p>
         <input type="checkbox" id="cfm-differ" class="cfm-toggle" />
         <label for="cfm-differ" class="cfm-switch">
@@ -149,6 +153,7 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'not applicable' } as const
                     </span>
                   ))}
                 </span>
+                <p class="cfm-cat-about" set:html={inline(about(s.id))} />
               </summary>
               <table class="cfm-cases">
                 <thead>

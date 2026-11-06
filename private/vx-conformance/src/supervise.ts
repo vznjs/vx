@@ -8,10 +8,13 @@
 // as Ctrl-C reaches the foreground group. A process still alive in the
 // sandbox's PID namespace a second after the tool exits, other than this
 // one and the namespace's init, is one the run left behind: it is written
-// to `left` before this exits with the tool's own code.
+// to `left` before this exits with the tool's own code. Unboxed (a tool in
+// its own sandbox), the processes of the run are those carrying its tag and
+// what they started, not every process of the host.
 
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { constants } from 'node:os'
+import { runProcesses, TAG } from './sandbox.ts'
 
 interface Options {
   /** `waitMs`: how long to wait for `when` before the signal goes anyway (default 30 s). */
@@ -71,8 +74,10 @@ await proc.exited
 // behind; one on its way out (a helper reaping what is left) is not.
 function alive(): string[] {
   const self = String(process.pid)
+  const tag = process.env[TAG]
+  const run = tag === undefined ? null : new Set(runProcesses(process.pid, `${TAG}=${tag}`))
   return readdirSync('/proc')
-    .filter((p) => /^\d+$/.test(p) && p !== '1' && p !== self)
+    .filter((p) => /^\d+$/.test(p) && p !== '1' && p !== self && (run?.has(Number(p)) ?? true))
     .flatMap((p) => {
       try {
         const stat = readFileSync(`/proc/${p}/stat`, 'utf8')
