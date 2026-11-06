@@ -366,7 +366,7 @@ describe('buildTaskGraph', () => {
     ).toThrow(/a#build: dependsOn nope#build, but no project is named nope/)
   })
 
-  it('a pkg#task miss with nothing near lists the project\'s tasks', () => {
+  it("a pkg#task miss with nothing near lists the project's tasks", () => {
     expect(() =>
       buildTaskGraph({
         projects: projects(
@@ -397,9 +397,7 @@ describe('buildTaskGraph', () => {
         packageGraph: packageGraph({}),
         requested: [{ project: 'packages/app', task: 'test' }],
       }),
-    ).toThrow(
-      `packages/app#test: dependsOn ${dep}, but ${what}. Did you mean ${meant}?`,
-    )
+    ).toThrow(`packages/app#test: dependsOn ${dep}, but ${what}. Did you mean ${meant}?`)
   })
 
   it('detects a same-project task self-cycle', () => {

@@ -364,8 +364,7 @@ export function settingRefusal(
     if (bare && !(kind.timer === true && n > MAX_TIMEOUT_MS)) {
       // Below a thousand the number most likely meant seconds (`--timeout
       // 5`): that reading leads.
-      const like =
-        n < 1000 ? `'${n}s' or '${n}ms'` : `'${n}ms' or '${Math.round(n / 1000)}s'`
+      const like = n < 1000 ? `'${n}s' or '${n}ms'` : `'${n}ms' or '${Math.round(n / 1000)}s'`
       return `${where} takes a duration with its unit, like ${like} (got ${got})`
     }
     if (kind.timer === true && ms !== null && ms > MAX_TIMEOUT_MS) {
