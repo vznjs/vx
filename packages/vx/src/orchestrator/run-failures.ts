@@ -235,8 +235,19 @@ export function taskLog(db: Database, taskId: string, runId?: string): TaskLog |
       return { ...base, source: 'cache', output: prefix }
     }
   }
-  // A pass with no entry that took a retry still kept its failed attempts.
+  // A pass with no entry that took a retry still kept its failed attempts,
+  // then says the last passed: without it the log read as a failure.
   const kept = row.status === 'failed' ? undefined : keptFailures(db, row.runId).get(taskId)
-  if (kept !== undefined) return { ...base, source: 'failure', output: kept.output }
+  if (kept !== undefined) {
+    const tries = (
+      db
+        .query(
+          'SELECT attempts FROM runs WHERE run_id = ? AND project = ? AND task = ? ORDER BY id DESC LIMIT 1',
+        )
+        .get(row.runId, project, task) as { attempts: number | null } | null
+    )?.attempts
+    const passed = typeof tries === 'number' ? attemptHeading(tries, tries, 'passed') : ''
+    return { ...base, source: 'failure', output: kept.output + passed }
+  }
   return { ...base, source: null, output: '' }
 }

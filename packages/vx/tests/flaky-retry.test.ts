@@ -158,6 +158,10 @@ describe('a retried task that is no flake', () => {
       expect(r.code).toBe(0)
       expect(r.text).toContain('app#test 2 attempts')
       expect(r.text).not.toContain('flaky')
+      // Its log ends on the pass, though no entry kept its output.
+      expect((await vx(root, ['last', '--log', 'app#test'])).text).toEndWith(
+        '── attempt 1 of 2 · exit 1 ──\n── attempt 2 of 2 · passed ──\n',
+      )
       expect((await vx(root, ['run', 'test', '--filter', 'app'])).text).not.toContain('attempts')
     },
     TIMEOUT,
