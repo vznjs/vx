@@ -99,7 +99,7 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
       hashes.length > MAX_QUERY_HASHES ||
       !hashes.every((h) => isOpaque(h))
     ) {
-      throw new Refusal(400, `hashes: a list of up to ${MAX_QUERY_HASHES} strings`)
+      throw new Refusal(400, `hashes: a list of up to ${MAX_QUERY_HASHES}, each ${OPAQUE_IS}`)
     }
     const repo = (await authorize(req, { issuer, repository }))!
     await schema()
@@ -171,10 +171,15 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
 const field = (body: unknown, key: string): unknown =>
   typeof body === 'object' && body !== null ? (body as Record<string, unknown>)[key] : undefined
 
-// A lone surrogate is stored as bytes that read back as U+FFFD: the row
-// answers to a hash no client asked for.
-const isOpaque = (s: unknown): s is string =>
-  typeof s === 'string' && s.length > 0 && s.length <= MAX_STRING && !/\p{Cs}/u.test(s)
+/**
+ * Each character one byte in JSON, so the body limits hold `MAX_STRING`
+ * of them: 10 000 hashes of 512 `é` (two bytes each) were a 413 at the
+ * limits the protocol promised, and a control is six (`\u0001`).
+ */
+const OPAQUE = new RegExp(`^[\\x21\\x23-\\x5b\\x5d-\\x7e]{1,${MAX_STRING}}$`)
+const OPAQUE_IS = `1 to ${MAX_STRING} ASCII characters, none a space, control, " or \\`
+
+const isOpaque = (s: unknown): s is string => typeof s === 'string' && OPAQUE.test(s)
 
 const isCount = (n: unknown): n is number =>
   typeof n === 'number' && Number.isSafeInteger(n) && n >= 0
@@ -209,7 +214,7 @@ function parseReports(body: unknown): Report[] {
     const durationMs = field(x, 'durationMs')
     const cores = field(x, 'cores')
     const rssBytes = field(x, 'rssBytes')
-    if (!isOpaque(hash)) bad(`hash: a string of up to ${MAX_STRING} characters`)
+    if (!isOpaque(hash)) bad(`hash: ${OPAQUE_IS}`)
     // One row per task: a second report of it in one upload would fold twice.
     if (seen.has(hash as string)) bad('hash: each task once')
     seen.add(hash as string)
@@ -245,8 +250,8 @@ function parseOutcomes(body: unknown): Outcome[] {
     const hash = field(x, 'hash')
     const key = field(x, 'key')
     const outcome = field(x, 'outcome')
-    if (!isOpaque(hash)) bad(`hash: a string of up to ${MAX_STRING} characters`)
-    if (!isOpaque(key)) bad(`key: a string of up to ${MAX_STRING} characters`)
+    if (!isOpaque(hash)) bad(`hash: ${OPAQUE_IS}`)
+    if (!isOpaque(key)) bad(`key: ${OPAQUE_IS}`)
     const id = `${hash as string}\0${key as string}`
     if (seen.has(id)) bad('key: each task and key once')
     seen.add(id)

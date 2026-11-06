@@ -38,8 +38,9 @@ an upload with none is `403`.
 `POST /v1/timings/upload` (a token that writes) with
 `{ "timings": [{ "hash", "durationMs", "cores"?, "rssBytes"? }] }`, up to
 10 000, each task once: `204`. `hash` names the task's definition, a
-string of up to 512 characters (no lone surrogate) the server never
-reads. Each folds into its row of the token's repository and ref:
+string the server never reads of 1 to 512 ASCII characters, none a
+space, control, `"` or `\`: each is one byte in JSON, which the body
+limits count on. Each folds into its row of the token's repository and ref:
 
 - `durationMs` and `cores`: `old × 0.7 + new × 0.3`. A median needs the
   samples and a mean never forgets; this follows a task that got slower
@@ -59,8 +60,8 @@ the row's. A row not reported for `TIMING_DAYS` (30) is deleted.
 
 An upload may also carry `"outcomes": [{ "hash", "key", "outcome" }]`,
 up to 10 000, each task and key once: every cached task the run ran.
-`hash` is the task's definition, `key` its cache key (both up to 512
-characters), `outcome` one of:
+`hash` is the task's definition, `key` its cache key (each as `hash`
+above), `outcome` one of:
 
 - `pass`, `fail`: how it ended.
 - `flaky`: it passed on a retry, so the run saw it flake.
@@ -90,9 +91,9 @@ flaky, by any ref:
 ## Limits and errors
 
 `GET /v1/capabilities`: `{ "maxUploadTimings": 10000, "maxQueryHashes": 10000, "maxQueryRefs": 8 }`.
-A server takes both at their limits, each hash 512 characters: an
-upload body up to 17 960 100 bytes, a query's up to 6 010 000. Past
-that, `413`.
+A server takes both at their limits, each hash and key 512 characters
+and every ref 512: an upload body up to 17 960 100 bytes, a query's up
+to 6 010 000. Past that, `413`.
 
 Every refusal is `{ code, message }`, the message saying what to fix. A
 JSON body without `Content-Type: application/json` is `400`, an unknown
