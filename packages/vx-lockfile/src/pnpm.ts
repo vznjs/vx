@@ -340,10 +340,12 @@ function importerNode(dir: string): string {
  * The directories `file:` dependencies install from, and those a `link:`
  * names that is no importer. pnpm copies the first at install and links
  * the second, and records only their path, so an edit in one moved no key
- * (Growth, file-dir-dep-stale.sh): the claim hashes its content.
+ * (Growth, file-dir-dep-stale.sh): the claim hashes its content. A
+ * `file:` to an importer (an injected workspace package) is an edge
+ * (`importerLinks`), not content: its build output re-keyed its dependants.
  */
 export function fileDeps(lock: Lockfile): string[] {
-  const out = new Set(lock.directories.values())
+  const out = new Set([...lock.directories.values()].filter((dir) => !lock.importers.has(dir)))
   const add = (dir: string, deps: ReadonlyMap<string, string>): void => {
     for (const version of deps.values()) {
       const target = linkTarget(lock, dir, version)

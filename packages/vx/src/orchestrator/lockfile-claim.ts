@@ -21,7 +21,7 @@
 // `vx lock` adds them to the memo.
 
 import path from 'node:path'
-import { stat } from 'node:fs/promises'
+import { readdir, realpath, stat } from 'node:fs/promises'
 import { type LockfileMemo, readLockfileMemo, writeLockfileMemo } from '../cache/index.js'
 import { relPosix, UserError, xxh3, xxh3hex } from '../util/index.js'
 import type { TaskNode } from '../graph/index.js'
@@ -152,13 +152,34 @@ function unreadable(rel: string, err: unknown): UserError {
  * Every file under `dir` but its `node_modules` and `.git`, as `rel\0hash`
  * lines in sorted order. Links are followed: a linked file is what a task
  * reads, and the scan skipped it, so an edit to its target moved no key.
+ * The walk never enters `node_modules` or `.git`: a glob of `**` that
+ * dropped them after listed every file under them (30k files there: a warm
+ * run 307 → 183 ms, min of 10). A linked directory that is one of its own
+ * ancestors is not entered again.
  */
 async function hashDir(dir: string): Promise<string> {
   const rels: string[] = []
-  const scan = { cwd: dir, dot: true, onlyFiles: true, followSymlinks: true }
-  for await (const rel of new Bun.Glob('**').scan(scan)) {
-    if (!rel.split('/').some((s) => s === 'node_modules' || s === '.git')) rels.push(rel)
+  const walk = async (rel: string, real: string, ancestors: readonly string[]): Promise<void> => {
+    const entries = await readdir(path.join(dir, rel), { withFileTypes: true })
+    await Promise.all(
+      entries.map(async (e) => {
+        if (e.name === 'node_modules' || e.name === '.git') return
+        const child = rel === '' ? e.name : `${rel}/${e.name}`
+        if (e.isFile()) return void rels.push(child)
+        if (e.isDirectory()) return walk(child, path.join(real, e.name), [...ancestors, real])
+        // A link, or an entry the filesystem gave no type: what it names decides.
+        const abs = path.join(dir, child)
+        const st = await stat(abs).catch(() => undefined)
+        if (st?.isFile()) rels.push(child)
+        else if (st?.isDirectory()) {
+          const target = await realpath(abs)
+          if (target !== real && !ancestors.includes(target))
+            await walk(child, target, [...ancestors, real])
+        }
+      }),
+    )
   }
+  await walk('', await realpath(dir), [])
   rels.sort()
   const lines = await Promise.all(
     rels.map(async (rel) => `${rel}\0${xxh3hex(await Bun.file(path.join(dir, rel)).bytes())}`),

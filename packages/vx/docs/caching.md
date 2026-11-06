@@ -1006,10 +1006,13 @@ Skipped when:
   an older build is cached and restored everywhere. A retry cleans as
   usual; a hit's restore still removes what its entry does not hold.
 
-A declared output the process cannot remove (a `dist/` another user
-wrote, a read-only checkout) fails the task with `cannot remove declared
-output <path>: EACCES — …`, and a restore that cannot write into such a
-directory with `restore of <hash> into <dir> could not write its outputs
+A directory of this user's that withholds its own write (a task's
+`chmod 555 dist/ro`, which a hit restores too) gets owner write for the
+clean's remove, then its mode back, as a restore's write into it does.
+A declared output the process cannot remove even so (a `dist/` another
+user wrote, a read-only checkout) fails the task with `cannot remove
+declared output <path>: EACCES — …`, and a restore that cannot write
+into such a directory with `restore of <hash> into <dir> could not write its outputs
 (EACCES: …)`: the environment's failure, reported plainly, never as an
 internal error or a corrupt artifact.
 

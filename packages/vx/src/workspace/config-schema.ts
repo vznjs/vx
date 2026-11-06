@@ -1861,6 +1861,19 @@ function assertStringArray(v: unknown, where: string): void {
 }
 
 /**
+ * Only `~` and `~/…` mean the home: `~root/x/` was read as `$HOME/root/x`,
+ * and vx created that directory on the host.
+ */
+function assertOwnHome(v: readonly string[], where: string): void {
+  const other = v.find((p) => p.startsWith('~') && p !== '~' && !p.startsWith('~/'))
+  if (other === undefined) return
+  throw new UserError(
+    `${where}: ${JSON.stringify(other)} names a user's home, which vx does not expand — ` +
+      `write '~/…' for your own home, or an absolute path`,
+  )
+}
+
+/**
  * Validate a `sandbox: {...}` block — one capability shape, whatever the
  * platform ends up doing with it. Unknown keys are refused rather than
  * dropped: a silently-ignored `allow.reads` would confine a task more than
@@ -1892,7 +1905,9 @@ function validateSandbox(sandbox: unknown, where: string): void {
     for (const f of GRANT_PATH_FIELDS) {
       // Patterns are allowed here: macOS matches them natively, Linux
       // expands them against the filesystem at resolve time.
-      if (g[f] !== undefined) assertStringArray(g[f], `${where}.sandbox.allow.${f}`)
+      if (g[f] === undefined) continue
+      assertStringArray(g[f], `${where}.sandbox.allow.${f}`)
+      assertOwnHome(g[f] as string[], `${where}.sandbox.allow.${f}`)
     }
     for (const f of GRANT_NAME_FIELDS) {
       if (g[f] !== undefined) assertStringArray(g[f], `${where}.sandbox.allow.${f}`)
@@ -1949,7 +1964,10 @@ function validateSandbox(sandbox: unknown, where: string): void {
     // Patterns, not prefixes — `ignore` is vx's own filter over lines it
     // already holds, so a glob costs nothing and works on every platform.
     for (const f of IGNORE_FIELDS) {
-      if (g[f] !== undefined) assertStringArray(g[f], `${where}.sandbox.ignore.${f}`)
+      if (g[f] === undefined) continue
+      assertStringArray(g[f], `${where}.sandbox.ignore.${f}`)
+      if (f === 'read' || f === 'write')
+        assertOwnHome(g[f] as string[], `${where}.sandbox.ignore.${f}`)
     }
   }
 }

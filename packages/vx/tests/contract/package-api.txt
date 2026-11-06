@@ -1839,6 +1839,7 @@ export interface SandboxViolation {
   hint?: true
   path?: string
   via?: string
+  opened?: 'read' | 'write'
   ignorable?: readonly ('read' | 'write' | 'network' | 'systemInfo')[]
 }
 == type SaveArgs (src/cache/layer.ts)

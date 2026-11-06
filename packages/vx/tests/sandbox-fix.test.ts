@@ -60,6 +60,23 @@ describe('sandboxFix', () => {
     })
   })
 
+  // The proxy refuses a host on `deny.network` whatever `allow.network`
+  // says: the fix named `network: ['example.com']`, already allowed.
+  it('suggests no network grant for a host the deny list or its own shape refuses', () => {
+    const net = (host: string, reason: string) =>
+      v(`deny network-outbound ${host}:443 (${reason})`, ['network'], `${host}:443`)
+    expect(
+      sandboxFix(
+        [
+          net('example.com', 'host is on the deny list'),
+          net('bad host', 'malformed host'),
+          net('npmjs.org', 'host is not on the allow list'),
+        ],
+        dir,
+      ),
+    ).toEqual({ network: ['npmjs.org'] })
+  })
+
   it('grants a write under a read input as the file alone', () => {
     const write = (p: string) => v('deny(1) file-write-create', ['write'], path.join(dir, p))
     const denials = [write('src/gen.js'), write('dist/a.js'), write('lib/x.js')]

@@ -135,7 +135,7 @@ describe('vx run --affected --dry says why each requested task was kept', () => 
         'other#build': reason,
       })
       expect(dry('build', '--filter', 'other', '--dry')).toContain(
-        'affected: .vx/workspace.mjs changed (workspace-wide)',
+        'affected: .vx/workspace.mjs changed (every task in its project)',
       )
     } finally {
       await writeFile(ws, before)

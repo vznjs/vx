@@ -380,9 +380,11 @@ sibling task running beside this one may have just made it and not yet
 written into it. An additive task's clean by its recorded rows
 (`cleanOutputPaths`, item 588) prunes by the same scope, from the
 task's declared outputs. A
-declared output the process cannot remove — another user's `dist/`, a
-read-only checkout — is a `UserError` naming the path, not an internal
-error.
+directory of this user's that withholds its own write (`chmod 555
+dist/ro`) gets owner write for the remove and its mode back after
+(`tests/clean-readonly-dir.test.ts`). A declared output the process
+cannot remove even so — another user's `dist/`, a read-only checkout —
+is a `UserError` naming the path, not an internal error.
 
 ## What this does NOT do
 

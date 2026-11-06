@@ -554,7 +554,11 @@ cut was silent (nx#35302 reproduced on vx; `tests/runner.test.ts` ›
 the frame says so"). A cached task cut this way is not saved: the
 leftover may still write its outputs, and a hit would replay a tree the
 run never leaves (`tsc & vite build` saved vite's output without tsc's;
-`tests/left-running-save.test.ts`). Turbo waits for the pipe instead,
+`tests/left-running-save.test.ts`). So is one whose leftover sent its
+stdio elsewhere (`writer >/dev/null 2>&1 &`): it holds no pipe, so
+nothing is cut, but it is still in the task's process group when the
+shell exits, and the same warning names it. Under a Linux sandbox the
+leftover dies with the task's pid namespace instead. Turbo waits for the pipe instead,
 which a leftover server holds forever. A task whose output matters
 waits for what it starts (`wait`).
 

@@ -1989,6 +1989,7 @@ function elsewhereHint(names: readonly string[]): string {
  * from: a task just added to a vx.config is not in it until `vx lock`.
  */
 async function unresolvedHint(prepared: {
+  workspaceRoot: string
   unresolvedTasks: readonly string[]
   hintProjects: ReadonlyMap<string, ProjectEntry>
   declaredElsewhere: readonly string[]
@@ -2002,6 +2003,7 @@ async function unresolvedHint(prepared: {
     prepared.hintProjects,
     prepared.declaredElsewhere,
     prepared.taskless,
+    prepared.workspaceRoot,
   )
   const init = await initHint(prepared)
   const lock =
@@ -2040,6 +2042,7 @@ function didYouMean(
   projects: ReadonlyMap<string, ProjectEntry>,
   elsewhere: readonly string[],
   taskless: (name: string) => boolean,
+  root: string,
 ): string {
   // A default `build` is no declared task (X-102): neither a bare name's
   // match nor a menu item or hint for `p#typo`, which led to `p#build`
@@ -2094,7 +2097,11 @@ function didYouMean(
       continue
     }
     if (!projects.has(proj)) {
-      const p = projectNamed(proj, projects) ?? nearest(proj, projects.keys())
+      // A project's directory first: by edit distance, `p/a` hinted `p/b`.
+      const p =
+        projectNamed(proj, projects) ??
+        projectAtDir(proj, root, projects.values()) ??
+        nearest(proj, projects.keys())
       if (p !== undefined) {
         const tasks = tasksOf(projects.get(p))
         const t = tasks.includes(task) ? task : nearest(task, tasks)
@@ -2148,6 +2155,20 @@ export function projectNamed(
   if (typed.includes('/')) return undefined
   const scoped = [...projects.keys()].filter((n) => n.startsWith('@') && n.endsWith(`/${typed}`))
   return scoped.length === 1 ? scoped[0] : undefined
+}
+
+/**
+ * The project whose directory a typed name is, relative to the workspace
+ * root, as `--filter p/a` reads it: `alpha` for `p/a`.
+ */
+export function projectAtDir(
+  typed: string,
+  root: string,
+  projects: Iterable<{ name: string; dir: string }>,
+): string | undefined {
+  const dir = path.resolve(root, typed)
+  for (const p of projects) if (path.resolve(p.dir) === dir) return p.name
+  return undefined
 }
 
 /** The executed, keyed outcomes of a run — what flakiness is judged on. */
