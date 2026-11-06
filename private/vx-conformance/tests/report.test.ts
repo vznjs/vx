@@ -33,6 +33,6 @@ test('a score counts every case, and how many the tool can express', () => {
   })
   expect(s['b']!['report']).toEqual({ pass: 0, can: 0, of: 1 })
   expect(scoreTable({ tools: { a: '1', b: '2' }, scores: s })).toContain(
-    '| all | 50% (1/2), supports 100% | 50% (1/2), supports 50% |',
+    '| all | 50% (1/2), supports 100% | 100% (1/1), supports 50% |',
   )
 })
