@@ -181,7 +181,7 @@ function describeReason(r: AffectedReason): string {
           : r.kind === 'input'
             ? `${r.file} changed (an input)`
             : r.kind === 'workspace'
-              ? `${r.file} changed (workspace-wide)`
+              ? `${r.file} changed (every task in its project)`
               : r.file !== undefined
                 ? `${r.file} changed (in its project)`
                 : 'its project changed as a whole'
