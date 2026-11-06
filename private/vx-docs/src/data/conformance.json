@@ -225,6 +225,7 @@
         "sandbox-temp-vars.unsafe",
         "sandbox-timeout-clock.unsafe",
         "sandbox-trace-exit.unsafe",
+        "sandbox-mount-race.unsafe",
         "sandbox-tracer-retry.unsafe",
         "sandbox-usage.unsafe",
         "sandbox-violation-secret-mask.unsafe",
@@ -305,6 +306,7 @@
         "vx-dte/gitlab",
         "vx-dte/init",
         "vx-dte/jsdoc",
+        "vx-dte/live-run",
         "vx-dte/local-e2e",
         "vx-dte/local-e2e-saves",
         "vx-dte/noise",
@@ -648,6 +650,7 @@
         "cli-help-synopsis",
         "cli-hint-every-verb",
         "cli-json-schemas",
+        "cli-control-args",
         "cli-nonutf8-args",
         "cli-refusal-see-help",
         "cli-streams",
@@ -918,6 +921,7 @@
         "readme-imports.unsafe",
         "readme-links.unsafe",
         "readme-words.unsafe",
+        "check-binary-path",
         "release",
         "release-notes",
         "release-provenance.unsafe",
@@ -964,24 +968,24 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 959,
-        "of": 959
+        "pass": 962,
+        "of": 962
       },
       "correctness": {
-        "pass": 788,
-        "of": 788
+        "pass": 790,
+        "of": 790
       },
       "efficiency": {
-        "pass": 162,
-        "of": 162
+        "pass": 163,
+        "of": 163
       },
       "data": {
         "pass": 9,
         "of": 9
       },
       "graph": {
-        "pass": 148,
-        "of": 148
+        "pass": 149,
+        "of": 149
       },
       "config": {
         "pass": 8,
@@ -1000,16 +1004,16 @@
         "of": 40
       },
       "inputs": {
-        "pass": 298,
-        "of": 298
+        "pass": 299,
+        "of": 299
       },
       "env": {
         "pass": 29,
         "of": 29
       },
       "outputs": {
-        "pass": 219,
-        "of": 219
+        "pass": 220,
+        "of": 220
       },
       "report": {
         "pass": 9,
@@ -1026,24 +1030,24 @@
     },
     "turbo": {
       "all": {
-        "pass": 616,
-        "of": 887
+        "pass": 619,
+        "of": 890
       },
       "correctness": {
-        "pass": 498,
-        "of": 722
+        "pass": 500,
+        "of": 724
       },
       "efficiency": {
-        "pass": 114,
-        "of": 157
+        "pass": 115,
+        "of": 158
       },
       "data": {
         "pass": 4,
         "of": 8
       },
       "graph": {
-        "pass": 90,
-        "of": 129
+        "pass": 91,
+        "of": 130
       },
       "config": {
         "pass": 4,
@@ -1062,16 +1066,16 @@
         "of": 40
       },
       "inputs": {
-        "pass": 186,
-        "of": 289
+        "pass": 187,
+        "of": 290
       },
       "env": {
         "pass": 25,
         "of": 29
       },
       "outputs": {
-        "pass": 157,
-        "of": 217
+        "pass": 158,
+        "of": 218
       },
       "report": {
         "pass": 4,
@@ -1088,24 +1092,24 @@
     },
     "nx": {
       "all": {
-        "pass": 628,
-        "of": 911
+        "pass": 631,
+        "of": 914
       },
       "correctness": {
-        "pass": 475,
-        "of": 742
+        "pass": 477,
+        "of": 744
       },
       "efficiency": {
-        "pass": 149,
-        "of": 161
+        "pass": 150,
+        "of": 162
       },
       "data": {
         "pass": 4,
         "of": 8
       },
       "graph": {
-        "pass": 112,
-        "of": 135
+        "pass": 113,
+        "of": 136
       },
       "config": {
         "pass": 1,
@@ -1124,16 +1128,16 @@
         "of": 38
       },
       "inputs": {
-        "pass": 183,
-        "of": 298
+        "pass": 184,
+        "of": 299
       },
       "env": {
         "pass": 23,
         "of": 29
       },
       "outputs": {
-        "pass": 153,
-        "of": 217
+        "pass": 154,
+        "of": 218
       },
       "report": {
         "pass": 4,
@@ -1150,24 +1154,24 @@
     },
     "vite-task": {
       "all": {
-        "pass": 491,
-        "of": 730
+        "pass": 494,
+        "of": 733
       },
       "correctness": {
-        "pass": 405,
-        "of": 605
+        "pass": 407,
+        "of": 607
       },
       "efficiency": {
-        "pass": 84,
-        "of": 117
+        "pass": 85,
+        "of": 118
       },
       "data": {
         "pass": 2,
         "of": 8
       },
       "graph": {
-        "pass": 85,
-        "of": 114
+        "pass": 86,
+        "of": 115
       },
       "config": {
         "pass": 4,
@@ -1186,16 +1190,16 @@
         "of": 34
       },
       "inputs": {
-        "pass": 175,
-        "of": 290
+        "pass": 176,
+        "of": 291
       },
       "env": {
         "pass": 27,
         "of": 28
       },
       "outputs": {
-        "pass": 136,
-        "of": 217
+        "pass": 137,
+        "of": 218
       },
       "report": {
         "pass": 2,
@@ -1212,24 +1216,24 @@
     },
     "nix": {
       "all": {
-        "pass": 450,
-        "of": 672
+        "pass": 453,
+        "of": 675
       },
       "correctness": {
-        "pass": 387,
-        "of": 554
+        "pass": 389,
+        "of": 556
       },
       "efficiency": {
-        "pass": 61,
-        "of": 110
+        "pass": 62,
+        "of": 111
       },
       "data": {
         "pass": 2,
         "of": 8
       },
       "graph": {
-        "pass": 56,
-        "of": 63
+        "pass": 57,
+        "of": 64
       },
       "config": {
         "pass": 0,
@@ -1248,16 +1252,16 @@
         "of": 34
       },
       "inputs": {
-        "pass": 172,
-        "of": 289
+        "pass": 173,
+        "of": 290
       },
       "env": {
         "pass": 19,
         "of": 26
       },
       "outputs": {
-        "pass": 156,
-        "of": 215
+        "pass": 157,
+        "of": 216
       },
       "report": {
         "pass": 2,
@@ -30129,6 +30133,90 @@
         "nix": {
           "status": "n/a",
           "detail": "needs filter"
+        }
+      }
+    },
+    {
+      "id": "graph/fan-out-runs-at-once",
+      "category": "graph",
+      "kind": "efficiency",
+      "title": "The three tasks one task releases run at the same time, and the task over them reads all three",
+      "why": "When a shared dependency finishes, every task waiting only on it is ready at that moment and can start together. Here each of the three waits a while for the other two to start, so run one at a time they each wait out the full delay. A runner that releases ready tasks one by one turns a wide graph into a chain, and the wall time becomes the sum of the branches instead of the longest one.",
+      "from": [
+        "scheduler",
+        "run-concurrency"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/one-of-two-trees-deleted-restored-for-dependant",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "Either of a dependency’s two output trees, deleted alone, is back before a rebuilding dependant reads it",
+      "why": "A task that writes two trees, as a build writing `dist` and `types` does, is only present when both are. Deleting one and keeping the other is what a partial clean or a tool that prunes one directory leaves. A runner that sees one tree on disk and calls the dependency done lets the dependant build against a missing file, and fail or ship without it.",
+      "from": [
+        "restore-in-place",
+        "uncached-upstream-key"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/negated-suffix-keeps-bare-name",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "A `!**/*.bak` input still keys a file named plain `bak`",
+      "why": "An exclusion by suffix means files ending in `.bak`, not every name holding those letters. A file named plain `bak`, with no dot, is a source like any other, and the user never took it back. A tool that matches the suffix loosely replays a stale result when that file changes, under a green run.",
+      "from": [
+        "parity-turbo-hashing",
+        "patterns-doc-drift"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
         }
       }
     }
