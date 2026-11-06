@@ -34,7 +34,7 @@ interface Job {
 interface Workflow {
   on?: Record<string, unknown>
   true?: Record<string, unknown>
-  concurrency?: Record<string, string>
+  concurrency?: Record<string, string | boolean>
   jobs: Record<string, Job>
 }
 const read = (file: string): Workflow =>
