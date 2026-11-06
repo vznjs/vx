@@ -148,8 +148,12 @@ async function jsonUpTo(res: Response, max: number, what: string): Promise<unkno
 
 /** Capabilities and a CI token are a few hundred bytes: room to spare. */
 const SMALL_ANSWER_BYTES = 64 * 1024
-/** A check's answer per hash asked: a hash, a size and a scope in JSON are under 150 bytes. */
-const CHECK_BYTES_PER_HASH = 512
+/**
+ * A check's answer per hash asked: a hash (up to 128), a size and a scope
+ * (up to 512, a long branch's) in JSON are under 700 bytes. At 512 an
+ * answer under the longest scopes was refused as too long.
+ */
+const CHECK_BYTES_PER_HASH = 1024
 
 /**
  * `s` with each C0/C1 control and DEL written as `\xNN`: a server's words

@@ -280,6 +280,30 @@ describe('VxCacheLayer', () => {
     for (const n of Object.values(pulled)) expect(n).toBeLessThanOrEqual(256 * 1024)
   })
 
+  // A held entry's scope is up to 512 characters: an answer of the most a
+  // check asks, every hash held under the longest scope, was refused as
+  // too long, and the run's probe was lost.
+  it('takes the longest answer a check can be given', async () => {
+    const ref = `refs/heads/${'b'.repeat(497)}`
+    const scope = encodeURIComponent(ref)
+    expect(scope.length).toBe(512)
+    const hashes = Array.from({ length: 500 }, (_, i) => i.toString(16).padStart(128, '0'))
+    const fake = Object.assign(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const at = new URL(input instanceof Request ? input.url : input).pathname
+        if (at !== '/v1/artifacts' || init?.method !== 'POST') return fetch(input, init)
+        const asked = keysOf(init.body as string)
+        const held = Object.fromEntries(
+          asked.map((h) => [h, { size: Number.MAX_SAFE_INTEGER, scope }]),
+        )
+        return Response.json(held, { headers: { 'vx-max-check-hashes': '500' } })
+      },
+      { preconnect: fetch.preconnect },
+    )
+    const got = await layer(srv.url, write, [ref], fake).hasMany(hashes)
+    expect(got?.size).toBe(500)
+  })
+
   it('says a job that reads only was refused a write once, and reads on', async () => {
     const c = layer(srv.url, read)
     expect(c.put('cc33', new Blob(['x']), { durationMs: 1 })).rejects.toThrow(
