@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 219,
+    "ported": 220,
     "rest": {
       "pending": [],
       "vx-only": [
@@ -971,14 +971,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 969,
-        "can": 969,
-        "of": 969
+        "pass": 971,
+        "can": 971,
+        "of": 971
       },
       "correctness": {
-        "pass": 796,
-        "can": 796,
-        "of": 796
+        "pass": 798,
+        "can": 798,
+        "of": 798
       },
       "efficiency": {
         "pass": 164,
@@ -1036,9 +1036,9 @@
         "of": 9
       },
       "sandbox": {
-        "pass": 14,
-        "can": 14,
-        "of": 14
+        "pass": 16,
+        "can": 16,
+        "of": 16
       },
       "watch": {
         "pass": 29,
@@ -1050,12 +1050,12 @@
       "all": {
         "pass": 622,
         "can": 894,
-        "of": 969
+        "of": 971
       },
       "correctness": {
         "pass": 503,
         "can": 727,
-        "of": 796
+        "of": 798
       },
       "efficiency": {
         "pass": 115,
@@ -1115,7 +1115,7 @@
       "sandbox": {
         "pass": 1,
         "can": 1,
-        "of": 14
+        "of": 16
       },
       "watch": {
         "pass": 26,
@@ -1127,12 +1127,12 @@
       "all": {
         "pass": 634,
         "can": 918,
-        "of": 969
+        "of": 971
       },
       "correctness": {
         "pass": 479,
         "can": 747,
-        "of": 796
+        "of": 798
       },
       "efficiency": {
         "pass": 151,
@@ -1192,7 +1192,7 @@
       "sandbox": {
         "pass": 0,
         "can": 1,
-        "of": 14
+        "of": 16
       },
       "watch": {
         "pass": 26,
@@ -1204,12 +1204,12 @@
       "all": {
         "pass": 496,
         "can": 735,
-        "of": 969
+        "of": 971
       },
       "correctness": {
         "pass": 409,
         "can": 609,
-        "of": 796
+        "of": 798
       },
       "efficiency": {
         "pass": 85,
@@ -1269,7 +1269,7 @@
       "sandbox": {
         "pass": 1,
         "can": 1,
-        "of": 14
+        "of": 16
       },
       "watch": {
         "pass": 0,
@@ -1279,14 +1279,14 @@
     },
     "nix": {
       "all": {
-        "pass": 464,
-        "can": 689,
-        "of": 969
+        "pass": 466,
+        "can": 691,
+        "of": 971
       },
       "correctness": {
-        "pass": 400,
-        "can": 570,
-        "of": 796
+        "pass": 402,
+        "can": 572,
+        "of": 798
       },
       "efficiency": {
         "pass": 62,
@@ -1344,9 +1344,9 @@
         "of": 9
       },
       "sandbox": {
-        "pass": 11,
-        "can": 13,
-        "of": 14
+        "pass": 13,
+        "can": 15,
+        "of": 16
       },
       "watch": {
         "pass": 0,
@@ -1358,12 +1358,12 @@
       "all": {
         "pass": 576,
         "can": 880,
-        "of": 969
+        "of": 971
       },
       "correctness": {
         "pass": 448,
         "can": 722,
-        "of": 796
+        "of": 798
       },
       "efficiency": {
         "pass": 123,
@@ -1423,7 +1423,7 @@
       "sandbox": {
         "pass": 0,
         "can": 1,
-        "of": 14
+        "of": 16
       },
       "watch": {
         "pass": 0,
@@ -34026,6 +34026,74 @@
       "why": "A file a build drops in the home folder is never stored with the task, and the next build may read it. Runs then depend on what earlier runs left behind. Failing the write, and leaving nothing, keeps every build starting from the same machine.",
       "from": [
         "sandbox-grants.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        }
+      }
+    },
+    {
+      "id": "sandbox/dependency-output-readable",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task reads what the task it depends on built in another project",
+      "why": "A dependency’s outputs are what the task asked for by depending on it, and its key moves with them. Hiding them makes one project unable to build a tool that others run. An isolated task must read them, or isolation cannot be used for builds with a toolchain step.",
+      "from": [
+        "sandbox-dependency-outputs.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        }
+      }
+    },
+    {
+      "id": "sandbox/dependency-source-hidden",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task that depends on another project still cannot read its sources",
+      "why": "Depending on a task gives its outputs, not the files it was built from. A read of the dependency’s sources ties the build to files the edge never promised. Failing it keeps the edge meaning one thing: what the dependency built.",
+      "from": [
+        "sandbox-dependency-outputs.unsafe"
       ],
       "outcomes": {
         "vx": {
