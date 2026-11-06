@@ -1909,6 +1909,19 @@ function validateSandbox(sandbox: unknown, where: string): void {
       assertStringArray(g[f], `${where}.sandbox.allow.${f}`)
       assertOwnHome(g[f] as string[], `${where}.sandbox.allow.${f}`)
     }
+    // SRT's Linux observer reports a write's path with each control
+    // character turned into a space, so a write a grant holding one covers
+    // read as a violation of the path spelled with a space, and a real
+    // write there reads the same: no match passes one and not the other.
+    // Reads are traced by strace, which escapes them.
+    const ctl = ((g['write'] as string[] | undefined) ?? []).find(hasControl)
+    if (ctl !== undefined) {
+      throw new UserError(
+        `${where}.sandbox.allow.write: ${JSON.stringify(ctl)} holds a control character, ` +
+          `which the Linux sandbox's report of a write does not keep (it spells a tab as a ` +
+          `space), so a write under it cannot be told from a refused one — rename it`,
+      )
+    }
     for (const f of GRANT_NAME_FIELDS) {
       if (g[f] !== undefined) assertStringArray(g[f], `${where}.sandbox.allow.${f}`)
     }

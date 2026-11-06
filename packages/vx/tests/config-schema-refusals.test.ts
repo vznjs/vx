@@ -831,6 +831,22 @@ describe('sandbox refusals the sweep found unheld (item 653)', () => {
       expect(sandboxRefusal({ allow: { [f]: ['a/b'] } })).toBeNull()
     })
   }
+  // The Linux observer reports a write's path with each control character
+  // turned into a space: a task writing under `a\tb/` passed and the run
+  // failed on two violations of `a b`, with a fix of `write: ['a b/']`.
+  // A real write to `a b` reads the same, so no match could pass one and
+  // not the other. Reads are traced by strace, which escapes them.
+  it('refuses a control character in allow.write, and not in allow.read', () => {
+    for (const c of ['\t', '\n', '\x01', '\x7f', '\x85']) {
+      expect(sandboxRefusal({ allow: { write: ['ok/', `a${c}b/`] } })).toBe(
+        `${W}.sandbox.allow.write: ${JSON.stringify(`a${c}b/`)} holds a control character, ` +
+          `which the Linux sandbox's report of a write does not keep (it spells a tab as a ` +
+          `space), so a write under it cannot be told from a refused one — rename it`,
+      )
+    }
+    expect(sandboxRefusal({ allow: { write: ['a b/', 'a b/'] } })).toBeNull()
+    expect(sandboxRefusal({ allow: { read: ['a\tb'] } })).toBeNull()
+  })
   // Only `~` and `~/…` mean the home: `~root/x/` was read as `$HOME/root/x`,
   // and vx created that directory on the host.
   for (const [list, f] of [
