@@ -13,7 +13,8 @@ import {
   toRealPath,
   unique,
 } from './sandbox-paths.js'
-import type { SandboxedRunArgs } from './sandbox-runtime.js'
+import { shellQuote } from './runner.js'
+import type { ResolvedSandboxConfig, SandboxedRunArgs } from './sandbox-runtime.js'
 import * as ui from '../ui/index.js'
 
 type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')
@@ -38,6 +39,48 @@ type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')
 export function bindableWrites(paths: readonly string[]): string[] {
   if (process.platform !== 'linux') return [...paths]
   return unique(paths.filter((p) => !holdsGlobChar(p)).map(bindOf))
+}
+
+/**
+ * Linux: each write grant spelled through a link in the project, as the
+ * bind that puts it where the task names it: `[source, at]`, the grant's
+ * own bind and its twin under the link. A file grant binds its directory,
+ * so its twin is the link's; a link that is the file itself sits in the
+ * bound directory already and needs none. SRT skips a write path that is
+ * a sibling link (it reads one as leaving its tree), so vx lays these
+ * itself (`withLinkedWrites`).
+ */
+export function linkedWriteBinds(
+  linked: ResolvedSandboxConfig['linkedWrites'],
+): Array<readonly [string, string]> {
+  if (process.platform !== 'linux' || linked === undefined) return []
+  const out: Array<readonly [string, string]> = []
+  for (const { link, target } of linked) {
+    if (holdsGlobChar(target) || holdsGlobChar(link)) continue
+    const source = bindOf(target)
+    const at = source === target ? link : path.dirname(link)
+    if (at !== source && !out.some(([, a]) => a === at)) out.push([source, at])
+  }
+  return out
+}
+
+/**
+ * Linux: SRT's bwrap line with each `linkedWriteBinds` pair bound last,
+ * before the `--` that ends bwrap's options: after the masks and the read
+ * grants, so none lands over it. The link's directory is then a mount of
+ * its target, writable as the grant is.
+ */
+export function withLinkedWrites(
+  wrapped: string,
+  binds: ReadonlyArray<readonly [string, string]>,
+): string {
+  if (binds.length === 0) return wrapped
+  for (const m of wrapped.matchAll(/(?:'[^']*'|"[^"]*"|[^\s'"])+/g)) {
+    if (m[0] !== '--') continue
+    const words = binds.map(([s, a]) => `--bind ${shellQuote(s)} ${shellQuote(a)} `).join('')
+    return `${wrapped.slice(0, m.index)}${words}${wrapped.slice(m.index)}`
+  }
+  return wrapped
 }
 
 function bindOf(p: string): string {
@@ -201,17 +244,42 @@ export function punchWritePaths(readPath: string, writePaths: readonly string[])
   }
   if (linked.length > 0 && !warnedSymlinkPunch.has(readPath)) {
     warnedSymlinkPunch.add(readPath)
-    ui.say(
-      'warn',
-      `[vx] sandbox: a write grant under ${readPath} makes its ${linked.length} symlinked ` +
-        `entr${linked.length === 1 ? 'y' : 'ies'} (${linked
-          .slice(0, 3)
-          .map((l) => path.basename(l))
-          .join(', ')}${linked.length > 3 ? ', …' : ''}) plain directories inside the sandbox — ` +
-        `a package resolved through one loses its siblings. Move the write grant (${under
-          .map((w) => path.relative(readPath, w))
-          .join(', ')}) out of it.\n`,
-    )
+    // A link INTO a write grant is that grant under a second name, mounted
+    // read-only: the remedy is to grant the name (`linkedWriteBinds` binds
+    // it writable), not to move the grant.
+    const plain: string[] = []
+    for (const l of linked) {
+      const w = writePaths.find((w) => atOrUnder(toRealPath(l), w))
+      if (w === undefined) {
+        plain.push(l)
+        continue
+      }
+      let dir = false
+      try {
+        dir = statSync(l).isDirectory()
+      } catch {
+        // dangling: granted as a file
+      }
+      ui.say(
+        'warn',
+        `[vx] sandbox: ${l} is a symlink into the write grant ${w}, and the Linux sandbox ` +
+          `mounts it read-only, so a write through it is refused. Grant the link itself to ` +
+          `write through it: ${l}${dir ? '/' : ''}\n`,
+      )
+    }
+    if (plain.length > 0) {
+      ui.say(
+        'warn',
+        `[vx] sandbox: a write grant under ${readPath} makes its ${plain.length} symlinked ` +
+          `entr${plain.length === 1 ? 'y' : 'ies'} (${plain
+            .slice(0, 3)
+            .map((l) => path.basename(l))
+            .join(', ')}${plain.length > 3 ? ', …' : ''}) plain directories inside the sandbox — ` +
+          `a package resolved through one loses its siblings. Move the write grant (${under
+            .map((w) => path.relative(readPath, w))
+            .join(', ')}) out of it.\n`,
+      )
+    }
   }
   return out
 }
@@ -300,8 +368,11 @@ export function buildCustomConfig(
   const c = args.config
   const denyRead = unique([...baselines.denyRead])
   const allowWrite = bindableWrites(unique([...c.allowWrite]))
+  // A link a write grant is spelled through is bound by vx, not SRT: a
+  // read grant above it is punched around it all the same.
+  const punched = [...allowWrite, ...linkedWriteBinds(c.linkedWrites).map(([, at]) => at)]
   const allowRead = unique(
-    [...baselines.allowRead, ...c.allowRead].flatMap((r) => punchWritePaths(r, allowWrite)),
+    [...baselines.allowRead, ...c.allowRead].flatMap((r) => punchWritePaths(r, punched)),
   )
 
   const custom: Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2] = {

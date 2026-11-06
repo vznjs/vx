@@ -77,17 +77,25 @@ export async function workspaceGlobOwners(
   nested: readonly string[] = [],
   /** `AffectedChanges.dirLinks`. */
   dirLinks: ReadonlySet<string> = new Set(),
+  /** `AffectedChanges.untracked`. */
+  untracked: ReadonlySet<string> = new Set(),
 ): Promise<string[]> {
-  const declaresMatch = (config: ProjectConfig): boolean => {
+  const declaresMatch = (config: ProjectConfig, projectAbs: string): boolean => {
+    let projectDir: string | undefined
     for (const task of Object.values(config.tasks ?? {})) {
-      if (changed.some((rel) => declaresInput(task, null, rel, dirLinks.has(rel)))) return true
+      const input = (rel: string): boolean => {
+        const loose = untracked.has(rel)
+        if (loose) projectDir ??= relPosix(root, projectAbs)
+        return declaresInput(task, null, rel, dirLinks.has(rel), loose, projectDir)
+      }
+      if (changed.some(input)) return true
       if (nested.some((dir) => workspaceFilesReachInto(task, dir))) return true
     }
     return false
   }
   try {
     const staged = await stagedLoad()
-    return [...staged.values()].filter((p) => declaresMatch(p.config)).map((p) => p.name)
+    return [...staged.values()].filter((p) => declaresMatch(p.config, p.dir)).map((p) => p.name)
   } catch {
     // Fall through to the per-file sweep.
   }
@@ -102,7 +110,7 @@ export async function workspaceGlobOwners(
     const dir = lockKey(root, meta.dir)
     if (!Object.hasOwn(lock.projects, dir)) continue
     try {
-      if (declaresMatch(lock.projects[dir]!.config)) owners.push(meta.name)
+      if (declaresMatch(lock.projects[dir]!.config, meta.dir)) owners.push(meta.name)
     } catch {
       // A hand-edited entry that will not read cannot be shown to declare a
       // matching glob; surfacing it here would fail a run the load tolerates.
@@ -387,7 +395,18 @@ export async function resolveFilters(
           changed: readonly string[],
           nested: readonly string[],
           dirLinks: ReadonlySet<string>,
-        ) => workspaceGlobOwners(root, projects, changed, load, stagedOnce, nested, dirLinks),
+          untracked: ReadonlySet<string>,
+        ) =>
+          workspaceGlobOwners(
+            root,
+            projects,
+            changed,
+            load,
+            stagedOnce,
+            nested,
+            dirLinks,
+            untracked,
+          ),
         fingerprintClaims: () => workspaceFingerprintClaims(root, projects, load),
         ...(git !== undefined
           ? {

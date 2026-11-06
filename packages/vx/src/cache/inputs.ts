@@ -2069,6 +2069,12 @@ export function declaresInput(
   dirLink = false,
   /** Git does not track the path, so under the task's own outputs it is no input. */
   untracked = false,
+  /**
+   * The task's project directory, workspace-relative: a `workspaceFiles`
+   * glob reaches its `outputs.files` too, which the key leaves out as it
+   * does `outputs.workspaceFiles` (`resolveWorkspaceFiles`).
+   */
+  projectDir?: string,
 ): boolean {
   const inputs = task.inputs
   if (inputs === undefined) return false
@@ -2085,7 +2091,17 @@ export function declaresInput(
   }
   const ws = inputs.workspaceFiles
   if (workspaceRel === null || ws === undefined || ws.length === 0) return false
-  return workspaceMatcher(ws)(workspaceRel, dirLink)
+  if (!workspaceMatcher(ws)(workspaceRel, dirLink)) return false
+  // As for `files`: under its own outputs the key folds only a tracked path.
+  return !untracked || !ownWorkspaceOutput(task, workspaceRel, projectDir)
+}
+
+/** Asked only of an untracked path a `workspaceFiles` glob matched: rare, so not memoised. */
+function ownWorkspaceOutput(task: TaskConfig, rel: string, projectDir?: string): boolean {
+  const outputs = task.outputs
+  if (outputMatcher(outputs?.workspaceFiles ?? [])(rel)) return true
+  if (projectDir === undefined) return false
+  return underProject(projectDir, outputMatcher(outputs?.files ?? []))(rel)
 }
 
 /**

@@ -404,7 +404,11 @@ export interface TelemetrySink {
   readonly wants?: ReadonlyArray<TelemetryRecord['kind']>
   /** A streaming record. MUST return promptly — buffer; do NOT await I/O. */
   onRecord?(record: TelemetryRecord): void
-  /** The per-run summary, at run:end. MUST return promptly. */
+  /**
+   * The per-run summary, once at run:end; a requested persistent task the
+   * foreground keeps sends it when that task exits, so it reads the run's
+   * final verdict. MUST return promptly.
+   */
   onRunSummary?(summary: RunSummaryRecord): void
   /**
    * Drain buffered data. Awaited at run:end under a deadline — a sink that

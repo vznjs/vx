@@ -83,9 +83,11 @@ import {
   bindableReads,
   bindableWrites,
   buildCustomConfig,
+  linkedWriteBinds,
   readOnlyMasks,
   scratchWrites,
   widenedEntries,
+  withLinkedWrites,
 } from './sandbox-binds.js'
 import {
   atOrUnder,
@@ -1222,6 +1224,8 @@ export interface ResolvedSandboxConfig {
    * no mount holds them. `scratchWrites` decides which still cover a write.
    */
   pendingWrites?: readonly string[]
+  /** Linux: write grants spelled through a link in the project, bound there too (`linkedWriteBinds`). */
+  linkedWrites?: readonly { readonly link: string; readonly target: string }[]
   network?: true | readonly string[]
   denyNetwork?: readonly string[]
   systemInfo?: readonly string[]
@@ -1319,6 +1323,31 @@ function assertWriteStaysHome(grant: string, real: string, projectDir: string): 
   )
 }
 
+/**
+ * Linux: a literal write grant spelled through a link in the project
+ * (`gen/` over `gen -> real`), as the task names it: the project's real
+ * directory with the grant's own components, links unresolved. The grant
+ * binds at its real path and bwrap mounts no link, so without a second
+ * bind there the task met "Directory nonexistent", or, under a read
+ * grant of the project, the link bound read-only over the same directory
+ * ("Read-only file system"). Seatbelt judges the resolved path, so macOS
+ * needs none.
+ */
+function linkSpelling(
+  grant: string,
+  real: string,
+  projectDir: string,
+): { link: string; target: string } | undefined {
+  if (process.platform !== 'linux' || grant.startsWith('~') || path.isAbsolute(grant)) return
+  // `gen/**` is the directory whole (`expandGrants`).
+  const whole = /\/\*\*(?:\/\*)?$/
+  const lexical = path.resolve(projectDir, grant.replace(whole, ''))
+  const target = real.replace(whole, '')
+  if (!atOrUnder(lexical, projectDir) || !isMountableLiteral(target)) return
+  const link = path.join(toRealPath(projectDir), path.relative(projectDir, lexical))
+  return link === target ? undefined : { link, target }
+}
+
 /** Where `p` lands through every link on it, a dangling last one included. */
 function throughLinks(p: string, hops = 0): string {
   if (hops > 40) return p
@@ -1353,12 +1382,15 @@ export function resolveSandboxConfig(
   }
   const a = cfg.allow ?? {}
   const pending: string[] = []
+  const linked: Array<{ link: string; target: string }> = []
   const r: ResolvedSandboxConfig = {
     allowRead: expandGrants((a.read ?? []).map(resolve), walls),
     allowWrite: expandGrants(
       (a.write ?? []).map((p) => {
         const real = resolve(p)
         assertWriteStaysHome(p, real, projectDir)
+        const link = linkSpelling(p, real, projectDir)
+        if (link !== undefined) linked.push(link)
         // A directory a write glob matches is writable whole, as Linux's
         // bind of the hit makes it: `<glob>/**` collapses below into the
         // glob and its subtree. SRT compiles a glob as an exact regex, so
@@ -1375,6 +1407,7 @@ export function resolveSandboxConfig(
     ),
   }
   if (pending.length > 0) r.pendingWrites = pending
+  if (linked.length > 0) r.linkedWrites = linked
   if (process.platform === 'darwin') {
     const read = wallsGlobsReach(r.allowRead, walls)
     const write = wallsGlobsReach(r.allowWrite, walls)
@@ -1693,7 +1726,7 @@ async function wrapIn(
     )
     wrapped =
       (gitGranted ? 'GIT_DISCOVERY_ACROSS_FILESYSTEM=${GIT_DISCOVERY_ACROSS_FILESYSTEM-1} ' : '') +
-      `exec ${readOnlyMasks(wrapped, scratch)}`
+      `exec ${readOnlyMasks(withLinkedWrites(wrapped, linkedWriteBinds(args.config.linkedWrites)), scratch)}`
   }
   if (process.platform === 'linux' && !hostHasIpv6())
     wrapped = `SOCAT_DEFAULT_LISTEN_IP=4 ${wrapped}`

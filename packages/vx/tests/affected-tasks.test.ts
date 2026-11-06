@@ -52,9 +52,9 @@ describe('affectedRoots', () => {
       )
     }
     nodes.set('app#aside', node('app#aside', 'other.txt'))
-    expect(affectedRoots(nodes, ['app#t0', 'app#aside'], changes, projects, packageGraph)).toEqual([
-      'app#t0',
-    ])
+    expect(
+      affectedRoots(nodes, ['app#t0', 'app#aside'], changes, projects, packageGraph, '/w'),
+    ).toEqual(['app#t0'])
   })
 
   it('a diamond reaches through either arm, and a closure without the seed does not', () => {
@@ -73,6 +73,7 @@ describe('affectedRoots', () => {
         changes,
         projects,
         packageGraph,
+        '/w',
       ),
     ).toEqual(['app#top', 'app#seed'])
   })

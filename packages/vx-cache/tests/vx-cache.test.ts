@@ -407,6 +407,23 @@ describe('VxCacheLayer', () => {
     ])
   })
 
+  // The server keeps the bytes a scope holds, unread (PROTOCOL.md): a
+  // `replace` answered 204 reported the corrupt copy fixed, and every run
+  // downloaded it, warned and ran the task again.
+  it('reports a replace as not stored, sends nothing, and says why once', async () => {
+    const c = layer(srv.url, write)
+    const said: string[] = []
+    c.warn = (m) => said.push(m)
+    await c.put('c0de', new Blob(['bad']), { durationMs: 1 })
+    const before = srv.seen.length
+    for (const hash of ['c0de', 'c0df'])
+      expect(await c.put(hash, new Blob(['good']), { durationMs: 1, replace: true })).toBe(false)
+    expect(srv.seen.length).toBe(before)
+    expect(said).toEqual([
+      "[vx] vx-cache: c0de did not read back, and a vx-cache server never replaces an artifact it holds: not uploaded; the remote misses it until the bucket's lifecycle rule expires it",
+    ])
+  })
+
   it("names the server's own words when it refuses an upload", async () => {
     expect(
       layer(srv.url, write).put('ee55', new Blob([new Uint8Array(65)]), { durationMs: 1 }),
@@ -1426,5 +1443,33 @@ describe('vx run with vxCache()', () => {
       })
       expect(again.outcomes.map((o) => o.status)).toEqual(['success'])
     }
+  })
+
+  // The re-run's save is told `replace`; the server keeps what it holds, so
+  // the upload must not count as landed (a DTE peer is told it did).
+  it('a corrupt remote artifact is run again and said unreplaced', async () => {
+    const cacheDir = path.join(root, '.vx', 'cache')
+    await run({ cwd: root, tasks: ['build'], handleSignals: false, cacheDir })
+    expect(srv.blobs.size).toBe(1)
+    const [name] = srv.blobs.keys()
+    srv.blobs.set(name!, new TextEncoder().encode('not an artifact'))
+    await rm(cacheDir, { recursive: true, force: true })
+    await rm(path.join(root, 'pkg', 'dist'), { recursive: true, force: true })
+    const fx = { root, log: [] as string[], err: [] as string[] }
+    const r = await run({
+      cwd: root,
+      tasks: ['build'],
+      handleSignals: false,
+      cacheDir,
+      log: silentLogger(fx),
+    })
+    expect(r.outcomes.map((o) => o.status)).toEqual(['success'])
+    expect(fx.log.filter((l) => l.startsWith('[vx]'))).toEqual([
+      expect.stringMatching(/download [0-9a-f]+ from .* failed: cache: corrupt artifact for /),
+      expect.stringMatching(
+        /^\[vx\] vx-cache: [0-9a-f]+ did not read back, and a vx-cache server never replaces an artifact it holds: not uploaded; /,
+      ),
+    ])
+    expect(new TextDecoder().decode(srv.blobs.get(name!))).toBe('not an artifact')
   })
 })

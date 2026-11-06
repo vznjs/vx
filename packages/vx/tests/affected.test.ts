@@ -2150,6 +2150,20 @@ describe("workspaceGlobOwners: the run path's staged load", () => {
       // Nested, `.vx` is the tree's own file, not vx's.
       await owners('shared/.vx/cache/x'),
     ]).toEqual([['p'], ['p'], [], ['p']])
+    // An untracked one under its own outputs is not: the key folds only a tracked one.
+    const p = { name: 'p', dir: path.join(root, 'packages/p'), config } as unknown as ProjectEntry
+    const loose = (rel: string) =>
+      workspaceGlobOwners(
+        root,
+        [],
+        [rel],
+        {},
+        async () => new Map([['p', p]]),
+        [],
+        new Set(),
+        new Set([rel]),
+      )
+    expect([await loose('shared/gen/out.txt'), await loose('shared/src.txt')]).toEqual([[], ['p']])
   })
 })
 

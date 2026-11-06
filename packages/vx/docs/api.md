@@ -40,6 +40,7 @@ export interface AffectedChanges {
   dirLinks?: ReadonlySet<string>
   dirLinksIn?: ReadonlyMap<string, ReadonlySet<string>>
   untrackedIn?: ReadonlyMap<string, ReadonlySet<string>>
+  untracked?: ReadonlySet<string>
 }
 ```
 
@@ -2260,6 +2261,7 @@ export interface ResolvedSandboxConfig {
   allowRead: readonly string[]
   allowWrite: readonly string[]
   pendingWrites?: readonly string[]
+  linkedWrites?: readonly { readonly link: string; readonly target: string }[]
   network?: true | readonly string[]
   denyNetwork?: readonly string[]
   systemInfo?: readonly string[]

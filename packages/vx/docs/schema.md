@@ -1587,7 +1587,10 @@ granted alone either — the runtime would grant its siblings too — so vx
 leaves it out, says so once, and a read of it is refused and reported.
 A Linux grant of either kind holding a backslash is left out the same
 way: Bun's `realpath` refuses such a path, and the runtime mounts none
-it cannot resolve.
+it cannot resolve. A WRITE grant holding a control character (a tab, a
+newline) is refused at load on every platform: the Linux report of a
+write spells a tab as a space, so a write the grant covers read as a
+violation of `a b`, and a refused write to `a b` would read the same.
 
 A Linux WRITE grant that matches nothing when the task starts therefore
 mounts nothing. Where a read grant mounts its directory, the task's first
@@ -1617,7 +1620,12 @@ coverage/lcov`); the failure then says so, names the `dir/` spelling, and
 vx removes the empty file it made (it takes back any placeholder the
 task never wrote, so an unwritten one is never archived as an output).
 A grant that leaves the project through a symlink is refused: the grant
-binds the path it names, and vx follows no link out of the project. So
+binds the path it names, and vx follows no link out of the project. One
+spelled through a link that stays inside (`write: ['gen/']` over
+`gen -> real`) binds at both spellings, so a write through `gen` lands in
+`real`. A link into a write grant that is not itself granted is a
+read-only view of it on Linux (a write through it is refused, and vx
+says so before the task runs); grant the link too to write through it. So
 is one whose bind would make `.git`, `.vx/cache`, the cache directory or a
 nested project writable, and one inside `.git`, `.vx/cache` or the cache
 directory (`../.git/hooks/` would plant a hook that runs unsandboxed):

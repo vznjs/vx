@@ -630,6 +630,8 @@ export class VxCacheLayer implements RemoteCacheLayer {
 
   /** A token refusal met by `open`'s ask, which no call could throw: the next check or download does. */
   private unsaid: Error | undefined
+  /** A `replace` refused was said: it is said once a run. */
+  private saidNoReplace = false
 
   /** Throws the refusal `open`'s ask met, once. */
   private sayUnsaid(): void {
@@ -792,10 +794,25 @@ export class VxCacheLayer implements RemoteCacheLayer {
   }
 
   /** An artifact over the server's upload limit is not sent: it is said. */
-  async put(hash: string, body: Blob, _meta: { durationMs: number }): Promise<void | false> {
+  async put(
+    hash: string,
+    body: Blob,
+    meta: { durationMs: number; replace?: true },
+  ): Promise<void | false> {
     // With no token a job reads only: nothing is uploaded, and none counted.
     if (this.disabled || this.writesRefused || !hasCiToken(this.env, this.lent?.() !== undefined))
       return false
+    // The server keeps the bytes a scope holds and answers 204 unread
+    // (PROTOCOL.md): a PUT reported the corrupt copy fixed, so no run (nor
+    // DTE peer) learned it was not, and each one downloaded it again.
+    if (meta.replace === true) {
+      if (!this.saidNoReplace)
+        this.warn(
+          `[vx] vx-cache: ${hash} did not read back, and a vx-cache server never replaces an artifact it holds: not uploaded; the remote misses it until the bucket's lifecycle rule expires it`,
+        )
+      this.saidNoReplace = true
+      return false
+    }
     const max = this.limits?.maxUploadBytes
     if (max !== undefined && body.size > max) {
       this.warn(

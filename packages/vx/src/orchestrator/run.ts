@@ -1677,25 +1677,35 @@ async function runOnBus(
     // the run; flush is the sink's last chance to ship buffered records.
     // After the drain, so the summary says what the uploads moved; a live
     // sink's task records went out as each task ended.
-    if (telemetry !== undefined && runContextRecord !== undefined) {
-      const summary = assembleRunSummary(runContextRecord, records.telemetryTasks, {
+    const sinks = telemetry
+    const summarize = async (
+      final: TaskOutcome[],
+      runOk: boolean,
+      timed?: typeof step,
+    ): Promise<void> => {
+      if (sinks === undefined || runContextRecord === undefined) return
+      const tasks = final === list ? records.telemetryTasks : recordsOf(final, runOk).telemetryTasks
+      const summary = assembleRunSummary(runContextRecord, tasks, {
         startedAt: endedAtMsAtStart,
         endedAt: endedAtMs,
         totalDurationMs: Math.round(totalMs),
-        exitOk: ok,
+        exitOk: runOk,
         // As the terminal counts them: `1 aborted · 1 not run`.
-        abortedCount: records.telemetryTasks.filter((t) => t.status === 'aborted').length,
-        notRunCount: list.filter((o) => neverStarted(o) && !isGroupTask(o.node)).length,
+        abortedCount: tasks.filter((t) => t.status === 'aborted').length,
+        notRunCount: final.filter((o) => neverStarted(o) && !isGroupTask(o.node)).length,
         stages: stageTimes(),
         uploads: prepared.localCache.uploads,
         machines: executors.flatMap((e) => executorMachines(e, fault)),
         idealMs: executors.map((e) => executorIdeal(e, fault)).find((ms) => ms !== undefined),
         advice: executors.flatMap((e) => executorAdvice(e, fault)),
       })
-      telemetry.emitSummary(summary)
-      const sinks = telemetry
-      await sinks.flush(step)
+      sinks.emitSummary(summary)
+      await sinks.flush(timed)
     }
+    // A kept server can still fail the run in the wait below: its summary
+    // goes out once the wait has decided, as its history does, or every
+    // sink (vx-ci's job summary) read a pass over the exit 1.
+    if (!historyAfterWait) await summarize(list, ok, step)
     // End-of-run plugin lifecycle: each plugin's teardown(). Crash-isolated
     // + time-bounded inside teardownPlugins, so a faulty plugin can neither
     // fail nor hang the run. Here on the normal path, after the drains
@@ -1806,6 +1816,8 @@ async function runOnBus(
             local.close()
           }
         })
+        // After the footer and the plugins' teardown: no step line there.
+        await summarize(final, ok && !crashed)
       }
       return { ok: ok && !crashed, outcomes: final }
     }

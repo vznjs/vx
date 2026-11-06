@@ -111,6 +111,8 @@ export interface AffectedArgs {
     changedPaths: readonly string[],
     nested: readonly string[],
     dirLinks: ReadonlySet<string>,
+    /** `AffectedChanges.untracked`. */
+    untracked: ReadonlySet<string>,
   ) => Promise<Iterable<string>>
   /**
    * The fingerprint files a plugin claims (`VxPlugin.fingerprint`) and its
@@ -221,10 +223,13 @@ export interface AffectedChanges {
   /** Project → its `dirLinks`, relative to the project's directory. */
   dirLinksIn?: ReadonlyMap<string, ReadonlySet<string>>
   /**
-   * Project → its changed paths git does not track, relative to the
-   * project's directory: one under a task's own outputs is no input of it.
+   * Project → its changed paths git tracks neither now nor at the base,
+   * relative to the project's directory: one under a task's own outputs
+   * is no input of it.
    */
   untrackedIn?: ReadonlyMap<string, ReadonlySet<string>>
+  /** Those changed paths, workspace-relative: `declaresInput`'s `untracked`. */
+  untracked?: ReadonlySet<string>
 }
 
 /** `<base>...HEAD` / `<base>..HEAD`: the base alone, read as `affectedChanges` reads it. */
@@ -526,7 +531,10 @@ export async function affectedChanges(
   )
   const paths = new Map<string, string[]>()
   const dirLinksIn = new Map<string, Set<string>>()
-  const untrackedSet = new Set(untracked)
+  // A path git tracked at the base and no longer does is in both lists: the
+  // base key folded it, so it moved a key and stays an input.
+  const tracked = new Set(diffed.paths)
+  const untrackedSet = new Set(untracked.filter((rel) => !tracked.has(rel)))
   const untrackedIn = new Map<string, Set<string>>()
   const whole = new Set<string>(claimedOwned.keys())
   const owned = projectsContaining(
@@ -640,9 +648,11 @@ export async function affectedChanges(
     ...(nestedDirs.length > 0 ? { nested: nestedDirs } : {}),
     ...(dirLinks.size > 0 ? { dirLinks, dirLinksIn } : {}),
     ...(untrackedIn.size > 0 ? { untrackedIn } : {}),
+    ...(untrackedSet.size > 0 ? { untracked: untrackedSet } : {}),
   })
   if (changed.length === 0 || args.workspaceGlobOwners === undefined) return done()
-  for (const name of await args.workspaceGlobOwners(changed, nestedDirs, dirLinks)) owned.add(name)
+  const owners = await args.workspaceGlobOwners(changed, nestedDirs, dirLinks, untrackedSet)
+  for (const name of owners) owned.add(name)
   return done()
 }
 

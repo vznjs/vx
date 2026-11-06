@@ -11,7 +11,8 @@
   another task of it declares a changed root file (`workspaceFiles`
   owners join `changes.projects` alone);
 - a task with `inputs`, cached or not, seeds when a changed path is one of them
-  (`declaresInput`, inputs.md), or its `workspaceFiles` may reach into a
+  (`declaresInput`, inputs.md; an untracked path, `changes.untracked`,
+  under its own outputs is none, as the key says), or its `workspaceFiles` may reach into a
   changed nested repository (`changes.nested`, `workspaceFilesReachInto`), or when its project is reached whole: the
   diff named it whole, a changed path is `package.json` or a `vx.config.*`,
   or no task of the project declares a changed path.
@@ -62,6 +63,7 @@ export function affectedRoots(
   changes: AffectedChanges,
   projects: ReadonlyMap<string, ProjectEntry>,
   packageGraph: PackageGraph, // the `^name` walk, for the packages it passes through
+  workspaceRoot: string, // a reason's project-relative file, an untracked path's own outputs
   explain?: AffectedExplain, // `--dry` only: fills each kept id's reason
   byKeys?: boolean, // a changed path no task declares reaches no task
 ): string[] // the ids whose closure the change reaches
@@ -75,7 +77,6 @@ export interface AffectedReason {
 }
 
 export interface AffectedExplain {
-  workspaceRoot: string
   reasons: Map<string, AffectedReason>
 }
 
@@ -85,6 +86,7 @@ export function keptByAffected<R extends { project: string; task: string }>(
   changes: AffectedChanges,
   projects: ReadonlyMap<string, ProjectEntry>,
   packageGraph: PackageGraph,
+  workspaceRoot: string,
   keep?: { named?: ReadonlySet<string>; outright?: ReadonlySet<string> },
   explain?: AffectedExplain,
 ): R[] // the requests `--affected` keeps, in order

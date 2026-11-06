@@ -448,6 +448,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'sandbox-violation-secret-mask.unsafe',
     'sandbox-widened-reads.unsafe',
     'sandbox-write-glob-new-file.unsafe',
+    'sandbox-write-through-link.unsafe',
     'schedule-refine',
     'schedule-strategy',
     'scheduler',
