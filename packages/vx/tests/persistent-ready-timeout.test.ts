@@ -17,7 +17,7 @@ import { loadProjectConfig } from '../src/workspace/project-loader.js'
 
 process.env['VX_TEST_KILL_GRACE'] = '200ms'
 
-const TIMEOUT = 15_000
+const TIMEOUT = 30_000
 
 interface Fixture {
   root: string

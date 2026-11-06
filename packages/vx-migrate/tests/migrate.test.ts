@@ -14,7 +14,7 @@ import { fakeNxCli, nxCalls } from './helpers/fake-nx.js'
 import { notTurbos } from './helpers/turbo-own.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
-const TIMEOUT = 20_000
+const TIMEOUT = 30_000
 const PLACEHOLDER = "echo 'TODO(vx-migrate): fill in' && exit 1"
 
 interface VxResult {

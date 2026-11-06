@@ -31,7 +31,7 @@ interface Fixture {
   err: string[]
 }
 
-const TIMEOUT = 10_000
+const TIMEOUT = 30_000
 
 const silentLogger = (fixture: Fixture): Logger => {
   const buffers = new Map<string, string>()

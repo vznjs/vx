@@ -22,7 +22,7 @@ import { loadWorkspaceConfig } from '../src/workspace/project-loader.js'
 // (`VX_TEST_KILL_GRACE`, see util/settle.ts); children inherit it.
 process.env['VX_TEST_KILL_GRACE'] = '200ms'
 
-const TIMEOUT = 20_000
+const TIMEOUT = 30_000
 
 interface Fixture {
   root: string

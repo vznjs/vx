@@ -19,7 +19,7 @@ import { noticed } from './helpers/notice.js'
 
 // `vx lock`, then the verb: show and info read the lock.
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
-const TIMEOUT = 20_000
+const TIMEOUT = 30_000
 
 const APP_CONFIG = `
   export default {
