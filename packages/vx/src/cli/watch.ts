@@ -16,6 +16,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { parseRunArgs, resolveRunOptions, type RunArgs, spacedHint } from './run.js'
 import { refuse, seeHelp } from './help.js'
+import { namedIgnoredReach } from '../cache/index.js'
 import {
   fingerprintClaims,
   forwardedSignal,
@@ -577,8 +578,10 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
             if (
               atArm !== undefined &&
               changes.changed.some((p) => path.basename(p) === '.gitignore')
-            )
+            ) {
               for (const p of gitFiles(workspaceRoot)?.listed ?? []) atArm.listed.add(p)
+              reachOf = undefined
+            }
             restartTimings()
             // On the mtime clock, as the arm is: from `Date.now()` a write the
             // run made within a tick of it carried an earlier mtime and read as
@@ -679,6 +682,11 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   const arm = (dir: string, recursive: boolean, onEvent: (filename: string) => void): WatchHandle =>
     pool.arm(dir, recursive, onEvent)
 
+  // Only the named entries a key reads ignored files under: `src` of
+  // `src/**` over a listed `src` reaches none, and a dev server's ignored
+  // `src/dev.log` started ~3 cycles a second. Reckoned per sweep.
+  let reachOf: readonly string[] | undefined
+  let reach: readonly string[] = []
   /** The instant the watchers go live, on the mtime clock (see `fsClockNow`): a path last modified before it is the initial run's, not an edit. */
   const armedAt = fsClockNow(cacheDir)
   /** Which settled paths are changes (watch-judge.ts); `pending` holds what fired since. */
@@ -687,7 +695,16 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     armedAt,
     held: () => held !== undefined,
     uncached: () => uncached,
-    namedIgnored: () => namedIgnored,
+    namedIgnored: () => {
+      if (reachOf !== namedIgnored) {
+        reachOf = namedIgnored
+        reach =
+          atArm === undefined
+            ? namedIgnored
+            : namedIgnoredReach(workspaceRoot, namedIgnored, atArm.listed)
+      }
+      return reach
+    },
     fenced: (ownDir, abs) => fenced(ownDir, abs),
     awaited: (abs) => ancestorNames.get(path.dirname(abs))?.has(path.basename(abs)) === true,
     ...(atArm !== undefined ? { existedAtArm: atArm.listed, trackedAtArm: atArm.tracked } : {}),

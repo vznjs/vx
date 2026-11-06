@@ -71,6 +71,7 @@ export interface AffectedReason {
   file?: string // workspace-relative
   project?: string // the changed package, kind `package`
   via?: string[] // the `dependsOn` chain, nearest first, to the seeded task
+  wide?: true // `workspace`: the file reached every project; the text label's, never on the JSON wire
 }
 
 export interface AffectedExplain {

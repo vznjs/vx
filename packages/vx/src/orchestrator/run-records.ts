@@ -12,6 +12,7 @@ import { VERSION } from '../version.js'
 import type { CiContext, GitContext, HostContext } from './run-context.js'
 import { taskTelemetryOf, type TaskTelemetry } from './telemetry.js'
 import { isCacheHit } from '../graph/index.js'
+import { neverStarted } from '../report/index.js'
 
 export interface RunRecordsInput {
   outcomes: readonly TaskOutcome[]
@@ -89,8 +90,13 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
   let restoredRemoteCount = 0
   for (const o of outcomes) {
     if (isGroupTask(o.node)) continue
-    // aborted (killed by a shutdown signal) isn't a real run.
-    if (o.status === 'aborted') continue
+    // aborted (killed by a shutdown signal) isn't a real run. One that
+    // started is still in the summary's task list, as the terminal lists it;
+    // one the stop reached first is only `notRunCount`.
+    if (o.status === 'aborted') {
+      if (input.withTelemetry && !neverStarted(o)) telemetryTasks.push(taskTelemetryOf(o))
+      continue
+    }
     if (input.withTelemetry) telemetryTasks.push(taskTelemetryOf(o))
     taskCount++
     if (input.landed?.has(o) !== true) runs.push(runRecordOf(o as RecordedOutcome, input))

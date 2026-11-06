@@ -52,7 +52,9 @@ export class RemoteLane {
   when the job starts, so a queued job holds no bytes; each landed or
   failed upload is tallied on the local cache's `uploads`. A key it holds
   is not sent again, unless its download here was a corrupt artifact
-  (`distrust`): the re-run's save sends good bytes over the bad ones.
+  (`distrust`): the re-run's save sends good bytes over the bad ones, its
+  `put` told `replace`. Corrupt is a `CorruptArtifactError` by name, from
+  core's ingest or the layer's own check of its body (a digest).
 - `ResolvedRemote` is also what a plugin's `ctx.cache` and the run store
   walk (`plugin-cache.md`), so all three gate a remote the same way.
 

@@ -182,3 +182,23 @@ it("the root package.json's pnpm field keys every task, but for what the lockfil
     await affectedBy({ name: 'root' }, { name: 'root', pnpm: { neverBuiltDependencies: ['x'] } }),
   ).toBeUndefined()
 })
+
+// pnpm takes the root manifest as package.yaml or package.json5 too, and
+// reads its `pnpm` field there (pnpm 10.28): unclaimed, an
+// `onlyBuiltDependencies` edit moved no key.
+it("a root package.yaml's or package.json5's pnpm field keys every task, as package.json's", async () => {
+  for (const [file, text] of [
+    ['package.yaml', (pkg: unknown) => Bun.YAML.stringify(pkg)],
+    ['package.json5', (pkg: unknown) => JSON.stringify(pkg).replace(/"(\w+)":/g, '$1:')],
+  ] as const) {
+    const manifest = (pkg: Record<string, unknown>): Promise<void> =>
+      writeFile(path.join(root, file), text(pkg))
+    await manifest({ name: 'root', private: true })
+    const base = await key()
+    await manifest({ name: 'root', private: true, devDependencies: { x: '1.0.0' } })
+    expect(await key()).toBe(base)
+    await manifest({ name: 'root', pnpm: { onlyBuiltDependencies: ['dep'] } })
+    expect(await key()).not.toBe(base)
+    await rm(path.join(root, file))
+  }
+})

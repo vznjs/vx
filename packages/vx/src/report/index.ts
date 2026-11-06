@@ -40,4 +40,4 @@ export {
 export { createForecast } from './forecast.js'
 export { plainOutput } from './plain-output.js'
 export type { LiveUsage } from './status-line.js'
-export { formatOutcomeTable, formatRunSummary } from './summary.js'
+export { formatOutcomeTable, formatRunSummary, neverStarted } from './summary.js'

@@ -1,6 +1,8 @@
 import { readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { edgesSource, pluginSource } from './helpers/plugin.js'
 import { addProject, gitInitCommit, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -29,6 +31,19 @@ beforeAll(async () => {
     files: { 'src/a.js': 'export {}\n' },
   })
   await addProject(root, 'other', { config: cached(), files: { 'src/a.js': 'export {}\n' } })
+  await addProject(root, 'gen', {
+    config: `export default {
+  tasks: {
+    build: {
+      exec: { command: 'true' },
+      inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+    },
+    test: { exec: { command: 'true' }, inputs: { files: ['test/**'] }, outputs: { files: [] }, cache: true },
+  },
+}
+`,
+    files: { 'src/a.js': 'export {}\n', 'dist/committed.js': 'export {}\n' },
+  })
   gitInitCommit(root)
   await writeFile(path.join(root, 'packages/lib/src/a.js'), 'export const a = 1\n')
 })
@@ -118,6 +133,58 @@ describe('vx run --affected --dry says why each requested task was kept', () => 
     }
   })
 
+  it('an untracked file under its own outputs is no input: the project is read whole', async () => {
+    // The key folds a file under a task's own outputs only when git tracks
+    // it; an untracked build output git does not ignore was still labelled
+    // `changed (an input)` and kept only the task whose outputs held it.
+    const built = path.join(root, 'packages/gen/dist/o.js')
+    await writeFile(built, 'built\n')
+    try {
+      const plan = JSON.parse(dry('build', 'test', '--dry=json')) as {
+        tasks: Array<{ id: string; affected?: unknown }>
+      }
+      const reason = { kind: 'project', file: 'packages/gen/dist/o.js' }
+      expect(Object.fromEntries(plan.tasks.map((t) => [t.id, t.affected]))).toMatchObject({
+        'gen#build': reason,
+        'gen#test': reason,
+      })
+      expect(dry('build', '--dry')).toContain(
+        'gen#build  affected: packages/gen/dist/o.js changed (in its project)',
+      )
+    } finally {
+      await rm(built)
+    }
+  })
+
+  it('CONTROL: a committed file under its own outputs that changed is an input', async () => {
+    const committed = path.join(root, 'packages/gen/dist/committed.js')
+    const before = await readFile(committed, 'utf8')
+    await writeFile(committed, 'export const changed = 1\n')
+    try {
+      const plan = JSON.parse(dry('build', 'test', '--dry=json')) as {
+        tasks: Array<{ id: string; affected?: unknown }>
+      }
+      const kept = Object.fromEntries(plan.tasks.map((t) => [t.id, t.affected]))
+      expect(kept['gen#build']).toEqual({ kind: 'input', file: 'packages/gen/dist/committed.js' })
+      expect(kept['gen#test']).toBeUndefined()
+    } finally {
+      await writeFile(committed, before)
+    }
+  })
+
+  it('text: a control character in a changed file name is escaped, not printed raw', async () => {
+    // A newline in the name broke the `affected:` line in two.
+    const odd = path.join(root, 'packages/other/src/x\ny.js')
+    await writeFile(odd, 'export {}\n')
+    try {
+      expect(dry('build', '--dry')).toContain(
+        'affected: packages/other/src/x\\x0ay.js changed (an input)',
+      )
+    } finally {
+      await rm(odd)
+    }
+  })
+
   it('json and text: a workspace-wide file names itself on every task it reached', async () => {
     // Agent trial 3, row 3: a changed workspace config made every task
     // `kind: project` with no `file`.
@@ -133,12 +200,48 @@ describe('vx run --affected --dry says why each requested task was kept', () => 
         'lib#build': reason,
         'app#build': reason,
         'other#build': reason,
+        'gen#build': reason,
       })
       expect(dry('build', '--filter', 'other', '--dry')).toContain(
-        'affected: .vx/workspace.mjs changed (every task in its project)',
+        'affected: .vx/workspace.mjs changed (workspace-wide)',
       )
     } finally {
       await writeFile(ws, before)
+    }
+  })
+
+  it('text: a claimed root file that reached some projects says so, not workspace-wide', async () => {
+    // A lockfile claim names the projects whose digest moved; the label
+    // said "(workspace-wide)" of a change that reached one project.
+    const ws = await makeWorkspace({ prefix: 'vx-affected-claim-', git: false })
+    try {
+      await Bun.write(
+        path.join(ws, '.vx/workspace.mjs'),
+        localWorkspaceSource([
+          edgesSource(),
+          pluginSource(
+            'org/pm',
+            `{ fingerprint: { files: ['pnpm-lock.yaml'], affected: () => ['b'] }, key() { return undefined } }`,
+          ),
+        ]),
+      )
+      await addProject(ws, 'a', { config: cached(), files: { 'src/a.js': 'export {}\n' } })
+      await addProject(ws, 'b', { config: cached(), files: { 'src/a.js': 'export {}\n' } })
+      await writeFile(path.join(ws, 'pnpm-lock.yaml'), 'v1\n')
+      gitInitCommit(ws)
+      await writeFile(path.join(ws, 'pnpm-lock.yaml'), 'v2\n')
+      const p = Bun.spawnSync({
+        cmd: [process.execPath, BIN, 'run', 'build', '--affected=HEAD', '--dry'],
+        cwd: ws,
+        env: { ...process.env, NO_COLOR: '1' },
+      })
+      expect([p.exitCode, p.stderr.toString()]).toEqual([0, ''])
+      expect(p.stdout.toString()).toContain(
+        'b#build  affected: pnpm-lock.yaml changed (every task in its project)',
+      )
+      expect(p.stdout.toString()).not.toContain('a#build')
+    } finally {
+      await rm(ws, { recursive: true, force: true })
     }
   })
 })

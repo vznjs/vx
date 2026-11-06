@@ -170,6 +170,12 @@ export class ArtifactVanishedError extends Error {
   readonly hash: string
 }
 
+// A body whose bytes are wrong, not cut short: the hit is a miss and the
+// re-run's save is sent over that remote's copy (`put` gets `replace`).
+export class CorruptArtifactError extends Error {
+  readonly hash: string
+}
+
 // The run's remote traffic, filled by each remote lane and the run keeper
 // (a kept task counts under its id): what the footer's remote part counts.
 export interface RemoteTraffic {
@@ -421,6 +427,10 @@ export interface FoldMemo {
 // Core's own readers (`vx last`, `vx why`, the history provider) take the
 // index handle from `indexDb(cache)`, never from a `Cache` member.
 export function indexDb(cache: Cache): Database
+// Wait until no other connection has `<storeDir>/store.db` open (a run in
+// any checkout holds it start to end; WAL connections keep a shared lock),
+// then hold it alone until the release. Nothing to hold without the file.
+export function holdStore(storeDir: string, log: (line: string) => void): Promise<() => void>
 // The files a second connection writes a run's hits through; undefined
 // when the store keeps no history on disk.
 export function historyFiles(cache: Cache): { index: string; store?: string } | undefined
@@ -552,8 +562,11 @@ tar.zst, and otherwise it is `<hash>.tree/`: the same entries unpacked (`writeTr
 at save, the validated tar extracted at ingest, `sealTree`), stdout in
 its `entry_stdout` row. A tree restore checks nothing (the tree holds no
 `.vx-sum`; the archive's sum is checked when it is unpacked) and copies each file with `Bun.write` (copy_file_range, a clone where
-the filesystem has one; never a hard link). Into existing outputs, a
-workspace output or a link it feeds `extractArtifactStream` the
+the filesystem has one; never a hard link): a missing top directory is
+built in `.vx/tmp/` (`copyStaging`) and renamed into place once, a
+missing file in a directory that stands is copied straight to its place.
+Every copy settles before a failure's cleanup. Into existing outputs, a workspace output, a link, or
+where that rename would cross a filesystem or a setgid directory it feeds `extractArtifactStream` the
 tree packed back (`packArtifactStream(planOfTree(…))`). `pinArtifact`
 packs a tree into the upload's tar.zst.
 
@@ -697,8 +710,9 @@ Reads via `get()` are non-blocking thanks to WAL.
   after the probe: a `vx cache clean` in another shell, another
   workspace's retention on a shared `--cache-dir`) — the caller treats
   that entry as a miss and runs the task. An artifact that is not a
-  readable archive or lacks an output the index recorded
-  (`CorruptArtifactError`) is dropped, unless the cache is read-only,
+  readable archive or lacks an output the index recorded, or a tree
+  still in place that lacks one of its files (`CorruptArtifactError`,
+  `<rel> is missing from its stored tree`), is dropped, unless the cache is read-only,
   and throws `ArtifactVanishedError` the same way (A-52). So is one
   holding an unsafe name or an escape by name (`ArchiveSecurityError`,
   as the `CorruptArtifactError`'s cause): the save proved every name

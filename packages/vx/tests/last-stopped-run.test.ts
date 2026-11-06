@@ -63,3 +63,26 @@ it('`vx why --run` accepts the stopped run id `vx last --log` printed', async ()
   const why = vx('why', 'a#build', '--run', log.runId)
   expect({ code: why.code, err: why.err }).toEqual({ code: 0, err: '' })
 }, 30_000)
+
+// `vx why` prints a stopped run's id; `vx why --run` took only the whole of
+// it, and `vx last <id>` said there was no such run.
+it('every verb takes the stopped run id `vx why` printed, whole or a prefix', async () => {
+  await stopAfterSlowStarts('a#build', 'a#slow')
+  const { runId } = JSON.parse(vx('why', 'a#build', '--format', 'json').out) as { runId: string }
+  const short = runId.slice(0, 13)
+  const why = vx('why', 'a#build', '--run', short, '--format', 'json')
+  const log = vx('last', short, '--log', 'a#build', '--format', 'json')
+  const last = vx('last', short)
+  expect({
+    why: [why.code, JSON.parse(why.out).runId],
+    log: [log.code, JSON.parse(log.out).runId],
+    last: [last.code, last.err.trim()],
+  }).toEqual({
+    why: [0, runId],
+    log: [0, runId],
+    last: [
+      1,
+      `✗ vx last  run ${runId} was stopped before it finished, so vx kept its tasks but no summary: \`vx last ${runId} --log <task>\` prints one's output`,
+    ],
+  })
+}, 30_000)

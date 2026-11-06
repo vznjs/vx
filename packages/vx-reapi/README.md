@@ -74,14 +74,15 @@ A CAS digest is the sha256 of the **content**, so it cannot be derived from a
 vx cache key before the bytes exist — `has(key)` could never answer. The
 ActionCache supplies the missing indirection:
 
-| vx                   | REAPI                                                                                                                                                            |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| cache key            | synthetic action digest — `sha256("vx-reapi-v1\0" + key)`                                                                                                        |
-| artifact (`tar.zst`) | one CAS blob, referenced by the ActionResult's `output_files`                                                                                                    |
-| task duration        | `stdout_raw` on the ActionResult                                                                                                                                 |
-| cache miss           | `GetActionResult` → `NOT_FOUND`                                                                                                                                  |
-| cache hit            | `GetActionResult` asking for stdout and the artifact inline: a server that honours it (bazel-remote, up to ~1 MiB) answers a small hit in one round trip         |
-| cache save           | an artifact up to 256 KiB is read once and goes in one `BatchUpdateBlobs`, unprobed; a larger one is probed with `FindMissingBlobs` and streamed only if missing |
+| vx                   | REAPI                                                                                                                                                                  |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| cache key            | synthetic action digest — `sha256("vx-reapi-v1\0" + key)`                                                                                                              |
+| artifact (`tar.zst`) | one CAS blob, referenced by the ActionResult's `output_files`                                                                                                          |
+| task duration        | `stdout_raw` on the ActionResult                                                                                                                                       |
+| cache miss           | `GetActionResult` → `NOT_FOUND`                                                                                                                                        |
+| cache hit            | `GetActionResult` asking for stdout and the artifact inline: a server that honours it (bazel-remote, up to ~1 MiB) answers a small hit in one round trip               |
+| cache save           | an artifact up to 256 KiB is read once and goes in one `BatchUpdateBlobs`, unprobed; a larger one is probed with `FindMissingBlobs` and streamed only if missing       |
+| stored key           | kept: the save writes no `UpdateActionResult`, unless core says the stored bytes did not read back (`replace`); then the blob is sent unprobed and the entry rewritten |
 
 The `vx-reapi-v1` prefix does two jobs: it keeps vx keys out of the address
 space of real Bazel action digests on a shared server, and it makes a future
@@ -225,8 +226,10 @@ content-addressed store: a corrupt or poisoned remote degrades to a miss
 (the cache invariant), never to wrong bytes under a trusted name. Uploads
 were always server-verified; this is the mirror on the read side, the same
 check Bazel's client performs. A streamed read (the cache artifact) is
-hashed as its bytes pass and errors at its end on a mismatch, so vx's
-ingest fails and the hit is a miss. The size is held as the bytes arrive:
+hashed as its bytes pass and errors at its end on a mismatch with core's
+`CorruptArtifactError`, so the hit is a miss and the rebuild's save
+replaces the entry and its blob: one corrupt entry is one rebuild, not
+one on every run. The size is held as the bytes arrive:
 a body past its digest's size is refused at the byte that passes it, a
 zstd reply is decoded no further than that size, and a batch entry for a
 digest not asked for is dropped.

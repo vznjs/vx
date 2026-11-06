@@ -1,6 +1,8 @@
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import type { ExecConfig, TaskConfig, InputsConfig, InputStability } from '../config.js'
 import {
+  ABSENT_INPUT,
   ArtifactVanishedError,
   type CacheEntry,
   type CacheLayer,
@@ -599,6 +601,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // does an executor that declares `timeouts`.
   let timeoutTimer: ReturnType<typeof setTimeout> | undefined
   let timeoutFired = false
+  // Fail-fast withdrew the attempt while its executor still held it for a
+  // machine to begin (`running` answered `null`): it never started.
+  let unbegun = false
+  let withdrawUnbegun: (() => void) | undefined
   // The attempt's listener on the run's stop signal, taken off once the
   // attempt settles. Left on, every task of the run added one: the list
   // grew to the task count, and each add scans it for a duplicate, ~100 ms
@@ -609,11 +615,31 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     const abort = (): void => stop.abort(args.stopSignal?.reason)
     unlistenStop?.()
     unlistenStop = undefined
+    unbegun = false
+    withdrawUnbegun = undefined
     if (args.stopSignal?.aborted === true) abort()
     else if (args.stopSignal !== undefined) {
       const run = args.stopSignal
       run.addEventListener('abort', abort, { once: true })
       unlistenStop = () => run.removeEventListener('abort', abort)
+    }
+    // `--continue=never` starts nothing after a failure: a task a plugin
+    // executor still holds for a machine is not yet started, and was sent
+    // to one after the failure (2026-11-06).
+    const failFast = args.failFast
+    if (!local && failFast !== undefined && args.executor.running !== undefined) {
+      const withdraw = (): void => {
+        if (stop.signal.aborted || args.executor.running?.(node.id) !== null) return
+        unbegun = true
+        stop.abort(new Error('fail-fast'))
+      }
+      withdrawUnbegun = withdraw
+      failFast.addEventListener('abort', withdraw, { once: true })
+      const unlisten = unlistenStop
+      unlistenStop = () => {
+        unlisten?.()
+        failFast.removeEventListener('abort', withdraw)
+      }
     }
     clearTimeout(timeoutTimer)
     timeoutFired = false
@@ -922,6 +948,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     result: ExecuteResult
     exitCode: number
     withdrawn?: true
+    unbegun?: true
   }> {
     // The first attempt under `clean: false` finds its last outputs (tsc's `.tsbuildinfo`).
     const clean = willWrite && !deferralRequested && !(keepOutputs && attempt === 1)
@@ -997,6 +1024,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     } catch (thrown) {
       running = Promise.reject(thrown)
     }
+    // A failure that landed while the request was built: the executor holds it now.
+    if (args.failFast?.aborted === true) withdrawUnbegun?.()
     let res = await boundAfterAbort(running, req.signal)
       .then((r: unknown) => {
         assertExecuteResult(args.executor.name, node.id, r)
@@ -1049,6 +1078,15 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         throw thrown
       })
     endExec()
+    if (unbegun) {
+      await sweepPlaceholders(placeholders)
+      if (attempt === 1) return { result: res, exitCode: res.exitCode, unbegun: true }
+      // A retry withdrawn: the attempt before it stands, as above.
+      output = standing.output
+      violations = standing.violations
+      flushMasked = standing.flushMasked
+      return { result, exitCode: effectiveExitCode, withdrawn: true }
+    }
     if (secrets !== null)
       res = {
         ...res,
@@ -1100,9 +1138,13 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // A child we SIGTERMed for exceeding the timeout is a genuine failure —
     // stream a clear line so the 143 exit reads as a timeout. One that outlived
     // the grace died of the SIGKILL, and the line said SIGTERM over an exit
-    // 137 (item 1063).
+    // 137 (item 1063); so did a shell dead of the SIGTERM whose leftover the
+    // SIGKILL took.
     if (res.timedOut) {
-      const how = res.signal === 'SIGKILL' ? 'SIGKILL after the SIGTERM grace' : 'SIGTERM'
+      const how =
+        res.signal === 'SIGKILL' || res.killedAfterGrace === true
+          ? 'SIGKILL after the SIGTERM grace'
+          : 'SIGTERM'
       log.taskStderr(
         node,
         `${midLine ? '\n' : ''}[vx] timed out after ${effectiveTimeout}ms — killed (${how})\n`,
@@ -1221,6 +1263,18 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   for (;;) {
     attempt++
     const a = await runAttempt()
+    // Never started: skipped, as fail-fast skips a task not yet dispatched.
+    if (a.unbegun) {
+      return {
+        node,
+        status: 'skipped',
+        exitCode: 1,
+        durationMs: 0,
+        hash,
+        wallclockStartNs,
+        wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+      }
+    }
     result = a.result
     effectiveExitCode = a.exitCode
     if (a.withdrawn) {
@@ -1570,10 +1624,20 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // A task that regenerates its own input (TanStack Router's committed
     // `routeTree.gen.ts`, rewritten to the same bytes by every build) is
     // never saved (item 1015), and the line said so without the way out.
+    // A file the key read may instead be one the task rewrites in place (a
+    // formatter's temp + rename), whose sources cannot be its outputs: vx
+    // deletes outputs before the command. Its way out is judging the write
+    // by its bytes. Neither is said of a file the task deleted.
+    const read =
+      moved !== null &&
+      keyedInputs(described!.facts).some((f) => f.path === moved && f.digest !== ABSENT_INPUT)
     const hint =
-      moved === null || rewroteBy !== undefined
+      moved === null || rewroteBy !== undefined || (read && !existsSync(moved))
         ? ''
-        : '; if the task writes it, declare it in outputs'
+        : '; if the task generates it, declare it in outputs' +
+          (read && stability.strategy !== 'mutable'
+            ? "; if it rewrites it in place, set inputs.stability: { strategy: 'mutable' }"
+            : '')
     if (stability.severity === 'error') {
       warnOf(log)(
         `[vx] ${node.id}: ${what} — the result is not saved, ` +

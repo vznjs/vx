@@ -462,9 +462,11 @@ class AcmeRemote implements RemoteCacheLayer {
   missing(hash: string) {
     this.absent.add(hash) // the run found it in no remote: no need to ask
   }
-  async put(hash: string, body: Blob) {
-    // An entry is immutable, and this server would overwrite: ask first.
-    if (!this.absent.has(hash) && (await this.has(hash)) !== null) return false // nothing sent
+  async put(hash: string, body: Blob, meta: { durationMs: number; replace?: true }) {
+    // An entry is immutable, and this server would overwrite: ask first,
+    // unless the stored bytes did not read back.
+    const ask = !meta.replace && !this.absent.has(hash)
+    if (ask && (await this.has(hash)) !== null) return false // nothing sent
     const res = await fetch(`${this.endpoint}/${hash}`, { method: 'PUT', body, signal: deadline() })
     if (!res.ok) throw new Error(`HTTP ${res.status}`) // fetch resolves on a 500
   }
@@ -493,13 +495,16 @@ to a machine that runs its tasks, such as a `@vzn/vx-dte` worker.
 ### Signed artifacts
 
 A wrapper can make a shared cache trust its writers, not its store: it
-hashes each download and fails it unless a trusted key signed it. A
-failed body is a miss. Only main's CI holds the private key:
+hashes each download and fails it unless a trusted key signed it.
+
+A body failed with `CorruptArtifactError` is a miss whose rebuild is sent
+over the bad copy (`put` gets `replace`). Only main's CI holds the
+private key:
 
 ```ts
 // signed-cache.ts
 import { createHash, createPrivateKey, createPublicKey, sign, verify } from 'node:crypto'
-import { definePlugin, type RemoteCacheLayer, type VxPlugin } from '@vzn/vx'
+import { CorruptArtifactError, definePlugin, type RemoteCacheLayer, type VxPlugin } from '@vzn/vx'
 
 /** `remote`, but a download no trusted key signed is a miss, and uploads are signed. */
 function signed(remote: RemoteCacheLayer, trustedPem: string, signingPem?: string): RemoteCacheLayer {
@@ -523,7 +528,8 @@ function signed(remote: RemoteCacheLayer, trustedPem: string, signingPem?: strin
           },
           flush(out) {
             const ok = verify(null, message(hash, sha.digest('hex')), trusted, signature)
-            if (!ok) out.error(new Error(`${hash}: no trusted signature`))
+            // Bad bytes there, not a cut: the rebuild's save replaces them.
+            if (!ok) out.error(new CorruptArtifactError(hash, 'no trusted signature'))
           },
         }),
       )

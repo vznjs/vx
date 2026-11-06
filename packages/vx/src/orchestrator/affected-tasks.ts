@@ -51,9 +51,10 @@ function wholeProjects(
       (t) => t.exec !== undefined && t.inputs !== undefined,
     )
     const links = changes.dirLinksIn?.get(name)
+    const loose = changes.untrackedIn?.get(name)
     const unclaimed = (rel: string): boolean =>
       KEYED_BY_EVERY_TASK.has(rel) ||
-      (!byKeys && !keyed.some((t) => declaresInput(t, rel, null, links?.has(rel))))
+      (!byKeys && !keyed.some((t) => declaresInput(t, rel, null, links?.has(rel), loose?.has(rel))))
     const rel = rels.find(unclaimed)
     if (rel !== undefined) whole.set(name, rel)
   }
@@ -78,6 +79,8 @@ export interface AffectedReason {
   file?: string
   project?: string
   via?: string[]
+  /** `workspace`: the file reached every project. The text label's, never on the JSON wire. */
+  wide?: true
 }
 
 /** Collects each kept task's `AffectedReason` when given; a run without one pays nothing. */
@@ -111,7 +114,10 @@ export function affectedRoots(
   const inProject = (name: string, rel: string | undefined): AffectedReason => {
     if (rel === undefined) {
       const file = changes.wholeBy?.get(name)
-      return file === undefined ? { kind: 'project' } : { kind: 'workspace', file }
+      if (file === undefined) return { kind: 'project' }
+      return changes.wide === true
+        ? { kind: 'workspace', file, wide: true }
+        : { kind: 'workspace', file }
     }
     const dir = path.relative(explain!.workspaceRoot, projects.get(name)!.dir)
     return { kind: 'project', file: dir === '' ? rel : path.posix.join(dir, rel) }
@@ -176,7 +182,8 @@ export function affectedRoots(
       return true
     }
     const links = changes.dirLinksIn?.get(n.projectName)
-    const rel = rels.find((r) => declaresInput(task, r, null, links?.has(r)))
+    const loose = changes.untrackedIn?.get(n.projectName)
+    const rel = rels.find((r) => declaresInput(task, r, null, links?.has(r), loose?.has(r)))
     if (rel === undefined) return false
     if (seeds !== null) seeds.set(n.id, { ...inProject(n.projectName, rel), kind: 'input' })
     return true

@@ -44,9 +44,20 @@ describe.skipIf(!available || process.platform !== 'linux')(
       }
       const unnamed: string[] = []
       for (let round = 0; round < 3; round++) {
-        const r = await run({ cwd: root, tasks: ['t'], concurrency: 16, log: quiet })
+        // A task's stderr carries SRT's own word when its observer could not
+        // start or connect: a failure here names the stage that lost it.
+        const stderr = new Map<string, string>()
+        const log = {
+          ...quiet,
+          taskStderr(node: { id: string }, chunk: string) {
+            stderr.set(node.id, (stderr.get(node.id) ?? '') + chunk)
+          },
+        }
+        const r = await run({ cwd: root, tasks: ['t'], concurrency: 16, log })
         expect(r.outcomes.map((o) => o.status)).toEqual(Array(projects).fill('failed'))
-        for (const o of r.outcomes) if ((o.sandboxViolations ?? 0) === 0) unnamed.push(o.node.id)
+        for (const o of r.outcomes)
+          if ((o.sandboxViolations ?? 0) === 0)
+            unnamed.push(`${o.node.id}: ${JSON.stringify(stderr.get(o.node.id) ?? '')}`)
       }
       expect(unnamed).toEqual([])
     }, 120_000)

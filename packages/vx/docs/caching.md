@@ -454,7 +454,9 @@ On a hit:
    takes the group its directory gives new files (setgid on Linux, any
    directory on macOS), ACLs are not copied. The next run removes
    the staging a killed run left. A process reading the output tree during the
-   restore never finds a declared output missing or half-written, and a
+   restore never finds a declared output missing or half-written (the
+   tree form's copy into a folder that stands excepted, see
+   [§ Storage layout](#storage-layout)), and a
    restore that fails first (a full disk, a damaged entry) leaves the
    outputs as they were. Then the declared outputs the entry does not
    hold are removed — see
@@ -687,17 +689,19 @@ Hard invariants of the remote prefetch:
   overwrite checks inside (`turboCache()` asks HEAD unless a 404 or a
   batch answer this run said the key is absent; `reapi()` looks the
   action up beside its upload and keeps a stored result; Nx servers
-  answer 409). `ctx.cache.put` and a run's own entries send the `put`
-  alone.
+  answer 409). A `put` told `replace` (the stored bytes did not read
+  back) writes over them. `ctx.cache.put` and a run's own entries send
+  the `put` alone.
 - **`--dry` batches too.** The plan derives every key first, then asks
   each remote with `hasMany` once, and keeps the hits for the run that
   follows; a remote without it is asked `has` per key.
 - **Never fail.** Every remote path (get / put / ingest / prefetch)
   catches all errors and degrades to a cache miss. A remote 500, a
   network drop, a corrupt artifact, or a failed integrity check can
-  never fail a run. A key whose remote bytes do not read back is
-  uploaded again after the task re-runs, held or not, so a remote that
-  replaces on `put` heals.
+  never fail a run. A key whose remote bytes do not read back (a
+  `CorruptArtifactError`, core's or a layer's own digest or signature
+  check) is uploaded again after the task re-runs, held or not, with
+  `replace`, so the remote heals.
 - **Said once, and said whole.** The warning names the operation
   (`probe`, `download`, `upload`), the artifact and the layer's
   `endpoint`, with a URL's credentials, query and fragment dropped:
@@ -857,10 +861,14 @@ key still lets a local consumer fetch its outputs, but the fetch saves
 no entry; until X-123 it saved them under the old key. A task
 that rewrites its own input to the SAME bytes (`sed -i` always writes)
 is not saved either: its write cannot be told from an edit reverted
-mid-run, so it pays a re-run each time rather than risk a stale entry;
-declare what it writes as an output, which the status line says when it
-names a file other than `package.json` (TanStack Router's committed
-`routeTree.gen.ts`, rewritten by every build). That holds on CI too: a
+mid-run, so it pays a re-run each time rather than risk a stale entry.
+The status line names the ways out: a file the task generates
+(TanStack Router's committed `routeTree.gen.ts`, rewritten by every
+build) is declared as an output; for a file the key read, also
+`inputs.stability: { strategy: 'mutable' }` below, the one a task that
+rewrites its sources in place takes (a formatter cannot declare them as
+outputs: vx deletes outputs before a run, and `vx lock` refuses an
+output entry that takes back an input entry whole). That holds on CI too: a
 task of the same project running alongside can change an input and put
 it back. A task that rewrites its own input to identical bytes (tsdown's
 `package.json`) sets `inputs.stability: { strategy: 'mutable' }`, and a write
@@ -1291,9 +1299,12 @@ either way (a restore renames into place only once the whole archive
 has staged). Machines sharing a workspace over a network file system
 do not share a temp directory, so they do not share the lock.
 
-An eviction can still land between a hit's probe and its restore: a
-`vx cache clean` in another shell, or one run for another
-workspace that shares the `--cache-dir` (a different workspace, so a
+A `vx cache clean` in any checkout of the repository waits for every
+vx process holding the shared store open (a run holds it from start to
+end), so it never deletes the store under a run in a sibling checkout,
+whose own lock it never took. An eviction can still land between a
+hit's probe and its restore: a clean or a run for another workspace
+that shares the `--cache-dir` (a different workspace, so a
 different lock), which cannot see this run's pending `accessed_at`
 bumps and reads its fresh hits as old. The restore then finds no
 artifact, and that entry is a **miss**: the run says `[vx] <id>: its
@@ -1307,7 +1318,8 @@ healthy key (`tests/vanished-artifact.test.ts`).
 
 A local artifact whose bytes are wrong (a failed checksum, a torn
 write, one past the artifact ceiling, an entry missing a recorded
-output, a name that now reads unsafe, X-115) is a miss the same way: `[vx] <id>: cache: corrupt artifact
+output, a tree entry missing one of its files, a name that now reads
+unsafe, X-115) is a miss the same way: `[vx] <id>: cache: corrupt artifact
 for <hash>: …; dropped it — running it`. The entry is dropped, so the
 task's save stores the key again; it failed the task as an internal
 error on every run until `--force` before A-52. A cache the run may
@@ -1437,8 +1449,15 @@ unpacked once at save (or at ingest of a remote hit, decoded once straight
 into the tree), so a restore copies
 each file out (`copy_file_range`, a clone on a filesystem that has one;
 never a hard link: a later write to a restored output must not reach the
-store). A restore into outputs already on disk, a workspace output or a
-symlink takes the archive extractor, fed the tree packed back into its
+store). A missing folder (a cleaned `dist/`, a fresh checkout) is built
+whole in the workspace's `.vx/tmp/` and renamed in once, as the
+extractor stages, so a reader meets it complete or not at all (copied
+straight to its place, its files were there empty, then short). A
+missing file in a folder that stands is copied straight to its place: a
+reader can meet it short while it copies, as the price of a restore
+that renaming each such file in made a fifth to a third slower (3,000
+files, 2026-11-06). A restore into outputs already on disk, a workspace output, a
+symlink, or a folder on another filesystem than `.vx/tmp/` takes the archive extractor, fed the tree packed back into its
 tar. An upload packs the tree into the tar.zst in the upload queue, off
 the save. A hit trusts the tree and checks none of its files' bytes: the store
 is vx's own, and a check could not stop a write to it. Each file's size

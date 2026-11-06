@@ -44,9 +44,11 @@ export interface AffectedChanges {
   paths: ReadonlyMap<string, readonly string[]> // project → its changed paths, project-relative
   whole: ReadonlySet<string> // reached whatever inputs say: lockfile claim, config import, nested repo
   wholeBy?: ReadonlyMap<string, string> // a whole project → the workspace-wide file that made it so
+  wide?: boolean // wholeBy's file reached every project (the workspace config), not only those a claim named
   nested?: readonly string[] // changed nested repositories, workspace-relative: each stands for its files
   dirLinks?: ReadonlySet<string> // changed paths that are (or were) a link to a directory, workspace-relative
   dirLinksIn?: ReadonlyMap<string, ReadonlySet<string>> // project → its dirLinks, project-relative
+  untrackedIn?: ReadonlyMap<string, ReadonlySet<string>> // project → its untracked changed paths, project-relative
 }
 export function affectedChanges(args: AffectedArgs, perTask?: boolean): Promise<AffectedChanges> // perTask false: affectedProjects' set only
 

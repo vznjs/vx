@@ -106,7 +106,7 @@ describe('a task that rewrites its own input', () => {
 
       await runTask('format')
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#format: `packages/app/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in outputs',
+        "[vx] app#format: `packages/app/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task generates it, declare it in outputs; if it rewrites it in place, set inputs.stability: { strategy: 'mutable' }",
       ])
       gitIn(root)('checkout', '--', 'packages/app/a.ts')
       const again = await runTask('format')
@@ -143,7 +143,7 @@ describe('a task that rewrites its own input', () => {
       commit()
       await runTask('format')
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#format: `packages/app/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in outputs',
+        "[vx] app#format: `packages/app/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task generates it, declare it in outputs; if it rewrites it in place, set inputs.stability: { strategy: 'mutable' }",
       ])
       expect(statusOf(await runTask('format'), 'app#format')).toBe('success')
     },
@@ -152,8 +152,12 @@ describe('a task that rewrites its own input', () => {
 })
 
 describe('inputs.stability: what a write during the command means', () => {
+  const MOVED_LINE =
+    '[vx] app#format: `packages/app/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it'
+  // A formatter's sources cannot be its outputs, so 'mutable' is named too,
+  // but not under 'mutable' itself.
   const WITHHELD = [
-    '[vx] app#format: `packages/app/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in outputs',
+    `${MOVED_LINE}; if the task generates it, declare it in outputs; if it rewrites it in place, set inputs.stability: { strategy: 'mutable' }`,
   ]
   const formatter = (from: string, stability?: object) => ({
     config: `
@@ -195,7 +199,9 @@ describe('inputs.stability: what a write during the command means', () => {
     async () => {
       await fixture('unformatted', { strategy: 'mutable' })
       await runTask('format')
-      expect(status.filter((l) => MOVED.test(l))).toEqual(WITHHELD)
+      expect(status.filter((l) => MOVED.test(l))).toEqual([
+        `${MOVED_LINE}; if the task generates it, declare it in outputs`,
+      ])
     },
     TIMEOUT,
   )
@@ -363,7 +369,7 @@ describe('inputs.stability: what a write during the command means', () => {
       expect(r.ok).toBe(false)
       expect(statusOf(r, 'app#format')).toBe('failed')
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        "[vx] app#format: `packages/app/a.ts` changed after its key was taken — the result is not saved, and inputs.stability.severity is 'error', so the task fails; if the task writes it, declare it in outputs",
+        "[vx] app#format: `packages/app/a.ts` changed after its key was taken — the result is not saved, and inputs.stability.severity is 'error', so the task fails; if the task generates it, declare it in outputs; if it rewrites it in place, set inputs.stability: { strategy: 'mutable' }",
       ])
       // The outcome names it too, so the label and `vx last` say why the
       // exit is 1 when the command itself passed.
@@ -442,7 +448,7 @@ describe('the other moves', () => {
       commit()
       await runTask('build')
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#build: `packages/app/in/b.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in outputs',
+        '[vx] app#build: `packages/app/in/b.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it',
       ])
       gitIn(root)('checkout', '--', 'packages/app/in/b.txt')
       await rm(path.join(app, 'dist'), { recursive: true, force: true })
@@ -598,7 +604,7 @@ describe('an input the user edits during the run', () => {
       await writeFile(path.join(app, 'go'), '')
       await pending
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#build: `packages/app/src/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in outputs',
+        "[vx] app#build: `packages/app/src/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task generates it, declare it in outputs; if it rewrites it in place, set inputs.stability: { strategy: 'mutable' }",
       ])
 
       gitIn(root)('checkout', '--', 'packages/app/src/a.ts')
@@ -645,7 +651,7 @@ describe('an input the user edits during the run', () => {
       await writeFile(path.join(app, 'done'), '')
       await pending
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#build: `packages/app/src/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in outputs',
+        "[vx] app#build: `packages/app/src/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task generates it, declare it in outputs; if it rewrites it in place, set inputs.stability: { strategy: 'mutable' }",
       ])
       await rm(path.join(app, 'dist'), { recursive: true, force: true })
       for (const f of ['started', 'go', 'built', 'done']) await writeFile(path.join(app, f), '')
@@ -706,7 +712,7 @@ describe('an input the user edits during the run', () => {
       await writeFile(path.join(lib, 'go'), '')
       await pending
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#build: `packages/app/src/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in outputs',
+        "[vx] app#build: `packages/app/src/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task generates it, declare it in outputs; if it rewrites it in place, set inputs.stability: { strategy: 'mutable' }",
       ])
 
       gitIn(root)('checkout', '--', 'packages/app/src/a.ts')
@@ -838,7 +844,7 @@ describe('an input file added during the run', () => {
     async () => {
       const app = await addedDuring('src/new.txt')
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#build: `packages/app/src/new.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in outputs',
+        '[vx] app#build: `packages/app/src/new.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task generates it, declare it in outputs',
       ])
       await rm(path.join(app, 'src', 'new.txt'))
       await rm(path.join(app, 'dist'), { recursive: true, force: true })
@@ -855,7 +861,7 @@ describe('an input file added during the run', () => {
     async () => {
       await addedDuring('src/sub/new.txt')
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#build: `packages/app/src/sub/new.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in outputs',
+        '[vx] app#build: `packages/app/src/sub/new.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task generates it, declare it in outputs',
       ])
     },
     TIMEOUT,
@@ -866,7 +872,7 @@ describe('an input file added during the run', () => {
     async () => {
       await addedDuring('extra.txt', ADDS(BUILD, "['src/**', 'extra.txt']"))
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#build: `packages/app/extra.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in outputs',
+        '[vx] app#build: `packages/app/extra.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task generates it, declare it in outputs',
       ])
     },
     TIMEOUT,
@@ -892,7 +898,7 @@ describe('an input file added during the run', () => {
       await writeFile(path.join(app, 'go'), '')
       await pending
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#build: `packages/app/src/v` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in outputs',
+        '[vx] app#build: `packages/app/src/v` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task generates it, declare it in outputs',
       ])
       await rm(path.join(app, 'src', 'v'))
       await rm(path.join(app, 'dist'), { recursive: true, force: true })

@@ -134,6 +134,7 @@ export interface LazyGitEnumeration {
   readonly started: Promise<GitEnumeration> | undefined
 }
 export function lazyGitEnumeration(workspaceRoot: string): LazyGitEnumeration
+export function newFilesIgnoredIn(root: string, dirs: readonly string[]): Set<string> // which root-relative dirs git ignores a new file directly in, one check-ignore (`newFilesIgnored`'s probe)
 export const MAX_SCOPED_PATHSPECS: number // 64: above it the walk is the whole tree
 export function gitPathspecs(
   workspaceRoot: string,

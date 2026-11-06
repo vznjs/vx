@@ -46,6 +46,15 @@ describe('nearMatches', () => {
     expect(nearMatches('web', ['MyWebApp', 'api'])).toEqual(['MyWebApp'])
   })
 
+  // `vx show guide` offered `ui`, and `propertyIsEnumerable` offered `a`:
+  // a short name inside any word is no near match.
+  it('offers a name the query contains only as a whole word of it', () => {
+    expect(nearMatches('guide', ['ui', 'api'])).toEqual([])
+    expect(nearMatches('capital', ['ui', 'api'])).toEqual([])
+    expect(nearMatches('propertyIsEnumerable', ['a', 'b'])).toEqual([])
+    expect(nearMatches('ui#build', ['ui', 'api'])).toEqual(['ui'])
+  })
+
   it('never returns more than the limit, however many are near', () => {
     expect(nearMatches('ab', ['aa', 'bb', 'ac', 'cb', 'ax'])).toEqual(['aa', 'bb', 'ac'])
   })

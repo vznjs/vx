@@ -59,7 +59,9 @@ target on another filesystem goes through a temp beside it,
 and a file takes the group its directory gives new files (setgid on
 Linux, any directory on macOS); ACLs are not copied, a restored
 file gets the default ACL of `.vx/tmp/`), so a reader of the output tree never
-finds a declared output missing or half-written, and a restore that fails
+finds a declared output missing or half-written (a tree entry's file
+copied into a folder that stands excepted: caching.md § Storage
+layout), and a restore that fails
 before its renames (a full disk, a damaged entry) leaves the outputs it
 found as they were. Only a found output that blocks a rename goes first:
 a file where the entry needs a directory, or a file under a path the

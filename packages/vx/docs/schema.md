@@ -86,6 +86,12 @@ absent, which is what a conditional spread
 (`...(ci ? { retries: 2 } : {})`) relies on. The workspace config is not
 held to this: its plugins are objects of functions.
 
+`vx lock` evaluates a project config with the workspace root as
+`process.cwd()`, from whichever directory it runs, so the lock does not
+depend on where you ran it; `import.meta.dir` is the config's own
+directory. What it prints goes to stderr, a child it spawns
+included: a verb's stdout is its output.
+
 `tasks` is a `Record<string, TaskConfig>`. Task names are strings
 referenced by `dependsOn`, by `inputs.tasks`, and by the CLI
 (`vx run <taskName>` or `vx run <pkg>#<taskName>`), so a name those
@@ -465,8 +471,7 @@ for it to exit. Instead it considers the task "ready":
   (colour, OSC titles), so `^` and `$` anchor to a line as you read
   it and `Local:` matches Vite's bold `Local` under `FORCE_COLOR`.
   The trailing partial line is tested too, so prompt-style banners
-  without a newline (`printf 'Listening on :3000'`) count, and so does
-  output read up to 250 ms after the shell exits. A server
+  without a newline (`printf 'Listening on :3000'`) count. A server
   not ready after 10 s is said once, naming
   the pattern it waits for, and whether `exec.timeout` bounds the wait.
 
@@ -522,7 +527,8 @@ Semantics:
 - **Exit before ready.** A persistent task that exits 0 before
   `readyWhen` matches is ready: a setup step (migrate, seed) that did its
   work, and its dependants run. One that crashes or exits non-zero first
-  is reported as `failed`.
+  is reported as `failed`, even when a process it left running prints
+  the marker after the exit.
 - **Crash after ready ⇒ failed run.** A persistent task that exits
   non-zero (or is killed) on its own after it became ready fails the
   run, and vx names it: `vx: <id> exited with code <n>` (a signal death
@@ -1952,8 +1958,9 @@ export default defineWorkspace({
 The workspace holds settings in groups (`run`, `cache`, `inputs`, `outputs`, `lock`, `watch`) and the
 `plugins`. Every setting has one path, and its environment variable and
 flag derive from it: `run.timeout` is `VX_RUN_TIMEOUT` and
-`vx run --timeout`. A flag beats its variable, which beats this file,
-which beats the built-in. A setting a task can set itself
+`vx run --timeout`. A flag beats its variable (a variable its flag
+beats is not read, so a bad value there is not refused), which beats
+this file, which beats the built-in. A setting a task can set itself
 (`exec.timeout`, `exec.retries`, `inputs.stability`) takes the
 task's value over all of them; the input-stability variables are the one
 exception, overriding every task for the run. A duration carries its

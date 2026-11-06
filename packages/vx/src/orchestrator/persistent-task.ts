@@ -244,7 +244,9 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
     readyWhen === undefined
       ? undefined
       : setTimeout(() => {
-          if (isAborted(args.stopSignal)) return
+          // A server that traps SIGTERM runs out the kill grace after the
+          // timeout gave up; the wait is over, and its failure says so.
+          if (isAborted(args.stopSignal) || spawn.gaveUp()) return
           const after = noticeMs < 1000 ? `${noticeMs} ms` : `${noticeMs / 1000} s`
           const unbounded = effectiveTimeout === undefined ? ', with no exec.timeout' : ''
           warnOf(log)(

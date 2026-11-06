@@ -293,6 +293,30 @@ describe('vx watch loop (e2e)', () => {
     expect(w.cycles()).toBe(1)
   }, 40_000)
 
+  it('a git-ignored file under a glob over a listed directory starts no cycle, nor names one', async () => {
+    // `src/**` named `src` outright though git lists it, so a dev server's
+    // ignored `src/dev.log` started cycles ~3 a second, and deleting `src`
+    // was announced by its ignored `junk.log`. The key reads neither.
+    await writeFile(path.join(f.dir, '.gitignore'), '*.log\n')
+    await writeFile(path.join(f.dir, 'src', 'junk.log'), 'j\n')
+    f.watch = startWatch(f.root)
+    const w = f.watch
+    await until(() => w.out().includes('watching '), 'the watching marker')
+    await initialOnly(w, f.log)
+
+    await writeFile(path.join(f.dir, 'src', 'dev.log'), '1\n')
+    await writeFile(path.join(f.dir, 'src', 'junk.log'), 'j2\n')
+    await Bun.sleep(SETTLE_MS)
+    expect(w.cycles()).toBe(0)
+
+    // CONTROL: a listed file beside them still starts a cycle, named by it
+    // though the ignored one went first.
+    await rm(path.join(f.dir, 'src', 'junk.log'))
+    await rm(path.join(f.dir, 'src', 'a.txt'))
+    await until(() => w.cycles() === 1, 'the cycle the deletion starts')
+    expect(w.out()).toContain('changed app src/a.txt\n')
+  }, 40_000)
+
   it('a shared preset outside the project is watched, and its edit runs once re-locked (item 949)', async () => {
     // Configs compose through imports; a preset outside the project was in
     // no arm, so its edit started no cycle. A cycle runs the lock's

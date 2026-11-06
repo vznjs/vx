@@ -95,7 +95,8 @@ export { criticalPath, outputsOverlap, splitTaskId, taskDefinitions } from './gr
 export type { TaskNode, TaskOutcome, TaskStatus } from './graph/index.js'
 
 // Cache classes + the layer interface (the `cache` capability's currency).
-export { Cache } from './cache/index.js'
+// A remote layer errors a body it refuses with `CorruptArtifactError`.
+export { Cache, CorruptArtifactError } from './cache/index.js'
 export type {
   CacheLayer,
   PluginCache,

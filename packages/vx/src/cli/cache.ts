@@ -1,7 +1,7 @@
 import { existsSync, lstatSync, readdirSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
-import { Cache, vxCacheEntries } from '../cache/index.js'
+import { Cache, holdStore, vxCacheEntries } from '../cache/index.js'
 import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
 import {
   errorCode,
@@ -233,16 +233,6 @@ async function cleanCmd(args: readonly string[]): Promise<number> {
     printPruned({ evicted: 0, bytesFreed: 0, orphans: 0, orphanBytes: 0 }, dry, json)
     return 0
   }
-  const cache =
-    parsed.dry === true
-      ? new Cache(dir, undefined, undefined, undefined, 'preview', storeRoot)
-      : new Cache(dir, undefined, root, undefined, 'open', storeRoot)
-  // A prune deletes rows and artifacts; a cache this user cannot write is
-  // refused up front with the directory named, as a run refuses it, rather
-  // than dying in the first DELETE with SQLite's "readonly database" and a
-  // stack (an unprivileged user on a root-owned `.vx`, 2026-09-16). A dry
-  // run only reads, and reads a read-only cache fine.
-  if (!parsed.dry) cache.assertWritable()
   // A prune beside a run on this workspace evicts what the run has just
   // probed as hits, whose `accessed_at` bumps it has not flushed yet; the
   // run then re-runs those tasks (upstream survey, nx#36688). So a prune
@@ -251,13 +241,30 @@ async function cleanCmd(args: readonly string[]): Promise<number> {
     ? async (): Promise<void> => {}
     : await acquireRunLock(root, { log: warnToStderr })
   try {
-    const opts: { olderThanMs?: number; maxBytes?: number; dry?: boolean } = {}
-    if (parsed.olderThanMs !== undefined) opts.olderThanMs = parsed.olderThanMs
-    if (parsed.maxBytes !== undefined) opts.maxBytes = parsed.maxBytes
-    if (parsed.dry) opts.dry = true
-    printPruned(await cache.prune(opts), dry, json)
+    // A run in another checkout of the repository holds no lock of this
+    // one's, and shares the store: the prune waits for every process that
+    // has the store open, then opens its own handle on it.
+    if (!parsed.dry && storeRoot !== null) (await holdStore(storeRoot, warnToStderr))()
+    const cache =
+      parsed.dry === true
+        ? new Cache(dir, undefined, undefined, undefined, 'preview', storeRoot)
+        : new Cache(dir, undefined, root, undefined, 'open', storeRoot)
+    try {
+      // A prune deletes rows and artifacts; a cache this user cannot write is
+      // refused up front with the directory named, as a run refuses it, rather
+      // than dying in the first DELETE with SQLite's "readonly database" and a
+      // stack (an unprivileged user on a root-owned `.vx`, 2026-09-16). A dry
+      // run only reads, and reads a read-only cache fine.
+      if (!parsed.dry) cache.assertWritable()
+      const opts: { olderThanMs?: number; maxBytes?: number; dry?: boolean } = {}
+      if (parsed.olderThanMs !== undefined) opts.olderThanMs = parsed.olderThanMs
+      if (parsed.maxBytes !== undefined) opts.maxBytes = parsed.maxBytes
+      if (parsed.dry) opts.dry = true
+      printPruned(await cache.prune(opts), dry, json)
+    } finally {
+      cache.close()
+    }
   } finally {
-    cache.close()
     await releaseRunLock()
   }
   return 0
@@ -325,19 +332,19 @@ async function clear(
   const release =
     parsed.dry === true ? async () => {} : await acquireRunLock(root, { log: warnToStderr })
   try {
-    return clearHeld(args, root, dir, storeRoot, parsed)
+    return await clearHeld(args, root, dir, storeRoot, parsed)
   } finally {
     await release()
   }
 }
 
-function clearHeld(
+async function clearHeld(
   args: readonly string[],
   root: string,
   dir: string,
   storeRoot: string | null,
   parsed: PruneArgs,
-): number {
+): Promise<number> {
   // The store the index recorded and today's (a changed HOME, an origin
   // added) both go; a directory with no index is not a vx cache to delete.
   const targets: string[] = []
@@ -394,9 +401,18 @@ function clearHeld(
         : [t]
   const bytes = doomed.reduce((n, t) => n + entries(t).reduce((m, e) => m + treeBytes(e), 0), 0)
   if (!dry) {
-    for (const t of doomed) {
-      for (const e of entries(t)) rmSync(e, { recursive: true, force: true })
-      if (t === named && readdirSync(t).length === 0) rmSync(t, { recursive: true })
+    // A run in another checkout of the repository holds no lock of this
+    // one's: each store is deleted once no process has it open, and held
+    // until then. In path order, so two clears never wait on each other.
+    const holds: (() => void)[] = []
+    try {
+      for (const t of [...doomed].sort()) holds.push(await holdStore(t, warnToStderr))
+      for (const t of doomed) {
+        for (const e of entries(t)) rmSync(e, { recursive: true, force: true })
+        if (t === named && readdirSync(t).length === 0) rmSync(t, { recursive: true })
+      }
+    } finally {
+      for (const release of holds) release()
     }
   }
   const shown = doomed.map((t) => (path.relative(root, t).startsWith('..') ? t : relPosix(root, t)))

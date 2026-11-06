@@ -18,6 +18,7 @@ export interface RunResult {
   stderr: string // retained text, or '' when `capture.stderr` is false
   signal?: string | number // the signal that killed the child (Bun's signalCode: its name, or its number when it has none)
   timedOut?: boolean // vx's own `timeoutMs` timer fired: a real `failed`, not an `aborted` shutdown
+  killedAfterGrace?: true // the timeout's SIGKILL past the grace took the child or a process it left
   cpuMs?: number // user + system, from Bun.spawn().resourceUsage()
   peakRssBytes?: number // maxRSS (bytes) when it rose above vx's own RSS high-water mark; on Linux else the tree's peak `watchTree` saw, if a look landed
   spawnFailed?: true // Bun.spawn threw: the 127 is vx's, no shell ran
@@ -58,6 +59,7 @@ export interface PersistentSpawn {
   child: ReturnType<typeof Bun.spawn> | undefined // undefined when the spawn itself failed (`ready` rejects)
   ready: Promise<void> // resolves once "ready"; rejects if exit before ready, or on a readiness timeout once the group is gone (one SIGTERM, grace, SIGKILL)
   readyMs: () => number // ms from spawn to ready, to the readiness timeout giving up, or to now
+  gaveUp: () => boolean // the readiness timeout gave up: no readiness wait to report
 }
 
 export function runPersistent(opts: PersistentOptions): PersistentSpawn
@@ -95,7 +97,7 @@ export function exitSignal(code: number): string | undefined
 export function execWord(command: string): string | undefined
 export function execWrap(command: string): string // `exec <command>` when execWord finds a word
 
-export function armTimeout(proc, timeoutMs): { timedOut(): boolean; settle(): Promise<void> }
+export function armTimeout(proc, timeoutMs): { timedOut(): boolean; sigkilled(): boolean; settle(): Promise<void> }
 export const POST_EXIT_CUT_LINE: string
 // The two output callbacks merged a line at a time: a chunk on one stream
 // waits while the other's line is open, at most OPEN_LINE_WAIT_MS (50) and
@@ -253,7 +255,8 @@ The promise from `runCommand` always resolves (never rejects) with a
   exit, so a backgrounded process that ignored SIGTERM ran on under init
   after vx exited (2026-09-24, `tests/task-tree-kill.test.ts` › "a
   timeout reaps a grandchild that ignores SIGTERM"). Both runners
-  settle before the drain.
+  settle before the drain. `sigkilled()` says that SIGKILL took anyone,
+  and the result's `killedAfterGrace` carries it to the timeout line.
 - `Bun.spawn` itself throwing → `exitCode = 127`, and the reason goes
   through `onStderr` (the task's frame) as well as onto `stderr`: a
   missing `sh` says `[vx] vx runs each task with sh -c: failed to spawn

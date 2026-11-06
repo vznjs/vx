@@ -47,17 +47,22 @@ export function sharedWorkspaceLockfile(
 }
 
 /**
- * The root package.json as every task folds it: only its `pnpm` field,
+ * The root manifest (`file`: package.json, package.json5 or package.yaml)
+ * as every task folds it: only its `pnpm` field,
  * which pnpm reads install settings from (`onlyBuiltDependencies`,
  * `supportedArchitectures`, …) and the lockfile records none of, without
  * the patches and overrides it does record. Its dependencies are the
  * lockfile's to record. Undefined for a file that does not parse to a
  * mapping, folded whole.
  */
-export function packageSettings(text: string): string | undefined {
+export function packageSettings(text: string, file: string): string | undefined {
   let doc: unknown
   try {
-    doc = JSON.parse(text)
+    doc = file.endsWith('.yaml')
+      ? Bun.YAML.parse(text)
+      : file.endsWith('.json5')
+        ? Bun.JSON5.parse(text)
+        : JSON.parse(text)
   } catch {
     return undefined
   }

@@ -87,6 +87,10 @@ createOutputWriter(stream, opts: OutputWriterOptions): OutputWriter  // with a R
 // output, for a pipe, CI or `NO_COLOR` (tasks run with `FORCE_COLOR`).
 export function plainOutput(sink: Logger): Logger
 
+// util/plain-text.ts: Bun.stripANSI, but an unterminated OSC, DCS, SOS, PM
+// or APC ends at its line, not the input's end (plain output, kept logs).
+export function stripEscapes(text: string): string
+
 // links.ts: file links in failed output
 // path-links.ts: the path pattern both share
 export function linkPaths(text: string, dir: string, isFile: (abs: string) => boolean): string

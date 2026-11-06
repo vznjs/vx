@@ -1,9 +1,9 @@
 // What the written configs leave to .vx/workspace.ts, said once by both
 // migrators: the adoption plugin `vx init` declared still reads the old
 // tool's file every run, and the old tool keyed each package on its own
-// lockfile entries where core keys every task on the whole lockfile.
-// Without a lockfile plugin a dependency bump re-ran every task (hey-api:
-// a `pnpm-lock.yaml` edit re-keyed all 42 builds, none with `pnpm()`).
+// lockfile entries where core keys no lockfile (#3562): without a
+// lockfile plugin a dependency bump re-runs nothing, and a cached task
+// replays output built on the old versions.
 
 import { existsSync } from 'node:fs'
 import path from 'node:path'
@@ -58,8 +58,9 @@ export async function adoptedToolNotes(root: string, tool: AdoptedTool): Promise
   const lock = lockfilePlugin(root)
   if (lock !== undefined && !new RegExp(`\\b${lock.factory}\\s*\\(`).test(declared))
     notes.push(
-      `${tool.keys(lock.file)}; vx keys every task on the whole ` +
-        `file, so a dependency bump re-runs them all. Declare ${lock.factory}() from @vzn/vx-lockfile ` +
+      `${tool.keys(lock.file)}; vx keys no lockfile by itself, so a dependency bump re-runs ` +
+        'nothing and a cached task replays output built on the old versions. ' +
+        `Declare ${lock.factory}() from @vzn/vx-lockfile ` +
         "in .vx/workspace.ts to key each task on its package's dependency closure",
     )
   return notes

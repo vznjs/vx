@@ -49,7 +49,18 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs'
-import { chmod, lstat, mkdir, readdir, rm, stat, unlink, utimes, writeFile } from 'node:fs/promises'
+import {
+  chmod,
+  lstat,
+  mkdir,
+  readdir,
+  rename,
+  rm,
+  stat,
+  unlink,
+  utimes,
+  writeFile,
+} from 'node:fs/promises'
 import path from 'node:path'
 import {
   createArtifactTables,
@@ -77,6 +88,7 @@ import {
   ArchiveSecurityError,
   type ArtifactPlan,
   type ExecUsage,
+  copyStaging,
   extractArtifactStream,
   scanArtifact,
   scanTarBytes,
@@ -85,6 +97,7 @@ import {
   planArtifact,
   planOfTree,
   sealTree,
+  stagesInto,
   writeTree,
 } from './archive.js'
 import { readUmask, restoredMode } from './umask.js'
@@ -2164,7 +2177,7 @@ export class Cache implements CacheLayer {
         `its outputs hold ${formatBytes(bytes)}, past the ${formatBytes(this.artifactCeiling)} artifact ceiling`,
       )
     }
-    if (await this.copyTree(hash, tree, rows, files, projectDir, accept)) return
+    if (await this.copyTree(hash, tree, rows, files, projectDir, workspaceRoot, accept)) return
     await extractArtifactStream(
       packArtifactStream(this.treePlan(hash, tree, rows)),
       projectDir,
@@ -2206,7 +2219,12 @@ export class Cache implements CacheLayer {
    * and every directory on the way either is a real directory or is absent
    * and made here. solid's build outputs `store/dist/**` beside the sources
    * in `store/`; asking that each output's TOP be absent sent every such
-   * restore through the tar extractor, ~25 ms a task (2026-10-22).
+   * restore through the tar extractor, ~25 ms a task (2026-10-22). The
+   * files of each absent top directory are copied into the workspace's
+   * `.vx/tmp/` (`copyStaging`) and the directory renamed in once, so a
+   * reader finds it complete or not at all; one staging cannot rename into
+   * as a write in place would land (another filesystem, a setgid
+   * directory) is the extractor's.
    */
   private async copyTree(
     hash: string,
@@ -2214,6 +2232,7 @@ export class Cache implements CacheLayer {
     rows: readonly OutputFileRow[],
     files: readonly OutputFileRow[],
     projectDir: string,
+    workspaceRoot: string | undefined,
     accept: ((name: string) => boolean) | undefined,
   ): Promise<boolean> {
     for (const r of rows) {
@@ -2281,6 +2300,35 @@ export class Cache implements CacheLayer {
       chmodSync(dir, (st.mode & 0o7777) | 0o300)
       return true
     }
+    // A missing top directory is built whole in staging and renamed in
+    // once, as the extractor does: copied in place, a reader met its files
+    // empty, then short. A file missing from a directory that stands is
+    // copied straight to its place: a temp renamed in cost such a restore
+    // a fifth to a third more (tmpfs, 3,000 files, 2026-11-06).
+    if (roots.length === 0 && placed.length === 0) return true
+    // A restore into a project directory not there yet makes it, as the
+    // copy in place did.
+    if (!existsSync(projectDir)) await mkdir(projectDir, { recursive: true })
+    const staging = roots.length > 0 ? await copyStaging(workspaceRoot) : undefined
+    if (staging?.stats !== undefined) {
+      const fits = new Map<string, boolean>()
+      for (const rel of roots) {
+        const dir = path.dirname(path.join(projectDir, rel))
+        let fit = fits.get(dir)
+        if (fit === undefined) {
+          fit = stagesInto(staging.stats, statSync(dir, { throwIfNoEntry: false }))
+          fits.set(dir, fit)
+        }
+        if (!fit) return false
+      }
+    }
+    const temps = new Map(roots.map((rel) => [rel, staging!.temp(path.join(projectDir, rel))]))
+    const target = (rel: string): string => {
+      for (const d of roots) {
+        if (rel === d || rel.startsWith(`${d}/`)) return temps.get(d)! + rel.slice(d.length)
+      }
+      return path.join(projectDir, rel)
+    }
     const copy = async (to: string, from: string): Promise<number> => {
       try {
         return await Bun.write(to, Bun.file(from), { createPath: false })
@@ -2289,15 +2337,19 @@ export class Cache implements CacheLayer {
         return await Bun.write(to, Bun.file(from), { createPath: false })
       }
     }
+    const landed: string[] = []
+    let landing = false
     try {
       const dirs = new Set<string>()
       for (const r of rows) {
-        dirs.add(path.join(projectDir, r.path.endsWith('/') ? r.path : path.dirname(r.path)))
+        dirs.add(target(r.path.endsWith('/') ? r.path.slice(0, -1) : path.posix.dirname(r.path)))
       }
       for (const d of dirs) await mkdir(d, { recursive: true })
-      await Promise.all(
+      // Every copy settles before a failure is handled: one still in flight
+      // would write its file again after the cleanup removed it.
+      const copied = await Promise.allSettled(
         files.map(async (r) => {
-          const to = path.join(projectDir, r.path)
+          const to = target(r.path)
           const n = await copy(to, path.join(tree, treeName(r.path)))
           if (n !== r.size)
             throw new CorruptArtifactError(hash, `${r.path} holds ${n} bytes, recorded ${r.size}`)
@@ -2307,11 +2359,24 @@ export class Cache implements CacheLayer {
           await utimes(to, at, at)
         }),
       )
+      const failed = copied.find((c) => c.status === 'rejected')
+      if (failed !== undefined) throw failed.reason
       if (swapped()) throw new ArtifactVanishedError(hash)
+      landing = true
+      for (const rel of roots) {
+        await rename(temps.get(rel)!, path.join(projectDir, rel))
+        landed.push(rel)
+      }
     } catch (err) {
+      await Promise.all([...temps.values()].map((t) => rm(t, { recursive: true, force: true })))
+      // Something made at a missing directory's place since the walk: what
+      // landed holds the entry's bytes, and the extractor restores the rest.
+      const code = landing ? (err as NodeJS.ErrnoException).code : undefined
+      if (code === 'EEXIST' || code === 'ENOTEMPTY' || code === 'EISDIR' || code === 'ENOTDIR')
+        return false
       await Promise.all([
-        ...roots.map((d) => rm(path.join(projectDir, d), { recursive: true, force: true })),
-        ...placed.map((f) => rm(path.join(projectDir, f), { force: true })),
+        ...landed.map((rel) => rm(path.join(projectDir, rel), { recursive: true, force: true })),
+        ...placed.map((rel) => rm(path.join(projectDir, rel), { force: true })),
       ])
       if (!(err instanceof ArtifactVanishedError) && swapped())
         throw new ArtifactVanishedError(hash)
@@ -2437,8 +2502,11 @@ export class Cache implements CacheLayer {
     // when every artifact is a one-file `dist/` (measured: 390 vs 355 ms
     // per 1 000). The local artifact was validated at ingest, so a missing
     // declared size is allowed; the output ceiling applies to both.
-    const tree =
-      inline === undefined && existsSync(this.treePath(hash)) ? this.treePath(hash) : undefined
+    const treeIno =
+      inline === undefined
+        ? lstatSync(this.treePath(hash), { throwIfNoEntry: false })?.ino
+        : undefined
+    const tree = treeIno === undefined ? undefined : this.treePath(hash)
     const endExtract = span('restore: extract')
     try {
       // Every step here is an async filesystem call on purpose: a
@@ -2491,7 +2559,7 @@ export class Cache implements CacheLayer {
             ? 'a directory stands where the entry holds a file'
             : 'a file stands where the entry needs a directory'
         throw new UserError(
-          `restore of ${hash} into ${projectDir} was blocked by what is on disk (${msg.startsWith(code) ? msg : `${code}: ${msg}`}): ${what}. ` +
+          `restore of ${hash} into ${projectDir} was blocked by what is on disk (${codeFirst(code, msg)}): ${what}. ` +
             `A restore replaces what the output globs select, not this — remove it and re-run.`,
         )
       }
@@ -2517,7 +2585,7 @@ export class Cache implements CacheLayer {
         (err.path === src || (tree !== undefined && inTree(err.path, tree)))
       ) {
         throw new UserError(
-          `restore of ${hash} could not read its artifact (${code}: ${err.message}). ` +
+          `restore of ${hash} could not read its artifact (${codeFirst(code, err.message)}). ` +
             `Make the cache directory readable by this user, or point cacheDir / --cache-dir at one that is.`,
         )
       }
@@ -2526,7 +2594,7 @@ export class Cache implements CacheLayer {
           ? 'Free space on that disk and re-run.'
           : 'Make the declared output paths writable by this user, or stop declaring them as outputs.'
         throw new UserError(
-          `restore of ${hash} into ${projectDir} could not write its outputs (${code}: ${err.message}). ${remedy}`,
+          `restore of ${hash} into ${projectDir} could not write its outputs (${codeFirst(code, err.message)}). ${remedy}`,
         )
       }
       // The process is out of descriptors: the artifact is fine, and
@@ -2541,14 +2609,20 @@ export class Cache implements CacheLayer {
       if (code === 'ENOENT' && (err as NodeJS.ErrnoException).path === src) {
         throw new ArtifactVanishedError(hash)
       }
-      // So is a tree file: a prune or another process's re-save moved the
-      // tree aside mid-copy.
-      if (
-        code === 'ENOENT' &&
-        tree !== undefined &&
-        inTree((err as NodeJS.ErrnoException).path, tree)
-      ) {
-        throw new ArtifactVanishedError(hash)
+      // So is a tree a prune or another process's re-save moved aside
+      // mid-copy. The tree the restore found, still in place, lacking a
+      // file is damage at rest (a hand-deleted file): called vanished "(a
+      // vx cache clean)" that never ran, and kept, so the demoted task's
+      // own probe hit it again and said so twice.
+      const missing = (err as NodeJS.ErrnoException).path
+      if (code === 'ENOENT' && tree !== undefined && inTree(missing, tree)) {
+        if (lstatSync(tree, { throwIfNoEntry: false })?.ino !== treeIno)
+          throw new ArtifactVanishedError(hash)
+        const rel = path.relative(tree, missing!).split(path.sep).join('/')
+        throw new CorruptArtifactError(
+          hash,
+          `${rel.startsWith('outputs/') ? rel.slice('outputs/'.length) : rel} is missing from its stored tree`,
+        )
       }
       // A staged file the restore itself just wrote is gone before its
       // commit: another process cleaned the same outputs under us (two runs
@@ -3444,9 +3518,12 @@ export class Cache implements CacheLayer {
     if (this.writeBlocked !== null) return
     return this.guard(() => this.history.recordRun(run))
   }
-  recordRuns(runs: readonly RunRecord[]): void {
+  recordRuns(
+    runs: readonly RunRecord[],
+    head?: Pick<InvocationRecord, 'branch' | 'commitSha'>,
+  ): void {
     if (this.writeBlocked !== null) return
-    return this.guard(() => this.history.recordRuns(runs))
+    return this.guard(() => this.history.recordRuns(runs, head))
   }
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void {
     if (this.writeBlocked !== null) return
@@ -3829,6 +3906,52 @@ export function closeDb(db: Database): void {
 }
 
 /**
+ * Wait until no other connection has the shared store in `storeDir` open,
+ * then hold it alone until the release. Every checkout of a repository
+ * shares its store and each has a run lock of its own, so a clean in one
+ * deleted store.db under a run in another. A run holds the store open from
+ * its start to its end, and in WAL mode every open connection keeps a
+ * shared lock on the file: SQLite grants an exclusive one only to a sole
+ * holder, and a holder's lock dies with its process. The run path pays
+ * nothing. Holds nothing where the store has no readable file.
+ */
+export async function holdStore(
+  storeDir: string,
+  log: (line: string) => void,
+): Promise<() => void> {
+  const file = path.join(storeDir, 'store.db')
+  if (!existsSync(file)) return () => {}
+  let db: Database
+  try {
+    db = new Database(file)
+    db.exec('PRAGMA busy_timeout = 0')
+    db.exec('PRAGMA locking_mode = EXCLUSIVE')
+  } catch {
+    return () => {}
+  }
+  const started = Date.now()
+  let said = false
+  for (;;) {
+    try {
+      db.exec('BEGIN EXCLUSIVE')
+      break
+    } catch (err) {
+      if ((err as { code?: string }).code !== 'SQLITE_BUSY') {
+        // Not a store SQLite reads: nothing opens it to wait for.
+        closeDb(db)
+        return () => {}
+      }
+    }
+    if (!said && Date.now() - started >= 1_000) {
+      said = true
+      log(`[vx] waiting for another vx process using the cache store ${storeDir} to finish…`)
+    }
+    await Bun.sleep(50)
+  }
+  return () => closeDb(db)
+}
+
+/**
  * Refuse an artifact whose file names no restore can materialise as one
  * tree, or (given the task's declared outputs) that names a file outside
  * them. Both reached the tree before: `outputs/out.txt` beside
@@ -3901,6 +4024,11 @@ function absentModedDirs(
 /** A row's path as the tree names its file. */
 function treeName(rowPath: string): string {
   return rowPath.startsWith(WORKSPACE_OUTPUT_PREFIX) ? rowPath : `outputs/${rowPath}`
+}
+
+/** `code: message`, where Bun's message does not already open with the code. */
+function codeFirst(code: string | undefined, message: string): string {
+  return code === undefined || message.startsWith(code) ? message : `${code}: ${message}`
 }
 
 function inTree(p: string | undefined, tree: string): boolean {

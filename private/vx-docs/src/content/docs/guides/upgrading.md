@@ -13,6 +13,10 @@ first; its text is that footer: what changed and what to do.
 
 vxCache() names several scopes in one vx-scope header, which an older vx-cache-server refuses with 400: deploy the server first, then upgrade vxCache(). VxCacheLayer.start() is gone: open() asks the server nothing, and a check learns its limits.
 
+## cache: list CorruptArtifactError on the cache page
+
+RemoteCacheLayer.put's meta may carry replace, which a layer honours by writing over its stored entry, and Cache.recordRuns takes the run's head.
+
 ## cache: store entry stdout as zstd, not text
 
 the local cache index is schema v52; logs cached before it are dropped on first open.

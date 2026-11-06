@@ -127,10 +127,16 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
     }
     if (a === '--sql' || a.startsWith('--sql=')) {
       const v = a === '--sql' ? args[++i] : a.slice('--sql='.length)
-      if (v === undefined || v.trim() === '') {
+      // The space form took the next flag as the query, then blamed that
+      // flag for combining with --sql.
+      const flag =
+        a === '--sql' && v?.startsWith('-') === true
+          ? ` (got flag ${v}; a query that starts with - needs --sql=${v})`
+          : ''
+      if (v === undefined || v.trim() === '' || flag !== '') {
         return {
           ...out,
-          error: `--sql requires a query, like 'SELECT * FROM runs'${seeHelp('last')}`,
+          error: `--sql requires a query, like 'SELECT * FROM runs'${flag}${seeHelp('last')}`,
         }
       }
       out.sql = v
@@ -917,12 +923,21 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
       return 0
     }
 
+    const named = parsed.runId === undefined ? null : resolveRunId(db, parsed.runId, 'vx last')
     const inv =
       parsed.runId !== undefined
-        ? getInvocation(db, resolveRunId(db, parsed.runId, 'vx last') ?? parsed.runId)
+        ? getInvocation(db, named ?? parsed.runId)
         : parsed.failed === true
           ? (failedInvocations(db, 1)[0] ?? null)
           : (listInvocations(db, { limit: 1 })[0] ?? null)
+    // A run with rows and no header is one a stop ended (item 854): `vx why`
+    // printed its id, so it is named, not called unrecorded.
+    if (named !== null && (inv === null || inv === undefined)) {
+      throw new UserError(
+        `vx last: run ${named} was stopped before it finished, so vx kept its tasks but no summary: \`vx last ${named} --log <task>\` prints one's output`,
+        'VX_E_NO_HISTORY',
+      )
+    }
     if ((inv === null || inv === undefined) && noRuns()) {
       throw refusal(
         { tone: 'info', headline: 'no runs yet', fix: 'vx run' },

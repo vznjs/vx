@@ -11,7 +11,7 @@
 import { createHash } from 'node:crypto'
 import * as grpc from '@grpc/grpc-js'
 import { type ActionResult, type Digest, ReapiClient, type ReapiOptions } from './wire.js'
-import { ui } from '@vzn/vx'
+import { CorruptArtifactError, ui } from '@vzn/vx'
 
 /** The artifact's `output_files` path. Constant: the AC entry holds exactly one. */
 const ARTIFACT_PATH = 'vx-artifact.tar.zst'
@@ -173,9 +173,16 @@ export class ReapiRemoteCache {
       digestOf(file.contents).hash === file.digest.hash
         ? file.contents
         : undefined
+    // Bytes that are not their digest are wrong on the server, not cut
+    // short: said as core's corrupt artifact, the rebuild's save replaces them.
     const [durationMs, body] = await Promise.all([
       this.durationOf(result),
-      inline === undefined ? this.client.readBlobStream(file.digest) : inline,
+      inline === undefined
+        ? this.client.readBlobStream(
+            file.digest,
+            (err) => new CorruptArtifactError(hash, err.message, err),
+          )
+        : inline,
     ])
     if (body === null) return null
     return { body: new Response(body), durationMs }
@@ -213,22 +220,27 @@ export class ReapiRemoteCache {
    * An artifact past `writeBlob`'s whole read takes two passes over `body`,
    * never one in memory: the digest first (the CAS address must be known
    * before the server is asked), then the upload from a second read of the
-   * stream.
+   * stream. `replace`: the stored entry did not read back, so the blob is
+   * sent whether the server says it holds it or not, and the entry
+   * rewritten.
    */
-  async put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void> {
+  async put(hash: string, body: Blob, meta: { durationMs: number; replace?: true }): Promise<void> {
     if (this.refused !== undefined) throw this.refused
     // An entry is immutable, and UpdateActionResult replaces one: the
     // lookup runs beside the upload (CAS writes are idempotent), so a key
     // stored already costs no round trip of its own and keeps its result.
     // A lookup that fails writes, as before.
     const action = actionDigestFor(hash)
-    const stored = this.client.getActionResult(action).then(
-      (r) => r?.output_files?.find((f) => f.path === ARTIFACT_PATH)?.digest,
-      (err: unknown) => {
-        this.warn('looking up a stored entry before an upload', err)
-        return undefined
-      },
-    )
+    const stored =
+      meta.replace === true
+        ? undefined
+        : this.client.getActionResult(action).then(
+            (r) => r?.output_files?.find((f) => f.path === ARTIFACT_PATH)?.digest,
+            (err: unknown) => {
+              this.warn('looking up a stored entry before an upload', err)
+              return undefined
+            },
+          )
     // Read once, and those bytes hashed and sent, wherever `writeBlob` would
     // read the Blob whole anyway: a second writer of the key renames its
     // artifact over the file, and two reads sent its bytes under this one's
@@ -248,7 +260,9 @@ export class ReapiRemoteCache {
     } else {
       // Upload only what the server lacks: for a large artifact the probe is
       // cheap next to the bytes it can skip.
-      const missing = await this.client.findMissingBlobs([digest])
+      // A blob held under this digest may be the one that did not read back.
+      const missing =
+        meta.replace === true ? [digest] : await this.client.findMissingBlobs([digest])
       if (missing.length > 0) await this.client.writeBlob(digest, data ?? body)
     }
     // The two stores are pruned apart: an entry whose blob is gone is a

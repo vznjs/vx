@@ -259,11 +259,16 @@ export interface RunSummaryRecord {
   taskCount: number
   failedCount: number
   /**
-   * Tasks a shutdown signal or an embedder's abort killed (v3). They are
-   * not in `tasks`, which holds real runs only, so without this a stopped
-   * run read as a failure with nothing failed (item 851).
+   * Tasks a shutdown signal or an embedder's abort killed once started (v3),
+   * each in `tasks` as `aborted`: without the count a stopped run read as a
+   * failure with nothing failed (item 851).
    */
   abortedCount: number
+  /**
+   * Tasks the stop reached before they started: the terminal's `not run`.
+   * Not in `tasks`, since they never ran. Absent when none. Additive.
+   */
+  notRunCount?: number
   hitCount: number
   /** Hits by the layer that answered, up-to-date ones included. */
   hitLocalCount: number
@@ -332,6 +337,7 @@ export function assembleRunSummary(
     totalDurationMs: number
     exitOk: boolean
     abortedCount: number
+    notRunCount?: number
     stages?: readonly RunStage[]
     uploads?: { count: number; bytes: number; ms: number; failed: number }
     machines?: readonly MachineReport[]
@@ -363,6 +369,9 @@ export function assembleRunSummary(
     taskCount: tasks.length,
     failedCount,
     abortedCount: timing.abortedCount,
+    ...(timing.notRunCount !== undefined && timing.notRunCount > 0
+      ? { notRunCount: timing.notRunCount }
+      : {}),
     hitCount: hitLocalCount + hitRemoteCount,
     hitLocalCount,
     hitRemoteCount,

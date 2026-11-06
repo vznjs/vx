@@ -54,7 +54,7 @@ import {
   writableUnder,
   withoutWorkspaceBins,
 } from '../util/index.js'
-import { GitFilesCache, listingEnv, runGitLsFiles } from './git-inputs.js'
+import { GitFilesCache, listingEnv, newFilesIgnoredIn, runGitLsFiles } from './git-inputs.js'
 import { FILE_HASH_RACY_MS, racyWindowMs } from './layer.js'
 
 // The git side lives in git-inputs.ts; its whole public surface is
@@ -1683,16 +1683,61 @@ function unanswered(
   files: readonly string[],
   newIgnored?: (lit: string) => boolean,
 ): Set<string> {
-  const left = new Set<string>()
-  for (const lit of literals) {
-    const under = `${lit}/`
-    const answered =
-      files[lowerBound(files, lit)] === lit ||
-      files[lowerBound(files, under)]?.startsWith(under) === true ||
-      files.some((rel) => rel === lit || rel.startsWith(under))
-    if (!answered || newIgnored?.(lit) === true) left.add(lit)
-  }
-  return left
+  return new Set(
+    reachingIgnored(
+      literals,
+      (lit) => {
+        const under = `${lit}/`
+        return (
+          files[lowerBound(files, lit)] === lit ||
+          files[lowerBound(files, under)]?.startsWith(under) === true ||
+          files.some((rel) => rel === lit || rel.startsWith(under))
+        )
+      },
+      newIgnored,
+    ),
+  )
+}
+
+/**
+ * The rule a named entry reaches git-ignored files by: git lists nothing at
+ * or under it, or ignores a new file directly in it (a kept `gen/.gitkeep`).
+ * `src` of `src/**` over a listed `src` reaches none: an ignored `src/dev.log`
+ * is no input.
+ */
+function reachingIgnored(
+  named: readonly string[],
+  listed: (entry: string) => boolean,
+  newIgnored?: (entry: string) => boolean,
+): string[] {
+  return named.filter((n) => !listed(n) || newIgnored?.(n) === true)
+}
+
+/**
+ * The entries of `named` (absolute, from {@link namedOutright}) a
+ * git-ignored input can be at or under, by the rule a key reads them
+ * ({@link ignoredReach}): `listed` holds what git lists, absolute, with every
+ * directory above a listed file. Watch asks it, so an ignored file the key
+ * never reads starts no cycle.
+ */
+export function namedIgnoredReach(
+  root: string,
+  named: readonly string[],
+  listed: ReadonlySet<string>,
+): string[] {
+  const held = named.filter((n) => listed.has(n))
+  const fresh =
+    held.length === 0
+      ? new Set<string>()
+      : newFilesIgnoredIn(
+          root,
+          held.map((n) => relPosix(root, n)),
+        )
+  return reachingIgnored(
+    named,
+    (n) => listed.has(n),
+    (n) => fresh.has(relPosix(root, n)),
+  )
 }
 
 /** The first index whose path is not below `key`. */
@@ -2010,8 +2055,8 @@ function dirLinkInput(abs: string, oids: ReadonlyMap<string, string> | undefined
  * Whether a changed path is one of a task's declared file inputs:
  * `projectRel` (the path relative to the project that owns it) against
  * `files`, `workspaceRel` (relative to the workspace root) against
- * `workspaceFiles`; null skips that half, by the globs and `!` exclusions (a path under
- * the task's own outputs counts: a committed one is keyed). `--affected` seeds a task with it (2026-10-04).
+ * `workspaceFiles`; null skips that half, by the globs and `!` exclusions (a tracked path
+ * under the task's own outputs counts: a committed one is keyed). `--affected` seeds a task with it (2026-10-04).
  */
 export function declaresInput(
   task: TaskConfig,
@@ -2022,15 +2067,18 @@ export function declaresInput(
    * below it keys what is behind it, as `mayHoldMatch` says at key time.
    */
   dirLink = false,
+  /** Git does not track the path, so under the task's own outputs it is no input. */
+  untracked = false,
 ): boolean {
   const inputs = task.inputs
   if (inputs === undefined) return false
   if (projectRel !== null) {
-    // A changed path under the task's own outputs is a committed file
-    // (`git diff` lists only what git tracks) or a stray `git status`
-    // lists: either way it may be an input, so it counts.
+    // Under the task's own outputs the key folds only what git tracks
+    // (`committedFiles`); an untracked build output is not one.
     const plan = filesPlan(inputs.files, task.outputs?.files ?? [])
-    if (plan !== null && (inPlan(plan, projectRel) || ownOnly(plan, projectRel))) return true
+    if (plan !== null && (inPlan(plan, projectRel) || (!untracked && ownOnly(plan, projectRel)))) {
+      return true
+    }
     if (plan !== null && dirLink && plan.mayHold(projectRel) && !plan.isExcluded(projectRel)) {
       return true
     }

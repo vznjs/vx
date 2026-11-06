@@ -1,12 +1,16 @@
 import type { TaskNode } from '../graph/index.js'
+import { stripEscapes } from '../util/index.js'
 import type { Logger } from './logger.js'
 
-// A prefix that may yet complete as a CSI, OSC or charset sequence
-// (`tput sgr0` writes `\x1b(B`). An escape cut at a chunk's end is held for
-// the next chunk: stripped alone, its remainder (`1m`, `B`) reached the log
-// as text.
+// A prefix that may yet complete as a CSI, string (OSC, DCS, SOS, PM, APC)
+// or charset sequence (`tput sgr0` writes `\x1b(B`). An escape cut at a
+// chunk's end is held for the next chunk: stripped alone, its remainder
+// (`1m`, `B`) reached the log as text. A string escape ends at its line
+// (stripEscapes), so it is held only within one, and only up to HOLD_MAX:
+// an unbounded hold joined every later chunk and lost them at the task's end.
 // eslint-disable-next-line no-control-regex -- ESC is the point
-const PARTIAL_ESCAPE = /^\x1b(?:\[[0-?]*[ -/]*|\][^\x07\x1b]*\x1b?|[ -/]+)?$/
+const PARTIAL_ESCAPE = /^\x1b(?:\[[0-?]*[ -/]*|[\]P_^X][^\x07\x1b\n]*\x1b?|[ -/]+)?$/
+const HOLD_MAX = 4096
 
 /**
  * `sink` with terminal escapes stripped from task output. Tasks run with
@@ -21,17 +25,17 @@ export function plainOutput(sink: Logger): Logger {
     if (prior !== undefined) held.delete(key)
     const esc = text.lastIndexOf('\x1b')
     if (esc === -1) return text
-    if (PARTIAL_ESCAPE.test(text.slice(esc))) {
+    if (text.length - esc <= HOLD_MAX && PARTIAL_ESCAPE.test(text.slice(esc))) {
       held.set(key, text.slice(esc))
-      return Bun.stripANSI(text.slice(0, esc))
+      return stripEscapes(text.slice(0, esc))
     }
-    return Bun.stripANSI(text)
+    return stripEscapes(text)
   }
   const flush = (node: TaskNode, key: string, write: (n: TaskNode, c: string) => void): void => {
     const rest = held.get(key)
     if (rest === undefined) return
     held.delete(key)
-    const text = Bun.stripANSI(rest)
+    const text = stripEscapes(rest)
     if (text !== '') write(node, text)
   }
   // Delegated one by one, never spread: an embedder's logger may be a class
