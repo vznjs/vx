@@ -363,16 +363,31 @@ describe('buildTaskGraph', () => {
         packageGraph: packageGraph({}),
         requested: [{ project: 'a', task: 'build' }],
       }),
-    ).toThrow(/a#build: dependsOn nope#build but no such project or task is declared/)
+    ).toThrow(/a#build: dependsOn nope#build, but no project is named nope/)
+  })
+
+  it('a pkg#task miss with nothing near lists the project\'s tasks', () => {
+    expect(() =>
+      buildTaskGraph({
+        projects: projects(
+          project('a', { build: cmd('a') }),
+          project('b', { lint: { ...cmd('l'), dependsOn: ['a#deploy'] } }),
+        ),
+        packageGraph: packageGraph({}),
+        requested: [{ project: 'b', task: 'lint' }],
+      }),
+    ).toThrow('b#lint: dependsOn a#deploy, but a declares no task deploy (its tasks: build)')
   })
 
   // `a#build` against a project named by its path (`packages/a`) named
   // neither the project nor what to type instead.
+  // A project that exists was told "no such project or task", though only
+  // the task was missing.
   it.each([
-    ['a#build', 'packages/a#build'],
-    ['packages/b#build', 'packages/a#build'],
-    ['packages/a#biuld', 'packages/a#build'],
-  ])('a pkg#task miss names the nearest declared one (%s)', (dep, meant) => {
+    ['a#build', 'packages/a#build', 'no project is named a'],
+    ['packages/b#build', 'packages/a#build', 'no project is named packages/b'],
+    ['packages/a#biuld', 'packages/a#build', 'packages/a declares no task biuld'],
+  ])('a pkg#task miss names the nearest declared one (%s)', (dep, meant, what) => {
     expect(() =>
       buildTaskGraph({
         projects: projects(
@@ -383,7 +398,7 @@ describe('buildTaskGraph', () => {
         requested: [{ project: 'packages/app', task: 'test' }],
       }),
     ).toThrow(
-      `packages/app#test: dependsOn ${dep} but no such project or task is declared. Did you mean ${meant}?`,
+      `packages/app#test: dependsOn ${dep}, but ${what}. Did you mean ${meant}?`,
     )
   })
 

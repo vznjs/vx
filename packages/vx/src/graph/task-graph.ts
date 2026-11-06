@@ -682,8 +682,16 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
             'VX_E_DEPENDS_ON',
           )
         const meant = nearestTarget(projects, spec.project, spec.task)
+        // Which half is missing: a project that exists was told "no such
+        // project or task", though only its task was.
+        const owner = projects.get(spec.project)
+        const tasks = Object.keys(owner?.config.tasks ?? {})
+        const what =
+          owner === undefined
+            ? `no project is named ${spec.project}`
+            : `${spec.project} declares no task ${spec.task}${meant === undefined && tasks.length > 0 ? ` (its tasks: ${tasks.join(', ')})` : ''}`
         throw new UserError(
-          `${id}: dependsOn ${taskId(spec.project, spec.task)} but no such project or task is declared${meant === undefined ? '' : `. Did you mean ${meant}?`}`,
+          `${id}: dependsOn ${taskId(spec.project, spec.task)}, but ${what}${meant === undefined ? '' : `. Did you mean ${meant}?`}`,
           'VX_E_DEPENDS_ON',
         )
       }
