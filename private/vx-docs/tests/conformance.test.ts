@@ -15,6 +15,7 @@ import {
   percent,
   RESULTS,
   supports,
+  RANKED,
   TOOLS,
 } from '../src/conformance/data.ts'
 
@@ -66,7 +67,7 @@ describe('the conformance page', () => {
       if (!html.startsWith(`<details class="cfm-cat" id="${c.category}"`, section))
         wrong.push(`${c.id}: not under ${c.category}`)
       const got = cells(row(c.id)).map(([t, s]) => [t, s])
-      const want = TOOLS.map((t) => [t, c.outcomes[t]?.status ?? 'n/a'])
+      const want = RANKED.map((t) => [t, c.outcomes[t]?.status ?? 'n/a'])
       if (JSON.stringify(got) !== JSON.stringify(want))
         wrong.push(`${c.id}: ${JSON.stringify(got)}`)
       if (!c.why || !row(c.id).includes('<details class="cfm-why">')) wrong.push(`${c.id}: why`)
@@ -108,6 +109,19 @@ describe('the conformance page', () => {
         wrong.push(`${id}: not shown`)
     }
     expect(wrong).toEqual([])
+  })
+
+  it('lists the tools by cases passed, most first', () => {
+    const passed = (t: string) => RESULTS.scores[t]?.['all']?.pass ?? 0
+    expect([...RANKED].sort()).toEqual([...TOOLS].sort())
+    for (let i = 1; i < RANKED.length; i++)
+      expect(passed(RANKED[i - 1]!)).toBeGreaterThanOrEqual(passed(RANKED[i]!))
+    const all = html.slice(
+      html.indexOf('data-group="all"'),
+      html.indexOf('<details', html.indexOf('data-group="all"')),
+    )
+    const order = [...all.matchAll(/class="cfm-cell" data-tool="([^"]+)"/g)].map((m) => m[1])
+    expect(order).toEqual(RANKED)
   })
 
   it('opens each failing cell onto its detail', () => {
