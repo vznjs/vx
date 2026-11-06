@@ -22,9 +22,8 @@ const CONFIG = `
           files: ['src/**'],
           ...(process.env.SHARED ? { workspaceFiles: [process.env.SHARED] } : {}),
         },
-        cache: {
-          outputs: { files: [] },
-        },
+        outputs: { files: [] },
+        cache: true,
       },
     },
   }

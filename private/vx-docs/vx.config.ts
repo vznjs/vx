@@ -108,9 +108,8 @@ export default defineProject({
           'tsconfig.json',
         ],
       },
-      cache: {
-        outputs: { files: [] },
-      },
+      outputs: { files: [] },
+      cache: true,
     },
 
     // The site's code is formatted like every package's. Its Markdown is
@@ -129,9 +128,8 @@ export default defineProject({
       inputs: {
         files: ['**/*', ...NOT_GENERATED],
       },
-      cache: {
-        outputs: { files: [] },
-      },
+      outputs: { files: [] },
+      cache: true,
     },
 
     // The Starlight collection is generated from `packages/vx/docs`. That is
@@ -172,9 +170,8 @@ export default defineProject({
           'packages/vx-dte-server/PROTOCOL.md',
         ],
       },
-      cache: {
-        outputs: { files: IMPORTED },
-      },
+      outputs: { files: IMPORTED },
+      cache: true,
     },
 
     // The benchmark figures every page prints (2026-10-29: none typed by
@@ -202,9 +199,8 @@ export default defineProject({
       inputs: {
         files: ['scripts/bench-data.ts', 'src/bench/format.ts'],
       },
-      cache: {
-        outputs: { files: ['measured/bench.json'] },
-      },
+      outputs: { files: ['measured/bench.json'] },
+      cache: true,
     },
 
     // `build` because the page pins (landing, sidebar, redirects, links)
@@ -281,9 +277,8 @@ export default defineProject({
         ],
         workspaceFiles: [...PROOFS, 'packages/vx/docs/cli.md', 'packages/vx/docs/schema.md'],
       },
-      cache: {
-        outputs: { files: [] },
-      },
+      outputs: { files: [] },
+      cache: true,
     },
 
     install: {
@@ -314,9 +309,8 @@ export default defineProject({
           'package.json',
         ],
       },
-      cache: {
-        outputs: { files: ['public/_img/**'] },
-      },
+      outputs: { files: ['public/_img/**'] },
+      cache: true,
     },
 
     build: {
@@ -365,9 +359,8 @@ export default defineProject({
       inputs: {
         files: ['**/*', ...NOT_GENERATED],
       },
-      cache: {
-        outputs: { files: ['dist/**'] },
-      },
+      outputs: { files: ['dist/**'] },
+      cache: true,
     },
 
     // The site's part of main's `release`.

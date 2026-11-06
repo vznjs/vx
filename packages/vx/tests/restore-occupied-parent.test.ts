@@ -43,7 +43,7 @@ async function config(command: string, outputs: string[]): Promise<void> {
   await writeFile(
     path.join(app, 'vx.config.mjs'),
     `export default { tasks: { b: { exec: { command: ${JSON.stringify(command)} },
-      inputs: { files: ['src/**'] }, cache: { outputs: { files: ${JSON.stringify(outputs)} } } } } }\n`,
+      inputs: { files: ['src/**'] }, outputs: { files: ${JSON.stringify(outputs)} }, cache: true } } }\n`,
   )
 }
 

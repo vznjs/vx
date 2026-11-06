@@ -99,7 +99,8 @@ it('a graph read back keeps its addition marks: task ids, and the globs that add
     dependsOn,
     exec: { command: 'tsc' },
     inputs: { files: ['src/**'] },
-    cache: { outputs: { files } },
+    outputs: { files },
+    cache: true,
   })
   const projects = new Map<string, ProjectEntry>([
     [

@@ -144,7 +144,7 @@ it('a run whose hit carries an undeclared file runs the task instead', async () 
         tasks: {
           build: {
             exec: { command: 'mkdir -p out && head -c 40000 /dev/urandom | base64 > out/a.txt' },
-            inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out/**'] } },
+            inputs: { files: ['src/**'] }, outputs: { files: ['out/**'] }, cache: true,
           },
         },
       }

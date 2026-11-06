@@ -145,11 +145,11 @@ describe('Nx parity — target defaults, `dependsOn` forms, inputs and outputs',
       check: { dependsOn: ['check.*'] },
       rt: {
         exec: { command: 'echo rt' },
-        inputs: { files: ['src/**'], runtime: ['cat ../../runtime.txt'] }, cache: { outputs: { files: [] } },
+        inputs: { files: ['src/**'], runtime: ['cat ../../runtime.txt'] }, outputs: { files: [] }, cache: true,
       },
       ts: {
         exec: { command: 'echo ts' },
-        inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] }, cache: { outputs: { files: [] } },
+        inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] }, outputs: { files: [] }, cache: true,
       },
       lint: {`,
       ),
@@ -278,7 +278,7 @@ describe('Nx parity — cache control and failure handling', () => {
       path.join(root, 'packages', 'lib', 'vx.config.mjs'),
       cfg.replace(
         'lint: {',
-        `fail: { exec: { command: 'exit 2' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } },
+        `fail: { exec: { command: 'exit 2' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true },
       after: { exec: { command: 'echo after' }, dependsOn: ['fail'] },
       lint: {`,
       ),
@@ -368,7 +368,7 @@ describe('Nx parity — path shapes, shared configs and outcomes Nx fixed', () =
         'a b': {
           config: `export default { tasks: { build: {
             exec: { command: 'mkdir -p "out dir" && cat "src/my file.txt" > "out dir/r e.txt"' },
-            inputs: { files: ['src/my file.txt'] }, cache: { outputs: { files: ['out dir/**'] } },
+            inputs: { files: ['src/my file.txt'] }, outputs: { files: ['out dir/**'] }, cache: true,
           } } }\n`,
           files: { 'src/my file.txt': 'v1' },
         },
@@ -401,7 +401,7 @@ describe('Nx parity — path shapes, shared configs and outcomes Nx fixed', () =
         path.join(root, 'shared.mjs'),
         `export default { tasks: { build: {
           exec: { command: 'basename "$PWD" > who.txt' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['who.txt'] } },
+          inputs: { files: ['src/**'] }, outputs: { files: ['who.txt'] }, cache: true,
         } } }\n`,
       )
       expect((await summarized(root, ['build', '--all'])).code).toBe(0)
@@ -421,7 +421,7 @@ describe('Nx parity — path shapes, shared configs and outcomes Nx fixed', () =
     'a task named with a colon is its own task: run alone by name, keyed and recorded apart',
     async () => {
       const task = (word: string) =>
-        `{ exec: { command: 'echo ${word}' }, inputs: { files: [] }, cache: { outputs: { files: [] } } }`
+        `{ exec: { command: 'echo ${word}' }, inputs: { files: [] }, outputs: { files: [] }, cache: true }`
       const root = await workspace('vx-parity-nx-colon-', {
         a: {
           config: `export default { tasks: { build: ${task('dev')}, 'build:prod': ${task('prod')} } }\n`,
@@ -446,9 +446,9 @@ describe('Nx parity — path shapes, shared configs and outcomes Nx fixed', () =
           config: `export default { tasks: {
             t: {
               exec: { command: 'v=GOOD; c=0; if [ -f ../../red ]; then v=FAILED; c=1; fi; echo "$v-LOG"; exit $c' },
-              inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+              inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
             },
-            quiet: { exec: { command: 'true' }, inputs: { files: [] }, cache: { outputs: { files: [] } } },
+            quiet: { exec: { command: 'true' }, inputs: { files: [] }, outputs: { files: [] }, cache: true },
           } }\n`,
           files: { 'src/x.txt': 'x' },
         },

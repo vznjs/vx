@@ -169,7 +169,7 @@ export function runRecordOf(o: RecordedOutcome, input: RunRecordContext): RunRec
         : endedAtMs,
     runId,
     cacheHit: hit,
-    cached: o.node.config.cache !== undefined,
+    cached: o.node.config.cache === true,
   }
   if (o.hash !== undefined) r.hash = o.hash
   // A run forwards its args to the tasks it was asked for, never to a

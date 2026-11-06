@@ -5,9 +5,8 @@ export default defineProject({
     build: {
       exec: { command: 'mkdir -p dist && cp src/*.js dist/' },
       inputs: { files: ['src/**'] },
-      cache: {
-        outputs: { files: ['dist/**'] },
-      },
+      outputs: { files: ['dist/**'] },
+      cache: true,
     },
   },
 })

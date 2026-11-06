@@ -2122,7 +2122,7 @@ describe('vx init with no build script', () => {
       const r = await vx(root, ['init', '--dry'])
       expect(r.code).toBe(0)
       expect(row(r.out, 'tasks')).toEqual(['1 clean'])
-      expect(r.out).toContain('so no task got a cache block\n')
+      expect(r.out).toContain('so no task got `cache: true`\n')
       expect(r.out).not.toContain('a TODO')
     } finally {
       await rm(root, { recursive: true, force: true })

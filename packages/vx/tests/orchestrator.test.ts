@@ -45,7 +45,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
             tasks: {
               stamp: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] }, cache: true,
               },
             },
           }
@@ -76,7 +76,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
             tasks: {
               build: {
                 exec: { command: 'sleep 0.4 && echo built > out.txt' },
-                inputs: { files: ['package.json'] }, cache: { outputs: { files: ['out.txt'] } },
+                inputs: { files: ['package.json'] }, outputs: { files: ['out.txt'] }, cache: true,
               },
             },
           }
@@ -118,7 +118,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
             tasks: {
               run: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                inputs: { files: ['package.json'] }, cache: { outputs: { files: ['out.txt'] } },
+                inputs: { files: ['package.json'] }, outputs: { files: ['out.txt'] }, cache: true,
               },
             },
           }
@@ -171,7 +171,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
             tasks: {
               run: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] }, cache: true,
               },
             },
           }
@@ -200,7 +200,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
             tasks: {
               run: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
               },
             },
           }
@@ -232,7 +232,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
             tasks: {
               run: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] }, cache: true,
               },
             },
           }
@@ -257,7 +257,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
             tasks: {
               build: {
                 exec: { command: "cat src/x.txt > dist.txt" },
-                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['dist.txt'] } },
+                inputs: { files: ['**/*'] }, outputs: { files: ['dist.txt'] }, cache: true,
               },
             },
           }
@@ -271,7 +271,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
               build: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
                 dependsOn: ['^build'],
-                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] }, cache: true,
               },
             },
           }
@@ -317,7 +317,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
               build: {
                 exec: { command: ${JSON.stringify(cmd)} },
                 dependsOn: ['^build'],
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist.txt'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['dist.txt'] }, cache: true,
               },
             },
           }
@@ -366,7 +366,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
             tasks: {
               build: {
                 exec: { command: "cat src/x.txt > dist.txt" },
-                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['dist.txt'] } },
+                inputs: { files: ['**/*'] }, outputs: { files: ['dist.txt'] }, cache: true,
               },
             },
           }
@@ -380,7 +380,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
               build: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
                 dependsOn: ['^build'],
-                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] }, cache: true,
               },
             },
           }
@@ -415,7 +415,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
             tasks: {
               build: {
                 exec: { command: "cat src/x.txt > dist.txt" },
-                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['dist.txt'] } },
+                inputs: { files: ['**/*'] }, outputs: { files: ['dist.txt'] }, cache: true,
               },
             },
           }
@@ -430,9 +430,8 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
                 dependsOn: ['^build'],
                 inputs: { files: ['**/*'], tasks: [] },
-                cache: {
-                  outputs: { files: ['out.txt'] },
-                },
+                outputs: { files: ['out.txt'] },
+                cache: true,
               },
             },
           }
@@ -465,9 +464,8 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
                   env: { passThrough: ['CACHED', 'PASSED'] },
                 },
                 inputs: { files: ['**/*'], env: ['CACHED'] },
-                cache: {
-                  outputs: { files: ['out.txt'] },
-                },
+                outputs: { files: ['out.txt'] },
+                cache: true,
               },
             },
           }
@@ -516,9 +514,8 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
                   env: { passThrough: ['BUILD_TARGET'] },
                 },
                 inputs: { files: ['src/**'], env: ['BUILD_TARGET'] },
-                cache: {
-                  outputs: { files: ['out.txt'] },
-                },
+                outputs: { files: ['out.txt'] },
+                cache: true,
               },
             },
           }
@@ -566,9 +563,8 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
                   env: { passThrough: [${JSON.stringify(last)}] },
                 },
                 inputs: { files: ['src/**'], env: ${JSON.stringify(declared)} },
-                cache: {
-                  outputs: { files: ['out.txt'] },
-                },
+                outputs: { files: ['out.txt'] },
+                cache: true,
               },
             },
           }
@@ -604,7 +600,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
                   command: "node -e 'process.stdout.write(process.env.MODE)' > out.txt",
                   env: { define: { MODE: 'one' } },
                 },
-                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] }, cache: true,
               },
             },
           }
@@ -625,7 +621,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
                   command: "node -e 'process.stdout.write(process.env.MODE)' > out.txt",
                   env: { define: { MODE: 'two' } },
                 },
-                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] }, cache: true,
               },
             },
           }
@@ -650,16 +646,14 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
               build: {
                 exec: { command: "cat src/x.txt > dist.txt" },
                 inputs: { files: ['src/**'] },
-                cache: {
-                  outputs: { files: ['dist.txt'] },
-                },
+                outputs: { files: ['dist.txt'] },
+                cache: true,
               },
               noisy: {
                 exec: { command: "cat noisy-src/n.txt > noisy-out.txt" },
                 inputs: { files: ['noisy-src/**'] },
-                cache: {
-                  outputs: { files: ['noisy-out.txt'] },
-                },
+                outputs: { files: ['noisy-out.txt'] },
+                cache: true,
               },
             },
           }
@@ -674,9 +668,8 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
                 dependsOn: ['^build', '^noisy'],
                 inputs: { files: ['**/*'], tasks: ['^build'] },
-                cache: {
-                  outputs: { files: ['out.txt'] },
-                },
+                outputs: { files: ['out.txt'] },
+                cache: true,
               },
             },
           }
@@ -720,7 +713,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
             tasks: {
               build: {
                 exec: { command: "cat src/x.txt > dist.txt" },
-                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['dist.txt'] } },
+                inputs: { files: ['**/*'] }, outputs: { files: ['dist.txt'] }, cache: true,
               },
             },
           }
@@ -737,7 +730,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
             tasks: {
               codegen: {
                 exec: { command: "echo gen > generated.txt" },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['generated.txt'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['generated.txt'] }, cache: true,
               },
               build: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
@@ -746,9 +739,8 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
                   files: ['**/*', '!generated.txt'],
                   tasks: ['codegen', '^*'],   // explicit self + all deps
                 },
-                cache: {
-                  outputs: { files: ['out.txt'] },
-                },
+                outputs: { files: ['out.txt'] },
+                cache: true,
               },
             },
           }
@@ -787,16 +779,14 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
               build: {
                 exec: { command: "cat src/x.txt > dist.txt" },
                 inputs: { files: ['src/**'] },
-                cache: {
-                  outputs: { files: ['dist.txt'] },
-                },
+                outputs: { files: ['dist.txt'] },
+                cache: true,
               },
               noisy: {
                 exec: { command: "cat noisy-src/n.txt > noisy-out.txt" },
                 inputs: { files: ['noisy-src/**'] },
-                cache: {
-                  outputs: { files: ['noisy-out.txt'] },
-                },
+                outputs: { files: ['noisy-out.txt'] },
+                cache: true,
               },
             },
           }
@@ -815,9 +805,8 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
                   files: ['**/*'],
                   tasks: ['^*', '!^noisy'],
                 },
-                cache: {
-                  outputs: { files: ['out.txt'] },
-                },
+                outputs: { files: ['out.txt'] },
+                cache: true,
               },
             },
           }
@@ -895,7 +884,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
                 exec: {
                   command: "node -e 'process.stdout.write(String(process.env.LEAK))' > out.txt",
                 },
-                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] }, cache: true,
               },
             },
           }
@@ -932,7 +921,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
             tasks: {
               run: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] }, cache: true,
               },
             },
           }
@@ -998,7 +987,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
             tasks: {
               run: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] }, cache: true,
               },
             },
           }
@@ -1013,7 +1002,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
   it(
     'non-zero exit code is NOT cached; next run re-executes',
     async () => {
-      // The exec-run counter lives outside `cache.outputs.files` so
+      // The exec-run counter lives outside `outputs.files` so
       // cleanOutputs() doesn't wipe it between runs. It's only used to
       // confirm the task body actually re-executed.
       const dir = await addProject(fixture.root, 'fail', {
@@ -1025,7 +1014,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
                 exec: {
                   command: "node -e 'require(\\"fs\\").appendFileSync(\\"runs.txt\\", \\"x\\"); process.exit(3)'",
                 },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+                inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
               },
             },
           }
@@ -1055,7 +1044,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
                 exec: {
                   command: "node -e 'require(\\"fs\\").appendFileSync(\\"runs.txt\\", \\"x\\")'",
                 },
-                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['runs.txt'] } },
+                inputs: { files: ['**/*'] }, outputs: { files: ['runs.txt'] }, cache: true,
               },
             },
           }
@@ -1094,7 +1083,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
                 exec: {
                   command: "node -e 'require(\\"fs\\").appendFileSync(\\"runs.txt\\", \\"x\\")'",
                 },
-                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['runs.txt'] } },
+                inputs: { files: ['**/*'] }, outputs: { files: ['runs.txt'] }, cache: true,
               },
             },
           }
@@ -1139,7 +1128,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
               build: {
                 exec: { command: ${JSON.stringify(counted(name))} },
                 dependsOn: ['^build'],
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist.txt'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['dist.txt'] }, cache: true,
               },
             },
           }
@@ -1190,7 +1179,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
                 exec: {
                   command: "node -e 'require(\\"fs\\").appendFileSync(\\"runs.txt\\", \\"x\\"); require(\\"fs\\").writeFileSync(\\"out.txt\\", \\"o\\")'",
                 },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt', 'runs.txt'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['out.txt', 'runs.txt'] }, cache: true,
               },
             },
           }
@@ -1282,7 +1271,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
             tasks: {
               run: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] }, cache: true,
               },
             },
           }
@@ -1311,7 +1300,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
                 exec: {
                   command: "mkdir -p dist && echo a > dist/a.txt && echo b > dist/b.txt && echo c > dist/c.txt",
                 },
-                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['dist/**'] } },
+                inputs: { files: ['**/*'] }, outputs: { files: ['dist/**'] }, cache: true,
               },
             },
           }
@@ -1338,7 +1327,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
             tasks: {
               run: {
                 exec: { command: "echo nothing-produced" },
-                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['out.txt', 'dist/**'] } },
+                inputs: { files: ['**/*'] }, outputs: { files: ['out.txt', 'dist/**'] }, cache: true,
               },
             },
           }
@@ -1369,7 +1358,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
             tasks: {
               run: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] }, cache: true,
               },
             },
           }
@@ -1395,7 +1384,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
             tasks: {
               run: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                inputs: { files: ['src/**', '!src/skip.txt'] }, cache: { outputs: { files: ['out.txt'] } },
+                inputs: { files: ['src/**', '!src/skip.txt'] }, outputs: { files: ['out.txt'] }, cache: true,
               },
             },
           }
@@ -1430,17 +1419,15 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
               prep: {
                 exec: { command: 'mkdir -p gen && cat src/a.ts > gen/g.ts' },
                 inputs: { files: ['src/**', '!src/**/*.test.ts'] },
-                cache: {
-                  outputs: { files: ['gen/**'] },
-                },
+                outputs: { files: ['gen/**'] },
+                cache: true,
               },
               build: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
                 dependsOn: ['prep'],
                 inputs: { files: ['src/**', 'gen/**', '!src/**/*.test.ts'], tasks: [] },
-                cache: {
-                  outputs: { files: ['out.txt'] },
-                },
+                outputs: { files: ['out.txt'] },
+                cache: true,
               },
             },
           }
@@ -1473,7 +1460,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
             tasks: {
               run: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                inputs: { files: ['**/*', '!noisy.log'] }, cache: { outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*', '!noisy.log'] }, outputs: { files: ['out.txt'] }, cache: true,
               },
             },
           }

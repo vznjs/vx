@@ -43,24 +43,24 @@ const logger: Logger = {
   taskComplete: () => {},
 }
 
-// `VX_CACHE_INPUT_STABILITY_STRATEGY(_SEVERITY)` set the defaults the rows below judge; each row
+// `VX_INPUTS_STABILITY_STRATEGY(_SEVERITY)` set the defaults the rows below judge; each row
 // starts without it and sets it only to say so.
 const saved = {
-  stability: process.env['VX_CACHE_INPUT_STABILITY_STRATEGY'],
-  severity: process.env['VX_CACHE_INPUT_STABILITY_SEVERITY'],
+  stability: process.env['VX_INPUTS_STABILITY_STRATEGY'],
+  severity: process.env['VX_INPUTS_STABILITY_SEVERITY'],
 }
 beforeEach(async () => {
   root = await makeWorkspace({ prefix: 'vx-moved-', edges: { app: ['lib'] } })
   status = []
-  delete process.env['VX_CACHE_INPUT_STABILITY_STRATEGY']
-  delete process.env['VX_CACHE_INPUT_STABILITY_SEVERITY']
+  delete process.env['VX_INPUTS_STABILITY_STRATEGY']
+  delete process.env['VX_INPUTS_STABILITY_SEVERITY']
 })
 
 afterEach(async () => {
-  if (saved.stability === undefined) delete process.env['VX_CACHE_INPUT_STABILITY_STRATEGY']
-  else process.env['VX_CACHE_INPUT_STABILITY_STRATEGY'] = saved.stability
-  if (saved.severity === undefined) delete process.env['VX_CACHE_INPUT_STABILITY_SEVERITY']
-  else process.env['VX_CACHE_INPUT_STABILITY_SEVERITY'] = saved.severity
+  if (saved.stability === undefined) delete process.env['VX_INPUTS_STABILITY_STRATEGY']
+  else process.env['VX_INPUTS_STABILITY_STRATEGY'] = saved.stability
+  if (saved.severity === undefined) delete process.env['VX_INPUTS_STABILITY_SEVERITY']
+  else process.env['VX_INPUTS_STABILITY_SEVERITY'] = saved.severity
   await rm(root, { recursive: true, force: true })
 })
 
@@ -94,7 +94,7 @@ describe('a task that rewrites its own input', () => {
             tasks: {
               format: {
                 exec: { command: "sed -i.bak 's/unformatted/formatted/' a.ts && rm a.ts.bak" },
-                inputs: { files: ['a.ts'] }, cache: { outputs: { files: [] } },
+                inputs: { files: ['a.ts'] }, outputs: { files: [] }, cache: true,
               },
             },
           }
@@ -106,7 +106,7 @@ describe('a task that rewrites its own input', () => {
 
       await runTask('format')
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#format: `packages/app/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs',
+        '[vx] app#format: `packages/app/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in outputs',
       ])
       gitIn(root)('checkout', '--', 'packages/app/a.ts')
       const again = await runTask('format')
@@ -132,7 +132,7 @@ describe('a task that rewrites its own input', () => {
             tasks: {
               format: {
                 exec: { command: "sed -i.bak 's/unformatted/formatted/' a.ts && rm a.ts.bak" },
-                inputs: { files: ['a.ts'] }, cache: { outputs: { files: [] } },
+                inputs: { files: ['a.ts'] }, outputs: { files: [] }, cache: true,
               },
             },
           }
@@ -143,7 +143,7 @@ describe('a task that rewrites its own input', () => {
       commit()
       await runTask('format')
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#format: `packages/app/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs',
+        '[vx] app#format: `packages/app/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in outputs',
       ])
       expect(statusOf(await runTask('format'), 'app#format')).toBe('success')
     },
@@ -151,9 +151,9 @@ describe('a task that rewrites its own input', () => {
   )
 })
 
-describe('cache.inputStability: what a write during the command means', () => {
+describe('inputs.stability: what a write during the command means', () => {
   const WITHHELD = [
-    '[vx] app#format: `packages/app/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs',
+    '[vx] app#format: `packages/app/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in outputs',
   ]
   const formatter = (from: string, stability?: object) => ({
     config: `
@@ -161,11 +161,12 @@ describe('cache.inputStability: what a write during the command means', () => {
         tasks: {
           format: {
             exec: { command: "sed -i.bak 's/unformatted/formatted/' a.ts && rm a.ts.bak" },
-            inputs: { files: ['a.ts'] },
-            cache: {
-              outputs: { files: [] },
-              ${stability === undefined ? '' : `inputStability: ${JSON.stringify(stability)},`}
+            inputs: {
+              files: ['a.ts'],
+              ${stability === undefined ? '' : `stability: ${JSON.stringify(stability)},`}
             },
+            outputs: { files: [] },
+            cache: true,
           },
         },
       }
@@ -200,9 +201,9 @@ describe('cache.inputStability: what a write during the command means', () => {
   )
 
   it(
-    'VX_CACHE_INPUT_STABILITY_STRATEGY=mutable is the default for a task that does not say',
+    'VX_INPUTS_STABILITY_STRATEGY=mutable is the default for a task that does not say',
     async () => {
-      process.env['VX_CACHE_INPUT_STABILITY_STRATEGY'] = 'mutable'
+      process.env['VX_INPUTS_STABILITY_STRATEGY'] = 'mutable'
       await fixture('formatted')
       await runTask('format')
       expect(status.filter((l) => MOVED.test(l))).toEqual([])
@@ -231,11 +232,9 @@ describe('cache.inputStability: what a write during the command means', () => {
               read: {
                 exec: { command: ${JSON.stringify(ordered ? 'true' : `touch ${signals}/started; ${waitFor('restored')}`)} },
                 ${ordered ? "dependsOn: ['meddle']," : ''}
-                inputs: { files: ['a.ts'] },
-                cache: {
-                  outputs: { files: [] },
-                  inputStability: { strategy: 'mutable' },
-                },
+                inputs: { files: ['a.ts'], stability: { strategy: 'mutable' } },
+                outputs: { files: [] },
+                cache: true,
               },
               meddle: {
                 exec: { command: ${JSON.stringify(ordered ? swap : `${waitFor('started')}; ${swap} && touch ${signals}/restored`)} },
@@ -277,11 +276,9 @@ describe('cache.inputStability: what a write during the command means', () => {
             tasks: {
               read: {
                 exec: { command: 'touch go && sleep 0.8' },
-                inputs: { files: ['a.ts'] },
-                cache: {
-                  outputs: { files: [] },
-                  inputStability: { strategy: 'mutable' },
-                },
+                inputs: { files: ['a.ts'], stability: { strategy: 'mutable' } },
+                outputs: { files: [] },
+                cache: true,
               },
               srv: {
                 exec: {
@@ -318,7 +315,7 @@ describe('cache.inputStability: what a write during the command means', () => {
   it(
     "the env var wins over a task's own setting, for the run",
     async () => {
-      process.env['VX_CACHE_INPUT_STABILITY_STRATEGY'] = 'mutable'
+      process.env['VX_INPUTS_STABILITY_STRATEGY'] = 'mutable'
       await fixture('formatted', { strategy: 'immutable' })
       await runTask('format')
       expect(status.filter((l) => MOVED.test(l))).toEqual([])
@@ -327,11 +324,11 @@ describe('cache.inputStability: what a write during the command means', () => {
   )
 
   it(
-    "the workspace's inputStability is the default; a task's own field wins over it",
+    "the workspace's inputs.stability is the default; a task's own field wins over it",
     async () => {
       await fixture('formatted')
       const ws = path.join(root, '.vx/workspace.mjs')
-      await writeFile(ws, workspaceWith("cache: { inputStability: { strategy: 'mutable' } }"))
+      await writeFile(ws, workspaceWith("inputs: { stability: { strategy: 'mutable' } }"))
       await runTask('format')
       expect(status.filter((l) => MOVED.test(l))).toEqual([])
       await addProject(root, 'app', formatter('formatted', { strategy: 'immutable' }))
@@ -366,7 +363,7 @@ describe('cache.inputStability: what a write during the command means', () => {
       expect(r.ok).toBe(false)
       expect(statusOf(r, 'app#format')).toBe('failed')
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        "[vx] app#format: `packages/app/a.ts` changed after its key was taken — the result is not saved, and inputStability.severity is 'error', so the task fails; if the task writes it, declare it in cache.outputs",
+        "[vx] app#format: `packages/app/a.ts` changed after its key was taken — the result is not saved, and inputs.stability.severity is 'error', so the task fails; if the task writes it, declare it in outputs",
       ])
       // The outcome names it too, so the label and `vx last` say why the
       // exit is 1 when the command itself passed.
@@ -380,9 +377,9 @@ describe('cache.inputStability: what a write during the command means', () => {
   )
 
   it(
-    'VX_CACHE_INPUT_STABILITY_SEVERITY=error is the default for a task that does not say',
+    'VX_INPUTS_STABILITY_SEVERITY=error is the default for a task that does not say',
     async () => {
-      process.env['VX_CACHE_INPUT_STABILITY_SEVERITY'] = 'error'
+      process.env['VX_INPUTS_STABILITY_SEVERITY'] = 'error'
       await fixture('unformatted')
       const r = await run({ cwd: root, tasks: ['format'], log: logger })
       expect(statusOf(r, 'app#format')).toBe('failed')
@@ -404,20 +401,20 @@ describe('cache.inputStability: what a write during the command means', () => {
   )
 
   it(
-    'VX_CACHE_INPUT_STABILITY_STRATEGY=unchecked skips the check, and a value naming no mode is refused before any task',
+    'VX_INPUTS_STABILITY_STRATEGY=unchecked skips the check, and a value naming no mode is refused before any task',
     async () => {
-      process.env['VX_CACHE_INPUT_STABILITY_STRATEGY'] = 'unchecked'
+      process.env['VX_INPUTS_STABILITY_STRATEGY'] = 'unchecked'
       await fixture('unformatted')
       await runTask('format')
       expect(status.filter((l) => MOVED.test(l))).toEqual([])
-      process.env['VX_CACHE_INPUT_STABILITY_STRATEGY'] = 'content'
+      process.env['VX_INPUTS_STABILITY_STRATEGY'] = 'content'
       await expect(run({ cwd: root, tasks: ['format'], log: logger })).rejects.toThrow(
-        "VX_CACHE_INPUT_STABILITY_STRATEGY must be one of 'immutable', 'mutable', 'unchecked' (got content)",
+        "VX_INPUTS_STABILITY_STRATEGY must be one of 'immutable', 'mutable', 'unchecked' (got content)",
       )
-      delete process.env['VX_CACHE_INPUT_STABILITY_STRATEGY']
-      process.env['VX_CACHE_INPUT_STABILITY_SEVERITY'] = 'fail'
+      delete process.env['VX_INPUTS_STABILITY_STRATEGY']
+      process.env['VX_INPUTS_STABILITY_SEVERITY'] = 'fail'
       await expect(run({ cwd: root, tasks: ['format'], log: logger })).rejects.toThrow(
-        "VX_CACHE_INPUT_STABILITY_SEVERITY must be one of 'warn', 'error' (got fail)",
+        "VX_INPUTS_STABILITY_SEVERITY must be one of 'warn', 'error' (got fail)",
       )
     },
     TIMEOUT,
@@ -434,7 +431,7 @@ describe('the other moves', () => {
             tasks: {
               build: {
                 exec: { command: 'mkdir -p dist; cat in/* > dist/out.txt; rm in/b.txt' },
-                inputs: { files: ['in/**'] }, cache: { outputs: { files: ['dist/**'] } },
+                inputs: { files: ['in/**'] }, outputs: { files: ['dist/**'] }, cache: true,
               },
             },
           }
@@ -445,7 +442,7 @@ describe('the other moves', () => {
       commit()
       await runTask('build')
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#build: `packages/app/in/b.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs',
+        '[vx] app#build: `packages/app/in/b.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in outputs',
       ])
       gitIn(root)('checkout', '--', 'packages/app/in/b.txt')
       await rm(path.join(app, 'dist'), { recursive: true, force: true })
@@ -463,7 +460,7 @@ describe('the other moves', () => {
             tasks: {
               bump: {
                 exec: { command: 'cp next.json package.json' },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+                inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
               },
             },
           }
@@ -501,12 +498,12 @@ describe('what the run knew about the project goes with a move', () => {
           tasks: {
             format: {
               exec: { command: ${JSON.stringify(cmd)} },
-              inputs: { files: ['a.ts'] }, cache: { outputs: { files: ['fmt.log'] } },
+              inputs: { files: ['a.ts'] }, outputs: { files: ['fmt.log'] }, cache: true,
             },
             build: {
               dependsOn: ['format'],
               exec: { command: 'mkdir -p dist; cat a.ts > dist/out.txt' },
-              inputs: { files: ['a.ts'], tasks: [] }, cache: { outputs: { files: ['dist/**'] } },
+              inputs: { files: ['a.ts'], tasks: [] }, outputs: { files: ['dist/**'] }, cache: true,
             },
           },
         }
@@ -547,9 +544,8 @@ describe('what a moved task wrote elsewhere is seen too', () => {
               gen: {
                 exec: { command: "sed -i.bak 's/U/F/' a.ts && rm a.ts.bak && printf G > ../app/gen.txt" },
                 inputs: { files: ['a.ts'] },
-                cache: {
-                  outputs: { files: [], workspaceFiles: ['packages/app/gen.txt'] },
-                },
+                outputs: { files: [], workspaceFiles: ['packages/app/gen.txt'] },
+                cache: true,
               },
             },
           }
@@ -563,7 +559,7 @@ describe('what a moved task wrote elsewhere is seen too', () => {
               build: {
                 dependsOn: ['^gen'],
                 exec: { command: 'mkdir -p dist; cat gen.txt > dist/out.txt' },
-                inputs: { files: ['gen.txt'], tasks: [] }, cache: { outputs: { files: ['dist/**'] } },
+                inputs: { files: ['gen.txt'], tasks: [] }, outputs: { files: ['dist/**'] }, cache: true,
               },
             },
           }
@@ -584,7 +580,7 @@ describe('an input the user edits during the run', () => {
       tasks: {
         build: {
           exec: { command: 'touch started; while [ ! -f go ]; do sleep 0.01; done; mkdir -p dist; cat src/a.ts > dist/out.js' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+          inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
         },
       },
     }
@@ -602,7 +598,7 @@ describe('an input the user edits during the run', () => {
       await writeFile(path.join(app, 'go'), '')
       await pending
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#build: `packages/app/src/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs',
+        '[vx] app#build: `packages/app/src/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in outputs',
       ])
 
       gitIn(root)('checkout', '--', 'packages/app/src/a.ts')
@@ -628,7 +624,7 @@ describe('an input the user edits during the run', () => {
             tasks: {
               build: {
                 exec: { command: 'touch started; while [ ! -f go ]; do sleep 0.01; done; mkdir -p dist; cat src/a.ts > dist/out.js; touch built; while [ ! -f done ]; do sleep 0.01; done' },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
               },
             },
           }
@@ -649,7 +645,7 @@ describe('an input the user edits during the run', () => {
       await writeFile(path.join(app, 'done'), '')
       await pending
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#build: `packages/app/src/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs',
+        '[vx] app#build: `packages/app/src/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in outputs',
       ])
       await rm(path.join(app, 'dist'), { recursive: true, force: true })
       for (const f of ['started', 'go', 'built', 'done']) await writeFile(path.join(app, f), '')
@@ -684,7 +680,7 @@ describe('an input the user edits during the run', () => {
             build: {
               dependsOn: ['^gate'],
               exec: { command: 'mkdir -p dist; cat src/a.ts > dist/out.js' },
-              inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+              inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
             },
           },
         }
@@ -710,7 +706,7 @@ describe('an input the user edits during the run', () => {
       await writeFile(path.join(lib, 'go'), '')
       await pending
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#build: `packages/app/src/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs',
+        '[vx] app#build: `packages/app/src/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in outputs',
       ])
 
       gitIn(root)('checkout', '--', 'packages/app/src/a.ts')
@@ -775,7 +771,7 @@ describe('an edit behind a linked input during the run', () => {
               tasks: {
                 build: {
                   exec: { command: 'touch started; while [ ! -f go ]; do sleep 0.01; done; mkdir -p dist; cat ${read} > dist/out.txt' },
-                  inputs: { files: ['${files}'] }, cache: { outputs: { files: ['dist/**'] } },
+                  inputs: { files: ['${files}'] }, outputs: { files: ['dist/**'] }, cache: true,
                 },
               },
             }
@@ -817,7 +813,7 @@ describe('an input file added during the run', () => {
       tasks: {
         build: {
           exec: { command: 'touch started; while [ ! -f go ]; do sleep 0.01; done; ${cmd}' },
-          inputs: { files: ${files} }, cache: { outputs: { files: ['dist/**'] } },
+          inputs: { files: ${files} }, outputs: { files: ['dist/**'] }, cache: true,
         },
       },
     }
@@ -842,7 +838,7 @@ describe('an input file added during the run', () => {
     async () => {
       const app = await addedDuring('src/new.txt')
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#build: `packages/app/src/new.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs',
+        '[vx] app#build: `packages/app/src/new.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in outputs',
       ])
       await rm(path.join(app, 'src', 'new.txt'))
       await rm(path.join(app, 'dist'), { recursive: true, force: true })
@@ -859,7 +855,7 @@ describe('an input file added during the run', () => {
     async () => {
       await addedDuring('src/sub/new.txt')
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#build: `packages/app/src/sub/new.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs',
+        '[vx] app#build: `packages/app/src/sub/new.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in outputs',
       ])
     },
     TIMEOUT,
@@ -870,7 +866,7 @@ describe('an input file added during the run', () => {
     async () => {
       await addedDuring('extra.txt', ADDS(BUILD, "['src/**', 'extra.txt']"))
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#build: `packages/app/extra.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs',
+        '[vx] app#build: `packages/app/extra.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in outputs',
       ])
     },
     TIMEOUT,
@@ -896,7 +892,7 @@ describe('an input file added during the run', () => {
       await writeFile(path.join(app, 'go'), '')
       await pending
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#build: `packages/app/src/v` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs',
+        '[vx] app#build: `packages/app/src/v` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in outputs',
       ])
       await rm(path.join(app, 'src', 'v'))
       await rm(path.join(app, 'dist'), { recursive: true, force: true })
@@ -938,12 +934,12 @@ describe('control: inputs an upstream wrote just before are not a move', () => {
             tasks: {
               gen: {
                 exec: { command: 'printf generated > gen.txt' },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['gen.txt'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['gen.txt'] }, cache: true,
               },
               build: {
                 dependsOn: ['gen'],
                 exec: { command: 'mkdir -p dist; cat gen.txt > dist/out.txt' },
-                inputs: { files: ['src/**', 'gen.txt'], tasks: [] }, cache: { outputs: { files: ['dist/**'] } },
+                inputs: { files: ['src/**', 'gen.txt'], tasks: [] }, outputs: { files: ['dist/**'] }, cache: true,
               },
             },
           }
@@ -1055,7 +1051,8 @@ describe('describeTaskInputs dates each fact from where it was learned', () => {
             config: {
               exec: { command: 'true' },
               inputs: { files: ['*.txt'] },
-              cache: { outputs: { files: [] } },
+              outputs: { files: [] },
+              cache: true,
             },
             deps: [],
             requested: true,

@@ -66,7 +66,7 @@ for (const [form, extra] of [
         const app = await addProject(root, 'app', {
           config: `export default { tasks: { build: {
             exec: { command: 'mkdir -p dist/keys dist/ro dist/empty dist/open && echo k > dist/keys/id && echo r > dist/ro/f && echo o > dist/open/f${extra} && chmod 700 dist/keys dist/empty && chmod 555 dist/ro' },
-            inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+            inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
           } } }`,
           files: { 'src/a.txt': 'a\n', '.gitignore': 'dist/\n' },
         })

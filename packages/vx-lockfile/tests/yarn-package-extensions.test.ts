@@ -20,7 +20,7 @@ import { affectedIds, commitAll, moved } from './helpers/affected.js'
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 const WORKSPACES = ['babel-alias', 'babel-new', 'babel-old', 'declares', 'extended', 'redundant']
 const BUILD =
-  "export default { tasks: { build: { exec: { command: 'echo built' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } } }\n"
+  "export default { tasks: { build: { exec: { command: 'echo built' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true } } }\n"
 
 const RC = `nodeLinker: node-modules
 

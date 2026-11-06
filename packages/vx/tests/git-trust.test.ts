@@ -71,7 +71,7 @@ describe('a rename git reports in the second status column', () => {
           tasks: {
             build: {
               exec: { command: 'mkdir -p dist && ls *.txt > dist/out' },
-              inputs: { files: ['*.txt'] }, cache: { outputs: { files: ['dist/**'] } },
+              inputs: { files: ['*.txt'] }, outputs: { files: ['dist/**'] }, cache: true,
             },
           },
         }`,
@@ -111,7 +111,7 @@ describe('a deletion git pairs with an unmerged path', () => {
           tasks: {
             build: {
               exec: { command: 'mkdir -p dist && ls *.txt > dist/out' },
-              inputs: { files: ['*.txt'] }, cache: { outputs: { files: ['dist/**'] } },
+              inputs: { files: ['*.txt'] }, outputs: { files: ['dist/**'] }, cache: true,
             },
           },
         }`,
@@ -159,7 +159,7 @@ describe('an index blob a filter wrote that no longer applies', () => {
           tasks: {
             build: {
               exec: { command: 'mkdir -p dist && od -c f.txt > dist/out' },
-              inputs: { files: ['*.txt'] }, cache: { outputs: { files: ['dist/**'] } },
+              inputs: { files: ['*.txt'] }, outputs: { files: ['dist/**'] }, cache: true,
             },
           },
         }`,
@@ -195,7 +195,7 @@ describe('a .gitattributes the index does not hold as clean', () => {
     tasks: {
       build: {
         exec: { command: 'mkdir -p dist && cat src.txt > dist/out.txt' },
-        inputs: { files: ['*.txt'] }, cache: { outputs: { files: ['dist/**'] } },
+        inputs: { files: ['*.txt'] }, outputs: { files: ['dist/**'] }, cache: true,
       },
     },
   }`
@@ -278,7 +278,7 @@ describe('a clean filter driver', () => {
           tasks: {
             build: {
               exec: { command: 'mkdir -p dist && head -1 src.txt > dist/out.txt' },
-              inputs: { files: ['*.txt'] }, cache: { outputs: { files: ['dist/**'] } },
+              inputs: { files: ['*.txt'] }, outputs: { files: ['dist/**'] }, cache: true,
             },
           },
         }`,
@@ -312,7 +312,7 @@ describe('a clean filter driver', () => {
           tasks: {
             build: {
               exec: { command: 'mkdir -p dist && cp src.txt dist/out.bin' },
-              inputs: { files: ['*.txt'] }, cache: { outputs: { files: ['dist/**'] } },
+              inputs: { files: ['*.txt'] }, outputs: { files: ['dist/**'] }, cache: true,
             },
           },
         }`,

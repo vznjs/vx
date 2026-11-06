@@ -2061,8 +2061,7 @@ describe("workspaceGlobOwners: the run path's staged load", () => {
       `${PLUGIN_IMPORT}export default { plugins: [${packagesSource()}, ${pluginSource(
         'gen',
         `{ project(config, ctx) {
-        if (ctx.name === 'bare') config.tasks.build = { exec: { command: 'true' }, inputs: { files: ['src/**'], workspaceFiles: ['shared/**'] }, cache: {
- outputs: { files: [] } } }
+        if (ctx.name === 'bare') config.tasks.build = { exec: { command: 'true' }, inputs: { files: ['src/**'], workspaceFiles: ['shared/**'] }, outputs: { files: [] }, cache: true }
       } }`,
       )}] }\n`,
     )
@@ -2137,9 +2136,8 @@ describe("workspaceGlobOwners: the run path's staged load", () => {
         gen: {
           exec: { command: 'true' },
           inputs: { files: [], workspaceFiles: ['shared/**', '.vx/**'] },
-          cache: {
-            outputs: { files: [], workspaceFiles: ['shared/gen/**'] },
-          },
+          outputs: { files: [], workspaceFiles: ['shared/gen/**'] },
+          cache: true,
         },
       },
     }

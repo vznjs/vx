@@ -13,7 +13,7 @@ export type CacheStatus =
   | 'hit-local' // entry exists locally
   | 'hit-remote' // remote layer has it (would be fetched)
   | 'miss' // caching enabled but no entry
-  | 'no-cache' // task opts out (no `cache` block) or --no-cache
+  | 'no-cache' // task opts out (no `cache: true`) or --no-cache
   | 'group' // no `exec`; aggregator only
   | 'not-started' // a server every dependant of which restores early: never spawned
 
@@ -84,7 +84,7 @@ Piggybacks on `runGraph` with `concurrency: 1` and a planning
    key it alike, or `--dry` calls its dependants misses under a key the
    run never looks up (item 766, `tests/stale-hit-git.test.ts` › "`--dry`
    calls a dependant of a persistent task by the key the run uses").
-4. Tasks with no `cache` block OR a policy that reads and writes
+4. Tasks with no `cache: true` OR a policy that reads and writes
    nothing (`--no-cache`, `--cache-policy=local:`) → `'no-cache'`:
    `ranNoCache` (`events.ts`), the predicate every run surface labels by,
    so the plan and the run agree.

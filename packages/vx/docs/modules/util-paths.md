@@ -67,7 +67,7 @@ export function hasControl(s: string): boolean
 export function writableUnder(real: string, realBase: string): boolean
 ```
 
-**Two alphabets.** A TASK glob (`inputs.files`, `cache.outputs.files`,
+**Two alphabets.** A TASK glob (`inputs.files`, `outputs.files`,
 `workspaceFiles`) is a standard glob (2026-10-18): `[ab]` is a class and
 `app/\[id\]/**` the route directory. `GLOB_WILDCARDS` is `Bun.Glob`'s set
 plus the backslash: an escaped pattern is matched, never compared as a

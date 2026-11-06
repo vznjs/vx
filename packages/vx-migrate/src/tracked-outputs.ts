@@ -266,7 +266,7 @@ export function spareTrackedOutputs(
     const rel = relPosix(root, p.dir)
     const own = rel === '' ? tracked : filesUnder(tracked, rel).map((f) => f.slice(rel.length + 1))
     for (const t of p.tasks) {
-      const outputs = (t.task?.['cache'] as { outputs?: Outputs } | undefined)?.outputs
+      const outputs = t.task?.['outputs'] as Outputs | undefined
       if (outputs === undefined) continue
       const hits: [key: 'files' | 'workspaceFiles', hit: string[]][] = []
       for (const [key, base] of [

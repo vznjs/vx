@@ -97,7 +97,7 @@ describe('stale cache hits', () => {
         path.join(pkg, 'vx.config.mjs'),
         `export default { tasks: { build: {
            exec: { command: 'mkdir -p dist && (test -x src/run.sh && echo exec || echo plain) > dist/o && cat src/l.txt >> dist/o' },
-           inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+           inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
          } } }\n`,
       )
       git(root, 'init', '-q')
@@ -140,7 +140,7 @@ describe('stale cache hits', () => {
         path.join(pkg, 'vx.config.mjs'),
         `export default { name: 'lib', tasks: { build: {
            exec: { command: 'mkdir -p dist && cat src/* > dist/o' },
-           inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+           inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
          } } }\n`,
       )
       git(root, 'init', '-q')
@@ -183,7 +183,7 @@ describe('stale cache hits', () => {
         path.join(pkg, 'vx.config.mjs'),
         `export default { name: 'lib', tasks: { build: {
            exec: { command: 'mkdir -p dist && cat src/a > dist/o' },
-           inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+           inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
          } } }\n`,
       )
       git(real, 'init', '-q')
@@ -221,7 +221,7 @@ describe('stale cache hits', () => {
         path.join(pkg, 'vx.config.mjs'),
         `export default { name: 'lib', tasks: { build: {
            exec: { command: 'mkdir -p dist && cat src/a src/wt/packages/lib/src/a > dist/o' },
-           inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+           inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
          } } }\n`,
       )
       git(root, 'init', '-q')
@@ -261,7 +261,7 @@ describe('stale cache hits', () => {
           path.join(pkg, 'vx.config.mjs'),
           `export default { tasks: { build: {
            exec: { command: 'mkdir -p dist && (test -x src/run.sh && echo exec || echo plain) > dist/o' },
-           inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+           inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
          } } }\n`,
         )
         git(root, 'init', '-q')
@@ -306,7 +306,7 @@ describe('stale cache hits', () => {
         path.join(pkg, 'vx.config.mjs'),
         `export default { tasks: { build: {
            exec: { command: 'mkdir -p dist && cp src/v.txt dist/v.txt && touch -t 200109090146.40 dist/v.txt' },
-           inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+           inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
          } } }\n`,
       )
       git(root, 'init', '-q')
@@ -342,9 +342,8 @@ describe('stale cache hits', () => {
         `export default { tasks: { gen: {
            exec: { command: 'mkdir -p ../../shared && printf g > ../../shared/g.txt' },
            inputs: { files: ['src/**'] },
-           cache: {
-             outputs: { files: [], workspaceFiles: ['shared/**'] },
-           },
+           outputs: { files: [], workspaceFiles: ['shared/**'] },
+           cache: true,
          } } }\n`,
       )
       git(root, 'init', '-q')
@@ -380,7 +379,7 @@ describe('stale cache hits', () => {
         path.join(root, 'vx.config.mjs'),
         `export default { tasks: { build: {
            exec: { command: 'mkdir -p dist && printf a > dist/a.txt && printf b > dist/b.txt' },
-           inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+           inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
          } } }\n`,
       )
       git(root, 'init', '-q')

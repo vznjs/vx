@@ -44,7 +44,7 @@ async function genAndReader(genOutputs: string, genCommand: string, reads: strin
     files: { 'src/a.txt': 'a' },
     config: `export default { tasks: { build: {
       exec: { command: '${genCommand}' },
-      inputs: { files: ['src/**'] }, cache: { outputs: ${genOutputs} },
+      inputs: { files: ['src/**'] }, outputs: ${genOutputs}, cache: true,
     } } }`,
   })
   await addProject(root, 'rd', {
@@ -52,7 +52,7 @@ async function genAndReader(genOutputs: string, genCommand: string, reads: strin
     config: `export default { tasks: { build: {
       dependsOn: ['^build'],
       exec: { command: 'true' },
-      inputs: { files: [], workspaceFiles: ['${reads}'], tasks: [] }, cache: { outputs: { files: [] } },
+      inputs: { files: [], workspaceFiles: ['${reads}'], tasks: [] }, outputs: { files: [] }, cache: true,
     } } }`,
   })
 }
@@ -99,7 +99,7 @@ describe('a miss marks what it wrote for the rest of the run', () => {
         files: { 'src/a.txt': 'a' },
         config: `export default { tasks: { build: {
           exec: { command: 'echo g > ../rd/gen.txt' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: [], workspaceFiles: ['packages/rd/gen.txt'] } },
+          inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['packages/rd/gen.txt'] }, cache: true,
         } } }`,
       })
       await addProject(root, 'rd', {
@@ -107,7 +107,7 @@ describe('a miss marks what it wrote for the rest of the run', () => {
         config: `export default { tasks: { build: {
           dependsOn: ['^build'],
           exec: { command: 'true' },
-          inputs: { files: ['*.txt', 'src/**'], tasks: [] }, cache: { outputs: { files: [] } },
+          inputs: { files: ['*.txt', 'src/**'], tasks: [] }, outputs: { files: [] }, cache: true,
         } } }`,
       })
       expect((await run({ cwd: root, tasks: ['build'], log: silent })).ok).toBe(true)
@@ -139,7 +139,7 @@ it(
       config: `export default { tasks: {
         build: {
           exec: { command: 'mkdir -p dist ../../shared && echo p > dist/p.txt && echo w > ../../shared/w.txt' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'], workspaceFiles: ['shared/**'] } },
+          inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'], workspaceFiles: ['shared/**'] }, cache: true,
         },
         tail: { dependsOn: ['build'], exec: { command: 'sleep ${(OUTPUT_DIRS_RACY_MS * 3) / 1000}' } },
       } }`,

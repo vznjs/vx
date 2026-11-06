@@ -116,7 +116,7 @@ export class DeferredOutputs {
     // Project outputs only: a task declaring `outputs.workspaceFiles` is
     // never deferred (`deferralEligibility` forces it eager), so nothing
     // workspace-anchored can reach this path.
-    const outputs = producer.config.cache?.outputs.files ?? []
+    const outputs = producer.config.outputs?.files ?? []
     const nestedProjectDirs = this.args.nestedDirsByProject.get(producer.projectName) ?? []
     const cleanArgs = {
       projectDir: producer.projectDir,
@@ -161,9 +161,9 @@ export class DeferredOutputs {
         workspaceRoot: this.args.workspaceRoot,
         outputFiles,
         ...(emptyDirs.length > 0 ? { outputDirs: emptyDirs } : {}),
-        ...(producer.config.cache?.outputs.mount === undefined
+        ...(producer.config.outputs?.mount === undefined
           ? {}
-          : { mounts: mountPaths(producer.config.cache.outputs) }),
+          : { mounts: mountPaths(producer.config.outputs) }),
         entry: entry.entry,
       })
     }

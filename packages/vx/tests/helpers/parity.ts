@@ -24,16 +24,16 @@ function projectConfig(name: string, extra = ''): string {
         description: 'build ${name}',
         exec: { command: 'mkdir -p dist && echo built-${name} > dist/out.txt && cat src/in.txt' },
         dependsOn: ['^build'],
-        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+        inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
       },
       test: {
         exec: { command: 'echo test-${name}' },
         dependsOn: ['build'],
-        inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+        inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
       },
       lint: {
         exec: { command: 'echo lint-${name}' },
-        inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+        inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
       },
       ${extra}
     },

@@ -632,20 +632,19 @@ describe('a root project stops at the walls: nested projects, .git, .vx', () => 
 
 describe('the request derives nothing from cache', () => {
   // `SandboxConfig`'s doc comment claimed the baseline could "write the
-  // prefixes of its `cache.outputs.files`" — three times over — while the
+  // prefixes of its `outputs.files`" — three times over — while the
   // code granted none of it (item 443). The behavioural rows live in
   // `sandbox-grants.unsafe.test.ts` and are Linux-gated on the bwrap
   // denial message; this pins the same claim where it actually lives, on
   // every platform, with no sandbox required to run it.
-  it('a task declaring cache.outputs and no grant gets no write at all', async () => {
+  it('a task declaring outputs and no grant gets no write at all', async () => {
     const n: TaskNode = {
       ...node(),
       config: {
         exec: { command: 'true' },
         inputs: { files: ['src/**'] },
-        cache: {
-          outputs: { files: ['dist/**', 'out.txt'] },
-        },
+        outputs: { files: ['dist/**', 'out.txt'] },
+        cache: true,
       },
     }
     const { sandbox } = await sandboxRequestFor(n, {}, root, new Set())

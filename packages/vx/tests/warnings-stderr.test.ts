@@ -1,4 +1,4 @@
-// A run's warnings (`[vx] app#build: cache.outputs matched no files …`)
+// A run's warnings (`[vx] app#build: outputs matched no files …`)
 // printed on stdout between the task rows, so `vx run build > log.txt`
 // carried them into the log and a terminal-less reader of stdout got
 // them as rows (DX bug hunt, 2026-10-15). They go to stderr; the rows
@@ -32,7 +32,7 @@ it(
         config: `export default { tasks: {
           build: {
             exec: { command: 'true' },
-            inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+            inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
           },
         } }`,
         files: { 'src/a.ts': 'x' },
@@ -44,7 +44,7 @@ it(
         tasks: ['build'],
         log: defaultLogger({ enabled: false }, { mode: 'broad' }, out, { err }),
       })
-      expect(err.text()).toContain('app#build: cache.outputs matched no files')
+      expect(err.text()).toContain('app#build: outputs matched no files')
       expect(out.text()).not.toContain('matched no files')
       expect(out.text()).toMatch(/app#build/)
       expect(out.text()).toContain('─ Summary ')

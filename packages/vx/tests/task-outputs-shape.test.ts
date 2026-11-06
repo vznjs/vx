@@ -16,8 +16,7 @@ function refusal(validate: () => void): string | null {
     return (err as Error).message
   }
 }
-const task = (t: unknown) =>
-  refusal(() => validateProjectConfig({ tasks: { t } } as never, CFG))
+const task = (t: unknown) => refusal(() => validateProjectConfig({ tasks: { t } } as never, CFG))
 const workspace = (w: unknown) => refusal(() => validateWorkspace(w as WorkspaceConfig, WS))
 
 const BUILD = { exec: { command: 'x' }, inputs: { files: ['src/**'] } }
@@ -34,11 +33,16 @@ describe('cache is the switch; outputs and stability sit beside it', () => {
     ).toBeNull()
   })
 
-  it('cache is true or absent', () => {
-    const must = `${CFG}: tasks.t.cache must be true, or absent for a task that never caches`
-    for (const c of [false, {}, { outputs: { files: ['dist/**'] } }, 'yes', null]) {
+  it('cache is true or false', () => {
+    const must = `${CFG}: tasks.t.cache must be true or false`
+    for (const c of [{}, { outputs: { files: ['dist/**'] } }, 'yes', null]) {
       expect(task({ ...BUILD, outputs: { files: ['dist/**'] }, cache: c })).toBe(must)
     }
+    // `false` is no cache, as absent is: outputs then have nothing to do.
+    expect(task({ ...BUILD, cache: false })).toBeNull()
+    expect(task({ ...BUILD, outputs: { files: ['dist/**'] }, cache: false })).toBe(
+      `${CFG}: tasks.t.outputs needs \`cache: true\` — vx saves and restores outputs only for a cached task`,
+    )
   })
 
   it('cache: true needs outputs', () => {
@@ -63,10 +67,10 @@ describe('cache is the switch; outputs and stability sit beside it', () => {
       workspace({ inputs: { stability: { strategy: 'mutable' } }, outputs: { clean: false } }),
     ).toBeNull()
     expect(workspace({ cache: { inputStability: { strategy: 'mutable' } } })).toContain(
-      'cache has unknown field "inputStability"',
+      '`cache` has unknown field "inputStability"',
     )
     expect(workspace({ cache: { outputs: { clean: false } } })).toContain(
-      'cache has unknown field "outputs"',
+      '`cache` has unknown field "outputs"',
     )
   })
 })

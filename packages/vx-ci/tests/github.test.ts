@@ -495,7 +495,7 @@ describe('vx run with github() — the composition proof', () => {
         `export default { tasks: {
            build: {
              exec: { command: 'cat src/in.txt > out.txt' },
-             inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
+             inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
            },
          } }`,
       )

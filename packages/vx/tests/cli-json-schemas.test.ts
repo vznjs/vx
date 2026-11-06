@@ -16,9 +16,8 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'bun:test'
 import { applyMigration } from '../src/workspace/index.js'
 import type {
-  CacheConfig,
   InputsConfig,
-  CacheOutputs,
+  TaskOutputs,
   InputStability,
   ExecConfig,
   ExecEnv,
@@ -71,7 +70,7 @@ const CONFIG = (dep: boolean) => `export default {
     build: {
       exec: { command: 'mkdir -p dist && cat src/a.txt > dist/o.txt' },
       ${dep ? "dependsOn: ['^build']," : ''}
-      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+      inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
     },
     fail: { exec: { command: 'exit 3' } },
     // Rewrites an input build reads, so \`vx why\` names a writer.
@@ -79,12 +78,12 @@ const CONFIG = (dep: boolean) => `export default {
     flaky: {
       // A failure names a file, so vx last prints its locations.
       exec: { command: 'test -f ../../flag || { echo src/a.txt:1:2; exit 1; }' },
-      inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+      inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
     },
     // Waits for a file: a run in progress, for vx last --live.
     hold: { exec: { command: 'while [ ! -f ../../go ]; do sleep 0.05; done' } },
     // Inputs that match nothing: a warning, which vx last keeps.
-    lost: { exec: { command: 'true' }, inputs: { files: ['nowhere/**'] }, cache: { outputs: { files: [] } } },
+    lost: { exec: { command: 'true' }, inputs: { files: ['nowhere/**'] }, outputs: { files: [] }, cache: true },
   },
 }`
 
@@ -112,11 +111,10 @@ const KITCHEN = `export default {
         tasks: ['*'],
         runtime: ['echo r'],
         workspaceRuntime: ['echo w'],
+        stability: { strategy: 'mutable', severity: 'error' },
       },
-      cache: {
-        outputs: { files: ['dist/**'], workspaceFiles: ['out.txt'], clean: false, bin: 'dist/bin', mount: { '/nix/store': 'dist/store' } },
-        inputStability: { strategy: 'mutable', severity: 'error' },
-      },
+      outputs: { files: ['dist/**'], workspaceFiles: ['out.txt'], clean: false, bin: 'dist/bin', mount: { '/nix/store': 'dist/store' } },
+      cache: true,
     },
     dev: { exec: { command: 'echo dev', persistent: { readyWhen: 'ready' } } },
     build: {
@@ -718,6 +716,7 @@ describe('each schema object is its source type', () => {
         exec: true,
         dependsOn: true,
         inputs: true,
+        outputs: true,
         cache: true,
       }),
     )
@@ -741,10 +740,6 @@ describe('each schema object is its source type', () => {
     expect(def('show', ...exec, 'properties', 'persistent')).toEqual(
       keys<PersistentConfig>({ readyWhen: true }),
     )
-    const cache = ['taskConfig', 'properties', 'cache'] as const
-    expect(def('show', ...cache)).toEqual(
-      keys<CacheConfig>({ outputs: true, inputStability: true }),
-    )
     expect(def('show', 'taskConfig', 'properties', 'inputs')).toEqual(
       keys<InputsConfig>({
         files: true,
@@ -753,10 +748,11 @@ describe('each schema object is its source type', () => {
         tasks: true,
         runtime: true,
         workspaceRuntime: true,
+        stability: true,
       }),
     )
-    expect(def('show', ...cache, 'properties', 'outputs')).toEqual(
-      keys<CacheOutputs>({
+    expect(def('show', 'taskConfig', 'properties', 'outputs')).toEqual(
+      keys<TaskOutputs>({
         files: true,
         workspaceFiles: true,
         clean: true,
@@ -764,7 +760,7 @@ describe('each schema object is its source type', () => {
         mount: true,
       }),
     )
-    expect(def('show', ...cache, 'properties', 'inputStability')).toEqual(
+    expect(def('show', 'taskConfig', 'properties', 'inputs', 'properties', 'stability')).toEqual(
       keys<InputStability>({ strategy: true, severity: true }),
     )
   })

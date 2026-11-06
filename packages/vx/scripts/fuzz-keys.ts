@@ -94,7 +94,7 @@ export default {
   tasks: {
     gen: {
       exec: { command: 'mkdir -p gen && cp seed gen/g' },
-      inputs: { files: ['seed'] }, cache: { outputs: { files: ['gen/**'] } },
+      inputs: { files: ['seed'] }, outputs: { files: ['gen/**'] }, cache: true,
     },
     stamp: {
       exec: {
@@ -106,9 +106,8 @@ export default {
       dependsOn: ['gen', 'stamp'],
       exec: { command: 'sh gen.sh && echo ' + SUFFIX + ' >> dist/out.txt && cat gen/g stamp.txt >> dist/out.txt' },
       inputs: { files: ['src/**', 'gen.sh'], workspaceFiles: ['shared/s1'] },
-      cache: {
-        outputs: { files: ['dist/**'] },
-      },
+      outputs: { files: ['dist/**'] },
+      cache: true,
     },
   },
 }
@@ -125,9 +124,8 @@ writeFileSync(
       dependsOn: ['a#build'],
       exec: { command: 'sh gen.sh' },
       inputs: { files: ['src/**', 'gen.sh'], workspaceFiles: ['shared/**'] },
-      cache: {
-        outputs: { files: ['dist/**'] },
-      },
+      outputs: { files: ['dist/**'] },
+      cache: true,
     },
   },
 }

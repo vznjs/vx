@@ -125,7 +125,7 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   denials there are reported too), `config`, `mounts?` (`SandboxMount
 { target; source }[]`: each `source` directory's entries laid at the
   absolute `target`, read-only, from a dependency's
-  `cache.outputs.mount`; Linux only). An executor that ships the
+  `outputs.mount`; Linux only). An executor that ships the
   sandbox elsewhere receives the narrowed `baseAllowRead`; enforcing it
   is its own.
 - `TaskInputs` — everything the cache key folds, WITH values: `files`

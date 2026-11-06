@@ -57,7 +57,7 @@ describe.skipIf(!available)('a cache declaration grants the sandbox nothing', ()
   // one from the other coupled them in both directions: a declaration added
   // for caching silently widened the sandbox.
   //
-  // Nothing pinned it. Deriving write grants from `cache.outputs.files` ONLY
+  // Nothing pinned it. Deriving write grants from `outputs.files` ONLY
   // when the task declares none of its own survives the whole repo's tests
   // (2026-09-20) — and that is the dangerous direction, because it is the
   // task that asked for no write access at all.
@@ -82,9 +82,8 @@ describe.skipIf(!available)('a cache declaration grants the sandbox nothing', ()
                 sandbox: { allow: { read: ['src/**', '.'] ${write === undefined ? '' : `, write: ['${write}']`} } },
               },
               inputs: { files: ['src/**'] },
-              cache: {
-                outputs: { files: ['dist/out.txt'] },
-              },
+              outputs: { files: ['dist/out.txt'] },
+              cache: true,
             },
           },
         }
@@ -256,9 +255,8 @@ describe.skipIf(!available)('a sandboxed task that produced nothing says why', (
                 sandbox: ${allow},
               },
               inputs: { files: ['src/**'] },
-              cache: {
-                outputs: { files: ['nope/**'] },
-              },
+              outputs: { files: ['nope/**'] },
+              cache: true,
             },
           },
         }
@@ -267,7 +265,7 @@ describe.skipIf(!available)('a sandboxed task that produced nothing says why', (
   }
 
   const warning = (): string | undefined =>
-    fixture.log.find((l) => l.includes('cache.outputs matched no files'))
+    fixture.log.find((l) => l.includes('outputs matched no files'))
 
   it(
     'names the missing write grant, because nothing else would',
@@ -321,12 +319,12 @@ describe.skipIf(!available || process.platform !== 'linux')(
     // block at all — had nothing, and that is how the comment came to
     // promise a baseline derived from `cache` while the code granted none
     // (item 443). `sandboxRequestFor` builds a request that carries no
-    // write of its own, so a declared `cache.outputs` buys the task no
+    // write of its own, so a declared `outputs` buys the task no
     // write at all.
     //
     // Linux-only: the lines are Linux's write observer's, and macOS
     // seatbelt refuses differently. What is NOT platform-specific is
-    // the claim itself — that a declared `cache.outputs` contributes
+    // the claim itself — that a declared `outputs` contributes
     // nothing to the request — and `sandbox-request.test.ts` pins that
     // directly, on every platform.
     let fixture: Fixture
@@ -350,9 +348,8 @@ describe.skipIf(!available || process.platform !== 'linux')(
                 sandbox: ${write === undefined ? '{}' : `{ allow: { write: ['${write}'] } }`},
               },
               inputs: { files: ['src/**'] },
-              cache: {
-                outputs: { files: ['dist/**'] },
-              },
+              outputs: { files: ['dist/**'] },
+              cache: true,
             },
           },
         }
@@ -360,7 +357,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
       })
 
     it(
-      'declaring cache.outputs grants no write: the task is denied, loudly',
+      'declaring outputs grants no write: the task is denied, loudly',
       async () => {
         // The neighbouring row proves this for a task that declares
         // `allow.read` and no write. This is the case the TYPE describes:
@@ -437,7 +434,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
                   command: 'cat 2>/dev/null > probe/root.txt < undeclared.txt; cat 2>/dev/null > probe/dist.txt < dist/sibling.txt; echo done',
                   sandbox: { allow: { read: ['src/**'], write: ['${write}', 'probe/'] } },
                 },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+                inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
               },
             },
           }
@@ -506,7 +503,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
               command: 'mkdir -p dist && cat src/index.ts - < banner.txt > dist/out.txt',
               sandbox: { allow: { read: ${JSON.stringify(files)}, write: ['dist/'] } },
             },
-            inputs: { files: ${JSON.stringify(files)} }, cache: { outputs: { files: ['dist/**'] } },
+            inputs: { files: ${JSON.stringify(files)} }, outputs: { files: ['dist/**'] }, cache: true,
           },
         },
       }
@@ -676,7 +673,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
               command: ${JSON.stringify(command)},
               sandbox: { allow: { read: ${JSON.stringify(files)}, write: ['dist/'] } },
             },
-            inputs: { files: ${JSON.stringify(files)} }, cache: { outputs: { files: ['dist/**'] } },
+            inputs: { files: ${JSON.stringify(files)} }, outputs: { files: ['dist/**'] }, cache: true,
           },
         },
       }
@@ -783,7 +780,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
               sandbox: { allow: { read: ['.'], write: ['dist/'] } },
             },
             dependsOn: ${JSON.stringify(opts.dependsOn)},
-            ${opts.cache ? "inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } }," : ''}
+            ${opts.cache ? "inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true," : ''}
           },
         },
       }
@@ -801,7 +798,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
             tasks: {
               source: {
                 exec: { command: 'true' },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+                inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
               },
             },
           }
@@ -933,7 +930,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
             source: {
               dependsOn: ${JSON.stringify(dependsOn)},
               exec: { command: 'true' },
-              inputs: { files: ['*.js'] }, cache: { outputs: { files: [] } },
+              inputs: { files: ['*.js'] }, outputs: { files: [] }, cache: true,
             },
           },
         }
@@ -961,7 +958,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
                   sandbox: { allow: { read: ['.'], write: ['dist/'] } },
                 },
                 dependsOn: ['^source'],
-                ${opts.cache ? "inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } }," : ''}
+                ${opts.cache ? "inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true," : ''}
               },
             },
           }
@@ -1061,7 +1058,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
                   command: 'sleep 0.4; mkdir -p probe; cat 2>/dev/null > probe/got.txt < secret.txt; echo done',
                   sandbox: { allow: { read: ['src/**'], write: ['probe/'] } },
                 },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+                inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
               },
             },
           }
@@ -2644,7 +2641,7 @@ describe('sandbox probe', () => {
               tasks: {
                 build: {
                   exec: { command: 'echo built', sandbox: {} },
-                  inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+                  inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
                 },
               },
             }
@@ -2752,7 +2749,7 @@ describe('sandbox probe', () => {
               tasks: {
                 build: {
                   exec: { command: 'echo built', sandbox: {} },
-                  inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+                  inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
                 },
               },
             }
@@ -2811,7 +2808,7 @@ describe('sandbox probe', () => {
               tasks: {
                 build: {
                   exec: { command: 'echo built', sandbox: {} },
-                  inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+                  inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
                 },
               },
             }

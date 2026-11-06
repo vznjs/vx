@@ -22,7 +22,8 @@ export default defineProject({
       exec: { command: 'bun test' },
       dependsOn: ['fixtures'],
       inputs: { files: ['src/**'] },
-      cache: { outputs: { files: [] } },
+      outputs: { files: [] },
+      cache: true,
     },
   },
 })

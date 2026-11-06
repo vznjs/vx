@@ -54,11 +54,10 @@
           "tsconfig.json"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "lint.oxfmt": {
       "description": "oxfmt --check (no rewrite; CI-safe)",
@@ -109,11 +108,10 @@
           "package.json"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "import": {
       "description": "generate src/content/docs from packages/vx/docs, the plugin READMEs and the relay protocol",
@@ -152,35 +150,34 @@
           "packages/vx-dte-server/PROTOCOL.md"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": [
-            "src/content/docs/all-features.md",
-            "src/content/docs/api.md",
-            "src/content/docs/architecture.md",
-            "src/content/docs/benchmarks.md",
-            "src/content/docs/caching.md",
-            "src/content/docs/cli.md",
-            "src/content/docs/compare/turbo-nx-support.md",
-            "src/content/docs/comparison.md",
-            "src/content/docs/execution.md",
-            "src/content/docs/flows.md",
-            "src/content/docs/optimizations.md",
-            "src/content/docs/overview.md",
-            "src/content/docs/parity.md",
-            "src/content/docs/patterns.md",
-            "src/content/docs/schema.md",
-            "src/content/docs/security.md",
-            "src/content/docs/switchboard.md",
-            "src/content/docs/upstream-ledger.md",
-            "src/content/docs/modules/**",
-            "src/content/docs/design/**",
-            "src/content/docs/plugins/**",
-            "src/content/docs/cli/**",
-            "src/content/docs/schema/**"
-          ]
-        }
-      }
+      "outputs": {
+        "files": [
+          "src/content/docs/all-features.md",
+          "src/content/docs/api.md",
+          "src/content/docs/architecture.md",
+          "src/content/docs/benchmarks.md",
+          "src/content/docs/caching.md",
+          "src/content/docs/cli.md",
+          "src/content/docs/compare/turbo-nx-support.md",
+          "src/content/docs/comparison.md",
+          "src/content/docs/execution.md",
+          "src/content/docs/flows.md",
+          "src/content/docs/optimizations.md",
+          "src/content/docs/overview.md",
+          "src/content/docs/parity.md",
+          "src/content/docs/patterns.md",
+          "src/content/docs/schema.md",
+          "src/content/docs/security.md",
+          "src/content/docs/switchboard.md",
+          "src/content/docs/upstream-ledger.md",
+          "src/content/docs/modules/**",
+          "src/content/docs/design/**",
+          "src/content/docs/plugins/**",
+          "src/content/docs/cli/**",
+          "src/content/docs/schema/**"
+        ]
+      },
+      "cache": true
     },
     "bench.data": {
       "description": "gather the head-to-head rows of @vzn/vx-bench#site.numbers → measured/bench.json",
@@ -217,13 +214,12 @@
           "package.json"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": [
-            "measured/bench.json"
-          ]
-        }
-      }
+      "outputs": {
+        "files": [
+          "measured/bench.json"
+        ]
+      },
+      "cache": true
     },
     "test": {
       "description": "bun test — the landing, sidebar, redirect, diagram, compare and site-link pins (needs the imported content and dist/)",
@@ -327,11 +323,10 @@
           "packages/vx/docs/schema.md"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
+      "outputs": {
+        "files": []
+      },
+      "cache": true
     },
     "install": {
       "dependsOn": [
@@ -367,13 +362,12 @@
           "package.json"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": [
-            "public/_img/**"
-          ]
-        }
-      }
+      "outputs": {
+        "files": [
+          "public/_img/**"
+        ]
+      },
+      "cache": true
     },
     "build": {
       "description": "astro build → dist/",
@@ -439,13 +433,12 @@
           "package.json"
         ]
       },
-      "cache": {
-        "outputs": {
-          "files": [
-            "dist/**"
-          ]
-        }
-      }
+      "outputs": {
+        "files": [
+          "dist/**"
+        ]
+      },
+      "cache": true
     },
     "release": {
       "dependsOn": [

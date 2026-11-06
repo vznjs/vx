@@ -532,7 +532,7 @@ export function formatRecordedRow(
     id: `${r.project}#${r.task}`,
     projectName: r.project,
     taskName: r.task,
-    config: r.cached === false ? {} : { cache: {} },
+    config: r.cached === false ? {} : { cache: true },
   } as unknown as TaskNode
   const o = {
     node,

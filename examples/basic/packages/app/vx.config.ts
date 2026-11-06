@@ -7,17 +7,15 @@ export default defineProject({
       dependsOn: ['^build'],
       exec: { command: 'mkdir -p dist && cat ../lib/dist/*.js src/main.js > dist/app.js' },
       inputs: { files: ['src/**'] },
-      cache: {
-        outputs: { files: ['dist/**'] },
-      },
+      outputs: { files: ['dist/**'] },
+      cache: true,
     },
     test: {
       dependsOn: ['build'],
       exec: { command: 'sh tests/main.sh' },
       inputs: { files: ['tests/**'] },
-      cache: {
-        outputs: { files: [] },
-      },
+      outputs: { files: [] },
+      cache: true,
     },
     // A task with no command is a group: `vx run ci` runs what it depends on.
     ci: { dependsOn: ['build', 'test'] },

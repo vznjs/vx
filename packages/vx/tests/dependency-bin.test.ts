@@ -1,4 +1,4 @@
-// `cache.outputs.bin`: a task names the directory of its outputs that holds
+// `outputs.bin`: a task names the directory of its outputs that holds
 // programs, and each task that depends on it gets that directory first on
 // PATH (Nix's `nix develop`, declared, never read from a layout). Two dependencies shipping one program name refuse the
 // task, naming both: PATH order would pick one silently.
@@ -21,7 +21,8 @@ const tool = (word: string, bin = `bin: 'out/bin',`): string => `
           `mkdir -p out/bin && printf '#!/bin/sh\\necho ${word}\\n' > out/bin/hello && chmod +x out/bin/hello`,
         )} },
         inputs: { files: ['src/**'] },
-        cache: { outputs: { files: ['out/**'], ${bin} } },
+        outputs: { files: ['out/**'], ${bin} },
+        cache: true,
       },
     },
   }

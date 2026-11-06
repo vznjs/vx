@@ -43,9 +43,8 @@ export default defineProject({
         runtime: ['bun --version'], // a command's output, folded in
         workspaceFiles: ['tsconfig.base.json'], // root files, by name
       },
-      cache: {
-        outputs: { files: ['dist/**'] },
-      },
+      outputs: { files: ['dist/**'] },
+      cache: true,
     },
   },
 })

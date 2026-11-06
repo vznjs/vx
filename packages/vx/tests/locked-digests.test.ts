@@ -33,7 +33,7 @@ beforeEach(async () => {
   await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'a', version: '1.0.0' }))
   await writeFile(
     path.join(dir, 'vx.config.mjs'),
-    "export default { tasks: { build: { exec: { command: 'echo b' }, inputs: { files: [] }, cache: { outputs: { files: [] } } } } }\n",
+    "export default { tasks: { build: { exec: { command: 'echo b' }, inputs: { files: [] }, outputs: { files: [] }, cache: true } } }\n",
   )
   // Lines `dir=digest`; `extra:<path>` names a file the digests read.
   const prelude = `import { lockfileClaim } from ${JSON.stringify(CORE_INDEX)}

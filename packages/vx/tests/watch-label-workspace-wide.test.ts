@@ -32,7 +32,7 @@ describe('vx watch with a workspace-wide watcher (e2e)', () => {
       `export default { tasks: {
         build: {
           exec: { command: 'echo run >> ${f.log}' },
-          inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] }, cache: { outputs: { files: [] } },
+          inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] }, outputs: { files: [] }, cache: true,
         },
       } }\n`,
     )
@@ -57,7 +57,7 @@ describe('vx watch with a workspace-wide watcher (e2e)', () => {
     const config = `export default { tasks: {
         build: {
           exec: { command: 'echo run >> ${f.log}' },
-          inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] }, cache: { outputs: { files: [] } },
+          inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] }, outputs: { files: [] }, cache: true,
         },
       } }\n`
     await writeFile(path.join(f.dir, 'vx.config.mjs'), config)

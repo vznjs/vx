@@ -29,7 +29,8 @@ const entry = (tasks: Record<string, TaskConfig>) => ({
 const build: TaskConfig = {
   exec: { command: 'tsc -b', env: { passThrough: ['CI'] } },
   inputs: { files: ['src/**'] },
-  cache: { outputs: { files: ['dist/**'] } },
+  outputs: { files: ['dist/**'] },
+  cache: true,
 }
 const shard = (i: number): TaskConfig => ({
   exec: {

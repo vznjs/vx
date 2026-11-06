@@ -65,8 +65,8 @@ export function checkBracketLiterals(root: string, projects: Iterable<ProjectEnt
       const lists: [string, readonly string[] | undefined, string][] = [
         ['inputs.files', t.inputs?.files, p.dir],
         ['inputs.workspaceFiles', t.inputs?.workspaceFiles, root],
-        ['cache.outputs.files', t.cache?.outputs?.files, p.dir],
-        ['cache.outputs.workspaceFiles', t.cache?.outputs?.workspaceFiles, root],
+        ['outputs.files', t.outputs?.files, p.dir],
+        ['outputs.workspaceFiles', t.outputs?.workspaceFiles, root],
       ]
       for (const [field, globs, base] of lists) {
         for (const glob of globs ?? []) {

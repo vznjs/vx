@@ -279,7 +279,7 @@ describe('vx migrate (turbo)', () => {
         'NODE_ENV',
       ])
       // output negation dropped (TODO).
-      expect(build.cache?.outputs.files).toEqual(['dist/**', '!dist/**/*.map'])
+      expect(build.outputs?.files).toEqual(['dist/**', '!dist/**/*.map'])
 
       // No inputs declared → turbo default = all package files.
       // $TURBO_ROOT$/<path> output → outputs.workspaceFiles.
@@ -288,8 +288,8 @@ describe('vx migrate (turbo)', () => {
       expect(codegen.inputs?.files).toEqual(['**/*', '!dist/**', '!coverage/**'])
       expect(codegen.inputs?.workspaceFiles).toEqual(['tsconfig.base.json'])
       expect(notTurbos(codegen.inputs!.env!)).toEqual(['GLOBAL_MODE'])
-      expect(codegen.cache?.outputs.files).toEqual(['src/gen/**'])
-      expect(codegen.cache?.outputs.workspaceFiles).toEqual(['generated/api.ts'])
+      expect(codegen.outputs?.files).toEqual(['src/gen/**'])
+      expect(codegen.outputs?.workspaceFiles).toEqual(['generated/api.ts'])
 
       // cache:false → no cache block at all.
       const lint = tasks.lint!
@@ -304,7 +304,7 @@ describe('vx migrate (turbo)', () => {
 
       // app#test root key merges over the plain `test` entry for app only.
       const test = tasks.test!
-      expect(test.cache?.outputs.files).toEqual(['coverage/**'])
+      expect(test.outputs?.files).toEqual(['coverage/**'])
       // CI, the task's own passThroughEnv, is one of Turbo's builtins too.
       expect(notTurbos(test.exec!.env!.passThrough!)).toEqual(['GLOBAL_MODE', 'AWS_PROFILE'])
       expect(test.exec!.env!.passThrough).toContain('CI')
@@ -329,7 +329,7 @@ describe('vx migrate (turbo)', () => {
       const config = await loadProjectConfig(path.join(root, 'packages', 'lib', 'vx.config.ts'))
       const build = config.tasks!.build!
       expect(build.exec?.command).toBe('tsc')
-      expect(build.cache?.outputs.files).toEqual(['lib/**'])
+      expect(build.outputs?.files).toEqual(['lib/**'])
       // Inherited inputs from root; same-project dep `codegen` dropped
       // silently because lib has no codegen script (turbo semantics).
       expect(build.inputs?.files).toEqual(['**/*', '!**/*.md'])
@@ -831,13 +831,13 @@ describe('vx migrate (nx)', () => {
       // file or the tree under it, Next 27), {options.*} resolution +
       // project-prefix strip; {workspaceRoot}/<path> →
       // outputs.workspaceFiles.
-      expect(build.cache?.outputs.files).toEqual([
+      expect(build.outputs?.files).toEqual([
         'dist',
         'build/main.js',
         'coverage/lcov.info',
         '.output',
       ])
-      expect(build.cache?.outputs.workspaceFiles).toEqual(['reports/build.json'])
+      expect(build.outputs?.workspaceFiles).toEqual(['reports/build.json'])
       // dependsOn object forms.
       // ^production is pkg-b's `inputs:production` twin (item 910).
       expect(build.dependsOn).toEqual([
@@ -906,7 +906,7 @@ describe('vx migrate (nx)', () => {
       // A declared cwd under the project: a cd relative to the project dir, no todo.
       expect(build.exec?.command).toBe('cd sub && make')
       expect(build.inputs?.files).toEqual(['src/**/*'])
-      expect(build.cache?.outputs.files).toEqual(['out'])
+      expect(build.outputs?.files).toEqual(['out'])
 
       // Two targets on one output path: the one with the ^ edge keeps
       // its cache, the sibling runs uncached with a todo naming it —
@@ -1411,20 +1411,22 @@ describe('vx migrate (nx) — executors', () => {
       const tasks = (await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.config.ts')))
         .tasks!
       expect(Object.keys(tasks).sort()).toEqual(['build', 'build:ci', 'dev', 'odd', 'pack', 'test'])
-      expect(tasks['pack']!.cache?.outputs).toEqual({
+      expect(tasks['pack']!.outputs).toEqual({
         files: [],
         workspaceFiles: ['dist/packages/app', 'dist/reports/app.json'],
       })
       expect(r.out).not.toContain('falls outside the project dir')
       // Cached by the legacy list, inputs from nx.json's `default` named input.
-      expect([tasks['odd']!.inputs, tasks['odd']!.cache]).toEqual([
+      expect([tasks['odd']!.inputs, tasks['odd']!.outputs, tasks['odd']!.cache]).toEqual([
         { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] },
-        { outputs: { files: [] } },
+        { files: [] },
+        true,
       ])
       expect(tasks['test']!.cache).toBeUndefined()
-      expect([tasks['dev']!.inputs, tasks['dev']!.cache]).toEqual([
+      expect([tasks['dev']!.inputs, tasks['dev']!.outputs, tasks['dev']!.cache]).toEqual([
         { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] },
-        { outputs: { files: ['dist'] } },
+        { files: ['dist'] },
+        true,
       ])
       expect(tasks['dev']!.exec?.persistent).toBeUndefined()
       // Every executor is its nx-exec line, a configuration named on it.
@@ -1753,10 +1755,10 @@ describe('an output beside the config vx-migrate writes', () => {
       Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
       const outputs = async (format: 'ts' | 'mjs') =>
         (
-          (await migrateTurbo(root, [meta], format)).projects[0]!.tasks[0]!.task!['cache'] as {
-            outputs: { files: string[] }
+          (await migrateTurbo(root, [meta], format)).projects[0]!.tasks[0]!.task!['outputs'] as {
+            files: string[]
           }
-        ).outputs.files
+        ).files
       expect([await outputs('ts'), await outputs('mjs')]).toEqual([
         ['*.mjs'],
         ['*.mjs', '!vx.config.mjs'],
@@ -1804,8 +1806,8 @@ describe('migrateNx: an output beside the config it writes', () => {
         (
           (await migrateNx(root, [meta], format, snapshot)).projects[0]!.tasks.find(
             (t) => t.name === 'gen',
-          )!.task!['cache'] as { outputs: { files: string[] } }
-        ).outputs.files
+          )!.task!['outputs'] as { files: string[] }
+        ).files
       // Beside the config it covers, the config is taken back.
       expect([await outputs('ts'), await outputs('mjs')]).toEqual([
         ['*.mjs'],

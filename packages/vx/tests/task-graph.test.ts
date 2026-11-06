@@ -650,9 +650,8 @@ describe('buildTaskGraph', () => {
           build: {
             ...cmd('build'),
             inputs: { files: [], tasks: ['*', '^*', '!build', '!^build', '!lib#build'] },
-            cache: {
-              outputs: { files: [] },
-            },
+            outputs: { files: [] },
+            cache: true,
           },
         }),
       ),
@@ -1037,12 +1036,18 @@ describe('checkGraph re-derives the addition marks (item 981)', () => {
     const nodes = buildTaskGraph({
       projects: projects(
         project('a', {
-          gen: { ...cmd('gen'), inputs: { files: [] }, cache: { outputs: { files: ['dist/**'] } } },
+          gen: {
+            ...cmd('gen'),
+            inputs: { files: [] },
+            outputs: { files: ['dist/**'] },
+            cache: true,
+          },
           extra: {
             ...cmd('extra'),
             dependsOn: ['gen'],
             inputs: { files: [] },
-            cache: { outputs: { files: ['dist/**'] } },
+            outputs: { files: ['dist/**'] },
+            cache: true,
           },
         }),
       ),
@@ -1057,7 +1062,8 @@ describe('checkGraph re-derives the addition marks (item 981)', () => {
     extra.config = {
       ...extra.config,
       inputs: { files: [] },
-      cache: { outputs: { files: ['out/**'] } },
+      outputs: { files: ['out/**'] },
+      cache: true,
     }
     checkGraph(nodes, undefined, { exclusiveOutputs: false })
     expect([extra.addsToOutputsOf, nodes.get('a#gen')!.outputsAddedToBy]).toEqual([
@@ -1363,7 +1369,8 @@ describe('buildTaskGraph — cycle topologies (Nx parity)', () => {
     build: {
       dependsOn: ['^build'],
       inputs: { files: ['**'] },
-      cache: { outputs: { files: [] } },
+      outputs: { files: [] },
+      cache: true,
     } as TaskConfig,
   }
   const depsOf = (nodes: Map<string, TaskNode>) =>

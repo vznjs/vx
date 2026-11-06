@@ -10,7 +10,7 @@ import { run } from './helpers/orchestrator.js'
 
 const CFG = `export default { tasks: { build: {
   exec: { command: 'echo built > out.txt' },
-  inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } } } } }`
+  inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true } } }`
 
 /** `bytes` as a body: its first `share` now (half), the rest after `gapMs`, or never. */
 const trickle = (bytes: Uint8Array, gapMs: number | null, share = 0.5): Response => {

@@ -52,7 +52,7 @@ describe('an output set past the artifact ceiling', () => {
           tasks: {
             build: {
               exec: { command: 'mkdir -p dist && head -c ${bytes} /dev/urandom > dist/out.bin' },
-              inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+              inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
             },
           },
         }
@@ -77,7 +77,7 @@ describe('an output set past the artifact ceiling', () => {
     // 64 KiB of output plus the tar's headers and stdout / sidecar / sum entries.
     expect(lines.filter((l) => l.includes('cache save failed'))).toEqual([
       '[vx] cache save failed: big#build is not cached: its outputs pack to 68 KB, past the ' +
-        '64 KB artifact ceiling a restore enforces — narrow cache.outputs.files',
+        '64 KB artifact ceiling a restore enforces — narrow outputs.files',
     ])
     // No artifact and no temp left behind it.
     expect(await artifactFiles(root)).toEqual([])

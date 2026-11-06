@@ -37,7 +37,7 @@ it(
           tasks: {
             build: {
               exec: { command: ${JSON.stringify(write.replaceAll('seq -w 0', 'seq -f %03g 0'))} },
-              inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**', '!dist/*/keep'] } },
+              inputs: { files: ['src/**'] }, outputs: { files: ['dist/**', '!dist/*/keep'] }, cache: true,
             },
           },
         }

@@ -2127,7 +2127,7 @@ it('an order lists each dependency after its own dependencies', async () => {
         id,
         deps,
         projectDir: '/ws/a',
-        config: { cache: { outputs: { files: ['dist/**'] } } },
+        config: { outputs: { files: ['dist/**'] }, cache: true },
       } as unknown as TaskNode,
     ] as const
   const h = await harness(
@@ -2156,7 +2156,7 @@ it('an order names its key and each dependency’s; the result comes back by the
         id,
         deps,
         projectDir: `/ws/${id}`,
-        config: { cache: { outputs: { files: ['dist/**'] } } },
+        config: { outputs: { files: ['dist/**'] }, cache: true },
       } as unknown as TaskNode,
     ] as const
   const h = await harness(
@@ -2513,7 +2513,7 @@ it('an order names every dependency, held by its worker or not', async () => {
         id,
         deps,
         projectDir: `/ws/${id}`,
-        config: { cache: { outputs: { files: ['dist/**'] } } },
+        config: { outputs: { files: ['dist/**'] }, cache: true },
       } as unknown as TaskNode,
     ] as const
   const h = await harness(new Map([cached('t1'), cached('x'), cached('w'), cached('y', ['x'])]))
@@ -2688,7 +2688,7 @@ it('a cached task’s dependant goes wherever it fits: a cache carries its outpu
   const cached = (id: string, deps: string[] = []) =>
     [
       id,
-      { id, deps, projectDir: '/ws', config: { cache: { outputs: { files: ['out/**'] } } } },
+      { id, deps, projectDir: '/ws', config: { outputs: { files: ['out/**'] }, cache: true } },
     ] as unknown as readonly [string, TaskNode]
   const h = await harness(new Map([cached('g'), cached('x'), cached('u', ['g'])]))
   try {
@@ -4794,7 +4794,7 @@ it('takes a key that reads a dependency’s outputs, which its worker restores',
         id,
         deps,
         projectDir: path.join(root, 'a'),
-        config: outputs === undefined ? {} : { cache: { outputs: { files: outputs } } },
+        config: outputs === undefined ? {} : { outputs: { files: outputs }, cache: true },
       } as unknown as TaskNode,
     ] as const
   const nodes = new Map([node('a#gen', [], ['dist/**']), node('a#use', ['a#gen'])])
@@ -4969,7 +4969,7 @@ it('sends an order too long for one frame with its deps ahead, all of them arriv
         id,
         deps: id === 'final' ? ids : [],
         projectDir: '/ws',
-        config: { cache: { outputs: out } },
+        config: { outputs: out, cache: true },
       } as unknown as TaskNode,
     ]),
   )

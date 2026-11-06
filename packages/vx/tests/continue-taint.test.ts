@@ -41,17 +41,17 @@ beforeEach(async () => {
   tasks: {
     a: {
       exec: { command: 'mkdir -p out && echo partial > out/a.txt && test ! -f flag.txt' },
-      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out/**'] } },
+      inputs: { files: ['src/**'] }, outputs: { files: ['out/**'] }, cache: true,
     },
     b: {
       dependsOn: ['a'],
       exec: { command: 'mkdir -p dist && cat out/a.txt > dist/b.txt' },
-      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+      inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
     },
     c: {
       dependsOn: ['b'],
       exec: { command: 'echo c > c.txt' },
-      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['c.txt'] } },
+      inputs: { files: ['src/**'] }, outputs: { files: ['c.txt'] }, cache: true,
     },
   },
 }
@@ -146,12 +146,12 @@ describe('--continue=always carries the taint through a restore-tier hit', () =>
     pack: {
       dependsOn: ['g#gen'],
       exec: { command: 'echo packed > pack.txt' },
-      inputs: { files: ['src/p.txt'] }, cache: { outputs: { files: ['pack.txt'] } },
+      inputs: { files: ['src/p.txt'] }, outputs: { files: ['pack.txt'] }, cache: true,
     },
     ship: {
       dependsOn: ['pack'],
       exec: { command: 'cat ${gen} > ship.txt' },
-      inputs: { files: ['src/s.txt'] }, cache: { outputs: { files: ['ship.txt'] } },
+      inputs: { files: ['src/s.txt'] }, outputs: { files: ['ship.txt'] }, cache: true,
     },
   },
 }
@@ -210,17 +210,17 @@ describe('--continue=always taints through an order-only edge', () => {
   tasks: {
     a: {
       exec: { command: 'mkdir -p out && echo partial > out/a.txt && test ! -f flag.txt' },
-      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out/**'] } },
+      inputs: { files: ['src/**'] }, outputs: { files: ['out/**'] }, cache: true,
     },
     gen: {
       dependsOn: ['a'],
       exec: { command: 'cp out/a.txt gen.txt' },
-      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['gen.txt'] } },
+      inputs: { files: ['src/**'] }, outputs: { files: ['gen.txt'] }, cache: true,
     },
     t: {
       dependsOn: ['gen'],
       exec: { command: 'cat out/a.txt > t.txt' },
-      inputs: { files: ['src/**'], tasks: [] }, cache: { outputs: { files: ['t.txt'] } },
+      inputs: { files: ['src/**'], tasks: [] }, outputs: { files: ['t.txt'] }, cache: true,
     },
   },
 }

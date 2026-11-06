@@ -90,13 +90,12 @@ export const vx: Adapter = {
                 : {}),
               ...(files && (spec.outputs || spec.rootOutputs) && spec.cache !== false
                 ? {
-                    cache: {
-                      outputs: {
-                        files: spec.outputs ?? [],
-                        ...(spec.rootOutputs ? { workspaceFiles: spec.rootOutputs } : {}),
-                        ...(spec.bin ? { bin: spec.bin } : {}),
-                      },
+                    outputs: {
+                      files: spec.outputs ?? [],
+                      ...(spec.rootOutputs ? { workspaceFiles: spec.rootOutputs } : {}),
+                      ...(spec.bin ? { bin: spec.bin } : {}),
                     },
+                    cache: true,
                   }
                 : {}),
             },

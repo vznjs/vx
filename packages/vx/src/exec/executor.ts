@@ -49,7 +49,7 @@ export interface ExecuteSandbox {
    */
   readonly dependencyReads?: readonly string[]
   /**
-   * The dependencies' `cache.outputs.mount`s (absolute `source` dirs): each
+   * The dependencies' `outputs.mount`s (absolute `source` dirs): each
    * `target` laid out read-only from them, entry by entry (Linux).
    */
   readonly mounts?: readonly SandboxMount[]
@@ -124,7 +124,7 @@ export interface ExecuteRequest {
   /** `${project}#${task}` — for executors that route or log by task. */
   readonly taskId: string
   readonly workspaceRoot: string
-  /** Present for cacheable tasks (the miss path); absent when the task declares no `cache`. */
+  /** Present for cacheable tasks (the miss path); absent for a task without `cache: true`. */
   readonly inputs?: TaskInputs
   /**
    * The task's cache key (present when the task is cacheable). An executor
@@ -173,7 +173,7 @@ export interface ExecuteRequest {
   readonly outputs: {
     readonly files: readonly string[]
     readonly workspaceFiles: readonly string[]
-    /** `cache.outputs.mount` paths: an absolute link under one is saved as written. */
+    /** `outputs.mount` paths: an absolute link under one is saved as written. */
     readonly mounts?: readonly string[]
   }
   readonly command: string
@@ -192,7 +192,7 @@ export interface ExecuteRequest {
    */
   readonly envDefine: Readonly<Record<string, string>>
   /**
-   * The dependencies' `cache.outputs.bin` directories (absolute), already
+   * The dependencies' `outputs.bin` directories (absolute), already
    * first on `env`'s PATH: an executor that builds PATH where it runs puts
    * them first there too.
    */

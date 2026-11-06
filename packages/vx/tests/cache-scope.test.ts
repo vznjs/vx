@@ -24,7 +24,7 @@ const BUILD_CONFIG = `
     tasks: {
       build: {
         exec: { command: 'cat src/in.txt > out.txt' },
-        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
+        inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
       },
     },
   }
@@ -195,7 +195,7 @@ describe('cache.scope', () => {
         await addProject(fixture.root, 'app', {
           files: { 'src/in.txt': 'v1' },
           config: `export default { tasks: { check: {
-            exec: { command: 'true' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+            exec: { command: 'true' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
           } } }`,
         })
         const once = async (): Promise<string> => {

@@ -130,7 +130,7 @@ describe('artifact round-trip', () => {
                    'chmod 755 dist/cli',
                  ].join(' && '),
                },
-               inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+               inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
              },
            },
          }`,
@@ -190,7 +190,7 @@ describe('artifact round-trip', () => {
            tasks: {
              snap: {
                exec: { command: 'mkdir -p out && cp src/in.txt out/${'y'.repeat(140)}.snap' },
-               inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out/**'] } },
+               inputs: { files: ['src/**'] }, outputs: { files: ['out/**'] }, cache: true,
              },
            },
          }`,
@@ -218,7 +218,7 @@ describe('artifact round-trip', () => {
          tasks: {
            build: {
              exec: { command: ${JSON.stringify(command)} },
-             inputs: { files: ['src/**'] }, cache: { outputs: { files: ${JSON.stringify(outputs)} } },
+             inputs: { files: ['src/**'] }, outputs: { files: ${JSON.stringify(outputs)} }, cache: true,
            },
          },
        }`,
@@ -333,7 +333,7 @@ describe('artifact round-trip — odd names', () => {
                    "cp src/in.txt 'dist/back\\\\slash.js'",
                  ].join(' && '),
                },
-               inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+               inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
              },
            },
          }`,

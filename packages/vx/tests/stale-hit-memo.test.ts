@@ -96,7 +96,7 @@ describe('stale cache hits', () => {
         path.join(pkg, 'vx.config.mjs'),
         `export default { name: 'lib', tasks: { build: {
            exec: { command: 'mkdir -p dist && date +%N > dist/o' },
-           inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+           inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
          } } }\n`,
       )
       git(root, 'init', '-q')
@@ -133,7 +133,7 @@ describe('stale cache hits', () => {
            tasks: {
              build: {
                exec: { command: 'mkdir -p dist && cp src/in.txt dist/out.txt' },
-               inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+               inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
              },
            },
          }`,
@@ -179,15 +179,14 @@ describe('stale cache hits', () => {
            tasks: {
              codegen: {
                exec: { command: 'sh emit.sh' },
-               inputs: { files: ['emit.sh'] }, cache: { outputs: { files: ['gen/**'] } },
+               inputs: { files: ['emit.sh'] }, outputs: { files: ['gen/**'] }, cache: true,
              },
              consume: {
                dependsOn: ['codegen'],
                exec: { command: 'mkdir -p out && cat gen/*.ts > out/all.txt 2>/dev/null || : > out/all.txt' },
                inputs: { files: ['gen/*.ts'], tasks: [] },
-               cache: {
-                 outputs: { files: ['out/**'] },
-               },
+               outputs: { files: ['out/**'] },
+               cache: true,
              },
            },
          }`,
@@ -231,7 +230,7 @@ describe('stale cache hits', () => {
            tasks: {
              codegen: {
                exec: { command: 'mkdir -p gen && printf a > gen/a.js' },
-               inputs: { files: [] }, cache: { outputs: { files: ['gen/**'] } },
+               inputs: { files: [] }, outputs: { files: ['gen/**'] }, cache: true,
              },
            },
          }`,
@@ -280,15 +279,14 @@ describe('stale cache hits', () => {
            tasks: {
              codegen: {
                exec: { command: 'sh emit.sh' },
-               inputs: { files: ['emit.sh'] }, cache: { outputs: { files: ['gen/**'] } },
+               inputs: { files: ['emit.sh'] }, outputs: { files: ['gen/**'] }, cache: true,
              },
              consume: {
                dependsOn: ['codegen'],
                exec: { command: 'mkdir -p out && cat gen/*.ts > out/all.txt 2>/dev/null || : > out/all.txt' },
                inputs: { files: ['gen/*.ts'], tasks: [] },
-               cache: {
-                 outputs: { files: ['out/**'] },
-               },
+               outputs: { files: ['out/**'] },
+               cache: true,
              },
            },
          }`,
@@ -341,23 +339,21 @@ describe('stale cache hits', () => {
            tasks: {
              early: {
                exec: { command: 'true' },
-               inputs: { files: [], workspaceFiles: ['package.json'] }, cache: { outputs: { files: [] } },
+               inputs: { files: [], workspaceFiles: ['package.json'] }, outputs: { files: [] }, cache: true,
              },
              codegen: {
                dependsOn: ['early'],
                exec: { command: 'sh emit.sh' },
                inputs: { files: ['emit.sh'], tasks: [] },
-               cache: {
-                 outputs: { files: [], workspaceFiles: ['gen/**'] },
-               },
+               outputs: { files: [], workspaceFiles: ['gen/**'] },
+               cache: true,
              },
              consume: {
                dependsOn: ['codegen'],
                exec: { command: 'mkdir -p out && cat gen/*.ts > out/all.txt 2>/dev/null || : > out/all.txt' },
                inputs: { files: [], workspaceFiles: ['gen/*.ts'], tasks: [] },
-               cache: {
-                 outputs: { files: ['out/**'] },
-               },
+               outputs: { files: ['out/**'] },
+               cache: true,
              },
            },
          }`,
@@ -397,20 +393,19 @@ describe('stale cache hits', () => {
            tasks: {
              early: {
                exec: { command: 'true' },
-               inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } },
+               inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true,
              },
              codegen: {
                dependsOn: ['early'],
                exec: { command: 'sh emit.sh' },
-               inputs: { files: ['emit.sh'], tasks: [] }, cache: { outputs: { files: ['gen/**'] } },
+               inputs: { files: ['emit.sh'], tasks: [] }, outputs: { files: ['gen/**'] }, cache: true,
              },
              consume: {
                dependsOn: ['codegen'],
                exec: { command: 'mkdir -p out && cat gen/*.ts > out/all.txt 2>/dev/null || : > out/all.txt' },
                inputs: { files: ['gen/*.ts'], tasks: [] },
-               cache: {
-                 outputs: { files: ['out/**'] },
-               },
+               outputs: { files: ['out/**'] },
+               cache: true,
              },
            },
          }`,
@@ -451,23 +446,21 @@ describe('stale cache hits', () => {
            tasks: {
              early: {
                exec: { command: 'true' },
-               inputs: { files: [], workspaceFiles: ['package.json'] }, cache: { outputs: { files: [] } },
+               inputs: { files: [], workspaceFiles: ['package.json'] }, outputs: { files: [] }, cache: true,
              },
              codegen: {
                dependsOn: ['early'],
                exec: { command: 'sh emit.sh' },
                inputs: { files: ['emit.sh'], tasks: [] },
-               cache: {
-                 outputs: { files: [], workspaceFiles: ['gen/**'] },
-               },
+               outputs: { files: [], workspaceFiles: ['gen/**'] },
+               cache: true,
              },
              consume: {
                dependsOn: ['codegen'],
                exec: { command: 'mkdir -p out && cat gen/*.ts > out/all.txt 2>/dev/null || : > out/all.txt' },
                inputs: { files: [], workspaceFiles: ['gen/*.ts'], tasks: [] },
-               cache: {
-                 outputs: { files: ['out/**'] },
-               },
+               outputs: { files: ['out/**'] },
+               cache: true,
              },
            },
          }`,
@@ -511,23 +504,21 @@ describe('stale cache hits', () => {
            tasks: {
              early: {
                exec: { command: 'true' },
-               inputs: { files: [], workspaceFiles: ['package.json'] }, cache: { outputs: { files: [] } },
+               inputs: { files: [], workspaceFiles: ['package.json'] }, outputs: { files: [] }, cache: true,
              },
              codegen: {
                dependsOn: ['early'],
                exec: { command: 'mkdir -p gen && printf N > gen/new.ts' },
                inputs: { files: ['package.json'], tasks: [] },
-               cache: {
-                 outputs: { files: [], workspaceFiles: ['gen/**'] },
-               },
+               outputs: { files: [], workspaceFiles: ['gen/**'] },
+               cache: true,
              },
              consume: {
                dependsOn: ['codegen'],
                exec: { command: 'mkdir -p out && cat gen/*.ts > out/all.txt && echo ran >> runs.log' },
                inputs: { files: [], workspaceFiles: ['gen/*.ts'], tasks: [] },
-               cache: {
-                 outputs: { files: ['out/**'] },
-               },
+               outputs: { files: ['out/**'] },
+               cache: true,
              },
            },
          }`,

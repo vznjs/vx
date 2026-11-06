@@ -1,4 +1,4 @@
-// A task failed by `inputStability.severity: 'error'` ended `failed
+// A task failed by `inputs.stability.severity: 'error'` ended `failed
 // (src/s.txt changed during the run, exit 1)` in the run's own output, and
 // `vx last` replayed it as `failed (exit 1)`: the reason, kept with the
 // failure (`inputMoved` in its JSON), was missing from the row.
@@ -16,8 +16,9 @@ const CONFIG = `
     tasks: {
       self: {
         exec: { command: 'echo more >> src/s.txt' },
-        inputs: { files: ['src/**'] },
-        cache: { outputs: { files: [] }, inputStability: { severity: 'error' } },
+        inputs: { files: ['src/**'], stability: { severity: 'error' } },
+        outputs: { files: [] },
+        cache: true,
       },
       boom: { exec: { command: 'exit 3' } },
     },

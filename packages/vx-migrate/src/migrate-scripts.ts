@@ -118,7 +118,7 @@ export function cacheTodo(command: string): string {
   const words = ` ${command.replace(/[;&|()]/g, ' ')} `
   const hit = BUILD_OUTPUTS.find(([re]) => re.test(words))
   const outputs = (hit?.[1] ?? namedOutputs(command) ?? ['dist/**']).map((o) => `'${o}'`).join(', ')
-  return `cache: add \`inputs: { files: ['src/**'] }, cache: { outputs: { files: [${outputs}] } }\` with this package's real inputs and outputs — without it the task always runs, and so does every task that depends on it; a block with EMPTY outputs would be a cached no-op, not an uncached task`
+  return `cache: add \`inputs: { files: ['src/**'] }, outputs: { files: [${outputs}] }, cache: true\` with this package's real inputs and outputs — without it the task always runs, and so does every task that depends on it; a block with EMPTY outputs would be a cached no-op, not an uncached task`
 }
 
 // `lint` is not here: a linter reads sources, and an edge to `build`
@@ -986,7 +986,7 @@ export function migrateScripts(
       // Where to add one is the TODO's to say, when there is one: an Nx repo
       // whose only script is `codegen` read "`build` carries a TODO" over
       // "0 TODOs" (the first-five-minutes walk, 2026-09-28).
-      'each script became a task with its command verbatim; caching needs declared inputs and outputs, so no task got a cache block',
+      'each script became a task with its command verbatim; caching needs declared inputs and outputs, so no task got `cache: true`',
     ],
     projects,
     extraFiles: [],

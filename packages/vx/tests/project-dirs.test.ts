@@ -121,7 +121,7 @@ describe('a project is a directory with a vx.config', () => {
           path.join(dir, 'vx.config.mjs'),
           `export default { tasks: { build: {
             exec: { command: 'echo ran >> runs.log && mkdir -p dist && cp "src/in put.txt" dist/out.txt && pwd > dist/cwd.txt' },
-            inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+            inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
           } } }\n`,
         )
         await write(path.join(dir, 'src/in put.txt'), 'v1\n')
@@ -285,7 +285,7 @@ describe('--affected without a plugin: containment and task edges only', () => {
       await write(path.join(root, 'vx.config.mjs'), config())
       await write(
         path.join(root, 'lib/vx.config.mjs'),
-        `export default { tasks: { hello: { exec: { command: 'echo lib' }, inputs: { files: ['**'] }, cache: { outputs: { files: [] } } } } }\n`,
+        `export default { tasks: { hello: { exec: { command: 'echo lib' }, inputs: { files: ['**'] }, outputs: { files: [] }, cache: true } } }\n`,
       )
       await write(path.join(root, 'lib/src/a.txt'), 'a\n')
       await write(

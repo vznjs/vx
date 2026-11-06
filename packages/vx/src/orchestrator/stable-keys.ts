@@ -89,14 +89,14 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
   // reached through a no-output intermediate still poisons the key, so each
   // dep's accumulated producers fold forward.
   //   - outputProjects: the project names of every upstream task declaring
-  //     cache.outputs.files (project-relative outputs land in the producer's
-  //     own dir), and of every upstream with no cache block that may write
+  //     outputs.files (project-relative outputs land in the producer's
+  //     own dir), and of every upstream with no `cache: true` that may write
   //     in its own project (`undeclaredWriteReach`, item 743). A bitset over
   //     project indexes: a union per dep was a string Set copied tasks ×
   //     deps × projects times, 101 ms of a 513 ms warm run at 476 packages
   //     (item 744).
-  //   - wsOutputUpstream: any upstream declares cache.outputs.workspaceFiles
-  //     (root-anchored, boundary-ignoring outputs), or has no cache block
+  //   - wsOutputUpstream: any upstream declares outputs.workspaceFiles
+  //     (root-anchored, boundary-ignoring outputs), or has no `cache: true`
   //     and a sandbox write grant elsewhere in the workspace, or may rewrite
   //     a root file a plugin claims (a root `pnpm install`): every key folds
   //     what the claimant took from it, once per run.
@@ -125,7 +125,7 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
   // of what any one reader's upstream producers declare.
   const outputsOf = new Map<string, string[]>()
   for (const n of args.nodes.values()) {
-    const files = n.config.cache?.outputs.files ?? []
+    const files = n.config.outputs?.files ?? []
     if (files.length === 0) continue
     const list = outputsOf.get(n.projectName)
     if (list === undefined) outputsOf.set(n.projectName, [...files])
@@ -185,7 +185,7 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
         const wideOfDep = wideById.get(dep)
         if (wideOfDep !== undefined) wideUnion.addAll(wideOfDep)
         if (wsOutputUpstreamById.get(dep) === true) wsOutputUpstream = true
-        const depOut = depNode.config.cache?.outputs
+        const depOut = depNode.config.outputs
         if ((depOut?.files?.length ?? 0) > 0) outputs.add(depNode.projectName)
         if ((depOut?.workspaceFiles?.length ?? 0) > 0) wsOutputUpstream = true
         // An uncached producer declares no outputs, yet a same-project reader
@@ -198,7 +198,7 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
           wideUnion.add(depNode.projectName)
         } else if (reach === 'workspace') wsOutputUpstream = true
         if (
-          depNode.config.cache === undefined &&
+          depNode.config.cache !== true &&
           mayWriteFingerprint(depNode, args.workspaceRoot, args.claimedFiles)
         )
           wsOutputUpstream = true
@@ -219,7 +219,7 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
     for (const dep of anyUnfolded ? node.deps : []) {
       const depNode = args.nodes.get(dep)
       if (!depNode) continue
-      const cached = depNode.config.cache !== undefined
+      const cached = depNode.config.cache === true
       // The cached twin: a formatter rewriting its own input ahead of a
       // reader that folds no key of it replayed seed B's build under seed A
       // on the fourth run, the same way (item 750).
@@ -323,7 +323,7 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
       )
     if (unstable) unstableById.add(id)
 
-    const cacheEnabled = node.config.cache !== undefined
+    const cacheEnabled = node.config.cache === true
     if (cacheEnabled && !unstable) stableKeys.push({ hash, node })
     // An uncached key stays preliminary behind any upstream that may write
     // into this project, or anywhere: none of its writes is declared.
@@ -438,7 +438,7 @@ export function gatedOutputs(
   // 1,000 projects' tasks spent 5-8 ms here re-splitting the same globs.
   const outputsOf = new Map<string, ProjectOutputs>()
   for (const n of nodes.values()) {
-    const files = n.config.cache?.outputs.files
+    const files = n.config.outputs?.files
     if (files === undefined || files.length === 0) continue
     let po = outputsOf.get(n.projectName)
     if (po === undefined) outputsOf.set(n.projectName, (po = new ProjectOutputs()))
@@ -554,8 +554,8 @@ export function probesAfterWrites(
   for (const n of nodes.values()) {
     if (
       commandWriteReach(n, workspaceRoot) !== 'none' ||
-      (n.config.cache?.outputs.files.length ?? 0) > 0 ||
-      (n.config.cache?.outputs.workspaceFiles?.length ?? 0) > 0
+      (n.config.outputs?.files.length ?? 0) > 0 ||
+      (n.config.outputs?.workspaceFiles?.length ?? 0) > 0
     )
       writers.add(n.id)
   }
@@ -581,7 +581,7 @@ export function probesAfterWrites(
     }
     if (writer) writerBelow.add(id)
     if (unfolded) unfoldedBelow.add(id)
-    if (unfolded && node.config.cache !== undefined && probes(node)) late.add(id)
+    if (unfolded && node.config.cache === true && probes(node)) late.add(id)
   }
   return late
 }
@@ -628,8 +628,8 @@ function synthUpstream(
  * Conservative stability check: does any TRANSITIVE-upstream task whose
  * outputs could land where this task reads its inputs make this task's
  * key preliminary? The producers are pre-folded by `deriveStableKeys`
- * (`upstreamOutputProjects` = projects declaring `cache.outputs.files`
- * upstream; `hasWsOutputUpstream` = any `cache.outputs.workspaceFiles`
+ * (`upstreamOutputProjects` = projects declaring `outputs.files`
+ * upstream; `hasWsOutputUpstream` = any `outputs.workspaceFiles`
  * upstream), so a producer reached through a no-output intermediate is
  * caught too.
  *
@@ -663,7 +663,6 @@ export function dependsOnSiblingOutputs(
     readableOf?: ReadonlyMap<string, readonly string[]>
   },
 ): boolean {
-  const cache = node.config.cache
   const declared = node.config.inputs
   // A task with no inputs has no key to take up front.
   if (declared === undefined) return false
@@ -697,7 +696,7 @@ export function dependsOnSiblingOutputs(
     // that producer, its restore raced the producer's clean and extract
     // (M-5; invariant 2 of docs/design/overlapping-outputs-2026-09.md).
     // `outputsOf` holds this task's own globs too; set them aside once.
-    const own = cache?.outputs.files ?? []
+    const own = node.config.outputs?.files ?? []
     if (own.length > 0) {
       const others = [...outputs]
       for (const g of own) {

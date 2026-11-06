@@ -308,8 +308,7 @@ describe('the sweep sees what a run sees', () => {
       `${PLUGIN_IMPORT}export default { plugins: [${packagesSource()}, ${pluginSource(
         'gen',
         `{ project(config) {
-        config.tasks.build = { exec: { command: 'echo' }, inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] }, cache: {
-          outputs: { files: ['dist/**'] } } }
+        config.tasks.build = { exec: { command: 'echo' }, inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] }, outputs: { files: ['dist/**'] }, cache: true }
       } }`,
       )}] }\n`,
     )
@@ -352,7 +351,7 @@ describe('sweepConfigs: which projects read what they like', () => {
       const configs: Record<string, string> = {
         tool: `export default { tasks: { gen: { exec: { command: 'true' } } } }\n`,
         svc: `export default { tasks: { dev: { exec: { command: 'true', persistent: { readyWhen: 'up' } } } } }\n`,
-        lib: `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } } }\n`,
+        lib: `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true } } }\n`,
       }
       for (const [name, config] of Object.entries(configs)) {
         await mkdir(path.join(root, 'packages', name), { recursive: true })
@@ -381,7 +380,7 @@ describe('sweepConfigs: only the tasks the run reaches are judged', () => {
       await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
       await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r', private: true }))
       const task = (files: string, out = '', deps = ''): string =>
-        `{ exec: { command: 'true' }${deps}, inputs: { files: ['${files}'] }, cache: { outputs: { files: [${out === '' ? '' : `'${out}'`}] } } }`
+        `{ exec: { command: 'true' }${deps}, inputs: { files: ['${files}'] }, outputs: { files: [${out === '' ? '' : `'${out}'`}] }, cache: true }`
       await mkdir(path.join(root, 'packages', 'ui'), { recursive: true })
       await writeFile(path.join(root, 'packages', 'ui', 'package.json'), '{"name":"ui"}')
       await writeFile(
@@ -390,7 +389,7 @@ describe('sweepConfigs: only the tasks the run reaches are judged', () => {
           fetch: ${task('api/**')},
           gen: ${task('schema/**', '', ", dependsOn: ['fetch']")},
           build: ${task('src/**', 'dist/**', ", dependsOn: ['gen', '^build']")},
-          lint: { exec: { command: 'true' }, dependsOn: ['build'], inputs: { files: ['**/*'], tasks: [] }, cache: { outputs: { files: [] } } },
+          lint: { exec: { command: 'true' }, dependsOn: ['build'], inputs: { files: ['**/*'], tasks: [] }, outputs: { files: [] }, cache: true },
           all: { dependsOn: ['lint.*'] },
           'lint.x': ${task('x/**')},
         } }\n`,
@@ -436,8 +435,8 @@ describe('vx watch <task> judges only the tasks it runs (e2e)', () => {
         'app',
         `export default { tasks: {
           build: { exec: { command: 'mkdir -p dist && cp src/a.txt dist/a.txt' },
-            inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } } },
-          lint: { exec: { command: 'true' }, dependsOn: ['build'], inputs: { files: ['**/*'], tasks: [] }, cache: { outputs: { files: [] } } },
+            inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true },
+          lint: { exec: { command: 'true' }, dependsOn: ['build'], inputs: { files: ['**/*'], tasks: [] }, outputs: { files: [] }, cache: true },
         } }`,
       )
       await mkdir(path.join(dir, 'src'), { recursive: true })
@@ -574,7 +573,7 @@ describe('the recursive root watcher keeps only the events a key can see', () =>
         await writeFile(path.join(dir, 'package.json'), `{"name":"${name}"}`)
         await writeFile(
           path.join(dir, 'vx.config.mjs'),
-          `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['src/**'], workspaceFiles: ${globs} }, cache: { outputs: { files: [] } } } } }\n`,
+          `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['src/**'], workspaceFiles: ${globs} }, outputs: { files: [] }, cache: true } } }\n`,
         )
       }
       await Bun.write(path.join(wsRoot, '.vx/workspace.mjs'), 'export default {}\n')

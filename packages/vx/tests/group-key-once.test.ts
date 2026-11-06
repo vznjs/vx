@@ -39,7 +39,7 @@ async function lastRun(root: string): Promise<Map<string, LastTask>> {
 
 // A group is not recorded; its key reaches the record through a cached
 // dependant's, which folds it.
-const CACHED = `exec: { command: 'true' }, inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } }`
+const CACHED = `exec: { command: 'true' }, inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true`
 
 describe('an unkeyed group key is derived once', () => {
   let root: string

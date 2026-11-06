@@ -665,7 +665,7 @@ const EXAMPLE_BODY = `export default {
     build: {
       exec: { command: 'tsc -b' },
       dependsOn: ['^build'],
-      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+      inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
     },
   },
 }`
@@ -754,7 +754,7 @@ function renderConfigFile(p: GeneratedProject, format: MigrationFormat): string 
     // The suggested block sits in the task, commented: deleting `// `
     // after setting the real globs caches it, no copying from the TODO.
     const block =
-      t.task['cache'] === undefined
+      t.task['cache'] !== true
         ? t.todos.find(isCacheTodo)?.match(/^cache: add `(.+?)`/)?.[1]
         : undefined
     lines.push(
@@ -797,11 +797,10 @@ function ownConfigNamed(
   return {
     ...p,
     tasks: p.tasks.map((t) => {
-      const outputs = (t.task?.['cache'] as { outputs?: { files?: unknown } } | undefined)?.outputs
+      const outputs = t.task?.['outputs'] as { files?: unknown } | undefined
       if (!Array.isArray(outputs?.files) || !outputs.files.includes(planned)) return t
-      const cache = t.task!['cache'] as Record<string, unknown>
       const files = outputs.files.map((f: unknown) => (f === planned ? `!${name}` : f))
-      return { ...t, task: { ...t.task, cache: { ...cache, outputs: { ...outputs, files } } } }
+      return { ...t, task: { ...t.task, outputs: { ...outputs, files } } }
     }),
   }
 }

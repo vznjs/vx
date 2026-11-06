@@ -7,8 +7,8 @@ invalidation_, _what's actually stored_, and _why_.
 
 ## Why caching is opt-in
 
-A task is cached iff its `TaskConfig` provides a `cache` block, with
-`cache.outputs.files` and the task's `inputs.files`. Omit `cache` and
+A task is cached iff its `TaskConfig` sets `cache: true`, with
+`outputs.files` and the task's `inputs.files`. Omit `cache` and
 the task always runs; no read, no write. `inputs` stands alone: a task
 is keyed on it whether it caches or not, and its dependents fold that
 key.
@@ -61,7 +61,7 @@ over (in order):
    Captures:
    - `exec` block (command, env declarations, timeout, persistent).
    - `dependsOn` and `inputs.tasks` declarations.
-   - `cache.outputs.files`, `inputs.files`, `inputs.env`,
+   - `outputs.files`, `inputs.files`, `inputs.env`,
      `inputs.runtime` / `workspaceRuntime` declarations (the
      strings themselves; their resolved file content / env values /
      command output contribute separately).
@@ -234,7 +234,7 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     same shape — git reports the nested repository as one changed path,
     and every project under it is selected.
 
-    A task with **no `cache` block** derives a key too, from its
+    A task with **no `cache: true`** derives a key too, from its
     `inputs` — its dependents fold it (step 8), as Turbo and Nx hash
     every task. That key is for its dependents only: the task always
     runs, and no cache, local or remote, is asked about or handed
@@ -264,7 +264,7 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     project crosses a project boundary and is not tracked, as for a
     cached task's undeclared write (`tests/undeclared-writes.test.ts`).
 
-    A task **with** a `cache` block may still rewrite its own inputs in
+    A task **with** `cache: true` may still rewrite its own inputs in
     place — a formatter declaring `outputs: []` — and a same-project
     reader after it whose key does not fold its key (`tasks: []`, or a
     filter that leaves it out, on every path) is not keyed up front
@@ -742,8 +742,8 @@ get/save and the file-hash memo's writes (never `recordRun` / `stats` / `prune` 
 read-through (`remoteRead`), upload (`remoteWrite`), and prefetch
 (`remoteRead`). The orchestrator derives two booleans per task:
 
-- `willRead = task has a cache block AND it is not remote-only AND it folds no keyless task AND (localRead || remoteRead)`
-- `willWrite = task has a cache block AND it is not remote-only AND (localWrite || remoteWrite)`
+- `willRead = task is cached AND it is not remote-only AND it folds no keyless task AND (localRead || remoteRead)`
+- `willWrite = task is cached AND it is not remote-only AND (localWrite || remoteWrite)`
 
 A task reads the cache only when `willRead`, saves only when
 `willWrite` and it folds no keyless task, and cleans its declared outputs
@@ -779,10 +779,10 @@ in memory (`Cache.packArtifactBytes`) and uploads those.
 ## Cache write
 
 A miss runs the task. If the final exit code is `0` and the task's
-`willWrite` is true (it has a `cache` block AND at least one write axis
+`willWrite` is true (it has `cache: true` AND at least one write axis
 is on):
 
-1. `cache.outputs.files` (and `outputs.workspaceFiles`) are resolved
+1. `outputs.files` (and `outputs.workspaceFiles`) are resolved
    against the project dir / workspace root.
 2. The per-component input fingerprint is the one captured before the
    command ran: on a miss `describeTaskInputs` fills `captureInto` once
@@ -863,12 +863,12 @@ names a file other than `package.json` (TanStack Router's committed
 `routeTree.gen.ts`, rewritten by every build). That holds on CI too: a
 task of the same project running alongside can change an input and put
 it back. A task that rewrites its own input to identical bytes (tsdown's
-`package.json`) sets `cache.inputStability: { strategy: 'mutable' }`, and a write
+`package.json`) sets `inputs.stability: { strategy: 'mutable' }`, and a write
 during its command is then judged by its bytes, as an earlier write is;
 different bytes still withhold the entry, and so does a write made while
 another command that may write the file ran (`command-windows.ts`: one
 in the same project, or one with a write grant elsewhere in the
-workspace), named on the line as `while <task> ran`. `VX_CACHE_INPUT_STABILITY_STRATEGY=mutable`
+workspace), named on the line as `while <task> ran`. `VX_INPUTS_STABILITY_STRATEGY=mutable`
 makes that the default (2026-10-12); `'unchecked'` skips the
 check, and `severity: 'error'` fails the task instead of warning
 (`docs/schema.md`). A file ADDED under an
@@ -912,7 +912,7 @@ A declared set that resolves to **nothing** is said on the run's
 status line. `inputs matched no files (lib/**)` — the key would
 not change when the source does — is said on every miss of a cacheable
 task, right after `describeTaskInputs` and before the command, whether
-or not it saves. `cache.outputs matched no files (build/**)` — an empty
+or not it saves. `outputs matched no files (build/**)` — an empty
 artifact was saved and a later hit restores nothing — is said on the
 save path. Both are almost always a glob
 against the wrong directory; the output line names one other cause when
@@ -920,7 +920,7 @@ it applies: a sandboxed task with no `exec.sandbox.allow.write`, whose
 writes never reached disk, or a `workspaceFiles` directory that is a
 symlink out of the workspace, whose files vx drops as outside (a project
 output directory linked out of the project refuses the task instead, X-88). `outputs.files: []` is a deliberate cached
-no-op and says nothing; a task with no `cache` block is never checked.
+no-op and says nothing; a task with no `cache: true` is never checked.
 
 **The outputs are what exists when the task's command exits.** The run
 waits for the command's own process, not for everything it started — a
@@ -928,7 +928,7 @@ backgrounded grandchild that still holds the output pipe does not hold
 the run (`tests/runner.test.ts`) — and the save resolves the output
 globs at once. A descendant the command detached (`setsid … &`, a
 daemon) that writes after that is not in the artifact: the entry saves
-what was there, often nothing (with the `cache.outputs matched no
+what was there, often nothing (with the `outputs matched no
 files` line), and the next hit's restore removes what the
 descendant wrote and restores the saved entry in its place (upstream
 survey, turborepo#12786). vx does not wait for it and cannot see it: a
@@ -951,7 +951,7 @@ records the failure (status + exit code) for analytics.
 
 ## Strict output ownership
 
-Declared `cache.outputs.files` are wiped in two distinct places:
+Declared `outputs.files` are wiped in two distinct places:
 
 - **Before exec on a cache miss.** A leftover `dist/old.js` from a
   prior build can't survive into a fresh build that doesn't rewrite
@@ -994,13 +994,13 @@ Workspace outputs take the same rules, and a path an output `!` entry
 takes back (A-44) is off the wipe, the artifact and the restore alike.
 Skipped when:
 
-- `cache.outputs.files` is empty (nothing declared as output).
+- `outputs.files` is empty (nothing declared as output).
 - The task's `willWrite` is false — no write axis is enabled (e.g.
   `--no-cache`, or a read-only `--cache-policy=local:r`). The user is debugging
   and managing the tree, so vx leaves it alone. `--force` keeps writes
   on, so it DOES clean (the saved snapshot must be clean).
-- `cache.outputs.clean` is `false` (on the task, else the workspace's
-  `cache.outputs.clean`): the command sees last run's outputs (tsc's
+- `outputs.clean` is `false` (on the task, else the workspace's
+  `outputs.clean`): the command sees last run's outputs (tsc's
   `.tsbuildinfo`). You opt out of the clean-tree guarantee: the save
   stores every file the outputs match after the run, so a leftover from
   an older build is cached and restored everywhere. A retry cleans as
@@ -1136,7 +1136,7 @@ no key — the same limit a grant wider than a task's own inputs already
 has. A task with no `cache` keeps every link, having no key to be stale.
 
 **Exception:** `inputs.workspaceFiles` /
-`cache.outputs.workspaceFiles` are workspace-root-anchored and apply
+`outputs.workspaceFiles` are workspace-root-anchored and apply
 NO boundary rule — a deliberate escape hatch (owner call: "they don't
 care about boundaries; it is bad practice but is there"). Prefer
 project-relative declarations; reach for workspaceFiles only for
@@ -1586,7 +1586,7 @@ files (symlinks, hardlinks, devices) are never materialised — the
 reader reports them only to be skipped — so a
 poisoned artifact cannot smuggle one onto disk. Nor can it name a file
 the task did not declare: a remote artifact is ingested only when every
-file it carries matches the task's `cache.outputs` (the lookup passes
+file it carries matches the task's `outputs` (the lookup passes
 them, `CacheGetContext.outputs`), and never when it holds one path as a
 file and a directory at once. Either used to reach the tree, an input
 overwritten or a `.git/hooks` file planted under a green
@@ -1762,7 +1762,7 @@ CREATE TABLE runs (
   wallclock_end_ns    INTEGER,
   cache_hit           INTEGER,          -- 0/1; convenience for flamegraph color
   attempts            INTEGER,          -- v23: attempts a retried task took (>1)
-  cached              INTEGER,          -- v25: 1 = declared a cache block; 0 = runs every time
+  cached              INTEGER,          -- v25: 1 = declared `cache: true`; 0 = runs every time
   -- v27: why the task failed or was skipped, as the run's footer said it
   -- (items 267–270); NULL where the reason does not apply
   blocked_by          TEXT,             -- a skip's root blocker, or what a task ran behind (a task id)

@@ -621,7 +621,7 @@ describe('cacheKeyDiff', () => {
       const diff = cacheKeyDiff(indexDb(cache), 'r-2', 'pkg#test')
       expect(diff.entries).toEqual([])
       expect(diff.note).toBe(
-        'with no `cache` block it saves no entry, so no input fingerprints are kept to say which of its `inputs` moved its key; with no `inputs`, every run gives it a new key',
+        'without `cache: true` it saves no entry, so no input fingerprints are kept to say which of its `inputs` moved its key; with no `inputs`, every run gives it a new key',
       )
     })
   })

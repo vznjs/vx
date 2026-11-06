@@ -24,7 +24,7 @@ afterEach(async () => {
 
 const B_CONFIG = `export default { tasks: { build: {
   exec: { command: 'true' },
-  inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+  inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
 } } }
 `
 
@@ -39,7 +39,7 @@ async function workspace(rootOutputs: string, command = 'true'): Promise<string>
     path.join(r, 'vx.config.mjs'),
     `export default { tasks: { build: {
       exec: { command: ${JSON.stringify(command)} },
-      inputs: { files: ['**'] }, cache: { outputs: { files: ${rootOutputs} } },
+      inputs: { files: ['**'] }, outputs: { files: ${rootOutputs} }, cache: true,
     } } }
 `,
   )

@@ -461,11 +461,11 @@ async function runOnBus(
     options = withRunSettings(options, prepared.workspaceConfig)
     inputStability = {
       run: inputStabilityEnv(),
-      ...(prepared.workspaceConfig?.cache?.inputStability !== undefined
-        ? { workspace: prepared.workspaceConfig.cache.inputStability }
+      ...(prepared.workspaceConfig?.inputs?.stability !== undefined
+        ? { workspace: prepared.workspaceConfig.inputs.stability }
         : {}),
     }
-    cleanOutputs = resolveSetting('cache.outputs.clean', prepared.workspaceConfig).value as
+    cleanOutputs = resolveSetting('outputs.clean', prepared.workspaceConfig).value as
       | boolean
       | undefined
   } catch (err) {
@@ -648,15 +648,15 @@ async function runOnBus(
   // deliberate — on a machine with no remote pool the ambient state already
   // is what the task would have produced — but it must not be SILENT: a task
   // reporting success while doing nothing is indistinguishable from one that
-  // worked, and the usual cause (no `cache` block, so no executor can
+  // worked, and the usual cause (no `cache: true`, so no executor can
   // describe its inputs to a worker) cannot be read off the outcome.
   if (placements.remoteOnlyNoop.size > 0) {
     const anyRemote = executors.some((e) => e.remote === true)
     for (const id of placements.remoteOnlyNoop) {
       const why = !anyRemote
         ? 'no remote executor is declared'
-        : nodes.get(id)?.config.cache === undefined
-          ? 'no remote executor accepted it — the task declares no `cache` block, so there is no input set to ship'
+        : nodes.get(id)?.config.cache !== true
+          ? 'no remote executor accepted it — the task has no `cache: true`, so there is no input set to ship'
           : 'no remote executor accepted it'
       warnOf(log)(`[vx] ${id}: exec.remote is 'only' and ${why} — nothing ran`)
     }
@@ -862,7 +862,7 @@ async function runOnBus(
     // SRT's proxies holding the process open.
     const surelyRuns = (n: TaskNode): boolean =>
       n.config.exec?.persistent !== undefined ||
-      n.config.cache === undefined ||
+      n.config.cache !== true ||
       !(policy.localRead || policy.remoteRead)
     // Only what runs here arms this machine's sandbox: a `sandbox` executor
     // enforces it where it runs the task, so a distributed run's
@@ -1124,7 +1124,7 @@ async function runOnBus(
           (probe.hit !== null ? hits : missed).push(id)
         // An empty store was not asked: it holds none of them.
         if (coldLocal && !remote)
-          for (const [id, n] of nodes) if (n.config.cache !== undefined) missed.push(id)
+          for (const [id, n] of nodes) if (n.config.cache === true) missed.push(id)
         demand.settle(hits, missed)
       }
     }
@@ -2153,10 +2153,10 @@ function flakyCandidates(
   for (const o of outcomes) {
     if (o.status !== 'success' && o.status !== 'failed') continue
     // "Same inputs, failed after passing" is a claim only a task with declared
-    // inputs can make: a task with no `cache` block keys on its config alone
+    // inputs can make: a task without `cache: true` keys on its config alone
     // and runs every time, so one bad network day would read as a flake for
     // thirty days. Groups do no work.
-    if (o.hash === undefined || o.node.config.cache === undefined || isGroupTask(o.node)) continue
+    if (o.hash === undefined || o.node.config.cache !== true || isGroupTask(o.node)) continue
     // Behind a failed dependency the outcome is not the key's: a failure is
     // the dependency's, and a pass built on bytes the key never named, so a
     // later failure relapsed from it and read as a flake for thirty days.

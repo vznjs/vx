@@ -18,7 +18,7 @@ afterAll(async () => {
 
 // Writes `dist/o`: a task whose declared outputs match nothing is warned of.
 const task = (outputs: string[], inputs: string[] = ['src/**']) =>
-  `{ exec: { command: 'mkdir -p dist && touch dist/o' }, inputs: { files: ${JSON.stringify(inputs)} }, cache: { outputs: { files: ${JSON.stringify(outputs)} } } }`
+  `{ exec: { command: 'mkdir -p dist && touch dist/o' }, inputs: { files: ${JSON.stringify(inputs)} }, outputs: { files: ${JSON.stringify(outputs)} }, cache: true }`
 
 /** A git workspace with one project `a` whose tasks are `tasks` (source text). */
 async function workspace(tasks: string): Promise<string> {
@@ -140,7 +140,8 @@ describe('checkGraph under a lock', () => {
       config: {
         exec: { command: 'true' },
         inputs: { files: inputs },
-        cache: { outputs: { files: outputs } },
+        outputs: { files: outputs },
+        cache: true,
       },
     }) as unknown as TaskNode
   const graph = (...nodes: TaskNode[]) => new Map(nodes.map((n) => [n.id, n]))

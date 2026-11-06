@@ -89,7 +89,7 @@ export function runKeysToken(args: RunKeysArgs): RunKeysAt | undefined {
       if ((inputs.workspaceFiles?.length ?? 0) > 0) return undefined
       // No positive entry resolves no files (`filesPlan`).
       if (inputs.files === undefined || inputs.files.some((e) => !e.startsWith('!'))) {
-        const outputs = cfg.cache?.outputs
+        const outputs = cfg.outputs
         const declared = `${node.projectName}\0${JSON.stringify([inputs.files, outputs?.files, outputs?.workspaceFiles])}`
         let token = tokens.get(declared)
         if (token === undefined) {

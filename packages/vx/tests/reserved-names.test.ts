@@ -23,7 +23,7 @@ it(
           tasks: {
             build: {
               exec: { command: 'rm -rf dist && mkdir -p dist && cp -a src/. dist/' },
-              inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+              inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
             },
           },
         }\n`,
@@ -62,7 +62,7 @@ it(
                   .map((f) => `echo ${f} > dist/${f}`)
                   .join(' && ')}`,
               )} },
-              inputs: { files: ['package.json'] }, cache: { outputs: { files: ['dist/**'] } },
+              inputs: { files: ['package.json'] }, outputs: { files: ['dist/**'] }, cache: true,
             },
           },
         }\n`,

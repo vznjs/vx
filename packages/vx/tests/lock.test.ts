@@ -321,7 +321,16 @@ describe('vx lock (e2e)', () => {
       const invalid = '.vx/projects.lock.json is invalid, run `vx lock`'
       for (const app of [
         { tasks: { build: { exec: 'x' } } },
-        { tasks: { build: { exec: { command: 'x' }, inputs: { files: ['src'] }, cache: {} } } },
+        {
+          tasks: {
+            build: {
+              exec: { command: 'x' },
+              inputs: { files: ['src'] },
+              outputs: { files: 5 },
+              cache: true,
+            },
+          },
+        },
       ]) {
         await writeFile(
           file,

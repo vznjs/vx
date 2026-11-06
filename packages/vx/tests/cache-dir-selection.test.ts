@@ -25,7 +25,7 @@ const CONFIG = `
     tasks: {
       build: {
         exec: { command: 'echo built' },
-        inputs: { files: ['src/**'], workspaceFiles: ['shared/**'] }, cache: { outputs: { files: [] } },
+        inputs: { files: ['src/**'], workspaceFiles: ['shared/**'] }, outputs: { files: [] }, cache: true,
       },
     },
   }
@@ -86,7 +86,7 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
           path.join(app, 'vx.config.mjs'),
           `export default { tasks: { build: {
             exec: { command: 'echo built && mkdir -p dist && cp src/index.js dist/' },
-            inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+            inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
           } } }`,
         )
         await Bun.write(path.join(app, '.gitignore'), 'dist/\n')
@@ -138,7 +138,8 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
           exec: { command: 'mkdir -p dist && echo ${name} > dist/out.txt' },
           dependsOn: [${deps}],
           inputs: { files: ['src/**'], ${deps === '' ? '' : "workspaceFiles: ['packages/a/dist/**'], tasks: []"} },
-          cache: { outputs: { files: ['dist/**'] } },
+          outputs: { files: ['dist/**'] },
+          cache: true,
         } } }`
         for (const [name, deps] of [
           ['a', ''],
@@ -328,7 +329,7 @@ describe('two checkouts of one commit sharing --cache-dir', () => {
               tasks: {
                 build: {
                   exec: { command: 'mkdir -p dist && cat src/in.txt > dist/out.txt' },
-                  inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+                  inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
                 },
               },
             }

@@ -19,12 +19,12 @@ const silent = new Proxy({}, { get: () => () => undefined }) as Logger
 const config = `export default { tasks: {
   build: {
     exec: { command: 'mkdir -p dist && cp src/a.txt dist/a.txt' },
-    inputs: { files: ['src/**'] }, cache: { outputs: { files: ['**/dist/**'] } },
+    inputs: { files: ['src/**'] }, outputs: { files: ['**/dist/**'] }, cache: true,
   },
   test: {
     dependsOn: ['build'],
     exec: { command: 'cat dist/a.txt' },
-    inputs: { files: ['**/*'] }, cache: { outputs: { files: [] } },
+    inputs: { files: ['**/*'] }, outputs: { files: [] }, cache: true,
   },
 } }`
 

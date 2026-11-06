@@ -17,7 +17,7 @@ let root = ''
 let git: (...args: string[]) => string
 
 const config = (name: string, extra = ''): string =>
-  `export default { tasks: { build: { ${extra} inputs: { files: ['src/**'], env: ['RUN_KEYS_ENV'] }, exec: { command: 'cat src/x.txt > out.txt && echo ${name} >> ../../runs.log' }, cache: { outputs: { files: ['out.txt'] } } } } }\n`
+  `export default { tasks: { build: { ${extra} inputs: { files: ['src/**'], env: ['RUN_KEYS_ENV'] }, exec: { command: 'cat src/x.txt > out.txt && echo ${name} >> ../../runs.log' }, outputs: { files: ['out.txt'] }, cache: true } } }\n`
 
 beforeEach(async () => {
   root = await makeWorkspace({ prefix: 'vx-run-keys-' })

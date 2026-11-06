@@ -89,7 +89,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       path.join(lib, 'vx.config.mjs'),
       `export default { tasks: { build: {
          exec: { command: 'mkdir -p dist && cat src/x.txt > dist/lib.txt' },
-         inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+         inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
        } } }\n`,
     )
     await write(
@@ -97,7 +97,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       `export default { tasks: { build: {
          dependsOn: ['^build'],
          exec: { command: 'mkdir -p dist && cat ../lib/dist/lib.txt > dist/app.txt' },
-         inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+         inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
        } } }\n`,
     )
     await write(path.join(lib, 'src', 'x.txt'), 'L1')
@@ -118,7 +118,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       path.join(base, 'vx.config.mjs'),
       `export default { tasks: { build: {
          exec: { command: 'mkdir -p dist && cat src/b.txt > dist/b.txt' },
-         inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+         inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
        } } }\n`,
     )
     await write(path.join(base, 'src', 'b.txt'), 'b')
@@ -128,7 +128,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       `export default { tasks: { build: {
          dependsOn: ['^build'],
          exec: { command: 'mkdir -p dist && cat src/x.txt > dist/lib.txt' },
-         inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+         inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
        } } }\n`,
     )
     git(root, 'add', '-A')
@@ -185,12 +185,12 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
         `export default { tasks: {
            prep: {
              exec: { command: 'mkdir -p gen && cat src/a.txt > gen/a.txt' },
-             inputs: { files: ['src/**'] }, cache: { outputs: { files: ['gen/**'] } },
+             inputs: { files: ['src/**'] }, outputs: { files: ['gen/**'] }, cache: true,
            },
            build: {
              dependsOn: ['^build', 'prep'],
              exec: { command: 'mkdir -p dist && cat ../lib/dist/lib.txt gen/a.txt > dist/app.txt' },
-             inputs: { files: ['src/**', 'gen/**'], tasks: ['^build'] }, cache: { outputs: { files: ['dist/**'] } },
+             inputs: { files: ['src/**', 'gen/**'], tasks: ['^build'] }, outputs: { files: ['dist/**'] }, cache: true,
            },
          } }\n`,
       )
@@ -250,11 +250,11 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
         await write(
           path.join(root, 'packages', dir, 'vx.config.mjs'),
           `export default { tasks: {
-             gen: { dependsOn: [${dep}], exec: { command: 'true' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } },
+             gen: { dependsOn: [${dep}], exec: { command: 'true' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true },
              build: {
                dependsOn: ['gen'],
                exec: { command: 'mkdir -p dist && cp src/* dist/' },
-               inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+               inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
              },
            } }\n`,
         )
@@ -291,7 +291,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
         `export default { tasks: {
            compile: {
              exec: { command: 'mkdir -p dist && cat src/x.txt > dist/lib.txt' },
-             inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+             inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
            },
            build: { dependsOn: ['compile'] },
          } }\n`,
@@ -332,7 +332,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
         `export default { tasks: { build: {
            dependsOn: ['^build'],
            exec: { command: 'mkdir -p dist && cat src/a.txt > dist/app.txt' },
-           inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+           inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
          } } }\n`,
       )
       git(root, 'add', '-A')
@@ -368,7 +368,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
         `export default { tasks: { build: {
            dependsOn: ['^build'],
            exec: { command: 'mkdir -p dist && cat src/a.txt > dist/app.txt' },
-           inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+           inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
          } } }\n`,
       )
       git(root, 'add', '-A')
@@ -387,7 +387,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       await withLibConfig(
         `export default { tasks: { build: {
            exec: { command: 'mkdir -p dist && cat src/x.txt > dist/lib.txt' },
-           inputs: { files: ['**/*'] }, cache: { outputs: { files: ['dist/**'] } },
+           inputs: { files: ['**/*'] }, outputs: { files: ['dist/**'] }, cache: true,
          } } }\n`,
       )
       const inner = path.join(root, 'packages', 'lib', 'inner')
@@ -447,7 +447,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
         path.join(tool, 'vx.config.mjs'),
         `export default { tasks: { build: {
            exec: { command: 'true' },
-           inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+           inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
          } } }\n`,
       )
       await write(path.join(tool, 'src', 't.txt'), 't')
@@ -457,7 +457,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
         `export default { tasks: { build: {
            dependsOn: ['^build'],
            exec: { command: 'true' },
-           inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+           inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
          } } }\n`,
       )
       await write(path.join(top, 'src', 't.txt'), 't')
@@ -486,7 +486,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
         `export default { tasks: { build: {
            dependsOn: ['^build'],
            exec: { command: 'mkdir -p dist && cat src/a.txt > dist/app.txt' },
-           inputs: { files: ['src/**'], tasks: [] }, cache: { outputs: { files: ['dist/**'] } },
+           inputs: { files: ['src/**'], tasks: [] }, outputs: { files: ['dist/**'] }, cache: true,
          } } }\n`,
       )
       git(root, 'add', '-A')
@@ -546,7 +546,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
          build: {
            dependsOn: ['^build'],
            exec: { command: 'mkdir -p dist && cat ../lib/dist/lib.txt > dist/app.txt' },
-           inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+           inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
          },
          check: { dependsOn: ['^build'], exec: { command: 'true' } },
        } }\n`,
@@ -578,7 +578,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
          build: {
            dependsOn: ['deps'],
            exec: { command: 'mkdir -p dist && cat ../lib/dist/lib.txt > dist/app.txt' },
-           inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+           inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
          },
        } }\n`,
       )

@@ -9,7 +9,7 @@ import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import { dry, PARITY_TIMEOUT as TIMEOUT, vx } from './helpers/parity.js'
 
 const cached = (command: string, extra = '') =>
-  `{ exec: { command: ${JSON.stringify(command)} }, ${extra} inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } }`
+  `{ exec: { command: ${JSON.stringify(command)} }, ${extra} inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true }`
 
 describe('task names, configs and help', () => {
   let root: string
@@ -29,7 +29,7 @@ export default {
     )},
     'lint:fix': ${cached('echo lint-fix-ran')},
     'a:b:c': ${cached('echo abc-ran')},
-    tla: { exec: { command: 'echo ' + word }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } },
+    tla: { exec: { command: 'echo ' + word }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true },
     lint: ${cached('echo lint')},
     s1: { exec: { command: 'sleep 30', persistent: {} } },
     both: { dependsOn: ['s1', 'build:prod'] },

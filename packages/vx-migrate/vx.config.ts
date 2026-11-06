@@ -47,9 +47,8 @@ const testShard = (i: number) => ({
     files: ['src/**', 'tests/**', 'package.json'],
     env: ['VX_NX_MODULES', 'VX_REQUIRE_NX', 'VX_REQUIRE_REFTABLE', 'VX_REQUIRE_NONROOT'],
   },
-  cache: {
-    outputs: { files: [] },
-  },
+  outputs: { files: [] },
+  cache: true,
 })
 
 export default defineProject({
@@ -85,9 +84,8 @@ export default defineProject({
       inputs: {
         files: ['src/**', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
       },
-      cache: {
-        outputs: { files: [] },
-      },
+      outputs: { files: [] },
+      cache: true,
     },
 
     'lint.oxfmt': {
@@ -100,9 +98,8 @@ export default defineProject({
       inputs: {
         files: ['**/*'],
       },
-      cache: {
-        outputs: { files: [] },
-      },
+      outputs: { files: [] },
+      cache: true,
     },
 
     // One process was a distributed run's critical path (188 s of 206 s,

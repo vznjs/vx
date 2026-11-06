@@ -45,7 +45,8 @@ describe.skipIf(!available)('a sandboxed task reads the outputs it depends on', 
             node: {
               exec: { command: 'mkdir -p out/bin && echo OUT > out/bin/tool.txt && echo ROOT > root.txt' },
               inputs: { files: ['src/**'] },
-              cache: { outputs: { files: ['out/**', '*.txt'] } },
+              outputs: { files: ['out/**', '*.txt'] },
+              cache: true,
             },
           },
         }
@@ -128,7 +129,7 @@ describe.skipIf(!available)('a hermetic task runs a program its dependency built
   const SHELL = taskShell()
 
   it(
-    'by name, from the dependency’s cache.outputs.bin',
+    'by name, from the dependency’s outputs.bin',
     async () => {
       await addProject(fixture.root, 'tools', {
         files: { 'src/s.txt': 'SRC\n' },
@@ -140,7 +141,8 @@ describe.skipIf(!available)('a hermetic task runs a program its dependency built
                   `mkdir -p out/bin && printf '#!${SHELL}\\necho TOOLRAN\\n' > out/bin/hello && chmod +x out/bin/hello`,
                 )} },
                 inputs: { files: ['src/**'] },
-                cache: { outputs: { files: ['out/**'], bin: 'out/bin' } },
+                outputs: { files: ['out/**'], bin: 'out/bin' },
+                cache: true,
               },
             },
           }

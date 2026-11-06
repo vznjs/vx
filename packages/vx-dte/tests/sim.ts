@@ -125,7 +125,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
         ...(t.platform === undefined ? {} : { platform: t.platform }),
         config: {
           ...(t.exec ? { exec: { command: 'x' } } : {}),
-          ...(t.cache ? { cache: {} } : {}),
+          ...(t.cache ? { cache: true } : {}),
         },
       } as unknown as TaskNode,
     ]),

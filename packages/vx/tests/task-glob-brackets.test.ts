@@ -41,9 +41,8 @@ async function project(
           build: {
             exec: { command: ${JSON.stringify(task.command)} },
             inputs: ${JSON.stringify(inputs)},
-            cache: {
-              outputs: { files: ${JSON.stringify(task.outputs)} },
-            },
+            outputs: { files: ${JSON.stringify(task.outputs)} },
+            cache: true,
           },
         },
       }
@@ -168,15 +167,14 @@ describe('a bracket is a character class in a task glob', () => {
             tasks: {
               build: {
                 exec: { command: 'mkdir -p app && cat src/in.txt > app/x.js' },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['app/**'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['app/**'] }, cache: true,
               },
               route: {
                 dependsOn: ['build'],
                 exec: { command: 'mkdir -p "app/[id]" && echo r > "app/[id]/page.js"' },
                 inputs: { files: ['src/**'] },
-                cache: {
-                  outputs: { files: [${JSON.stringify(glob('app/[id]/page.js'))}] },
-                },
+                outputs: { files: [${JSON.stringify(glob('app/[id]/page.js'))}] },
+                cache: true,
               },
             },
           }

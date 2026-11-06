@@ -39,7 +39,7 @@ describe('cache-hit stdout replay fidelity', () => {
           tasks: {
             emit: {
               exec: { command: 'sh emit.sh' },
-              inputs: { files: ['emit.sh'] }, cache: { outputs: { files: [] } },
+              inputs: { files: ['emit.sh'] }, outputs: { files: [] }, cache: true,
             },
           },
         }
@@ -92,7 +92,7 @@ describe('cache-hit replay keeps a leading byte-order mark', () => {
           tasks: {
             emit: {
               exec: { command: 'sh emit.sh' },
-              inputs: { files: ['emit.sh'] }, cache: { outputs: { files: [] } },
+              inputs: { files: ['emit.sh'] }, outputs: { files: [] }, cache: true,
             },
           },
         }
@@ -128,7 +128,7 @@ describe('cache-hit replay keeps both streams in order', () => {
           tasks: {
             emit: {
               exec: { command: 'sh emit.sh' },
-              inputs: { files: ['emit.sh'] }, cache: { outputs: { files: [] } },
+              inputs: { files: ['emit.sh'] }, outputs: { files: [] }, cache: true,
             },
           },
         }
@@ -186,7 +186,7 @@ describe('cache-hit replay of bytes that are not UTF-8, ending mid-line', () => 
           tasks: {
             emit: {
               exec: { command: 'sh emit.sh' },
-              inputs: { files: ['emit.sh'] }, cache: { outputs: { files: [] } },
+              inputs: { files: ['emit.sh'] }, outputs: { files: [] }, cache: true,
             },
           },
         }

@@ -27,7 +27,8 @@ Turbo, Nx and shells read brackets the same way. A glob you copy from
 route: {
   exec: { command: 'ls src app/*' },
   inputs: { files: ['src/*.[jt]s', 'app/\\[id\\]/**'] },
-  cache: { outputs: { files: [] } },
+  outputs: { files: [] },
+  cache: true,
 }
 ```
 

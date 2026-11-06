@@ -17,7 +17,8 @@ export default defineProject({
         env: { passThrough: ['NODE_ENV', 'GH_TOKEN'], define: { MODE: 'production' } },
       },
       inputs: { files: ['src/**'], env: ['NODE_ENV'] },
-      cache: { outputs: { files: ['dist/**'] } },
+      outputs: { files: ['dist/**'] },
+      cache: true,
     },
   },
 })

@@ -447,7 +447,7 @@ cachePolicy in run history and telemetry records reads `local:rw,remote:r`, the 
 
 ## cache: cache everything the outputs hold under clean: false
 
-under cache.outputs.clean: false a leftover output file is now saved and restored on every machine; before, its presence meant nothing was cached.
+under outputs.clean: false a leftover output file is now saved and restored on every machine; before, its presence meant nothing was cached.
 
 ## cli: stop vx watch re-running on its own run's writes
 
@@ -457,9 +457,9 @@ vx lock refuses a cached task whose inputs read another task's outputs through a
 
 `bunx skills add vznjs/vx/packages/vx/skills/vx` no longer exists; install the agent skill with `bunx skills add vznjs/vx`.
 
-## cache: drop the VX_CACHE_OUTPUTS_CLEAN variable
+## cache: drop the VX_OUTPUTS_CLEAN variable
 
-VX_CACHE_OUTPUTS_CLEAN is no longer read. Set cache.outputs.clean in .vx/workspace.ts or on the task instead.
+VX_OUTPUTS_CLEAN is no longer read. Set outputs.clean in .vx/workspace.ts or on the task instead.
 
 ## cache: share blob sizes and the flaky record across worktrees
 
@@ -561,9 +561,9 @@ vx.workspace keys, VX_* variables and some flags are renamed; old names are refu
 
 the top-level `cacheScope` workspace key is removed; use `cache: { scope }`.
 
-## cache: replace rewrittenInputs with cache.inputStability
+## cache: replace rewrittenInputs with inputs.stability
 
-cache.rewrittenInputs and VX_REWRITTEN_INPUTS are gone. Use cache.inputStability: { strategy: 'immutable' | 'mutable' | 'unchecked', severity: 'warn' | 'error' } ('withhold' is 'immutable', 'compare' is 'mutable'), VX_INPUT_STABILITY and VX_INPUT_STABILITY_SEVERITY.
+cache.rewrittenInputs and VX_REWRITTEN_INPUTS are gone. Use inputs.stability: { strategy: 'immutable' | 'mutable' | 'unchecked', severity: 'warn' | 'error' } ('withhold' is 'immutable', 'compare' is 'mutable'), VX_INPUT_STABILITY and VX_INPUT_STABILITY_SEVERITY.
 
 ## orchestrator: skip the schedule stage when every task is a hit
 

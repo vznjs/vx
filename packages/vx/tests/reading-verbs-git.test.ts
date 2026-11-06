@@ -21,7 +21,7 @@ const CONFIG = `
     tasks: {
       build: {
         exec: { command: 'true' },
-        inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+        inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
       },
     },
   }

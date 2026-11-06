@@ -26,7 +26,7 @@ describe.skipIf(!available)('the empty-outputs warning for a sandboxed task', ()
       files: { 'src/a.txt': 'a' },
       config: `export default { tasks: { build: {
         exec: { command: 'true', sandbox: { allow: { read: ['.']${write} } } },
-        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['build/**'] } },
+        inputs: { files: ['src/**'] }, outputs: { files: ['build/**'] }, cache: true,
       } } }`,
     })
     const lines: string[] = []
@@ -43,13 +43,13 @@ describe.skipIf(!available)('the empty-outputs warning for a sandboxed task', ()
 
   it('with no write grant, the warning says its writes never reached disk', async () => {
     expect(await warnings('')).toEqual([
-      '[vx] app#build: cache.outputs matched no files (build/**) — an empty artifact is saved; a later hit restores nothing — the task is sandboxed and declares no exec.sandbox.allow.write, so its writes never reached disk',
+      '[vx] app#build: outputs matched no files (build/**) — an empty artifact is saved; a later hit restores nothing — the task is sandboxed and declares no exec.sandbox.allow.write, so its writes never reached disk',
     ])
   })
 
   it('control: with a write grant, the plain warning', async () => {
     expect(await warnings(", write: ['build']")).toEqual([
-      '[vx] app#build: cache.outputs matched no files (build/**) — an empty artifact is saved; a later hit restores nothing',
+      '[vx] app#build: outputs matched no files (build/**) — an empty artifact is saved; a later hit restores nothing',
     ])
   })
 })

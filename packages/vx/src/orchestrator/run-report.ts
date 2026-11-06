@@ -49,7 +49,7 @@ async function outputsLeft(
   workspaceRoot: string,
   nestedProjectDirs: string[],
 ): Promise<string[]> {
-  const declared = node.config.cache?.outputs
+  const declared = node.config.outputs
   if (declared === undefined) return []
   const [own, ws] = await Promise.all([
     resolveOutputs({ projectDir: node.projectDir, outputs: declared.files, nestedProjectDirs }),

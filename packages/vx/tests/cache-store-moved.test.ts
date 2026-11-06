@@ -14,7 +14,7 @@ import { gitIn, gitInitCommit } from './helpers/workspace.js'
 
 const BUILD = `export default { tasks: { build: {
   exec: { command: 'cat in.txt > out.txt' },
-  inputs: { files: ['in.txt'] }, cache: { outputs: { files: ['out.txt'] } } } } }
+  inputs: { files: ['in.txt'] }, outputs: { files: ['out.txt'] }, cache: true } } }
 `
 const saved = { ...process.env }
 let home: string

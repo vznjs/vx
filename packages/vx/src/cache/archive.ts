@@ -279,7 +279,7 @@ interface PackArgs {
   root?: string
   /** Where `outputs/` names lie, for the directory modes (`dirModes`); absent, none is recorded. */
   projectDir?: string
-  /** The task's `cache.outputs.mount` paths: an absolute link into one is kept as written. */
+  /** The task's `outputs.mount` paths: an absolute link into one is kept as written. */
   mounts?: readonly string[] | undefined
 }
 
@@ -353,7 +353,7 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
       }
       if (!st.isFile()) {
         throw new UserError(
-          `${shown} is not a regular file: vx stores regular files and symlinks only — emit a file there, or narrow cache.outputs.files to the files the task produces, or take it back with a '!' entry`,
+          `${shown} is not a regular file: vx stores regular files and symlinks only — emit a file there, or narrow outputs.files to the files the task produces, or take it back with a '!' entry`,
         )
       }
       const mode = st.mode & 0o777
@@ -963,7 +963,7 @@ export async function extractArtifactStream(
   stageRoot?: string,
   /** Handed what `scanArtifact` would read of the same bytes, once their sum has checked. */
   onScan?: (scan: ArtifactScan) => void,
-  /** The task's `cache.outputs.mount` paths: the one place an absolute link may point. */
+  /** The task's `outputs.mount` paths: the one place an absolute link may point. */
   mounts?: readonly string[],
 ): Promise<Set<string>> {
   // No `mkdir -p` of the destination here: `stage` creates each entry's
@@ -1062,7 +1062,7 @@ export async function extractArtifactStream(
       if (path.isAbsolute(to)) {
         if (!intoMount(to, mounts)) {
           throw new ArchiveSecurityError(
-            `archive link ${name} points to an absolute path no cache.outputs.mount declares: ${to}`,
+            `archive link ${name} points to an absolute path no outputs.mount declares: ${to}`,
           )
         }
         await x.stageLink(name, dest.base, target, to)

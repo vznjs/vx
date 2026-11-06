@@ -47,7 +47,7 @@ it('plans main’s run on three workers: only its misses are work, never a group
         deps: n.deps,
         config: {
           ...(n.exec ? { exec: { command: 'x' } } : {}),
-          ...(n.cache ? { cache: {} } : {}),
+          ...(n.cache ? { cache: true } : {}),
         },
       } as unknown as TaskNode,
     ]),
@@ -323,7 +323,7 @@ it('counts no work after a forecast miss the probe found held', () => {
       ['t', ['b']],
     ].map(([id, deps]) => [
       id as string,
-      { id, deps, config: { exec: { command: 'x' }, cache: {} } } as unknown as TaskNode,
+      { id, deps, config: { exec: { command: 'x' }, cache: true } } as unknown as TaskNode,
     ]),
   )
   const one = () => ({ cores: 1, memory: 1e9 })
@@ -350,7 +350,7 @@ it('counts an uncached task as work before it is handed over', () => {
       {
         id,
         deps,
-        config: { exec: { command: 'x' }, ...(cached ? { cache: {} } : {}) },
+        config: { exec: { command: 'x' }, ...(cached ? { cache: true } : {}) },
       } as unknown as TaskNode,
     ]),
   )
@@ -561,7 +561,7 @@ it('follows the plan, played again only when an event moves past 5%', () => {
   const nodes = new Map(
     ids.map((id) => [
       id,
-      { id, deps: [], config: { exec: { command: 'x' }, cache: {} } } as unknown as TaskNode,
+      { id, deps: [], config: { exec: { command: 'x' }, cache: true } } as unknown as TaskNode,
     ]),
   )
   let plays = 0
@@ -640,7 +640,7 @@ it('starts a worker the plan foresaw without reading the work, and none past its
       {
         id,
         deps: id === 'a' ? [] : ['a'],
-        config: { exec: { command: 'x' }, cache: {} },
+        config: { exec: { command: 'x' }, cache: true },
       } as unknown as TaskNode,
     ]),
   )

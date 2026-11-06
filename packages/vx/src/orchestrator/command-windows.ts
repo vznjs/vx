@@ -1,5 +1,5 @@
 // When each command of the run ran and where it may write, so
-// `inputStability.strategy: 'mutable'` can tell a task's own identical
+// `inputs.stability.strategy: 'mutable'` can tell a task's own identical
 // rewrite from another task's write and restore (STATUS item 28): a file
 // whose bytes match the key after a write is the task's own only if no
 // other command that may write it ran between the describe and that write.

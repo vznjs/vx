@@ -122,9 +122,8 @@ const shardTask = (i: number, n = SHARD_COUNT, flags = '') => ({
     files: SOURCES,
     workspaceFiles: ['README.md', 'skills/**'],
   },
-  cache: {
-    outputs: { files: [] as string[] },
-  },
+  outputs: { files: [] as string[] },
+  cache: true,
 })
 // The release binary of each platform CI has a worker of must launch there:
 // linux-arm64 is cross-compiled and runs nowhere else (the arm worker),
@@ -160,9 +159,8 @@ const checkBinary = (platforms?: readonly ('linux-arm64' | 'darwin-arm64')[]) =>
     workspaceFiles: ['packages/vx-history/**'],
     runtime: BUN_VERSION,
   },
-  cache: {
-    outputs: { files: [] },
-  },
+  outputs: { files: [] },
+  cache: true,
 })
 const shards = <T>(name: string, n: number, task: (i: number, n: number) => T): Record<string, T> =>
   Object.fromEntries(
@@ -228,9 +226,8 @@ const unsafeShardTask = (i: number, n: number, flags = '') => ({
       ...OTHER_OUTPUTS,
     ],
   },
-  cache: {
-    outputs: { files: [] as string[] },
-  },
+  outputs: { files: [] as string[] },
+  cache: true,
 })
 const unsafeShardTasks = {
   ...shards('test.bun.unsafe', UNSAFE_SHARD_COUNT, (i, n) => unsafeShardTask(i, n)),
@@ -584,9 +581,8 @@ export default defineProject({
       inputs: {
         files: SOURCES,
       },
-      cache: {
-        outputs: { files: [] },
-      },
+      outputs: { files: [] },
+      cache: true,
     },
 
     'lint.oxfmt': {
@@ -604,9 +600,8 @@ export default defineProject({
       inputs: {
         files: SOURCES,
       },
-      cache: {
-        outputs: { files: [] },
-      },
+      outputs: { files: [] },
+      cache: true,
     },
 
     'lint.oxfmt.fix': {
@@ -652,9 +647,8 @@ export default defineProject({
         },
       },
       inputs: { files: SOURCES, runtime: BUN_VERSION },
-      cache: {
-        outputs: { files: ['dist/vx-linux-x64'] },
-      },
+      outputs: { files: ['dist/vx-linux-x64'] },
+      cache: true,
     },
 
     'build.bun.linux-arm64': {
@@ -676,9 +670,8 @@ export default defineProject({
         },
       },
       inputs: { files: SOURCES, runtime: BUN_VERSION },
-      cache: {
-        outputs: { files: ['dist/vx-linux-arm64'] },
-      },
+      outputs: { files: ['dist/vx-linux-arm64'] },
+      cache: true,
     },
 
     'build.bun.darwin-x64': {
@@ -700,9 +693,8 @@ export default defineProject({
         },
       },
       inputs: { files: SOURCES, runtime: BUN_VERSION },
-      cache: {
-        outputs: { files: ['dist/vx-darwin-x64'] },
-      },
+      outputs: { files: ['dist/vx-darwin-x64'] },
+      cache: true,
     },
 
     'build.bun.darwin-arm64': {
@@ -724,9 +716,8 @@ export default defineProject({
         },
       },
       inputs: { files: SOURCES, runtime: BUN_VERSION },
-      cache: {
-        outputs: { files: ['dist/vx-darwin-arm64'] },
-      },
+      outputs: { files: ['dist/vx-darwin-arm64'] },
+      cache: true,
     },
   },
 })

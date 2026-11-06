@@ -142,7 +142,7 @@ describe('a secret-named value in what vx prints, stores and exports', () => {
                 command: 'echo "${SECRET} $API_TOKEN $DB_TOKEN" && echo "${SECRET}" >&2 && echo built > out.txt',
                 env: { passThrough: ['API_TOKEN'], define: { DB_TOKEN: '${DEFINED}' } },
               },
-              inputs: { files: ['in.txt'] }, cache: { outputs: { files: ['out.txt'] } },
+              inputs: { files: ['in.txt'] }, outputs: { files: ['out.txt'] }, cache: true,
             },
           },
         }
@@ -295,7 +295,7 @@ describe('a value split by a pause is masked in every stored copy', () => {
           tasks: {
             t: {
               exec: { command: ${JSON.stringify(split(exit, between))}, env: { passThrough: ['API_TOKEN'] } },
-              inputs: { files: ['in.txt'] }, cache: { outputs: { files: ['out.txt'] } },
+              inputs: { files: ['in.txt'] }, outputs: { files: ['out.txt'] }, cache: true,
             },
           },
         }
@@ -391,7 +391,7 @@ describe('`exec.env.secret` masks a value whatever its name', () => {
                 command: 'echo "pat=$GH_PAT"',
                 env: { passThrough: ['GH_PAT']${secret ? ", secret: ['GH_PAT']" : ''} },
               },
-              inputs: { files: ['in.txt'] }, cache: { outputs: { files: [] } },
+              inputs: { files: ['in.txt'] }, outputs: { files: [] }, cache: true,
             },
           },
         }

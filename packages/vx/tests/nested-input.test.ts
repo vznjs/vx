@@ -22,7 +22,8 @@ async function workspace(inputs: string[]): Promise<string> {
     config: `export default { tasks: { build: {
   exec: { command: 'true' },
   inputs: { files: ${JSON.stringify(inputs)} },
-  cache: { outputs: { files: [] } },
+  outputs: { files: [] },
+  cache: true,
 } } }
 `,
     files: { 'src/a.ts': 'a', 'dist/d.txt': 'd', 'distx/e.txt': 'e' },

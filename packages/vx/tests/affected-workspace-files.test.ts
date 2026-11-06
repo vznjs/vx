@@ -93,9 +93,8 @@ beforeEach(async () => {
       '    build: {',
       '      exec: { command: "mkdir -p dist && echo built > dist/out.txt" },',
       '      inputs: { files: ["src/**"], workspaceFiles: ["shared/**"] },',
-      '      cache: {',
-      '        outputs: { files: ["dist/**"] },',
-      '      },',
+      '      outputs: { files: ["dist/**"] },',
+      '      cache: true,',
       '    },',
       '  },',
       '}',
@@ -161,7 +160,7 @@ describe('--affected sees a workspaceFiles change', () => {
           '  tasks: {',
           '    build: {',
           '      exec: { command: "true" },',
-          '      inputs: { files: [], workspaceFiles: ["pkgs/app/data.json"] }, cache: { outputs: { files: [] } },',
+          '      inputs: { files: [], workspaceFiles: ["pkgs/app/data.json"] }, outputs: { files: [] }, cache: true,',
           '    },',
           '  },',
           '}',
@@ -255,7 +254,7 @@ describe('--affected sees a workspaceFiles change', () => {
           '  tasks: {',
           '    build: {',
           '      exec: { command: "true" },',
-          '      inputs: { files: ["src/**"], workspaceFiles: ["shared/**"] }, cache: { outputs: { files: [] } },',
+          '      inputs: { files: ["src/**"], workspaceFiles: ["shared/**"] }, outputs: { files: [] }, cache: true,',
           '    },',
           '    lint: { exec: { command: "true" } },',
           '  },',
@@ -300,11 +299,11 @@ describe('--affected sees a workspaceFiles change', () => {
           '  tasks: {',
           '    build: {',
           '      exec: { command: "true" },',
-          '      inputs: { files: ["src/**"], workspaceFiles: ["build-config.txt"] }, cache: { outputs: { files: [] } },',
+          '      inputs: { files: ["src/**"], workspaceFiles: ["build-config.txt"] }, outputs: { files: [] }, cache: true,',
           '    },',
           '    test: {',
           '      exec: { command: "true" },',
-          '      inputs: { files: ["src/**"], workspaceFiles: ["test-config.txt"] }, cache: { outputs: { files: [] } },',
+          '      inputs: { files: ["src/**"], workspaceFiles: ["test-config.txt"] }, outputs: { files: [] }, cache: true,',
           '    },',
           '  },',
           '}',
@@ -354,7 +353,7 @@ describe('--affected sees a workspaceFiles change', () => {
         await write(path.join(root, `pkgs/${name}/package.json`), JSON.stringify({ name }))
         await write(
           path.join(root, `pkgs/${name}/vx.config.mjs`),
-          `export default { tasks: { build: { exec: { command: "true" }, inputs: { files: [], workspaceFiles: [${JSON.stringify(glob)}] }, cache: { outputs: { files: [] } } } } }\n`,
+          `export default { tasks: { build: { exec: { command: "true" }, inputs: { files: [], workspaceFiles: [${JSON.stringify(glob)}] }, outputs: { files: [] }, cache: true } } }\n`,
         )
       }
       // `git add` of an embedded repository records a gitlink, as a submodule's.
@@ -393,7 +392,7 @@ describe('--affected and a directory link below a glob', () => {
     return ids.length === 0 ? r.stdout : ids.sort()
   }
   const keyed = (files: string, ws = '[]') =>
-    `{ exec: { command: "true" }, inputs: { files: ${files}, workspaceFiles: ${ws} }, cache: { outputs: { files: [] } } }`
+    `{ exec: { command: "true" }, inputs: { files: ${files}, workspaceFiles: ${ws} }, outputs: { files: [] }, cache: true }`
   const editBehindLink = async (): Promise<void> => {
     git(root, 'add', '-A')
     git(root, 'commit', '-qm', 'link')

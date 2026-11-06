@@ -294,7 +294,7 @@ export interface BuildGraphOptions {
    */
   undeclaredDeps?: (taskId: string, name: string) => void
   /**
-   * The workspace root, where `cache.outputs.workspaceFiles` is anchored.
+   * The workspace root, where `outputs.workspaceFiles` is anchored.
    * Given, a root-anchored output is also compared with every project's
    * `files` outputs (item 1088); absent (a graph built for a unit row), only
    * with other root-anchored ones.
@@ -1274,7 +1274,7 @@ function detectOutputCollisions(
   const byProject = new Map<string, TaskNode[]>()
   const wsDeclarers: TaskNode[] = []
   for (const n of nodes.values()) {
-    const outs = n.config.cache?.outputs
+    const outs = n.config.outputs
     if ((outs?.files?.length ?? 0) > 0) {
       const bucket = byProject.get(n.projectName)
       if (bucket) bucket.push(n)
@@ -1290,9 +1290,9 @@ function detectOutputCollisions(
   const positiveOf = (globs: readonly string[] | undefined): readonly string[] | undefined =>
     globs === undefined ? undefined : splitNegations(globs).positive
   const filesOf = (n: TaskNode): readonly string[] | undefined =>
-    positiveOf(n.config.cache?.outputs.files)
+    positiveOf(n.config.outputs?.files)
   const wsFilesOf = (n: TaskNode): readonly string[] | undefined =>
-    positiveOf(n.config.cache?.outputs.workspaceFiles)
+    positiveOf(n.config.outputs?.workspaceFiles)
   for (const bucket of byProject.values()) {
     // Most projects hold one task with outputs, and a call per project
     // cost the cold build a measured 0.4 ms at 1,000 projects.
@@ -1346,7 +1346,7 @@ function detectOutputCollisions(
  * captures, so the pair cannot collide there.
  */
 function takenBackOf(n: TaskNode, field: 'files' | 'workspaceFiles'): string[] {
-  return splitNegations(n.config.cache?.outputs[field] ?? []).negative
+  return splitNegations(n.config.outputs?.[field] ?? []).negative
 }
 
 /**
@@ -1374,9 +1374,9 @@ function collideAcross(
       if (!outputsOverlap(ga, gb) || outputTakenBack(gb, wsBack) || outputTakenBack(ga, filesBack))
         continue
       const head =
-        `${ws.id} declares the output ${JSON.stringify(ga)} in cache.outputs.workspaceFiles, ` +
+        `${ws.id} declares the output ${JSON.stringify(ga)} in outputs.workspaceFiles, ` +
         `inside ${files.id}'s ${JSON.stringify(gb.slice(rel === '' ? 0 : rel.length + 1))} in ` +
-        `cache.outputs.files — vx cleans a task's declared outputs before it runs and before a ` +
+        `outputs.files — vx cleans a task's declared outputs before it runs and before a ` +
         `cache-hit restore, so whichever of these runs second DELETES the other's output`
       if (exclusive && (reaches(files.id, ws.id) || reaches(ws.id, files.id))) {
         throw new UserError(`${head}. ${EXCLUSIVE_OUTPUTS_FIX}`, 'VX_E_OUTPUT_OVERLAP')
@@ -1400,7 +1400,7 @@ function collideAcross(
         const outside = wsGlobs[own.indexOf(null)]!
         throw new UserError(
           `${head}. ${ws.id} depends on ${files.id}, but adding to its output needs every ` +
-            `cache.outputs.workspaceFiles entry inside ${rel === '' ? 'the workspace root' : rel}, ` +
+            `outputs.workspaceFiles entry inside ${rel === '' ? 'the workspace root' : rel}, ` +
             `and ${JSON.stringify(outside)} is not. Give each task its own output path.`,
           'VX_E_OUTPUT_OVERLAP',
         )
@@ -1640,7 +1640,7 @@ function collide(
       const head =
         `${a.id} and ${b.id} both declare the output ${JSON.stringify(ga)}` +
         (ga === gb ? '' : ` / ${JSON.stringify(gb)}`) +
-        ` in cache.outputs.${field} — vx cleans a task's declared outputs before it runs and ` +
+        ` in outputs.${field} — vx cleans a task's declared outputs before it runs and ` +
         `before a cache-hit restore, so whichever of these runs second DELETES the other's ` +
         `output`
       // An overlap WITH an edge is the addition shape (item 588): the
@@ -1652,7 +1652,7 @@ function collide(
       const [up, down] = reaches(b.id, a.id) ? [a, b] : reaches(a.id, b.id) ? [b, a] : []
       const parts = {
         headline: `${a.id} and ${b.id} both write ${ga === gb ? ga : `${ga} / ${gb}`}`,
-        ...(field === 'files' ? {} : { what: ['in cache.outputs.workspaceFiles'] }),
+        ...(field === 'files' ? {} : { what: ['in outputs.workspaceFiles'] }),
         why: "vx clears a task's outputs before it runs, so one deletes the other's",
       }
       if (up !== undefined && exclusive)
@@ -1665,9 +1665,8 @@ function collide(
         )
       if (up !== undefined && down !== undefined) {
         const downGlobs = splitNegations(
-          (field === 'files'
-            ? down.config.cache?.outputs.files
-            : down.config.cache?.outputs.workspaceFiles) ?? [],
+          (field === 'files' ? down.config.outputs?.files : down.config.outputs?.workspaceFiles) ??
+            [],
         ).positive
         ;(down.addsToOutputsOf ??= []).push(up.id)
         ;(up.outputsAddedToBy ??= []).push(...(downGlobs ?? []))
@@ -1706,13 +1705,13 @@ export function outputTakenBack(output: string, negatives: readonly string[]): b
  * and its key read nothing (hunt 8). Always refused, whatever the rules.
  */
 function refuseSelfClean(node: TaskNode): void {
-  const cache = node.config.cache
+  const declaredOutputs = node.config.outputs
   const declared = node.config.inputs
-  if (cache === undefined || declared === undefined) return
+  if (declaredOutputs === undefined || declared === undefined) return
   for (const field of ['files', 'workspaceFiles'] as const) {
-    if (!coversAny(declared[field], cache.outputs[field])) continue
+    if (!coversAny(declared[field], declaredOutputs[field])) continue
     const inputs = splitNegations(declared[field] ?? [])
-    const out = splitNegations(cache.outputs[field] ?? [])
+    const out = splitNegations(declaredOutputs[field] ?? [])
     const outputs = out.positive
     if (outputs.length === 0) continue
     const roots = outputs.map((g) => rootless(staticPrefix(g)))
@@ -1823,11 +1822,11 @@ function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: strin
     return list
   }
   for (const n of nodes.values()) {
-    const cache = n.config.cache
+    const declaredOutputs = n.config.outputs
     const inputs = n.config.inputs
     if (inputs === undefined) continue
-    const outFiles = positives(cache?.outputs.files ?? [])
-    const outWs = positives(cache?.outputs.workspaceFiles ?? [])
+    const outFiles = positives(declaredOutputs?.files ?? [])
+    const outWs = positives(declaredOutputs?.workspaceFiles ?? [])
     if (outFiles.length > 0) {
       const anchor = workspaceRoot === undefined ? undefined : relPosix(workspaceRoot, n.projectDir)
       bucket(n.projectName).push({ node: n, globs: outFiles, reads: false, anchor })
@@ -1895,7 +1894,7 @@ function readsRootedOutputs(
   if (workspaceRoot !== undefined) {
     for (const node of filesWriters) {
       const rel = relPosix(workspaceRoot, node.projectDir)
-      const globs = positives(node.config.cache!.outputs.files).map((g) =>
+      const globs = positives(node.config.outputs!.files).map((g) =>
         rel === '' ? g : `${rel}/${g}`,
       )
       rooted.push({ node, globs, reads: false, rel })
@@ -2025,14 +2024,16 @@ function takenBack(
   let tb = memo.bySide.get(reader)
   if (tb === undefined) {
     const inputs = reader.node.config.inputs!
-    const cache = reader.node.config.cache
+    const declaredOutputs = reader.node.config.outputs
     // A reader rebased to the root (X-135) speaks in its project's terms.
     const at = reader.rel === undefined || reader.rel === '' ? '' : `${reader.rel}/`
     // What the reader's key never reads: its `!` entries and its own outputs.
     const list = [
       ...splitNegations(field === 'files' ? inputs.files : (inputs.workspaceFiles ?? [])).negative,
       ...splitNegations(
-        field === 'files' ? (cache?.outputs.files ?? []) : (cache?.outputs.workspaceFiles ?? []),
+        field === 'files'
+          ? (declaredOutputs?.files ?? [])
+          : (declaredOutputs?.workspaceFiles ?? []),
       ).positive,
     ].map((g) => at + g)
     const key = list.join('\0')

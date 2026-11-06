@@ -68,7 +68,7 @@ function makeNode(spec: NodeSpec): TaskNode {
     config: {
       ...(spec.group ? {} : { exec: { command: `echo ${task}` } }),
       ...(cacheable && !spec.group
-        ? { inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } }
+        ? { inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true }
         : {}),
     },
     deps: spec.deps ?? [],
@@ -700,7 +700,7 @@ describe('planRun() — planning executes nothing', () => {
             tasks: {
               build: {
                 exec: { command: 'mkdir -p dist && echo built > dist/out.txt && echo x >> ran.log' },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
               },
             },
           }
@@ -777,12 +777,12 @@ describe('planRun() — the plan describes the run you will get', () => {
           tasks: {
             codegen: {
               exec: { command: 'echo gen' },
-              inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+              inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
             },
             build: {
               dependsOn: ['codegen'],
               exec: { command: 'echo b' },
-              inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+              inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
             },
           },
         }
@@ -976,7 +976,7 @@ describe('planRun() — unresolved requests', () => {
           tasks: {
             build: {
               exec: { command: 'echo b' },
-              inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+              inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
             },
           },
         }
@@ -1026,14 +1026,13 @@ describe('planRun() — unresolved requests', () => {
                 codegen: {
                   exec: { command: 'echo gen' },
                   inputs: { files: ['src/**'], runtime: ['exit 3'] },
-                  cache: {
-                    outputs: { files: [] },
-                  },
+                  outputs: { files: [] },
+                  cache: true,
                 },
                 build: {
                   dependsOn: ['codegen'],
                   exec: { command: 'echo b' },
-                  inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+                  inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
                 },
               },
             }

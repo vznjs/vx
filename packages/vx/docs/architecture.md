@@ -491,9 +491,9 @@ the file again — ESM and UTF-8 only; see `docs/modules/project-loader.md`.
 The loader validates each task's shape at load time and surfaces a
 `UserError` (clean output, no stack) on malformed configs. Among the
 rules enforced: `exec.persistent` rejects malformed shapes; a
-persistent task with a `cache` block is rejected (no exit to cache);
+persistent task with `cache: true` is rejected (no exit to cache);
 group tasks (no `exec`) must declare `dependsOn` or a `cache` with no outputs; `inputs.files`
-and `cache.outputs.files` are required when `cache` is set;
+and `outputs.files` are required when `cache` is set;
 `.vx/workspace.ts`'s `plugins` array is shape-checked too.
 
 ### Config-time imports & the bootstrap problem
@@ -651,7 +651,7 @@ transaction (`recordRunBundle`), one row per real task (hits included) to the
 | `wallclock_start_ns` / `wallclock_end_ns` | hrtime ns relative to run t=0                                                   |
 | `cache_hit`                               | convenience boolean (derivable from status)                                     |
 | `attempts`                                | attempts a retried task took (> 1); NULL for a once-run task                    |
-| `cached`                                  | 1 when the task declared a cache block, 0 when it runs every time               |
+| `cached`                                  | 1 when the task declared `cache: true`, 0 when it runs every time               |
 | `blocked_by`                              | a skip's blocker, or what a task ran behind (`project#task`)                    |
 | `timed_out`                               | 1 when the failure was `exec.timeout`                                           |
 | `sandbox_violations`                      | the sandbox's violation count on a failure                                      |

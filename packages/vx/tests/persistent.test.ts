@@ -876,7 +876,7 @@ describe('exec.persistent (e2e)', () => {
               e2e: {
                 dependsOn: ['api#dev'],
                 exec: { command: 'test -f ../api/up && echo ran >> ../../e2e.log' },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+                inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
               },
             },
           }

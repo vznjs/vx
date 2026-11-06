@@ -1,7 +1,7 @@
 // `vx show <task>` claims every field the run reads, yet its block left
 // out `exec.interactive` (the task holds the terminal) and
 // `exec.env.secret` (names masked whatever they are called) (X-47), and
-// later `exec.platforms`, `cache.outputs.clean` and `cache.inputStability`.
+// later `exec.platforms`, `outputs.clean` and `inputs.stability`.
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -46,11 +46,9 @@ export default {
     quiet: { exec: { command: 'true', interactive: false } },
     tsc: {
       exec: { command: 'tsc -b', platforms: ['linux-x64', 'darwin-arm64'] },
-      inputs: { files: ['src/**'] },
-      cache: {
-        outputs: { files: ['dist/**'], clean: false },
-        inputStability: { strategy: 'mutable', severity: 'error' },
-      },
+      inputs: { files: ['src/**'], stability: { strategy: 'mutable', severity: 'error' } },
+      outputs: { files: ['dist/**'], clean: false },
+      cache: true,
     },
   },
 }
@@ -82,14 +80,14 @@ export default {
       ].join('\n'),
       [
         gradientRule({ enabled: false }, 'a#tsc'),
-        '  dir                      packages/a',
-        '  command                  tsc -b',
-        '  platforms                linux-x64, darwin-arm64',
-        '  inputs.files             src/**',
-        '  outputs.files            dist/**',
-        '  outputs.clean            no',
-        '  inputStability.strategy  mutable',
-        '  inputStability.severity  error',
+        '  dir                        packages/a',
+        '  command                    tsc -b',
+        '  platforms                  linux-x64, darwin-arm64',
+        '  inputs.files               src/**',
+        '  inputs.stability.strategy  mutable',
+        '  inputs.stability.severity  error',
+        '  outputs.files              dist/**',
+        '  outputs.clean              no',
         '',
       ].join('\n'),
     ])
@@ -97,9 +95,9 @@ export default {
 })
 
 // `exec.platforms` skips the task on any other machine, `outputs.clean`
-// keeps what a miss would remove, and `inputStability` can fail the task:
+// keeps what a miss would remove, and `inputs.stability` can fail the task:
 // each changes what a run does, and the block printed none of them.
-describe('vx show prints exec.platforms, outputs.clean and inputStability', () => {
+describe('vx show prints exec.platforms, outputs.clean and inputs.stability', () => {
   it('the pretty block carries all three', async () => {
     const ws = (root2 = await mkdtemp(path.join(os.tmpdir(), 'vx-show-exec-')))
     await writeFile(
@@ -117,11 +115,9 @@ export default {
   tasks: {
     tsc: {
       exec: { command: 'tsc -b', platforms: ['darwin-arm64', 'linux-x64'] },
-      inputs: { files: ['src/**'] },
-      cache: {
-        outputs: { files: ['dist/**'], clean: false },
-        inputStability: { strategy: 'mutable', severity: 'error' },
-      },
+      inputs: { files: ['src/**'], stability: { strategy: 'mutable', severity: 'error' } },
+      outputs: { files: ['dist/**'], clean: false },
+      cache: true,
     },
   },
 }
@@ -136,14 +132,14 @@ export default {
     expect(out).toBe(
       [
         gradientRule({ enabled: false }, 'a#tsc'),
-        '  dir                      packages/a',
-        '  command                  tsc -b',
-        '  platforms                darwin-arm64, linux-x64',
-        '  inputs.files             src/**',
-        '  outputs.files            dist/**',
-        '  outputs.clean            no',
-        '  inputStability.strategy  mutable',
-        '  inputStability.severity  error',
+        '  dir                        packages/a',
+        '  command                    tsc -b',
+        '  platforms                  darwin-arm64, linux-x64',
+        '  inputs.files               src/**',
+        '  inputs.stability.strategy  mutable',
+        '  inputs.stability.severity  error',
+        '  outputs.files              dist/**',
+        '  outputs.clean              no',
         '',
       ].join('\n'),
     )

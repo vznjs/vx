@@ -18,7 +18,8 @@ export default defineProject({
       dependsOn: ['dev'],
       exec: { command: 'playwright test' },
       inputs: { files: ['e2e/**'], tasks: [] }, // dev is for order, not the key
-      cache: { outputs: { files: ['playwright-report/**'] } },
+      outputs: { files: ['playwright-report/**'] },
+      cache: true,
     },
   },
 })
@@ -38,7 +39,7 @@ then stops the server.
 When the run ends, vx sends the server `SIGTERM`. A server still alive
 2 seconds later gets `SIGKILL`.
 
-A persistent task has no `cache` block. A sandboxed server on Linux
+A persistent task has no `cache: true`. A sandboxed server on Linux
 lists its port in `sandbox.allow.localBinding`.
 
 To re-run tasks as files change, see [`vx watch`](../../cli/watch/).

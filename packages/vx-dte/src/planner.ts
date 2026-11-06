@@ -281,15 +281,14 @@ export function missedWork(
     if (known !== undefined) return known
     changed.set(id, false)
     const n = nodes.get(id)
-    const c = (executed.has(id) && n?.config.cache !== undefined) || (n?.deps ?? []).some(changes)
+    const c = (executed.has(id) && n?.config.cache === true) || (n?.deps ?? []).some(changes)
     changed.set(id, c)
     return c
   }
   const missed = (id: string): boolean => {
     const n = nodes.get(id)
     return (
-      executed.has(id) ||
-      (n !== undefined && (n.config.cache === undefined || n.deps.some(changes)))
+      executed.has(id) || (n !== undefined && (n.config.cache !== true || n.deps.some(changes)))
     )
   }
   return planTasks([...remaining].filter(missed), nodes, need, durationMs, home)

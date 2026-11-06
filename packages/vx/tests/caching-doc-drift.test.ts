@@ -156,7 +156,7 @@ describe("caching.md's read/write predicates are execute-task's", () => {
       expect(line).toContain('cfgCacheable')
       const doc = readFileSync(new URL('../docs/caching.md', import.meta.url), 'utf8')
       const said = doc.match(new RegExp(`\`${name} = ([^\`]+)\``))![1]!
-      expect(said).toContain('a cache block')
+      expect(said).toContain('task is cached')
       expect(said).toContain('not remote-only')
     }
   })

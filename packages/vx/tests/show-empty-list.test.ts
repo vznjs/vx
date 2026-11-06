@@ -33,7 +33,8 @@ export default {
     stamp: {
       exec: { command: 'true' },
       inputs: { files: ['src/**'] },
-      cache: { outputs: { files: [] } },
+      outputs: { files: [] },
+      cache: true,
     },
   },
 }

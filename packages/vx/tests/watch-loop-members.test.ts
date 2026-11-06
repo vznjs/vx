@@ -72,7 +72,7 @@ describe('vx watch loop (e2e): the watched set', () => {
           tasks: {
             build: {
               exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${f.log}' },
-              inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+              inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
             },
           },
         }
@@ -124,7 +124,7 @@ describe('vx watch loop (e2e): the watched set', () => {
         tasks: {
           build: {
             exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${f.log}' },
-            inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] }, cache: { outputs: { files: ['dist/**'] } },
+            inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] }, outputs: { files: ['dist/**'] }, cache: true,
           },
         },
       }\n`,
@@ -165,7 +165,7 @@ describe('vx watch loop (e2e): the watched set', () => {
           tasks: {
             build: {
               exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo lib >> ${f.log}' },
-              inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+              inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
             },
           },
         }
@@ -179,7 +179,7 @@ describe('vx watch loop (e2e): the watched set', () => {
           build: {
             dependsOn: ['^build'],
             exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${f.log}' },
-            inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+            inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
           },
         },
       }\n`,
@@ -208,7 +208,7 @@ describe('vx watch loop (e2e): the watched set', () => {
             tasks: {
               build: {
                 exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo ${name} >> ${f.log}' },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+                inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
               },
             },
           }
@@ -247,7 +247,7 @@ describe('vx watch loop (e2e): the watched set', () => {
         build: {
           ${extra}
           exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo ${tag} >> ${f.log}' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+          inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
         },
       },
     }
@@ -309,7 +309,7 @@ describe('vx watch loop (e2e): the watched set', () => {
         tasks: {
           build: {
             exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${f.log}' },
-            inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] }, cache: { outputs: { files: ['dist/**'] } },
+            inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] }, outputs: { files: ['dist/**'] }, cache: true,
           },
         },
       }\n`,
@@ -341,7 +341,8 @@ describe('vx watch loop (e2e): the watched set', () => {
           build: {
             exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${f.log}' },
             inputs,
-            cache: { outputs: { files: ['dist/**'] } },
+            outputs: { files: ['dist/**'] },
+            cache: true,
           },
         },
       }\n`,
@@ -378,7 +379,8 @@ describe('vx watch loop (e2e): the watched set', () => {
         build: {
           exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${f.log}' },
           inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] },
-          cache: { outputs: { files: ['dist/**'] } },
+          outputs: { files: ['dist/**'] },
+          cache: true,
         },
       },
     }\n`
@@ -476,7 +478,7 @@ describe('vx watch loop (e2e): the watched set', () => {
         tasks: {
           build: {
             exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${f.log}' },
-            inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+            inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
           },
         },
       }\n`,

@@ -33,7 +33,7 @@ it('a brace over two directories saves and restores both, and nothing beside the
         tasks: {
           build: {
             exec: { command: 'mkdir -p dist lib/esm lib/cjs && echo a > dist/a.js && echo b > lib/esm/b.js && echo c > lib/cjs/c.js' },
-            inputs: { files: ['src/**'] }, cache: { outputs: { files: ['{dist,lib/esm}/**'] } },
+            inputs: { files: ['src/**'] }, outputs: { files: ['{dist,lib/esm}/**'] }, cache: true,
           },
         },
       }
@@ -70,7 +70,7 @@ it('a brace of directory literals or ./ spellings saves and restores each tree',
           tasks: {
             build: {
               exec: { command: 'mkdir -p dist/sub lib && echo a > dist/sub/a.js && echo b > lib/b.js' },
-              inputs: { files: ['src/**'] }, cache: { outputs: { files: [${JSON.stringify(glob)}] } },
+              inputs: { files: ['src/**'] }, outputs: { files: [${JSON.stringify(glob)}] }, cache: true,
             },
           },
         }

@@ -20,7 +20,7 @@ const APP_CONFIG = `
     tasks: {
       test: {
         exec: { command: 'test -f ../../green' },
-        inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+        inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
       },
     },
   }
@@ -33,7 +33,7 @@ const BREAK_CONFIG = `
     tasks: {
       build: {
         exec: { command: 'exit 3', retries: 2 },
-        inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } },
+        inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true,
       },
     },
   }
@@ -47,7 +47,7 @@ const RETRY_CONFIG = `
           command: 'if test -f flag.txt; then echo winning; else touch flag.txt; exit 1; fi',
           retries: 1,
         },
-        inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } },
+        inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true,
       },
     },
   }
@@ -206,7 +206,7 @@ describe('a failure behind a failed dependency (--continue=always)', () => {
                 test: {
                   dependsOn: ['prep'],
                   exec: { command: 'test -f ../../green' },
-                  inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+                  inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
                 },
               },
             }
@@ -254,7 +254,7 @@ describe('a pass behind a failed dependency (--continue=always)', () => {
                 test: {
                   dependsOn: ['prep'],
                   exec: { command: 'test -f ../../test-ok' },
-                  inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+                  inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
                 },
               },
             }
@@ -307,7 +307,7 @@ describe('a pass behind a failed dependency (--continue=always)', () => {
                 test: {
                   dependsOn: ['prep'],
                   exec: { command: 'test -f ../../green' },
-                  inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+                  inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
                 },
               },
             }

@@ -24,9 +24,8 @@ export default defineProject({
       inputs: {
         files: ['*.ts', 'src/**', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
       },
-      cache: {
-        outputs: { files: [] },
-      },
+      outputs: { files: [] },
+      cache: true,
     },
 
     'lint.oxfmt': {
@@ -39,9 +38,8 @@ export default defineProject({
       inputs: {
         files: ['**/*'],
       },
-      cache: {
-        outputs: { files: [] },
-      },
+      outputs: { files: [] },
+      cache: true,
     },
 
     // wrangler.jsonc's Preview settings.
@@ -55,9 +53,8 @@ export default defineProject({
       },
       dependsOn: ['install'],
       inputs: { files: ['tests/**', 'wrangler.jsonc', 'package.json'] },
-      cache: {
-        outputs: { files: [] },
-      },
+      outputs: { files: [] },
+      cache: true,
     },
   },
 })

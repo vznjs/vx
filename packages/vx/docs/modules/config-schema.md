@@ -27,7 +27,7 @@ export function cacheScopeEnvError(got: string): UserError
 export function cacheScopeError(source?: string): string
 // `baseBranch`: `VX_BASE_BRANCH`, else the workspace's; a bad variable throws
 export function configuredBaseBranch(workspace: WorkspaceConfig | null): string | undefined
-// `VX_CACHE_INPUT_STABILITY_STRATEGY` / `VX_CACHE_INPUT_STABILITY_SEVERITY`, read once per run in run.ts; a bad value throws
+// `VX_INPUTS_STABILITY_STRATEGY` / `VX_INPUTS_STABILITY_SEVERITY`, read once per run in run.ts; a bad value throws
 export function inputStabilityEnv(): InputStability
 // Why `name` cannot be a task name (empty, padded, holds `#`, …), or null; `vx init` skips such a script
 export function taskNameProblem(name: string): string | null
@@ -79,7 +79,7 @@ rules (a plugin may not shadow a core verb; a verb has one owner, a package).
 - **Unknown keys are refused at every object level** — `tasks`, the
   task, `exec`, `exec.env`, `exec.persistent`,
   `exec.sandbox` and its `allow` / `deny` / `ignore`, `cache`,
-  `inputs`, `cache.outputs`, and the workspace top level. The
+  `inputs`, `outputs`, and the workspace top level. The
   message is `<level> has unknown field "<key>" (allowed: …)` plus
   ` — did you mean <x>?` when a candidate is within two edits
   (`util/edit-distance.ts`), never a guess beyond that; another

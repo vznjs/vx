@@ -74,7 +74,7 @@ reads first.
 That covers three kinds of upstream:
 
 - an upstream's root-anchored `outputs.workspaceFiles`;
-- an upstream with no `cache` block that may write in the project;
+- an upstream with no `cache: true` that may write in the project;
 - an upstream that rewrites its own inputs in place (a formatter) whose
   key this one does not fold.
 

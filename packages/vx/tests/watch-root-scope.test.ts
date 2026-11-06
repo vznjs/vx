@@ -39,7 +39,7 @@ describe('vx watch and .gitignore', () => {
         'app',
         `export default { tasks: { build: {
           exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${log}' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } } } } }`,
+          inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true } } }`,
       )
       await mkdir(path.join(dir, 'src'), { recursive: true })
       await writeFile(path.join(dir, 'src', 'a.txt'), 'a\n')
@@ -68,7 +68,7 @@ describe('vx watch //#task', () => {
       path.join(root, 'vx.config.mjs'),
       `export default { tasks: { check: {
         exec: { command: 'echo run >> ${log}' },
-        inputs: { files: ['tools/**'] }, cache: { outputs: { files: [] } } } } }`,
+        inputs: { files: ['tools/**'] }, outputs: { files: [] }, cache: true } } }`,
     )
     await mkdir(path.join(root, 'tools'))
     await writeFile(path.join(root, 'tools', 't.txt'), '1\n')
@@ -93,7 +93,7 @@ describe('vx watch //#task', () => {
       path.join(root, 'vx.config.mjs'),
       `export default { tasks: { check: {
         exec: { command: 'echo run >> ${log}' },
-        inputs: { files: ['tools/**'] }, cache: { outputs: { files: [] } } } } }`,
+        inputs: { files: ['tools/**'] }, outputs: { files: [] }, cache: true } } }`,
     )
     await mkdir(path.join(root, 'tools'))
     await writeFile(path.join(root, 'tools', 't.txt'), '1\n')

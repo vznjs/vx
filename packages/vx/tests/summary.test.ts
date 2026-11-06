@@ -275,7 +275,7 @@ describe('formatRunSummary', () => {
       extra: Partial<TaskOutcome> = {},
     ): TaskOutcome => ({
       ...outcome(id, status),
-      node: { id, config: { exec: { command: 'noop' }, cache: {} } } as unknown as TaskNode,
+      node: { id, config: { exec: { command: 'noop' }, cache: true } } as unknown as TaskNode,
       hash: `h-${id}`,
       ...extra,
     })
@@ -665,7 +665,7 @@ describe('a flaky task says so on its own row', () => {
       id,
       projectName,
       taskName,
-      config: { exec: { command: 'noop' }, cache: {} },
+      config: { exec: { command: 'noop' }, cache: true },
     } as TaskNode
   }
   const flaky = (
@@ -718,7 +718,7 @@ describe('docs/modules/summary.md shows what the footer prints', () => {
     // A cached task (a `cache` block) that ran and saved: the page's "local 4↑" row.
     const timed = (id: string, durationMs: number): TaskOutcome => ({
       ...outcome(id, 'success'),
-      node: { id, config: { exec: { command: 'noop' }, cache: {} } } as TaskNode,
+      node: { id, config: { exec: { command: 'noop' }, cache: true } } as TaskNode,
       durationMs,
       saved: true,
     })
@@ -766,7 +766,7 @@ describe('the footer never repeats a value or a count', () => {
       ...o,
       durationMs: ms,
       ...(status.startsWith('cache-hit') ? { storedDurationMs: 21_290 } : {}),
-      node: { ...o.node, config: { ...o.node.config, cache: {} } } as TaskNode,
+      node: { ...o.node, config: { ...o.node.config, cache: true } } as TaskNode,
     }
   }
   const facts = (lines: readonly string[]): string[] =>

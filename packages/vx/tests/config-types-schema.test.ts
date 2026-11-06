@@ -8,12 +8,13 @@
 // what it allows when handed a key it does not know.
 import { describe, expect, it } from 'bun:test'
 import type {
-  CacheConfig,
   InputsConfig,
   CacheSettings,
   RunSettings,
   WatchSettings,
-  CacheOutputs,
+  TaskOutputs,
+  WorkspaceInputs,
+  WorkspaceOutputs,
   InputStability,
   ExecConfig,
   ExecEnv,
@@ -39,7 +40,9 @@ type Exhaustive<T, L extends readonly string[]> = [Exclude<Keys<T>, L[number]>] 
 const WORKSPACE = [
   'baseBranch',
   'cache',
+  'inputs',
   'lock',
+  'outputs',
   'plugins',
   'run',
   'watch',
@@ -64,6 +67,7 @@ const TASK = [
   'description',
   'exec',
   'inputs',
+  'outputs',
 ] as const satisfies readonly Keys<TaskConfig>[]
 const EXEC = [
   'command',
@@ -77,12 +81,12 @@ const EXEC = [
   'timeout',
 ] as const satisfies readonly Keys<ExecConfig>[]
 const ENV = ['define', 'passThrough', 'secret'] as const satisfies readonly Keys<ExecEnv>[]
-const CACHE = ['outputs', 'inputStability'] as const satisfies readonly Keys<CacheConfig>[]
 const STABILITY = ['severity', 'strategy'] as const satisfies readonly Keys<InputStability>[]
 const INPUTS = [
   'env',
   'files',
   'runtime',
+  'stability',
   'tasks',
   'workspaceFiles',
   'workspaceRuntime',
@@ -93,13 +97,13 @@ const OUTPUTS = [
   'files',
   'mount',
   'workspaceFiles',
-] as const satisfies readonly Keys<CacheOutputs>[]
+] as const satisfies readonly Keys<TaskOutputs>[]
+const WORKSPACE_INPUTS = ['stability'] as const satisfies readonly Keys<WorkspaceInputs>[]
+const WORKSPACE_OUTPUTS = ['clean'] as const satisfies readonly Keys<WorkspaceOutputs>[]
 const WORKSPACE_CACHE = [
   'concurrency',
   'dir',
   'download',
-  'inputStability',
-  'outputs',
   'policy',
   'store',
   'upload',
@@ -149,9 +153,10 @@ const exhaustive: [
   Exhaustive<TaskConfig, typeof TASK>,
   Exhaustive<ExecConfig, typeof EXEC>,
   Exhaustive<ExecEnv, typeof ENV>,
-  Exhaustive<CacheConfig, typeof CACHE>,
   Exhaustive<InputsConfig, typeof INPUTS>,
-  Exhaustive<CacheOutputs, typeof OUTPUTS>,
+  Exhaustive<TaskOutputs, typeof OUTPUTS>,
+  Exhaustive<WorkspaceInputs, typeof WORKSPACE_INPUTS>,
+  Exhaustive<WorkspaceOutputs, typeof WORKSPACE_OUTPUTS>,
   Exhaustive<InputStability, typeof STABILITY>,
   Exhaustive<CacheSettings, typeof WORKSPACE_CACHE>,
   Exhaustive<NonNullable<CacheSettings['upload']>, typeof UPLOAD>,
@@ -163,6 +168,7 @@ const exhaustive: [
   Exhaustive<SandboxDenials, typeof DENIALS>,
   Exhaustive<SandboxIgnore, typeof IGNORES>,
 ] = [
+  true,
   true,
   true,
   true,
@@ -224,40 +230,32 @@ describe('the config types and the validator agree on every level (D-71)', () =>
         ),
     ],
     [
-      'cache',
-      CACHE,
-      () =>
-        validateProjectConfig(
-          task({ inputs: { files: [] }, cache: { outputs: { files: [] }, ...X } }) as never,
-          'p',
-        ),
-    ],
-    [
       'inputs',
       INPUTS,
       () =>
         validateProjectConfig(
-          task({ inputs: { files: [], ...X }, cache: { outputs: { files: [] } } }) as never,
+          task({ inputs: { files: [], ...X }, outputs: { files: [] }, cache: true }) as never,
           'p',
         ),
     ],
     [
-      'cache.outputs',
+      'outputs',
       OUTPUTS,
       () =>
         validateProjectConfig(
-          task({ inputs: { files: [] }, cache: { outputs: { files: [], ...X } } }) as never,
+          task({ inputs: { files: [] }, outputs: { files: [], ...X }, cache: true }) as never,
           'p',
         ),
     ],
     [
-      'cache.inputStability',
+      'inputs.stability',
       STABILITY,
       () =>
         validateProjectConfig(
           task({
-            inputs: { files: [] },
-            cache: { outputs: { files: [] }, inputStability: X },
+            inputs: { files: [], stability: X },
+            outputs: { files: [] },
+            cache: true,
           }) as never,
           'p',
         ),
@@ -267,9 +265,19 @@ describe('the config types and the validator agree on every level (D-71)', () =>
     ['watch', WATCH, () => validateWorkspace({ watch: { ...X } } as never, 'w')],
     ['lock', LOCK, () => validateWorkspace({ lock: { ...X } } as never, 'w')],
     [
-      'cache.inputStability (workspace)',
+      'inputs.stability (workspace)',
       STABILITY,
-      () => validateWorkspace({ cache: { inputStability: X } } as never, 'w'),
+      () => validateWorkspace({ inputs: { stability: X } } as never, 'w'),
+    ],
+    [
+      'inputs (workspace)',
+      WORKSPACE_INPUTS,
+      () => validateWorkspace({ inputs: { ...X } } as never, 'w'),
+    ],
+    [
+      'outputs (workspace)',
+      WORKSPACE_OUTPUTS,
+      () => validateWorkspace({ outputs: { ...X } } as never, 'w'),
     ],
     [
       'cache.concurrency',
@@ -356,14 +364,13 @@ describe('a config built from readonly lists type-checks and loads', () => {
           runtime: ['node -v'] as const,
           workspaceRuntime: ['git -v'] as const,
         },
-        cache: {
-          outputs: {
-            files: ['dist/**'] as const,
-            workspaceFiles: ['out/x'] as const,
-            bin: 'dist/bin',
-            mount: { '/nix/store': 'dist/store' },
-          },
+        outputs: {
+          files: ['dist/**'] as const,
+          workspaceFiles: ['out/x'] as const,
+          bin: 'dist/bin',
+          mount: { '/nix/store': 'dist/store' },
         },
+        cache: true,
       },
     },
   })

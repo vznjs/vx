@@ -64,7 +64,7 @@ A file has one owner, so two of these plugins that share a settings file (`pnpm(
 
 ## `package.json` as an input
 
-Every task with `inputs` of a project the lockfile lists, cached or not, gets its literal `package.json` appended to `inputs.files` (the `project` stage), so an edit to a manifest re-keys that project's tasks and, through `^` keys, its dependants. A task with no `inputs` stays keyless; one whose inputs already name `package.json` is left alone. A task that rewrites its own `package.json` with the same bytes (tsdown) keeps its hits under `inputStability: { strategy: 'mutable' }`.
+Every task with `inputs` of a project the lockfile lists, cached or not, gets its literal `package.json` appended to `inputs.files` (the `project` stage), so an edit to a manifest re-keys that project's tasks and, through `^` keys, its dependants. A task with no `inputs` stays keyless; one whose inputs already name `package.json` is left alone. A task that rewrites its own `package.json` with the same bytes (tsdown) keeps its hits under `inputs.stability: { strategy: 'mutable' }`.
 
 ## Project edges
 

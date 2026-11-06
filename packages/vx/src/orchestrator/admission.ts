@@ -186,7 +186,7 @@ export function admitTasks(
     const cacheable =
       !isGroupTask(node) &&
       node.config.exec?.persistent === undefined &&
-      node.config.cache !== undefined &&
+      node.config.cache === true &&
       canRead &&
       canWrite
     // A restore-tier task (confirmed local hit, may run before its deps)

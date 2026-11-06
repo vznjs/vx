@@ -26,7 +26,8 @@ import {
 const CACHED: TaskConfig = {
   exec: { command: 'true' },
   inputs: { files: ['src/**'] },
-  cache: { outputs: { files: [] } },
+  outputs: { files: [] },
+  cache: true,
 }
 const UNCACHED: TaskConfig = { exec: { command: 'true' } }
 const GROUP: TaskConfig = {}
@@ -193,7 +194,7 @@ describe('the walk (R3)', () => {
     const nodes = graph({
       'app#test': [CACHED, ['app#ci']],
       'app#ci': [
-        { inputs: { files: [], tasks: [] }, cache: { outputs: { files: [] } } },
+        { inputs: { files: [], tasks: [] }, outputs: { files: [] }, cache: true },
         ['lib#source'],
       ],
       'lib#source': [CACHED, []],
@@ -279,7 +280,7 @@ describe('K(T) is what moves the key (R4)', () => {
             tasks: {
               source: {
                 exec: { command: 'true' },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+                inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
               },
               build: {
                 exec: { command: 'true' },
@@ -310,7 +311,7 @@ describe('K(T) is what moves the key (R4)', () => {
               bundle: {
                 exec: { command: 'true' },
                 dependsOn: ['^source'],
-                inputs: { files: ['src/**'], tasks: [] }, cache: { outputs: { files: [] } },
+                inputs: { files: ['src/**'], tasks: [] }, outputs: { files: [] }, cache: true,
               },
             },
           }
@@ -326,7 +327,7 @@ describe('K(T) is what moves the key (R4)', () => {
             tasks: {
               source: {
                 exec: { command: 'true' },
-                inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+                inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
               },
             },
           }
@@ -378,9 +379,8 @@ describe('K(T) is what moves the key (R4)', () => {
           exec: { command: 'true' },
           dependsOn: ${JSON.stringify(s.dependsOn)},
           inputs: { files: ['src/**']${s.tasks === undefined ? '' : `, tasks: ${JSON.stringify(s.tasks)}`} },
-          cache: {
-            outputs: { files: [] },
-          },
+          outputs: { files: [] },
+          cache: true,
         },
       },
     }
@@ -459,7 +459,7 @@ describe('K(T) under --exclude-dependencies', () => {
         files: { 'src/index.js': 'export const ui = 1\n' },
         config: `export default { tasks: { build: {
           exec: { command: 'true' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+          inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
         } } }`,
       })
       const app = await addProject(fixture.root, '@x/app', {
@@ -468,12 +468,12 @@ describe('K(T) under --exclude-dependencies', () => {
           gen: {
             exec: { command: 'true' },
             dependsOn: ['^build'],
-            inputs: { files: ['src/**']${genTasks} }, cache: { outputs: { files: [] } },
+            inputs: { files: ['src/**']${genTasks} }, outputs: { files: [] }, cache: true,
           },
           test: {
             exec: { command: 'true' },
             dependsOn: ['gen'],
-            inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+            inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
           },
         } }`,
       })

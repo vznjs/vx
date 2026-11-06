@@ -21,7 +21,7 @@ import { dry } from './helpers/parity.js'
 const TIMEOUT = 60_000
 const CONFIG = `export default {
   tasks: {
-    build: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } },
+    build: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true },
   },
 }
 `

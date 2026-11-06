@@ -87,7 +87,7 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       -- v23: attempts a retried task took (>1); NULL for a once-run task.
       -- The direct within-run flaky signal.
       attempts            INTEGER,
-      -- v25: 1 when the task declared a cache block, 0 when it runs every
+      -- v25: 1 when the task declared cache: true, 0 when it runs every
       -- time by design; NULL on rows older than the column.
       cached              INTEGER,
       -- v27: why a task failed or was skipped, as the run's own footer
