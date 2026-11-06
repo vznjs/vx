@@ -14,7 +14,21 @@ import { sandboxAvailable } from './helpers/sandbox-gate.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 const available = await sandboxAvailable('sandbox grant-through-link test')
-const quiet = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
+// What the last run's task printed, with vx's own lines: the message of
+// each check, so a failure names its cause. One failed on CI as
+// `['failed', false, '']` and passed every rerun, and the output that would
+// have said why was thrown away.
+let said = ''
+const log = {
+  status() {},
+  taskStdout(_n: unknown, s: string) {
+    said += s
+  },
+  taskStderr(_n: unknown, s: string) {
+    said += s
+  },
+  taskComplete() {},
+}
 
 describe.skipIf(!available || process.platform !== 'linux')(
   'a grant spelled through a link in the project',
@@ -42,7 +56,8 @@ describe.skipIf(!available || process.platform !== 'linux')(
       await writeFile(path.join(dir, 'conf', 'real.json'), 'real\n')
       symlinkSync('conf/real.json', path.join(dir, 'config.json'))
       symlinkSync('conf', path.join(dir, 'lib'))
-      const r = await run({ cwd: root, tasks: ['t'], log: quiet })
+      said = ''
+      const r = await run({ cwd: root, tasks: ['t'], log })
       const o = r.outcomes[0]!
       return [
         o.status,
@@ -52,7 +67,11 @@ describe.skipIf(!available || process.platform !== 'linux')(
     }
 
     it('a read the link hid is a violation, not a fallback cached green', async () => {
-      expect(await outcome(['config.json'], 'config.json')).toEqual(['failed', true, 'default\n'])
+      expect(await outcome(['config.json'], 'config.json'), said).toEqual([
+        'failed',
+        true,
+        'default\n',
+      ])
     })
 
     it('the fix grants the directory holding the link, not the target alone', async () => {
@@ -61,22 +80,27 @@ describe.skipIf(!available || process.platform !== 'linux')(
       for (const read of [['out'], ['conf/real.json']]) {
         await rm(path.join(root, 'packages', 'app'), { recursive: true, force: true })
         await outcome(read, 'config.json')
-        const r = await run({ cwd: root, tasks: ['t'], log: quiet })
-        expect(r.outcomes[0]!.sandboxFix?.read).toEqual(['.', 'conf/real.json'])
+        const r = await run({ cwd: root, tasks: ['t'], log })
+        expect(r.outcomes[0]!.sandboxFix?.read, said).toEqual(['.', 'conf/real.json'])
       }
     })
 
     it('CONTROL: the link inside a mounted directory reads through', async () => {
-      expect(await outcome(['.'], 'config.json')).toEqual(['success', false, 'real\n'])
+      expect(await outcome(['.'], 'config.json'), said).toEqual(['success', false, 'real\n'])
     })
 
     it('CONTROL: a file missing behind a hidden link is no violation', async () => {
-      expect(await outcome(['lib'], 'lib/missing.json')).toEqual(['success', false, 'default\n'])
+      expect(await outcome(['lib'], 'lib/missing.json'), said).toEqual([
+        'success',
+        false,
+        'default\n',
+      ])
     })
 
     it('CONTROL: a file made after a missed read through a mounted link is no violation', async () => {
       expect(
         await outcome(['.'], 'lib/new.json', ['out/', 'conf/'], '; echo n > conf/new.json'),
+        said,
       ).toEqual(['success', false, 'default\n'])
     })
 
@@ -88,6 +112,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
           ['out/', 'conf/', 'x.txt'],
           '; echo n > conf/new.json',
         ),
+        said,
       ).toEqual(['success', false, 'default\n'])
     })
 
@@ -100,6 +125,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
           ['out/', 'conf/'],
           '; echo n > conf/new.json',
         ),
+        said,
       ).toEqual(['success', false, 'default\n'])
     })
   },
