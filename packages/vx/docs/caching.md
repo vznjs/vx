@@ -1578,7 +1578,10 @@ over the target like a file, and only if the target is relative and
 stays inside the workspace; any other fails the whole restore. Its index
 row carries the link type in its mode and the target's length and CRC-32
 where a file has its size and mtime, so the skip-restore check compares
-the target and never follows the link. Tar entries that are not regular
+the target and never follows the link. A FIFO, socket or device under
+the outputs holds no bytes to store and stays out of the entry; the
+save names each one in a warning, since a hit restores the tree without
+it (until 2026-11-06 it was left out without a word). Tar entries that are not regular
 files (symlinks, hardlinks, devices) are never materialised — the
 reader reports them only to be skipped — so a
 poisoned artifact cannot smuggle one onto disk. Nor can it name a file

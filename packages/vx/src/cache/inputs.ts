@@ -17,7 +17,15 @@
 // be a git work tree; non-git environments are not supported.
 
 import path from 'node:path'
-import { lstatSync, readdirSync, realpathSync, rmdirSync, rmSync, statSync } from 'node:fs'
+import {
+  type Dirent,
+  lstatSync,
+  readdirSync,
+  realpathSync,
+  rmdirSync,
+  rmSync,
+  statSync,
+} from 'node:fs'
 import { rm, rmdir } from 'node:fs/promises'
 import type { InputsConfig, TaskConfig } from '../config.js'
 import {
@@ -837,15 +845,23 @@ export async function resolveOutputTree(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
-}): Promise<{ files: string[]; emptyDirs: string[] }> {
+  /** Also list the FIFOs, sockets and devices the globs name (a save refuses them). */
+  special?: boolean
+}): Promise<{ files: string[]; emptyDirs: string[]; special: string[] }> {
   const emptyDirs = new Set<string>()
-  const { files } = await scanOutputs(args, emptyDirs)
-  return { files, emptyDirs: containedIn(args.projectDir, [...emptyDirs]).sort() }
+  const special = args.special === true ? new Set<string>() : undefined
+  const { files } = await scanOutputs(args, emptyDirs, special)
+  return {
+    files,
+    emptyDirs: containedIn(args.projectDir, [...emptyDirs]).sort(),
+    special: special === undefined ? [] : containedIn(args.projectDir, [...special]).sort(),
+  }
 }
 
 async function scanOutputs(
   args: { projectDir: string; outputs: readonly string[]; nestedProjectDirs: string[] },
   emptyDirs?: Set<string>,
+  special?: Set<string>,
 ): Promise<{ files: string[] }> {
   const { positive, negative } = splitNegations(args.outputs)
   if (positive.length === 0) return { files: [] }
@@ -859,6 +875,7 @@ async function scanOutputs(
       args.projectDir,
       inNestedProject(args.projectDir, args.nestedProjectDirs),
       emptyDirs,
+      special,
     )),
   ]
   // Containment, enforced HERE and not only at the loader. `cleanOutputs`
@@ -1527,6 +1544,7 @@ export async function resolveWorkspaceOutputs(
     outputs: readonly string[]
   },
   emptyDirs?: Set<string>,
+  special?: Set<string>,
 ): Promise<string[]> {
   const { positive, negative } = splitNegations(args.outputs)
   if (positive.length === 0) return []
@@ -1534,7 +1552,7 @@ export async function resolveWorkspaceOutputs(
   const trees = asTrees(positive)
   refuseDirLinkedOut(args.workspaceRoot, trees, 'workspace')
   const scanned = [
-    ...(await scanUnion(trees, excludeGlobs, args.workspaceRoot, undefined, emptyDirs)),
+    ...(await scanUnion(trees, excludeGlobs, args.workspaceRoot, undefined, emptyDirs, special)),
   ]
   // Same containment as the project twin, anchored one level out. These globs
   // deliberately ignore PROJECT boundaries — that is the escape hatch — but
@@ -1547,10 +1565,17 @@ export async function resolveWorkspaceOutputs(
 export async function resolveWorkspaceOutputTree(args: {
   workspaceRoot: string
   outputs: readonly string[]
-}): Promise<{ files: string[]; emptyDirs: string[] }> {
+  /** As `resolveOutputTree`'s. */
+  special?: boolean
+}): Promise<{ files: string[]; emptyDirs: string[]; special: string[] }> {
   const emptyDirs = new Set<string>()
-  const files = await resolveWorkspaceOutputs(args, emptyDirs)
-  return { files, emptyDirs: containedIn(args.workspaceRoot, [...emptyDirs]).sort() }
+  const special = args.special === true ? new Set<string>() : undefined
+  const files = await resolveWorkspaceOutputs(args, emptyDirs, special)
+  return {
+    files,
+    emptyDirs: containedIn(args.workspaceRoot, [...emptyDirs]).sort(),
+    special: special === undefined ? [] : containedIn(args.workspaceRoot, [...special]).sort(),
+  }
 }
 
 /**
@@ -2456,13 +2481,19 @@ async function scanUnion(
   cwd: string,
   nested: (rel: string) => boolean = () => false,
   emptyDirs?: Set<string>,
+  special?: Set<string>,
 ): Promise<Set<string>> {
   const matches = new Set<string>()
   const links: string[] = []
+  // Directories the walk entered: Bun's scan skips a FIFO, socket or
+  // device outright, so `special` is found by listing them.
+  const walked = special === undefined ? undefined : new Set<string>()
   const take = (rel: string): void => {
     if (nested(rel) || excludeGlobs.some((g) => g.match(rel))) return
     const abs = path.resolve(cwd, rel)
+    walked?.add(path.dirname(abs))
     const st = lstatSync(abs, { throwIfNoEntry: false })
+    if (walked !== undefined && st?.isDirectory() === true) walked.add(abs)
     if (st !== undefined && (st.isFile() || st.isSymbolicLink())) {
       matches.add(abs)
       if (st.isSymbolicLink()) links.push(abs)
@@ -2487,16 +2518,21 @@ async function scanUnion(
   ) {
     const any = anyTaskGlob(patterns)
     for (const rel of WHOLE_TREE.scanSync(opts)) if (any(rel)) take(rel)
+    if (special !== undefined) findSpecial(walked!, cwd, any, excludeGlobs, nested, special)
     return matches
   }
   for (const pattern of patterns) {
     if (absentPrefix(cwd, pattern)) continue
     const from = scanRoot(cwd, pattern)
     if (from === null) continue
+    walked?.add(from === undefined ? cwd : from.dir)
     if (from === undefined) for (const rel of globFor(pattern).scanSync(opts)) take(rel)
     else
       for (const rel of globFor(from.rest).scanSync({ ...opts, cwd: from.dir }))
         take(`${from.prefix}/${rel}`)
+  }
+  if (special !== undefined) {
+    findSpecial(walked!, cwd, anyTaskGlob(patterns), excludeGlobs, nested, special)
   }
   // A literal names the path and its tree (`dist`, `dist/**`), and a tree
   // whose head is a directory link is walked through it: the link and the
@@ -2511,6 +2547,31 @@ async function scanUnion(
     }
   }
   return matches
+}
+
+/** The FIFOs, sockets and devices in `dirs` that the output globs name. */
+function findSpecial(
+  dirs: ReadonlySet<string>,
+  cwd: string,
+  any: (rel: string) => boolean,
+  excludeGlobs: readonly Bun.Glob[],
+  nested: (rel: string) => boolean,
+  into: Set<string>,
+): void {
+  for (const dir of dirs) {
+    let entries: Dirent[]
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    for (const e of entries) {
+      if (e.isFile() || e.isDirectory() || e.isSymbolicLink()) continue
+      const abs = path.join(dir, e.name)
+      const rel = path.relative(cwd, abs).split(path.sep).join('/')
+      if (any(rel) && !nested(rel) && !excludeGlobs.some((g) => g.match(rel))) into.add(abs)
+    }
+  }
 }
 
 /** `pattern`'s static directory passes through a symlink under `cwd`. */

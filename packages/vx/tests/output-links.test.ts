@@ -146,6 +146,24 @@ it.skipIf(process.platform === 'win32')(
   TIMEOUT,
 )
 
+// A FIFO the task wrote under its outputs stays out of the entry (it holds
+// no bytes, nx#35228), but it was dropped without a word, so a hit restored
+// the tree without it and nothing said why.
+it.skipIf(process.platform === 'win32')(
+  'a FIFO under the outputs is named when the save leaves it out',
+  async () => {
+    const { root } = await workspace(
+      'rm -rf dist && mkdir -p dist && echo a > dist/a.txt && mkfifo dist/pipe',
+    )
+    const out = await ok(root)
+    expect(out).toContain(
+      '[vx] app#build: dist/pipe is not a regular file or symlink (a FIFO, socket or device): vx does not cache it',
+    )
+    expect(out).toContain('local 1↑')
+  },
+  TIMEOUT,
+)
+
 async function artifact(meta: object): Promise<Uint8Array> {
   const body = JSON.stringify({ version: 1, files: {}, ...meta })
   const parts: Uint8Array[] = []
