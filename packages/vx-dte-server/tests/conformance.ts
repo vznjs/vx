@@ -221,5 +221,30 @@ export function conformance(name: string, target: Target): void {
       h.ws.send(`{"n":5,"sends":[{"to":"x","body":"${'€'.repeat(1 << 19)}"}]}`)
       expect(await h.next()).toEqual({ n: 5, status: 413, error: 'body over 1 MiB' })
     })
+
+    it("passes a deep body or refuses it 400, and keeps the receiver's socket", async () => {
+      const s = session()
+      const h = await s.host()
+      const p = await s.peer()
+      await h.next()
+      // Parsed, but nested past what Bun serializes (workerd's V8 does):
+      // the push threw, and the Bun relay unplugged the host over the
+      // peer's body while telling the peer it went.
+      const deep = 100_000
+      p.ws.send(`{"n":1,"sends":[{"to":"host","body":${'['.repeat(deep)}${']'.repeat(deep)}}]}`)
+      const answer = await p.next()
+      if (answer.results === undefined) {
+        expect(answer).toEqual({ n: 1 })
+        expect((await h.next()).messages[0].from).toBe(p.id)
+      } else {
+        expect(answer).toEqual({
+          n: 1,
+          results: [{ status: 400, error: 'body nests too deep to pass' }],
+        })
+      }
+      p.send({ n: 2, sends: [{ to: 'host', body: 'after' }] })
+      expect(await p.next()).toEqual({ n: 2 })
+      expect(await h.next()).toEqual({ messages: [{ from: p.id, body: 'after' }] })
+    })
   })
 }

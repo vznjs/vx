@@ -35,7 +35,7 @@ import type {
   SaveArgs,
 } from './cache.js'
 import type { OutputDirRow } from './cache.js'
-import { CorruptArtifactError } from './layer.js'
+import { isCorruptArtifact } from './layer.js'
 import { RemoteLane, type ResolvedRemote } from './remote-lane.js'
 import type { PluginSecrets } from '../util/index.js'
 
@@ -198,10 +198,13 @@ export interface RemoteCacheLayer {
    * read of it sees the same bytes. An entry is immutable: a `put` of a
    * key the remote holds keeps the stored bytes. Core never asks `has`
    * first; a wire that would overwrite checks inside, unless told `missing`.
+   * `replace`: the remote's copy of `hash` did not read back (a
+   * `CorruptArtifactError`, here or on another machine of the run), so
+   * these bytes go over it.
    * `false`: nothing was sent and nothing failed (a layer that writes
    * nothing this run, such as one with no token), so no upload is counted.
    */
-  put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void | false>
+  put(hash: string, body: Blob, meta: { durationMs: number; replace?: true }): Promise<void | false>
   /**
    * The run found `hash` in no remote, and a `put` of it follows: a wire
    * that checks before it overwrites can skip that request.
@@ -555,7 +558,8 @@ export class LayeredCache implements CacheLayer {
       lane.report('download', hash, err)
       // Bad bytes there: the re-run's save sends good ones over them, or
       // every machine rebuilt the task and none repaired it (2026-10-24).
-      if (err instanceof CorruptArtifactError) lane.distrust(hash)
+      // Core's ingest says so, or the layer's own check of its body does.
+      if (isCorruptArtifact(err)) lane.distrust(hash)
       return false
     } finally {
       this.downloads.delete(hash)

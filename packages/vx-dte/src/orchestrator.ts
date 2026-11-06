@@ -290,6 +290,8 @@ export class Orchestrator {
   private inTree?: Promise<Tree | undefined>
   /** Waiting tasks, by id, in the order a pump reads them (`Queue`). */
   private readonly waiting = new Map<string, Job>()
+  /** Handed by core and not yet waiting: held for a machine as the waiting are. */
+  private readonly handed = new Set<string>()
   private readonly queue: Queue
   /** Where a worker saved each task it ran: its cache key or its run key. */
   private readonly savedAs = new Map<string, string>()
@@ -407,6 +409,15 @@ export class Orchestrator {
 
   async execute(req: ExecuteRequest): Promise<ExecuteResult> {
     if (this.lost !== undefined) throw new Error(this.lost)
+    this.handed.add(req.taskId)
+    try {
+      return await this.take(req)
+    } finally {
+      this.handed.delete(req.taskId)
+    }
+  }
+
+  private async take(req: ExecuteRequest): Promise<ExecuteResult> {
     // Walked once here, for every later read: walked again on the way in,
     // sharing, placing and sending, a run of 8000 tasks spent 17 s of this
     // machine's CPU on it (2026-11-05).
@@ -456,6 +467,7 @@ export class Orchestrator {
       // A retry runs elsewhere: the worker, or what ran beside it, may be the flake.
       const last = (req.attempt ?? 1) > 1 ? this.ranOn.get(req.taskId) : undefined
       if (last !== undefined) job.avoid = last
+      this.handed.delete(req.taskId)
       // A signal aborted already fires no `abort`.
       if (req.signal?.aborted === true) return resolve(stopped())
       req.signal?.addEventListener('abort', () => this.abort(job), { once: true })
@@ -1649,7 +1661,7 @@ export class Orchestrator {
   where(taskId: string): string | null | undefined {
     for (const a of this.workers.values())
       if (a.busy.has(taskId)) return a.started.has(taskId) ? a.label : null
-    return this.waiting.has(taskId) ? null : undefined
+    return this.waiting.has(taskId) || this.handed.has(taskId) ? null : undefined
   }
 
   /**

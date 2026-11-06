@@ -8,6 +8,8 @@ import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
+import { namedIgnoredReach } from '../src/cache/index.js'
+import { gitFiles } from '../src/cli/watch-filter.js'
 import { dry, planned, PARITY_TIMEOUT as TIMEOUT, summarized, vx } from './helpers/parity.js'
 
 let root: string
@@ -356,6 +358,25 @@ it(
     await writeFile(path.join(root, 'tmp', 'note.txt'), 'n2\n')
     await writeFile(pkg('tmp/note.txt'), 'n2\n')
     expect(await status('tmp/vx-cache')).toEqual(['miss', 'miss'])
+  },
+  TIMEOUT,
+)
+
+it(
+  'watch reaches ignored files under the entries a key does, and no others',
+  async () => {
+    // Watch counted every glob's prefix: `src` of `src/**` over a listed
+    // `src`, so a dev server's ignored `src/dev.log` looped it, though no
+    // key reads that file.
+    root = await workspace(
+      { t: task("{ files: ['src/**', 'gen/**', 'dist/**', '.env.local'] }") },
+      { 'gen/.gitkeep': '', 'src/dev.log': '1\n', '.env.local': 'A=1\n' },
+      '**/gen/*\n!**/gen/.gitkeep\ndist/\n*.log\n.env.local\n',
+    )
+    const named = ['src', 'gen', 'dist', '.env.local'].map(pkg)
+    expect(namedIgnoredReach(root, named, gitFiles(root)!.listed)).toEqual(
+      ['gen', 'dist', '.env.local'].map(pkg),
+    )
   },
   TIMEOUT,
 )

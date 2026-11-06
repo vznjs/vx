@@ -1045,7 +1045,10 @@ down with it:
   here is no failure: its dependents are skipped in every mode.
 
 The mode is the local scheduler's: a task a plugin executor runs
-elsewhere is one dispatch, failed or not, like any other.
+elsewhere is one dispatch, failed or not, like any other. Under `never`,
+a task the executor still holds for a machine to begin it (its row says
+`waiting`) is not yet started: its request is aborted and it completes
+as skipped.
 
 ### `--cache-download <mode>`
 
@@ -1224,10 +1227,11 @@ $ vx run build lint --affected=main --dry
 project changed and the task reads it whole: a task with no `inputs`, or a
 changed `file` no task of the project declares, often an output git does not
 ignore; no `file` for a config import), `workspace` (a `file` no project
-owns changed and reached every task of the project, shown as `changed
-(every task in its project)`: the workspace config reaches every project;
-a root file a plugin claims, such as a lockfile, or a directory it names
-reaches only the projects whose digest moved),
+owns changed and reached every task of the project: the workspace config
+reaches every project, shown as `changed (workspace-wide)`; a root file a
+plugin claims, such as a lockfile, or a directory it names reaches only
+the projects whose digest moved, shown as `changed (every task in its
+project)`),
 `package` (a `^` edge passes a changed `project` with no such task),
 `named` (`pkg#task` beside a bare task) or `selected` (another filter
 selected its project). `via` is the `dependsOn` chain, nearest first, to
@@ -1537,9 +1541,12 @@ Always ignored (no re-trigger):
 - `node_modules/`, `.git/`, `.vx/cache/` anywhere in the path.
 - A path git ignores (`git check-ignore`, asked once per debounce
   window, never per event), unless a task's inputs name it outright
-  (`.env.local`, `dist/**`): invisible to every other cache key — inputs are
-  tracked + untracked-not-ignored — so a cycle it started could change
-  nothing. A tracked file that matches a pattern is not ignored, by
+  (`.env.local`, `dist/**`) by the rule the key reads them (schema.md §
+  gitignore filter): `src/**` over a listed `src` names no ignored
+  `src/dev.log`, so a dev server writing one starts no cycle. Any other
+  is invisible to every cache key — inputs are tracked +
+  untracked-not-ignored — so a cycle it started could change nothing,
+  and it never names a cycle. A tracked file that matches a pattern is not ignored, by
   git's own rule; outside a repository nothing is.
 - Files ending in `~` (editor swap files), and `.vx/tmp/`, where
   restores stage.
@@ -1771,7 +1778,11 @@ A prune that deletes waits for a `vx run` on the same workspace to
 finish first (the run's lock; it says `[vx] waiting for another vx run
 (pid N) on this workspace to finish…` after a second), so it never
 evicts what that run is restoring. One started by a task of that run
-is refused instead: the run holds the lock until the task ends. A run it cannot see — another
+is refused instead: the run holds the lock until the task ends. A run
+in another checkout of the repository takes no lock of this one's but
+holds the shared store open from start to end: the prune waits for
+every process holding the store (`[vx] waiting for another vx process
+using the cache store <dir> to finish…`). A run it cannot see — another
 workspace sharing the `--cache-dir` — survives a prune anyway: an
 artifact that vanishes before its restore is a miss, and the task runs
 ([caching](./caching.md#concurrent-runs)).
@@ -1837,7 +1848,8 @@ $ vx cache clean --global --dry
 ```
 
 It waits for a `vx run` on this workspace to finish first (the run's
-lock), as a trim does. With `--format json` it prints
+lock), and for every vx process holding a store it deletes open (a run
+in another checkout of the repository), as a trim does. With `--format json` it prints
 `{ dry, cleared, bytesFreed }` (`schemas/cache.json`), `cleared`
 listing the directories.
 
@@ -3209,8 +3221,13 @@ latest cache entry's key. `roots` is the root-cause walk (`chain`,
 
 `vx last` replays a recorded run's summary from the local history: no
 re-execution, no cache probe, no config evaluation. A run a Ctrl-C (or
-SIGTERM, SIGHUP) stopped records nothing, so `vx last` still shows the
-run before it; nor does a `vx watch` cycle one stopped.
+SIGTERM, SIGHUP) stopped records the tasks that ended before the stop
+(their rows, timings and failed output) but no summary, so `vx last`
+still shows the run before it; nor does a `vx watch` cycle one stopped.
+Its id, which `vx why` and `vx last --log` print, works wherever a run id
+does: `vx last RUNID --log <task>` prints a task's output, `vx why
+<task> --run RUNID` explains it, and `vx last RUNID` says the run was
+stopped.
 
 ### Usage
 
@@ -3250,9 +3267,9 @@ vx last --sql "SELECT task, AVG(peak_rss_bytes) FROM runs GROUP BY task"
 
 ### Arguments
 
-| Argument | Meaning                                                                                                                                                                                |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `RUNID`  | replay that run instead of the latest. A run id may be typed as a unique prefix; a prefix several runs share fails and lists them. An unknown run id fails loud and points at `--list` |
+| Argument | Meaning                                                                                                                                                                                                                     |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RUNID`  | replay that run instead of the latest. A run id may be typed as a unique prefix; a prefix several runs share fails and lists them. An unknown run id fails loud and points at `--list`; a stopped run's says it was stopped |
 
 ### Options
 
@@ -3439,7 +3456,9 @@ history and prints its rows: a table with a header, or with
 flag does: filter by task or project, group, trend. The table prints
 every column, a name repeated by a join's `SELECT *` (`run_id`) too;
 `--format json` refuses a repeated name, since an object holds one
-value per key: name each with `AS`.
+value per key: name each with `AS`. A query starting with `-` (an SQL
+comment) takes `--sql=`: the space form reads a following flag as a
+missing query.
 
 ```sh
 # a task's memory and cpu, run by run
@@ -3634,7 +3653,8 @@ Every setting has a variable derived from its path (`run.timeout` →
 table in `docs/schema.md` § Settings gives each value's form and
 default. Each is checked once before any verb runs: an empty one is
 unset, a value its kind does not take is refused naming the form, and a
-variable vx does not read is ignored. A
+variable vx does not read is ignored, as is one whose flag is given (the
+flag beats it). A
 plugin's own (the REAPI endpoints, the GitHub token) are in its README;
 what a TASK sees is `exec.env` in `docs/schema.md`.
 
@@ -3799,7 +3819,8 @@ plugin's failed flush) gets a yellow `warn` row above `info`,
 warnings themselves are said once, where they happened. The
 `info` row ends with `run <id>`: the
 run's whole id, as `vx last <id>` takes it; a run a Ctrl-C (or
-SIGTERM, SIGHUP) stopped records nothing, so its footer names no id. The
+SIGTERM, SIGHUP) stopped records no summary for `vx last <id>` to
+replay, so its footer names no id. The
 `time` row is the wall time, then the spread over executed tasks
 only — a hit's restore time never enters it. The footer never says a
 fact twice: a spread value already on the row is left out, so one

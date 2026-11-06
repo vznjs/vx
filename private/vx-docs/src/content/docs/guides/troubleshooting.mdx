@@ -70,8 +70,9 @@ vx run build --filter @demo/ap
   hit restores nothing. Point `outputs.files` at what the task writes;
   a sandboxed task also needs `exec.sandbox.allow.write` for it.
 - **`not ready after …: waiting for a line matching`.** A persistent
-  task's `readyWhen` has not matched its output yet. Fix the pattern,
-  or set `exec.timeout` to bound the wait.
+  task's `readyWhen` has not matched its output yet, and no
+  `exec.timeout` has ended the wait. Fix the pattern, or set
+  `exec.timeout` to bound the wait.
 - **A task re-ran and you do not know why.** `vx why <project#task>`
   names the part of the key that changed
   ([Find why a task missed the cache](../caching/why-a-task-missed/)).

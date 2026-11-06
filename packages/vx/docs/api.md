@@ -35,6 +35,7 @@ export interface AffectedChanges {
   paths: ReadonlyMap<string, readonly string[]>
   whole: ReadonlySet<string>
   wholeBy?: ReadonlyMap<string, string>
+  wide?: boolean
   nested?: readonly string[]
   dirLinks?: ReadonlySet<string>
   dirLinksIn?: ReadonlyMap<string, ReadonlySet<string>>
@@ -301,7 +302,10 @@ export class Cache implements CacheLayer {
     | { plan: true; saved: SavedTree }
   >
   recordRun(run: RunRecord): void
-  recordRuns(runs: readonly RunRecord[]): void
+  recordRuns(
+    runs: readonly RunRecord[],
+    head?: Pick<InvocationRecord, 'branch' | 'commitSha'>,
+  ): void
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
   recordRemoteErrors(runId: string, errors: readonly (readonly [string, string])[]): void
   stats(opts: CacheStatsOptions = {}): CacheStats
@@ -532,6 +536,27 @@ type · `src/orchestrator/plugin.ts`
 ```ts
 export interface ConfigContext extends WorkspaceHookContext {
   setBranch(facts: BranchFacts): void
+}
+```
+
+## `CorruptArtifactError`
+
+class · `src/cache/layer.ts`
+
+Bytes that are not the artifact their key names. Core's ingest throws
+it for bytes that do not decompress or parse, before anything is
+stored; a remote layer that checks its bytes as they pass (a digest, a
+signature) errors its `get` body with it to say they are wrong there,
+not cut short. Either way the hit is a miss, and the re-run's save is
+sent over that remote's copy.
+
+```ts
+export class CorruptArtifactError extends Error {
+  constructor(
+    public readonly hash: string,
+    reason: string,
+    public override readonly cause?: unknown,
+  )
 }
 ```
 
@@ -2201,7 +2226,7 @@ export interface RemoteCacheLayer {
   has(hash: string): Promise<ArtifactInfo | null>
   hasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
   get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
-  put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void | false>
+  put(hash: string, body: Blob, meta: { durationMs: number; replace?: true }): Promise<void | false>
   missing?(hash: string): void
 }
 ```
@@ -2530,6 +2555,7 @@ export interface RunSummaryRecord {
   taskCount: number
   failedCount: number
   abortedCount: number
+  notRunCount?: number
   hitCount: number
   hitLocalCount: number
   hitRemoteCount: number

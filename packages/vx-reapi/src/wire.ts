@@ -1317,9 +1317,13 @@ export class ReapiClient {
    * the bytes pass and a mismatch errors the stream at its end, so no reader
    * reaches the end of a blob that is not the one asked for.
    * Identity-encoded, as `writeBlob` streams: the blob this reads is a zstd
-   * artifact already.
+   * artifact already. `refused` is what that error becomes, for a reader
+   * that tells wrong bytes from a cut.
    */
-  async readBlobStream(digest: Digest): Promise<ReadableStream<Uint8Array> | null> {
+  async readBlobStream(
+    digest: Digest,
+    refused: (err: Error) => Error = (err) => err,
+  ): Promise<ReadableStream<Uint8Array> | null> {
     const resource = `${this.instance ? `${this.instance}/` : ''}blobs/${digest.hash}/${digest.size_bytes}`
     type Message = { data: Uint8Array }
     let call: AsyncIterable<Message> & { cancel(): void }
@@ -1366,14 +1370,18 @@ export class ReapiClient {
         const got = next ?? (await take())
         next = undefined
         if (got.done) {
-          assertServed(size, hasher && (() => hasher.digest('hex')), digest)
+          try {
+            assertServed(size, hasher && (() => hasher.digest('hex')), digest)
+          } catch (err) {
+            throw refused(err as Error)
+          }
           controller.close()
           return
         }
         size += got.value.data.length
         if (size > Number(digest.size_bytes)) {
           call.cancel()
-          throw overServed(digest)
+          throw refused(overServed(digest))
         }
         hasher?.update(got.value.data)
         controller.enqueue(got.value.data)

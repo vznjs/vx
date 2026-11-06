@@ -78,6 +78,8 @@ export interface AffectedReason {
   file?: string
   project?: string
   via?: string[]
+  /** `workspace`: the file reached every project. The text label's, never on the JSON wire. */
+  wide?: true
 }
 
 /** Collects each kept task's `AffectedReason` when given; a run without one pays nothing. */
@@ -111,7 +113,10 @@ export function affectedRoots(
   const inProject = (name: string, rel: string | undefined): AffectedReason => {
     if (rel === undefined) {
       const file = changes.wholeBy?.get(name)
-      return file === undefined ? { kind: 'project' } : { kind: 'workspace', file }
+      if (file === undefined) return { kind: 'project' }
+      return changes.wide === true
+        ? { kind: 'workspace', file, wide: true }
+        : { kind: 'workspace', file }
     }
     const dir = path.relative(explain!.workspaceRoot, projects.get(name)!.dir)
     return { kind: 'project', file: dir === '' ? rel : path.posix.join(dir, rel) }

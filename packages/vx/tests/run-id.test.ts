@@ -5,10 +5,17 @@ import { Database } from 'bun:sqlite'
 import { describe, expect, it } from 'bun:test'
 import { resolveRunId, shortRunId } from '../src/orchestrator/run-id.js'
 
-function db(ids: readonly string[]): Database {
+/** Runs with a header and their task rows; `stopped` ones have rows alone. */
+function db(ids: readonly string[], stopped: readonly string[] = []): Database {
   const d = new Database(':memory:')
   d.run('CREATE TABLE invocations (run_id TEXT PRIMARY KEY)')
-  for (const id of ids) d.run('INSERT INTO invocations VALUES (?)', [id])
+  d.run('CREATE TABLE runs (id INTEGER PRIMARY KEY, run_id TEXT)')
+  d.run('CREATE INDEX runs_run_id ON runs(run_id)')
+  for (const id of ids) {
+    d.run('INSERT INTO invocations VALUES (?)', [id])
+    d.run('INSERT INTO runs (run_id) VALUES (?), (?)', [id, id])
+  }
+  for (const id of stopped) d.run('INSERT INTO runs (run_id) VALUES (?), (?)', [id, id])
   return d
 }
 
@@ -29,6 +36,7 @@ describe('resolveRunId', () => {
     )
     // CONTROL: five runs are counted, not "more than 5".
     d.run("DELETE FROM invocations WHERE run_id = 'a6'")
+    d.run("DELETE FROM runs WHERE run_id = 'a6'")
     expect(refusal(d, 'a')).toBe(
       'vx last: run id a is the start of 5 runs — type more of it:\n  a5\n  a4\n  a3\n  a2\n  a1',
     )
@@ -42,6 +50,23 @@ describe('resolveRunId', () => {
       resolveRunId(d, 'x', 'vx last'),
       resolveRunId(d, 'zz', 'vx last'),
     ]).toEqual(['abc', 'abd', 'x', null])
+  })
+
+  // A stopped run keeps rows but no header (item 854), and `vx why` prints
+  // its id: `--run` took it only whole, and `vx last` named no such run.
+  it('a stopped run is named by its rows, whole or by a prefix, once', () => {
+    const d = db(['abc'], ['abd', 'x1'])
+    expect([
+      resolveRunId(d, 'abd', 'vx last'),
+      resolveRunId(d, 'x', 'vx last'),
+      resolveRunId(d, 'abc', 'vx last'),
+      refusal(d, 'ab'),
+    ]).toEqual([
+      'abd',
+      'x1',
+      'abc',
+      'vx last: run id ab is the start of 2 runs — type more of it:\n  abd\n  abc',
+    ])
   })
 
   it('reads an id typed in upper case: a UUID is the same id in either', () => {

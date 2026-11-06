@@ -96,7 +96,9 @@ otel({
   is counted, `-- <N arguments>`, never quoted, and a secret value
   before it is `***`), CI provider,
   host/os/arch, vx version, and `cicd.pipeline.result` (`success`, `failure`, or
-  `cancellation` for a run stopped with nothing failed); a red run sets
+  `cancellation` for a run stopped with nothing failed), and the counts:
+  `vx.run.aborted_count` the tasks the stop cut short, `vx.run.not_run_count`
+  the ones it reached first; a red run sets
   span status `ERROR`;
 - a child `vx.task` span per task — `cicd.pipeline.task.name`,
   `cicd.pipeline.task.run.result` (the convention's enum: `success` for a

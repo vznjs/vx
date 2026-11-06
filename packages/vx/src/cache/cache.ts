@@ -2425,8 +2425,11 @@ export class Cache implements CacheLayer {
     // when every artifact is a one-file `dist/` (measured: 390 vs 355 ms
     // per 1 000). The local artifact was validated at ingest, so a missing
     // declared size is allowed; the output ceiling applies to both.
-    const tree =
-      inline === undefined && existsSync(this.treePath(hash)) ? this.treePath(hash) : undefined
+    const treeIno =
+      inline === undefined
+        ? lstatSync(this.treePath(hash), { throwIfNoEntry: false })?.ino
+        : undefined
+    const tree = treeIno === undefined ? undefined : this.treePath(hash)
     const endExtract = span('restore: extract')
     try {
       // Every step here is an async filesystem call on purpose: a
@@ -2479,7 +2482,7 @@ export class Cache implements CacheLayer {
             ? 'a directory stands where the entry holds a file'
             : 'a file stands where the entry needs a directory'
         throw new UserError(
-          `restore of ${hash} into ${projectDir} was blocked by what is on disk (${msg.startsWith(code) ? msg : `${code}: ${msg}`}): ${what}. ` +
+          `restore of ${hash} into ${projectDir} was blocked by what is on disk (${codeFirst(code, msg)}): ${what}. ` +
             `A restore replaces what the output globs select, not this — remove it and re-run.`,
         )
       }
@@ -2505,7 +2508,7 @@ export class Cache implements CacheLayer {
         (err.path === src || (tree !== undefined && inTree(err.path, tree)))
       ) {
         throw new UserError(
-          `restore of ${hash} could not read its artifact (${code}: ${err.message}). ` +
+          `restore of ${hash} could not read its artifact (${codeFirst(code, err.message)}). ` +
             `Make the cache directory readable by this user, or point cacheDir / --cache-dir at one that is.`,
         )
       }
@@ -2514,7 +2517,7 @@ export class Cache implements CacheLayer {
           ? 'Free space on that disk and re-run.'
           : 'Make the declared output paths writable by this user, or stop declaring them as outputs.'
         throw new UserError(
-          `restore of ${hash} into ${projectDir} could not write its outputs (${code}: ${err.message}). ${remedy}`,
+          `restore of ${hash} into ${projectDir} could not write its outputs (${codeFirst(code, err.message)}). ${remedy}`,
         )
       }
       // The process is out of descriptors: the artifact is fine, and
@@ -2529,14 +2532,20 @@ export class Cache implements CacheLayer {
       if (code === 'ENOENT' && (err as NodeJS.ErrnoException).path === src) {
         throw new ArtifactVanishedError(hash)
       }
-      // So is a tree file: a prune or another process's re-save moved the
-      // tree aside mid-copy.
-      if (
-        code === 'ENOENT' &&
-        tree !== undefined &&
-        inTree((err as NodeJS.ErrnoException).path, tree)
-      ) {
-        throw new ArtifactVanishedError(hash)
+      // So is a tree a prune or another process's re-save moved aside
+      // mid-copy. The tree the restore found, still in place, lacking a
+      // file is damage at rest (a hand-deleted file): called vanished "(a
+      // vx cache clean)" that never ran, and kept, so the demoted task's
+      // own probe hit it again and said so twice.
+      const missing = (err as NodeJS.ErrnoException).path
+      if (code === 'ENOENT' && tree !== undefined && inTree(missing, tree)) {
+        if (lstatSync(tree, { throwIfNoEntry: false })?.ino !== treeIno)
+          throw new ArtifactVanishedError(hash)
+        const rel = path.relative(tree, missing!).split(path.sep).join('/')
+        throw new CorruptArtifactError(
+          hash,
+          `${rel.startsWith('outputs/') ? rel.slice('outputs/'.length) : rel} is missing from its stored tree`,
+        )
       }
       // A staged file the restore itself just wrote is gone before its
       // commit: another process cleaned the same outputs under us (two runs
@@ -3405,9 +3414,12 @@ export class Cache implements CacheLayer {
     if (this.writeBlocked !== null) return
     return this.guard(() => this.history.recordRun(run))
   }
-  recordRuns(runs: readonly RunRecord[]): void {
+  recordRuns(
+    runs: readonly RunRecord[],
+    head?: Pick<InvocationRecord, 'branch' | 'commitSha'>,
+  ): void {
     if (this.writeBlocked !== null) return
-    return this.guard(() => this.history.recordRuns(runs))
+    return this.guard(() => this.history.recordRuns(runs, head))
   }
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void {
     if (this.writeBlocked !== null) return
@@ -3788,6 +3800,52 @@ export function closeDb(db: Database): void {
 }
 
 /**
+ * Wait until no other connection has the shared store in `storeDir` open,
+ * then hold it alone until the release. Every checkout of a repository
+ * shares its store and each has a run lock of its own, so a clean in one
+ * deleted store.db under a run in another. A run holds the store open from
+ * its start to its end, and in WAL mode every open connection keeps a
+ * shared lock on the file: SQLite grants an exclusive one only to a sole
+ * holder, and a holder's lock dies with its process. The run path pays
+ * nothing. Holds nothing where the store has no readable file.
+ */
+export async function holdStore(
+  storeDir: string,
+  log: (line: string) => void,
+): Promise<() => void> {
+  const file = path.join(storeDir, 'store.db')
+  if (!existsSync(file)) return () => {}
+  let db: Database
+  try {
+    db = new Database(file)
+    db.exec('PRAGMA busy_timeout = 0')
+    db.exec('PRAGMA locking_mode = EXCLUSIVE')
+  } catch {
+    return () => {}
+  }
+  const started = Date.now()
+  let said = false
+  for (;;) {
+    try {
+      db.exec('BEGIN EXCLUSIVE')
+      break
+    } catch (err) {
+      if ((err as { code?: string }).code !== 'SQLITE_BUSY') {
+        // Not a store SQLite reads: nothing opens it to wait for.
+        closeDb(db)
+        return () => {}
+      }
+    }
+    if (!said && Date.now() - started >= 1_000) {
+      said = true
+      log(`[vx] waiting for another vx process using the cache store ${storeDir} to finish…`)
+    }
+    await Bun.sleep(50)
+  }
+  return () => closeDb(db)
+}
+
+/**
  * Refuse an artifact whose file names no restore can materialise as one
  * tree, or (given the task's declared outputs) that names a file outside
  * them. Both reached the tree before: `outputs/out.txt` beside
@@ -3860,6 +3918,11 @@ function absentModedDirs(
 /** A row's path as the tree names its file. */
 function treeName(rowPath: string): string {
   return rowPath.startsWith(WORKSPACE_OUTPUT_PREFIX) ? rowPath : `outputs/${rowPath}`
+}
+
+/** `code: message`, where Bun's message does not already open with the code. */
+function codeFirst(code: string | undefined, message: string): string {
+  return code === undefined || message.startsWith(code) ? message : `${code}: ${message}`
 }
 
 function inTree(p: string | undefined, tree: string): boolean {

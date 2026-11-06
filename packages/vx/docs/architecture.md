@@ -34,7 +34,7 @@ specifier — enforced by `tests/package-boundaries.unsafe.test.ts`):
 | `private/vx-history-service` | vznjs's own history server deploy: `@vzn/vx-history-server`'s worker with this repo's `ALLOW`, built by Workers Builds (private)                                                 |
 
 Core never imports a sibling package. The integrations reach core
-through two seams: the public API (59 runtime symbols, a deliberate
+through two seams: the public API (60 runtime symbols, a deliberate
 snapshot) and the plugin capabilities (below).
 
 ## Module map
@@ -423,7 +423,8 @@ restoreTier, … })` runs the DAG two-tier. Each ready node invokes
       task's row plus one invocation header row, in one transaction.
       Group and `aborted` tasks are skipped; a run a signal stopped
       records only the tasks that finished (`recordRuns`, no
-      invocation row), so `vx last` does not list it.
+      invocation row; their timings under the branch it ran on), so
+      `vx last` does not list it.
    10. Telemetry summary emit + flush (only when a sink is active),
        background prefetch/upload drain, plugin `teardown`,
        `cache.close()`, sandbox teardown; the plugins' bus

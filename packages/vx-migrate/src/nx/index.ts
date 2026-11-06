@@ -57,6 +57,7 @@ import { relPosix } from '../paths.js'
 import { memberProjects, withManifests } from '../manifests.js'
 import type { AdoptionMapping } from '../mapping-cache.js'
 import { yarnrcText } from '../script-command.js'
+import { lockfilePlugin } from '../workspace-notes.js'
 
 /** The snapshot's name under vx's cache dir — local to the machine, like the cache. */
 const SNAPSHOT = 'nx-project-graph.json'
@@ -118,6 +119,9 @@ export function nx(options: NxPluginOptions = {}): VxPlugin {
   const rootOf = (workspaceRoot: string): string =>
     options.root === undefined ? workspaceRoot : path.resolve(workspaceRoot, options.root)
   refuseExecutors(options.executors)
+  // The root files the workspace's plugins claim, read by `config`: a
+  // lockfile no plugin claims is in no key unless a task lists it.
+  let claimed: ReadonlySet<string> = new Set()
   // One graph load per RUN, shared by `discover` and `project`: the run
   // hands both stages the same projects array (discover's, grown by what
   // it named), so its identity is the run's, as the mapping's is.
@@ -141,17 +145,26 @@ export function nx(options: NxPluginOptions = {}): VxPlugin {
     import.meta,
     async (ctx) => {
       const root = rootOf(ctx.workspaceRoot)
+      const lock = lockfilePlugin(root)?.file
+      const unclaimed =
+        lock !== undefined && !(root === ctx.workspaceRoot && claimed.has(lock)) ? lock : undefined
       return mapAll(
         root,
         ctx.projects,
         await graphOf(root, ctx.cacheDir, ctx.projects),
         options.executors,
+        unclaimed,
       )
     },
     // At the workspace root only, as `turbo()` claims its file.
     options.root === undefined ? ['nx.json'] : [],
     {
       async config(workspace, ctx) {
+        claimed = new Set(
+          (workspace.plugins ?? []).flatMap((p) =>
+            p ? ((p as VxPlugin).fingerprint?.files ?? []) : [],
+          ),
+        )
         const root = rootOf(ctx.workspaceRoot)
         const nxBaseCommit = Bun.env['NX_BASE']?.trim()
         if (nxBaseCommit) ctx.setBranch({ base: nxBaseCommit })
@@ -305,6 +318,7 @@ async function mapAll(
   projects: readonly ProjectMeta[],
   loaded: LoadedGraph,
   executors: NxExecutors | undefined,
+  lockfile: string | undefined,
 ): Promise<AdoptionRun> {
   const metas = await withManifests(projects)
   const { text, graph, notes } = loaded
@@ -312,11 +326,12 @@ async function mapAll(
   // The mapping is cached on what it read; a translator is code it ran.
   if (executors !== undefined)
     reads.push(JSON.stringify(Object.entries(executors).map(([k, fn]) => [k, String(fn)])))
+  reads.push(`unclaimed lockfile: ${lockfile ?? ''}`)
   return {
     name: 'nx',
     spareTracked: true,
     reads,
-    map: (tracked) => index(root, metas, graph, notes, tracked, executors),
+    map: (tracked) => index(root, metas, graph, notes, tracked, executors, lockfile),
   }
 }
 
@@ -390,6 +405,7 @@ async function index(
   loadNotes: readonly string[],
   trackedFiles: () => Promise<readonly string[] | null>,
   executors: NxExecutors | undefined,
+  lockfile: string | undefined,
 ): Promise<AdoptionMapping> {
   const notes: string[] = []
   const live = [...loadNotes]
@@ -407,6 +423,7 @@ async function index(
     ...(tracked === null ? {} : { tracked: trackedKinds(tracked) }),
     ownConfig: (rel) => configs.get(relRoot(rel)) ?? null,
     ...(executors === undefined ? {} : { executors }),
+    ...(lockfile === undefined ? {} : { lockfile }),
   })
   notes.push(...mapped.notes)
   const byName = new Map<string, GeneratedProject>()

@@ -324,6 +324,10 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
           '!dist/**/*',
         ],
         workspaceFiles: ['tsconfig.base.json'],
+        // `@ts/util#build` is uncached (it reaches no producer), so its
+        // glob outputs are keyed by a walk of their literal head.
+        workspaceRuntime: [expect.stringContaining('find packages/util/dist ')],
+        tasks: ['*', '^*', '!@ts/util#build'],
       },
       {
         outputs: {

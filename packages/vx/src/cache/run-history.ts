@@ -93,6 +93,10 @@ const PASSED_HASHES = `
       SELECT j.value AS hash FROM json_each(?) AS j
       WHERE EXISTS (SELECT 1 FROM task_outcomes AS o WHERE o.hash = j.value AND o.status <> 'failed')`
 
+/** The commit a run ran on, as `task_durations` files its timings. */
+type RunHead = Pick<InvocationRecord, 'branch' | 'commitSha'>
+const NO_HEAD: RunHead = { branch: null, commitSha: null }
+
 /** A local run's `task_durations.source`: its branch, `''` when it had none. */
 export const branchSource = (branch: string | null): string => `branch:${branch ?? ''}`
 
@@ -140,14 +144,19 @@ export class RunHistory {
     this.recordRuns([run])
   }
 
-  recordRuns(runs: readonly RunRecord[]): void {
+  /**
+   * Rows with no `invocations` header (a stopped run, item 854). `head` is
+   * the commit the run ran on: its timings file under that branch, as a
+   * finished run's do, or the branch's forecast never reads them.
+   */
+  recordRuns(runs: readonly RunRecord[], head: RunHead = NO_HEAD): void {
     if (runs.length === 0) return
     // One transaction, one fsync: for a 200-task run, one instead of 200.
     // IMMEDIATE, as `recordRunBundle` explains.
     this.db
       .transaction(() => {
         this.insertRuns(runs)
-        this.insertDurations(runs, branchSource(null), null)
+        this.insertDurations(runs, branchSource(head.branch), head.commitSha)
         this.insertOutcomes(runs)
       })
       .immediate()

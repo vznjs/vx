@@ -80,8 +80,10 @@ export function expandNxInputs(
     readonly outputs?: readonly string[]
     /** git's tracked files by directory; unknown, every output counts as ignored. */
     readonly tracked?: (rel: string) => TrackedKinds
-    /** The root package.json's dependency names: every task's key holds them. */
+    /** The root package.json's dependency names: a lockfile plugin keys them into every task. */
     readonly rootDeps?: ReadonlySet<string>
+    /** The root lockfile no plugin claims, which nothing keys unless a task lists it. */
+    readonly lockfile?: string
   },
   into: NxInputs,
   todos: string[],
@@ -192,18 +194,23 @@ export function expandNxInputs(
         return
       }
       if (o.externalDependencies !== undefined) {
-        // Not the project's package.json: Nx's inferred targets name root
-        // devDependencies (eslint, vitest), which only the lockfile keys.
-        // One the root declares is keyed already, with or without a
-        // lockfile plugin (it keys the root's dependencies): nothing to
-        // say. The todo sat on 32 tasks of analogjs for `eslint`.
+        // Nx hashes each named package's resolved version, and core keys no
+        // lockfile. With no plugin claiming the file, the task keys it whole,
+        // a superset: a `left-pad` bump was a hit where Nx re-ran. A lockfile
+        // plugin keys the project's and the root's dependencies, so a name
+        // the root declares is keyed there: the todo sat on 32 tasks of
+        // analogjs for `eslint`. Nx's inferred targets name root
+        // devDependencies (eslint, vitest), not the project's package.json.
         const names = Array.isArray(o.externalDependencies) ? o.externalDependencies : []
+        if (at.lockfile !== undefined) {
+          expand(`{workspaceRoot}/${at.lockfile}`, seen)
+          return
+        }
         if (names.length > 0 && names.every((n) => typeof n === 'string' && at.rootDeps?.has(n)))
           return
         todos.push(
-          `input {externalDependencies: ${JSON.stringify(o.externalDependencies)}}: vx keys ` +
-            'every task on the lockfile (the whole file, or with a @vzn/vx-lockfile plugin the ' +
-            "project's and the root's dependencies) — safe to drop unless only another project installs one",
+          `input {externalDependencies: ${JSON.stringify(o.externalDependencies)}}: a @vzn/vx-lockfile ` +
+            "plugin keys each task on its project's and the root's dependencies — one only another project installs is not keyed",
         )
         return
       }

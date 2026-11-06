@@ -165,6 +165,12 @@ export class ArtifactVanishedError extends Error {
   readonly hash: string
 }
 
+// A body whose bytes are wrong, not cut short: the hit is a miss and the
+// re-run's save is sent over that remote's copy (`put` gets `replace`).
+export class CorruptArtifactError extends Error {
+  readonly hash: string
+}
+
 // The run's remote traffic, filled by each remote lane and the run keeper
 // (a kept task counts under its id): what the footer's remote part counts.
 export interface RemoteTraffic {
@@ -416,6 +422,10 @@ export interface FoldMemo {
 // Core's own readers (`vx last`, `vx why`, the history provider) take the
 // index handle from `indexDb(cache)`, never from a `Cache` member.
 export function indexDb(cache: Cache): Database
+// Wait until no other connection has `<storeDir>/store.db` open (a run in
+// any checkout holds it start to end; WAL connections keep a shared lock),
+// then hold it alone until the release. Nothing to hold without the file.
+export function holdStore(storeDir: string, log: (line: string) => void): Promise<() => void>
 // The files a second connection writes a run's hits through; undefined
 // when the store keeps no history on disk.
 export function historyFiles(cache: Cache): { index: string; store?: string } | undefined
@@ -692,8 +702,9 @@ Reads via `get()` are non-blocking thanks to WAL.
   after the probe: a `vx cache clean` in another shell, another
   workspace's retention on a shared `--cache-dir`) — the caller treats
   that entry as a miss and runs the task. An artifact that is not a
-  readable archive or lacks an output the index recorded
-  (`CorruptArtifactError`) is dropped, unless the cache is read-only,
+  readable archive or lacks an output the index recorded, or a tree
+  still in place that lacks one of its files (`CorruptArtifactError`,
+  `<rel> is missing from its stored tree`), is dropped, unless the cache is read-only,
   and throws `ArtifactVanishedError` the same way (A-52). So is one
   holding an unsafe name or an escape by name (`ArchiveSecurityError`,
   as the `CorruptArtifactError`'s cause): the save proved every name

@@ -787,8 +787,20 @@ describe('signal handling during vx run (e2e)', () => {
         readonly: true,
       })
       const tasks = db.query('SELECT task FROM runs ORDER BY id').all() as { task: string }[]
+      // Under the branch it ran on, as a finished run's are: under none, the
+      // branch's forecast never read it.
+      const timings = db.query('SELECT task, source FROM task_durations ORDER BY id').all()
       db.close()
       expect(tasks.map((t) => t.task)).toEqual(['quick', 'done'])
+      const branch = Bun.spawnSync(['git', 'symbolic-ref', '--short', 'HEAD'], {
+        cwd: fixture.root,
+      })
+        .stdout.toString()
+        .trim()
+      expect(timings).toEqual([
+        { task: 'quick', source: `branch:${branch}` },
+        { task: 'done', source: `branch:${branch}` },
+      ])
     },
     TIMEOUT,
   )

@@ -68,7 +68,11 @@ first (`acquireRunLock`, orchestrator.md), so it waits for a run on the
 workspace — `[vx] waiting for another vx run (pid N) on this workspace
 to finish…` after a second — instead of evicting the hits that run has
 just probed; the age cutoff is taken before the wait, so what the run
-touched survives it. A dry run takes no lock.
+touched survives it. A run in another checkout shares the store and
+holds none of this checkout's locks, so the prune then waits for every
+process with the store open (`holdStore`: SQLite's exclusive lock, which
+a WAL connection's shared lock refuses) and opens its own handle after.
+A dry run takes no lock.
 
 ## No bound: clear
 
@@ -82,7 +86,9 @@ directory other than `.vx/cache` is the user's: only `vxCacheEntries`
 `.gitignore`; every other record is in the index) go, then the
 directory if empty (item 968). The size is
 summed before the delete (links not followed); the delete takes the run
-lock, as a prune does. `--dry` deletes nothing and takes no lock.
+lock, as a prune does, and holds each store it deletes alone
+(`holdStore`, in path order) once no other process has it open: a
+checkout's lock never covered the store its sibling checkouts run on. `--dry` deletes nothing and takes no lock.
 `--global` adds every `~/.vx/*/cache` and is refused with a bound or
 `--cache-dir`. The output says the store is shared by the repo's
 checkouts and that run history goes.

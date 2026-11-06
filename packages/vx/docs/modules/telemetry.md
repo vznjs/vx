@@ -15,9 +15,11 @@ is pre-folded, bigint wallclock spans are decimal strings.
 - `RunSummaryRecord` — one per run: `RunContextRecord` + totals +
   per-task `TaskTelemetry[]`. What every telemetry sink receives at
   end of run. `abortedCount` (v3, item 851) counts the tasks a
-  shutdown signal or an embedder's abort killed; they are not in the
-  task list, which holds real runs only, so without it a stopped run
-  read as a failure with nothing failed.
+  shutdown signal or an embedder's abort killed once started, each in
+  `tasks` as `aborted`; `notRunCount` the ones the stop reached before
+  they started, which are not. Without them a stopped run read as a
+  failure with nothing failed; they count as the terminal's `1 aborted ·
+1 not run` does.
 - `assembleRunSummary(run, tasks, timing)` — builds the `RunSummaryRecord`
   from the context and the `TaskTelemetry[]`, the per-task tallies
   derived from `tasks`, so a DTE run and a local one produce
@@ -129,7 +131,8 @@ interface RunSummaryRecord {
   totalDurationMs: number
   taskCount: number
   failedCount: number
-  abortedCount: number // stopped by a signal or an abort, not in `tasks` (v3)
+  abortedCount: number // started, then stopped by a signal or an abort; in `tasks` (v3)
+  notRunCount?: number // the stop reached them first; not in `tasks`, absent when none
   hitCount: number
   hitLocalCount: number // hits by the layer that answered, up-to-date ones included
   hitRemoteCount: number

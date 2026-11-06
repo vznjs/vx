@@ -89,6 +89,7 @@ import {
   formatPersistentList,
   formatRunSummary,
   type Logger,
+  neverStarted,
   plainOutput,
   resolveOutputView,
   terminalSubscriber,
@@ -1611,7 +1612,7 @@ async function runOnBus(
       // measured, or the next run knows none of it (2026-10-21).
       const ended = list.filter((o) => o.status !== 'aborted' && o.status !== 'skipped')
       stepSync('vx:history', () => {
-        recordHistory(() => prepared.localCache.recordRuns(recordsOf(ended, false).runs))
+        recordHistory(() => prepared.localCache.recordRuns(recordsOf(ended, false).runs, head))
         recordFailures(ended)
       })
     }
@@ -1677,7 +1678,9 @@ async function runOnBus(
         endedAt: endedAtMs,
         totalDurationMs: Math.round(totalMs),
         exitOk: ok,
-        abortedCount: list.filter((o) => o.status === 'aborted' && !isGroupTask(o.node)).length,
+        // As the terminal counts them: `1 aborted · 1 not run`.
+        abortedCount: records.telemetryTasks.filter((t) => t.status === 'aborted').length,
+        notRunCount: list.filter((o) => neverStarted(o) && !isGroupTask(o.node)).length,
         stages: stageTimes(),
         uploads: prepared.localCache.uploads,
         machines: executors.flatMap((e) => executorMachines(e, fault)),

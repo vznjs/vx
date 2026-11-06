@@ -115,7 +115,7 @@ it(
     })
     expect(r.ok).toBe(true)
     expect(lines.filter((l) => l.startsWith('[vx] app#read:'))).toEqual([
-      '[vx] app#read: `packages/lib/src/a.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in outputs',
+      "[vx] app#read: `packages/lib/src/a.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task generates it, declare it in outputs; if it rewrites it in place, set inputs.stability: { strategy: 'mutable' }",
     ])
     // The old bytes back: no entry holds the new ones under their key.
     gitIn(root)('checkout', '--', 'packages/lib/src/a.txt')

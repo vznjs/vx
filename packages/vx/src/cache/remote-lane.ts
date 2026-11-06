@@ -387,7 +387,8 @@ export class RemoteLane {
         const got = await body()
         release = got.release
         if (known) this.remote.missing?.(hash)
-        if ((await this.remote.put(hash, got.body, { durationMs })) === false) return
+        const meta = distrusted ? { durationMs, replace: true as const } : { durationMs }
+        if ((await this.remote.put(hash, got.body, meta)) === false) return
         holds = true
         tally.count++
         tally.bytes += got.body.size

@@ -1,6 +1,8 @@
 import { readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { edgesSource, pluginSource } from './helpers/plugin.js'
 import { addProject, gitInitCommit, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -118,6 +120,19 @@ describe('vx run --affected --dry says why each requested task was kept', () => 
     }
   })
 
+  it('text: a control character in a changed file name is escaped, not printed raw', async () => {
+    // A newline in the name broke the `affected:` line in two.
+    const odd = path.join(root, 'packages/other/src/x\ny.js')
+    await writeFile(odd, 'export {}\n')
+    try {
+      expect(dry('build', '--dry')).toContain(
+        'affected: packages/other/src/x\\x0ay.js changed (an input)',
+      )
+    } finally {
+      await rm(odd)
+    }
+  })
+
   it('json and text: a workspace-wide file names itself on every task it reached', async () => {
     // Agent trial 3, row 3: a changed workspace config made every task
     // `kind: project` with no `file`.
@@ -135,10 +150,45 @@ describe('vx run --affected --dry says why each requested task was kept', () => 
         'other#build': reason,
       })
       expect(dry('build', '--filter', 'other', '--dry')).toContain(
-        'affected: .vx/workspace.mjs changed (every task in its project)',
+        'affected: .vx/workspace.mjs changed (workspace-wide)',
       )
     } finally {
       await writeFile(ws, before)
+    }
+  })
+
+  it('text: a claimed root file that reached some projects says so, not workspace-wide', async () => {
+    // A lockfile claim names the projects whose digest moved; the label
+    // said "(workspace-wide)" of a change that reached one project.
+    const ws = await makeWorkspace({ prefix: 'vx-affected-claim-', git: false })
+    try {
+      await Bun.write(
+        path.join(ws, '.vx/workspace.mjs'),
+        localWorkspaceSource([
+          edgesSource(),
+          pluginSource(
+            'org/pm',
+            `{ fingerprint: { files: ['pnpm-lock.yaml'], affected: () => ['b'] }, key() { return undefined } }`,
+          ),
+        ]),
+      )
+      await addProject(ws, 'a', { config: cached(), files: { 'src/a.js': 'export {}\n' } })
+      await addProject(ws, 'b', { config: cached(), files: { 'src/a.js': 'export {}\n' } })
+      await writeFile(path.join(ws, 'pnpm-lock.yaml'), 'v1\n')
+      gitInitCommit(ws)
+      await writeFile(path.join(ws, 'pnpm-lock.yaml'), 'v2\n')
+      const p = Bun.spawnSync({
+        cmd: [process.execPath, BIN, 'run', 'build', '--affected=HEAD', '--dry'],
+        cwd: ws,
+        env: { ...process.env, NO_COLOR: '1' },
+      })
+      expect([p.exitCode, p.stderr.toString()]).toEqual([0, ''])
+      expect(p.stdout.toString()).toContain(
+        'b#build  affected: pnpm-lock.yaml changed (every task in its project)',
+      )
+      expect(p.stdout.toString()).not.toContain('a#build')
+    } finally {
+      await rm(ws, { recursive: true, force: true })
     }
   })
 })

@@ -52,6 +52,9 @@ export interface RunResult {
    *  Distinguishes a timeout (a real `failed`) from a Ctrl-C shutdown
    *  SIGTERM (which the orchestrator reverts to `aborted`). */
   timedOut?: boolean
+  /** The timeout's SIGKILL past the grace took a process of the task's
+   *  group: the child, or one it left after dying of the SIGTERM. */
+  killedAfterGrace?: true
   /** Total user+system CPU time for the child, in milliseconds. */
   cpuMs?: number
   /** Peak resident set size for the child, in bytes. */
@@ -506,7 +509,8 @@ function afterPendingExits(fn: () => void): ReturnType<typeof setTimeout> {
  * classify the resulting SIGTERM as a real failure rather than a
  * Ctrl-C abort — and `settle()`, awaited once the child has exited:
  * it cancels the timers and, when the timeout fired, waits out the rest
- * of the grace for the child's GROUP and SIGKILLs whoever is left. The
+ * of the grace for the child's GROUP and SIGKILLs whoever is left, and
+ * `sigkilled()` says whether that SIGKILL found anyone. The
  * shell dying on the SIGTERM is not the tree dying: a backgrounded
  * process that ignores it lived on under init after vx exited (nx#11782's
  * sibling, reproduced on vx 2026-09-24). A no-op (never fires, nothing
@@ -515,9 +519,11 @@ function afterPendingExits(fn: () => void): ReturnType<typeof setTimeout> {
 export function armTimeout(
   proc: ReturnType<typeof Bun.spawn>,
   timeoutMs: number | undefined,
-): { timedOut: () => boolean; settle: () => Promise<void> } {
-  if (timeoutMs === undefined) return { timedOut: () => false, settle: async () => {} }
+): { timedOut: () => boolean; sigkilled: () => boolean; settle: () => Promise<void> } {
+  if (timeoutMs === undefined)
+    return { timedOut: () => false, sigkilled: () => false, settle: async () => {} }
   let firedAt: number | undefined
+  let sigkilled = false
   let killTimer: ReturnType<typeof setTimeout> | undefined
   const graceMs = killGraceMs(TIMEOUT_SIGKILL_GRACE_MS)
   let timer = setTimeout(() => {
@@ -532,17 +538,22 @@ export function armTimeout(
     // timeout, so a wedged child hangs the whole run forever. Mirrors the
     // end-of-run persistent-shutdown escalation. Unref'd so it never keeps
     // the CLI alive.
-    killTimer = setTimeout(() => killTree(proc, 'SIGKILL'), graceMs)
+    killTimer = setTimeout(() => {
+      sigkilled = true
+      killTree(proc, 'SIGKILL')
+    }, graceMs)
     killTimer.unref?.()
   }
   return {
     timedOut: () => firedAt !== undefined,
+    sigkilled: () => sigkilled,
     settle: async () => {
       clearTimeout(timer)
       if (killTimer !== undefined) clearTimeout(killTimer)
       if (firedAt === undefined) return
       const left = await untilGroupsGone([proc], Math.max(0, firedAt + graceMs - Date.now()))
       for (const child of left) killTree(child, 'SIGKILL')
+      if (left.length > 0) sigkilled = true
     },
   }
 }
@@ -748,6 +759,8 @@ export interface PersistentSpawn {
   ready: Promise<void>
   /** ms from spawn to ready, to the readiness timeout giving up, or to now. */
   readyMs: () => number
+  /** Whether the readiness timeout fired: `ready` rejects only after the kill grace. */
+  gaveUp: () => boolean
 }
 
 // `capture` is a `runCommand` concept: a persistent task never returns a
@@ -788,6 +801,9 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   // When the readiness wait gave up: the wait's length, not the kill grace
   // a TERM-trapping server runs out after it.
   let gaveUpAt: number | undefined
+  // The shell exited non-zero before a match: a marker read after it, from
+  // a child it left running, cannot make an exited server ready.
+  let failedExit = false
 
   // Pattern compiled once; thrown errors surface synchronously so the
   // caller can wrap with a user-facing message.
@@ -848,6 +864,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
         new PersistentReadyError(`failed to spawn persistent task: ${message}`, 'spawn'),
       ),
       readyMs: () => Date.now() - start,
+      gaveUp: () => false,
     }
   } finally {
     pipes.spawned()
@@ -862,7 +879,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
 
   const markReady = (): void => {
     // A marker printed on the way down, once the wait gave up, is not ready.
-    if (readyAt === undefined && gaveUpAt === undefined) {
+    if (readyAt === undefined && gaveUpAt === undefined && !failedExit) {
       readyAt = Date.now()
       if (readyTimer !== undefined) clearTimeout(readyTimer)
       resolveReady()
@@ -998,8 +1015,8 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     opts.liveChildren?.delete(child)
     releaseServerGroup(child)
     if (readyTimer !== undefined) clearTimeout(readyTimer)
-    // The exit can land before the readers took the marker it printed on
-    // the way out: `echo READY; exit` read as never ready under load. The
+    if (code !== 0) failedExit = true
+    // What the shell wrote reaches the frame before the failure line. The
     // drain is bounded, as a task's is, for a grandchild holding the pipe.
     if (readyAt === undefined && gaveUpAt === undefined) {
       await Promise.race([
@@ -1031,6 +1048,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     child,
     ready,
     readyMs: () => (readyAt ?? gaveUpAt ?? Date.now()) - start,
+    gaveUp: () => gaveUpAt !== undefined,
   }
 }
 
@@ -1232,6 +1250,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
     stderr,
     ...(proc.signalCode != null ? { signal: proc.signalCode } : {}),
     ...(timeout.timedOut() ? { timedOut: true } : {}),
+    ...(timeout.sigkilled() ? { killedAfterGrace: true } : {}),
     ...(left ? { leftRunning: true } : {}),
     ...usageOf(proc, watch?.stop()),
   }
@@ -1334,6 +1353,12 @@ export function maskCaptured(text: string, secrets: SecretMask): string {
 }
 
 const DROPPED_LINE = /^\n\[vx\] [\d.]+ [KMGTP]?B of output not kept — /
+const SIZE = '[\\d.]+ [KMGTP]?B'
+const OWN_DROPPED_LINE = new RegExp(
+  `\\n\\[vx\\] ([\\d.]+) ([KMGTP]?B) of output not kept — vx keeps the first ${SIZE} and the last ${SIZE} of a task's output\\n`,
+  'y',
+)
+const UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
 
 /** Whether `chunk` is the line a `BoundedCapture` puts where its dropped middle was. */
 export function isDroppedOutputChunk(chunk: CapturedChunk): boolean {
@@ -1361,6 +1386,7 @@ export class BoundedCapture {
   private readonly tail: CapturedChunk[] = []
   private tailLen = 0
   private dropped = 0
+  private seen = 0
 
   constructor(
     private readonly headChars = CAPTURE_HEAD_CHARS,
@@ -1368,6 +1394,29 @@ export class BoundedCapture {
   ) {}
 
   push(text: string, err = false): void {
+    // A capture's own output replayed into another (a distributed miss
+    // replays the worker's entry): its dropped line, where a capture puts
+    // it, is counted, not kept. Kept as text, it fell into the new middle
+    // and the entry said `98 B of output not kept` for 13 MB.
+    const at = CAPTURE_HEAD_CHARS - this.seen
+    this.seen += text.length
+    if (!err && at >= 0 && at <= text.length) {
+      // At the head's end, or a unit short of it (a surrogate pair's split).
+      for (const i of [at, at - 1]) {
+        if (i < 0) continue
+        OWN_DROPPED_LINE.lastIndex = i
+        const m = OWN_DROPPED_LINE.exec(text)
+        if (m === null) continue
+        this.dropped += Math.round(Number(m[1]) * 1024 ** UNITS.indexOf(m[2]!))
+        this.add(text.slice(0, i), err)
+        text = text.slice(i + m[0].length)
+        break
+      }
+    }
+    this.add(text, err)
+  }
+
+  private add(text: string, err: boolean): void {
     // Once the tail has begun the head is closed, even a unit short of its
     // bound (the surrogate case below): a later short chunk fit there and
     // was retained ahead of the chunk before it.

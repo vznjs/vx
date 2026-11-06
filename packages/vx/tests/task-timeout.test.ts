@@ -392,4 +392,29 @@ describe('task timeout — classification + escalation', () => {
     },
     TIMEOUT,
   )
+
+  // The shell dies of the SIGTERM; a grandchild ignoring it outlives the
+  // grace and the SIGKILL takes it. The line read SIGTERM: it named only
+  // the shell's death.
+  it(
+    'a grandchild the SIGKILL took after the grace is named in the line',
+    async () => {
+      await addProject(
+        fixture.root,
+        'a',
+        `export default { tasks: { run: { exec: { command: "sh -c 'trap \\"\\" TERM; sleep 100'", timeout: '1s' } } } }`,
+      )
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['run'],
+        projects: ['a'],
+        log: capturingLogger(fixture),
+      })
+      expect(r.outcomes[0]!.status).toBe('failed')
+      expect(fixture.err.join('').match(/\[vx\] timed out .*/g)).toEqual([
+        '[vx] timed out after 1000ms — killed (SIGKILL after the SIGTERM grace)',
+      ])
+    },
+    TIMEOUT,
+  )
 })

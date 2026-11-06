@@ -54,7 +54,7 @@ import {
   writableUnder,
   withoutWorkspaceBins,
 } from '../util/index.js'
-import { GitFilesCache, listingEnv, runGitLsFiles } from './git-inputs.js'
+import { GitFilesCache, listingEnv, newFilesIgnoredIn, runGitLsFiles } from './git-inputs.js'
 import { FILE_HASH_RACY_MS, racyWindowMs } from './layer.js'
 
 // The git side lives in git-inputs.ts; its whole public surface is
@@ -1683,16 +1683,61 @@ function unanswered(
   files: readonly string[],
   newIgnored?: (lit: string) => boolean,
 ): Set<string> {
-  const left = new Set<string>()
-  for (const lit of literals) {
-    const under = `${lit}/`
-    const answered =
-      files[lowerBound(files, lit)] === lit ||
-      files[lowerBound(files, under)]?.startsWith(under) === true ||
-      files.some((rel) => rel === lit || rel.startsWith(under))
-    if (!answered || newIgnored?.(lit) === true) left.add(lit)
-  }
-  return left
+  return new Set(
+    reachingIgnored(
+      literals,
+      (lit) => {
+        const under = `${lit}/`
+        return (
+          files[lowerBound(files, lit)] === lit ||
+          files[lowerBound(files, under)]?.startsWith(under) === true ||
+          files.some((rel) => rel === lit || rel.startsWith(under))
+        )
+      },
+      newIgnored,
+    ),
+  )
+}
+
+/**
+ * The rule a named entry reaches git-ignored files by: git lists nothing at
+ * or under it, or ignores a new file directly in it (a kept `gen/.gitkeep`).
+ * `src` of `src/**` over a listed `src` reaches none: an ignored `src/dev.log`
+ * is no input.
+ */
+function reachingIgnored(
+  named: readonly string[],
+  listed: (entry: string) => boolean,
+  newIgnored?: (entry: string) => boolean,
+): string[] {
+  return named.filter((n) => !listed(n) || newIgnored?.(n) === true)
+}
+
+/**
+ * The entries of `named` (absolute, from {@link namedOutright}) a
+ * git-ignored input can be at or under, by the rule a key reads them
+ * ({@link ignoredReach}): `listed` holds what git lists, absolute, with every
+ * directory above a listed file. Watch asks it, so an ignored file the key
+ * never reads starts no cycle.
+ */
+export function namedIgnoredReach(
+  root: string,
+  named: readonly string[],
+  listed: ReadonlySet<string>,
+): string[] {
+  const held = named.filter((n) => listed.has(n))
+  const fresh =
+    held.length === 0
+      ? new Set<string>()
+      : newFilesIgnoredIn(
+          root,
+          held.map((n) => relPosix(root, n)),
+        )
+  return reachingIgnored(
+    named,
+    (n) => listed.has(n),
+    (n) => fresh.has(relPosix(root, n)),
+  )
 }
 
 /** The first index whose path is not below `key`. */
