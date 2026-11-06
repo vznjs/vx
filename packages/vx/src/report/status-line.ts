@@ -6,7 +6,7 @@ import {
   formatExpected,
   formatTaskRow,
   paintIdParts,
-  pathNote,
+  withPathNote,
   type RowCells,
   unknownUsual,
 } from './framed-output.js'
@@ -232,24 +232,23 @@ export function formatStatusRegion(
     }
     const at = s.where?.(slot.id)
     const use = s.usage?.(slot.id)
-    lines.push(
-      formatTaskRow(
-        RUNNING_DOT(colors),
-        Math.max(0, s.nowMs - slot.startedMs),
-        'running',
-        'warn',
-        slot.cache ?? 'miss',
-        '',
-        paintPinnedId(slot.id, colors),
-        colors,
-        {
-          usual: usualOf(slot.id),
-          ...(use !== undefined ? { cpu: use.cores, memBytes: use.rssBytes } : {}),
-          blocks: String(s.blockedBy?.get(slot.id) ?? 0),
-          worker: at ?? 'local',
-        },
-      ) + (s.critical === slot.id ? pathNote(colors) : ''),
+    const row = formatTaskRow(
+      RUNNING_DOT(colors),
+      Math.max(0, s.nowMs - slot.startedMs),
+      'running',
+      'warn',
+      slot.cache ?? 'miss',
+      '',
+      paintPinnedId(slot.id, colors),
+      colors,
+      {
+        usual: usualOf(slot.id),
+        ...(use !== undefined ? { cpu: use.cores, memBytes: use.rssBytes } : {}),
+        blocks: String(s.blockedBy?.get(slot.id) ?? 0),
+        worker: at ?? 'local',
+      },
     )
+    lines.push(s.critical === slot.id ? withPathNote(row, colors) : row)
     for (const b of nested.get(slot.id) ?? []) {
       lines.push(
         formatTaskRow(

@@ -12,7 +12,7 @@ import {
   executedCells,
   formatTaskExecutedLine,
   flakyNote,
-  pathNote,
+  withPathNote,
   formatTaskHashLine,
   formatTaskHitLine,
   formatTaskSkippedLine,
@@ -756,13 +756,14 @@ export function defaultLogger(
   // A row's usual time: null for a task history never timed, undefined with no history to ask.
   const usualMsOf = (id: string): number | null | undefined =>
     runContext?.usual === undefined ? undefined : (runContext.usual(id) ?? null)
-  const failureRow = (node: TaskNode, outcome: TaskOutcome): string =>
-    formatFailureLine(node.id, outcome.durationMs, colors, cacheWordOf(outcome), {
-      ...executedCells(outcome, blocksOf(node.id)),
-      usual: usualCell(outcome.durationMs, usualMsOf(node.id), colors),
-    }) +
-    (onPath.has(node.id) ? pathNote(colors) : '') +
-    flakyNote(outcome, colors)
+  const failureRow = (node: TaskNode, outcome: TaskOutcome): string => {
+    const row =
+      formatFailureLine(node.id, outcome.durationMs, colors, cacheWordOf(outcome), {
+        ...executedCells(outcome, blocksOf(node.id)),
+        usual: usualCell(outcome.durationMs, usualMsOf(node.id), colors),
+      }) + flakyNote(outcome, colors)
+    return onPath.has(node.id) ? withPathNote(row, colors) : row
+  }
 
   return {
     showsSteps: writer.enabled,

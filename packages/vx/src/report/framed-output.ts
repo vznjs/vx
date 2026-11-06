@@ -718,7 +718,7 @@ function formatOutcomeRow(
 ): string {
   const st = statusOf(o)
   const ca = cacheOf(o)
-  return (
+  const row =
     formatTaskRow(
       taskGlyph(o, colors),
       ms,
@@ -729,16 +729,16 @@ function formatOutcomeRow(
       paintedId,
       colors,
       cells,
-    ) +
-    (onPath ? pathNote(colors) : '') +
-    flakyNote(o, colors)
-  )
+    ) + flakyNote(o, colors)
+  return onPath ? withPathNote(row, colors) : row
 }
 
-/** `critical path`: the row's task held the run's end while others ran beside it. */
-export function pathNote(colors: ColorSupport = NO_COLOR): string {
-  // A fact worth knowing, not a failure: never red.
-  return `  ${paint('info', 'critical path', colors)}`
+/**
+ * `critical path` flush right on `row`: the row's task held the run's end
+ * while others ran beside it. Yellow, as a run still going is (2026-11-06).
+ */
+export function withPathNote(row: string, colors: ColorSupport = NO_COLOR): string {
+  return ui.atRight(row, paint('warn', 'critical path', colors), colors)
 }
 
 /** Where an executor ran the task, when not here, right after its id: `@small#2` (2026-10-21). */
