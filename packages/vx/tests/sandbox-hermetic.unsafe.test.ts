@@ -99,6 +99,24 @@ describe.skipIf(!available)(
       TIMEOUT,
     )
 
+    it(
+      'with it, a host program no grant reads is named as hidden, not as one to install',
+      async () => {
+        await addProject(fixture.root, 'app', {
+          files: {},
+          config: `export default { tasks: { mk: { exec: { command: 'mkdir -p dist', sandbox: { hermetic: true, allow: { read: ['.'], write: ['dist/'] } } } } } }`,
+        })
+        const r = await run({ cwd: fixture.root, tasks: ['mk'], log: collectingLogger(fixture) })
+        expect([r.ok, fixture.log.join('\n')]).toEqual([
+          false,
+          expect.stringContaining(
+            `mkdir is ${Bun.which('mkdir')} on the host, but no sandbox grant reads it`,
+          ),
+        ])
+      },
+      TIMEOUT,
+    )
+
     // Linux only: there the proxy is a socket bridged into the task's own
     // network namespace, and the probe reads /proc. macOS hands the task the
     // host's loopback proxy, which no read wall touches.

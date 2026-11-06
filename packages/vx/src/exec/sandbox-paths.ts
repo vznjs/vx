@@ -102,6 +102,8 @@ export function sandboxReads(
     readonly config: {
       readonly allowRead: readonly string[]
       readonly allowWrite: readonly string[]
+      /** Denies the whole host, not only `baseDenyRead`: only a grant reads. */
+      readonly hermetic?: boolean
     }
   },
   file: string,
@@ -109,7 +111,7 @@ export function sandboxReads(
   const real = toRealPath(file)
   const under = (g: string): boolean => atOrUnder(real, toRealPath(g))
   return (
-    !sandbox.baseDenyRead.some(under) ||
+    (sandbox.config.hermetic !== true && !sandbox.baseDenyRead.some(under)) ||
     [...sandbox.baseAllowRead, ...sandbox.config.allowRead, ...sandbox.config.allowWrite].some(
       under,
     )
