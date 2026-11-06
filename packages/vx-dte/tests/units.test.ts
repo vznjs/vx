@@ -1086,6 +1086,43 @@ it('pumps a long queue in time that does not grow with its upstreams', async () 
   }
 })
 
+// Core withdraws a task the executor holds for a machine (`running` answers
+// `null`) when `--continue=never` trips. One still sharing its dependencies
+// answered `undefined`, so it was kept, and sent once they were shared
+// (2026-11-06).
+it('holds a task for a machine from the moment core hands it over, and a stop then sends it nowhere', async () => {
+  let shared: () => void = () => {}
+  const h = await harness(
+    new Map([
+      [
+        'up',
+        {
+          id: 'up',
+          deps: [],
+          projectDir: '/ws',
+          config: { cache: true, outputs: { files: ['out/**'] } },
+        } as unknown as TaskNode,
+      ],
+      node('t', ['up']),
+    ]),
+    undefined,
+    undefined,
+    (id) => `k-${id}`,
+  )
+  try {
+    h.store.artifacts.share = () => new Promise((resolve) => (shared = () => resolve(true)))
+    await h.worker(1)
+    const stop = new AbortController()
+    const run = h.o.execute({ ...h.req('t'), signal: stop.signal })
+    expect(h.o.where('t')).toBeNull()
+    stop.abort()
+    shared()
+    expect([(await run).exitCode, h.o.where('t')]).toEqual([130, undefined])
+  } finally {
+    await h.stop()
+  }
+})
+
 // 2026-10-23: "we should not send tasks in batches unless we are 100%
 // sure ... they can fit". Main bf77a58: small#3's load read low while 38
 // test shards began, so it took them all on 4 cores, 28 failed, and the 5

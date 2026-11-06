@@ -1045,7 +1045,10 @@ down with it:
   here is no failure: its dependents are skipped in every mode.
 
 The mode is the local scheduler's: a task a plugin executor runs
-elsewhere is one dispatch, failed or not, like any other.
+elsewhere is one dispatch, failed or not, like any other. Under `never`,
+a task the executor still holds for a machine to begin it (its row says
+`waiting`) is not yet started: its request is aborted and it completes
+as skipped.
 
 ### `--cache-download <mode>`
 

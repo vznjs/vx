@@ -190,7 +190,8 @@ export interface ExecuteRequest {
   readonly onStderr: (chunk: string) => void
   /**
    * Aborted when the run stops (Ctrl-C, SIGTERM, SIGHUP or an embedder's
-   * `RunOptions.signal`) or when `timeoutMs` elapses. An executor ends its
+   * `RunOptions.signal`), when `timeoutMs` elapses, or when fail-fast
+   * withdraws a task `running` says is not begun. An executor ends its
    * work and returns: a child an executor spawned is not one core can
    * reach (H-10, H-12). One already aborted is work not to start (B-55).
    * Any exit after the timeout's abort, a 0 included, is a timeout. Core
@@ -406,6 +407,8 @@ export interface TaskExecutor {
    * Where a task it was handed runs (`small#2`), for the live row; asked
    * per frame. `null` while it holds the task for a machine to begin it:
    * the row says `waiting`, and its clock starts when a machine begins it.
+   * Under `--continue=never` a failure aborts the `signal` of each task it
+   * answers `null` for, and the task is skipped, never started.
    */
   running?(taskId: string): string | null | undefined
   execute(req: ExecuteRequest): Promise<ExecuteResult>

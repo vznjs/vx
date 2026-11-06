@@ -601,6 +601,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // does an executor that declares `timeouts`.
   let timeoutTimer: ReturnType<typeof setTimeout> | undefined
   let timeoutFired = false
+  // Fail-fast withdrew the attempt while its executor still held it for a
+  // machine to begin (`running` answered `null`): it never started.
+  let unbegun = false
+  let withdrawUnbegun: (() => void) | undefined
   // The attempt's listener on the run's stop signal, taken off once the
   // attempt settles. Left on, every task of the run added one: the list
   // grew to the task count, and each add scans it for a duplicate, ~100 ms
@@ -611,11 +615,31 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     const abort = (): void => stop.abort(args.stopSignal?.reason)
     unlistenStop?.()
     unlistenStop = undefined
+    unbegun = false
+    withdrawUnbegun = undefined
     if (args.stopSignal?.aborted === true) abort()
     else if (args.stopSignal !== undefined) {
       const run = args.stopSignal
       run.addEventListener('abort', abort, { once: true })
       unlistenStop = () => run.removeEventListener('abort', abort)
+    }
+    // `--continue=never` starts nothing after a failure: a task a plugin
+    // executor still holds for a machine is not yet started, and was sent
+    // to one after the failure (2026-11-06).
+    const failFast = args.failFast
+    if (!local && failFast !== undefined && args.executor.running !== undefined) {
+      const withdraw = (): void => {
+        if (stop.signal.aborted || args.executor.running?.(node.id) !== null) return
+        unbegun = true
+        stop.abort(new Error('fail-fast'))
+      }
+      withdrawUnbegun = withdraw
+      failFast.addEventListener('abort', withdraw, { once: true })
+      const unlisten = unlistenStop
+      unlistenStop = () => {
+        unlisten?.()
+        failFast.removeEventListener('abort', withdraw)
+      }
     }
     clearTimeout(timeoutTimer)
     timeoutFired = false
@@ -924,6 +948,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     result: ExecuteResult
     exitCode: number
     withdrawn?: true
+    unbegun?: true
   }> {
     // The first attempt under `clean: false` finds its last outputs (tsc's `.tsbuildinfo`).
     const clean = willWrite && !deferralRequested && !(keepOutputs && attempt === 1)
@@ -999,6 +1024,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     } catch (thrown) {
       running = Promise.reject(thrown)
     }
+    // A failure that landed while the request was built: the executor holds it now.
+    if (args.failFast?.aborted === true) withdrawUnbegun?.()
     let res = await boundAfterAbort(running, req.signal)
       .then((r: unknown) => {
         assertExecuteResult(args.executor.name, node.id, r)
@@ -1051,6 +1078,15 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         throw thrown
       })
     endExec()
+    if (unbegun) {
+      await sweepPlaceholders(placeholders)
+      if (attempt === 1) return { result: res, exitCode: res.exitCode, unbegun: true }
+      // A retry withdrawn: the attempt before it stands, as above.
+      output = standing.output
+      violations = standing.violations
+      flushMasked = standing.flushMasked
+      return { result, exitCode: effectiveExitCode, withdrawn: true }
+    }
     if (secrets !== null)
       res = {
         ...res,
@@ -1223,6 +1259,18 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   for (;;) {
     attempt++
     const a = await runAttempt()
+    // Never started: skipped, as fail-fast skips a task not yet dispatched.
+    if (a.unbegun) {
+      return {
+        node,
+        status: 'skipped',
+        exitCode: 1,
+        durationMs: 0,
+        hash,
+        wallclockStartNs,
+        wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+      }
+    }
     result = a.result
     effectiveExitCode = a.exitCode
     if (a.withdrawn) {
