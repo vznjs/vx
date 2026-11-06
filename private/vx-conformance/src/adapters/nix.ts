@@ -5,6 +5,7 @@
 // declared outputs go to `$out`, and the run copies them back into the tree:
 // the Nix store is the cache, and an unchanged derivation is not rebuilt.
 // Omitted inputs are the project's git-tracked files, as a flake sees them.
+// Every build runs in Nix's sandbox, so an undeclared file is out of reach.
 import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { Adapter } from '../adapter.ts'
@@ -142,6 +143,8 @@ function specs(ws: WorkspaceSpec) {
       const sel = [
         own,
         ...(spec.rootInputs ? [{ tracked: false, ...globRegexes('.', spec.rootInputs) }] : []),
+        // A granted read reaches the sandbox as Nix lets a file in: a source, which keys it.
+        ...(spec.sandbox?.read ? [{ tracked: false, ...globRegexes(dir, spec.sandbox.read) }] : []),
       ]
       const outs = [globRegexes(dir, spec.outputs ?? []), globRegexes('.', spec.rootOutputs ?? [])]
       out[`${name}#${t}`] = {
@@ -161,22 +164,34 @@ function specs(ws: WorkspaceSpec) {
   return out
 }
 
+/** How a build's log carries a harness mark: a line of its own, this then the mark. */
+export const MARK = '@vx-conformance-mark '
+
 // The builder: the workspace mirrored under the build directory (the
 // task's sources, its dependencies' outputs), the command run in the
 // project's directory, then the files its declared outputs match copied to
-// `$out`. `.ran` and `.home` are the harness's marks and scratch: links to
-// the real workspace's, whose path the run leaves where no derivation reads
-// it as an input.
+// `$out`. The build runs in Nix's sandbox, which sees no workspace: the
+// harness's marks (`.ran`, `.home/marks/ran`) are a pipe whose lines reach
+// the build log, and the run appends them to the tree's.
 const BUILDER = `set -e
 top=$NIX_BUILD_TOP/ws
-mkdir -p "$top"
-root=$(cat /tmp/vx-conformance-nix/root)
-ln -s "$root/.ran" "$top/.ran"
-ln -s "$root/.home" "$top/.home"
+mkdir -p "$top/.home/marks"
+mkfifo "$NIX_BUILD_TOP/marks"
+ln -s "$NIX_BUILD_TOP/marks" "$top/.ran"
+ln -s "$NIX_BUILD_TOP/marks" "$top/.home/marks/ran"
+while IFS= read -r m; do printf '\\n%s%s\\n' '${MARK}' "$m"; done < "$NIX_BUILD_TOP/marks" >&2 &
+reader=$!
+# Held open, so the reader outlives each command's own open and close.
+exec 3> "$NIX_BUILD_TOP/marks"
 tab=$(printf '\\t')
+# The store keeps its files read-only, and the sandbox's build user is not root: the copy is made writable.
+writable() {
+  find "$top" -path "$top/.home" -prune -o -path "$top/.ran" -prune -o ! -type l -exec chmod u+w {} +
+}
 printf '%s\\n' "$deps" | while IFS= read -r d; do
   [ -n "$d" ] || continue
   cp -RP "$d/." "$top/"
+  writable
 done
 printf '%s\\n' "$srcs" | while IFS="$tab" read -r p rel; do
   [ -n "$p" ] || continue
@@ -184,7 +199,7 @@ printf '%s\\n' "$srcs" | while IFS="$tab" read -r p rel; do
   rm -rf "$top/$rel"
   cp -P "$p" "$top/$rel"
 done
-find "$top" -path "$top/.home" -prune -o -path "$top/.ran" -prune -o ! -type l -exec chmod u+w {} +
+writable
 files() {
   find . \\( -path ./.home -o -path ./.ran \\) -prune -o \\( -type f -o -type l \\) -print | sed 's|^\\./||'
 }
@@ -197,7 +212,11 @@ snap() {
 }
 [ -z "$outDefault" ] || snap > "$NIX_BUILD_TOP/before"
 cd "$top/$dir"
-sh -c "$command"
+status=0
+sh -c "$command" 3>&- || status=$?
+exec 3>&-
+wait "$reader"
+[ "$status" -eq 0 ] || exit "$status"
 mkdir -p "$out"
 cd "$top"
 : > "$NIX_BUILD_TOP/outs"
@@ -298,6 +317,8 @@ ${LIB}in {
 export const nix: Adapter = {
   name: 'nix',
   bins: [],
+  // Every build runs in Nix's own sandbox (nix-run.ts): that is Nix's isolation, not bubblewrap.
+  sandboxed: false,
   version: async () => {
     const out = await Bun.$`nix --version`.text()
     return out.trim().split(' ').at(-1)!
@@ -330,9 +351,6 @@ export const nix: Adapter = {
     'force',
     // Building writes the store; nothing reads it without writing.
     'read-only-cache',
-    // The builds here run unsandboxed (no build users in the case's store),
-    // so nothing keeps a command from what it never declared.
-    'sandbox',
     // nix-build has no watch mode.
     'watch',
   ],

@@ -1276,17 +1276,17 @@
     },
     "nix": {
       "all": {
-        "pass": 453,
-        "can": 675,
+        "pass": 459,
+        "can": 684,
         "of": 962
       },
       "correctness": {
-        "pass": 389,
-        "can": 556,
+        "pass": 396,
+        "can": 565,
         "of": 790
       },
       "efficiency": {
-        "pass": 62,
+        "pass": 61,
         "can": 111,
         "of": 163
       },
@@ -1296,7 +1296,7 @@
         "of": 9
       },
       "graph": {
-        "pass": 57,
+        "pass": 56,
         "can": 64,
         "of": 149
       },
@@ -1341,8 +1341,8 @@
         "of": 9
       },
       "sandbox": {
-        "pass": 1,
-        "can": 1,
+        "pass": 8,
+        "can": 10,
         "of": 11
       },
       "watch": {
@@ -8614,7 +8614,7 @@
         },
         "nix": {
           "status": "fail",
-          "detail": "harness: Error: ENOENT: no such file or directory, chmod '/tmp/conf-nix-PbzVsL/packages/a/out/tool.sh'"
+          "detail": "harness: Error: ENOENT: no such file or directory, chmod '/tmp/conf-nix-qWUlfy/packages/a/out/tool.sh'"
         }
       }
     },
@@ -21513,7 +21513,7 @@
         "nix": {
           "status": "fail",
           "step": 1,
-          "detail": "packages/a/seen.txt is \"/tmp/conf-nix-ekXnRU/.home/nix/var/builds/nix-12-3121702860|/tmp/conf-nix-ekXnRU/.home/nix/var/builds/nix-12-3121702860|/tmp/conf-nix-ekXnRU/.home/nix/var/builds/nix-12-3121702860\", expected \"/tmp/.|/tmp/conf-tmp|/tmp/conf-temp\""
+          "detail": "packages/a/seen.txt is \"/build|/build|/build\", expected \"/tmp/.|/tmp/conf-tmp|/tmp/conf-temp\""
         }
       }
     },
@@ -28598,8 +28598,7 @@
           "detail": "needs sandbox"
         },
         "nix": {
-          "status": "n/a",
-          "detail": "needs sandbox"
+          "status": "pass"
         }
       }
     },
@@ -28630,8 +28629,7 @@
           "detail": "needs sandbox"
         },
         "nix": {
-          "status": "n/a",
-          "detail": "needs sandbox"
+          "status": "pass"
         }
       }
     },
@@ -28661,8 +28659,7 @@
           "detail": "needs sandbox"
         },
         "nix": {
-          "status": "n/a",
-          "detail": "needs sandbox"
+          "status": "pass"
         }
       }
     },
@@ -28693,8 +28690,7 @@
           "detail": "needs sandbox"
         },
         "nix": {
-          "status": "n/a",
-          "detail": "needs sandbox"
+          "status": "pass"
         }
       }
     },
@@ -28725,8 +28721,9 @@
           "detail": "needs sandbox"
         },
         "nix": {
-          "status": "n/a",
-          "detail": "needs sandbox"
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
         }
       }
     },
@@ -28756,8 +28753,7 @@
           "detail": "needs sandbox"
         },
         "nix": {
-          "status": "n/a",
-          "detail": "needs sandbox"
+          "status": "pass"
         }
       }
     },
@@ -28787,8 +28783,9 @@
           "detail": "needs sandbox"
         },
         "nix": {
-          "status": "n/a",
-          "detail": "needs sandbox"
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
         }
       }
     },
@@ -28818,8 +28815,7 @@
           "detail": "needs sandbox"
         },
         "nix": {
-          "status": "n/a",
-          "detail": "needs sandbox"
+          "status": "pass"
         }
       }
     },
@@ -28851,7 +28847,7 @@
         },
         "nix": {
           "status": "n/a",
-          "detail": "needs sandbox, persistent, ready"
+          "detail": "needs persistent, ready"
         }
       }
     },
@@ -28881,8 +28877,7 @@
           "detail": "needs sandbox"
         },
         "nix": {
-          "status": "n/a",
-          "detail": "needs sandbox"
+          "status": "pass"
         }
       }
     },
@@ -30235,7 +30230,9 @@
           "status": "pass"
         },
         "nix": {
-          "status": "pass"
+          "status": "fail",
+          "step": 1,
+          "detail": "packages/b/dist/met.txt is \"alone\\n\", expected \"together\\n\""
         }
       }
     },
