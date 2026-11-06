@@ -103,6 +103,9 @@ A participant sends:
 - A frame that fails is answered `{ "n", "status", "error" }`; one that is
   no JSON object, or none of the above, `400`; one over 1 MiB `413`,
   answered by its `n` when the frame starts `{"n":`.
+- A send whose `body` the relay cannot pass (nested deeper than its
+  runtime serializes) is `400` in its result; its receiver keeps its
+  socket.
 - A removed peer's socket is closed `4404` after what waited for it; the
   host is not told it left.
 
