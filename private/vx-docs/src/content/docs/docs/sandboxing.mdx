@@ -191,7 +191,7 @@ moves with them.
 build: {
   dependsOn: ['tools#node'],
   exec: {
-    command: '../tools/out/bin/node build.js',
+    command: 'node build.js', // tools#node declares cache.outputs.bin: 'out/bin'
     sandbox: { hermetic: true, allow: { read: ['.'] } },
   },
 },

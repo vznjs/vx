@@ -159,7 +159,13 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       runtime: true,
       workspaceRuntime: true,
     }),
-    'tasks.*.cache.outputs': keys<CacheOutputs>({ files: true, workspaceFiles: true, clean: true }),
+    'tasks.*.cache.outputs': keys<CacheOutputs>({
+      files: true,
+      workspaceFiles: true,
+      clean: true,
+      bin: true,
+      mount: true,
+    }),
     'tasks.*.cache.inputStability': keys<InputStability>({ strategy: true, severity: true }),
   },
 }
@@ -254,7 +260,11 @@ function projectSeed(): Record<string, unknown> {
           workspaceRuntime: ['bun -v'],
         },
         cache: {
-          outputs: { files: ['dist/**'], workspaceFiles: ['out/**'], clean: false },
+          outputs: {
+            files: ['dist/**'],
+            workspaceFiles: ['out/**'],
+            clean: false,
+          },
           inputStability: { strategy: 'mutable', severity: 'error' },
         },
       },
@@ -263,6 +273,18 @@ function projectSeed(): Record<string, unknown> {
         exec: { command: 'true', remote: 'only' },
         inputs: { files: [] },
         cache: { outputs: { files: [] } },
+      },
+      // `bin` on its own task: a seed `files` probe beside it would read
+      // the bin rule as a refusal of `files`.
+      b: {
+        exec: { command: 'true' },
+        inputs: { files: ['src/**'] },
+        cache: { outputs: { files: ['out/**'], bin: 'out/bin' } },
+      },
+      m: {
+        exec: { command: 'true', platforms: ['linux-x64'] },
+        inputs: { files: ['src/**'] },
+        cache: { outputs: { files: ['out/**'], mount: { '/nix/store': 'out/nix/store' } } },
       },
     },
   }

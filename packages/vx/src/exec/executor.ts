@@ -48,6 +48,17 @@ export interface ExecuteSandbox {
    * that builds the request again hands `sandboxRequestFor` too.
    */
   readonly dependencyReads?: readonly string[]
+  /**
+   * The dependencies' `cache.outputs.mount`s (absolute `source` dirs): each
+   * `target` laid out read-only from them, entry by entry (Linux).
+   */
+  readonly mounts?: readonly SandboxMount[]
+}
+
+/** A directory a sandboxed task sees at `target`, filled from `source`'s entries. */
+export interface SandboxMount {
+  readonly target: string
+  readonly source: string
 }
 
 /** One declared input file, as the cache key saw it. */
@@ -162,6 +173,8 @@ export interface ExecuteRequest {
   readonly outputs: {
     readonly files: readonly string[]
     readonly workspaceFiles: readonly string[]
+    /** `cache.outputs.mount` paths: an absolute link under one is saved as written. */
+    readonly mounts?: readonly string[]
   }
   readonly command: string
   /** Appended to `command`, shell-quoted, by the executor (forwarded CLI args). */
@@ -178,6 +191,12 @@ export interface ExecuteRequest {
    * everywhere and safe to forward.
    */
   readonly envDefine: Readonly<Record<string, string>>
+  /**
+   * The dependencies' `cache.outputs.bin` directories (absolute), already
+   * first on `env`'s PATH: an executor that builds PATH where it runs puts
+   * them first there too.
+   */
+  readonly binDirs?: readonly string[]
   readonly capture: CaptureConfig
   readonly timeoutMs?: number
   readonly onStdout: (chunk: string) => void

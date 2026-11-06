@@ -122,7 +122,10 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   `reportWithin` (the project: denials there are reported), `reportLinked`
   (the canonical directories of the linked workspace packages core
   withheld from a cached task because its key does not answer for them:
-  denials there are reported too), `config`. An executor that ships the
+  denials there are reported too), `config`, `mounts?` (`SandboxMount
+{ target; source }[]`: each `source` directory's entries laid at the
+  absolute `target`, read-only, from a dependency's
+  `cache.outputs.mount`; Linux only). An executor that ships the
   sandbox elsewhere receives the narrowed `baseAllowRead`; enforcing it
   is its own.
 - `TaskInputs` — everything the cache key folds, WITH values: `files`

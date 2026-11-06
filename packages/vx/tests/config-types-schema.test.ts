@@ -88,8 +88,10 @@ const INPUTS = [
   'workspaceRuntime',
 ] as const satisfies readonly Keys<InputsConfig>[]
 const OUTPUTS = [
+  'bin',
   'clean',
   'files',
+  'mount',
   'workspaceFiles',
 ] as const satisfies readonly Keys<CacheOutputs>[]
 const WORKSPACE_CACHE = [
@@ -325,6 +327,7 @@ describe('a config built from readonly lists type-checks and loads', () => {
         dependsOn: ['^build'] as const,
         exec: {
           command: 'tsc',
+          platforms: ['linux-x64', 'linux-arm64', 'darwin-x64', 'darwin-arm64'] as const,
           env: { passThrough: NAMES, secret: NAMES },
           sandbox: {
             allow: {
@@ -354,7 +357,12 @@ describe('a config built from readonly lists type-checks and loads', () => {
           workspaceRuntime: ['git -v'] as const,
         },
         cache: {
-          outputs: { files: ['dist/**'] as const, workspaceFiles: ['out/x'] as const },
+          outputs: {
+            files: ['dist/**'] as const,
+            workspaceFiles: ['out/x'] as const,
+            bin: 'dist/bin',
+            mount: { '/nix/store': 'dist/store' },
+          },
         },
       },
     },

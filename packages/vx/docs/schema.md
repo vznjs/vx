@@ -1347,6 +1347,8 @@ interface CacheOutputs {
   files: readonly string[] // required
   workspaceFiles?: readonly string[] // optional; workspace-root-relative
   clean?: boolean // optional; false keeps outputs on a miss
+  bin?: string // optional; a dir of programs on every dependant's PATH
+  mount?: Record<string, string> // optional; absolute path -> output dir, in each dependant's sandbox
 }
 ```
 
@@ -1397,6 +1399,89 @@ stores every file the outputs match after the run, so a file an older
 build left behind is cached and restored on every machine. A retry
 still starts clean, and a hit still restores bit-identically. Omitted → the workspace's
 `cache.outputs.clean`, else `true`.
+
+**`bin: 'out/bin'`** names the directory of the outputs that holds
+programs. Every task that depends on this one gets it first on `PATH`,
+so a `tools` project builds Node once and the others run `node`:
+
+```ts
+// packages/tools/vx.config.ts
+import { defineProject } from '@vzn/vx/config'
+
+export default defineProject({
+  tasks: {
+    node: {
+      exec: { command: './build-node.sh' },
+      inputs: { files: ['build-node.sh'] },
+      cache: { outputs: { files: ['out/**'], bin: 'out/bin' } },
+    },
+  },
+})
+```
+
+A task with `dependsOn: ['tools#node']` then runs `node build.js`.
+
+It is declared, never read from a layout. It must sit under the fixed
+head of a `files` glob, so a hit restores it and a sandboxed dependant
+reads it (`exec.sandbox` reads what it depends on). Two dependencies
+holding one program name fail the dependant, naming both: `PATH` order
+would pick one silently. The dependant's key folds the dependency's, so
+a new tool runs it again. Pinned in `tests/dependency-bin.test.ts`.
+
+**`mount: { '/nix/store': 'out/nix/store' }`** is for programs that name
+their files by a fixed absolute path, as everything Nix builds does. Each
+sandboxed task that depends on this one sees the output directory at that
+path, read-only. vx caches and shares the tree like any output, so Nix is
+only the build command:
+
+```ts
+// packages/tools/vx.config.ts
+import { defineProject } from '@vzn/vx/config'
+
+const nixpkgs = 'https://github.com/NixOS/nixpkgs/archive/<commit>.tar.gz'
+
+export default defineProject({
+  tasks: {
+    node: {
+      exec: {
+        command: [
+          `p=$(nix build --store "$PWD/.nix" --option sandbox false --impure --print-out-paths --no-link --expr 'with import (fetchTarball "${nixpkgs}") {}; nodejs_22')`,
+          // The copy's own database is this machine's: only the store is the output.
+          `nix copy --from "$PWD/.nix" --to "local?root=$PWD/out" "$p" --no-check-sigs && rm -rf out/nix/var`,
+          `mkdir -p out/bin && ln -s "../nix/store/\${p#/nix/store/}/bin/node" out/bin/node`,
+        ].join(' && '),
+        // Nix builds for this machine: the key holds which one.
+        platforms: ['linux-x64', 'linux-arm64'],
+        sandbox: {
+          allow: {
+            network: ['cache.nixos.org', 'github.com', 'codeload.github.com'],
+            unixSockets: true, // curl, inside Nix
+            write: ['.nix/', 'out/', '~/.cache/nix'],
+          },
+          ignore: { read: ['build', 'copy'], write: ['build', 'copy'] },
+        },
+      },
+      inputs: { files: [] },
+      cache: {
+        outputs: { files: ['out/**'], bin: 'out/bin', mount: { '/nix/store': 'out/nix/store' } },
+      },
+    },
+  },
+})
+```
+
+The nixpkgs commit sits in the command, so the key moves with it.
+Nix picks the system itself, so a mount needs `exec.platforms`: each
+platform keeps its own entry, and an arm64 machine never restores x64
+binaries.
+`--option substituters ''` builds from source instead of downloading
+Nix's prebuilt packages. The dependant runs in `exec.sandbox` on Linux:
+the mount is a bind, which an unsandboxed task or macOS cannot make, and
+vx refuses either, naming the mount. The path must exist on its machine
+(an empty `sudo mkdir -p /nix/store` is enough). An absolute link into a
+mount path is saved as written; any other absolute link is refused. Two
+dependencies mounting one path share it entry by entry. Pinned in
+`tests/dependency-mount.unsafe.test.ts`.
 
 A **`!` entry takes a path back** from what the positive globs select
 (A-44; a scratch dir under `dist` stays out of the clean this way; a

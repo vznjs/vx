@@ -7,7 +7,7 @@ import { existsSync } from 'node:fs'
 import { lstat, mkdir, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
-import type { ExecConfig } from '../config.js'
+import type { CacheOutputs, ExecConfig } from '../config.js'
 import {
   bindableWrites,
   initSandbox,
@@ -21,6 +21,7 @@ import {
   type ExecuteRequest,
   isMountableLiteral,
   atOrUnder,
+  type SandboxMount,
   type SandboxViolation,
 } from '../exec/index.js'
 import type { TaskNode } from '../graph/index.js'
@@ -203,6 +204,8 @@ export async function sandboxRequestFor(
   cacheDir?: string,
   /** The dependencies' outputs it may read (`dependencyReads`): absolute paths. */
   dependencyOutputs: readonly string[] = [],
+  /** The dependencies' mounts it sees (`dependencyMounts`). */
+  mounts: readonly SandboxMount[] = [],
 ): Promise<SandboxRequest> {
   // The runtime reads a path holding a bracket as a pattern: on Linux it
   // mounts no such write path (B-60); seatbelt's rules compile it as a
@@ -312,6 +315,7 @@ export async function sandboxRequestFor(
     config,
     ...(keyed === undefined ? {} : { keyed: [...keyed] }),
     ...(dependencyOutputs.length === 0 ? {} : { dependencyReads: [...dependencyOutputs] }),
+    ...(mounts.length === 0 ? {} : { mounts: [...mounts] }),
   }
   return { sandbox: request, placeholders, withheld: links.withheld }
 }
@@ -349,6 +353,39 @@ export async function dependencyReads(
     }
   }
   return [...reads]
+}
+
+/** A task's own `cache.outputs.mount` paths: where an absolute link of its outputs may point. */
+export function mountPaths(outputs: CacheOutputs | undefined): string[] {
+  return Object.keys(outputs?.mount ?? {}).map((t) => t.replace(/\/+$/, ''))
+}
+
+/**
+ * The `cache.outputs.mount`s of the tasks a task's key folds
+ * (`readableDeps`), as its sandbox lays them out: each path filled from the
+ * dependency's output directory. Refused for a task outside the Linux
+ * sandbox, which has no way to put them there.
+ */
+export function dependencyMounts(
+  node: TaskNode,
+  deps: readonly TaskNode[],
+  sandboxed: boolean,
+): SandboxMount[] {
+  const mounts: SandboxMount[] = []
+  for (const dep of deps) {
+    for (const [target, source] of Object.entries(dep.config.cache?.outputs.mount ?? {})) {
+      mounts.push({ target: target.replace(/\/+$/, ''), source: path.join(dep.projectDir, source) })
+    }
+  }
+  if (mounts.length > 0 && !(sandboxed && process.platform === 'linux')) {
+    const named = deps.find((d) => d.config.cache?.outputs.mount !== undefined)!
+    throw new UserError(
+      `${node.id} depends on ${named.id}, whose cache.outputs.mount puts ${mounts[0]!.target} in ` +
+        `its dependants' view, and only the Linux exec.sandbox can lay it there — run ${node.id} ` +
+        `in exec.sandbox on Linux`,
+    )
+  }
+  return mounts
 }
 
 /**

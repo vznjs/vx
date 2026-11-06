@@ -58,6 +58,8 @@ export const moon: Adapter = {
   pkg: '@moonrepo/cli',
   bins: [],
   lacks: [
+    // No task names a directory of programs its dependants get on PATH.
+    'dependency-bin',
     // `--query` matches project fields; `--upstream`/`--downstream` walk
     // the task graph from the requested tasks, never the project graph,
     // and never leave the matched projects out.

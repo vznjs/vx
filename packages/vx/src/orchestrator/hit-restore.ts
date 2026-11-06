@@ -34,6 +34,7 @@ import {
 import type { ExecuteArgs } from './execute-task.js'
 import { entryHolds } from './miss-save.js'
 import { decodeOutputLog, maskStreams } from './output-log.js'
+import { mountPaths } from './sandbox-request.js'
 
 export interface RestoreHitArgs {
   args: ExecuteArgs
@@ -313,9 +314,11 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
         }
       }
     }
+    const mounts = mountPaths(node.config.cache?.outputs)
     await args.cache.restoreOutputs(hash, node.projectDir, args.workspaceRoot, {
       files: outputs,
       workspaceFiles: wsOutputs,
+      ...(mounts.length === 0 ? {} : { mounts }),
     })
     if (staleRels.length > 0 || staleDirs.length > 0) {
       await cleanOutputPaths({

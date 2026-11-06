@@ -19,6 +19,7 @@ import { warnOf } from '../report/index.js'
 import type { ExecuteArgs } from './execute-task.js'
 import {
   commandWriteReach,
+  dependencyMounts,
   dependencyReads,
   mayWriteFingerprint,
   type Placeholder,
@@ -34,6 +35,7 @@ import { computeTaskHash } from './task-hash.js'
 import {
   forgetUndeclaredWrites,
   isAborted,
+  dependencyBins,
   taskBinDirs,
   taskEnv,
   taskTimeoutMs,
@@ -86,7 +88,13 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
     persistent: NonNullable<ExecConfig['persistent']>
   }
   const effectiveForwardArgs = node.requested ? (args.forwardArgs ?? []) : []
-  const env = taskEnv(node, step, args.workspaceRoot)
+  const depBins = await dependencyBins(args.readableDeps?.(node) ?? [])
+  const depMounts = dependencyMounts(
+    node,
+    args.readableDeps?.(node) ?? [],
+    step.sandbox !== undefined,
+  )
+  const env = taskEnv(node, step, args.workspaceRoot, depBins)
   const wallclockStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
   const hash = await serverKey(args)
 
@@ -137,6 +145,7 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
       args.nestedProjectDirs,
       args.cacheDir,
       await dependencyReads(args.readableDeps?.(node) ?? [], args.workspaceRoot),
+      depMounts,
     )
     placeholders = sb.placeholders
     serverSandbox = sb.sandbox
@@ -305,7 +314,7 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
         code: err.exitCode,
         command: step.command,
         cwd: node.projectDir,
-        bins: taskBinDirs(node, args.workspaceRoot),
+        bins: taskBinDirs(node, args.workspaceRoot, depBins),
         signal: signal ?? undefined,
         hidden: serverSandbox && ((f: string) => !sandboxReads(serverSandbox, f)),
       })

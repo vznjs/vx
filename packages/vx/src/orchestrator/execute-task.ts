@@ -58,6 +58,8 @@ import { executorLabel, nameExecutorFailure } from './plugin-host.js'
 import type { CommandWindows } from './command-windows.js'
 import {
   commandWriteReach,
+  dependencyMounts,
+  mountPaths,
   dependencyReads,
   mayWriteFingerprint,
   type Placeholder,
@@ -103,6 +105,7 @@ import { executePersistentTask } from './persistent-task.js'
 import {
   forgetUndeclaredWrites,
   isAborted,
+  dependencyBins,
   taskBinDirs,
   serverSpec,
   taskEnv,
@@ -585,6 +588,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
 
   const outputs = cacheCfg?.outputs.files ?? []
   const wsOutputs = cacheCfg?.outputs.workspaceFiles ?? []
+  const mounts = mountPaths(cacheCfg?.outputs)
   const effectiveForwardArgs = node.requested ? (args.forwardArgs ?? []) : []
   // Per-task `exec.timeout` beats `run.timeout` (flag, variable,
   // workspace; resolved into `args.timeout` by run.ts).
@@ -776,7 +780,13 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
   }
 
-  const env = taskEnv(node, step, args.workspaceRoot)
+  const depBins = await dependencyBins(args.readableDeps?.(node) ?? [])
+  const depMounts = dependencyMounts(
+    node,
+    args.readableDeps?.(node) ?? [],
+    cfg.exec?.sandbox !== undefined,
+  )
+  const env = taskEnv(node, step, args.workspaceRoot, depBins)
   const wallclockStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
 
   // Miss path: describe the input set ONCE — the executor gets the values
@@ -1135,7 +1145,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         code,
         command: step.command,
         cwd: node.projectDir,
-        bins: taskBinDirs(node, args.workspaceRoot),
+        bins: taskBinDirs(node, args.workspaceRoot, depBins),
         signal: res.signal,
         hidden: req.sandbox && ((f: string) => !sandboxReads(req.sandbox!, f)),
       })
@@ -1318,6 +1328,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       cwd: node.projectDir,
       env,
       envDefine: step.env?.define ?? {},
+      ...(depBins.length === 0 ? {} : { binDirs: depBins }),
       capture,
       onStdout: masked ? masked.out : toOut,
       onStderr: masked ? masked.err : toErr,
@@ -1340,7 +1351,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       // `--force`/`--no-cache` reach a remote executor's private record
       // through this flag — the policy gates above only cover vx's OWN cache.
       ...(cfgCacheable && !(policy.localRead || policy.remoteRead) ? { refresh: true } : {}),
-      outputs: { files: outputs, workspaceFiles: wsOutputs },
+      outputs: {
+        files: outputs,
+        workspaceFiles: wsOutputs,
+        ...(mounts.length === 0 ? {} : { mounts }),
+      },
       ...(args.terminal === true ? { terminal: true as const } : {}),
       ...(args.servers === undefined
         ? {}
@@ -1364,6 +1379,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       args.nestedProjectDirs,
       args.cacheDir,
       await dependencyReads(args.readableDeps?.(node) ?? [], args.workspaceRoot),
+      depMounts,
     )
     placeholders = sb.placeholders
     withheld = sb.withheld
