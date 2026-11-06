@@ -205,6 +205,8 @@ export interface AffectedChanges {
   whole: ReadonlySet<string>
   /** A whole project → the workspace-wide file that made it so (a workspace config, a claimed root file). */
   wholeBy?: ReadonlyMap<string, string>
+  /** `wholeBy`'s file reached every project (the workspace config), not only those a claim named. */
+  wide?: boolean
   /**
    * The changed paths that are nested repositories (a submodule, an
    * embedded repository), workspace-relative: each stands for every file
@@ -390,7 +392,7 @@ export async function affectedChanges(
   const everything = (file: string): AffectedChanges => {
     const all = new Set(projects.map((p) => p.name))
     const wholeBy = new Map([...all].map((n) => [n, file]))
-    return { projects: all, changed, paths: new Map(), whole: all, wholeBy }
+    return { projects: all, changed, paths: new Map(), whole: all, wholeBy, wide: true }
   }
   // The workspace config's plugins shape every project's resolved config,
   // so its edit can re-key any task and selection cannot tell which (item

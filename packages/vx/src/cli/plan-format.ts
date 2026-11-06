@@ -181,11 +181,18 @@ function describeReason(r: AffectedReason): string {
           : r.kind === 'input'
             ? `${r.file} changed (an input)`
             : r.kind === 'workspace'
-              ? `${r.file} changed (every task in its project)`
+              ? `${r.file} changed (${r.wide === true ? 'workspace-wide' : 'every task in its project'})`
               : r.file !== undefined
                 ? `${r.file} changed (in its project)`
                 : 'its project changed as a whole'
   return r.via === undefined ? cause : `${cause}, via ${r.via.join(' ← ')}`
+}
+
+function wireReason(r: AffectedReason): AffectedReason {
+  if (r.wide === undefined) return r
+  const wire = { ...r }
+  delete wire.wide
+  return wire
 }
 
 /** A TS config may build the description from `process.env` (L-11). */
@@ -232,7 +239,7 @@ export function formatPlanJson(
           ...(t.executor !== undefined ? { executor: t.executor } : {}),
           ...(t.download !== undefined ? { download: t.download } : {}),
           ...(description !== undefined ? { description } : {}),
-          ...(t.affected !== undefined ? { affected: t.affected } : {}),
+          ...(t.affected !== undefined ? { affected: wireReason(t.affected) } : {}),
           ...(t.otherPlatform !== undefined ? { otherPlatform: t.otherPlatform } : {}),
           ...(t.blockedBy !== undefined ? { blockedBy: t.blockedBy } : {}),
         }

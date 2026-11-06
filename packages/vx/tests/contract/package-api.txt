@@ -469,6 +469,7 @@ export interface AffectedChanges {
   paths: ReadonlyMap<string, readonly string[]>
   whole: ReadonlySet<string>
   wholeBy?: ReadonlyMap<string, string>
+  wide?: boolean
   nested?: readonly string[]
   dirLinks?: ReadonlySet<string>
   dirLinksIn?: ReadonlyMap<string, ReadonlySet<string>>
@@ -479,6 +480,7 @@ export interface AffectedReason {
   file?: string
   project?: string
   via?: string[]
+  wide?: true
 }
 == type ApplyMigrationArgs (src/workspace/migration.ts)
 export interface ApplyMigrationArgs {

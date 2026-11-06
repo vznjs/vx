@@ -1227,10 +1227,11 @@ $ vx run build lint --affected=main --dry
 project changed and the task reads it whole: a task with no `inputs`, or a
 changed `file` no task of the project declares, often an output git does not
 ignore; no `file` for a config import), `workspace` (a `file` no project
-owns changed and reached every task of the project, shown as `changed
-(every task in its project)`: the workspace config reaches every project;
-a root file a plugin claims, such as a lockfile, or a directory it names
-reaches only the projects whose digest moved),
+owns changed and reached every task of the project: the workspace config
+reaches every project, shown as `changed (workspace-wide)`; a root file a
+plugin claims, such as a lockfile, or a directory it names reaches only
+the projects whose digest moved, shown as `changed (every task in its
+project)`),
 `package` (a `^` edge passes a changed `project` with no such task),
 `named` (`pkg#task` beside a bare task) or `selected` (another filter
 selected its project). `via` is the `dependsOn` chain, nearest first, to
