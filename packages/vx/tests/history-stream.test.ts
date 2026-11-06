@@ -69,6 +69,31 @@ it('writes full batches on its thread and hands back the rest', async () => {
   expect(outcomes).toBe(1_024)
 })
 
+// A run's process has nothing else to wait on while `finish` awaits the
+// thread's answers: an unreferenced thread left them unheard, and a
+// restoring run ended "something it awaited can never settle", exit 1.
+it('a restoring CLI run waits for its thread', async () => {
+  const root = await makeWorkspace({ dir })
+  const tasks = Array.from(
+    { length: 600 },
+    (_, i) =>
+      `t${i}: { exec: { command: 'mkdir -p o${i} && echo ${i} > o${i}/f' }, inputs: { files: ['package.json'] }, cache: { outputs: { files: ['o${i}/**'] } } }`,
+  )
+  const proj = await addProject(root, 'p', `export default { tasks: { ${tasks.join(', ')} } }`)
+  const names = Array.from({ length: 600 }, (_, i) => `t${i}`)
+  expect((await run({ cwd: root, tasks: names, log: quiet })).ok).toBe(true)
+  for (let i = 0; i < 600; i++) await rm(path.join(proj, `o${i}`), { recursive: true })
+  const bin = path.join(import.meta.dir, '..', 'src', 'bin.ts')
+  const p = Bun.spawnSync(['bun', bin, 'run', ...names, '--all'], {
+    cwd: root,
+    env: { ...process.env, VX_CACHE_DIR: '.vx/cache', NO_COLOR: '1' },
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  const out = p.stdout.toString() + p.stderr.toString()
+  expect([p.exitCode, out.includes('never settle')]).toEqual([0, false])
+}, 60_000)
+
 it('leaves a run with fewer hits than a batch to its bundle', async () => {
   const cache = new Cache(path.join(dir, 'cache'))
   const stream = new HistoryStream<number>(historyFiles(cache)!)

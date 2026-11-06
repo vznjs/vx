@@ -47,6 +47,9 @@ export class HistoryStream<T> {
   async finish(): Promise<{ landed: Streamed<T>[]; unlanded: Streamed<T>[] }> {
     const w = this.worker
     if (w !== undefined && !this.gone) {
+      // Unreferenced, its answers alone left the loop with nothing to
+      // wait on: the run ended "awaited can never settle".
+      w.ref()
       await new Promise<void>((resolve) => {
         this.settle = resolve
         this.settled()
