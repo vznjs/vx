@@ -4,4 +4,5 @@ preload = [
   "./tests/helpers/git-hermetic.ts",
   "./tests/helpers/cache-dir-env.ts",
   "./tests/helpers/home-guard.ts",
+  "./tests/helpers/color-env.ts",
 ]
