@@ -6,6 +6,7 @@
 import {
   barWidth,
   identityHue,
+  GUTTER,
   INDENT,
   LABEL_MIN,
   paint,
@@ -13,6 +14,8 @@ import {
   RESET,
   ruleWidth,
   SYMBOL,
+  TABLE_WIDTH,
+  underlined,
   type ColorSupport,
   type Style,
   type Tone,
@@ -31,6 +34,8 @@ export type Inline = string | Token | readonly Inline[]
 /** A laid-out piece of output; `render` and `print` space blocks apart. */
 export interface Block {
   readonly lines: (colors: ColorSupport) => string[]
+  /** A grid's column header: it rides its section's title line, past the gutter. */
+  readonly head?: (colors: ColorSupport) => string
 }
 
 /** A `project` or `project#task` id, each half in its name's hue, the `#` dim. */
@@ -120,24 +125,6 @@ function prose(text: string): Inline {
     .map((p, i) => (i % 2 === 1 ? cmd(p) : p === '' ? p : { style: 'value' as const, text: p }))
 }
 
-/**
- * A panel's top off colour: `─ Title count ──── note ─`, flush with the
- * bars. The same characters a pipe, a test and `grep` read.
- */
-function ruleLine(
-  title: string,
-  count: Inline | undefined,
-  c: ColorSupport,
-  note?: Inline,
-): string {
-  const plain = { enabled: false }
-  const head = `─ ${title}${count === undefined ? '' : ` ${inline(count, plain)}`} `
-  if (note === undefined)
-    return `${head}${'─'.repeat(Math.max(8, ruleWidth(c) - Bun.stringWidth(head)))}`
-  const tail = ` ${inline(note, plain)} ─`
-  return `${head}${'─'.repeat(Math.max(3, ruleWidth(c) - Bun.stringWidth(head) - Bun.stringWidth(tail)))}${tail}`
-}
-
 // ── Panels ──────────────────────────────────────────────────────────
 // vx's screens look like a TUI and are not one: each part is a box drawn
 // line by line into the scrollback, so a pipe, a CI log and a terminal all
@@ -212,33 +199,40 @@ export function wrap(line: string, w: number): string[] {
   return rows
 }
 
-const border = (s: string, c: ColorSupport): string => paint('border', s, c)
+/** A title line's width: the terminal's, so a task's name sits over it too; never under the bars'. */
+const titleWidth = (c: ColorSupport): number => Math.max(ruleWidth(c), c.columns ?? TABLE_WIDTH)
 
 /**
- * A panel's top: the rule `─ Title count ──── note ─`, its title bold in
- * the brand hue, the rule a quiet grey. A panel has no box: its lines sit
- * under the rule as they are, so a terminal, a CI log and a pipe read the
- * same layout (off colour, the same characters unpainted).
+ * A section's title line: the title in the gutter, bold in the brand hue,
+ * a grid's column header past it (`head`), a note flush right, the whole
+ * line underlined in the rule's grey. No rule characters: off colour it is
+ * the same words, unmarked.
  */
-export function panelTop(title: string, c: ColorSupport, count?: Inline, note?: Inline): string {
-  if (!c.enabled) return ruleLine(title, count, c, note)
-  const plain = { enabled: false }
-  const head = `─ ${title}${count === undefined ? '' : ` ${inline(count, plain)}`} `
-  const tail = note === undefined ? '' : ` ${inline(note, plain)} ─`
-  const dashes = Math.max(
-    note === undefined ? 8 : 3,
-    ruleWidth(c) - Bun.stringWidth(head) - Bun.stringWidth(tail),
-  )
-  return (
-    border('─ ', c) +
+export function panelTop(
+  title: string,
+  c: ColorSupport,
+  count?: Inline,
+  note?: Inline,
+  head?: string,
+): string {
+  let line =
+    INDENT +
     paint('heading', title, c) +
-    (count === undefined ? '' : ` ${inline(typeof count === 'string' ? dim(count) : count, c)}`) +
-    ' ' +
-    border('─'.repeat(dashes), c) +
-    (note === undefined
-      ? ''
-      : ` ${inline(typeof note === 'string' ? dim(note) : note, c)} ${border('─', c)}`)
-  )
+    (count === undefined ? '' : ` ${inline(typeof count === 'string' ? dim(count) : count, c)}`)
+  if (head !== undefined) line += ' '.repeat(Math.max(1, GUTTER - Bun.stringWidth(line))) + head
+  const tail = note === undefined ? '' : inline(typeof note === 'string' ? dim(note) : note, c)
+  const used = Bun.stringWidth(line) + Bun.stringWidth(tail)
+  line += ' '.repeat(Math.max(tail === '' ? 0 : 2, titleWidth(c) - used)) + tail
+  return underlined(line, c)
+}
+
+/**
+ * A list's divider: the underline alone, from the grid's first column to the
+ * title lines' end (off colour, a blank line).
+ */
+export function divider(c: ColorSupport): string {
+  if (!c.enabled) return ''
+  return ' '.repeat(GUTTER) + underlined(' '.repeat(titleWidth(c) - GUTTER), c)
 }
 
 /**
@@ -253,7 +247,7 @@ export function section(title: string, ...rest: (Block | Inline)[]): Block {
   const body = (counted ? rest.slice(1) : rest) as Block[]
   return block((c) => {
     const inner = body.flatMap((b, i) => (i === 0 ? b.lines(c) : ['', ...b.lines(c)]))
-    return [panelTop(title, c, count), ...inner]
+    return [panelTop(title, c, count, undefined, body[0]?.head?.(c)), ...inner]
   })
 }
 

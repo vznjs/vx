@@ -706,8 +706,7 @@ export function defaultLogger(
     if (panelOpen === 'Warnings') closePanel()
     inPanel = true
     if (panelOpen !== 'Tasks') {
-      emitLine(ui.panelTop('Tasks', colors))
-      emitLine(formatListHeader(colors))
+      emitLine(ui.panelTop('Tasks', colors, undefined, undefined, formatListHeader(colors)))
       panelOpen = 'Tasks'
     }
     emitLine(line)
@@ -780,8 +779,13 @@ export function defaultLogger(
       // summary row or "exited with code" can follow its partial line.
       endStreamLine()
       closePanel()
-      if (line === '' && endsBlank) return
-      endsBlank = line === ''
+      // A block's own trailing blank stands for the first blank status line; a second one is meant
+      // (two before the Summary).
+      if (line === '' && endsBlank) {
+        endsBlank = false
+        return
+      }
+      endsBlank = false
       writer.write(`${line}\n`)
     },
     warn(line) {

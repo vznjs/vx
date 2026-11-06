@@ -31,6 +31,7 @@ import { formatElapsed, maskedCommand, printable } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import {
   fileMemo,
+  GUTTER,
   hasEscape,
   idParts,
   lastRedraw,
@@ -279,7 +280,8 @@ function pad(n: number): string {
 
 /** Right-align the duration in a TIME_COL cell (pad on the left). */
 function timeCell(ms: number | null, colors: ColorSupport): string {
-  let raw = ms === null ? '' : formatElapsed(ms)
+  if (ms === null) return pad(TIME_COL - 1) + paint('muted', UNKNOWN, colors)
+  let raw = formatElapsed(ms)
   // `1000.00s` is wider than the cell; minutes fit it up to `99m 59s`.
   if (ms !== null && raw.length > TIME_COL) raw = formatElapsed(ms, true)
   // The time is the row's fact (value level); the cells around it are meta.
@@ -369,40 +371,36 @@ export function formatTaskRow(
   colors: ColorSupport = NO_COLOR,
   cells: RowCells = {},
 ): string {
-  const st = cell(status, statusColor, STATUS_COL, colors)
-  // `aborting` runs one into the cache cell, which is blank beside it.
-  const ca = cell(cache, cacheColor, CACHE_COL - Math.max(0, status.length - STATUS_COL), colors)
-  const usual = cells.usual ?? { text: '', painted: '' }
+  // Every cell says something: one with nothing in it reads `—` (2026-11-06).
+  const st = cell(status || UNKNOWN, statusColor, STATUS_COL, colors)
+  // `aborting` runs one into the cache cell.
+  const ca = cell(
+    cache || UNKNOWN,
+    cache === '' ? '' : cacheColor,
+    CACHE_COL - Math.max(0, status.length - STATUS_COL),
+    colors,
+  )
+  const usual =
+    cells.usual === undefined || cells.usual.text === '' ? unknownUsual(colors) : cells.usual
   const us = `${pad(USUAL_COL - usual.text.length)}${usual.painted}`
-  const cpu =
-    cells.cpu === undefined ? '' : cells.cpu === null ? UNKNOWN : `${Math.round(cells.cpu * 100)}%`
-  const mem =
-    cells.memBytes === undefined
-      ? ''
-      : cells.memBytes === null
-        ? UNKNOWN
-        : formatSize(cells.memBytes)
-  const out =
-    cells.outputBytes === undefined
-      ? ''
-      : cells.outputBytes === null
-        ? UNKNOWN
-        : formatSize(cells.outputBytes)
-  const blocks = cells.blocks ?? ''
-  const worker = workerName(cells.worker ?? '')
+  const cpu = cells.cpu == null ? UNKNOWN : `${Math.round(cells.cpu * 100)}%`
+  const mem = cells.memBytes == null ? UNKNOWN : formatSize(cells.memBytes)
+  const out = cells.outputBytes == null ? UNKNOWN : formatSize(cells.outputBytes)
+  const blocks = cells.blocks || UNKNOWN
+  const worker = workerName(cells.worker || UNKNOWN)
   return (
-    ` ${glyph} ${timeCell(ms, colors)} ${us} ${st} ${ca} ` +
+    `${ROW_LEAD}${glyph} ${timeCell(ms, colors)} ${us} ${st} ${ca} ` +
     `${right(cpu, CPU_COL, colors)} ${right(mem, MEM_COL, colors)} ${right(out, OUT_COL, colors)} ` +
-    `${pad(BLOCKED_COL - blocks.length)}${paint(blocks === '0' ? 'muted' : 'value', blocks, colors)} ` +
+    `${pad(BLOCKED_COL - blocks.length)}${paint(blocks === '0' || blocks === UNKNOWN ? 'muted' : 'value', blocks, colors)} ` +
     `${placeCell(worker, colors)}${pad(WORKER_COL - worker.length)} ${paintedId}`
   )
 }
 
-/**
- * A cell vx cannot know: a peak no look saw, a task history never timed.
- * Blank is a cell that does not apply (a hit ran nothing).
- */
+/** A cell with nothing in it: unknown, or not applying to the row (a hit ran nothing). */
 const UNKNOWN = '\u2014'
+
+/** A grid row's lead: the gutter, so a row starts where a field's value does. */
+const ROW_LEAD = ' '.repeat(GUTTER)
 
 /** A row's cells past time, status and cache; each blank when absent, `—` when null. */
 export interface RowCells {
@@ -440,7 +438,7 @@ export function formatSize(bytes: number): string {
 const placeCells = new WeakMap<ColorSupport, Map<string, string>>()
 
 function placeCell(worker: string, colors: ColorSupport): string {
-  if (worker === '') return ''
+  if (worker === UNKNOWN) return paint('muted', UNKNOWN, colors)
   let byName = placeCells.get(colors)
   if (byName === undefined) placeCells.set(colors, (byName = new Map()))
   let painted = byName.get(worker)
@@ -502,10 +500,10 @@ export function formatRunningHeader(colors: ColorSupport = NO_COLOR): string {
 
 function header(usual: string, colors: ColorSupport): string {
   const head =
-    `   ${'time'.padStart(TIME_COL)} ${usual.padStart(USUAL_COL)} ` +
+    `  ${'time'.padStart(TIME_COL)} ${usual.padStart(USUAL_COL)} ` +
     `${'status'.padEnd(STATUS_COL)} ${'cache'.padEnd(CACHE_COL)} ${'cpu'.padStart(CPU_COL)} ` +
     `${'mem'.padStart(MEM_COL)} ${'outputs'.padStart(OUT_COL)} ${'blocks'.padStart(BLOCKED_COL)} ${'worker'.padEnd(WORKER_COL)} task`
-  return paint('label', head, colors)
+  return paint('muted', head, colors)
 }
 
 /**
@@ -513,7 +511,7 @@ function header(usual: string, colors: ColorSupport): string {
  * body, and `vx last`'s, so a replay reads as the run did.
  */
 export function taskList(rows: readonly ((colors: ColorSupport) => string)[]): ui.Block {
-  return { lines: (c) => [formatListHeader(c), ...rows.map((row) => row(c))] }
+  return { head: formatListHeader, lines: (c) => rows.map((row) => row(c)) }
 }
 
 /** What history keeps of a task's row: `vx last` draws it again from this. */
@@ -607,9 +605,9 @@ export interface PlannedRow {
 /** `--dry`'s list: the running list's header and grid, so a plan reads as the run would. */
 export function planList(rows: readonly PlannedRow[]): ui.Block {
   return {
-    lines: (c) => [
-      formatRunningHeader(c),
-      ...rows.map((r) => {
+    head: formatRunningHeader,
+    lines: (c) =>
+      rows.map((r) => {
         const usual = r.usualMs === undefined ? undefined : formatExpected(r.usualMs)
         const row = formatTaskRow(
           paint(r.tone, r.glyph, c),
@@ -631,7 +629,6 @@ export function planList(rows: readonly PlannedRow[]): ui.Block {
         )
         return r.note === '' ? row : `${row}  ${paint('muted', r.note, c)}`
       }),
-    ],
   }
 }
 

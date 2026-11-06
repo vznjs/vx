@@ -264,7 +264,7 @@ export function formatSummarySection(
   if (stats.skipped > 0) taskParts.push(paint('warn', `${stats.skipped} skipped`, colors))
   if (aborted > 0) taskParts.push(paint('aborted', `${aborted} aborted`, colors))
   if (notRun > 0) taskParts.push(paint('notRun', `${notRun} not run`, colors))
-  if (running > 0) taskParts.push(paint('info', `${running} running`, colors))
+  if (running > 0) taskParts.push(paint('warn', `${running} running`, colors))
   if (scheduled > 0) taskParts.push(dim(`${scheduled} scheduled`))
   if (blocked > 0) taskParts.push(dim(`${blocked} blocked`))
   // What is not done yet, running included: the count the bar's unfilled part shows.
@@ -277,7 +277,7 @@ export function formatSummarySection(
       { n: stats.skipped, color: 'warn' },
       { n: aborted, color: 'aborted' },
       { n: notRun, color: 'notRun' },
-      { n: running, color: 'info' },
+      { n: running, color: 'warn' },
       { n: scheduled, color: 'muted', dim: true },
       { n: blocked, color: 'muted', dim: true },
       remainder,
@@ -478,7 +478,9 @@ export function formatSummarySection(
   }
   // The Summary panel; the final one names the vx that ran it (the live
   // one has no context yet).
+  // Two blank lines: the Summary stands apart from the task list above it.
   return [
+    '',
     '',
     panelTop(
       'Summary',

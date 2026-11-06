@@ -1,10 +1,9 @@
 // The live region's panels: Warnings, Running and the live Summary,
 // redrawn in place under the log by the ui module's writer.
 
-import { paint, panelTop, type ColorSupport } from '../ui/index.js'
+import { divider, paint, type ColorSupport } from '../ui/index.js'
 import {
   formatExpected,
-  formatRunningHeader,
   formatTaskRow,
   paintIdParts,
   pathNote,
@@ -116,6 +115,9 @@ export function formatFailureLine(
   )
 }
 
+/** A running row's mark: the run's dot, yellow while the task is still going. */
+const RUNNING_DOT = (colors: ColorSupport): string => paint('warn', '\u23fa\uFE0E', colors)
+
 /** A step's cache column, dim as `no-cache` is. */
 const INTERNAL = 'internal'
 
@@ -144,9 +146,6 @@ export function formatStepLine(
 }
 
 /** `rows` in a panel titled `title`, counted. */
-function panel(title: string, count: string, rows: readonly string[], c: ColorSupport): string[] {
-  return [panelTop(title, c, count), ...rows]
-}
 
 /**
  * Worker region: pinned ready persistent tasks, one row per worker
@@ -176,10 +175,10 @@ export function formatStatusRegion(
   for (const id of s.pinnedPersistent) {
     lines.push(
       formatTaskRow(
-        paint('info', '▸', colors),
+        paint('warn', '▸', colors),
         null,
         'running',
-        'info',
+        'warn',
         '',
         '',
         paintPinnedId(id, colors),
@@ -235,10 +234,10 @@ export function formatStatusRegion(
     const use = s.usage?.(slot.id)
     lines.push(
       formatTaskRow(
-        ' ',
+        RUNNING_DOT(colors),
         Math.max(0, s.nowMs - slot.startedMs),
         'running',
-        'info',
+        'warn',
         slot.cache ?? 'miss',
         '',
         paintPinnedId(slot.id, colors),
@@ -270,10 +269,10 @@ export function formatStatusRegion(
   for (const step of s.steps ?? []) {
     lines.push(
       formatTaskRow(
-        ' ',
+        RUNNING_DOT(colors),
         Math.max(0, s.nowMs - step.startedMs),
         'running',
-        'info',
+        'warn',
         INTERNAL,
         '',
         paintPinnedId(step.id, colors),
@@ -285,16 +284,7 @@ export function formatStatusRegion(
   // Panels top to bottom: what runs now, then the live Summary, the same panel the final printout is, so the region
   // BECOMES the summary when the run ends.
   const out: string[] = []
-  if (lines.length > 0)
-    out.push(
-      '',
-      ...panel(
-        'Running',
-        String(s.pinnedPersistent.length + running.length + (s.steps?.length ?? 0)),
-        [formatRunningHeader(colors), ...lines],
-        colors,
-      ),
-    )
+  if (lines.length > 0) out.push(divider(colors), ...lines)
   out.push(...s.summaryLines)
   return out
 }

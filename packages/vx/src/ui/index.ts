@@ -9,6 +9,7 @@ export { ui }
 
 export {
   bar,
+  divider,
   barWidth,
   cmd,
   code,
@@ -50,6 +51,7 @@ export {
 export {
   detectColors,
   dumbTerminal,
+  GUTTER,
   INDENT,
   paint,
   ruleWidth,
