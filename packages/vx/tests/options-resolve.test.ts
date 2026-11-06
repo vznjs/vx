@@ -153,7 +153,7 @@ describe('VX_RUN_TIMEOUT — the env rung parser', () => {
       expect(refusal(raw)).toStartWith('VX_RUN_TIMEOUT must be a duration')
     }
     expect(refusal('250')).toBe(
-      "VX_RUN_TIMEOUT takes a duration with its unit, like '250ms' or '1s' (got 250)",
+      "VX_RUN_TIMEOUT takes a duration with its unit, like '250s' or '250ms' (got 250)",
     )
   })
 

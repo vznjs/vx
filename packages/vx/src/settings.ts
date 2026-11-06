@@ -362,7 +362,11 @@ export function settingRefusal(
     // A bare number past the ceiling is past it in either unit it could mean.
     const ms = bare ? n : typeof raw === 'string' ? parseDuration(raw) : null
     if (bare && !(kind.timer === true && n > MAX_TIMEOUT_MS)) {
-      return `${where} takes a duration with its unit, like '${n}ms' or '${Math.max(1, Math.round(n / 1000))}s' (got ${got})`
+      // Below a thousand the number most likely meant seconds (`--timeout
+      // 5`): that reading leads.
+      const like =
+        n < 1000 ? `'${n}s' or '${n}ms'` : `'${n}ms' or '${Math.round(n / 1000)}s'`
+      return `${where} takes a duration with its unit, like ${like} (got ${got})`
     }
     if (kind.timer === true && ms !== null && ms > MAX_TIMEOUT_MS) {
       return (

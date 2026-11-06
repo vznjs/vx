@@ -253,7 +253,7 @@ describe('flags', () => {
   })
   it('refuse a bare number for a duration', () => {
     expect(parseRunArgs(['build', '--timeout', '500']).error).toBe(
-      "--timeout takes a duration with its unit, like '500ms' or '1s' (got 500)",
+      "--timeout takes a duration with its unit, like '500s' or '500ms' (got 500)",
     )
   })
 })

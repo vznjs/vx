@@ -281,7 +281,7 @@
         "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got 0)": [
           "0"
         ],
-        "$CONFIG: `run.timeout` takes a duration with its unit, like '1ms' or '1s' (got 1)": ["1"],
+        "$CONFIG: `run.timeout` takes a duration with its unit, like '1s' or '1ms' (got 1)": ["1"],
         "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got 1.5)": [
           "1.5"
         ],
@@ -309,7 +309,7 @@
         "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"10G\")": [
           "\"10G\""
         ],
-        "$CONFIG: `run.timeout` takes a duration with its unit, like '10ms' or '1s' (got \"10\")": [
+        "$CONFIG: `run.timeout` takes a duration with its unit, like '10s' or '10ms' (got \"10\")": [
           "\"10\""
         ],
         "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [])": [
@@ -2081,7 +2081,7 @@
         "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got 0)": [
           "0"
         ],
-        "$CONFIG: tasks.t.exec.timeout takes a duration with its unit, like '1ms' or '1s' (got 1)": [
+        "$CONFIG: tasks.t.exec.timeout takes a duration with its unit, like '1s' or '1ms' (got 1)": [
           "1"
         ],
         "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got 1.5)": [
@@ -2111,7 +2111,7 @@
         "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"10G\")": [
           "\"10G\""
         ],
-        "$CONFIG: tasks.t.exec.timeout takes a duration with its unit, like '10ms' or '1s' (got \"10\")": [
+        "$CONFIG: tasks.t.exec.timeout takes a duration with its unit, like '10s' or '10ms' (got \"10\")": [
           "\"10\""
         ],
         "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got [])": [
