@@ -312,6 +312,7 @@ describe('plugin commands', () => {
           `{ commands: {
           many: { description: 'returns a count', async run() { return 256 } },
           below: { description: 'negative', async run() { return -1 } },
+          nan: { description: 'not a number', async run() { return NaN } },
           top: { description: 'control', async run() { return 255 } },
         } }`,
         ),
@@ -322,6 +323,10 @@ describe('plugin commands', () => {
     )
     await expect(cli(['below'])).rejects.toThrow(
       "plugin 'org/counts': command 'below' resolved -1 instead of an exit code (an integer 0–255)",
+    )
+    // JSON.stringify(NaN) is "null": the verb returned no null.
+    await expect(cli(['nan'])).rejects.toThrow(
+      "plugin 'org/counts': command 'nan' resolved NaN instead of an exit code (an integer 0–255)",
     )
     expect(await cli(['top'])).toBe(255) // CONTROL: the top of the range passes through
   })

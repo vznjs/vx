@@ -240,7 +240,7 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
         // that returned 256 (a count of failures, say) exited 0.
         if (!Number.isInteger(code) || code < 0 || code > 255) {
           throw new UserError(
-            `plugin '${resolved.plugin.name}': command '${command}' resolved ${JSON.stringify(code)} instead of an exit code (an integer 0–255)`,
+            `plugin '${resolved.plugin.name}': command '${command}' resolved ${typeof code === 'number' || typeof code === 'bigint' || code === undefined ? String(code) : JSON.stringify(code)} instead of an exit code (an integer 0–255)`,
           )
         }
         return code

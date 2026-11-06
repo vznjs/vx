@@ -142,7 +142,7 @@ otel({
   stage does, before the run lock, and that start is the
   `vx.run.started_at` every task's `vx.task.run_started_at` names.
 
-**Metrics per run**: `vx.tasks.total`, `vx.tasks.failed`,
+**Metrics per run**: `vx.tasks.total` (the terminal's total, not-run tasks included), `vx.tasks.failed`,
 `vx.tasks.cache_hits{source=local|remote}`, what those hits did to the disk as
 `vx.tasks.cache_restored{source=local|remote}` and `vx.tasks.cache_up_to_date`,
 and the `vx.run.duration_ms` and `vx.run.time_saved_ms` (what the hits'

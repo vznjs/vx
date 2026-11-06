@@ -68,7 +68,7 @@ const summary = (
   startedAt: 1,
   endedAt: 2,
   totalDurationMs: 4321,
-  taskCount: tasks.length,
+  taskCount: tasks.length + (over.notRunCount ?? 0),
   failedCount: tasks.filter((t) => t.status === 'failed').length,
   abortedCount: 0,
   hitCount: tasks.filter((t) => t.status.startsWith('cache-hit')).length,
@@ -795,7 +795,7 @@ describe('the summary, as its second sweep found it unheld', () => {
     ).split('\n')
     expect([stopped[0], stopped[2], stopped.find((l) => l.startsWith('| a#build'))]).toEqual([
       '## ⏹️ vx run',
-      '**2** tasks · **1** executed · **0** cache hits · **1** aborted · **1** not run · 4.3s',
+      '**3** tasks · **1** executed · **0** cache hits · **1** aborted · **1** not run · 4.3s',
       '| a#build | 🛑 aborted | 1.3s |',
     ])
     // Stopped before anything started: still a stop, not a failure.

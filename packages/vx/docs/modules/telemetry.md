@@ -19,7 +19,7 @@ is pre-folded, bigint wallclock spans are decimal strings.
   `tasks` as `aborted`; `notRunCount` the ones the stop reached before
   they started, which are not. Without them a stopped run read as a
   failure with nothing failed; they count as the terminal's `1 aborted ·
-1 not run` does.
+1 not run` does, and `taskCount` as its `total` does, both included.
 - `assembleRunSummary(run, tasks, timing)` — builds the `RunSummaryRecord`
   from the context and the `TaskTelemetry[]`, the per-task tallies
   derived from `tasks`, so a DTE run and a local one produce
@@ -129,7 +129,7 @@ interface RunSummaryRecord {
   startedAt: number
   endedAt: number
   totalDurationMs: number
-  taskCount: number
+  taskCount: number // every task, as the terminal's total: `tasks` plus `notRunCount`
   failedCount: number
   abortedCount: number // started, then stopped by a signal or an abort; in `tasks` (v3)
   notRunCount?: number // the stop reached them first; not in `tasks`, absent when none
