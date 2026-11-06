@@ -154,8 +154,6 @@ import { WalCheckpointer } from './checkpointer.js'
 const HELD_SLICE = 250
 /** SQLite's own default, back on a connection whose checkpoint thread failed. */
 const WAL_AUTOCHECKPOINT = 1000
-const byOid = (a: [string, number], b: [string, number]): number =>
-  a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0
 
 const ORPHAN_GRACE_MS = 60 * 60 * 1000
 
@@ -981,6 +979,7 @@ export class Cache implements CacheLayer {
   private indexQueue: Array<{ write: () => void; settle: (err?: unknown) => void }> = []
   /** The held sizes being stored, and how many are: fields, not a closure's, so the store lets them go. */
   private storing: Array<[string, number]> | undefined
+  private storingOrder: Uint32Array = new Uint32Array(0)
   private stored = 0
   /** The checkpoint thread: `armed` until a save commits (`checkpointOffThread`). */
   private checkpoints: 'armed' | WalCheckpointer | undefined
@@ -1704,9 +1703,14 @@ export class Cache implements CacheLayer {
     // In OID order, so each slice appends at the key index's right edge:
     // in git's path order every slice dirtied pages across the whole
     // index, and the 160 commits of a cold 9,603-task run cost its main
-    // thread ~5x more (2026-11-06).
-    held.sort(byOid)
+    // thread ~5x more (2026-11-06). Indices are sorted, not the entries:
+    // the sort's merge buffer then holds no entry, where a stale stack
+    // slot naming it kept all of them alive (2026-11-06).
+    const order = new Uint32Array(held.length)
+    for (let i = 0; i < order.length; i++) order[i] = i
+    order.sort((a, b) => (held[a]![0] < held[b]![0] ? -1 : held[a]![0] > held[b]![0] ? 1 : 0))
     this.storing = held
+    this.storingOrder = order
     this.stored = 0
     this.heldTimer = setTimeout(this.storeHeldSlice, 0)
   }
@@ -1719,12 +1723,22 @@ export class Cache implements CacheLayer {
     if (held === undefined) return
     const at = this.stored
     this.stored = at + HELD_SLICE
-    this.guard(() => this.files.rememberBlobSizes(new Map(held.slice(at, this.stored))))
+    this.guard(() => this.files.rememberBlobSizes(this.heldSizes(held, at, this.stored)))
     if (this.stored < held.length) this.heldTimer = setTimeout(this.storeHeldSlice, 0)
     else {
       this.heldTimer = undefined
       this.storing = undefined
+      this.storingOrder = new Uint32Array(0)
     }
+  }
+  private heldSizes(held: Array<[string, number]>, from: number, to: number): Map<string, number> {
+    const out = new Map<string, number>()
+    const order = this.storingOrder
+    for (let i = from; i < Math.min(to, order.length); i++) {
+      const e = held[order[i]!]!
+      out.set(e[0], e[1])
+    }
+    return out
   }
   /** `BlobSizeMemo`: the paths an index with this digest distrusts, when known. */
   blobVerdict(digest: string): string[] | undefined {
@@ -3823,11 +3837,17 @@ export class Cache implements CacheLayer {
     try {
       this.flushIndex()
       clearTimeout(this.heldTimer)
-      const held = this.heldBlobSizes ?? this.storing?.slice(this.stored) ?? []
+      const held =
+        this.heldBlobSizes !== undefined
+          ? new Map(this.heldBlobSizes)
+          : this.storing !== undefined
+            ? this.heldSizes(this.storing, this.stored, this.storing.length)
+            : undefined
       this.heldBlobSizes = undefined
       this.storing = undefined
+      this.storingOrder = new Uint32Array(0)
       this.heldTimer = undefined
-      if (held.length > 0) this.files.rememberBlobSizes(new Map(held))
+      if (held !== undefined && held.size > 0) this.files.rememberBlobSizes(held)
       this.flushAccessed()
       this.outputs.flushOutputDirs()
       this.folds.flush()
