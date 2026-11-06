@@ -46,8 +46,9 @@ const SYSCALLS = 'openat|execve|faccessat2|faccessat|access|statx|newfstatat'
 const QUOTED = '"((?:[^"\\\\]|\\\\.)+)"'
 // The directory descriptor a call names, `-y`'s path included: taken up to
 // the `, "` that opens the path argument, since a directory's name may hold
-// a quote (`4</ws/q"d>`). Captured: a relative path is in that directory.
-const DIRFD = '(?:AT_FDCWD|\\d+)(?:<(.*?)>)?, '
+// a quote (`4</ws/q"d>`). Captured, and the descriptor too: a relative
+// path is in that directory.
+const DIRFD = '(AT_FDCWD|\\d+)(?:<(.*?)>)?, '
 // The rest of the call: an `execve`'s argv strings may hold a `)`
 // (`sh -c "f()"`), so it reads to the result at the line's end.
 const ARGS = '.*'
@@ -89,7 +90,11 @@ const OPEN_READ_RE = new RegExp(
 const OPEN_READ_UNFINISHED_RE = new RegExp(
   `^(\\d+)\\s+openat\\((AT_FDCWD|\\d+)(?:<.*?>)?, ${QUOTED}, ${READ_FLAGS}.*<unfinished`,
 )
-const RESUMED_FD_RE = /resumed>.*\)\s*=\s*\d+(?:<(.*)>)?$/
+const RESUMED_FD_RE = /resumed>.*\)\s*=\s*(\d+)(?:<(.*)>)?$/
+/** Any `openat` that returned a descriptor: where a later `openat(N, …)` is. */
+const OPENED_RE = new RegExp(
+  `^(\\d+)\\s+openat\\((AT_FDCWD|\\d+)(?:<.*?>)?, ${QUOTED}, [^)]*\\)\\s*=\\s*(\\d+)`,
+)
 
 /** Where a successful read opened: `-y`'s path, else the call's own when placeable. */
 function readPath(dirfd: string, rawPath: string, opened: string | undefined): string | undefined {
@@ -164,7 +169,11 @@ const FORK_UNFINISHED_RE = new RegExp(`^(\\d+)\\s+${FORK}\\(.*<unfinished`)
 const FORK_RESUMED_RE = new RegExp(`^(\\d+)\\s+<\\.\\.\\. ${FORK} resumed>.*?=\\s*(\\d+)$`)
 
 /** What a process did, in order, as far as its cwd and its denials go. */
-type Op = { chdir: string } | { lost: true } | { call: number }
+type Op =
+  | { chdir: string }
+  | { lost: true }
+  | { call: number; fd?: string }
+  | { opened: string; path: string; fd: string }
 
 /**
  * Walk the trace, pairing `<unfinished ...>` with its `<... resumed>` line.
@@ -174,7 +183,11 @@ type Op = { chdir: string } | { lost: true } | { call: number }
  * and no `ignore` pattern for the real one matched. Resolved after the
  * whole pass: a `vfork` child's lines come before its parent's
  * `resumed` line names it. (`-y` names the directory on every line, but
- * cost 40% on 2,000 opens; this costs a stop per process.)
+ * cost 40% on 2,000 opens; this costs a stop per process.) Without `-y`,
+ * a call through a directory descriptor (`openat(3, "f")`) is placed by
+ * the traced `openat` that last returned that descriptor in its process
+ * or the one it was forked from: in the cwd, Python's
+ * `os.open('f', dir_fd=d)` inside its grant was a refusal of `./f`.
  *
  * Exported for testing: this is the security-relevant half of the Linux
  * detector, and a synthetic trace pins the split-line shapes deterministically
@@ -204,15 +217,38 @@ export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCa
     else parent.set(child, { pid: owner(from), at })
   }
   const chdirring = new Map<string, string>()
-  const denied = (pid: string, call: DeniedCall): void => {
-    opsOf(pid).push({ call: out.length })
+  // No `-y` and an `openat(3, …)`: each open's descriptor is followed.
+  const numbered = cwd !== undefined && /openat\(\d+, /.test(text)
+  const denied = (pid: string, call: DeniedCall, dirfd?: string): void => {
+    const unplaced =
+      numbered && dirfd !== undefined && dirfd !== 'AT_FDCWD' && call.dir === undefined
+    opsOf(pid).push(
+      unplaced && !call.rawPath.startsWith('/')
+        ? { call: out.length, fd: dirfd }
+        : { call: out.length },
+    )
     out.push(call)
+  }
+  // Per process and descriptor, the op indexes of the opens that returned it.
+  const opens = new Map<string, Map<string, number[]>>()
+  const opened = (pid: string, dirfd: string, rawPath: string, fd: string): void => {
+    const list = opsOf(pid)
+    let byFd = opens.get(owner(pid))
+    if (byFd === undefined) opens.set(owner(pid), (byFd = new Map()))
+    const at = byFd.get(fd)
+    if (at === undefined) byFd.set(fd, [list.length])
+    else at.push(list.length)
+    list.push({ opened: dirfd, path: rawPath, fd })
   }
   for (const line of text.split('\n')) {
     // Most lines are opens that succeeded: two substring tests skip them.
     const opener =
       line.includes('= -1') || line.includes('<unfinished') || line.includes('resumed>')
     if (!opener) {
+      if (numbered && line.includes('openat(')) {
+        const m = OPENED_RE.exec(line)
+        if (m !== null) opened(m[1]!, m[2]!, cStringPath(m[3]!), m[4]!)
+      }
       if (reads && line.includes('openat(')) {
         const m = OPEN_READ_RE.exec(line)
         if (m !== null) {
@@ -230,24 +266,28 @@ export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCa
       continue
     }
     const done = STRACE_DONE_RE.exec(line)
-    if (done?.[2] !== undefined && done[4] !== undefined && done[5] !== undefined) {
-      const rawPath = cStringPath(done[4])
-      denied(done[1]!, { syscall: done[2], rawPath, errno: done[5], ...within(done[3], rawPath) })
+    if (done?.[2] !== undefined && done[5] !== undefined && done[6] !== undefined) {
+      const rawPath = cStringPath(done[5])
+      denied(
+        done[1]!,
+        { syscall: done[2], rawPath, errno: done[6], ...within(done[4], rawPath) },
+        done[3],
+      )
       continue
     }
     const unfinished = STRACE_UNFINISHED_RE.exec(line)
     if (
       unfinished?.[1] !== undefined &&
       unfinished[2] !== undefined &&
-      unfinished[4] !== undefined
+      unfinished[5] !== undefined
     ) {
-      const rawPath = cStringPath(unfinished[4])
+      const rawPath = cStringPath(unfinished[5])
       pending.set(unfinished[1], {
         syscall: unfinished[2],
         rawPath,
-        ...within(unfinished[3], rawPath),
+        ...within(unfinished[4], rawPath),
         ...(reads && OPEN_READ_UNFINISHED_RE.test(line) ? { read: true as const } : {}),
-        ...(reads ? { dirfd: OPEN_READ_UNFINISHED_RE.exec(line)?.[2] ?? 'AT_FDCWD' } : {}),
+        ...(unfinished[3] !== undefined ? { dirfd: unfinished[3] } : {}),
       })
       continue
     }
@@ -258,16 +298,28 @@ export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCa
       const resumed = STRACE_RESUMED_RE.exec(line)
       // Only a resume that carries a DENIAL is a violation; a successful
       // resume just retires the pending entry.
-      const fd = held?.read === true ? RESUMED_FD_RE.exec(line) : null
+      const fd =
+        held?.read === true || (numbered && held?.syscall === 'openat')
+          ? RESUMED_FD_RE.exec(line)
+          : null
       if (held !== undefined && resumed?.[3] !== undefined) {
-        denied(resumedOk[1], {
-          syscall: held.syscall,
-          rawPath: held.rawPath,
-          errno: resumed[3],
-          ...(held.dir !== undefined ? { dir: held.dir } : {}),
-        })
-      } else if (held !== undefined && fd !== null) {
-        const at = readPath(held.dirfd ?? 'AT_FDCWD', held.rawPath, fd[1])
+        denied(
+          resumedOk[1],
+          {
+            syscall: held.syscall,
+            rawPath: held.rawPath,
+            errno: resumed[3],
+            ...(held.dir !== undefined ? { dir: held.dir } : {}),
+          },
+          held.dirfd,
+        )
+        continue
+      }
+      if (numbered && held?.syscall === 'openat' && fd !== null) {
+        opened(resumedOk[1], held.dirfd ?? 'AT_FDCWD', held.rawPath, fd[1]!)
+      }
+      if (held?.read === true && fd !== null) {
+        const at = readPath(held.dirfd ?? 'AT_FDCWD', held.rawPath, fd[2])
         if (at !== undefined) {
           denied(resumedOk[1], { syscall: held.syscall, rawPath: at, errno: '', read: true })
         }
@@ -335,10 +387,29 @@ export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCa
     dirs.set(pid, list)
     return list
   }
+  // Where descriptor `fd` pointed before op `i` of `pid`: the last open
+  // that returned it, else the one it inherited at the fork. Not traced: a
+  // `close`, a `dup`, an exec's O_CLOEXEC; a number reused by one of those
+  // is placed by the open before it, or, never opened here, in the cwd.
+  const fdAt = (pid: string, i: number, fd: string, depth = 0): string | undefined => {
+    if (depth > 64) return undefined
+    const at = opens.get(pid)?.get(fd) ?? []
+    let k = at.length - 1
+    while (k >= 0 && at[k]! >= i) k--
+    if (k >= 0) {
+      const j = at[k]!
+      const op = ops.get(pid)![j] as Extract<Op, { opened: string }>
+      if (path.isAbsolute(op.path)) return op.path
+      const base = op.opened === 'AT_FDCWD' ? dirsOf(pid)[j] : fdAt(pid, j, op.opened, depth + 1)
+      return base && path.resolve(base, op.path)
+    }
+    const from = parent.get(pid)
+    return from === undefined ? undefined : fdAt(from.pid, from.at, fd, depth + 1)
+  }
   for (const [pid, list] of ops) {
     list.forEach((op, i) => {
       if (!('call' in op) || out[op.call]!.dir !== undefined) return
-      const dir = dirsOf(pid)[i]
+      const dir = (op.fd !== undefined ? fdAt(pid, i, op.fd) : undefined) ?? dirsOf(pid)[i]
       if (dir !== undefined && dir !== cwd) out[op.call]!.dir = dir
     })
   }

@@ -487,7 +487,12 @@ the whole pass, since a `vfork` child's lines precede its parent's
 a file that does not exist and no `ignore` for the real one matched.
 strace's `-y` names the directory on every line, but cost 40% on 2,000
 opens (min 240 → 337 ms); the extra stops here cost nothing measurable
-(B-61). A
+(B-61). Without `-y` a call through a directory descriptor
+(`openat(3, "f")`) is placed by the traced `openat` that last returned
+that descriptor in its process or the one it was forked from; placed in
+the cwd, Python's `os.open('f', dir_fd=d)` inside its grant failed the
+task as a refused `./f`, and a real denial through one named the wrong
+file. A descriptor no traced open returned keeps the cwd. A
 refused `chdir` is a denial of its own, a read of the directory: `cd src`
 into a directory no grant holds failed with no violation, and
 `cd src || …` passed and cached (B-67). An `execve` or an access probe
