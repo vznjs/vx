@@ -367,6 +367,12 @@ export function settingRefusal(
       const like = n < 1000 ? `'${n}s' or '${n}ms'` : `'${n}ms' or '${Math.round(n / 1000)}s'`
       return `${where} takes a duration with its unit, like ${like} (got ${got})`
     }
+    // `'0s'` looks like the examples the generic refusal gives.
+    const negative = typeof raw === 'string' && raw.startsWith('-') && parseDuration(raw.slice(1))
+    if (ms === 0 || (negative !== false && negative !== null)) {
+      const none = kind.timer === true ? ' — omit it for no limit' : ''
+      return `${where} must be more than 0${none} (got ${got})`
+    }
     if (kind.timer === true && ms !== null && ms > MAX_TIMEOUT_MS) {
       return (
         `${where} of ${got} exceeds the maximum timer delay (${MAX_TIMEOUT_MS} ms, ~24.8 days): ` +

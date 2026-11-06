@@ -98,6 +98,19 @@ it.each([
     }),
   ],
   [
+    'an env var with a number value under `exec.env`: the fix spells it a string',
+    task("exec: { command: 'x', env: { PORT: 3000 } }"),
+    framed(65, 'tasks.build.exec.env has unknown field "PORT"', {
+      allowed: 'define, passThrough, secret',
+      fix: 'use exec.env.define: { PORT: "3000" }',
+    }),
+  ],
+  [
+    'a zero `exec.timeout`',
+    task("exec: { command: 'x', timeout: '0s' }"),
+    framed(58, 'tasks.build.exec.timeout must be more than 0 — omit it for no limit (got "0s")'),
+  ],
+  [
     'a string `dependsOn`',
     task("exec: { command: 'x' }, dependsOn: '^build'"),
     framed(60, 'tasks.build.dependsOn must be an array — write dependsOn: ["^build"]'),

@@ -149,8 +149,11 @@ describe('VX_RUN_TIMEOUT — the env rung parser', () => {
   it('refuses what is no duration, before any task, rather than guessing', () => {
     // Ignoring a typo let it disable nothing and say nothing; `Number()`
     // read hex, exponents and padding as some other limit.
-    for (const raw of ['0ms', '-1s', '1.5s', 'abc', '0x10', '1e3', '+300', ' 100ms ', 'Infinity']) {
+    for (const raw of ['1.5s', 'abc', '0x10', '1e3', '+300', ' 100ms ', 'Infinity']) {
       expect(refusal(raw)).toStartWith('VX_RUN_TIMEOUT must be a duration')
+    }
+    for (const raw of ['0ms', '-1s']) {
+      expect(refusal(raw)).toStartWith('VX_RUN_TIMEOUT must be more than 0')
     }
     expect(refusal('250')).toBe(
       "VX_RUN_TIMEOUT takes a duration with its unit, like '250s' or '250ms' (got 250)",
