@@ -151,6 +151,12 @@ export interface ExecuteRequest {
    */
   readonly platform?: string
   /**
+   * Which attempt of the task this is, from 2 when it retries; absent on
+   * the first. An executor that can, runs a retry somewhere other than
+   * the attempt before it, so the machine is not the flake.
+   */
+  readonly attempt?: number
+  /**
    * Whether this task's outputs must land on the submitter's disk now.
    * 'eager' (or absent) = materialise as today. 'deferred' = leave them
    * in the remote store and return `outputs: {kind:'deferred'}` with a

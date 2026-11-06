@@ -713,6 +713,7 @@ export interface ExecuteRequest {
   readonly refresh?: boolean
   readonly remoteOnly?: boolean
   readonly platform?: string
+  readonly attempt?: number
   readonly download?: 'eager' | 'deferred'
   readonly outputs: {
     readonly files: readonly string[]
@@ -2712,6 +2713,7 @@ export interface ScheduleHookContext extends BaseContext {
   ): void
   refining(): Promise<void>
   onRefine(listener: () => void): void
+  flaky(taskIds: Iterable<string>): void
 }
 ```
 
@@ -3038,6 +3040,7 @@ export interface TaskOutcome {
   restored?: boolean
   attempts?: number
   failedAttempts?: readonly { endedAt: number; exitCode: number; timedOut?: true }[]
+  attemptOutputs?: readonly string[]
   flaky?: { passes: number; failures: number }
   sandboxViolations?: number
   sandboxViolationLines?: string[]

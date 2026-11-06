@@ -2,7 +2,7 @@
 // `Store`: Bun and Workers serve the same one.
 
 import { type Access, errorJson, notAllowed, Refusal } from '@vzn/vx-devtools'
-import type { Report, Repo, Store } from './store.js'
+import type { Outcome, Report, Repo, Store } from './store.js'
 
 /** Reports one upload folds in: a run's tasks. */
 export const MAX_UPLOAD_TIMINGS = 10_000
@@ -13,6 +13,8 @@ export const MAX_QUERY_REFS = 8
 const MAX_STRING = 512
 /** A report's bytes at most: its hash at `MAX_STRING`, its numbers at their longest. */
 const MAX_REPORT_BYTES = MAX_STRING + 200
+/** An outcome's bytes at most: its hash and key at `MAX_STRING`. */
+const MAX_OUTCOME_BYTES = 2 * MAX_STRING + 60
 const DAY_MS = 86_400_000
 
 export interface ServerOptions {
@@ -47,9 +49,16 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
   async function upload(req: Request): Promise<Response> {
     const access = await authorize(req)
     if (access?.write === undefined) throw new Refusal(403, 'this request reads only')
-    const reports = parseReports(await readJson(req, MAX_UPLOAD_TIMINGS * MAX_REPORT_BYTES))
+    const body = await readJson(
+      req,
+      MAX_UPLOAD_TIMINGS * (MAX_REPORT_BYTES + MAX_OUTCOME_BYTES) + 100,
+    )
+    const reports = parseReports(body)
+    const outcomes = parseOutcomes(body)
     await schema()
-    await store.fold(access, access.write, now(), reports)
+    const t = now()
+    await store.fold(access, access.write, t, reports)
+    if (outcomes.length > 0) await store.record(access, t, outcomes)
     return new Response(null, { status: 204 })
   }
 
@@ -94,8 +103,11 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
     }
     const repo = (await authorize(req, { issuer, repository }))!
     await schema()
-    const rows = await store.read(repo, refs as string[], hashes as string[])
-    return Response.json({ timings: Object.fromEntries(rows) })
+    const [rows, flaky] = await Promise.all([
+      store.read(repo, refs as string[], hashes as string[]),
+      store.flaky(repo, hashes as string[]),
+    ])
+    return Response.json({ timings: Object.fromEntries(rows), flaky })
   }
 
   let swept = 0
@@ -215,6 +227,32 @@ function parseReports(body: unknown): Report[] {
       ...(cores === undefined ? {} : { cores: cores as number }),
       ...(rssBytes === undefined ? {} : { rssBytes: rssBytes as number }),
     }
+  })
+}
+
+/** A run's outcomes of cached tasks (optional), as the flaky record keeps them. */
+function parseOutcomes(body: unknown): Outcome[] {
+  const list = field(body, 'outcomes')
+  if (list === undefined) return []
+  if (!Array.isArray(list) || list.length > MAX_UPLOAD_TIMINGS) {
+    throw new Refusal(400, `outcomes: a list of up to ${MAX_UPLOAD_TIMINGS}`)
+  }
+  const seen = new Set<string>()
+  return list.map((x: unknown, i): Outcome => {
+    const bad = (what: string): never => {
+      throw new Refusal(400, `outcomes[${i}].${what}`)
+    }
+    const hash = field(x, 'hash')
+    const key = field(x, 'key')
+    const outcome = field(x, 'outcome')
+    if (!isOpaque(hash)) bad(`hash: a string of up to ${MAX_STRING} characters`)
+    if (!isOpaque(key)) bad(`key: a string of up to ${MAX_STRING} characters`)
+    const id = `${hash as string}\0${key as string}`
+    if (seen.has(id)) bad('key: each task and key once')
+    seen.add(id)
+    if (outcome !== 'pass' && outcome !== 'fail' && outcome !== 'flaky')
+      bad("outcome: 'pass', 'fail' or 'flaky'")
+    return { hash: hash as string, key: key as string, outcome: outcome as Outcome['outcome'] }
   })
 }
 

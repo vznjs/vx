@@ -1163,6 +1163,8 @@ async function runOnBus(
     // The scheduler's fail-fast stop, as the retry loop of a task already
     // in flight sees it.
     const failFast = new AbortController()
+    // Tasks a plugin's shared record names flaky (`ctx.flaky`).
+    const sharedFlaky = new Set<string>()
     const scope: RunScope = {
       workspaceRoot,
       cache,
@@ -1189,6 +1191,7 @@ async function runOnBus(
     }
     if (options.retries !== undefined) scope.retries = options.retries
     scope.knownFlaky = (node, hash) => {
+      if (sharedFlaky.has(node.id)) return true
       try {
         return knownFlaky(indexDb(prepared.localCache), node.projectName, node.taskName, hash)
       } catch {
@@ -1271,6 +1274,9 @@ async function runOnBus(
           refined: (merged) => {
             if (reprioritize !== undefined) reprioritize(merged)
             else if (!graphOver) refinedEarly = merged
+          },
+          flaky: (ids) => {
+            for (const id of ids) if (nodes.has(id)) sharedFlaky.add(id)
           },
         })
     mark('schedule')

@@ -46,17 +46,16 @@ export function writeRunFailures(
   const failures = []
   for (const o of outcomes) {
     // A task failed by a moved input may have printed nothing: the input
-    // is still why, and an agent reads it here.
-    if ((o.failedOutput === undefined && o.inputMoved === undefined) || isGroupTask(o.node))
+    // is still why, and an agent reads it here. A pass that took a retry
+    // keeps its failed attempts.
+    if (
+      (o.failedOutput === undefined &&
+        o.inputMoved === undefined &&
+        o.attemptOutputs === undefined) ||
+      isGroupTask(o.node)
+    )
       continue
-    const output =
-      o.failedOutput === undefined
-        ? ''
-        : Bun.stripANSI(
-            decodeOutputLog(o.failedOutput)
-              .map((c) => c.text)
-              .join(''),
-          )
+    const output = attemptsText(o)
     failures.push({
       taskId: o.node.id,
       ...(o.inputMoved !== undefined ? { inputMoved: o.inputMoved } : {}),
@@ -72,6 +71,40 @@ export function writeRunFailures(
     const message = err instanceof Error ? err.message : String(err)
     warn(`[vx] failed tasks' output not kept: ${message} — the verdict above stands`)
   }
+}
+
+const plain = (log: string): string =>
+  Bun.stripANSI(
+    decodeOutputLog(log)
+      .map((c) => c.text)
+      .join(''),
+  )
+
+/** How attempt `n` of `of` ended, the line above its output. */
+const attemptHeading = (n: number, of: number, how: string): string =>
+  `── attempt ${n} of ${of} · ${how} ──\n`
+
+const ended = (a: { exitCode: number; timedOut?: true }): string =>
+  a.timedOut === true ? 'timed out' : `exit ${a.exitCode}`
+
+/**
+ * What a failure row keeps of `o`: its output, after each failed attempt's
+ * under a heading when it retried. A pass that retried keeps only the
+ * failed attempts: its own output is its cache entry's.
+ */
+function attemptsText(o: TaskOutcome): string {
+  const last = o.failedOutput === undefined ? '' : plain(o.failedOutput)
+  const before = o.attemptOutputs ?? []
+  if (before.length === 0) return last
+  const of = before.length + 1
+  let text = ''
+  before.forEach((log, i) => {
+    const out = plain(log)
+    text += attemptHeading(i + 1, of, ended(o.failedAttempts![i]!)) + out
+    if (out !== '' && !out.endsWith('\n')) text += '\n'
+  })
+  if (o.status === 'failed') text += attemptHeading(of, of, ended(o)) + last
+  return text
 }
 
 /**
@@ -167,6 +200,19 @@ export function taskLog(db: Database, taskId: string, runId?: string): TaskLog |
     const kept = keptFailures(db, row.runId).get(taskId)
     if (kept !== undefined) return { ...base, source: 'failure', output: kept.output }
   } else if (row.hash !== '') {
+    // A pass that took a retry: its failed attempts, then its own output.
+    const before = keptFailures(db, row.runId).get(taskId)?.output
+    const tries = (
+      db
+        .query(
+          'SELECT attempts FROM runs WHERE run_id = ? AND project = ? AND task = ? ORDER BY id DESC LIMIT 1',
+        )
+        .get(row.runId, project, task) as { attempts: number | null } | null
+    )?.attempts
+    const prefix =
+      before === undefined || tries === null || tries === undefined
+        ? ''
+        : `${before}${attemptHeading(tries, tries, 'passed')}`
     const stored = db.query('SELECT stdout FROM entry_stdout WHERE hash = ?').get(row.hash) as {
       stdout: string
     } | null
@@ -182,12 +228,15 @@ export function taskLog(db: Database, taskId: string, runId?: string): TaskLog |
             .join(''),
         ),
       )
-      return { ...base, source: 'cache', output }
+      return { ...base, source: 'cache', output: prefix + output }
     }
     // An entry that printed nothing stores no stdout row: kept, and empty.
     if (db.query('SELECT 1 FROM entries WHERE hash = ?').get(row.hash) !== null) {
-      return { ...base, source: 'cache', output: '' }
+      return { ...base, source: 'cache', output: prefix }
     }
   }
+  // A pass with no entry that took a retry still kept its failed attempts.
+  const kept = row.status === 'failed' ? undefined : keptFailures(db, row.runId).get(taskId)
+  if (kept !== undefined) return { ...base, source: 'failure', output: kept.output }
   return { ...base, source: null, output: '' }
 }

@@ -46,7 +46,7 @@ describe("a history server's answer", () => {
         ? Response.json({ maxUploadTimings: 9, maxQueryHashes: 9 })
         : new Response(body)) as unknown as typeof fetch
     const client = new HistoryServer('https://h.example', NAMED, {}, fake)
-    expect(await client.query(['refs/heads/main'], Object.keys(answers))).toEqual(
+    expect((await client.query(['refs/heads/main'], Object.keys(answers))).timings).toEqual(
       new Map([
         ['ok', { durationMs: 40, cores: 1.5, rssBytes: 1000 }],
         ['badNeeds', { durationMs: 7 }],

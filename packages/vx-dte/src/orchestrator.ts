@@ -97,6 +97,8 @@ interface Job {
   up?: Set<string>
   /** Its direct dependencies, as placing reads them (`Ask.up`). */
   deps?: readonly string[] | undefined
+  /** A retry: the worker its last attempt ran on, which it goes elsewhere than while another can take it. */
+  avoid?: string
 }
 
 /** An upstream's files, as an order names them (`DepOrder`). */
@@ -291,6 +293,8 @@ export class Orchestrator {
   private readonly queue: Queue
   /** Where a worker saved each task it ran: its cache key or its run key. */
   private readonly savedAs = new Map<string, string>()
+  /** The worker each task last ran on, which its retry goes elsewhere than. */
+  private readonly ranOn = new Map<string, string>()
   /** Keys the run's requests named for their dependencies. */
   private readonly upstreamKeys = new Map<string, string>()
   /** How many times each task was sent: its run key is one per send. */
@@ -449,6 +453,9 @@ export class Orchestrator {
         resolve,
         reject,
       }
+      // A retry runs elsewhere: the worker, or what ran beside it, may be the flake.
+      const last = (req.attempt ?? 1) > 1 ? this.ranOn.get(req.taskId) : undefined
+      if (last !== undefined) job.avoid = last
       // A signal aborted already fires no `abort`.
       if (req.signal?.aborted === true) return resolve(stopped())
       req.signal?.addEventListener('abort', () => this.abort(job), { once: true })
@@ -630,6 +637,23 @@ export class Orchestrator {
    * go, and the job waits for it. `'wait'`: not yet; `'done'`: it failed.
    */
   private pin(
+    job: Job,
+    up: ReadonlySet<string>,
+  ): 'wait' | 'done' | { only?: string; avoid?: string } {
+    const where = this.pinUp(job, up)
+    const avoid = job.avoid
+    if (typeof where !== 'object' || avoid === undefined) return where
+    if (where.only !== undefined || where.avoid !== undefined) return where
+    // With no other worker that can take it, it runs where it failed rather than wait.
+    const platform = job.need.platform
+    for (const w of this.workers.values())
+      if (w.id !== avoid && !w.faulty && (platform === undefined || w.platform === platform))
+        return { avoid }
+    return where
+  }
+
+  /** Where `job` may go as its upstreams' files lie (`pin`, before a retry's own rule). */
+  private pinUp(
     job: Job,
     up: ReadonlySet<string>,
   ): 'wait' | 'done' | { only?: string; avoid?: string } {
@@ -1231,6 +1255,7 @@ export class Orchestrator {
       this.needMs += Math.min(job.need.cores, a.cores) * ms
     }
     this.savedAs.set(task, key)
+    this.ranOn.set(task, a.id)
     const node = this.o.nodes()?.get(task)
     if (head.exitCode === 0 && node !== undefined && leaves(node))
       this.kept.set(task, { worker: a.id, req: job.req, need: job.need })

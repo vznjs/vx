@@ -76,6 +76,7 @@ it('asks for no worker before schedule has read history', async () => {
       localCache: noHistory(root),
       refine: () => {},
       onRefine: () => {},
+      flaky: () => {},
       refining: async () => {},
     } as never)
     for (let i = 0; i < 40 && spawned.length === 0; i++) await Bun.sleep(25)
@@ -150,6 +151,7 @@ it('numbers workers within their size', async () => {
       localCache: noHistory(root),
       refine: () => {},
       onRefine: () => {},
+      flaky: () => {},
       refining: async () => {},
     } as never)
     for (let i = 0; i < 40 && spawned.length < 4; i++) await Bun.sleep(25)
@@ -220,6 +222,7 @@ it('takes an adapter spawn that throws as a worker that could not start', async 
           localCache: noHistory(root),
           refine: () => {},
           onRefine: () => {},
+          flaky: () => {},
           refining: async () => {},
         } as never)
         ex.demand(new Set(graph.keys()), new Set(graph.keys()))
@@ -302,6 +305,7 @@ it('counts a worker its adapter left running against its size again', async () =
       localCache: noHistory(root),
       refine: () => {},
       onRefine: () => {},
+      flaky: () => {},
       refining: async () => {},
     } as never)
     ex.demand(new Set(['t1']), new Set(['t1']))

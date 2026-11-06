@@ -148,7 +148,32 @@ it('drops the table rows were keyed by four columns in', async () => {
   await sqliteStore(db).init()
   expect(
     await db.all<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table'", []),
-  ).toEqual([{ name: 'timings' }, { name: 'sweeps' }])
+  ).toEqual([{ name: 'timings' }, { name: 'sweeps' }, { name: 'outcomes' }])
+})
+
+it('sweeps a flaky record with no outcome in its days', async () => {
+  const store = sqliteStore(sqliteDb(path.join(dir, 'flaky-sweep.sqlite')))
+  await store.init()
+  const repo = { issuer: 'https://ci', repository: 'o/r' }
+  const day = 86_400_000
+  await store.record(repo, 0, [{ hash: 'old', key: 'k', outcome: 'flaky' }])
+  await store.record(repo, 40 * day, [{ hash: 'new', key: 'k', outcome: 'flaky' }])
+  expect((await store.flaky(repo, ['old', 'new'])).sort()).toEqual(['new', 'old'])
+  await store.sweep(40 * day - 30 * day, 40 * day)
+  expect(await store.flaky(repo, ['old', 'new'])).toEqual(['new'])
+})
+
+it('stores a row only for a key that failed', async () => {
+  const db = sqliteDb(path.join(dir, 'flaky-rows.sqlite'))
+  const store = sqliteStore(db)
+  await store.init()
+  const repo = { issuer: 'https://ci', repository: 'o/r' }
+  await store.record(repo, 1, [
+    { hash: 'p', key: 'k', outcome: 'pass' },
+    { hash: 'f', key: 'k', outcome: 'fail' },
+  ])
+  await store.record(repo, 2, [{ hash: 'f', key: 'k', outcome: 'pass' }])
+  expect(await db.all('SELECT hash, flaky FROM outcomes', [])).toEqual([{ hash: 'f', flaky: 1 }])
 })
 
 it('answers an upload it folded even when the sweep after it fails, and sweeps on the next', async () => {

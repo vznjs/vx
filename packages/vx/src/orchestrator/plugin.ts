@@ -603,6 +603,12 @@ export interface ScheduleHookContext extends BaseContext {
    * in a plan.
    */
   onRefine(listener: () => void): void
+  /**
+   * Name tasks a shared record knows as flaky (a history server's): one
+   * that fails gets the one retry a known flake gets, as the local
+   * record's do. Ids not in the run are ignored; ignored in a plan.
+   */
+  flaky(taskIds: Iterable<string>): void
 }
 
 /** A `cache` hook's context: the workspace and the run's scope, never the local store or the policy, which core owns. */

@@ -1186,6 +1186,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const storeMask = secrets ?? undefined
   const storedOutput = (): string => encodeOutputLog(output?.chunks() ?? [], storeMask)
   const failedAttempts: { endedAt: number; exitCode: number; timedOut?: true }[] = []
+  // Each failed attempt's output, beside `failedAttempts`: kept for `vx last --log`.
+  const attemptOutputs: string[] = []
   // The sampling of the attempt's process tree, stopped once it settles.
   let untrack: (() => TreeLoad | undefined) | undefined
   // What the last attempt's samples saw, for the run history.
@@ -1224,6 +1226,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     if (a.withdrawn) {
       attempt--
       failedAttempts.pop()
+      attemptOutputs.pop()
       break
     }
     forgetUndeclaredWrites(args, writeReach)
@@ -1285,6 +1288,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       exitCode: effectiveExitCode,
       ...(result.timedOut === true ? { timedOut: true as const } : {}),
     })
+    attemptOutputs.push(output === undefined ? '' : failedOutputLog(output, true, storeMask))
     log.taskStderr(
       node,
       `${midLine ? '\n' : ''}vx: retrying ${node.id} (attempt ${attempt + 1}/${maxAttempts}) after ${result.timedOut === true ? 'a timeout' : `exit ${effectiveExitCode}`}\n`,
@@ -1312,6 +1316,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     flushMasked = () => masked?.end()
     const base: ExecuteRequest = {
       taskId: node.id,
+      ...(attempt > 1 ? { attempt } : {}),
       workspaceRoot: args.workspaceRoot,
       command: step.command,
       forwardArgs: effectiveForwardArgs,
@@ -1605,7 +1610,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     durationMs: spentMs,
     hash,
     ...(attempt > 1 ? { attempts: attempt } : {}),
-    ...(failedAttempts.length > 0 ? { failedAttempts } : {}),
+    ...(failedAttempts.length > 0 ? { failedAttempts, attemptOutputs } : {}),
     ...(described !== undefined
       ? { inputFiles: captured.reduce((n, c) => (c.kind === 'file' ? n + 1 : n), 0) }
       : {}),
