@@ -16,6 +16,7 @@ export {
 } from './history.js'
 export {
   detectFlaky,
+  knownFlaky,
   type FailureMode,
   type FlakyCandidate,
   type FlakyFinding,

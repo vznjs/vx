@@ -184,6 +184,12 @@ export interface ExecuteArgs {
    */
   retries?: number
   /**
+   * Whether the run history knows the task as flaky (`knownFlaky`): a keyed
+   * task with no `retries` of its own or of the run that fails gets ONE more
+   * attempt when it does. Decided at run time, so never in the key.
+   */
+  knownFlaky?: (node: TaskNode, hash: string) => boolean
+  /**
    * `run.timeout` (ms), already resolved from flag, variable and
    * workspace. Per-task `exec.timeout` wins. Never hashed.
    */
@@ -889,7 +895,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // Cache miss path (or caching disabled), up to `1 + retries` attempts.
   // Explicit config wins over the run-level `--retries` default, including
   // an explicit `retries: 0`.
-  const maxAttempts = 1 + (step.retries ?? args.retries ?? 0)
+  const retriesSet = step.retries !== undefined || args.retries !== undefined
+  let maxAttempts = 1 + (step.retries ?? args.retries ?? 0)
   let attempt = 0
   let result: ExecuteResult
   let effectiveExitCode: number
@@ -1252,6 +1259,20 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       }
     }
 
+    // A known flake gets the one retry its config did not ask for; a
+    // timeout always fails, and a task whose key names nothing (no cache
+    // block, or keyed on a keyless upstream) has no record to know it by.
+    if (
+      effectiveExitCode !== 0 &&
+      attempt === 1 &&
+      !retriesSet &&
+      result.timedOut !== true &&
+      cfgCacheable &&
+      !keyless &&
+      args.failFast?.aborted !== true &&
+      args.knownFlaky?.(node, hash) === true
+    )
+      maxAttempts = 2
     if (effectiveExitCode === 0 || attempt >= maxAttempts || args.failFast?.aborted === true) break
     failedAttempts.push({
       endedAt: Date.now(),

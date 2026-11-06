@@ -620,6 +620,7 @@ export default defineProject({
     hook: 'Local and free: the same key failing after it passed is called flaky.',
     body: [
       'A task is flaky when its exact cache key failed after it had passed, or when it needed a retry. Its row says so, from the record on this machine alone, shared by every worktree of the repo, and `vx info` keeps the standing list.',
+      'A flaky task that fails gets one more attempt, with no `retries` set. Any other failure is final.',
       'Failing on new inputs is a break, not a flake, and carries no note.',
     ],
     example: {
