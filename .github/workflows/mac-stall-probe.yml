@@ -1,0 +1,58 @@
+# Temporary probe, never merged: runs the Mac platform shards four at a
+# time, as one DTE worker does, with a 1 s host sampler beside them, to
+# catch what a ~20 s freeze of every shard looks like from the host.
+name: mac stall probe
+on:
+  push:
+    branches: [claude/mac-stall-probe]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [1, 2, 3, 4]
+    steps:
+      - name: Turn off Spotlight
+        run: (sudo mdutil -a -i off && sudo mdutil -a -d) >/dev/null 2>&1 &
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - run: bun install --frozen-lockfile
+      - run: bun packages/vx/src/bin.ts setup github
+      - name: Shards with a host sampler
+        env:
+          VX_REQUIRE_SANDBOX: '1'
+          VX_REQUIRE_WATCH_EVENTS: '1'
+          VX_REQUIRE_NONROOT: '1'
+          VX_CACHE_DIR: ${{ runner.temp }}/vx-cache
+        run: |
+          sample() {
+            while :; do
+              echo "=== $(date -u +%H:%M:%S.%N | cut -c1-12)"
+              ps -axo pid,ppid,stat,%cpu,rss,etime,command | awk 'NR==1 || $3 ~ /[UTD]/ || $4+0 > 20' | cut -c1-220
+              vm_stat | grep -E 'free|compressor|Swapins|Swapouts|Pageouts'
+              iostat -d -c 1 | tail -1
+              sleep 1
+            done
+          }
+          sample > "$RUNNER_TEMP/host.log" 2>&1 &
+          for rep in 1 2 3 4 5 6 7 8 9 10 11 12; do
+            echo "::group::rep $rep"
+            bun packages/vx/src/bin.ts run --force --concurrency 4 \
+              @vzn/vx#test.platform.shard-3 @vzn/vx#test.platform.shard-4 \
+              @vzn/vx#test.platform.shard-5 @vzn/vx#test.platform.shard-6 2>&1 \
+              | grep -E 'stall:|\(fail\)|timed out|└─ @vzn' || true
+            echo "::endgroup::"
+          done
+      - if: always()
+        run: grep -n "stall:" "$RUNNER_TEMP/host.log" || true
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: host-${{ matrix.runner }}
+          path: ${{ runner.temp }}/host.log
