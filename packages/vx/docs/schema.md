@@ -1351,6 +1351,8 @@ interface CacheOutputs {
   files: readonly string[] // required
   workspaceFiles?: readonly string[] // optional; workspace-root-relative
   clean?: boolean // optional; false keeps outputs on a miss
+  bin?: string // optional; a dir of programs on every dependant's PATH
+  mount?: Record<string, string> // optional; absolute path -> output dir, in each dependant's sandbox
 }
 ```
 
@@ -1401,6 +1403,89 @@ stores every file the outputs match after the run, so a file an older
 build left behind is cached and restored on every machine. A retry
 still starts clean, and a hit still restores bit-identically. Omitted → the workspace's
 `cache.outputs.clean`, else `true`.
+
+**`bin: 'out/bin'`** names the directory of the outputs that holds
+programs. Every task that depends on this one gets it first on `PATH`,
+so a `tools` project builds Node once and the others run `node`:
+
+```ts
+// packages/tools/vx.config.ts
+import { defineProject } from '@vzn/vx/config'
+
+export default defineProject({
+  tasks: {
+    node: {
+      exec: { command: './build-node.sh' },
+      inputs: { files: ['build-node.sh'] },
+      cache: { outputs: { files: ['out/**'], bin: 'out/bin' } },
+    },
+  },
+})
+```
+
+A task with `dependsOn: ['tools#node']` then runs `node build.js`.
+
+It is declared, never read from a layout. It must sit under the fixed
+head of a `files` glob, so a hit restores it and a sandboxed dependant
+reads it (`exec.sandbox` reads what it depends on). Two dependencies
+holding one program name fail the dependant, naming both: `PATH` order
+would pick one silently. The dependant's key folds the dependency's, so
+a new tool runs it again. Pinned in `tests/dependency-bin.test.ts`.
+
+**`mount: { '/nix/store': 'out/nix/store' }`** is for programs that name
+their files by a fixed absolute path, as everything Nix builds does. Each
+sandboxed task that depends on this one sees the output directory at that
+path, read-only. vx caches and shares the tree like any output, so Nix is
+only the build command:
+
+```ts
+// packages/tools/vx.config.ts
+import { defineProject } from '@vzn/vx/config'
+
+const nixpkgs = 'https://github.com/NixOS/nixpkgs/archive/<commit>.tar.gz'
+
+export default defineProject({
+  tasks: {
+    node: {
+      exec: {
+        command: [
+          `p=$(nix build --store "$PWD/.nix" --option sandbox false --impure --print-out-paths --no-link --expr 'with import (fetchTarball "${nixpkgs}") {}; nodejs_22')`,
+          // The copy's own database is this machine's: only the store is the output.
+          `nix copy --from "$PWD/.nix" --to "local?root=$PWD/out" "$p" --no-check-sigs && rm -rf out/nix/var`,
+          `mkdir -p out/bin && ln -s "../nix/store/\${p#/nix/store/}/bin/node" out/bin/node`,
+        ].join(' && '),
+        // Nix builds for this machine: the key holds which one.
+        platforms: ['linux-x64', 'linux-arm64'],
+        sandbox: {
+          allow: {
+            network: ['cache.nixos.org', 'github.com', 'codeload.github.com'],
+            unixSockets: true, // curl, inside Nix
+            write: ['.nix/', 'out/', '~/.cache/nix'],
+          },
+          ignore: { read: ['build', 'copy'], write: ['build', 'copy'] },
+        },
+      },
+      inputs: { files: [] },
+      cache: {
+        outputs: { files: ['out/**'], bin: 'out/bin', mount: { '/nix/store': 'out/nix/store' } },
+      },
+    },
+  },
+})
+```
+
+The nixpkgs commit sits in the command, so the key moves with it.
+Nix picks the system itself, so a mount needs `exec.platforms`: each
+platform keeps its own entry, and an arm64 machine never restores x64
+binaries.
+`--option substituters ''` builds from source instead of downloading
+Nix's prebuilt packages. The dependant runs in `exec.sandbox` on Linux:
+the mount is a bind, which an unsandboxed task or macOS cannot make, and
+vx refuses either, naming the mount. The path must exist on its machine
+(an empty `sudo mkdir -p /nix/store` is enough). An absolute link into a
+mount path is saved as written; any other absolute link is refused. Two
+dependencies mounting one path share it entry by entry. Pinned in
+`tests/dependency-mount.unsafe.test.ts`.
 
 A **`!` entry takes a path back** from what the positive globs select
 (A-44; a scratch dir under `dist` stays out of the clean this way; a
@@ -1499,7 +1584,7 @@ unsandboxed.** Full walkthrough in the
 ```ts
 interface SandboxConfig {
   allow?: SandboxGrants // what the command may do
-  deny?: { network?: string[] } // domains to refuse; every task of the run (below)
+  deny?: { network?: string[] } // domains this task may not reach (below)
   ignore?: SandboxIgnore // violations to leave out of the report
   weakerWhenNested?: boolean // Linux: let a sandboxed task sandbox (default false)
   weakerNetworkIsolation?: boolean // macOS: host-proxy net, lower isolation (default false)
@@ -1641,10 +1726,10 @@ when another task of the run lists some. SRT runs one proxy per run that
 filters by the union of every task's list; vx puts a proxy of the task's
 own in front of it, so the task's list is checked first (until
 2026-11-06 a task reached any host another task of the run listed).
-`network: true` keeps the run's proxy: it reaches the union (nothing in
-a run with no list). `deny.network` is the task's own and also the
-run's: the run's proxy refuses the union of every task's denies to
-every task, checked before the allowlist (B-21). A refused request is a violation on both
+`network: true` reaches the union (nothing in a run with no list).
+`deny.network` is the task's own, checked before its allowlist (B-21);
+until 2026-11-06 the run's proxy refused every task's denies to every
+task. A refused request is a violation on both
 platforms, `deny network-outbound <host>:<port> (<reason>)` from the
 proxy, and fails the task even when it survived the refusal;
 `ignore: { network: ['<host>:<port>'] }` silences one, matched as the
@@ -1700,6 +1785,8 @@ libraries they link.
 
 Any other tool is yours to grant, with its libraries: `ldd $(command -v
 node)` lists them. The task then cannot lean on the machine unseen.
+A command the host has but no grant reads exits 127, and vx names its
+host path and the grant (`tests/shell-verdict-sandbox.test.ts`).
 
 A grant says what a task may read; `inputs.runtime` says what moves its
 key. Declare both for a tool.
@@ -1747,6 +1834,18 @@ one line naming the package and the edge that would key it. Declaring
 grants never depend on it. The key answers for the package, not the
 file: an edge to `ui#build` (inputs `src/**`) covers a read of
 `ui/README.md` too.
+
+**A task reads the outputs it depends on.** A sandboxed task may read
+the declared `cache.outputs` of every task its key folds through
+`dependsOn` (as `inputs.tasks` selects them), in any project. Its key
+moves with every file that made them, so the read replays nothing stale.
+
+That is how one project serves a tool to the rest: `tools#node` builds
+Node into `out/`, and `app#build` with `dependsOn: ['tools#node']` runs
+`../tools/out/bin/node`, `hermetic` or not. The dependency's sources stay
+hidden. Each output glob grants its fixed head (`out/**` grants `out/`);
+a glob with none (`*.tsbuildinfo`) grants only the files it matches.
+Pinned in `tests/sandbox-dependency-outputs.unsafe.test.ts`.
 
 **A missing write grant fails the task.** On macOS seatbelt refuses the
 write and reports it. On Linux the write meets a read-only bind or a

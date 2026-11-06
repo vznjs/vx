@@ -68,7 +68,7 @@ function printTimings(): void {
   if (lines !== undefined) ui.print('err', ui.trace(lines))
 }
 import { detectColors, type ColorSupport } from '../ui/index.js'
-import { keyedProjects } from './keyed-projects.js'
+import { keyedProjects, readableDeps } from './keyed-projects.js'
 import { isDefaultBuild } from '../graph/index.js'
 import { commandWriteReach, prepareSandbox } from './sandbox-request.js'
 import { recordOutputDirSnapshots, type OutputDirSnapshot, type SaveFacts } from './miss-save.js'
@@ -883,6 +883,7 @@ async function runOnBus(
     }
     if (sandboxed.some(surelyRuns)) prewarm()
     const keyed = keyedProjects(nodes, prepared.keyOnly)
+    const readable = readableDeps(nodes, prepared.keyOnly)
     const outputDirSnapshots: OutputDirSnapshot[] = []
     // Saves run off the execution slot, twice the cap at once (memory:
     // each pack holds an artifact's bytes); a failed save is a miss next
@@ -1179,6 +1180,7 @@ async function runOnBus(
       probesAfterWrites: lateProbes,
       fingerprintWatch,
       keyedProjects: keyed,
+      readableDeps: readable,
       outputDirSnapshots,
       deferSave: saveLane.defer,
       deferredSaves,
@@ -2039,12 +2041,15 @@ function didYouMean(
   elsewhere: readonly string[],
   taskless: (name: string) => boolean,
 ): string {
-  const tasksOf = (p: ProjectEntry | undefined): string[] => Object.keys(p?.config.tasks ?? {})
-  // What a bare name can select: a default `build` is no match (X-102).
+  // A default `build` is no declared task (X-102): neither a bare name's
+  // match nor a menu item or hint for `p#typo`, which led to `p#build`
+  // and its refusal ("p declares no build").
+  const tasksOf = (p: ProjectEntry | undefined): string[] =>
+    Object.entries(p?.config.tasks ?? {})
+      .filter(([, c]) => !isDefaultBuild(c))
+      .map(([t]) => t)
   const allTasks = new Set<string>()
-  for (const p of projects.values()) {
-    for (const t of tasksOf(p)) if (!isDefaultBuild(p.config.tasks![t])) allTasks.add(t)
-  }
+  for (const p of projects.values()) for (const t of tasksOf(p)) allTasks.add(t)
   // A Set: two typos of the same task hint it once, not once per typo.
   const hints = new Set<string>()
   // A typo past two edits named nothing to pick from (M-56): with no near
