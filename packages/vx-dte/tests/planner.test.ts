@@ -8,6 +8,7 @@ import {
   knownMisses,
   missedWork,
   plan,
+  planTasks,
   simulate,
   type PlanTask,
   type PlanWorker,
@@ -685,4 +686,42 @@ it('starts a worker the plan foresaw without reading the work, and none past its
   const spent: { forecast?: Forecast } = {}
   at(0, 0, spent)
   expect(at(due, small.max, spent).start).toEqual([])
+})
+
+// 2026-11-06: a plan reads the run's tasks by number, not by id, where a
+// map of a million ids was most of it. By number or by id, it plans alike.
+it('plans tasks read by number as it plans them read by id', () => {
+  let s = 11
+  const r = (): number => ((s = (s * 1103515245 + 12345) & 0x7fffffff), s / 0x7fffffff)
+  const nodes = new Map<string, TaskNode>()
+  for (let i = 0; i < 400; i++) {
+    const deps = i < 5 ? [] : [...new Set([0, 1, 2].map(() => `t${Math.floor(r() * i)}`))]
+    // Every tenth a group: its dependants wait on what it waits on.
+    const exec = i % 10 === 3 ? {} : { exec: { command: 'x' } }
+    nodes.set(`t${i}`, { id: `t${i}`, deps, config: exec } as unknown as TaskNode)
+  }
+  const ms = new Map([...nodes.keys()].map((id) => [id, 1000 + Math.floor(r() * 30_000)]))
+  const cores = new Map([...nodes.keys()].map((id) => [id, 0.5 + Math.floor(r() * 6) / 2]))
+  const byNumber = planTasks(
+    nodes.keys(),
+    nodes,
+    (id) => ({ cores: cores.get(id)!, memory: 1e9 }),
+    (id) => ms.get(id),
+  )
+  const byId = byNumber.map(({ n: _n, depsN: _d, ...t }) => t)
+  expect(byNumber.every((t) => t.depsN !== undefined)).toBe(true)
+  const running: PlanWorker = {
+    id: 'w',
+    cores: 8,
+    memory: 32e9,
+    at: 0,
+    idle: false,
+    running: [{ id: 't0', cores: 2, memory: 1e9, endsIn: 4000 }],
+  }
+  const work = (ts: readonly PlanTask[]): PlanTask[] => ts.filter((t) => t.id !== 't0')
+  const sizes: Size[] = [{ name: 'big', max: 10, cpu: 8, memory: 32e9 }]
+  const a = plan(work(byNumber), [running], sizes, () => 20_000)
+  const b = plan(work(byId), [running], sizes, () => 20_000)
+  expect(a.endsInMs).toBeGreaterThan(0)
+  expect(a).toEqual(b)
 })

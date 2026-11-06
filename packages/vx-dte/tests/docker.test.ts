@@ -240,7 +240,12 @@ it('on Linux, a container runs as this user, so what it writes in the store is t
   git(root, 'init', '-q')
   git(root, 'commit', '-q', '--allow-empty', '-m', 'i')
   const argv = path.join(dir, 'argv4')
-  await writeFile(path.join(bin, 'docker'), `#!/bin/sh\nprintf '%s\\n' "$@" > ${argv}\n`)
+  // Written whole, then moved in: the file was there, still empty, when
+  // the wait below saw it (2026-11-06, #5003's CI).
+  await writeFile(
+    path.join(bin, 'docker'),
+    `#!/bin/sh\nprintf '%s\\n' "$@" > ${argv}.part\nmv ${argv}.part ${argv}\n`,
+  )
   await chmod(path.join(bin, 'docker'), 0o755)
   const saved = { PATH: process.env['PATH'], HOME: process.env['HOME'] }
   const ids = { uid: process.getuid!, gid: process.getgid! }

@@ -50,7 +50,31 @@ export interface PlanTask {
   readonly deps: readonly string[]
   /** The platform core placed it on (`TaskNode.platform`): only a worker of it runs it. */
   readonly platform?: string | undefined
+  /** Its number in the run's graph and its deps' (`planTasks`): a plan's shape reads them, not ids. */
+  readonly n?: number
+  readonly depsN?: Int32Array
 }
+
+/** The run's tasks numbered once, and each one's deps by number. */
+interface Numbered {
+  readonly of: Map<string, Node>
+  readonly ids: readonly string[]
+}
+
+/** A task of the run's graph: its number, whether it runs, the tasks that run it waits on. */
+interface Node {
+  readonly n: number
+  readonly node: TaskNode
+  readonly runs: boolean
+  deps?: string[]
+  depsN?: Int32Array
+}
+
+/** The numbering each `depsN` is of. */
+const numberedOf = new WeakMap<Int32Array, Numbered>()
+
+/** A number for each of `nodes`, once a run. */
+const numbers = new WeakMap<ReadonlyMap<string, TaskNode>, Numbered>()
 
 /** A worker the plan can place on: from `at` ms on, with what it runs until each ends. */
 export interface PlanWorker {
@@ -169,8 +193,6 @@ export function tailsMs(
   return visit
 }
 
-const walked = new WeakMap<ReadonlyMap<string, TaskNode>, Map<string, string[]>>()
-
 /**
  * `ids`' tasks as the plan takes them: each that runs a command, with
  * what it asks and the tasks it waits on through the groups between.
@@ -182,31 +204,55 @@ export function planTasks(
   durationMs: (id: string) => number | undefined,
   home?: string,
 ): PlanTask[] {
-  const runs = (id: string): boolean => nodes.get(id)?.config.exec?.command !== undefined
-  // The graph is the run's, fixed: each task's deps are walked once a run,
-  // not at each plan (2026-11-05: a 5000-task sim spent a quarter here).
-  let ran = walked.get(nodes)
-  if (ran === undefined) walked.set(nodes, (ran = new Map()))
-  const depsOf = (id: string): string[] => {
-    const known = ran.get(id)
-    if (known !== undefined) return known
-    ran.set(id, [])
-    const out = (nodes.get(id)?.deps ?? []).flatMap((d) => (runs(d) ? [d] : depsOf(d)))
-    ran.set(id, out)
-    return out
+  // The graph is the run's, fixed: each task is numbered and its deps
+  // walked once a run, not at each plan (2026-11-05: a 5000-task sim
+  // spent a quarter here), and read by one lookup (2026-11-06).
+  let num = numbers.get(nodes)
+  if (num === undefined) {
+    const of = new Map<string, Node>()
+    const all: string[] = []
+    for (const [id, node] of nodes) {
+      of.set(id, { n: all.length, node, runs: node.config.exec?.command !== undefined })
+      all.push(id)
+    }
+    numbers.set(nodes, (num = { of, ids: all }))
   }
-  return [...ids].filter(runs).map((id) => {
+  const { of } = num
+  const depsOf = (e: Node): string[] => {
+    if (e.deps !== undefined) return e.deps
+    e.deps = []
+    const out: string[] = []
+    for (const d of e.node.deps) {
+      const x = of.get(d)
+      if (x === undefined) continue
+      if (x.runs) out.push(d)
+      else for (const dd of depsOf(x)) out.push(dd)
+    }
+    return (e.deps = out)
+  }
+  const out: PlanTask[] = []
+  for (const id of ids) {
+    const e = of.get(id)
+    if (e === undefined || !e.runs) continue
     const n = need(id)
-    return {
+    const deps = depsOf(e)
+    if (e.depsN === undefined) {
+      e.depsN = Int32Array.from(deps, (d) => of.get(d)!.n)
+      numberedOf.set(e.depsN, num)
+    }
+    out.push({
       id,
       cores: n.ask?.cores ?? n.cores,
       memory: n.ask?.memory ?? n.memory,
       above: n.above,
       ms: durationMs(id),
-      deps: depsOf(id),
-      platform: nodes.get(id)?.platform ?? home,
-    }
-  })
+      deps,
+      platform: e.node.platform ?? home,
+      n: e.n,
+      depsN: e.depsN,
+    })
+  }
+  return out
 }
 
 /**
@@ -309,7 +355,10 @@ function play(
   // A dependency running now ends when it does; one ended or a hit, now.
   const runningIds = new Set<string>()
   for (const w of workers) for (const r of w.running) if (r.id !== undefined) runningIds.add(r.id)
-  const { byId, after, afterAt, indexOf, waitedAt, tailOf, kinds } = shapeOf(tasks, runningIds)
+  const { byId, after, afterAt, indexOf, waitedAt, tailOf, tailAt, kinds } = shapeOf(
+    tasks,
+    runningIds,
+  )
   // By place, not id: maps keyed by id were a 5000-task play's most time (2026-11-05).
   const waits = waitedAt.slice()
   const slots: Slot[] = workers.map((w) => ({
@@ -470,8 +519,8 @@ function play(
       for (const [p, w] of work) end = Math.max(end, now + w / Math.max(cores.get(p) ?? 0, 1e-9))
       for (const t of ready.live()) end = Math.max(end, now + tailOf(t.id))
       for (const e of ends.all())
-        for (const d of (e.place >= 0 ? afterAt[e.place] : after.get(e.id!)) ?? [])
-          end = Math.max(end, e.at + tailOf(tasks[d]!.id))
+        for (const d of (e.place >= 0 ? afterAt(e.place) : after.get(e.id!)) ?? [])
+          end = Math.max(end, e.at + tailAt(d))
       return { end, cut: true, first: first(), ends: byPlatform(), free }
     }
     if (next === Infinity)
@@ -484,7 +533,7 @@ function play(
       s.running--
       if (place >= 0) left--
       else if (id === undefined) continue
-      for (const d of (place >= 0 ? afterAt[place] : after.get(id!)) ?? []) {
+      for (const d of (place >= 0 ? afterAt(place) : after.get(id!)) ?? []) {
         if (--waits[d]! === 0) {
           joining.push(tasks[d]!)
           readyCount++
@@ -575,11 +624,12 @@ interface Shape {
   /** Each running task's dependants, by their place in the tasks. */
   readonly after: ReadonlyMap<string, readonly number[]>
   /** Each task's dependants by its place, and its place by id: a lookup by id at each end was most of a play. */
-  readonly afterAt: readonly (readonly number[] | undefined)[]
-  readonly indexOf: ReadonlyMap<string, number>
+  readonly afterAt: (place: number) => Int32Array
+  readonly indexOf: { get(id: string): number | undefined }
   /** How many dependencies each task, by its place, waits on before the play begins. */
   readonly waitedAt: Int32Array
   readonly tailOf: (id: string) => number
+  readonly tailAt: (place: number) => number
   readonly kinds: Kinds
 }
 
@@ -592,39 +642,79 @@ function shapeOf(tasks: readonly PlanTask[], running: ReadonlySet<string>): Shap
   const runs = [...running].sort().join('\0')
   const had = shapes.get(tasks)
   if (had !== undefined && had.runs === runs) return had.shape
-  // One map by id, the rest by place: a map of each by id made a
-  // 10 000-task plan's shape a third of its time (2026-11-05).
-  const indexOf = new Map<string, number>()
-  for (let i = 0; i < tasks.length; i++) indexOf.set(tasks[i]!.id, i)
   // Of a running task only, by id: one in the work is by its place.
   const after = new Map<string, number[]>()
-  const afterAt: (number[] | undefined)[] = Array.from({ length: tasks.length })
   const waitedAt = new Int32Array(tasks.length)
-  for (let i = 0; i < tasks.length; i++) {
+  const first = tasks[0]?.depsN
+  const num =
+    first !== undefined && tasks.every((t) => t.depsN !== undefined)
+      ? numberedOf.get(first)
+      : undefined
+  let edges = 0
+  for (let i = 0; i < tasks.length; i++) edges += tasks[i]!.deps.length
+  // Each dependency's place in the work, -1 when not in it.
+  const depAt = new Int32Array(edges)
+  let indexOf: { get(id: string): number | undefined }
+  if (num !== undefined) {
+    // By the run's numbers, not ids: a map of a million ids, made and
+    // read at each plan, was most of its time (2026-11-06).
+    const place = new Int32Array(num.ids.length).fill(-1)
+    for (let i = 0; i < tasks.length; i++) place[tasks[i]!.n!] = i
+    // Indexed: iterators over a million tasks' deps were a third of the shape.
+    for (let e = 0, i = 0; i < tasks.length; i++) {
+      const ds = tasks[i]!.depsN!
+      for (let k = 0; k < ds.length; k++) depAt[e++] = place[ds[k]!]!
+    }
+    indexOf = {
+      get: (id) => {
+        const n = num.of.get(id)?.n
+        const j = n === undefined ? -1 : place[n]!
+        return j < 0 ? undefined : j
+      },
+    }
+  } else {
+    // One map by id, the rest by place: a map of each by id made a
+    // 10 000-task plan's shape a third of its time (2026-11-05).
+    const of = new Map<string, number>()
+    for (let i = 0; i < tasks.length; i++) of.set(tasks[i]!.id, i)
+    let e = 0
+    for (const t of tasks) for (const d of t.deps) depAt[e++] = of.get(d) ?? -1
+    indexOf = of
+  }
+  // Each task's dependants in one array, by place: an array each, pushed
+  // to, was most of a million-task shape (2026-11-06).
+  const start = new Int32Array(tasks.length + 1)
+  for (let e = 0, i = 0; i < tasks.length; i++) {
+    const deps = tasks[i]!.deps
     let n = 0
-    for (const d of tasks[i]!.deps) {
-      const j = indexOf.get(d)
-      // Pushed, not copied: copying made one install under 9000 tasks
-      // 40 million copies a play (2026-10-25).
-      if (j !== undefined) {
+    for (let k = 0; k < deps.length; k++, e++) {
+      const j = depAt[e]!
+      if (j >= 0) {
+        start[j + 1]!++
         n++
-        const at = afterAt[j]
-        if (at === undefined) afterAt[j] = [i]
-        else at.push(i)
-      } else if (running.has(d)) {
+      } else if (running.has(deps[k]!)) {
         n++
-        const at = after.get(d)
-        if (at === undefined) after.set(d, [i])
+        const at = after.get(deps[k]!)
+        if (at === undefined) after.set(deps[k]!, [i])
         else at.push(i)
       }
     }
     waitedAt[i] = n
   }
+  for (let i = 0; i < tasks.length; i++) start[i + 1]! += start[i]!
+  const list = new Int32Array(start[tasks.length]!)
+  const fill = start.slice(0, tasks.length)
+  for (let e = 0, i = 0; i < tasks.length; i++)
+    for (let k = tasks[i]!.deps.length; k > 0; k--, e++) {
+      const j = depAt[e]!
+      if (j >= 0) list[fill[j]!++] = i
+    }
+  const afterAt = (i: number): Int32Array => list.subarray(start[i]!, start[i + 1]!)
   const tail = new Float64Array(tasks.length).fill(-1)
   const tailAt = (i: number): number => {
     if (tail[i]! >= 0) return tail[i]!
     let most = 0
-    for (const d of afterAt[i] ?? []) most = Math.max(most, tailAt(d))
+    for (let k = start[i]!; k < start[i + 1]!; k++) most = Math.max(most, tailAt(list[k]!))
     return (tail[i] = most + (tasks[i]!.ms ?? UNKNOWN_MS))
   }
   const tailOf = (id: string): number => tailAt(indexOf.get(id)!)
@@ -636,7 +726,8 @@ function shapeOf(tasks: readonly PlanTask[], running: ReadonlySet<string>): Shap
     indexOf,
     waitedAt,
     tailOf,
-    kinds: { at: indexOf, kindAt: tasks.map(kindOf) },
+    tailAt,
+    kinds: { at: indexOf, kindAt: lazyKinds(tasks) },
   }
   shapes.set(tasks, { runs, shape })
   return shape
@@ -645,12 +736,22 @@ const shapes = new WeakMap<readonly PlanTask[], { runs: string; shape: Shape }>(
 
 /** Each task's place in `tasks` and its kind (`kindOf`). */
 interface Kinds {
-  readonly at: ReadonlyMap<string, number>
-  readonly kindAt: readonly string[]
+  readonly at: { get(id: string): number | undefined }
+  readonly kindAt: (place: number) => string
+}
+
+/**
+ * Each task's kind, made as a play first reads it: made for every task,
+ * a million float-to-string keys were a fifth of a plan, and a play
+ * windowed to two warm-ups reads few of them (2026-11-06).
+ */
+function lazyKinds(tasks: readonly PlanTask[]): (place: number) => string {
+  const kinds: (string | undefined)[] = []
+  return (i) => (kinds[i] ??= kindOf(tasks[i]!))
 }
 
 function kindsOf(tasks: readonly PlanTask[]): Kinds {
-  return { at: new Map(tasks.map((t, i) => [t.id, i])), kindAt: tasks.map(kindOf) }
+  return { at: new Map(tasks.map((t, i) => [t.id, i])), kindAt: lazyKinds(tasks) }
 }
 
 /**
@@ -666,14 +767,15 @@ function chainMs(tasks: readonly PlanTask[], workers: readonly PlanWorker[]): nu
         runningIds.add(r.id)
         endsAt.set(r.id, Math.max(endsAt.get(r.id) ?? 0, r.endsIn))
       }
-  const { tailOf } = shapeOf(tasks, runningIds)
+  const { tailAt, after } = shapeOf(tasks, runningIds)
   let most = 0
   for (const w of workers) for (const r of w.running) most = Math.max(most, r.endsIn)
-  for (const t of tasks) {
-    let from = 0
-    for (const d of t.deps) from = Math.max(from, endsAt.get(d) ?? 0)
-    most = Math.max(most, from + tailOf(t.id))
-  }
+  // From the running tasks' dependants: each task's deps read by id was
+  // most of a million-task plan's bound (2026-11-06).
+  const from = new Float64Array(tasks.length)
+  for (const [id, ds] of after)
+    for (const i of ds) from[i] = Math.max(from[i]!, endsAt.get(id) ?? 0)
+  for (let i = 0; i < tasks.length; i++) most = Math.max(most, from[i]! + tailAt(i))
   return most
 }
 
@@ -1496,8 +1598,8 @@ const classOf = (t: PlanTask): number =>
  * task 17 million times a plan (2026-10-25).
  */
 class Ready {
-  private readonly at: ReadonlyMap<string, number>
-  private readonly kindAt: readonly string[]
+  private readonly at: Kinds['at']
+  private readonly kindAt: (place: number) => string
   private readonly taken: Uint8Array
   /** The rank: the lower `primary` first, then the lower `seq`. */
   private readonly primary: Float64Array
@@ -1538,14 +1640,14 @@ class Ready {
   }
 
   kindOf(id: string): string {
-    return this.kindAt[this.at.get(id)!]!
+    return this.kindAt(this.at.get(id)!)
   }
 
   take(id: string): void {
     const i = this.at.get(id)!
     this.taken[i] = 1
     this.dead++
-    const k = this.kindAt[i]!
+    const k = this.kindAt(i)
     const n = this.liveOf.get(k)! - 1
     if (n > 0) this.liveOf.set(k, n)
     else {
@@ -1630,7 +1732,7 @@ class Ready {
     this.dead -= len - this.order.length
     const by = new Map<string, number[]>()
     for (const i of batch) {
-      const k = this.kindAt[i]!
+      const k = this.kindAt(i)
       this.liveOf.set(k, (this.liveOf.get(k) ?? 0) + 1)
       const q = by.get(k)
       if (q === undefined) by.set(k, [i])
@@ -1796,12 +1898,12 @@ class Ready {
           if (this.taken[i] === 1) continue
           const t = this.tasks[i]!
           if (bounds === undefined || !dead(t, bounds)) break
-          spent.add(this.kindAt[i]!)
+          spent.add(this.kindAt(i))
         }
         at[x] = p
         // A spent kind is passed here only: a give clears `spent`.
         let r = p
-        while (r < q.length && (this.taken[q[r]!] === 1 || spent.has(this.kindAt[q[r]!]!))) r++
+        while (r < q.length && (this.taken[q[r]!] === 1 || spent.has(this.kindAt(q[r]!)))) r++
         if (r < q.length && (next === -1 || this.before(q[r]!, next))) {
           next = q[r]!
         }
@@ -1809,7 +1911,7 @@ class Ready {
       if (next === -1) return
       cursor = next
       const t = this.tasks[next]!
-      yield { id: t.id, need: t, kind: this.kindAt[next]! }
+      yield { id: t.id, need: t, kind: this.kindAt(next) }
     }
   }
 
