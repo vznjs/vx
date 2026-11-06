@@ -7,7 +7,7 @@ import { Aside } from '@astrojs/starlight/components'
 
 A task with `cache: true` runs once per set of inputs. List what the
 command reads under `inputs`, and what it writes under `outputs`
-(`[]` for test or lint).
+(`{ files: [] }` for test or lint).
 
 ```sh
 vx run build
@@ -17,7 +17,7 @@ vx run build
 The first run executes the task and stores `dist/`. The second finds the
 same inputs and skips the work.
 
-```ts title="packages/app/vx.config.ts" {9-14,16-18}
+```ts title="packages/app/vx.config.ts" {8-14}
 import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
@@ -83,7 +83,7 @@ Every part, in order: [Caching in depth](../../caching/).
   hit that finds them already as stored writes nothing.
 - A restore writes only files the task's `outputs` declare.
 - A failed task is never saved.
-- `--force` runs and refreshes the cache; `--no-cache` ignores it.
+- `--force` runs everything and saves only what the cache lacks; `--no-cache` ignores it.
 
 ---
 

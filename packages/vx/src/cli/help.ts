@@ -141,7 +141,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '      --no-cache                  No cache reads or writes; outputs are left',
     '                                  alone.',
     '      --force                     Skip cache reads but still write: every task',
-    '                                  runs and refreshes its entry.',
+    '                                  runs; a key already stored is kept.',
     '      --cache-policy <spec>       Per-layer read/write: a comma list of',
     '                                  <layer>:<flags> (layer local or remote, flags',
     '                                  from rw). A named layer is set to exactly its',

@@ -1473,7 +1473,7 @@ hit restores. A task without `cache: true` always runs.
 build: {
   exec: { command: 'tsc -b' },
   inputs: { files: ['src/**', 'tsconfig.json'] },
-  outputs: { files: ['dist/**'] },
+  outputs: { files: ['dist/**', '*.tsbuildinfo'] },
   cache: true,
 }
 ```
@@ -2322,7 +2322,7 @@ export default defineProject({
         files: ['src/**', '!**/*.test.ts', 'tsconfig.json'],
         env: ['NODE_ENV'],
       },
-      outputs: { files: ['dist/**'] },
+      outputs: { files: ['dist/**', '*.tsbuildinfo'] },
       cache: true,
     },
 
@@ -2490,7 +2490,7 @@ export function tsBuild(opts?: { tsconfig?: string }): TaskConfig {
     description: 'compile TypeScript',
     exec: { command: `tsc -b ${opts?.tsconfig ?? ''}`.trim() },
     inputs: { files: ['src/**', opts?.tsconfig ?? 'tsconfig.json'] },
-    outputs: { files: ['dist/**'] },
+    outputs: { files: ['dist/**', '*.tsbuildinfo'] },
     cache: true,
   }
 }

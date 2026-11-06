@@ -3,7 +3,7 @@ title: Clear the local cache
 description: Use vx cache clean to empty the cache, or to keep it under an age or a size.
 ---
 
-Use `vx cache clean` with no flag to empty this repository's local cache.
+Use `vx cache clean` with no flag to empty this workspace's local cache.
 
 ```sh
 vx cache clean
