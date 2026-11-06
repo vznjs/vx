@@ -8,11 +8,13 @@ import { EMPTY_LOCK, inputStabilityEnv, LOCK_INVALID, lockEntryBroken } from '..
 import { realpathSync } from 'node:fs'
 import path from 'node:path'
 import {
+  historyFiles,
   indexDb,
   Cache,
   type CachePolicy,
   cachesNothing,
   formatCachePolicy,
+  HistoryStream,
   networkConcurrency,
   keepRunNotes,
   stopRuntimeProbes,
@@ -32,6 +34,7 @@ import type { MachineReport, TaskExecutor, WorkerAdvice } from '../exec/index.js
 import {
   deadServerBehind,
   declaredTask,
+  isCacheHit,
   isGroupTask,
   markSurfacedDeps,
   runGraph,
@@ -138,7 +141,12 @@ import { deriveStableKeys, probesAfterWrites } from './stable-keys.js'
 import { askRemote, serversToHold } from './held-servers.js'
 
 import { writeRunFailures } from './run-failures.js'
-import { assembleRunRecords, recordLateRemoteErrors } from './run-records.js'
+import {
+  assembleRunRecords,
+  recordLateRemoteErrors,
+  type RecordedOutcome,
+  runRecordOf,
+} from './run-records.js'
 import {
   hasEnded,
   disposeServers,
@@ -1294,6 +1302,29 @@ async function runOnBus(
     }
     let lockBroken: boolean | undefined
     prepared.localCache.storeHeldBlobSizes()
+    // A hit's row is whole when it finishes, so it is written while the
+    // graph runs (history-stream.ts); every other row waits for the bundle.
+    // A row with forward args is the bundle's too: only it digests them.
+    const historyAt = historyFiles(prepared.localCache)
+    const stream = historyAt === undefined ? undefined : new HistoryStream<TaskOutcome>(historyAt)
+    const forwards = (options.forwardArgs?.length ?? 0) > 0
+    const streamHit = (o: TaskOutcome): void => {
+      if (stream === undefined || isGroupTask(o.node)) return
+      if (!isCacheHit(o.status)) return
+      if (o.wallclockStartNs === undefined || o.wallclockEndNs === undefined) return
+      if (forwards && o.node.requested) return
+      stream.add(
+        o,
+        runRecordOf(o as RecordedOutcome, {
+          tainted: taintedRan,
+          runId,
+          startedAtMs: endedAtMsAtStart,
+          endedAtMs: endedAtMsAtStart,
+          blocks: blocksNow(),
+          remoteTraffic: prepared.localCache.traffic.keys,
+        }),
+      )
+    }
     const outcomes = await runGraph({
       nodes,
       concurrency,
@@ -1316,6 +1347,7 @@ async function runOnBus(
         judgeFlaky(o)
         keeper?.taskDone(o)
         log.taskComplete(o.node, o)
+        streamHit(o)
         demand.finished(o.node.id)
         // A server that dies while the graph runs is no longer running:
         // its pin stayed `running` under the line naming its exit.
@@ -1420,6 +1452,9 @@ async function runOnBus(
       endedBeforeStop: stop.endedBeforeStop,
     })
 
+    // Every batch the stream sent has answered: what landed is not written again.
+    const streamed = await stream?.finish()
+    const landed = new Set(streamed?.landed.map((s) => s.item))
     mark('run graph')
 
     // Clear the status line for good before the summary prints.
@@ -1520,6 +1555,7 @@ async function runOnBus(
         withTelemetry: telemetry !== undefined,
         blocks: blocksNow(),
         remoteTraffic: prepared.localCache.traffic.keys,
+        landed,
       })
     const records = recordsOf(list, ok)
     const recordHistory = (write: () => void): void => {
@@ -1603,7 +1639,13 @@ async function runOnBus(
     }
     // An upload that failed after the rows went in: its row says so too.
     if (prepared.localCache.uploads.failed > 0 && stop.stoppedBy === undefined && !historyAfterWait)
-      recordHistory(() => recordLateRemoteErrors(prepared.localCache, records.runs, runId))
+      recordHistory(() =>
+        recordLateRemoteErrors(
+          prepared.localCache,
+          [...records.runs, ...(streamed?.landed.map((s) => s.record) ?? [])],
+          runId,
+        ),
+      )
     const report = reportOf(list, { runId, commit: head.commitSha, ciRun: ciContext, ok }, keeper)
     // Hand the per-run summary to the telemetry sinks + drain them. Only
     // when a sink is active (telemetry !== undefined) — otherwise this

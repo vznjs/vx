@@ -42,7 +42,15 @@ export interface RunRecordsInput {
   blocks?: ReadonlyMap<string, number>
   /** The run's remote failures by key, so far (`Cache.traffic`). */
   remoteTraffic?: ReadonlyMap<string, { failures: readonly string[] }>
+  /** Outcomes whose rows the history stream already wrote: counted, not written again. */
+  landed?: ReadonlySet<TaskOutcome>
 }
+
+/** What a task's `runs` row reads besides its outcome. */
+export type RunRecordContext = Pick<
+  RunRecordsInput,
+  'tainted' | 'runId' | 'startedAtMs' | 'endedAtMs' | 'forwardArgs' | 'blocks' | 'remoteTraffic'
+>
 
 export interface RunRecords {
   runs: RunRecord[]
@@ -72,6 +80,7 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
   const { outcomes, runId, startedAtMs, endedAtMs } = input
   const runs: RunRecord[] = []
   const telemetryTasks: TaskTelemetry[] = []
+  let taskCount = 0
   let failedCount = 0
   let hitLocalCount = 0
   let hitRemoteCount = 0
@@ -83,72 +92,8 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
     // aborted (killed by a shutdown signal) isn't a real run.
     if (o.status === 'aborted') continue
     if (input.withTelemetry) telemetryTasks.push(taskTelemetryOf(o))
-    const blockedBy = o.blockedBy ?? input.tainted?.get(o.node.id)
-    const remoteError = remoteErrorOf(input.remoteTraffic, o.hash)
-    // Built field by field: a spread per optional field was ~2 µs of each
-    // of a 1,200-hit warm run's rows.
-    const hit = isCacheHit(o.status)
-    const r: RunRecord = {
-      project: o.node.projectName,
-      task: o.node.taskName,
-      status: o.status,
-      exitCode: o.exitCode,
-      durationMs: o.durationMs,
-      // Anchor to the REAL per-task wall-clock window: run-start wall time +
-      // the task's ns offset (captured for hits and executed tasks alike).
-      // The `end - duration` fallback applies to outcomes without an offset —
-      // today only `skipped`, which the scheduler finishes synchronously with
-      // no span, so it collapses to a zero-width mark at the run's end. Using
-      // run-end-minus-duration for EVERYTHING was the old bug that piled every
-      // task at the right edge of the timeline.
-      startedAt:
-        o.wallclockStartNs !== undefined
-          ? startedAtMs + Math.round(Number(o.wallclockStartNs) / 1e6)
-          : endedAtMs - o.durationMs,
-      endedAt:
-        o.wallclockEndNs !== undefined
-          ? startedAtMs + Math.round(Number(o.wallclockEndNs) / 1e6)
-          : endedAtMs,
-      runId,
-      cacheHit: hit,
-      cached: o.node.config.cache !== undefined,
-    }
-    if (o.hash !== undefined) r.hash = o.hash
-    // A run forwards its args to the tasks it was asked for, never to a
-    // dependency: the row says which ran with them.
-    if (input.forwardArgs !== undefined && input.forwardArgs.length > 0 && o.node.requested)
-      r.forwardArgs = input.forwardArgs
-    if (o.cpuMs !== undefined) r.cpuMs = o.cpuMs
-    if (o.peakRssBytes !== undefined) r.peakRssBytes = o.peakRssBytes
-    if (o.peakCores !== undefined) r.peakCores = o.peakCores
-    if (o.avgRssBytes !== undefined) r.avgRssBytes = o.avgRssBytes
-    if (o.where !== undefined) r.placement = o.where
-    if (o.whereCores !== undefined) r.placementCores = o.whereCores
-    if (o.whereMemoryBytes !== undefined) r.placementMemoryBytes = o.whereMemoryBytes
-    if (o.cpuShare !== undefined) r.cpuShare = o.cpuShare
-    if (o.queuedMs !== undefined) r.queuedMs = o.queuedMs
-    if (o.outputBytes !== undefined) r.outputBytes = o.outputBytes
-    const blocks = input.blocks?.get(o.node.id)
-    if (blocks !== undefined) r.blocks = blocks
-    if (o.flaky !== undefined) {
-      r.flakyPasses = o.flaky.passes
-      r.flakyFailures = o.flaky.failures
-    }
-    if (o.wallclockStartNs !== undefined) r.wallclockStartNs = o.wallclockStartNs
-    if (o.wallclockEndNs !== undefined) r.wallclockEndNs = o.wallclockEndNs
-    if (hit) r.restored = o.restored === true
-    if (o.attempts !== undefined) r.attempts = o.attempts
-    // A task that ran behind a failure names it too, so the flakiness
-    // projection counts its outcome on no key (failure-mode.ts).
-    if (blockedBy !== undefined) r.blockedBy = blockedBy
-    if (o.timedOut === true) r.timedOut = true
-    if (o.sandboxViolations !== undefined) r.sandboxViolations = o.sandboxViolations
-    if (o.notReady !== undefined) r.notReady = o.notReady
-    if (remoteError !== undefined) r.remoteError = remoteError
-    if (o.keylessBy !== undefined) r.keylessBy = o.keylessBy
-    const def = taskDefinition(o.node)
-    if (def !== undefined) r.def = def
-    runs.push(r)
+    taskCount++
+    if (input.landed?.has(o) !== true) runs.push(runRecordOf(o as RecordedOutcome, input))
     if (o.status === 'failed') failedCount++
     if (o.status === 'cache-hit') hitLocalCount++
     if (o.status === 'cache-hit-remote') hitRemoteCount++
@@ -168,7 +113,7 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
     startedAt: startedAtMs,
     endedAt: endedAtMs,
     totalDurationMs: Math.round(input.totalMs),
-    taskCount: runs.length,
+    taskCount,
     failedCount,
     hitCount: hitLocalCount + hitRemoteCount,
     hitLocalCount,
@@ -188,6 +133,80 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
     vxVersion: VERSION,
   }
   return { runs, invocation, telemetryTasks }
+}
+
+/** An outcome a `runs` row records: every status but `aborted`. */
+export type RecordedOutcome = TaskOutcome & { status: RunRecord['status'] }
+
+/** One outcome's `runs` row. */
+export function runRecordOf(o: RecordedOutcome, input: RunRecordContext): RunRecord {
+  const { runId, startedAtMs, endedAtMs } = input
+  const blockedBy = o.blockedBy ?? input.tainted?.get(o.node.id)
+  const remoteError = remoteErrorOf(input.remoteTraffic, o.hash)
+  // Built field by field: a spread per optional field was ~2 µs of each
+  // of a 1,200-hit warm run's rows.
+  const hit = isCacheHit(o.status)
+  const r: RunRecord = {
+    project: o.node.projectName,
+    task: o.node.taskName,
+    status: o.status,
+    exitCode: o.exitCode,
+    durationMs: o.durationMs,
+    // Anchor to the REAL per-task wall-clock window: run-start wall time +
+    // the task's ns offset (captured for hits and executed tasks alike).
+    // The `end - duration` fallback applies to outcomes without an offset —
+    // today only `skipped`, which the scheduler finishes synchronously with
+    // no span, so it collapses to a zero-width mark at the run's end. Using
+    // run-end-minus-duration for EVERYTHING was the old bug that piled every
+    // task at the right edge of the timeline.
+    startedAt:
+      o.wallclockStartNs !== undefined
+        ? startedAtMs + Math.round(Number(o.wallclockStartNs) / 1e6)
+        : endedAtMs - o.durationMs,
+    endedAt:
+      o.wallclockEndNs !== undefined
+        ? startedAtMs + Math.round(Number(o.wallclockEndNs) / 1e6)
+        : endedAtMs,
+    runId,
+    cacheHit: hit,
+    cached: o.node.config.cache !== undefined,
+  }
+  if (o.hash !== undefined) r.hash = o.hash
+  // A run forwards its args to the tasks it was asked for, never to a
+  // dependency: the row says which ran with them.
+  if (input.forwardArgs !== undefined && input.forwardArgs.length > 0 && o.node.requested)
+    r.forwardArgs = input.forwardArgs
+  if (o.cpuMs !== undefined) r.cpuMs = o.cpuMs
+  if (o.peakRssBytes !== undefined) r.peakRssBytes = o.peakRssBytes
+  if (o.peakCores !== undefined) r.peakCores = o.peakCores
+  if (o.avgRssBytes !== undefined) r.avgRssBytes = o.avgRssBytes
+  if (o.where !== undefined) r.placement = o.where
+  if (o.whereCores !== undefined) r.placementCores = o.whereCores
+  if (o.whereMemoryBytes !== undefined) r.placementMemoryBytes = o.whereMemoryBytes
+  if (o.cpuShare !== undefined) r.cpuShare = o.cpuShare
+  if (o.queuedMs !== undefined) r.queuedMs = o.queuedMs
+  if (o.outputBytes !== undefined) r.outputBytes = o.outputBytes
+  const blocks = input.blocks?.get(o.node.id)
+  if (blocks !== undefined) r.blocks = blocks
+  if (o.flaky !== undefined) {
+    r.flakyPasses = o.flaky.passes
+    r.flakyFailures = o.flaky.failures
+  }
+  if (o.wallclockStartNs !== undefined) r.wallclockStartNs = o.wallclockStartNs
+  if (o.wallclockEndNs !== undefined) r.wallclockEndNs = o.wallclockEndNs
+  if (hit) r.restored = o.restored === true
+  if (o.attempts !== undefined) r.attempts = o.attempts
+  // A task that ran behind a failure names it too, so the flakiness
+  // projection counts its outcome on no key (failure-mode.ts).
+  if (blockedBy !== undefined) r.blockedBy = blockedBy
+  if (o.timedOut === true) r.timedOut = true
+  if (o.sandboxViolations !== undefined) r.sandboxViolations = o.sandboxViolations
+  if (o.notReady !== undefined) r.notReady = o.notReady
+  if (remoteError !== undefined) r.remoteError = remoteError
+  if (o.keylessBy !== undefined) r.keylessBy = o.keylessBy
+  const def = taskDefinition(o.node)
+  if (def !== undefined) r.def = def
+  return r
 }
 
 /**

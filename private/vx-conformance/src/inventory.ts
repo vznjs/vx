@@ -913,6 +913,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'held-server-exit',
     'held-server-output',
     'hide-env.unsafe',
+    'history-stream',
     'home-guard',
     'index-schema-race',
     'index-write-wait',

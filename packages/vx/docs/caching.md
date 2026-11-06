@@ -1893,7 +1893,8 @@ CREATE TABLE output_dirs (
 -- v22 (Tier 3): one header row per `vx run` invocation. The `runs`
 -- table is per-task; this is the per-invocation record carrying the
 -- command, git/CI/host context, and run-level counts. Recorded
--- atomically alongside `runs` via recordRunBundle (one transaction).
+-- alongside `runs` via recordRunBundle (one transaction); a big run's
+-- hits land before it, in batches (HistoryStream).
 CREATE TABLE invocations (
   run_id            TEXT PRIMARY KEY,         -- UUIDv7, == runs.run_id
   command           TEXT NOT NULL,            -- full argv, e.g. "vx run build --all"
