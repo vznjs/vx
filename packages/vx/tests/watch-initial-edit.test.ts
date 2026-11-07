@@ -41,7 +41,9 @@ it('an edit during the initial run starts a cycle once watch arms', async () => 
   await writeFile(go, '')
   await until(() => w.out().includes('changed app#build inputs'), 'a cycle for the edit')
   await until(
-    async () => (await readFile(path.join(dir, 'dist', 'out.txt'), 'utf8')) === 'new\n',
+    // The cycle clears its outputs before the command: absent meanwhile.
+    async () =>
+      (await readFile(path.join(dir, 'dist', 'out.txt'), 'utf8').catch(() => '')) === 'new\n',
     'the output built from the edited input',
   )
 }, 40_000)
