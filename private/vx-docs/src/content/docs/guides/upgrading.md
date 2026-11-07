@@ -9,7 +9,11 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
-## graph: refuse inputs.tasks lists that fold no upstream
+## cache: clean only vx stores under ~/.vx; name failed saves once
+
+Cache.formatChange is gone; it was never read.
+
+## graph: refuse configs that fold no upstream or clean sources
 
 a negation-only inputs.tasks list, and an exact pkg#task entry naming only a transitive dependency, are now refused.
 

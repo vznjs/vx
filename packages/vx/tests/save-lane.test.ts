@@ -29,7 +29,7 @@ describe('createSaveLane', () => {
           await sleep(10)
           active--
           done.push(i)
-        }),
+        }, `p${i}#build`),
       )
     }
     await Promise.all(settled)
@@ -47,11 +47,11 @@ describe('createSaveLane', () => {
       nested = lane.defer(async () => {
         await sleep(5)
         order.push('c')
-      })
-    })
+      }, 'c#build')
+    }, 'a#build')
     const b = lane.defer(async () => {
       order.push('b')
-    })
+    }, 'b#build')
     await Promise.all([a, b])
     await nested
     expect(order).toEqual(['a', 'b', 'c'])
@@ -62,27 +62,27 @@ describe('createSaveLane', () => {
     // would, once full, queue every later save behind nothing, and the
     // scheduler waits on each save: the run never ends.
     const lane = createSaveLane(1, () => undefined)
-    await lane.defer(async () => undefined)
+    await lane.defer(async () => undefined, 'a#build')
     let started = false
     const next = lane.defer(async () => {
       started = true
-    })
+    }, 'b#build')
     expect(started).toBe(true)
     await next
   })
 
   it('a failed save reaches onError, frees its slot, and its defer settles rather than rejects', async () => {
     const errors: string[] = []
-    const lane = createSaveLane(1, (e) => errors.push(String(e)))
+    const lane = createSaveLane(1, (e, taskId) => errors.push(`${taskId} ${String(e)}`))
     let second = false
     const first = lane.defer(async () => {
       throw new Error('disk full')
-    })
+    }, 'a#build')
     const next = lane.defer(async () => {
       second = true
-    })
+    }, 'b#build')
     expect(await Promise.all([first, next])).toEqual([false, true])
-    expect(errors).toEqual(['Error: disk full'])
+    expect(errors).toEqual(['a#build Error: disk full'])
     expect(second).toBe(true)
   })
 })
@@ -186,7 +186,52 @@ describe('the save lane in a run', () => {
         },
       })
       expect(r.outcomes.map((o) => [o.status, o.saved])).toEqual([['success', undefined]])
-      expect(lines.join('\n')).toContain('[vx] cache save failed: disk said no')
+      expect(lines.join('\n')).toContain('[vx] cache save failed: a#build: disk said no')
+    } finally {
+      failing.mockRestore()
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 30_000)
+
+  it('saves that fail are said once, naming the first task, and the rest counted', async () => {
+    // A full disk printed "[vx] cache save failed: ENOSPC…" once per task,
+    // naming none (2026-11-07).
+    const root = await makeWorkspace({ prefix: 'vx-save-fail-many-' })
+    const failing = spyOn(Cache.prototype, 'save').mockImplementation(() =>
+      Promise.reject(new Error('ENOSPC: no space left on device')),
+    )
+    try {
+      for (const name of ['a', 'b', 'c']) {
+        await addProject(root, name, {
+          files: { 'src/in.txt': name },
+          config: `export default { tasks: { build: {
+              exec: { command: 'cat src/in.txt > out.txt' },
+              inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
+            } } }`,
+        })
+      }
+      const lines: string[] = []
+      const r = await run({
+        cwd: root,
+        tasks: ['build'],
+        log: {
+          status: (l) => void lines.push(l),
+          taskStdout() {},
+          taskStderr() {},
+          taskComplete() {},
+        },
+      })
+      expect(r.ok).toBe(true)
+      const said = lines.filter((l) => l.includes('cache save failed'))
+      const first =
+        /^\[vx\] cache save failed: ([abc])#build: ENOSPC: no space left on device$/.exec(
+          said[0] ?? '',
+        )?.[1]
+      expect(first).toBeDefined()
+      const rest = ['a', 'b', 'c'].filter((n) => n !== first).map((n) => `${n}#build`)
+      expect(said.length).toBe(2)
+      const tail = /^\[vx\] cache save failed for 2 more tasks: (.*)$/.exec(said[1]!)?.[1]
+      expect(tail?.split(', ').sort()).toEqual(rest)
     } finally {
       failing.mockRestore()
       await rm(root, { recursive: true, force: true })

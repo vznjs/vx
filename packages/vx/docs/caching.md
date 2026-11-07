@@ -1363,8 +1363,10 @@ named as the one to move away. The readers and `vx cache clean` find no
 cache and go on.
 A full disk is the same kind of failure and is reported the same way,
 never as a corrupt artifact and never as a stack: a save that runs out
-of room is `[vx] cache save failed: ENOSPC …` (the task's work ran, the
-footer counts it not saved rather than `↑`, and the next run misses), a restore that does is the task's failure line
+of room is `[vx] cache save failed: <task>: ENOSPC …` (the task's work ran, the
+footer counts it not saved rather than `↑`, and the next run misses; the
+saves that fail after it are one line once the graph ends,
+`[vx] cache save failed for N more tasks: …`), a restore that does is the task's failure line
 `could not write its outputs (ENOSPC: …). Free space on that disk and
 re-run.`, and a run record that does is `[vx] run history not recorded:
 … — the verdict above stands` (the run exits by its tasks; `vx last`
@@ -1374,7 +1376,7 @@ access times are skipped and the run goes on; a prune unlinks the
 artifacts first, so the rows it then deletes have room to go, and a
 save's temp file is removed when its write fails.
 A process out of file descriptors (`EMFILE`, `ENFILE`) is named the
-same way: a save is `[vx] cache save failed: save of <hash> could not
+same way: a save is `[vx] cache save failed: <task>: save of <hash> could not
 open a file (EMFILE: …) — … raise the limit (ulimit -n 4096) and
 re-run`, and a restore fails the task with that hint, never as a
 corrupt artifact (A-39). Opening the index is named the same way: SQLite reports a

@@ -301,6 +301,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'info-corrupt-index',
     'info-git-status-cache',
     'info-lock',
+    'info-store',
     'init',
     'init-global-berry',
     'init-lockfile-plugin.unsafe',

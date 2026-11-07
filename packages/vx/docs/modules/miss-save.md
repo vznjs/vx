@@ -51,7 +51,7 @@ export interface SaveMissArgs {
   cpuMs?: number | undefined // what the execution used — stored on the entry and the artifact's sidecar
   peakRssBytes?: number | undefined
   outputDirSnapshots?: OutputDirSnapshot[] | undefined // queued for run end when present
-  deferSave?: ((save: () => Promise<void>) => Promise<void>) | undefined // the run's save lane; resolves when the save lands
+  deferSave?: ((save: () => Promise<void>, taskId: string) => Promise<boolean>) | undefined // the run's save lane; resolves when the save settles, true when it landed
   measure?: boolean | undefined // a telemetry sink listens: time the save, stat its artifact
 }
 export interface SaveFacts {
@@ -70,9 +70,12 @@ export function markUnsaved(a: UnsavedArgs): Promise<void>
 
 // save-lane.ts
 export interface SaveLane {
-  defer(save: () => Promise<void>): Promise<void> // resolves once the save settled, a failure too
+  defer(save: () => Promise<void>, taskId: string): Promise<boolean> // settles true when the entry landed, false on a failure
 }
-export function createSaveLane(cap: number, onError: (err: unknown) => void): SaveLane
+export function createSaveLane(
+  cap: number,
+  onError: (err: unknown, taskId: string) => void,
+): SaveLane
 ```
 
 `markUnsaved` is step 3 alone, for a miss that ran here and saves
@@ -93,8 +96,12 @@ write + index + snapshot request go to `save-lane.ts`: at most
 `2 × concurrency` saves in flight (each pack holds an artifact's bytes),
 drained by `run()` before the upload drain (the uploads are what the
 saves queued) and the snapshot loop (which reads what the saves pushed).
-A save that fails is one status line and a miss next time — the task's
-work ran, and a cache error degrades to a miss like a remote one. An
+A save that fails is a miss next time — the task's work ran, and a cache
+error degrades to a miss like a remote one. A run says it once: the first
+failure is `[vx] cache save failed: <task>: <why>`, and once the graph
+ends one more line names the others (`[vx] cache save failed for 2 more
+tasks: b#build, c#build`, five at most): a full disk failed every save
+after the first the same way, a line each, naming no task. An
 embedder that passes no lane gets the entry before the outcome, as
 before. The one reader that must wait for the entry is admission's
 in-flight join (a duplicate of the task in another run): `saveMiss`

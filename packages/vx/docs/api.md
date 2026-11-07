@@ -228,7 +228,6 @@ export class Cache implements CacheLayer {
   readonly remoteHits: RemoteHits
   readonly storeDir: string | undefined
   readonly schemaReset: SchemaReset | null
-  readonly formatChange: SchemaReset | null
   readonly storeReset: SchemaReset | null
   static inspect(cacheDir: string): Cache
   constructor(
