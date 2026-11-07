@@ -208,9 +208,7 @@ describe('defaultLogger visibility matrix — broad', () => {
 
   // The run exits red after a stop, so each task it took down or kept from
   // starting is a row in the list with its own status (M-83).
-  // What a killed task printed tells where the run hung: it was dropped
-  // here, while the focused view printed it.
-  it('aborted → an `aborted` row, its output framed at the end as failures are; never started → `not run`', () => {
+  it('aborted → an `aborted` row with its time, output dropped; never started → `not run`', () => {
     const out = sink()
     const log = defaultLogger(NO_COLORS, { mode: 'broad' }, out)
     const n = mkNode('one#build')
@@ -223,17 +221,6 @@ describe('defaultLogger visibility matrix — broad', () => {
       [
         ' ✗   100ms         aborted                             —         local        one#build',
         ' ◌                 not run                                                    one#later',
-        '',
-        '┌─ one#build > aborted',
-        '',
-        '$ noop',
-        '',
-        `├─ OUTPUT ${'─'.repeat(52)}`,
-        '',
-        'partial',
-        '',
-        '└─ one#build ── (100ms) aborted',
-        '',
         '',
       ].join('\n'),
     )

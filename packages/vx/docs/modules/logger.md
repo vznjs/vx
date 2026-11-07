@@ -171,8 +171,7 @@ keeps the footer and vx's own step rows (`tail`) until `runDone`, just
 before the final footer prints, removes it for good. A stop
 (`runStop`) keeps the region: running rows read `aborting` with their
 timers, blocked rows and the forecast go, each task that exits lists as
-an `aborted` (or `not run`) row (a list view frames an `aborted` task's
-output with the deferred failures), and the live footer counts them, so a
+an `aborted` (or `not run`) row, and the live footer counts them, so a
 slow stop never shows a blank screen (2026-10-17); the first
 requested-task start in focused mode removes it too. A step
 (`stepStart` / `stepEnd`, ids `<owner>:<step>`) shows as a row below
