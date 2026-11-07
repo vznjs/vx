@@ -49,7 +49,7 @@ cpuPeak; cpuAvg; memoryPeakBytes; memoryAvgBytes; utilization }`), asked
   dependencies where it runs the task (`req.servers`, each a `ServerSpec
 { taskId; command; cwd; env; readyWhen?; timeoutMs?; sandbox? }`, in dependency
   order), so their dependants are not pinned for it; `localFloor` starts
-  each once, a sandboxed one inside its `exec.sandbox` built there, shares it with every later task, and stops one on `stop(id)` (core calls the executor's `unneeded(id)` once no task left in the run uses it) or all on `close()`,
+  each once, a sandboxed one inside its `exec.sandbox` built there, shares it with every later task, and stops one on `stop(id)` (core calls the executor's `unneeded(id)` once no task left in the run uses it) or all on `close()`; its `onServer` hears each server's pid as it spawns and stops (a worker meters its servers),
   and a server that never became ready, or crashed after it was, fails the task with why,
   and a stop of the request ends its wait on one; `runtime: true`
   says a remote one answers a task's `inputs.runtime` / `workspaceRuntime`

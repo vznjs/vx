@@ -45,6 +45,7 @@ import {
   type WiredResult,
 } from './messages.js'
 import { leftUnder, names, outputFiles } from './outputs.js'
+import { serverFit } from './server-fit.js'
 import { snapshot } from './tree.js'
 import { sealWorker, type Proof } from './seal.js'
 import { join, ORCHESTRATOR_SILENT, RelayError, unsent as unsentBy } from './wire.js'
@@ -133,6 +134,32 @@ export async function runWorker(opts: {
   let tasksCpuMs = 0
   const trees = treeMeter()
   const frame = (): Load => ({ ...load.now(), tasks: trees.now() })
+  // Its servers' trees, and which dependants each serves now: their CPU is
+  // charged to those tasks (`serverFit`).
+  const serverTrees = treeMeter()
+  const fit = serverFit()
+  const usersOf = new Map<string, Set<string>>()
+  let sampledAt = performance.now()
+  const sampler = setInterval(() => {
+    const at = performance.now()
+    const ms = at - sampledAt
+    sampledAt = at
+    if (usersOf.size === 0) return
+    const capped = load.now().cpu >= cores * FULL
+    for (const [server, users] of usersOf)
+      fit.sample(server, [...users], serverTrees.coresOf(server), ms, capped)
+  }, TREE_EVERY_MS)
+  sampler.unref?.()
+  const newFloor = (sandboxes: Parameters<typeof localFloor>[0] = []): LocalFloor =>
+    localFloor(sandboxes, (id, pid) => {
+      if (pid === undefined) {
+        serverTrees.drop(id)
+        usersOf.delete(id)
+      } else {
+        serverTrees.watch(id, pid)
+        usersOf.set(id, usersOf.get(id) ?? new Set())
+      }
+    })
   /**
    * Entries whose files are here, restored or run here, by key: tasks
    * started together wait on one restore, never run before it.
@@ -488,16 +515,34 @@ export async function runWorker(opts: {
               })),
             }),
       }
-      floor ??= localFloor()
+      floor ??= newFloor()
       ui.print('out', ui.status('info', m.task, ui.dim('running')))
       const crowd = load.mark()
+      const serves = (m.servers ?? []).map((sv) => sv.task)
+      // Counted a user once its server is up: `onServer` makes the set.
+      const using = (): void => {
+        for (const sv of serves) usersOf.get(sv)?.add(m.task)
+      }
       const {
         outputs: _,
         stdout: _o,
         stderr: _e,
         ...res
-      } = await floor.execute(req).finally(() => trees.drop(m.task))
+      } = await floor
+        .execute({
+          ...req,
+          onSpawn: (pid) => {
+            using()
+            req.onSpawn?.(pid)
+          },
+        })
+        .finally(() => {
+          trees.drop(m.task)
+          for (const sv of serves) usersOf.get(sv)?.delete(m.task)
+        })
       tasksCpuMs += res.cpuMs ?? 0
+      // What its servers did for it: its CPU as history books it.
+      const served = fit.take(m.task)
       const cpuShare = load.shareSince(
         crowd,
         res.cpuMs === undefined || !(res.durationMs > 0) ? undefined : res.cpuMs / res.durationMs,
@@ -559,6 +604,7 @@ export async function runWorker(opts: {
           : m.runKey
       await reply(m, key, others, {
         ...res,
+        ...(served > 0 ? { cpuMs: (res.cpuMs ?? 0) + served } : {}),
         output: output.chunks(),
         violations: back,
         ...(cpuShare === undefined ? {} : { cpuShare }),
@@ -626,7 +672,7 @@ export async function runWorker(opts: {
           realRoot = m.realRoot
           batch = m.n
           if (m.sandboxes !== undefined) {
-            if (floor === undefined) floor = localFloor(m.sandboxes)
+            if (floor === undefined) floor = newFloor(m.sandboxes)
             else await floor.rearm(m.sandboxes)
           }
           for (const t of m.tasks) {
@@ -664,6 +710,8 @@ export async function runWorker(opts: {
     process.off('SIGINT', onInt)
     process.off('SIGTERM', onTerm)
     trees.stop()
+    serverTrees.stop()
+    clearInterval(sampler)
     leaving.abort()
     for (const c of running.values()) c.abort()
     await Promise.all(work)
@@ -858,6 +906,8 @@ export function treeMeter(
   watch: (task: string, pid: number) => void
   drop: (task: string) => void
   now: () => number
+  /** One watched tree's cores over the last look. */
+  coresOf: (task: string) => number
   stop: () => void
 } {
   const watched = new Map<string, { pid: number; at: number; cpuMs: number; cores: number }>()
@@ -905,6 +955,7 @@ export function treeMeter(
       for (const w of watched.values()) cores += w.cores
       return Math.round(cores * 100) / 100
     },
+    coresOf: (task) => watched.get(task)?.cores ?? 0,
     stop,
   }
 }

@@ -113,6 +113,9 @@ export default { name: 's', tasks: {
   used: { exec: { command: 'echo $$ > ' + pid + ' && echo up && exec sleep 60', persistent: { readyWhen: 'up' } } },
   user: { dependsOn: ['used'], exec: { command: 'true' } },
   after: { dependsOn: ['user'], exec: { command: gone } },
+  // A server that keeps a core busy, and a dependant that uses none of its own.
+  hot: { exec: { command: 'echo up && exec sh -c "while :; do :; done"', persistent: { readyWhen: 'up' } } },
+  calm: { dependsOn: ['hot'], exec: { command: 'sleep 4' } },
 } }
 `,
     // Keys that fold a runtime probe: one every machine answers alike, one

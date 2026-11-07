@@ -41,10 +41,13 @@ export interface LocalFloor {
  * unix-socket filter are one per process, set from their union before the
  * first sandboxed task (`prepareSandbox`). A request that carries a
  * `signal` but no `liveChildren` has its children stopped here when it
- * aborts, the way a run's stop ends its own.
+ * aborts, the way a run's stop ends its own. `onServer` hears each
+ * server's pid as it spawns, and `undefined` as `stop` ends it: a worker
+ * meters what its servers use.
  */
 export function localFloor(
   sandboxes: readonly NonNullable<ExecConfig['sandbox']>[] = [],
+  onServer?: (taskId: string, pid: number | undefined) => void,
 ): LocalFloor {
   const local = localExecutor()
   const prepare = (list: typeof sandboxes) =>
@@ -106,6 +109,7 @@ export function localFloor(
     if (spawn.child === undefined) void gone()
     else {
       children.push(spawn.child)
+      onServer?.(spec.taskId, spawn.child.pid)
       void spawn.child.exited.then(gone, gone)
     }
     try {
@@ -201,6 +205,7 @@ export function localFloor(
       if (child === undefined) return
       const i = children.indexOf(child)
       if (i >= 0) children.splice(i, 1)
+      onServer?.(taskId, undefined)
       await stopServer(child)
     },
     async close() {

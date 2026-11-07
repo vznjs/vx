@@ -53,7 +53,8 @@ it('stops a server the run no longer needs, and starts it again for a later task
   dir = await mkdtemp(path.join(os.tmpdir(), 'vx-floor-srv-'))
   const log = path.join(dir, 'starts.log')
   const pid = path.join(dir, 'srv.pid')
-  const floor = localFloor()
+  const heard: [string, number | undefined][] = []
+  const floor = localFloor([], (id, p) => void heard.push([id, p]))
   const task = (n: number): ExecuteRequest => ({
     taskId: `s#t${n}`,
     workspaceRoot: dir,
@@ -82,6 +83,11 @@ it('stops a server the run no longer needs, and starts it again for a later task
     expect(isAlive(first)).toBe(true)
     await floor.stop('s#srv')
     expect(isAlive(first)).toBe(false)
+    // Its pid as it spawned, then its stop: what a worker meters.
+    expect(heard).toEqual([
+      ['s#srv', first],
+      ['s#srv', undefined],
+    ])
     // One it never started is nothing to stop.
     await floor.stop('s#other')
     expect((await floor.execute(task(2))).exitCode).toBe(0)

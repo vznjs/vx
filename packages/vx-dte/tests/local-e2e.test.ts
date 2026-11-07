@@ -232,6 +232,20 @@ it('stops a server on its worker once its last user finishes', () => {
   expect([r.exitCode, out.match(/^server-(gone|alive)$/m)?.[0]]).toEqual([0, 'server-gone'])
 }, 60_000)
 
+// A server's CPU is no task's own: charged to the dependant that made it
+// work, history books it, and the planner after it (2026-11-07).
+it('charges a server’s CPU to the dependant it served', () => {
+  expect(vx(['run', 's#calm'], 'e2e-hot').exitCode).toBe(0)
+  const r = vx([
+    'last',
+    '--sql',
+    "SELECT cpu_ms FROM runs WHERE task = 'calm' ORDER BY id DESC LIMIT 1",
+  ])
+  const cpu = Number(/\d+/.exec(r.stdout.toString())?.[0])
+  // 4 s beside a server burning a core, sampled each second: about 3 s.
+  expect(cpu).toBeGreaterThan(1500)
+}, 60_000)
+
 // No task ever runs on the orchestrator under dte(), only cache hits
 // restore there (2026-10-24): not a task that says
 // \`exec.remote: false\`, its dependant, an interactive one, or a server.
