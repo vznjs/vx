@@ -57,6 +57,14 @@ export interface SimOptions {
   readonly probe?: boolean
   /** How long a hit takes to restore (default 0: it ends at once). */
   readonly restoreMs?: number
+  /**
+   * When history lands (default 0, before any task is ready): until then
+   * every task is unmeasured, as on CI, where the default branch's
+   * timings come a moment into the run. The first plan waits for it, as
+   * the plugin's first ask does; the waiting rank and book again by it
+   * (`Orchestrator.rerank`).
+   */
+  readonly historyAt?: number
 }
 
 export interface SimWorker {
@@ -133,7 +141,9 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       } as unknown as TaskNode,
     ]),
   )
+  let learned = (options.historyAt ?? 0) <= 0
   const known = (id: string) => {
+    if (!learned) return undefined
     const t = byId.get(id)!
     return t.known === undefined ? t.ran : (t.known ?? undefined)
   }
@@ -158,7 +168,8 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     return platform === undefined ? b : { ...b, platform }
   }
   const durationMs = (id: string): number | undefined => known(id)?.ms
-  const tail = tailsMs(nodes, durationMs)
+  let tails = tailsMs(nodes, durationMs)
+  const tail = (id: string): number => tails(id)
 
   let now = 0
   const done = new Set<string>()
@@ -284,6 +295,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
   // As the plugin: the last plan, which stands while what it saw holds.
   const last: { forecast?: Forecast } = {}
   const replan = (): void => {
+    if (!learned) return
     const likely = options.likely ?? new Set<string>()
     if (executed.size === 0 && likely.size === 0) return
     // As the plugin: what is left takes as much longer than history as what ended did.
@@ -445,6 +457,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     for (const w of starting()) next = Math.min(next, joinAt.get(w.id)!)
     if (again !== undefined) next = Math.min(next, again)
     for (const at of restoring.values()) next = Math.min(next, at)
+    if (!learned) next = Math.min(next, options.historyAt!)
     if (next === Infinity) throw new Error(`sim: stuck at ${now} ms with ${queue.size} queued`)
     const dt = next - now
     for (const w of joined()) {
@@ -464,6 +477,13 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     }
     now = next
     if (again !== undefined && again <= now) again = undefined
+    if (!learned && options.historyAt! <= now) {
+      learned = true
+      needs.clear()
+      tails = tailsMs(nodes, durationMs)
+      // As the plugin's refine (`Orchestrator.rerank`).
+      queue.rerank()
+    }
     for (const w of starting()) if (joinAt.get(w.id)! <= now) w.joinedAt = now
     for (const [id, at] of restoring)
       if (at <= now) {

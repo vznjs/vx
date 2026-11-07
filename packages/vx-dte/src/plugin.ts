@@ -467,6 +467,7 @@ export function dte(options: DteOptions = {}) {
             defs: taskDefinitions(graph.values()),
           }).resourcesFor(ids)
           tails = undefined
+          orchestrator?.rerank()
         } catch (err) {
           ctx.warn(
             `[vx] dte: tasks are packed one core each: ${err instanceof Error ? err.message : String(err)}`,

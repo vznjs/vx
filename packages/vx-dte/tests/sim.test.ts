@@ -522,3 +522,62 @@ it('keeps a worker needed past the plan window when its size can start no other'
   })
   expect(r.endMs).toBeLessThan(160_000)
 })
+
+/**
+ * Main 1c91c9d's CI run (2026-11-07), as history said of it: long roots,
+ * short lints, and 46 core shards ready after `check.bun`.
+ */
+function ciShaped(): SimTask[] {
+  const t = (id: string, deps: string[], ms: number, cores: number): SimTask => ({
+    id,
+    deps,
+    exec: true,
+    cache: true,
+    ran: { ms, cores, memory: 3e8 },
+  })
+  const long = [
+    t('dte#test.wire', [], 73_200, 0.25),
+    t('reapi#test', [], 64_900, 0.44),
+    t('dte#test.units', [], 59_800, 0.43),
+    t('dte#test.rest', [], 49_800, 0.38),
+    t('lockfile#test', [], 49_100, 1.13),
+    t('migrate#test.shard-4', [], 48_200, 1.31),
+    t('dte#test.local-e2e', [], 46_700, 1.11),
+    t('dte#test.local-e2e-saves', [], 36_300, 0.99),
+  ]
+  const lints = Array.from({ length: 30 }, (_, i) =>
+    t(`lint${i}`, [], 4_000 + (i % 4) * 1_000, 1.5),
+  )
+  const shards = Array.from({ length: 46 }, (_, i) =>
+    t(`vx#test.bun.shard-${i + 1}`, ['vx#check.bun'], 20_000 + ((i * 7) % 41) * 1_000, 1.3),
+  )
+  return [t('vx#check.bun', [], 400, 0.25), ...long, ...lints, ...shards]
+}
+
+// Main 1c91c9d (2026-11-07): the roots joined the queue 0.7 s in, before
+// the default branch's timings landed, each ranked as an unknown task's
+// 30 s; the 46 shards ready after check.bun ranked by history and went
+// first. test.wire (73 s) began 129 s in, test.rest 135 s, while workers
+// took shards. The waiting rank again when history lands.
+it('ranks the waiting again when history lands: a long root goes before later shards', () => {
+  const graph = ciShaped()
+  // Workers joined 56 to 83 s in, one at a time.
+  const stagger = (n: number): number => 55_000 + n * 2_500
+  const known = simulate(graph, { sizes: [small], warmUpMs: stagger, likely: misses(graph) })
+  const late = simulate(graph, {
+    sizes: [small],
+    warmUpMs: stagger,
+    likely: misses(graph),
+    historyAt: 300,
+  })
+  const first = Math.min(...joined(late).map((w) => w.joinedAt!))
+  const shardStart = Math.min(
+    ...[...late.startedAt].filter(([id]) => id.includes('shard')).map(([, at]) => at),
+  )
+  // Each long root begins on the first workers to join, before any shard.
+  for (const id of ['dte#test.wire', 'reapi#test', 'dte#test.units', 'dte#test.rest']) {
+    expect(late.startedAt.get(id)).toBe(first)
+    expect(late.startedAt.get(id)!).toBeLessThanOrEqual(shardStart)
+  }
+  expect(late.endMs).toBeLessThanOrEqual(known.endMs * 1.02)
+})

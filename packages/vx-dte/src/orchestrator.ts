@@ -63,7 +63,8 @@ import { names } from './outputs.js'
 
 interface Job {
   readonly req: ExecuteRequest
-  readonly need: Need
+  /** Read as it joined the queue, and again while it waits when history changes (`rerank`). */
+  need: Need
   /** The cores and memory it holds on its worker: its need, or the whole worker for one that filled its worker. */
   held?: Need
   readonly resolve: (r: ExecuteResult) => void
@@ -567,6 +568,19 @@ export class Orchestrator {
       this.pumping = false
       this.pump()
     })
+  }
+
+  /**
+   * History changed (`need`, `tail`): the waiting book and rank by it. On
+   * CI the default branch's timings land a moment after the roots joined
+   * the queue, each booked as unmeasured and ranked as an unknown task:
+   * shards ready later went first, and test.wire waited 129 s (2026-11-07).
+   */
+  rerank(): void {
+    for (const [id, job] of this.waiting)
+      job.need = { ...this.o.need(id), platform: job.need.platform }
+    this.queue.rerank()
+    this.pumpSoon()
   }
 
   /** `jobs` wait, in order, behind the waiting tasks or, `front`, before them. */
