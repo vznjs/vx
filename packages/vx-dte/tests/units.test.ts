@@ -1482,6 +1482,31 @@ it('places the queued task the most of the run waits on first, not the first ask
   }
 })
 
+// Main 1c91c9d, 2026-11-07: the roots joined the queue before the default
+// branch's timings landed, each ranked as an unknown task; shards ready
+// later ranked by history and went first, and test.wire (73 s) began 129 s in.
+it('ranks the waiting again when history lands, not as they joined', async () => {
+  let learned = false
+  const tail = (id: string) =>
+    !learned ? 30_000 : id === 'wire' ? 73_000 : id.startsWith('s') ? 40_000 : 30_000
+  const ids = ['t1', 'wire', 's1', 's2']
+  const h = await harness(new Map(ids.map((id) => node(id))), undefined, undefined, undefined, tail)
+  try {
+    void h.o.execute(h.req('t1'))
+    void h.o.execute(h.req('wire'))
+    await Bun.sleep(20)
+    learned = true
+    h.o.rerank()
+    void h.o.execute(h.req('s1'))
+    void h.o.execute(h.req('s2'))
+    await Bun.sleep(20)
+    const a = await h.worker(1)
+    expect(await a.batches()).toEqual([['wire']])
+  } finally {
+    await h.stop()
+  }
+})
+
 it('a task’s tail is its duration and its longest chain of dependants', () => {
   const runs = (id: string, deps: string[] = []) =>
     [

@@ -5,7 +5,8 @@ Website: <https://vznjs.github.io/vx/> · source: <https://github.com/vznjs/vx>
 Distributed task execution for vx: one `vx run` spread over workers your
 own CI starts, replayed here as one run. The run you start is the
 orchestrator. It runs no task itself, only restores cache hits: it starts
-workers and hands the ready tasks to the workers with room, critical path first. A worker runs it in its own checkout and saves the task's
+workers and hands the ready tasks to the workers with room, critical path first,
+ranked by history and ranked again when fetched timings land. A worker runs it in its own checkout and saves the task's
 output and the files its declared outputs left to the workspace's cache,
 under the task's key. They land here before the task ends, so the run
 reports the task as its own. No file travels through the relay: it
