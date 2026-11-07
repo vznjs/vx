@@ -64,8 +64,10 @@ export interface RemoteCacheLayer {
   has(hash: string): Promise<ArtifactInfo | null>
   /** Optional batch probe: the stored subset in one round-trip; `null` = use per-hash. */
   hasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
-  /** Fetch an artifact; `null` = miss. Errors THROW. `body` is read once, by core; one it errors with `CorruptArtifactError` is bad bytes there. */
-  get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
+  /** Fetch an artifact; `null` = miss; `undefined` = no answer (the layer is off), which keeps the index's hits. Errors THROW. `body` is read once, by core; one it errors with `CorruptArtifactError` is bad bytes there. */
+  get(
+    hash: string,
+  ): Promise<{ body: Blob | Response; durationMs: number | undefined } | null | undefined>
   /** Store an artifact (fire-and-forget from LayeredCache's PoV). File-backed when local holds it. A held key keeps its bytes unless `replace`. `false`: nothing sent, nothing failed; no upload counted. */
   put(hash: string, body: Blob, meta: { durationMs: number; replace?: true }): Promise<void | false>
   /** Optional: the run found `hash` in no remote and a `put` follows; a wire that checks first can skip it. */

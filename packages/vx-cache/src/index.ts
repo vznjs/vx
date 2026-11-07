@@ -26,7 +26,7 @@ export interface VxCacheOptions {
   issuer: string
   /** The repository at that issuer, `org/name`. */
   repository: string
-  /** Per-request deadline for reads and queries (default 30 s); a download's bounds its answer, then each gap between its bytes. */
+  /** Per-request deadline for reads and queries (default 30 s); a download's bounds its answer, then its bytes must arrive at 1 MiB a second over each. */
   timeoutMs?: number
   /** … and for an upload (default 60 s): its bytes must leave at 1 MiB a second over each, then its answer come within one. */
   uploadTimeoutMs?: number
@@ -722,19 +722,21 @@ export class VxCacheLayer implements RemoteCacheLayer {
    * main's (2026-11-06). More refs than the server's `maxCheckHashes` go
    * in several, in order.
    */
-  async get(hash: string): Promise<{ body: Response; durationMs: undefined } | null> {
+  async get(hash: string): Promise<{ body: Response; durationMs: undefined } | null | undefined> {
     this.sayUnsaid()
     const at = this.found.get(hash)
     const scopes = at === undefined ? this.scopes : [at]
     for (let next = 0; next < scopes.length;) {
-      if (this.disabled) return null
+      // Off, or refused: no answer, which core keeps apart from a miss (a
+      // null forgot each hit the index kept, the remote never asked).
+      if (this.disabled) return undefined
       const some = scopes.slice(next, next + (this.limits?.maxCheckHashes ?? scopes.length))
       const res = await this.request(`/v1/artifacts/${hash}`, {
         method: 'GET',
         headers: { 'vx-scope': some.join(', ') },
         streamed: true,
       })
-      if (res === undefined) return null
+      if (res === undefined) return undefined
       if (res.status === 404) {
         await res.body?.cancel()
         next += some.length

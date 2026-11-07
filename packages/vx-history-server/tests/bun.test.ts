@@ -513,7 +513,7 @@ it('refuses to start without AUDIENCE', () => {
   )
   expect([cli.exitCode, stderrOf(cli).split('\n')[0]]).toEqual([
     2,
-    'set AUDIENCE: the aud a CI token names, the URL clients reach this server at',
+    'set AUDIENCE: the aud a CI token names, the origin clients reach this server at',
   ])
 })
 

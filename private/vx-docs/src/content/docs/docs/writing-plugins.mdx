@@ -427,7 +427,7 @@ Return a `RemoteCacheLayer` from the `cache` hook:
 | Method | Does |
 | --- | --- |
 | `has(hash)` | `null` when the remote lacks it, else what it knows: `{ size, durationMs }` or `{}` |
-| `get(hash)` | `{ body, durationMs }`, or `null` for a miss |
+| `get(hash)` | `{ body, durationMs }`, `null` for a miss, or `undefined` when your layer is off and asked nothing: a miss that keeps what earlier runs found |
 | `put(hash, body, meta)` | stores it; resolves `false` when it sent nothing (no token, writes off), so no upload is counted |
 | `hasMany(hashes)` | optional: only when your server answers many keys in one call |
 | `missing(hash)` | optional: called before a `put` with a key no remote had, so check nothing first |

@@ -84,7 +84,8 @@ The history server gets them as they are ([What it keeps](history/#what-it-keeps
 A renamed repository starts with an empty cache.
 
 `AUDIENCE` is the `aud` a token must name: the URL clients reach the
-server at, which is what the plugins ask the CI for.
+server at, which is what the plugins ask the CI for. The cache and
+history servers read it as its origin, which is what their plugins ask for.
 
 On Workers, leave it unset and it is that URL. On Bun and Docker, set
 it: there the URL is the request's `Host` header, which a client picks.

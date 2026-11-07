@@ -45,7 +45,7 @@ request with no token `401`.
 
 A request's `Authorization: Bearer <token>` is a CI job's OIDC token
 (GitHub Actions, GitLab CI): there is no other. Its signature,
-`RS256`, `exp` and `aud` (the server's own) are checked, and the token
+`RS256`, `exp` and `aud` (the server's own origin) are checked, and the token
 alone decides what it reads and where it writes, by the server's
 `ALLOW` (`issuer:owner/repo:workflow` entries):
 

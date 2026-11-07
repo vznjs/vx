@@ -10,6 +10,7 @@ import { UserError } from '@vzn/vx'
 import { hashPart, oidcAuth } from '@vzn/vx-devtools'
 import { createCacheServer } from '@vzn/vx-cache-server'
 import type { JWTPayload } from 'jose'
+import { Cache, indexDb } from '../../vx/src/cache/index.js'
 import { run } from '../../vx/tests/helpers/orchestrator.js'
 import { silentLogger } from '../../vx/tests/helpers/orchestrator-fixture.js'
 import {
@@ -399,6 +400,8 @@ describe('VxCacheLayer', () => {
     // No answer, not "none held": core rewrites the keys a has-many answers
     // (`remote_hits`), and an empty map forgot every hit the remote holds.
     expect(await c.hasMany(['aa11'])).toBeNull()
+    // … and a download's: a null forgot the hit.
+    expect(await c.get('aa11')).toBeUndefined()
     expect(srv.seen.length).toBe(n)
   })
 
@@ -1413,6 +1416,43 @@ describe('vx run with vxCache()', () => {
         .map((r) => `${r.method} ${r.path.replace(/[0-9a-f]+$/, '<hash>')}`)
         .sort(),
     ).toEqual(['GET /v1/artifacts/<hash>', 'POST /v1/artifacts'])
+  })
+
+  // A refused token answered nothing: its download's null forgot the hits
+  // the index kept, and the next run with a good token fetched none.
+  it('a run whose token is refused keeps the hits the index holds', async () => {
+    const cacheDir = path.join(root, '.vx', 'cache')
+    const log = silentLogger({ root, log: [], err: [] })
+    await run({ cwd: root, tasks: ['build'], handleSignals: false, cacheDir, log })
+    await rm(cacheDir, { recursive: true, force: true })
+    await run({ cwd: root, tasks: ['build'], handleSignals: false, cacheDir, log })
+    const hits = (): number => {
+      const local = new Cache(cacheDir)
+      try {
+        return (
+          indexDb(local).query('SELECT count(*) AS n FROM remote_hits').get() as { n: number }
+        ).n
+      } finally {
+        local.close()
+      }
+    }
+    expect(hits()).toBe(1)
+    const token = Bun.env.VX_CACHE_TOKEN
+    Bun.env.VX_CACHE_TOKEN = 'nope'
+    try {
+      const r = await run({
+        cwd: root,
+        tasks: ['build'],
+        handleSignals: false,
+        cacheDir,
+        cache: { localRead: false, localWrite: false, remoteRead: true, remoteWrite: false },
+        log,
+      })
+      expect(r.outcomes.map((o) => o.status)).toEqual(['success'])
+    } finally {
+      Bun.env.VX_CACHE_TOKEN = token
+    }
+    expect(hits()).toBe(1)
   })
 
   // Bun.serve sends a streamed answer chunked, with no Content-Length
