@@ -226,29 +226,37 @@ describe('VxCacheLayer', () => {
     }
   })
 
-  it('uploads each artifact alone by PUT, at most four at once', async () => {
+  // Core bounds uploads (`cache.concurrency.upload`, 64 to 96): a cap
+  // of four here held a 1,500-task cold run 11 s past its last task on a
+  // remote 40 ms away.
+  it('uploads each artifact alone by PUT, as many at once as core sends', async () => {
+    const keys = ['e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7']
     let open = 0
     let most = 0
+    const all = Promise.withResolvers<void>()
     const counted: typeof fetch = Object.assign(
       async (input: string | URL | Request, init?: RequestInit) => {
-        if (init?.method === 'PUT') most = Math.max(most, ++open)
+        if (init?.method !== 'PUT') return fetch(input, init)
+        most = Math.max(most, ++open)
+        if (open === keys.length) all.resolve()
+        // Held until every upload is open; a cap below them gives up after a second.
+        await Promise.race([all.promise, Bun.sleep(1000)])
         try {
           return await fetch(input, init)
         } finally {
-          if (init?.method === 'PUT') open--
+          open--
         }
       },
       { preconnect: fetch.preconnect },
     )
     const c = layer(srv.url, write, [MAIN], counted)
     const before = srv.seen.length
-    const keys = ['e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7']
     await Promise.all(keys.map((k) => c.put(k, new Blob([k]), { durationMs: 1 })))
     const seen = srv.seen.slice(before).filter((r) => r.path !== '/v1/capabilities')
     expect(seen.map((r) => [r.method, r.path]).sort(byJson)).toEqual(
       keys.map((k) => ['PUT', `/v1/artifacts/${k}`]),
     )
-    expect(most).toBe(4)
+    expect(most).toBe(keys.length)
     for (const k of keys) expect(await (await c.get(k))!.body.text()).toBe(k)
   })
 

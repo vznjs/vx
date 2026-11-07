@@ -70,8 +70,6 @@ const LEND_MARGIN_MS = 5 * 60_000
 const ASK_ATTEMPTS = 3
 /** A connection that dropped, not a server that answered: an upload is sent again. */
 const RESET = new Set(['ECONNRESET', 'EPIPE', 'ECONNREFUSED'])
-/** Uploads open at once; more wait. */
-const IN_FLIGHT = 4
 
 /**
  * The names a request sets itself: one of them in `headers`, in another
@@ -315,39 +313,6 @@ function paced(
   return { body, stop: window.stop }
 }
 
-/**
- * Uploads: up to `IN_FLIGHT` at once, each one artifact by `PUT`, whose
- * bytes reach the bucket untouched (2026-10-25: no batch upload; a
- * batch passes through the server's code, which on Workers costs CPU by the
- * byte, and a 40 MB one ran out of it).
- */
-class Lane<T, R> {
-  private readonly waiting: { item: T; resolve(r: R): void; reject(err: unknown): void }[] = []
-  private open = 0
-
-  constructor(private readonly send: (item: T) => Promise<R>) {}
-
-  push(item: T): Promise<R> {
-    const { promise, resolve, reject } = Promise.withResolvers<R>()
-    this.waiting.push({ item, resolve, reject })
-    this.pump()
-    return promise
-  }
-
-  private pump(): void {
-    while (this.open < IN_FLIGHT && this.waiting.length > 0) {
-      const w = this.waiting.shift()!
-      this.open++
-      void this.send(w.item)
-        .then(w.resolve, w.reject)
-        .finally(() => {
-          this.open--
-          this.pump()
-        })
-    }
-  }
-}
-
 /** The limits a server names on each `/v1/artifacts` answer (`vx-max-*`). */
 interface Limits {
   readonly maxCheckHashes: number
@@ -379,7 +344,7 @@ function limitsNamed(res: Response): Limits | undefined {
 
 /**
  * The seam over vx-cache v1. `has` and `hasMany` are `check`, `get` a
- * download and `put` an upload by `PUT` (`Lane`). A check names the
+ * download and `put` an upload by `PUT`. A check names the
  * scope of each ref the run reads, in order, and the first holding a hash
  * answers it; a download names the scope its check found. A refused token (401/403) throws
  * once, for core to report, and turns the layer off for the run; an
@@ -410,10 +375,6 @@ export class VxCacheLayer implements RemoteCacheLayer {
   private limits: Limits | undefined
   /** Where the layer says what is no failure of a request: core's `ctx.warn`. */
   warn: (message: string) => void = () => {}
-
-  private readonly uploads = new Lane<{ hash: string; body: Blob }, void | false>((item) =>
-    this.upload(item),
-  )
 
   /** The issuer and repository, named on every request by their hashes. */
   private readonly named: Readonly<Record<string, string>>
@@ -820,10 +781,18 @@ export class VxCacheLayer implements RemoteCacheLayer {
       )
       return false
     }
-    return this.uploads.push({ hash, body })
+    return this.upload({ hash, body })
   }
 
-  /** One artifact by `PUT`: the server answers one its scope holds before reading the bytes. */
+  /**
+   * One artifact by `PUT`, its bytes reaching the bucket untouched
+   * (2026-10-25: no batch upload; a batch passes through the server's code,
+   * which on Workers costs CPU by the byte, and a 40 MB one ran out of it).
+   * The server answers one its scope holds before reading the bytes. As
+   * many at once as core sends (`cache.concurrency.upload`): a cap of four
+   * here held a 1,500-task cold run 11 s past its last task on a remote
+   * 40 ms away, the setting unheard.
+   */
   private async upload(item: { hash: string; body: Blob }): Promise<void | false> {
     // Queued before the remote or its writes were turned off.
     if (this.disabled || this.writesRefused) return false

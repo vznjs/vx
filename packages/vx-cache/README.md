@@ -114,7 +114,8 @@ once, in chunks of the `maxCheckHashes` lookups its refusal names, all at
 once, so a server restarted with lower ones costs one check a round-trip,
 not the run its reads. A run reading more refs than one check takes
 (Workers' default is 6) spreads each hash's scopes over several. Each
-upload is one artifact by `PUT`, up to four at once: its bytes reach the
+upload is one artifact by `PUT`, as many at once as core's
+`cache.concurrency.upload` lets (64 to 96 by default): its bytes reach the
 bucket untouched by the server's code (a batch, split by that code, ran
 out of Workers' CPU). An artifact over the server's upload limit is not sent: it
 is said once. An answer is read no further than its use: 64 KiB for a
