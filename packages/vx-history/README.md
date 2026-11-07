@@ -59,7 +59,7 @@ most 2 s more for it (core bounds a teardown at 3 s); one not done by
 then is dropped and said, with how many timings it held. A task that shared a crowded worker's
 cores is sent as long as it would have taken alone, and its cores at
 most its machine's, as local history keeps them. A refusal is said with the server's
-words. An answer is read no further than the protocol's largest (64 KiB,
+words, each token the request sent written `***`. An answer is read no further than the protocol's largest (64 KiB,
 and 2 KiB more per hash a query asks): a longer one, a server's endless
 stream, is refused as `answered over N bytes`. A refused token (401) also names the repository and issuer the
 workspace declares and the audience it must carry, and the server is
