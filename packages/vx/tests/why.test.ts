@@ -888,6 +888,15 @@ describe('vx why in a workspace that never ran (E-39)', () => {
           err: `› vx why  no project declares ${target}\n\n  fix  vx show lists the tasks\n`,
         })
       }
+      // At a root whose own project has only the default build, a bare
+      // `vx run build` is refused: the advice is the run that works.
+      await writeFile(path.join(root, 'vx.config.mjs'), 'export default { tasks: {} }\n')
+      expect((await vx(root, ['lock'])).code).toBe(0)
+      const atRoot = await vx(root, ['why', 'build'])
+      expect({ code: atRoot.code, err: atRoot.err }).toEqual({
+        code: 1,
+        err: '› vx why  no runs of build yet\n\n  fix  vx run build --all\n',
+      })
     } finally {
       await rm(root, { recursive: true, force: true })
     }
