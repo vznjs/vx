@@ -1478,8 +1478,10 @@ export class BoundedCapture {
    * The same output under tighter bounds. What this capture already
    * dropped is counted in the new one's dropped line: pushed through
    * `chunks()`, the old line fell into the new middle with its count.
-   * `through` maps each side's chunks before the new cut (the store's
-   * mask), so the cut cannot split a value first.
+   * `through` maps the chunks before the new cut (the store's mask), so
+   * the cut cannot split a value first: each side apart only when this
+   * capture dropped text between them, else a value across the head's end
+   * was matched by neither side.
    */
   rebound(
     headChars: number,
@@ -1487,8 +1489,8 @@ export class BoundedCapture {
     through: (chunks: CapturedChunk[]) => CapturedChunk[] = (c) => c,
   ): BoundedCapture {
     const to = new BoundedCapture(headChars, tailChars)
-    for (const c of through(this.head)) to.push(c.text, c.err)
-    for (const c of through(this.tail)) to.push(c.text, c.err)
+    const sides = this.dropped === 0 ? [[...this.head, ...this.tail]] : [this.head, this.tail]
+    for (const side of sides) for (const c of through(side)) to.push(c.text, c.err)
     to.dropped += this.dropped
     return to
   }
