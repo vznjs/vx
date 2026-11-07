@@ -410,6 +410,17 @@ function failedWithWrites(db: Database, id: string | null): number {
   return row !== null && writesCache(row.p) ? row.f : 0
 }
 
+const NO_WRITE = '--no-cache, or a --cache-policy without write'
+
+/** False only when the run's recorded policy writes no cache; an unrecorded one may have. */
+function runWritesCache(db: Database, id: string | null): boolean {
+  if (id === null) return true
+  const row = db.query('SELECT cache_policy AS p FROM invocations WHERE run_id = ?').get(id) as {
+    p: string
+  } | null
+  return row === null || writesCache(row.p)
+}
+
 /**
  * The endings an UNCHANGED cache key can have. A re-execution is told apart
  * by the evidence the index holds: every one used to blame `--no-cache` /
@@ -842,7 +853,13 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
   // the failure, or the one that broke it).
   // So did one that passed beside a failed task (--continue).
   const tainted = isPassStatus(prev.status) && failedWithWrites(db, prev.runId) > 0
-  if (cur.length > 0 && old.length === 0 && (!isPassStatus(prev.status) || tainted)) {
+  // So did one whose run wrote no cache (--no-cache, a read-only policy).
+  const prevNoWrite = isPassStatus(prev.status) && !runWritesCache(db, prev.runId)
+  if (
+    cur.length > 0 &&
+    old.length === 0 &&
+    (!isPassStatus(prev.status) || tainted || prevNoWrite)
+  ) {
     const saved = db
       .query(
         `SELECT run_id AS runId, hash FROM runs
@@ -853,7 +870,12 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
       .get(project, task, this_.id) as { runId: string | null; hash: string } | undefined
     if (saved) {
       const { entries, unchangedCount } = diffKeyComponents(loadEntryInputs(db, saved.hash), cur)
-      const since = `run ${saved.runId}, the last that saved an entry (${tainted ? 'the previous run ran beside a failed task, so it was not saved' : `the previous run ended ${prev.status}`})`
+      const why = tainted
+        ? 'the previous run ran beside a failed task, so it was not saved'
+        : prevNoWrite
+          ? `the previous run did not write the cache: ${NO_WRITE}`
+          : `the previous run ended ${prev.status}`
+      const since = `run ${saved.runId}, the last that saved an entry (${why})`
       return {
         runId,
         taskId,
@@ -878,11 +900,15 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
     const unsaved =
       cur.length === 0 && !isPassStatus(this_.status)
         ? `this run ended ${this_.status}`
-        : old.length === 0 && !isPassStatus(prev.status)
-          ? `the previous run ended ${prev.status}`
-          : old.length === 0 && tainted
-            ? 'the previous run ran beside a failed task'
-            : null
+        : cur.length === 0 && !runWritesCache(db, runId)
+          ? `this run did not write the cache (${NO_WRITE})`
+          : old.length === 0 && !isPassStatus(prev.status)
+            ? `the previous run ended ${prev.status}`
+            : old.length === 0 && tainted
+              ? 'the previous run ran beside a failed task'
+              : old.length === 0 && prevNoWrite
+                ? `the previous run did not write the cache (${NO_WRITE})`
+                : null
     return {
       runId,
       taskId,

@@ -155,8 +155,8 @@ async function resolveTarget(
   cache: Cache,
   target: string,
   cwdProject: () => Promise<string | null>,
-  declared: () => Promise<boolean>,
-  declaresId: (id: string) => Promise<boolean>,
+  declared: () => Promise<Declared>,
+  declaresId: (id: string) => Promise<Declared>,
 ): Promise<string> {
   const db = indexDb(cache)
   if (target.includes('#')) {
@@ -168,6 +168,7 @@ async function resolveTarget(
       .query('SELECT 1 FROM main.runs WHERE project = ? AND task = ? ORDER BY id DESC LIMIT 1')
       .get(project, task)
     if (hit !== null) return target
+    if ((await declaresId(target)) === 'group') throw groupRefusal(target)
   } else {
     // A bare name reads only its own task's rows: the DISTINCT over every
     // pair sorted the whole history (24 of 26 ms at 58k rows), and its list
@@ -179,13 +180,17 @@ async function resolveTarget(
         project: string
       }[]
     ).map((r) => `${r.project}#${target}`)
-    const here = matches.length > 0 ? await cwdProject() : null
+    // Asked even when no project ran it: the cwd project's own that never
+    // ran read as a name nobody declares.
+    const here = await cwdProject()
     if (here !== null) {
       const own = `${here}#${target}`
       if (matches.includes(own)) return own
       // `vx run build` here runs this project's own: another project's
       // runs were explained in its place, unsaid.
-      if (await declaresId(own)) {
+      const kind = await declaresId(own)
+      if (kind === 'group') throw groupRefusal(own)
+      if (kind !== false) {
         throw refusal(
           { tone: 'info', headline: `no runs of ${own} yet`, fix: `vx run ${target}` },
           { code: 'VX_E_NO_HISTORY', message: `vx why: no recorded runs for "${own}"` },
@@ -212,7 +217,7 @@ async function resolveTarget(
     // Where the cwd's project does not declare it (a monorepo root), a bare
     // `vx run build` is refused too: that advice sent the user in a circle.
     const here = known && !target.includes('#') ? await cwdProject() : null
-    const all = here !== null && !(await declaresId(`${here}#${target}`)) ? ' --all' : ''
+    const all = here !== null && (await declaresId(`${here}#${target}`)) === false ? ' --all' : ''
     throw refusal(
       known
         ? { tone: 'info', headline: `no runs of ${target} yet`, fix: `vx run ${target}${all}` }
@@ -522,21 +527,39 @@ function upstreamTodo(upstream: readonly DiffEntry[], unrecorded: readonly DiffE
   return out
 }
 
-/** Whether a project declares `target` (`pkg#task`, or a bare task); true when no config loads. */
-async function declares(root: string, target: string, own = false): Promise<boolean> {
+/** A declared group (no `exec`) records no run: `group` when every declaration is one. */
+type Declared = false | 'task' | 'group'
+
+/** Whether a project declares `target` (`pkg#task`, or a bare task); `task` when no config loads. */
+async function declares(root: string, target: string, own = false): Promise<Declared> {
   try {
     const projects = await loadCliProjects(root, await discoverCliProjects(root), 'all')
     const [project, task] = target.includes('#') ? splitTaskId(target) : [undefined, target]
-    return [...projects.values()].some(
-      (p) =>
-        (project === undefined || p.name === project) &&
+    const found = [...projects.values()].flatMap((p) => {
+      const t = p.config.tasks?.[task]
+      return (project === undefined || p.name === project) &&
         Object.hasOwn(p.config.tasks ?? {}, task) &&
-        !(own && isDefaultBuild(p.config.tasks?.[task])),
-    )
+        !(own && isDefaultBuild(t))
+        ? [t]
+        : []
+    })
+    if (found.length === 0) return false
+    // The default build is a group too, but no one declared it.
+    return found.every((t) => t?.exec === undefined && !isDefaultBuild(t)) ? 'group' : 'task'
   } catch {
     // quiet: with no lock or a broken config, the run says why itself
-    return true
+    return 'task'
   }
+}
+
+function groupRefusal(id: string): UserError {
+  return refusal(
+    { tone: 'info', headline: `${id} is a group, which records no run`, fix: `vx show ${id}` },
+    {
+      code: 'VX_E_NO_HISTORY',
+      message: `vx why: ${id} is a group, which records no run (vx show ${id} names what it gathers)`,
+    },
+  )
 }
 
 /**
