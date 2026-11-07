@@ -35,6 +35,10 @@ export function maskedStreams(
   emitErr: (text: string) => void,
   idleMs?: number,
 ): { out(chunk: string): void; err(chunk: string): void; end(): void }
+export function maskStreams(
+  chunks: ReadonlyArray<{ text: string; err: boolean }>,
+  mask: SecretMask | undefined,
+): Array<{ text: string; err: boolean }> // each stream's whole text masked
 ```
 
 A variable is masked when its name holds `TOKEN`, `SECRET`, `KEY`,
@@ -61,17 +65,19 @@ split across two chunks is caught and output that cannot be one (a
 characters do not wait for its exit, and before a chunk on the other
 stream, so stdout and stderr keep the order the task wrote them in; a
 value split by a longer pause, or by a write to the other stream, is
-not caught on screen. What vx stores of the output (`encodeOutputLog`,
-`failedOutputLog`) and a replayed hit mask each stream's whole text
-again through `spans` (`maskStreams`), a write to the other stream
-between the pieces included, so no stored copy keeps a value a pause
-split. `maskCut` masks the two sides of a
+not caught where it streams live. What vx stores of the output
+(`encodeOutputLog`, `failedOutputLog`), a replayed hit and a buffered
+frame (`report/logger.ts`, the CI default) mask each stream's whole
+text again through `spans` (`maskStreams`), a write to the other stream
+between the pieces included, so no stored or framed copy keeps a value
+a pause split. `maskCut` masks the two sides of a
 cut whose middle is gone: a value the cut split leaves a piece at the
 end of `head` or the start of `tail`, and each piece is masked too.
 
 Callers: `orchestrator/execute-task.ts` (live output, captured stdout),
 `orchestrator/hit-restore.ts` (a replayed hit's output),
-`report/framed-output.ts`, `report/events.ts` and
+`orchestrator/output-log.ts` (the stored log), `report/logger.ts` (a
+buffered frame), `report/framed-output.ts`, `report/events.ts` and
 `orchestrator/telemetry.ts` (the command; `events.ts` also masks every
 status line, where plugin warnings land, L-40), `orchestrator/remote-prefetch.ts`
 (the command a remote hit's entry row stores), `cli/show.ts`, `cli/plugin-commands.ts` and `cli/select.ts` (a

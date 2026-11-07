@@ -88,6 +88,27 @@ export interface OutputWriterOptions {
 /** What `coalesce` holds before it writes without waiting for the turn's end. */
 const HELD_MAX_CHARS = 64 * 1024
 
+/** The longest piece of a string handed to the stream in one write. */
+const WRITE_SLICE_CHARS = 1024 * 1024
+
+/**
+ * `text` in slices: a stream encodes a string whole before it writes, and
+ * a frame's furniture makes its text two bytes a character, so one 100 MB
+ * frame took ~300 MB more to write than to build.
+ */
+function writeSliced(stream: StatusStream, text: string): void {
+  let at = 0
+  while (text.length - at > WRITE_SLICE_CHARS) {
+    let end = at + WRITE_SLICE_CHARS
+    // Never between the halves of a surrogate pair.
+    const c = text.charCodeAt(end - 1)
+    if (c >= 0xd800 && c <= 0xdbff) end--
+    stream.write(text.slice(at, end))
+    at = end
+  }
+  stream.write(at === 0 ? text : text.slice(at))
+}
+
 export function createOutputWriter(
   stream: StatusStream,
   opts: OutputWriterOptions = {},
@@ -110,7 +131,7 @@ export function createOutputWriter(
     held.length = 0
     heldChars = 0
     lastFlush = now()
-    stream.write(text)
+    writeSliced(stream, text)
   }
   const flushHeld = (): void => {
     flushQueued = false
@@ -295,7 +316,13 @@ export function createOutputWriter(
     write(chunk) {
       if (!enabled) {
         if (held === null) {
-          stream.write(chunk)
+          writeSliced(stream, chunk)
+          return
+        }
+        // A big write goes as it is: joined with what is held, it was copied.
+        if (chunk.length >= HELD_MAX_CHARS) {
+          writeHeld()
+          writeSliced(stream, chunk)
           return
         }
         held.push(chunk)

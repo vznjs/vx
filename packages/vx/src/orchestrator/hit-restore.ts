@@ -24,6 +24,7 @@ import type { TaskOutcome } from '../graph/index.js'
 import {
   asTrees,
   relPosix,
+  maskStreams,
   secretMask,
   span,
   splitNegations,
@@ -32,7 +33,7 @@ import {
 } from '../util/index.js'
 import type { ExecuteArgs } from './execute-task.js'
 import { entryHolds } from './miss-save.js'
-import { decodeOutputLog, maskStreams } from './output-log.js'
+import { decodeOutputLog } from './output-log.js'
 
 export interface RestoreHitArgs {
   args: ExecuteArgs

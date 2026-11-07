@@ -121,8 +121,10 @@ export function formatTaskBlock(
 
   lines.push(
     `${corner('└─')} ${mark}${idPainted}${whereNote(outcome, colors)} ${corner('──')}${running ? runningFooter(outcome, colors) : formatBlockFooter(outcome, colors)}`,
+    '',
   )
-  return lines.join('\n') + '\n'
+  // Not `+ '\n'`: a rope over a 100 MB frame was flattened into a copy.
+  return lines.join('\n')
 }
 
 /** What a bounded capture dropped from its head, so a capped log never reads as whole. */
@@ -173,27 +175,41 @@ function pushOutputSection(
   if (lost > 0) {
     lines.push(droppedNote(lost, colors))
   }
-  const body: Array<{ text: string; err: boolean }> = []
+  const emit = (line: string, err: boolean): void => {
+    const text = link === undefined ? line : link(line)
+    if (!err || !colors.enabled) lines.push(text)
+    else lines.push(hasEscape(line) ? text : paint('error', text, colors))
+  }
+  // A run of whole lines nothing restyles is pushed as one slice, its
+  // newlines inside: an object and a string per line peaked a 50 MB log's
+  // frame at ~11x its size.
   let open: { parts: string[]; err: boolean } | null = null
   for (const c of output) {
-    let rest = c.text
-    while (rest.length > 0) {
-      const nl = rest.indexOf('\n')
-      const piece = nl < 0 ? rest : rest.slice(0, nl)
-      if (open === null) open = { parts: [], err: c.err }
-      open.parts.push(piece)
-      if (nl < 0) break
-      body.push({ text: open.parts.join(''), err: open.err })
+    const text = c.text
+    let at = 0
+    if (open !== null) {
+      const nl = text.indexOf('\n')
+      open.parts.push(nl < 0 ? text : text.slice(0, nl))
+      if (nl < 0) continue
+      emit(open.parts.join(''), open.err)
       open = null
-      rest = rest.slice(nl + 1)
+      at = nl + 1
     }
+    if (link === undefined && (!c.err || !colors.enabled)) {
+      const last = text.lastIndexOf('\n')
+      if (last >= at) {
+        lines.push(text.slice(at, last))
+        at = last + 1
+      }
+    } else {
+      for (let nl = text.indexOf('\n', at); nl >= 0; nl = text.indexOf('\n', at)) {
+        emit(text.slice(at, nl), c.err)
+        at = nl + 1
+      }
+    }
+    if (at < text.length) open = { parts: [text.slice(at)], err: c.err }
   }
-  if (open !== null) body.push({ text: open.parts.join(''), err: open.err })
-  for (const l of body) {
-    const text = link === undefined ? l.text : link(l.text)
-    if (!l.err || !colors.enabled) lines.push(text)
-    else lines.push(hasEscape(l.text) ? text : paint('error', text, colors))
-  }
+  if (open !== null) emit(open.parts.join(''), open.err)
   const styled = output.findLast((c) => hasEscape(c.text))
   if (styled !== undefined && leavesStyle(styled.text)) lines.push(`${lines.pop()}${STYLE_END}`)
   lines.push('')

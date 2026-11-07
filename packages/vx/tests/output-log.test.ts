@@ -7,9 +7,8 @@ import {
   decodeOutputLog,
   encodeOutputLog,
   maskedOutputLog,
-  maskStreams,
 } from '../src/orchestrator/output-log.js'
-import { MASKED, secretMask } from '../src/util/index.js'
+import { MASKED, maskStreams, secretMask } from '../src/util/index.js'
 
 const out = (text: string) => ({ text, err: false })
 const err = (text: string) => ({ text, err: true })

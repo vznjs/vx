@@ -137,6 +137,14 @@ and settles the coalesced writes; in `full`, `focused` and `broad` a
 live frame opens before it and closes after, and what vx says about it
 (a timeout, a shell verdict) streams inside.
 
+A buffered frame masks the task's secrets in each stream's whole text
+(`maskStreams`), as the stored log does: the live mask let a value the
+task wrote in two pieces through as two clean chunks. A hit's replay
+was masked whole already. A frame of 1 Mi characters or more is written
+in pieces (`head`, the block, `tail`), never copied into one string: a
+100 MB log's frame took vx from 408 MB to 1.19 GB, and 577 MB with
+this and the writer's slicing (`status-line.md`).
+
 `status()` lines (header, summary) always print. Group tasks never
 print in any mode. A ready persistent task the run keeps (`vx run dev`)
 is held to a bounded tail until `runEnd`, which flushes it before the
