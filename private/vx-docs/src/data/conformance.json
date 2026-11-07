@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 227,
+    "ported": 228,
     "rest": {
       "pending": [
         "clean-readonly-dir",
@@ -875,7 +875,6 @@
         "user-error-classify",
         "util-hash",
         "util-num",
-        "util-paths",
         "util-procfs",
         "util-settle",
         "util-size",
@@ -1006,14 +1005,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 983,
-        "can": 983,
-        "of": 985
+        "pass": 985,
+        "can": 985,
+        "of": 987
       },
       "correctness": {
-        "pass": 807,
-        "can": 807,
-        "of": 809
+        "pass": 809,
+        "can": 809,
+        "of": 811
       },
       "efficiency": {
         "pass": 167,
@@ -1051,9 +1050,9 @@
         "of": 42
       },
       "inputs": {
-        "pass": 302,
-        "can": 302,
-        "of": 302
+        "pass": 303,
+        "can": 303,
+        "of": 303
       },
       "env": {
         "pass": 31,
@@ -1061,9 +1060,9 @@
         "of": 33
       },
       "outputs": {
-        "pass": 223,
-        "can": 223,
-        "of": 223
+        "pass": 224,
+        "can": 224,
+        "of": 224
       },
       "report": {
         "pass": 9,
@@ -1083,14 +1082,14 @@
     },
     "turbo": {
       "all": {
-        "pass": 628,
-        "can": 902,
-        "of": 985
+        "pass": 629,
+        "can": 904,
+        "of": 987
       },
       "correctness": {
-        "pass": 507,
-        "can": 732,
-        "of": 809
+        "pass": 508,
+        "can": 734,
+        "of": 811
       },
       "efficiency": {
         "pass": 117,
@@ -1129,8 +1128,8 @@
       },
       "inputs": {
         "pass": 187,
-        "can": 292,
-        "of": 302
+        "can": 293,
+        "of": 303
       },
       "env": {
         "pass": 27,
@@ -1138,9 +1137,9 @@
         "of": 33
       },
       "outputs": {
-        "pass": 160,
-        "can": 220,
-        "of": 223
+        "pass": 161,
+        "can": 221,
+        "of": 224
       },
       "report": {
         "pass": 4,
@@ -1160,14 +1159,14 @@
     },
     "nx": {
       "all": {
-        "pass": 641,
-        "can": 927,
-        "of": 985
+        "pass": 642,
+        "can": 929,
+        "of": 987
       },
       "correctness": {
-        "pass": 483,
-        "can": 753,
-        "of": 809
+        "pass": 484,
+        "can": 755,
+        "of": 811
       },
       "efficiency": {
         "pass": 154,
@@ -1206,8 +1205,8 @@
       },
       "inputs": {
         "pass": 186,
-        "can": 302,
-        "of": 302
+        "can": 303,
+        "of": 303
       },
       "env": {
         "pass": 25,
@@ -1215,9 +1214,9 @@
         "of": 33
       },
       "outputs": {
-        "pass": 156,
-        "can": 220,
-        "of": 223
+        "pass": 157,
+        "can": 221,
+        "of": 224
       },
       "report": {
         "pass": 4,
@@ -1237,14 +1236,14 @@
     },
     "vite-task": {
       "all": {
-        "pass": 500,
-        "can": 740,
-        "of": 985
+        "pass": 501,
+        "can": 742,
+        "of": 987
       },
       "correctness": {
-        "pass": 411,
-        "can": 612,
-        "of": 809
+        "pass": 412,
+        "can": 614,
+        "of": 811
       },
       "efficiency": {
         "pass": 87,
@@ -1283,8 +1282,8 @@
       },
       "inputs": {
         "pass": 177,
-        "can": 293,
-        "of": 302
+        "can": 294,
+        "of": 303
       },
       "env": {
         "pass": 29,
@@ -1292,9 +1291,9 @@
         "of": 33
       },
       "outputs": {
-        "pass": 139,
-        "can": 220,
-        "of": 223
+        "pass": 140,
+        "can": 221,
+        "of": 224
       },
       "report": {
         "pass": 2,
@@ -1314,14 +1313,14 @@
     },
     "nix": {
       "all": {
-        "pass": 474,
-        "can": 700,
-        "of": 985
+        "pass": 476,
+        "can": 702,
+        "of": 987
       },
       "correctness": {
-        "pass": 408,
-        "can": 579,
-        "of": 809
+        "pass": 410,
+        "can": 581,
+        "of": 811
       },
       "efficiency": {
         "pass": 64,
@@ -1359,9 +1358,9 @@
         "of": 42
       },
       "inputs": {
-        "pass": 175,
-        "can": 292,
-        "of": 302
+        "pass": 176,
+        "can": 293,
+        "of": 303
       },
       "env": {
         "pass": 22,
@@ -1369,9 +1368,9 @@
         "of": 33
       },
       "outputs": {
-        "pass": 158,
-        "can": 218,
-        "of": 223
+        "pass": 159,
+        "can": 219,
+        "of": 224
       },
       "report": {
         "pass": 2,
@@ -1392,13 +1391,13 @@
     "moon": {
       "all": {
         "pass": 579,
-        "can": 888,
-        "of": 985
+        "can": 890,
+        "of": 987
       },
       "correctness": {
         "pass": 449,
-        "can": 727,
-        "of": 809
+        "can": 729,
+        "of": 811
       },
       "efficiency": {
         "pass": 125,
@@ -1437,8 +1436,8 @@
       },
       "inputs": {
         "pass": 192,
-        "can": 302,
-        "of": 302
+        "can": 303,
+        "of": 303
       },
       "env": {
         "pass": 26,
@@ -1447,8 +1446,8 @@
       },
       "outputs": {
         "pass": 122,
-        "can": 223,
-        "of": 223
+        "can": 224,
+        "of": 224
       },
       "report": {
         "pass": 5,
@@ -34765,6 +34764,76 @@
           "status": "fail",
           "step": 2,
           "detail": "did not run a#build"
+        }
+      }
+    },
+    {
+      "id": "inputs/brace-holding-escaped-brackets",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "A brace input naming `src` and the escaped `app/\\[id\\]` keys both directories",
+      "why": "Next.js routes live in folders like `app/[id]`, so a glob must escape the brackets to name the folder. `{src,app/\\[id\\]}` names two directories, each a tree of inputs. A tool that stops expanding the brace once it sees an escape matches neither, so an edit to the route replays a stale build.",
+      "from": [
+        "util-paths"
+      ],
+      "outcomes": {
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run a#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run a#build"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run a#build"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        },
+        "vx": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/brace-holding-escaped-brackets",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A brace output whose alternative escapes `[` and `]` restores both trees",
+      "why": "`{dist,app/\\[id\\]}/**` names two output trees, one of them a folder with brackets in its name. A tool that stops expanding the brace once it sees an escape saves neither. A hit then restores nothing and the build looks done while its files are missing.",
+      "from": [
+        "util-paths"
+      ],
+      "outcomes": {
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        },
+        "vx": {
+          "status": "pass"
         }
       }
     }
