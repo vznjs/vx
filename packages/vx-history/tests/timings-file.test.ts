@@ -5,7 +5,7 @@
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { type Logger } from '@vzn/vx'
 import { planRun, run } from '../../vx/tests/helpers/orchestrator.js'
 import { LocalHistoryProvider } from '../../vx/src/history/index.js'
@@ -74,6 +74,24 @@ describe('readTimings / writeTimings', () => {
     expect(warnings).toHaveLength(3)
     await writeFile(file, '{"version":1,"tasks":{"a":1,"b":"2","c":-1,"d":null}}')
     expect(readTimings(file, (m) => warnings.push(m))).toEqual({ a: 1 })
+  })
+
+  // Filtered in place, read once: a copy of an 8,002-task file, filtered
+  // again by the plugin, was ~6 ms of each all-cached run (2026-11-07).
+  it('hands back the parsed tasks themselves, filtered', async () => {
+    const file = path.join(root, 't.json')
+    await writeFile(file, '{"version":1,"tasks":{"a":1,"b":"2","c":3}}')
+    const parse = spyOn(JSON, 'parse')
+    let read: Record<string, number> | undefined
+    let parsed: { tasks: unknown } | undefined
+    try {
+      read = readTimings(file, () => {})
+      parsed = parse.mock.results[0]?.value
+    } finally {
+      parse.mockRestore()
+    }
+    expect(read).toBe(parsed!.tasks as Record<string, number>)
+    expect(read).toEqual({ a: 1, c: 3 })
   })
 })
 

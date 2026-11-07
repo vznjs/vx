@@ -72,7 +72,10 @@ export function codeIdentity(): string
   before, when there is no fold memo, or any task is keyless, has an
   excluded upstream, declares `runtime`, `workspaceRuntime` or
   `workspaceFiles` inputs, or has no files token (an untrusted input, an
-  ignored path a declaration reaches).
+  ignored path a declaration reaches). A files token is computed once per
+  project and declaration (inputs and outputs), and the declaration's
+  text once per config object: the lock shares one among the tasks that
+  declare it alike.
 - `readRunKeys` / `writeRunKeys` — the row lives in `fold_memo`
   (`hashCache.folds`) as JSON of stable and uncached keys by task id. A
   row naming a task this run lacks reads as absent.

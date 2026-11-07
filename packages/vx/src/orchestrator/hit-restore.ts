@@ -448,7 +448,9 @@ function hitOutcome(restore: RestoreHitArgs, restored: boolean): TaskOutcome {
   // date is fresh here, and a remote hit waited on the network and
   // downloaded its entry, outputs or none (2026-10-24: "Up to date is
   // a fresh. It should not require any cache").
-  return {
+  // Assigned, not spread: one outcome per hit, and five conditional
+  // spreads were ~3 ms of an 8,002-hit warm run (2026-11-07).
+  const outcome: TaskOutcome = {
     node,
     status,
     exitCode: hit.exitCode,
@@ -456,18 +458,21 @@ function hitOutcome(restore: RestoreHitArgs, restored: boolean): TaskOutcome {
     // `storedDurationMs`, which is what the hit skipped.
     durationMs: Math.round(performance.now() - cacheOpStart),
     storedDurationMs: hit.durationMs,
-    ...(hit.cpuMs !== undefined ? { storedCpuMs: hit.cpuMs } : {}),
-    ...(hit.peakRssBytes !== undefined ? { storedPeakRssBytes: hit.peakRssBytes } : {}),
-    ...(hit.sizeBytes !== undefined ? { artifactBytes: hit.sizeBytes } : {}),
-    ...(hit.outputRows !== undefined
-      ? { outputBytes: hit.outputRows.reduce((n, r) => n + r.size, 0) }
-      : {}),
-    ...(hit.fetchMs !== undefined ? { fetchMs: hit.fetchMs } : {}),
     hash,
     restored: restored || hit.source === 'remote',
     wallclockStartNs: taskStartNs,
     wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
   }
+  if (hit.cpuMs !== undefined) outcome.storedCpuMs = hit.cpuMs
+  if (hit.peakRssBytes !== undefined) outcome.storedPeakRssBytes = hit.peakRssBytes
+  if (hit.sizeBytes !== undefined) outcome.artifactBytes = hit.sizeBytes
+  if (hit.outputRows !== undefined) {
+    let bytes = 0
+    for (const r of hit.outputRows) bytes += r.size
+    outcome.outputBytes = bytes
+  }
+  if (hit.fetchMs !== undefined) outcome.fetchMs = hit.fetchMs
+  return outcome
 }
 
 /**

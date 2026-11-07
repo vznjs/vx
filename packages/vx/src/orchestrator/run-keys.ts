@@ -75,7 +75,20 @@ export function runKeysToken(args: RunKeysArgs): RunKeysAt | undefined {
   // Tasks of one project mostly declare the same files and outputs, and the
   // token is a function of that declaration (`filesToken`): one walk each,
   // not one per task (5 of 12 ms at 1,206 tasks, 2026-10-23).
-  const tokens = new Map<string, string>()
+  // Keyed by the project, then by the declaration's text, and that text is
+  // taken once per config object: the lock shares a config among the tasks
+  // that declare it alike, and a stringify and a joined key per node were
+  // ~6 ms of 9,603 (2026-11-07).
+  const tokens = new Map<string, Map<string, string>>()
+  const declarations = new Map<TaskNode['config'], string>()
+  const declarationOf = (cfg: TaskNode['config']): string => {
+    let text = declarations.get(cfg)
+    if (text === undefined) {
+      text = JSON.stringify([cfg.inputs?.files, cfg.outputs?.files, cfg.outputs?.workspaceFiles])
+      declarations.set(cfg, text)
+    }
+    return text
+  }
   const filesAt: number[] = []
   for (const node of args.nodes.values()) {
     const cfg = node.config
@@ -89,9 +102,10 @@ export function runKeysToken(args: RunKeysArgs): RunKeysAt | undefined {
       if ((inputs.workspaceFiles?.length ?? 0) > 0) return undefined
       // No positive entry resolves no files (`filesPlan`).
       if (inputs.files === undefined || inputs.files.some((e) => !e.startsWith('!'))) {
-        const outputs = cfg.outputs
-        const declared = `${node.projectName}\0${JSON.stringify([inputs.files, outputs?.files, outputs?.workspaceFiles])}`
-        let token = tokens.get(declared)
+        const declared = declarationOf(cfg)
+        let byDeclared = tokens.get(node.projectName)
+        if (byDeclared === undefined) tokens.set(node.projectName, (byDeclared = new Map()))
+        let token = byDeclared.get(declared)
         if (token === undefined) {
           token = taskFilesToken({
             node,
@@ -101,7 +115,7 @@ export function runKeysToken(args: RunKeysArgs): RunKeysAt | undefined {
             hashCache: args.hashCache,
           })
           if (token === undefined) return undefined
-          tokens.set(declared, token)
+          byDeclared.set(declared, token)
         }
         files = token
       }

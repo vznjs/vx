@@ -643,9 +643,14 @@ export function formatTaskHitLine(
   onPath = false,
   blocks?: number,
 ): string {
-  return formatOutcomeRow(o, paintTaskId(node, colors), o.durationMs, colors, onPath, {
-    ...ranCells(o, blocks),
-  })
+  return formatOutcomeRow(
+    o,
+    paintTaskId(node, colors),
+    o.durationMs,
+    colors,
+    onPath,
+    ranCells(o, blocks),
+  )
 }
 
 /**
@@ -672,13 +677,11 @@ export function formatTaskExecutedLine(
   blocks?: number,
   usualMs?: number | null,
 ): string {
-  return formatOutcomeRow(o, paintTaskId(node, colors), o.durationMs, colors, onPath, {
-    ...executedCells(o, blocks),
-    // A hit's time is a restore's, not the task's: nothing to compare.
-    ...(o.status === 'success' || o.status === 'failed'
-      ? { usual: usualCell(o.durationMs, usualMs, colors) }
-      : {}),
-  })
+  const cells = executedCells(o, blocks)
+  // A hit's time is a restore's, not the task's: nothing to compare.
+  if (o.status === 'success' || o.status === 'failed')
+    cells.usual = usualCell(o.durationMs, usualMs, colors)
+  return formatOutcomeRow(o, paintTaskId(node, colors), o.durationMs, colors, onPath, cells)
 }
 
 /**
@@ -688,26 +691,27 @@ export function formatTaskExecutedLine(
 export function executedCells(o: TaskOutcome, blocks: number | undefined): RowCells {
   const cores = coresOf(o)
   const ran = o.status === 'success' || o.status === 'failed'
-  return {
-    ...ranCells(o, blocks),
-    ...(cores !== undefined ? { cpu: cores } : ran ? { cpu: null } : {}),
-    ...(o.peakRssBytes !== undefined
-      ? { memBytes: o.peakRssBytes }
-      : ran
-        ? { memBytes: null }
-        : {}),
-  }
+  const cells = ranCells(o, blocks)
+  if (cores !== undefined) cells.cpu = cores
+  else if (ran) cells.cpu = null
+  if (o.peakRssBytes !== undefined) cells.memBytes = o.peakRssBytes
+  else if (ran) cells.memBytes = null
+  return cells
 }
 
-/** The cells every row of a task that reached a machine carries. */
+/**
+ * The cells every row of a task that reached a machine carries. Assigned,
+ * not spread: a warm run builds one per hit, and the spreads, copied again
+ * by the caller, were ~4 ms of 8,002 hits' rows (2026-11-07).
+ */
 function ranCells(o: TaskOutcome, blocks: number | undefined): RowCells {
-  return {
-    // A skip reached no machine.
-    ...(o.status === 'skipped' ? {} : { worker: o.where ?? 'local' }),
-    ...(blocks !== undefined ? { blocks: String(blocks) } : {}),
-    // A row with no outputs size says so (`—`); blank read as a column left out.
-    ...(o.status === 'skipped' ? {} : { outputBytes: o.outputBytes ?? null }),
-  }
+  const cells: RowCells = {}
+  // A skip reached no machine.
+  if (o.status !== 'skipped') cells.worker = o.where ?? 'local'
+  if (blocks !== undefined) cells.blocks = String(blocks)
+  // A row with no outputs size says so (`—`); blank read as a column left out.
+  if (o.status !== 'skipped') cells.outputBytes = o.outputBytes ?? null
+  return cells
 }
 
 /** Shared: render any outcome on the grid. */

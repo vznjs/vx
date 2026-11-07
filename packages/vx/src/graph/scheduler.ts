@@ -336,6 +336,8 @@ export interface ScheduleOptions {
    * dispatch, the slot and the promise around it were ~10 µs of each of a
    * warm run's 1,090 groups (X-192); a hit whose tree is current does no
    * more. A restore-tier task's `upstream` may hold undefined entries.
+   * The thunk's outcome is the scheduler's: its queue time is set on it,
+   * not on a copy (a copy per hit, 2026-11-07).
    */
   settleNow?: (node: TaskNode, upstream: TaskOutcome[]) => (() => TaskOutcome) | undefined
   /**
@@ -1120,7 +1122,8 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
           }
         }
         if (now !== undefined) {
-          finishOne(id, queuedMs === 0 ? now : { ...now, queuedMs })
+          if (queuedMs !== 0) now.queuedMs = queuedMs
+          finishOne(id, now)
           continue
         }
         const leave = admit(id)
