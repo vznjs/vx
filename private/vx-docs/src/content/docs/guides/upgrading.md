@@ -9,15 +9,19 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: show a run's own log; hold a shared cache dir in clean
+
+the local cache index is schema v54; what it recorded before is dropped on first open, so the next run misses once.
+
 ## history: name a runs row's run by integer, not 36-char text
 
 the local cache index is schema v53; run history recorded before it is dropped on first open.
 
-## settings: refuse a size with no unit, as durations are
+## cli: place config refusals at their line, name what they lack
 
 a size setting with no unit is refused; write '32KiB'.
 
-## cache: let a remote layer's get answer undefined for no answer
+## vx-cache: keep remote hits when a token is refused
 
 RemoteCacheLayer.get may return undefined (no answer), so a caller that tests only for null must treat undefined as a miss too.
 

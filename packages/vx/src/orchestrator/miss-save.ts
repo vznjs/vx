@@ -225,6 +225,7 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
     )
   }
   const facts: SaveFacts = {}
+  let kept = false
   const save = async (): Promise<void> => {
     const saveStart = a.measure === true ? performance.now() : 0
     const endSave = span('miss: save')
@@ -256,6 +257,9 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
     endSave()
     const bytes = cache.outputBytes?.(a.hash)
     if (bytes !== undefined) facts.outputBytes = bytes
+    // A `--force` run that found the key stored kept that entry: the
+    // footer's `↑` counts saves, and this was none.
+    if (cache.kept?.(a.hash) === true) kept = true
     if (a.measure === true) {
       facts.saveMs = Math.round(performance.now() - saveStart)
       // No local artifact (local writes off): no size to say.
@@ -296,11 +300,11 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
     return {
       landed: a
         .deferSave(save, node.id)
-        .then((stored) => (stored ? { ...facts, saved: true } : facts)),
+        .then((stored) => (stored && !kept ? { ...facts, saved: true } : facts)),
     }
   }
   await save()
-  return { landed: Promise.resolve({ ...facts, saved: true }) }
+  return { landed: Promise.resolve(kept ? facts : { ...facts, saved: true }) }
 }
 
 /** What `markUnsaved` reads of a miss: where its declared outputs are. */

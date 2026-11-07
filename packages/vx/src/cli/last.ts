@@ -893,8 +893,9 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         return 0
       }
       if (log.source === null) {
-        // A cached task with no entry was not saved (a read-only policy) or
-        // was pruned; calling it uncached sends the user to the config.
+        // A cached task with no entry of its own was not saved (a read-only
+        // policy, a `--force` run that kept the entry it found), or its entry
+        // was pruned or saved over; calling it uncached sends the user to the config.
         const [project, task] = splitTaskId(log.taskId)
         const cached =
           log.status !== 'failed' &&
@@ -922,7 +923,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
             : log.status === 'failed'
               ? `${log.taskId} ended failed, and vx kept no output for it: it keeps the newest 50 failed runs`
               : cached
-                ? `${log.taskId} ended ${log.status}, and its entry is not in the cache: the run did not save it, or it was pruned since`
+                ? `${log.taskId} ended ${log.status}, and the cache does not hold its output: the run did not save it, or it was pruned or saved over since`
                 : `${log.taskId} ended ${log.status}. vx keeps output only for failed and cached tasks`,
         )
       } else if (log.output === '') {

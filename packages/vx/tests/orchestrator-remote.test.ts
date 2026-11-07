@@ -1745,7 +1745,7 @@ describe('orchestrator: injected RemoteCacheLayer (RunOptions.remoteCache)', () 
         })
         expect(forced.outcomes[0]!.status).toBe('success')
         const legend = fixture.log[fixture.log.findIndex((l) => l.startsWith('  cache')) + 1]
-        expect({ puts, legend: legend?.trim() }).toEqual({ puts: 1, legend: 'local 1↑' })
+        expect({ puts, legend: legend?.trim() }).toEqual({ puts: 1, legend: '1 not saved' })
       } finally {
         await rm(fixture.root, { recursive: true, force: true })
       }

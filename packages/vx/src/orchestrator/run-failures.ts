@@ -166,8 +166,9 @@ export interface TaskLog {
   status: string
   /**
    * Where the output came from: the run's kept failure output, the cache
-   * entry the task saved or hit (masked as it was replayed), or null when
-   * vx kept none (an uncached task that passed, a skip).
+   * entry the task saved or hit while it still holds that output (masked as
+   * it was replayed), or null when vx kept none (an uncached task that
+   * passed, a skip, an entry another run wrote since).
    */
   source: 'failure' | 'cache' | null
   /** Plain text; '' when `source` is null. The files it names: `runFailures`. */
@@ -183,7 +184,7 @@ export function taskLog(db: Database, taskId: string, runId?: string): TaskLog |
   if (project === '' || task === '') return null
   const row = db
     .query(
-      `SELECT run_id AS runId, hash, status FROM runs
+      `SELECT run_id AS runId, hash, status, cache_hit AS hit, started_at AS startedAt FROM runs
        WHERE project = ? AND task = ? AND run_id IS NOT NULL ${runId === undefined ? '' : 'AND run_id = ?'}
        ORDER BY id DESC LIMIT 1`,
     )
@@ -191,6 +192,8 @@ export function taskLog(db: Database, taskId: string, runId?: string): TaskLog |
     runId: string
     hash: string
     status: string
+    hit: number | null
+    startedAt: number
   } | null
   if (row === null) return null
   const base = { runId: row.runId, taskId, status: row.status }
@@ -213,9 +216,24 @@ export function taskLog(db: Database, taskId: string, runId?: string): TaskLog |
       before === undefined || tries === null || tries === undefined
         ? ''
         : `${before}${attemptHeading(tries, tries, 'passed')}`
-    const stored = db.query('SELECT stdout FROM entry_stdout WHERE hash = ?').get(row.hash) as {
-      stdout: Uint8Array
-    } | null
+    // The entry is the key's, not the run's: a `--force` run kept the one it
+    // found, and a key evicted and saved again, or saved by two checkouts
+    // of one store at once, holds another run's output. The entry names
+    // the run that wrote it and when, so the log is this run's only when
+    // this run wrote it, or this run hit it and nothing wrote it since;
+    // otherwise the log reads as not kept. Keeping every run's log would
+    // hold a copy per run of what the entry already holds once.
+    const entry = db
+      .query('SELECT run_id AS writer, created_at AS writtenAt FROM entries WHERE hash = ?')
+      .get(row.hash) as { writer: string | null; writtenAt: number } | null
+    const own =
+      entry !== null &&
+      (entry.writer === row.runId || (row.hit === 1 && entry.writtenAt < row.startedAt))
+    const stored = own
+      ? (db.query('SELECT stdout FROM entry_stdout WHERE hash = ?').get(row.hash) as {
+          stdout: Uint8Array
+        } | null)
+      : null
     if (stored !== null) {
       // An entry saved before masking, or by another machine, can hold a
       // secret-named variable's value: masked as a hit's replay masks it.
@@ -231,7 +249,7 @@ export function taskLog(db: Database, taskId: string, runId?: string): TaskLog |
       return { ...base, source: 'cache', output: prefix + output }
     }
     // An entry that printed nothing stores no stdout row: kept, and empty.
-    if (db.query('SELECT 1 FROM entries WHERE hash = ?').get(row.hash) !== null) {
+    if (own) {
       return { ...base, source: 'cache', output: prefix }
     }
   }

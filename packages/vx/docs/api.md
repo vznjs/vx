@@ -225,6 +225,7 @@ export class Cache implements CacheLayer {
   readonly uploads: UploadTally
   readonly downloads: { count: number; bytes: number }
   readonly traffic: RemoteTraffic
+  runId: string | undefined
   readonly remoteHits: RemoteHits
   readonly storeDir: string | undefined
   readonly schemaReset: SchemaReset | null
@@ -265,6 +266,7 @@ export class Cache implements CacheLayer {
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
   outputsPath(hash: string): string
   outputBytes(hash: string): number | undefined
+  kept(hash: string): boolean
   artifactSize(hash: string): number | undefined
   async recordOutputDirs(
     hash: string,
@@ -434,6 +436,7 @@ export interface CacheLayer {
   outputsPath(hash: string): string
   artifactSize?(hash: string): number | undefined
   outputBytes?(hash: string): number | undefined
+  kept?(hash: string): boolean
   prune(options: PruneOptions): Promise<PruneResult>
   close(): void
 }

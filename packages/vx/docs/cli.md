@@ -1823,10 +1823,13 @@ is refused instead: the run holds the lock until the task ends. A run
 in another checkout of the repository takes no lock of this one's but
 holds the shared store open until it ends: the prune waits for
 every process holding the store (`[vx] waiting for another vx process
-using the cache store <dir> to finish…`). A run it cannot see — another
-workspace sharing the `--cache-dir` — survives a prune anyway: an
-artifact that vanishes before its restore is a miss, and the task runs
-([caching](./caching.md#concurrent-runs)).
+using the cache store <dir> to finish…`). A cache directory with no
+store (`--cache-dir`, `cache.dir`, `VX_CACHE_DIR`) may be another
+workspace's too: each run on it holds it shared, from before its cache
+opens to its end, and the prune waits for those runs (`[vx] waiting for
+another vx process using the cache directory <dir> to finish…`), as a run
+waits for the prune (`[vx] waiting for a vx cache clean of <dir> to
+finish…`) ([caching](./caching.md#concurrent-runs)).
 
 ### Which cache
 
@@ -1893,8 +1896,9 @@ $ vx cache clean --global --dry
 ```
 
 It waits for a `vx run` on this workspace to finish first (the run's
-lock), and for every vx process holding a store it deletes open (a run
-in another checkout of the workspace), as a trim does. With `--format json` it prints
+lock), for every vx process holding a store it deletes open (a run
+in another checkout of the workspace), and for every run of another
+workspace on a cache directory with no store it deletes, as a trim does. With `--format json` it prints
 `{ dry, cleared, bytesFreed }` (`schemas/cache.json`), `cleared`
 listing the directories.
 
@@ -2987,7 +2991,7 @@ $ vx info
   memory            13 GB usable — cgroup limit; the machine has 16 GB
   cache dir         /work/repo/.vx/cache (8.2 MB, this workspace's run history)
   cache store       /home/me/.vx/3f2a9c1e7b4d5a60/cache (1.3 GB, shared by this workspace's checkouts)
-  cache versions    keys vx-cache-v51 · index schema v53
+  cache versions    keys vx-cache-v51 · index schema v54
   cache entries     42 (1.3 GB)
   orphans           3 artifacts (12 MB) the index does not know — `vx cache clean` reaps them
   task runs (24h)   7 (5 cache hits)
@@ -3446,7 +3450,11 @@ output; any other task's is its cache entry's log (the one a hit
 replays, masked as it was, and again with this process's secret values,
 as a hit's replay is; a task's `env.define` / `env.secret` values only
 the run knows), so a passing task's log reads too, on a hit
-or in the run that saved it. An uncached task that passed, or a skip,
+or in the run that saved it. The entry is the key's, not the run's: it
+records the run that wrote it, so a run whose entry another run wrote
+since (a `--force` run keeps the entry it finds; a key pruned and saved
+again, or saved by two checkouts of one store at once, holds the later
+run's output) shows none rather than that run's. An uncached task that passed, or a skip,
 kept none, nor does a failed task past the newest 50 failed runs:
 stdout is empty and stderr says so, exit 0; a skip names what blocked
 it (`c#after did not run: c#gate blocked it (vx last --log c#gate)`). A kept log that is empty
@@ -3883,7 +3891,8 @@ final footer replaces it in place. Each task counts once, under its strongest st
 failed remote read or write, then an upload running, then saved to a
 remote, then saved here, then restored, then fresh, then no cache; so
 a task saved here and uploaded is a remote `↑`. A key the remote already
-held is not sent, so it is no remote `↑`. Each count is painted
+held is not sent, so it is no remote `↑`; nor is a key this cache
+already held a local `↑` (a `--force` run keeps that entry: `not saved`). Each count is painted
 in its segment's colour, number and glyph alike: `✓` green, `∅` dim,
 local blue, remote dark blue, `✗` and a miss red, `⇡` cyan; the
 `local` and `remote` words are dim. A layer shows only when the run's

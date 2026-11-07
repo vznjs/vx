@@ -588,6 +588,10 @@ export class LayeredCache implements CacheLayer {
     return this.local.outputBytes(hash)
   }
 
+  kept(hash: string): boolean {
+    return this.local.kept(hash)
+  }
+
   hashFile(filePath: string): Promise<string> {
     return this.local.hashFile(filePath)
   }

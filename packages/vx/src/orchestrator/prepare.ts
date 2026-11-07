@@ -250,14 +250,15 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
 /**
  * `prepareRun`, with `beforeOpen` run once the workspace root is known and
  * before the cache opens: a run takes its lock there (run.ts), so it never
- * holds the store while it waits for a `vx cache clean` that holds the lock.
+ * holds the store while it waits for a `vx cache clean` that holds the lock,
+ * and holds a cache directory with no store (`sharedCacheDir`) shared.
  * `countDependents`: a run's, which schedules by them (`PreparedRun.dependents`);
  * a plan never reads them.
  */
 export async function prepareRunLocked(
   options: RunOptions,
   log: Logger,
-  beforeOpen?: (workspaceRoot: string) => Promise<void>,
+  beforeOpen?: (workspaceRoot: string, sharedCacheDir: string | undefined) => Promise<void>,
   countDependents = false,
 ): Promise<PreparedRun> {
   beginRun()
@@ -387,7 +388,9 @@ export async function prepareRunLocked(
     !(options.cache === undefined && namesRemote(workspaceConfig?.cache?.policy))
   const wanted: CachePolicy = readOnly ? { ...asked, remoteWrite: false } : asked
   const resolvedStore = await storeRoot
-  await beforeOpen?.(workspaceRoot)
+  // A cache directory with no store may be another workspace's too: the
+  // run holds it shared (`holdCacheDir`).
+  await beforeOpen?.(workspaceRoot, resolvedStore === null ? cacheDir : undefined)
   const localCache = new Cache(
     cacheDir,
     { read: wanted.localRead, write: wanted.localWrite },

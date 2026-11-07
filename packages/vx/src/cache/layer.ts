@@ -842,6 +842,11 @@ export interface CacheLayer {
   artifactSize?(hash: string): number | undefined
   /** The output files' bytes, uncompressed, of the entry this process just saved; asked once. */
   outputBytes?(hash: string): number | undefined
+  /**
+   * True when the last `save` of `hash` found the key stored and kept that
+   * entry (a `--force` run): nothing of this run's was saved; asked once.
+   */
+  kept?(hash: string): boolean
   prune(options: PruneOptions): Promise<PruneResult>
   close(): void
 }

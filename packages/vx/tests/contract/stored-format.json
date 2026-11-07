@@ -1,6 +1,6 @@
 {
   "index": {
-    "version": "v53",
+    "version": "v54",
     "layout": [
       "CREATE INDEX invocations_branch  ON invocations(branch)",
       "",
@@ -54,7 +54,8 @@
       "created_at   INTEGER NOT NULL,",
       "accessed_at  INTEGER NOT NULL,",
       "cpu_ms         INTEGER,",
-      "peak_rss_bytes INTEGER",
+      "peak_rss_bytes INTEGER,",
+      "run_id         TEXT",
       ")",
       "",
       "CREATE TABLE entry_inputs (",

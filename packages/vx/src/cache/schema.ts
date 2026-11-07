@@ -69,7 +69,11 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       accessed_at  INTEGER NOT NULL,
       -- v26: the producing execution's usage, from the artifact's sidecar.
       cpu_ms         INTEGER,
-      peak_rss_bytes INTEGER
+      peak_rss_bytes INTEGER,
+      -- v54: the run whose save or download wrote the entry as it stands
+      -- (created_at is when): \`vx last --log\` shows a run's log from the
+      -- entry only when it holds that run's output.
+      run_id         TEXT
     );
     -- v29: an entry's stdout, which the <hash>.tar.zst artifact also
     -- carries so it survives a remote round trip; a local hit replays it

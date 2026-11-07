@@ -11,6 +11,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { holdCacheDir } from '../src/cache/index.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 30_000
@@ -277,6 +278,120 @@ describe('vx cache clean with no bound clears the cache', () => {
       expect(r.code).toBe(0)
       if (args.length === 2) expect(existsSync(st)).toBe(false)
       else expect(r.out).toContain('1 entry')
+    },
+    TIMEOUT,
+  )
+  /** Spawn `args` and read its stderr until it says `notice` or ends; the rest drains later. */
+  const spawnUntil = async (
+    cwd: string,
+    args: string[],
+    env: Record<string, string>,
+    notice: string,
+  ) => {
+    const proc = Bun.spawn([process.execPath, BIN, ...args], {
+      cwd,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: { ...process.env, NO_COLOR: '1', HOME: home, ...env },
+    })
+    const out = new Response(proc.stdout).text()
+    let err = ''
+    const reader = proc.stderr.getReader()
+    const decoder = new TextDecoder()
+    while (!err.includes(notice)) {
+      const { done, value } = await reader.read()
+      if (done) break
+      err += decoder.decode(value, { stream: true })
+    }
+    const said = err
+    const ended = (async () => {
+      for (let c = await reader.read(); !c.done; c = await reader.read())
+        err += decoder.decode(c.value, { stream: true })
+      return { code: await proc.exited, out: await out, err }
+    })()
+    return { proc, said, ended }
+  }
+  // A cache directory with no store (`--cache-dir`, `cache.dir`,
+  // `VX_CACHE_DIR`) may be shared by workspaces, each with a run lock of its
+  // own: a clear in one deleted the directory under a run of another, which
+  // died opening it (ENOENT on its .gitignore, SQLite's disk I/O error).
+  it(
+    'a clear of a shared cache directory waits for a run of another workspace on it',
+    async () => {
+      const shared = path.join(home, 'shared')
+      const env = { VX_CACHE_DIR: shared }
+      expect((await vx(['run', 'build', '--all'], env)).code).toBe(0)
+      const other = realpathSync(await makeWorkspace({ prefix: 'vx-clear-other-', git: 'commit' }))
+      try {
+        const gate = await addProject(other, 'gate', {
+          config: `export default { tasks: { hold: { exec: { command: 'touch started && while [ ! -f release ]; do sleep 0.05; done' } } } }\n`,
+        })
+        const run = Bun.spawn([process.execPath, BIN, 'run', 'hold', '--all'], {
+          cwd: other,
+          stdout: 'ignore',
+          stderr: 'pipe',
+          env: { ...process.env, NO_COLOR: '1', HOME: home, ...env },
+        })
+        const runErr = new Response(run.stderr).text()
+        const deadline = Date.now() + 10_000
+        while (!existsSync(path.join(gate, 'started'))) {
+          if (Date.now() > deadline) throw new Error('the other run never started its task')
+          await Bun.sleep(20)
+        }
+        // Released once the clear says it waits, never after a fixed sleep.
+        const clear = await spawnUntil(
+          root,
+          ['cache', 'clean'],
+          env,
+          'waiting for another vx process using the cache directory',
+        )
+        expect(clear.said).toContain(
+          `waiting for another vx process using the cache directory ${shared}`,
+        )
+        expect([clear.proc.exitCode, existsSync(path.join(shared, 'cache.db'))]).toEqual([
+          null,
+          true,
+        ])
+        await Bun.write(path.join(gate, 'release'), '')
+        expect(`${await run.exited}\n${await runErr}`).toStartWith('0\n')
+        const r = await clear.ended
+        expect(r.code).toBe(0)
+        expect(existsSync(path.join(shared, 'cache.db'))).toBe(false)
+      } finally {
+        await rm(other, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+  it(
+    'a run on a shared cache directory waits for a clear of it before it opens the cache',
+    async () => {
+      const shared = path.join(home, 'shared')
+      expect((await vx(['run', 'build', '--all'], { VX_CACHE_DIR: shared })).code).toBe(0)
+      // Stands in for another workspace's clear, holding the directory.
+      const release = await holdCacheDir(shared, 'exclusive', () => {})
+      let released = false
+      try {
+        const run = await spawnUntil(
+          root,
+          ['run', 'build', '--all'],
+          { VX_CACHE_DIR: shared },
+          'waiting for a vx cache clean',
+        )
+        expect(run.said).toContain(`waiting for a vx cache clean of ${shared} to finish`)
+        expect(run.proc.exitCode).toBe(null)
+        // The clear deletes the directory while it holds it; the run then
+        // opens a cache of its own there, misses and saves.
+        await rm(shared, { recursive: true })
+        release()
+        released = true
+        const r = await run.ended
+        expect(`${r.code}\n${r.err}`).toStartWith('0\n')
+        expect(r.out).toContain('local 1\u2191')
+        expect(existsSync(path.join(shared, 'cache.db'))).toBe(true)
+      } finally {
+        if (!released) release()
+      }
     },
     TIMEOUT,
   )
