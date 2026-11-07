@@ -8,6 +8,7 @@ import {
   builtinsChangedBy,
   CONFIG_EXIT,
   evalBudgetMs,
+  evalDeadline,
   evaluateConfigFresh,
   thrownValueMessage,
   WATCHED_BUILTIN_NAMES,
@@ -230,7 +231,7 @@ async function loadDefaultExport(
   let compiled: { default?: unknown } | null | undefined
   let loaded: Set<string> | undefined
   const unguard = guardExit()
-  let deadline: ReturnType<typeof setTimeout> | undefined
+  let clearDeadline: (() => void) | undefined
   try {
     // A bundle that throws is evaluated from source below, so the error
     // the user sees is the source's.
@@ -257,14 +258,17 @@ async function loadDefaultExport(
             },
           ),
       new Promise<never>((_, reject) => {
-        deadline = setTimeout(
+        clearDeadline = evalDeadline(
+          kind,
+          configPath,
+          budget,
           () =>
             reject(
               new UserError(
                 `${kind} config ${configPath} did not finish evaluating within ${budget}ms (VX_CONFIG_WORKER_TIMEOUT)`,
               ),
             ),
-          budget,
+          true,
         )
       }),
     ])) as { default?: unknown }
@@ -278,7 +282,7 @@ async function loadDefaultExport(
     }
     throw loadFailure(err, configPath, kind)
   } finally {
-    clearTimeout(deadline)
+    clearDeadline?.()
     unguard()
     if (source !== null) releaseSource(hash, plain, configPath)
   }

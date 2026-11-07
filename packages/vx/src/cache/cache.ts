@@ -2177,21 +2177,50 @@ export class Cache implements CacheLayer {
     workspaceRoot?: string,
     outputs?: DeclaredOutputs,
   ): Promise<void> {
+    const used: { rows: readonly OutputFileRow[] } = { rows: [] }
     try {
-      await this.restoreOutputsOnce(hash, projectDir, workspaceRoot, outputs)
+      await this.restoreOutputsOnce(hash, projectDir, workspaceRoot, outputs, used, false)
     } catch (err) {
       if (!(err instanceof CorruptArtifactError)) throw err
+      let failed = err
+      // A file artifact has no `at` to say a re-save in another process
+      // replaced it since the probe: the probe's rows then name another
+      // build's files, and this one reads as corrupt. Rows that changed
+      // since are that race, so the restore runs once more on the rows read
+      // now, and an entry is dropped only while its rows are the ones that
+      // failed: another process's fresh entry is never taken.
+      if (this.entryChanged(hash, used.rows)) {
+        try {
+          await this.restoreOutputsOnce(hash, projectDir, workspaceRoot, outputs, used, true)
+          return
+        } catch (again) {
+          if (!(again instanceof CorruptArtifactError)) throw again
+          failed = again
+        }
+      }
       // Bad bytes under a good key failed the task on every run until
       // `--force`, since nothing rewrote them (J's lead, nx#30338). The
       // entry goes, and the caller runs the task, whose save stores it
       // again; running is always correct, only slower than a hit.
-      if (this.write) await this.dropEntry(hash)
+      if (this.write && !(await this.dropUnchanged(hash, used.rows)))
+        throw new ArtifactVanishedError(hash)
       throw new ArtifactVanishedError(
         hash,
-        `${err.message}; ${this.write ? 'dropped it' : 'left it (this cache is read-only)'}`,
-        err,
+        `${failed.message}; ${this.write ? 'dropped it' : 'left it (this cache is read-only)'}`,
+        failed,
       )
     }
+  }
+
+  /** Whether `hash`'s committed rows are no longer `rows` (path, size, mode, mtime). */
+  private entryChanged(hash: string, rows: readonly OutputFileRow[]): boolean {
+    const now = this.guard(() => this.outputs.loadOutputFilesBatch([hash]).get(hash) ?? [])
+    if (now.length !== rows.length) return true
+    const was = new Map(rows.map((r) => [r.path, r]))
+    return now.some((r) => {
+      const w = was.get(r.path)
+      return w === undefined || w.size !== r.size || w.mode !== r.mode || w.mtimeMs !== r.mtimeMs
+    })
   }
 
   /**
@@ -2456,21 +2485,41 @@ export class Cache implements CacheLayer {
     return storedLog(row?.stdout ?? null)
   }
 
-  /** Remove one entry: its artifact first, then its rows (as `prune` orders them). */
-  private async dropEntry(hash: string): Promise<void> {
-    await rm(this.tarPath(hash), { force: true })
-    await rm(this.treePath(hash), { recursive: true, force: true })
+  /**
+   * Remove one entry while its rows are still `rows`: false, touching
+   * nothing, once another process re-saved the key. Checked and dropped
+   * under the write lock a save renames its artifact in under, so no save
+   * lands between; the artifact is moved aside inside, unlinked after.
+   */
+  private async dropUnchanged(hash: string, rows: readonly OutputFileRow[]): Promise<boolean> {
+    const aside: string[] = []
     const drop = this.db.transaction(() => {
+      if (this.entryChanged(hash, rows)) return false
+      for (const [from, to] of [
+        [this.tarPath(hash), this.tempPath(hash)],
+        [this.treePath(hash), this.tempTreePath(hash)],
+      ] as const) {
+        try {
+          renameSync(from, to)
+          aside.push(to)
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+        }
+      }
       this.deleteBlob.run(hash)
       this.deleteEntryRow.run(hash)
       this.outputs.forget([hash])
+      return true
     })
+    let dropped: boolean
     try {
-      drop()
+      dropped = drop.immediate()
     } catch (err) {
       if (!isIndexFull(err)) throw err
-      drop()
+      dropped = drop.immediate()
     }
+    for (const a of aside) await rm(a, { recursive: true, force: true })
+    return dropped
   }
 
   private async restoreOutputsOnce(
@@ -2478,6 +2527,8 @@ export class Cache implements CacheLayer {
     projectDir: string,
     workspaceRoot: string | undefined,
     outputs: DeclaredOutputs | undefined,
+    used: { rows: readonly OutputFileRow[] },
+    fresh: boolean,
   ): Promise<void> {
     // In-process extraction — no fork+exec on the hot path
     // (~5-10ms reclaimed per hit vs the prior subprocess `tar -xf`).
@@ -2521,7 +2572,8 @@ export class Cache implements CacheLayer {
     // in one commit, and two reads could pair its rows with the old bytes.
     // The probe's held rows (X-162) serve only while the blob carries the
     // `at` the probe saw: a re-save or a renewal since moves it, and then
-    // the rows are read again in the blob's snapshot.
+    // the rows are read again in the blob's snapshot. A file artifact's
+    // re-save is caught after, by its rows (`restoreOutputs`).
     let rows: readonly OutputFileRow[] = []
     let inline: Uint8Array | undefined
     // With the probe's rows held, no transaction: a file artifact's tree,
@@ -2530,7 +2582,7 @@ export class Cache implements CacheLayer {
     // aside mid-copy is the race `copyTree` catches); an inline one is the
     // blob read alone, its own snapshot. The blob read and its transaction
     // cost a 1,600-restore run ~70 ms of its main thread (2026-11-07).
-    const held = this.outputs.heldRowsOf(hash)
+    const held = fresh ? undefined : this.outputs.heldRowsOf(hash)
     const heldAt = this.heldInlineAt.get(hash)
     let treeIno: number | undefined
     let treeAsked = false
@@ -2554,7 +2606,7 @@ export class Cache implements CacheLayer {
           const blob = this.selectBlob.get(hash) as { at: number; bytes: Uint8Array } | null
           inline = blob?.bytes
           rows =
-            blob === null || blob.at === this.heldInlineAt.get(hash)
+            !fresh && (blob === null || blob.at === this.heldInlineAt.get(hash))
               ? this.outputs.rowsOf(hash)
               : (this.outputs.loadOutputFilesBatch([hash]).get(hash) ?? [])
         })(),
@@ -2564,6 +2616,7 @@ export class Cache implements CacheLayer {
       if (inline === undefined && !treeAsked)
         treeIno = lstatSync(this.treePath(hash), { throwIfNoEntry: false })?.ino
     }
+    used.rows = rows
     const expected = rows
       .filter((r) => workspaceRoot !== undefined || !r.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
       .map((r) => (r.path.startsWith(WORKSPACE_OUTPUT_PREFIX) ? r.path : `outputs/${r.path}`))

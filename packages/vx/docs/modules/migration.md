@@ -140,7 +140,8 @@ export function taskNameProblem(name: string): string | null
   `vx init` and `vx lock`): `refuseSymlink` refuses every target that is a
   link before the first write, so a refusal leaves none half-made, and
   `writeNoFollow` writes a temp beside the file, renamed over it, so a
-  link put there after the check is replaced, not followed.
+  link put there after the check is replaced, not followed. A directory
+  where the file goes is named (`directoryInTheWay`), not shown as `EISDIR`.
 - `init` distinguishes the two callers on an empty plan: a scripts
   migration of a workspace with no scripts still writes the workspace
   file and shows a worked example (or `emptyReason`); a migration with

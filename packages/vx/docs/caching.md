@@ -1330,6 +1330,9 @@ for <hash>: …; dropped it — running it`. The entry is dropped, so the
 task's save stores the key again; it failed the task as an internal
 error on every run until `--force` before A-52. A cache the run may
 only read keeps the entry (`…; left it (this cache is read-only)`).
+A failure that is another process re-saving the key since the probe
+(its rows changed) restores the new entry instead, or is a plain miss
+that keeps it: vx drops only the entry that failed.
 
 ## Storage layout
 

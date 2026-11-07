@@ -1944,7 +1944,7 @@ nested repository's own configs too), or walks the tree outside git
 nested `.vx/workspace.*`, even one the ignore rules hide, or under a
 `node_modules` (an installed package is no project, ignored or not). Configs are
 programs; `vx lock` evaluates them in the current environment and
-stores the post-evaluation objects, by directory (version 4; a lock an
+stores the post-evaluation objects, by directory (version 5; a lock an
 earlier vx wrote is refused, "re-run `vx lock`"). A project is named by
 its config's `name`, else by a plugin's `discover` stage (vx-lockfile
 gives `package.json`'s `name`), else by its root-relative path (`//` for
@@ -2197,6 +2197,14 @@ refused first, not dropped), the way
 it was installed. Named `upgrade` per CLI convention (`bun upgrade`,
 `deno upgrade`). Refuses when running from source: use `git pull`.
 
+However vx was installed (by hand, a package manager's global or a
+project's dependency, the global a run moves too), `latest` below the
+running vx is refused before anything runs (`the registry's latest
+@vzn/vx is 0.3.0, below this vx's 0.4.0 — nothing replaced; to go back,
+ask for it: vx upgrade v0.3.0`); a `TAG` that names an older release
+goes back. A `TAG` that names the running version says `already at`
+without asking the registry.
+
 ### Usage
 
 ```
@@ -2251,10 +2259,11 @@ integrity npm signed … nothing replaced`. A release signed with a key
 id vx does not pin says so: `… is signed with an npm key this vx does
 not know (…) — if npm rotated its signing key, this vx's installer
 needs updating`. A release with no signature or no integrity is refused
-before the download, and so is a signed release of another version than
+before the download, and so is a tarball URL that is not https (`the npm
+registry's tarball for … is not https (…)`), and a signed release of another version than
 the `TAG` asked for (`the npm registry answered …@<TAG> with version …`):
 npm signs its old releases too. `latest` below the running vx is refused
-(`… is 0.3.0, below this vx's 0.4.0`); go back by naming the version.
+here too (above).
 Every refusal comes before anything is written.
 There is no fallback to GitHub's release digest: when the registry is
 unreachable, the upgrade is refused.
@@ -3687,7 +3696,7 @@ what a TASK sees is `exec.env` in `docs/schema.md`.
 | `VX_CACHE_STORE_DECOMPRESS`       | [`cache.store.decompress`](schema.md#settings)     | Keep a larger entry as its plain files, which a hit copies or clones out; off, as one `.tar.zst`.                                                                                                |
 | `VX_LOCK_REVIEW_FILES`            | [`lock.reviewFiles`](schema.md#settings)           | `vx lock` writes each project's resolved config, pretty, to `vx.lock.json` beside its `vx.config`, for review; vx never reads it.                                                                |
 | `VX_WATCH_POLL`                   | [`watch.poll`](schema.md#settings)                 | Poll for changes from the start instead of the OS watcher.                                                                                                                                       |
-| `VX_CONFIG_WORKER_TIMEOUT`        | [`config.workerTimeout`](schema.md#settings)       | How long one config evaluation may take.                                                                                                                                                         |
+| `VX_CONFIG_WORKER_TIMEOUT`        | [`config.workerTimeout`](schema.md#settings)       | How long one config evaluation may take; at 5 s vx names the config still evaluating.                                                                                                            |
 | `VX_DEBUG_TIMING`                 | [`debug.timing`](schema.md#settings)               | Print the run's stage timings to stderr.                                                                                                                                                         |
 | `VX_DEBUG_WATCH`                  | [`debug.watch`](schema.md#settings)                | `vx watch`: say on stderr each time the loop arms, with the projects it watches.                                                                                                                 |
 | `VX_DEBUG_DUMPABLE`               | [`debug.dumpable`](schema.md#settings)             | Linux: keep vx dumpable, so strace or a debugger can read its memory and `/proc/<pid>/fd`, and an unsandboxed task its env.                                                                      |
