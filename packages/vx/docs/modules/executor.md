@@ -11,7 +11,7 @@ sandbox violations). Core's own executor, `localExecutor`, is the same
 
 ## Public surface
 
-- `TaskExecutor { name; remote?; sandbox?; capacity?; accepts?(task); demand?(remaining, missed); footer?(); machines?(); idealMs?(); advice?(); profile?(); running?(id); execute(req) }`
+- `TaskExecutor { name; remote?; sandbox?; capacity?; accepts?(task); demand?(remaining, missed); footer?(); machines?(); idealMs?(); advice?(); profile?(); running?(id); unneeded?(id); execute(req) }`
   — `idealMs()` is the run's end had it placed its tasks perfectly, from
   the run's start, replayed from what each took (the run summary's
   `idealMs`, shown beside the real time)
@@ -49,7 +49,7 @@ cpuPeak; cpuAvg; memoryPeakBytes; memoryAvgBytes; utilization }`), asked
   dependencies where it runs the task (`req.servers`, each a `ServerSpec
 { taskId; command; cwd; env; readyWhen?; timeoutMs?; sandbox? }`, in dependency
   order), so their dependants are not pinned for it; `localFloor` starts
-  each once, a sandboxed one inside its `exec.sandbox` built there, shares it with every later task, and stops them on `close()`,
+  each once, a sandboxed one inside its `exec.sandbox` built there, shares it with every later task, and stops one on `stop(id)` (core calls the executor's `unneeded(id)` once no task left in the run uses it) or all on `close()`,
   and a server that never became ready, or crashed after it was, fails the task with why,
   and a stop of the request ends its wait on one; `runtime: true`
   says a remote one answers a task's `inputs.runtime` / `workspaceRuntime`

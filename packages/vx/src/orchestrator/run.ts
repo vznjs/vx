@@ -1445,6 +1445,7 @@ async function runOnBus(
       options.holdPersistent === true
         ? undefined
         : unneededServers(nodes, options.log === undefined && (options.handleSignals ?? true))
+    const serving = executors.filter((e) => e.servers === true && e.unneeded !== undefined)
     const released = new Set<string>()
     const stopping: Promise<void>[] = []
     const release = (id: string): void => {
@@ -1452,6 +1453,13 @@ async function runOnBus(
       // signal here cut a server's cleanup short.
       if (stop.signal.aborted) return
       for (const s of unneeded?.(id) ?? []) {
+        // Copies an executor started beside the dependants it ran.
+        for (const e of serving)
+          try {
+            e.unneeded!(s)
+          } catch {
+            // Its copies stop at its teardown, as before.
+          }
         const child = persistentRegistry.get(s)
         // One that died on its own stays: the end of the graph reports it.
         if (child === undefined || hasEnded(child)) continue

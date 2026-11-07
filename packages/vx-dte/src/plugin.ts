@@ -947,6 +947,7 @@ export function dte(options: DteOptions = {}) {
         advice: () => o.advice(depsOf, sizes),
         profile: () => o.profile(),
         running: (id) => o.where(id),
+        unneeded: (id) => o.unneeded(id),
         demand(remaining, misses) {
           if (pending === undefined) o.probed(remaining.size, misses.size)
           o.missed = misses

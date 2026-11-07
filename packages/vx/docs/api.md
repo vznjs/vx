@@ -1292,6 +1292,7 @@ type · `src/orchestrator/local-floor.ts`
 export interface LocalFloor {
   execute(req: ExecuteRequest): Promise<ExecuteResult>
   rearm(sandboxes: readonly NonNullable<ExecConfig['sandbox']>[]): Promise<void>
+  stop(taskId: string): Promise<void>
   close(): Promise<void>
 }
 ```
@@ -2937,6 +2938,7 @@ export interface TaskExecutor {
   advice?(): readonly WorkerAdvice[]
   profile?(): readonly Record<string, unknown>[]
   running?(taskId: string): string | null | undefined
+  unneeded?(taskId: string): void
   execute(req: ExecuteRequest): Promise<ExecuteResult>
 }
 ```

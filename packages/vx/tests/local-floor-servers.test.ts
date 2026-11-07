@@ -49,6 +49,48 @@ it('starts a server two shards on one machine depend on once, for both', async (
   }
 }, 30_000)
 
+it('stops a server the run no longer needs, and starts it again for a later task', async () => {
+  dir = await mkdtemp(path.join(os.tmpdir(), 'vx-floor-srv-'))
+  const log = path.join(dir, 'starts.log')
+  const pid = path.join(dir, 'srv.pid')
+  const floor = localFloor()
+  const task = (n: number): ExecuteRequest => ({
+    taskId: `s#t${n}`,
+    workspaceRoot: dir,
+    outputs: { files: [], workspaceFiles: [] },
+    command: 'true',
+    forwardArgs: [],
+    cwd: dir,
+    env: { PATH: process.env['PATH'] },
+    envDefine: {},
+    capture: { stdout: true, stderr: true },
+    onStdout: () => {},
+    onStderr: () => {},
+    servers: [
+      {
+        taskId: 's#srv',
+        command: `echo x >> ${log} && echo $$ > ${pid} && echo up && exec sleep 60`,
+        cwd: dir,
+        env: { PATH: process.env['PATH'] },
+        readyWhen: 'up',
+      },
+    ],
+  })
+  try {
+    expect((await floor.execute(task(1))).exitCode).toBe(0)
+    const first = Number((await readFile(pid, 'utf8')).trim())
+    expect(isAlive(first)).toBe(true)
+    await floor.stop('s#srv')
+    expect(isAlive(first)).toBe(false)
+    // One it never started is nothing to stop.
+    await floor.stop('s#other')
+    expect((await floor.execute(task(2))).exitCode).toBe(0)
+    expect((await readFile(log, 'utf8')).trim().split('\n')).toHaveLength(2)
+  } finally {
+    await floor.close()
+  }
+}, 30_000)
+
 it('says why a server did not start through the stream a worker ships', async () => {
   dir = await mkdtemp(path.join(os.tmpdir(), 'vx-floor-srv-'))
   const floor = localFloor()

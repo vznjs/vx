@@ -520,7 +520,8 @@ use your own instead.
   A sandbox the worker cannot host (no `bwrap` in its image) fails the
   task there, as it fails here; the worker stays in the run.
 - A persistent task a task depends on starts on the worker that runs the
-  task, once per worker, ready before it, and stops when the worker leaves;
+  task, once per worker, ready before it, and stops there once no task left
+  in the run uses it (the run's `unneeded`), or when the worker leaves;
   the orchestrator never starts it, and a worker no dependant reaches
   never does (2026-10-22).
 - A task whose key hashes a runtime probe (`inputs.runtime`, such as

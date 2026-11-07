@@ -120,6 +120,8 @@ export type ToWorker =
   /** Part of an order's `deps`, ahead of the batch whose order was too long for one frame. */
   | { type: 'deps'; task: string; deps: WiredDep[] }
   | { type: 'cancel'; task: string }
+  /** No task left in the run uses persistent task `task`: it stops here. */
+  | { type: 'unserve'; task: string }
   /**
    * It was taken into the run, under the name the run's output gives it,
    * and reads the cache as the run does: its refs, and the access the

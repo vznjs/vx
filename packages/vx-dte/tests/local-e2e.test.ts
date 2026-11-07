@@ -223,6 +223,15 @@ it('starts a server on each machine its shards run on', async () => {
   expect(starts).not.toContain(path.join(root, 's'))
 }, 60_000)
 
+// A server stops once no task left uses it, on the worker that started it,
+// not when that worker leaves.
+it('stops a server on its worker once its last user finishes', () => {
+  const r = vx(['run', 's#after'], 'e2e-unserve')
+  const out = r.stdout.toString() + r.stderr.toString()
+  // A line of its own: the command's frame header names both words.
+  expect([r.exitCode, out.match(/^server-(gone|alive)$/m)?.[0]]).toEqual([0, 'server-gone'])
+}, 60_000)
+
 // No task ever runs on the orchestrator under dte(), only cache hits
 // restore there (2026-10-24): not a task that says
 // \`exec.remote: false\`, its dependant, an interactive one, or a server.

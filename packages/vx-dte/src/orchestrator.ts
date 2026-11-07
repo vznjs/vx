@@ -142,6 +142,8 @@ interface Worker {
   load?: { cpu: number; memory: number; at: number }
   /** Tasks whose outputs it holds: it ran them, or was sent them. */
   readonly has: Set<string>
+  /** Persistent tasks it was sent orders that start: each runs there until the run says none needs it. */
+  readonly serving: Set<string>
   /** Each dependency it was sent whole, by the key it was sent under: the next order names it alone. */
   readonly sentDeps: Map<string, string>
   /** Sends to it go out in order: a run's parts before the run. */
@@ -568,6 +570,12 @@ export class Orchestrator {
   profile(): Record<string, unknown>[] {
     if (this.spawnedAt.size + this.workers.size + this.gone.length === 0) return []
     return this.trace.events(this.ended ? this.endedAt : performance.now())
+  }
+
+  /** No task left in the run uses server `task`: each worker that started it stops it. */
+  unneeded(task: string): void {
+    for (const a of this.workers.values())
+      if (a.serving.delete(task)) this.post(a, { type: 'unserve', task })
   }
 
   private abort(job: Job): void {
@@ -1131,6 +1139,7 @@ export class Orchestrator {
           // Its orders' bytes, a comma between each, in the batch's own.
           a.usage.bytesIn += bytesOf({ ...batch, tasks: [] }) + bytes + tasks.length - 1
           for (const { intro } of part) for (const [t, k] of intro) a.sentDeps.set(t, k)
+          for (const { order } of part) for (const sv of order.servers ?? []) a.serving.add(sv.task)
           for (const { job } of part) {
             pending.delete(job)
             // Sent, it runs: its worker takes only what it has room for.
@@ -1544,6 +1553,7 @@ export class Orchestrator {
         started: new Set(),
         batches: 0,
         has: new Set(),
+        serving: new Set(),
         sentDeps: new Map(),
         // Its name first, before any batch.
         chain: this.cache()

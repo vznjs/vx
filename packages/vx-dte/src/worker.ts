@@ -617,6 +617,9 @@ export async function runWorker(opts: {
           ahead.set(m.task, [...(ahead.get(m.task) ?? []), ...m.deps])
         } else if (m.type === 'cancel') {
           running.get(m.task)?.abort()
+        } else if (m.type === 'unserve') {
+          // Not awaited: its grace must not hold the next order.
+          void floor?.stop(m.task).catch(() => {})
         } else if (m.type === 'batch') {
           // Every batch of a run names the same orchestrator root.
           root = m.root
