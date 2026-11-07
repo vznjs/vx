@@ -583,6 +583,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-lockfile/refusal-message',
     'vx-lockfile/rehoist-identity',
     'vx-lockfile/settings',
+    'vx-lockfile/transitive-workspace',
     'vx-lockfile/unknown-options',
     'vx-lockfile/yarn',
     'vx-lockfile/yarn-bound-descriptor',

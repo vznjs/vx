@@ -32,6 +32,7 @@ export interface LockfileClaimOptions {
 export interface LockfileImporter {
   readonly deps: Readonly<Record<string, string>> // installed name → importer dir
   readonly peers: Readonly<Record<string, string>> // peer-only name → importer dir
+  readonly transitive?: readonly string[] // importer dirs reached only through installed packages
 }
 export interface LockfileClaimHooks {
   readonly fingerprint: FingerprintClaim
