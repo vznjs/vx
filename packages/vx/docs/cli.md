@@ -1935,7 +1935,13 @@ After an edit the lock has not seen:
 ```
 $ vx lock --check
 ✗ vx lock --check  packages/lib/vx.config.ts evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'
+
+  tasks.build.exec.command: "tsc -b" → "tsc -b --force"
 ```
+
+Under the line, up to three places where the evaluated config
+differs from the locked one: a config that reads the environment
+shows no file diff to find them by.
 
 ### When to run it
 

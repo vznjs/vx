@@ -18,9 +18,12 @@ import { noticed } from './helpers/notice.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const TIMEOUT = 30_000
-const DRIFT = noticed(
-  `vx lock --check: packages/app/vx.config.mjs evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'\n`,
-)
+// Each drift names where the configs differ, under the line: a config that
+// reads the environment shows no file diff to find it by.
+const DRIFT = (change: string) =>
+  noticed(
+    `vx lock --check: packages/app/vx.config.mjs evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'\n  ${change}\n`,
+  )
 
 function makeWorkspace(): Promise<string> {
   return makeWorkspaceRoot({ prefix: 'vx-lock-' })
@@ -171,7 +174,9 @@ describe('vx lock (e2e)', () => {
       // resolves a different object — exit 1 naming the project.
       const checkDrift = await vx(root, ['lock', '--check'], { X: 'b' })
       expect(checkDrift.code).toBe(1)
-      expect(checkDrift.err).toBe(DRIFT)
+      expect(checkDrift.err).toBe(
+        DRIFT('tasks.build.exec.command: "echo flavor-a" → "echo flavor-b"'),
+      )
 
       // A run consumes the lock: the frozen value wins regardless of env.
       const frozen = await vx(
@@ -201,7 +206,7 @@ describe('vx lock (e2e)', () => {
 
       const check = await vx(root, ['lock', '--check'], { X: 'a' })
       expect(check.code).toBe(1)
-      expect(check.err).toBe(DRIFT)
+      expect(check.err).toBe(DRIFT('tasks.build.exec.command: "echo flavor-a" → "echo edited"'))
 
       // A run trusts the lock outright — no staleness checks; the
       // pipeline's `vx lock --check` (above, exit 1) is the guard.
@@ -383,7 +388,7 @@ describe('vx lock (e2e)', () => {
       // Control: the same field SET is drift once the lock was written without it.
       const drift = await vx(root, ['lock', '--check'], { VX_LOCK_UNSET: 'now set' })
       expect(drift.code).toBe(1)
-      expect(drift.err).toBe(DRIFT)
+      expect(drift.err).toBe(DRIFT('tasks.build.description: (none) → "now set"'))
     },
     TIMEOUT,
   )

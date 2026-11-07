@@ -494,6 +494,27 @@ async function writeLock(
   return 0
 }
 
+/** The first places (three at most) two evaluated configs differ: `path: locked → now`. */
+function configDiff(locked: unknown, now: unknown, at = '', out: string[] = []): string[] {
+  if (out.length >= 3 || Bun.deepEquals(locked, now, true)) return out
+  const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object'
+  if (isObj(locked) && isObj(now) && Array.isArray(locked) === Array.isArray(now)) {
+    for (const k of new Set([...Object.keys(locked), ...Object.keys(now)])) {
+      const next = Array.isArray(now) ? `${at}[${k}]` : at === '' ? k : `${at}.${k}`
+      configDiff(locked[k], now[k], next, out)
+    }
+    return out
+  }
+  out.push(`${at}: ${diffValue(locked)} → ${diffValue(now)}`)
+  return out
+}
+
+function diffValue(v: unknown): string {
+  if (v === undefined) return '(none)'
+  const s = JSON.stringify(v)
+  return s.length > 60 ? `${s.slice(0, 59)}…` : s
+}
+
 /**
  * Review copies with no config beside them, sorted. One left beside a
  * config since deleted shows reviewers tasks nothing runs, and keys the
@@ -637,7 +658,11 @@ async function checkLock(root: string, json: boolean): Promise<number> {
           ? `${rel} is not the ${locked.file} the lock holds for ${dir === '.' ? 'the workspace root project' : dir} — run 'vx lock'`
           : !Bun.deepEquals(fresh.config, locked.config, true)
             ? `${rel} evaluates differently from the lock here — its config, a file ` +
-              `it imports, or the environment it reads changed; run 'vx lock'`
+              `it imports, or the environment it reads changed; run 'vx lock'` +
+              // What changed: a config that reads the environment shows no file diff.
+              configDiff(locked.config, fresh.config)
+                .map((d) => `\n  ${maskedLine(d)}`)
+                .join('')
             : null
     if (problem === null) continue
     failures.push(problem)

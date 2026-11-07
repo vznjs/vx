@@ -13,9 +13,12 @@ vx lock --check
 
 ```ansi
 [38;2;239;68;68m✗[0m [1mvx lock --check[0m  packages/ui/vx.config.ts evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'
+
+  [38;2;203;213;225mtasks.build.inputs.files[1]: (none) → "package.json"[0m
 ```
 
-It exits `1` and names each project that drifted. With a current lock it
+It exits `1`, names each project that drifted, and shows where its
+config changed. With a current lock it
 exits `0`:
 
 ```ansi
