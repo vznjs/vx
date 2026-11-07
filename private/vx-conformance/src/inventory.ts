@@ -1097,6 +1097,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'tmpdir-refusal',
     'tool-not-on-path',
     'tree-states-key',
+    'tree-store-layout',
     'tree-store-torn',
     'ui',
     'ui-only-output.unsafe',
