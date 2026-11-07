@@ -41,13 +41,27 @@ export function selectKeepAlive(
 ): KeepAlive {
   const out: KeepAlive = { nodes: [], children: [] }
   if (!foreground || registry.size === 0) return out
+  const reached = keptServers(nodes, (id) => registry.has(id))
+  for (const [id, child] of registry) {
+    if (!reached.has(id)) continue
+    out.nodes.push(nodes.get(id)!)
+    out.children.push(child)
+  }
+  return out
+}
+
+/** The servers and groups `selectKeepAlive` keeps in the foreground: the requested ones and what they stand on. */
+function keptServers(
+  nodes: ReadonlyMap<string, TaskNode>,
+  isServer: (id: string) => boolean,
+): Set<string> {
   // A requested GROUP is a requested server's stand-in: `vx run app#dev`
   // over `dev: { dependsOn: ['^dev'] }` started every server and exited 0
   // at the end of the graph, stopping them all (C-52).
   const stack: string[] = []
   for (const [id, n] of nodes) {
     if (!n.requested && n.surfaced !== true) continue
-    if (registry.has(id) || isGroupTask(n)) stack.push(id)
+    if (isServer(id) || isGroupTask(n)) stack.push(id)
   }
   const reached = new Set<string>()
   while (stack.length > 0) {
@@ -56,15 +70,89 @@ export function selectKeepAlive(
     reached.add(id)
     for (const dep of nodes.get(id)?.deps ?? []) {
       const d = nodes.get(dep)
-      if (d !== undefined && (registry.has(dep) || isGroupTask(d))) stack.push(dep)
+      if (d !== undefined && (isServer(dep) || isGroupTask(d))) stack.push(dep)
     }
   }
-  for (const [id, child] of registry) {
-    if (!reached.has(id)) continue
-    out.nodes.push(nodes.get(id)!)
-    out.children.push(child)
+  return reached
+}
+
+/**
+ * The servers no task left needs, as tasks finish: a dependency-only
+ * server stops once every task that uses it, directly or through groups,
+ * has finished, not at the end of the graph. A server that uses another
+ * finishes only when it is stopped itself. `finished(id)` answers the
+ * servers to stop now; a server kept in the foreground never is.
+ */
+export function unneededServers(
+  nodes: ReadonlyMap<string, TaskNode>,
+  foreground: boolean,
+): (id: string) => string[] {
+  const isServer = (n: TaskNode): boolean => n.config.exec?.persistent !== undefined
+  const kept = foreground ? keptServers(nodes, (id) => isServer(nodes.get(id)!)) : new Set<string>()
+  const dependents = new Map<string, string[]>()
+  for (const [id, n] of nodes)
+    for (const d of n.deps) {
+      const list = dependents.get(d)
+      if (list === undefined) dependents.set(d, [id])
+      else list.push(id)
+    }
+  // Each server's users: its dependents, a group read through to its own.
+  const users = new Map<string, Set<string>>()
+  const usedBy = new Map<string, string[]>()
+  for (const [id, n] of nodes) {
+    if (!isServer(n) || kept.has(id)) continue
+    const set = new Set<string>()
+    const stack = [...(dependents.get(id) ?? [])]
+    const seen = new Set<string>()
+    while (stack.length > 0) {
+      const d = stack.pop()!
+      if (seen.has(d)) continue
+      seen.add(d)
+      if (isGroupTask(nodes.get(d)!)) stack.push(...(dependents.get(d) ?? []))
+      else set.add(d)
+    }
+    if (set.size === 0) continue
+    users.set(id, set)
+    for (const u of set) {
+      const list = usedBy.get(u)
+      if (list === undefined) usedBy.set(u, [id])
+      else list.push(id)
+    }
   }
-  return out
+  const done = (id: string, out: string[]): void => {
+    for (const s of usedBy.get(id) ?? []) {
+      const left = users.get(s)
+      if (left === undefined || !left.delete(id) || left.size > 0) continue
+      users.delete(s)
+      out.push(s)
+      done(s, out)
+    }
+  }
+  return (id) => {
+    if (usedBy.size === 0) return []
+    const n = nodes.get(id)
+    // A server finishes when it is ready, still serving its users.
+    if (n === undefined || isServer(n)) return []
+    const out: string[] = []
+    done(id, out)
+    return out
+  }
+}
+
+/** Stop one server as `shutdownPersistent` stops the rest: SIGTERM, then SIGKILL past the grace. */
+export async function stopServer(
+  child: Child,
+  graceMs: number = killGraceMs(PERSISTENT_SHUTDOWN_GRACE_MS),
+): Promise<void> {
+  if (hasEnded(child)) return
+  const letGo = holdGroups([child])
+  try {
+    killTree(child, 'SIGTERM')
+    for (const c of await untilGroupsGone([child], graceMs)) killTree(c, 'SIGKILL')
+    await child.exited
+  } finally {
+    letGo()
+  }
 }
 
 /**

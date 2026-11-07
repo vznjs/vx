@@ -443,6 +443,13 @@ export interface TaskExecutor {
    * answers `null` for, and the task is skipped, never started.
    */
   running?(taskId: string): string | null | undefined
+  /**
+   * A `servers` executor's: no task left in the run uses persistent task
+   * `taskId`, so each copy it started beside a dependant stops now, not at
+   * teardown. Core asks once, as the run stops its own copy (`schema.md`,
+   * "Stopped once nothing needs it"). A throw is ignored.
+   */
+  unneeded?(taskId: string): void
   execute(req: ExecuteRequest): Promise<ExecuteResult>
 }
 

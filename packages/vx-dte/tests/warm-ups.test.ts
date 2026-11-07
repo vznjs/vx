@@ -5,7 +5,14 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import type { PluginCache } from '@vzn/vx'
-import { parseWarmUps, readWarmUps, writeWarmUps } from '../src/warm-ups.js'
+import {
+  parseServerBases,
+  parseWarmUps,
+  readServerBases,
+  readWarmUps,
+  writeServerBases,
+  writeWarmUps,
+} from '../src/warm-ups.js'
 
 let root: string
 beforeEach(() => {
@@ -78,5 +85,34 @@ it('reads a malformed blob as none and drops a value out of range', () => {
   expect(parseWarmUps(enc({ version: 1, sizes: [] }))).toBeNull()
   expect(parseWarmUps(enc({ version: 1, sizes: { a: 1, b: -1, c: 'x', d: 4e6 } }))).toEqual(
     new Map([['a', 1]]),
+  )
+})
+
+it("a later commit's run books the server bases an earlier run learned, this run's over them", async () => {
+  const cache = store()
+  await writeServerBases(
+    cache,
+    root,
+    new Map([
+      ['s#db', 0.5],
+      ['s#api', 1],
+    ]),
+    new Map([['s#api', 0.254]]),
+  )
+  commit()
+  expect(await readServerBases(cache, root)).toEqual(
+    new Map([
+      ['s#db', 0.5],
+      ['s#api', 0.25],
+    ]),
+  )
+  // Nothing fitted this run: nothing written.
+  const none = store()
+  await writeServerBases(none, root, new Map([['s#db', 0.5]]), new Map())
+  expect(none.entries.size).toBe(0)
+  const enc = (v: unknown): Uint8Array => new TextEncoder().encode(JSON.stringify(v))
+  expect(parseServerBases(enc({ version: 1, servers: [] }))).toBeNull()
+  expect(parseServerBases(enc({ version: 1, servers: { a: -1, b: 'x', c: 2 } }))).toEqual(
+    new Map([['c', 2]]),
   )
 })

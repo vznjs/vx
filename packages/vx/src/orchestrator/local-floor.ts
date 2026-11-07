@@ -2,8 +2,8 @@
 // workers, which run tasks another machine placed. A run arms the sandbox
 // runtime before it builds a sandboxed request; a worker is no run, so it
 // arms here. It starts a request's servers (`ExecuteRequest.servers`) once
-// each, before the task, each inside its own sandbox, and stops them when
-// it closes.
+// each, before the task, each inside its own sandbox, and stops each when
+// the run says no task needs it, or when it closes.
 
 import type { ExecConfig } from '../config.js'
 import {
@@ -18,6 +18,7 @@ import {
   type ServerSpec,
   wrapSandboxedCommand,
 } from '../exec/index.js'
+import { stopServer } from './persistent.js'
 import { placeholderSweeper, prepareSandbox, sandboxRequestFor } from './sandbox-request.js'
 import { forwardedSignal, terminateChildren } from './signals.js'
 
@@ -28,6 +29,8 @@ export interface LocalFloor {
   execute(req: ExecuteRequest): Promise<ExecuteResult>
   /** Arms the sandbox runtime for `sandboxes` from the next sandboxed task on; its servers keep running. */
   rearm(sandboxes: readonly NonNullable<ExecConfig['sandbox']>[]): Promise<void>
+  /** Stops server `taskId` if this started it: no task left needs it. A later task that needs it starts it again. */
+  stop(taskId: string): Promise<void>
   /** Stops the servers this started and the sandbox runtime this armed. */
   close(): Promise<void>
 }
@@ -38,10 +41,13 @@ export interface LocalFloor {
  * unix-socket filter are one per process, set from their union before the
  * first sandboxed task (`prepareSandbox`). A request that carries a
  * `signal` but no `liveChildren` has its children stopped here when it
- * aborts, the way a run's stop ends its own.
+ * aborts, the way a run's stop ends its own. `onServer` hears each
+ * server's pid as it spawns, and `undefined` as `stop` ends it: a worker
+ * meters what its servers use.
  */
 export function localFloor(
   sandboxes: readonly NonNullable<ExecConfig['sandbox']>[] = [],
+  onServer?: (taskId: string, pid: number | undefined) => void,
 ): LocalFloor {
   const local = localExecutor()
   const prepare = (list: typeof sandboxes) =>
@@ -103,6 +109,7 @@ export function localFloor(
     if (spawn.child === undefined) void gone()
     else {
       children.push(spawn.child)
+      onServer?.(spec.taskId, spawn.child.pid)
       void spawn.child.exited.then(gone, gone)
     }
     try {
@@ -189,6 +196,17 @@ export function localFloor(
     async rearm(list) {
       if (armer?.armed === true) await resetSandbox()
       armer = prepare(list)
+    },
+    async stop(taskId) {
+      const up = servers.get(taskId)
+      if (up === undefined) return
+      servers.delete(taskId)
+      const child = await up.catch(() => undefined)
+      if (child === undefined) return
+      const i = children.indexOf(child)
+      if (i >= 0) children.splice(i, 1)
+      onServer?.(taskId, undefined)
+      await stopServer(child)
     },
     async close() {
       if (children.length > 0) await terminateChildren(() => children)

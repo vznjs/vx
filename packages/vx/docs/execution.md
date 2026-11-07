@@ -300,7 +300,8 @@ terminal and a task succeeding or failing. Read it alongside
  │            wallclockStartNs, wallclockEndNs }.
  │
  └─ End-of-run
-    1. SIGTERM dependency-only persistent children; persistent tasks
+    1. SIGTERM dependency-only persistent children still up (each is
+       stopped earlier, once every task using it finished); persistent tasks
        the user REQUESTED, those a requested group stands for (through
        nested groups, not through a one-shot), and the persistent tasks
        they depend on, are kept alive (see below).

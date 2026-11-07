@@ -1276,11 +1276,14 @@ of every sandboxed task the run holds: the runtime's proxy and its
 unix-socket filter are one per process, set from their union before the
 first sandboxed task (`prepareSandbox`). A request that carries a
 `signal` but no `liveChildren` has its children stopped here when it
-aborts, the way a run's stop ends its own.
+aborts, the way a run's stop ends its own. `onServer` hears each
+server's pid as it spawns, and `undefined` as `stop` ends it: a worker
+meters what its servers use.
 
 ```ts
 export function localFloor(
   sandboxes: readonly NonNullable<ExecConfig['sandbox']>[] = [],
+  onServer?: (taskId: string, pid: number | undefined) => void,
 ): LocalFloor
 ```
 
@@ -1292,6 +1295,7 @@ type · `src/orchestrator/local-floor.ts`
 export interface LocalFloor {
   execute(req: ExecuteRequest): Promise<ExecuteResult>
   rearm(sandboxes: readonly NonNullable<ExecConfig['sandbox']>[]): Promise<void>
+  stop(taskId: string): Promise<void>
   close(): Promise<void>
 }
 ```
@@ -2937,6 +2941,7 @@ export interface TaskExecutor {
   advice?(): readonly WorkerAdvice[]
   profile?(): readonly Record<string, unknown>[]
   running?(taskId: string): string | null | undefined
+  unneeded?(taskId: string): void
   execute(req: ExecuteRequest): Promise<ExecuteResult>
 }
 ```
