@@ -158,7 +158,7 @@ over a bucket of your own (`src/index.ts`):
   `{ blobs, authorize, limits? }`: `blobs` is a `Blobs` bucket
   (`{ put(name, body, size), get(name), size(name, bucket?) }`, `get` answering a
   `Blob`, `{ body, size }`, `size` with `bucket` the bucket's own answer,
-  never one the backend kept: an upload's skip), `authorize` an `Authorize`, which maps a
+  never one the backend kept: an upload's skip; a backend that keeps none ignores it), `authorize` an `Authorize`, which maps a
   request to its `Access` (`{ issuer, repository, write? }`: the token's issuer and
   repository name, which it reads, and the scope it may write) or throws, and `limits` any of `Limits`
   (`{ maxCheckHashes, maxUploadBytes }`) over
