@@ -203,6 +203,21 @@ describe('task selection', () => {
     TIMEOUT,
   )
 
+  // `café#build` typed in NFC beside a project named in NFD said
+  // "No project is named café; projects: café": two edits apart, no hint.
+  it(
+    'a name that differs only in Unicode form says so',
+    async () => {
+      const nfd = 'café'
+      await addProject(nfd, ['build'])
+      const r = await run({ cwd: root, tasks: ['café#build'], log: silent() })
+      expect(r.refused).toBe(
+        `no projects declare task(s): café#build. café is not the project ${nfd}, though they look the same: the two are written in different Unicode forms (NFC and NFD). Set \`name\` in its vx.config to the form you type. A run reads the lock: after editing a vx.config, run \`vx lock\`.`,
+      )
+    },
+    TIMEOUT,
+  )
+
   it(
     "a project's directory typed for its name hints the project, not a near name",
     async () => {
