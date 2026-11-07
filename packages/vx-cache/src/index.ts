@@ -859,7 +859,6 @@ export class VxCacheLayer implements RemoteCacheLayer {
   }
 }
 
-/** A check refused for its size: sent again in checks of `max` lookups. */
 /**
  * `Promise.all` that ends only once every check has: a refused chunk
  * rejected the lookup while its siblings were still in flight, so their
@@ -872,6 +871,7 @@ async function settledAll<T>(ps: readonly Promise<T>[]): Promise<T[]> {
   return done.map((r) => (r as PromiseFulfilledResult<T>).value)
 }
 
+/** A check refused for its size: sent again in checks of `max` lookups. */
 class TooMany extends Error {
   constructor(readonly max: number) {
     super(`a check is at most ${max} lookups`)
