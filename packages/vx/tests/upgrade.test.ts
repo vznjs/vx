@@ -32,6 +32,7 @@ import {
   startedVersion,
   upgradeArgv,
   upgradeBinary,
+  upgradeBoth,
   upgradeCmd,
   upgradeGlobal,
   upgradeManaged,
@@ -893,6 +894,26 @@ describe('startedVersion', () => {
     expect(startedVersion(dest)).toBe('vx 0.0.1')
   })
 
+  it("is the binary's own version inside a workspace, not the project's it hands off to", async () => {
+    // `vx init` asked the global vx its version in the workspace; the global
+    // handed `--version` to the project's vx, answered its newer version,
+    // and the older global was never installed.
+    const ws = mkdtempSync(path.join(dir, 'ws-'))
+    await mkdir(path.join(ws, '.vx'))
+    await writeFile(path.join(ws, '.vx', 'workspace.ts'), 'export default {}\n')
+    const bin = await fake(
+      'handing-off',
+      'if [ -z "${VX_HANDED_OFF-}" ] && [ -e "$PWD/.vx/workspace.ts" ]; then echo "vx 5.0.0"; else echo "vx 4.0.0"; fi',
+    )
+    const cwd = process.cwd()
+    process.chdir(ws)
+    try {
+      expect(startedVersion(bin)).toBe('vx 4.0.0')
+    } finally {
+      process.chdir(cwd)
+    }
+  })
+
   it('gives up on a binary that does not answer, so the rollback can run', async () => {
     // The answer decides the rollback, and it was unbounded: a new binary
     // that hung on start held `vx upgrade` forever with the old one never
@@ -1009,6 +1030,52 @@ describe('upgradeGlobal: the global vx that handed the run to the project', () =
   })
 })
 
+describe('upgradeBoth: the project vx, then the global that handed off', () => {
+  it('locks the moved project even when the global then fails', async () => {
+    // The global's refusal threw before the lock: the project stood at the
+    // new release with its lock recorded by the old one.
+    const root = mkdtempSync(path.join(dir, 'both-'))
+    await mkdir(path.join(root, '.vx'))
+    await writeFile(path.join(root, '.vx', 'workspace.ts'), 'export default {}\n')
+    await writeFile(
+      path.join(root, 'package.json'),
+      JSON.stringify({ devDependencies: { '@vzn/vx': '0.0.1' } }),
+    )
+    const tools = path.join(root, 'tools')
+    await mkdir(tools)
+    await writeFile(path.join(tools, 'pnpm'), '#!/bin/sh\nexit 0\n')
+    await chmod(path.join(tools, 'pnpm'), 0o755)
+    const newVx = path.join(root, 'node_modules', '.bin', 'vx')
+    await mkdir(path.dirname(newVx), { recursive: true })
+    await writeFile(newVx, `#!/bin/sh\necho "$1" > "${root}/ran"\n`)
+    await chmod(newVx, 0o755)
+    const global = path.join(root, 'global-vx')
+    await writeFile(global, '#!/bin/sh\nexit 1\n')
+    await chmod(global, 0o755)
+    const install = {
+      manager: 'pnpm' as const,
+      scope: 'project' as const,
+      cwd: root,
+      field: 'devDependencies' as const,
+    }
+    const PATH = process.env['PATH']
+    const cwd = process.cwd()
+    process.env['PATH'] = `${tools}:${PATH}`
+    process.chdir(root)
+    const out = spyOn(process.stdout, 'write').mockImplementation(() => true)
+    try {
+      await expect(
+        upgradeBoth(global, newVx, install, '9.9.9', false, TEST_KEY, '0.0.1'),
+      ).rejects.toThrow(`vx upgrade: global vx ${global}: it did not answer \`--version\``)
+    } finally {
+      out.mockRestore()
+      process.chdir(cwd)
+      process.env['PATH'] = PATH
+    }
+    expect((await readFile(path.join(root, 'ran'), 'utf8')).trim()).toBe('lock')
+  })
+})
+
 describe('upgradeOnlyGlobal: `vx upgrade -g` moves only the global vx', () => {
   // M (2026-10-16): "vx upgrade -g should only update global".
   it("updates a manager's global install with that manager, and touches no project", async () => {
@@ -1044,6 +1111,20 @@ describe('upgradeOnlyGlobal: `vx upgrade -g` moves only the global vx', () => {
     await writeFile(bin, '')
     await expect(upgradeOnlyGlobal(bin, '9.9.9', '0.0.1')).rejects.toThrow(
       `vx upgrade -g: no global vx ran — ${bin} is the project's own. Install one (bun add -g @vzn/vx), or run \`vx upgrade\` to move the project's`,
+    )
+  })
+
+  it("refuses the project's own vx even at the version, instead of calling it the global", async () => {
+    const project = mkdtempSync(path.join(dir, 'op-'))
+    await writeFile(
+      path.join(project, 'package.json'),
+      JSON.stringify({ devDependencies: { '@vzn/vx': '^9.9.9' } }),
+    )
+    const bin = path.join(project, 'node_modules/@vzn/vx-linux-x64/vx')
+    await mkdir(path.dirname(bin), { recursive: true })
+    await writeFile(bin, '')
+    await expect(upgradeOnlyGlobal(bin, '9.9.9', '9.9.9')).rejects.toThrow(
+      `vx upgrade -g: no global vx ran — ${bin} is the project's own`,
     )
   })
 

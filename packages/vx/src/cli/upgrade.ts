@@ -825,16 +825,17 @@ export async function upgradeOnlyGlobal(
   current = VERSION,
   latest = false,
 ): Promise<void> {
-  if (current === version) {
-    ui.print('out', ui.status('info', 'vx upgrade', `global already at ${current}`))
-    return
-  }
   // Read from the binary's own directory, not cwd: a project there is not this install's.
   const install = managedInstall(self, path.dirname(self))
+  // Before the version check: at the version, the project's own vx was called the global.
   if (install?.scope === 'project') {
     throw new UserError(
       `vx upgrade -g: no global vx ran — ${self} is the project's own. Install one (bun add -g ${PACKAGE}), or run \`vx upgrade\` to move the project's`,
     )
+  }
+  if (current === version) {
+    ui.print('out', ui.status('info', 'vx upgrade', `global already at ${current}`))
+    return
   }
   if (install === null) await upgradeBinary(self, version, current, 'global ', undefined, latest)
   else await upgradeManaged(install, version, current, 'global ', latest)
@@ -906,16 +907,8 @@ export async function upgradeCmd(argv: readonly string[]): Promise<number> {
   const install = managedInstall(dest, process.cwd())
   // A global vx handed this run to the project's own: both move, to one
   // version, the project first (2026-10-15).
-  const from = handedOffFrom
-  if (from !== undefined) {
-    const version = await targetVersion(tag)
-    const moved = await named('project vx', () =>
-      install === null
-        ? upgradeBinary(dest, version, VERSION, 'project ', NPM_SIGNING_KEY, latest)
-        : upgradeManaged(install, version, VERSION, 'project ', latest),
-    )
-    await upgradeGlobal(from, version, NPM_SIGNING_KEY, latest)
-    if (moved) await relock(newVx(install, dest))
+  if (handedOffFrom !== undefined) {
+    await upgradeBoth(handedOffFrom, dest, install, await targetVersion(tag), latest)
     return 0
   }
   const moved =
@@ -924,6 +917,32 @@ export async function upgradeCmd(argv: readonly string[]): Promise<number> {
       : await upgradeBinary(dest, versionSpec(tag))
   if (moved) await relock(newVx(install, dest))
   return 0
+}
+
+/**
+ * Move the project's vx at `dest` (`install`, null for a binary), then the
+ * global `from` that handed the run to it, to `version`. The project's
+ * move is locked even when the global's then fails: the lock was skipped.
+ */
+export async function upgradeBoth(
+  from: string,
+  dest: string,
+  install: ManagedInstall | null,
+  version: string,
+  latest: boolean,
+  key: SigningKey = NPM_SIGNING_KEY,
+  current = VERSION,
+): Promise<void> {
+  const moved = await named('project vx', () =>
+    install === null
+      ? upgradeBinary(dest, version, current, 'project ', key, latest)
+      : upgradeManaged(install, version, current, 'project ', latest),
+  )
+  try {
+    await upgradeGlobal(from, version, key, latest)
+  } finally {
+    if (moved) await relock(newVx(install, dest))
+  }
 }
 
 /**
@@ -969,6 +988,9 @@ export function startedVersion(bin: string, timeoutMs = 10_000): string | null {
   try {
     proc = Bun.spawnSync({
       cmd: [bin, '--version'],
+      // Not in a workspace: there a global vx hands `--version` to the
+      // project's and answers its version, not its own.
+      cwd: '/',
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',

@@ -17,8 +17,8 @@ manager installed is upgraded by that manager (`managedInstall`,
 
 Handed off by a global vx (`VX_HANDED_OFF` names it), the project's vx
 moves both to one version: its own install first, then the global
-(`upgradeGlobal`), each its own way; a refusal names the install that
-failed (2026-10-15). `vx upgrade -g` moves only the global: the
+(`upgradeGlobal`), each its own way (`upgradeBoth`); a refusal names the
+install that failed (2026-10-15). `vx upgrade -g` moves only the global: the
 compiled binary and npm-launcher.sh skip the hand-off for it
 (`upgradesOnlyItself`), and `upgradeOnlyGlobal` upgrades this vx its
 own way, refusing when it is a project's install (2026-10-16).
@@ -99,6 +99,16 @@ export async function upgradeGlobal(
   key?: SigningKey,
   latest?: boolean,
 ): Promise<void>
+// the project's vx at `dest`, then the global `from`, to `version`; a moved project is locked even when the global fails
+export async function upgradeBoth(
+  from: string,
+  dest: string,
+  install: ManagedInstall | null,
+  version: string,
+  latest: boolean,
+  key?: SigningKey,
+  current?: string,
+): Promise<void>
 // `vx upgrade -g`: this vx alone to `version`; a project's install refuses
 export async function upgradeOnlyGlobal(
   self: string,
@@ -107,7 +117,7 @@ export async function upgradeOnlyGlobal(
   latest?: boolean,
 ): Promise<void>
 export async function upgradeCmd(argv: readonly string[]): Promise<number>
-// `bin --version` when it answers as vx within the bound, else null: what `starts` asks
+// `bin --version`, run at `/` so no workspace hands it off, when it answers as vx within the bound, else null
 export function startedVersion(bin: string, timeoutMs?: number): string | null // default 10 s
 ```
 

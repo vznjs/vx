@@ -360,6 +360,29 @@ describe('vx init in a repo with a package.json and no Turbo or Nx', () => {
     expect([r.code, r.err, root]).toEqual([0, '', `root      ${outer}`])
   })
 
+  // The Turbo or Nx check climbed to `/` outside git, so a stray turbo.json
+  // or nx.json above the project handed init to vx-migrate; package.json
+  // has stopped at the project's root since 2026-10-28, and so does it.
+  it('outside git, a turbo.json or nx.json above the package.json root is not the repo', async () => {
+    const outer = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-init-nogit-tool-')))
+    roots.push(outer)
+    await writeFile(path.join(outer, 'turbo.json'), '{}\n')
+    await writeFile(path.join(outer, 'nx.json'), '{}\n')
+    const proj = path.join(outer, 'proj')
+    await mkdir(proj)
+    await writeFile(path.join(proj, 'package.json'), '{"name":"p"}\n')
+    const env = {
+      GIT_CEILING_DIRECTORIES: path.dirname(outer),
+      HOME: outer,
+      // Never the network: a hand-off to vx-migrate fails fast instead.
+      BUN_CONFIG_REGISTRY: 'http://127.0.0.1:9/',
+      npm_config_registry: 'http://127.0.0.1:9/',
+    }
+    const r = await vx(proj, ['init', '--dry', '--format', 'json'], env)
+    expect([r.code, r.err]).toEqual([0, ''])
+    expect((JSON.parse(r.out) as { source: string }).source).toBe('no turbo.json or nx.json')
+  })
+
   // A Bun workspace with scripts got an empty root project and a `next`
   // that never named the tool that makes scripts tasks (2026-10-26).
   it('names vx-migrate in next when there are scripts to map', async () => {
