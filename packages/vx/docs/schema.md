@@ -1732,8 +1732,13 @@ or inside a store frees that path alone), since a
 dependency the task ran could copy a key into an output the cache
 shares (L-41): `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.azure`, `~/.kube`,
 `~/.config/gcloud`, `~/.config/gh`, `~/.docker/config.json`, `~/.netrc`,
-`~/.git-credentials`, `~/.npmrc`, `~/.yarnrc.yml`, `~/.pypirc`,
-`~/.bunfig.toml`, `~/.config/.bunfig.toml`, `~/.cargo/credentials`,
+`~/.git-credentials`, `~/.config/git/credentials`, `~/.npmrc`,
+`~/.yarnrc.yml`, `~/.yarnrc`, `~/.config/pnpm/rc`,
+`~/Library/Preferences/pnpm/rc`, `~/.pypirc`,
+`~/.config/composer/auth.json`, `~/.composer/auth.json`,
+`~/.config/glab-cli`, `~/.config/github-copilot`, `~/.s3cfg`, `~/.oci`,
+`~/.cache/huggingface/token`, `~/.huggingface/token`,
+`~/.kaggle/kaggle.json`, `~/.bunfig.toml`, `~/.config/.bunfig.toml`, `~/.cargo/credentials`,
 `~/.cargo/credentials.toml`, `~/.gem/credentials`, `~/.config/hub`,
 `~/.config/containers/auth.json`, `~/.terraform.d/credentials.tfrc.json`,
 `~/.vault-token`, `~/.pgpass`, `~/.config/configstore/firebase-tools.json`,
@@ -1745,8 +1750,9 @@ shares (L-41): `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.azure`, `~/.kube`,
 `~/.fly/config.yml`, `~/.supabase/access-token`, `~/.config/doctl`,
 `~/Library/Application Support/doctl`, `~/.config/stripe/config.toml`,
 `~/.config/op`, `~/.expo/state.json`, `~/.claude/.credentials.json`,
-`~/.codex/auth.json`. A store in home's `.config` or `.local/share` is
-denied again under `$XDG_CONFIG_HOME` or `$XDG_DATA_HOME`, which a task sees.
+`~/.codex/auth.json`. A store in home's `.config`, `.local/share` or
+`.cache` is denied again under `$XDG_CONFIG_HOME`, `$XDG_DATA_HOME` or
+`$XDG_CACHE_HOME`, which a task sees.
 Each is looked for as each task starts, so a store an earlier task of
 the run wrote (`npm config set` saving a token) is denied as well.
 What it grants from there is the union of the read grants and, on Linux,
@@ -1824,9 +1830,19 @@ moves with every file that made them, so the read replays nothing stale.
 That is how one project serves a tool to the rest: `tools#node` builds
 Node into `out/`, and `app#build` with `dependsOn: ['tools#node']` runs
 `../tools/out/bin/node`, `hermetic` or not. The dependency's sources stay
-hidden. Each output glob grants its fixed head (`out/**` grants `out/`);
-a glob with none (`*.tsbuildinfo`) grants only the files it matches.
-Pinned in `tests/sandbox-dependency-outputs.unsafe.test.ts`.
+hidden, and so does every file beside its outputs that no glob takes:
+an untracked `gen/notes.txt` under `gen/**/*.js`, or one a `!` entry
+takes back, is no output and no key answers for it. A directory every
+file of which is an output is granted whole (`out/**` grants `out/`);
+elsewhere each output file is granted alone, and a read of a file beside
+them under the glob's fixed head is refused and reported. A link is
+granted only inside a directory granted whole, since alone it would grant
+its target. Granted alone, each file is a bind on the sandbox's command
+line, which holds about 64 KiB of them (some 300 files under a
+100-character path): past that the task fails before it runs, naming the
+dependency, until the files beside the outputs are declared outputs too
+or moved out. Pinned in `tests/sandbox-dependency-outputs.unsafe.test.ts`
+and `tests/sandbox-request.test.ts`.
 
 **A missing write grant fails the task.** On macOS seatbelt refuses the
 write and reports it. On Linux the write meets a read-only bind or a

@@ -3,7 +3,7 @@
 // (bwrap cannot bind a path that does not exist). Shared by the cached path
 // (through the executor) and the persistent path (spawned in execute-task).
 
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import { lstat, mkdir, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
@@ -24,7 +24,7 @@ import {
   type SandboxViolation,
 } from '../exec/index.js'
 import type { TaskNode } from '../graph/index.js'
-import { grantPrefix, relPosix, UserError } from '../util/index.js'
+import { grantPrefix, relPosix, restorableOutput, UserError } from '../util/index.js'
 
 /**
  * Arm the sandbox runtime for a run, lazily: only when at least one task
@@ -186,7 +186,8 @@ export function prepareSandbox(nodes: Iterable<SandboxedNode>): SandboxArmer | n
  *
  * The other is the outputs of the tasks its key folds
  * (`dependencyOutputs`, 2026-11-06): an edge the user drew, whose files
- * this key already answers for, so the read can replay nothing stale.
+ * this key already answers for, so the read can replay nothing stale —
+ * only the files the outputs take, never what lies beside them.
  */
 export async function sandboxRequestFor(
   node: Pick<TaskNode, 'projectDir'>,
@@ -202,7 +203,7 @@ export async function sandboxRequestFor(
    */
   cacheDir?: string,
   /** The dependencies' outputs it may read (`dependencyReads`): absolute paths. */
-  dependencyOutputs: readonly string[] = [],
+  dependencyOutputs: DependencyReads = { reads: [], reported: [] },
 ): Promise<SandboxRequest> {
   // The runtime reads a path holding a bracket as a pattern: on Linux it
   // mounts no such write path (B-60); seatbelt's rules compile it as a
@@ -244,7 +245,7 @@ export async function sandboxRequestFor(
   // own `package.json` depends on (2026-09-05) — when the key
   // moves with it.
   const links = await linkedDeps(depDirs, node.projectDir, workspaceRoot, keyed)
-  depDirs.push(...links.granted, ...dependencyOutputs)
+  depDirs.push(...links.granted, ...dependencyOutputs.reads)
   // bwrap cannot --bind a path that does not exist: the bind silently
   // becomes a no-op and writes to it appear to succeed but never land.
   // Pre-create what the task said it will write — after the grants are
@@ -308,47 +309,151 @@ export async function sandboxRequestFor(
     // …and of a dependency withheld above: the task reached for it
     // through its own `node_modules`, and that read is the stale hit the
     // withholding exists to stop, not the wall.
-    reportLinked: links.withheld.map((w) => w.dir),
+    // So is a read beside a dependency's outputs, under the head its glob
+    // walked: a file no key answers for (`dependencyReads`).
+    reportLinked: [
+      ...links.withheld.map((w) => w.dir),
+      ...dependencyOutputs.reported.map(toRealPath),
+    ],
     config,
     ...(keyed === undefined ? {} : { keyed: [...keyed] }),
-    ...(dependencyOutputs.length === 0 ? {} : { dependencyReads: [...dependencyOutputs] }),
+    ...(dependencyOutputs.reads.length === 0
+      ? {}
+      : {
+          dependencyReads: {
+            reads: [...dependencyOutputs.reads],
+            reported: [...dependencyOutputs.reported],
+          },
+        }),
   }
   return { sandbox: request, placeholders, withheld: links.withheld }
 }
 
 /**
- * The paths a sandboxed task may read of its dependencies' declared
- * outputs (`readableDeps`): each output glob's fixed head, or, for a glob
- * with none (`*.tsbuildinfo`), the files it matches now, so a root-level
- * output never grants the dependency's whole project. Asked when the task
- * runs, after its dependencies ran or were restored: a head that names
- * nothing is left out, as bwrap binds no missing path.
+ * What a sandboxed task may read of its dependencies' declared outputs
+ * (`readableDeps`): the files their globs take now (`restorableOutput`, so
+ * a `!` entry takes one back), a directory whole where every file under it
+ * is one. Binding each glob's head whole granted every file beside the
+ * outputs too (an untracked `gen/notes.txt` under `gen/**\/*.js`), which no
+ * key answers for: an edit to it replayed the old result as a hit. Asked
+ * when the task runs, after its dependencies ran or were restored.
+ *
+ * `reported` are the heads walked: a refused read under one is a file
+ * beside the outputs, reported as a violation. A glob with no head
+ * (`*.tsbuildinfo`) reports nothing, since its head is the dependency's
+ * whole project, whose sources its key folds.
  */
 export async function dependencyReads(
   deps: readonly TaskNode[],
   workspaceRoot: string,
-): Promise<string[]> {
+): Promise<DependencyReads> {
   const reads = new Set<string>()
+  const reported = new Set<string>()
+  const bytesBy = new Map<string, number>()
+  let total = 0
   for (const dep of deps) {
     const outputs = dep.config.outputs
     if (outputs === undefined) continue
-    const globs = [
-      ...outputs.files.map((g) => [dep.projectDir, g] as const),
-      ...(outputs.workspaceFiles ?? []).map((g) => [workspaceRoot, g] as const),
-    ]
-    for (const [base, glob] of globs) {
-      if (glob.startsWith('!')) continue
-      const head = grantPrefix(glob)
-      if (head !== '' && head !== '.') {
+    const add = (p: string): void => {
+      if (reads.has(p)) return
+      reads.add(p)
+      total += bindBytes(p)
+      bytesBy.set(dep.id, (bytesBy.get(dep.id) ?? 0) + bindBytes(p))
+    }
+    const scopes = [
+      [dep.projectDir, outputs.files, 'project'],
+      [workspaceRoot, outputs.workspaceFiles ?? [], 'workspace'],
+    ] as const
+    for (const [base, globs, scope] of scopes) {
+      const isOutput = restorableOutput(globs, scope)
+      for (const glob of globs) {
+        if (glob.startsWith('!')) continue
+        const head = grantPrefix(glob)
+        if (head === '' || head === '.') {
+          for await (const f of new Bun.Glob(glob).scan({ cwd: base, onlyFiles: true, dot: true }))
+            if (isOutput(f)) add(path.join(base, f))
+          continue
+        }
         const abs = path.join(base, head)
-        if (existsSync(abs)) reads.add(abs)
-        continue
+        const found = await outputBinds(abs, head, isOutput)
+        if (found === undefined) continue
+        found.binds.forEach(add)
+        if (found.dir) reported.add(abs)
       }
-      for await (const f of new Bun.Glob(glob).scan({ cwd: base, onlyFiles: true, dot: true }))
-        reads.add(path.join(base, f))
     }
   }
-  return [...reads]
+  if (total > DEPENDENCY_BIND_BYTES) {
+    const most = [...bytesBy].sort((a, b) => b[1] - a[1]).map(([id]) => id)
+    throw new UserError(
+      `exec.sandbox: the outputs of ${most.slice(0, 3).join(', ')} lie among other files, so ` +
+        `the sandbox would bind ${reads.size} of them one by one, more than its command line ` +
+        `holds — declare the files beside them outputs too (a whole \`dir/**\`), or move them ` +
+        `out of the output directory`,
+    )
+  }
+  return { reads: [...reads], reported: [...reported] }
+}
+
+/**
+ * How much of the sandbox's command line the dependency binds may take.
+ * Each is `--ro-bind <path> <path>` on Linux, and the whole wrap is one
+ * argument to `sh -c`, which holds at most 128 KiB: 1,000 output files
+ * bound one by one under a 100-character path failed the spawn with E2BIG
+ * (206 KiB). What is left is the wrap's own and the command's.
+ */
+const DEPENDENCY_BIND_BYTES = 64 * 1024
+
+/** The bytes one read bind adds to the wrap: its path twice, quoted, and the flag. */
+function bindBytes(p: string): number {
+  return 2 * Buffer.byteLength(p) + 16
+}
+
+/** `dependencyReads`: the paths to bind, and the heads whose refused reads are reported. */
+export interface DependencyReads {
+  readonly reads: readonly string[]
+  readonly reported: readonly string[]
+}
+
+/**
+ * The binds that grant exactly the outputs at `abs` (`rel` from the
+ * dependency's base): itself when it is a file `isOutput` takes or a
+ * directory every file under it is, else its children's binds. `whole`
+ * says it was bound itself; `undefined` is a missing path. A link is a
+ * leaf: bound alone it would grant its target, which may be no output, so
+ * it is granted only inside a directory bound whole.
+ */
+async function outputBinds(
+  abs: string,
+  rel: string,
+  isOutput: (rel: string) => boolean,
+): Promise<{ binds: string[]; whole: boolean; dir: boolean } | undefined> {
+  const st = await lstat(abs).catch(() => undefined)
+  if (st === undefined) return undefined
+  if (st.isDirectory()) return { ...outputDirBinds(abs, rel, isOutput), dir: true }
+  const whole = isOutput(rel)
+  return { binds: whole && !st.isSymbolicLink() ? [abs] : [], whole, dir: false }
+}
+
+/** `outputBinds` for a directory. */
+function outputDirBinds(
+  abs: string,
+  rel: string,
+  isOutput: (rel: string) => boolean,
+): { binds: string[]; whole: boolean } {
+  const binds: string[] = []
+  let whole = true
+  for (const e of readdirSync(abs, { withFileTypes: true })) {
+    const childRel = `${rel}/${e.name}`
+    const childAbs = `${abs}/${e.name}`
+    if (e.isDirectory()) {
+      const child = outputDirBinds(childAbs, childRel, isOutput)
+      binds.push(...child.binds)
+      whole &&= child.whole
+    } else if (isOutput(childRel)) {
+      if (!e.isSymbolicLink()) binds.push(childAbs)
+    } else whole = false
+  }
+  return { binds: whole ? [abs] : binds, whole }
 }
 
 /**
@@ -695,10 +800,26 @@ export const CREDENTIAL_STORES = [
   '.config/gh',
   '.docker/config.json',
   '.netrc',
+  // git's credential store, at its home and at its XDG default.
   '.git-credentials',
+  '.config/git/credentials',
   '.npmrc',
+  // Yarn's: Berry's, and classic's `_authToken`.
   '.yarnrc.yml',
+  '.yarnrc',
+  // pnpm's global rc, which `pnpm config set` writes a token to.
+  '.config/pnpm/rc',
+  'Library/Preferences/pnpm/rc',
   '.pypirc',
+  '.config/composer/auth.json',
+  '.composer/auth.json',
+  '.config/glab-cli',
+  '.config/github-copilot',
+  '.s3cfg',
+  '.oci',
+  '.cache/huggingface/token',
+  '.huggingface/token',
+  '.kaggle/kaggle.json',
   // Registry and service tokens of the same kind: Bun's global bunfig
   // (`[install.scopes]` tokens) at either of its homes, Cargo's, RubyGems'.
   '.bunfig.toml',
@@ -734,14 +855,16 @@ export const CREDENTIAL_STORES = [
 ]
 
 /**
- * Each store's path: under `home`, and again where `$XDG_CONFIG_HOME` or
- * `$XDG_DATA_HOME` moves a `.config` or `.local/share` one. A task sees
- * both, so a CLI reads its login there. A relative value is no XDG path.
+ * Each store's path: under `home`, and again where `$XDG_CONFIG_HOME`,
+ * `$XDG_DATA_HOME` or `$XDG_CACHE_HOME` moves a `.config`, `.local/share`
+ * or `.cache` one. A task sees all three, so a CLI reads its login there.
+ * A relative value is no XDG path.
  */
 export function credentialStorePaths(home: string): string[] {
   const moved = [
     ['.config/', process.env['XDG_CONFIG_HOME']],
     ['.local/share/', process.env['XDG_DATA_HOME']],
+    ['.cache/', process.env['XDG_CACHE_HOME']],
   ] as const
   const out = new Set(CREDENTIAL_STORES.map((rel) => path.join(home, rel)))
   for (const rel of CREDENTIAL_STORES)

@@ -4,7 +4,9 @@
 // them: a dependency's key folds the files that made its outputs. The
 // dependency's sources, and the outputs of a task it does not depend on,
 // stay behind the project wall.
+import { realpathSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
+import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { taskShell } from '../src/util/index.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
@@ -128,6 +130,85 @@ describe.skipIf(!available)('a sandboxed task reads the outputs it depends on', 
     },
     TIMEOUT,
   )
+})
+
+// Only the files the dependency's globs take are its outputs: a file
+// beside them under the same head (one the dependency left, or one a `!`
+// entry takes back) is no output, no key answers for it, and an edit to it
+// replayed the old result as a hit. It stays hidden, and reaching for it is
+// reported.
+describe.skipIf(!available)('a dependency’s non-output files stay hidden', () => {
+  let fixture: Fixture
+
+  beforeEach(async () => {
+    fixture = await makeWorkspace()
+  })
+  afterEach(async () => {
+    await rm(fixture.root, { recursive: true, force: true })
+  })
+
+  const READ = [
+    'read o 2>/dev/null < ../tools/gen/out.js && echo "$o" || echo NOOUT',
+    'read s 2>/dev/null < ../tools/gen/sub/s.js && echo "$s" || echo NOSUB',
+    'read n 2>/dev/null < ../tools/gen/notes.txt && echo "$n" || echo NONOTE',
+  ].join('; ')
+
+  const peek = async (outputs: string[]) => {
+    const tools = await addProject(fixture.root, 'tools', {
+      files: { 'src/s.txt': 'SRC\n' },
+      config: `
+        export default {
+          tasks: {
+            gen: {
+              exec: { command: 'mkdir -p gen/sub && echo OUT > gen/out.js && echo SUB > gen/sub/s.js && echo NOTE > gen/notes.txt' },
+              inputs: { files: ['src/**'] },
+              outputs: { files: ${JSON.stringify(outputs)} },
+              cache: true,
+            },
+          },
+        }
+      `,
+    })
+    await addProject(fixture.root, 'app', {
+      files: { 'src/a.txt': 'A\n' },
+      config: `
+        export default {
+          tasks: {
+            use: {
+              exec: { command: ${JSON.stringify(READ)}, sandbox: { allow: { read: ['.'] } } },
+              dependsOn: ['tools#gen'],
+              inputs: { files: ['src/**'] },
+              outputs: { files: [] },
+              cache: true,
+            },
+          },
+        }
+      `,
+    })
+    const r = await run({ cwd: fixture.root, tasks: ['use'], log: collectingLogger(fixture) })
+    const seen = fixture.log
+      .flatMap((l) => l.split('\n'))
+      .map((l) => l.trim())
+      .filter((l) => /^(OUT|NOOUT|SUB|NOSUB|NOTE|NONOTE)$/.test(l))
+    const use = r.outcomes.find((o) => o.node.id === 'app#use')
+    return { seen, use, notes: path.join(realpathSync(tools), 'gen', 'notes.txt') }
+  }
+
+  for (const outputs of [['gen/**/*.js'], ['gen/**', '!gen/notes.txt']]) {
+    it(
+      `${JSON.stringify(outputs)}: the outputs are readable, gen/notes.txt is not`,
+      async () => {
+        const { seen, use, notes } = await peek(outputs)
+        expect(seen).toEqual(['OUT', 'SUB', 'NONOTE'])
+        expect(use?.status).toBe('failed')
+        if (process.platform === 'linux')
+          expect(use?.sandboxViolationLines).toEqual([
+            `openat(../tools/gen/notes.txt) = -1 ENOENT  [${notes}]`,
+          ])
+      },
+      TIMEOUT,
+    )
+  }
 })
 
 describe.skipIf(!available)('a hermetic task runs a program its dependency built', () => {

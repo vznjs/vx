@@ -49,12 +49,16 @@ export async function sandboxRequestFor(
   keyed: ReadonlySet<string> | undefined, // keyed-projects.ts's set; undefined for a task with no `cache`
   nested?: readonly string[], // dirs of the projects nested in this one: a wall its grants do not reach
   cacheDir?: string, // the run's cache dir, walled wherever it is
-  dependencyOutputs?: readonly string[], // dependencyReads(): the dependencies' outputs it may read
+  dependencyOutputs?: DependencyReads, // dependencyReads(): the dependencies' outputs it may read
 ): Promise<SandboxRequest>
+export interface DependencyReads {
+  readonly reads: readonly string[] // the paths to bind: output files, or directories wholly outputs
+  readonly reported: readonly string[] // the heads walked: a refused read under one is reported
+}
 export async function dependencyReads(
   deps: readonly TaskNode[],
   workspaceRoot: string,
-): Promise<string[]>
+): Promise<DependencyReads>
 
 export async function sweepPlaceholders(placeholders: readonly Placeholder[]): Promise<string[]>
 // One shared sweep: every caller gets the same answer, whoever asked first
@@ -106,10 +110,22 @@ export function mayWriteFingerprint(
 - `sandboxRequestFor` builds the sandbox half of one request, plus the
   placeholders.
 - `dependencyReads` lists what a task may read of the outputs of the
-  tasks its key folds (`readableDeps`, keyed-projects.ts): each output
-  glob's fixed head, or the files a glob with none matches, so
-  `*.tsbuildinfo` never grants the dependency's whole project. Asked when
-  the task runs, after its dependencies ran or were restored.
+  tasks its key folds (`readableDeps`, keyed-projects.ts): the files their
+  globs take (`restorableOutput`, so a `!` entry takes one back), a
+  directory whole where every file under it is one. Binding each glob's
+  head whole granted every file beside the outputs too (an untracked
+  `gen/notes.txt` under `gen/**/*.js`), which no key answers for, and an
+  edit to it was a stale hit. A glob with no head binds the files it
+  matches, so `*.tsbuildinfo` never grants the dependency's whole project.
+  `reported` is each head walked, added to the request's `reportLinked`:
+  a refused read there is a file beside the outputs. A link is bound only
+  inside a directory bound whole (alone, its target would be bound). Past
+  `DEPENDENCY_BIND_BYTES` (64 KiB) of binds it throws a `UserError`
+  naming the dependencies: each bind is two paths on the wrap, one
+  argument to `sh -c` that holds 128 KiB on Linux, and 1,000 one-by-one
+  binds failed the spawn with E2BIG. The walk of a 10,000-file `dist/`
+  takes 4 ms. Asked when the task runs, after its dependencies ran or
+  were restored.
 - `sweepPlaceholders` removes the placeholders the task never wrote
   (still empty, mtime untouched) and returns their paths. execute-task
   calls it after every attempt of a one-shot task, and when a

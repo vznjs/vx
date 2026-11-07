@@ -1022,7 +1022,12 @@ export class Orchestrator {
                 ...(req.sandbox.dependencyReads === undefined
                   ? {}
                   : {
-                      reads: req.sandbox.dependencyReads.map((d) => path.relative(this.o.root, d)),
+                      reads: req.sandbox.dependencyReads.reads.map((d) =>
+                        path.relative(this.o.root, d),
+                      ),
+                      reported: req.sandbox.dependencyReads.reported.map((d) =>
+                        path.relative(this.o.root, d),
+                      ),
                     }),
               },
             }),
