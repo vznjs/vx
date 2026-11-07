@@ -25,7 +25,7 @@ import {
   type ProjectMeta,
   readLockfile,
 } from '../workspace/index.js'
-import type { ProjectConfig } from '../config.js'
+import type { ProjectConfig, TaskConfig } from '../config.js'
 import type { ProjectEntry } from '../workspace/index.js'
 import { isDefaultBuild, parseDependencySpec } from '../graph/index.js'
 import { declaresInput, workspaceFilesReachInto } from '../cache/index.js'
@@ -80,15 +80,43 @@ export async function workspaceGlobOwners(
   /** `AffectedChanges.untracked`. */
   untracked: ReadonlySet<string> = new Set(),
 ): Promise<string[]> {
+  // The changed paths a `workspaceFiles` list matches, asked once per
+  // distinct list rather than once per task: tasks × changed paths was
+  // 14.5 s on 8000 projects with 64k changed paths. A tracked match selects
+  // any task declaring the list; an untracked one only a task whose own
+  // outputs it is not, so those are kept for the per-task check.
+  const byList = new Map<string, { tracked: boolean; loose: string[] }>()
+  const matchesOf = (ws: readonly string[]) => {
+    const key = ws.join('\0')
+    let found = byList.get(key)
+    if (found !== undefined) return found
+    found = { tracked: false, loose: [] }
+    const probe = { inputs: { files: [], workspaceFiles: ws } } as unknown as TaskConfig
+    for (const rel of changed) {
+      const loose = untracked.has(rel)
+      if (!declaresInput(probe, null, rel, dirLinks.has(rel))) continue
+      if (!loose) {
+        found.tracked = true
+        break
+      }
+      found.loose.push(rel)
+    }
+    byList.set(key, found)
+    return found
+  }
   const declaresMatch = (config: ProjectConfig, projectAbs: string): boolean => {
     let projectDir: string | undefined
     for (const task of Object.values(config.tasks ?? {})) {
+      const ws = task.inputs?.workspaceFiles
+      if (ws === undefined || ws.length === 0) continue
       const input = (rel: string): boolean => {
         const loose = untracked.has(rel)
         if (loose) projectDir ??= relPosix(root, projectAbs)
         return declaresInput(task, null, rel, dirLinks.has(rel), loose, projectDir)
       }
-      if (changed.some(input)) return true
+      // A hand-edited lock entry that is no list is asked path by path.
+      const found = Array.isArray(ws) ? matchesOf(ws) : { tracked: changed.some(input), loose: [] }
+      if (found.tracked || found.loose.some(input)) return true
       if (nested.some((dir) => workspaceFilesReachInto(task, dir))) return true
     }
     return false

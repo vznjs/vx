@@ -172,7 +172,10 @@ export function headBase(workspaceRoot: string, ref: string): string | undefined
      (`outputs.workspaceFiles`, or its `outputs.files`) matches nothing,
      as the key folds only a tracked one there; one git stopped
      tracking is in the diff too, and the base key folded it, so it
-     still matches. The `--affected` sugar has staged
+     still matches. A task without `workspaceFiles` is skipped
+     outright, and each distinct list is matched against the changed
+     paths once, not once per task: tasks × paths took 14.5 s on 8000
+     projects with 64k changed paths. The `--affected` sugar has staged
      every config for its graph walk already; a bare `[ref]` filter pays
      that one load when something changed.
 
