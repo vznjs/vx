@@ -658,6 +658,10 @@ export function validateProjectConfig(
           )
         }
       }
+      const worker = (exec as { worker?: unknown }).worker
+      if (worker !== undefined && (typeof worker !== 'string' || worker.trim().length === 0)) {
+        throw new UserError(`${where}.exec.worker must be a worker type's name (or omitted)`)
+      }
       const env = (exec as { env?: unknown }).env
       if (env !== undefined) {
         if (typeof env !== 'object' || env === null) {
@@ -1113,6 +1117,7 @@ const EXEC_FIELDS = new Set([
   'remote',
   'sandbox',
   'platforms',
+  'worker',
 ])
 const PERSISTENT_FIELDS = new Set(['readyWhen'])
 const ENV_FIELDS = new Set(['passThrough', 'define', 'secret'])

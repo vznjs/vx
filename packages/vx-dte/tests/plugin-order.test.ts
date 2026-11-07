@@ -29,7 +29,7 @@ it('asks for no worker before schedule has read history', async () => {
   let reads = 0
   const plugin = dte({
     relay: relay.url,
-    workers: { small: { max: 2, cpu: 1, memory: '1GB' } },
+    workers: { linux: { machines: { small: { max: 2, cpu: 1, memory: '1GB' } } } },
     adapter: { spawn: (a) => void spawned.push(a.id) },
   })
   try {
@@ -107,8 +107,12 @@ it('numbers workers within their size', async () => {
   const plugin = dte({
     relay: relay.url,
     workers: {
-      big: { max: 2, cpu: 2, memory: '2GB' },
-      small: { max: 2, cpu: 1, memory: '1GB' },
+      linux: {
+        machines: {
+          big: { max: 2, cpu: 2, memory: '2GB' },
+          small: { max: 2, cpu: 1, memory: '1GB' },
+        },
+      },
     },
     adapter: { spawn: (a) => void spawned.push(a.id) },
   })
@@ -155,7 +159,12 @@ it('numbers workers within their size', async () => {
       refining: async () => {},
     } as never)
     for (let i = 0; i < 40 && spawned.length < 4; i++) await Bun.sleep(25)
-    expect(spawned.toSorted()).toEqual(['big#1', 'big#2', 'small#1', 'small#2'])
+    expect(spawned.toSorted()).toEqual([
+      'linux.big#1',
+      'linux.big#2',
+      'linux.small#1',
+      'linux.small#2',
+    ])
   } finally {
     await plugin.teardown?.({} as never)
     await relay.stop()
@@ -194,7 +203,7 @@ it('takes an adapter spawn that throws as a worker that could not start', async 
       const spawned: string[] = []
       const plugin = dte({
         relay: relay.url,
-        workers: { small: { max: 1, cpu: 1, memory: '1GB' } },
+        workers: { linux: { machines: { small: { max: 1, cpu: 1, memory: '1GB' } } } },
         adapter: {
           spawn: (a) => {
             spawned.push(a.id)
@@ -230,7 +239,7 @@ it('takes an adapter spawn that throws as a worker that could not start', async 
         for (let i = 0; i < 40 && spawned.length < 2; i++) await Bun.sleep(25)
         expect({ sync, again: spawned.slice(0, 2) }).toEqual({
           sync,
-          again: ['small#1', 'small#2'],
+          again: ['linux.small#1', 'linux.small#2'],
         })
       } finally {
         await plugin.teardown?.({} as never)
@@ -259,7 +268,7 @@ it('counts a worker its adapter left running against its size again', async () =
   const cancels: string[][] = []
   const plugin = dte({
     relay: relay.url,
-    workers: { small: { max: 1, cpu: 1, memory: '1GB' } },
+    workers: { linux: { machines: { small: { max: 1, cpu: 1, memory: '1GB' } } } },
     adapter: {
       spawn: (a) => void spawned.push(a.id),
       cancel: async (ids) => {
@@ -310,15 +319,18 @@ it('counts a worker its adapter left running against its size again', async () =
     } as never)
     ex.demand(new Set(['t1']), new Set(['t1']))
     for (let i = 0; i < 40 && spawned.length === 0; i++) await Bun.sleep(25)
-    expect(spawned).toEqual(['small#1'])
+    expect(spawned).toEqual(['linux.small#1'])
     // Its work gone before it joined (a task of no project here is none): let go.
     ex.demand(new Set(['elsewhere']), new Set())
     for (let i = 0; i < 40 && cancels.length === 0; i++) await Bun.sleep(25)
-    expect(cancels).toEqual([['small#1']])
+    expect(cancels).toEqual([['linux.small#1']])
     await Bun.sleep(100)
     ex.demand(new Set(['t2', 'elsewhere']), new Set(['t2']))
     await Bun.sleep(200)
-    expect({ spawned, cancels }).toEqual({ spawned: ['small#1'], cancels: [['small#1']] })
+    expect({ spawned, cancels }).toEqual({
+      spawned: ['linux.small#1'],
+      cancels: [['linux.small#1']],
+    })
   } finally {
     await plugin.teardown?.({} as never)
     await relay.stop()

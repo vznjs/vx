@@ -129,6 +129,10 @@ const RECORDS = new Map([
     'private/vx-docs/src/content/docs/releases/vx-0-0-640.md#1',
     '`cache: { outputs, inputStability }`, since `outputs`, `inputs.stability` and `cache: true`',
   ],
+  [
+    'private/vx-docs/src/content/docs/releases/vx-0-0-648.md#1',
+    '`dte({ workers: { <size>: {...} } })`, since `workers: { <type>: { machines: {...} } }`',
+  ],
 ])
 
 function corpus(): Sample[] {
@@ -219,12 +223,20 @@ describe('the documented configs load under the current schema', () => {
       // The excuse holds only while the fence still fails to load.
       it(`${s.where} (a record of a removed key)`, async () => {
         write(written[i]!, s)
-        const mod = (await import(`${written[i]!}?${i}`)) as { default: unknown }
-        const load = (): void =>
-          s.workspace
-            ? validateWorkspace(mod.default as WorkspaceConfig, s.where)
-            : validateProjectConfig(mod.default as ProjectConfig, s.where)
-        expect(load).toThrow(/unknown field|cache must be true or false/)
+        // A plugin refuses its own removed option as the config is imported.
+        const said = await import(`${written[i]!}?${i}`).then(
+          (mod: { default: unknown }) => {
+            try {
+              if (s.workspace) validateWorkspace(mod.default as WorkspaceConfig, s.where)
+              else validateProjectConfig(mod.default as ProjectConfig, s.where)
+              return 'loaded'
+            } catch (e) {
+              return (e as Error).message
+            }
+          },
+          (e: Error) => e.message,
+        )
+        expect(said).toMatch(/unknown (?:field|option)|cache must be true or false/)
       })
       continue
     }

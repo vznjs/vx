@@ -1,6 +1,7 @@
 export {
   dte,
   type WorkerSize,
+  type WorkerType,
   type WorkerSpawn,
   type DteAdapter,
   type DteOptions,

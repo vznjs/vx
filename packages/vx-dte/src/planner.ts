@@ -18,6 +18,9 @@ import {
 } from './dispatch.js'
 import { DEFAULT_STRATEGY, type Strategy } from './strategy.js'
 
+/** Where a task naming no platform runs, or (several worker types) where each task runs. */
+type Home = string | ((node: TaskNode) => string | undefined)
+
 /**
  * A task's duration when history has none: a test suite's, so a run with
  * no history starts workers for its work rather than one for all of it.
@@ -209,7 +212,7 @@ export function planTasks(
   nodes: ReadonlyMap<string, TaskNode>,
   need: (id: string) => Need,
   durationMs: (id: string) => number | undefined,
-  home?: string,
+  home?: Home,
 ): PlanTask[] {
   // The graph is the run's, fixed: each task is numbered and its deps
   // walked once a run, not at each plan (2026-11-05: a 5000-task sim
@@ -254,7 +257,7 @@ export function planTasks(
       above: n.above,
       ms: durationMs(id),
       deps,
-      platform: e.node.platform ?? home,
+      platform: typeof home === 'function' ? home(e.node) : (e.node.platform ?? home),
       n: e.n,
       depsN: e.depsN,
     })
@@ -279,7 +282,7 @@ export function missedWork(
   executed: ReadonlySet<string>,
   need: (id: string) => Need,
   durationMs: (id: string) => number | undefined,
-  home?: string,
+  home?: Home,
 ): PlanTask[] {
   const changed = new Map<string, boolean>()
   // Whether `id`'s key changed: a cached task that missed, or one after it.
@@ -1148,8 +1151,8 @@ export function decide(input: {
   readonly known?: ReadonlySet<string>
   /** How it orders, places and scales (`need` books already). */
   readonly how?: Strategy
-  /** The platform a task naming none runs on (`homeOf`). */
-  readonly home?: string | undefined
+  /** The platform a task naming none runs on (`homeOf`), or where each task runs (several worker types). */
+  readonly home?: Home | undefined
   /**
    * Sizes with a worker asked and not joined past its warm-up: the CI
    * queued it, and one asked now queues behind it. None of them starts.

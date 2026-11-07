@@ -41,8 +41,12 @@ function init(options: Parameters<typeof dte>[0], ...args: string[]): Promise<nu
 
 const WORKFLOW = '.github/workflows/vx-worker.yml'
 const sizes = {
-  small: { max: 8, cpu: 4, memory: '16GB' },
-  mac: { max: 2, cpu: 3, memory: '7GB', platform: 'darwin-arm64' },
+  linux: {
+    machines: {
+      small: { max: 8, cpu: 4, memory: '16GB' },
+      mac: { max: 2, cpu: 3, memory: '7GB', platform: 'darwin-arm64' },
+    },
+  },
 } as const
 
 it('github() writes the workers workflow: the inputs it dispatches, a runner per size, the repo vx', async () => {
@@ -53,7 +57,7 @@ it('github() writes the workers workflow: the inputs it dispatches, a runner per
   for (const input of ['run', 'relay', 'sha', 'size', 'workers'])
     expect(yml).toContain(`      ${input}: { required: true }\n`)
   expect(yml).toContain(
-    `runs-on: \${{ fromJSON('{"small":"ubuntu-latest","mac":"macos-latest"}')[inputs.size] }}`,
+    `runs-on: \${{ fromJSON('{"linux.small":"ubuntu-latest","linux.mac":"macos-latest"}')[inputs.size] }}`,
   )
   expect(yml).toContain('name: ${{ matrix.worker }}')
   // A write is the job's alone, as the supply-chain law holds this repo's.
@@ -89,12 +93,20 @@ it('github() writes the workers workflow: the inputs it dispatches, a runner per
   )
 })
 
-it('github({ runsOn }) names a size its runner; pnpm gets its setup step', async () => {
+it('a machine’s runsOn names its runner; pnpm gets its setup step', async () => {
   await writeFile(path.join(root, 'pnpm-lock.yaml'), '')
-  const adapter = github({ workflow: 'w.yml', runsOn: { small: 'ubuntu-latest-16-cores' } })
-  expect(await init({ workers: sizes, adapter })).toBe(0)
+  const adapter = github({ workflow: 'w.yml' })
+  const workers = {
+    linux: {
+      machines: {
+        ...sizes.linux.machines,
+        small: { ...sizes.linux.machines.small, runsOn: 'ubuntu-latest-16-cores' },
+      },
+    },
+  }
+  expect(await init({ workers, adapter })).toBe(0)
   const yml = await readFile(path.join(root, '.github/workflows/w.yml'), 'utf8')
-  expect(yml).toContain(`'{"small":"ubuntu-latest-16-cores","mac":"macos-latest"}'`)
+  expect(yml).toContain(`'{"linux.small":"ubuntu-latest-16-cores","linux.mac":"macos-latest"}'`)
   expect(yml).toContain(
     '      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0\n      - run: pnpm install --frozen-lockfile\n',
   )
@@ -138,12 +150,20 @@ it('runs vx with Bun in a Yarn workspace', async () => {
 })
 
 // An empty or non-string label was written into runs-on, a workflow GitHub refuses.
-it('github({ runsOn }) refuses a label that is not one, as gitlab({ tags }) does', async () => {
-  await writeFile(path.join(root, 'bun.lock'), '')
-  for (const label of ['', 5])
-    await expect(
-      init({ workers: sizes, adapter: github({ runsOn: { small: label as string } }) }),
-    ).rejects.toThrow('vx dte init: github() runsOn.small is a runner label')
+it('refuses a machine runsOn that is not a runner label', () => {
+  for (const label of ['', ' ', 5])
+    expect(() =>
+      dte({
+        workers: {
+          linux: { machines: { small: { cpu: 1, memory: '1GB', runsOn: label as string } } },
+        },
+        adapter: github(),
+      }),
+    ).toThrow(
+      typeof label === 'string'
+        ? 'dte() option "workers.linux.machines.small.runsOn" must be a runner label'
+        : 'workers.linux.machines.small',
+    )
 })
 
 // A `: ` in a plain scalar made GitHub refuse the workflow (2026-10-25).
@@ -294,7 +314,7 @@ for (const [what, existing] of [
 
 it('gitlab() writes one pipeline file: the run, and a job per size only its trigger runs', async () => {
   await writeFile(path.join(root, 'bun.lock'), '')
-  const adapter = gitlab({ tags: { mac: ['saas-macos-medium-m1'] } })
+  const adapter = gitlab({ tags: { 'linux.mac': ['saas-macos-medium-m1'] } })
   expect(init({ workers: sizes, adapter })).rejects.toThrow('gitlab() needs dte({ relay })')
   expect(await init({ relay: 'https://relay.example.com', workers: sizes, adapter })).toBe(0)
   const ci = await readFile(path.join(root, '.gitlab-ci.yml'), 'utf8')
@@ -306,13 +326,20 @@ it('gitlab() writes one pipeline file: the run, and a job per size only its trig
   expect(ci).toContain('# Name the tasks in the vx job')
   expect(ci).toContain('    - git fetch -q --depth 1 origin $VX_DTE_SHA\n')
   expect(ci).toContain(
-    `'vx-worker mac':\n  extends: .vx-worker\n  parallel:\n    matrix:\n      - VX_DTE_SLOT: ['1', '2']\n  rules: [{ if: $VX_DTE_SIZE == "mac" && $VX_DTE_SLOT =~ $VX_DTE_PICK }]\n  tags: ['saas-macos-medium-m1']\n`,
+    `'vx-worker linux.mac':\n  extends: .vx-worker\n  parallel:\n    matrix:\n      - VX_DTE_SLOT: ['1', '2']\n  rules: [{ if: $VX_DTE_SIZE == "linux.mac" && $VX_DTE_SLOT =~ $VX_DTE_PICK }]\n  tags: ['saas-macos-medium-m1']\n`,
   )
   expect(ci).toContain(`      - VX_DTE_SLOT: ['1', '2', '3', '4', '5', '6', '7', '8']\n`)
   // A matrix needs its length.
   expect(
-    init({ relay: 'https://r', workers: { small: { cpu: 2, memory: '8GB' } }, adapter }, '--force'),
-  ).rejects.toThrow('gitlab() needs workers.small.max, 1 to 200')
+    init(
+      {
+        relay: 'https://r',
+        workers: { linux: { machines: { small: { cpu: 2, memory: '8GB' } } } },
+        adapter,
+      },
+      '--force',
+    ),
+  ).rejects.toThrow('gitlab() needs workers.linux.machines.small.max, 1 to 200')
   expect(ci).not.toContain('bunx')
   expect(printed.join('')).toContain(
     'ALLOW (a plain var, no secret): https://gitlab.com:<group>/<project>:.gitlab-ci.yml',
@@ -394,7 +421,7 @@ it('vx dte init runs from the CLI', async () => {
     'package.json': JSON.stringify({ name: 'ws', private: true }),
     'bun.lock': '',
     '.vx/workspace.mjs': `import { dte, github } from ${JSON.stringify(DTE)}
-export default { plugins: [dte({ workers: { small: { cpu: 2, memory: '8GB' } }, adapter: github() })] }
+export default { plugins: [dte({ workers: { linux: { machines: { small: { cpu: 2, memory: '8GB' } } } }, adapter: github() })] }
 `,
   }
   for (const [rel, text] of Object.entries(files)) {
@@ -409,7 +436,7 @@ export default { plugins: [dte({ workers: { small: { cpu: 2, memory: '8GB' } }, 
     stderr: 'pipe',
   })
   expect([r.exitCode, r.stderr.toString()]).toEqual([0, ''])
-  expect(r.stdout.toString()).toContain(`'{"small":"ubuntu-latest"}'`)
+  expect(r.stdout.toString()).toContain(`'{"linux.small":"ubuntu-latest"}'`)
   // The relay's ALLOW names the origin's repository.
   Bun.spawnSync(['git', 'remote', 'add', 'origin', 'git@github.com:acme/app.git'], { cwd: root })
   const written = Bun.spawnSync([process.execPath, CORE_BIN, 'dte', 'init'], {
@@ -436,7 +463,7 @@ export default { plugins: [dte({ workers: { small: { cpu: 2, memory: '8GB' } }, 
 
 it('the README shows the workflow vx dte init writes for its sizes', async () => {
   await writeFile(path.join(root, 'bun.lock'), '')
-  const small = { small: { max: 8, cpu: 4, memory: '16GB' } }
+  const small = { linux: { machines: { small: { max: 8, cpu: 4, memory: '16GB' } } } }
   expect(await init({ workers: small, adapter: github() })).toBe(0)
   const written = await readFile(path.join(root, WORKFLOW), 'utf8')
   const readme = await readFile(path.resolve(import.meta.dir, '..', 'README.md'), 'utf8')
@@ -447,7 +474,7 @@ it('the README shows the workflow vx dte init writes for its sizes', async () =>
     workspaceRoot: root,
     dir: '',
     relay: 'https://relay.example.com',
-    sizes: [{ name: 'small', max: 4 }],
+    sizes: [{ name: 'linux.small', max: 4 }],
     manager: 'bun',
     tasks: { main: '', change: '' },
   })
@@ -482,7 +509,7 @@ it('vx dte --help prints the usage and exits 0', async () => {
   await writeFile(
     path.join(root, '.vx/workspace.mjs'),
     `import { dte, local } from ${JSON.stringify(DTE)}
-export default { plugins: [dte({ workers: { small: { cpu: 2, memory: '8GB' } }, adapter: local() })] }
+export default { plugins: [dte({ workers: { linux: { machines: { small: { cpu: 2, memory: '8GB' } } } }, adapter: local() })] }
 `,
   )
   Bun.spawnSync(['git', 'init', '-q'], { cwd: root })
@@ -507,7 +534,7 @@ it('vx dte says what is wrong with the line typed', async () => {
   await writeFile(
     path.join(root, '.vx/workspace.mjs'),
     `import { dte, local } from ${JSON.stringify(DTE)}
-export default { plugins: [dte({ workers: { small: { cpu: 2, memory: '8GB' } }, adapter: local() })] }
+export default { plugins: [dte({ workers: { linux: { machines: { small: { cpu: 2, memory: '8GB' } } } }, adapter: local() })] }
 `,
   )
   Bun.spawnSync(['git', 'init', '-q'], { cwd: root })
@@ -556,7 +583,7 @@ it('a relay URL with no http(s) scheme is refused, named', async () => {
     writeFile(
       path.join(root, '.vx/workspace.mjs'),
       `import { dte, local } from ${JSON.stringify(DTE)}
-export default { plugins: [dte({ relay: ${JSON.stringify(relay)}, workers: { small: { cpu: 2, memory: '8GB' } }, adapter: local() })] }
+export default { plugins: [dte({ relay: ${JSON.stringify(relay)}, workers: { linux: { machines: { small: { cpu: 2, memory: '8GB' } } } }, adapter: local() })] }
 `,
     )
   Bun.spawnSync(['git', 'init', '-q'], { cwd: root })
@@ -607,7 +634,7 @@ it('vx dte worker names only what it lacks', async () => {
   await writeFile(
     path.join(root, '.vx/workspace.mjs'),
     `import { dte, local } from ${JSON.stringify(DTE)}
-export default { plugins: [dte({ workers: { small: { cpu: 2, memory: '8GB' } }, adapter: local() })] }
+export default { plugins: [dte({ workers: { linux: { machines: { small: { cpu: 2, memory: '8GB' } } } }, adapter: local() })] }
 `,
   )
   Bun.spawnSync(['git', 'init', '-q'], { cwd: root })

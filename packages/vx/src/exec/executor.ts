@@ -162,6 +162,12 @@ export interface ExecuteRequest {
    */
   readonly platform?: string
   /**
+   * The worker type to run it on, one of the executor's `workers`: the
+   * task's `exec.worker`, else the first type with one of its platforms.
+   * Absent when the executor names no types.
+   */
+  readonly worker?: string
+  /**
    * Which attempt of the task this is, from 2 when it retries; absent on
    * the first. An executor that can, runs a retry somewhere other than
    * the attempt before it, so the machine is not the flake.
@@ -353,6 +359,14 @@ export interface TaskExecutor {
    * declares none is never offered such a task off this machine.
    */
   readonly platforms?: readonly string[]
+  /**
+   * Its worker types in order of preference, each with the platforms its
+   * machines run (`@vzn/vx-dte`'s `workers`). A task naming `exec.worker`
+   * is offered it only when it has that type on one of the task's
+   * platforms; any other task goes to the first type that fits, on
+   * `ExecuteRequest.worker`. Its `platforms` must list every one of them.
+   */
+  readonly workers?: ReadonlyArray<readonly [name: string, platforms: readonly string[]]>
   /**
    * How many tasks this executor runs at once. Its tasks then occupy a pool
    * of this size instead of the local worker slots, so a remote pool is not

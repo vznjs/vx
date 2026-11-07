@@ -25,6 +25,8 @@ export interface DteSetup {
     /** Absent: as many as the work needs. */
     readonly max?: number
     readonly platform?: Platform
+    /** The runner label its machine names (`WorkerSize.runsOn`). */
+    readonly runsOn?: string
   }[]
   /** The workspace's package manager, by its lockfile. */
   readonly manager: PackageManager
@@ -249,12 +251,7 @@ const RUNNERS: Record<Platform, string> = {
 export function githubInit(options: GithubOptions, setup: DteSetup): DteInit {
   const workflow = options.workflow ?? 'vx-worker.yml'
   const runners = Object.fromEntries(
-    setup.sizes.map((s) => {
-      const label: unknown = options.runsOn?.[s.name]
-      if (label !== undefined && (typeof label !== 'string' || label === ''))
-        throw new UserError(`vx dte init: github() runsOn.${s.name} is a runner label`)
-      return [s.name, label ?? RUNNERS[s.platform ?? 'linux-x64']]
-    }),
+    setup.sizes.map((s) => [s.name, s.runsOn ?? RUNNERS[s.platform ?? 'linux-x64']]),
   )
   // A workspace in a subdirectory: CI files live at the repository's root,
   // and their commands run in the workspace.
@@ -448,7 +445,7 @@ export function gitlabInit(options: GitlabOptions, setup: DteSetup): DteInit {
     // A matrix takes at most 200 jobs; a wave picks its slots.
     if (s.max === undefined || s.max < 1 || s.max > 200)
       throw new UserError(
-        `vx dte init: gitlab() needs workers.${s.name}.max, 1 to 200: its job is a matrix of that many slots`,
+        `vx dte init: gitlab() needs workers.${s.name.replace('.', '.machines.')}.max, 1 to 200: its job is a matrix of that many slots`,
       )
     const slots = Array.from({ length: s.max }, (_, i) => quoted(String(i + 1)))
     return `

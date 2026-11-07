@@ -328,7 +328,7 @@ runners already bill.
 // in .vx/workspace.ts's plugins
 dte({
   relay: 'https://relay.example.com',
-  workers: { small: { max: 8, cpu: 4, memory: '16GB' } },
+  workers: { linux: { machines: { small: { max: 8, cpu: 4, memory: '16GB' } } } },
   adapter: github(),
 })
 ```

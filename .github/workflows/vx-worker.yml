@@ -1,6 +1,6 @@
 # The workers of a distributed run (@vzn/vx-dte's github()): CI's one job
 # is a run, and dispatches this once per size with that size's workers as
-# the matrix: `small` for the Linux work, `arm` for the arm64 binary, `mac`
+# the matrix: `hosted.small` for the Linux work, `hosted.arm` for arm64, `hosted.mac`
 # for the macOS tasks. Each worker proves itself to the relay and
 # the run by its OIDC token; there is no secret.
 name: vx-worker
@@ -31,7 +31,7 @@ jobs:
       id-token: write
       # A worker of a run that is over cancels its own run.
       actions: write
-    runs-on: ${{ fromJSON('{"small":"ubuntu-latest","arm":"ubuntu-24.04-arm","mac":"macos-latest"}')[inputs.size] }}
+    runs-on: ${{ fromJSON('{"hosted.small":"ubuntu-latest","hosted.arm":"ubuntu-24.04-arm","hosted.mac":"macos-latest"}')[inputs.size] }}
     timeout-minutes: 25
     strategy:
       fail-fast: false

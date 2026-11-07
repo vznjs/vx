@@ -288,6 +288,125 @@ describe('exec.platforms', () => {
   })
 })
 
+describe('exec.worker', () => {
+  /** An exclusive executor with worker types `types`, writing the type and platform each task runs on. */
+  const typed = (types: string): string =>
+    localWorkspaceSource([
+      pluginSource(
+        'org/typed',
+        `{ executor() { return { name: 'typed', remote: true, exclusive: true,
+          platforms: ['${HOST}', '${OTHER}'], workers: ${types},
+          execute(req) {
+            require('node:fs').writeFileSync(require('node:path').join(req.cwd, req.taskId.split('#')[1] + '.txt'), req.worker + ' ' + (req.platform ?? '-'))
+            return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
+          } } } }`,
+      ),
+    ])
+  const TASKS = `export default {
+  tasks: {
+    e2e: { exec: { command: 'true', worker: 'ubuntu' } },
+    plain: { exec: { command: 'true' } },
+    mac: { exec: { command: 'true', platforms: ['${OTHER}'] } },
+  },
+}
+`
+
+  it('runs a task on the type it names, and any other on the first type that fits', async () => {
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      typed(`[['alpine', ['${HOST}']], ['ubuntu', ['${HOST}']], ['mac', ['${OTHER}']]]`),
+    )
+    const dir = await addProject(root, 'app', TASKS)
+    const r = await run({
+      cwd: dir,
+      tasks: ['e2e', 'plain', 'mac'],
+      log: logger([]),
+      handleSignals: false,
+    })
+    expect(r.ok).toBe(true)
+    const read = (t: string): Promise<string> => Bun.file(path.join(dir, `${t}.txt`)).text()
+    expect([await read('e2e'), await read('plain'), await read('mac')]).toEqual([
+      'ubuntu -',
+      'alpine -',
+      `mac ${OTHER}`,
+    ])
+  })
+
+  it('refuses a type the executor does not have before any task starts', async () => {
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), typed(`[['alpine', ['${HOST}']]]`))
+    const dir = await addProject(root, 'app', TASKS)
+    const said = await run({ cwd: dir, tasks: ['e2e'], log: logger([]) }).then(
+      () => 'ran',
+      (e: Error) => e.message,
+    )
+    expect(said).toBe(
+      `app#e2e would run on this machine, and plugin 'org/typed' (executor 'typed') runs every task elsewhere: ` +
+        `it has no worker type 'ubuntu' that exec.worker names (types: alpine)`,
+    )
+  })
+
+  it('refuses a type none of whose platforms the task lists', async () => {
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      typed(`[['ubuntu', ['${HOST}']], ['mac', ['${OTHER}']]]`),
+    )
+    const dir = await addProject(
+      root,
+      'app',
+      `export default { tasks: { t: { exec: { command: 'true', worker: 'ubuntu', platforms: ['${OTHER}'] } } } }`,
+    )
+    const said = await run({ cwd: dir, tasks: ['t'], log: logger([]) }).then(
+      () => 'ran',
+      (e: Error) => e.message,
+    )
+    expect(said).toContain(
+      `its worker type 'ubuntu' runs ${HOST}, and exec.platforms asks for ${OTHER}`,
+    )
+  })
+
+  it('is ignored on this machine', async () => {
+    const dir = await addProject(
+      root,
+      'app',
+      `export default { tasks: { t: { exec: { command: 'touch t.txt', worker: 'ubuntu' } } } }`,
+    )
+    const r = await run({ cwd: dir, tasks: ['t'], log: logger([]) })
+    expect(r.ok).toBe(true)
+    expect(await Bun.file(path.join(dir, 't.txt')).exists()).toBe(true)
+  })
+
+  it('refuses workers whose platforms the executor does not list', async () => {
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      localWorkspaceSource([
+        pluginSource(
+          'org/typed',
+          `{ executor() { return { name: 'typed', platforms: ['${HOST}'], workers: [['mac', ['${OTHER}']]], execute() {} } } }`,
+        ),
+      ]),
+    )
+    const dir = await addProject(root, 'app', TASKS)
+    const said = await run({ cwd: dir, tasks: ['plain'], log: logger([]) }).then(
+      () => 'ran',
+      (e: Error) => e.message,
+    )
+    expect(said).toContain(`plugin 'org/typed' returned executor 'typed' with workers`)
+  })
+
+  it('refuses a worker that is not a name at lock time', async () => {
+    await addProject(
+      root,
+      'app',
+      `export default { tasks: { t: { exec: { command: 'true', worker: '' } } } }`,
+    )
+    const said = await lock(root).then(
+      () => 'locked',
+      (e: Error) => e.message,
+    )
+    expect(said).toContain("tasks.t.exec.worker must be a worker type's name (or omitted)")
+  })
+})
+
 describe('the platform in the key', () => {
   it('folds the platform a task runs on, and nothing for a task that names none', async () => {
     const cache = new Cache(path.join(root, 'cache'))

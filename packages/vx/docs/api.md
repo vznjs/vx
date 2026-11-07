@@ -711,6 +711,7 @@ export interface ExecConfig {
   command: string
   remote?: boolean | 'only'
   platforms?: readonly Platform[]
+  worker?: string
   env?: ExecEnv
   timeout?: Duration
   retries?: number
@@ -751,6 +752,7 @@ export interface ExecuteRequest {
   readonly refresh?: boolean
   readonly remoteOnly?: boolean
   readonly platform?: string
+  readonly worker?: string
   readonly attempt?: number
   readonly download?: 'eager' | 'deferred'
   readonly outputs: {
@@ -2925,6 +2927,7 @@ export interface TaskExecutor {
   readonly exclusive?: boolean
   readonly timeouts?: boolean
   readonly platforms?: readonly string[]
+  readonly workers?: ReadonlyArray<readonly [name: string, platforms: readonly string[]]>
   readonly capacity?: number
   accepts?(task: TaskPlacement): boolean
   demand?(remaining: ReadonlySet<string>, missed: ReadonlySet<string>): void
@@ -3035,6 +3038,7 @@ export interface TaskNode {
   surfaced?: boolean
   keyParts?: ReadonlyArray<readonly [name: string, value: string]>
   platform?: string
+  worker?: string
   addsToOutputsOf?: string[]
   outputsAddedToBy?: string[]
   excludedUpstream?: TaskOutcome[]

@@ -79,6 +79,7 @@ const EXEC = [
   'retries',
   'sandbox',
   'timeout',
+  'worker',
 ] as const satisfies readonly Keys<ExecConfig>[]
 const ENV = ['define', 'passThrough', 'secret'] as const satisfies readonly Keys<ExecEnv>[]
 const STABILITY = ['severity', 'strategy'] as const satisfies readonly Keys<InputStability>[]
@@ -330,6 +331,7 @@ describe('a config built from readonly lists type-checks and loads', () => {
         exec: {
           command: 'tsc',
           platforms: ['linux-x64', 'linux-arm64', 'darwin-x64', 'darwin-arm64'] as const,
+          worker: 'ubuntu',
           env: { passThrough: NAMES, secret: NAMES },
           sandbox: {
             allow: {

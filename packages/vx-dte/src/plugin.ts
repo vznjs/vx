@@ -22,7 +22,13 @@ import type { Orchestrator } from './orchestrator.js'
 import type { Proof } from './seal.js'
 import type { Forecast, Size } from './planner.js'
 
-/** One kind of worker the adapter can start. */
+/** One worker type: the machines of it the adapter can start, by name. */
+export interface WorkerType {
+  /** Its machines by name: each a size the adapter may start, named `<type>.<machine>`. */
+  readonly machines: Readonly<Record<string, WorkerSize>>
+}
+
+/** One kind of machine the adapter can start. */
 export interface WorkerSize {
   /** How many of it one run may start; absent, as many as the work needs. */
   readonly max?: number
@@ -32,6 +38,8 @@ export interface WorkerSize {
   readonly memory: number | string
   /** Its machines' platform, which a joining worker must report; absent, planned as this machine's and not checked. A task naming `exec.platforms` runs only on a worker of one of them. */
   readonly platform?: Platform
+  /** The CI runner label its workers run on, which `vx dte init` writes (`github()`); absent, its platform's GitHub-hosted runner. */
+  readonly runsOn?: string
 }
 
 /** What an adapter is asked to start: one worker of `size`. */
@@ -103,8 +111,13 @@ export interface DteAdapter {
 }
 
 export interface DteOptions {
-  /** What the adapter may start, by size name. */
-  readonly workers?: Readonly<Record<string, WorkerSize>>
+  /**
+   * The worker types, in order of preference: a task naming `exec.worker`
+   * runs only on that type's machines, any other on the first type with
+   * a machine of one of its platforms. Each machine is a size the adapter
+   * may start, named `<type>.<machine>` (`ubuntu.small`).
+   */
+  readonly workers?: Readonly<Record<string, WorkerType>>
   /** Starts workers; absent, the run uses the workers that join it, which needs `relay`. */
   readonly adapter?: DteAdapter
   /** The relay's URL; absent, the adapter's own. */
@@ -139,12 +152,14 @@ const KEYS: PluginOptionKinds<DteOptions> = {
   headers: 'object',
 }
 
+const TYPE_KEYS: PluginOptionKinds<WorkerType> = { machines: 'object' }
 // A typo in a size or in `unmeasured` (`maxx`) was dropped, and the size ran uncapped.
 const SIZE_KEYS: PluginOptionKinds<WorkerSize> = {
   max: 'number',
   cpu: 'number',
   memory: 'any',
   platform: 'string',
+  runsOn: 'string',
 }
 const UNMEASURED_KEYS: PluginOptionKinds<NonNullable<DteOptions['unmeasured']>> = {
   cpu: 'number',
@@ -189,8 +204,19 @@ export function dte(options: DteOptions = {}) {
       refuse(`scheduler.${layer}`, `one of ${choices.join(', ')}`, choice)
     ;(how as unknown as Record<string, unknown>)[layer] = choice
   }
-  const sizes = Object.entries(options.workers ?? {}).map(([name, s]) => {
-    const at = `workers.${name}`
+  const declared = Object.entries(options.workers ?? {}).flatMap(([type, t]) => {
+    refuseUnknownOptions(`dte() option "workers.${type}"`, t, TYPE_KEYS)
+    const machines = Object.entries(t?.machines ?? {})
+    if (machines.length === 0)
+      refuse(
+        `workers.${type}.machines`,
+        "machines by name, such as small: { cpu: 4, memory: '8GB' }",
+        t?.machines,
+      )
+    return machines.map(([machine, s]) => ({ type, name: `${type}.${machine}`, s }))
+  })
+  const sized = declared.map(({ type, name, s }) => {
+    const at = `workers.${type}.machines.${name.slice(type.length + 1)}`
     refuseUnknownOptions(`dte() option "${at}"`, s, SIZE_KEYS)
     if (!(Number.isInteger(s?.cpu) && s.cpu >= 1)) refuse(`${at}.cpu`, 'a whole number ≥ 1', s?.cpu)
     const memory = bytes(s.memory)
@@ -198,23 +224,62 @@ export function dte(options: DteOptions = {}) {
       refuse(`${at}.memory`, "bytes above 0 or a size such as '8GB'", s.memory)
     if (!(s.max === undefined || (Number.isInteger(s.max) && s.max >= 0)))
       refuse(`${at}.max`, 'a whole number ≥ 0', s.max)
+    if (s.runsOn !== undefined && s.runsOn.trim() === '')
+      refuse(`${at}.runsOn`, 'a runner label', s.runsOn)
     if (s.platform !== undefined && !PLATFORMS.includes(s.platform))
       refuse(`${at}.platform`, `one of ${PLATFORMS.join(', ')}`, s.platform)
     return {
+      type,
       name,
       max: s.max ?? Infinity,
       cpu: s.cpu,
       memory: memory!,
       platform: s.platform ?? hostPlatform(),
+      named: s.platform,
+      runsOn: s.runsOn,
     }
   })
+  const types = [...new Set(sized.map((s) => s.type))]
+  const typeOf = new Map(sized.map((s) => [s.name, s.type]))
+  // With one type every worker is of it; with more, a worker's type rides
+  // its platform as `<type>:<platform>`, which every match compares whole.
+  const multi = types.length > 1
+  const sizes: Size[] = sized.map((s) => ({
+    name: s.name,
+    max: s.max,
+    cpu: s.cpu,
+    memory: s.memory,
+    platform: multi ? `${s.type}:${s.platform}` : s.platform,
+  }))
+  const host = hostPlatform()
+  /** The platform a task of `type` naming none runs on: this machine's if the type has it, else its first. */
+  const homeOfType = (type: string): string => {
+    const of = sized.filter((s) => s.type === type).map((s) => s.platform)
+    return of.includes(host) ? host : of[0]!
+  }
+  /** Where a task runs, as workers' platforms read: its type's place, or as one type's run reads it. */
+  const placeOf = (worker: string | undefined, platform: string | undefined): string | undefined =>
+    !multi || worker === undefined
+      ? (platform ?? home)
+      : `${worker}:${platform ?? homeOfType(worker)}`
+  /** A worker's place: its size's type, else (one that joined on its own) the first type of its platform. */
+  const joinedPlace = (
+    size: string | undefined,
+    platform: string | undefined,
+  ): string | undefined => {
+    if (!multi || platform === undefined) return platform
+    const type =
+      (size === undefined ? undefined : typeOf.get(size)) ??
+      sized.find((s) => s.platform === platform)?.type
+    return type === undefined ? platform : `${type}:${platform}`
+  }
   // Only a platform the size names refuses a worker reporting another: an
   // unnamed one is planned as this machine's, and takes whatever joins.
   const named = (size: string): { platform?: Platform } => {
-    const platform = options.workers?.[size]?.platform
+    const platform = sized.find((s) => s.name === size)?.named
     return platform === undefined ? {} : { platform }
   }
-  const home = homeOf(sizes, hostPlatform())
+  const home = multi ? undefined : homeOf(sizes, host)
   const unmeasured = unmeasuredOf(options.unmeasured)
   const adapter = options.adapter
   // An adapter's run in its own CI with a relay names itself: the CI file
@@ -234,7 +299,7 @@ export function dte(options: DteOptions = {}) {
   // With none, no worker was ever asked for and the run waited until killed.
   if (adapter !== undefined && !sizes.some((s) => s.max > 0)) {
     throw new UserError(
-      "dte(): workers names no size the adapter may start (one with max above 0), such as small: { cpu: 2, memory: '8GB' }",
+      "dte(): workers names no machine the adapter may start (one with max above 0), such as linux: { machines: { small: { cpu: 2, memory: '8GB' } } }",
     )
   }
   if (adapter === undefined && options.relay === undefined) {
@@ -348,10 +413,11 @@ export function dte(options: DteOptions = {}) {
       workspaceRoot: root,
       dir: git('--show-prefix').replace(/\/$/, ''),
       ...(options.relay !== undefined ? { relay: options.relay } : {}),
-      sizes: sizes.map((s) => ({
+      sizes: sized.map((s) => ({
         name: s.name,
         ...(s.max === Infinity ? {} : { max: s.max }),
-        ...named(s.name),
+        ...(s.named === undefined ? {} : { platform: s.named }),
+        ...(s.runsOn === undefined ? {} : { runsOn: s.runsOn }),
       })),
       manager: managerOf(root),
       tasks: askTasks(),
@@ -439,7 +505,7 @@ export function dte(options: DteOptions = {}) {
         if (outcome.hash !== undefined) keys.set(node.id, outcome.hash)
         if (node.config.exec?.command === undefined || ended.has(node.id)) return
         ended.add(node.id)
-        const p = node.platform ?? ''
+        const p = placeOf(node.worker, node.platform) ?? ''
         leftOf.set(p, (leftOf.get(p) ?? 1) - 1)
       })
     },
@@ -456,7 +522,8 @@ export function dte(options: DteOptions = {}) {
       leftOf.clear()
       ended.clear()
       for (const id of ids) {
-        const p = graph.get(id)!.platform ?? ''
+        const n = graph.get(id)!
+        const p = placeOf(n.worker, n.platform) ?? ''
         leftOf.set(p, (leftOf.get(p) ?? 0) + 1)
       }
       const read = async (): Promise<void> => {
@@ -573,6 +640,7 @@ export function dte(options: DteOptions = {}) {
           (tails ??= tailsMs(nodes ?? new Map(), (x) => peaks.get(x)?.p50DurationMs))(id),
         how,
         home,
+        joinedPlace,
         lost: (id) => {
           const s = sizeOf.get(id)
           if (s === undefined) return
@@ -613,6 +681,7 @@ export function dte(options: DteOptions = {}) {
           cpu: s.cpu,
           memory: s.memory,
           ...named(s.name),
+          ...(multi && s.platform !== undefined ? { place: s.platform } : {}),
         })
         sizeOf.set(id, s)
         return {
@@ -704,7 +773,7 @@ export function dte(options: DteOptions = {}) {
           limitMs: deadline === undefined ? undefined : deadline - performance.now(),
           known,
           how,
-          home,
+          home: multi ? (n: TaskNode) => placeOf(n.worker, n.platform) : home,
           queued: o.queued(warmUp),
           last,
           now: performance.now(),
@@ -843,8 +912,19 @@ export function dte(options: DteOptions = {}) {
         // A worker answers a task's runtime probes before it runs it.
         runtime: true,
         // Its sizes' platforms; workers that join on their own, this machine's.
-        platforms:
-          sizes.length === 0 ? [hostPlatform()] : [...new Set(sizes.map((s) => s.platform))],
+        platforms: sized.length === 0 ? [host] : [...new Set(sized.map((s) => s.platform))],
+        // Its worker types, in declared order, each with its machines' platforms.
+        ...(types.length === 0
+          ? {}
+          : {
+              workers: types.map(
+                (t) =>
+                  [
+                    t,
+                    [...new Set(sized.filter((s) => s.type === t).map((s) => s.platform))],
+                  ] as const,
+              ),
+            }),
         // Room for the workers' cores and their prefetch; the orchestrator
         // queues the rest. Workers that join on their own are as many as join.
         capacity:
@@ -859,7 +939,7 @@ export function dte(options: DteOptions = {}) {
           missed = true
           executed.add(req.taskId)
           replan()
-          return o.execute(req)
+          return o.execute(multi ? { ...req, platform: placeOf(req.worker, req.platform)! } : req)
         },
         footer: () =>
           o.footer(

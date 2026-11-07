@@ -1,4 +1,4 @@
-// Every property a config can set (each `*Options` and `WorkerSize` the
+// Every property a config can set (each `*Options` and `WorkerSize` or `WorkerType` the
 // package exports) says what it is in its own JSDoc: an editor shows it as
 // the user types.
 
@@ -15,7 +15,7 @@ function undocumented(file: string): string[] {
   const text = readFileSync(path.join(SRC, file), 'utf8')
   const out: string[] = []
   for (const m of text.matchAll(
-    /export interface (\w+(?:Options)|WorkerSize) \{\n([\s\S]*?)\n\}/g,
+    /export interface (\w+(?:Options)|WorkerSize|WorkerType) \{\n([\s\S]*?)\n\}/g,
   )) {
     if (!config(m[1]!)) continue
     const lines = m[2]!.split('\n')
@@ -32,7 +32,7 @@ it('documents every config property', () => {
   const seen = files.flatMap((f) =>
     [
       ...readFileSync(path.join(SRC, f), 'utf8').matchAll(
-        /export interface (\w+Options|WorkerSize) \{/g,
+        /export interface (\w+Options|WorkerSize|WorkerType) \{/g,
       ),
     ]
       .map((m) => m[1]!)
@@ -45,6 +45,7 @@ it('documents every config property', () => {
     'GitlabOptions',
     'LocalOptions',
     'WorkerSize',
+    'WorkerType',
   ])
   expect(files.flatMap(undocumented)).toEqual([])
 })

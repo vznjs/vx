@@ -59,20 +59,20 @@ the values it takes and each refusal's exact words are recorded in
 
 `vx.config.ts`:
 
-| Level                              | Fields                                                                                                    |
-| ---------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| (top)                              | `name`, `tags`, `tasks`                                                                                   |
-| `tasks.<name>`                     | `cache`, `dependsOn`, `description`, `exec`, `inputs`, `outputs`                                          |
-| `tasks.<name>.exec`                | `command`, `env`, `interactive`, `persistent`, `platforms`, `remote`, `retries`, `sandbox`, `timeout`     |
-| `tasks.<name>.exec.env`            | `define`, `passThrough`, `secret`                                                                         |
-| `tasks.<name>.exec.persistent`     | `readyWhen`                                                                                               |
-| `tasks.<name>.exec.sandbox`        | `allow`, `deny`, `hermetic`, `ignore`, `weakerNetworkIsolation`, `weakerWhenNested`                       |
-| `tasks.<name>.exec.sandbox.allow`  | `gitConfig`, `localBinding`, `machLookup`, `network`, `pty`, `read`, `systemInfo`, `unixSockets`, `write` |
-| `tasks.<name>.exec.sandbox.deny`   | `network`                                                                                                 |
-| `tasks.<name>.exec.sandbox.ignore` | `network`, `read`, `systemInfo`, `write`                                                                  |
-| `tasks.<name>.inputs`              | `env`, `files`, `runtime`, `stability`, `tasks`, `workspaceFiles`, `workspaceRuntime`                     |
-| `tasks.<name>.inputs.stability`    | `severity`, `strategy`                                                                                    |
-| `tasks.<name>.outputs`             | `clean`, `files`, `workspaceFiles`                                                                        |
+| Level                              | Fields                                                                                                          |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| (top)                              | `name`, `tags`, `tasks`                                                                                         |
+| `tasks.<name>`                     | `cache`, `dependsOn`, `description`, `exec`, `inputs`, `outputs`                                                |
+| `tasks.<name>.exec`                | `command`, `env`, `interactive`, `persistent`, `platforms`, `remote`, `retries`, `sandbox`, `timeout`, `worker` |
+| `tasks.<name>.exec.env`            | `define`, `passThrough`, `secret`                                                                               |
+| `tasks.<name>.exec.persistent`     | `readyWhen`                                                                                                     |
+| `tasks.<name>.exec.sandbox`        | `allow`, `deny`, `hermetic`, `ignore`, `weakerNetworkIsolation`, `weakerWhenNested`                             |
+| `tasks.<name>.exec.sandbox.allow`  | `gitConfig`, `localBinding`, `machLookup`, `network`, `pty`, `read`, `systemInfo`, `unixSockets`, `write`       |
+| `tasks.<name>.exec.sandbox.deny`   | `network`                                                                                                       |
+| `tasks.<name>.exec.sandbox.ignore` | `network`, `read`, `systemInfo`, `write`                                                                        |
+| `tasks.<name>.inputs`              | `env`, `files`, `runtime`, `stability`, `tasks`, `workspaceFiles`, `workspaceRuntime`                           |
+| `tasks.<name>.inputs.stability`    | `severity`, `strategy`                                                                                          |
+| `tasks.<name>.outputs`             | `clean`, `files`, `workspaceFiles`                                                                              |
 
 Keyed by name: `tasks`, `tasks.<name>.exec.env.define`.
 

@@ -23,7 +23,7 @@ describe.skipIf(!available)('a sandboxed task on a worker', () => {
       'package.json': JSON.stringify({ name: 'ws', private: true }),
       '.gitignore': 'out\nstamp\n.vx/cache\n',
       '.vx/workspace.mjs': `import { dte, local } from ${JSON.stringify(DTE)}
-export default { plugins: [dte({ workers: { small: { max: 1, cpu: 2, memory: '1GB' } }, adapter: local() })] }
+export default { plugins: [dte({ workers: { linux: { machines: { small: { max: 1, cpu: 2, memory: '1GB' } } } }, adapter: local() })] }
 `,
       'secret/s.txt': 'secret\n',
       'secret/vx.config.mjs': `export default { name: 'secret', tasks: {} }\n`,

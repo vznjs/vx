@@ -243,6 +243,22 @@ export function locallyPlaced(placements: Placements): (id: string) => boolean {
   return (id) => placements.executors.get(id)?.remote !== true
 }
 
+/** Why `e`, which runs every task, takes none of this one's: no platform or worker type of it fits. */
+function unrouted(
+  e: TaskExecutor,
+  named: string | undefined,
+  wants: readonly string[] | undefined,
+): string {
+  const types = e.workers
+  if (types !== undefined && named !== undefined) {
+    const type = types.find(([n]) => n === named)
+    if (type === undefined)
+      return `it has no worker type '${named}' that exec.worker names (types: ${types.map(([n]) => n).join(', ')})`
+    return `its worker type '${named}' runs ${type[1].join(', ')}, and exec.platforms asks for ${wants!.join(', ')}`
+  }
+  return `it offers ${e.platforms?.join(', ') ?? 'no platform'}, and exec.platforms asks for ${wants!.join(', ')}`
+}
+
 export function placeTasks(
   nodes: Map<string, TaskNode>,
   executors: readonly TaskExecutor[],
@@ -292,6 +308,7 @@ export function placeTasks(
   if (executors.length === 1 && executors[0] === floor) {
     for (const node of nodes.values()) {
       delete node.platform
+      delete node.worker
       if (isGroupTask(node)) continue
       here(node)
       if (node.config.exec?.persistent !== undefined) continue
@@ -320,6 +337,7 @@ export function placeTasks(
         refuse(node.id, 'it starts a server only beside a task that needs it')
   for (const node of nodes.values()) {
     delete node.platform
+    delete node.worker
     if (isGroupTask(node) || node.config.exec?.persistent !== undefined) continue
     if (node.config.exec?.interactive === true && sole === undefined) {
       placements.executors.set(node.id, floor)
@@ -330,8 +348,17 @@ export function placeTasks(
     }
     const wants: readonly string[] | undefined = node.config.exec?.platforms
     const sandboxed = node.config.exec?.sandbox !== undefined
+    const named = node.config.exec?.worker
+    const fits = (ps: readonly string[]): boolean =>
+      wants === undefined || ps.some((p) => wants.includes(p))
+    /** Its worker type on `e`, which names types: `exec.worker`'s, else the first that fits. */
+    const typeOn = (e: TaskExecutor): readonly [string, readonly string[]] | undefined =>
+      e.workers?.find(([n, ps]) => (named === undefined || n === named) && fits(ps))
+    // An executor that names no types ignores `exec.worker`, as this machine does.
     const routes = (e: TaskExecutor): boolean =>
-      wants === undefined || e.platforms?.some((p) => wants.includes(p)) === true
+      e.workers !== undefined
+        ? typeOn(e) !== undefined
+        : wants === undefined || e.platforms?.some((p) => wants.includes(p)) === true
     const executor = selectExecutor(
       executors,
       {
@@ -355,12 +382,14 @@ export function placeTasks(
             ? 'its key includes a runtime probe, which it does not check'
             : routes(sole)
               ? 'it declined the task'
-              : `it offers ${sole.platforms?.join(', ') ?? 'no platform'}, and exec.platforms asks for ${wants!.join(', ')}`,
+              : unrouted(sole, named, wants),
       )
     }
     placements.executors.set(node.id, executor)
+    const type = routes(executor) ? typeOn(executor) : undefined
+    if (type !== undefined) node.worker = type[0]
     if (wants !== undefined) {
-      const offered = executor.platforms
+      const offered = type?.[1] ?? executor.platforms
       if (offered !== undefined && routes(executor)) {
         node.platform =
           wants.includes(host) && offered.includes(host)

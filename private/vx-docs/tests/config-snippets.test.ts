@@ -43,6 +43,8 @@ const RECORDS: Record<string, string> = {
   'releases/vx-0-0-638.md-1': '`cache: { outputs }`, since `outputs` beside `cache: true`',
   'releases/vx-0-0-639.md-0': '`cache: { outputs }`, since `outputs` beside `cache: true`',
   'releases/vx-0-0-640.md-0': '`cache: { outputs }`, since `outputs` beside `cache: true`',
+  'releases/vx-0-0-648.md-0':
+    '`workers: { <size>: {...} }`, since `workers: { <type>: { machines } }`',
 }
 
 async function pages(dir: string): Promise<string[]> {
