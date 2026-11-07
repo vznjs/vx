@@ -6,7 +6,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { afterEach, expect, it, spyOn } from 'bun:test'
+import { afterEach, describe, expect, it, spyOn } from 'bun:test'
 import { Cache } from '../src/cache/index.js'
 import { OutputIndex } from '../src/cache/output-index.js'
 
@@ -92,5 +92,47 @@ it('an inline artifact re-saved by another writer after the probe restores with 
   } finally {
     other.close()
     cache.close()
+  }
+})
+
+describe.each([
+  ['tree', true],
+  ['tar', false],
+])('a %s re-saved by another writer after the probe', (_form, decompress) => {
+  // A file artifact has no blob `at` to move: the probe's rows named the
+  // first build's files, and the restore held the second build's artifact
+  // to them, called it corrupt and dropped the other writer's good entry.
+  const open = (dir: string): Cache =>
+    new Cache(dir, undefined, undefined, undefined, undefined, undefined, {
+      embeddings: 0,
+      decompress,
+    })
+  for (const [label, second] of [
+    ['other names', { 'c.txt': 'c 2' }],
+    ['other sizes', { 'a.txt': 'a longer 2' }],
+  ] as const) {
+    it(`restores the artifact it opens (${label}) and keeps the entry`, async () => {
+      root = mkdtempSync(path.join(tmpdir(), 'vx-rows-held-'))
+      const cacheDir = path.join(root, 'cache')
+      const reader = open(cacheDir)
+      const writer = open(cacheDir)
+      try {
+        const w1 = path.join(root, 'w1')
+        mkdirSync(w1)
+        await saveFiles(writer, w1, { 'a.txt': 'a 1' })
+        expect((await reader.getMany([HASH])).get(HASH)?.outputFiles).toEqual(['a.txt'])
+        const w2 = path.join(root, 'w2')
+        mkdirSync(w2)
+        await saveFiles(writer, w2, second)
+        const out = path.join(root, 'out')
+        await reader.restoreOutputs(HASH, out)
+        for (const [rel, body] of Object.entries(second))
+          expect(readFileSync(path.join(out, rel), 'utf8')).toBe(body)
+        expect(await reader.has(HASH)).toBe('local')
+      } finally {
+        writer.close()
+        reader.close()
+      }
+    })
   }
 })
