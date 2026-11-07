@@ -85,7 +85,20 @@ describe('restoring into an output directory that links out of the project', () 
         )
         expect(lstatSync(dist).isSymbolicLink()).toBe(true)
         expect(existsSync(path.join(outside, 'o.txt'))).toBe(false)
+        // The hit's restore failed: the task failed, in no cache column
+        // (neither a miss nor its layer's hit), and ran no command. (Its grid
+        // row is pinned by `vx last` below: CI's static output draws no grid.)
+        expect(r.out).toContain('└─ app#build ── (0ms) failed (cache restore failed)')
+        expect(r.out).toMatch(/^ {12}1 failed · 1 total$/m)
+        // The cache bar fills with it, as the tasks bar does; no legend counts it.
+        expect(r.out).toMatch(/^ {2}cache +▰+\n\n/m)
+        expect(r.out).not.toMatch(/miss|local 1|↓/)
+        expect(r.out).not.toContain('$ mkdir')
       }
+      // History says the same: a failure, no miss, no hit.
+      const last = await vx(root, ['last'])
+      expect(last.out).toMatch(/^ +failed  — .* app#build  cache restore failed$/m)
+      expect(last.out).not.toMatch(/miss|executed/)
 
       // CONTROL: a link that stays inside the project is written through.
       const inside = path.join(appDir, 'real-out')

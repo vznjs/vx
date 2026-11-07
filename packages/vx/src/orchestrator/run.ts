@@ -869,19 +869,7 @@ async function runOnBus(
     // clean their outputs before every exec for a save that never
     // happened.
     const policy: CachePolicy = effectiveCachePolicy(prepared.cachePolicy, remoteCacheEnabled)
-    // The workspace's `cache.policy` asks as a flag does: it was the one source never told.
-    const remoteNamed =
-      options.remoteRequested ??
-      (options.cache === undefined &&
-      options.cacheFlags?.noCache !== true &&
-      namesRemote(prepared.workspaceConfig?.cache?.policy)
-        ? 'cache.policy'
-        : undefined)
-    if (remoteNamed !== undefined && !prepared.hasRemoteLayer) {
-      warnOf(log)(
-        `vx: ${remoteNamed} named the remote cache, but no cache plugin in .vx/workspace.* supplies one — the remote axes are off for this run`,
-      )
-    }
+    warnNoRemote(prepared, options, log)
     const deferredOutputs = new DeferredOutputs({
       nodes,
       cache,
@@ -2021,6 +2009,26 @@ function noneAffected(prepared: PreparedRun, options: RunOptions): string {
 }
 
 /**
+ * One line when a policy names the remote cache and no plugin supplies
+ * one; a plan (`--dry`) gets it as the run does. The workspace's
+ * `cache.policy` asks as a flag does: it was the one source never told.
+ */
+function warnNoRemote(prepared: PreparedRun, options: RunOptions, log: Logger): void {
+  if (prepared.hasRemoteLayer) return
+  const remoteNamed =
+    options.remoteRequested ??
+    (options.cache === undefined &&
+    options.cacheFlags?.noCache !== true &&
+    namesRemote(prepared.workspaceConfig?.cache?.policy)
+      ? 'cache.policy'
+      : undefined)
+  if (remoteNamed === undefined) return
+  warnOf(log)(
+    `vx: ${remoteNamed} named the remote cache, but no cache plugin in .vx/workspace.* supplies one — the remote axes are off for this run`,
+  )
+}
+
+/**
  * Planning mode. Same setup as `run()` — workspace discovery, config
  * load, package graph, task graph — but stops short of execution.
  * Returns a `RunPlan` predicting the cache hit/miss outcome of every
@@ -2057,6 +2065,7 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
     if (prepared.empty === 'none-affected')
       return { tasks: [], noneAffected: noneAffected(prepared, options) }
     if (prepared.empty !== null) return { tasks: [] }
+    warnNoRemote(prepared, options, log)
     // The plan orders nothing, but it refuses what the run would refuse.
     await prepared.priorities()
     terminalHolders(prepared.nodes, options.tty === true)

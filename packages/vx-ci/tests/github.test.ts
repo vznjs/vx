@@ -369,6 +369,19 @@ describe('renderJobSummary', () => {
     expect(md).toContain('- **b#build** — exit 137 (128 + SIGKILL)\n')
   })
 
+  it('a hit whose restore failed is a failure, never executed, never a hit', () => {
+    const md = renderJobSummary(
+      summary([
+        task({ taskId: 'b#build', status: 'failed', exitCode: 1, cacheSource: 'none' }),
+        task({ taskId: 'c#build', status: 'cache-hit', cacheSource: 'local', restored: true }),
+      ]),
+    )
+    expect(md).toContain(
+      '**2** tasks · **0** executed · **1** cache hit (0 up-to-date, 1 restored) · **1** failed',
+    )
+    expect(md).toContain('- **b#build** — cache restore failed\n')
+  })
+
   it('escapes pipes in task ids — a hostile name cannot break the table', () => {
     const md = renderJobSummary(summary([task({ taskId: 'a#e|vil' })]))
     expect(md).toContain('a#e\\|vil')

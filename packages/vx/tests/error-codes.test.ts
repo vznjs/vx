@@ -601,6 +601,30 @@ describe('errorCode', () => {
       wantsJson(['run', 'b', '--', '--format=json']),
     ]).toEqual([true, true, true, false, false])
   })
+
+  // A value flag keeps its last value, so `--format json --format pretty`
+  // printed pretty on success and a JSON document on a refusal.
+  it('wantsJson reads the last --format and the last --dry, as the parsers do', () => {
+    expect([
+      wantsJson(['show', '--format', 'json', '--format', 'pretty', 'x']),
+      wantsJson(['show', '--format=json', '--format=pretty']),
+      wantsJson(['show', '--format', 'pretty', '--format=json']),
+      wantsJson(['run', '--dry=json', '--dry', 'x']),
+      wantsJson(['run', '--dry', '--dry=json', 'x']),
+      wantsJson(['run', '--dry=json', '--dry=pretty']),
+      // `--dry` is a switch beside `--format` on cache clean and init.
+      wantsJson(['cache', 'clean', '--format', 'json', '--dry']),
+      wantsJson(['init', '--dry', '--format', 'json']),
+    ]).toEqual([false, false, true, false, true, false, true, true])
+  })
+
+  it('a refusal after an overridden json flag is prose only', async () => {
+    const [show, run] = await Promise.all([
+      vx(['show', '--format', 'json', '--format', 'pretty', 'nosuch']),
+      vx(['run', '--dry=json', '--dry', 'nosuch', '--all']),
+    ])
+    expect([show.code, show.stdout, run.code, run.stdout]).toEqual([1, '', 1, ''])
+  }, 30_000)
 })
 
 // Each code leads to its fix: a section of cli.md titled by the code, which

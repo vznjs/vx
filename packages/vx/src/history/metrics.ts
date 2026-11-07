@@ -36,6 +36,7 @@ export interface RunSummaryRow {
   durationMs: number
   startedAt: number
   endedAt: number
+  /** Null: no cache outcome, a cached task whose hit failed to restore. */
   cacheHit: boolean | null
   /** On a hit: true when outputs were restored, false when up-to-date (v31); null otherwise. */
   restored: boolean | null

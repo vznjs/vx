@@ -169,9 +169,10 @@ export function runRecordOf(o: RecordedOutcome, input: RunRecordContext): RunRec
         ? startedAtMs + Math.round(Number(o.wallclockEndNs) / 1e6)
         : endedAtMs,
     runId,
-    cacheHit: hit,
     cached: o.node.config.cache === true,
   }
+  // A hit whose restore failed is neither: its `cache_hit` stays NULL.
+  if (o.restoreFailed !== true) r.cacheHit = hit
   if (o.hash !== undefined) r.hash = o.hash
   // A run forwards its args to the tasks it was asked for, never to a
   // dependency: the row says which ran with them.

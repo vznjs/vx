@@ -26,6 +26,7 @@ export {
   idleServers,
   type InputChanges,
   RestoreDemoted,
+  RestoreFailed,
   runGraph,
   type TaskOutcome,
 } from './scheduler.js'

@@ -6,6 +6,7 @@ import {
   formatTaskAbortedLine,
   formatTaskExecutedLine,
 } from '../src/report/framed-output.js'
+import { defaultLogger } from '../src/report/logger.js'
 import { formatOutcomeTable, formatRunSummary } from '../src/report/summary.js'
 import { formatElapsed } from '../src/util/index.js'
 import type { TaskOutcome } from '../src/graph/scheduler.js'
@@ -77,6 +78,69 @@ describe('formatRunSummary', () => {
     )
     expect(lines[4]).toBe('            1 failed · 1 success · 2 total')
     expect(lines[6]).toBe('            2 no-cache')
+  })
+
+  it('a hit whose restore failed counts as failed only: no miss, no hit, no spread', () => {
+    const cached = (id: string, o: Partial<TaskOutcome>): TaskOutcome => ({
+      ...outcome(id, 'success'),
+      node: { id, config: { exec: { command: 'noop' }, cache: true } } as TaskNode,
+      ...o,
+    })
+    const lines = formatRunSummary(
+      [
+        cached('a#x', { status: 'failed', exitCode: 1, durationMs: 5, restoreFailed: true }),
+        cached('b#x', { status: 'cache-hit', restored: true }),
+      ],
+      50,
+    )
+    expect(lines.slice(3)).toEqual([
+      '  tasks     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰',
+      '            1 failed · 1 success · 2 total',
+      '  cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰',
+      '            1 local',
+      '',
+      '  time      50ms',
+    ])
+  })
+
+  it('the live footer counts a failed restore the same: failed, no miss', () => {
+    const chunks: string[] = []
+    const out = { isTTY: true, columns: 100, write: (c: string) => chunks.push(c) > 0 }
+    const log = defaultLogger({ enabled: false }, { mode: 'broad' }, out, {
+      env: {},
+      forceFloorMs: 0,
+    })
+    const node = (id: string) =>
+      ({
+        id,
+        deps: [],
+        projectName: id.split('#')[0]!,
+        taskName: id.split('#')[1]!,
+        config: { exec: { command: 'true' }, cache: true },
+      }) as unknown as TaskNode
+    const [a, b] = [node('p#a'), node('p#b')]
+    log.runStart?.({ total: 3, concurrency: 1 })
+    log.taskStart?.(a)
+    log.taskComplete(a, {
+      node: a,
+      status: 'failed',
+      exitCode: 1,
+      durationMs: 0,
+      restoreFailed: true,
+    })
+    log.taskStart?.(b)
+    log.taskComplete(b, {
+      node: b,
+      status: 'cache-hit',
+      exitCode: 0,
+      durationMs: 1,
+      restored: true,
+    })
+    // The last frame's footer (a running row says `miss` until it ends).
+    const footer = chunks.join('').split('Summary').at(-1)!
+    expect(footer).toContain('1 failed · 1 success · 1 left · 3 total')
+    expect(footer).toContain('            1 local\n')
+    log.runEnd?.()
   })
 
   it('never lists failed task ids — count lives in the legend (owner: can be hundreds)', () => {

@@ -16,7 +16,11 @@ export type TaskStatus =
   // are partial.
   | 'aborted'
 
-/** Where a task's result came from, derived ONCE in core from the status. */
+/**
+ * Where a task's result came from, derived ONCE in core from the status.
+ * `none`: it never engaged the cache, or its hit's restore failed (a
+ * failed task, in no cache column).
+ */
 export type CacheSource = 'miss' | 'local' | 'remote' | 'none'
 
 /**

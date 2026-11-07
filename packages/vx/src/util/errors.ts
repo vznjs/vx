@@ -86,16 +86,22 @@ export function errorCode(err: unknown): string {
  * Does this argv ask for JSON (`--format json`, `--format=json`,
  * `--dry=json`)? Then a refusal is a JSON document on stdout too, so a
  * reader of stdout gets an answer, not nothing. Args after `--` are the
- * task's, not vx's.
+ * task's, not vx's. Each flag's LAST value counts, as every verb's parser
+ * keeps it: `--format json --format pretty` prints pretty. `--dry` alone is
+ * run's pretty plan, and a switch beside `--format` elsewhere.
  */
 export function wantsJson(argv: readonly string[]): boolean {
+  let format: string | undefined
+  let dry: string | undefined
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!
-    if (a === '--') return false
-    if (a === '--format=json' || a === '--dry=json') return true
-    if (a === '--format' && argv[i + 1] === 'json') return true
+    if (a === '--') break
+    if (a === '--format') format = argv[++i]
+    else if (a.startsWith('--format=')) format = a.slice('--format='.length)
+    else if (a === '--dry') dry = 'pretty'
+    else if (a.startsWith('--dry=')) dry = a.slice('--dry='.length)
   }
-  return false
+  return format === 'json' || dry === 'json'
 }
 
 /**

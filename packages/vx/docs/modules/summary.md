@@ -30,6 +30,7 @@ export interface SummaryStats {
   notSaved?: number // ran here with `cache: true`, succeeded, saved nothing (outputs left remote are not counted)
   miss: number
   noCache?: number // a task no cache answered for (`ranNoCache`) never consulted one
+  restoreFailed?: number // failed hits whose restore threw: in no cache count, red on the bar
   left?: number // still to run: the live section's gray remainder; 0 in the final summary
   spread: { maxMs: number; minMs: number; sumMs: number; count: number } | null // the time row's per-task spread
   held?: { count: number; sumMs: number } // what an `admit` policy held, summed
@@ -42,7 +43,7 @@ export interface SummaryStats {
 // The cache bar segment a finished task fills before its remote traffic is weighed.
 export type CacheBucket =
   'miss' | 'noCache' | 'upToDate' | 'restoredLocal' | 'restoredRemote' | 'saved'
-// A finished task's own bucket; none for a group, a skip or an abort.
+// A finished task's own bucket; none for a group, a skip, an abort or a failed restore.
 export function cacheBucketOf(o: TaskOutcome): CacheBucket | undefined
 
 export interface RunContext {
@@ -163,8 +164,9 @@ With a `RunContext.cache`, the cache bar has a segment per legend state
 and each task fills one (2026-10-15), in bar order: miss (ran, saved
 nothing; red), `∅` no cache (dim), `✓` fresh (green), local `↓` and
 `↑` (local blue), remote `↓` and `↑` (remote dark blue), `⇡` uploading
-(cyan), `✗` a remote read or write failed (red), skipped (yellow), and
-the live gray remainder. A task counts under its strongest state:
+(cyan), `✗` a remote read or write failed (red), a hit whose restore
+failed (red, no legend count: it is a failure, not a miss or a hit),
+skipped (yellow), and the live gray remainder. A task counts under its strongest state:
 `✗`, then `⇡`, then remote `↑`, then local `↑`, then its own (`↓`,
 `✓`, `∅` or miss). The task's own bucket is `cacheBucketOf`; its remote
 state is its key's entry in `traffic.keys` (failures, then uploads

@@ -280,6 +280,19 @@ describe('createTelemetrySource — projection', () => {
     }
   })
 
+  it('a hit whose restore failed is a failure in no cache column: cacheSource none', () => {
+    const { sink, records } = recorder()
+    const src = createTelemetrySource({ sinks: [sink], run: RUN })
+    const node = mkNode('a#build', 'tsc')
+    src.subscriber({
+      kind: 'task:complete',
+      node,
+      outcome: mkOutcome(node, { status: 'failed', exitCode: 1, restoreFailed: true }),
+    })
+    const r = records[0]!
+    expect(r.kind === 'task.end' && [r.status, r.cacheSource]).toEqual(['failed', 'none'])
+  })
+
   it('task.end carries every fact it copies, each under its own name', () => {
     // A `--cache-download=none` task's deferred `outputs` had no reader on the
     // streaming record, so dropping its copy left the suite green (654).
