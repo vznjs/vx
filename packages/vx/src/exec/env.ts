@@ -39,7 +39,9 @@ export interface BuildEnvOptions {
 }
 
 export function buildIsolatedEnv(opts: BuildEnvOptions): NodeJS.ProcessEnv {
-  const out: NodeJS.ProcessEnv = {}
+  // No prototype: on `{}`, a name `__proto__` hit the setter and reached
+  // no task, though the key folded it.
+  const out: NodeJS.ProcessEnv = Object.create(null)
 
   for (const name of ESSENTIAL_ENV) {
     const value = opts.source[name]

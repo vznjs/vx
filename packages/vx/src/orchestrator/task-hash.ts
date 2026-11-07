@@ -534,11 +534,13 @@ function hashableConfig(cfg: TaskConfig): unknown {
   // writes a config the lock never sorted (2026-10-25).
   const env = cfg.inputs?.env
   const pass = cfg.exec?.env?.passThrough
+  const secret = cfg.exec?.env?.secret
   if (
     cfg.exec?.remote === undefined &&
     cfg.exec?.worker === undefined &&
     sortedNames(env) &&
-    sortedNames(pass)
+    sortedNames(pass) &&
+    sortedNames(secret)
   )
     return keysSorted(cfg)
   const {
@@ -549,6 +551,7 @@ function hashableConfig(cfg: TaskConfig): unknown {
   // Env names are sets: each value is read by its name, so their order
   // keys nothing (conformance env/declared-order-irrelevant).
   if (!sortedNames(pass)) execRest.env = { ...execRest.env, passThrough: [...pass!].sort() }
+  if (!sortedNames(secret)) execRest.env = { ...execRest.env, secret: [...secret!].sort() }
   const out: TaskConfig = cfg.exec === undefined ? { ...cfg } : { ...cfg, exec: execRest }
   if (!sortedNames(env)) out.inputs = { ...cfg.inputs!, env: [...env!].sort() }
   return keysSorted(out)

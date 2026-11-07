@@ -167,6 +167,22 @@ describe('buildIsolatedEnv', () => {
     expect(env.NODE_ENV).toBe('production')
   })
 
+  // A plain object's `__proto__` is the setter, not a key: the name was
+  // keyed and the task never saw it.
+  it('a name `__proto__` reaches the env as any other name', () => {
+    const source: NodeJS.ProcessEnv = Object.create(null)
+    source['__proto__'] = 'passed'
+    const passed = buildIsolatedEnv({ passThrough: ['__proto__'], define: {}, source })
+    expect(Object.keys(passed)).toContain('__proto__')
+    expect(Object.getOwnPropertyDescriptor(passed, '__proto__')?.value).toBe('passed')
+    const defined = buildIsolatedEnv({
+      passThrough: [],
+      define: { ['__proto__']: 'P1' },
+      source: {},
+    })
+    expect(Object.getOwnPropertyDescriptor(defined, '__proto__')?.value).toBe('P1')
+  })
+
   it('define overrides passThrough values', () => {
     const env = buildIsolatedEnv({
       passThrough: ['NODE_ENV'],
@@ -498,6 +514,32 @@ describe('what a task sees of the host environment, end to end', () => {
         if (v === undefined) delete process.env[k]
         else process.env[k] = v
       }
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('a defined `__proto__` reaches the task', async () => {
+    const root = await makeWorkspace({ prefix: 'vx-env-proto-' })
+    try {
+      const dir = await addProject(root, 'app', {
+        config: `
+          export default {
+            tasks: {
+              probe: {
+                exec: {
+                  command: 'printf %s "$__proto__" > seen.txt',
+                  env: { define: { ['__proto__']: 'P1' } },
+                },
+              },
+            },
+          }
+        `,
+      })
+      const quiet = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
+      const r = await run({ cwd: root, tasks: ['probe'], log: quiet })
+      expect(r.ok).toBe(true)
+      expect(await Bun.file(path.join(dir, 'seen.txt')).text()).toBe('P1')
+    } finally {
       await rm(root, { recursive: true, force: true })
     }
   })
