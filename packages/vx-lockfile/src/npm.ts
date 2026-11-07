@@ -8,7 +8,12 @@
 // ancestor directory's, else `node_modules/d` — Node's own walk.
 
 import { reachDigests, type LockfileImporter } from '@vzn/vx'
+import { reachedImporters, withTransitive } from './graph.js'
 import { depsOf, peerOnly, record } from './json.js'
+
+// The graph the digest built from this parse, for `importerLinks`: `vx
+// lock` asks for both, and the edges do not depend on `files`.
+const built = new WeakMap<Lockfile, ReturnType<typeof buildGraph>>()
 
 export interface Lockfile {
   readonly version: number
@@ -156,6 +161,32 @@ export function importerDigests(
   lock: Lockfile,
   files: ReadonlyMap<string, string> = new Map(),
 ): ReadonlyMap<string, string> {
+  const g = buildGraph(lock, files)
+  built.set(lock, g)
+  const { index, material, edges } = g
+  const digests = reachDigests({ material, edges })
+  const out = new Map<string, string>()
+  // The global digest rides as DATA: Bun's xxHash3 reads only the low 32
+  // bits of a seed, so two lockfiles' globals could share one (item 682).
+  const global = Bun.hash.xxHash3(lock.global).toString(16).padStart(16, '0')
+  for (const [p, e] of lock.packages) {
+    if (p !== '' && !e.isWorkspace) continue
+    out.set(
+      p === '' ? '.' : p,
+      Bun.hash
+        .xxHash3(`${global}\0${digests[index.get(p)!]!}`)
+        .toString(16)
+        .padStart(16, '0'),
+    )
+  }
+  return out
+}
+
+/** The lockfile as one graph: a node per path, by path. */
+function buildGraph(
+  lock: Lockfile,
+  files: ReadonlyMap<string, string>,
+): { index: Map<string, number>; material: string[]; edges: number[][] } {
   const index = new Map<string, number>()
   const material: string[] = []
   const edges: number[][] = []
@@ -193,31 +224,25 @@ export function importerDigests(
       else material[from] += `\nunresolved\0${name}\0${spec}`
     }
   }
-  const digests = reachDigests({ material, edges })
-  const out = new Map<string, string>()
-  // The global digest rides as DATA: Bun's xxHash3 reads only the low 32
-  // bits of a seed, so two lockfiles' globals could share one (item 682).
-  const global = Bun.hash.xxHash3(lock.global).toString(16).padStart(16, '0')
-  for (const [p, e] of lock.packages) {
-    if (p !== '' && !e.isWorkspace) continue
-    out.set(
-      p === '' ? '.' : p,
-      Bun.hash
-        .xxHash3(`${global}\0${digests[index.get(p)!]!}`)
-        .toString(16)
-        .padStart(16, '0'),
-    )
-  }
-  return out
+  return { index, material, edges }
 }
 
 /**
  * The root's and each workspace's dependencies that resolve, by Node's
  * walk, to a `link: true` entry pointing at the root or a workspace: an
- * installed entry is a dep, a peer with none of the same name a peer.
+ * installed entry is a dep, a peer with none of the same name a peer;
+ * and the ones a package it installs resolves to (`transitive`).
  */
 export function importerLinks(lock: Lockfile): ReadonlyMap<string, LockfileImporter> {
   const out = new Map<string, LockfileImporter>()
+  const g = built.get(lock) ?? buildGraph(lock, new Map())
+  const nodes = new Map<number, string>()
+  for (const [p, e] of lock.packages) {
+    const at = p === '' || e.isWorkspace ? p : e.link
+    if (at === undefined || (at !== '' && lock.packages.get(at)?.isWorkspace !== true)) continue
+    nodes.set(g.index.get(p)!, at === '' ? '.' : at)
+  }
+  const reached = reachedImporters(g.edges, nodes)
   for (const [p, e] of lock.packages) {
     if (p !== '' && !e.isWorkspace) continue
     const dir = p === '' ? '.' : p
@@ -231,7 +256,7 @@ export function importerLinks(lock: Lockfile): ReadonlyMap<string, LockfileImpor
       const targetDir = link === '' ? '.' : link
       if (targetDir !== dir) links[e.peers.has(name) ? 'peers' : 'deps'][name] = targetDir
     }
-    out.set(dir, links)
+    out.set(dir, withTransitive(links, reached.get(dir)))
   }
   return out
 }

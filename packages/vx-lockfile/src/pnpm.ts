@@ -12,8 +12,13 @@
 // Bun.YAML is the parser: no dependency, and the file is plain YAML.
 
 import { reachDigests, type LockfileImporter } from '@vzn/vx'
+import { reachedImporters, withTransitive } from './graph.js'
 import { record, stable } from './json.js'
 import { joinPosix, resolvePosix } from './posix.js'
+
+// The graph the digest built from this parse, for `importerLinks`: `vx
+// lock` asks for both, and the edges do not depend on `files`.
+const built = new WeakMap<Lockfile, ReturnType<typeof buildGraph>>()
 
 export interface Lockfile {
   readonly version: string
@@ -304,6 +309,7 @@ export function importerDigests(
   files: ReadonlyMap<string, string> = new Map(),
 ): ReadonlyMap<string, string> {
   const g = buildGraph(lock, files)
+  built.set(lock, g)
   const hashes = reachDigests(g)
   const out = new Map<string, string>()
   // The global digest rides as DATA: Bun's xxHash3 reads only the low 32
@@ -454,10 +460,16 @@ function fileTarget(lock: Lockfile, version: string): string | undefined {
  * packed `file:` copy is not. pnpm records
  * an auto-installed peer (`autoInstallPeers`, the default) under
  * `dependencies` like any other, so `peers` is empty here: the plugin
- * asks the importer's manifest which of these are peers.
+ * asks the importer's manifest which of these are peers. An importer a
+ * snapshot it reaches links (an override to `workspace:`) is `transitive`.
  */
 export function importerLinks(lock: Lockfile): ReadonlyMap<string, LockfileImporter> {
   const out = new Map<string, LockfileImporter>()
+  const g = built.get(lock) ?? buildGraph(lock, new Map())
+  const reached = reachedImporters(
+    g.edges,
+    new Map([...lock.importers.keys()].map((dir) => [g.index.get(importerNode(dir))!, dir])),
+  )
   for (const [dir, deps] of lock.importers) {
     const links: Record<string, string> = {}
     for (const [name, version] of deps) {
@@ -470,7 +482,7 @@ export function importerLinks(lock: Lockfile): ReadonlyMap<string, LockfileImpor
         links[name] = target
       }
     }
-    out.set(dir, { deps: links, peers: {} })
+    out.set(dir, withTransitive({ deps: links, peers: {} }, reached.get(dir)))
   }
   return out
 }

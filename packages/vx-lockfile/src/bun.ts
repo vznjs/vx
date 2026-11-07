@@ -11,8 +11,13 @@
 // Bun.JSONC is the parser: no dependency, and the file is Bun's own.
 
 import { reachDigests, type LockfileImporter } from '@vzn/vx'
+import { reachedImporters, withTransitive } from './graph.js'
 import { depsOf, peerOnly, record, stable, type Json } from './json.js'
 import { joinPosix, resolvePosix } from './posix.js'
+
+// The graph the digest built from this parse, for `importerLinks`: `vx
+// lock` asks for both, and the edges do not depend on `files`.
+const built = new WeakMap<Lockfile, ReturnType<typeof buildGraph>>()
 
 export interface Lockfile {
   readonly version: string
@@ -155,10 +160,19 @@ function packageLevels(path: string): string[] {
  * its target, which Bun links though `packages` holds no nested entry for
  * it, and so does an `npm:` alias no entry installs under its own name (a
  * satisfied one: Bun links the workspace package); anything else resolves
- * through Bun's layout.
+ * through Bun's layout. A workspace a package it installs resolves to is
+ * `transitive`.
  */
 export function importerLinks(lock: Lockfile): ReadonlyMap<string, LockfileImporter> {
   const out = new Map<string, LockfileImporter>()
+  const g = built.get(lock) ?? buildGraph(lock, new Map())
+  const nodes = new Map<number, string>()
+  for (const [dir, i] of g.importers) nodes.set(i, dir)
+  for (const [p, e] of lock.packages) {
+    const dir = workspaceOf(lock, e.id)
+    if (dir !== undefined && g.importers.has(dir)) nodes.set(g.index.get(p)!, dir)
+  }
+  const reached = reachedImporters(g.edges, nodes)
   const viaLayout = (from: string, name: string): string | undefined => {
     const key = resolve(lock, from, name)
     return key === undefined ? undefined : workspaceOf(lock, lock.packages.get(key)!.id)
@@ -175,7 +189,7 @@ export function importerLinks(lock: Lockfile): ReadonlyMap<string, LockfileImpor
       add('deps', name, workspaceSpecTarget(lock, dir, from, name, spec) ?? viaLayout(from, name))
     }
     for (const name of lock.workspacePeers.get(dir)!) add('peers', name, viaLayout(from, name))
-    out.set(dir, links)
+    out.set(dir, withTransitive(links, reached.get(dir)))
   }
   return out
 }
@@ -293,6 +307,33 @@ export function importerDigests(
   lock: Lockfile,
   files: ReadonlyMap<string, string> = new Map(),
 ): ReadonlyMap<string, string> {
+  const g = buildGraph(lock, files)
+  built.set(lock, g)
+  const { material, edges, importers, loose } = g
+  const digests = reachDigests({ material, edges })
+  const out = new Map<string, string>()
+  // The global digest rides as DATA: Bun's xxHash3 reads only the low 32
+  // bits of a seed, so two lockfiles' globals could share one (item 682).
+  const globalMaterial =
+    loose.length === 0 ? lock.global : `${lock.global}\0${JSON.stringify(loose)}`
+  const global = Bun.hash.xxHash3(globalMaterial).toString(16).padStart(16, '0')
+  for (const [dir, i] of importers) {
+    out.set(dir, Bun.hash.xxHash3(`${global}\0${digests[i]!}`).toString(16).padStart(16, '0'))
+  }
+  return out
+}
+
+/** The lockfile as one graph, each importer's node by dir, and the patches naming no entry. */
+function buildGraph(
+  lock: Lockfile,
+  files: ReadonlyMap<string, string>,
+): {
+  index: Map<string, number>
+  material: string[]
+  edges: number[][]
+  importers: Map<string, number>
+  loose: [string, string, string][]
+} {
   const index = new Map<string, number>()
   const material: string[] = []
   const edges: number[][] = []
@@ -359,17 +400,7 @@ export function importerDigests(
     const target = dir === undefined ? undefined : importers.get(dir)
     if (target !== undefined) edges[index.get(p)!]!.push(target)
   }
-  const digests = reachDigests({ material, edges })
-  const out = new Map<string, string>()
-  // The global digest rides as DATA: Bun's xxHash3 reads only the low 32
-  // bits of a seed, so two lockfiles' globals could share one (item 682).
-  const globalMaterial =
-    loose.length === 0 ? lock.global : `${lock.global}\0${JSON.stringify(loose)}`
-  const global = Bun.hash.xxHash3(globalMaterial).toString(16).padStart(16, '0')
-  for (const [dir, i] of importers) {
-    out.set(dir, Bun.hash.xxHash3(`${global}\0${digests[i]!}`).toString(16).padStart(16, '0'))
-  }
-  return out
+  return { index, material, edges, importers, loose }
 }
 
 /** The name a package key installs under: its last segment, scope included. */

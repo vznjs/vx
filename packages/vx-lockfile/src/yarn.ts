@@ -12,6 +12,7 @@
 // one digest is the root's reach through every entry the file resolves.
 
 import { reachDigests, type LockfileImporter } from '@vzn/vx'
+import { reachedImporters, withTransitive } from './graph.js'
 import { depsOf, record, stable } from './json.js'
 import { joinPosix, resolvePosix } from './posix.js'
 import { parseSyml } from './syml.js'
@@ -349,8 +350,10 @@ function resolveDescriptor(
  * transparent workspaces satisfied with one), and its peers on a
  * workspace of that name, which Yarn hoists whatever the range. Only a
  * descriptor the file keys counts: the name fallbacks the digest takes
- * (a catalog, an override) name no link. Classic records no workspaces,
- * so it has none here (`classicLinks`).
+ * (a catalog, an override) name no link. A workspace an entry it reaches
+ * so resolves to (transparent workspaces satisfying a registry package's
+ * range) is `transitive`. Classic records no workspaces, so it has none
+ * here (`classicLinks`).
  */
 export function importerLinks(lock: Lockfile): ReadonlyMap<string, LockfileImporter> {
   const out = new Map<string, LockfileImporter>()
@@ -360,6 +363,23 @@ export function importerLinks(lock: Lockfile): ReadonlyMap<string, LockfileImpor
     dirOf.set(id, dir)
     byName.set(id.slice(0, id.indexOf('@workspace:')), dir)
   }
+  // The digest's graph by the descriptors the file keys alone, as above.
+  const index = new Map<string, number>()
+  for (const id of lock.entries.keys()) index.set(id, index.size)
+  // A `link:` entry to a workspace stands for it: no package between.
+  const edges: number[][] = []
+  const nodes = new Map<number, string>()
+  for (const [id, e] of lock.entries) {
+    const own: number[] = []
+    for (const [name, range] of e.deps) {
+      const keyed = keyedDescriptor(lock, id, name, range)
+      if (keyed !== undefined) own.push(index.get(keyed)!)
+    }
+    const at = dirOf.get(id) ?? linkedDir(lock, dirOf, id)
+    if (at !== undefined) nodes.set(index.get(id)!, at)
+    edges.push(own)
+  }
+  const reached = reachedImporters(edges, nodes)
   for (const [dir, id] of lock.workspaces) {
     const entry = lock.entries.get(id)!
     const links = { deps: {} as Record<string, string>, peers: {} as Record<string, string> }
@@ -381,7 +401,7 @@ export function importerLinks(lock: Lockfile): ReadonlyMap<string, LockfileImpor
     for (const name of entry.deps.keys()) {
       if (!entry.installed.has(name)) add('peers', name, byName.get(name))
     }
-    out.set(dir, links)
+    out.set(dir, withTransitive(links, reached.get(dir)))
   }
   return out
 }
