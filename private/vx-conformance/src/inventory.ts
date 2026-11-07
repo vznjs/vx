@@ -776,6 +776,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-migrate/turbo-root-engines',
     'vx-migrate/turbo-scriptless-build',
     'vx-migrate/turbo-scriptless-task',
+    'vx-migrate/turbo-sibling-output-input',
     'vx-migrate/turbo-staged-output',
     'vx-migrate/turbo-v1-root-deps',
     'vx-migrate/turbo-wild-literal-output',
