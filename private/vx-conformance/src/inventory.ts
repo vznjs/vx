@@ -795,6 +795,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-migrate/workspace-keys',
     'vx-migrate/yarn-berry-no-lock',
     'vx-otel/boolean-options',
+    'vx-otel/bounded-reply',
     'vx-otel/collector',
     'vx-otel/compression-env-warning',
     'vx-otel/contract-otlp',
