@@ -2425,7 +2425,8 @@ one (bun add -g @vzn/vx), or run \`vx upgrade\` to move the project's`.
 After an upgrade that installed something, inside a workspace, the new
 vx runs `vx lock` at the workspace root, since a release may record the
 lock differently (an npm global install's own binary, which keeps its
-path). A lock that fails, or a new vx that does not start, leaves the
+path), also when the project's moved and the global's then failed. A
+lock that fails, or a new vx that does not start, leaves the
 upgrade done and prints
 `vx upgrade  vx lock failed: run vx lock`. `vx upgrade -g` never locks.
 
@@ -2492,7 +2493,8 @@ version is read from the registry that manager is configured for
 ### In a Turborepo or Nx repo
 
 When the directory it runs in, or one above it up
-to the git top-level, holds a `turbo.json`, `turbo.jsonc` or `nx.json`,
+to the git top-level (outside git, up to the `package.json` root below),
+holds a `turbo.json`, `turbo.jsonc` or `nx.json`,
 it runs `@vzn/vx-migrate` there, so `vx init` is the one command
 (2026-10-08): the latest release through `bun x`,
 never an installed one, so init always installs the latest `@vzn/vx`

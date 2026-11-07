@@ -132,10 +132,13 @@ export async function initCmd(args: readonly string[]): Promise<number> {
     dirs.push(d)
     if (d === top || path.dirname(d) === d) break
   }
-  if (dirs.some((d) => TOOL_CONFIGS.some((f) => existsSync(path.join(d, f))))) {
+  const pkgRoot = packageRoot(dirs, top !== null)
+  // Outside git `dirs` reach `/`: a stray turbo.json or nx.json above the
+  // project took init over, as a stray package.json did (2026-10-28).
+  const own = top !== null ? dirs : dirs.slice(0, dirs.indexOf(pkgRoot ?? cwd) + 1)
+  if (own.some((d) => TOOL_CONFIGS.some((f) => existsSync(path.join(d, f))))) {
     return migrate(dirs, parsed)
   }
-  const pkgRoot = packageRoot(dirs, top !== null)
   // Asked of git itself: a kept workspace file is `top` too, and the
   // `git init` hint went missing where the next run would refuse.
   const noGit = marked === undefined ? top === null : (await gitTop(cwd)) === null
