@@ -642,6 +642,7 @@ async function runOnBus(
     terminal === null ? undefined : () => terminal.holdStatus(),
   )
   const remotesClosed = await openRemotes(prepared.remotes, ciContext.ci, secrets)
+  signals.held?.arm()
   try {
     disposePlugins = await installPlugins({
       plugins: prepared.plugins,

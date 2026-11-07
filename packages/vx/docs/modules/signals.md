@@ -44,10 +44,11 @@ The run hears signals from the moment it goes for its run lock
 (`holdSignals`), not only once `forwardSignals` is on: every plugin's
 setup runs in between, so a slow one held the window open for seconds,
 and a Ctrl-C in it killed vx by the default action, with no teardown,
-no flush and the lock's entry left behind (2026-11-07). The held
-listener notes the first signal and aborts the lock's wait; a wait it
-ends holds no lock, so the run leaves there rather than open the store
-beside a `vx cache clean`. `forwardSignals` takes the listeners over
+no flush and the lock's entry left behind (2026-11-07). Until plugin
+setup begins (`arm()`), a signal leaves at once through `process.exit`,
+whose hooks release the lock: nothing before it waits on a stop, and a
+held one waited out a git listing (`tests/git-listing-temp.test.ts`).
+From setup on, the held listener notes the first signal. `forwardSignals` takes the listeners over
 and replays a signal already heard, so the stop is the one above; a run
 that leaves before it (a refusal, a setup that threw) exits of the
 signal from `run()`'s finally (`exitOfSignal`), its plugins torn down
@@ -124,6 +125,7 @@ export function forwardSignals(args: {
 export interface HeldSignals {
   readonly signal: AbortSignal // aborted by the first signal
   takeOver(): StopSignal | undefined // removes the listeners, once; the signal heard
+  arm(): void // from plugin setup on, a stop is held; before, it exits at once
 }
 export function holdSignals(): HeldSignals // from the run lock on; a second signal exits at once
 export async function exitOfSignal(signal: StopSignal): Promise<never> // stdout drained, then die of it

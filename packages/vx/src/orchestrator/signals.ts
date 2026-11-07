@@ -113,13 +113,25 @@ export interface HeldSignals {
   readonly signal: AbortSignal
   /** Removes the listeners, once; the signal heard so far, if any. */
   takeOver(): StopSignal | undefined
+  /**
+   * From here a stop is held for the run's own end (plugin setup has
+   * begun, so teardown is owed); before it, a stop leaves at once, its
+   * exit hooks releasing the run lock: nothing earlier (a git listing, a
+   * remote's open) waits on the stop, so holding it held the run.
+   */
+  arm(): void
 }
 
 export function holdSignals(): HeldSignals {
   const controller = new AbortController()
   let heard: StopSignal | undefined
+  let armed = false
   const onSignal = (signal: StopSignal): void => {
     if (heard !== undefined) exitOf(heard, false)
+    if (!armed) {
+      claimExitForSignal()
+      exitOf(signal, false)
+    }
     heard = signal
     claimExitForSignal()
     controller.abort(signal)
@@ -133,6 +145,9 @@ export function holdSignals(): HeldSignals {
   let taken = false
   return {
     signal: controller.signal,
+    arm: () => {
+      armed = true
+    },
     takeOver: () => {
       if (taken) return undefined
       taken = true
