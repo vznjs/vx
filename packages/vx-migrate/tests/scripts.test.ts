@@ -29,11 +29,17 @@ const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const CORE_BIN = path.join(path.dirname(Bun.resolveSync('@vzn/vx', import.meta.dir)), 'bin.ts')
 const TIMEOUT = 30_000
 
-// A package manager that installs nothing, first on PATH: what a migration
-// installs is adopt.test.ts's subject, and this suite has no network.
+// A package manager first on PATH that installs only the stand-in
+// @vzn/vx-lockfile, which the lock ending a migration loads: what a
+// migration installs is adopt.test.ts's subject, and this suite has no network.
 const FAKE_PM = mkdtempSync(path.join(os.tmpdir(), 'vx-scripts-pm-'))
+await standIn(path.join(FAKE_PM, 'vx-lockfile'))
 for (const pm of ['npm', 'pnpm', 'yarn']) {
-  writeFileSync(path.join(FAKE_PM, pm), '#!/bin/sh\nexit 0\n', { mode: 0o755 })
+  writeFileSync(
+    path.join(FAKE_PM, pm),
+    `#!/bin/sh\ncase " $* " in *" @vzn/vx-lockfile"*) [ -e node_modules/@vzn/vx-lockfile ] || { mkdir -p node_modules/@vzn && cp -R "${FAKE_PM}/vx-lockfile" node_modules/@vzn/vx-lockfile; } ;; esac\nexit 0\n`,
+    { mode: 0o755 },
+  )
 }
 afterAll(() => rm(FAKE_PM, { recursive: true, force: true }))
 
@@ -1316,6 +1322,7 @@ export const pnpm = () => definePlugin(import.meta, {
     }))
   },
 })
+export { pnpm as npm, pnpm as yarn, pnpm as bun }
 `,
   )
 }
@@ -1419,7 +1426,8 @@ describe('vx init — the generated build is not a cached no-op', () => {
     )
     try {
       const r = await vx(root, ['init'])
-      expect(r.code).toBe(0)
+      // A run reads only the lock: without one the migration is not done.
+      expect(r.code).toBe(1)
       expect(r.err).toContain('✗ vx lock  lock not written\n\n  ')
       expect(r.err).toContain('dependsOn cycle')
       expect(r.out).toContain('  lock      not written\n')
@@ -1471,9 +1479,10 @@ describe('vx init — the generated build is not a cached no-op', () => {
       expect(await Bun.file(path.join(root, 'packages', 'app', 'vx.config.ts')).exists()).toBe(
         false,
       )
-      const ws = await Bun.file(path.join(root, '.vx/workspace.mjs')).text()
-      expect(ws).not.toContain('@vzn/vx')
-      expect(ws).toContain('export default { plugins: [] }')
+      // npm(): no lockfile yet, and the install writes package-lock.json.
+      expect(await Bun.file(path.join(root, '.vx/workspace.mjs')).text()).toBe(
+        "import { npm } from '@vzn/vx-lockfile'\n\nexport default { plugins: [npm()] }\n",
+      )
       const config = await loadProjectConfig(configPath)
       expect(Object.keys(config.tasks ?? {})).toContain('build')
     } finally {
@@ -1489,10 +1498,11 @@ describe('vx init — the generated build is not a cached no-op', () => {
         await Bun.write(path.join(root, file), '{ "tasks": { "compile": {} } }\n')
         const r = await vx(root, ['init', '--keep'])
         expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
-        // The stand-in npm installs nothing, so `next:` installs what is missing.
+        // The stand-in npm installs only the lockfile plugin, so `next:`
+        // installs the rest.
         expect(r.out.split('\n').slice(2).join('\n')).toBe(
           `  from      ${file}, run by turbo() from @vzn/vx-migrate\n` +
-            '  ran       npm install -D @vzn/vx @vzn/vx-migrate @vzn/vx-history\n' +
+            '  ran       npm install -D @vzn/vx @vzn/vx-migrate @vzn/vx-lockfile @vzn/vx-history\n' +
             '  files     .vx/workspace.ts\n' +
             '            .vx/.gitignore\n' +
             '  note      a temporary start: vx init --native writes native config\n\n' +
@@ -1501,8 +1511,9 @@ describe('vx init — the generated build is not a cached no-op', () => {
         expect(await Bun.file(path.join(root, '.vx/workspace.ts')).text()).toBe(
           "import type { WorkspaceConfig } from '@vzn/vx/config'\n" +
             "import { turbo } from '@vzn/vx-migrate'\n" +
+            "import { npm } from '@vzn/vx-lockfile'\n" +
             "import { vxHistory } from '@vzn/vx-history'\n\n" +
-            'export default {\n  plugins: [\n    turbo(),\n    vxHistory(),\n  ],\n} satisfies WorkspaceConfig\n',
+            'export default {\n  plugins: [\n    turbo(),\n    npm(),\n    vxHistory(),\n  ],\n} satisfies WorkspaceConfig\n',
         )
         expect(existsSync(path.join(root, 'packages', 'app', 'vx.config.ts'))).toBe(false)
       } finally {
@@ -1678,7 +1689,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
       await Bun.write(path.join(root, '.vx/workspace.mjs'), line)
       const gained = await vx(root, ['init', '--keep'])
       expect([row(gained.out, 'config'), row(gained.out, 'note')[1]]).toEqual([
-        ['declared turboCache(), vxHistory() in .vx/workspace.mjs'],
+        ['declared turboCache(), npm(), vxHistory() in .vx/workspace.mjs'],
         'turboCache(): turbo.json names a remoteCache, so vx shares that remote cache (token: the variable, else the OS keychain).',
       ])
       expect(await Bun.file(path.join(root, '.vx/workspace.mjs')).text()).toContain(
@@ -1892,7 +1903,9 @@ describe('vx init — the generated build is not a cached no-op', () => {
       expect(existsSync(path.join(root, 'packages', 'a', 'vx.config.ts'))).toBe(false)
       // A member of the outer workspace still resolves to the outer root.
       const m = await vx(path.join(root, 'packages', 'a'), ['init'])
-      expect(m.code).toBe(0)
+      // The outer workspace file names no edge source: `^build` is refused
+      // at the lock, and no lock is exit 1.
+      expect(m.code).toBe(1)
       expect(existsSync(path.join(root, 'packages', 'a', 'vx.config.ts'))).toBe(true)
       expect(existsSync(path.join(root, 'packages', 'a', '.vx/workspace.ts'))).toBe(false)
     } finally {
@@ -2408,8 +2421,9 @@ describe('vx init writes what the next run reads', () => {
       await addPackage(root, 'a', { build: 'echo a' })
       await Bun.write(path.join(root, '.vx/workspace.mts'), 'export default { plugins: [] }\n')
       const r = await vx(root, ['init'])
+      // It names no edge source: `^build` is refused at the lock, exit 1.
       expect({ code: r.code, wrote: existsSync(path.join(root, '.vx/workspace.ts')) }).toEqual({
-        code: 0,
+        code: 1,
         wrote: false,
       })
     },
@@ -2608,10 +2622,12 @@ describe('vx init declares the lockfile plugin', () => {
             "import { vxHistory } from '@vzn/vx-history'\n\n" +
             'export default {\n  plugins: [\n    turbo(),\n    yarn(),\n    vxHistory(),\n  ],\n} satisfies WorkspaceConfig\n',
         )
-        // Installed with yarn (a stand-in that installs nothing), so `next:` installs them.
-        expect(row(r.out, 'next')[0]).toStartWith(
-          'yarn add -D @vzn/vx-migrate @vzn/vx-lockfile @vzn/vx-history && vx lock',
-        )
+        // Installed with yarn (a stand-in that installs only the lockfile
+        // plugin), so `next:` installs the rest.
+        expect([row(r.out, 'ran')[0], row(r.out, 'next')[0]]).toEqual([
+          'yarn add -D @vzn/vx @vzn/vx-migrate @vzn/vx-lockfile @vzn/vx-history',
+          'yarn add -D @vzn/vx-migrate @vzn/vx-history && vx lock && vx run build --all',
+        ])
       } finally {
         await rm(root, { recursive: true, force: true })
       }
@@ -2627,7 +2643,8 @@ describe('vx init declares the lockfile plugin', () => {
         await mkdir(path.join(root, '.vx'))
         await writeFile(path.join(root, '.vx/workspace.ts'), 'export default { plugins: [] }\n')
         const r = await vx(root, ['init'])
-        expect(r.code).toBe(0)
+        // It names no edge source: `^build` is refused at the lock, exit 1.
+        expect(r.code).toBe(1)
         expect(await Bun.file(path.join(root, '.vx/workspace.ts')).text()).toBe(
           'export default { plugins: [] }\n',
         )

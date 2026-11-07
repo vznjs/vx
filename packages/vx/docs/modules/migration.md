@@ -58,7 +58,7 @@ export interface ApplyMigrationArgs {
   emptyReason?: string // init: why the plan is empty, the report's line in place of the example
   format?: MigrationFormat // default 'ts'
   json?: boolean // with dry: one JSON document (schemas/init.json) for files + report
-  lock?: (root: string) => Promise<{ code: number; said: string }> // after the write: vx lock's step, its line the `lock` row; a refusal prints above the report, exit stays 0
+  lock?: (root: string) => Promise<{ code: number; said: string }> // after the write: vx lock's step, its line the `lock` row; a refusal prints above the report, the files stay, exit 1
   steps?: readonly (readonly [label: string, value: string])[] // what the tool did first, e.g. ['ran', 'bun add -d …']
   plugins?: readonly WorkspacePlugin[] // { pkg, factory }: what the written workspace file declares
 }

@@ -252,12 +252,7 @@ async function solidShaped(): Promise<{ root: string; env: Record<string, string
       JSON.stringify({ name, scripts }),
     )
   }
-  const bin = path.join(root, '.fake-bin')
-  await mkdir(bin)
-  await writeFile(path.join(bin, 'pnpm'), `#!/bin/sh\necho "$@" >> "${root}/.pnpm-calls"\n`)
-  await chmod(path.join(bin, 'pnpm'), 0o755)
-  const env = { ...process.env, PATH: `${bin}:${process.env['PATH']}` } as Record<string, string>
-  return { root, env }
+  return { root, env: await fakePnpm(root) }
 }
 
 /** What the fake pnpm would have installed: the native run ends with
@@ -270,8 +265,10 @@ const HOOKS = {
   'vx-history': '{ setup() {} }',
 }
 
-async function installPlugins(root: string): Promise<void> {
-  const scope = path.join(root, 'node_modules', '@vzn')
+async function installPlugins(
+  root: string,
+  scope = path.join(root, 'node_modules', '@vzn'),
+): Promise<void> {
   await mkdir(scope, { recursive: true })
   await symlink(path.resolve(import.meta.dir, '..', '..', 'vx'), path.join(scope, 'vx'))
   for (const [pkg, factories] of [
@@ -291,6 +288,26 @@ async function installPlugins(root: string): Promise<void> {
           .join(''),
     )
   }
+}
+
+/**
+ * A pnpm on PATH that records its argv; its `add` installs the stand-ins
+ * where none are yet, so the lock the migration ends with resolves the
+ * plugins it declares. A workspace file importing any other package
+ * fails that lock, and the migration exits 1.
+ */
+async function fakePnpm(root: string): Promise<Record<string, string>> {
+  const store = path.join(root, '.fake-store')
+  await installPlugins(root, store)
+  const bin = path.join(root, '.fake-bin')
+  await mkdir(bin)
+  await writeFile(
+    path.join(bin, 'pnpm'),
+    `#!/bin/sh\necho "$@" >> "${root}/.pnpm-calls"\n` +
+      `[ "$1" = add ] && [ ! -e "${root}/node_modules/@vzn" ] && mkdir -p "${root}/node_modules" && ln -s "${root}/.fake-store" "${root}/node_modules/@vzn"\nexit 0\n`,
+  )
+  await chmod(path.join(bin, 'pnpm'), 0o755)
+  return { ...process.env, PATH: `${bin}:${process.env['PATH']}` } as Record<string, string>
 }
 
 async function migrate(root: string, env: Record<string, string>, args: string[]) {
@@ -418,6 +435,48 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
     TIMEOUT,
   )
 
+  // 2026-11-07: with no lockfile yet, the plugins were picked before the
+  // install wrote one: no pnpm(), `^build` refused by the lock, exit 0.
+  it(
+    'no lockfile yet: declares the one the install writes, and a refused lock exits 1',
+    async () => {
+      const { root, env } = await solidShaped()
+      try {
+        await rm(path.join(root, 'pnpm-lock.yaml'))
+        const pj = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'))
+        await writeFile(
+          path.join(root, 'package.json'),
+          JSON.stringify({ ...pj, packageManager: 'pnpm@10.0.0' }),
+        )
+        const dry = await migrate(root, env, ['--dry', '--format', 'json'])
+        const r = await migrate(root, env, [])
+        const ws = await readFile(path.join(root, '.vx/workspace.ts'), 'utf8')
+        const planned = (JSON.parse(dry.out) as { files: { path: string; contents: string }[] })
+          .files
+        expect([
+          r.code,
+          [...ws.matchAll(/^ {4}(\w+)\(\),$/gm)].map((m) => m[1]),
+          await calls(root),
+          await Bun.file(path.join(root, '.vx/projects.lock.json')).exists(),
+          planned.find((f) => f.path === '.vx/workspace.ts')?.contents,
+        ]).toEqual([
+          0,
+          ['pnpm', 'vxHistory'],
+          'add -D -w @vzn/vx @vzn/vx-lockfile @vzn/vx-history\n',
+          true,
+          ws,
+        ])
+        // CONTROL: a lock the graph rules refuse leaves the files and exits 1.
+        await writeFile(path.join(root, '.vx/workspace.ts'), 'export default { plugins: [] }\n')
+        const refused = await migrate(root, env, ['--force'])
+        expect([refused.code, refused.out.includes('  lock      not written')]).toEqual([1, true])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
   // 2026-10-08: native after --keep left turbo() declared and
   // @vzn/vx-migrate installed, with a note asking the user to remove them.
   it(
@@ -459,8 +518,9 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
       }
       expect([await after(false), await after(true)]).toEqual([
         [0, 0, ['remove -w @vzn/vx-migrate'], ['pnpm', 'vxHistory'], false, false, true],
-        // CONTROL: turboCache() still reads Turbo's remote cache from vx-migrate.
-        [0, 0, [], ['turboCache', 'pnpm', 'vxHistory'], true, false, true],
+        // CONTROL: turboCache() still reads Turbo's remote cache from
+        // vx-migrate, which the fake pnpm does not install: no lock, exit 1.
+        [0, 1, [], ['turboCache', 'pnpm', 'vxHistory'], true, false, true],
       ])
     },
     TIMEOUT,
@@ -484,7 +544,8 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
           await readFile(path.join(root, '.vx/workspace.ts'), 'utf8'),
           (await calls(root)).includes('remove'),
           r.out.includes('still declares turbo()'),
-        ]).toEqual([0, ws, false, true])
+          // The fake pnpm installs no vx-migrate for turbo({}): no lock.
+        ]).toEqual([1, ws, false, true])
       } finally {
         await rm(root, { recursive: true, force: true })
       }
@@ -507,7 +568,8 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
           JSON.stringify({ name: 'r', devDependencies: { '@vzn/vx-migrate': '*' } }),
         )
         const r = await migrate(root, env, ['--force'])
-        expect([r.code, (await calls(root)).includes('remove')]).toEqual([0, false])
+        // The fake pnpm installs no vx-migrate for turboCache(): no lock.
+        expect([r.code, (await calls(root)).includes('remove')]).toEqual([1, false])
       } finally {
         await rm(root, { recursive: true, force: true })
       }
@@ -533,7 +595,8 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
         expect([
           r.code,
           ['@vzn/vx-lockfile', '@vzn/vx-history', '@vzn/vx-ci'].filter((p) => !add.includes(p)),
-        ]).toEqual([0, []])
+          // The fake pnpm installs no vx-ci: no lock.
+        ]).toEqual([1, []])
       } finally {
         await rm(root, { recursive: true, force: true })
       }
@@ -668,12 +731,7 @@ describe('vx-migrate on a pnpm Nx repo', () => {
         dependencies: {},
       }),
     )
-    const bin = path.join(root, '.fake-bin')
-    await mkdir(bin)
-    await writeFile(path.join(bin, 'pnpm'), `#!/bin/sh\necho "$@" >> "${root}/.pnpm-calls"\n`)
-    await chmod(path.join(bin, 'pnpm'), 0o755)
-    const env = { ...process.env, PATH: `${bin}:${process.env['PATH']}` } as Record<string, string>
-    return { root, env }
+    return { root, env: await fakePnpm(root) }
   }
 
   it(

@@ -1484,7 +1484,8 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    own writes are mid-flight, a `dist` deleted and not yet rebuilt is
    a state the tree will not keep — so paths that land mid-run are
    judged together one debounce window after it ends, an edit made
-   meanwhile included. A task that writes into its own project,
+   meanwhile included (a task's input edited while it ran is not saved,
+   and its line says the next cycle runs on it). A task that writes into its own project,
    `rm -rf dist && tsc` included, costs one extra cycle instead of
    re-running forever — when the bytes it leaves are the same. A file
    it rewrites with DIFFERENT bytes every run (a pid file, a
@@ -2503,8 +2504,8 @@ which makes each package's scripts its tasks; it maps over the root
 `vx.config.ts` init wrote while that file is unchanged. The `@vzn/vx`
 import needs no install: the running vx serves its own core to that
 specifier (bin.ts registers the alias). A file already there is kept
-and named under `kept`; `--force` replaces it, a file of another
-extension included (`replaced`). `--mjs` writes `.vx/workspace.mjs` and
+and named under `kept`; `--force` replaces it, and every file of
+another extension beside it (`replaced`). `--mjs` writes `.vx/workspace.mjs` and
 `vx.config.mjs`. `--dry` prints the files and writes nothing;
 `--dry --format json` prints the plan as one JSON document
 (`schemas/init.json`): `files` (each path and its whole text), `kept`,
@@ -2533,10 +2534,10 @@ core (`src/cli/plugin-templates.ts`) and held equal by
 
 ### Exit codes
 
-| Code | When                                                                                                                                                                                                          |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `0`  | the files written (or, with `--dry`, printed)                                                                                                                                                                 |
-| `1`  | a refused flag, a parse error (`--mjs` with `--plugin` among them), a plugin file already there without `--force`, or the lock not written (the files stay). Handed to `@vzn/vx-migrate`, the exit is its own |
+| Code | When                                                                                                                                                                                                                          |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0`  | the files written (or, with `--dry`, printed)                                                                                                                                                                                 |
+| `1`  | a refused flag, a parse error (`--mjs` with `--plugin` among them), a plugin file already there without `--force`, or the lock not written (the files stay). Handed to `@vzn/vx-migrate`, the exit is its own, by these rules |
 
 ## `bunx @vzn/vx-migrate`
 
@@ -2560,7 +2561,8 @@ answer it, and without a terminal it is native. Both declare
 a CI file setting `TURBO_TOKEN` / `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`),
 and name Nx Cloud, whose wire vx does not speak. Elsewhere each
 package's `package.json` scripts become its tasks, and the workspace
-file declares the `@vzn/vx-lockfile` plugin for the root's lockfile.
+file declares the `@vzn/vx-lockfile` plugin for the root's lockfile
+(with none yet, the one its install writes).
 What the package writes goes through core's migration seam
 (`applyMigration`, exported from `@vzn/vx`), which renders, guards
 against overwriting, writes and reports. The mapping rules live in the

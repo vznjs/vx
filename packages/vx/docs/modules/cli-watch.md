@@ -241,7 +241,9 @@ too: they format one run's result.
      workspace config, or a file a plugin claims (a lockfile plugin's
      `discover` names and edges come from it, so a dependency added
      under `--filter` widens the closure). Until item 891 each of
-     these waited for a restart.
+     these waited for a restart. A re-read that fails is said once,
+     after the cycle's header: the one before the run stays silent, and
+     the one after says nothing the cycle's own failure said.
    - A project directory, and a directory a config imports from, is
      also watched from its nearest directory that exists, for the next
      name on the way down (`armAncestors`): an inotify watch holds an

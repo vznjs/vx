@@ -7,6 +7,7 @@
 
 import { existsSync } from 'node:fs'
 import path from 'node:path'
+import type { PackageManager } from './adopt.js'
 
 /** Each lockfile and the `@vzn/vx-lockfile` plugin that claims it. */
 const LOCKFILES: ReadonlyArray<readonly [file: string, plugin: string]> = [
@@ -18,9 +19,18 @@ const LOCKFILES: ReadonlyArray<readonly [file: string, plugin: string]> = [
   ['yarn.lock', 'yarn'],
 ]
 
-/** The lockfile at `root` and the `@vzn/vx-lockfile` factory that claims it. */
-export function lockfilePlugin(root: string): { file: string; factory: string } | undefined {
-  const lock = LOCKFILES.find(([file]) => existsSync(path.join(root, file)))
+/**
+ * The lockfile at `root` and the `@vzn/vx-lockfile` factory that claims it.
+ * With none there, `installer`'s: the manager this run installs with
+ * writes it, and the lock that follows needs its plugin for `^` edges.
+ */
+export function lockfilePlugin(
+  root: string,
+  installer?: PackageManager,
+): { file: string; factory: string } | undefined {
+  const lock =
+    LOCKFILES.find(([file]) => existsSync(path.join(root, file))) ??
+    LOCKFILES.find(([, factory]) => factory === installer)
   return lock === undefined ? undefined : { file: lock[0], factory: lock[1] }
 }
 

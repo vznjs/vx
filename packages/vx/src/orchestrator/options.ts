@@ -221,6 +221,11 @@ export interface RunOptions {
    */
   holdPersistent?: boolean
   /**
+   * The run is a `vx watch` cycle: an input edited while a task ran starts
+   * the next cycle, and the line withholding the task's save says so.
+   */
+  watch?: boolean
+  /**
    * The servers an earlier `holdPersistent` run handed back. Each one still
    * up whose task this run would start again, with the same resolved
    * config, is kept running and reported ready instead of restarted; what

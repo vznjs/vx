@@ -116,7 +116,8 @@ describe('applyMigration', () => {
     })
     mkdirSync(path.join(root, 'app'))
     const lock = (async () => 1) as unknown as NonNullable<ApplyMigrationArgs['lock']>
-    expect(await apply(plan([['app', [task('build', exec('tsc'))]]]), { lock })).toBe(0)
+    // No lock written: the migration is not done, as `vx init` exits.
+    expect(await apply(plan([['app', [task('build', exec('tsc'))]]]), { lock })).toBe(1)
     expect(stderr).toBe('vx lock: the migration tool answered no result: run `vx lock`\n')
     expect(stdout).toContain('not written')
   })

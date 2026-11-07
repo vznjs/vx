@@ -453,18 +453,20 @@ async function starter(
     ],
     [PROJECT_CONFIG_FILENAMES, config, starterProject(ext)],
   ] as const) {
-    const existing = names.find((n) => existsSync(path.join(root, n)))
+    const existing = names.filter((n) => existsSync(path.join(root, n)))
     // Kept, a directory read as the workspace's marker, and every verb after
     // then found none and sent the user back here.
-    if (existing !== undefined && statSync(path.join(root, existing)).isDirectory()) {
+    const dir = existing.find((n) => statSync(path.join(root, n)).isDirectory())
+    if (dir !== undefined) {
       throw new UserError(
-        `vx init: ${existing} is a directory, where the ${name === config ? 'project config' : 'workspace file'} goes; move it and re-run`,
+        `vx init: ${dir} is a directory, where the ${name === config ? 'project config' : 'workspace file'} goes; move it and re-run`,
       )
     }
-    if (existing !== undefined && !args.force) kept.push(existing)
+    if (existing.length > 0 && !args.force) kept.push(existing[0]!)
     else {
       files.push({ path: name, contents })
-      if (existing !== undefined && existing !== name) replaced.push(existing)
+      // Every other name goes too: a second config beside the one written.
+      replaced.push(...existing.filter((n) => n !== name))
     }
   }
   // vx's own housekeeping, as a run's first cache open and `vx lock` write them.

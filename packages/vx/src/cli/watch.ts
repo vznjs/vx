@@ -149,6 +149,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     handleSignals: false,
     signal: stop.signal,
     holdPersistent: true,
+    watch: true,
   }
   // Every cycle's `invocations` row names the verb, as `vx run`'s does;
   // run()'s process.argv fallback put the bin's absolute path there, so
@@ -556,6 +557,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
       // The initial run is collected even after a stop: its server is the
       // loop's to stop.
       while (initial !== undefined || (label !== undefined && !stop.aborted)) {
+        /** This cycle's failure, as said: a re-read failing on the same cause says nothing more. */
+        let failed: string | undefined
         if (initial !== undefined) {
           held = await initial.held
           initial = undefined
@@ -578,6 +581,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
                 `no .vx/workspace.ts in ${workspaceRoot}; restore it, or stop vx watch`,
               )
             }
+            // A failed re-read is said once, by the re-read after the
+            // cycle: said here too, it printed above the cycle's header.
             if (reread) await rearm(false)
             ui.print('out', ui.gap())
             ui.say('info', `changed ${label}`, 'out')
@@ -625,15 +630,19 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
             // FS event (if any) will retry. The dispose() on SIGINT
             // is the canonical exit; we don't unilaterally abort here.
             // A config's own throw or a plugin's failure may quote a secret (L-11).
-            const message = maskedLine(err instanceof Error ? err.message : String(err))
-            sayNotice('error', 'vx watch', `cycle failed: ${message}`)
+            failed = err instanceof Error ? err.message : String(err)
+            sayNotice('error', 'vx watch', `cycle failed: ${maskedLine(failed)}`)
           }
         // After a failed cycle too: a package added with a config that does
         // not load yet fails its cycle, and unarmed, the fix to that config
         // was never an event.
         if (reread && !stop.aborted && hasWorkspaceFile()) {
           reread = false
-          await rearm()
+          const err = await rearm()
+          // No lock is the cycle's own failure to say; said here too, it was two lines.
+          const why = err instanceof Error ? err.message : String(err)
+          if (err !== undefined && why !== NO_LOCK && why !== failed)
+            sayCannot(`cannot re-read the workspace`, err)
         }
         // A re-lock since this cycle began: the re-arm can close the watcher
         // its event was still on its way to (FSEvents' latency, a poller's
@@ -1083,15 +1092,13 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
       )
   }
 
-  const rearm = async (say = true): Promise<void> => {
+  /** Re-read the workspace and re-arm on it; a failed re-read is returned, for the caller to say. */
+  const rearm = async (say = true): Promise<unknown> => {
     let next: Rediscovered
     try {
       next = await args.rediscover()
     } catch (err) {
-      // No lock is the cycle's own failure to say; said here too, it was two lines.
-      if (!(err instanceof Error && err.message === NO_LOCK))
-        sayCannot(`cannot re-read the workspace`, err)
-      return
+      return err
     }
     projectDirs = next.projects.map((p) => p.dir)
     workspaceInputs = next.workspaceInputs
@@ -1140,6 +1147,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     // project right after this cycle is seen, not lost in the gap.
     await pool.proved()
     if (say) sayArmed(next.projects.length)
+    return undefined
   }
 
   armMode(projects)

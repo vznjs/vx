@@ -1292,6 +1292,7 @@ async function runOnBus(
     }
     if (explainMiss !== undefined) scope.explainMiss = explainMiss
     if (keepRun !== undefined) scope.keepRun = keepRun
+    if (options.watch === true) scope.watch = true
     if (sandboxArmer !== null) scope.armSandbox = () => sandboxArmer.arm()
     if (demand.any) scope.executing = demand.executing
     const argsOf = executeArgsOf(scope, {
