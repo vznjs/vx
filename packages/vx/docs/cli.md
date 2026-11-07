@@ -1401,6 +1401,10 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
 
 1. **Initial run.** Same code path as `vx run` — same scope resolution,
    same task graph, same cache behaviour, printed as its rows alone.
+   No watcher is armed yet, so an edit made while it runs is unheard;
+   one to the inputs of a task it was running leaves that task unsaved
+   (its key no longer describes them), and the loop starts its first
+   cycle on that, labelled `<task> inputs, edited during the first run`.
 2. **Watch loop.** After the initial run finishes (or once it waits only
    on a server's readiness, X-139), the directory of
    every project a cycle can run — the scope (the bare tasks' scope

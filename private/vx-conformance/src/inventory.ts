@@ -170,6 +170,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'warnings-stderr',
     'watch-anchored-scope',
     'watch-empty-dir',
+    'watch-initial-edit',
     'watch-judge-fence',
     'watch-label-live-path',
     'watch-label-workspace-wide',
