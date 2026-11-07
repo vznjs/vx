@@ -87,6 +87,7 @@ export interface CacheFacts {
 //   inflight?, handleSignals?, signal? (AbortSignal: tear the run down and return),
 //   holdPersistent? (return the requested persistent tasks still running),
 //   keep? (an earlier run's hand-back: keep each server whose task is unchanged)
+//   commandWindows? (the run's command windows, command-windows.ts; vx watch passes its own)
 
 export interface RunSummary {
   ok: boolean

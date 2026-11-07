@@ -120,7 +120,8 @@ export interface UpfrontGroupKey {
   passes it for `inputs.stability.strategy: 'mutable'` or
   `VX_INPUTS_STABILITY_STRATEGY=mutable`, true when no other command
   that may write the file ran between the describe and that write,
-  `command-windows.ts`) such a write is hashed and compared instead. Returns the
+  `command-windows.ts`; `vx watch` reads the same windows to tell a
+  user's write during a cycle from the run's own, `RunOptions.commandWindows`) such a write is hashed and compared instead. Returns the
   first moved path; execute-task then withholds the save.
 - `computeGroupKey` — for group tasks (no `exec`): rolls up upstream
   hashes only, so downstream keys still cascade through the group. The

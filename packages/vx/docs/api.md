@@ -2405,6 +2405,7 @@ export interface RunOptions {
   holdPersistent?: boolean
   watch?: boolean
   keep?: HeldPersistent
+  commandWindows?: CommandWindows
   summaryTable?: boolean
   tty?: boolean
   log?: Logger

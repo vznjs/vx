@@ -984,7 +984,7 @@ async function runOnBus(
       )
     })
     const deferredSaves = new Map<string, Promise<SaveFacts>>()
-    const windows = commandWindows()
+    const windows = options.commandWindows ?? commandWindows()
     // A server held from an earlier run (`vx watch`) runs through this one
     // too, so it may write a mutable input while it is described.
     for (const id of heldBefore.kept.keys()) {

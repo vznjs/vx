@@ -52,12 +52,15 @@ export interface JudgeContext {
   fenced?(ownDir: string, abs: string): boolean // in a project nested under ownDir (makeFence)
   existedAtArm?: ReadonlySet<string> // what git listed at the arm; absent when it could not answer
   trackedAtArm?: ReadonlySet<string> // what git tracked at the arm: a held server is never blamed for one
+  clock?(): number // now on the mtime clock (fsClockNow); Date.now() when absent
 }
 export class ChangeJudge {
   readonly pending: Map<string, string> // path → label, what fired since the last judgement
   lastCycle: { start: number; end: number } | undefined // start on the mtime clock (fsClockNow), as armedAt
+  cycle: { from: number; to: number; windows: CommandWindows } | undefined // the cycle the last change-finding judgement started: from it on the mtime clock to the run's end, with the run's command windows (RunOptions.commandWindows)
   constructor(ctx: JudgeContext)
   seed(abs: string): void // record a path's state now, if unjudged: a link armed for its target
+  sawEvent(abs: string): void // an event: a write during `cycle` no command of it (nor a held server) may have made is a change next time, whatever it settles to
   unseen(moved: readonly (string | null)[]): void // inputs a run read in a state no judgement saw (TaskOutcome.driftedInput): each is a change next time; null marks every pending path
   judge(): string | undefined // the first changed path's label, or none
 }
@@ -419,7 +422,9 @@ on, as the cache keys decide.
   log stamped to the second rewrites the same bytes between changes.
 - Start a cycle on a file born and gone since the arm (vim's `4913`
   write probe): `gitFiles` lists what existed at the arm, and a gone path
-  it did not list was never read by a key (`watch-transient-file.test.ts`).
+  it did not list was never read by a key (`watch-transient-file.test.ts`),
+  unless it was born during a cycle where no command of it may write
+  (`sawEvent`) and its event came while it was there.
   Git lists a nested repository (a submodule, a vendored clone) as one
   entry, so a gone path under one is still a deletion.
 
@@ -429,6 +434,12 @@ on, as the cache keys decide.
   re-run of the user's specified task across the entire scope.
 - Restart a server for an edit to its own sources: the dev tool
   reloads those itself. Only its config, or its death, restarts it.
+- Tell a user's write from the run's own inside a command's window
+  (`CommandWindows.writerDuring`, widened by the racy window): an edit
+  there, put back before the next judgement, is judged by state alone.
+  An unsandboxed task writing outside its project (out of contract) is
+  not the run's, so the same bytes rewritten there every run re-run the
+  loop, named after three cycles.
 - Re-key a cycle when a task rewrites a lockfile _during_ it: the keys
   are taken once per cycle. The run itself notices (item 750,
   [`fingerprint-watch.md`](./fingerprint-watch.md)): nothing keyed
@@ -453,7 +464,8 @@ end), `tests/watch-loop-members.test.ts` (a project the lock adds or drops),
 `tests/watch-affected.test.ts` (`--affected` past the first cycle),
 `tests/watch-anchored-scope.test.ts` (what `pkg#task` watches),
 `tests/watch-loop-uncached.test.ts` (undeclared writes judged by
-settled state), `tests/watch-loop-selfwrite.test.ts` (a file rewritten
+settled state), `tests/watch-edit-before-keys.test.ts` (an edit after
+the judgement, before the keys, put back mid-cycle), `tests/watch-loop-selfwrite.test.ts` (a file rewritten
 with different bytes every run), `tests/watch-signals.test.ts` (SIGINT
 and SIGTERM during the initial run and a cycle; a Ctrl-C reaches the
 cycle's task and the held dev server as SIGINT), and

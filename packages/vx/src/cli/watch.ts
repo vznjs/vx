@@ -530,6 +530,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   }
   const trigger = (label: string, abs: string): void => {
     if (!changes.pending.has(abs)) changes.pending.set(abs, label)
+    changes.sawEvent(abs)
     if (running) return interruptIfWaiting()
     if (debounceTimer) {
       if (Date.now() - windowOpened >= DEBOUNCE_MAX_MS) return
@@ -559,6 +560,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
       while (initial !== undefined || (label !== undefined && !stop.aborted)) {
         /** This cycle's failure, as said: a re-read failing on the same cause says nothing more. */
         let failed: string | undefined
+        /** The judged cycle this run is (`ChangeJudge.cycle`): its window closes when the run ends. */
+        const judged = changes.cycle
         if (initial !== undefined) {
           held = await initial.held
           initial = undefined
@@ -608,7 +611,11 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
             // takes it from there. The run stops the others before its graph.
             const before = held
             current = watchCycle(
-              { ...opts, ...(before ? { keep: before } : {}) },
+              {
+                ...opts,
+                ...(before ? { keep: before } : {}),
+                ...(judged ? { commandWindows: judged.windows } : {}),
+              },
               stop,
               interruptIfWaiting,
             )
@@ -636,6 +643,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
             failed = err instanceof Error ? err.message : String(err)
             sayNotice('error', 'vx watch', `cycle failed: ${maskedLine(failed)}`)
           }
+        if (judged !== undefined) judged.to = Math.min(judged.to, Date.now())
         // After a failed cycle too: a package added with a config that does
         // not load yet fails its cycle, and unarmed, the fix to that config
         // was never an event.
@@ -716,6 +724,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   const changes = new ChangeJudge({
     workspaceRoot,
     armedAt,
+    clock: () => fsClockNow(cacheDir),
     held: () => held !== undefined,
     uncached: () => uncached,
     namedIgnored: () => {

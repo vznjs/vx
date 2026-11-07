@@ -1522,7 +1522,9 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    meanwhile included (a task's input edited while it ran is not saved,
    and its line says the next cycle runs on it: it does, even when the
    file was put back to the state the last judgement saw, since the
-   task read the other one). A task that writes into its own project,
+   task read the other one; so does a file written during the cycle
+   where no command of it may write, an edit landing before the keys
+   and put back while the cycle runs included). A task that writes into its own project,
    `rm -rf dist && tsc` included, costs one extra cycle instead of
    re-running forever — when the bytes it leaves are the same. A file
    it rewrites with DIFFERENT bytes every run (a pid file, a
