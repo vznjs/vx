@@ -232,8 +232,9 @@ it('stops a server on its worker once its last user finishes', () => {
   expect([r.exitCode, out.match(/^server-(gone|alive)$/m)?.[0]]).toEqual([0, 'server-gone'])
 }, 60_000)
 
-// A server's CPU is no task's own: charged to the dependant that made it
-// work, history books it, and the planner after it (2026-11-07).
+// A server's CPU is no task's own: what a dependant makes it do is charged
+// to that dependant, so history books it (2026-11-07); its idle base is
+// booked once per worker instead.
 it('charges a server’s CPU to the dependant it served', () => {
   expect(vx(['run', 's#calm'], 'e2e-hot').exitCode).toBe(0)
   const r = vx([
@@ -242,7 +243,8 @@ it('charges a server’s CPU to the dependant it served', () => {
     "SELECT cpu_ms FROM runs WHERE task = 'calm' ORDER BY id DESC LIMIT 1",
   ])
   const cpu = Number(/\d+/.exec(r.stdout.toString())?.[0])
-  // 4 s beside a server burning a core, sampled each second: about 3 s.
+  // 4 s of a server burning a core for it, sampled each second while its
+  // fit learns: about 3 s (its own CPU is ~0).
   expect(cpu).toBeGreaterThan(1500)
 }, 60_000)
 

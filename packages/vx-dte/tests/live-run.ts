@@ -9,6 +9,7 @@ import type { RelayMessage } from '../src/wire.js'
 import type { ToOrchestrator, ToWorker } from '../src/messages.js'
 import { Orchestrator } from '../src/orchestrator.js'
 import { tailsMs } from '../src/planner.js'
+import type { Need } from '../src/dispatch.js'
 
 export interface LiveTask {
   readonly id: string
@@ -23,6 +24,8 @@ export interface LiveOptions {
   readonly taskMs: number
   /** Tasks handed over at once, as core's executor pool (`capacity`); default all, as `dte()`'s. */
   readonly capacity?: number
+  /** What each task asks; default 1 core. */
+  readonly need?: (id: string) => Need
 }
 
 /** A relay in memory: the orchestrator's mailbox, and the workers' handlers. */
@@ -67,6 +70,8 @@ export interface LiveResult {
   readonly again: number
   /** Bytes of JSON the orchestrator sent. */
   readonly bytes: number
+  /** The most tasks running at once. */
+  readonly peak: number
 }
 
 /** The run's graph, counting each look-up of a task in it. */
@@ -98,6 +103,8 @@ export async function liveRun(
   let whole = 0
   let again = 0
   let bytes = 0
+  let running = 0
+  let peak = 0
   const had = new Set<string>()
   const line: Line = new Line((worker, body) => {
     bytes += JSON.stringify(body).length
@@ -116,8 +123,11 @@ export async function liveRun(
     }
     if (body.type !== 'batch') return
     batches++
+    running += body.tasks.length
+    peak = Math.max(peak, running)
     for (const t of body.tasks)
       setTimeout(() => {
+        running--
         const now = Date.now()
         line.deliver({
           from: worker,
@@ -139,7 +149,7 @@ export async function liveRun(
     root: '/ws',
     tree: 'aaa',
     nodes: () => nodes,
-    need: () => ({ cores: 1, memory: 0 }),
+    need: options.need ?? (() => ({ cores: 1, memory: 0 })),
     artifacts: {
       save: async () => {},
       restore: async () => [],
@@ -208,7 +218,7 @@ export async function liveRun(
   const ms = performance.now() - started
   const { lookups } = nodes
   await o.close()
-  return { ms, batches, lookups, whole, again, bytes }
+  return { ms, batches, lookups, whole, again, bytes, peak }
 }
 
 /** How many tasks each task of `graph` depends on, transitively, all told. */

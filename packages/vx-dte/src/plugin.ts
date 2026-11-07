@@ -332,6 +332,10 @@ export function dte(options: DteOptions = {}) {
   let peaks: ReadonlyMap<string, TaskResources> = new Map()
   /** Each size's warm-up an earlier run learned (`warm-ups.ts`), and the read of it. */
   let learned: ReadonlyMap<string, number> = new Map()
+  /** Each server's base an earlier run learned, then this run's workers' over it (`server-fit.ts`). */
+  let bases = new Map<string, number>()
+  /** The bases as read, before this run's: kept with this run's over them. */
+  let basesRead: ReadonlyMap<string, number> = new Map()
   let warming: Promise<void> = Promise.resolve()
   /** On CI, where the run keeps the warm-ups it learned: `setup`'s cache, root and warn. */
   let keep: { cache: PluginCache; root: string; warn: (m: string) => void } | undefined
@@ -368,7 +372,18 @@ export function dte(options: DteOptions = {}) {
         k.warn(`[vx] dte: warm-ups not kept: ${err instanceof Error ? err.message : String(err)}`),
       )
     }
+    if (k !== undefined && o !== undefined) {
+      const fitted = new Map([...bases].filter(([id, c]) => basesRead.get(id) !== c))
+      const { writeServerBases } = await import('./warm-ups.js')
+      await writeServerBases(k.cache, k.root, basesRead, fitted).catch((err: unknown) =>
+        k.warn(
+          `[vx] dte: server bases not kept: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      )
+    }
     learned = new Map()
+    bases = new Map()
+    basesRead = new Map()
     warming = Promise.resolve()
     peaks = new Map()
     tails = undefined
@@ -542,6 +557,18 @@ export function dte(options: DteOptions = {}) {
         }
       }
       let reading = read()
+      const basesIn = import('./warm-ups.js')
+        .then((w) => w.readServerBases(ctx.cache, ctx.workspaceRoot))
+        .then(
+          (m) => {
+            basesRead = m
+            for (const [id, cores] of m) if (!bases.has(id)) bases.set(id, cores)
+          },
+          (err: unknown) =>
+            ctx.warn(
+              `[vx] dte: no server bases learned: ${err instanceof Error ? err.message : String(err)}`,
+            ),
+        )
       warming = import('./warm-ups.js')
         .then((w) => w.readWarmUps(ctx.cache, ctx.workspaceRoot))
         .then(
@@ -555,7 +582,7 @@ export function dte(options: DteOptions = {}) {
         const { likelyMisses } = await import('./forecast.js')
         likely = likelyMisses(graph, changed, ctx.workspaceRoot)
       })
-      await Promise.all([reading, guess])
+      await Promise.all([reading, guess, basesIn])
       // Needs another plugin fetched (the default branch's timings) land
       // in history after this: the tasks not yet placed pack by them, and
       // the first ask for workers waits for them.
@@ -615,7 +642,18 @@ export function dte(options: DteOptions = {}) {
         throw new UserError(
           `dte(): ${untracked} is untracked, so the commit workers check out lacks it: commit it`,
         )
-      const need = (id: string): Need => booked(needOf(peaks.get(id), unmeasured), how.book)
+      const serves = new Map<string, readonly string[]>()
+      const need = (id: string): Need => {
+        const n = booked(needOf(peaks.get(id), unmeasured), how.book)
+        let ids = serves.get(id)
+        if (ids === undefined) {
+          ids = serversOf(nodes, id)
+          // Read again once the graph is: none before it.
+          if (nodes !== undefined) serves.set(id, ids)
+        }
+        if (ids.length === 0) return n
+        return { ...n, servers: ids.map((sv) => ({ id: sv, cores: bases.get(sv) ?? 0 })) }
+      }
       // The run plans again on it, now when `now`; set once the plan is.
       let onChange = (_now?: boolean): void => {}
       const o = new Orchestrator({
@@ -631,6 +669,7 @@ export function dte(options: DteOptions = {}) {
         tree,
         nodes: () => nodes,
         need,
+        bases,
         artifacts: ctx.artifacts,
         cacheFacts: () => ctx.cacheFacts(),
         run,
@@ -1051,6 +1090,28 @@ function unmeasuredOf(u: DteOptions['unmeasured']): Need {
 function refuse(option: string, want: string, got: unknown): never {
   const said = typeof got === 'number' ? String(got) : (JSON.stringify(got) ?? String(got))
   throw new UserError(`dte() option "${option}" must be ${want}, got ${said}`)
+}
+
+/**
+ * The persistent tasks `id` needs where it runs, as core hands them to a
+ * `servers` executor: its dependencies that are servers, through groups,
+ * and the servers they depend on.
+ */
+export function serversOf(nodes: ReadonlyMap<string, TaskNode> | undefined, id: string): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  const stack = [...(nodes?.get(id)?.deps ?? [])]
+  while (stack.length > 0) {
+    const d = stack.pop()!
+    if (seen.has(d)) continue
+    seen.add(d)
+    const n = nodes?.get(d)
+    if (n === undefined) continue
+    if (n.config.exec?.persistent !== undefined) out.push(d)
+    else if (n.config.exec !== undefined) continue
+    stack.push(...n.deps)
+  }
+  return out
 }
 
 /** What a task asks of a worker, from its history. */

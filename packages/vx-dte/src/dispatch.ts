@@ -157,6 +157,12 @@ export interface Need {
    * free core, but a run of only such tasks still asks enough workers.
    */
   readonly ask?: { readonly cores: number; readonly memory: number } | undefined
+  /**
+   * Its persistent dependencies' bases, cores (`server-fit.ts`): a worker
+   * not running one yet books its base once beside the task, and keeps it
+   * booked while it serves.
+   */
+  readonly servers?: readonly { readonly id: string; readonly cores: number }[] | undefined
 }
 
 /** A worker as dispatch sees it: its size and what is in use on it now. */
@@ -172,6 +178,8 @@ export interface Bin {
   readonly has?: ReadonlySet<string>
   /** Its machine's platform (`linux-x64`), as it reported or its size declares. */
   readonly platform?: string | undefined
+  /** The servers it runs, each base booked: a task needing one books no base here. */
+  readonly serving?: Set<string>
 }
 
 export interface Ask {
@@ -193,7 +201,14 @@ export interface Ask {
 
 /** What `Ask.kind` names: every field of a need `assign` reads. */
 export function kindOf(need: Need): string {
-  return `${need.cores}\0${need.memory}\0${need.above?.cores}\0${need.above?.memory}\0${need.platform}`
+  return `${need.cores}\0${need.memory}\0${need.above?.cores}\0${need.above?.memory}\0${need.platform}\0${need.servers?.map((s) => s.id).join('\0')}`
+}
+
+/** The cores `need` books on `bin`: its own, and the base of each server `bin` does not run yet. */
+export function coresOn(bin: Bin, need: Need): number {
+  let cores = need.cores
+  for (const s of need.servers ?? []) if (bin.serving?.has(s.id) !== true) cores += s.cores
+  return cores
 }
 
 /**
@@ -204,9 +219,10 @@ export function kindOf(need: Need): string {
 export function fits(bin: Bin, need: Need): boolean {
   if (need.platform !== undefined && bin.platform !== need.platform) return false
   if (bin.running === 0) return true
+  const cores = coresOn(bin, need)
   return (
-    need.cores < bin.cores &&
-    bin.used.cores + need.cores <= bin.cores + 1e-9 &&
+    cores < bin.cores &&
+    bin.used.cores + cores <= bin.cores + 1e-9 &&
     bin.used.memory + need.memory <= bin.memory
   )
 }
@@ -313,7 +329,8 @@ export function assign<B extends Bin>(
     }
     spent.clear()
     out.set(ask.id, best)
-    best.used.cores += Math.min(need.cores, best.cores)
+    best.used.cores += Math.min(coresOn(best, need), best.cores)
+    for (const sv of need.servers ?? []) best.serving?.add(sv.id)
     best.used.memory += Math.min(need.memory, best.memory)
     best.running++
     rebound()

@@ -523,11 +523,13 @@ use your own instead.
   task, once per worker, ready before it, and stops there once no task left
   in the run uses it (the run's `unneeded`), or when the worker leaves;
   the orchestrator never starts it, and a worker no dependant reaches
-  never does (2026-10-22). Its CPU is charged to the dependants it served:
-  each second the worker fits `cores = base + each running dependant's
-  cost` and splits the cores by it (the base evenly), so a dependant's
-  history, and its booking, include what its server does for it. A look
-  on a full machine only raises the fit.
+  never does (2026-10-22). Its CPU is learned on the worker each second
+  as `cores = base + each running dependant's cost`: the base from looks
+  with no dependant running, each cost from looks with it (a look on a
+  full machine only raises them). Each dependant's cost is added to its
+  CPU, so its history books it; the base is booked once on each worker
+  that starts the server, in placement and in the plan, and kept for the
+  next run under the commit, as warm-ups are.
 - A task whose key hashes a runtime probe (`inputs.runtime`, such as
   `bun --version`) runs on a worker, which answers the probe first and
   fails the task when it answers otherwise than this machine did. A path

@@ -159,6 +159,8 @@ export interface Load {
   readonly self?: number
   /** When it was read, by the worker's clock: its task times are read against it. */
   readonly at?: number
+  /** Each server it runs, its base as fitted (`server-fit.ts`): cores it uses with no dependant's work. */
+  readonly servers?: Record<string, number>
 }
 
 /** A task's times on its worker, epoch ms by the worker's clock: begun, command ended. */

@@ -56,14 +56,24 @@ async function commits(root: string): Promise<string[]> {
 }
 
 /** The newest warm-ups an ancestor's run wrote, the base branch's on a scoped run. */
-export async function readWarmUps(cache: PluginCache, root: string): Promise<Map<string, number>> {
-  const keys = (await commits(root)).map(keyOf)
+export function readWarmUps(cache: PluginCache, root: string): Promise<Map<string, number>> {
+  return newest(cache, root, keyOf, parseWarmUps)
+}
+
+/** The newest blob under an ancestor's `key` that `parse` reads; an empty map for none. */
+async function newest(
+  cache: PluginCache,
+  root: string,
+  key: (sha: string) => string,
+  parse: (bytes: Uint8Array) => Map<string, number> | null,
+): Promise<Map<string, number>> {
+  const keys = (await commits(root)).map(key)
   if (keys.length === 0) return new Map()
   const held = await cache.hasMany(keys, false)
-  for (const key of keys) {
-    if (held !== null && !held.has(key)) continue
-    const bytes = await cache.get(key, false)
-    const got = bytes === null ? null : parseWarmUps(bytes)
+  for (const k of keys) {
+    if (held !== null && !held.has(k)) continue
+    const bytes = await cache.get(k, false)
+    const got = bytes === null ? null : parse(bytes)
     if (got !== null) return got
   }
   return new Map()
@@ -82,4 +92,60 @@ export async function writeWarmUps(
   const sizes: Record<string, number> = {}
   for (const [name, ms] of [...learned, ...run]) sizes[name] = Math.round(ms)
   await cache.put(keyOf(head), new TextEncoder().encode(JSON.stringify({ version: 1, sizes })))
+}
+
+// Each server's base, the cores it uses with no dependant's work
+// (`server-fit.ts`): booked once on each worker that starts it. Kept as
+// the warm-ups are, under each CI run's commit; untrusted, it only books.
+
+const MAX_SERVERS = 1024
+/** More cores than any machine a run books. */
+const MAX_CORES = 4096
+
+const basesKeyOf = (sha: string): string => `server-bases\0${sha}`
+
+/** `{ version: 1, servers: { id: cores } }`'s bases, each finite in [0, MAX_CORES]; null for anything else. */
+export function parseServerBases(bytes: Uint8Array): Map<string, number> | null {
+  if (bytes.byteLength > MAX_BYTES) return null
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(new TextDecoder().decode(bytes))
+    // quiet: not JSON reads as no blob
+  } catch {
+    return null
+  }
+  if (typeof parsed !== 'object' || parsed === null) return null
+  const { version, servers } = parsed as { version?: unknown; servers?: unknown }
+  if (version !== 1 || typeof servers !== 'object' || servers === null || Array.isArray(servers))
+    return null
+  const entries = Object.entries(servers)
+  if (entries.length > MAX_SERVERS) return null
+  const out = new Map<string, number>()
+  for (const [id, cores] of entries)
+    if (typeof cores === 'number' && Number.isFinite(cores) && cores >= 0 && cores <= MAX_CORES)
+      out.set(id, cores)
+  return out
+}
+
+/** The newest server bases an ancestor's run wrote. */
+export function readServerBases(cache: PluginCache, root: string): Promise<Map<string, number>> {
+  return newest(cache, root, basesKeyOf, parseServerBases)
+}
+
+/** `learned` with this run's own over it, under HEAD. */
+export async function writeServerBases(
+  cache: PluginCache,
+  root: string,
+  learned: ReadonlyMap<string, number>,
+  run: ReadonlyMap<string, number>,
+): Promise<void> {
+  if (run.size === 0) return
+  const [head] = await commits(root)
+  if (head === undefined) return
+  const servers: Record<string, number> = {}
+  for (const [id, cores] of [...learned, ...run]) servers[id] = Math.round(cores * 100) / 100
+  await cache.put(
+    basesKeyOf(head),
+    new TextEncoder().encode(JSON.stringify({ version: 1, servers })),
+  )
 }

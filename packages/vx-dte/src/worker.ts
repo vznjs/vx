@@ -133,11 +133,18 @@ export async function runWorker(opts: {
   }
   let tasksCpuMs = 0
   const trees = treeMeter()
-  const frame = (): Load => ({ ...load.now(), tasks: trees.now() })
   // Its servers' trees, and which dependants each serves now: their CPU is
-  // charged to those tasks (`serverFit`).
+  // charged to those tasks, and each base reported (`serverFit`).
   const serverTrees = treeMeter()
   const fit = serverFit()
+  const frame = (): Load => {
+    const servers = fit.bases()
+    return {
+      ...load.now(),
+      tasks: trees.now(),
+      ...(Object.keys(servers).length === 0 ? {} : { servers }),
+    }
+  }
   const usersOf = new Map<string, Set<string>>()
   let sampledAt = performance.now()
   const sampler = setInterval(() => {
