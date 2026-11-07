@@ -540,12 +540,6 @@ function warnShadowed(root: string, check: GraphCheck, verb: string): void {
 }
 
 /**
- * Audit the lock: find and re-evaluate every config in the CURRENT
- * environment and deep-compare it with the locked object. That sees an
- * edit to the config, to a file it imports, and to the environment it
- * reads alike, and a config added or removed since.
- */
-/**
  * `read` with each file's record taken from `fresh` where only the files
  * its digests read moved (same bytes, same extra files): a run digests
  * anew on such an edit (`lockfileClaim`'s `lockedOnce`), and cli.md says
@@ -566,6 +560,12 @@ function liveExtras(read: DependenciesLock, fresh: DependenciesLock): Dependenci
   return { ...read, files }
 }
 
+/**
+ * Audit the lock: find and re-evaluate every config in the CURRENT
+ * environment and deep-compare it with the locked object. That sees an
+ * edit to the config, to a file it imports, and to the environment it
+ * reads alike, and a config added or removed since.
+ */
 async function checkLock(root: string, json: boolean): Promise<number> {
   const check = await audit(root, warnToStderr)
   // A warning, as `vx lock` says it: the CI gate passed beside a hidden
