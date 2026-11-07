@@ -93,12 +93,13 @@ function paintPinnedId(id: string, colors: ColorSupport): string {
  * "log the failure and continue, full frames at the end"). On the grid:
  * `failed` in red + exec time + `miss` + id. The exit code and
  * output live in the framed block that replays at runEnd, not the line.
+ * A hit whose restore failed has `''`, shown `—`: neither a miss nor a hit.
  */
 export function formatFailureLine(
   id: string,
   durationMs: number | null,
   colors: ColorSupport = NO_COLOR,
-  cacheWord: 'miss' | 'no-cache' = 'miss',
+  cacheWord: 'miss' | 'no-cache' | '' = 'miss',
   cells: RowCells = {},
 ): string {
   return formatTaskRow(

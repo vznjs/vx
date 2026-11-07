@@ -33,6 +33,19 @@ export class RestoreDemoted extends Error {
   }
 }
 
+/**
+ * Thrown by `execute` when restoring a cache hit threw (a full disk, a
+ * path in the way, a link out of the project). The run reports `error`
+ * as any throw, and the failed outcome says `restoreFailed`: a failed
+ * task, counted as neither a miss nor a hit.
+ */
+export class RestoreFailed extends Error {
+  constructor(readonly error: unknown) {
+    super(thrownMessage(error))
+    this.name = 'RestoreFailed'
+  }
+}
+
 /** What moved in a missed task's key since the last entry saved for it. */
 export interface InputChanges {
   /** How many components changed, appeared or went. 0: the same key, its entry gone. */
@@ -221,6 +234,12 @@ export interface TaskOutcome {
   outputs?: 'deferred'
   /** The task ran here and its result went to the cache. The footer's `↑`. */
   saved?: true
+  /**
+   * On a `failed` outcome: a cache hit whose restore threw, so no command
+   * ran. It counts as failed only, in no cache column: not a miss, not
+   * its layer's hit.
+   */
+  restoreFailed?: true
   /**
    * v11 analytics: hrtime span relative to the parent run's t=0.
    * Lets downstream analytics reconstruct the actual parallel timeline
@@ -1195,8 +1214,8 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
             }
             void settled.then(done, () => done())
           },
-          (err: unknown) => {
-            if (err instanceof RestoreDemoted) {
+          (thrown: unknown) => {
+            if (thrown instanceof RestoreDemoted) {
               leave()
               untrack()
               demoted.add(id)
@@ -1214,6 +1233,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
               tick()
               return
             }
+            const err = thrown instanceof RestoreFailed ? thrown.error : thrown
             const message = thrownMessage(err)
             // After the run's stop a rejection is the stop's doing (a probe
             // it killed, C-65): aborted, as any task it kills, and unsaid.
@@ -1223,6 +1243,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
               status: stopped ? 'aborted' : 'failed',
               exitCode: 1,
               durationMs: 0,
+              ...(thrown instanceof RestoreFailed && !stopped ? { restoreFailed: true } : {}),
             })
             leave()
             untrack()

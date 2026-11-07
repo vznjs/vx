@@ -931,7 +931,12 @@ other persistent task`), and a non-zero exit makes the run exit 1
      know or one that does not apply.
    - **status** and **cache**: `running` and `miss`, or `no-cache` for a
      task with no `cache: true` (or a `--no-cache` run); finished rows
-     say `local` or `remote` on a hit.
+     say `local` or `remote` on a hit. A hit whose restore failed (a
+     full disk, a path in the way, a link out of the project) is
+     `failed` with cache `—`: neither a miss nor a hit. It ran no
+     command, so its row has no `±usual`, cpu or mem, its frame no
+     command line, and its label is `failed (cache restore failed)`
+     over the restore's error.
    - **cpu** and **mem**: the task's process tree's average cores since
      it started and its peak memory so far, looked at every 500 ms only
      while this list draws (a pipe or CI reads nothing); on a finished
@@ -3882,8 +3887,9 @@ A broad run looks like:
 
 The three bars are meters: `projects` is what the run covered against
 the workspace, `tasks` is failed / success / skipped, `cache` has a
-segment per legend state (a skipped task rides it too, so the two bars
-fill alike; its count is on the tasks legend only). Its legend reads
+segment per legend state (a skipped task rides it too, yellow, and a hit
+whose restore failed red, so the two bars fill alike; their counts are on
+the tasks legend only: a failed restore is no miss and no `↓`). Its legend reads
 per layer: `local 1✓ 1∅ 2↓ 1↑ · remote 3↓ 4↑ 2✗ 1⇡`. `✓` is a fresh
 hit (the local cache answered and its outputs were already on disk; a
 remote hit is never fresh, outputs or none: it is `↓` from the remote), `∅` a task with no cache, `↓` is restored from that

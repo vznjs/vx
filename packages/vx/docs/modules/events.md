@@ -34,7 +34,8 @@ run removes on its way out (`orchestrator.md`).
 - The outcome vocabulary, one copy for every surface: `outcomeWord`
   (`success` / `restored-local` / `restored-remote` / `up-to-date` /
   `failed` / `skipped` / `aborted`), `outcomeLabel` (the word with a failure's
-  reason or a skip's blocker), `failedLabel`, `skippedReason`, and
+  reason or a skip's blocker; `failed (cache restore failed)` for a hit
+  whose restore threw, `OutcomeView.restoreFailed`, which has no exit), `failedLabel`, `skippedReason`, and
   `ranNoCache` (a task no cache answered for: no
   `cache: true`, or `TaskOutcome.cacheOff` — `no-cache`, never a miss;
   `--dry`'s plan asks it too). The frame footer and

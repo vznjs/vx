@@ -487,6 +487,8 @@ export interface CacheSettings {
 type · `src/graph/task-status.ts`
 
 Where a task's result came from, derived ONCE in core from the status.
+`none`: it never engaged the cache, or its hit's restore failed (a
+failed task, in no cache column).
 
 ```ts
 export type CacheSource = 'miss' | 'local' | 'remote' | 'none'
@@ -1588,6 +1590,7 @@ export interface OutcomeView {
   durationMs: number
   isGroup?: boolean
   noCache?: boolean
+  restoreFailed?: true
   storedDurationMs?: number
   storedCpuMs?: number
   storedPeakRssBytes?: number
@@ -3077,6 +3080,7 @@ export interface TaskOutcome {
   cpuShare?: number
   outputs?: 'deferred'
   saved?: true
+  restoreFailed?: true
   wallclockStartNs?: bigint
   wallclockEndNs?: bigint
   restored?: boolean

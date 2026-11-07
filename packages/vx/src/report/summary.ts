@@ -68,6 +68,11 @@ export interface SummaryStats {
   miss: number
   /** Executed without `cache: true`: never consulted the cache, not a miss. */
   noCache?: number
+  /**
+   * Failed hits whose restore threw: in no cache count, neither a miss nor
+   * a hit. They fill the cache bar as `failed` colours the tasks bar.
+   */
+  restoreFailed?: number
   /** Still to run (live section only; 0 in the final summary) — renders
    *  as a gray ▱ remainder so the live meters FILL toward the final. */
   left?: number
@@ -114,6 +119,8 @@ export function cacheBucketOf(o: TaskOutcome): CacheBucket | undefined {
             ? 'notSaved'
             : 'miss'
     case 'failed':
+      // A hit whose restore failed is in no bucket: not a miss, not a hit.
+      if (o.restoreFailed === true) return undefined
       return ranNoCache(o) ? 'noCache' : 'miss'
     case 'cache-hit':
       return o.restored === false ? 'upToDate' : 'restoredLocal'
@@ -237,6 +244,7 @@ export function formatSummarySection(
   const hits = stats.upToDate + stats.restoredLocal + stats.restoredRemote
   const miss = stats.miss
   const noCache = stats.noCache ?? 0
+  const restoreFailed = stats.restoreFailed ?? 0
   const left = stats.left ?? 0
   const aborted = stats.aborted ?? 0
   const notRun = stats.notRun ?? 0
@@ -329,7 +337,7 @@ export function formatSummarySection(
 
   // Cache meter + numbers: per layer when the run context names its
   // layers, else miss · no-cache · up-to-date · local · remote.
-  if (miss + noCache + hits + left + stats.skipped > 0) {
+  if (miss + noCache + hits + left + stats.skipped + restoreFailed > 0) {
     const layers = context?.cache
     const b = cacheBuckets(stats, layers)
     const cacheBar = segmentBar(
@@ -344,6 +352,7 @@ export function formatSummarySection(
         { n: b.uploaded, color: 'remote' },
         { n: b.uploading, color: 'info' },
         { n: b.remoteFailed, color: 'error' },
+        { n: restoreFailed, color: 'error' },
         { n: stats.skipped, color: 'warn' },
         remainder,
       ],
@@ -395,9 +404,9 @@ export function formatSummarySection(
       if (stats.restoredRemote > 0)
         cacheParts.push(paint('remote', `${stats.restoredRemote} remote`, colors))
     }
-    // Skipped tasks ride the bar, yellow like the tasks meter, so the two
-    // bars fill alike; their count is the tasks legend's alone (the footer
-    // never says a fact twice, 2026-10-14).
+    // Skipped tasks ride the bar, yellow like the tasks meter, and failed
+    // restores red, so the two bars fill alike; their counts are the tasks
+    // legend's alone (the footer never says a fact twice, 2026-10-14).
     lines.push(row('cache', cacheBar))
     if (cacheParts.length > 0) lines.push(legend(cacheParts))
   }
@@ -611,11 +620,18 @@ export function formatRunSummary(
     (o) =>
       !isGroupTask(o.node) && (o.status === 'success' || o.status === 'failed') && ranNoCache(o),
   ).length
+  const restoreFailed = outcomes.filter(
+    (o) => !isGroupTask(o.node) && o.status === 'failed' && o.restoreFailed === true,
+  ).length
   const t = tallyOutcomes(outcomes)
   // Spread over executed tasks only — `success`/`failed` statuses ran
-  // a command; cache-hit statuses replayed one.
+  // a command; cache-hit statuses replayed one, and a failed restore ran none.
   const durations = outcomes
-    .filter((o) => (o.status === 'success' || o.status === 'failed') && !isGroupTask(o.node))
+    .filter(
+      (o) =>
+        (o.status === 'success' || (o.status === 'failed' && o.restoreFailed !== true)) &&
+        !isGroupTask(o.node),
+    )
     .map((o) => o.durationMs)
   const heldOutcomes = outcomes.filter((o) => o.admissionHeldMs !== undefined)
   const notRun = outcomes.filter((o) => neverStarted(o) && !isGroupTask(o.node)).length
@@ -635,8 +651,9 @@ export function formatRunSummary(
       restoredRemote: t.restoredRemote,
       saved: outcomes.filter((o) => o.saved === true && !isGroupTask(o.node)).length,
       notSaved: outcomes.filter((o) => !isGroupTask(o.node) && ranUnsaved(o)).length,
-      miss: t.total - t.skipped - (t.cachedLocal + t.cachedRemote) - noCache,
+      miss: t.total - t.skipped - (t.cachedLocal + t.cachedRemote) - noCache - restoreFailed,
       noCache,
+      ...(restoreFailed > 0 ? { restoreFailed } : {}),
       spread:
         durations.length > 0
           ? {

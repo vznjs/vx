@@ -45,7 +45,13 @@ import {
   FAILED_OUTPUT_TAIL_CHARS,
   failedOutputLog,
 } from './output-log.js'
-import { isGroupTask, RestoreDemoted, type TaskNode, type TaskOutcome } from '../graph/index.js'
+import {
+  isGroupTask,
+  RestoreDemoted,
+  RestoreFailed,
+  type TaskNode,
+  type TaskOutcome,
+} from '../graph/index.js'
 import {
   anyTaskGlob,
   heldSecrets,
@@ -406,7 +412,8 @@ async function restoreProbed(
  * A hit restored, or null when its artifact was removed after the probe (a
  * `vx cache clean`, here or for a workspace sharing the cache directory): a
  * miss. The restore has wiped the declared outputs by then; the run path
- * cleans them again and the task writes them.
+ * cleans them again and the task writes them. Any other throw fails the
+ * task as a failed restore (`RestoreFailed`), never as a miss.
  */
 async function restoreOrMiss(
   args: ExecuteArgs,
@@ -418,7 +425,7 @@ async function restoreOrMiss(
   try {
     return await restoreHit({ args, hash, hit, cacheOpStart, taskStartNs })
   } catch (err) {
-    if (!(err instanceof ArtifactVanishedError)) throw err
+    if (!(err instanceof ArtifactVanishedError)) throw new RestoreFailed(err)
     warnOf(args.log)(`[vx] ${args.node.id}: ${err.message} — running it`)
     return null
   }

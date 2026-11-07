@@ -100,7 +100,7 @@ export function formatTaskBlock(
   // (success and failed). Cache hits normally skip it (the stored
   // output is the interesting part), but `forceCommand` keeps it for
   // focused requested tasks so their frame is hit/miss-identical.
-  if (forceCommand || outcome.status === 'success' || outcome.status === 'failed') {
+  if (forceCommand || ranCommand(outcome)) {
     // No section label for the command (owner cut it) — the dim `$ `
     // line under the header reads as the command on its own.
     lines.push('', corner(`$ ${shownCommand(node, forwardArgs)}`), '')
@@ -309,8 +309,17 @@ function statusOf(o: TaskOutcome): { word: string; color: Style } {
   }
 }
 
-/** Cache-axis word + color. Empty for states that never reached the cache. */
+/** Whether the task ran its command: a hit whose restore failed did not. */
+function ranCommand(o: TaskOutcome): boolean {
+  return o.status === 'success' || (o.status === 'failed' && o.restoreFailed !== true)
+}
+
+/**
+ * Cache-axis word + color. Empty for states that never reached the cache,
+ * and for a hit whose restore failed: neither a miss nor a hit.
+ */
 function cacheOf(o: TaskOutcome): { word: string; color: Style } {
+  if (o.restoreFailed === true) return { word: '', color: 'muted' }
   switch (o.status) {
     case 'success':
     case 'failed':
@@ -504,6 +513,8 @@ export interface RecordedRow {
   task: string
   status: string
   durationMs: number
+  /** Null on a cached task's failure: its hit's restore failed. */
+  cacheHit: boolean | null
   restored: boolean | null
   cached: boolean | null
   cpuMs: number | null
@@ -534,6 +545,9 @@ export function formatRecordedRow(
     node,
     status: r.status,
     durationMs: r.durationMs,
+    ...(r.status === 'failed' && r.cached === true && r.cacheHit === null
+      ? { restoreFailed: true }
+      : {}),
     ...(r.restored !== null ? { restored: r.restored } : {}),
     ...(r.cpuMs !== null ? { cpuMs: r.cpuMs } : {}),
     ...(r.peakRssBytes !== null ? { peakRssBytes: r.peakRssBytes } : {}),
@@ -663,8 +677,7 @@ export function formatTaskExecutedLine(
 ): string {
   const cells = executedCells(o, blocks)
   // A hit's time is a restore's, not the task's: nothing to compare.
-  if (o.status === 'success' || o.status === 'failed')
-    cells.usual = usualCell(o.durationMs, usualMs, colors)
+  if (ranCommand(o)) cells.usual = usualCell(o.durationMs, usualMs, colors)
   return formatOutcomeRow(o, paintTaskId(node, colors), o.durationMs, colors, onPath, cells)
 }
 
@@ -674,7 +687,7 @@ export function formatTaskExecutedLine(
  */
 export function executedCells(o: TaskOutcome, blocks: number | undefined): RowCells {
   const cores = coresOf(o)
-  const ran = o.status === 'success' || o.status === 'failed'
+  const ran = ranCommand(o)
   const cells = ranCells(o, blocks)
   if (cores !== undefined) cells.cpu = cores
   else if (ran) cells.cpu = null

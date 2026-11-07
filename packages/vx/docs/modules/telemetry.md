@@ -5,7 +5,9 @@
 THE versioned, serializable contract every telemetry consumer speaks
 (`TELEMETRY_SCHEMA_VERSION = 4`). Exporters (otel, a custom sink) receive
 these records instead of re-deriving facts from the rendering-oriented
-`WireEvent` stream — `cacheSource` is derived once, git/CI/host context
+`WireEvent` stream — `cacheSource` is derived once (`none` for a task
+that never engaged the cache, and for a `failed` hit whose restore threw:
+neither a miss nor a hit), git/CI/host context
 is pre-folded, bigint wallclock spans are decimal strings.
 
 ## Public surface

@@ -834,7 +834,8 @@ export function taskTelemetryOf(o: TaskOutcome): TaskTelemetry {
     project: o.node.projectName,
     task: o.node.taskName,
     status: o.status,
-    cacheSource: deriveCacheSource(o.status),
+    // A hit whose restore failed is in no cache column: neither a miss nor a hit.
+    cacheSource: o.restoreFailed === true ? 'none' : deriveCacheSource(o.status),
     exitCode: o.exitCode,
     durationMs: o.durationMs,
   }

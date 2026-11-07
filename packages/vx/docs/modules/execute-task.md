@@ -116,6 +116,9 @@ one-shot handler mid-cleanup.
      deps, so it throws `RestoreDemoted` instead and the scheduler
      runs it once they are done (scheduler.md; admission drops the
      probe, so that dispatch probes afresh and misses).
+   - Any other throw (a full disk, a path in the way, a link out of the
+     project) is `RestoreFailed`: the task fails with that error, and
+     every surface counts it as failed only, never a miss or a hit.
 4. Miss-or-no-cache:
    - If the run's stop landed during the awaits before this (the key,
      the probe, the input description), return `aborted` with the

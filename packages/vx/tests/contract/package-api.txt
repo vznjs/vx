@@ -1244,6 +1244,7 @@ export interface OutcomeView {
   durationMs: number
   isGroup?: boolean
   noCache?: boolean
+  restoreFailed?: true
   storedDurationMs?: number
   storedCpuMs?: number
   storedPeakRssBytes?: number
@@ -2098,6 +2099,7 @@ export interface TaskOutcome {
   cpuShare?: number
   outputs?: 'deferred'
   saved?: true
+  restoreFailed?: true
   wallclockStartNs?: bigint
   wallclockEndNs?: bigint
   restored?: boolean

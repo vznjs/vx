@@ -68,6 +68,7 @@ export interface TaskOutcome {
   cpuShare?: number // ExecuteResult.machine.cpuShare: the share of a core its threads got there
   outputs?: 'deferred' // outputs left in the remote store (`--cache-download=none`)
   saved?: true // ran here and its result went to the cache: the footer's `↑`
+  restoreFailed?: true // on `failed`: a hit whose restore threw; failed only, in no cache count
   wallclockStartNs?: bigint // hrtime span relative to run t=0
   wallclockEndNs?: bigint
   restored?: boolean // cache hits: false = tree already current (up-to-date)
@@ -146,6 +147,12 @@ export function idleServers(
 export class RestoreDemoted extends Error {
   constructor(readonly taskId: string)
 }
+
+// Thrown by `execute` when a hit's restore threw: reported as `error`, the
+// outcome `failed` with `restoreFailed`.
+export class RestoreFailed extends Error {
+  constructor(readonly error: unknown)
+}
 ```
 
 `task-status.ts` holds `TaskStatus` and what each status means, so no
@@ -154,7 +161,8 @@ reader re-lists the statuses:
 - `deriveCacheSource(status)` — the `CacheSource`
   (`'miss' | 'local' | 'remote' | 'none'`): `'local'` / `'remote'` for the
   two hits, `'miss'` for `success` / `failed`, `'none'` for `skipped` /
-  `aborted`; never null.
+  `aborted`; never null. Telemetry reports a `restoreFailed` failure as
+  `'none'`: it is neither a miss nor a hit.
 - `TASK_STATUSES`, `isPassStatus(status)`, `isCacheHit(status)` — every
   status at runtime and the two predicates every surface shares.
 

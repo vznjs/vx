@@ -84,7 +84,7 @@ The pinned zone (owner: "always pinned until exit"):
 
 A failure is not pinned: it is logged the moment it happens as a
 permanent row in the stream (`formatFailureLine`: `failed` in red,
-`miss` / `no-cache`, the exec time, the id — the exit code and the
+`miss` / `no-cache`, or `—` for a hit whose restore failed, the exec time, the id — the exit code and the
 output live in the frame, which replays at runEnd above the summary,
 `failedLabel` in its header and footer). The region held a Failures
 zone once; the permanent row replaced it, and this page kept

@@ -243,6 +243,21 @@ describe('the compact one-liners', () => {
     ).toBe(3)
   })
 
+  it('a hit whose restore failed: failed, no cache word, no usual, no command, no exit', () => {
+    const o = {
+      ...outcome('@vzn/vx#lint', 'failed', { durationMs: 3, restoreFailed: true }),
+      node: cached,
+    }
+    expect(formatTaskExecutedLine(cached, o, undefined, false, undefined, 5000)).toBe(
+      '            failed  —              —     3ms     —      —       —       — local          @vzn/vx#lint',
+    )
+    const block = formatTaskBlock(cached, o, {})
+    expect(block).not.toContain('$ ')
+    expect(block.trimEnd().split('\n').at(-1)).toMatch(
+      /── \(3ms\) failed \(cache restore failed\)$/,
+    )
+  })
+
   it('a duration wider than the time column still renders, and does not throw', () => {
     // The left pad is `' '.repeat(TIME_COL - raw.length)`, clamped at 0.
     // Without the clamp a task running past ~2.8 hours makes that count

@@ -284,6 +284,8 @@ export interface OutcomeView {
   isGroup?: boolean
   /** Executed without `cache: true`: never consulted the cache, not a miss. */
   noCache?: boolean
+  /** A failed hit whose restore threw (see `TaskOutcome`): neither a miss nor a hit. */
+  restoreFailed?: true
   /** Cache hits only: the exec time the entry was stored with — the work
    *  this hit skipped, as opposed to `durationMs`, the restore it cost. */
   storedDurationMs?: number
@@ -345,12 +347,16 @@ export function outcomeWord(o: Pick<OutcomeView, 'status' | 'restored'>): string
   }
 }
 
-/** `outcomeWord` with the exit code a failure carries: `failed (exit 9)`. */
+/**
+ * `outcomeWord` with the exit code a failure carries: `failed (exit 9)`.
+ * A hit whose restore failed ran nothing, so it has no exit to name.
+ */
 export function outcomeLabel(
   o: Pick<
     OutcomeView,
     | 'status'
     | 'restored'
+    | 'restoreFailed'
     | 'exitCode'
     | 'timedOut'
     | 'sandboxViolations'
@@ -360,6 +366,7 @@ export function outcomeLabel(
     | 'otherPlatform'
   >,
 ): string {
+  if (o.status === 'failed' && o.restoreFailed === true) return 'failed (cache restore failed)'
   if (o.status === 'failed')
     return failedLabel(o.exitCode, o.timedOut, o.sandboxViolations, o.notReady, o.inputMoved)
   if (o.status === 'skipped') return skippedLabel(o)
@@ -450,6 +457,7 @@ export function projectOutcome(outcome: TaskOutcome): OutcomeView {
   }
   if (isGroupTask(outcome.node)) view.isGroup = true
   else if (ranNoCache(outcome)) view.noCache = true
+  if (outcome.restoreFailed === true) view.restoreFailed = true
   if (outcome.storedDurationMs !== undefined) view.storedDurationMs = outcome.storedDurationMs
   if (outcome.storedCpuMs !== undefined) view.storedCpuMs = outcome.storedCpuMs
   if (outcome.storedPeakRssBytes !== undefined) view.storedPeakRssBytes = outcome.storedPeakRssBytes

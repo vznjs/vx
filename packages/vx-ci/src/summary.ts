@@ -58,6 +58,15 @@ function flakyMark(t: TaskTelemetry): string {
   return said.length === 0 ? ' · flaky' : ` · flaky - ${said.join(' · ')}`
 }
 
+/**
+ * Whether the task ran its command here or on a worker. A carried server ran
+ * inside its dependants, on their worker; a failure in no cache column
+ * (`cacheSource: 'none'`) is a hit whose restore failed, which ran nothing.
+ */
+const executed = (t: TaskTelemetry): boolean =>
+  (t.status === 'success' || (t.status === 'failed' && t.cacheSource !== 'none')) &&
+  t.carried !== true
+
 /** Rows by status label, in this order; any other after them. */
 const ORDER = [
   '❌ failed',
@@ -165,13 +174,9 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
   const lines: string[] = []
   lines.push(`## ${verdict} ${title}`)
   lines.push('')
-  // A carried server ran inside its dependants, on their worker.
-  const executed = summary.tasks.filter(
-    (t) => (t.status === 'success' || t.status === 'failed') && t.carried !== true,
-  ).length
   const stats = [
     `**${summary.taskCount}** task${summary.taskCount === 1 ? '' : 's'}`,
-    `**${executed}** executed`,
+    `**${summary.tasks.filter(executed).length}** executed`,
     `**${summary.hitCount}** cache hit${summary.hitCount === 1 ? '' : 's'}` +
       (summary.hitCount > 0 ? ` ${hitSplit(summary)}` : ''),
     ...(summary.failedCount > 0 ? [`**${summary.failedCount}** failed`] : []),
@@ -207,7 +212,7 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
       const signal = exitSignal(t.exitCode)
       const blocked = blockedBy.get(t.taskId) ?? []
       lines.push(
-        `- **${escapeMarkdownCell(escapeInline(t.taskId))}** — ${t.notReady !== undefined ? `never ready (${t.notReady === 'timeout' ? 'timed out' : t.notReady === 'exited' ? 'exited' : 'spawn failed'}), exit ${t.exitCode}` : t.timedOut === true ? `timed out, exit ${t.exitCode}` : `exit ${t.exitCode}${signal === undefined ? '' : ` (128 + ${signal})`}`}${t.sandboxViolations !== undefined && t.sandboxViolations > 0 ? ` · ${t.sandboxViolations} sandbox violation${t.sandboxViolations === 1 ? '' : 's'}` : ''}${blocked.length > 0 ? ` · blocked ${blocked.join(', ')}` : ''}`,
+        `- **${escapeMarkdownCell(escapeInline(t.taskId))}** — ${t.cacheSource === 'none' ? 'cache restore failed' : t.notReady !== undefined ? `never ready (${t.notReady === 'timeout' ? 'timed out' : t.notReady === 'exited' ? 'exited' : 'spawn failed'}), exit ${t.exitCode}` : t.timedOut === true ? `timed out, exit ${t.exitCode}` : `exit ${t.exitCode}${signal === undefined ? '' : ` (128 + ${signal})`}`}${t.sandboxViolations !== undefined && t.sandboxViolations > 0 ? ` · ${t.sandboxViolations} sandbox violation${t.sandboxViolations === 1 ? '' : 's'}` : ''}${blocked.length > 0 ? ` · blocked ${blocked.join(', ')}` : ''}`,
       )
     }
     lines.push('')
@@ -336,11 +341,8 @@ function renderWorkers(
     )
   }
   // Nothing runs on a distributed run's own machine (2026-10-23):
-  // a task that did is named, a bug to see. A carried server ran inside its
-  // dependants, on their worker.
-  const ran = tasks.filter(
-    (t) => (t.status === 'success' || t.status === 'failed') && t.carried !== true,
-  )
+  // a task that did is named, a bug to see.
+  const ran = tasks.filter(executed)
   const here = ran.filter((t) => t.where === undefined)
   if (here.length > 0) {
     const failed = here.filter((t) => t.status === 'failed').length

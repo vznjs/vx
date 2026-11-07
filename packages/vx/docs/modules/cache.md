@@ -376,7 +376,7 @@ export interface RunRecord {
   peakRssBytes?: number // peak resident set size
   wallclockStartNs?: bigint // hrtime span relative to run t=0
   wallclockEndNs?: bigint
-  cacheHit?: boolean // convenience for flamegraph color
+  cacheHit?: boolean // convenience for flamegraph color; absent (NULL) on a hit whose restore failed
   restored?: boolean // v31, on a hit: outputs restored (true) or already up to date (false)
   attempts?: number // >1 when the task retried (the within-run flaky signal)
   cached?: boolean // the task declared `cache`

@@ -57,7 +57,7 @@ import {
   type StatusStream,
 } from '../ui/index.js'
 import { isCacheHit } from '../graph/index.js'
-import { failedLabel, outcomeWord, ranNoCache } from './events.js'
+import { outcomeLabel, outcomeWord, ranNoCache } from './events.js'
 import type { BlockedTask, Forecast } from './forecast.js'
 
 export interface Logger {
@@ -206,7 +206,8 @@ function ghaFence(body: string, token: string): string {
   return `::stop-commands::${token}\n${body}::${token}::\n`
 }
 
-const cacheWordOf = (o: TaskOutcome): 'miss' | 'no-cache' => (ranNoCache(o) ? 'no-cache' : 'miss')
+const cacheWordOf = (o: TaskOutcome): 'miss' | 'no-cache' | '' =>
+  o.restoreFailed === true ? '' : ranNoCache(o) ? 'no-cache' : 'miss'
 
 export function resolveOutputView(
   options: {
@@ -377,6 +378,8 @@ export function defaultLogger(
   let upToDate = 0
   let restoredLocal = 0
   let restoredRemote = 0
+  // Hits whose restore failed: failed, and in no cache count.
+  let restoreFailed = 0
   let saved = 0
   let notSaved = 0
   let skippedCount = 0
@@ -565,8 +568,9 @@ export function defaultLogger(
               restoredRemote,
               saved,
               notSaved,
-              miss: succeeded + failed - noCache,
+              miss: succeeded + failed - noCache - restoreFailed,
               noCache,
+              ...(restoreFailed > 0 ? { restoreFailed } : {}),
               left: total - done - stopped - notRun,
               ...(running > 0 ? { running } : {}),
               ...(scheduled > 0 ? { scheduled } : {}),
@@ -758,7 +762,10 @@ export function defaultLogger(
   const failureRow = (node: TaskNode, outcome: TaskOutcome): string =>
     formatFailureLine(node.id, outcome.durationMs, colors, cacheWordOf(outcome), {
       ...executedCells(outcome, blocksOf(node.id)),
-      usual: usualCell(outcome.durationMs, usualMsOf(node.id), colors),
+      // A failed restore ran no command: nothing to compare.
+      ...(outcome.restoreFailed === true
+        ? {}
+        : { usual: usualCell(outcome.durationMs, usualMsOf(node.id), colors) }),
       ...(onPath.has(node.id) ? { critical: true } : {}),
     }) + flakyNote(outcome, colors)
 
@@ -1101,7 +1108,8 @@ export function defaultLogger(
         done++
         if (outcome.status === 'failed') {
           failed++
-          if (ranNoCache(outcome)) noCache++
+          if (outcome.restoreFailed === true) restoreFailed++
+          else if (ranNoCache(outcome)) noCache++
         } else if (node.config.exec?.persistent !== undefined && outcome.status === 'success') {
           // A persistent task's outcome arrives at READY; the child
           // keeps running until the orchestrator SIGTERMs it at run
@@ -1151,7 +1159,10 @@ export function defaultLogger(
             skippedCount++
             break
         }
-        if (outcome.status === 'success' || outcome.status === 'failed') {
+        if (
+          outcome.status === 'success' ||
+          (outcome.status === 'failed' && outcome.restoreFailed !== true)
+        ) {
           spreadMax = Math.max(spreadMax, outcome.durationMs)
           spreadMin = Math.min(spreadMin, outcome.durationMs)
           spreadSum += outcome.durationMs
@@ -1338,9 +1349,7 @@ export function defaultLogger(
             if (outcome.status === 'failed') {
               // The message is ours (a literal, an integer and a signal
               // name); only the title carries user input.
-              emitBlock(
-                `::error title=${ghaProperty(node.id)}::${failedLabel(outcome.exitCode, outcome.timedOut, outcome.sandboxViolations, outcome.notReady, outcome.inputMoved)}\n${body}`,
-              )
+              emitBlock(`::error title=${ghaProperty(node.id)}::${outcomeLabel(outcome)}\n${body}`)
             } else {
               emitBlock(
                 `::group::${ghaData(
