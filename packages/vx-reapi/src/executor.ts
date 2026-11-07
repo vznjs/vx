@@ -1146,8 +1146,13 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       // The record is written while the outputs come down: the two share
       // nothing, and in turn the record's round trips (a stdout blob, Tree
       // reads, the update) all sat before the first output byte (F-27).
+      // Never for a run core will not save (`unsaved`): the record would
+      // replay as that key's hit (executor.ts contract).
       const recording: Promise<void> =
-        req.cacheKey !== undefined && (result.exit_code ?? 0) === 0 && tree.moved.length === 0
+        req.cacheKey !== undefined &&
+        req.unsaved !== true &&
+        (result.exit_code ?? 0) === 0 &&
+        tree.moved.length === 0
           ? (async (cacheKey: string): Promise<void> => {
               // A whole-tree capture's path is '' — the working directory itself,
               // which `${wd}/` spelled `pkg/`: never matched by a decomposition,

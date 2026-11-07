@@ -96,3 +96,32 @@ describe.if(CHUNKING_SUPPORTED)('a record replay', () => {
     expect(await out()).toBe('good output')
   })
 })
+
+// Core marks a run it will not save under the key `unsaved` (--no-cache, a
+// read-only policy, a tainted or keyless upstream). A record written then
+// replays under the same key later: a dependant built against a failed
+// upstream's outputs, hit once that upstream passes.
+it('writes no record for an unsaved request, so the next run executes', async () => {
+  const bad = fake.put(bytes('built against a failed upstream\n'))
+  fake.onExecute = () => ({
+    response: {
+      result: {
+        exit_code: 0,
+        output_files: [
+          { path: 'out.txt', digest: { hash: bad.hash, size_bytes: String(bad.size_bytes) } },
+        ],
+      },
+    },
+  })
+  const client = new ReapiClient({ endpoint: fake.endpoint })
+  try {
+    const ex = reapiExecutor(client, { warn: () => undefined })
+    expect((await ex.execute({ ...request('K-unsaved'), unsaved: true })).exitCode).toBe(0)
+    expect(fake.actions.has(execDigestFor('K-unsaved').hash)).toBe(false)
+    const before = executes()
+    expect((await ex.execute(request('K-unsaved'))).exitCode).toBe(0)
+    expect(executes() - before).toBe(1)
+  } finally {
+    client.close()
+  }
+})
