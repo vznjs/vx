@@ -306,16 +306,27 @@ function compileAnyTaskGlob(rawPatterns: readonly string[]): (rel: string) => bo
   if (patterns.length === 0) return () => false
   const sources = patterns.map(regExpSource)
   const globs = patterns.map(taskGlob)
-  if (sources.every((r) => r !== null)) {
-    const res = alternations(sources as string[])
-    if (res.length === 1) {
-      const re = res[0]!
-      return (rel) => (rel.endsWith('/') ? globs.some((g) => g.match(rel)) : re.test(rel))
-    }
-    return (rel) =>
-      rel.endsWith('/') ? globs.some((g) => g.match(rel)) : res.some((re) => re.test(rel))
+  if (!sources.every((r) => r !== null)) return (rel) => globs.some((g) => g.match(rel))
+  // Each `**/` alternative opened with its own prefix, retried at every
+  // slash of the path: 1000 `**/fileN.ts` globs took 24 s over 200,000
+  // paths. One shared prefix before their alternation takes 50 ms.
+  const deep: string[] = []
+  const rest: string[] = []
+  for (const s of sources as string[]) {
+    if (s.startsWith(LEADING_GLOBSTAR)) deep.push(s.slice(LEADING_GLOBSTAR.length))
+    else rest.push(s)
   }
-  return (rel) => globs.some((g) => g.match(rel))
+  const res = alternations(rest)
+  for (let i = 0; i < deep.length; i += ALTERNATIVES_PER_REGEXP) {
+    const part = deep.slice(i, i + ALTERNATIVES_PER_REGEXP)
+    res.push(new RegExp(`^${LEADING_GLOBSTAR}(?:${part.join('|')})$`, 'u'))
+  }
+  if (res.length === 1) {
+    const re = res[0]!
+    return (rel) => (rel.endsWith('/') ? globs.some((g) => g.match(rel)) : re.test(rel))
+  }
+  return (rel) =>
+    rel.endsWith('/') ? globs.some((g) => g.match(rel)) : res.some((re) => re.test(rel))
 }
 
 /**
@@ -335,6 +346,9 @@ function alternations(sources: readonly string[]): RegExp[] {
   }
   return out
 }
+
+/** What {@link regExpSource} writes for a leading `**` segment. */
+const LEADING_GLOBSTAR = '(?:[^]*/)?'
 
 const REGEXP_SYNTAX = /[\\^$.*+?()[\]{}|]/g
 
@@ -359,7 +373,7 @@ function regExpSource(pattern: string): string | null {
       // more names (`src/**` does not match `src`).
       if (segments.length === 1) out += '[^]*'
       else if (last) out += '/[^]+'
-      else out += i === 0 ? '(?:[^]*/)?' : '/(?:[^]*/)?'
+      else out += i === 0 ? LEADING_GLOBSTAR : `/${LEADING_GLOBSTAR}`
       continue
     }
     if (seg === '' || seg === '.' || seg === '..' || seg.includes('**')) return null
