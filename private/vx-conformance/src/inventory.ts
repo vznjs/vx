@@ -73,6 +73,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'hangup-ignored',
     'hash-chain',
     'hash-scenarios',
+    'hash-scenarios-names',
     'hit-snapshot-stray',
     'ignored-inputs',
     'ignored-outputs',
