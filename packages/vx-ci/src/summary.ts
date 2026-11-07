@@ -219,7 +219,7 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
     const cells = [
       escapeMarkdownCell(escapeInline(t.taskId)),
       statusLabel(t),
-      t.carried === true ? '' : fmtMs(t.durationMs),
+      t.carried === true || t.status === 'skipped' ? '' : fmtMs(t.durationMs),
     ]
     lines.push(`| ${cells.join(' | ')} |`)
   }

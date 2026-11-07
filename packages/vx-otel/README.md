@@ -100,7 +100,7 @@ otel({
   `vx.run.aborted_count` the tasks the stop cut short, `vx.run.not_run_count`
   the ones it reached first; a red run sets
   span status `ERROR`;
-- a child `vx.task` span per task — `cicd.pipeline.task.name`,
+- a child `vx.task` span per task (none for one the stop reached before it started) — `cicd.pipeline.task.name`,
   `cicd.pipeline.task.run.result` (the convention's enum: `success` for a
   run or a hit, `failure`, `timeout` (vx's own `timeout`, or a server's readiness wait), `skip`, `cancellation`), vx's own
   status as `vx.task.status`, `vx.cache.source` (miss/local/remote, or none for a task that never ran),

@@ -33,7 +33,7 @@ stands for (`exit 137 (128 + SIGKILL)`, as the run's own frame and
 that never became ready as `never ready (timed out)`, a sandboxed task's
 violation count, and the tasks each failure blocked. A server a
 DTE run carried to its dependants' workers reads `served`,
-with no duration of its own. When an executor
+with no duration of its own, as a skipped task has none. When an executor
 ran the run on other machines (`@vzn/vx-dte`'s workers), a Workers table
 shows each one's status, when it was asked for, its total time (warm-up
 plus online), its warm-up, its time online after the warm-up and the part

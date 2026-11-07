@@ -124,6 +124,14 @@ describe('renderJobSummary', () => {
     expect(rows).toEqual(['a#bad', 'a#long', 'a#short', 'a#srv', 'a#hit', 'a#same'])
   })
 
+  // A skip never ran: `0ms` read as a fast task, as vx-otel's own comment says.
+  it('leaves a skipped task with no duration', () => {
+    const md = renderJobSummary(
+      summary([task({ taskId: 'a#skip', status: 'skipped', durationMs: 0 })]),
+    )
+    expect(md).toContain('| a#skip | ⏭️ skipped |  |')
+  })
+
   // Owner, 2026-10-23: the page shows each DTE worker, expected beside used.
   it('names each worker the run used, expected beside used, its peak RAM, and the totals', () => {
     const m = {

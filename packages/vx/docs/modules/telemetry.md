@@ -170,7 +170,10 @@ Each streaming record carries `v` and `kind`, and:
 | `task.log`    | `runId`, `taskId`, `stream`, `chunk`, `ts` (opt-in)                |
 | `task.sample` | `runId`, `taskId`, `ts`, `cpuMs`, `rssBytes` (opt-in)              |
 | `task.end`    | `runId`, `ts`, every `TaskTelemetry` field                         |
-| `run.end`     | `runId`, `ts`                                                      |
+
+A task the stop reached before it started gets neither `task.start` nor
+`task.end`, as it is not in the summary's `tasks`.
+| `run.end` | `runId`, `ts` |
 
 ## Invariants
 
