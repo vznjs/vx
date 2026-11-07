@@ -211,7 +211,10 @@ exactly that. The config-import channel
 ## Filter integration
 
 `cli/select.ts:resolveFilters` invokes `affectedProjects` once per
-`[<since>]` filter, stuffs the result in
+`[<since>]` filter (`affectedChanges` for `--affected`'s), one after
+another, starting before the workspace config and discovery with the
+whole-tree walk beside them: those need only the root and the ref, and
+`projects` is the discovery's promise. It stuffs the result in
 `affectedByFilter: Map<ParsedFilter, Set<string>>`, then calls
 `applyFilters({ filters, projects, graph, affectedByFilter })`.
 

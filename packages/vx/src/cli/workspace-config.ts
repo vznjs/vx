@@ -7,6 +7,7 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import type { WorkspaceConfig } from '../config.js'
+import type { LazyGitEnumeration } from '../cache/index.js'
 import { UserError } from '../util/index.js'
 import { sayLine } from '../ui/index.js'
 import {
@@ -65,10 +66,19 @@ export async function loadCliWorkspace(
 export async function discoverCliProjects(
   root: string,
   load: CliLoadOptions = {},
+  /** The whole-tree enumeration the caller started; the run reuses it with the discovery. */
+  git?: LazyGitEnumeration,
 ): Promise<ProjectMeta[]> {
   const warn = load.warn ?? warnToStderr
   const ws = await loadCliWorkspace(root, warn)
-  return await discoverProjects(root, lockReader(root), ws.plugins, stageCacheDir(ws, load), warn)
+  return await discoverProjects(
+    root,
+    lockReader(root),
+    ws.plugins,
+    stageCacheDir(ws, load),
+    warn,
+    git,
+  )
 }
 
 /**

@@ -44,8 +44,8 @@ export function gitOfDiscovery(projects: readonly ProjectMeta[]): LazyGitEnumera
 export function lockOfDiscovery(
   projects: readonly ProjectMeta[],
 ): (() => Promise<Lockfile>) | undefined
-// The package graph a selection pass built over that array with no task edge
-// in it: the graph a run reusing the discovery would build again.
+// The package graph a selection pass built over that array whose task edges
+// added none: the graph a run reusing the discovery would build again.
 export function keepDiscoveryGraph(projects: readonly ProjectMeta[], graph: PackageGraph): void
 export function graphOfDiscovery(projects: readonly ProjectMeta[]): PackageGraph | undefined
 
