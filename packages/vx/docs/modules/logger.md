@@ -83,7 +83,9 @@ export function warnOf(log: Logger): (line: string) => void
 // longest chain waits on, else that dependency; `blockedBy`, per running
 // task, the tasks not started that depend on it directly. A running task
 // past its p50 costs zero: an ETA of zero with tasks running is the region's
-// `+Ns over`, counted from when it reached zero.
+// `+Ns over`, counted from when it reached zero. A pass reads only what
+// the last one left unfinished: called again with the same `finished`
+// set, that set has only grown (the logger's does); another set starts over.
 export interface BlockedTask {
   id: string
   by: string
