@@ -536,6 +536,8 @@ The root a migration starts from and its members are the package manager's (`src
 | `<file>: workspaces.packages must be an array of glob strings`                                               | The yarn-legacy `workspaces: { packages: [...] }` form holds a non-string entry.                                                                                                                                                                           |
 | `<file>: <field> entry "<glob>" is an extglob, which vx's glob engine does not read`                         | A member glob holds `!(…)`, `@(…)`, `+(…)`, `*(…)` or `?(…)`. `Bun.Glob` has no extglob (its scan widened `packages/!(x)` to include x, turborepo#3766); a whole-segment `!(a\|b)` gets its exact rewrite, `["packages/*", "!packages/a", "!packages/b"]`. |
 
+A member whose directory is a link out of the root (`packages/a -> ../../out/a`) is refused when the configs are written, before any is: `packages/a/vx.config.ts: outside the workspace root (packages/a resolves to <real>); vx loads no project there`. Core's discovery never loads a config there. A link to a directory inside the root is written at its real place.
+
 ## `turboCache()` — a Turbo remote cache
 
 Store vx artifacts in any server speaking Turbo's `/v8/artifacts` API — Vercel's hosted cache or a self-hosted implementation of the published OpenAPI spec (Bearer auth, `x-artifact-duration`, HMAC-SHA256 `x-artifact-tag` signatures). The wire is theirs; the bytes are vx's own artifacts under vx's own keys. The server is storage — the other tool cannot read what vx stores there, and vx does not read its entries.

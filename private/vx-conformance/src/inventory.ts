@@ -639,6 +639,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-migrate/migrate-turbo-sealed-tsconfig',
     'vx-migrate/migrate-turbo-tracked-outputs',
     'vx-migrate/migrate-vite-task',
+    'vx-migrate/migration-member-link',
     'vx-migrate/no-conflict-markers',
     'vx-migrate/no-install-next',
     'vx-migrate/nx',
