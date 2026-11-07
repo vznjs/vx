@@ -107,7 +107,8 @@ a plugin's base commit (`setBranch({ base })`), else
 `defaultAffectedBase(root, baseBranch)`: the merge base with
 `origin/<baseBranch>`, refused on that branch (`affected.md`); an explicit
 base that is HEAD itself (a single-branch clone) is named, with the
-two bases that would compare something.
+two bases that would compare something; `HEAD` by name is told its
+working tree has no change.
 
 ## Interactive picker
 

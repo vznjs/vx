@@ -444,7 +444,7 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
       return { exitCode: r.exitCode, out: r.out.trim() }
     }
     const head = noticed(
-      'vx run: nothing affected since HEAD — HEAD is HEAD itself: compare with the branch you merge into (--affected=origin/main) or the previous commit (--affected=HEAD~1)',
+      'vx run: nothing affected since HEAD — the working tree has no change against HEAD; to compare commits, use the branch you merge into (--affected=origin/main) or the previous commit (--affected=HEAD~1)',
       'info',
     ).trimEnd()
     const cases = [
