@@ -514,7 +514,7 @@ export function dte(options: DteOptions = {}) {
         { Orchestrator },
         { joinOffLoop },
         { decide, keepLast, knownMisses, slowdown, tailsMs, WARM_UP_MS },
-        { snapshot },
+        { snapshot, untrackedWorkspace },
         seal,
       ] = await Promise.all([
         import('./orchestrator.js'),
@@ -543,6 +543,11 @@ export function dte(options: DteOptions = {}) {
       proof ??= seal.secretProof(secret!)
       const { commit, tree } = await snapshot(ctx.workspaceRoot)
       if (tree === '') throw new UserError('dte(): a DTE run needs a git commit')
+      const untracked = await untrackedWorkspace(ctx.workspaceRoot, tree)
+      if (untracked !== undefined)
+        throw new UserError(
+          `dte(): ${untracked} is untracked, so the commit workers check out lacks it: commit it`,
+        )
       const need = (id: string): Need => booked(needOf(peaks.get(id), unmeasured), how.book)
       // The run plans again on it, now when `now`; set once the plan is.
       let onChange = (_now?: boolean): void => {}

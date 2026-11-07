@@ -129,8 +129,9 @@ runs here as always (on GitHub Actions, `github()` with a relay names one
 itself). It is a random UUID, so no one can guess a run to
 open it first or join it; vx and the relay refuse any other. `local()` starts each worker as a process in its own
 git worktree of the tracked files as they are, uncommitted changes
-included (untracked files are not: a task that keys one fails; a run with
-an unmerged index, mid-merge, is refused), at the
+included, and a file mid-merge or flagged `assume-unchanged` or
+`skip-worktree` as it is on disk (untracked files are not: a task that keys
+one fails), at the
 workspace's place in it (a workspace in a subdirectory of its repository too),
 saving to the run's store (a relative `cache.dir` or `--cache-dir` too).
 A run from a git hook works too: the worktree and its worker drop the
@@ -582,11 +583,16 @@ use your own instead.
 - A worker whose tracked files differ from the orchestrator's (another
   tree, or the same commit with a tracked file changed, such as by a
   prepare step) is refused. Both sides read their tracked files as they
-  are, so the same change on both is the same tree.
+  are on disk, a file flagged `assume-unchanged` or `skip-worktree` too
+  (one a sparse checkout left off disk is its index's), so the same change
+  on both is the same tree.
 - A task whose key hashes a file the run's commit lacks (untracked, or
   gitignored and named outright, or inside a submodule, whose files the
   commit holds only as a gitlink) fails, naming the file: no worker has it.
   A dependency's declared output is not one: its worker restores it first.
+  A task whose project the commit lacks (its config untracked) fails,
+  naming the project, and a run whose `.vx/workspace.*` is untracked is
+  refused before a worker starts.
 - A task's `exec.timeout` counts from its start on its worker: the wait
   for a worker still booting is not its run (the executor declares
   `timeouts`).

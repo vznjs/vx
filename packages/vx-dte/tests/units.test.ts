@@ -4537,10 +4537,51 @@ it('fails a task whose key folds a file the run’s tree lacks, naming it', asyn
     const req = (taskId: string, ...paths: string[]) =>
       ({
         taskId,
+        cwd: path.join(root, 'a'),
         inputs: { files: paths.map((p) => ({ path: p, digest: 'd' })) },
       }) as unknown as ExecuteRequest
     await expect(o.execute(req('a#build', 'a/src/x', 'a/src/z'))).rejects.toThrow(
       "a#build keys a/src/z, which is not in the commit workers check out: commit it, or leave it out of the task's inputs",
+    )
+    await o.close()
+  } finally {
+    await served.stop()
+  }
+})
+
+// A worker runs a task in its project's directory of the run's tree: a
+// project whose config is untracked is not there, and every worker failed
+// to spawn it, exit 127, saying only that the directory did not exist.
+it('fails a task whose project the run’s tree lacks, naming it', async () => {
+  const root = await tmp()
+  const git = (...a: string[]) =>
+    Bun.spawnSync(['git', ...a], { cwd: root })
+      .stdout.toString()
+      .trim()
+  git('init', '-q')
+  await mkdir(path.join(root, 'a/src'), { recursive: true })
+  await mkdir(path.join(root, 'e'))
+  await writeFile(path.join(root, 'a/src/x'), 'x\n')
+  git('add', '-A')
+  git('-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qm', 'i')
+  await writeFile(path.join(root, 'e/vx.config.mjs'), 'export default {}\n')
+  const served = servedRelay()
+  try {
+    const o = new Orchestrator({
+      me: await join(served.url, R, 'orchestrator', null, undefined),
+      root,
+      tree: git('rev-parse', 'HEAD^{tree}'),
+      nodes: () => undefined,
+      need: () => ({ cores: 1, memory: 0 }),
+      artifacts: fakeArtifacts().artifacts,
+      cacheFacts: async () => ({ refs: [], lent: {} }),
+      run: R,
+      keyOf: () => undefined,
+    })
+    await expect(
+      o.execute({ taskId: 'e#hi', cwd: path.join(root, 'e') } as unknown as ExecuteRequest),
+    ).rejects.toThrow(
+      'e#hi runs in e, which is not in the commit workers check out: commit its project (its vx.config file is untracked)',
     )
     await o.close()
   } finally {
@@ -4982,6 +5023,7 @@ it('takes a key that reads a dependency’s outputs, which its worker restores',
     const req = (...paths: string[]) =>
       ({
         taskId: 'a#use',
+        cwd: path.join(root, 'a'),
         inputs: { files: paths.map((p) => ({ path: p, digest: 'd' })) },
       }) as unknown as ExecuteRequest
     const queued = await Promise.race([
@@ -5029,7 +5071,11 @@ it('names the submodule of a keyed file the run’s tree holds only as a gitlink
       run: R,
       keyOf: () => undefined,
     })
-    const req = { taskId: 'a#build', inputs: { files: [{ path: 'a/vendor/x', digest: 'd' }] } }
+    const req = {
+      taskId: 'a#build',
+      cwd: path.join(root, 'a'),
+      inputs: { files: [{ path: 'a/vendor/x', digest: 'd' }] },
+    }
     await expect(o.execute(req as unknown as ExecuteRequest)).rejects.toThrow(
       "a#build keys a/vendor/x, in submodule a/vendor, whose files workers do not check out: leave it out of the task's inputs",
     )
