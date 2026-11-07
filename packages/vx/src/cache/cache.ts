@@ -2482,16 +2482,46 @@ export class Cache implements CacheLayer {
     // the rows are read again in the blob's snapshot.
     let rows: readonly OutputFileRow[] = []
     let inline: Uint8Array | undefined
-    this.guard(() =>
-      this.db.transaction(() => {
-        const blob = this.selectBlob.get(hash) as { at: number; bytes: Uint8Array } | null
-        inline = blob?.bytes
-        rows =
-          blob === null || blob.at === this.heldInlineAt.get(hash)
-            ? this.outputs.rowsOf(hash)
-            : (this.outputs.loadOutputFilesBatch([hash]).get(hash) ?? [])
-      })(),
-    )
+    // With the probe's rows held, no transaction: a file artifact's tree,
+    // standing now, is the live one, read with no statement (an inline save
+    // moves the tree aside in the commit that adds its blob, and one moved
+    // aside mid-copy is the race `copyTree` catches); an inline one is the
+    // blob read alone, its own snapshot. The blob read and its transaction
+    // cost a 1,600-restore run ~70 ms of its main thread (2026-11-07).
+    const held = this.outputs.heldRowsOf(hash)
+    const heldAt = this.heldInlineAt.get(hash)
+    let treeIno: number | undefined
+    let treeAsked = false
+    if (held !== undefined && heldAt === undefined) {
+      treeIno = lstatSync(this.treePath(hash), { throwIfNoEntry: false })?.ino
+      treeAsked = true
+      if (treeIno !== undefined) rows = held
+    } else if (held !== undefined) {
+      const blob = this.guard(() => this.selectBlob.get(hash)) as {
+        at: number
+        bytes: Uint8Array
+      } | null
+      if (blob?.at === heldAt) {
+        inline = blob!.bytes
+        rows = held
+      }
+    }
+    if (treeIno === undefined && inline === undefined) {
+      this.guard(() =>
+        this.db.transaction(() => {
+          const blob = this.selectBlob.get(hash) as { at: number; bytes: Uint8Array } | null
+          inline = blob?.bytes
+          rows =
+            blob === null || blob.at === this.heldInlineAt.get(hash)
+              ? this.outputs.rowsOf(hash)
+              : (this.outputs.loadOutputFilesBatch([hash]).get(hash) ?? [])
+        })(),
+      )
+      // A tree asked of above and absent: the artifact is the blob or the
+      // tar, and a tree saved since is a miss at worst (the tar is gone).
+      if (inline === undefined && !treeAsked)
+        treeIno = lstatSync(this.treePath(hash), { throwIfNoEntry: false })?.ino
+    }
     const expected = rows
       .filter((r) => workspaceRoot !== undefined || !r.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
       .map((r) => (r.path.startsWith(WORKSPACE_OUTPUT_PREFIX) ? r.path : `outputs/${r.path}`))
@@ -2516,10 +2546,6 @@ export class Cache implements CacheLayer {
     // when every artifact is a one-file `dist/` (measured: 390 vs 355 ms
     // per 1 000). The local artifact was validated at ingest, so a missing
     // declared size is allowed; the output ceiling applies to both.
-    const treeIno =
-      inline === undefined
-        ? lstatSync(this.treePath(hash), { throwIfNoEntry: false })?.ino
-        : undefined
     const tree = treeIno === undefined ? undefined : this.treePath(hash)
     const endExtract = span('restore: extract')
     try {

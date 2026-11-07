@@ -438,7 +438,7 @@ On a hit:
    with its mtime forged back, still matches.
 3. Otherwise the `outputs/<rel>` (+ `workspace-outputs/<rel>`) entries
    are extracted from the artifact (its bytes inline in the index, read
-   in one read transaction with the entry's rows, or
+   in one snapshot with the entry's rows, or
    `<cacheDir>/<hash>.tar.zst`) **in place**: every entry is staged in
    the workspace's `.vx/tmp/` (never an output folder), and only once the
    whole archive has staged is each renamed over the file it replaces.
