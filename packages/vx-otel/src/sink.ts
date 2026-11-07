@@ -175,7 +175,7 @@ async function postOnce(
   )
   // Core's flush deadline ends the POST too: `timeoutMs` (15 s by
   // default) alone held the process that long after the run (item 1055).
-  const onDeadline = (): void => controller.abort()
+  const onDeadline = (): void => controller.abort(deadline?.reason)
   deadline?.addEventListener('abort', onDeadline, { once: true })
   try {
     let res: Response

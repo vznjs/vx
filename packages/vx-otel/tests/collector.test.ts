@@ -280,7 +280,9 @@ describe('the transport, as the vx-otel sweep found it unheld', () => {
   it('the POST ends when core’s flush deadline aborts, not at timeoutMs', async () => {
     const hang = Bun.serve({ port: 0, fetch: () => new Promise<Response>(() => {}) })
     try {
+      const warnings: string[] = []
       const sink = new OtelSink({
+        warn: (m) => warnings.push(m),
         tracesUrl: `http://127.0.0.1:${hang.port}/v1/traces`,
         metricsUrl: '',
         logsUrl: '',
@@ -314,9 +316,12 @@ describe('the transport, as the vx-otel sweep found it unheld', () => {
       const deadline = new AbortController()
       const t0 = Date.now()
       const flushed = sink.flush(deadline.signal)
-      setTimeout(() => deadline.abort(), 100)
+      setTimeout(() => deadline.abort(new Error('telemetry flush deadline (100ms)')), 100)
       await flushed
       expect(Date.now() - t0).toBeLessThan(5_000)
+      // The warning names who gave up: a bare abort said only "The
+      // operation was aborted."
+      expect(warnings.join('\n')).toContain('telemetry flush deadline (100ms)')
     } finally {
       await hang.stop(true)
     }
