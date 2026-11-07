@@ -24,6 +24,24 @@ export function lazyStatement(db: Database, sql: string): ReturnType<Database['p
 }
 
 /**
+ * What every reader and `vx last --sql` means by `runs`: the rows with
+ * their run_id, in the columns' old order. TEMP, so no other vx meets it: a
+ * persistent view would fail an older vx's `DROP TABLE runs` when it resets
+ * the index. It shadows main.runs, which only the writers name, so a
+ * VACUUM drops it first: rebuilding `runs_run ON runs(run)` resolves `runs`
+ * to the view and fails ("views may not be indexed").
+ */
+export const RUNS_VIEW = `CREATE TEMP VIEW IF NOT EXISTS runs AS
+  SELECT r.id, r.hash, r.project, r.task, r.status, r.exit_code, r.duration_ms,
+    r.forward_args, r.started_at, r.ended_at, k.run_id, r.cpu_ms, r.peak_rss_bytes,
+    r.wallclock_start_ns, r.wallclock_end_ns, r.cache_hit, r.attempts, r.cached,
+    r.blocked_by, r.timed_out, r.sandbox_violations, r.not_ready, r.restored,
+    r.remote_error, r.peak_cores, r.avg_rss_bytes, r.placement, r.placement_cores,
+    r.placement_memory, r.keyless_by, r.def, r.cpu_share, r.queued_ms,
+    r.output_bytes, r.blocks, r.flaky_passes, r.flaky_failures
+  FROM main.runs r LEFT JOIN main.run_ids k ON k.id = r.run;`
+
+/**
  * Create every table. `store` names the schema holding the ENTRY tables
  * (`entries`, `entry_stdout`, `output_files`, `entry_inputs`, `store_meta`)
  * the task timings (`task_durations`), the flaky record (`task_outcomes`),
@@ -164,20 +182,7 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       id     INTEGER PRIMARY KEY,
       run_id TEXT NOT NULL UNIQUE
     );
-    -- What every reader and \`vx last --sql\` means by \`runs\`: the rows
-    -- with their run_id, in the columns' old order. TEMP, so no other
-    -- vx meets it: a persistent view would fail an older vx's
-    -- \`DROP TABLE runs\` when it resets this index. It shadows
-    -- main.runs, which only the writers name.
-    CREATE TEMP VIEW IF NOT EXISTS runs AS
-      SELECT r.id, r.hash, r.project, r.task, r.status, r.exit_code, r.duration_ms,
-        r.forward_args, r.started_at, r.ended_at, k.run_id, r.cpu_ms, r.peak_rss_bytes,
-        r.wallclock_start_ns, r.wallclock_end_ns, r.cache_hit, r.attempts, r.cached,
-        r.blocked_by, r.timed_out, r.sandbox_violations, r.not_ready, r.restored,
-        r.remote_error, r.peak_cores, r.avg_rss_bytes, r.placement, r.placement_cores,
-        r.placement_memory, r.keyless_by, r.def, r.cpu_share, r.queued_ms,
-        r.output_bytes, r.blocks, r.flaky_passes, r.flaky_failures
-      FROM main.runs r LEFT JOIN main.run_ids k ON k.id = r.run;
+    ${RUNS_VIEW}
     -- Per-file (mtime, size, content_hash) cache. Lets Cache.key()
     -- skip the content-hash on inputs whose stat hasn't changed
     -- since the last run. Pure performance optimization; the stored

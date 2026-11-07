@@ -67,6 +67,7 @@ import {
   createTables,
   inHashes,
   lazyStatement,
+  RUNS_VIEW,
   SQLITE_FCNTL_PERSIST_WAL,
 } from './schema.js'
 import {
@@ -3818,7 +3819,12 @@ export class Cache implements CacheLayer {
         freelist_count: number
       }
       if (free === 0) return
-      this.db.exec(`VACUUM ${schema}`)
+      this.db.exec('DROP VIEW IF EXISTS temp.runs')
+      try {
+        this.db.exec(`VACUUM ${schema}`)
+      } finally {
+        this.db.exec(RUNS_VIEW)
+      }
       this.db.exec(`PRAGMA ${schema}.wal_checkpoint(TRUNCATE)`)
     } catch {
       // Another process holds the database, or the disk has no room for the copy.
