@@ -2030,7 +2030,10 @@ faster that way (10,000 projects: 15.6 ms against 22.5 ms pretty). For
 review, `vx lock` also writes each project's resolved config (plugins
 applied), pretty, to `vx.lock.json` beside its `vx.config`; vx never reads
 it, it is no task's input, and `lock.reviewFiles: false`
-(`VX_LOCK_REVIEW_FILES`) turns it off. `vx lock` also writes
+(`VX_LOCK_REVIEW_FILES`) turns it off. A copy left with no config beside
+it is named by `vx lock` and fails `--check`; when the config was renamed
+to a name vx does not read (`vx.config.json`, `.tsx`), the notice names
+that file. `vx lock` also writes
 `.vx/.gitattributes` (`projects.lock.json linguist-generated=true`) when it is
 missing, so GitHub collapses the machine lock in a diff; `vx init` does
 too, and an existing one is never edited.

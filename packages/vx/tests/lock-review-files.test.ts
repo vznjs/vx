@@ -109,6 +109,26 @@ it('vx lock --check fails on a review copy whose config is gone', async () => {
   expect(vx(r, 'lock', '--check')).toMatchObject({ code: 0, err: '' })
 })
 
+// A config renamed to a name vx does not read (`.json`, `.tsx`, `.jsx`)
+// left its copy orphaned, and the notice said only "no vx.config beside
+// it — delete it", with the config still there.
+it('a review copy beside a config name vx does not read names that file', async () => {
+  const r = (root = await makeWorkspace({ prefix: 'vx-lock-review-unsupported-' }))
+  const dir = await addProject(r, 'a', { config: CONFIG })
+  await addProject(r, 'b', { config: CONFIG })
+  expect(vx(r, 'lock').code).toBe(0)
+  for (const name of ['vx.config.json', 'vx.config.tsx', 'vx.config.jsx']) {
+    for (const old of ['vx.config.mjs', 'vx.config.json', 'vx.config.tsx', 'vx.config.jsx'])
+      await rm(path.join(dir, old), { force: true })
+    await Bun.write(path.join(dir, name), CONFIG)
+    const line = `packages/a/vx.lock.json has no vx.config beside it: ${name} is not a config vx reads (ts, mts, js, mjs, cts, cjs)\n`
+    const lock = vx(r, 'lock')
+    expect([lock.code, lock.err]).toEqual([0, noticed(`vx lock: ${line}`, 'warn')])
+    const check = vx(r, 'lock', '--check')
+    expect([check.code, check.err]).toEqual([1, noticed(`vx lock --check: ${line}`)])
+  }
+})
+
 // A directory nothing discovers once its config is gone (no package.json,
 // no plugin) kept its copy too, and the audit passed: the copy then keyed
 // the `**` of the project around it (2026-10-23).
