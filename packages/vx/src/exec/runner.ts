@@ -1406,8 +1406,9 @@ function rssFloorFor(peak: number): number {
 
 /**
  * What a task's captured output keeps: the first `CAPTURE_HEAD_CHARS` and
- * the last `CAPTURE_TAIL_CHARS` characters, the dropped middle counted and
- * named where it was. The live stream is never bounded — every byte still
+ * the last `CAPTURE_TAIL_CHARS` characters (UTF-16 units: 8 MiB of ASCII),
+ * the dropped middle counted in the UTF-8 bytes the task wrote and named
+ * where it was. The live stream is never bounded — every byte still
  * reaches the terminal as the task writes it — only the copy vx retains
  * for the cache entry and its replay. Unbounded, a task printing 200 MB
  * cost vx 620 MB of RSS on the miss AND on every hit, and its stdout sat
@@ -1453,9 +1454,15 @@ const OWN_DROPPED_LINE = new RegExp(
 )
 const UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
 
-/** Whether `chunk` is the line a `BoundedCapture` puts where its dropped middle was. */
+/**
+ * The dropped lines `chunks()` returned, known by the object, not the text:
+ * a task's own chunk that read like one was copied past the mask.
+ */
+const droppedChunks = new WeakSet<CapturedChunk>()
+
+/** Whether `chunk` is the line a `BoundedCapture` put where its dropped middle was (the object `chunks()` returned). */
 export function isDroppedOutputChunk(chunk: CapturedChunk): boolean {
-  return !chunk.err && DROPPED_LINE.test(chunk.text)
+  return droppedChunks.has(chunk)
 }
 
 const isHighSurrogate = (code: number): boolean => code >= 0xd800 && code <= 0xdbff
@@ -1478,6 +1485,7 @@ export class BoundedCapture {
   private headLen = 0
   private readonly tail: CapturedChunk[] = []
   private tailLen = 0
+  /** UTF-8 bytes: a count of UTF-16 units said a third of the bytes CJK text dropped. */
   private dropped = 0
   private seen = 0
 
@@ -1535,12 +1543,12 @@ export class BoundedCapture {
       if (first.text.length <= excess) {
         this.tail.shift()
         this.tailLen -= first.text.length
-        this.dropped += first.text.length
+        this.dropped += Buffer.byteLength(first.text)
       } else {
         const cut = isHighSurrogate(first.text.charCodeAt(excess - 1)) ? excess + 1 : excess
+        this.dropped += Buffer.byteLength(first.text.slice(0, cut))
         this.tail[0] = { text: first.text.slice(cut), err: first.err }
         this.tailLen -= cut
-        this.dropped += cut
       }
     }
   }
@@ -1568,16 +1576,13 @@ export class BoundedCapture {
 
   /** The kept chunks in arrival order, the dropped middle named on stdout. */
   chunks(): CapturedChunk[] {
-    return this.dropped === 0
-      ? [...this.head, ...this.tail]
-      : [
-          ...this.head,
-          {
-            text: droppedOutputLine(this.dropped, this.headChars, this.tailChars),
-            err: false,
-          },
-          ...this.tail,
-        ]
+    if (this.dropped === 0) return [...this.head, ...this.tail]
+    const line = {
+      text: droppedOutputLine(this.dropped, this.headChars, this.tailChars),
+      err: false,
+    }
+    droppedChunks.add(line)
+    return [...this.head, line, ...this.tail]
   }
 
   text(): string {

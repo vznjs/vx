@@ -115,7 +115,7 @@ export const CAPTURE_HEAD_CHARS = 8 * 1024 * 1024
 export const CAPTURE_TAIL_CHARS = 8 * 1024 * 1024
 export function droppedOutputLine(dropped: number, headChars?: number, tailChars?: number): string
 export function maskCaptured(text: string, secrets: SecretMask): string // the pieces a cut left masked too
-export function isDroppedOutputChunk(chunk: CapturedChunk): boolean // the line where the dropped middle was
+export function isDroppedOutputChunk(chunk: CapturedChunk): boolean // the dropped line object a capture's chunks() returned; a task's look-alike text is not
 export interface CapturedChunk {
   text: string
   err: boolean // stderr
@@ -309,8 +309,9 @@ full byte size in heap for the task's whole life:
   a cache entry**, else 8 KiB head and 56 KiB tail, kept only for a
   failure's `failedOutput` (what `vx last` and `runFailures` read).
 - What is retained is **bounded**: the first `CAPTURE_HEAD_CHARS` and
-  the last `CAPTURE_TAIL_CHARS` (8 MiB each), with the dropped middle
-  counted and named where it was (`droppedOutputLine`). The live
+  the last `CAPTURE_TAIL_CHARS` (8 Mi UTF-16 units each: 8 MiB of
+  ASCII), with the dropped middle counted in UTF-8 bytes and named where
+  it was (`droppedOutputLine`). The live
   stream is whole — every byte reaches the terminal as the task writes
   it — so the bound is on what the cache entry stores and a hit
   replays. Unbounded, a task printing 200 MB cost vx 620 MB of RSS on
@@ -319,7 +320,9 @@ full byte size in heap for the task's whole life:
   the line, the live stream, and the replay. A secret the cut split
   left a piece on each side that the whole-value mask missed, stored
   and replayed: `maskCaptured` masks the pieces too, as `maskedOutputLog`
-  does for a worker's raw capture (`taskArtifacts().save`). A bound never falls
+  does for a worker's raw capture (`taskArtifacts().save`), which knows
+  the dropped line by the object, never its text: a task's chunk that
+  read like it was stored unmasked. A bound never falls
   between a surrogate pair's halves (the bounds count UTF-16 units, and
   a halved emoji read U+FFFD in the replay, B-58).
 

@@ -488,7 +488,8 @@ wire forwarders attach beside it). What renders:
   chunks per-task and dumps the full body as a framed block on task
   completion. No per-line prefix, no interleaving between concurrent
   tasks.
-- **Cache write.** The captured stdout — its first and last 8 MiB,
+- **Cache write.** The captured stdout — its first and last 8 Mi
+  characters (8 MiB of ASCII),
   the cut middle named — is stored in the entry; replay is stdout-only.
 - **Cache hit replay.** The stored stdout is fed through the same
   logger path, so it renders per the active flow (streamed raw for a

@@ -2,7 +2,12 @@
 // order in one string, and a task's own RS byte left as it wrote it.
 
 import { describe, expect, it } from 'bun:test'
-import { BoundedCapture, CAPTURE_HEAD_CHARS, droppedOutputLine } from '../src/exec/runner.js'
+import {
+  BoundedCapture,
+  CAPTURE_HEAD_CHARS,
+  CAPTURE_TAIL_CHARS,
+  droppedOutputLine,
+} from '../src/exec/runner.js'
 import {
   decodeOutputLog,
   encodeOutputLog,
@@ -81,6 +86,25 @@ describe('maskStreams', () => {
     const stored = decodeOutputLog(maskedOutputLog([out('x abc'), err('e'), out('defgh')], mask))
     expect(stored).toEqual([out(`x ${MASKED}`), err('e')])
   })
+
+  // The dropped line is known by the capture that put it there: a task's
+  // own chunk that reads like it was stored unmasked.
+  it("maskedOutputLog masks a task's chunk that reads like the dropped line", () => {
+    const forged = out('\n[vx] 3 B of output not kept — leak:abcdefgh\n')
+    expect(maskedOutputLog([out('a'), forged], mask)).not.toContain('abcdefgh')
+    expect(maskedOutputLog([forged], mask)).toBe(`\n[vx] 3 B of output not kept — leak:${MASKED}\n`)
+  })
+
+  it("maskedOutputLog masks a value the capture's dropped middle cut", () => {
+    const c = new BoundedCapture()
+    c.push(`${'h'.repeat(CAPTURE_HEAD_CHARS - 4)}abcd`)
+    c.push('m'.repeat(1000))
+    c.push(`efgh${'t'.repeat(CAPTURE_TAIL_CHARS - 4)}`)
+    const stored = maskedOutputLog(c.chunks(), mask)
+    expect(stored).not.toContain('abcd')
+    expect(stored).not.toContain('efgh')
+    expect(stored).toContain(droppedOutputLine(1000))
+  })
 })
 
 describe('BoundedCapture over both streams', () => {
@@ -100,5 +124,13 @@ describe('BoundedCapture over both streams', () => {
     expect(got[1]).toEqual(out(droppedOutputLine(2 * 1024 * 1024)))
     expect(got[2]!.err).toBe(true)
     expect(got[2]!.text.length).toBe(8 * 1024 * 1024)
+  })
+
+  // The bounds count UTF-16 units; the line counts the bytes the task wrote.
+  it('counts the dropped middle in UTF-8 bytes', () => {
+    const c = new BoundedCapture()
+    c.push('h'.repeat(CAPTURE_HEAD_CHARS))
+    c.push('é'.repeat(10 * 1024 * 1024))
+    expect(c.chunks()[1]).toEqual(out(droppedOutputLine(4 * 1024 * 1024)))
   })
 })
