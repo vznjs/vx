@@ -672,7 +672,19 @@ export async function runWorker(opts: {
           running.get(m.task)?.abort()
         } else if (m.type === 'unserve') {
           // Not awaited: its grace must not hold the next order.
-          void floor?.stop(m.task).catch(() => {})
+          const task = m.task
+          void floor
+            ?.stop(task)
+            .catch((err: unknown) =>
+              ui.print(
+                'err',
+                ui.status(
+                  'warn',
+                  task,
+                  `server not stopped: ${err instanceof Error ? err.message : String(err)}`,
+                ),
+              ),
+            )
         } else if (m.type === 'batch') {
           // Every batch of a run names the same orchestrator root.
           root = m.root
