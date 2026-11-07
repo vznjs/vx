@@ -85,9 +85,25 @@ export function nearMatches(name: string, candidates: Iterable<string>, limit = 
     if (out.length >= limit) break
     if (out.includes(c)) continue
     const n = c.toLowerCase()
-    if (n.includes(q) || q.includes(n)) out.push(c)
+    if (n.includes(q) || wordIn(q, n)) out.push(c)
   }
   return out.slice(0, limit)
+}
+
+/**
+ * `name` stands in `query` as a whole word (`build` in `build-and-test`):
+ * a bare substring offered `ui` for `guide` and `a` for anything.
+ */
+function wordIn(query: string, name: string): boolean {
+  for (let i = query.indexOf(name); i !== -1; i = query.indexOf(name, i + 1)) {
+    const end = i + name.length
+    if (
+      (i === 0 || !/[a-z0-9]/.test(query[i - 1]!)) &&
+      (end === query.length || !/[a-z0-9]/.test(query[end]!))
+    )
+      return true
+  }
+  return false
 }
 
 /**

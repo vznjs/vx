@@ -76,6 +76,25 @@ it('a lock that is not valid JSON is a drift the audit names, in its own shape',
   )
 })
 
+// A directory there was a stack trace from `vx lock`, and `--check` read
+// it as no lock and sent the user back to that `vx lock`.
+it('a directory where the lock goes is one line from lock and --check', async () => {
+  const ws = await makeWorkspace({ prefix: 'vx-lock-dir-' })
+  await addProject(ws, 'a', CONFIG)
+  await mkdir(path.join(ws, '.vx', 'projects.lock.json'), { recursive: true })
+  const lock = Bun.spawnSync({ cmd: [process.execPath, BIN, 'lock'], cwd: ws })
+  const check = Bun.spawnSync({ cmd: [process.execPath, BIN, 'lock', '--check'], cwd: ws })
+  await rm(ws, { recursive: true, force: true })
+  expect([lock.exitCode, lock.stderr.toString()]).toEqual([
+    1,
+    '✗ vx lock  cannot write .vx/projects.lock.json: a directory stands there; remove it and run again\n',
+  ])
+  expect([check.exitCode, check.stderr.toString()]).toEqual([
+    1,
+    '✗ vx lock --check  .vx/projects.lock.json is a directory — remove it and run `vx lock`\n',
+  ])
+})
+
 it('every config that does not load is named, root-relative, with its frame', async () => {
   const ws = await makeWorkspace({ prefix: 'vx-lock-check-two-broken-' })
   const BAD = `export default { tasks: { b: { bad: 1 } } }\n`

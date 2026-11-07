@@ -69,7 +69,7 @@ the initiator.
 | worker `join` | `info: { "noise": <message 1>, "token"? }`              |
 | orchestrator  | `{ "type": "hello", "noise": <message 2>, "token"? }`   |
 | orchestrator  | `{ "type": "refused", "reason" }`, plain, then `remove` |
-| either, then  | `{ "seal": ["<n>.<ciphertext>", …] }`                   |
+| either, then  | `["<n>.<ciphertext>", …]`                               |
 
 The orchestrator checks each worker the moment the relay says it joined,
 and `remove`s one whose handshake fails. Message 1's payload is the
@@ -81,14 +81,22 @@ opens in another body, and a body's parts take consecutive nonces, so
 none is repeated or reordered in it. A body whose first nonce was seen before is a
 replay and is dropped; one older than a body already opened (the relay
 held it back: the wire's numbers are outside the seal) or that does not
-open loses its sender. The
-plaintext is JSON, or over 256 bytes and smaller so, a `0` byte, the
-zstd frame's length (4 bytes, big-endian) and the frame: compressed
-before sealing, since no relay or socket compresses what is sealed. It
+open loses its sender. The plaintext is a lead byte, the length of
+every body its sender sealed before (4 bytes, big-endian, mod 2³²), and
+then, `1`, its JSON, an array of the messages sent together (up to 64
+KiB), or `0`, when smaller so, its zstd frame's length (4 bytes) and
+the frame: compressed before sealing, since no
+relay or socket compresses what is sealed. The orchestrator's are
+compressed against the last 16 KiB of its bodies' JSON to that worker
+as their dictionary, so a batch's env and paths said before cost a few
+bytes; a worker's go without one, which would cost the orchestrator
+some 100 µs to open each. A body whose length is not
+the receiver's own count was sealed after one it never opened, which the
+relay kept back, and loses its sender. It
 is padded with trailing spaces to its size class, a power of two from
-256 bytes, then whole transport messages, so the relay learns no size
+64 bytes, then whole transport messages, so the relay learns no size
 within a class. Inside, each send is numbered and acknowledged
-end to end, and a quiet worker reports (Switchboard § Delivery, § Liveness).
+end to end (`{ "n", "b", "a"? }`: its number, body and ack), and a quiet worker reports (Switchboard § Delivery, § Liveness).
 
 ## Try it
 
@@ -130,7 +138,9 @@ index being committed is left as it is. When a worker fails, its row names
 the error line and the log that holds its whole stderr and all `prepare`
 printed. At the run's end,
 or on Ctrl-C, vx exits without waiting for the worktrees to be removed:
-a detached shell removes them and prunes git's records.
+a detached shell removes them and prunes git's records. A run whose vx
+was killed (`kill -9`) removes none; the next `local()` run in the
+repository removes them, once their run's process is gone.
 
 `docker()` starts each worker as a container held to its size: `--cpus`
 and `--memory` come from `cpu` and `memory`. The container clones this
@@ -592,8 +602,14 @@ use your own instead.
 - A relay that answers nothing for 10 s, every try counted, fails every task not done
   (`the relay is unreachable`); none runs here, which may be far smaller
   than the workers. What finished is saved, so a rerun resumes from it.
-  A shorter fault (a `5xx` while the host restarts the relay, a dropped
-  connection) is asked through, by the orchestrator and workers alike.
+  The footer counts each worker that had joined `lost`, with what it ran.
+  A fault (a `5xx`, a dropped or refused connection) is tried again 3
+  times, by the orchestrator and workers alike, and the third failed
+  retry ends them (`no socket in 3 dials`). The waits are random, from
+  up to 250 ms doubling to up to half a heartbeat, about 3 s at most in
+  all on the default, so a relay down or restarting is asked through
+  only when it is back within them: one down under a second usually is,
+  one down 2 s usually fails the run.
 - The relay stores nothing, so a restart forgets the run. The orchestrator
   joins again as its host and each worker joins again as itself, for two
   heartbeats (4 s on the default); tasks keep running meanwhile, and what
@@ -601,9 +617,12 @@ use your own instead.
   keeps what it runs, and one sent a task it runs already
   does not run it again, so no work repeats. One not back by then
   ends: a worker's tasks run elsewhere, an orchestrator's run fails.
-  Joining has the same 10 s in all, its socket and request together: a
+  Joining has the same 10 s in all and the same 3 retries, its waits
+  spread over the 10 s (1.25 s doubling, jittered to half: 4.4 to 8.75 s
+  in all), so a relay or network down a few seconds is still joined. A
   relay silent that long fails the run with `cannot connect to the relay
-<origin>: no answer in 10 s`.
+<origin>: no answer in 10 s`; four failed tries say why and how long,
+  as `cannot connect to the relay <origin>: ENOTFOUND, 4 dials in 9.1 s`.
 - A worker that never joins says why on its row (`failed  exited 1:
 …`); its job ending, a success too, is what says so. Once the first
   worker of a size joins, each other of that size not joined within twice
@@ -620,8 +639,8 @@ use your own instead.
 - Only `leave` ends a participant at once (2026-10-25): the
   orchestrator's at its run's end is the final call that closes the run,
   and a worker's when it is done. Either whose socket drops without it
-  dials again, 3 times within 10 s, and the relay keeps it, and its run,
-  for those 10 s; past them the run is over. Either side hearing nothing
+  dials again, 3 times as above and within 10 s, and the relay keeps it,
+  and its run, for 10 s; past either the run is over. Either side hearing nothing
   from the other for 3 heartbeats (6 s on the default) loses it, and the
   rest follows from that: a worker that said nothing for half of it (3 s)
   sends its report; the orchestrator never speaks on a timer, only orders
@@ -671,7 +690,9 @@ An idle worker the rest of the run cannot keep busy leaves (`left`): one
 beyond the peak of the cores the remaining tasks keep busy, so a lull
 between two wide parts keeps it. One a remaining task needs for its size
 stays, and so does one a later task needs when its size's `max` is
-spent, since none could start in its place. A lost worker's tasks run again on
+spent, since none could start in its place. With that `max` spent, the
+last worker of its platform also stays while any task of that platform
+has not ended: a hit whose restore fails runs after all. A lost worker's tasks run again on
 another, and the run starts one in its place. A worker is lost when its
 socket closes, when it says nothing for 3 heartbeats (6 s), or at
 once when its adapter sees its process or job end. Workers start at the first
@@ -684,7 +705,7 @@ workspace's cache under its commit, and the next commit's run plans by it
 before any worker of that size joins.
 
 The `workers` rows, live while the run goes and again in the footer,
-give each worker its status (`starting`, `online`, `left`, `gone`, or `failed`
+give each worker its status (`starting`, `online`, `left`, `lost`, or `failed`
 with why, such as `exited 1: Cannot find package '@vzn/vx-dte'`; once the
 run is over, one still starting is `not joined`), the tasks it
 has done, failed or had aborted by a stop, and the ones it runs now; while the run goes, those that left
@@ -717,7 +738,9 @@ not:
 ```
 
 A run over that started none (every task a hit) says
-`workers   none started: no task needed one`.
+`workers   none started: no task needed one`; one where a task waited
+on a worker and none joined (none started, or each refused) says
+`workers   none joined: a task waited on one`.
 
 Under each worker, and `local`, the footer then spells out what it did:
 its time online, busy and idle; its CPU peak and average in cores and
@@ -852,9 +875,11 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     That margin is spent once: later plans keep its deadline until new
     work is known. A task waiting on one that runs waits until it ends.
     Then the run follows that plan: a start it wants later is asked when
-    due, and a worker idle with its planned work done goes. It plays again
+    due, and a worker idle with its planned work done goes, once every
+    task planned on it has started. It plays again
     only when reality leaves the plan: new work, work that leaves without
-    running, a worker that joins, leaves or warms up off plan, a task past
+    running, a worker idle at its planned end with a task planned on it not
+    started, a worker that joins, leaves or warms up off plan, a task past
     its time or ending sooner, one of no known time ending, a task starting
     with its time, CPU or memory more than 5% off (1 s, 0.05 cores, 64 MiB
     at least), or its window moving on.

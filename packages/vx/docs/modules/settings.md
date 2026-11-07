@@ -22,7 +22,7 @@ export function envName(path: string): string
 export function parseSettingValue(kind: SettingKind, raw: unknown): unknown
 export function settingRefusal(path: string, where: string, raw: unknown, got?: string): string
 export function settingEnv(path: string, env?: NodeJS.ProcessEnv): unknown
-export function checkSettingsEnv(env?: NodeJS.ProcessEnv): void
+export function checkSettingsEnv(env?: NodeJS.ProcessEnv, args?: readonly string[]): void
 export function resolveSetting(
   path: string,
   workspace: unknown,
@@ -40,7 +40,8 @@ export function resolveSetting(
 - A setting with `config: false` is read before `.vx/workspace` loads,
   so it has a variable and maybe a flag, no key.
 - The CLI checks every set variable up front (`checkSettingsEnv`), so a
-  deep reader may fall back on a bad value instead of throwing.
+  deep reader may fall back on a bad value instead of throwing. A
+  variable whose flag the command line holds is skipped: the flag beats it.
 
 `src/orchestrator/run-settings.ts` fills a run's options from this
 list once, before any task (`withRunSettings`).

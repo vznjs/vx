@@ -626,9 +626,54 @@ it('follows the plan, played again only when an event moves past 5%', () => {
   expect(at(7_000, { runCores: 1.2, endsIn: -20_000 })[0]).toBe(false)
   // Ended, idle between the tasks the plan gives it: as planned.
   expect(at(8_000, { idle: true })[0]).toBe(false)
-  // Idle with its planned work done, it goes as the plan foresaw: not played again.
-  const [played, , release] = at(10_000_000, { idle: true })
-  expect([played, release]).toEqual([false, ['w']])
+  // Idle past its planned work's end with that work not started: played
+  // again, and kept for it.
+  expect(at(10_000_000, { idle: true })).toEqual([true, expect.any(Number), []])
+})
+
+// 2026-11-06: a's end left the one worker of a max-1 size idle a moment
+// before b, its dependant, was handed to it. b's 50 ms were within the
+// plan's slack of its end, so the plan let it go as done, started none,
+// and the run never ended.
+it('lets no worker go before the work planned on it has started', () => {
+  const nodes = new Map(
+    [
+      ['a', []],
+      ['b', ['a']],
+    ].map(([id, deps]) => [
+      id as string,
+      {
+        id,
+        deps,
+        config: { exec: { command: 'x' }, cache: true },
+      } as unknown as TaskNode,
+    ]),
+  )
+  const one: Size = { name: 'one', max: 1, cpu: 1, memory: 1e9 }
+  const last: { forecast?: Forecast } = {}
+  const at = (now: number, remaining: string[], running: PlanWorker['running']) =>
+    decide({
+      remaining,
+      nodes,
+      executed: new Set(['a', 'b']),
+      need: () => ({ cores: 1, memory: 1e8 }),
+      durationMs: (id) => (id === 'a' ? 100 : 50),
+      workers: [worker('w', { cores: 1, memory: 1e9, idle: running.length === 0, running })],
+      running: new Set(running.map((r) => r.id!)),
+      sizes: [one],
+      started: new Map([['one', 1]]),
+      final: false,
+      warmUpMs: WARM,
+      replaceable: true,
+      last,
+      now,
+    })
+  expect(at(0, ['a', 'b'], [{ id: 'a', cores: 1, memory: 1e8, endsIn: 100 }]).release).toEqual([])
+  // a ended, b not handed to it yet.
+  expect(at(100, ['b'], []).release).toEqual([])
+  expect(at(120, ['b'], [{ id: 'b', cores: 1, memory: 1e8, endsIn: 50 }]).release).toEqual([])
+  // Its work done, it goes.
+  expect(at(170, [], []).release).toEqual(['w'])
 })
 
 it('starts a worker the plan foresaw without reading the work, and none past its size', () => {

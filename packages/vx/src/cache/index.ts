@@ -8,6 +8,7 @@ export {
   applyCacheFlags,
   ArtifactVanishedError,
   Cache,
+  CorruptArtifactError,
   DEFAULT_STORE,
   type StoreOptions,
   type CacheFlags,
@@ -19,6 +20,7 @@ export {
   cachesNothing,
   EXECUTED_RUNS_SQL,
   historyFiles,
+  holdStore,
   indexDb,
   formatCachePolicy,
   FULL_CACHE_POLICY,
@@ -37,6 +39,7 @@ export {
   racyWindowMs,
   type SchemaReset,
   SCHEMA_VERSION,
+  storedLog,
   vxCacheEntries,
 } from './cache.js'
 export { ABSENT_INPUT, absentOr, CACHE_VERSION, foldHead } from './key-fold.js'
@@ -50,6 +53,7 @@ export {
   committedFiles,
   cleanWorkspaceOutputs,
   declaresInput,
+  namedIgnoredReach,
   namedOutright,
   workspaceFilesReachInto,
   filesToken,

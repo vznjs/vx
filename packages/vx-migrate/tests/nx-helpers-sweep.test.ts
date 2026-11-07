@@ -172,7 +172,7 @@ describe('expandNxInputs', () => {
       { name: 'prod', of: 'deps' },
     ])
     expect(got.todos).toEqual([
-      'input {externalDependencies: ["react"]}: vx keys every task on the lockfile (the whole file, or with a @vzn/vx-lockfile plugin the project\'s and the root\'s dependencies) — safe to drop unless only another project installs one',
+      'input {externalDependencies: ["react"]}: a @vzn/vx-lockfile plugin keys each task on its project\'s and the root\'s dependencies — one only another project installs is not keyed',
       // `dependentTasksOutputFiles` is nothing to map: vx folds the upstream keys (G-49).
     ])
   })
@@ -239,7 +239,7 @@ describe('externalDependencies the root declares', () => {
     ]).toEqual([
       [],
       [
-        'input {externalDependencies: ["eslint","react"]}: vx keys every task on the lockfile (the whole file, or with a @vzn/vx-lockfile plugin the project\'s and the root\'s dependencies) — safe to drop unless only another project installs one',
+        'input {externalDependencies: ["eslint","react"]}: a @vzn/vx-lockfile plugin keys each task on its project\'s and the root\'s dependencies — one only another project installs is not keyed',
       ],
     ])
   })

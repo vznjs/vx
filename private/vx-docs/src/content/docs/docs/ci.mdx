@@ -107,7 +107,7 @@ Each run writes a summary on the workflow run's page:
 > | @acme/web#test | ✅ ran | 4.2s |
 > | @acme/api#build | ☁️ restored remote | 0ms |
 > | @acme/ui#build | ✔️ up-to-date | 0ms |
-> | @acme/ui#lint | ⏭️ skipped | 0ms |
+> | @acme/ui#lint | ⏭️ skipped |  |
 >
 > <sub>vx 0.0.21 · `vx run ci --all` · 3/5 passed · 1 up-to-date · 1 restored</sub>
 
@@ -115,7 +115,7 @@ A task that fails on inputs it passed on before is marked flaky in the
 log:
 
 ```ansi
- [38;2;239;68;68m◼︎[0m     [38;2;203;213;225m3ms[0m         [38;2;239;68;68mfailed[0m  [2mmiss[0m         [2m—[0m      [2m—[0m                 [2mlocal[0m        [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m [2mflaky - passed 3× before[0m
+ [38;2;239;68;68m◼︎[0m     [38;2;203;213;225m3ms[0m         [38;2;239;68;68mfailed[0m  [2mmiss[0m         [2m—[0m      [2m—[0m       [2m—[0m         [2mlocal[0m        [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m [2mflaky - passed 3× before[0m
 ```
 
 ### When to run `vx lock`

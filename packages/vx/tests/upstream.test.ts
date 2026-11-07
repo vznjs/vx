@@ -463,3 +463,61 @@ describe('inputs.tasks: an exact entry naming no dependency', () => {
     TIMEOUT,
   )
 })
+
+// The `^build` exemption above lets a `pkg#build` filter through for a
+// preset's project that has no such dependency. It also let through one
+// naming a TRANSITIVE dependency: `a → b → c`, `dependsOn: ['^build']`,
+// `inputs.tasks: ['@x/c#build']`. The candidates are a's direct
+// dependencies (b#build), the filter selected none, and an edit to c's
+// sources replayed a's hit: a stale hit.
+describe('inputs.tasks: an exact entry naming a transitive dependency', () => {
+  const runWith = async (filter: string[]) => {
+    const fixture = await makeWorkspace('vx-filter-transitive-', {
+      '@x/a': ['@x/b'],
+      '@x/b': ['@x/c'],
+    })
+    try {
+      const task = (extra: string) =>
+        `{ exec: { command: 'true' }, inputs: { files: ['src/**']${extra} }, outputs: { files: [] }, cache: true, dependsOn: ['^build'] }`
+      for (const p of ['c', 'b'])
+        await addProject(fixture.root, `@x/${p}`, {
+          files: { [`src/${p}.js`]: '1\n' },
+          config: `export default { tasks: { build: ${task('')} } }`,
+        })
+      await addProject(fixture.root, '@x/a', {
+        files: { 'src/a.js': '1\n' },
+        config: `export default { tasks: { build: ${task(`, tasks: ${JSON.stringify(filter)}`)} } }`,
+      })
+      return await run({
+        cwd: fixture.root,
+        tasks: ['@x/a#build'],
+        log: silentLogger(fixture),
+      }).then(
+        (r) => (r.ok ? 'ok' : 'failed'),
+        (e: Error) => e.message,
+      )
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+    }
+  }
+
+  it(
+    'is refused when the run plans, as an entry naming no dependency is',
+    async () => {
+      expect(await runWith(['@x/c#build'])).toBe(
+        "@x/a#build: inputs.tasks: '@x/c#build' names none of its dependencies (@x/b#build), so it selects nothing and the key would not move with them; fix the name, or use [] to decouple on purpose",
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'CONTROLS: the direct dependency, a negation of the transitive one and a pattern run',
+    async () => {
+      expect(await runWith(['@x/b#build'])).toBe('ok')
+      expect(await runWith(['^build', '!@x/c#build'])).toBe('ok')
+      expect(await runWith(['@x/*#build'])).toBe('ok')
+    },
+    TIMEOUT,
+  )
+})

@@ -19,6 +19,7 @@ skills/vx/SKILL.md
 src/bin.ts
 src/cache/archive.ts
 src/cache/cache.ts
+src/cache/checkpointer.ts
 src/cache/file-hashes.ts
 src/cache/fold-memo.ts
 src/cache/fs-clock.ts
@@ -203,6 +204,7 @@ src/util/hide-env.ts
 src/util/index.ts
 src/util/num.ts
 src/util/paths.ts
+src/util/plain-text.ts
 src/util/procfs.ts
 src/util/real-path.ts
 src/util/secret-mask.ts

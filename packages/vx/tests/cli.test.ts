@@ -851,7 +851,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     // The per-pattern warning is folded into the error: one line, not two
     // saying the same thing (the init walkthrough, 2026-09-04).
     expect(stderr).not.toContain('matched no projects')
-    expect(stderr).toContain('no projects matched filter(s): oen\n\n  fix  one\n')
+    expect(stderr).toContain('no projects matched filter(s): "oen"\n\n  fix  one\n')
   })
 
   it('a path filter that climbs out of the root is refused, naming the pattern (parity L2)', async () => {

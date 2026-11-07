@@ -83,9 +83,11 @@ import {
   bindableReads,
   bindableWrites,
   buildCustomConfig,
+  linkedWriteBinds,
   readOnlyMasks,
   scratchWrites,
   widenedEntries,
+  withLinkedWrites,
 } from './sandbox-binds.js'
 import {
   atOrUnder,
@@ -111,6 +113,7 @@ import {
 } from './sandbox-violations.js'
 import {
   closeSignalChannel,
+  groupAlive,
   killTree,
   releaseGroup,
   signalThrough,
@@ -1221,6 +1224,8 @@ export interface ResolvedSandboxConfig {
    * no mount holds them. `scratchWrites` decides which still cover a write.
    */
   pendingWrites?: readonly string[]
+  /** Linux: write grants spelled through a link in the project, bound there too (`linkedWriteBinds`). */
+  linkedWrites?: readonly { readonly link: string; readonly target: string }[]
   network?: true | readonly string[]
   denyNetwork?: readonly string[]
   systemInfo?: readonly string[]
@@ -1318,6 +1323,31 @@ function assertWriteStaysHome(grant: string, real: string, projectDir: string): 
   )
 }
 
+/**
+ * Linux: a literal write grant spelled through a link in the project
+ * (`gen/` over `gen -> real`), as the task names it: the project's real
+ * directory with the grant's own components, links unresolved. The grant
+ * binds at its real path and bwrap mounts no link, so without a second
+ * bind there the task met "Directory nonexistent", or, under a read
+ * grant of the project, the link bound read-only over the same directory
+ * ("Read-only file system"). Seatbelt judges the resolved path, so macOS
+ * needs none.
+ */
+function linkSpelling(
+  grant: string,
+  real: string,
+  projectDir: string,
+): { link: string; target: string } | undefined {
+  if (process.platform !== 'linux' || grant.startsWith('~') || path.isAbsolute(grant)) return
+  // `gen/**` is the directory whole (`expandGrants`).
+  const whole = /\/\*\*(?:\/\*)?$/
+  const lexical = path.resolve(projectDir, grant.replace(whole, ''))
+  const target = real.replace(whole, '')
+  if (!atOrUnder(lexical, projectDir) || !isMountableLiteral(target)) return
+  const link = path.join(toRealPath(projectDir), path.relative(projectDir, lexical))
+  return link === target ? undefined : { link, target }
+}
+
 /** Where `p` lands through every link on it, a dangling last one included. */
 function throughLinks(p: string, hops = 0): string {
   if (hops > 40) return p
@@ -1352,12 +1382,15 @@ export function resolveSandboxConfig(
   }
   const a = cfg.allow ?? {}
   const pending: string[] = []
+  const linked: Array<{ link: string; target: string }> = []
   const r: ResolvedSandboxConfig = {
     allowRead: expandGrants((a.read ?? []).map(resolve), walls),
     allowWrite: expandGrants(
       (a.write ?? []).map((p) => {
         const real = resolve(p)
         assertWriteStaysHome(p, real, projectDir)
+        const link = linkSpelling(p, real, projectDir)
+        if (link !== undefined) linked.push(link)
         // A directory a write glob matches is writable whole, as Linux's
         // bind of the hit makes it: `<glob>/**` collapses below into the
         // glob and its subtree. SRT compiles a glob as an exact regex, so
@@ -1374,6 +1407,7 @@ export function resolveSandboxConfig(
     ),
   }
   if (pending.length > 0) r.pendingWrites = pending
+  if (linked.length > 0) r.linkedWrites = linked
   if (process.platform === 'darwin') {
     const read = wallsGlobsReach(r.allowRead, walls)
     const write = wallsGlobsReach(r.allowWrite, walls)
@@ -1446,6 +1480,8 @@ export interface SandboxViolation {
    * leaves it hidden.
    */
   via?: string
+  /** Linux: what a refused `openat`'s flags asked for. */
+  opened?: 'read' | 'write'
   ignorable?: readonly ('read' | 'write' | 'network' | 'systemInfo')[]
 }
 
@@ -1613,11 +1649,13 @@ async function wrapIn(
       ? ownGroupCommand(tag, inTmp, args.trace, args.tracePaths === true)
       : { command: taggedCommand, forwards: false, traced: false }
   // The tag leads: SRT keys a record by the wrap's first 100 characters,
-  // and the proxy wait below is the same 190 for every networked task.
+  // and the proxy wait below is the same 190 for every task.
   const inner = [
     process.platform === 'linux' ? `: 'vx-${tag}';` : '',
     ports.length > 0 ? portBridgeInner(ports, tag) : '',
-    process.platform === 'linux' && args.config.network !== undefined ? PROXY_BRIDGE_WAIT : '',
+    process.platform === 'linux' && SandboxManager.getLinuxHttpSocketPath() !== undefined
+      ? PROXY_BRIDGE_WAIT
+      : '',
     grouped.command,
   ]
     .filter((part) => part !== '')
@@ -1688,7 +1726,7 @@ async function wrapIn(
     )
     wrapped =
       (gitGranted ? 'GIT_DISCOVERY_ACROSS_FILESYSTEM=${GIT_DISCOVERY_ACROSS_FILESYSTEM-1} ' : '') +
-      `exec ${readOnlyMasks(wrapped, scratch)}`
+      `exec ${readOnlyMasks(withLinkedWrites(wrapped, linkedWriteBinds(args.config.linkedWrites)), scratch)}`
   }
   if (process.platform === 'linux' && !hostHasIpv6())
     wrapped = `SOCAT_DEFAULT_LISTEN_IP=4 ${wrapped}`
@@ -1815,7 +1853,11 @@ function ownGroupCommand(
 }
 
 /**
- * What strace stops on: the reads, the execs and access probes (a refused
+ * What strace stops on: the reads (`openat`, and `open`, musl's open():
+ * traced as openat alone, a sibling under a widened write grant was read
+ * unreported and cached; arm64 has no `open`; an `openat2` never reaches
+ * strace, SRT's write observer takes each one first), the execs and
+ * access probes (a refused
  * `./gen.sh || fallback` passed unreported), and what moves or makes a
  * process's cwd. Not the stat family: a stop per stat cost oxlint 19% and
  * `git status` 30%, where the execs and probes cost nothing measurable, and
@@ -1824,7 +1866,7 @@ function ownGroupCommand(
  * nothing the trace sees.
  */
 const TRACED_CALLS =
-  'trace=openat,execve,?access,faccessat,?faccessat2,chdir,fchdir,clone,?clone3,?fork,?vfork'
+  'trace=openat,?open,execve,?access,faccessat,?faccessat2,chdir,fchdir,clone,?clone3,?fork,?vfork'
 
 /** The descriptor an in-sandbox strace writes its trace to (`ownGroupCommand`). */
 const TRACE_FD = 5
@@ -1971,6 +2013,13 @@ export function bridgedPorts(c: Pick<ResolvedSandboxConfig, 'localBinding'>): nu
  * command, until both listen in the task's network namespace, read off
  * /proc/net (IPv4 or IPv6, state 0A). Bounded at ~5 s: a bridge that never
  * listens leaves the command to meet the refusal it met before.
+ *
+ * Every task the run's bridge reaches waits, not only one that lists a
+ * network: one that lists none dials the same proxy, which refuses and
+ * names the host, and that refusal fails it. Waited for only by networked
+ * tasks, it met the closed port instead under load, swallowed the error
+ * and passed with nothing reported (2026-11-06). The wait costs ~4 ms, the
+ * socat's own start.
  */
 const PROXY_BRIDGE_WAIT =
   "( i=0; until grep -qsE ':0C38 [0-9A-F]+:0000 0A' /proc/net/tcp /proc/net/tcp6 && grep -qsE ':0438 [0-9A-F]+:0000 0A' /proc/net/tcp /proc/net/tcp6; do [ $i -ge 500 ] && break; i=$((i+1)); sleep 0.01; done );"
@@ -2267,9 +2316,13 @@ const MOUNT_RACE_RETRY_LINE =
  * bwrap's own refusal of a mount gone between its read of the mount table
  * and its remount: a container runtime's transient mount under /tmp
  * (`/newroot/tmp/containerd-mount…`, a `docker build` beside the task on
- * CI). The command never started.
+ * CI). The command never started. Or a path the wrap walls, gone before
+ * bwrap mounts on it: bwrap makes the mount point anew under a read-only
+ * parent (`Can't mkdir /tmp/vx-noscan-0: Read-only file system`, the no-scan
+ * directory removed by another process).
  */
-const BWRAP_MOUNT_GONE = /^bwrap: Can't .*: No such file or directory$/
+const BWRAP_MOUNT_GONE =
+  /^bwrap: Can't (?:.*: No such file or directory|mkdir .*: Read-only file system)$/
 
 /**
  * Run a single task wrapped in the sandbox. Caller must have called
@@ -2428,7 +2481,7 @@ async function runSandboxedOnce(
   // share a stream. Skipped when strace isn't on PATH — bwrap still
   // enforces structurally; we just lose the structured violation list.
   //
-  // We trace `openat`, the read itself, plus `execve` and the access
+  // We trace the opens, the read itself, plus `execve` and the access
   // probes (`TRACED_CALLS`). Not `statx` / `newfstatat`: a stop per stat
   // is a tax on every stat-heavy task. A probe's ENOENT counts only where
   // the host has the path (`parseStraceViolations`), so a PATH walk past
@@ -2446,12 +2499,12 @@ async function runSandboxedOnce(
   // one gets the slow form rather than no detection.
   const useStrace = await wantsStraceDetection()
   // Before the spawn: what the task creates under a widened grant is its own.
-  const widened = useStrace ? widenedEntries(args.config.allowWrite) : undefined
+  const widened = widenedEntries(args.config.allowWrite)
   const { wrapped, tag, srtCommand, baselines, scratch, forwardsSignals, traced } =
     await wrapSandboxedCommand({
       ...args,
       ...(useStrace ? { trace: useStrace } : {}),
-      ...(widened !== undefined && widened.size > 0 ? { tracePaths: true } : {}),
+      ...(useStrace && widened.size > 0 ? { tracePaths: true } : {}),
     })
   const takeRecords = collectRecords(
     SandboxManager.getSandboxViolationStore(),
@@ -2581,6 +2634,9 @@ async function runSandboxedOnce(
   const cutLine = ends.own(POST_EXIT_CUT_LINE)
   if (cut) args.onStderr?.(cutLine)
   const stderr = cut ? streamed + cutLine : streamed
+  // As runCommand: a leftover holding no pipe is still in the group. Under
+  // Linux's pid namespace it died with the command; macOS keeps it.
+  const left = cut || groupAlive(proc)
   args.liveChildren?.delete(proc)
   releaseGroup(proc)
   closeSignalChannel(proc)
@@ -2659,6 +2715,7 @@ async function runSandboxedOnce(
             bindableWrites(args.config.allowWrite),
             scratch,
             [...baselines.allowRead, ...bindableReads(args.config.allowRead)],
+            { entries: widened, granted: args.config.allowWrite },
           ),
           ...refusedConnections(records.map((v) => v.line)),
         ]
@@ -2747,7 +2804,8 @@ async function runSandboxedOnce(
     violations,
     ...(typeof proc.signalCode === 'string' ? { signal: proc.signalCode } : {}),
     ...(timeout.timedOut() ? { timedOut: true } : {}),
-    ...(cut ? { leftRunning: true } : {}),
+    ...(timeout.sigkilled() ? { killedAfterGrace: true } : {}),
+    ...(left ? { leftRunning: true } : {}),
     // Linux: the task's CPU and peak never reach this wait. bwrap runs it
     // in a pid namespace (`--unshare-pid`), and what the namespace's
     // processes used is not folded into bwrap's usage: a 500 ms busy loop

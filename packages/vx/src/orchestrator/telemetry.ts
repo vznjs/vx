@@ -34,7 +34,7 @@ import {
   teardownTimeoutMs,
   thrownMessage,
 } from '../util/index.js'
-import type { RunEvent, RunEventSubscriber } from '../report/index.js'
+import { neverStarted, type RunEvent, type RunEventSubscriber } from '../report/index.js'
 
 /** Bumped when the record shape changes. Readers MUST check `v`. */
 export const TELEMETRY_SCHEMA_VERSION = 4
@@ -256,14 +256,20 @@ export interface RunSummaryRecord {
   startedAt: number
   endedAt: number
   totalDurationMs: number
+  /** Every task the run had, as the terminal's total: `tasks` plus `notRunCount`. */
   taskCount: number
   failedCount: number
   /**
-   * Tasks a shutdown signal or an embedder's abort killed (v3). They are
-   * not in `tasks`, which holds real runs only, so without this a stopped
-   * run read as a failure with nothing failed (item 851).
+   * Tasks a shutdown signal or an embedder's abort killed once started (v3),
+   * each in `tasks` as `aborted`: without the count a stopped run read as a
+   * failure with nothing failed (item 851).
    */
   abortedCount: number
+  /**
+   * Tasks the stop reached before they started: the terminal's `not run`.
+   * Not in `tasks`, since they never ran. Absent when none. Additive.
+   */
+  notRunCount?: number
   hitCount: number
   /** Hits by the layer that answered, up-to-date ones included. */
   hitLocalCount: number
@@ -318,8 +324,9 @@ export interface RunStage {
  * computed: both a local `run()` and the distributed controller build their
  * `TaskTelemetry[]` (each via `deriveCacheSource`) and call this, so a
  * distributed run and a local run produce byte-identical summaries and land in
- * the same ingest. The per-task tallies (taskCount / failedCount /
- * hitLocal|Remote|Count) derive from `tasks`; `totalDurationMs` (wall time) and
+ * the same ingest. The per-task tallies (failedCount /
+ * hitLocal|Remote|Count) derive from `tasks`, and `taskCount` from `tasks`
+ * plus `notRunCount`; `totalDurationMs` (wall time) and
  * `exitOk` (the run's overall verdict — which counts skipped tasks beyond the
  * recorded task list) are run-level facts and are passed in.
  */
@@ -332,6 +339,7 @@ export function assembleRunSummary(
     totalDurationMs: number
     exitOk: boolean
     abortedCount: number
+    notRunCount?: number
     stages?: readonly RunStage[]
     uploads?: { count: number; bytes: number; ms: number; failed: number }
     machines?: readonly MachineReport[]
@@ -360,9 +368,14 @@ export function assembleRunSummary(
     startedAt: timing.startedAt,
     endedAt: timing.endedAt,
     totalDurationMs: timing.totalDurationMs,
-    taskCount: tasks.length,
+    // The terminal's total: the tasks a stop reached first are not in
+    // `tasks`, yet a summary of 2 beside a terminal's 3 read as a lost task.
+    taskCount: tasks.length + (timing.notRunCount ?? 0),
     failedCount,
     abortedCount: timing.abortedCount,
+    ...(timing.notRunCount !== undefined && timing.notRunCount > 0
+      ? { notRunCount: timing.notRunCount }
+      : {}),
     hitCount: hitLocalCount + hitRemoteCount,
     hitLocalCount,
     hitRemoteCount,
@@ -395,7 +408,11 @@ export interface TelemetrySink {
   readonly wants?: ReadonlyArray<TelemetryRecord['kind']>
   /** A streaming record. MUST return promptly — buffer; do NOT await I/O. */
   onRecord?(record: TelemetryRecord): void
-  /** The per-run summary, at run:end. MUST return promptly. */
+  /**
+   * The per-run summary, once at run:end; a requested persistent task the
+   * foreground keeps sends it when that task exits, so it reads the run's
+   * final verdict. MUST return promptly.
+   */
   onRunSummary?(summary: RunSummaryRecord): void
   /**
    * Drain buffered data. Awaited at run:end under a deadline — a sink that
@@ -667,6 +684,9 @@ export function createTelemetrySource(args: {
       case 'task:complete': {
         const { node, outcome } = event
         if (node.config.exec === undefined) return // group task
+        // The stop reached it first: no task.start, and the summary counts
+        // it in `notRunCount`, not `tasks`, so no task.end either.
+        if (neverStarted(outcome)) return
         deliver({
           v: TELEMETRY_SCHEMA_VERSION,
           kind: 'task.end',
@@ -712,9 +732,12 @@ export function createTelemetrySource(args: {
       // accessed_at bumps and every later plugin's teardown lost with it.
       // Sinks race concurrently, so each still gets the whole budget.
       const deadline = new AbortController()
+      // The deadline's warning names the sinks still out, as a throw names its own.
+      const pending = new Set<TelemetrySink>()
       const all = Promise.all(
         sinks.map(async (sink) => {
           if (disabled.has(sink) || sink.flush === undefined) return
+          pending.add(sink)
           try {
             await step(`${args.owners?.get(sink) ?? label(sink)}:telemetry`, () =>
               sink.flush!(deadline.signal),
@@ -723,12 +746,17 @@ export function createTelemetrySource(args: {
             // A flush failure can never break the run — but it still costs
             // this sink its export, so say so rather than dropping it.
             warn?.(`[vx] telemetry sink '${label(sink)}' failed to flush: ${thrownMessage(err)}`)
+          } finally {
+            pending.delete(sink)
           }
         }),
       )
       if (!(await settleWithin(all, ms))) {
         deadline.abort(new Error(`telemetry flush deadline (${ms}ms)`))
-        warn?.(`[vx] telemetry flush timed out after ${ms}ms; buffered records lost`)
+        const names = [...pending].map((s) => `'${label(s)}'`).join(', ')
+        warn?.(
+          `[vx] telemetry flush timed out after ${ms}ms (sink${pending.size === 1 ? '' : 's'} ${names}); buffered records lost`,
+        )
         // A sink told of the abort says what it lost as its request ends; the
         // run ended first and that line was lost (vx-otel, on CI). Briefly.
         await settleWithin(all, ABORT_GRACE_MS)

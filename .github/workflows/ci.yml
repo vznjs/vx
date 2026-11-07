@@ -134,7 +134,7 @@ jobs:
       - name: vx run
         env:
           VX_DTE_RELAY: ${{ steps.relay.outputs.url || env.VX_DTE_RELAY }}
-          VX_CACHE_URL: ${{ steps.outputs.url || env.VX_CACHE_URL }}
+          VX_CACHE_URL: ${{ steps.cache.outputs.url || env.VX_CACHE_URL }}
         run: bun packages/vx/src/bin.ts run --profile=profile.json ci ${{ github.event_name == 'push' && 'release' || '' }} ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}
       # The run in time (--profile): every worker's tasks on their own
       # lanes (@vzn/vx-dte), opened in https://ui.perfetto.dev; the job

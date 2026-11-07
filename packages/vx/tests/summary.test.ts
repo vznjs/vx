@@ -420,6 +420,32 @@ describe('formatRunSummary', () => {
       )
     })
 
+    // A deferred task's outputs stay in the executor's store; its fetch
+    // saves them later. An executor that names no `where` had it counted
+    // "not saved" beside its "not downloaded".
+    it('a task whose outputs stayed remote is no "not saved"', () => {
+      const lines = formatRunSummary(
+        [cached('a#build', 'success', { outputs: 'deferred' })],
+        10,
+        { enabled: false },
+        {
+          version: '0.0.0',
+          packageCount: 1,
+          remoteCacheEnabled: false,
+          cache: {
+            local: true,
+            localWrite: true,
+            remote: false,
+            traffic: trafficOf({}),
+            notDownloaded: () => 1,
+          },
+        },
+      )
+      expect(lines[lines.findIndex((l) => l.startsWith('  cache')) + 1]!.trim()).toBe(
+        '1 miss · 1 not downloaded',
+      )
+    })
+
     // CI, 2026-10-21: a task not saved here whose bytes went to the remote
     // left its bucket twice, and the bar's repeat threw on a negative count.
     it('a task not saved here that uploaded leaves the not-saved count once', () => {
@@ -642,7 +668,7 @@ describe('aborted and not-run tasks', () => {
       return { id, projectName, taskName, config: { exec: { command: 'noop' } } } as TaskNode
     }
     expect(formatTaskAbortedLine(node('a#t'), killed('a#t'))).toBe(
-      ' ✗   100ms         aborted                                       local        a#t',
+      ' ✗   100ms         aborted                             —         local        a#t',
     )
     expect(formatTaskAbortedLine(node('a#after'), outcome('a#after', 'aborted', 1))).toBe(
       ' ◌                 not run                                                    a#after',
@@ -694,13 +720,13 @@ describe('a flaky task says so on its own row', () => {
     expect(flakyNote(outcome('a#x', 'success'))).toBe('')
     expect(
       formatTaskExecutedLine(node('a#x'), { ...outcome('a#x', 'success'), node: node('a#x') }),
-    ).toBe(' ⏺︎   100ms         success miss         —      —                 local        a#x')
+    ).toBe(' ⏺︎   100ms         success miss         —      —       —         local        a#x')
   })
 
   it('the note rides the row, dim', () => {
     const o = flaky('solid-js#types', 'success', 1, 1)
     expect(formatTaskExecutedLine(o.node, o)).toBe(
-      ' ⏺︎   100ms         success miss         —      —                 local        solid-js#types flaky - failed 1× before',
+      ' ⏺︎   100ms         success miss         —      —       —         local        solid-js#types flaky - failed 1× before',
     )
     const colored = formatTaskExecutedLine(o.node, o, { enabled: true })
     expect(colored).toContain('\x1b[2mflaky - failed 1× before')

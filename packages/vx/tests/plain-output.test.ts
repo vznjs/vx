@@ -8,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 import type { Logger } from '../src/report/logger.js'
 import { plainOutput } from '../src/report/plain-output.js'
+import { stripEscapes } from '../src/util/index.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -70,6 +71,31 @@ describe('plainOutput', () => {
     log.taskStdout(A, 'ok\x1b(')
     log.taskStdout(A, 'B\x1b[mnext\n')
     expect(calls).toEqual(['out a#build "ok"', 'out a#build "next\\n"'])
+  })
+
+  // Bun.stripANSI drops from an unterminated string escape (OSC, DCS, SOS,
+  // PM, APC) to the end of its input, and the hold kept an OSC across
+  // newlines: a stray title escape ate a failure's reason.
+  it('an unterminated string escape ends at its line, live and held', () => {
+    for (const open of ['\x1b]', '\x1bP', '\x1b_', '\x1b^', '\x1bX']) {
+      expect(stripEscapes(`a${open}0;t\nreason\n`)).toBe('a\nreason\n')
+      const { calls, log } = recorder()
+      log.taskStdout(A, `before\n${open}0;oops`)
+      log.taskStdout(A, '\nERROR: reason\n')
+      log.taskStdout(A, 'line3\n')
+      log.taskComplete(A, DONE)
+      expect(calls.join('')).toBe(
+        'out a#build "before\\n"out a#build "\\nERROR: reason\\n"out a#build "line3\\n"done a#build',
+      )
+    }
+    expect(stripEscapes('\x1b]0;t\x07x\x1bPq\x1b\\y\x1b]0;t\x1b[31mz\n')).toBe('xyz\n')
+  })
+
+  it('a held escape is bounded: a long unterminated one is let go', () => {
+    const { calls, log } = recorder()
+    log.taskStdout(A, `a\x1b]0;${'t'.repeat(10_000)}`)
+    log.taskStdout(A, 'more')
+    expect(calls).toEqual(['out a#build "a"', 'out a#build "more"'])
   })
 
   it('a lone ESC that can complete nothing is stripped, not held', () => {
@@ -151,6 +177,15 @@ describe('a plain run', () => {
       'app',
       `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['nomatch/**'] }, outputs: { files: [] }, cache: true } } }\n`,
     )
+    await addProject(
+      root,
+      'b',
+      `const osc = "printf 'before\\\\n\\\\033]0;oops\\\\nERROR: the real failure reason\\\\nline3\\\\n'"
+export default { tasks: {
+  osc: { exec: { command: osc + '; exit 1' } },
+  ok: { exec: { command: osc }, inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true },
+} }\n`,
+    )
   })
   afterAll(async () => {
     await rm(root, { recursive: true, force: true })
@@ -165,5 +200,15 @@ describe('a plain run', () => {
     const warning = 'app#build: inputs matched no files'
     expect([p.exitCode, p.stdout.toString().includes(warning)]).toEqual([0, false])
     expect(p.stderr.toString()).toContain(warning)
+  })
+
+  it('an unterminated escape loses no later line, live, kept or cached', () => {
+    const vx = (...args: string[]) =>
+      Bun.spawnSync({ cmd: [process.execPath, BIN, ...args], cwd: root }).stdout.toString()
+    const said = 'before\n\nERROR: the real failure reason\nline3\n'
+    expect(vx('run', 'b#osc')).toContain(said)
+    expect(vx('last', '--log', 'b#osc')).toBe(said)
+    expect(vx('run', 'b#ok')).toContain(said)
+    expect(vx('last', '--log', 'b#ok')).toBe(said)
   })
 })

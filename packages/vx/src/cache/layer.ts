@@ -142,7 +142,8 @@ export interface CacheEntry {
   outputDirRows?: OutputDirRow[]
   /**
    * The task's output log, always present (may be empty): both streams in
-   * the order the run printed them (`orchestrator/output-log.ts`).
+   * the order the run printed them (`orchestrator/output-log.ts`). A local
+   * entry's is a getter that reads it on each access: read it once.
    */
   stdout: string
   storedAt: string
@@ -511,11 +512,12 @@ export function isIndexFull(err: unknown): boolean {
 }
 
 /**
- * The supplied artifact bytes don't decompress/parse as a vx artifact.
- * Thrown by `save`/`ingest` BEFORE anything reaches the final cache
- * path — a rejected artifact leaves no `<hash>.tar.zst` and no SQL row.
- * The LayeredCache treats this as a remote fault on the remote-hit
- * path (degrades to a cache miss).
+ * Bytes that are not the artifact their key names. Core's ingest throws
+ * it for bytes that do not decompress or parse, before anything is
+ * stored; a remote layer that checks its bytes as they pass (a digest, a
+ * signature) errors its `get` body with it to say they are wrong there,
+ * not cut short. Either way the hit is a miss, and the re-run's save is
+ * sent over that remote's copy.
  */
 export class CorruptArtifactError extends Error {
   constructor(
@@ -528,10 +530,15 @@ export class CorruptArtifactError extends Error {
   }
 }
 
+/** A `CorruptArtifactError` by name: a plugin may load its own copy of core. */
+export function isCorruptArtifact(err: unknown): boolean {
+  return err instanceof Error && err.name === 'CorruptArtifactError'
+}
+
 /**
- * `restoreOutputs` found no artifact where the probe found one: it was
- * removed in between — a `vx cache clean` in another shell, or one for
- * another workspace sharing the cache directory. The
+ * `restoreOutputs` found no artifact where the probe found one: another
+ * process removed or replaced it in between — a prune or a clean for a
+ * workspace sharing the cache directory, a re-save of the key. The
  * bytes are not wrong, they are gone, so the entry is a MISS and the task
  * runs (execute-task.ts); nothing about the cache needs throwing away.
  * Also thrown, with its `reason`, for an artifact whose bytes ARE wrong
@@ -547,7 +554,8 @@ export class ArtifactVanishedError extends Error {
     cause?: unknown,
   ) {
     super(
-      reason ?? `its cache artifact ${hash} vanished before the restore (a vx cache clean)`,
+      reason ??
+        `its cache artifact ${hash} vanished before the restore (another process removed or replaced it)`,
       cause === undefined ? undefined : { cause },
     )
     this.name = 'ArtifactVanishedError'

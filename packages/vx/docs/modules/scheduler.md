@@ -168,8 +168,9 @@ restore slot would build from outputs they have not written.
 `settleNow` is asked of a task once it is due (a restore-tier one when
 its lane has room), after the skip check. A thunk settles it in the
 same tick: `onStart` hears it, the thunk runs (a hit replays its output
-there), and `onFinish` hears the outcome; no slot, no admission ask, no
-`execute` promise. A throw from either dispatches it instead, started
+there), and `onFinish` hears the outcome the thunk returned, its queue
+time set on it, not on a copy; no slot, no admission ask, no `execute`
+promise. A throw from either dispatches it instead, started
 once. The run passes it for unkeyed groups (they run nothing, X-192)
 and for restore-tier hits whose tree is current (`currentHit`), unless a
 taint or `--continue=always` needs the full path.
@@ -195,7 +196,9 @@ A run counts dependents once: the `most-work` baseline is also every
 row's `blocks`, groups counted as the scheduler counts them, and the
 orchestrator remembers it with the graph (`graphCounts`, keyed by the graph
 token and the node ids). A second count for the rows alone was a pass of
-its own (2026-10-29).
+its own (2026-10-29). `prepareRun` takes it while git's blob-size check
+runs, when nothing after the graph can edit the nodes
+(`PreparedRun.dependents`, `prepare.md`).
 
 The ranking lives in `src/graph/priorities.ts`, a file with no runtime
 import at all. The Learn page's scheduler simulator bundles it for the
@@ -215,7 +218,7 @@ export function tieredReverseDepCount(
 export function mergePriorities(
   baseline: ReadonlyMap<string, number>,
   overrides: ReadonlyMap<string, number>,
-): ReadonlyMap<string, number>
+): (id: string) => number // read as asked: no merged copy of the two maps
 ```
 
 ## Algorithm

@@ -222,7 +222,7 @@ export const SETTINGS: readonly Setting[] = [
     path: 'config.workerTimeout',
     kind: { type: 'duration', timer: true },
     default: '30s',
-    doc: 'How long one config evaluation may take.',
+    doc: 'How long one config evaluation may take; at 5 s vx names the config still evaluating.',
     config: false,
   },
   {
@@ -396,9 +396,22 @@ export function settingEnv(path: string, env: NodeJS.ProcessEnv = process.env): 
   return v
 }
 
-/** Validate every set setting variable once, so a deep reader can trust what it reads. */
-export function checkSettingsEnv(env: NodeJS.ProcessEnv = process.env): void {
-  for (const s of SETTINGS) settingEnv(s.path, env)
+/**
+ * Validate every set setting variable once, so a deep reader can trust what
+ * it reads. One whose flag `args` holds (before a `--`) is left alone: the
+ * flag beats it, so nothing reads it.
+ */
+export function checkSettingsEnv(
+  env: NodeJS.ProcessEnv = process.env,
+  args: readonly string[] = [],
+): void {
+  const end = args.indexOf('--')
+  const given = end === -1 ? args : args.slice(0, end)
+  for (const s of SETTINGS) {
+    const flag = s.flag?.name
+    if (flag !== undefined && given.some((a) => a === flag || a.startsWith(`${flag}=`))) continue
+    settingEnv(s.path, env)
+  }
 }
 
 /** Where a resolved setting came from. */

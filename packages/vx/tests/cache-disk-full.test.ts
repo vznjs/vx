@@ -120,6 +120,48 @@ describe('a full disk', () => {
     }
   })
 
+  it('a tree save whose first file write fails leaves no temp tree', async () => {
+    // The tree form writes its files at once: a write still in flight when
+    // the first one failed made its parent directory again after the
+    // cleanup removed the temp, and a full disk kept every such temp.
+    const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
+      embeddings: 0,
+      decompress: true,
+    })
+    const out = path.join(proj, 'dist')
+    for (const f of ['a', 'b', 'c']) {
+      mkdirSync(path.join(out, f))
+      writeFileSync(path.join(out, f, 'x.bin'), crypto.getRandomValues(new Uint8Array(1024)))
+    }
+    const real = Bun.write
+    let calls = 0
+    const spy = spyOn(Bun, 'write').mockImplementation((async (
+      ...args: Parameters<typeof real>
+    ) => {
+      if (calls++ === 0) {
+        throw Object.assign(new Error('ENOSPC: no space left on device, write'), { code: 'ENOSPC' })
+      }
+      await Bun.sleep(50)
+      return real(...args)
+    }) as typeof Bun.write)
+    try {
+      await expect(
+        cache.save({
+          hash: 'h1',
+          projectDir: proj,
+          outputFiles: ['a', 'b', 'c'].map((f) => path.join(out, f, 'x.bin')),
+          entry: { taskId: 'p#build', command: 'c', durationMs: 1, stdout: '' },
+        }),
+      ).rejects.toThrow('ENOSPC')
+      await Bun.sleep(150)
+      const left = readdirSync(cacheDir, { recursive: true }).map(String)
+      expect(left.filter((n) => n.includes('.tmp-'))).toEqual([])
+    } finally {
+      spy.mockRestore()
+      cache.close()
+    }
+  })
+
   it('prune unlinks the artifacts, then deletes the rows once the space is back', async () => {
     const cache = new Cache(cacheDir)
     try {
@@ -180,6 +222,33 @@ describe('a full disk', () => {
       }
       expect([failed, db.query('SELECT COUNT(*) AS n FROM entries').get()]).toEqual([1, { n: 0 }])
     } finally {
+      cache.close()
+    }
+  })
+
+  it('a restore that meets a full disk names the code once', async () => {
+    // Bun's message opens with the code: `(ENOSPC: ENOSPC: …)` read as a stutter.
+    const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
+      embeddings: 0,
+      decompress: true,
+    })
+    await save(cache, 'h1', true)
+    rmSync(path.join(proj, 'dist'), { recursive: true })
+    const spy = spyOn(Bun, 'write').mockImplementation((async (to: unknown) => {
+      throw Object.assign(new Error('ENOSPC: no space left on device, write'), {
+        code: 'ENOSPC',
+        path: String(to),
+      })
+    }) as typeof Bun.write)
+    try {
+      const err = await cache.restoreOutputs('h1', proj).then(
+        () => null,
+        (e: unknown) => e as Error,
+      )
+      expect(err?.message).toContain('could not write its outputs (ENOSPC: no space left')
+      expect(err?.message).not.toContain('ENOSPC: ENOSPC')
+    } finally {
+      spy.mockRestore()
       cache.close()
     }
   })

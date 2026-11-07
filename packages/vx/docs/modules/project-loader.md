@@ -21,8 +21,12 @@ export async function loadProjectConfig(configPath: string): Promise<ProjectConf
 export async function loadWorkspaceConfig(workspaceRoot: string): Promise<WorkspaceConfig | null>
 
 // The batch form: one staged evaluation round for many configs. Every
-// config is evaluated; nothing is cached (runs read the lock).
-export async function loadProjectConfigs(configPaths: readonly string[]): Promise<ProjectConfig[]>
+// config is evaluated; nothing is cached (runs read the lock). With `root`,
+// each evaluates with it as process.cwd(); without, the cwd is left as is.
+export async function loadProjectConfigs(
+  configPaths: readonly string[],
+  root?: string,
+): Promise<ProjectConfig[]>
 
 // Thrown by the batch when more than one config refuses: the first's
 // message, and `all` of them, so `vx lock` names each.
@@ -94,6 +98,15 @@ readers that reach it here.
   load's config output landed in it (D-64). The first load, in process, sends them to stderr too while
   the round evaluates: a verb's stdout is its output, and a config's
   `console.log` came out ahead of `vx show --format json`'s JSON.
+  Below those routes, fd 1 itself is stderr's while a round of project
+  configs evaluates (`dup2` through `bun:ffi`; libc bound once, ~0.7 ms):
+  `import { writeSync } from 'node:fs'` is a copy Bun took when vx first
+  imported it, `writeFileSync('/dev/stdout')` opens the descriptor anew,
+  and a child the config spawns inherits it, so all three printed ahead of
+  `vx lock --check --format json`'s JSON. The worker shares the
+  descriptor, so a repeat load is covered by the same swap. Only the lock verb
+  evaluates project configs, so a run never binds libc for this. The
+  workspace config, loaded on every run, gets the JS routes alone.
 - A config that throws something other than an Error (`throw 'no'`, a
   plain object) fails as a user error naming the config, on both paths:
   "Project config <path> threw "no", which is not an Error". It
@@ -141,6 +154,14 @@ readers that reach it here.
   `process.chdir()` left every relative path vx resolved after it reading
   from the config's choice; the working directory is put back and the load
   refused, naming `process.cwd (a chdir)` (D-120).
+- The lock verb evaluates every project config with the workspace root as
+  `process.cwd()`, wherever it was run, and puts the invoking directory
+  back after the round. It saw the invoking directory before, so a config
+  reading the cwd made the lock depend on where it ran, and
+  `vx lock --check` from a subdirectory failed a lock written at the root.
+  Not the project's own directory: the cwd is the process's (the worker's
+  too) and loads overlap, so a cwd per config would serialize them.
+  `import.meta.dir` is the config's own directory.
 - `.vx/workspace.ts` gets the same guard: it runs in this process too, and
   its `Object.prototype.exec` ran in a project's group task. Built-ins,
   `process.env`, the cwd and the umask are snapshotted around its load, put
@@ -187,6 +208,8 @@ readers that reach it here.
 - A first load has the Worker's deadline too (`VX_CONFIG_WORKER_TIMEOUT`,
   30 s): a top-level await that never settles fails the load, naming
   the config and the budget, where it hung `vx run` silently (D-66).
+  At 5 s, on both paths, vx says once which config is still evaluating,
+  so the wait to the budget is not silent; a load that ends clears it.
   The evaluation itself cannot be cancelled; a timer it left running
   still holds the process open after the run reports. A synchronous
   loop (`while (true) {}`) holds the thread the deadline fires on, so it
@@ -196,11 +219,14 @@ readers that reach it here.
   config resolves to its object on the first load and in the Worker
   alike (D-5). The awaited value is checked again, a workspace
   config's too (D-6).
-- Validation runs on whichever object the two paths produced, so a
-  malformed config reports the identical `UserError` either way.
+- Validation runs on the JSON copy both paths produce, so a malformed
+  config reports the identical `UserError` either way. On the live
+  object, a getter in an array or a Proxy answered the check with one
+  value and the copy, which the lock stores, with another
+  (`outputs.files: ['../victim/**']` reached the lock unchecked).
 - A value JSON cannot carry (a function, `NaN`, a `Map`, …) is refused
   by both paths with one message (item 701, config-schema.md): the first
-  load's `validateProjectConfig` sees the live object, and the Worker
+  load runs `nonJsonPaths` on the live object before its copy, and the Worker
   runs the same `nonJsonPaths`, embedded in its inline source by
   `toString()`, BEFORE its `JSON.stringify` would drop the evidence. It
   replies with the paths instead of the JSON, and `evaluateConfigFresh`

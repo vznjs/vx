@@ -156,7 +156,9 @@ A task with `exec.sandbox` runs where only what it declares exists:
 
 - reads of the workspace outside the task's project and grants fail;
 - writes outside its `allow.write` grants fail (declared outputs grant
-  none);
+  none); on Linux a grant naming a file binds its whole directory, so a
+  write to a sibling there lands and is reported as a violation instead,
+  as an open or hard link of one is (a `stat` of one is not seen);
 - the network is closed except to the domains granted, one union per
   run: a task granted any domain reaches every domain the run grants;
   with none, it reaches no listener on the host's loopback and no unix
@@ -260,8 +262,9 @@ bytes cannot make the signature, so a swapped tarball is refused before
 anything is written, and a key id vx does not pin is refused with a hint
 that the installer needs updating (2026-10-13; pnpm's installer
 checks the same). The signed version must be the one asked for, and
-`latest` below the running vx is refused, so a mirror cannot downgrade
-vx to an older signed release. The new binary is staged in a fresh directory, never a
+`latest` below the running vx is refused, however vx was installed, so
+a mirror cannot downgrade vx to an older signed release; the tarball
+URL must be https. The new binary is staged in a fresh directory, never a
 name another user could plant a link at. A vx a package manager
 installed is upgraded by that manager, which checks its own integrity.
 npm packages

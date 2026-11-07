@@ -282,6 +282,7 @@ traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.run.failed_count
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.run.hit_count: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.run.hit_local_count: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.run.hit_remote_count: intValue
+traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.run.not_run_count: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.run.restored_local_count: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.run.restored_remote_count: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.run.started_at: intValue

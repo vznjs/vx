@@ -35,9 +35,12 @@ export interface AffectedChanges {
   paths: ReadonlyMap<string, readonly string[]>
   whole: ReadonlySet<string>
   wholeBy?: ReadonlyMap<string, string>
+  wide?: boolean
   nested?: readonly string[]
   dirLinks?: ReadonlySet<string>
   dirLinksIn?: ReadonlyMap<string, ReadonlySet<string>>
+  untrackedIn?: ReadonlyMap<string, ReadonlySet<string>>
+  untracked?: ReadonlySet<string>
 }
 ```
 
@@ -225,7 +228,6 @@ export class Cache implements CacheLayer {
   readonly remoteHits: RemoteHits
   readonly storeDir: string | undefined
   readonly schemaReset: SchemaReset | null
-  readonly formatChange: SchemaReset | null
   readonly storeReset: SchemaReset | null
   static inspect(cacheDir: string): Cache
   constructor(
@@ -300,8 +302,13 @@ export class Cache implements CacheLayer {
     | { tmpPath: string }
     | { plan: true; saved: SavedTree }
   >
+  checkpointOffThread(): void
+  async stopCheckpoints(): Promise<void>
   recordRun(run: RunRecord): void
-  recordRuns(runs: readonly RunRecord[]): void
+  recordRuns(
+    runs: readonly RunRecord[],
+    head?: Pick<InvocationRecord, 'branch' | 'commitSha'>,
+  ): void
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
   recordRemoteErrors(runId: string, errors: readonly (readonly [string, string])[]): void
   stats(opts: CacheStatsOptions = {}): CacheStats
@@ -532,6 +539,27 @@ type · `src/orchestrator/plugin.ts`
 ```ts
 export interface ConfigContext extends WorkspaceHookContext {
   setBranch(facts: BranchFacts): void
+}
+```
+
+## `CorruptArtifactError`
+
+class · `src/cache/layer.ts`
+
+Bytes that are not the artifact their key names. Core's ingest throws
+it for bytes that do not decompress or parse, before anything is
+stored; a remote layer that checks its bytes as they pass (a digest, a
+signature) errors its `get` body with it to say they are wrong there,
+not cut short. Either way the hit is a miss, and the re-run's save is
+sent over that remote's copy.
+
+```ts
+export class CorruptArtifactError extends Error {
+  constructor(
+    public readonly hash: string,
+    reason: string,
+    public override readonly cause?: unknown,
+  )
 }
 ```
 
@@ -1275,6 +1303,7 @@ One local cache's run history, read and written by core (`localHistory`): plain 
 ```ts
 export interface LocalHistory extends HistoryProvider {
   resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>>
+  durationsFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>>
   hasImported(sha: string): boolean
   importTimings(
     sha: string,
@@ -1989,6 +2018,7 @@ export interface PreparedRun {
   gitFilesCache: GitFilesCache
   workspaceProjectCount: number
   hashCache: HashCache
+  dependents?: ReadonlyMap<string, number>
   empty: null | 'no-tasks-declared' | 'none-affected' | 'empty-graph'
 }
 ```
@@ -2201,7 +2231,7 @@ export interface RemoteCacheLayer {
   has(hash: string): Promise<ArtifactInfo | null>
   hasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
   get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
-  put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void | false>
+  put(hash: string, body: Blob, meta: { durationMs: number; replace?: true }): Promise<void | false>
   missing?(hash: string): void
 }
 ```
@@ -2232,6 +2262,7 @@ export interface ResolvedSandboxConfig {
   allowRead: readonly string[]
   allowWrite: readonly string[]
   pendingWrites?: readonly string[]
+  linkedWrites?: readonly { readonly link: string; readonly target: string }[]
   network?: true | readonly string[]
   denyNetwork?: readonly string[]
   systemInfo?: readonly string[]
@@ -2530,6 +2561,7 @@ export interface RunSummaryRecord {
   taskCount: number
   failedCount: number
   abortedCount: number
+  notRunCount?: number
   hitCount: number
   hitLocalCount: number
   hitRemoteCount: number

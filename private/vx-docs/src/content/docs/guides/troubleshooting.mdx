@@ -43,7 +43,7 @@ vx run build --filter @demo/ap
 ```
 
 ```ansi
-[38;2;239;68;68m✗[0m [1mvx run[0m  no projects matched filter(s): @demo/ap
+[38;2;239;68;68m✗[0m [1mvx run[0m  no projects matched filter(s): "@demo/ap"
 
   [2mfix[0m  [1m@demo/app[0m
 ```
@@ -52,9 +52,9 @@ vx run build --filter @demo/ap
 
 - **Only one package ran.** `vx run build` runs the package you are in
   and what it depends on. Add `--all`.
-- **`0 tasks · build has no command in these projects`.** No selected
-  package gives `build` a command, so vx ran only its default group.
-  Give `build` an `exec.command` in the packages that build.
+- **`no projects declare task(s): build`.** No selected package declares
+  `build`; one with no vx config has none. Give it a `vx.config.ts` whose
+  `build` has an `exec.command`, then run `vx lock`.
 - **A task runs every time.** It has no `cache: true`. `vx-migrate` leaves
   a `TODO(vx-migrate)` where it could not write one. Or a task it depends on declares no
   `inputs`: that task has no key, so nothing behind it hits. Give it
@@ -70,8 +70,9 @@ vx run build --filter @demo/ap
   hit restores nothing. Point `outputs.files` at what the task writes;
   a sandboxed task also needs `exec.sandbox.allow.write` for it.
 - **`not ready after …: waiting for a line matching`.** A persistent
-  task's `readyWhen` has not matched its output yet. Fix the pattern,
-  or set `exec.timeout` to bound the wait.
+  task's `readyWhen` has not matched its output yet, and no
+  `exec.timeout` has ended the wait. Fix the pattern, or set
+  `exec.timeout` to bound the wait.
 - **A task re-ran and you do not know why.** `vx why <project#task>`
   names the part of the key that changed
   ([Find why a task missed the cache](../caching/why-a-task-missed/)).

@@ -3,7 +3,7 @@
 // loopback. For tests, demos
 // and trying a distributed run before a CI starts the workers.
 
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { refuseUnknownOptions, type PluginOptionKinds } from '@vzn/vx'
@@ -83,7 +83,13 @@ export function local(options: LocalOptions = {}): DteAdapter {
 
     async spawn(a) {
       const work = (async () => {
-        base ??= mkdtemp(path.join(os.tmpdir(), 'vx-dte-'))
+        base ??= (async () => {
+          const d = await mkdtemp(path.join(os.tmpdir(), BASE_PREFIX))
+          // Whose they are, for a later run to reclaim once this vx is gone.
+          await writeFile(path.join(d, OWNER), String(process.pid))
+          void reclaim(a.workspaceRoot)
+          return d
+        })()
         const dir = path.join(await base, String(a.index))
         if (closed) return
         // The run's own snapshot: one taken here, after a hit restored a
@@ -166,6 +172,69 @@ export function local(options: LocalOptions = {}): DteAdapter {
         ).unref()
       }
     },
+  }
+}
+
+const BASE_PREFIX = 'vx-dte-'
+const OWNER = 'owner'
+/** `mkdtemp`'s name: the prefix and six characters. */
+const OWN_BASE = new RegExp(`^${BASE_PREFIX}[A-Za-z0-9]{6}$`)
+
+/**
+ * The worktrees a run whose vx was killed (SIGKILL, a lost machine) left in
+ * `root`'s repository, removed: each under a base whose owner process is
+ * gone. A killed run's close never ran, and they stayed for good
+ * (2026-11-06). One `git worktree list`, off the run's path.
+ */
+async function reclaim(root: string): Promise<void> {
+  try {
+    const env: Record<string, string | undefined> = { ...process.env }
+    for (const name of GIT_REPO_ENV) delete env[name]
+    const list = Bun.spawn(['git', 'worktree', 'list', '--porcelain'], {
+      cwd: root,
+      env,
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'ignore',
+    })
+    const bases = new Set<string>()
+    for (const line of (await new Response(list.stdout).text()).split('\n')) {
+      if (!line.startsWith('worktree ')) continue
+      const dir = line.slice('worktree '.length)
+      const base = path.dirname(dir)
+      if (/^\d+$/.test(path.basename(dir)) && OWN_BASE.test(path.basename(base))) bases.add(base)
+    }
+    const gone: string[] = []
+    for (const base of bases) {
+      const pid = Number(
+        await readFile(path.join(base, OWNER), 'utf8').catch(
+          // quiet: a base with no owner is not known to be gone
+          () => '',
+        ),
+      )
+      if (Number.isInteger(pid) && pid > 0 && !alive(pid)) gone.push(base)
+    }
+    if (gone.length === 0) return
+    Bun.spawn(
+      ['sh', '-c', 'r=$1; shift; rm -rf "$@"; git -C "$r" worktree prune', 'sh', root, ...gone],
+      {
+        env,
+        stdio: ['ignore', 'ignore', 'ignore'],
+        detached: true,
+      },
+    ).unref()
+  } catch {
+    // quiet: what is left is reclaimed by the next run
+  }
+}
+
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (err) {
+    // Another user's process is alive too.
+    return (err as NodeJS.ErrnoException).code === 'EPERM'
   }
 }
 

@@ -373,12 +373,12 @@ describe('delegatedScript', () => {
  * rows above never build.
  */
 describe('migrateScripts', () => {
-  const project = (scripts: unknown) =>
+  const project = (scripts: unknown, manifest: Record<string, unknown> = { name: 'app' }) =>
     migrateScripts([
       {
         name: 'app',
         dir: '/w/app',
-        packageJson: { name: 'app', scripts } as never,
+        packageJson: { ...manifest, scripts } as never,
         configPath: null,
       },
     ]).projects[0] ?? null
@@ -781,12 +781,15 @@ describe('migrateScripts', () => {
   it('a script reading $npm_package_* gets it defined, from the manifest (D-34)', () => {
     // npm, pnpm, bun and yarn set these for a script and vx sets none: the
     // migrated `echo $npm_package_version` printed an empty string.
-    const p = project({
-      v: 'echo $npm_package_version ${npm_package_name} $npm_lifecycle_event $npm_config_x',
-      prebuild: 'echo $npm_lifecycle_event',
-      build: 'tsc',
-      plain: 'echo hi',
-    })
+    const p = project(
+      {
+        v: 'echo $npm_package_version ${npm_package_name} $npm_lifecycle_event $npm_config_x',
+        prebuild: 'echo $npm_lifecycle_event',
+        build: 'tsc',
+        plain: 'echo hi',
+      },
+      { name: 'app', version: '1.0.0' },
+    )
     const tasks = Object.fromEntries((p?.tasks ?? []).map((t) => [t.name, t]))
     expect(p?.importLines).toEqual(["import pkg from './package.json' with { type: 'json' }"])
     expect(tasks['v']?.task).toEqual({
@@ -856,6 +859,32 @@ describe('migrateScripts', () => {
     }
   })
 
+  it('a $npm_package_* the manifest lacks stays unset, as npm leaves it', () => {
+    // A package with no `version` got `npm_package_version: pkg.version`:
+    // undefined at evaluation, which `vx lock` refuses, and a type error
+    // under `satisfies ProjectConfig`. npm sets neither for a missing field
+    // and sets an empty one as '' (probed: npm 10).
+    const v = 'echo $npm_package_version $npm_package_name'
+    const none = project({ v }, {})
+    expect(none?.tasks[0]?.task).toEqual({ exec: { command: v } })
+    expect(none?.importLines).toEqual([])
+    expect(project({ v }, { name: 'app' })?.tasks[0]?.task).toEqual({
+      exec: { command: v, env: { define: { npm_package_name: { raw: 'pkg.name' } } } },
+    })
+    // CONTROL: an empty field is set, empty.
+    expect(project({ v }, { name: '', version: '' })?.tasks[0]?.task).toEqual({
+      exec: {
+        command: v,
+        env: {
+          define: {
+            npm_package_version: { raw: 'pkg.version' },
+            npm_package_name: { raw: 'pkg.name' },
+          },
+        },
+      },
+    })
+  })
+
   it('a $npm_* read twice is one TODO (D-35)', () => {
     const todos = project({ v: 'echo $npm_config_x $npm_config_x' })?.tasks[0]?.todos ?? []
     expect(todos.filter((t) => t.includes('$npm_config_x'))).toHaveLength(1)
@@ -899,6 +928,18 @@ describe('migrateScripts', () => {
         watcher: 'node watcher-report.js',
       }),
     ).toEqual([])
+    // An explicit false is a run that exits: CRA's `react-scripts test
+    // --watchAll=false` was persistent, never cached, and its dependents
+    // unblocked on spawn.
+    expect(
+      persistent({
+        cra: 'react-scripts test --watchAll=false',
+        vt: 'vitest --watch=false',
+        jt: 'jest --watch false --ci',
+        ja: 'jest --watchAll false',
+        on: 'vitest --watch=true',
+      }),
+    ).toEqual(['on'])
     // D-91: a server, by its command or a persistent script it runs by name
     // (docusaurus's `serve website`, `cross-env … pnpm start`, vitest's `vite`).
     expect(

@@ -143,7 +143,9 @@ function codeSpan(raw: string): string {
 /** Render the whole job summary. Deterministic for a given record. */
 export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): string {
   const failed = summary.tasks.filter((t) => t.status === 'failed')
-  const cancelled = !summary.exitOk && summary.failedCount === 0 && summary.abortedCount > 0
+  const notRun = summary.notRunCount ?? 0
+  const cancelled =
+    !summary.exitOk && summary.failedCount === 0 && summary.abortedCount + notRun > 0
   const verdict = summary.exitOk ? '✅' : cancelled ? '⏹️' : '❌'
   const lines: string[] = []
   lines.push(`## ${verdict} ${title}`)
@@ -159,6 +161,7 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
       (summary.hitCount > 0 ? ` ${hitSplit(summary)}` : ''),
     ...(summary.failedCount > 0 ? [`**${summary.failedCount}** failed`] : []),
     ...(summary.abortedCount > 0 ? [`**${summary.abortedCount}** aborted`] : []),
+    ...(notRun > 0 ? [`**${notRun}** not run`] : []),
     // The run played perfectly on what each task took, beside the real time (2026-10-23).
     summary.idealMs === undefined
       ? fmtMs(summary.totalDurationMs)
@@ -216,7 +219,7 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
     const cells = [
       escapeMarkdownCell(escapeInline(t.taskId)),
       statusLabel(t),
-      t.carried === true ? '' : fmtMs(t.durationMs),
+      t.carried === true || t.status === 'skipped' ? '' : fmtMs(t.durationMs),
     ]
     lines.push(`| ${cells.join(' | ')} |`)
   }

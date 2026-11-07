@@ -28,21 +28,26 @@ it('an edit restarts a server stuck before ready in the initial run', async () =
   root = await makeWorkspace({ prefix: 'vx-watch-ready0-' })
   outside = await mkdtemp(path.join(os.tmpdir(), 'vx-watch-ready0-marks-'))
   const pids = path.join(outside, 'pids')
+  // Written once the server has read `hang`: the pid alone is written
+  // before the read, and a server that read the file after the fix got
+  // ready, so watch rightly kept it and no second server came (CI,
+  // 2026-11-07).
+  const hung = path.join(outside, 'hung')
   const dir = await addProject(
     root,
     'web',
     `export default { tasks: { dev: { exec: {
-    command: 'echo $$ >> ${pids}; grep -q hang src/a.txt && exec sleep 1000; echo READY; exec sleep 1000',
+    command: 'echo $$ >> ${pids}; grep -q hang src/a.txt && { echo $$ >> ${hung}; exec sleep 1000; }; echo READY; exec sleep 1000',
     persistent: { readyWhen: 'READY' },
   } } } }`,
   )
   await Bun.write(path.join(dir, 'src', 'a.txt'), 'hang\n')
   watch = startWatch(root, ['--all'], {}, 'dev')
   const w = watch
-  await until(async () => (await lines('pids')).length === 1, 'the hanging server')
+  await until(async () => (await lines('hung')).length === 1, 'the hanging server')
   await until(() => w.out().includes('watching '), 'the armed loop')
   await writeFile(path.join(dir, 'src', 'a.txt'), 'fixed\n')
-  await until(async () => (await lines('pids')).length === 2, 'the server after the fix', 10_000)
+  await until(async () => (await lines('pids')).length === 2, 'the server after the fix')
   expect(isAlive(Number((await lines('pids'))[1]))).toBe(true)
 }, 30_000)
 

@@ -23,6 +23,7 @@ export interface AffectedArgs {
     changedPaths: readonly string[],
     nested: readonly string[],
     dirLinks: ReadonlySet<string>, // changed links to a directory: matched as one
+    untracked: ReadonlySet<string>, // AffectedChanges.untracked: under a task's own outputs, no match
   ) => Promise<Iterable<string>>
   /** The fingerprint files a plugin claims and its answer for a change to
    *  one; resolved lazily, only when a diff touches a root file. */
@@ -44,9 +45,12 @@ export interface AffectedChanges {
   paths: ReadonlyMap<string, readonly string[]> // project → its changed paths, project-relative
   whole: ReadonlySet<string> // reached whatever inputs say: lockfile claim, config import, nested repo
   wholeBy?: ReadonlyMap<string, string> // a whole project → the workspace-wide file that made it so
+  wide?: boolean // wholeBy's file reached every project (the workspace config), not only those a claim named
   nested?: readonly string[] // changed nested repositories, workspace-relative: each stands for its files
   dirLinks?: ReadonlySet<string> // changed paths that are (or were) a link to a directory, workspace-relative
   dirLinksIn?: ReadonlyMap<string, ReadonlySet<string>> // project → its dirLinks, project-relative
+  untrackedIn?: ReadonlyMap<string, ReadonlySet<string>> // project → its untracked changed paths, project-relative
+  untracked?: ReadonlySet<string> // the changed paths git tracks neither now nor at the base, workspace-relative
 }
 export function affectedChanges(args: AffectedArgs, perTask?: boolean): Promise<AffectedChanges> // perTask false: affectedProjects' set only
 
@@ -163,7 +167,12 @@ export function headBase(workspaceRoot: string, ref: string): string | undefined
      project its own key called stale (item 445). Every path, not only
      the ones no project owns: a glob may name a file inside another
      project (`schema.md` allows it), and asking only the unowned ones
-     ran the owner alone (item 954). The `--affected` sugar has staged
+     ran the owner alone (item 954). A path git tracks neither now nor
+     at the base (`untracked`) under the task's own outputs
+     (`outputs.workspaceFiles`, or its `outputs.files`) matches nothing,
+     as the key folds only a tracked one there; one git stopped
+     tracking is in the diff too, and the base key folded it, so it
+     still matches. The `--affected` sugar has staged
      every config for its graph walk already; a bare `[ref]` filter pays
      that one load when something changed.
 

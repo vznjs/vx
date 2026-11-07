@@ -169,8 +169,10 @@ describe('cache declarations that match nothing', () => {
   )
 
   it('and a workspaceFiles directory linked out of the workspace (M-65)', async () => {
-    // The root-anchored side drops every file under a linked-out directory
-    // the same way, and its warning blamed the glob too.
+    // The root-anchored side dropped every file under a linked-out
+    // directory and saved an empty entry under a warning, while the project
+    // side refused the task: it is refused the same way now.
+    root = realpathSync(root)
     const outside = await mkdtemp(path.join(os.tmpdir(), 'vx-decl-wsout-'))
     try {
       await writeFile(path.join(outside, 'creds.txt'), 'not yours\n')
@@ -179,9 +181,24 @@ describe('cache declarations that match nothing', () => {
         `export default { tasks: { linked: { exec: { command: 'ln -sfn ${outside} ../../shared' },
           inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['shared/**'] }, cache: true } } }\n`,
       )
-      expect(await runTask('linked')).toEqual([
-        `[vx] app#linked: outputs matched no files (shared/**) — an empty artifact is saved; a later hit restores nothing — shared is a symlink to ${realpathSync(outside)}, outside the workspace, and vx keeps only outputs inside it: make shared a directory`,
+      const lines: string[] = []
+      const summary = await run({
+        cwd: root,
+        tasks: ['linked'],
+        projects: ['app'],
+        log: {
+          ...logger(lines),
+          taskStderr: (_node: unknown, line: string) => {
+            lines.push(line.trimEnd())
+          },
+        },
+        handleSignals: false,
+      })
+      expect(summary.ok).toBe(false)
+      expect(lines.filter((l) => l.includes('symbolic link') || l.includes('matched no'))).toEqual([
+        `[vx] app#linked: ${path.join(root, 'shared')} is a symbolic link to ${realpathSync(outside)}, outside ${root} — vx never cleans, saves or restores declared outputs through a link that leaves the workspace. Remove the link and re-run, or stop declaring outputs under it.`,
       ])
+      expect(await Bun.file(path.join(outside, 'creds.txt')).text()).toBe('not yours\n')
     } finally {
       await rm(outside, { recursive: true, force: true })
     }

@@ -48,6 +48,7 @@ import {
   ownerTargetOf,
 } from './nx-dotenv.js'
 import { emptyNxInputs, expandNxInputs } from './nx-inputs.js'
+import { dotenvGlobsProbe } from '../dotenv-probe.js'
 import { planNxUpstream, type NxUpstream } from './nx-upstream.js'
 import { mapNxOutputs, nxDefaultOutputs, nxProjectOutputs } from './nx-outputs.js'
 
@@ -248,6 +249,13 @@ export interface MapNxOptions {
    * `nx-exec`. The live plugin's only: a migration writes no function.
    */
   readonly executors?: NxExecutors
+  /**
+   * The root lockfile when no plugin claims it (the live plugin's only):
+   * core keys no lockfile, so an `externalDependencies` input keys the
+   * file. Absent, a lockfile plugin keys the dependencies (a migration
+   * declares one).
+   */
+  readonly lockfile?: string
 }
 
 /** One target of a translated executor, as the graph resolved it. */
@@ -613,6 +621,7 @@ export async function mapNxWorkspace(
 
   resolveAtomizedWorkspaceOutputs(root, projects, split)
   excludeWorkspaceOutputs(root, projects)
+  keyUncachedProducerOutputs(projects, reached)
   // A migration leaves Nx behind, so `nx sync` is no advice there: what a
   // generator keeps (the TypeScript one's tsconfig `references`) is the
   // user's to keep. `nx()` runs with Nx installed.
@@ -865,6 +874,7 @@ function buildTask(
     outputs: nxProjectOutputs(nodeMap[nodeName]?.data?.targets, projectRel, projectName),
     ...(opts.tracked === undefined ? {} : { tracked: opts.tracked }),
     rootDeps: opts.rootDeps,
+    ...(opts.lockfile === undefined ? {} : { lockfile: opts.lockfile }),
   }
   expandNxInputs(target.inputs ?? [], upstream.namedOf(nodeName), at, inputs, todos)
   const cacheWanted =
@@ -1066,7 +1076,78 @@ function buildTask(
   const generated: GeneratedTask = { name: variant.name, todos, task }
   if (cacheEnabled && inputs.dependentOutputs.length > 0)
     dependentReaders.set(generated, { globs: inputs.dependentOutputs, dependsOn: target.dependsOn })
+  const produced = [
+    ...outFiles.filter((o) => !o.startsWith('!')).map((o) => path.posix.join(projectRel, o)),
+    ...wsOutFiles.filter((o) => !o.startsWith('!')),
+  ]
+  if (produced.length > 0) producedPaths.set(generated, produced)
   return generated
+}
+
+/** Each task's Nx outputs, workspace-relative, cached or not: what a reader of them probes. */
+const producedPaths = new WeakMap<GeneratedTask, string[]>()
+
+/**
+ * Nx hashes the files a `dependentTasksOutputFiles` reader names in its
+ * producers' outputs; vx folds each producer's key, which covers what a
+ * cached producer writes and not what an uncached one fetched from outside
+ * (a `cache: false` `fetch` writing a gitignored schema): the reader hit
+ * and replayed the old schema's code. Those files are keyed by a probe at
+ * the root, as `turbo()` keys a `dependencyOutputs` input of an uncached
+ * producer, and the producer is left out of the fold (`inputs.tasks`), so
+ * core answers the probe after it ran.
+ */
+function keyUncachedProducerOutputs(
+  projects: readonly GeneratedProject[],
+  reached: (name: string) => ReadonlySet<string>,
+): void {
+  const byId = new Map<string, GeneratedTask>()
+  for (const p of projects) for (const t of p.tasks) byId.set(`${p.name}#${t.name}`, t)
+  for (const p of projects) {
+    for (const t of p.tasks) {
+      const reader = dependentReaders.get(t)
+      if (reader === undefined || t.task?.['cache'] !== true) continue
+      const deps = t.task['dependsOn']
+      if (!Array.isArray(deps)) continue
+      const rels: string[] = []
+      const unfold: string[] = []
+      for (const d of deps) {
+        if (typeof d !== 'string' || d.includes('*') || d.includes('#inputs:')) continue
+        const edges: [id: string, filter: string][] = d.startsWith('^')
+          ? [...reached(p.name)].map((q) => [`${q}#${d.slice(1)}`, `${q}#${d.slice(1)}`])
+          : [[d.includes('#') ? d : `${p.name}#${d}`, d]]
+        for (const [id, filter] of edges) {
+          const producer = byId.get(id)
+          if (producer?.task?.['exec'] === undefined || producer.task['cache'] === true) continue
+          const outs = producedPaths.get(producer) ?? []
+          if (outs.length === 0) continue
+          unfold.push(`!${filter}`)
+          for (const o of outs)
+            // A glob output (`dist/**/*.{js,d.ts}{,.map}`): every file under
+            // its literal head, which the probe can walk.
+            if (/[*?[{]/.test(o)) rels.push(`${globHead(o)}/**/*`)
+            else
+              for (const g of reader.globs)
+                // `**/<name>` is a find under the output; any other glob (a brace, a
+                // class), every file there.
+                rels.push(/^\*\*\/[^/*?[{]*\*?[^/*?[{]*$/.test(g) ? `${o}/${g}` : `${o}/**/*`)
+        }
+      }
+      if (rels.length === 0) continue
+      const probe = dotenvGlobsProbe([...new Set(rels)])
+      if (probe === null) {
+        uncache(t.task)
+        t.todos.push(
+          `reads ${reader.globs.map((g) => `\`${g}\``).join(', ')} from the outputs of an uncached task it depends on, ` +
+            'which vx cannot key by a probe — uncached here; key it in a vx.config to cache it',
+        )
+        continue
+      }
+      const inputs = t.task['inputs'] as Record<string, unknown>
+      inputs['workspaceRuntime'] = [...((inputs['workspaceRuntime'] as unknown[]) ?? []), probe]
+      inputs['tasks'] = ['*', '^*', ...unfold]
+    }
+  }
 }
 
 /**
@@ -1076,6 +1157,12 @@ function buildTask(
  * ProductsApi no node once @nx/dotnet failed to load), and the key saw
  * nothing the task reads (Growth, nx-codegen-dropped-producer.sh).
  */
+function globHead(glob: string): string {
+  const segs = glob.split('/')
+  const i = segs.findIndex((s) => /[*?[{]/.test(s))
+  return segs.slice(0, i).join('/')
+}
+
 const dependentReaders = new WeakMap<GeneratedTask, { globs: string[]; dependsOn: unknown }>()
 
 function orphanReaderTodo(globs: readonly string[], dependsOn: unknown): string {

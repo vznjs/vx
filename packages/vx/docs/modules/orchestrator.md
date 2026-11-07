@@ -34,10 +34,11 @@ for the extension seams.
 ```ts
 export function run(options: RunOptions): Promise<RunSummary>
 export function planRun(options: RunOptions): Promise<RunPlan>
-// The abort reason `vx watch` stops a cycle with: the run's own work stops, the servers it was handed (`RunOptions.keep`) are spared.
+// The abort reason `vx watch` stops a cycle with: the run's own work stops, its ready servers, handed in (`RunOptions.keep`) or made ready by the run, are spared.
 export const CYCLE_INTERRUPT: 'vx:cycle-interrupt'
 export function nxProjectTarget(spec: string, projects): string | undefined // Nx's `web:build` as `web#build`, when web declares build
 export function projectNamed(typed: string, projects): string | undefined // `cart` as `@scope/cart`, when that is the one such project
+export function projectAtDir(typed: string, root: string, projects): string | undefined // the project whose directory `typed` is: `alpha` for `p/a`
 export function shouldShortCircuit(nodes, policy): boolean
 export function invocationCommand(line: readonly string[] | string): string // the args after `--` as `<n arguments>`; a string is split as sh splits words
 export function runLockPath(workspaceRoot: string, dir?: string): string // the lock directory
@@ -172,6 +173,8 @@ export interface RunSummary {
     writing `Cache` handle on the cache directory, so `vx last` and the
     flaky list see the server's failure; an index another vx version
     reset during the session is reset back silently, as a run's open does.
+    Its telemetry summary (step 14) waits for that verdict too, after the
+    plugins' teardown, so a sink (vx-ci's job summary) reads the failure.
     Under `RunOptions.holdPersistent` (the watch loop) the same
     selection applies outside the foreground, and run() returns at
     once with the kept tasks on `RunSummary.persistent` (`holdServers`): the caller
@@ -203,7 +206,8 @@ export interface RunSummary {
     telemetry mirror — so all three carry the same task count by
     construction. Written in one transaction.
 14. **Telemetry summary.** When a sink is active: build + emit the
-    `RunSummaryRecord`, await `flush()` (crash-isolated).
+    `RunSummaryRecord`, await `flush()` (crash-isolated). A foreground
+    run holding a requested server does this after the wait (step 16).
 15. **Drain + close.** Await background prefetches, uploads and the
     run bytes `RunKeeper` (`run-report.ts`) sent as each task ended,
     then `reportOf` builds the `RunReport` plugin teardowns read;
@@ -239,8 +243,10 @@ the very end (the dev server IS the point of the run).
 ## Signal shutdown
 
 `run()` installs SIGINT + SIGTERM + SIGHUP handlers for its own
-duration (unless `RunOptions.handleSignals === false`) and removes them
-in a `finally`, so repeated `run()` calls never stack listeners. On
+duration, from the run lock on (unless `RunOptions.handleSignals ===
+false`), and removes them in a `finally`, so repeated `run()` calls
+never stack listeners. A signal before the run's stop takes over (a
+slow plugin setup) is held and replayed (`signals.md`). On
 signal: forward it (a SIGHUP as SIGTERM) to everything in
 `liveChildren` + `persistentRegistry`, close the cache, and die of the
 signal once the exit hooks have run (130 / 143 / 129 to the parent; a
@@ -292,9 +298,15 @@ One run at a time per workspace, per machine. Two vx processes on one
 workspace raced on every task's OUTPUT TREE (both clean and restore the
 same `dist/`; a clean landing while the other run's restore is staging
 takes its files out from under it, item 215), so `run()` takes the
-workspace's lock just before it schedules — after the early exits,
-which touch no tree — and releases it with its cache handle, before a
-persistent task's wait. The lock is keyed by the workspace root's real
+workspace's lock before it opens the cache (`prepareRun`'s
+`beforeOpen`) and releases it with its cache handle, before a
+persistent task's wait. Before the cache, never after: a run that held
+the store while it waited for the lock, and a `vx cache clean` that
+holds the lock while it waits for every process with the store open,
+waited on each other for ever, and a clear deleted the store under a
+run opening it (`SQLiteError: disk I/O error`; `tests/run-lock-e2e.test.ts`
+› "a run waiting for the lock holds neither the index nor the store
+open"). The lock is keyed by the workspace root's real
 path, so a symlinked spelling and the canonical cwd a CLI gets (macOS's
 `/var` → `/private/var`) name one lock. It lives in this user's own
 directory under the temp directory (`vx-runs-<uid>`, mode 0700; one that
@@ -324,7 +336,13 @@ and reclaims a lock whose pid is gone. A signal exit is `process.exit`
 also removes the entry this process still holds, synchronously: a
 Ctrl-C left it for the next run to reclaim (item 848,
 `tests/signal-handling.test.ts` › "a signal exit leaves no run-lock
-entry behind"); a `kill -9` still does. A pid comes back, too: the temp
+entry behind"); a `kill -9` still does. The hook also removes a
+staging directory this process made and has not yet renamed in: an exit
+between the mkdir and the rename left it, randomly named, in the lock
+root for good (`tests/run-lock.test.ts` › "an exit while the lock is
+staged removes the staging directory"). A first signal no longer exits
+there at all: the run hears signals from the lock on (`signals.md`,
+`holdSignals`). A pid comes back, too: the temp
 directory outlives a container restart, and the restarted container's
 vx got the dead run's pid (1) and waited for itself forever (nx#36473,
 reproduced on vx 2026-09-24). So a lock naming this process's OWN pid

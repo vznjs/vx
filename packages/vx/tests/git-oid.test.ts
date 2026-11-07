@@ -12,8 +12,8 @@
 //                                  FIRST tab; -z disables quotePath quoting)
 //   status --porcelain -z        → `XY <path>`; X∈{R,C} carries the old
 //                                  path as a SEPARATE NUL token
-//   conflict (stage 1/2/3)       → path repeated once per stage, same as
-//                                  the old `--cached` listing
+//   conflict (stage 1/2/3)       → path repeated once per stage; the
+//                                  parser lists it once
 
 import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -21,6 +21,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
 import { Cache } from '../src/cache/cache.js'
 import { GitFilesCache, populateGitFilesCache, resolveInputs } from '../src/cache/inputs.js'
+import { runGitLsFiles } from '../src/cache/git-inputs.js'
 import { computeTaskHash, createHashCache } from '../src/orchestrator/task-hash.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 
@@ -411,8 +412,11 @@ describe('populateGitFilesCache — index OID harvesting', () => {
 
     const memo = new GitFilesCache()
     await populateGitFilesCache(root, [pkgDir], memo)
-    expect(memo.get(pkgDir)).toContain('f.ts')
+    // Listed once, not once per stage: a repeat folds the file again.
+    expect(memo.get(pkgDir)!.filter((rel) => rel === 'f.ts')).toEqual(['f.ts'])
     expect(memo.oidsFor(pkgDir)!.has(path.join(pkgDir, 'f.ts'))).toBe(false)
+    // The listing a nested repository or a re-enumeration takes, the same parser.
+    expect(runGitLsFiles(pkgDir).files.filter((rel) => rel === 'f.ts')).toEqual(['f.ts'])
   })
 
   it('deleted-but-staged file is still excluded from resolved inputs', async () => {
@@ -662,6 +666,36 @@ describe('semantic guardrails — key stability across dirty↔clean transitions
     expect(await keyNow()).toBe(clean)
   })
 
+  it('an unmerged path keys its worktree bytes, once: resolved = staged key, markers ≠ either side', async () => {
+    const f = path.join(pkgDir, 'src', 'main.ts')
+    const branch = git(root, 'rev-parse', '--abbrev-ref', 'HEAD')
+    git(root, 'checkout', '-q', '-b', 'side')
+    await writeFile(f, 'side\n')
+    git(root, 'commit', '-aqm', 'side')
+    git(root, 'checkout', '-q', branch)
+    await writeFile(f, 'main\n')
+    git(root, 'commit', '-aqm', 'main')
+    const before = await keyNow()
+    Bun.spawnSync({ cmd: ['git', 'merge', 'side'], cwd: root, stdout: 'pipe', stderr: 'pipe' })
+    expect(git(root, 'ls-files', '-u').split('\n')).toHaveLength(3)
+    // The worktree holds conflict markers: no stage's blob may stand in for it.
+    const markers = await keyNow()
+    expect(markers).not.toBe(before)
+    await writeFile(f, 'side\n')
+    git(root, 'add', 'pkg/src/main.ts')
+    const sideKey = await keyNow()
+    expect(markers).not.toBe(sideKey)
+    git(root, 'merge', '--abort')
+    await writeFile(f, 'main\n')
+    Bun.spawnSync({ cmd: ['git', 'merge', 'side'], cwd: root, stdout: 'pipe', stderr: 'pipe' })
+    // Resolved on disk, not yet added: one listing per stage folded the
+    // path three times, so the same bytes keyed apart from the clean tree.
+    await writeFile(f, 'main\n')
+    expect(await keyNow()).toBe(before)
+    git(root, 'add', 'pkg/src/main.ts')
+    expect(await keyNow()).toBe(before)
+  })
+
   it('untracked file participates via blob OID; committing it does not change the key', async () => {
     const clean = await keyNow()
     await writeFile(path.join(pkgDir, 'src', 'extra.ts'), 'extra\n')
@@ -692,5 +726,48 @@ describe('semantic guardrails — key stability across dirty↔clean transitions
       bunMut.file = origLoose
     }
     expect(reads).toEqual([])
+  })
+})
+
+describe('GitFilesCache — one path string per file', () => {
+  let root: string
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  // Each memo key and the OID map spelled its own: a cold 9,603-task run
+  // held ~96,000 path strings for ~32,000 files.
+  it("the OID map and every resolve take a file's path from its one slot", async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), 'vx-abs-slot-'))
+    initRepo(root)
+    const pkgDir = path.join(root, 'pkg')
+    await mkdir(path.join(pkgDir, 'src'), { recursive: true })
+    await writeFile(path.join(pkgDir, 'src', 'a.ts'), 'a\n')
+    await writeFile(path.join(pkgDir, 'src', 'b.ts'), 'b\n')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-qm', 'init')
+    const memo = new GitFilesCache()
+    await populateGitFilesCache(root, [pkgDir], memo)
+    const snapshot = memo.get(pkgDir)!
+    const paths = memo.absPaths(snapshot)
+    expect(memo.absPaths(snapshot)).toBe(paths)
+    // No spelling of a.ts gives this: whatever reads the slot answers it.
+    const marked = `${pkgDir}/src/../src/a.ts`
+    paths[snapshot.indexOf('src/a.ts')] = marked
+    expect([...memo.oidsFor(pkgDir)!.keys()]).toContain(marked)
+    const resolve = (ownOutputs: string[]) =>
+      resolveInputs({
+        projectDir: pkgDir,
+        workspaceRoot: root,
+        envSource: {},
+        inputs: { files: ['src/**'] },
+        ownOutputs,
+        nestedProjectDirs: [],
+        gitFilesCache: memo,
+      })
+    // Two memo keys: each reads the slot.
+    expect((await resolve([])).files).toContain(marked)
+    expect((await resolve(['dist/**'])).files).toContain(marked)
+    expect(paths[snapshot.indexOf('src/b.ts')]).toBe(path.join(pkgDir, 'src', 'b.ts'))
   })
 })

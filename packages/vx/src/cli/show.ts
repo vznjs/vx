@@ -10,7 +10,7 @@ import path from 'node:path'
 import type { ProjectConfig, TaskConfig } from '../config.js'
 import { declaredTask } from '../graph/index.js'
 import { isDefaultBuild } from '../graph/index.js'
-import { affectedTaskProjects } from '../orchestrator/index.js'
+import { affectedTaskProjects, projectAtDir } from '../orchestrator/index.js'
 import { flagHint, formatValue, refuse, seeHelp } from './help.js'
 import {
   listed,
@@ -113,6 +113,12 @@ export async function showCmd(args: readonly string[]): Promise<number> {
     }
     parsed.target = `${rootMeta.name}${parsed.target.slice(2)}`
   }
+  // A project's directory typed for its name: by edit distance, `p/a`
+  // hinted `p/b`, another project.
+  const atDir = (typed: string, suffix: string): string | undefined => {
+    const name = projectAtDir(typed, root, metas)
+    return name === undefined ? undefined : ` — did you mean ${name}${suffix}?`
+  }
   const hashAt = parsed.target?.indexOf('#') ?? -1
   const projectName =
     parsed.target === undefined
@@ -137,7 +143,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
   if (projectName !== undefined && (taskName !== undefined || byName.has(projectName))) {
     if (!byName.has(projectName)) {
       throw new UserError(
-        `vx show: unknown project: "${projectName}"${suggest(projectName, [...byName.keys()], '', 'projects')}`,
+        `vx show: unknown project: "${projectName}"${atDir(projectName, `#${taskName}`) ?? suggest(projectName, [...byName.keys()], '', 'projects')}`,
         'VX_E_UNKNOWN_PROJECT',
       )
     }
@@ -209,7 +215,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
           if (declares(task)) names.add(t)
       // `nx show projects` lists them; here a bare `vx show` does.
       const nx = projectName === 'projects' ? ' (`nx show projects` is `vx show` here)' : ''
-      const unknown = `vx show: unknown project or task: "${projectName}"${nx}${suggest(projectName!, [...byName.keys(), ...names], '', 'projects and tasks')}`
+      const unknown = `vx show: unknown project or task: "${projectName}"${nx}${atDir(projectName!, '') ?? suggest(projectName!, [...byName.keys(), ...names], '', 'projects and tasks')}`
       const base =
         parsed.spacedBase === projectName
           ? `${unknown.endsWith('.') ? '' : '.'} \`--affected\` takes its base with '=': --affected=${projectName}`

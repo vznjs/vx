@@ -26,6 +26,7 @@ import {
   OPEN_LINE_HOLD_CHARS,
   OPEN_LINE_WAIT_MS,
 } from '../src/exec/runner.js'
+import { killTree } from '../src/exec/kill-tree.js'
 
 /**
  * A deadline a fresh shell's first command (an `echo`, a `trap`) meets on
@@ -549,6 +550,61 @@ describe('runPersistent', () => {
     }
   }, 30_000)
 
+  // The caller tells pre-ready text (the frame) from what follows by
+  // `onReady`: a chunk holding the ready line and more was handed over
+  // whole first, so its later lines read as pre-ready.
+  it.each([
+    [
+      'lines after the ready line',
+      `printf 'boot\\nready\\r\\nAFTER\\nPART'`,
+      'boot\nready\r\n',
+      'AFTER\nPART',
+    ],
+    ['a prompt-style marker', `printf 'Listening on :3000'`, 'Listening on :3000', ''],
+  ])(
+    'onReady splits the chunk at the end of the ready line: %s',
+    async (_n, printf, pre, post) => {
+      const seen: string[] = []
+      const spawn = runPersistent({
+        command: `${printf}; exec sleep 30`,
+        cwd,
+        env: { PATH: process.env.PATH ?? '' },
+        readyWhen: '^(ready|Listening)',
+        onStdout: (c) => seen.push(c),
+        onReady: () => seen.push('<READY>'),
+      })
+      try {
+        await spawn.ready
+        await Bun.sleep(50)
+        expect(seen.join('').split('<READY>')).toEqual([pre, post])
+      } finally {
+        spawn.child!.kill('SIGKILL')
+        await spawn.child!.exited
+      }
+    },
+    30_000,
+  )
+
+  it('onReady fires before any output with no readyWhen', async () => {
+    const seen: string[] = []
+    const spawn = runPersistent({
+      command: `printf 'hello\\n'; exec sleep 30`,
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+      onStdout: (c) => seen.push(c),
+      onReady: () => seen.push('<READY>'),
+    })
+    try {
+      await spawn.ready
+      const deadline = Date.now() + 3_000
+      while (!seen.join('').includes('hello') && Date.now() < deadline) await Bun.sleep(20)
+      expect(seen.join('')).toBe('<READY>hello\n')
+    } finally {
+      spawn.child!.kill('SIGKILL')
+      await spawn.child!.exited
+    }
+  }, 30_000)
+
   it('matches a marker split across chunks within one line', async () => {
     const spawn = runPersistent({
       command: `printf 'Listen'; sleep 0.15; printf 'ing on :3000'; exec sleep 30`,
@@ -666,6 +722,7 @@ describe('runPersistent', () => {
   // The exit can land before the readers take the marker the task printed:
   // `echo READY; exit` read as never ready under CI load. A grandchild that
   // prints just after the shell exits opens the same gap on an idle box.
+  // A clean exit is ready either way; the row below is the non-zero one.
   it('a marker read after the shell exited, inside the drain bound, is ready', async () => {
     const spawn = runPersistent({
       command: '(sleep 0.05; echo READY) & exit 0',
@@ -675,6 +732,25 @@ describe('runPersistent', () => {
     })
     await spawn.ready
     await spawn.child!.exited
+  })
+
+  // A non-zero exit before the match wins: a leftover child printing the
+  // marker inside the drain made a server that exited 3 ready, its
+  // dependant skipped as blocked and no failure frame shown.
+  it('a marker read after a non-zero exit is no readiness', async () => {
+    const spawn = runPersistent({
+      command: '(sleep 0.05; echo READY; sleep 5) & exit 3',
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+      readyWhen: 'READY',
+    })
+    try {
+      await expect(spawn.ready).rejects.toThrow(
+        'persistent task exited before becoming ready (exit 3) — readyWhen pattern never matched',
+      )
+    } finally {
+      killTree(spawn.child!, 'SIGKILL')
+    }
   })
 })
 

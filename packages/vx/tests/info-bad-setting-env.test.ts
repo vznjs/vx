@@ -7,6 +7,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const TIMEOUT = 30_000
@@ -77,6 +78,39 @@ describe('vx info under a setting variable vx refuses', () => {
       const r = vx({ VX_RUN_TIMEOUT: 'abc' }, 'lock')
       expect(r.code).toBe(1)
       expect(r.err).toContain(TIMEOUT_REFUSAL)
+    },
+    TIMEOUT,
+  )
+})
+
+describe('a refused setting variable its flag beats', () => {
+  it(
+    'is not judged: the flag wins, as `VX_CACHE_POLICY` already did',
+    async () => {
+      const ws = await makeWorkspace({ prefix: 'vx-flag-beats-env-' })
+      await addProject(ws, 'a', "export default { tasks: { t: { exec: { command: 'true' } } } }\n")
+      // `vx lock` refuses the variable too, so the lock is taken without it.
+      expect(Bun.spawnSync([process.execPath, BIN, 'lock'], { cwd: ws, env: unset }).exitCode).toBe(
+        0,
+      )
+      const run = (...args: string[]) => {
+        const p = Bun.spawnSync([process.execPath, BIN, 'run', 't', '--all', ...args], {
+          cwd: ws,
+          env: { ...unset, NO_COLOR: '1', VX_RUN_CONCURRENCY: '0' },
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+        return { code: p.exitCode, err: p.stderr.toString() }
+      }
+      try {
+        expect(run('--concurrency=2')).toEqual({ code: 0, err: '' })
+        // Control: without the flag the run reads the variable, and refuses it.
+        const bare = run()
+        expect(bare.code).toBe(1)
+        expect(bare.err).toContain('VX_RUN_CONCURRENCY must be')
+      } finally {
+        await rm(ws, { recursive: true, force: true })
+      }
     },
     TIMEOUT,
   )

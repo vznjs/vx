@@ -707,6 +707,25 @@ describe('glob and filter refusals the sweep found unheld (item 653)', () => {
     ).not.toBeNull()
   })
 
+  // The selection starts empty and a `!` entry only subtracts, so a list of
+  // negations folded no dependency at all and the key stopped moving with
+  // every upstream: a stale hit. Refused as inputs.files refuses the shape.
+  it('a negation-only inputs.tasks is refused; [] and a list with a positive entry load', () => {
+    for (const tasks of [['!gen'], ['!^build', '!lib#build']]) {
+      expect(cacheRefusal({ files: ['src/**'], tasks }, { files: [] }, ['^build', 'gen'])).toBe(
+        `${CFG}: tasks.t.inputs.tasks: every entry is a negation, which selects NOTHING ` +
+          `(got ${JSON.stringify(tasks)}) — negations only subtract from the dependencies a ` +
+          `positive entry already selected, so this task would fold no upstream hash and its ` +
+          `cache key would stop tracking its dependencies. Add the positive entry you meant, ` +
+          `e.g. ['*', '^*', ${JSON.stringify(tasks[0])}], or use [] to decouple on purpose.`,
+      )
+    }
+    expect(cacheRefusal({ files: ['src/**'], tasks: [] }, { files: [] }, ['gen'])).toBeNull()
+    expect(
+      cacheRefusal({ files: ['src/**'], tasks: ['*', '!gen'] }, { files: [] }, ['gen']),
+    ).toBeNull()
+  })
+
   // The selection picks among the task's own dependencies and a group's
   // members are not among them (schema.md: name the group, whose hash
   // rolls its members up), so a name reached only through a group would
@@ -829,6 +848,38 @@ describe('sandbox refusals the sweep found unheld (item 653)', () => {
         `${W}.sandbox.allow.${f}: "a\\u0000b" holds a NUL byte`,
       )
       expect(sandboxRefusal({ allow: { [f]: ['a/b'] } })).toBeNull()
+    })
+  }
+  // The Linux observer reports a write's path with each control character
+  // turned into a space: a task writing under `a\tb/` passed and the run
+  // failed on two violations of `a b`, with a fix of `write: ['a b/']`.
+  // A real write to `a b` reads the same, so no match could pass one and
+  // not the other. Reads are traced by strace, which escapes them.
+  it('refuses a control character in allow.write, and not in allow.read', () => {
+    for (const c of ['\t', '\n', '\x01', '\x7f', '\x85']) {
+      expect(sandboxRefusal({ allow: { write: ['ok/', `a${c}b/`] } })).toBe(
+        `${W}.sandbox.allow.write: ${JSON.stringify(`a${c}b/`)} holds a control character, ` +
+          `which the Linux sandbox's report of a write does not keep (it spells a tab as a ` +
+          `space), so a write under it cannot be told from a refused one — rename it`,
+      )
+    }
+    expect(sandboxRefusal({ allow: { write: ['a b/', 'a b/'] } })).toBeNull()
+    expect(sandboxRefusal({ allow: { read: ['a\tb'] } })).toBeNull()
+  })
+  // Only `~` and `~/…` mean the home: `~root/x/` was read as `$HOME/root/x`,
+  // and vx created that directory on the host.
+  for (const [list, f] of [
+    ['allow', 'read'],
+    ['allow', 'write'],
+    ['ignore', 'read'],
+    ['ignore', 'write'],
+  ] as const) {
+    it(`refuses a ~user path in ${list}.${f}, and takes ~ and ~/`, () => {
+      expect(sandboxRefusal({ [list]: { [f]: ['~/a', '~root/x/'] } })).toBe(
+        `${W}.sandbox.${list}.${f}: "~root/x/" names a user's home, which vx does not expand — ` +
+          `write '~/…' for your own home, or an absolute path`,
+      )
+      expect(sandboxRefusal({ [list]: { [f]: ['~', '~/a', 'a~b', '/x/~y'] } })).toBeNull()
     })
   }
   for (const [field, sandbox, message] of CASES) {

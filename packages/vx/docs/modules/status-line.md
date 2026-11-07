@@ -51,8 +51,14 @@ when disabled (CI). When active:
   secret prompt on the terminal); the release draws the latest state.
 
 Off a TTY, `coalesce: true` holds writes and hands them to the stream
-once per turn of the event loop (`setImmediate`), in order; `settle()`
-hands over what is held and writes straight through from then on. A
+once per turn of the event loop (`setImmediate`), or as soon as 64 KiB
+are held, in order (a warm run replays its hits in one turn, so the
+turn's end held every hit's log), and at most once per `coalesceMs`
+(default 25 ms; 0 is once per turn): a write inside the floor waits for
+it on a timer. A restore settles its hits over hundreds of turns, and a
+write per turn cost the 9,603-task restore ~100 ms of its main thread on
+ext4 (2026-11-07). `settle()` hands over what is held at once, clears
+the timer, and writes straight through from then on. A
 warm 476-package run wrote each of its 952 task lines as its own
 syscall; coalesced, the warm run's wall went 184.0 → 167.8 ms (min of
 15, interleaved compiled binaries, item 753). Only `run()`'s own

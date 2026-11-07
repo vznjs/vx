@@ -42,12 +42,13 @@ import type {
  * (`cStringPath` decodes it). Paths that are relative resolve against the
  * task's cwd (set by Bun.spawn).
  */
-const SYSCALLS = 'openat|execve|faccessat2|faccessat|access|statx|newfstatat'
+const SYSCALLS = 'openat|open|execve|faccessat2|faccessat|access|statx|newfstatat'
 const QUOTED = '"((?:[^"\\\\]|\\\\.)+)"'
 // The directory descriptor a call names, `-y`'s path included: taken up to
 // the `, "` that opens the path argument, since a directory's name may hold
-// a quote (`4</ws/q"d>`). Captured: a relative path is in that directory.
-const DIRFD = '(?:AT_FDCWD|\\d+)(?:<(.*?)>)?, '
+// a quote (`4</ws/q"d>`). Captured, and the descriptor too: a relative
+// path is in that directory.
+const DIRFD = '(AT_FDCWD|\\d+)(?:<(.*?)>)?, '
 // The rest of the call: an `execve`'s argv strings may hold a `)`
 // (`sh -c "f()"`), so it reads to the result at the line's end.
 const ARGS = '.*'
@@ -78,18 +79,29 @@ const PROBES = new Set([
 /** A resumed call that SUCCEEDED — clears the pending entry, emits nothing. */
 const STRACE_RESUMED_OK_RE = new RegExp(`^(\\d+)\\s+<\\.\\.\\. (${SYSCALLS}) resumed>`)
 /**
- * An `openat` that succeeded, and not for writing alone: a read. Placed by
+ * An open that succeeded, and not for writing alone: a read. Placed by
  * the path `-y` prints for the descriptor it returned; without one, only
- * from the cwd (`AT_FDCWD`) or by an absolute path.
+ * from the cwd (`AT_FDCWD`, or `open`, which names no directory) or by an
+ * absolute path.
  */
 const READ_FLAGS = '(?![A-Z_|]*O_WRONLY)[A-Z_|]+'
-const OPEN_READ_RE = new RegExp(
-  `^(\\d+)\\s+openat\\((AT_FDCWD|\\d+)(?:<.*?>)?, ${QUOTED}, ${READ_FLAGS}[^)]*\\)\\s*=\\s*\\d+(?:<(.*)>)?$`,
+const OPEN_CALL = `(openat|open)\\((?:(AT_FDCWD|\\d+)(?:<.*?>)?, )?${QUOTED}, ${READ_FLAGS}`
+const OPEN_READ_RE = new RegExp(`^(\\d+)\\s+${OPEN_CALL}[^)]*\\)\\s*=\\s*\\d+(?:<(.*)>)?$`)
+const OPEN_READ_UNFINISHED_RE = new RegExp(`^(\\d+)\\s+${OPEN_CALL}.*<unfinished`)
+const RESUMED_FD_RE = /resumed>.*\)\s*=\s*(\d+)(?:<(.*)>)?$/
+/** Any open that returned a descriptor: where a later `openat(N, …)` is. */
+const OPENED_RE = new RegExp(
+  `^(\\d+)\\s+(?:openat|open)\\((?:(AT_FDCWD|\\d+)(?:<.*?>)?, )?${QUOTED}, [^)]*\\)\\s*=\\s*(\\d+)`,
 )
-const OPEN_READ_UNFINISHED_RE = new RegExp(
-  `^(\\d+)\\s+openat\\((AT_FDCWD|\\d+)(?:<.*?>)?, ${QUOTED}, ${READ_FLAGS}.*<unfinished`,
-)
-const RESUMED_FD_RE = /resumed>.*\)\s*=\s*\d+(?:<(.*)>)?$/
+/** An open's flags, after its path. */
+const OPEN_FLAGS_RE = new RegExp(`^\\d+\\s+(?:openat|open)\\((?:${DIRFD})?${QUOTED}, ([A-Z0-9_|]+)`)
+const WRITE_FLAGS_RE = /O_WRONLY|O_RDWR|O_CREAT|O_TRUNC/
+
+/** Whether an open line asks to write or create, as its flags say. */
+function writeFlags(line: string): { writes?: true } {
+  const flags = OPEN_FLAGS_RE.exec(line)?.[4]
+  return flags !== undefined && WRITE_FLAGS_RE.test(flags) ? { writes: true } : {}
+}
 
 /** Where a successful read opened: `-y`'s path, else the call's own when placeable. */
 function readPath(dirfd: string, rawPath: string, opened: string | undefined): string | undefined {
@@ -137,6 +149,8 @@ export interface DeniedCall {
   errno: string
   /** A read that SUCCEEDED (`errno` empty): asked for by `deniedCalls`' `reads`. */
   read?: true
+  /** An `openat` whose flags ask to write or create. */
+  writes?: true
   /**
    * The directory a relative `rawPath` was opened from, when the trace
    * shows the process (or one it was forked from) changed into one; absent
@@ -164,7 +178,11 @@ const FORK_UNFINISHED_RE = new RegExp(`^(\\d+)\\s+${FORK}\\(.*<unfinished`)
 const FORK_RESUMED_RE = new RegExp(`^(\\d+)\\s+<\\.\\.\\. ${FORK} resumed>.*?=\\s*(\\d+)$`)
 
 /** What a process did, in order, as far as its cwd and its denials go. */
-type Op = { chdir: string } | { lost: true } | { call: number }
+type Op =
+  | { chdir: string }
+  | { lost: true }
+  | { call: number; fd?: string }
+  | { opened: string; path: string; fd: string }
 
 /**
  * Walk the trace, pairing `<unfinished ...>` with its `<... resumed>` line.
@@ -174,7 +192,11 @@ type Op = { chdir: string } | { lost: true } | { call: number }
  * and no `ignore` pattern for the real one matched. Resolved after the
  * whole pass: a `vfork` child's lines come before its parent's
  * `resumed` line names it. (`-y` names the directory on every line, but
- * cost 40% on 2,000 opens; this costs a stop per process.)
+ * cost 40% on 2,000 opens; this costs a stop per process.) Without `-y`,
+ * a call through a directory descriptor (`openat(3, "f")`) is placed by
+ * the traced `openat` that last returned that descriptor in its process
+ * or the one it was forked from: in the cwd, Python's
+ * `os.open('f', dir_fd=d)` inside its grant was a refusal of `./f`.
  *
  * Exported for testing: this is the security-relevant half of the Linux
  * detector, and a synthetic trace pins the split-line shapes deterministically
@@ -183,7 +205,14 @@ type Op = { chdir: string } | { lost: true } | { call: number }
 export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCall[] {
   const pending = new Map<
     string,
-    { syscall: string; rawPath: string; read?: true; dirfd?: string; dir?: string }
+    {
+      syscall: string
+      rawPath: string
+      read?: true
+      writes?: true
+      dirfd?: string
+      dir?: string
+    }
   >()
   const out: DeniedCall[] = []
   const ops = new Map<string, Op[]>()
@@ -204,21 +233,44 @@ export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCa
     else parent.set(child, { pid: owner(from), at })
   }
   const chdirring = new Map<string, string>()
-  const denied = (pid: string, call: DeniedCall): void => {
-    opsOf(pid).push({ call: out.length })
+  // No `-y` and an `openat(3, …)`: each open's descriptor is followed.
+  const numbered = cwd !== undefined && /openat\(\d+, /.test(text)
+  const denied = (pid: string, call: DeniedCall, dirfd?: string): void => {
+    const unplaced =
+      numbered && dirfd !== undefined && dirfd !== 'AT_FDCWD' && call.dir === undefined
+    opsOf(pid).push(
+      unplaced && !call.rawPath.startsWith('/')
+        ? { call: out.length, fd: dirfd }
+        : { call: out.length },
+    )
     out.push(call)
+  }
+  // Per process and descriptor, the op indexes of the opens that returned it.
+  const opens = new Map<string, Map<string, number[]>>()
+  const opened = (pid: string, dirfd: string, rawPath: string, fd: string): void => {
+    const list = opsOf(pid)
+    let byFd = opens.get(owner(pid))
+    if (byFd === undefined) opens.set(owner(pid), (byFd = new Map()))
+    const at = byFd.get(fd)
+    if (at === undefined) byFd.set(fd, [list.length])
+    else at.push(list.length)
+    list.push({ opened: dirfd, path: rawPath, fd })
   }
   for (const line of text.split('\n')) {
     // Most lines are opens that succeeded: two substring tests skip them.
     const opener =
       line.includes('= -1') || line.includes('<unfinished') || line.includes('resumed>')
     if (!opener) {
-      if (reads && line.includes('openat(')) {
+      if (numbered && line.includes('open')) {
+        const m = OPENED_RE.exec(line)
+        if (m !== null) opened(m[1]!, m[2] ?? 'AT_FDCWD', cStringPath(m[3]!), m[4]!)
+      }
+      if (reads && line.includes('open')) {
         const m = OPEN_READ_RE.exec(line)
         if (m !== null) {
-          const at = readPath(m[2]!, cStringPath(m[3]!), m[4])
+          const at = readPath(m[3] ?? 'AT_FDCWD', cStringPath(m[4]!), m[5])
           if (at !== undefined)
-            denied(m[1]!, { syscall: 'openat', rawPath: at, errno: '', read: true })
+            denied(m[1]!, { syscall: m[2]!, rawPath: at, errno: '', read: true })
           continue
         }
       }
@@ -230,24 +282,35 @@ export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCa
       continue
     }
     const done = STRACE_DONE_RE.exec(line)
-    if (done?.[2] !== undefined && done[4] !== undefined && done[5] !== undefined) {
-      const rawPath = cStringPath(done[4])
-      denied(done[1]!, { syscall: done[2], rawPath, errno: done[5], ...within(done[3], rawPath) })
+    if (done?.[2] !== undefined && done[5] !== undefined && done[6] !== undefined) {
+      const rawPath = cStringPath(done[5])
+      denied(
+        done[1]!,
+        {
+          syscall: done[2],
+          rawPath,
+          errno: done[6],
+          ...within(done[4], rawPath),
+          ...writeFlags(line),
+        },
+        done[3],
+      )
       continue
     }
     const unfinished = STRACE_UNFINISHED_RE.exec(line)
     if (
       unfinished?.[1] !== undefined &&
       unfinished[2] !== undefined &&
-      unfinished[4] !== undefined
+      unfinished[5] !== undefined
     ) {
-      const rawPath = cStringPath(unfinished[4])
+      const rawPath = cStringPath(unfinished[5])
       pending.set(unfinished[1], {
         syscall: unfinished[2],
         rawPath,
-        ...within(unfinished[3], rawPath),
+        ...within(unfinished[4], rawPath),
+        ...writeFlags(line),
         ...(reads && OPEN_READ_UNFINISHED_RE.test(line) ? { read: true as const } : {}),
-        ...(reads ? { dirfd: OPEN_READ_UNFINISHED_RE.exec(line)?.[2] ?? 'AT_FDCWD' } : {}),
+        ...(unfinished[3] !== undefined ? { dirfd: unfinished[3] } : {}),
       })
       continue
     }
@@ -258,16 +321,30 @@ export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCa
       const resumed = STRACE_RESUMED_RE.exec(line)
       // Only a resume that carries a DENIAL is a violation; a successful
       // resume just retires the pending entry.
-      const fd = held?.read === true ? RESUMED_FD_RE.exec(line) : null
+      const fd =
+        held?.read === true ||
+        (numbered && (held?.syscall === 'openat' || held?.syscall === 'open'))
+          ? RESUMED_FD_RE.exec(line)
+          : null
       if (held !== undefined && resumed?.[3] !== undefined) {
-        denied(resumedOk[1], {
-          syscall: held.syscall,
-          rawPath: held.rawPath,
-          errno: resumed[3],
-          ...(held.dir !== undefined ? { dir: held.dir } : {}),
-        })
-      } else if (held !== undefined && fd !== null) {
-        const at = readPath(held.dirfd ?? 'AT_FDCWD', held.rawPath, fd[1])
+        denied(
+          resumedOk[1],
+          {
+            syscall: held.syscall,
+            rawPath: held.rawPath,
+            errno: resumed[3],
+            ...(held.dir !== undefined ? { dir: held.dir } : {}),
+            ...(held.writes === true ? { writes: true as const } : {}),
+          },
+          held.dirfd,
+        )
+        continue
+      }
+      if (numbered && (held?.syscall === 'openat' || held?.syscall === 'open') && fd !== null) {
+        opened(resumedOk[1], held.dirfd ?? 'AT_FDCWD', held.rawPath, fd[1]!)
+      }
+      if (held?.read === true && fd !== null) {
+        const at = readPath(held.dirfd ?? 'AT_FDCWD', held.rawPath, fd[2])
         if (at !== undefined) {
           denied(resumedOk[1], { syscall: held.syscall, rawPath: at, errno: '', read: true })
         }
@@ -335,10 +412,29 @@ export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCa
     dirs.set(pid, list)
     return list
   }
+  // Where descriptor `fd` pointed before op `i` of `pid`: the last open
+  // that returned it, else the one it inherited at the fork. Not traced: a
+  // `close`, a `dup`, an exec's O_CLOEXEC; a number reused by one of those
+  // is placed by the open before it, or, never opened here, in the cwd.
+  const fdAt = (pid: string, i: number, fd: string, depth = 0): string | undefined => {
+    if (depth > 64) return undefined
+    const at = opens.get(pid)?.get(fd) ?? []
+    let k = at.length - 1
+    while (k >= 0 && at[k]! >= i) k--
+    if (k >= 0) {
+      const j = at[k]!
+      const op = ops.get(pid)![j] as Extract<Op, { opened: string }>
+      if (path.isAbsolute(op.path)) return op.path
+      const base = op.opened === 'AT_FDCWD' ? dirsOf(pid)[j] : fdAt(pid, j, op.opened, depth + 1)
+      return base && path.resolve(base, op.path)
+    }
+    const from = parent.get(pid)
+    return from === undefined ? undefined : fdAt(from.pid, from.at, fd, depth + 1)
+  }
   for (const [pid, list] of ops) {
     list.forEach((op, i) => {
       if (!('call' in op) || out[op.call]!.dir !== undefined) return
-      const dir = dirsOf(pid)[i]
+      const dir = (op.fd !== undefined ? fdAt(pid, i, op.fd) : undefined) ?? dirsOf(pid)[i]
       if (dir !== undefined && dir !== cwd) out[op.call]!.dir = dir
     })
   }
@@ -405,7 +501,7 @@ export async function parseStraceViolations(
   const seen = new Set<string>()
   const judged = new Set<string>()
   const out: SandboxViolation[] = []
-  for (const { syscall, rawPath, errno, dir, read } of deniedCalls(
+  for (const { syscall, rawPath, errno, dir, read, writes } of deniedCalls(
     text,
     baselines.cwd,
     widened.size > 0,
@@ -414,7 +510,7 @@ export async function parseStraceViolations(
     // stats: a test shard's 44,788 calls held the event loop 2.9 s, and a
     // DTE worker that quiet for two heartbeats was lost (main, 2026-10-25).
     // Each call is judged once, and the loop yields between batches.
-    const call = `${syscall}\0${rawPath}\0${dir}\0${errno}\0${read}`
+    const call = `${syscall}\0${rawPath}\0${dir}\0${errno}\0${read}\0${writes}`
     if (judged.has(call)) continue
     judged.add(call)
     if (judged.size % JUDGED_PER_TURN === 0) await new Promise((r) => setImmediate(r))
@@ -433,7 +529,7 @@ export async function parseStraceViolations(
     // the host has the file.
     if (errno === 'ENOENT' && PROBES.has(syscall) && !lstatSync(abs, { throwIfNoEntry: false }))
       continue
-    const key = `${syscall}|${abs}`
+    const key = `${syscall}|${abs}|${writes}`
     if (seen.has(key)) continue
     seen.add(key)
     // The line is printed verbatim, and the trace's `\033` is decoded: a
@@ -453,10 +549,11 @@ export async function parseStraceViolations(
             timestamp: new Date(),
             target: abs,
             path: abs,
-            // An openat is a read or a write depending on flags the parse
+            // An open is a read or a write depending on flags the parse
             // does not keep, and `access` may ask either — so either list
             // can silence it.
             ignorable: ['read', 'write'],
+            ...(syscall === 'openat' ? { opened: writes === true ? 'write' : 'read' } : {}),
             ...(via === undefined ? {} : { via }),
           },
     )
@@ -780,6 +877,8 @@ export function refusedConnections(records: readonly string[]): SandboxViolation
 
 /** Write syscalls that act on a path's last component, not what a link there names. */
 const NAME_SYSCALL = /^(?:symlink|unlink|rename|rmdir|mknod|link)/
+/** The calls the observer records twice, source and destination, in that order. */
+const MOVES = /^(?:rename|link)/
 
 /**
  * The writes SRT's Linux observer saw that this task's binds do not cover.
@@ -789,6 +888,17 @@ const NAME_SYSCALL = /^(?:symlink|unlink|rename|rmdir|mknod|link)/
  * that landed, and anything else was refused or fell into the deny
  * anchor's scratch and vanished with the sandbox. Deduplicated by syscall
  * and canonical path; only a `write` ignore list can silence one.
+ *
+ * Under a directory a file grant was widened to (`widened`), the bind
+ * lets every write land, so there each is judged against the grants
+ * themselves: `echo x > other.txt` beside `write: ['o.txt']` wrote the
+ * host unreported, and `ln -f README.md o.txt` (the observer records a
+ * link's or a move's source too) cached README's bytes with no read the
+ * trace could see, replayed after README changed. An entry that was there
+ * when the task started is reported; one the task made is its own unless
+ * it outlives the task, since an atomic writer stages beside its target
+ * (the reason for the widening) and renames. A made directory holds
+ * nothing of its own: only a new one left behind is reported.
  */
 export function refusedWrites(
   records: readonly string[],
@@ -797,9 +907,32 @@ export function refusedWrites(
   scratch: readonly string[] = [],
   /** What the sandbox mounts readable, canonical: a mkdir of what is there is no write. */
   readable: readonly string[] = [],
+  /** `widenedEntries` at the task's start, and the write grants as declared. */
+  widened?: {
+    entries: ReadonlyMap<string, ReadonlySet<string>>
+    granted: readonly string[]
+  },
 ): SandboxViolation[] {
   const binds = new Set(writable.map((w) => toRealPath(absolutize(w))))
+  const granted = new Set((widened?.granted ?? []).map((w) => toRealPath(absolutize(w))))
+  // A brace is literal to the mount (`MOUNT_WILDCARDS`) and widened like
+  // any file grant, but `write: ['g/{a,b}.txt']` means `g/a.txt` too.
+  const braced = [...granted].filter((w) => w.includes('{')).map((w) => new Bun.Glob(w))
   const globs = scratch.map((g) => new Bun.Glob(g))
+  // Whether a write `binds` covers lands under a widened directory where
+  // no grant covers it, and so is reported (see above).
+  const undeclared = (syscall: string, abs: string): boolean => {
+    for (const [dir, entries] of widened?.entries ?? []) {
+      if (abs === dir || !atOrUnder(abs, dir)) continue
+      if (isUnderAny(abs, granted) || underGlob(abs, braced)) return false
+      const top = path.join(dir, path.relative(dir, abs).split(path.sep)[0]!)
+      if (!entries.has(top)) return exists(abs) && !(syscall.startsWith('mkdir') && abs !== top)
+      if (syscall.startsWith('mkdir')) return false
+      // A granted read as a link's source: the read the grant allows.
+      return !(syscall.startsWith('link') && readable.some((r) => atOrUnder(abs, r)))
+    }
+    return false
+  }
   const seen = new Set<string>()
   const out: SandboxViolation[] = []
   for (const record of records) {
@@ -817,14 +950,17 @@ export function refusedWrites(
     const abs = NAME_SYSCALL.test(syscall)
       ? path.join(toRealPath(path.dirname(raw)), path.basename(raw))
       : toRealPath(raw)
-    if (isUnderAny(abs, binds) || underGlob(abs, globs)) continue
+    if (underGlob(abs, globs)) continue
+    const bound = isUnderAny(abs, binds)
+    if (bound && !undeclared(syscall, abs)) continue
+    const moved = bound && MOVES.test(syscall)
     // A directory a write bind lies in exists, since bwrap made it to mount
     // the bind: `mkdir -p node_modules/.cache/tool` under a grant of
     // `node_modules/.cache/` met EEXIST on `node_modules`, wrote nothing,
     // and the attempt failed a clean task (2026-10-03).
     // So does one a read grant shows, or holds: `mkdir -p src` under
     // `read: ['src']` failed a clean task the same way (X-82).
-    if (syscall.startsWith('mkdir') && inSandbox(abs, binds, readable)) continue
+    if (!bound && syscall.startsWith('mkdir') && inSandbox(abs, binds, readable)) continue
     const key = `${syscall}|${abs}`
     if (seen.has(key)) continue
     seen.add(key)
@@ -834,6 +970,14 @@ export function refusedWrites(
       target: abs,
       path: abs,
       ignorable: ['write'],
+      // A link's source is read, and named for a read while it is there
+      // (`sandboxFix`): its bytes reach the output with no open.
+      ...(moved
+        ? {
+            line: `${syscall}(${raw}) = a link or move no grant covers  [${abs}]`,
+            ignorable: ['read', 'write'] as const,
+          }
+        : {}),
     })
   }
   return out

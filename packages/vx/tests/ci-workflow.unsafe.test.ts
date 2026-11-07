@@ -4,7 +4,7 @@
 //
 // `.unsafe`: the workflows live at the repo root, which a sandboxed project
 // task may not read.
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 
@@ -128,7 +128,7 @@ describe('ci.yml', () => {
     expect(steps[cache]?.id).toBe('cache')
     expect(run.env).toEqual({
       VX_DTE_RELAY: '${{ steps.relay.outputs.url || env.VX_DTE_RELAY }}',
-      VX_CACHE_URL: '${{ steps.outputs.url || env.VX_CACHE_URL }}',
+      VX_CACHE_URL: '${{ steps.cache.outputs.url || env.VX_CACHE_URL }}',
     })
   })
 
@@ -374,4 +374,23 @@ describe('vx-worker.yml', () => {
       [undefined, 3, undefined, "steps.install.outcome != 'success'"],
     ])
   })
+})
+
+// `${{ steps.outputs.url }}` names no step, so GitHub reads it as empty
+// and the `||` fallback wins without a word: a PR changing the cache
+// server then ran against the deployed one, whose older protocol refused
+// it (#5036 dropped `.cache`, found on #5051).
+describe('every `steps.<id>` a workflow reads names a step of its job', () => {
+  for (const file of readdirSync(dir).filter((f) => f.endsWith('.yml'))) {
+    it(file, () => {
+      const wrong: string[] = []
+      for (const [name, job] of Object.entries(read(file).jobs)) {
+        const ids = new Set((job.steps ?? []).flatMap((s) => (s.id === undefined ? [] : [s.id])))
+        for (const [, id] of JSON.stringify(job).matchAll(/\bsteps\.([A-Za-z_][\w-]*)/g)) {
+          if (!ids.has(id!)) wrong.push(`${name}: steps.${id}`)
+        }
+      }
+      expect(wrong).toEqual([])
+    })
+  }
 })

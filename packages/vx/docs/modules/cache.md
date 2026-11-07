@@ -50,6 +50,11 @@ and key derivation logic live here.
   (`historyFiles(cache)`). A run with fewer hits writes none there; a
   batch the thread does not land comes back and goes in the bundle. The
   writer is a second `bun build --compile` entry point.
+- `checkpointer.ts` — `WalCheckpointer`: once a run's first save commits
+  (`checkpointOffThread`), the index's WAL checkpoints run PASSIVE on a
+  thread of their own every 100 ms, through a second connection, and the
+  run's connection checkpoints nothing until its close
+  (`stopCheckpoints` first). A thread that fails hands them back.
 - `run-notes.ts` — `keepRunNotes` / `keptSteps` / `keptWarnings` /
   `keptFailures`: what a run said beside its rows (`steps`, `warnings`,
   `failures`), the newest 50 runs per table (metrics.md), one `RunNotes`.
@@ -162,6 +167,12 @@ export const WORKSPACE_OUTPUT_PREFIX = 'workspace-outputs/'
 // `restoreOutputs` found no artifact where the probe found one, or a
 // corrupt one (A-52): a MISS (execute-task.ts runs the task).
 export class ArtifactVanishedError extends Error {
+  readonly hash: string
+}
+
+// A body whose bytes are wrong, not cut short: the hit is a miss and the
+// re-run's save is sent over that remote's copy (`put` gets `replace`).
+export class CorruptArtifactError extends Error {
   readonly hash: string
 }
 
@@ -337,8 +348,8 @@ export interface CacheEntry {
   outputFiles: string[] // project-relative POSIX paths
   outputRows?: OutputFileRow[] // the rows behind outputFiles, when the layer had them
   outputDirRows?: OutputDirRow[] // the directory short-circuit's rows, from getMany
-  stdout: string // the output log: both streams in order (output-log.ts)
-  storedAt: string // ISO timestamp
+  stdout: string // the output log: both streams in order (output-log.ts); a local entry reads it on access
+  storedAt: string // ISO timestamp; a local entry formats it on access
   source?: 'local' | 'remote' // (LayeredCache) which layer served the hit
   sizeBytes?: number // the artifact's compressed size, from the index
   fetchMs?: number // (LayeredCache) a remote hit this run pulled: download + ingest
@@ -416,6 +427,10 @@ export interface FoldMemo {
 // Core's own readers (`vx last`, `vx why`, the history provider) take the
 // index handle from `indexDb(cache)`, never from a `Cache` member.
 export function indexDb(cache: Cache): Database
+// Wait until no other connection has `<storeDir>/store.db` open (a run in
+// any checkout holds it from its run lock to its end; WAL connections keep a shared lock),
+// then hold it alone until the release. Nothing to hold without the file.
+export function holdStore(storeDir: string, log: (line: string) => void): Promise<() => void>
 // The files a second connection writes a run's hits through; undefined
 // when the store keeps no history on disk.
 export function historyFiles(cache: Cache): { index: string; store?: string } | undefined
@@ -426,7 +441,10 @@ export class HistoryStream<T> {
   add(item: T, record: RunRecord): void
   finish(): Promise<{ landed: Streamed<T>[]; unlanded: Streamed<T>[] }>
 }
-export const SCHEMA_VERSION = 'v47'
+export const SCHEMA_VERSION = 'v52'
+// An entry_stdout row's log, its zstd frame decoded (v52); null reads as ''.
+// `vx last --log` reads the row itself.
+export function storedLog(blob: Uint8Array | null): string
 // What vx wrote in a cache dir (index, artifacts, run history, its `*`
 // ignore): all a clear of a dir the user named may delete (item 968).
 export function vxCacheEntries(cacheDir: string): string[]
@@ -544,8 +562,11 @@ tar.zst, and otherwise it is `<hash>.tree/`: the same entries unpacked (`writeTr
 at save, the validated tar extracted at ingest, `sealTree`), stdout in
 its `entry_stdout` row. A tree restore checks nothing (the tree holds no
 `.vx-sum`; the archive's sum is checked when it is unpacked) and copies each file with `Bun.write` (copy_file_range, a clone where
-the filesystem has one; never a hard link). Into existing outputs, a
-workspace output or a link it feeds `extractArtifactStream` the
+the filesystem has one; never a hard link): a missing top directory is
+built in `.vx/tmp/` (`copyStaging`) and renamed into place once, a
+missing file in a directory that stands is copied straight to its place.
+Every copy settles before a failure's cleanup. Into existing outputs, a workspace output, a link, or
+where that rename would cross a filesystem or a setgid directory it feeds `extractArtifactStream` the
 tree packed back (`packArtifactStream(planOfTree(…))`). `pinArtifact`
 packs a tree into the upload's tar.zst.
 
@@ -603,7 +624,8 @@ SQLite stores metadata, and the small artifacts above:
 - **`entries`** — one row per cached output:
   `(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at, cpu_ms, peak_rss_bytes)`.
 - **`entry_stdout`** — an entry's captured stdout, `(hash, stdout)`, apart
-  so the `accessed_at` bump does not rewrite it (v29).
+  so the `accessed_at` bump does not rewrite it (v29); a zstd frame of its
+  UTF-8 (v52), as text the logs outweighed every inline artifact.
 - **`runs`** — one row per task execution (hit or miss):
   `(id, hash, project, task, status, exit_code, duration_ms, forward_args, started_at, ended_at)`.
 - **`store_meta`** — the shared store's `SCHEMA_VERSION`. Another
@@ -662,7 +684,16 @@ layer carries it as it carried stdout (v42).
 process cannot pair its rows with the other bytes. The rows a probe
 held (X-162) serve it only while the blob's `at` is the one the probe
 read; a re-save or renewal since moves it and the rows are read again
-in the blob's snapshot. `pinArtifact()`
+in the blob's snapshot. With the rows held, no transaction is opened:
+an inline artifact is its blob read alone (one statement is its own
+snapshot), and a file artifact whose tree stands is read with no
+statement at all, since an inline save moves the tree aside in the
+commit that adds its blob (2026-11-07: ~70 ms of a 1,600-restore run's
+main thread). The tree's inode is taken once, before the copy, and
+asked again after it to catch a swap; the project directory and the
+staging directory are each stat'ed once per restore, and the copy-out
+asks what stands at each path synchronously, on dentries the walk just
+looked up. `pinArtifact()`
 (the upload's body) hands an inline artifact over as a `Blob` of its
 bytes, read once; a file as a private hard link.
 
@@ -688,12 +719,19 @@ Reads via `get()` are non-blocking thanks to WAL.
   after the probe: a `vx cache clean` in another shell, another
   workspace's retention on a shared `--cache-dir`) — the caller treats
   that entry as a miss and runs the task. An artifact that is not a
-  readable archive or lacks an output the index recorded
-  (`CorruptArtifactError`) is dropped, unless the cache is read-only,
+  readable archive or lacks an output the index recorded, or a tree
+  still in place that lacks one of its files (`CorruptArtifactError`,
+  `<rel> is missing from its stored tree`), is dropped, unless the cache is read-only,
   and throws `ArtifactVanishedError` the same way (A-52). So is one
   holding an unsafe name or an escape by name (`ArchiveSecurityError`,
   as the `CorruptArtifactError`'s cause): the save proved every name
-  safe, so the bytes changed since (X-115). A directory on the tree side that links out of the
+  safe, so the bytes changed since (X-115). A file artifact (tar or
+  tree) has no blob `at`, so a re-save in another process after the
+  probe pairs the probe's held rows with the new bytes: a failure whose
+  entry's rows changed since restores once more on the rows read now,
+  and an entry is dropped only while its rows, checked under the write
+  lock, are the ones that failed, so another process's fresh entry is
+  never dropped (a miss instead). A directory on the tree side that links out of the
   anchor is the tree's fault, not the artifact's: a `UserError` naming
   the link and its target (it is kept, never written through). A link
   that stays inside the anchor is written through, a dangling one too:
@@ -721,9 +759,13 @@ Reads via `get()` are non-blocking thanks to WAL.
   us.
 - Marks the hash touched; `accessed_at` (the LRU order `prune`'s
   `maxBytes` evicts by) is written in one batch at prune, stats or close.
-- Pure SQL: stdout from its `entry_stdout` row (one LEFT JOIN on the
-  entry; none for an empty one), `outputFiles` from the
-  `output_files` rows. The artifact is not opened — the caller decides
+- Pure SQL: `outputFiles` from the `output_files` rows. The log is
+  `CacheEntry.stdout`, a getter: a compressed log of up to 4 KiB comes
+  with the entry (one LEFT JOIN; none for an empty one) and is
+  decompressed on access; a larger one is read from its `entry_stdout`
+  row on access. A warm run probes every key in one batch and replays
+  the hits later, so each log is held only while its hit replays: 500
+  hits printing 1 MiB each held 3.4 GB RSS, now 0.2 GB. Read it once. The artifact is not opened — the caller decides
   when to call `restoreOutputs`.
 
 ## Run history & stats
@@ -781,7 +823,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
 `CACHE_VERSION` is currently `'vx-cache-v51'`; `SCHEMA_VERSION` is
-`'v51'`. Bump `CACHE_VERSION` when:
+`'v52'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside
   `key()`).
@@ -812,10 +854,9 @@ pass, stats read, run record and config-evaluation read or write passes
 through `guard` (A-8). Before, every task of a run failed on it as an
 "internal error" and `vx cache clean` printed a stack. The open that drops them records it:
 `Cache.schemaReset` carries a `SchemaReset`, `{ from, to }`, on that one open (null on
-every later one). A `CACHE_VERSION` bump alone keeps the index, so
-`Cache.formatChange` carries `{ from, to }` on the open that first sees
-the new version (from `schema_meta.cache_version`; a store with entries
-and no record reads `an earlier format`). Neither is printed, nor is a
+every later one). A `CACHE_VERSION` bump alone keeps the index and
+records the new version in `schema_meta.cache_version`; every key moves,
+so each cached task misses once. Neither is printed, nor is a
 shared store moved to or fallen back from: the cache is vx's to keep
 (2026-10-06; `tests/schema-reset-notice.test.ts`). A new
 `CacheKeyInput` field that is **NOT folded** (a pure side-channel like

@@ -18,10 +18,11 @@ export interface RunResult {
   stderr: string // retained text, or '' when `capture.stderr` is false
   signal?: string | number // the signal that killed the child (Bun's signalCode: its name, or its number when it has none)
   timedOut?: boolean // vx's own `timeoutMs` timer fired: a real `failed`, not an `aborted` shutdown
+  killedAfterGrace?: true // the timeout's SIGKILL past the grace took the child or a process it left
   cpuMs?: number // user + system, from Bun.spawn().resourceUsage()
   peakRssBytes?: number // maxRSS (bytes) when it rose above vx's own RSS high-water mark; on Linux else the tree's peak `watchTree` saw, if a look landed
   spawnFailed?: true // Bun.spawn threw: the 127 is vx's, no shell ran
-  leftRunning?: true // the drain bound cut a pipe a leftover process held: the result is not saved
+  leftRunning?: true // a leftover held a pipe past the drain bound or stayed in the group: not saved
 }
 
 // Which streams are retained onto the result. Both default to true.
@@ -51,6 +52,7 @@ export function runCommand(opts: RunOptions): Promise<RunResult>
 export interface PersistentOptions extends Omit<RunOptions, 'forwardArgs' | 'capture'> {
   readyWhen?: string // string regex; matched against streamed output
   timeoutMs?: number // bounds the readiness wait
+  onReady?: () => void // at ready: after the text up to the ready line's end, before the rest
   signalChannel?: boolean // fd 3 carries SIGINT/SIGTERM (a Linux sandboxed command, item 752)
 }
 
@@ -58,6 +60,7 @@ export interface PersistentSpawn {
   child: ReturnType<typeof Bun.spawn> | undefined // undefined when the spawn itself failed (`ready` rejects)
   ready: Promise<void> // resolves once "ready"; rejects if exit before ready, or on a readiness timeout once the group is gone (one SIGTERM, grace, SIGKILL)
   readyMs: () => number // ms from spawn to ready, to the readiness timeout giving up, or to now
+  gaveUp: () => boolean // the readiness timeout gave up: no readiness wait to report
 }
 
 export function runPersistent(opts: PersistentOptions): PersistentSpawn
@@ -95,7 +98,7 @@ export function exitSignal(code: number): string | undefined
 export function execWord(command: string): string | undefined
 export function execWrap(command: string): string // `exec <command>` when execWord finds a word
 
-export function armTimeout(proc, timeoutMs): { timedOut(): boolean; settle(): Promise<void> }
+export function armTimeout(proc, timeoutMs): { timedOut(): boolean; sigkilled(): boolean; settle(): Promise<void> }
 export const POST_EXIT_CUT_LINE: string
 // The two output callbacks merged a line at a time: a chunk on one stream
 // waits while the other's line is open, at most OPEN_LINE_WAIT_MS (50) and
@@ -121,7 +124,7 @@ export interface CapturedChunk {
 export class BoundedCapture {
   constructor(headChars?: number, tailChars?: number) // default CAPTURE_HEAD_CHARS / CAPTURE_TAIL_CHARS
   push(text: string, err?: boolean): void
-  rebound(headChars: number, tailChars: number, through?: (c: CapturedChunk[]) => CapturedChunk[]): BoundedCapture // tighter bounds; counts what this one already dropped; through maps each side first
+  rebound(headChars: number, tailChars: number, through?: (c: CapturedChunk[]) => CapturedChunk[]): BoundedCapture // tighter bounds; counts what this one already dropped; through maps the kept text first, each side apart only past a drop
   chunks(): CapturedChunk[] // the dropped middle named on stdout
   text(): string
 }
@@ -253,7 +256,8 @@ The promise from `runCommand` always resolves (never rejects) with a
   exit, so a backgrounded process that ignored SIGTERM ran on under init
   after vx exited (2026-09-24, `tests/task-tree-kill.test.ts` › "a
   timeout reaps a grandchild that ignores SIGTERM"). Both runners
-  settle before the drain.
+  settle before the drain. `sigkilled()` says that SIGKILL took anyone,
+  and the result's `killedAfterGrace` carries it to the timeout line.
 - `Bun.spawn` itself throwing → `exitCode = 127`, and the reason goes
   through `onStderr` (the task's frame) as well as onto `stderr`: a
   missing `sh` says `[vx] vx runs each task with sh -c: failed to spawn
@@ -278,6 +282,8 @@ result's `stderr` (after a newline only when the output ended mid-line,
 2026-09-24). A timeout aborts the readers at once, with its own line.
 The sandboxed runner does the same; on Linux bwrap's PID namespace
 kills the leftover with the shell, so there the bound is unreachable.
+An `inputs.runtime` probe is bounded by the same constant (`util/`,
+since `cache/` cannot import `exec/`), then its group is killed.
 
 ### Stream capture
 
@@ -397,6 +403,15 @@ A persistent task's output reaches the caller ONLY through the live
 logger keeps the one bounded tail (registered at `taskStart`, so it
 covers the pre-ready window too), which is what surfaces pre-ready
 output on a fail-before-ready outcome.
+
+`onReady` marks where the since-ready stream begins: the chunk that
+holds the ready line is split after that line's break (a CRLF's `\n`
+too; a prompt-style marker splits at the chunk's end), the first part
+forwarded, `onReady` called, then the rest. Handed over whole, the
+lines after the ready line in the same write read as pre-ready, the
+frame a ready server's row never prints: Vite's `Network:` line after
+`readyWhen: 'Local:'` was never shown. With no `readyWhen` it fires at
+spawn, before any output.
 
 ## What an unsandboxed task costs (Linux, 2026-10-02)
 

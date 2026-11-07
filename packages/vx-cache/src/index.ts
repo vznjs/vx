@@ -70,8 +70,6 @@ const LEND_MARGIN_MS = 5 * 60_000
 const ASK_ATTEMPTS = 3
 /** A connection that dropped, not a server that answered: an upload is sent again. */
 const RESET = new Set(['ECONNRESET', 'EPIPE', 'ECONNREFUSED'])
-/** Uploads open at once; more wait. */
-const IN_FLIGHT = 4
 
 /**
  * The names a request sets itself: one of them in `headers`, in another
@@ -146,10 +144,14 @@ async function jsonUpTo(res: Response, max: number, what: string): Promise<unkno
   return JSON.parse(text)
 }
 
-/** Capabilities and a CI token are a few hundred bytes: room to spare. */
+/** A CI token's answer is a few hundred bytes: room to spare. */
 const SMALL_ANSWER_BYTES = 64 * 1024
-/** A check's answer per hash asked: a hash, a size and a scope in JSON are under 150 bytes. */
-const CHECK_BYTES_PER_HASH = 512
+/**
+ * A check's answer per hash asked: a hash (up to 128), a size and a scope
+ * (up to 512, a long branch's) in JSON are under 700 bytes. At 512 an
+ * answer under the longest scopes was refused as too long.
+ */
+const CHECK_BYTES_PER_HASH = 1024
 
 /**
  * `s` with each C0/C1 control and DEL written as `\xNN`: a server's words
@@ -311,40 +313,7 @@ function paced(
   return { body, stop: window.stop }
 }
 
-/**
- * Uploads: up to `IN_FLIGHT` at once, each one artifact by `PUT`, whose
- * bytes reach the bucket untouched (2026-10-25: no batch upload; a
- * batch passes through the server's code, which on Workers costs CPU by the
- * byte, and a 40 MB one ran out of it).
- */
-class Lane<T, R> {
-  private readonly waiting: { item: T; resolve(r: R): void; reject(err: unknown): void }[] = []
-  private open = 0
-
-  constructor(private readonly send: (item: T) => Promise<R>) {}
-
-  push(item: T): Promise<R> {
-    const { promise, resolve, reject } = Promise.withResolvers<R>()
-    this.waiting.push({ item, resolve, reject })
-    this.pump()
-    return promise
-  }
-
-  private pump(): void {
-    while (this.open < IN_FLIGHT && this.waiting.length > 0) {
-      const w = this.waiting.shift()!
-      this.open++
-      void this.send(w.item)
-        .then(w.resolve, w.reject)
-        .finally(() => {
-          this.open--
-          this.pump()
-        })
-    }
-  }
-}
-
-/** The limits a server names at `/v1/capabilities` and on each check (`vx-max-*`). */
+/** The limits a server names on each `/v1/artifacts` answer (`vx-max-*`). */
 interface Limits {
   readonly maxCheckHashes: number
   readonly maxUploadBytes: number
@@ -363,14 +332,11 @@ const chunks = <T>(all: readonly T[], size: number): T[][] =>
     all.slice(i * size, (i + 1) * size),
   )
 
-/** The limits an answer's `vx-max-*` headers name. */
-const limitsNamed = (res: Response): Limits | undefined =>
-  limitsOf((k) => Number(res.headers.get(LIMIT_HEADERS[k]) ?? NaN))
-
-/** Each limit, or undefined when one is missing or bad. */
-function limitsOf(read: (k: keyof Limits) => unknown): Limits | undefined {
-  const maxCheckHashes = count(read('maxCheckHashes'))
-  const maxUploadBytes = count(read('maxUploadBytes'))
+/** The limits an answer's `vx-max-*` headers name, or undefined when one is missing or bad. */
+function limitsNamed(res: Response): Limits | undefined {
+  const read = (k: keyof Limits) => count(Number(res.headers.get(LIMIT_HEADERS[k]) ?? NaN))
+  const maxCheckHashes = read('maxCheckHashes')
+  const maxUploadBytes = read('maxUploadBytes')
   return maxCheckHashes === undefined || maxUploadBytes === undefined
     ? undefined
     : { maxCheckHashes, maxUploadBytes }
@@ -378,7 +344,7 @@ function limitsOf(read: (k: keyof Limits) => unknown): Limits | undefined {
 
 /**
  * The seam over vx-cache v1. `has` and `hasMany` are `check`, `get` a
- * download and `put` an upload by `PUT` (`Lane`). A check names the
+ * download and `put` an upload by `PUT`. A check names the
  * scope of each ref the run reads, in order, and the first holding a hash
  * answers it; a download names the scope its check found. A refused token (401/403) throws
  * once, for core to report, and turns the layer off for the run; an
@@ -390,18 +356,25 @@ export class VxCacheLayer implements RemoteCacheLayer {
   private writesRefused = false
   /** The refs a read names, in order: the first holding a hash answers it. */
   refs: readonly string[] = []
+  private scoped: { refs: readonly string[]; scopes: readonly string[] } | undefined
+  /** `refs` as the wire names them (`scopeOf`), encoded once. */
+  private get scopes(): readonly string[] {
+    if (this.scoped?.refs !== this.refs)
+      this.scoped = { refs: this.refs, scopes: this.refs.map(scopeOf) }
+    return this.scoped.scopes
+  }
   /** The ref a check found each hash under, which its download names. */
   private readonly found = new Map<string, string>()
-  /** The limits the server named, at `/v1/capabilities` and on its last check; nothing is guessed. */
+  /**
+   * The limits the server's last answer named; none before its first.
+   * Nothing is guessed, nor asked apart: a check before any answer goes
+   * whole, and one refused for its size is sent again in the chunks its
+   * refusal names (`/v1/capabilities` cost every run a request, one
+   * round-trip before its first check, 2026-11-06).
+   */
   private limits: Limits | undefined
-  private asked: Promise<Limits | undefined> | undefined
   /** Where the layer says what is no failure of a request: core's `ctx.warn`. */
   warn: (message: string) => void = () => {}
-  private limitsMissing = false
-
-  private readonly uploads = new Lane<{ hash: string; body: Blob }, void | false>((item) =>
-    this.upload(item),
-  )
 
   /** The issuer and repository, named on every request by their hashes. */
   private readonly named: Readonly<Record<string, string>>
@@ -616,73 +589,31 @@ export class VxCacheLayer implements RemoteCacheLayer {
     })
   }
 
-  /**
-   * The server's limits: `/v1/capabilities`, asked once and kept, then
-   * whatever each check names. Unnamed, said once: checks go one hash at
-   * a time.
-   */
-  private async limitsNow(): Promise<Limits | undefined> {
-    if (this.limits !== undefined) return this.limits
-    const asked = (this.asked ??= (async () => {
-      const res = await this.request('/v1/capabilities', { method: 'GET' })
-      if (res === undefined) return undefined
-      if (res.status !== 200) throw await refusal(res)
-      const body = (await jsonOf(res, '/v1/capabilities', SMALL_ANSWER_BYTES)) as Record<
-        string,
-        unknown
-      > | null
-      const named = limitsOf((k) => body?.[k])
-      if (named === undefined) this.limitsUnnamed(`/v1/capabilities (HTTP ${res.status})`)
-      return named
-    })())
-    // A failed ask is asked again by the next check: kept, two failures
-    // while a server restarted failed every read of the run (2026-10-26).
-    // quiet: the awaited ask rethrows it; this only forgets it
-    asked.catch(() => {
-      if (this.asked === asked) this.asked = undefined
-    })
-    this.limits ??= await asked
-    return this.limits
-  }
-
-  private limitsUnnamed(where: string): void {
-    if (this.limitsMissing) return
-    this.limitsMissing = true
-    this.warn(
-      `[vx] vx-cache: ${where} named no limits (maxCheckHashes, maxUploadBytes); checks go one hash at a time`,
-    )
-  }
-
-  /** A refusal met while starting, which no call could throw: the next check or download does. */
+  /** A token refusal met by `open`'s ask, which no call could throw: the next check or download does. */
   private unsaid: Error | undefined
-  /** Refusals a call threw: a check that waited on the start's ask threw it too. */
-  private readonly said = new WeakSet<object>()
+  /** A `replace` refused was said: it is said once a run. */
+  private saidNoReplace = false
 
-  /** Throws the refusal met while starting, once. */
+  /** Throws the refusal `open`'s ask met, once. */
   private sayUnsaid(): void {
     const err = this.unsaid
     this.unsaid = undefined
-    if (err !== undefined && !this.said.has(err)) {
-      this.said.add(err)
-      throw err
-    }
+    if (err !== undefined) throw err
   }
 
   /**
    * Core's `open`: called only when the run's policy reads or writes this
-   * remote, so a `--no-cache` run or a plan asks the server (and GitHub)
-   * nothing.
+   * remote, so a `--no-cache` run or a plan asks GitHub nothing. Starts
+   * asking for the job's token, so the first check need not wait on
+   * GitHub; the server is asked nothing until a check, a download or an
+   * upload, so a run the local cache answers sends it none.
    */
   async open(): Promise<void> {
-    this.start()
-  }
-
-  /** Starts asking for the limits, so the first check need not wait for them. */
-  start(): void {
-    this.limitsNow().catch((err: unknown) => {
-      // A refusal turned the layer off, and is said only once: the first
-      // check says it. Anything else, the first check asks again and says.
-      if (this.disabled) this.unsaid = err instanceof Error ? err : new Error(String(err))
+    this.bearer().catch((err: unknown) => {
+      // Said by the first call; the requests that shared the ask say nothing.
+      if (this.tokenFailed) return
+      this.tokenFailed = true
+      this.unsaid = err instanceof Error ? err : new Error(String(err))
     })
   }
 
@@ -700,29 +631,34 @@ export class VxCacheLayer implements RemoteCacheLayer {
     const held = new Map<string, ArtifactInfo>()
     this.sayUnsaid()
     if (this.disabled || this.refs.length === 0) return null
-    const scopes = this.refs.map(scopeOf)
+    const scopes = this.scopes
     const ask = [...new Set(hashes)]
-    let limits: Limits | undefined
-    try {
-      limits = await this.limitsNow()
-    } catch (err) {
-      // A refusal turned the layer off: each waiter shares it, the first says it.
-      if (this.disabled && err instanceof Error) {
-        if (this.said.has(err)) return null
-        this.said.add(err)
-      }
-      throw err
+    const checks = (max: number, again: boolean) => {
+      // More refs than one check takes: each hash's scopes span several
+      // checks, the first in order holding it answering (a check of every
+      // scope at once was refused, every time).
+      const span = Math.min(scopes.length, max)
+      const per = Math.max(1, Math.floor(max / span))
+      const spans = chunks(scopes, span)
+      return chunks(ask, per).flatMap((some) => spans.map((s) => this.check(s, some, again)))
     }
-    const max = limits?.maxCheckHashes ?? scopes.length
-    // More refs than one check takes: each hash's scopes span several
-    // checks, the first in order holding it answering (a check of every
-    // scope at once was refused, every time).
-    const span = Math.min(scopes.length, max)
-    const per = Math.max(1, Math.floor(max / span))
-    const spans = chunks(scopes, span)
-    const parts = await Promise.all(
-      chunks(ask, per).flatMap((some) => spans.map((s) => this.check(s, some))),
+    // None named yet: one check of every lookup.
+    const first = await Promise.allSettled(
+      checks(this.limits?.maxCheckHashes ?? Math.max(1, ask.length * scopes.length), true),
     )
+    const refused = first.flatMap((r) => (r.status === 'rejected' ? [r.reason as unknown] : []))
+    const failed = refused.find((err) => !(err instanceof TooMany))
+    if (failed !== undefined) throw failed
+    const parts =
+      refused.length === 0
+        ? first.map(
+            (r) =>
+              (r as PromiseFulfilledResult<Map<string, { size: number; scope: string }>>).value,
+          )
+        : await settledAll(checks(Math.min(...refused.map((err) => (err as TooMany).max)), false))
+    // A token refused to `open`'s ask, which a check here shared.
+    this.sayUnsaid()
+    if (this.disabled) return null
     for (const part of parts)
       for (const [hash, { size, scope }] of part) {
         if (held.has(hash)) continue
@@ -732,15 +668,27 @@ export class VxCacheLayer implements RemoteCacheLayer {
     return held
   }
 
-  /** `POST /v1/artifacts` (Turbo's batch query): the size and scope of each hash held. */
+  /**
+   * `POST /v1/artifacts` (Turbo's batch query): the size and scope of each
+   * hash held. One refused for its size, its refusal naming a smaller
+   * `maxCheckHashes`, throws `TooMany` when `again`: the caller sends it
+   * in chunks.
+   */
   private async check(
     scopes: readonly string[],
     hashes: readonly string[],
+    again: boolean,
   ): Promise<Map<string, { size: number; scope: string }>> {
     const res = await this.json('/v1/artifacts', { hashes, scopes })
     if (res === undefined) return new Map()
-    if (res.status !== 200) throw await refusal(res)
-    if (limitsNamed(res) === undefined) this.limitsUnnamed(`the check (HTTP ${res.status})`)
+    if (res.status !== 200) {
+      const max = limitsNamed(res)?.maxCheckHashes
+      if (again && max !== undefined && hashes.length * scopes.length > max) {
+        await res.body?.cancel()
+        throw new TooMany(max)
+      }
+      throw await refusal(res)
+    }
     const body = (await jsonOf(
       res,
       '/v1/artifacts',
@@ -767,33 +715,65 @@ export class VxCacheLayer implements RemoteCacheLayer {
     return out
   }
 
-  /** The scope a check found it under, else each ref's in order until one holds it. */
+  /**
+   * The scope a check found it under, else every ref's in order in one
+   * request, the first holding it answering: one by one, a branch's run
+   * paid a round-trip and a 404 for its own scope before each download of
+   * main's (2026-11-06). More refs than the server's `maxCheckHashes` go
+   * in several, in order.
+   */
   async get(hash: string): Promise<{ body: Response; durationMs: undefined } | null> {
     this.sayUnsaid()
     const at = this.found.get(hash)
-    for (const scope of at === undefined ? this.refs.map(scopeOf) : [at]) {
+    const scopes = at === undefined ? this.scopes : [at]
+    for (let next = 0; next < scopes.length;) {
       if (this.disabled) return null
+      const some = scopes.slice(next, next + (this.limits?.maxCheckHashes ?? scopes.length))
       const res = await this.request(`/v1/artifacts/${hash}`, {
         method: 'GET',
-        headers: { 'vx-scope': scope },
+        headers: { 'vx-scope': some.join(', ') },
         streamed: true,
       })
       if (res === undefined) return null
       if (res.status === 404) {
         await res.body?.cancel()
+        next += some.length
         continue
       }
-      if (res.status !== 200) throw await refusal(res)
+      if (res.status !== 200) {
+        // Refused for its scopes: sent again in as many as the refusal names.
+        const max = limitsNamed(res)?.maxCheckHashes
+        if (max !== undefined && some.length > max) {
+          await res.body?.cancel()
+          continue
+        }
+        throw await refusal(res)
+      }
       return { body: res, durationMs: undefined }
     }
     return null
   }
 
   /** An artifact over the server's upload limit is not sent: it is said. */
-  async put(hash: string, body: Blob, _meta: { durationMs: number }): Promise<void | false> {
+  async put(
+    hash: string,
+    body: Blob,
+    meta: { durationMs: number; replace?: true },
+  ): Promise<void | false> {
     // With no token a job reads only: nothing is uploaded, and none counted.
     if (this.disabled || this.writesRefused || !hasCiToken(this.env, this.lent?.() !== undefined))
       return false
+    // The server keeps the bytes a scope holds and answers 204 unread
+    // (PROTOCOL.md): a PUT reported the corrupt copy fixed, so no run (nor
+    // DTE peer) learned it was not, and each one downloaded it again.
+    if (meta.replace === true) {
+      if (!this.saidNoReplace)
+        this.warn(
+          `[vx] vx-cache: ${hash} did not read back, and a vx-cache server never replaces an artifact it holds: not uploaded; the remote misses it until the bucket's lifecycle rule expires it`,
+        )
+      this.saidNoReplace = true
+      return false
+    }
     const max = this.limits?.maxUploadBytes
     if (max !== undefined && body.size > max) {
       this.warn(
@@ -801,10 +781,18 @@ export class VxCacheLayer implements RemoteCacheLayer {
       )
       return false
     }
-    return this.uploads.push({ hash, body })
+    return this.upload({ hash, body })
   }
 
-  /** One artifact by `PUT`: the server answers one its scope holds before reading the bytes. */
+  /**
+   * One artifact by `PUT`, its bytes reaching the bucket untouched
+   * (2026-10-25: no batch upload; a batch passes through the server's code,
+   * which on Workers costs CPU by the byte, and a 40 MB one ran out of it).
+   * The server answers one its scope holds before reading the bytes. As
+   * many at once as core sends (`cache.concurrency.upload`): a cap of four
+   * here held a 1,500-task cold run 11 s past its last task on a remote
+   * 40 ms away, the setting unheard.
+   */
   private async upload(item: { hash: string; body: Blob }): Promise<void | false> {
     // Queued before the remote or its writes were turned off.
     if (this.disabled || this.writesRefused) return false
@@ -837,6 +825,25 @@ export class VxCacheLayer implements RemoteCacheLayer {
       await res.body?.cancel()
       await this.wait(1000 * attempt)
     }
+  }
+}
+
+/**
+ * `Promise.all` that ends only once every check has: a refused chunk
+ * rejected the lookup while its siblings were still in flight, so their
+ * requests outlived the call that sent them.
+ */
+async function settledAll<T>(ps: readonly Promise<T>[]): Promise<T[]> {
+  const done = await Promise.allSettled(ps)
+  const failed = done.find((r) => r.status === 'rejected')
+  if (failed !== undefined) throw failed.reason
+  return done.map((r) => (r as PromiseFulfilledResult<T>).value)
+}
+
+/** A check refused for its size: sent again in checks of `max` lookups. */
+class TooMany extends Error {
+  constructor(readonly max: number) {
+    super(`a check is at most ${max} lookups`)
   }
 }
 

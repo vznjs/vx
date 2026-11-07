@@ -10,6 +10,7 @@ import { unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { workspaceFileWritten } from '../handoff.js'
 import {
+  checkIgnoreSync,
   DOT_VX_GITIGNORE,
   executablePath,
   gitEnv,
@@ -590,25 +591,7 @@ function ignoreAdvice(root: string, ignored: readonly string[], dry: boolean): s
 
 /** The paths (root-relative) git's ignore rules drop; none outside a work tree. */
 function gitIgnored(root: string, relPaths: readonly string[]): string[] {
-  if (relPaths.length === 0) return []
-  try {
-    const r = Bun.spawnSync({
-      cmd: [executablePath('git'), 'check-ignore', '--stdin', '-z'],
-      env: gitEnv(),
-      cwd: root,
-      stdin: Buffer.from(relPaths.map((p) => `${p}\0`).join('')),
-      stdout: 'pipe',
-      stderr: 'ignore',
-    })
-    // 0: some ignored; 1: none; anything else (no work tree): nothing to say.
-    if (r.exitCode !== 0) return []
-    return r.stdout
-      .toString()
-      .split('\0')
-      .filter((p) => p !== '')
-  } catch {
-    return []
-  }
+  return [...(checkIgnoreSync(root, relPaths) ?? [])]
 }
 
 function inGitWorkTree(root: string): boolean {

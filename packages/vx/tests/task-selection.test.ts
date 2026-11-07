@@ -118,14 +118,15 @@ describe('task selection', () => {
 
   // `vx run typecheck` at a root whose members declare it said no project
   // did. A scoped run names the projects outside it and `--all`; a name
-  // declared nowhere keeps the plain message (CONTROL).
+  // declared nowhere keeps the plain message (CONTROL). The hint said
+  // "pass --filter" to a run that was given one (`--filter api`).
   it(
     'a task only projects outside the selection declare says so, and names --all',
     async () => {
       await addProject('a', ['build'])
       await addProject('b', ['typecheck'])
       const hint =
-        'no projects declare task(s): typecheck. Only projects outside the selection declare typecheck — pass --all, or --filter to pick them.'
+        'no projects declare task(s): typecheck. Only projects outside the selection declare typecheck — pass --all, or a --filter that includes them.'
       const log = silent()
       const r = await run({ cwd: root, projects: ['a'], tasks: ['typecheck'], log })
       expect(r.ok).toBe(false)
@@ -203,6 +204,43 @@ describe('task selection', () => {
         'no projects declare task(s): packages/a#build. Did you mean a#build?',
         'no projects declare task(s): packages/a/#tset. Did you mean a#test?',
       ])
+    },
+    TIMEOUT,
+  )
+
+  // `café#build` typed in NFC beside a project named in NFD said
+  // "No project is named café; projects: café": two edits apart, no hint.
+  it(
+    'a name that differs only in Unicode form says so',
+    async () => {
+      const nfd = 'café'
+      await addProject(nfd, ['build'])
+      const r = await run({ cwd: root, tasks: ['café#build'], log: silent() })
+      expect(r.refused).toBe(
+        `no projects declare task(s): café#build. café is not the project ${nfd}, though they look the same: the two are written in different Unicode forms (NFC and NFD). Set \`name\` in its vx.config to the form you type. A run reads the lock: after editing a vx.config, run \`vx lock\`.`,
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "a project's directory typed for its name hints the project, not a near name",
+    async () => {
+      // `packages/a#build` hinted `packages/b`'s neighbour by edit distance
+      // (`b#build`): following it ran another project.
+      await addProject('b', ['build'])
+      await addProject('a', ['build'])
+      await writeFile(
+        path.join(root, 'packages', 'a', 'vx.config.mjs'),
+        `export default { name: 'alpha', tasks: { build: { exec: { command: 'echo a' } } } }`,
+      )
+      const r = await run({ cwd: root, tasks: ['packages/a#build'], log: silent() })
+      expect(r.refused).toContain(
+        'no projects declare task(s): packages/a#build. Did you mean alpha#build?',
+      )
+      // CONTROL: a name that is no directory keeps the near-name hint.
+      const near = await run({ cwd: root, tasks: ['bb#build'], log: silent() })
+      expect(near.refused).toContain('Did you mean b#build?')
     },
     TIMEOUT,
   )

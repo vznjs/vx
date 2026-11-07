@@ -17,6 +17,9 @@ export interface Target {
 /** A fresh task hash per call: every target is shared by the whole suite. */
 const hash = (): string => crypto.randomUUID()
 
+/** What a hash or key may be (PROTOCOL.md): each character one byte in JSON. */
+const OPAQUE = '1 to 512 ASCII characters, none a space, control, " or \\'
+
 export function conformance(name: string, target: Target): void {
   const tokens = { main: '', branch: '', read: '' }
   beforeAll(async () => {
@@ -163,7 +166,10 @@ export function conformance(name: string, target: Target): void {
         rssBytes: 9_007_199_254_740_991,
       }))
       expect((await upload(timings)).status).toBe(204)
-      const got = await query(hashes)
+      // Refs are characters, not bytes: seven of 512, each one byte in
+      // three, still fit beside the 10 000 hashes.
+      const refs = Array.from({ length: 7 }, (_, i) => `refs/heads/${i}`.padEnd(512, 'é'))
+      const got = await query(hashes, [...refs, 'refs/heads/main'])
       expect([Object.keys(got).length, got[hashes[9_999]!]]).toEqual([
         10_000,
         {
@@ -179,10 +185,17 @@ export function conformance(name: string, target: Target): void {
       const ok = { hash: hash(), durationMs: 1 }
       expect((await upload([ok], tokens.read)).status).toBe(403)
       for (const [bad, message] of [
-        [[{ ...ok, hash: '' }], 'timings[0].hash: a string of up to 512 characters'],
+        [[{ ...ok, hash: '' }], `timings[0].hash: ${OPAQUE}`],
         // A lone surrogate is stored as bytes that read back as U+FFFD: a
         // hash no query could find again.
-        [[{ ...ok, hash: 'a\ud800' }], 'timings[0].hash: a string of up to 512 characters'],
+        [[{ ...ok, hash: 'a\ud800' }], `timings[0].hash: ${OPAQUE}`],
+        // A body's limit counts a hash's characters as its bytes: 10 000
+        // hashes of 512 `é` were a 413 at a limit the protocol promised.
+        [[{ ...ok, hash: 'é' }], `timings[0].hash: ${OPAQUE}`],
+        [[{ ...ok, hash: 'a"b' }], `timings[0].hash: ${OPAQUE}`],
+        [[{ ...ok, hash: 'a\\b' }], `timings[0].hash: ${OPAQUE}`],
+        [[{ ...ok, hash: 'a b' }], `timings[0].hash: ${OPAQUE}`],
+        [[{ ...ok, hash: 'a\u0001' }], `timings[0].hash: ${OPAQUE}`],
         [[{ ...ok, durationMs: 1.5 }], 'timings[0].durationMs: whole milliseconds'],
         [[{ ...ok, cores: -1 }], 'timings[0].cores: a number of cores'],
         [[{ ...ok, rssBytes: 'x' }], 'timings[0].rssBytes: a byte count'],
@@ -206,6 +219,7 @@ export function conformance(name: string, target: Target): void {
         { ...named(), refs: Array(9).fill(main[0]), hashes: ['a'] },
         { ...named(), refs: main, hashes: Array.from({ length: 10_001 }, (_, i) => String(i)) },
         { ...named(), refs: main, hashes: ['\udbff'] },
+        { ...named(), refs: main, hashes: ['é'] },
         { repository: target.repository, refs: main, hashes: ['a'] },
         { issuer: target.issuer, repository: 'nameonly', refs: main, hashes: ['a'] },
       ]) {
@@ -267,6 +281,24 @@ export function conformance(name: string, target: Target): void {
         400,
         { code: 'bad_request', message: 'send the body as Content-Type: application/json' },
       ])
+      // Every /v1/timings answer names the limits, a refusal too: a client
+      // that asks none apart chunks by them (PROTOCOL.md § Limits and errors).
+      const limits = (res: Response) => [
+        res.status,
+        res.headers.get('vx-max-upload-timings'),
+        res.headers.get('vx-max-query-hashes'),
+        res.headers.get('vx-max-query-refs'),
+      ]
+      const many = Array.from({ length: 10_001 }, (_, i) => `h${i}`)
+      const answers = [
+        get,
+        text,
+        await post('/v1/timings/query', { ...named(), refs: ['refs/heads/main'], hashes: ['a'] }),
+        await post('/v1/timings/query', { ...named(), refs: ['refs/heads/main'], hashes: many }),
+      ]
+      expect(answers.map(limits)).toEqual(
+        [405, 400, 200, 400].map((s) => [s, '10000', '10000', '8']),
+      )
       const query = await call('/v1/capabilities?team=a')
       expect([query.status, await query.json()]).toEqual([
         400,

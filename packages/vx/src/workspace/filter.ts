@@ -131,9 +131,18 @@ export function parseFilter(
   if (scoped !== null && !scoped[1]!.startsWith('./') && scoped[1] !== '.') {
     s = scoped[1]!
     gitSince = scoped[2]!
+    // Neither Turbo nor pnpm reads it (both keep `^...` in the name):
+    // `{dir}^...[ref]` dropped the `^...` and selected the inverse, and
+    // the name spellings matched nothing.
+    if (s.endsWith('^...'))
+      throw new UserError(
+        `filter "${raw}" puts ^... before a git ref, which no form reads: ` +
+          `<sel>...[<ref>] is <sel> where it or a dependency changed, ` +
+          `<sel>[<ref>]^... the dependencies of the changed ones`,
+      )
     // The name glob kept the `...` and matched nothing (create-t3-turbo,
     // `@acme/*...[HEAD]`).
-    if (s.endsWith('...') && !s.endsWith('^...')) {
+    if (s.endsWith('...')) {
       s = s.slice(0, -3)
       sinceViaDeps = true
     }

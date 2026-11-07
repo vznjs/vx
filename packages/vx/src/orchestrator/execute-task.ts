@@ -1,16 +1,21 @@
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import type { ExecConfig, TaskConfig, InputsConfig, InputStability } from '../config.js'
 import {
+  ABSENT_INPUT,
   ArtifactVanishedError,
   type CacheEntry,
   type CacheLayer,
   type CachePolicy,
   cleanOutputs,
+  cleanOutputPaths,
   committedFiles,
   cleanWorkspaceOutputs,
   type OutputStamp,
   ownOutputsSince,
   ownWorkspaceOutputsSince,
+  resolveOutputs,
+  resolveWorkspaceOutputs,
   stampOutputs,
   stampWorkspaceOutputs,
   FULL_CACHE_POLICY,
@@ -258,7 +263,7 @@ export interface ExecuteArgs {
    */
   outputDirSnapshots?: OutputDirSnapshot[]
   /** The run's save lane: a miss's cache save runs off the execution slot (save-lane.ts). */
-  deferSave?: (save: () => Promise<void>) => Promise<boolean>
+  deferSave?: (save: () => Promise<void>, taskId: string) => Promise<boolean>
   /**
    * Where a deferred save's `landed` promise is parked by task id, for the
    * in-flight join (admission.ts): a duplicate of this task in another run
@@ -304,6 +309,12 @@ export interface ExecuteArgs {
   serversNested?: readonly (readonly string[])[]
   /** When each command of the run ran and where it may write (command-windows.ts). */
   commandWindows?: CommandWindows
+  /**
+   * A persistent task matched `readyWhen` (or spawned, with none): what it
+   * writes from here on is its since-ready output (run.ts holds it until
+   * the task's outcome has been logged).
+   */
+  serverReady?: (id: string) => void
 }
 
 /**
@@ -601,6 +612,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // does an executor that declares `timeouts`.
   let timeoutTimer: ReturnType<typeof setTimeout> | undefined
   let timeoutFired = false
+  // Fail-fast withdrew the attempt while its executor still held it for a
+  // machine to begin (`running` answered `null`): it never started.
+  let unbegun = false
+  let withdrawUnbegun: (() => void) | undefined
   // The attempt's listener on the run's stop signal, taken off once the
   // attempt settles. Left on, every task of the run added one: the list
   // grew to the task count, and each add scans it for a duplicate, ~100 ms
@@ -611,11 +626,31 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     const abort = (): void => stop.abort(args.stopSignal?.reason)
     unlistenStop?.()
     unlistenStop = undefined
+    unbegun = false
+    withdrawUnbegun = undefined
     if (args.stopSignal?.aborted === true) abort()
     else if (args.stopSignal !== undefined) {
       const run = args.stopSignal
       run.addEventListener('abort', abort, { once: true })
       unlistenStop = () => run.removeEventListener('abort', abort)
+    }
+    // `--continue=never` starts nothing after a failure: a task a plugin
+    // executor still holds for a machine is not yet started, and was sent
+    // to one after the failure (2026-11-06).
+    const failFast = args.failFast
+    if (!local && failFast !== undefined && args.executor.running !== undefined) {
+      const withdraw = (): void => {
+        if (stop.signal.aborted || args.executor.running?.(node.id) !== null) return
+        unbegun = true
+        stop.abort(new Error('fail-fast'))
+      }
+      withdrawUnbegun = withdraw
+      failFast.addEventListener('abort', withdraw, { once: true })
+      const unlisten = unlistenStop
+      unlistenStop = () => {
+        unlisten?.()
+        failFast.removeEventListener('abort', withdraw)
+      }
     }
     clearTimeout(timeoutTimer)
     timeoutFired = false
@@ -744,11 +779,15 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // orders them; item 588) does not clean by glob — the glob selects the
   // upstream's files it adds beside. Its outputs are stamped once before
   // the first attempt, and after a 0 exit its own set is what the run
-  // added or changed against that stamp. Stale files of its own from an
+  // added or changed against that stamp; a retry first removes what the
+  // failed attempt added (`dropFailedAdditions`). Stale files of its own from an
   // earlier run are its command's to clean, as they are under Turbo.
   const additive = (node.addsToOutputsOf?.length ?? 0) > 0
   let stampedBefore: ReadonlyMap<string, OutputStamp> | undefined
   let wsStampedBefore: ReadonlyMap<string, OutputStamp> | undefined
+  // A failed attempt changed or removed a file the stamp found: no retry
+  // can put it back, so no entry holds only the passing attempt's work.
+  let failedTouchedFound = false
   // `outputs.clean: false` leaves the outputs to the first attempt's
   // command, and the save stores whatever they hold after it, a leftover
   // included: the user opted out of the clean-tree guarantee
@@ -930,6 +969,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     result: ExecuteResult
     exitCode: number
     withdrawn?: true
+    unbegun?: true
   }> {
     // The first attempt under `clean: false` finds its last outputs (tsc's `.tsbuildinfo`).
     const clean = willWrite && !deferralRequested && !(keepOutputs && attempt === 1)
@@ -939,7 +979,18 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // summary names every deferred task so `dist/` is not silently stale.
     if (additive && willWrite && !deferralRequested && outputs.length > 0) {
       const endStamp = span('miss: stamp outputs')
-      stampedBefore ??= await stampOutputs(cleanArgs)
+      if (stampedBefore === undefined) stampedBefore = await stampOutputs(cleanArgs)
+      else {
+        const rels = await dropFailedAdditions(
+          node.projectDir,
+          outputs,
+          stampedBefore,
+          cleanArgs.committed,
+          await ownOutputsSince(cleanArgs, stampedBefore),
+          () => resolveOutputs(cleanArgs),
+        )
+        args.gitFilesCache?.markOutputsChanged(node.projectDir, rels)
+      }
       endStamp()
     } else if (clean && outputs.length > 0) {
       // Mark the wiped paths, exactly as the workspace twin below does. The
@@ -957,7 +1008,18 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       // A root-anchored addition is stamped as the project one above: a
       // glob clean deleted the upstream's files before this task, which
       // reads them, ran (A-43).
-      wsStampedBefore ??= await stampWorkspaceOutputs(wsCleanArgs)
+      if (wsStampedBefore === undefined) wsStampedBefore = await stampWorkspaceOutputs(wsCleanArgs)
+      else {
+        const rels = await dropFailedAdditions(
+          args.workspaceRoot,
+          wsOutputs,
+          wsStampedBefore,
+          wsCleanArgs.committed,
+          await ownWorkspaceOutputsSince(wsCleanArgs, wsStampedBefore),
+          () => resolveWorkspaceOutputs(wsCleanArgs),
+        )
+        args.gitFilesCache?.markWorkspaceOutputsChanged(args.workspaceRoot, rels)
+      }
     } else if (clean && wsOutputs.length > 0) {
       // Root-anchored deletions can land in other projects' dirs; mark
       // them so stale per-project git snapshots can't survive the wipe.
@@ -1005,6 +1067,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     } catch (thrown) {
       running = Promise.reject(thrown)
     }
+    // A failure that landed while the request was built: the executor holds it now.
+    if (args.failFast?.aborted === true) withdrawUnbegun?.()
     let res = await boundAfterAbort(running, req.signal)
       .then((r: unknown) => {
         assertExecuteResult(args.executor.name, node.id, r)
@@ -1057,6 +1121,15 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         throw thrown
       })
     endExec()
+    if (unbegun) {
+      await sweepPlaceholders(placeholders)
+      if (attempt === 1) return { result: res, exitCode: res.exitCode, unbegun: true }
+      // A retry withdrawn: the attempt before it stands, as above.
+      output = standing.output
+      violations = standing.violations
+      flushMasked = standing.flushMasked
+      return { result, exitCode: effectiveExitCode, withdrawn: true }
+    }
     if (secrets !== null)
       res = {
         ...res,
@@ -1108,9 +1181,13 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // A child we SIGTERMed for exceeding the timeout is a genuine failure —
     // stream a clear line so the 143 exit reads as a timeout. One that outlived
     // the grace died of the SIGKILL, and the line said SIGTERM over an exit
-    // 137 (item 1063).
+    // 137 (item 1063); so did a shell dead of the SIGTERM whose leftover the
+    // SIGKILL took.
     if (res.timedOut) {
-      const how = res.signal === 'SIGKILL' ? 'SIGKILL after the SIGTERM grace' : 'SIGTERM'
+      const how =
+        res.signal === 'SIGKILL' || res.killedAfterGrace === true
+          ? 'SIGKILL after the SIGTERM grace'
+          : 'SIGTERM'
       log.taskStderr(
         node,
         `${midLine ? '\n' : ''}[vx] timed out after ${effectiveTimeout}ms — killed (${how})\n`,
@@ -1146,6 +1223,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         bins: taskBinDirs(node, args.workspaceRoot),
         signal: res.signal,
         hidden: req.sandbox && ((f: string) => !sandboxReads(req.sandbox!, f)),
+        stderr: errTail,
       })
       // The line quotes the command's first word, which a config may have
       // built from a secret: masked as the task's own output is (L-37).
@@ -1187,6 +1265,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // printed a blank line under the OUTPUT rule or the task's last line. Glued, a frame read
   // `partialvx: retrying …`.
   let midLine = false
+  /** The attempt's last stderr: the shell's "not found" line names the word a compound command missed (shell-verdict.ts). */
+  let errTail = ''
   // The attempt's output as the logger got it (masked): the entry's when
   // the task saves, else only what a failure reports (`failedOutput`).
   let output: BoundedCapture | undefined
@@ -1196,6 +1276,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const failedAttempts: { endedAt: number; exitCode: number; timedOut?: true }[] = []
   // Each failed attempt's output, beside `failedAttempts`: kept for `vx last --log`.
   const attemptOutputs: string[] = []
+  // Any attempt's shell left a process running, not only the last one's.
+  let leftRunning = false
   // The sampling of the attempt's process tree, stopped once it settles.
   let untrack: (() => TreeLoad | undefined) | undefined
   // What the last attempt's samples saw, for the run history.
@@ -1229,6 +1311,18 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   for (;;) {
     attempt++
     const a = await runAttempt()
+    // Never started: skipped, as fail-fast skips a task not yet dispatched.
+    if (a.unbegun) {
+      return {
+        node,
+        status: 'skipped',
+        exitCode: 1,
+        durationMs: 0,
+        hash,
+        wallclockStartNs,
+        wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+      }
+    }
     result = a.result
     effectiveExitCode = a.exitCode
     if (a.withdrawn) {
@@ -1237,6 +1331,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       attemptOutputs.pop()
       break
     }
+    // A failed attempt's leftover may write into the retry's outputs too.
+    // It is not killed, as a passing attempt's is not: only the save is
+    // withheld (`nothingLeftRunning`).
+    if (result.leftRunning === true) leftRunning = true
     forgetUndeclaredWrites(args, writeReach)
     if (writesFingerprint) args.fingerprintWatch?.wrote()
     spentMs += result.durationMs
@@ -1310,6 +1408,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         : new BoundedCapture(FAILED_OUTPUT_HEAD_CHARS, FAILED_OUTPUT_TAIL_CHARS)
     output = kept
     midLine = false
+    errTail = ''
     const toOut = (t: string): void => {
       kept.push(t)
       if (t.length > 0) midLine = !t.endsWith('\n')
@@ -1318,6 +1417,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     const toErr = (t: string): void => {
       kept.push(t, true)
       if (t.length > 0) midLine = !t.endsWith('\n')
+      errTail = (errTail + t).slice(-2048)
       log.taskStderr(node, t)
     }
     const masked = secrets && maskedStreams(secrets, toOut, toErr)
@@ -1495,6 +1595,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   async function ownOutputs(): Promise<
     { ownOutputFiles?: string[]; ownWsOutputFiles?: string[] } | undefined
   > {
+    if (failedTouchedFound) return undefined
     const mine: { ownOutputFiles?: string[]; ownWsOutputFiles?: string[] } = {}
     if (stampedBefore !== undefined) {
       const files = await ownOutputsSince(cleanArgs, stampedBefore)
@@ -1510,12 +1611,35 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   }
 
   /**
+   * Before an additive task's retry: remove what the failed attempt added
+   * against the first stamp, as an exclusive task's clean removes it, so
+   * the stamp still tells the retry's work from what the task found. A
+   * found file it changed or removed stays as it is and taints the save.
+   * Returns the removed paths, `root`-relative.
+   */
+  async function dropFailedAdditions(
+    root: string,
+    outs: readonly string[],
+    before: ReadonlyMap<string, OutputStamp>,
+    committed: (abs: string) => boolean,
+    changed: string[] | undefined,
+    walk: () => Promise<string[]>,
+  ): Promise<string[]> {
+    const added = (changed ?? (await walk())).filter((f) => !before.has(f))
+    if (changed === undefined || added.length < changed.length) failedTouchedFound = true
+    const rels = added.map((f) => relPosix(root, f))
+    if (rels.length > 0)
+      await cleanOutputPaths({ projectDir: root, rels, outputs: outs, committed })
+    return rels
+  }
+
+  /**
    * A process the shell left behind still held its output when the drain
    * bound cut it, so it may still write outputs: a save now would file a
    * tree the run does not leave, and a hit elsewhere would replay it.
    */
   function nothingLeftRunning(): boolean {
-    if (result.leftRunning !== true) return true
+    if (!leftRunning) return true
     warnOf(log)(
       `[vx] ${node.id}: a process it left running may still write its outputs — ` +
         `the result stands, but is not saved; wait for it in the command (\`wait\`)`,
@@ -1578,10 +1702,20 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // A task that regenerates its own input (TanStack Router's committed
     // `routeTree.gen.ts`, rewritten to the same bytes by every build) is
     // never saved (item 1015), and the line said so without the way out.
+    // A file the key read may instead be one the task rewrites in place (a
+    // formatter's temp + rename), whose sources cannot be its outputs: vx
+    // deletes outputs before the command. Its way out is judging the write
+    // by its bytes. Neither is said of a file the task deleted.
+    const read =
+      moved !== null &&
+      keyedInputs(described!.facts).some((f) => f.path === moved && f.digest !== ABSENT_INPUT)
     const hint =
-      moved === null || rewroteBy !== undefined
+      moved === null || rewroteBy !== undefined || (read && !existsSync(moved))
         ? ''
-        : '; if the task writes it, declare it in outputs'
+        : '; if the task generates it, declare it in outputs' +
+          (read && stability.strategy !== 'mutable'
+            ? "; if it rewrites it in place, set inputs.stability: { strategy: 'mutable' }"
+            : '')
     if (stability.severity === 'error') {
       warnOf(log)(
         `[vx] ${node.id}: ${what} — the result is not saved, ` +

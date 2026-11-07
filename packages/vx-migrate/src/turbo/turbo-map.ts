@@ -1512,7 +1512,7 @@ export async function mapTurboWorkspace(
           if (pm === undefined) continue
           const pdef = definitions(pm).defFor(task)
           if (pdef?.cache !== false) continue
-          if (!sel.startsWith('^')) unfold.add(`${pm.name}#${task}`)
+          unfold.add(`${pm.name}#${task}`)
           const at = relPosix(root, pm.dir)
           for (const g of dep.globs.length > 0 ? dep.globs : (pdef.outputs ?? []))
             if (!g.startsWith('!')) rels.push(at === '' ? g : `${at}/${g}`)
@@ -1532,11 +1532,15 @@ export async function mapTurboWorkspace(
       inputs['workspaceRuntime'] = [...probes, probe]
       // Folded, the producer's key "covers" what it writes, and core answers
       // the probe before it runs: the previous run's bytes. Left out of the
-      // fold, the probe waits for it (core's late probes, X-34).
+      // fold, the probe waits for it (core's late probes, X-34). A `^gen`
+      // edge reaches it too, beside its cached siblings: those stay folded.
       const deps = (t.task!['dependsOn'] as string[] | undefined) ?? []
-      const id = (d: string) => (d.startsWith('^') || d.includes('#') ? d : `${meta.name}#${d}`)
-      if (deps.some((d) => unfold.has(id(d))))
-        inputs['tasks'] = deps.filter((d) => !unfold.has(id(d)))
+      const ids = (d: string): string[] =>
+        d.startsWith('^')
+          ? metas.filter((m) => declares(meta, m.name)).map((m) => `${m.name}#${d.slice(1)}`)
+          : [d.includes('#') ? d : `${meta.name}#${d}`]
+      if (deps.some((d) => ids(d).some((i) => unfold.has(i))))
+        inputs['tasks'] = [...deps, ...[...unfold].map((i) => `!${i}`)]
     }
   }
 

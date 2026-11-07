@@ -22,8 +22,9 @@ const NX =
   'vx.config does not declare; the configs written here declare them all. Once `vx run` does ' +
   'what nx did, remove nx() (and its import), then nx.json'
 const LOCK =
-  'Nx keys each project on the npm packages it depends on in pnpm-lock.yaml; vx keys every ' +
-  'task on the whole file, so a dependency bump re-runs them all. Declare pnpm() from ' +
+  'Nx keys each project on the npm packages it depends on in pnpm-lock.yaml; vx keys no ' +
+  'lockfile by itself, so a dependency bump re-runs nothing and a cached task replays output ' +
+  'built on the old versions. Declare pnpm() from ' +
   "@vzn/vx-lockfile in .vx/workspace.ts to key each task on its package's dependency closure"
 
 async function headerNotes(files: Record<string, string>): Promise<string[]> {

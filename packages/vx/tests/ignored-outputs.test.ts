@@ -6,13 +6,15 @@
 // a tracked output, or a place under the glob git does not ignore, is still
 // an overlap.
 
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import type { Logger } from '../src/report/index.js'
 import { deriveStableKeys } from '../src/orchestrator/stable-keys.js'
 import { prepareRun, run } from './helpers/orchestrator.js'
-import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
+import { checkIgnore, checkIgnoreSync } from '../src/util/index.js'
+import { addProject, gitIn, gitInit, makeWorkspace } from './helpers/workspace.js'
 
 const silent = new Proxy({}, { get: () => () => undefined }) as Logger
 
@@ -139,4 +141,22 @@ describe('an output git ignores is no overlap', () => {
       await rm(root, { recursive: true, force: true })
     }
   }, 30_000)
+})
+
+// `check-ignore` reads each path as a pathspec: `:top/dist/` was asked as
+// `top/dist/`, so a rule for `top/` answered for a project dir `:top`.
+describe('a path that reads as pathspec magic', () => {
+  it('is asked of git as the path it is, sync and async', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-ignored-magic-'))
+    try {
+      gitInit(root)
+      await writeFile(path.join(root, '.gitignore'), '/top/\n/:x/dist/\n')
+      const asked = [':top/dist/', ':x/dist/', 'top/dist/']
+      const want = new Set([':x/dist/', 'top/dist/'])
+      expect(checkIgnoreSync(root, asked)).toEqual(want)
+      expect(await checkIgnore(root, asked)).toEqual(want)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
 })

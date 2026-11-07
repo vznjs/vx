@@ -192,6 +192,75 @@ it("an exit 0 after exec.timeout's abort is a timeout on a plugin executor too (
   expect(await once()).toEqual([['app#slow', 'failed', 143, true]])
 }, 30_000)
 
+// `--continue=never` starts nothing after a failure. A task a plugin
+// executor still held for a machine (`running` answered `null`) is not
+// started, and vx-dte sent one to a worker after the failure (2026-11-06).
+// One the executor had begun finishes its attempt.
+it('fail-fast withdraws a task its executor holds unstarted; one begun finishes', async () => {
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
+    localWorkspaceSource([
+      pluginSource(
+        'org/holder',
+        `{ executor() {
+          const held = new Set(), begun = new Set()
+          let failed = false
+          const until = (ok) => new Promise((resolve) => {
+            const t = setInterval(() => { if (ok()) { clearInterval(t); resolve() } }, 5)
+          })
+          const done = (exitCode, extra = {}) =>
+            ({ exitCode, durationMs: 0, stdout: '', stderr: '', violations: [], ...extra })
+          return { name: 'holder', capacity: 4,
+            running: (id) => (held.has(id) ? null : begun.has(id) ? 'm1' : undefined),
+            async execute(req) {
+              if (req.taskId === 'app#fail') {
+                await until(() => held.size + begun.size === 2)
+                failed = true
+                return done(1)
+              }
+              const own = req.taskId === 'app#held' ? held : begun
+              own.add(req.taskId)
+              // Ends the held one when nothing withdraws it; the begun one
+              // finishes a little after the failure.
+              const aborted = await new Promise((resolve) => {
+                req.signal?.addEventListener('abort', () => resolve(true), { once: true })
+                void until(() => failed).then(() =>
+                  setTimeout(() => resolve(false), own === held ? 5000 : 200))
+              })
+              own.delete(req.taskId)
+              return aborted ? done(130, { signal: 'SIGTERM' }) : done(0, { where: 'm1' })
+            } } } }`,
+      ),
+    ]),
+  )
+  await addProject(
+    root,
+    'app',
+    `export default { tasks: {
+      fail: { exec: { command: 'exit 1' } },
+      held: { exec: { command: 'echo held' } },
+      begun: { exec: { command: 'echo begun' } },
+    } }`,
+  )
+  const r = await run({
+    cwd: root,
+    tasks: ['fail', 'held', 'begun'],
+    projects: ['app'],
+    log: silent,
+    handleSignals: false,
+    continueMode: 'never',
+  })
+  expect(
+    r.outcomes
+      .map((o) => [o.node.id, o.status])
+      .toSorted((a, b) => String(a[0]).localeCompare(String(b[0]))),
+  ).toEqual([
+    ['app#begun', 'success'],
+    ['app#fail', 'failed'],
+    ['app#held', 'skipped'],
+  ])
+}, 30_000)
+
 // An executor that never looks at `signal` held the task, and the run, past
 // both the timeout and the stop (H-14). Core now waits the kill grace after
 // the abort and settles the attempt without it.

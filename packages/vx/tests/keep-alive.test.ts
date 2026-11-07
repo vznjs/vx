@@ -344,6 +344,63 @@ describe('foreground keep-alive ends when one requested server exits', () => {
     expect(readFileSync(heard, 'utf8')).toBe('live:READY\n')
   }, 30_000)
 
+  // The telemetry summary went out before the wait, so a requested server
+  // that crashed in it left every sink (vx-ci's job summary: `✅ 1/1
+  // passed`) reading a pass under the run's exit 1 and `vx last`'s FAILED.
+  for (const exitCode of [1, 0]) {
+    it(`a telemetry sink's summary reads a requested server exiting ${exitCode}`, async () => {
+      const sums = path.join(root, 'summaries.jsonl')
+      mkdirSync(path.join(root, '.vx'), { recursive: true })
+      writeFileSync(
+        path.join(root, '.vx/workspace.mjs'),
+        localWorkspaceSource(
+          [
+            pluginSource(
+              'org/sum',
+              `{
+                telemetry: () => ({
+                  name: 'sum',
+                  onRunSummary(s) {
+                    appendFileSync(${JSON.stringify(sums)}, JSON.stringify({ exitOk: s.exitOk, tasks: s.tasks.map((t) => t.task + ':' + t.status) }) + '\\n')
+                  },
+                }),
+              }`,
+            ),
+          ],
+          "import { appendFileSync } from 'node:fs'\n",
+        ),
+      )
+      await addProject(
+        root,
+        'app',
+        `export default { tasks: { dev: { exec: {
+          command: 'echo READY; sleep 0.5; exit ${exitCode}',
+          persistent: { readyWhen: 'READY' },
+        } } } }`,
+      )
+      const proc = track(
+        Bun.spawn([process.execPath, BIN, 'run', 'app#dev'], {
+          cwd: root,
+          stdout: 'pipe',
+          stderr: 'pipe',
+          env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_TEST_KILL_GRACE: '200ms' },
+        }),
+      )
+      expect(await proc.exited).toBe(exitCode)
+      // One summary, the run's final word.
+      expect(
+        readFileSync(sums, 'utf8')
+          .trim()
+          .split('\n')
+          .map((l) => JSON.parse(l)),
+      ).toEqual([
+        exitCode === 0
+          ? { exitOk: true, tasks: ['dev:success'] }
+          : { exitOk: false, tasks: ['dev:failed'] },
+      ])
+    }, 30_000)
+  }
+
   // C-46: a kept server keeps the persistent tasks it depends on. Under
   // `--filter app` only app#dev was kept, and the api#dev it was started
   // against was stopped at the end of the graph.

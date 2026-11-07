@@ -46,17 +46,77 @@ beforeAll(async () => {
 afterAll(() => srv.stop(true))
 
 describe('HistoryServer', () => {
-  it('sends timings in uploads of the limit the server names, and reads them back', async () => {
+  // The limits were asked apart (`/v1/capabilities`) every run: a request,
+  // and a round-trip the run's query waited on (2026-11-06).
+  it('sends a run its one query and one upload, and reads them back', async () => {
     const token = await iss.sign('main', new URL(url).origin)
     const client = new HistoryServer(url, NAMED, { VX_HISTORY_TOKEN: token })
     const before = seen.length
+    expect((await client.query(['refs/heads/main'], ['a1'])).timings).toEqual(new Map())
     await client.upload(new Map([['a1', { durationMs: 100, cores: 2, rssBytes: 1000 }]]))
     expect(seen.slice(before).map((r) => r.path)).toEqual([
-      '/v1/capabilities',
+      '/v1/timings/query',
       '/v1/timings/upload',
     ])
     const got = await client.query(['refs/heads/feature', 'refs/heads/main'], ['a1', 'none'])
     expect(got.timings).toEqual(new Map([['a1', { durationMs: 100, cores: 2, rssBytes: 1000 }]]))
+  })
+
+  it('sends a request refused for its size again in parts of the limit its refusal names', async () => {
+    const sent: { path: string; count: number; outcomes: number }[] = []
+    // A server whose limits are 2: what a smaller server than this one says.
+    const small = (async (u: string, init: RequestInit) => {
+      const path = new URL(u).pathname
+      const body = JSON.parse(init.body as string) as {
+        hashes?: unknown[]
+        timings?: unknown[]
+        outcomes?: unknown[]
+      }
+      const outcomes = body.outcomes?.length ?? 0
+      const count = Math.max((body.hashes ?? body.timings)!.length, outcomes)
+      sent.push({ path, count, outcomes })
+      const headers = { 'vx-max-query-hashes': '2', 'vx-max-upload-timings': '2' }
+      if (count > 2) return Response.json({ message: 'too many' }, { status: 400, headers })
+      return path === '/v1/timings/query'
+        ? Response.json({ timings: { [`h${sent.length}`]: { durationMs: 1 } } }, { headers })
+        : new Response(null, { status: 204, headers })
+    }) as unknown as typeof fetch
+    const client = new HistoryServer('https://h.example', NAMED, { VX_HISTORY_TOKEN: 't' }, small)
+    const got = await client.query(['refs/heads/main'], ['a', 'b', 'c', 'd', 'e'])
+    expect(got.timings.size).toBe(3)
+    const timings = new Map(['a', 'b', 'c'].map((h) => [h, { durationMs: 1 }]))
+    await client.upload(timings)
+    // Outcomes go in the same parts as the timings, the same limit each.
+    const outcomes = ['a', 'b', 'c'].map((hash) => ({ hash, key: 'k', outcome: 'fail' as const }))
+    await client.upload(timings, undefined, outcomes)
+    const said = (r: (typeof sent)[number]) =>
+      `${r.path.slice('/v1/timings/'.length)} ${r.count}${r.outcomes > 0 ? `/${r.outcomes}` : ''}`
+    expect(sent.map(said)).toEqual([
+      'query 5',
+      'query 2',
+      'query 2',
+      'query 1',
+      // The upload's limit is its own, learned from its own refusal.
+      'upload 3',
+      'upload 2',
+      'upload 1',
+      'upload 2/2',
+      'upload 1/1',
+    ])
+  })
+
+  it('says a refusal that names no smaller limit, sending nothing again', async () => {
+    let sent = 0
+    const refusing = (async () => {
+      sent++
+      return Response.json(
+        { message: 'no' },
+        { status: 400, headers: { 'vx-max-query-hashes': '9' } },
+      )
+    }) as unknown as typeof fetch
+    const client = new HistoryServer('https://h.example', NAMED, {}, refusing)
+    await expect(client.query(['refs/heads/main'], ['a', 'b'])).rejects.toThrow('HTTP 400: no')
+    expect(sent).toBe(1)
   })
 
   // A run of groups alone has no hash to ask for: it still asked the
@@ -74,33 +134,13 @@ describe('HistoryServer', () => {
   })
 
   it('takes no duration that a chain of them could sum past a number', async () => {
-    const answer = (async (u: string) =>
-      String(u).endsWith('/v1/capabilities')
-        ? Response.json({ maxUploadTimings: 10, maxQueryHashes: 10 })
-        : Response.json({
-            timings: { big: { durationMs: 1e308 }, ok: { durationMs: 5 } },
-          })) as unknown as typeof fetch
+    const answer = (async () =>
+      Response.json({
+        timings: { big: { durationMs: 1e308 }, ok: { durationMs: 5 } },
+      })) as unknown as typeof fetch
     const client = new HistoryServer(url, NAMED, {}, answer)
     expect((await client.query(['refs/heads/main'], ['big', 'ok'])).timings).toEqual(
       new Map([['ok', { durationMs: 5 }]]),
-    )
-  })
-
-  // A blip on the run's first call, the query, kept the run's upload
-  // from ever asking again: the run's timings were lost.
-  it('asks for the limits again after a failed ask', async () => {
-    const token = await iss.sign('main', new URL(url).origin)
-    let blips = 1
-    const flaky = (async (u: string, init: RequestInit) => {
-      if (new URL(u).pathname === '/v1/capabilities' && blips-- > 0)
-        throw new Error('connection reset')
-      return fetch(u, init)
-    }) as unknown as typeof fetch
-    const client = new HistoryServer(url, NAMED, { VX_HISTORY_TOKEN: token }, flaky)
-    await expect(client.query(['refs/heads/main'], ['c1'])).rejects.toThrow('connection reset')
-    await client.upload(new Map([['c1', { durationMs: 3 }]]))
-    expect((await client.query(['refs/heads/main'], ['c1'])).timings).toEqual(
-      new Map([['c1', { durationMs: 3 }]]),
     )
   })
 
@@ -110,10 +150,7 @@ describe('HistoryServer', () => {
       '{"timings":{"a":{"durationMs":1e400},"b":{"durationMs":1,"cores":-3},' +
       '"c":{"durationMs":1,"rssBytes":1e400},"d":{"durationMs":1,"cores":0},' +
       '"e":{"durationMs":-1},"f":{"durationMs":2,"cores":1.5,"rssBytes":0}}}'
-    const fake = (async (u: string) =>
-      new URL(u).pathname === '/v1/capabilities'
-        ? Response.json({ maxUploadTimings: 9, maxQueryHashes: 9 })
-        : new Response(body)) as unknown as typeof fetch
+    const fake = (async () => new Response(body)) as unknown as typeof fetch
     const client = new HistoryServer('https://h.example', NAMED, { VX_HISTORY_TOKEN: 't' }, fake)
     expect(
       (await client.query(['refs/heads/main'], ['a', 'b', 'c', 'd', 'e', 'f'])).timings,
@@ -172,7 +209,7 @@ describe('HistoryServer', () => {
       const client = new HistoryServer(site.url.origin, NAMED, {})
       await expect(client.query(['refs/heads/main'], ['p1'])).rejects.toThrow(
         new Error(
-          '/v1/capabilities answered 200 with text/html, not JSON: is the url a vx-history server?',
+          '/v1/timings/query answered 200 with text/html, not JSON: is the url a vx-history server?',
         ),
       )
     } finally {
@@ -199,7 +236,7 @@ describe('HistoryServer', () => {
         'CF-Access-Client-Secret': 's',
       })
       await expect(client.query(['refs/heads/main'], ['p1'])).rejects.toThrow(
-        `HTTP 307 to ${elsewhere.url.origin}/v1/capabilities: not followed`,
+        `HTTP 307 to ${elsewhere.url.origin}/v1/timings/query: not followed`,
       )
       expect(other).toEqual([])
     } finally {
@@ -254,9 +291,6 @@ describe('HistoryServer', () => {
         const body = Buffer.from(JSON.stringify({ exp })).toString('base64url')
         return Response.json({ value: `h.${body}.s` })
       }
-      if (u.pathname === '/v1/capabilities') {
-        return Response.json({ maxUploadTimings: 1, maxQueryHashes: 1 })
-      }
       if (u.pathname === '/v1/timings/query') return Response.json({ timings: {} })
       return new Response(null, { status: 204 })
     }) as typeof fetch
@@ -299,8 +333,6 @@ describe('HistoryServer', () => {
           if (a === 'reset') throw new Error('connection reset')
           return a === 200 ? Response.json({ value: jwt }) : new Response('no', { status: a })
         }
-        if (u.pathname === '/v1/capabilities')
-          return Response.json({ maxUploadTimings: 10, maxQueryHashes: 10 })
         return new Response(null, { status: 204 })
       }) as typeof fetch
       const waits: number[] = []
@@ -332,8 +364,6 @@ describe('HistoryServer', () => {
     const fake = (async (input: string | URL) => {
       const u = new URL(String(input))
       if (u.hostname === 'oidc.example') return new Response('<html>busy</html>')
-      if (u.pathname === '/v1/capabilities')
-        return Response.json({ maxUploadTimings: 10, maxQueryHashes: 10 })
       return new Response(null, { status: 204 })
     }) as typeof fetch
     const env = {
@@ -346,6 +376,60 @@ describe('HistoryServer', () => {
     )
   })
 
+  // A 200 that never ended grew vx to 3 GB in 10 s, and the run warned
+  // only "no answer within 10000 ms": every answer is read to a bound.
+  it("reads no answer past the protocol's largest, and says it was too long", async () => {
+    let pulled = 0
+    const endless = (status: number) =>
+      new Response(
+        new ReadableStream({
+          pull(c) {
+            pulled += 1 << 20
+            c.enqueue(new Uint8Array(1 << 20).fill(32))
+          },
+        }),
+        { status },
+      )
+    const env = {
+      ACTIONS_ID_TOKEN_REQUEST_URL: 'https://oidc.example/token',
+      ACTIONS_ID_TOKEN_REQUEST_TOKEN: 't',
+    }
+    const exp = Math.floor(Date.now() / 1000) + 3600
+    const jwt = `h.${Buffer.from(JSON.stringify({ exp })).toString('base64url')}.s`
+    const clientOf = (endlessAt: string, status: number) =>
+      new HistoryServer('https://h.example', NAMED, env, (async (input: string | URL) => {
+        const u = new URL(String(input))
+        const at = u.hostname === 'oidc.example' ? 'oidc' : u.pathname
+        if (at === endlessAt) return endless(status)
+        if (at === 'oidc') return Response.json({ value: jwt })
+        return Response.json({ timings: {} })
+      }) as typeof fetch)
+    for (const [at, status, message] of [
+      ['/v1/timings/query', 200, '/v1/timings/query answered over 69632 bytes'],
+      ['oidc', 200, "GitHub's OIDC endpoint: answered over 65536 bytes"],
+      ['/v1/timings/query', 400, 'HTTP 400'],
+    ] as const) {
+      pulled = 0
+      await expect(clientOf(at, status).query(['refs/heads/main'], ['a', 'b'])).rejects.toThrow(
+        new Error(message),
+      )
+      expect(pulled).toBeLessThanOrEqual(2 << 20)
+    }
+    // The bound holds the largest answer a server gives: every hash 512
+    // characters, every number at its longest, every hash flaky.
+    const token = await iss.sign('main', new URL(url).origin)
+    const real = new HistoryServer(url, NAMED, { VX_HISTORY_TOKEN: token })
+    const hashes = Array.from({ length: 200 }, (_, i) => `${i}`.padStart(512, 'L'))
+    const most = { durationMs: 2 ** 53 - 1, cores: 1.2345678901234567, rssBytes: 2 ** 53 - 1 }
+    await real.upload(
+      new Map(hashes.map((h) => [h, most])),
+      undefined,
+      hashes.map((h) => ({ hash: h, key: h, outcome: 'flaky' as const })),
+    )
+    const got = await real.query(['refs/heads/main'], hashes)
+    expect([got.timings.size, got.flaky.size]).toEqual([200, 200])
+  })
+
   // One 503 from the server's edge at the run's end lost every timing the
   // run measured. A 500 is the server's own failure, maybe after the fold:
   // sent again, a run would count twice.
@@ -354,8 +438,6 @@ describe('HistoryServer', () => {
       const sent: string[] = []
       const fake = (async (input: string | URL) => {
         const u = new URL(String(input))
-        if (u.pathname === '/v1/capabilities')
-          return Response.json({ maxUploadTimings: 10, maxQueryHashes: 10 })
         const a = answers.shift() ?? 200
         sent.push(`${u.pathname} ${a}`)
         if (a === 'reset') throw new Error('connection reset')
@@ -457,7 +539,7 @@ describe('HistoryServer', () => {
     expect((await client.query(['refs/heads/main'], ['p1'])).timings).toEqual(
       new Map([['p1', { durationMs: 7 }]]),
     )
-    expect(auths).toEqual([null, null])
+    expect(auths).toEqual([null])
   })
 
   it('sends how long a task on a crowded machine would have taken alone, as local history keeps it', () => {
@@ -506,9 +588,7 @@ describe('HistoryServer', () => {
   it('names an assumption it drops once a run, with the server re-ranking', async () => {
     const dir = await mkdtemp(path.join(tmpdir(), 'vx-history-assume-'))
     const cache = new Cache(dir)
-    const fake = spyOn(globalThis, 'fetch').mockImplementation((async (u: string) => {
-      if (String(u).endsWith('/v1/capabilities'))
-        return Response.json({ maxUploadTimings: 10, maxQueryHashes: 10 })
+    const fake = spyOn(globalThis, 'fetch').mockImplementation((async () => {
       const hash = [...taskDefinitions([node]).values()][0]!
       return Response.json({ timings: { [hash]: { durationMs: 50 } } })
     }) as never)
@@ -800,8 +880,6 @@ describe('vx run with vxHistory({ url })', () => {
       hostname: '127.0.0.1',
       fetch: (req) => {
         const at = new URL(req.url).pathname
-        if (at === '/v1/capabilities')
-          return Response.json({ maxUploadTimings: 100, maxQueryHashes: 100 })
         if (at === '/v1/timings/query') return Response.json({ timings: {} })
         return new Promise<Response>(() => {})
       },
@@ -855,8 +933,6 @@ describe('vx run with vxHistory({ url })', () => {
       hostname: '127.0.0.1',
       fetch: (req) => {
         const at = new URL(req.url).pathname
-        if (at === '/v1/capabilities')
-          return Response.json({ maxUploadTimings: 100, maxQueryHashes: 100 })
         if (at === '/v1/timings/query') return Response.json({ timings: {} })
         return new Promise<Response>(() => {})
       },

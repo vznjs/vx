@@ -514,12 +514,14 @@ export function validateProjectConfig(
   config: ProjectConfig,
   configPath: string,
   ownConfig: string | null = configPath,
+  /** The caller refused non-JSON values already and passes a JSON copy (project-loader.ts). */
+  jsonCopy = false,
 ): void {
   // Before the schema, on the object as it stands: the key folds its JSON,
   // so a value JSON cannot carry is refused here and in the config worker
   // alike (json-data.ts). A plugin's `project` edit and a lock entry cross
   // this line too.
-  const [nonJson] = nonJsonPaths(config)
+  const [nonJson] = jsonCopy ? [] : nonJsonPaths(config)
   if (nonJson !== undefined) throw new UserError(nonJsonMessage(configPath, nonJson))
   // The top level too: `task:` (singular) loaded as a project with no
   // tasks and every request against it said "no projects declare".
@@ -951,6 +953,10 @@ export function validateProjectConfig(
             throw err
           }
         }
+        // The selection starts empty and a `!` entry only subtracts, so a
+        // list of negations folded no dependency and the key stopped moving
+        // with every upstream, as a negation-only inputs.files does.
+        assertTaskFiltersNotNegationOnly(taskFilters, `${where}.inputs.tasks`)
         assertFilterNamesDeclaredDeps(taskFilters, task.dependsOn, where)
       }
       for (const field of ['runtime', 'workspaceRuntime'] as const) {
@@ -1768,6 +1774,18 @@ function assertNotNegationOnly(globs: readonly string[], where: string): void {
   )
 }
 
+function assertTaskFiltersNotNegationOnly(filters: readonly string[], where: string): void {
+  if (filters.length === 0) return
+  if (filters.some((f) => !f.startsWith('!'))) return
+  throw new UserError(
+    `${where}: every entry is a negation, which selects NOTHING (got ${JSON.stringify(filters)}) — ` +
+      `negations only subtract from the dependencies a positive entry already selected, so this ` +
+      `task would fold no upstream hash and its cache key would stop tracking its dependencies. ` +
+      `Add the positive entry you meant, e.g. ['*', '^*', ${JSON.stringify(filters[0])}], ` +
+      `or use [] to decouple on purpose.`,
+  )
+}
+
 /**
  * A `!` entry subtracts wherever it sits in the list, so a file named
  * outright after it (`['src/**', '!src/gen/**', 'src/gen/keep.ts']`) never
@@ -1888,6 +1906,19 @@ function assertStringArray(v: unknown, where: string): void {
 }
 
 /**
+ * Only `~` and `~/…` mean the home: `~root/x/` was read as `$HOME/root/x`,
+ * and vx created that directory on the host.
+ */
+function assertOwnHome(v: readonly string[], where: string): void {
+  const other = v.find((p) => p.startsWith('~') && p !== '~' && !p.startsWith('~/'))
+  if (other === undefined) return
+  throw new UserError(
+    `${where}: ${JSON.stringify(other)} names a user's home, which vx does not expand — ` +
+      `write '~/…' for your own home, or an absolute path`,
+  )
+}
+
+/**
  * Validate a `sandbox: {...}` block — one capability shape, whatever the
  * platform ends up doing with it. Unknown keys are refused rather than
  * dropped: a silently-ignored `allow.reads` would confine a task more than
@@ -1919,7 +1950,22 @@ function validateSandbox(sandbox: unknown, where: string): void {
     for (const f of GRANT_PATH_FIELDS) {
       // Patterns are allowed here: macOS matches them natively, Linux
       // expands them against the filesystem at resolve time.
-      if (g[f] !== undefined) assertStringArray(g[f], `${where}.sandbox.allow.${f}`)
+      if (g[f] === undefined) continue
+      assertStringArray(g[f], `${where}.sandbox.allow.${f}`)
+      assertOwnHome(g[f] as string[], `${where}.sandbox.allow.${f}`)
+    }
+    // SRT's Linux observer reports a write's path with each control
+    // character turned into a space, so a write a grant holding one covers
+    // read as a violation of the path spelled with a space, and a real
+    // write there reads the same: no match passes one and not the other.
+    // Reads are traced by strace, which escapes them.
+    const ctl = ((g['write'] as string[] | undefined) ?? []).find(hasControl)
+    if (ctl !== undefined) {
+      throw new UserError(
+        `${where}.sandbox.allow.write: ${JSON.stringify(ctl)} holds a control character, ` +
+          `which the Linux sandbox's report of a write does not keep (it spells a tab as a ` +
+          `space), so a write under it cannot be told from a refused one — rename it`,
+      )
     }
     for (const f of GRANT_NAME_FIELDS) {
       if (g[f] !== undefined) assertStringArray(g[f], `${where}.sandbox.allow.${f}`)
@@ -1976,7 +2022,10 @@ function validateSandbox(sandbox: unknown, where: string): void {
     // Patterns, not prefixes — `ignore` is vx's own filter over lines it
     // already holds, so a glob costs nothing and works on every platform.
     for (const f of IGNORE_FIELDS) {
-      if (g[f] !== undefined) assertStringArray(g[f], `${where}.sandbox.ignore.${f}`)
+      if (g[f] === undefined) continue
+      assertStringArray(g[f], `${where}.sandbox.ignore.${f}`)
+      if (f === 'read' || f === 'write')
+        assertOwnHome(g[f] as string[], `${where}.sandbox.ignore.${f}`)
     }
   }
 }

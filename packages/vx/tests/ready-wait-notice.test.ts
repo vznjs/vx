@@ -97,3 +97,19 @@ it('a task waiting on two servers names each one not ready', async () => {
     'vx: app#s2 not ready after 200 ms: waiting for a line matching /up-s2/ (readyWhen)',
   ])
 }, 30_000)
+
+// The notice is about a wait still going. A server that traps SIGTERM runs
+// out the kill grace after the timeout gave up, and the notice landed in
+// that grace: "not ready after 10 s" after a 9 s timeout, as a warning.
+it('a server the readiness timeout gave up on is not said to be waiting', async () => {
+  const saved = [process.env['VX_TEST_READY_NOTICE'], process.env['VX_TEST_KILL_GRACE']]
+  process.env['VX_TEST_READY_NOTICE'] = '500ms'
+  process.env['VX_TEST_KILL_GRACE'] = '2s'
+  try {
+    expect(await runWith('trap "echo got-term" TERM; while :; do sleep 0.1; done', 100)).toEqual([])
+  } finally {
+    process.env['VX_TEST_READY_NOTICE'] = saved[0]
+    if (saved[1] === undefined) delete process.env['VX_TEST_KILL_GRACE']
+    else process.env['VX_TEST_KILL_GRACE'] = saved[1]
+  }
+}, 30_000)

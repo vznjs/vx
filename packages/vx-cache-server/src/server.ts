@@ -58,6 +58,13 @@ export function limitsFrom(env: object): Partial<Limits> {
 const IMMUTABLE = 'private, max-age=31536000, immutable'
 
 /**
+ * An answer from the first scope named is that key's, which never
+ * changes; private: its token chose the repository. One from a later
+ * scope changes once an earlier one holds the hash.
+ */
+const cacheOf = (at: number): string => (at === 0 ? IMMUTABLE : 'private, no-cache')
+
+/**
  * A scope on the wire: a ref (`refs/…`), percent-encoded as
  * `encodeURIComponent` does, its folder's name (2026-11-03). One spelling
  * per ref, so no two scopes name one folder; at most 512 characters, so
@@ -90,6 +97,17 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
       )
     }
     return scope
+  }
+  /**
+   * The scopes a download names in `vx-scope`, in the order to read them
+   * (`<scope>, <scope>`): up to `maxCheckHashes`, its lookups as a check's.
+   */
+  const scopesOf = (req: Request): string[] => {
+    const named = (req.headers.get(SCOPE_HEADER) ?? '').split(',').map((s) => s.trim())
+    if (named.length > limits.maxCheckHashes) {
+      throw new Refusal(400, `${SCOPE_HEADER}: up to ${limits.maxCheckHashes} scopes`)
+    }
+    return named.map(scopeOf)
   }
   const nameOf = (access: Access, scope: string, hash: string): string =>
     blobName(access.issuer, access.repository, scope, hash)
@@ -137,32 +155,43 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     return { hashes: hashes as string[], scopes: scopes.map(scopeOf) }
   }
 
+  /**
+   * An artifact under the first scope named that holds it, each asked in
+   * turn: a run on a branch reads its own scope, then main's, and a client
+   * asking each by its own request paid a round-trip for every scope
+   * before the one that held it (2026-11-06).
+   */
   async function artifact(req: Request, hash: string): Promise<Response> {
     if (!isHash(hash)) throw new Refusal(400, 'a hash is 1 to 128 hex digits')
     const access = await authorize(req)
-    const scope = scopeOf(req.headers.get(SCOPE_HEADER))
-    const blob = await read(blobs.get(nameOf(access, scope, hash)))
-    if (blob === null) return errorJson(404, 'no artifact under this key')
-    return new Response(blob.body, {
-      headers: {
-        'content-length': String(blob.size),
-        'content-type': 'application/octet-stream',
-        // An artifact never changes under its key; private: its token chose the repository.
-        'cache-control': IMMUTABLE,
-      },
-    })
+    const scopes = scopesOf(req)
+    for (const [at, scope] of scopes.entries()) {
+      const blob = await read(blobs.get(nameOf(access, scope, hash)))
+      if (blob === null) continue
+      return new Response(blob.body, {
+        headers: {
+          'content-length': String(blob.size),
+          'content-type': 'application/octet-stream',
+          'cache-control': cacheOf(at),
+        },
+      })
+    }
+    return errorJson(404, 'no artifact under this key')
   }
 
-  /** Turbo's `HEAD /v8/artifacts/<hash>`: whether the scope named holds it, and its size, with no bytes. */
+  /** Turbo's `HEAD /v8/artifacts/<hash>`: whether a scope named holds it, and its size, with no bytes. */
   async function exists(req: Request, hash: string): Promise<Response> {
     if (!isHash(hash)) throw new Refusal(400, 'a hash is 1 to 128 hex digits')
     const access = await authorize(req)
-    const scope = scopeOf(req.headers.get(SCOPE_HEADER))
-    const size = await read(blobs.size(nameOf(access, scope, hash)))
-    if (size === null) return new Response(null, { status: 404 })
-    return new Response(null, {
-      headers: { 'content-length': String(size), 'cache-control': IMMUTABLE },
-    })
+    const scopes = scopesOf(req)
+    for (const [at, scope] of scopes.entries()) {
+      const size = await read(blobs.size(nameOf(access, scope, hash)))
+      if (size === null) continue
+      return new Response(null, {
+        headers: { 'content-length': String(size), 'cache-control': cacheOf(at) },
+      })
+    }
+    return new Response(null, { status: 404 })
   }
 
   // Every lookup at once, each exact: a hash answers the first scope

@@ -300,6 +300,22 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
       }),
   ],
   [
+    // The selection starts empty and `!` only subtracts: no upstream folded.
+    'inputs.tasks: every entry is a negation, which selects NOTHING',
+    () =>
+      validated({
+        tasks: {
+          b: {
+            ...ok,
+            dependsOn: ['build'],
+            inputs: { files: [], tasks: ['!build'] },
+            outputs: { files: [] },
+            cache: true,
+          },
+        },
+      }),
+  ],
+  [
     // A malformed entry failed the task at hash time, after its upstream ran.
     'invalid inputs.tasks "<entry>": <reason>',
     () =>

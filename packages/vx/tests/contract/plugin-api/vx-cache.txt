@@ -12,11 +12,14 @@ export class VxCacheLayer implements RemoteCacheLayer {
   lent: (() => string | undefined) | undefined
   async lend(): Promise<LentAccess | undefined>
   async open(): Promise<void>
-  start(): void
   async has(hash: string): Promise<ArtifactInfo | null>
   async hasMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
   async get(hash: string): Promise<{ body: Response; durationMs: undefined } | null>
-  async put(hash: string, body: Blob, _meta: { durationMs: number }): Promise<void | false>
+  async put(
+    hash: string,
+    body: Blob,
+    meta: { durationMs: number; replace?: true },
+  ): Promise<void | false>
 }
 == function hasCiToken (src/index.ts)
 export function hasCiToken(env: Record<string, string | undefined>, lent: boolean): boolean

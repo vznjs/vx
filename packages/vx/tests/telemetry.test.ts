@@ -457,6 +457,23 @@ describe('createTelemetrySource — projection', () => {
     expect(records).toHaveLength(0)
   })
 
+  // A Ctrl-C on a three-task chain: the summary said `1 aborted · 2 not run`
+  // while vx-otel charted three aborted spans, two at exit 1 and 0 ms.
+  it('sends no task.end for a task the stop reached before it started', () => {
+    const { sink, records } = recorder()
+    const src = createTelemetrySource({ sinks: [sink], run: RUN })
+    const killed = mkNode('a#post', 'sleep 9')
+    const pending = mkNode('a#post2', 'true')
+    const aborted = { status: 'aborted', exitCode: 1, durationMs: 0 } as const
+    src.subscriber({
+      kind: 'task:complete',
+      node: killed,
+      outcome: mkOutcome(killed, { ...aborted, wallclockStartNs: 1n, wallclockEndNs: 2n }),
+    })
+    src.subscriber({ kind: 'task:complete', node: pending, outcome: mkOutcome(pending, aborted) })
+    expect(records.map((r) => (r.kind === 'task.end' ? r.taskId : r.kind))).toEqual(['a#post'])
+  })
+
   it('does NOT project run:status (terminal noise, not telemetry)', () => {
     const { sink, records } = recorder()
     const src = createTelemetrySource({ sinks: [sink], run: RUN })

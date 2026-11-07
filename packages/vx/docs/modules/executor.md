@@ -32,7 +32,8 @@ cpuPeak; cpuAvg; memoryPeakBytes; memoryAvgBytes; utilization }`), asked
   reports leaves it out and is warned once per executor and method); `ExecuteResult.where`
   is shown on the task's row and frame after its id, as `<id>@<where>`; `running(id)`
   says where a task it was handed runs, for the live row, or `null` while
-  it holds the task for a machine (no row; the tasks line counts it `scheduled`)
+  it holds the task for a machine (no row; the tasks line counts it `scheduled`;
+  under `--continue=never` a failure aborts its `signal` and it is skipped)
   — `remote: true` declares that the executor runs the command somewhere
   else (so it is never offered a `pinnedLocal` task); `sandbox: true`
   says a remote one enforces `req.sandbox` where it runs and returns the
@@ -94,8 +95,9 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
 - `ExecuteRequest` — `taskId`, `workspaceRoot`, `command`, `forwardArgs`,
   `cwd`, `env`, `envDefine` (`exec.env.define` verbatim: the host-free
   part of `env`, safe to ship), `capture`, `outputs`, `timeoutMs?`,
-  `onStdout`, `onStderr`, `signal?` (aborted when the run stops or
-  `timeoutMs` elapses: an executor ends its work and returns, since core
+  `onStdout`, `onStderr`, `signal?` (aborted when the run stops,
+  `timeoutMs` elapses or fail-fast withdraws a task `running` says is not
+  begun: an executor ends its work and returns, since core
   cannot reach a process it spawned; any exit after the timeout's
   abort, a 0 included, is recorded `timedOut` and fails (X-125); one that has not returned within the
   kill grace of the abort is abandoned, the attempt settled without it),
@@ -146,8 +148,9 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   (outputs left remote, fetched only if a local consumer needs them).
   `spawnFailed: true` says the command never started (its 127 is the
   executor's, so no "command not found" line follows; A-41).
-  `leftRunning: true` says a process the command left still held its
-  output when vx stopped reading: core saves no entry for the task.
+  `leftRunning: true` says a process the command left still ran when
+  its shell exited (it held the output past the drain bound, or was
+  still in the task's process group): core saves no entry for the task.
   `changed` lists the tracked files (workspace-relative) the command
   changed where an executor ran it elsewhere: one the key read withholds
   core's save under the key, with the line an input changed here gets.
@@ -173,7 +176,9 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   `pinnedLocal` task, then `accepts` decides. An `accepts` that throws
   is a `UserError` naming the executor as `label` does (the run passes
   `executorLabel`, which names its plugin too; item 1022), and so is
-  one that answers a Promise (`async accepts`), which read as a yes.
+  one that answers a Promise (`async accepts`), which read as a yes,
+  or any other non-boolean (`'no'` took the task), as `admit` refuses
+  one; `undefined` declines.
   The local
   executor is the tail of the list and accepts everything, so the
   throw for "every executor declined" is unreachable from `run()`; it

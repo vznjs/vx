@@ -87,6 +87,12 @@ its remote is off for the run.
 An upload answered with a 5xx or a 429, or whose connection reset, is sent again, three tries in
 all: a PUT names its hash, so a second one stores the same bytes.
 
+An artifact is immutable on the server: one that did not read back
+(corrupt) is not replaced. Its re-run's upload is not sent and not
+counted as landed (a DTE worker is not told it did), and the run says
+once that the remote misses the key until the bucket's lifecycle rule
+expires it (`@vzn/vx-cache-server`'s Expiry).
+
 A refused token is said once and turns the remote off for the run; a
 refused write (a job that reads only) turns off writes alone. Any other
 refusal is a warning naming the server's own words, and the task reads
@@ -96,20 +102,24 @@ Every read names scopes, each a ref, percent-encoded. A check names the run's re
 branch it merges into, then the default branch; on CI `github()` or
 `gitlab()` from `@vzn/vx-ci` names them, so declare it too: without it
 a run reads git's branch and the default branch only), and the first ref
-holding a hash answers it; its download names that ref. A ref longer
+holding a hash answers it; its download names that ref, and one the
+check has not answered yet names them all in one request. A ref longer
 than a scope may be (512 characters, percent-encoded) is said and not
-read; the others are. A run that reads no ref says so and stays local. The run asks the server's limits once
-(`/v1/capabilities`) and checks in chunks of its `maxCheckHashes`
-lookups, all at once; a run reading more refs than one check takes
-(Workers' default is 6) spreads each hash's scopes over several. It
-keeps to the limits each `/v1/artifacts` answer names, a refusal's too,
-so a server restarted with lower ones refuses one check, not the run's. Each
-upload is one artifact by `PUT`, up to four at once: its bytes reach the
+read; the others are. A run that reads no ref says so and stays local. The server is asked nothing until a
+check, a download or an upload, so a run the local cache answers sends
+it no request. Its limits are not asked apart: each `/v1/artifacts`
+answer names them, a refusal's too, and no limit is guessed. A check
+before any answer goes whole; one refused for its size is sent again,
+once, in chunks of the `maxCheckHashes` lookups its refusal names, all at
+once, so a server restarted with lower ones costs one check a round-trip,
+not the run its reads. A run reading more refs than one check takes
+(Workers' default is 6) spreads each hash's scopes over several. Each
+upload is one artifact by `PUT`, as many at once as core's
+`cache.concurrency.upload` lets (64 to 96 by default): its bytes reach the
 bucket untouched by the server's code (a batch, split by that code, ran
-out of Workers' CPU). While the server names no limits (said once),
-checks go one hash at a time: no limit is guessed. An artifact over the server's upload limit is not sent: it
-is said once. An answer is read no further than its use: 64 KiB for the
-capabilities or a token, 512 bytes a hash for a check, a refusal's first
+out of Workers' CPU). An artifact over the server's upload limit is not sent: it
+is said once. An answer is read no further than its use: 64 KiB for a
+token, 1 KiB a hash for a check, a refusal's first
 2 KiB; a longer one is refused, so a server's endless answer cannot fill
 memory.
 

@@ -8,6 +8,7 @@ import { Database } from 'bun:sqlite'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { run as runFromLock } from '../src/orchestrator/index.js'
+import { storedLog } from '../src/cache/index.js'
 import { decodeOutputLog } from '../src/orchestrator/output-log.js'
 import { lock, run } from './helpers/orchestrator.js'
 import { defaultLogger } from '../src/report/logger.js'
@@ -314,9 +315,9 @@ describe('a value split by a pause is masked in every stored copy', () => {
     const r = await runOnce(0)
     const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'), { readonly: true })
     const stored = db
-      .query<{ stdout: string }, []>('SELECT stdout FROM entry_stdout')
+      .query<{ stdout: Uint8Array }, []>('SELECT stdout FROM entry_stdout')
       .all()
-      .map((row) => row.stdout)
+      .map((row) => storedLog(row.stdout))
       .join('\n')
     db.close()
     expect({ ok: r.ok, leaked: stored.includes(SECRET), masked: stored.includes(MASKED) }).toEqual({
@@ -332,7 +333,9 @@ describe('a value split by a pause is masked in every stored copy', () => {
   it("the entry's stored stdout, a stderr write in the pause", async () => {
     const r = await runOnce(0, 'sleep 0.1; echo working >&2; ')
     const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'), { readonly: true })
-    const stored = db.query<{ stdout: string }, []>('SELECT stdout FROM entry_stdout').get()!.stdout
+    const stored = storedLog(
+      db.query<{ stdout: Uint8Array }, []>('SELECT stdout FROM entry_stdout').get()!.stdout,
+    )
     db.close()
     const stream = (err: boolean): string =>
       decodeOutputLog(stored)
@@ -415,9 +418,9 @@ describe('`exec.env.secret` masks a value whatever its name', () => {
     }
     const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'), { readonly: true })
     const stored = db
-      .query<{ stdout: string }, []>('SELECT stdout FROM entry_stdout')
+      .query<{ stdout: Uint8Array }, []>('SELECT stdout FROM entry_stdout')
       .all()
-      .map((r) => r.stdout)
+      .map((r) => storedLog(r.stdout))
       .join('\n')
     db.close()
     return [texts[0]!, texts[1]!, stored].map((t) =>

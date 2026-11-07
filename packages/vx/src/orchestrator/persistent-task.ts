@@ -181,6 +181,17 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
       : {}),
     ...(signalChannel ? { signalChannel } : {}),
     ...(args.terminal === true ? { terminal: true } : {}),
+    // What the pre-ready text left held goes out first, so the run can
+    // tell it from what the server writes since ready.
+    ...(args.serverReady !== undefined
+      ? {
+          onReady: () => {
+            serverMasked?.end()
+            ends.end()
+            args.serverReady!(node.id)
+          },
+        }
+      : {}),
   }
   if (step.persistent.readyWhen !== undefined) {
     persistentOpts.readyWhen = step.persistent.readyWhen
@@ -244,7 +255,9 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
     readyWhen === undefined
       ? undefined
       : setTimeout(() => {
-          if (isAborted(args.stopSignal)) return
+          // A server that traps SIGTERM runs out the kill grace after the
+          // timeout gave up; the wait is over, and its failure says so.
+          if (isAborted(args.stopSignal) || spawn.gaveUp()) return
           const after = noticeMs < 1000 ? `${noticeMs} ms` : `${noticeMs / 1000} s`
           const unbounded = effectiveTimeout === undefined ? ', with no exec.timeout' : ''
           warnOf(log)(

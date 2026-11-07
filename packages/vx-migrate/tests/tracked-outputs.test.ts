@@ -68,7 +68,7 @@ describe('spareTrackedOutputs — an output naming one committed file', () => {
   })
   // hono/middleware: lint declared the committed `eslint-suppressions.json`,
   // and every build and typecheck beside it ran uncached.
-  it('drops the entry and the `!` readers got for it; readers stay cached', () => {
+  it('keeps the entry, drops the `!` readers got for it; readers stay cached', () => {
     const lint = {
       name: 'lint',
       task: {
@@ -100,7 +100,7 @@ describe('spareTrackedOutputs — an output naming one committed file', () => {
       other.task['inputs'],
       todos,
     ]).toEqual([
-      { files: ['.cache/.eslintcache'] },
+      { files: ['.cache/.eslintcache', 'eslint-suppressions.json'] },
       { files: ['**/*', '!dist/**'] },
       { files: ['src/**'], workspaceFiles: ['packages/a/**'] },
       { files: ['**/*', '!eslint-suppressions.json'] },

@@ -412,6 +412,39 @@ describe('vx show (e2e)', () => {
   )
 })
 
+describe('vx show of a directory whose project has another name', () => {
+  let root: string
+  beforeAll(async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), 'vx-show-dir-'))
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}')
+    await Bun.write(
+      path.join(root, 'p/a/vx.config.mjs'),
+      `export default { name: 'alpha', tasks: { build: { exec: { command: 'echo a' } } } }`,
+    )
+    await Bun.write(
+      path.join(root, 'p/b/vx.config.mjs'),
+      `export default { tasks: { build: { exec: { command: 'echo b' } } } }`,
+    )
+  })
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  // `p/a` hinted `p/b` by edit distance, another project.
+  it(
+    'hints the project at that directory',
+    async () => {
+      const bare = await vx(root, ['show', 'p/a'])
+      const task = await vx(root, ['show', 'p/a#build'])
+      expect([bare.code, task.code]).toEqual([1, 1])
+      expect(bare.err).toContain('unknown project or task: "p/a"\n\n  fix  alpha\n')
+      expect(task.err).toContain('unknown project: "p/a"\n\n  fix  alpha#build\n')
+      expect(`${bare.err}${task.err}`).not.toContain('p/b')
+    },
+    TIMEOUT,
+  )
+})
+
 describe('vx show under a `project` plugin (e2e)', () => {
   let root: string
   beforeAll(async () => {
@@ -552,6 +585,38 @@ describe('vx info (e2e)', () => {
           if (v === undefined) delete process.env[k]
           else process.env[k] = v
         }
+        await writeFile(ws, WORKSPACE_FILE)
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'names the plugin whose config hook set a setting, not the workspace file',
+    async () => {
+      const ws = path.join(root, '.vx/workspace.mjs')
+      const saved = process.env['VX_RUN_TIMEOUT']
+      try {
+        delete process.env['VX_RUN_TIMEOUT']
+        await writeFile(
+          ws,
+          `${PLUGIN_IMPORT}
+  export default {
+    run: { schedule: 'ready-order' },
+    plugins: [
+      ${pluginSource('org/cfg', `{ config(ws) { ws.run = { ...ws.run, timeout: '9m' } } }`)},
+    ],
+  }
+`,
+        )
+        const f = await collectInfo(root, { warn: () => {} })
+        expect([f.settings['run.timeout'], f.settings['run.schedule']]).toEqual([
+          { value: '9m', source: 'plugin', plugin: 'org/cfg' },
+          { value: 'ready-order', source: 'workspace' },
+        ])
+      } finally {
+        if (saved === undefined) delete process.env['VX_RUN_TIMEOUT']
+        else process.env['VX_RUN_TIMEOUT'] = saved
         await writeFile(ws, WORKSPACE_FILE)
       }
     },
@@ -827,17 +892,18 @@ describe('vx info — the rendered rows', () => {
     )
   })
 
-  it('names each setting a variable or the workspace changed, and where', () => {
+  it('names each setting a variable, the workspace or a plugin changed, and where', () => {
     const out = renderInfo({
       ...healthy,
       settings: {
         'run.timeout': { value: '30m', source: 'env' },
         'run.schedule': { value: null, source: 'default' },
         'cache.policy': { value: 'local:rw', source: 'workspace' },
+        'cache.scope': { value: 'pr-2', source: 'plugin', plugin: 'org/ci' },
       },
     })
     expect(out.split('\n').filter((l) => l.startsWith('  settings '))).toEqual([
-      '  settings          run.timeout 30m (VX_RUN_TIMEOUT), cache.policy local:rw (.vx/workspace)',
+      '  settings          run.timeout 30m (VX_RUN_TIMEOUT), cache.policy local:rw (.vx/workspace), cache.scope pr-2 (plugin org/ci)',
     ])
   })
 

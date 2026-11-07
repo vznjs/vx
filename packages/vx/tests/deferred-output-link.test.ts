@@ -63,6 +63,7 @@ it('a fetched deferred output keeps a link the eager save keeps', async () => {
       workspaceRoot: ws,
       nestedDirsByProject: new Map(),
       localWrite: true,
+      log: { status() {} } as never,
     })
     deferred.register(producer.id, {
       materialize: async () => write(),

@@ -156,6 +156,29 @@ it('answers the p50 and resource maxima loadFor answers for each task', async ()
   }
 })
 
+// vx-history's timings file reads p50s alone (`durationsFor`): what
+// `resourcesFor` answers, a hit-only task's producer time included.
+it('answers the p50 resourcesFor answers for each task, a restored one by its producer', async () => {
+  const ids = TASKS.map((t) => `p#${t}`)
+  for (const recent of [1, 7, 30, 50]) {
+    const history = new LocalHistoryProvider(indexDb(cache), recent)
+    const full = await history.resourcesFor(ids)
+    const expected = ids.flatMap((id): Array<[string, number]> => {
+      const p50 = full.get(id)?.p50DurationMs
+      return p50 === undefined ? [] : [[id, p50]]
+    })
+    const got = await history.durationsFor(ids)
+    expect([recent, Object.fromEntries(got)]).toEqual([recent, Object.fromEntries(expected)])
+    // CONTROL: the restored task has no forecast, only its producer's time.
+    if (recent >= 7) {
+      expect((await history.p50sFor(ids)).has('p#only-hits')).toBe(false)
+      expect(got.get('p#only-hits')).toBeGreaterThan(0)
+    }
+  }
+  // Only what was asked for.
+  expect([...(await new LocalHistoryProvider(indexDb(cache)).durationsFor(['p#a']))].length).toBe(1)
+})
+
 it('names the biggest machine a task filled, by its cores or its memory', async () => {
   const base = (task: string, over: Partial<RunRecord>): RunRecord => ({
     ...run(0, 'sat', task),
@@ -278,4 +301,33 @@ it('learns a crowded run’s need, not its share, and never past its machine', a
   // 7.2 cores wanted on 4: its machine, which it filled.
   expect(r.get('p#misread')?.maxCpuParallelism).toBe(4)
   expect(r.get('p#misread')?.saturatedCores).toBe(4)
+})
+
+// Asking every task of a cold 8,002-task run for its forecast tiers cost
+// 20 ms of its schedule stage on a store that had timed nothing (2026-11-07).
+it('a store that has timed nothing asks no per-task forecast', async () => {
+  const empty = new Cache(path.join(dir, 'empty'))
+  try {
+    const db = indexDb(empty)
+    const asked: string[] = []
+    const query = db.query.bind(db)
+    db.query = ((sql: string) => {
+      asked.push(sql)
+      return query(sql)
+    }) as typeof db.query
+    const ids = Array.from({ length: 50 }, (_, i) => `p#t${i}`)
+    const history = new LocalHistoryProvider(db, undefined, 'main')
+    expect([...(await history.p50sFor(ids))]).toEqual([])
+    expect(history.lackedBranchHistory).toBe(true)
+    expect(asked.filter((s) => s.includes('json_each'))).toEqual([])
+    // CONTROL: one timing, and every task is asked again.
+    empty.recordRunBundle({
+      runs: [{ ...run(1, 'one', 't0'), status: 'success', cacheHit: false }],
+      invocation: { ...invocation('one', 9_000), branch: 'main' },
+    })
+    expect([...(await history.p50sFor(ids))]).toEqual([['p#t0', 37]])
+    expect(asked.filter((s) => s.includes('json_each')).length).toBeGreaterThan(0)
+  } finally {
+    empty.close()
+  }
 })

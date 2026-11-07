@@ -13,7 +13,11 @@ import {
   maskCaptured,
 } from '../src/exec/runner.js'
 import { MASKED, secretMask } from '../src/util/index.js'
-import { decodeOutputLog, failedOutputLog } from '../src/orchestrator/output-log.js'
+import {
+  decodeOutputLog,
+  encodeOutputLog,
+  failedOutputLog,
+} from '../src/orchestrator/output-log.js'
 import { fileLocations } from '../src/ui/links.js'
 import { gitInitCommit, makeWorkspace } from './helpers/workspace.js'
 
@@ -71,6 +75,33 @@ describe('BoundedCapture bounds', () => {
   })
 })
 
+describe('a capture fed a capture', () => {
+  // A distributed miss replays the worker's entry, already cut, into core's
+  // capture: its dropped line was kept as text and cut as the new middle,
+  // and the entry said `98 B of output not kept` for 13 MB.
+  it('keeps the count of the dropped line it was given', () => {
+    const first = new BoundedCapture()
+    first.push('h'.repeat(9 * 1024 * 1024))
+    first.push('t'.repeat(12 * 1024 * 1024))
+    first.push('END\n', true)
+    const again = new BoundedCapture()
+    for (const c of decodeOutputLog(encodeOutputLog(first.chunks()))) again.push(c.text, c.err)
+    expect(again.chunks()).toEqual(first.chunks())
+    // Under a failure's bounds the worker's count is added to its own cut.
+    const failed = new BoundedCapture(8 * 1024, 56 * 1024)
+    for (const c of first.chunks()) failed.push(c.text, c.err)
+    expect(failed.chunks()[1]!.text).toBe(
+      droppedOutputLine(21 * 1024 * 1024 + 4 - 64 * 1024, 8 * 1024, 56 * 1024),
+    )
+  })
+
+  it("keeps a task's own line that is not at the head's end", () => {
+    const c = new BoundedCapture()
+    c.push(`out${droppedOutputLine(5)}more`)
+    expect(c.text()).toBe(`out${droppedOutputLine(5)}more`)
+  })
+})
+
 describe('failedOutputLog — what it says was dropped', () => {
   // Re-bounded by pushing the entry's chunks through, the entry's own
   // dropped line fell into the new middle and its count went with it: a
@@ -85,6 +116,32 @@ describe('failedOutputLog — what it says was dropped', () => {
       droppedOutputLine(total - 64 * 1024, 8 * 1024, 56 * 1024),
       56 * 1024,
     ])
+  })
+})
+
+describe('failedOutputLog — secrets', () => {
+  // The re-bound masked the capture's head and its tail apart. Nothing is
+  // dropped between them, so a value written across the head's end (a
+  // retry of an uncached task past 8 KB, an entry's capture past 8 MB) was
+  // a whole occurrence no side matched, and the failure row kept it.
+  it('masks a value across the head and tail when nothing between them was dropped', () => {
+    const mask = secretMask([{ MY_TOKEN: 'abcdefghij' }])!
+    for (const [headChars, tailChars] of [
+      [8 * 1024, 56 * 1024],
+      [64, 1024],
+    ] as const) {
+      const c = new BoundedCapture(headChars, tailChars)
+      c.push(`${'x'.repeat(headChars - 3)}abc`)
+      c.push('defghij\nexit 2\n')
+      const text = decodeOutputLog(failedOutputLog(c, true, mask))
+        .map((t) => t.text)
+        .join('')
+      expect([
+        headChars,
+        text.includes('abcdefghij'),
+        text.endsWith(`${MASKED}\nexit 2\n`),
+      ]).toEqual([headChars, false, true])
+    }
   })
 })
 

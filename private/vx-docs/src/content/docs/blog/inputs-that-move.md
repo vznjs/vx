@@ -17,7 +17,7 @@ source.
 $ (sleep 0.5; echo "// saved mid-build" >> packages/a/src/index.ts) &
 $ vx run packages/a#slow
 ┌─ packages/a#slow > $ sleep 1 && mkdir -p gen && cp src/index.ts gen/copy.ts
-[vx] packages/a#slow: `packages/a/src/index.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in outputs
+[vx] packages/a#slow: `packages/a/src/index.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task generates it, declare it in outputs; if it rewrites it in place, set inputs.stability: { strategy: 'mutable' }
 └─ packages/a#slow ── (1.01s) success
   tasks     1 success · 1 total
   cache     1 not saved

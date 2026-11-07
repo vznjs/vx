@@ -198,10 +198,16 @@ export function createRelay(opts: RelayOptions): Relay {
    * relay's own notices (`notice`: joined, lost, closed) have no sender to
    * resend them, so they wait for the next socket.
    */
-  const deliver = (session: Session, p: Participant, m: Message, notice = false): void => {
+  const deliver = (
+    session: Session,
+    p: Participant,
+    m: Message,
+    notice = false,
+    text?: string,
+  ): void => {
     if (p.socket !== undefined && p.queue.length === 0) {
       try {
-        p.socket.send(JSON.stringify({ messages: [m] }))
+        p.socket.send(text ?? JSON.stringify({ messages: [m] }))
         return
       } catch {
         // quiet: a socket that cannot send is unplugged; the participant rejoins
@@ -443,10 +449,16 @@ export function createRelay(opts: RelayOptions): Relay {
           ? session.byId.get(body.to)
           : undefined
     if (to === undefined || to === from) throw new HttpError(404, 'unknown to')
-    deliver(session, to, {
-      from: from.role === 'host' ? 'host' : from.id,
-      body: body.body,
-    })
+    const m = { from: from.role === 'host' ? 'host' : from.id, body: body.body }
+    // Serialized before the push: a body parsed but nested past what the
+    // runtime serializes threw in it, and that unplugged the receiver.
+    let text: string
+    try {
+      text = JSON.stringify({ messages: [m] })
+    } catch {
+      throw new HttpError(400, 'body nests too deep to pass')
+    }
+    deliver(session, to, m, false, text)
   }
 
   const live = (key: string): Session => {

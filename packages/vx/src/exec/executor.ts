@@ -190,7 +190,8 @@ export interface ExecuteRequest {
   readonly onStderr: (chunk: string) => void
   /**
    * Aborted when the run stops (Ctrl-C, SIGTERM, SIGHUP or an embedder's
-   * `RunOptions.signal`) or when `timeoutMs` elapses. An executor ends its
+   * `RunOptions.signal`), when `timeoutMs` elapses, or when fail-fast
+   * withdraws a task `running` says is not begun. An executor ends its
    * work and returns: a child an executor spawned is not one core can
    * reach (H-10, H-12). One already aborted is work not to start (B-55).
    * Any exit after the timeout's abort, a 0 included, is a timeout. Core
@@ -345,7 +346,11 @@ export interface TaskExecutor {
    * is refused when the executor is resolved. Absent = the local pool.
    */
   readonly capacity?: number
-  /** Per-task opt-out at placement time. Absent = accepts every task it is offered. */
+  /**
+   * Per-task opt-out at placement time. Absent = accepts every task it is
+   * offered. `false` or `undefined` declines; any other non-boolean is
+   * refused, naming the plugin.
+   */
   accepts?(task: TaskPlacement): boolean
   /**
    * The tasks placed here that will run and have NOT finished yet — called
@@ -406,6 +411,8 @@ export interface TaskExecutor {
    * Where a task it was handed runs (`small#2`), for the live row; asked
    * per frame. `null` while it holds the task for a machine to begin it:
    * the row says `waiting`, and its clock starts when a machine begins it.
+   * Under `--continue=never` a failure aborts the `signal` of each task it
+   * answers `null` for, and the task is skipped, never started.
    */
   running?(taskId: string): string | null | undefined
   execute(req: ExecuteRequest): Promise<ExecuteResult>
@@ -601,6 +608,17 @@ export function selectExecutor(
       if (taken instanceof Promise) {
         taken.catch(() => {})
         throw new Error('returned a Promise; accepts is synchronous')
+      }
+      // `'no'` was truthy and took the task; admit refuses the same answer.
+      if (taken !== undefined && typeof taken !== 'boolean') {
+        const t = typeof taken
+        const what =
+          taken === null
+            ? 'null'
+            : Array.isArray(taken)
+              ? 'an array'
+              : `${t === 'object' ? 'an' : 'a'} ${t}`
+        throw new Error(`returned ${what}, not true or false`)
       }
     } catch (err) {
       const m = thrownMessage(err)

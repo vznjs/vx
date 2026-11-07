@@ -101,7 +101,7 @@ function infoReport(f: InfoFacts): ui.Block {
     ],
     ['cache versions', `keys ${f.cacheVersion} · index schema ${f.schemaVersion}`],
     ['cache entries', describeEntries(f)],
-    // Only the settings a variable or the workspace changed.
+    // Only the settings a variable, the workspace or a plugin changed.
     ...(Object.values(f.settings).some((s) => s.source !== 'default')
       ? ([['settings', describeSettings(f.settings)]] as [string, string][])
       : []),
@@ -141,14 +141,15 @@ function describeEntries(f: InfoFacts): string {
 
 /**
  * The settings not at their default, with where each came from:
- * `run.timeout 30m (VX_RUN_TIMEOUT), cache.policy local:rw (.vx/workspace)`.
+ * `run.timeout 30m (VX_RUN_TIMEOUT), cache.policy local:rw (.vx/workspace)`,
+ * `cache.scope pr-2 (plugin @org/ci)`.
  */
 function describeSettings(settings: InfoFacts['settings']): string {
   return Object.entries(settings)
     .filter(([, s]) => s.source !== 'default')
     .map(
       ([path, s]) =>
-        `${path} ${String(s.value)} (${s.source === 'env' ? envName(path) : '.vx/workspace'}${s.refused === undefined ? '' : `, refused: ${s.refused}`})`,
+        `${path} ${String(s.value)} (${s.source === 'env' ? envName(path) : s.source === 'plugin' ? `plugin ${s.plugin}` : '.vx/workspace'}${s.refused === undefined ? '' : `, refused: ${s.refused}`})`,
     )
     .join(', ')
 }

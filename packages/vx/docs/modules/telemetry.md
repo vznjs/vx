@@ -15,9 +15,11 @@ is pre-folded, bigint wallclock spans are decimal strings.
 - `RunSummaryRecord` — one per run: `RunContextRecord` + totals +
   per-task `TaskTelemetry[]`. What every telemetry sink receives at
   end of run. `abortedCount` (v3, item 851) counts the tasks a
-  shutdown signal or an embedder's abort killed; they are not in the
-  task list, which holds real runs only, so without it a stopped run
-  read as a failure with nothing failed.
+  shutdown signal or an embedder's abort killed once started, each in
+  `tasks` as `aborted`; `notRunCount` the ones the stop reached before
+  they started, which are not. Without them a stopped run read as a
+  failure with nothing failed; they count as the terminal's `1 aborted ·
+1 not run` does, and `taskCount` as its `total` does, both included.
 - `assembleRunSummary(run, tasks, timing)` — builds the `RunSummaryRecord`
   from the context and the `TaskTelemetry[]`, the per-task tallies
   derived from `tasks`, so a DTE run and a local one produce
@@ -127,9 +129,10 @@ interface RunSummaryRecord {
   startedAt: number
   endedAt: number
   totalDurationMs: number
-  taskCount: number
+  taskCount: number // every task, as the terminal's total: `tasks` plus `notRunCount`
   failedCount: number
-  abortedCount: number // stopped by a signal or an abort, not in `tasks` (v3)
+  abortedCount: number // started, then stopped by a signal or an abort; in `tasks` (v3)
+  notRunCount?: number // the stop reached them first; not in `tasks`, absent when none
   hitCount: number
   hitLocalCount: number // hits by the layer that answered, up-to-date ones included
   hitRemoteCount: number
@@ -167,7 +170,10 @@ Each streaming record carries `v` and `kind`, and:
 | `task.log`    | `runId`, `taskId`, `stream`, `chunk`, `ts` (opt-in)                |
 | `task.sample` | `runId`, `taskId`, `ts`, `cpuMs`, `rssBytes` (opt-in)              |
 | `task.end`    | `runId`, `ts`, every `TaskTelemetry` field                         |
-| `run.end`     | `runId`, `ts`                                                      |
+
+A task the stop reached before it started gets neither `task.start` nor
+`task.end`, as it is not in the summary's `tasks`.
+| `run.end` | `runId`, `ts` |
 
 ## Invariants
 

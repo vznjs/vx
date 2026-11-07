@@ -701,6 +701,32 @@ describe('a committed file under an output', () => {
     },
     TIMEOUT,
   )
+
+  // Named by its literal path, the file was dropped from the outputs: the
+  // task rewrote an undeclared input and never saved.
+  it(
+    'named by its literal path, a rewritten committed file keeps the task cached',
+    async () => {
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({ tasks: { gen: { outputs: ['gen.txt'] } } }),
+      )
+      const app = path.join(root, 'packages', 'app')
+      await pkg('app', { gen: 'echo gen > gen.txt' })
+      await writeFile(path.join(app, 'gen.txt'), 'gen\n')
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      const plan = await planRun({ cwd: root, tasks: ['app#gen'], log: silent() })
+      const node = plan.tasks.find((t) => t.node.id === 'app#gen')!.node
+      expect(node.config.outputs!.files).toEqual(['gen.txt'])
+      const opts = { cwd: root, tasks: ['app#gen'], log: silent(), handleSignals: false }
+      const status = (r: Awaited<ReturnType<typeof run>>) =>
+        r.outcomes.find((o) => o.node.id === 'app#gen')!.status
+      expect(status(await run(opts))).toBe('success')
+      expect(status(await run(opts))).toBe('cache-hit')
+      expect(await Bun.file(path.join(app, 'gen.txt')).text()).toBe('gen\n')
+    },
+    TIMEOUT,
+  )
 })
 
 describe('input zero segments', () => {

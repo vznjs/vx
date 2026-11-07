@@ -29,7 +29,7 @@ export interface OffSpawn {
   /** Each a descriptor number or `'ignore'`: a stream cannot cross threads. */
   stdio: Array<number | 'ignore'>
   detached?: boolean
-  /** False: the child keeps no run alive until `hold()` (a spare shell waiting for its task). */
+  /** False: once spawned, the child keeps no run alive until `hold()` (a spare shell waiting for its task). */
   held?: boolean
 }
 
@@ -86,10 +86,12 @@ function thread(): Worker {
       pending.delete(m.id)
       const err = new Error(m.error.message) as NodeJS.ErrnoException
       if (m.error.code !== undefined) err.code = m.error.code
-      if (p.held()) settleLive(-1)
+      settleLive(-1)
       p.failed(err)
-    } else if (m.pid !== undefined) p.spawned(m.pid)
-    else {
+    } else if (m.pid !== undefined) {
+      if (!p.held()) settleLive(-1)
+      p.spawned(m.pid)
+    } else {
       pending.delete(m.id)
       if (p.held()) settleLive(-1)
       p.exit(m)
@@ -113,7 +115,10 @@ export function spawnOff(opts: OffSpawn): Promise<OffChild> {
   const w = thread()
   const id = nextId++
   let held = opts.held !== false
-  if (held) settleLive(1)
+  // Every spawn holds the run until its reply: a caller awaiting a spare's
+  // spawn (`runOnSpare`) had nothing else holding the loop, and the run
+  // drained mid-graph with every slot waiting on one (2026-11-06).
+  settleLive(1)
   const { held: _, ...spawn } = opts
   return new Promise((resolve, reject) => {
     let exitCode: number | null = null

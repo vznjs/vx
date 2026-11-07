@@ -83,8 +83,10 @@ over (in order):
    so boundaries are unambiguous). Listed names get their current
    values; an unset name folds its bare name, with no `\0`, so unset
    and set-to-empty are two keys (the child tells them apart:
-   `passThrough` leaves an unset name out). A name holding a NUL is
-   refused at load.
+   `passThrough` leaves an unset name out). A name holding a NUL or
+   another control character is refused at load, and a value holding
+   U+FFFD at hash time (a value that is not UTF-8 reads as it, so two
+   such values would key alike).
 6. **`inputs.runtime` resolved output** — `[command, output]`
    pairs, where `output` is the trimmed stdout of each command run via
    `sh -c` in the **project dir** at hash time; a command with stderr
@@ -191,7 +193,9 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     A whole-tree run starts the check as its cache opens, beside the
     config load and graph build. The sizes it learns are
     stored while the tasks run, not before the first one (40,030 cost
-    217 ms there at 9,603 tasks), and a cold cache skips the lookup.
+    217 ms there at 9,603 tasks), in OID order by a native string sort
+    (a JS comparator was 32 ms before the first task, 2026-11-07), and a
+    cold cache skips the lookup.
     The check is by size,
     so a filter that keeps the size (a `filter` driver such as
     `tr a-z A-Z`), removed after an add, still leaves a blob that
@@ -438,7 +442,7 @@ On a hit:
    with its mtime forged back, still matches.
 3. Otherwise the `outputs/<rel>` (+ `workspace-outputs/<rel>`) entries
    are extracted from the artifact (its bytes inline in the index, read
-   in one read transaction with the entry's rows, or
+   in one snapshot with the entry's rows, or
    `<cacheDir>/<hash>.tar.zst`) **in place**: every entry is staged in
    the workspace's `.vx/tmp/` (never an output folder), and only once the
    whole archive has staged is each renamed over the file it replaces.
@@ -454,7 +458,9 @@ On a hit:
    takes the group its directory gives new files (setgid on Linux, any
    directory on macOS), ACLs are not copied. The next run removes
    the staging a killed run left. A process reading the output tree during the
-   restore never finds a declared output missing or half-written, and a
+   restore never finds a declared output missing or half-written (the
+   tree form's copy into a folder that stands excepted, see
+   [§ Storage layout](#storage-layout)), and a
    restore that fails first (a full disk, a damaged entry) leaves the
    outputs as they were. Then the declared outputs the entry does not
    hold are removed — see
@@ -687,17 +693,23 @@ Hard invariants of the remote prefetch:
   overwrite checks inside (`turboCache()` asks HEAD unless a 404 or a
   batch answer this run said the key is absent; `reapi()` looks the
   action up beside its upload and keeps a stored result; Nx servers
-  answer 409). `ctx.cache.put` and a run's own entries send the `put`
-  alone.
+  answer 409). A `put` told `replace` (the stored bytes did not read
+  back) writes over them, or, on a wire that cannot (`vxCache()`: the
+  server never replaces an artifact it holds), sends nothing, returns
+  `false` and says so once. `ctx.cache.put` and a run's own entries send
+  the `put` alone.
 - **`--dry` batches too.** The plan derives every key first, then asks
   each remote with `hasMany` once, and keeps the hits for the run that
   follows; a remote without it is asked `has` per key.
 - **Never fail.** Every remote path (get / put / ingest / prefetch)
   catches all errors and degrades to a cache miss. A remote 500, a
   network drop, a corrupt artifact, or a failed integrity check can
-  never fail a run. A key whose remote bytes do not read back is
-  uploaded again after the task re-runs, held or not, so a remote that
-  replaces on `put` heals.
+  never fail a run. A key whose remote bytes do not read back (a
+  `CorruptArtifactError`, core's or a layer's own digest or signature
+  check) is uploaded again after the task re-runs, held or not, with
+  `replace`, so the remote heals. A remote that cannot replace it
+  (`vxCache()`) keeps missing the key until its bucket expires it; the
+  upload is not counted as landed, so no DTE worker is told it did.
 - **Said once, and said whole.** The warning names the operation
   (`probe`, `download`, `upload`), the artifact and the layer's
   `endpoint`, with a URL's credentials, query and fragment dropped:
@@ -857,10 +869,14 @@ key still lets a local consumer fetch its outputs, but the fetch saves
 no entry; until X-123 it saved them under the old key. A task
 that rewrites its own input to the SAME bytes (`sed -i` always writes)
 is not saved either: its write cannot be told from an edit reverted
-mid-run, so it pays a re-run each time rather than risk a stale entry;
-declare what it writes as an output, which the status line says when it
-names a file other than `package.json` (TanStack Router's committed
-`routeTree.gen.ts`, rewritten by every build). That holds on CI too: a
+mid-run, so it pays a re-run each time rather than risk a stale entry.
+The status line names the ways out: a file the task generates
+(TanStack Router's committed `routeTree.gen.ts`, rewritten by every
+build) is declared as an output; for a file the key read, also
+`inputs.stability: { strategy: 'mutable' }` below, the one a task that
+rewrites its sources in place takes (a formatter cannot declare them as
+outputs: vx deletes outputs before a run, and `vx lock` refuses an
+output entry that takes back an input entry whole). That holds on CI too: a
 task of the same project running alongside can change an input and put
 it back. A task that rewrites its own input to identical bytes (tsdown's
 `package.json`) sets `inputs.stability: { strategy: 'mutable' }`, and a write
@@ -916,7 +932,8 @@ or not it saves. It is said too when every wildcard glob matched nothing
 and only literal files did (`scr/**` beside the `package.json` a
 lockfile plugin appends), naming the wildcard globs. `outputs matched no files (build/**)` — an empty
 artifact was saved and a later hit restores nothing — is said on the
-save path. Both are almost always a glob
+save path, and when a deferred fetch (`--cache-download=none`) lands
+nothing. Both are almost always a glob
 against the wrong directory; the output line names one other cause when
 it applies: a sandboxed task with no `exec.sandbox.allow.write`, whose
 writes never reached disk, or a `workspaceFiles` directory that is a
@@ -1008,10 +1025,14 @@ Skipped when:
   an older build is cached and restored everywhere. A retry cleans as
   usual; a hit's restore still removes what its entry does not hold.
 
-A declared output the process cannot remove (a `dist/` another user
-wrote, a read-only checkout) fails the task with `cannot remove declared
-output <path>: EACCES — …`, and a restore that cannot write into such a
-directory with `restore of <hash> into <dir> could not write its outputs
+A directory of this user's that withholds its own write (a task's
+`chmod 555 dist/ro`, which a hit restores too) gets owner write for the
+clean's remove, then its mode back, as a restore's write into it does; the
+subdirectories the clean empties in it go too.
+A declared output the process cannot remove even so (a `dist/` another
+user wrote, a read-only checkout) fails the task with `cannot remove
+declared output <path>: EACCES — …`, and a restore that cannot write
+into such a directory with `restore of <hash> into <dir> could not write its outputs
 (EACCES: …)`: the environment's failure, reported plainly, never as an
 internal error or a corrupt artifact.
 
@@ -1055,6 +1076,10 @@ With the rule off, an edge fixes the order, and the dependant is
   upstream's intermediate) saves nothing: an artifact holds what a run
   wrote, never what it took away, and the upstream's restore puts the
   file back, so the dependant runs again on every warm run (X-32);
+- before a **retry**, what the failed attempt added is removed, so its
+  partial outputs are neither left nor saved; a failed attempt that
+  changed or removed a file it found saves nothing on the retry's pass,
+  since no retry puts that file back;
 - it **cleans by recorded rows**, never by glob, before a run (nothing:
   stale files of its own are its command's to clean, as under Turbo) and
   before a restore (its rows only, pruning emptied directories only
@@ -1255,7 +1280,7 @@ same reason `lock --check` ignores `inputs.env` value changes.
 
 Two vx processes on one workspace (a `vx watch` beside a `vx run`, two
 CI jobs on one checkout) take turns: a run takes the workspace's run
-lock before it schedules and releases it with its cache handle — before
+lock before it opens the cache and releases it with its cache handle — before
 a persistent task's wait, so a dev server never holds it — and the
 second run waits, saying after a second whom it waits for:
 
@@ -1290,9 +1315,13 @@ either way (a restore renames into place only once the whole archive
 has staged). Machines sharing a workspace over a network file system
 do not share a temp directory, so they do not share the lock.
 
-An eviction can still land between a hit's probe and its restore: a
-`vx cache clean` in another shell, or one run for another
-workspace that shares the `--cache-dir` (a different workspace, so a
+A `vx cache clean` in any checkout of the repository waits for every
+vx process holding the shared store open (a run holds it from its lock
+to its end), so it never deletes the store under a run in a sibling checkout,
+whose own lock it never took. A run waiting for the lock holds no cache
+open, so a clean holding the lock never waits on it. An eviction can still land between a
+hit's probe and its restore: a clean or a run for another workspace
+that shares the `--cache-dir` (a different workspace, so a
 different lock), which cannot see this run's pending `accessed_at`
 bumps and reads its fresh hits as old. The restore then finds no
 artifact, and that entry is a **miss**: the run says `[vx] <id>: its
@@ -1306,11 +1335,15 @@ healthy key (`tests/vanished-artifact.test.ts`).
 
 A local artifact whose bytes are wrong (a failed checksum, a torn
 write, one past the artifact ceiling, an entry missing a recorded
-output, a name that now reads unsafe, X-115) is a miss the same way: `[vx] <id>: cache: corrupt artifact
+output, a tree entry missing one of its files, a name that now reads
+unsafe, X-115) is a miss the same way: `[vx] <id>: cache: corrupt artifact
 for <hash>: …; dropped it — running it`. The entry is dropped, so the
 task's save stores the key again; it failed the task as an internal
 error on every run until `--force` before A-52. A cache the run may
 only read keeps the entry (`…; left it (this cache is read-only)`).
+A failure that is another process re-saving the key since the probe
+(its rows changed) restores the new entry instead, or is a plain miss
+that keeps it: vx drops only the entry that failed.
 
 ## Storage layout
 
@@ -1332,8 +1365,10 @@ named as the one to move away. The readers and `vx cache clean` find no
 cache and go on.
 A full disk is the same kind of failure and is reported the same way,
 never as a corrupt artifact and never as a stack: a save that runs out
-of room is `[vx] cache save failed: ENOSPC …` (the task's work ran, the
-footer counts it not saved rather than `↑`, and the next run misses), a restore that does is the task's failure line
+of room is `[vx] cache save failed: <task>: ENOSPC …` (the task's work ran, the
+footer counts it not saved rather than `↑`, and the next run misses; the
+saves that fail after it are one line once the graph ends,
+`[vx] cache save failed for N more tasks: …`), a restore that does is the task's failure line
 `could not write its outputs (ENOSPC: …). Free space on that disk and
 re-run.`, and a run record that does is `[vx] run history not recorded:
 … — the verdict above stands` (the run exits by its tasks; `vx last`
@@ -1343,7 +1378,7 @@ access times are skipped and the run goes on; a prune unlinks the
 artifacts first, so the rows it then deletes have room to go, and a
 save's temp file is removed when its write fails.
 A process out of file descriptors (`EMFILE`, `ENFILE`) is named the
-same way: a save is `[vx] cache save failed: save of <hash> could not
+same way: a save is `[vx] cache save failed: <task>: save of <hash> could not
 open a file (EMFILE: …) — … raise the limit (ulimit -n 4096) and
 re-run`, and a restore fails the task with that hint, never as a
 corrupt artifact (A-39). Opening the index is named the same way: SQLite reports a
@@ -1436,8 +1471,15 @@ unpacked once at save (or at ingest of a remote hit, decoded once straight
 into the tree), so a restore copies
 each file out (`copy_file_range`, a clone on a filesystem that has one;
 never a hard link: a later write to a restored output must not reach the
-store). A restore into outputs already on disk, a workspace output or a
-symlink takes the archive extractor, fed the tree packed back into its
+store). A missing folder (a cleaned `dist/`, a fresh checkout) is built
+whole in the workspace's `.vx/tmp/` and renamed in once, as the
+extractor stages, so a reader meets it complete or not at all (copied
+straight to its place, its files were there empty, then short). A
+missing file in a folder that stands is copied straight to its place: a
+reader can meet it short while it copies, as the price of a restore
+that renaming each such file in made a fifth to a third slower (3,000
+files, 2026-11-06). A restore into outputs already on disk, a workspace output, a
+symlink, or a folder on another filesystem than `.vx/tmp/` takes the archive extractor, fed the tree packed back into its
 tar. An upload packs the tree into the tar.zst in the upload queue, off
 the save. A hit trusts the tree and checks none of its files' bytes: the store
 is vx's own, and a check could not stop a write to it. Each file's size
@@ -1605,7 +1647,8 @@ same gate (`restorableOutput`). On the save side a
 link to a file, to a directory or to nothing comes back as that link,
 and no byte of its target is read, so a link a sandboxed task planted to
 a file it could not read packs nothing of it (L-23). An absolute link, or
-one leading out of the workspace, fails the save by name, as the config
+one leading out of the workspace or into `.git`, fails the save by name
+(the restore's own check, so no entry is stored that every restore refuses), as the config
 spells the path (`workspaceFiles output gen/latest`). The clean before exec and restore removes every
 file AND symlink the output globs cover (a link is unlinked, never
 followed). An output directory that is a symlink (`dist -> real-out`) is
@@ -1613,7 +1656,9 @@ followed by the clean as by the save and restore, named by a glob
 (`dist/**`) or a literal (`dist`) alike, so its target is the
 output and an entry holds only what its run wrote (X-88); one that
 resolves outside the project refuses the task, naming the link, and
-nothing is deleted through it (X-5). So does one, in either scope, that
+nothing is deleted through it (X-5), and so does an
+`outputs.workspaceFiles` directory that resolves outside the workspace
+(it saved an empty entry under a warning, M-65). So does one, in either scope, that
 resolves into the root's own `.git` (any case) or its `.vx`: for the root
 project and `outputs.workspaceFiles` those are inside, and `dist -> .git`
 under `dist/**` had the clean delete the repository. A recorded row
@@ -1714,7 +1759,7 @@ keep). The artifacts stay: each is indexed again from its own bytes
 when its task next asks for its key (below).
 
 ```sql
--- src/cache/schema.ts (SCHEMA_VERSION = 'v51', in cache.ts)
+-- src/cache/schema.ts (SCHEMA_VERSION = 'v52', in cache.ts)
 -- With a shared store, entries, entry_stdout, output_files, entry_inputs,
 -- store_meta, task_durations, task_outcomes, blob_sizes, plugin_blobs and remote_hits live in its store.db, attached as `store`; the rest is
 -- the workspace's cache.db. A named cache dir holds all of them.
@@ -1743,7 +1788,7 @@ CREATE TABLE entries (
 -- of 1 MB cost the run's close 125-150 ms.
 CREATE TABLE entry_stdout (
   hash   TEXT PRIMARY KEY,         -- FK entries(hash) ON DELETE CASCADE
-  stdout TEXT NOT NULL             -- captured stdout (pure-SQL hit replay); no row = ''
+  stdout BLOB NOT NULL             -- v52: zstd frame of the captured stdout's UTF-8; no row = ''
 );
 
 CREATE TABLE runs (

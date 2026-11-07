@@ -142,6 +142,28 @@ describe('vx init with no package.json', () => {
     ])
   })
 
+  // A directory at .vx/workspace.ts was "kept" and locked, and every verb
+  // after found no workspace file and sent the user back to init.
+  it('a directory where a config goes is refused by name, --force or not', async () => {
+    const root = await tmp('vx-init-bare-dir-')
+    await mkdir(path.join(root, '.vx', 'workspace.ts'), { recursive: true })
+    for (const args of [['init'], ['init', '--force']]) {
+      const r = await vx(root, args)
+      expect([r.code, r.err, existsSync(path.join(root, '.vx', 'projects.lock.json'))]).toEqual([
+        1,
+        '✗ vx init  .vx/workspace.ts is a directory, where the workspace file goes; move it and re-run\n',
+        false,
+      ])
+    }
+    const other = await tmp('vx-init-bare-dir-config-')
+    await mkdir(path.join(other, 'vx.config.ts'))
+    const f = await vx(other, ['init', '--force'])
+    expect([f.code, f.err]).toEqual([
+      1,
+      '✗ vx init  vx.config.ts is a directory, where the project config goes; move it and re-run\n',
+    ])
+  })
+
   it('--native and --keep answer a Turbo or Nx question, and are refused here', async () => {
     const root = await tmp('vx-init-bare-keep-')
     const r = await vx(root, ['init', '--keep'])
@@ -266,6 +288,25 @@ describe('vx init in a repo with a package.json and no Turbo or Nx', () => {
       existsSync(path.join(lone, 'vx.config.ts')),
       existsSync(path.join(outer, '.vx')),
     ]).toEqual([true, false])
+  })
+
+  // `git init` run in the cwd, below the root init wrote to, hid that workspace.
+  it('outside git, next names the directory to git init in when the root is above', async () => {
+    const outer = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-init-nogit-next-')))
+    roots.push(outer)
+    await writeFile(path.join(outer, 'package.json'), '{"name":"stray"}\n')
+    await mkdir(path.join(outer, 'app', 'src'), { recursive: true })
+    const env = { GIT_CEILING_DIRECTORIES: path.dirname(outer) }
+    const next = async (cwd: string): Promise<string> => {
+      const r = await vx(cwd, ['init', '--dry', '--format', 'json'], env)
+      expect([r.code, r.err]).toEqual([0, ''])
+      return (JSON.parse(r.out) as { next: string }).next
+    }
+    const declare = 'declare a task in vx.config.ts, then vx lock && vx run <task>'
+    expect([await next(path.join(outer, 'app', 'src')), await next(outer)]).toEqual([
+      `git init ../.., ${declare}`,
+      `git init, ${declare}`,
+    ])
   })
 
   // npm strips a byte-order mark, and so does every other package.json

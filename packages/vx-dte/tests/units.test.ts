@@ -10,6 +10,7 @@ import {
   utimes,
   writeFile,
 } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
@@ -1086,6 +1087,43 @@ it('pumps a long queue in time that does not grow with its upstreams', async () 
   }
 })
 
+// Core withdraws a task the executor holds for a machine (`running` answers
+// `null`) when `--continue=never` trips. One still sharing its dependencies
+// answered `undefined`, so it was kept, and sent once they were shared
+// (2026-11-06).
+it('holds a task for a machine from the moment core hands it over, and a stop then sends it nowhere', async () => {
+  let shared: () => void = () => {}
+  const h = await harness(
+    new Map([
+      [
+        'up',
+        {
+          id: 'up',
+          deps: [],
+          projectDir: '/ws',
+          config: { cache: true, outputs: { files: ['out/**'] } },
+        } as unknown as TaskNode,
+      ],
+      node('t', ['up']),
+    ]),
+    undefined,
+    undefined,
+    (id) => `k-${id}`,
+  )
+  try {
+    h.store.artifacts.share = () => new Promise((resolve) => (shared = () => resolve(true)))
+    await h.worker(1)
+    const stop = new AbortController()
+    const run = h.o.execute({ ...h.req('t'), signal: stop.signal })
+    expect(h.o.where('t')).toBeNull()
+    stop.abort()
+    shared()
+    expect([(await run).exitCode, h.o.where('t')]).toEqual([130, undefined])
+  } finally {
+    await h.stop()
+  }
+})
+
 // 2026-10-23: "we should not send tasks in batches unless we are 100%
 // sure ... they can fit". Main bf77a58: small#3's load read low while 38
 // test shards began, so it took them all on 4 cores, 28 failed, and the 5
@@ -1279,6 +1317,41 @@ it('says no worker started once a run that needed none is over', async () => {
     ['workers', 'none started: no task needed one'],
   ])
 })
+
+// A task waited on a worker that never joined, and Ctrl-C ended the run:
+// the footer said no task needed one (2026-11-06).
+it('says a task waited on a worker that never joined, once the run is over', async () => {
+  const h = await harness(new Map([node('t1')]))
+  void h.o.execute(h.req('t1'))
+  await Bun.sleep(50)
+  await h.stop()
+  expect(h.o.footer().map(([k, line]) => [k, ui.inline(line, { enabled: false })])).toEqual([
+    ['workers', 'none joined: a task waited on one'],
+  ])
+})
+
+// The relay died mid-run: the run failed, and the footer read the worker
+// that had run its tasks as `not joined  the run ended first` (2026-11-06).
+it('says a worker the run lost with its relay was lost, with what it ran', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]))
+  try {
+    const a = await h.worker(1)
+    await Bun.sleep(50)
+    const t1 = h.o.execute(h.req('t1'))
+    expect(await a.batches()).toEqual([['t1']])
+    await a.finish('t1')
+    await t1
+    const t2 = h.o.execute(h.req('t2'))
+    expect(await a.batches()).toEqual([['t2']])
+    await h.served.stop()
+    expect(await t2.catch((e: Error) => e.message)).toStartWith('the relay is unreachable')
+    await h.o.close()
+    const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
+    expect(rows[0]).toMatch(/ lost +1 done · t1$/)
+  } finally {
+    await h.stop()
+  }
+}, 30_000)
 
 it('says a worker that never joined did not, once the run is over', async () => {
   const h = await harness(new Map([node('t1')]))
@@ -3862,6 +3935,79 @@ for (const hook of ['main', 'linked'] as const)
     const env = await readFile(seen, 'utf8')
     expect(env).not.toMatch(/^GIT_(INDEX_FILE|DIR)=/m)
   }, 30_000)
+
+// A run whose vx was killed never closed, and its worktrees stayed in the
+// repository for good (2026-11-06). The next local() run removes each
+// whose owner is gone, and keeps one whose run is alive.
+it('local() reclaims the worktrees of a run whose vx is gone, and keeps a live run’s', async () => {
+  const repo = await realpath(await tmp())
+  const git = (...args: string[]) => {
+    const p = Bun.spawnSync(['git', '-c', 'commit.gpgsign=false', ...args], { cwd: repo })
+    if (p.exitCode !== 0) throw new Error(p.stderr.toString())
+    return p.stdout.toString().trim()
+  }
+  git('init', '-q')
+  git('config', 'user.email', 't@vx.local')
+  git('config', 'user.name', 't')
+  await writeFile(path.join(repo, 'a.txt'), 'a')
+  git('add', 'a.txt')
+  git('commit', '-qm', 'init')
+  const commit = git('rev-parse', 'HEAD')
+  const done = Bun.spawn(['true'])
+  await done.exited
+  const left = async (owner: number): Promise<string> => {
+    const base = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-'))
+    dirs.push(base)
+    await writeFile(path.join(base, 'owner'), String(owner))
+    git('worktree', 'add', '-q', '--detach', path.join(base, '1'), commit)
+    return path.join(base, '1')
+  }
+  const dead = await left(done.pid)
+  const live = await left(process.pid)
+  const adapter = local({ prepare: 'exit 1' })
+  try {
+    await adapter.spawn({
+      run: R,
+      relay: 'http://127.0.0.1:9',
+      size: 's',
+      max: 1,
+      cpu: 1,
+      memory: 1e9,
+      index: 1,
+      id: 's#1',
+      workspaceRoot: repo,
+      commit,
+      env: {},
+      exited: () => {},
+    })
+  } catch {
+    // the prepare fails, so no worker starts
+  } finally {
+    await adapter.close?.()
+  }
+  // A reclaim or a close may be pruning while this reads: git then fails
+  // on a half-removed admin dir, so read again.
+  const trees = async (): Promise<string[]> => {
+    for (;;) {
+      try {
+        return git('worktree', 'list', '--porcelain')
+          .split('\n')
+          .filter((l) => l.startsWith('worktree '))
+          .map((l) => l.slice('worktree '.length))
+      } catch {
+        await Bun.sleep(20)
+      }
+    }
+  }
+  const until = Date.now() + 10_000
+  while ((await trees()).includes(dead) && Date.now() < until) await Bun.sleep(20)
+  const after = await trees()
+  expect([after.includes(dead), existsSync(dead), after.includes(live)]).toEqual([
+    false,
+    false,
+    true,
+  ])
+}, 30_000)
 
 it('a worker size or unmeasured with a key dte() does not read is refused', () => {
   // A typo of max left the size uncapped, without a word.

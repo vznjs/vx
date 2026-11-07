@@ -11,7 +11,7 @@ import { rm, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { Database } from 'bun:sqlite'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import type { CacheGetContext } from '../src/cache/cache.js'
 import { indexDb, Cache } from '../src/cache/index.js'
 import { removeStoredArtifact, storedArtifact } from './helpers/stored-artifact.js'
@@ -154,6 +154,28 @@ describe('Cache.getMany agrees with Cache.get', () => {
       await seed(cache, ['aa', 'bb'])
       removeStoredArtifact(cache, 'bb')
       expect([await cache.has('aa'), await cache.has('bb')]).toEqual(['local', null])
+    } finally {
+      cache.close()
+    }
+  })
+
+  // A warm run's probe builds an entry per hit and reads no hit's date: a
+  // date formatted per entry was 8,002 strings no reader asked for.
+  it("formats an entry's stored date only when it is read", async () => {
+    const cache = new Cache(cacheDir)
+    try {
+      await seed(cache, ['aa', 'bb'])
+      const toIso = spyOn(Date.prototype, 'toISOString')
+      let many: Awaited<ReturnType<Cache['getMany']>>
+      try {
+        many = await cache.getMany(['aa', 'bb'])
+        expect(toIso).toHaveBeenCalledTimes(0)
+      } finally {
+        toIso.mockRestore()
+      }
+      const at = many.get('aa')!.storedAt
+      expect(new Date(at).toISOString()).toBe(at)
+      expect(Date.now() - Date.parse(at)).toBeLessThan(60_000)
     } finally {
       cache.close()
     }

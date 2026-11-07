@@ -18,6 +18,7 @@
 
 import path from 'node:path'
 import {
+  chmodSync,
   type Dirent,
   lstatSync,
   readdirSync,
@@ -45,6 +46,7 @@ import {
   slashBraceExpansions,
   braceAlternatives,
   ESSENTIAL_ENV,
+  POST_EXIT_DRAIN_MS,
   splitNegations,
   staticPrefix,
   stripTrailingSlash,
@@ -53,7 +55,7 @@ import {
   writableUnder,
   withoutWorkspaceBins,
 } from '../util/index.js'
-import { GitFilesCache, listingEnv, runGitLsFiles } from './git-inputs.js'
+import { GitFilesCache, listingEnv, newFilesIgnoredIn, runGitLsFiles } from './git-inputs.js'
 import { FILE_HASH_RACY_MS, racyWindowMs } from './layer.js'
 
 // The git side lives in git-inputs.ts; its whole public surface is
@@ -601,7 +603,21 @@ function resolveEnvValues(
   names: readonly string[],
   source: NodeJS.ProcessEnv,
 ): Array<[string, string | undefined]> {
-  return [...names].sort().map((name) => [name, source[name]])
+  return [...names].sort().map((name) => {
+    const value = source[name]
+    // Bun decodes the environment lossily and offers no raw bytes on every
+    // platform (Linux's /proc/self/environ misses what vx sets itself), so
+    // Latin-1 é and è both read as U+FFFD and replayed each other's build.
+    // A value that truly holds U+FFFD is refused with them: the two read
+    // alike. The value is never shown; it may be a secret.
+    if (value?.includes('�') === true) {
+      throw new UserError(
+        `inputs.env ${name} holds U+FFFD: its value is not UTF-8, or holds that character, ` +
+          `and a lossy decode keys every invalid byte alike. Set it as UTF-8.`,
+      )
+    }
+    return [name, value]
+  })
 }
 
 /**
@@ -670,12 +686,27 @@ async function runRuntimeCommand(
   }
   killProbesOnExit()
   let stdout, stderr, exitCode
+  const ac = new AbortController()
   try {
-    ;[stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).bytes(),
-      new Response(proc.stderr).bytes(),
-      proc.exited,
+    const streams = Promise.all([
+      probeBytes(proc.stdout, ac.signal),
+      probeBytes(proc.stderr, ac.signal),
     ])
+    exitCode = await proc.exited
+    // A child the shell left holding the pipes (`sleep 6 & echo x`) kept
+    // them open past the shell's exit, and the run waited for the child. As
+    // a task's (exec/runner.ts): a short drain, then the reads stop and the
+    // group goes. What was read is what the shell printed, so the key folds
+    // it; what the child prints later is no part of the answer.
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const cut = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, POST_EXIT_DRAIN_MS)
+    })
+    await Promise.race([streams, cut])
+    clearTimeout(timer)
+    ac.abort()
+    killGroup(proc.pid)
+    ;[stdout, stderr] = await streams
   } finally {
     liveProbes.delete(proc)
     mine?.delete(proc)
@@ -744,24 +775,51 @@ const probesOf = new WeakMap<RuntimeMemo, Set<ReturnType<typeof Bun.spawn>>>()
 export function stopRuntimeProbes(...memos: readonly RuntimeMemo[]): void {
   for (const memo of memos) {
     for (const p of probesOf.get(memo) ?? []) {
-      try {
-        process.kill(-p.pid, 'SIGKILL')
-      } catch {
-        // the group is gone
-      }
+      killGroup(p.pid)
     }
   }
 }
+/** SIGKILL a probe's group, its own since the spawn (`detached`). */
+function killGroup(pid: number): void {
+  try {
+    process.kill(-pid, 'SIGKILL')
+  } catch {
+    // the group is gone
+  }
+}
+
+/**
+ * A probe's stream, read to its end or until `signal`: then the pending
+ * read is cancelled and what was read is returned. `new Response().bytes()`
+ * offers no way out while a leftover child holds the pipe.
+ */
+async function probeBytes(
+  stream: ReadableStream<Uint8Array>,
+  signal: AbortSignal,
+): Promise<Uint8Array> {
+  const reader = stream.getReader()
+  const onAbort = (): void => void reader.cancel().catch(() => {})
+  signal.addEventListener('abort', onAbort, { once: true })
+  const parts: Uint8Array[] = []
+  try {
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
+      parts.push(value)
+    }
+  } finally {
+    signal.removeEventListener('abort', onAbort)
+    reader.releaseLock()
+  }
+  return Buffer.concat(parts)
+}
+
 function killProbesOnExit(): void {
   if (probeExitHooked) return
   probeExitHooked = true
   process.on('exit', () => {
     for (const p of liveProbes) {
-      try {
-        process.kill(-p.pid, 'SIGKILL')
-      } catch {
-        // the group is gone
-      }
+      killGroup(p.pid)
     }
   })
 }
@@ -867,7 +925,7 @@ async function scanOutputs(
   if (positive.length === 0) return { files: [] }
   const excludeGlobs = [...outputExcludes(positive, 'project'), ...asTrees(negative).map(globFor)]
   const trees = asTrees(positive)
-  refuseDirLinkedOut(args.projectDir, trees, 'project')
+  const absent = refuseDirLinkedOut(args.projectDir, trees, 'project')
   const scanned = [
     ...(await scanUnion(
       trees,
@@ -876,6 +934,7 @@ async function scanOutputs(
       inNestedProject(args.projectDir, args.nestedProjectDirs),
       emptyDirs,
       special,
+      absent,
     )),
   ]
   // Containment, enforced HERE and not only at the loader. `cleanOutputs`
@@ -909,14 +968,18 @@ export function committedFiles(
  * below it is an output, kept as the link (`archive.ts`). One into `.git`
  * or `.vx` is refused in either scope: for the root project and for
  * workspace outputs those are inside, and the clean deleted the
- * repository through `dist -> .git`. One out of a workspace output's root
- * is left to `containedIn`.
+ * repository through `dist -> .git`. One out of the root is refused in
+ * either scope too: a workspace output's every file was dropped as outside
+ * and an empty entry saved, while the project twin refused the task (M-65).
  */
 function refuseDirLinkedOut(
   root: string,
   trees: readonly string[],
   scope: 'project' | 'workspace',
-): void {
+): Set<string> {
+  // The heads found absent: the scan that follows skips them without
+  // asking again (a restore after a clean asks of every one).
+  const absent = new Set<string>()
   let realRoot: string | undefined
   for (const tree of trees) {
     let at = root
@@ -930,7 +993,10 @@ function refuseDirLinkedOut(
       } catch {
         break
       }
-      if (st === undefined) break
+      if (st === undefined) {
+        absent.add(at)
+        break
+      }
       if (!st.isSymbolicLink()) continue
       let real: string
       try {
@@ -941,10 +1007,9 @@ function refuseDirLinkedOut(
       }
       realRoot ??= realOr(root)
       if (!isInside(realRoot, real)) {
-        if (scope === 'workspace') break
         throw new UserError(
           `${at} is a symbolic link to ${real}, outside ${root} — vx never cleans, saves ` +
-            'or restores declared outputs through a link that leaves the project. Remove the ' +
+            `or restores declared outputs through a link that leaves the ${scope}. Remove the ` +
             'link and re-run, or stop declaring outputs under it.',
         )
       }
@@ -957,6 +1022,7 @@ function refuseDirLinkedOut(
       }
     }
   }
+  return absent
 }
 
 /**
@@ -1365,9 +1431,18 @@ const SYNC_CLEAN_MAX = 128
  * wrote, a read-only checkout) is the environment's failure, not vx's:
  * the scheduler prints any other error as an "internal error", which
  * sends the reader to file a bug against a permission bit.
+ *
+ * A directory of this user's that withholds its own write (a task's
+ * `chmod 555 dist/ro`, which a hit restores too) gets owner write and
+ * search for the remove and its mode back after, as a restore's write
+ * into it does (archive.ts `reopen`): else that task could never run or
+ * restore again until someone chmodded the tree by hand. The prune after
+ * reopens the same way for the subdirectories it removes (`pruneEmptiedDirs`).
  */
 async function removeAll(all: readonly string[], root: string): Promise<string[]> {
   const files = insideRoot(all, root)
+  const reopened: Reopened = new Map()
+  const reopen = (dir: string): boolean => reopenDir(dir, reopened)
   const refused = (f: string, err: NodeJS.ErrnoException): UserError => {
     const rel = relPosix(root, f)
     return new UserError(
@@ -1376,24 +1451,64 @@ async function removeAll(all: readonly string[], root: string): Promise<string[]
         `by this user, or stop declaring it as an output`,
     )
   }
-  if (files.length <= SYNC_CLEAN_MAX) {
-    for (const f of files) {
-      try {
-        rmSync(f, { force: true })
-      } catch (err) {
-        throw refused(f, err as NodeJS.ErrnoException)
+  const denied = (err: unknown, f: string): boolean =>
+    (err as NodeJS.ErrnoException).code === 'EACCES' && reopen(path.dirname(f))
+  try {
+    if (files.length <= SYNC_CLEAN_MAX) {
+      for (const f of files) {
+        try {
+          rmSync(f, { force: true })
+        } catch (err) {
+          if (!denied(err, f)) throw refused(f, err as NodeJS.ErrnoException)
+          try {
+            rmSync(f, { force: true })
+          } catch (again) {
+            throw refused(f, again as NodeJS.ErrnoException)
+          }
+        }
       }
+      return files
     }
+    await Promise.all(
+      files.map((f) =>
+        rm(f, { force: true })
+          .catch((err: NodeJS.ErrnoException) => {
+            if (!denied(err, f)) throw err
+            return rm(f, { force: true })
+          })
+          .catch((err: NodeJS.ErrnoException) => {
+            throw refused(f, err)
+          }),
+      ),
+    )
     return files
+  } finally {
+    giveBack(reopened)
   }
-  await Promise.all(
-    files.map((f) =>
-      rm(f, { force: true }).catch((err: NodeJS.ErrnoException) => {
-        throw refused(f, err)
-      }),
-    ),
-  )
-  return files
+}
+
+/** Directories given owner write and search for a remove, with the mode each had. */
+type Reopened = Map<string, number>
+
+/** Whether `dir` is now open to a remove: this user's, and its missing owner bits given. */
+function reopenDir(dir: string, reopened: Reopened): boolean {
+  if (reopened.has(dir)) return true
+  const st = lstatSync(dir, { throwIfNoEntry: false })
+  if (st?.isDirectory() !== true || st.uid !== process.getuid?.()) return false
+  if ((st.mode & 0o300) === 0o300) return false
+  reopened.set(dir, st.mode & 0o7777)
+  chmodSync(dir, (st.mode & 0o7777) | 0o300)
+  return true
+}
+
+function giveBack(reopened: Reopened): void {
+  for (const [dir, mode] of reopened) {
+    try {
+      chmodSync(dir, mode)
+    } catch {
+      // gone since (the prune removed it): nothing to give back
+    }
+  }
 }
 
 /**
@@ -1461,33 +1576,53 @@ async function pruneEmptiedDirs(
   // the memo is correct and 60 ms, because every child re-attempts the
   // shared parent. This is correct at 44 ms.
   let level = new Set([...removed.map((f) => path.dirname(f)), ...emptyDirs])
-  while (level.size > 0) {
-    const parents = new Set<string>()
-    const dirs = [...level].filter(
-      (dir) =>
-        dir !== rootResolved &&
-        dir.startsWith(rootResolved + path.sep) &&
-        (scope === undefined || inScope(dir, scope)) &&
-        keep?.has(dir) !== true,
-    )
-    const gone = (err: NodeJS.ErrnoException): boolean => err.code === 'ENOENT'
-    if (dirs.length <= SYNC_CLEAN_MAX) {
-      for (const dir of dirs) {
-        try {
-          rmdirSync(dir)
-          parents.add(path.dirname(dir))
-        } catch (err) {
-          if (gone(err as NodeJS.ErrnoException)) parents.add(path.dirname(dir))
-        }
-      }
-    } else {
-      await Promise.all(
-        dirs.map(async (dir) => {
-          if (await rmdir(dir).then(() => true, gone)) parents.add(path.dirname(dir))
-        }),
+  // A subdirectory of a read-only directory of this user's (`dist/x/s` under
+  // a `chmod 555 dist/x`) is removed as `removeAll` removes a file there.
+  const reopened: Reopened = new Map()
+  const gone = (err: NodeJS.ErrnoException): boolean => err.code === 'ENOENT'
+  const denied = (err: NodeJS.ErrnoException, dir: string): boolean =>
+    err.code === 'EACCES' && reopenDir(path.dirname(dir), reopened)
+  try {
+    while (level.size > 0) {
+      const parents = new Set<string>()
+      const dirs = [...level].filter(
+        (dir) =>
+          dir !== rootResolved &&
+          dir.startsWith(rootResolved + path.sep) &&
+          (scope === undefined || inScope(dir, scope)) &&
+          keep?.has(dir) !== true,
       )
+      if (dirs.length <= SYNC_CLEAN_MAX) {
+        for (const dir of dirs) {
+          try {
+            try {
+              rmdirSync(dir)
+            } catch (err) {
+              if (!denied(err as NodeJS.ErrnoException, dir)) throw err
+              rmdirSync(dir)
+            }
+            parents.add(path.dirname(dir))
+          } catch (err) {
+            if (gone(err as NodeJS.ErrnoException)) parents.add(path.dirname(dir))
+          }
+        }
+      } else {
+        await Promise.all(
+          dirs.map(async (dir) => {
+            const ok = await rmdir(dir)
+              .catch((err: NodeJS.ErrnoException) => {
+                if (!denied(err, dir)) throw err
+                return rmdir(dir)
+              })
+              .then(() => true, gone)
+            if (ok) parents.add(path.dirname(dir))
+          }),
+        )
+      }
+      level = parents
     }
-    level = parents
+  } finally {
+    giveBack(reopened)
   }
 }
 
@@ -1550,9 +1685,17 @@ export async function resolveWorkspaceOutputs(
   if (positive.length === 0) return []
   const excludeGlobs = [...outputExcludes(positive, 'workspace'), ...asTrees(negative).map(globFor)]
   const trees = asTrees(positive)
-  refuseDirLinkedOut(args.workspaceRoot, trees, 'workspace')
+  const absent = refuseDirLinkedOut(args.workspaceRoot, trees, 'workspace')
   const scanned = [
-    ...(await scanUnion(trees, excludeGlobs, args.workspaceRoot, undefined, emptyDirs, special)),
+    ...(await scanUnion(
+      trees,
+      excludeGlobs,
+      args.workspaceRoot,
+      undefined,
+      emptyDirs,
+      special,
+      absent,
+    )),
   ]
   // Same containment as the project twin, anchored one level out. These globs
   // deliberately ignore PROJECT boundaries — that is the escape hatch — but
@@ -1644,16 +1787,61 @@ function unanswered(
   files: readonly string[],
   newIgnored?: (lit: string) => boolean,
 ): Set<string> {
-  const left = new Set<string>()
-  for (const lit of literals) {
-    const under = `${lit}/`
-    const answered =
-      files[lowerBound(files, lit)] === lit ||
-      files[lowerBound(files, under)]?.startsWith(under) === true ||
-      files.some((rel) => rel === lit || rel.startsWith(under))
-    if (!answered || newIgnored?.(lit) === true) left.add(lit)
-  }
-  return left
+  return new Set(
+    reachingIgnored(
+      literals,
+      (lit) => {
+        const under = `${lit}/`
+        return (
+          files[lowerBound(files, lit)] === lit ||
+          files[lowerBound(files, under)]?.startsWith(under) === true ||
+          files.some((rel) => rel === lit || rel.startsWith(under))
+        )
+      },
+      newIgnored,
+    ),
+  )
+}
+
+/**
+ * The rule a named entry reaches git-ignored files by: git lists nothing at
+ * or under it, or ignores a new file directly in it (a kept `gen/.gitkeep`).
+ * `src` of `src/**` over a listed `src` reaches none: an ignored `src/dev.log`
+ * is no input.
+ */
+function reachingIgnored(
+  named: readonly string[],
+  listed: (entry: string) => boolean,
+  newIgnored?: (entry: string) => boolean,
+): string[] {
+  return named.filter((n) => !listed(n) || newIgnored?.(n) === true)
+}
+
+/**
+ * The entries of `named` (absolute, from {@link namedOutright}) a
+ * git-ignored input can be at or under, by the rule a key reads them
+ * ({@link ignoredReach}): `listed` holds what git lists, absolute, with every
+ * directory above a listed file. Watch asks it, so an ignored file the key
+ * never reads starts no cycle.
+ */
+export function namedIgnoredReach(
+  root: string,
+  named: readonly string[],
+  listed: ReadonlySet<string>,
+): string[] {
+  const held = named.filter((n) => listed.has(n))
+  const fresh =
+    held.length === 0
+      ? new Set<string>()
+      : newFilesIgnoredIn(
+          root,
+          held.map((n) => relPosix(root, n)),
+        )
+  return reachingIgnored(
+    named,
+    (n) => listed.has(n),
+    (n) => fresh.has(relPosix(root, n)),
+  )
 }
 
 /** The first index whose path is not below `key`. */
@@ -1971,8 +2159,8 @@ function dirLinkInput(abs: string, oids: ReadonlyMap<string, string> | undefined
  * Whether a changed path is one of a task's declared file inputs:
  * `projectRel` (the path relative to the project that owns it) against
  * `files`, `workspaceRel` (relative to the workspace root) against
- * `workspaceFiles`; null skips that half, by the globs and `!` exclusions (a path under
- * the task's own outputs counts: a committed one is keyed). `--affected` seeds a task with it (2026-10-04).
+ * `workspaceFiles`; null skips that half, by the globs and `!` exclusions (a tracked path
+ * under the task's own outputs counts: a committed one is keyed). `--affected` seeds a task with it (2026-10-04).
  */
 export function declaresInput(
   task: TaskConfig,
@@ -1983,22 +2171,41 @@ export function declaresInput(
    * below it keys what is behind it, as `mayHoldMatch` says at key time.
    */
   dirLink = false,
+  /** Git does not track the path, so under the task's own outputs it is no input. */
+  untracked = false,
+  /**
+   * The task's project directory, workspace-relative: a `workspaceFiles`
+   * glob reaches its `outputs.files` too, which the key leaves out as it
+   * does `outputs.workspaceFiles` (`resolveWorkspaceFiles`).
+   */
+  projectDir?: string,
 ): boolean {
   const inputs = task.inputs
   if (inputs === undefined) return false
   if (projectRel !== null) {
-    // A changed path under the task's own outputs is a committed file
-    // (`git diff` lists only what git tracks) or a stray `git status`
-    // lists: either way it may be an input, so it counts.
+    // Under the task's own outputs the key folds only what git tracks
+    // (`committedFiles`); an untracked build output is not one.
     const plan = filesPlan(inputs.files, task.outputs?.files ?? [])
-    if (plan !== null && (inPlan(plan, projectRel) || ownOnly(plan, projectRel))) return true
+    if (plan !== null && (inPlan(plan, projectRel) || (!untracked && ownOnly(plan, projectRel)))) {
+      return true
+    }
     if (plan !== null && dirLink && plan.mayHold(projectRel) && !plan.isExcluded(projectRel)) {
       return true
     }
   }
   const ws = inputs.workspaceFiles
   if (workspaceRel === null || ws === undefined || ws.length === 0) return false
-  return workspaceMatcher(ws)(workspaceRel, dirLink)
+  if (!workspaceMatcher(ws)(workspaceRel, dirLink)) return false
+  // As for `files`: under its own outputs the key folds only a tracked path.
+  return !untracked || !ownWorkspaceOutput(task, workspaceRel, projectDir)
+}
+
+/** Asked only of an untracked path a `workspaceFiles` glob matched: rare, so not memoised. */
+function ownWorkspaceOutput(task: TaskConfig, rel: string, projectDir?: string): boolean {
+  const outputs = task.outputs
+  if (outputMatcher(outputs?.workspaceFiles ?? [])(rel)) return true
+  if (projectDir === undefined) return false
+  return underProject(projectDir, outputMatcher(outputs?.files ?? []))(rel)
 }
 
 /**
@@ -2155,22 +2362,24 @@ async function resolveFiles(
   const verdicts = plan.verdicts
   const committed = committedFiles(args.gitFilesCache, args.projectDir)
   const oids = args.gitFilesCache?.oidsFor(args.projectDir)
-  for (const rel of gitFiles) {
+  const paths = base === undefined ? undefined : args.gitFilesCache?.absPaths(gitFiles)
+  for (let i = 0; i < gitFiles.length; i++) {
+    const rel = gitFiles[i]!
     let input = verdicts.get(rel)
     if (input === undefined) {
       input = isPositive(rel) && !isExcluded(rel) && !ownOutput(rel)
       verdicts.set(rel, input)
     }
     if (nested(rel) || ownWsOutput(rel)) continue
-    const abs = base === undefined ? path.resolve(args.projectDir, rel) : base + rel
+    const abs = base === undefined ? path.resolve(args.projectDir, rel) : (paths?.[i] ?? base + rel)
     if (!input && !ownOnly(plan, rel)) {
       if (plan.mayHold(rel) && !isExcluded(rel) && !ownOutput(rel) && dirLinkInput(abs, oids)) {
-        candidates.push(abs)
+        candidates.push(paths === undefined ? abs : (paths[i] = abs))
       }
       continue
     }
     if (!input && !committed(abs)) continue
-    candidates.push(abs)
+    candidates.push(paths === undefined ? abs : (paths[i] = abs))
   }
   const reach = ignoredReach(plan, gitFiles, { dir: args.projectDir, cache: args.gitFilesCache })
   refuseUndecodable(candidates, undecodable, args.projectDir, 'files')
@@ -2481,6 +2690,7 @@ async function scanUnion(
   nested: (rel: string) => boolean = () => false,
   emptyDirs?: Set<string>,
   special?: Set<string>,
+  absent?: ReadonlySet<string>,
 ): Promise<Set<string>> {
   const matches = new Set<string>()
   const links: string[] = []
@@ -2521,7 +2731,7 @@ async function scanUnion(
     return matches
   }
   for (const pattern of patterns) {
-    if (absentPrefix(cwd, pattern)) continue
+    if (absentPrefix(cwd, pattern, absent)) continue
     const from = scanRoot(cwd, pattern)
     if (from === null) continue
     walked?.add(from === undefined ? cwd : from.dir)
@@ -2622,11 +2832,13 @@ function scanRoot(
  * cost ~58 µs where the lstat costs a few. Anything this cannot read
  * plainly (no prefix, an escape, an absolute path, a refused stat) scans.
  */
-function absentPrefix(cwd: string, pattern: string): boolean {
+function absentPrefix(cwd: string, pattern: string, known?: ReadonlySet<string>): boolean {
   const prefix = staticPrefix(pattern)
   if (prefix === '.' || prefix.includes('\\') || path.isAbsolute(prefix)) return false
+  const at = path.join(cwd, prefix)
+  if (known?.has(at) === true) return true
   try {
-    return lstatSync(path.join(cwd, prefix), { throwIfNoEntry: false }) === undefined
+    return lstatSync(at, { throwIfNoEntry: false }) === undefined
   } catch {
     return false
   }

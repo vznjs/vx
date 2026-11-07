@@ -230,6 +230,21 @@ describe('the environment', () => {
   it('takes an empty variable as unset', () => {
     expect(() => checkSettingsEnv({ VX_RUN_TIMEOUT: '' })).not.toThrow()
   })
+  it('leaves a variable its flag beats on this command line unjudged', () => {
+    // `VX_RUN_CONCURRENCY=0 vx run build --concurrency=2` was refused,
+    // though the flag beats the variable and nothing reads it.
+    const env = { VX_RUN_CONCURRENCY: '0' }
+    expect(() => checkSettingsEnv(env, ['build', '--concurrency=2'])).not.toThrow()
+    expect(() => checkSettingsEnv(env, ['build', '--concurrency', '2'])).not.toThrow()
+    // A flag forwarded to the task, or another verb's, beats nothing.
+    expect(() => checkSettingsEnv(env, ['build', '--', '--concurrency=2'])).toThrow(
+      'VX_RUN_CONCURRENCY',
+    )
+    expect(() => checkSettingsEnv(env, ['build', '--concurrency-x=2'])).toThrow(
+      'VX_RUN_CONCURRENCY',
+    )
+    expect(() => checkSettingsEnv(env, ['build'])).toThrow('VX_RUN_CONCURRENCY')
+  })
 })
 
 describe('flags', () => {

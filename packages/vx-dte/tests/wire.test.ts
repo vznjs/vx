@@ -219,8 +219,8 @@ it('a quiet worker beats once each heartbeat and a half, its orchestrator only a
   frames.length = 0
   answers.length = 0
   await Bun.sleep(2_600)
-  const beat = new RegExp(`"sends":\\[\\{"to":"host","body":\\{"seq":\\d+(,"acked":\\d+)?\\}\\}\\]`)
-  const ack = new RegExp(`"sends":\\[\\{"to":"${a.id}","body":\\{"acked":\\d+\\}\\}\\]`)
+  const beat = new RegExp(`"sends":\\[\\{"to":"host","body":\\{"n":\\d+(,"a":\\d+)?\\}\\}\\]`)
+  const ack = new RegExp(`"sends":\\[\\{"to":"${a.id}","body":\\{"a":\\d+\\}\\}\\]`)
   const quiet = frames.splice(0)
   // 3.5 quiet spans of 1.5 heartbeats: the worker's beat each and the orchestrator's ack of it.
   const beats = quiet.filter((f) => beat.test(f)).length
@@ -254,8 +254,8 @@ it('the orchestrator acks a quiet worker’s beat at once, not half a heartbeat 
   const o = await join(url, R2, 'orchestrator', null, undefined)
   const a = await join(url, R2, 'worker', null, undefined)
   await o.poll()
-  const beat = /"sends":\[\{"to":"host","body":\{"seq":\d+(,"acked":\d+)?\}\}\]/
-  const ack = new RegExp(`"sends":\\[\\{"to":"${a.id}","body":\\{"acked":\\d+\\}\\}\\]`)
+  const beat = /"sends":\[\{"to":"host","body":\{"n":\d+(,"a":\d+)?\}\}\]/
+  const ack = new RegExp(`"sends":\\[\\{"to":"${a.id}","body":\\{"a":\\d+\\}\\}\\]`)
   frames.length = 0
   while (!frames.some((f) => beat.test(f))) await Bun.sleep(5)
   const t = performance.now()
@@ -278,9 +278,8 @@ it('the orchestrator answers a quiet worker’s report at once, and an order it 
   const a = await join(url, R2, 'worker', null, undefined)
   await o.poll()
   a.quiet(() => void a.send('orchestrator', { type: 'report' }))
-  const report =
-    /"sends":\[\{"to":"host","body":\{"seq":\d+(,"acked":\d+)?,"body":\{"type":"report"\}/
-  const ack = new RegExp(`"sends":\\[\\{"to":"${a.id}","body":\\{"acked":\\d+\\}\\}\\]`)
+  const report = /"sends":\[\{"to":"host","body":\{"n":\d+(,"a":\d+)?,"b":\{"type":"report"\}/
+  const ack = new RegExp(`"sends":\\[\\{"to":"${a.id}","body":\\{"a":\\d+\\}\\}\\]`)
   frames.length = 0
   while (!frames.some((f) => report.test(f))) await Bun.sleep(5)
   const t = performance.now()
@@ -300,9 +299,7 @@ it('the orchestrator answers a quiet worker’s report at once, and an order it 
   await reacting
   await a.poll()
   await Bun.sleep(1_200)
-  const order = new RegExp(
-    `"to":"${a.id}","body":\\{"seq":\\d+,"body":\\{"type":"batch"\\},"acked":\\d+\\}`,
-  )
+  const order = new RegExp(`"to":"${a.id}","body":\\{"n":\\d+,"b":\\{"type":"batch"\\},"a":\\d+\\}`)
   expect([frames.some((f) => order.test(f)), frames.filter((f) => ack.test(f))]).toEqual([true, []])
   await a.leave()
   await o.leave()
@@ -316,7 +313,7 @@ it('a worker that sends just before its next beat still hears its orchestrator',
   const o = await join(url, R2, 'orchestrator', null, undefined)
   const a = await join(url, R2, 'worker', null, undefined)
   await o.poll()
-  const probe = /"sends":\[\{"to":"host","body":\{"seq":\d+(,"acked":\d+)?\}\}\]/
+  const probe = /"sends":\[\{"to":"host","body":\{"n":\d+(,"a":\d+)?\}\}\]/
   frames.length = 0
   while (!frames.some((f) => probe.test(f))) await Bun.sleep(5)
   await Bun.sleep(700)
@@ -1008,6 +1005,32 @@ it('gives up on a relay that answers nothing in 10 s in all, and names it', asyn
     `cannot connect to the relay ${url}: no answer in 10 s`,
   )
   expect(performance.now() - at).toBeLessThan(11_000)
+}, 30_000)
+
+// PR #5082's CI (2026-11-07): a Mac worker's dials failed at once, four
+// in about 2 s, and it gave up saying "no answer in 10 s": the retries
+// spent a fifth of the 10 s, and the words named a wait that never was.
+it('spreads its dials over the 10 s, so a relay down for 3 s is still joined', async () => {
+  const probe = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response() })
+  const port = probe.port!
+  await probe.stop(true)
+  const up = Bun.sleep(3_000).then(() => {
+    const s = serveRelay({ hostname: '127.0.0.1', port })
+    servers.push(s)
+  })
+  const a = await join(`http://127.0.0.1:${port}`, R, 'orchestrator', null, undefined)
+  await up
+  await a.leave()
+}, 30_000)
+
+it('says why its dials failed, and how many in how long, not a wait that never was', async () => {
+  const probe = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response() })
+  const url = `http://127.0.0.1:${probe.port}`
+  await probe.stop(true)
+  const err = (await join(url, R, 'worker', null, undefined).catch((e: unknown) => e)) as Error
+  expect(err.message).toMatch(
+    new RegExp(`^cannot connect to the relay ${url}: ECONNREFUSED, 4 dials in \\d+\\.\\d s$`),
+  )
 }, 30_000)
 
 // A token that could not be had was said as a relay that never answered,

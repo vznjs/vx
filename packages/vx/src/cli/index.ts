@@ -46,9 +46,10 @@ export async function run(argv: readonly string[]): Promise<number> {
   // Each setting's variable once, before any verb: a renamed one is named,
   // and a deep reader trusts what it reads. Not for help, as `vx run
   // --help` above is not: help is where a setting's values are read. Nor
-  // for `vx info`, which reports a refused one (doctor.ts).
+  // for `vx info`, which reports a refused one (doctor.ts). Nor for one
+  // whose flag is given: the flag beats it.
   if (command !== 'help' && command !== '--help' && command !== '-h' && command !== 'info')
-    checkSettingsEnv()
+    checkSettingsEnv(process.env, rest)
 
   try {
     return await dispatch(command, rest)
@@ -239,7 +240,7 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
         // that returned 256 (a count of failures, say) exited 0.
         if (!Number.isInteger(code) || code < 0 || code > 255) {
           throw new UserError(
-            `plugin '${resolved.plugin.name}': command '${command}' resolved ${JSON.stringify(code)} instead of an exit code (an integer 0–255)`,
+            `plugin '${resolved.plugin.name}': command '${command}' resolved ${typeof code === 'number' || typeof code === 'bigint' || code === undefined ? String(code) : JSON.stringify(code)} instead of an exit code (an integer 0–255)`,
           )
         }
         return code

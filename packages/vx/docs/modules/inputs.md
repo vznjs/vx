@@ -32,6 +32,8 @@ export function declaresInput(
   projectRel: string | null,
   workspaceRel: string | null,
   dirLink?: boolean, // the path is a link to a directory: a glob that may reach below it counts
+  untracked?: boolean, // git does not track it: under the task's own outputs it is no input
+  projectDir?: string, // the task's project, workspace-relative: its outputs.files a workspaceFiles glob reaches
 ): boolean
 
 /** May `inputs.workspaceFiles` name a file under `dir` (workspace-relative)?
@@ -40,9 +42,19 @@ export function declaresInput(
 export function workspaceFilesReachInto(task: TaskConfig, dir: string): boolean
 
 /** Paths a task names outright (literals, globs' fixed prefixes): `files`
- *  project-relative, `workspaceFiles` root-relative. `vx watch` judges a
- *  git-ignored edit there. */
+ *  project-relative, `workspaceFiles` root-relative. */
 export function namedOutright(task: TaskConfig): { files: string[]; workspaceFiles: string[] }
+
+/** The entries of `named` (absolute) a git-ignored input can be under, by
+ *  the rule a key reads them: git lists nothing at or under one, or
+ *  ignores a new file directly in it. `listed` is what git lists, absolute,
+ *  with the directories above. `vx watch` judges a git-ignored edit there
+ *  only: `src` of `src/**` over a listed `src` is none. */
+export function namedIgnoredReach(
+  root: string,
+  named: readonly string[],
+  listed: ReadonlySet<string>,
+): string[]
 
 /** What a probe answers here: an `inputs.runtime` command run in
  *  `projectDir`, or with `workspace` a `workspaceRuntime` one run in
@@ -340,6 +352,11 @@ host's `process.env`):
 - Unset names → `[name, undefined]`, which the key folds apart from
   every value, `''` included, and from "name was never listed".
 - Sorted by name for deterministic key ordering.
+- A value holding U+FFFD is a `UserError` naming the variable, never
+  its value. Bun decodes the environment lossily, so Latin-1 `é` and
+  `è` both read as U+FFFD and keyed alike; no raw bytes are readable on
+  every platform (Linux's `/proc/self/environ` misses what vx sets
+  itself), so a value that truly holds U+FFFD is refused with them.
 
 ## Output resolution rules
 
@@ -380,9 +397,12 @@ sibling task running beside this one may have just made it and not yet
 written into it. An additive task's clean by its recorded rows
 (`cleanOutputPaths`, item 588) prunes by the same scope, from the
 task's declared outputs. A
-declared output the process cannot remove — another user's `dist/`, a
-read-only checkout — is a `UserError` naming the path, not an internal
-error.
+directory of this user's that withholds its own write (`chmod 555
+dist/ro`) gets owner write for the remove and its mode back after, and
+the prune reopens one the same way to remove an emptied subdirectory
+(`tests/clean-readonly-dir.test.ts`). A declared output the process
+cannot remove even so — another user's `dist/`, a read-only checkout —
+is a `UserError` naming the path, not an internal error.
 
 ## What this does NOT do
 
@@ -400,7 +420,9 @@ error.
   link, unlinked on clean) and never descends through one below
   a glob's literal head. A link IN that head (`dist -> real-out` for
   `dist/**`) is followed by the scan and the clean alike; one resolving
-  outside the project is a `UserError` naming it (X-88).
+  outside the project is a `UserError` naming it (X-88). The heads that
+  check finds absent the scan skips without asking again: a restore
+  after a clean asked twice about each missing `dist` (2026-11-07).
 
 ## Tests
 

@@ -111,9 +111,11 @@ describe('RunOptions.signal aborts a run in flight', () => {
     expect(await Bun.file(path.join(dir, 'after.txt')).exists()).toBe(false)
   }, 30_000)
 
-  it('the summary a sink hears counts the aborted tasks, which its task list leaves out', async () => {
-    // Aborted tasks are not real runs and stay out of `tasks`; without the
-    // count a stopped run reads as a failure with nothing failed (item 851).
+  it('the summary a sink hears lists the task the stop cut short and counts the one it reached first', async () => {
+    // Without the counts a stopped run reads as a failure with nothing failed
+    // (item 851). They say what the terminal says: `1 aborted · 1 not run`.
+    // Counting the never-started task aborted too read `2 aborted`, and the
+    // job summary's table left out the one task that really was.
     await Bun.write(
       path.join(root, '.vx/workspace.mjs'),
       localWorkspaceSource([
@@ -150,10 +152,20 @@ describe('RunOptions.signal aborts a run in flight', () => {
     const s = (globalThis as { __vxAbortSummary?: RunSummaryRecord }).__vxAbortSummary!
     expect({
       exitOk: s.exitOk,
+      taskCount: s.taskCount,
       failedCount: s.failedCount,
       abortedCount: s.abortedCount,
-      tasks: s.tasks.length,
-    }).toEqual({ exitOk: false, failedCount: 0, abortedCount: 2, tasks: 0 })
+      notRunCount: s.notRunCount,
+      tasks: s.tasks.map((t) => [t.taskId, t.status]),
+    }).toEqual({
+      exitOk: false,
+      // The terminal's total: the task the stop reached first counts too.
+      taskCount: 2,
+      failedCount: 0,
+      abortedCount: 1,
+      notRunCount: 1,
+      tasks: [['app#slow', 'aborted']],
+    })
   }, 30_000)
 
   it('a child that ignores SIGTERM is SIGKILLed after the grace', async () => {

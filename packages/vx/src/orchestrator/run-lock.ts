@@ -62,7 +62,7 @@
 // them and left by the last to release.
 
 import { chmodSync, lstatSync, mkdirSync, readFileSync, realpathSync } from 'node:fs'
-import { rmdirSync, unlinkSync } from 'node:fs'
+import { rmdirSync, rmSync, unlinkSync } from 'node:fs'
 import { mkdir, readdir, readFile, rename, rm, rmdir, unlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -79,6 +79,12 @@ const takers = new Map<string, string>()
  * must wait for it, not reclaim it as a dead run of this pid.
  */
 const placed = new Set<string>()
+/**
+ * Staging directories made and not yet renamed or removed: an exit between
+ * the mkdir and the rename left one, randomly named, in the lock root for
+ * good, no later taking knowing its name.
+ */
+const staged = new Set<string>()
 
 /**
  * A signal exit is `process.exit` (signals.ts): no finally runs and nothing
@@ -92,6 +98,13 @@ function releaseOnExit(): void {
   if (exitHooked) return
   exitHooked = true
   process.on('exit', () => {
+    for (const dir of staged) {
+      try {
+        rmSync(dir, { recursive: true, force: true })
+      } catch {
+        // best effort on the way out
+      }
+    }
     for (const [lockDir, entry] of takers) {
       // The entry may be gone already: a release under way unlinked it and
       // was still to remove the directory (item 867).
@@ -292,7 +305,15 @@ async function place(lockDir: string): Promise<string | null> {
   // start time, and a restarted container's pid 1 would meet the staging
   // directory a killed pid 1 left, and refuse every run after it.
   const staging = `${lockDir}.${entry}.${Math.random().toString(36).slice(2)}`
-  await mkdir(staging)
+  // Listed before the mkdir: the exit hook removes what it lists.
+  staged.add(staging)
+  releaseOnExit()
+  try {
+    await mkdir(staging)
+  } catch (err) {
+    staged.delete(staging)
+    throw err
+  }
   placed.add(entry)
   try {
     await writeFile(path.join(staging, entry), '')
@@ -304,6 +325,8 @@ async function place(lockDir: string): Promise<string | null> {
     const code = (err as NodeJS.ErrnoException).code
     if (code === 'ENOTEMPTY' || code === 'EEXIST') return null
     throw err
+  } finally {
+    staged.delete(staging)
   }
 }
 
@@ -384,7 +407,6 @@ export async function acquireRunLock(
       if (entry !== null) {
         heldHere.set(lockDir, 1)
         takers.set(lockDir, entry)
-        releaseOnExit()
         return held
       }
       h = await holder(lockDir)

@@ -127,16 +127,16 @@ export function priorities(
   policy: Policy,
   tasks: readonly SimTask[],
   unknown: ReadonlySet<string>,
-): ReadonlyMap<string, number> {
+): (id: string) => number {
   const baseline = computeReverseDepCount(nodeMap(tasks))
   const plugin = pluginPriorities(policy, tasks, unknown)
-  return plugin === undefined ? baseline : mergePriorities(baseline, plugin)
+  return plugin === undefined ? (id) => baseline.get(id) ?? 0 : mergePriorities(baseline, plugin)
 }
 
 /** Greedy list scheduling of `tasks` on `workers`, ranked by `priority`. */
 export function simulate(
   tasks: readonly SimTask[],
-  priority: ReadonlyMap<string, number>,
+  priority: (id: string) => number,
   workers: number,
 ): SimResult {
   const byId = new Map(tasks.map((t) => [t.id, t]))
@@ -162,8 +162,8 @@ export function simulate(
     for (let i = 1; i < ready.length; i++) {
       const a = ready[i]!
       const b = ready[best]!
-      const pa = priority.get(a.id) ?? 0
-      const pb = priority.get(b.id) ?? 0
+      const pa = priority(a.id)
+      const pb = priority(b.id)
       if (pa > pb || (pa === pb && a.seq < b.seq)) best = i
     }
     return ready.splice(best, 1)[0]!.id

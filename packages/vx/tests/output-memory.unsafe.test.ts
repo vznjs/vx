@@ -23,6 +23,7 @@ import { beforeAll, describe, expect, it } from 'bun:test'
 const TIMEOUT = 60_000
 const LOGGER = path.join(import.meta.dir, '..', 'src', 'report', 'logger.ts')
 const RUNNER = path.join(import.meta.dir, '..', 'src', 'exec', 'runner.ts')
+const CACHE = path.join(import.meta.dir, '..', 'src', 'cache', 'index.ts')
 
 /** Run a probe script, awaited, and read back the `heap_mib=<n>` it prints. */
 async function probeHeapMibAsync(script: string): Promise<number> {
@@ -171,6 +172,78 @@ describe('runCommand stream capture', () => {
       // passed the line above), so the opted-down side must hold less than
       // one 8 MiB end below what the retaining side holds.
       expect(keepFew - dropMany).toBeGreaterThan(8)
+    },
+    TIMEOUT,
+  )
+})
+
+/**
+ * Save `entries` hits whose logs are 4 MiB each, then probe them all in one
+ * batch from a fresh `Cache`, as a warm run's short-circuit does, and report
+ * the heap while the answers are still held. Half the logs compress to a few
+ * hundred bytes, which the probe loads with the entry, and half barely
+ * compress, which it leaves in the index: both must stay unread. `read`
+ * takes every log too, the control: what holding them costs.
+ */
+function replayProbe(entries: number, read: boolean): string {
+  return `
+    import { randomBytes } from 'node:crypto'
+    import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+    import os from 'node:os'
+    import path from 'node:path'
+    import { Cache } from ${JSON.stringify(CACHE)}
+    const root = mkdtempSync(path.join(os.tmpdir(), 'vx-replay-memory-'))
+    try {
+      const projectDir = path.join(root, 'p')
+      mkdirSync(projectDir)
+      writeFileSync(path.join(projectDir, 'out.txt'), 'x')
+      const hashes = Array.from({ length: ${entries} }, (_, i) => 'h' + i)
+      const saving = new Cache(path.join(root, 'cache'))
+      for (const [i, hash] of hashes.entries()) {
+        const body = i % 2 === 0 ? 'x'.repeat(${CHUNK_BYTES}) : randomBytes(${CHUNK_BYTES / 2}).toString('hex')
+        await saving.save({
+          hash,
+          projectDir,
+          outputFiles: [path.join(projectDir, 'out.txt')],
+          entry: { taskId: 'p#' + hash, command: 'c', durationMs: 1, stdout: hash + ':' + body },
+        })
+      }
+      saving.close()
+      const cache = new Cache(path.join(root, 'cache'))
+      const hits = await cache.getMany(hashes)
+      if (hits.size !== ${entries}) throw new Error('probe found ' + hits.size + ' hits')
+      const logs = ${read} ? [...hits.values()].map((e) => e.stdout) : []
+      Bun.gc(true)
+      if (hits.size + logs.length < 0) throw new Error('unreachable')
+      console.log('heap_mib=' + Math.round(process.memoryUsage().heapUsed / 1024 / 1024))
+      cache.close()
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  `
+}
+
+const REPLAY_FEW = 10
+const REPLAY_MANY = 40
+const REPLAY_EXTRA_MIB = ((REPLAY_MANY - REPLAY_FEW) * CHUNK_BYTES) / 1024 / 1024
+
+describe('cache hit replay', () => {
+  it(
+    'a batched probe holds no log: each is read when its hit replays',
+    async () => {
+      // A warm all-hit run probes every key in one batch, then replays the
+      // hits as the scheduler reaches them. The batch held each hit's
+      // decompressed log until its replay: 500 tasks printing 1 MiB peaked
+      // at 3.4 GB RSS warm against 358 MB cold.
+      //
+      // The control runs FIRST: holding the logs grows with their volume.
+      const readFew = await probeHeapMibAsync(replayProbe(REPLAY_FEW, true))
+      const readMany = await probeHeapMibAsync(replayProbe(REPLAY_MANY, true))
+      expect(readMany - readFew).toBeGreaterThan(REPLAY_EXTRA_MIB * 0.5)
+
+      const heldFew = await probeHeapMibAsync(replayProbe(REPLAY_FEW, false))
+      const heldMany = await probeHeapMibAsync(replayProbe(REPLAY_MANY, false))
+      expect(heldMany - heldFew).toBeLessThan(REPLAY_EXTRA_MIB * 0.25)
     },
     TIMEOUT,
   )

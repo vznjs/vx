@@ -89,8 +89,10 @@ import {
   formatPersistentList,
   formatRunSummary,
   type Logger,
+  neverStarted,
   plainOutput,
   resolveOutputView,
+  type RunEvent,
   terminalSubscriber,
   warnOf,
 } from '../report/index.js'
@@ -112,9 +114,15 @@ import { isPassStatus } from '../graph/index.js'
 import type { RunContextRecord } from './telemetry.js'
 import { plan, type RunPlan } from './plan.js'
 import type { AffectedReason } from './affected-tasks.js'
-import { namesRemote, openRemotes, prepareRun, type PreparedRun } from './prepare.js'
-import { acquireRunLock } from './run-lock.js'
-import { terminateChildren } from './signals.js'
+import {
+  namesRemote,
+  openRemotes,
+  prepareRun,
+  prepareRunLocked,
+  type PreparedRun,
+} from './prepare.js'
+import { acquireRunLock, runLockPath, type RunLockRelease } from './run-lock.js'
+import { exitOfSignal, type HeldSignals, holdSignals, terminateChildren } from './signals.js'
 import { CYCLE_INTERRUPT, runStop } from './run-stop.js'
 import {
   hasPooledExecutor,
@@ -389,11 +397,21 @@ export async function run(options: RunOptions): Promise<RunSummary> {
           unsubscribeTerminal = bus.subscribe(guardedOutput(claimed, render))
         }
   let held = false
+  const signals: { held?: HeldSignals } = {}
   try {
     // vx's own steps are timed only where something renders them.
     const showsSteps =
       terminal !== null ? terminal.showsSteps : options.log?.stepStart !== undefined
-    const summary = await runOnBus(options, bus, warned, colors, terminal, showsSteps, takeOutput)
+    const summary = await runOnBus(
+      options,
+      bus,
+      warned,
+      colors,
+      terminal,
+      showsSteps,
+      signals,
+      takeOutput,
+    )
     if (summary.persistent === undefined) return summary
     // Servers handed back still running still write: `vx watch dev` printed
     // none of its server's log while it idled, the renderer gone with this
@@ -409,6 +427,11 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     }
   } finally {
     if (!held) detach()
+    // A signal heard before the run's stop took over: the run left before
+    // its tasks (a refusal, a setup that threw), its plugins torn down and
+    // its lock released, and vx leaves as that signal says.
+    const heard = signals.held?.takeOver()
+    if (heard !== undefined) await exitOfSignal(heard)
   }
 }
 
@@ -419,6 +442,7 @@ async function runOnBus(
   colors: ColorSupport,
   terminal: DefaultLogger | null,
   showsSteps: boolean,
+  signals: { held?: HeldSignals },
   takeOutput?: (claimed: { logger: Logger; owner: string }) => void,
 ): Promise<RunSummary> {
   const log = busLogger(bus)
@@ -427,17 +451,68 @@ async function runOnBus(
   // A server's output goes through a cell of its own: a later watch cycle
   // that keeps the server points it at that cycle's bus (`RunOptions.keep`).
   const serverOuts = new Map<string, { bus: EventBus }>()
+  // What a server writes from ready until its outcome is logged: renderers
+  // keep output before the outcome for its frame, which a ready server's
+  // row never prints, so its first lines since ready were lost.
+  const sinceReady = new Map<string, RunEvent[]>()
   const serverLog = (id: string): Logger => {
     const out = { bus }
     serverOuts.set(id, out)
+    const emit = (event: RunEvent): void => {
+      const held = sinceReady.get(id)
+      if (held === undefined) out.bus.emit(event)
+      else held.push(event)
+    }
     return {
       ...log,
-      taskStdout: (node, chunk) => out.bus.emit({ kind: 'task:stdout', node, chunk }),
-      taskStderr: (node, chunk) => out.bus.emit({ kind: 'task:stderr', node, chunk }),
+      taskStdout: (node, chunk) => emit({ kind: 'task:stdout', node, chunk }),
+      taskStderr: (node, chunk) => emit({ kind: 'task:stderr', node, chunk }),
     }
   }
+  const releaseSinceReady = (id: string): void => {
+    const held = sinceReady.get(id)
+    if (held === undefined) return
+    sinceReady.delete(id)
+    const out = serverOuts.get(id) ?? { bus }
+    for (const event of held) out.bus.emit(event)
+  }
 
-  const prepared = await step('vx:load', () => prepareRun(options, log))
+  // Taken before the cache opens, never after: a run that held the store
+  // while it waited here, and a `vx cache clean` that holds this lock while
+  // it waits for every process with the store open, waited on each other
+  // for ever; and a clear deleted the store under a run opening it.
+  let heldLock: RunLockRelease | undefined
+  const takeRunLock = async (root: string): Promise<void> => {
+    // A nested run is refused below with its own reason, holding nothing.
+    const outer = process.env[VX_RUN_WORKSPACE_ENV] || undefined
+    if (outer !== undefined && canonical(outer) === canonical(root)) return
+    // Heard from here, not only from the stop below: a signal between the
+    // lock and that stop killed vx with the lock held (`holdSignals`).
+    if (options.handleSignals ?? true) signals.held = holdSignals()
+    const held = signals.held?.signal
+    const signal =
+      held !== undefined && options.signal !== undefined
+        ? AbortSignal.any([options.signal, held])
+        : (held ?? options.signal)
+    heldLock = await step('vx:run-lock', () => acquireRunLock(root, { log: warnOf(log), signal }))
+    // A wait the signal ended holds no lock: opening the store now could
+    // meet a `vx cache clean` deleting it. run() exits of the signal.
+    if (held?.aborted === true) throw new Error(`stopped by ${String(held.reason)}`)
+  }
+  let prepared: PreparedRun
+  try {
+    prepared = await step('vx:load', () => prepareRunLocked(options, log, takeRunLock, true))
+  } catch (err) {
+    await heldLock?.()
+    throw err
+  }
+  const releaseRunLock: RunLockRelease =
+    heldLock ?? Object.assign(async () => {}, { path: runLockPath(prepared.workspaceRoot) })
+  // The cache and the lock go together on every exit before the run's own.
+  const closeUnrun = async (): Promise<void> => {
+    prepared.cache.close()
+    await releaseRunLock()
+  }
   mark('plugin stages')
   // Every exit from here tears the plugins down: their capability
   // factories ran in prepareRun, and teardown is what releases what those
@@ -470,7 +545,7 @@ async function runOnBus(
       | undefined
   } catch (err) {
     await teardown()
-    prepared.cache.close()
+    await closeUnrun()
     throw err
   }
   // A task whose command re-enters `vx run` in the workspace running it
@@ -486,7 +561,7 @@ async function runOnBus(
   const outerRoot = process.env[VX_RUN_WORKSPACE_ENV] || undefined
   if (outerRoot !== undefined && canonical(outerRoot) === canonical(prepared.workspaceRoot)) {
     await teardown()
-    prepared.cache.close()
+    await closeUnrun()
     throw new UserError(
       `task ${process.env[VX_RUN_TASK_ENV] ?? '<unknown>'} runs \`vx run\` inside its own workspace: a nested run is invisible to the outer graph (its tasks escape the schedule, the concurrency budget and the cache key) and a loop back to this task forks without bound. Declare what it needs with dependsOn instead.`,
     )
@@ -502,13 +577,13 @@ async function runOnBus(
   if (prepared.unresolvedTasks.length > 0) {
     const refused = `no projects declare task(s): ${prepared.unresolvedTasks.join(', ')}.${await unresolvedHint(prepared)}`
     await teardown()
-    prepared.cache.close()
+    await closeUnrun()
     return { ok: false, outcomes: [], refused }
   }
   if (prepared.empty === 'none-affected') {
     log.status(noneAffected(prepared, options))
     await teardown()
-    prepared.cache.close()
+    await closeUnrun()
     return { ok: true, outcomes: [] }
   }
   if (prepared.empty !== null) {
@@ -521,7 +596,7 @@ async function runOnBus(
         ? `no projects declare task(s): ${options.tasks.join(', ')}.${elsewhereHint(prepared.declaredElsewhere)}${await initHint(prepared)}`
         : 'no tasks to run.'
     await teardown()
-    prepared.cache.close()
+    await closeUnrun()
     return { ok: false, outcomes: [], refused }
   }
   // Install user plugins as additional bus subscribers BEFORE the run
@@ -567,6 +642,7 @@ async function runOnBus(
     terminal === null ? undefined : () => terminal.holdStatus(),
   )
   const remotesClosed = await openRemotes(prepared.remotes, ciContext.ci, secrets)
+  signals.held?.arm()
   try {
     disposePlugins = await installPlugins({
       plugins: prepared.plugins,
@@ -583,7 +659,7 @@ async function runOnBus(
   } catch (err) {
     disposePlugins?.()
     await teardown(err instanceof PluginSetupError ? err.plugin : undefined)
-    prepared.cache.close()
+    await closeUnrun()
     throw err
   }
   // Until the run's own try below, a throw leaves through here.
@@ -593,7 +669,7 @@ async function runOnBus(
     } catch (err) {
       disposePlugins?.()
       await teardown()
-      prepared.cache.close()
+      await closeUnrun()
       throw err
     }
   }
@@ -621,7 +697,7 @@ async function runOnBus(
     if (options.signal?.aborted === true) {
       disposePlugins?.()
       await teardown()
-      prepared.cache.close()
+      await closeUnrun()
       return { ok: true, outcomes: [] }
     }
   }
@@ -688,26 +764,28 @@ async function runOnBus(
   // `cache.download` (default `all`) decides ONCE per task, here, whether a
   // remote execution's outputs come home.
   const downloadPolicy = options.download ?? 'all'
-  const localPlaced = locallyPlaced(placements, nodes.keys())
-  const download = resolveDownloadModes({
-    nodes,
-    policy: downloadPolicy,
-    localPlaced,
-    remoteOnly: placements.remoteOnly,
-  })
+  const localPlaced = locallyPlaced(placements)
+  // `all` keeps every task eager: no per-task map to say so, as `--dry`'s.
+  const download =
+    downloadPolicy === 'all'
+      ? undefined
+      : resolveDownloadModes({
+          nodes,
+          policy: downloadPolicy,
+          localPlaced,
+          remoteOnly: placements.remoteOnly,
+        })
 
   // `run.timeout` (ms), for any task WITHOUT its own `exec.timeout`.
   const taskTimeoutDefault = options.timeout
 
-  // The held servers this run took over, spared by a `CYCLE_INTERRUPT`.
-  const handed = new Set<ReturnType<typeof Bun.spawn>>()
   const stop = runStop({
-    handed: (child) => handed.has(child),
     log,
     cache,
     external: options.signal,
     handleSignals: options.handleSignals ?? true,
     handsTerminal: holders.size > 0,
+    held: signals.held,
     teardowns: prepared.plugins.filter((p) => p.teardown).length,
     onStop: () => {
       log.runStop?.()
@@ -731,6 +809,7 @@ async function runOnBus(
   const closeCache = async (): Promise<void> => {
     if (cacheClosed) return
     cacheClosed = true
+    await prepared.localCache.stopCheckpoints()
     cache.close()
     live?.unlisten()
     // Released with the handle: before a persistent task's wait, on every
@@ -742,16 +821,6 @@ async function runOnBus(
     // waited, but a directory per run is litter the box never sheds.
     await releaseRunLock()
   }
-  // Taken after the early exits above (nothing they do touches a tree) and
-  // before the schedule: from here on tasks clean, restore and write.
-  const releaseRunLock = await abandoning(() =>
-    step('vx:run-lock', () =>
-      acquireRunLock(prepared.workspaceRoot, {
-        log: warnOf(log),
-        signal: stop.signal,
-      }),
-    ),
-  )
   // Answers `vx last --live` while the lock is held (run-live.ts).
   live = serveLive({
     socketPath: liveSocketOf(releaseRunLock.path),
@@ -794,6 +863,7 @@ async function runOnBus(
       nestedDirsByProject,
       ...(gitFilesCache !== undefined ? { gitFilesCache } : {}),
       localWrite: policy.localWrite,
+      log,
     })
 
     // Per-run context for the Tier-3 `invocations` header row. Captured
@@ -874,7 +944,7 @@ async function runOnBus(
             (n) =>
               n.config.exec?.sandbox !== undefined &&
               (n.config.exec.persistent === undefined
-                ? localPlaced.has(n.id)
+                ? localPlaced(n.id)
                 : !placements.carried.has(n.id)),
           )
     let prewarming: Promise<void> | undefined
@@ -887,10 +957,18 @@ async function runOnBus(
     const outputDirSnapshots: OutputDirSnapshot[] = []
     // Saves run off the execution slot, twice the cap at once (memory:
     // each pack holds an artifact's bytes); a failed save is a miss next
-    // time, said once — the task's work ran.
-    const saveLane = createSaveLane(2 * concurrency, (err) =>
-      warnOf(log)(`[vx] cache save failed: ${err instanceof Error ? err.message : String(err)}`),
-    )
+    // time, said once — the task's work ran. A full disk fails every save
+    // after the first the same way: the first is said with its task, the
+    // rest named once the graph ends.
+    const unsaved: string[] = []
+    const saveLane = createSaveLane(2 * concurrency, (err, taskId) => {
+      if (unsaved.push(taskId) > 1) return
+      const msg = err instanceof Error ? err.message : String(err)
+      // The artifact ceiling's refusal names its task itself.
+      warnOf(log)(
+        `[vx] cache save failed: ${msg.startsWith(`${taskId} `) ? msg : `${taskId}: ${msg}`}`,
+      )
+    })
     const deferredSaves = new Map<string, Promise<SaveFacts>>()
     const windows = commandWindows()
     // A server held from an earlier run (`vx watch`) runs through this one
@@ -934,9 +1012,9 @@ async function runOnBus(
     const footers = executors.filter((e) => e.footer !== undefined)
     const placers = executors.filter((e) => e.running !== undefined)
     // The scheduler's dependents count, and every row's `blocks` (the live
-    // list's and the results'): one closure over the graph, built on the
-    // first that asks.
-    let counted: ReadonlyMap<string, number> | undefined
+    // list's and the results'): one closure over the graph, counted by
+    // `prepareRun` beside git when it could, else on the first that asks.
+    let counted: ReadonlyMap<string, number> | undefined = prepared.dependents
     const blocksNow = (): ReadonlyMap<string, number> =>
       (counted ??= graphCounts(nodes, hashCache.folds, hashCache.graph))
     // Every row's `usual` and the forecast's timings: history read once, on
@@ -1188,6 +1266,7 @@ async function runOnBus(
       stopSignal: stop.signal,
       failFast: failFast.signal,
       inputStability,
+      serverReady: (id) => void sinceReady.set(id, []),
     }
     if (options.retries !== undefined) scope.retries = options.retries
     scope.knownFlaky = (node, hash) => {
@@ -1218,7 +1297,7 @@ async function runOnBus(
       log: (node) => (node.config.exec?.persistent !== undefined ? serverLog(node.id) : log),
       placements,
       nestedDirsByProject,
-      downloadModeOf: download.modeOf,
+      downloadModeOf: download?.modeOf,
       shortCircuit,
       dependedOn: depended,
       holders,
@@ -1303,7 +1382,6 @@ async function runOnBus(
       heldBefore.kept.delete(node.id)
       if (hasEnded(server.child)) return undefined
       server.handOver()
-      handed.add(server.child)
       server.out.bus = bus
       serverOuts.set(node.id, server.out)
       persistentRegistry.set(node.id, server.child)
@@ -1319,6 +1397,7 @@ async function runOnBus(
     }
     let lockBroken: boolean | undefined
     prepared.localCache.storeHeldBlobSizes()
+    prepared.localCache.checkpointOffThread()
     // A hit's row is whole when it finishes, so it is written while the
     // graph runs (history-stream.ts); every other row waits for the bundle.
     // A row with forward args is the bundle's too: only it digests them.
@@ -1356,6 +1435,9 @@ async function runOnBus(
       onFailFast: () => failFast.abort(),
       signal: stop.signal,
       onStart: (node) => {
+        // A platform skip never starts, like a skip blocked upstream: its
+        // start opened a single task's frame that nothing closed.
+        if (placements.otherPlatform.has(node.id)) return
         log.taskStart?.(node)
       },
       onFinish: (o) => {
@@ -1364,6 +1446,7 @@ async function runOnBus(
         judgeFlaky(o)
         keeper?.taskDone(o)
         log.taskComplete(o.node, o)
+        if (sinceReady.size > 0) releaseSinceReady(o.node.id)
         streamHit(o)
         demand.finished(o.node.id)
         // A server that dies while the graph runs is no longer running:
@@ -1443,6 +1526,14 @@ async function runOnBus(
     stop.graphDone()
     reprioritize = undefined
     graphOver = true
+    // Each task finishes once its save settles (`settledOf`): the list is whole.
+    if (unsaved.length > 1) {
+      const more = unsaved.slice(1)
+      const named = more.slice(0, 5).join(', ') + (more.length > 5 ? ', …' : '')
+      warnOf(log)(
+        `[vx] cache save failed for ${more.length} more task${more.length === 1 ? '' : 's'}: ${named}`,
+      )
+    }
 
     // Which persistent children outlive the graph, and the bounded SIGTERM
     // of the rest, before the summary prints. Scoped to the real CLI
@@ -1611,7 +1702,7 @@ async function runOnBus(
       // measured, or the next run knows none of it (2026-10-21).
       const ended = list.filter((o) => o.status !== 'aborted' && o.status !== 'skipped')
       stepSync('vx:history', () => {
-        recordHistory(() => prepared.localCache.recordRuns(recordsOf(ended, false).runs))
+        recordHistory(() => prepared.localCache.recordRuns(recordsOf(ended, false).runs, head))
         recordFailures(ended)
       })
     }
@@ -1671,23 +1762,35 @@ async function runOnBus(
     // the run; flush is the sink's last chance to ship buffered records.
     // After the drain, so the summary says what the uploads moved; a live
     // sink's task records went out as each task ended.
-    if (telemetry !== undefined && runContextRecord !== undefined) {
-      const summary = assembleRunSummary(runContextRecord, records.telemetryTasks, {
+    const sinks = telemetry
+    const summarize = async (
+      final: TaskOutcome[],
+      runOk: boolean,
+      timed?: typeof step,
+    ): Promise<void> => {
+      if (sinks === undefined || runContextRecord === undefined) return
+      const tasks = final === list ? records.telemetryTasks : recordsOf(final, runOk).telemetryTasks
+      const summary = assembleRunSummary(runContextRecord, tasks, {
         startedAt: endedAtMsAtStart,
         endedAt: endedAtMs,
         totalDurationMs: Math.round(totalMs),
-        exitOk: ok,
-        abortedCount: list.filter((o) => o.status === 'aborted' && !isGroupTask(o.node)).length,
+        exitOk: runOk,
+        // As the terminal counts them: `1 aborted · 1 not run`.
+        abortedCount: tasks.filter((t) => t.status === 'aborted').length,
+        notRunCount: final.filter((o) => neverStarted(o) && !isGroupTask(o.node)).length,
         stages: stageTimes(),
         uploads: prepared.localCache.uploads,
         machines: executors.flatMap((e) => executorMachines(e, fault)),
         idealMs: executors.map((e) => executorIdeal(e, fault)).find((ms) => ms !== undefined),
         advice: executors.flatMap((e) => executorAdvice(e, fault)),
       })
-      telemetry.emitSummary(summary)
-      const sinks = telemetry
-      await sinks.flush(step)
+      sinks.emitSummary(summary)
+      await sinks.flush(timed)
     }
+    // A kept server can still fail the run in the wait below: its summary
+    // goes out once the wait has decided, as its history does, or every
+    // sink (vx-ci's job summary) read a pass over the exit 1.
+    if (!historyAfterWait) await summarize(list, ok, step)
     // End-of-run plugin lifecycle: each plugin's teardown(). Crash-isolated
     // + time-bounded inside teardownPlugins, so a faulty plugin can neither
     // fail nor hang the run. Here on the normal path, after the drains
@@ -1798,6 +1901,8 @@ async function runOnBus(
             local.close()
           }
         })
+        // After the footer and the plugins' teardown: no step line there.
+        await summarize(final, ok && !crashed)
       }
       return { ok: ok && !crashed, outcomes: final }
     }
@@ -1980,7 +2085,7 @@ async function planRestorable(
 /** The names a project outside the run's selection declares, and how to reach them. */
 function elsewhereHint(names: readonly string[]): string {
   if (names.length === 0) return ''
-  return ` Only projects outside the selection declare ${names.join(', ')} — pass --all, or --filter to pick them.`
+  return ` Only projects outside the selection declare ${names.join(', ')} — pass --all, or a --filter that includes them.`
 }
 
 /**
@@ -1989,6 +2094,7 @@ function elsewhereHint(names: readonly string[]): string {
  * from: a task just added to a vx.config is not in it until `vx lock`.
  */
 async function unresolvedHint(prepared: {
+  workspaceRoot: string
   unresolvedTasks: readonly string[]
   hintProjects: ReadonlyMap<string, ProjectEntry>
   declaredElsewhere: readonly string[]
@@ -2002,6 +2108,7 @@ async function unresolvedHint(prepared: {
     prepared.hintProjects,
     prepared.declaredElsewhere,
     prepared.taskless,
+    prepared.workspaceRoot,
   )
   const init = await initHint(prepared)
   const lock =
@@ -2045,6 +2152,7 @@ function didYouMean(
   projects: ReadonlyMap<string, ProjectEntry>,
   elsewhere: readonly string[],
   taskless: (name: string) => boolean,
+  root: string,
 ): string {
   // A default `build` is no declared task (X-102): neither a bare name's
   // match nor a menu item or hint for `p#typo`, which led to `p#build`
@@ -2055,13 +2163,6 @@ function didYouMean(
       .map(([t]) => t)
   const allTasks = new Set<string>()
   for (const p of projects.values()) for (const t of tasksOf(p)) allTasks.add(t)
-  // `packages/a#build`: the project's directory, typed where its name goes.
-  const inDir = (typed: string): string | undefined => {
-    const tail = `/${typed.replace(/^\.\/|\/+$/g, '')}`
-    if (tail === '/' || !typed.includes('/')) return undefined
-    const at = [...projects.values()].filter((e) => e.dir.endsWith(tail))
-    return at.length === 1 ? at[0]!.name : undefined
-  }
   // A Set: two typos of the same task hint it once, not once per typo.
   const hints = new Set<string>()
   // A typo past two edits named nothing to pick from (M-56): with no near
@@ -2106,7 +2207,20 @@ function didYouMean(
       continue
     }
     if (!projects.has(proj)) {
-      const p = projectNamed(proj, projects) ?? inDir(proj) ?? nearest(proj, projects.keys())
+      // NFC typed, NFD on disk (or back): two edits apart, so no hint, and
+      // the list named the project exactly as typed.
+      const form = [...projects.keys()].find((n) => n.normalize('NFC') === proj.normalize('NFC'))
+      if (form !== undefined) {
+        lists.add(
+          `${proj} is not the project ${form}, though they look the same: the two are written in different Unicode forms (NFC and NFD). Set \`name\` in its vx.config to the form you type.`,
+        )
+        continue
+      }
+      // A project's directory first: by edit distance, `p/a` hinted `p/b`.
+      const p =
+        projectNamed(proj, projects) ??
+        projectAtDir(proj, root, projects.values()) ??
+        nearest(proj, projects.keys())
       if (p !== undefined) {
         const tasks = tasksOf(projects.get(p))
         const t = tasks.includes(task) ? task : nearest(task, tasks)
@@ -2160,6 +2274,20 @@ export function projectNamed(
   if (typed.includes('/')) return undefined
   const scoped = [...projects.keys()].filter((n) => n.startsWith('@') && n.endsWith(`/${typed}`))
   return scoped.length === 1 ? scoped[0] : undefined
+}
+
+/**
+ * The project whose directory a typed name is, relative to the workspace
+ * root, as `--filter p/a` reads it: `alpha` for `p/a`.
+ */
+export function projectAtDir(
+  typed: string,
+  root: string,
+  projects: Iterable<{ name: string; dir: string }>,
+): string | undefined {
+  const dir = path.resolve(root, typed)
+  for (const p of projects) if (path.resolve(p.dir) === dir) return p.name
+  return undefined
 }
 
 /** The executed, keyed outcomes of a run — what flakiness is judged on. */

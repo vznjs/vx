@@ -8,7 +8,7 @@
 // worker's, which never saw it — or, where the validator does not type
 // the value, it was silently outside the key on both. So every path
 // refuses it, before schema validation, by this one rule: the first load
-// on the live object (`validateProjectConfig`), the worker before its
+// on the live object before its JSON copy (project-loader.ts), the worker before its
 // `JSON.stringify` (config-eval.ts). The worker embeds `nonJsonPaths` by its source text, so
 // the function must stay self-contained: no import, no module-scope name.
 //
@@ -33,6 +33,7 @@ export function nonJsonPaths(value: unknown): NonJsonValue[] {
   // The objects on the path to the one being walked: a cycle throws in
   // `JSON.stringify` and would recurse here forever. A DAG is data.
   const ancestors: object[] = []
+  const MAX_DEPTH = 256
   const found = (is: string): void => {
     let path = ''
     for (const k of keys) path += typeof k === 'number' ? `[${k}]` : path === '' ? k : `.${k}`
@@ -45,6 +46,12 @@ export function nonJsonPaths(value: unknown): NonJsonValue[] {
     else if (typeof v === 'number' && !Number.isFinite(v)) found(String(v))
     else if (v === undefined && inArray) found('undefined in an array, which JSON writes as null')
     else if (typeof v === 'object' && v !== null) {
+      // Deeper, the walk and `JSON.stringify` overflowed the stack: a
+      // config 100,000 levels deep was vx's own RangeError (VX_E_INTERNAL).
+      if (ancestors.length >= MAX_DEPTH) {
+        found(`nested deeper than ${MAX_DEPTH} levels`)
+        return
+      }
       if (ancestors.includes(v)) {
         found('a cyclic reference')
         return

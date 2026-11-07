@@ -137,8 +137,13 @@ describe('VxCacheLayer', () => {
     // The download names the ref the check found it under.
     const got = await c.get('aa11')
     expect([await got!.body.text(), srv.seen.at(-1)!.scope]).toEqual(['hello', main])
+    // Unchecked, one download names every ref's scope, in order.
     expect(await c.get('bb22')).toBeNull()
-    expect(srv.seen.slice(-2).map((r) => r.scope)).toEqual([f, main])
+    expect(srv.seen.at(-1)!.scope).toBe(`${f}, ${main}`)
+    const unchecked = layer(srv.url, write, ['refs/heads/f', MAIN])
+    const before2 = srv.seen.length
+    expect(await (await unchecked.get('aa11'))!.body.text()).toBe('hello')
+    expect(srv.seen.slice(before2).map((r) => r.scope)).toEqual([`${f}, ${main}`])
     // A ref goes on the wire percent-encoded: its slashes never split its folder.
     expect(srv.seen.filter((r) => `${r.body} ${r.scope}`.includes('refs/'))).toEqual([])
   })
@@ -151,16 +156,28 @@ describe('VxCacheLayer', () => {
     expect(await (await c.get('f11e'))!.body.text()).toBe('from a file')
   })
 
-  it("asks the server's limits once, then checks in chunks of its maxCheckHashes", async () => {
-    const before = srv.seen.length
-    const keys = Array.from({ length: 1200 }, (_, i) => i.toString(16))
-    const c = layer(srv.url, read)
-    expect((await c.hasMany(keys))?.size).toBe(0)
-    await c.hasMany(['0'])
-    const seen = srv.seen.slice(before)
-    expect(seen.filter((r) => r.path === '/v1/capabilities')).toHaveLength(1)
-    const sizes = seen.filter((r) => r.path === '/v1/artifacts').map((r) => keysOf(r.body).length)
-    expect(sizes.sort((a, b) => b - a)).toEqual([500, 500, 200, 1])
+  // The limits were asked apart (`/v1/capabilities`) before the first
+  // check: a request every run, and a round-trip before its probe.
+  it('checks whole until an answer names the limits, then in chunks of its maxCheckHashes', async () => {
+    // Refused once read (more lookups than it takes), and by its length unread (a hash may be 128 digits).
+    for (const [digits, n, parts] of [
+      [1, 1200, [500, 500, 200]],
+      [128, 2600, [500, 500, 500, 500, 500, 100]],
+    ] as const) {
+      const keys = Array.from({ length: n }, (_, i) => i.toString(16).padStart(digits, '0'))
+      const before = srv.seen.length
+      const c = layer(srv.url, read)
+      expect((await c.hasMany(keys))?.size).toBe(0)
+      await c.hasMany(['0'])
+      const seen = srv.seen.slice(before)
+      expect(seen.map((r) => r.path)).toEqual(Array(parts.length + 2).fill('/v1/artifacts'))
+      const sizes = seen.map((r) => keysOf(r.body).length)
+      expect([sizes[0], ...sizes.slice(1, -1).sort((a, b) => b - a), sizes.at(-1)]).toEqual([
+        n,
+        ...parts,
+        1,
+      ])
+    }
   })
 
   // Every check named all the run's refs, so more refs than the server's
@@ -189,45 +206,66 @@ describe('VxCacheLayer', () => {
         ]),
       )
       expect(await (await c.get('c1'))!.body.text()).toBe('feature')
+      // Unchecked, before any answer named the limits: refused for its
+      // scopes, then sent in as many as the refusal names, in order.
+      const scopes: (string | null)[] = []
+      const seen: typeof fetch = Object.assign(
+        (input: string | URL | Request, init?: RequestInit) => {
+          scopes.push(new Headers(init?.headers).get('vx-scope'))
+          return fetch(input, init)
+        },
+        { preconnect: fetch.preconnect },
+      )
+      const refs = ['refs/heads/a', 'refs/heads/b', BRANCH_JOB.ref, MAIN]
+      const fresh = layer(url, main, refs, seen)
+      expect(await (await fresh.get('c1'))!.body.text()).toBe('feature')
+      const [a, b, f, m] = refs.map((r) => encodeURIComponent(r))
+      expect(scopes).toEqual([`${a}, ${b}, ${f}, ${m}`, `${a}, ${b}`, `${f}, ${m}`])
     } finally {
       await srv.stop(true)
     }
   })
 
-  it('uploads each artifact alone by PUT, at most four at once', async () => {
+  // Core bounds uploads (`cache.concurrency.upload`, 64 to 96): a cap
+  // of four here held a 1,500-task cold run 11 s past its last task on a
+  // remote 40 ms away.
+  it('uploads each artifact alone by PUT, as many at once as core sends', async () => {
+    const keys = ['e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7']
     let open = 0
     let most = 0
+    const all = Promise.withResolvers<void>()
     const counted: typeof fetch = Object.assign(
       async (input: string | URL | Request, init?: RequestInit) => {
-        if (init?.method === 'PUT') most = Math.max(most, ++open)
+        if (init?.method !== 'PUT') return fetch(input, init)
+        most = Math.max(most, ++open)
+        if (open === keys.length) all.resolve()
+        // Held until every upload is open; a cap below them gives up after a second.
+        await Promise.race([all.promise, Bun.sleep(1000)])
         try {
           return await fetch(input, init)
         } finally {
-          if (init?.method === 'PUT') open--
+          open--
         }
       },
       { preconnect: fetch.preconnect },
     )
     const c = layer(srv.url, write, [MAIN], counted)
     const before = srv.seen.length
-    const keys = ['e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7']
     await Promise.all(keys.map((k) => c.put(k, new Blob([k]), { durationMs: 1 })))
     const seen = srv.seen.slice(before).filter((r) => r.path !== '/v1/capabilities')
     expect(seen.map((r) => [r.method, r.path]).sort(byJson)).toEqual(
       keys.map((k) => ['PUT', `/v1/artifacts/${k}`]),
     )
-    expect(most).toBe(4)
+    expect(most).toBe(keys.length)
     for (const k of keys) expect(await (await c.get(k))!.body.text()).toBe(k)
   })
 
-  it('checks one hash at a time while the server names no limits, and says so once', async () => {
+  it('checks whole while the server names no limits', async () => {
     const said: string[] = []
     // A server whose answers lose the limits.
     const stripped: typeof fetch = Object.assign(
       async (input: string | URL | Request, init?: RequestInit) => {
         const res = await fetch(input, init)
-        if (new URL(input instanceof Request ? input.url : input).pathname === '/v1/capabilities')
-          return Response.json({})
         const headers = new Headers(res.headers)
         headers.delete('vx-max-check-hashes')
         return new Response(res.body, { status: res.status, headers })
@@ -240,14 +278,12 @@ describe('VxCacheLayer', () => {
     await c.hasMany(['c1', 'c2', 'c3'])
     await c.hasMany(['c4', 'c5'])
     const checks = srv.seen.slice(before).filter((r) => r.path === '/v1/artifacts')
-    expect(checks.map((r) => keysOf(r.body).length)).toEqual([1, 1, 1, 1, 1])
-    expect(said).toEqual([
-      '[vx] vx-cache: /v1/capabilities (HTTP 200) named no limits (maxCheckHashes, maxUploadBytes); checks go one hash at a time',
-    ])
+    expect(checks.map((r) => keysOf(r.body).length)).toEqual([3, 2])
+    expect(said).toEqual([])
   })
 
   it("reads a server's endless answer no further than its cap", async () => {
-    const pulled = { capabilities: 0, check: 0, refusal: 0 }
+    const pulled = { check: 0, refusal: 0 }
     const endless = (into: keyof typeof pulled, status = 200) =>
       new Response(
         new ReadableStream({
@@ -259,17 +295,7 @@ describe('VxCacheLayer', () => {
         { status },
       )
     const fake = (where: keyof typeof pulled, status?: number): typeof fetch =>
-      Object.assign(
-        async (input: string | URL | Request, init?: RequestInit) => {
-          const at = new URL(input instanceof Request ? input.url : input).pathname
-          if (at === '/v1/capabilities' && where !== 'capabilities') return fetch(input, init)
-          return endless(where, status)
-        },
-        { preconnect: fetch.preconnect },
-      )
-    expect(layer(srv.url, write, [MAIN], fake('capabilities')).hasMany(['e1'])).rejects.toThrow(
-      '/v1/capabilities answered over 65536 bytes',
-    )
+      Object.assign(async () => endless(where, status), { preconnect: fetch.preconnect })
     expect(layer(srv.url, write, [MAIN], fake('check')).hasMany(['e1'])).rejects.toThrow(
       '/v1/artifacts answered over',
     )
@@ -278,6 +304,30 @@ describe('VxCacheLayer', () => {
     )
     await Bun.sleep(50)
     for (const n of Object.values(pulled)) expect(n).toBeLessThanOrEqual(256 * 1024)
+  })
+
+  // A held entry's scope is up to 512 characters: an answer of the most a
+  // check asks, every hash held under the longest scope, was refused as
+  // too long, and the run's probe was lost.
+  it('takes the longest answer a check can be given', async () => {
+    const ref = `refs/heads/${'b'.repeat(497)}`
+    const scope = encodeURIComponent(ref)
+    expect(scope.length).toBe(512)
+    const hashes = Array.from({ length: 500 }, (_, i) => i.toString(16).padStart(128, '0'))
+    const fake = Object.assign(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const at = new URL(input instanceof Request ? input.url : input).pathname
+        if (at !== '/v1/artifacts' || init?.method !== 'POST') return fetch(input, init)
+        const asked = keysOf(init.body as string)
+        const held = Object.fromEntries(
+          asked.map((h) => [h, { size: Number.MAX_SAFE_INTEGER, scope }]),
+        )
+        return Response.json(held, { headers: { 'vx-max-check-hashes': '500' } })
+      },
+      { preconnect: fetch.preconnect },
+    )
+    const got = await layer(srv.url, write, [ref], fake).hasMany(hashes)
+    expect(got?.size).toBe(500)
   })
 
   it('says a job that reads only was refused a write once, and reads on', async () => {
@@ -365,6 +415,23 @@ describe('VxCacheLayer', () => {
     ])
   })
 
+  // The server keeps the bytes a scope holds, unread (PROTOCOL.md): a
+  // `replace` answered 204 reported the corrupt copy fixed, and every run
+  // downloaded it, warned and ran the task again.
+  it('reports a replace as not stored, sends nothing, and says why once', async () => {
+    const c = layer(srv.url, write)
+    const said: string[] = []
+    c.warn = (m) => said.push(m)
+    await c.put('c0de', new Blob(['bad']), { durationMs: 1 })
+    const before = srv.seen.length
+    for (const hash of ['c0de', 'c0df'])
+      expect(await c.put(hash, new Blob(['good']), { durationMs: 1, replace: true })).toBe(false)
+    expect(srv.seen.length).toBe(before)
+    expect(said).toEqual([
+      "[vx] vx-cache: c0de did not read back, and a vx-cache server never replaces an artifact it holds: not uploaded; the remote misses it until the bucket's lifecycle rule expires it",
+    ])
+  })
+
   it("names the server's own words when it refuses an upload", async () => {
     expect(
       layer(srv.url, write).put('ee55', new Blob([new Uint8Array(65)]), { durationMs: 1 }),
@@ -400,7 +467,7 @@ describe('VxCacheLayer', () => {
       )
       c.refs = [MAIN]
       await expect(c.has('aa11')).rejects.toThrow(
-        `HTTP 307 to ${elsewhere.url.origin}/v1/capabilities: not followed`,
+        `HTTP 307 to ${elsewhere.url.origin}/v1/artifacts: not followed`,
       )
       expect(other).toEqual([])
     } finally {
@@ -423,9 +490,12 @@ describe("the server's limits", () => {
       const c = layer(srv.url, read, refs)
       const before = srv.seen.length
       expect(await c.hasMany(['ab12', 'cd34'])).toEqual(new Map([['ab12', { size: 4 }]]))
-      const checks = srv.seen.slice(before).filter((r) => r.path === '/v1/artifacts')
-      for (const r of checks) {
-        const { hashes, scopes } = JSON.parse(r.body) as { hashes: string[]; scopes: string[] }
+      const [whole, ...checks] = srv.seen
+        .slice(before)
+        .map((r) => JSON.parse(r.body) as { hashes: string[]; scopes: string[] })
+      // The first, whole, is refused: its answer names the limits.
+      expect(whole!.hashes.length * whole!.scopes.length).toBe(10)
+      for (const { hashes, scopes } of checks) {
         expect(hashes.length * scopes.length).toBeLessThanOrEqual(2)
       }
       expect(await (await c.get('ab12'))!.body.text()).toBe('held')
@@ -437,7 +507,7 @@ describe("the server's limits", () => {
 
   // A server restarted with lower limits refused each check and upload for
   // its size, and the run kept the old ones: every check of the run failed.
-  it('keeps to the limits a refusal names, from the next check and upload', async () => {
+  it('sends a check refused for its size again in the chunks its refusal names', async () => {
     const blobs = new Map<string, Uint8Array>()
     const made = (maxCheckHashes: number, maxUploadBytes: number) =>
       createCacheServer({
@@ -466,12 +536,34 @@ describe("the server's limits", () => {
       const keys = ['a1', 'a2', 'a3']
       expect((await c.hasMany(keys))?.size).toBe(0)
       handle = made(2, 1 << 20)
-      await expect(c.hasMany(keys)).rejects.toThrow('HTTP 400')
-      handle = made(2, 4)
-      await expect(c.put('b1', new Blob(['12345']), { durationMs: 1 })).rejects.toThrow('HTTP 413')
       lookups.length = 0
       expect((await c.hasMany(keys))?.size).toBe(0)
-      expect(lookups.sort((a, b) => a - b)).toEqual([1, 2])
+      expect([lookups[0], ...lookups.slice(1).sort((a, b) => a - b)]).toEqual([3, 1, 2])
+      handle = made(2, 4)
+      await expect(c.put('b1', new Blob(['12345']), { durationMs: 1 })).rejects.toThrow('HTTP 413')
+      // Refused again (a limit that names less than it takes): sent once more, no further.
+      const refusing = createCacheServer({
+        blobs: memBlobs(blobs),
+        authorize: oidcAuth({ allow: ALLOW, fetchJson: (u) => iss.fetchJson(u) }),
+        limits: { maxCheckHashes: 1 },
+      })
+      // The chunks' refusals land apart: the lookup ends only once every
+      // chunk's request has (a first refusal ended it with two in flight).
+      let open = 0
+      let answered = 0
+      handle = async (req) => {
+        open++
+        const res = await refusing(req)
+        if (res.status === 200 && answered++ > 0) await Bun.sleep(50)
+        open--
+        return res.status === 200 ? new Response('{}', { status: 400, headers: res.headers }) : res
+      }
+      lookups.length = 0
+      await expect(
+        layer(url, await iss.sign(MAIN_JOB, new URL(url).origin)).hasMany(keys),
+      ).rejects.toThrow('HTTP 400')
+      expect(open).toBe(0)
+      expect(lookups).toEqual([3, 1, 1, 1])
       expect(await c.put('b2', new Blob(['12345']), { durationMs: 1 })).toBe(false)
       expect(said).toEqual([
         "[vx] vx-cache: b2 is 5 bytes, over the server's upload limit of 4: not uploaded",
@@ -678,7 +770,7 @@ describe('GitHub OIDC', () => {
       }
       const c = new VxCacheLayer(resolveVxCacheConfig({ ...NAMED, url: srv.url }, env)!, fetch, env)
       c.refs = ['refs/heads/feature']
-      c.start()
+      await c.open()
       await Promise.all([
         c.has('a1'),
         c.put('a2', new Blob(['x']), { durationMs: 1 }),
@@ -1060,7 +1152,9 @@ describe('config', () => {
 
   // Core opens a remote only when the run's policy reads or writes it: the
   // factory asked the limits (and GitHub for a token) on a --no-cache run.
-  it('asks the server nothing until core opens it', async () => {
+  // Opened, it asked the limits apart: a request every run, one the local
+  // cache answered too (2026-11-06).
+  it('asks the server nothing until a check, opened or not', async () => {
     const saved = { ...Bun.env }
     const names = [
       'ACTIONS_ID_TOKEN_REQUEST_URL',
@@ -1076,35 +1170,11 @@ describe('config', () => {
       expect(srv.seen).toEqual([])
       await layer!.open!({ ci: false, warn: () => {} } as never)
       await Bun.sleep(50)
-      expect(srv.seen.map((r) => r.path)).toEqual(['/v1/capabilities'])
+      expect(srv.seen).toEqual([])
+      await layer!.hasMany!(['ab'])
+      expect(srv.seen.map((r) => r.path)).toEqual(['/v1/artifacts'])
     } finally {
       for (const k of names) if (saved[k] !== undefined) Bun.env[k] = saved[k]
-      await srv.stop()
-    }
-  })
-
-  // The second failed ask of the limits was kept: every later check threw
-  // it, though the server was back (2026-10-26).
-  it('asks the limits again after each failed ask, and reads once the server is back', async () => {
-    const srv = server()
-    try {
-      let down = 2
-      const flaky: typeof fetch = Object.assign(
-        (input: string | URL | Request, init?: RequestInit) =>
-          (input instanceof Request ? input.url : input.toString()).endsWith('/v1/capabilities') &&
-          down-- > 0
-            ? Promise.resolve(new Response('restarting', { status: 503 }))
-            : fetch(input, init),
-        { preconnect: fetch.preconnect },
-      )
-      const token = await srv.token(MAIN_JOB)
-      await layer(srv.url, token).put('ab13', new Blob(['x']), { durationMs: 1 })
-      const c = layer(srv.url, token, [MAIN], flaky)
-      c.start()
-      await Bun.sleep(50)
-      await expect(c.has('ab13')).rejects.toThrow('HTTP 503: restarting')
-      expect(await c.has('ab13')).toEqual({ size: 1 })
-    } finally {
       await srv.stop()
     }
   })
@@ -1171,7 +1241,7 @@ describe('config', () => {
       c.refs = [MAIN]
       await expect(c.has('ab14')).rejects.toThrow(
         new Error(
-          '/v1/capabilities answered 200 with text/html, not JSON: is the url a vx-cache server?',
+          '/v1/artifacts answered 200 with text/html, not JSON: is the url a vx-cache server?',
         ),
       )
     } finally {
@@ -1194,40 +1264,55 @@ describe('config', () => {
     await expect(c.has('ab14')).rejects.toThrow('HTTP 500: \\x1b]0;PWNED\\x07\\x1b[2K all good')
   })
 
-  // The layer asks for the limits as it starts, before any check: a
-  // refusal there turned the remote off and was never said.
-  it('says a refusal met while it starts, at the first check', async () => {
+  /** A layer on GitHub whose OIDC endpoint refuses its job a token. */
+  function refusedOnGithub(url: string) {
+    const env = {
+      ACTIONS_ID_TOKEN_REQUEST_URL: 'https://token.test/ask',
+      ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'gh',
+    }
+    const refusing: typeof fetch = Object.assign(
+      (input: string | URL | Request, init?: RequestInit) =>
+        (input instanceof Request ? input.url : input.toString()).startsWith('https://token.test/')
+          ? Promise.resolve(Response.json({ message: 'no' }, { status: 403 }))
+          : fetch(input, init),
+      { preconnect: fetch.preconnect },
+    )
+    const c = new VxCacheLayer(resolveVxCacheConfig({ ...NAMED, url }, {})!, refusing, env)
+    c.refs = [MAIN]
+    return c
+  }
+  const REFUSED = "GitHub's OIDC endpoint: HTTP 403: no; remote cache off for this run"
+
+  // `open` asks for the job's token before any check: a refusal there
+  // turned the remote off and was never said.
+  it('says a token refused while it opens, at the first check', async () => {
     const srv = server()
     try {
-      const c = new VxCacheLayer(resolveVxCacheConfig({ ...NAMED, url: srv.url }, {})!, fetch, {})
-      c.refs = [MAIN]
-      c.start()
-      await Bun.sleep(100)
-      await expect(c.has('ab12')).rejects.toThrow(
-        'HTTP 401: no bearer token: a read with no token was refused; remote cache off for this run',
-      )
+      const c = refusedOnGithub(srv.url)
+      await c.open()
+      await Bun.sleep(50)
+      await expect(c.has('ab12')).rejects.toThrow(REFUSED)
       expect(await c.has('ab12')).toBeNull()
+      expect(srv.seen).toEqual([])
     } finally {
       await srv.stop()
     }
   })
 
-  // A check that started while the start's ask was still out shared its
+  // A check that started while the open's ask was still out shared its
   // refusal, threw it, and the next check threw it again.
-  it('says a refusal met while it starts once, though a check waited on the same ask', async () => {
+  it('says a token refused while it opens once, though a check waited on the same ask', async () => {
     const srv = server()
     try {
-      const c = new VxCacheLayer(resolveVxCacheConfig({ ...NAMED, url: srv.url }, {})!, fetch, {})
-      c.refs = [MAIN]
-      c.start()
+      const c = refusedOnGithub(srv.url)
+      await c.open()
       const said: string[] = []
       for (let i = 0; i < 3; i++)
         await c.has('ab12').catch((err: Error) => {
           said.push(err.message)
         })
-      expect(said).toEqual([
-        'HTTP 401: no bearer token: a read with no token was refused; remote cache off for this run',
-      ])
+      expect(said).toEqual([REFUSED])
+      expect(srv.seen).toEqual([])
     } finally {
       await srv.stop()
     }
@@ -1306,15 +1391,28 @@ describe('vx run with vxCache()', () => {
     const first = await run({ cwd: root, tasks: ['build'], handleSignals: false, cacheDir })
     expect(first.outcomes.map((o) => o.status)).toEqual(['success'])
     expect(srv.blobs.size).toBe(1)
+    // A run the local cache answers sends the server nothing (2026-11-06:
+    // it asked the limits every run).
+    let before = srv.seen.length
+    const warm = await run({ cwd: root, tasks: ['build'], handleSignals: false, cacheDir })
+    expect(warm.outcomes.map((o) => o.status)).toEqual(['cache-hit'])
+    await Bun.sleep(50)
+    expect(srv.seen.slice(before)).toEqual([])
     await rm(cacheDir, { recursive: true, force: true })
     await rm(path.join(root, 'pkg', 'dist'), { recursive: true, force: true })
-    const before = srv.seen.length
+    before = srv.seen.length
     const second = await run({ cwd: root, tasks: ['build'], handleSignals: false, cacheDir })
     expect(second.outcomes.map((o) => o.status)).toEqual(['cache-hit-remote'])
     expect(await Bun.file(path.join(root, 'pkg', 'dist', 'app.js')).text()).toBe(
       'console.log("app")\n',
     )
-    expect(srv.seen.slice(before).filter((r) => r.method === 'PUT')).toEqual([])
+    // One check and one download: nothing asked apart, nothing sent back.
+    expect(
+      srv.seen
+        .slice(before)
+        .map((r) => `${r.method} ${r.path.replace(/[0-9a-f]+$/, '<hash>')}`)
+        .sort(),
+    ).toEqual(['GET /v1/artifacts/<hash>', 'POST /v1/artifacts'])
   })
 
   // Bun.serve sends a streamed answer chunked, with no Content-Length
@@ -1361,5 +1459,33 @@ describe('vx run with vxCache()', () => {
       })
       expect(again.outcomes.map((o) => o.status)).toEqual(['success'])
     }
+  })
+
+  // The re-run's save is told `replace`; the server keeps what it holds, so
+  // the upload must not count as landed (a DTE peer is told it did).
+  it('a corrupt remote artifact is run again and said unreplaced', async () => {
+    const cacheDir = path.join(root, '.vx', 'cache')
+    await run({ cwd: root, tasks: ['build'], handleSignals: false, cacheDir })
+    expect(srv.blobs.size).toBe(1)
+    const [name] = srv.blobs.keys()
+    srv.blobs.set(name!, new TextEncoder().encode('not an artifact'))
+    await rm(cacheDir, { recursive: true, force: true })
+    await rm(path.join(root, 'pkg', 'dist'), { recursive: true, force: true })
+    const fx = { root, log: [] as string[], err: [] as string[] }
+    const r = await run({
+      cwd: root,
+      tasks: ['build'],
+      handleSignals: false,
+      cacheDir,
+      log: silentLogger(fx),
+    })
+    expect(r.outcomes.map((o) => o.status)).toEqual(['success'])
+    expect(fx.log.filter((l) => l.startsWith('[vx]'))).toEqual([
+      expect.stringMatching(/download [0-9a-f]+ from .* failed: cache: corrupt artifact for /),
+      expect.stringMatching(
+        /^\[vx\] vx-cache: [0-9a-f]+ did not read back, and a vx-cache server never replaces an artifact it holds: not uploaded; /,
+      ),
+    ])
+    expect(new TextDecoder().decode(srv.blobs.get(name!))).toBe('not an artifact')
   })
 })

@@ -45,11 +45,22 @@ import {
   readdirSync,
   readFileSync,
   renameSync,
+  type Stats,
   statSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs'
-import { chmod, lstat, mkdir, readdir, rm, stat, unlink, utimes, writeFile } from 'node:fs/promises'
+import {
+  chmod,
+  mkdir,
+  readdir,
+  rename,
+  rm,
+  stat,
+  unlink,
+  utimes,
+  writeFile,
+} from 'node:fs/promises'
 import path from 'node:path'
 import {
   createArtifactTables,
@@ -77,6 +88,7 @@ import {
   ArchiveSecurityError,
   type ArtifactPlan,
   type ExecUsage,
+  copyStaging,
   extractArtifactStream,
   scanArtifact,
   scanTarBytes,
@@ -85,6 +97,7 @@ import {
   planArtifact,
   planOfTree,
   sealTree,
+  stagesInto,
   writeTree,
 } from './archive.js'
 import { readUmask, restoredMode } from './umask.js'
@@ -126,6 +139,7 @@ import { CACHE_VERSION, foldKey } from './key-fold.js'
 import { type FoldMemo, IndexFoldMemo } from './fold-memo.js'
 import { IndexRemoteHits, type RemoteHits } from './remote-hits.js'
 import { behindLink } from './linked-inputs.js'
+import { WalCheckpointer } from './checkpointer.js'
 
 /**
  * An artifact or temp file without an `entries` row is never reaped
@@ -138,6 +152,8 @@ import { behindLink } from './linked-inputs.js'
  */
 // About 1.3 ms of inserts per turn: a task's exit waits at most that.
 const HELD_SLICE = 250
+/** SQLite's own default, back on a connection whose checkpoint thread failed. */
+const WAL_AUTOCHECKPOINT = 1000
 
 const ORPHAN_GRACE_MS = 60 * 60 * 1000
 
@@ -367,7 +383,10 @@ function cantOpenIndex(dbFile: string, err: unknown): UserError | undefined {
 //   v51: runs.queued_ms, output_bytes, blocks, flaky_passes and
 //        flaky_failures — the rest of what a results row shows, so `vx
 //        last --sql` reads it. The cache KEY is unchanged.
-export const SCHEMA_VERSION = 'v51'
+//   v52: entry_stdout.stdout is a zstd frame of the log's UTF-8, not its
+//        text: stored logs were half a store's bytes, more than every
+//        inline artifact. The cache KEY is unchanged.
+export const SCHEMA_VERSION = 'v52'
 
 /**
  * An entry's key components as its one `entry_inputs` row (v34): JSON
@@ -442,15 +461,24 @@ function indexOfAnotherSchema(dbFile: string): boolean {
   return found !== undefined && found !== SCHEMA_VERSION
 }
 
+/** The largest compressed log a probe loads with its entry. */
+const LOG_INLINE_BYTES = 4096
+
 /**
- * Each asked key's entry row with its stdout, which lives apart (v29), none
- * stored reading as '', and its inline artifact's last use, null when the
- * artifact is a file. Driven by the keys, so a key with an inline artifact
- * and no row (a reset kept it) answers too, `hash` null: the miss learns
- * there is something to adopt in the statement that found no entry.
+ * Each asked key's entry row, its stored log while that is small, and its
+ * inline artifact's last use, null when the artifact is a file. A larger
+ * log is only flagged (`stdout_apart`), and read when its hit replays: a
+ * warm run probes every key in one batch and replays the hits as the
+ * scheduler reaches them, so every log joined here was held until its
+ * replay (500 hits printing 1 MiB each held 3.4 GB). A small one rides
+ * along, still compressed: a read apart per hit cost a warm run of 300
+ * short logs ~1 ms of 44. `length` reads a blob's size, not its pages.
+ * Driven by the keys, so a key with an inline artifact and no row (a reset
+ * kept it) answers too, `hash` null: the miss learns there is something to
+ * adopt in the statement that found no entry.
  */
 const selectEntries = (keys: string): string =>
-  `SELECT q.value AS key, e.*, COALESCE(s.stdout, '') AS stdout, a.at AS inline_at FROM ${keys} q LEFT JOIN entries e ON e.hash = q.value LEFT JOIN entry_stdout s ON s.hash = e.hash LEFT JOIN artifacts a ON a.hash = q.value WHERE e.hash IS NOT NULL OR a.at IS NOT NULL`
+  `SELECT q.value AS key, e.*, CASE WHEN length(s.stdout) <= ${LOG_INLINE_BYTES} THEN s.stdout END AS stdout, length(s.stdout) > ${LOG_INLINE_BYTES} AS stdout_apart, a.at AS inline_at FROM ${keys} q LEFT JOIN entries e ON e.hash = q.value LEFT JOIN entry_stdout s ON s.hash = e.hash LEFT JOIN artifacts a ON a.hash = q.value WHERE e.hash IS NOT NULL OR a.at IS NOT NULL`
 const SELECT_ENTRY = selectEntries('(SELECT ? AS value)')
 const SELECT_ENTRIES = selectEntries('json_each(?)')
 
@@ -616,7 +644,10 @@ interface EntryRow {
   exit_code: number
   duration_ms: number
   size_bytes: number
-  stdout: string
+  /** The compressed log when no more than `LOG_INLINE_BYTES`, else null. */
+  stdout: Uint8Array | null
+  /** 1 when the log is larger, and read apart; null when none was stored. */
+  stdout_apart: number | null
   created_at: number
   accessed_at: number
   cpu_ms: number | null
@@ -624,22 +655,40 @@ interface EntryRow {
   inline_at: number | null
 }
 
-function entryOf(row: LiveRow, fileRows: OutputFileRow[]): CacheEntry {
-  return {
+/**
+ * The entry a row answers. Its log is a getter, decompressed on each access
+ * and, past `LOG_INLINE_BYTES`, read from the index then (`log`), so an
+ * entry held from the probe to its replay holds no log text and the replay
+ * drops it once printed. A reader takes it once.
+ */
+function entryOf(
+  row: LiveRow,
+  fileRows: OutputFileRow[],
+  log: (hash: string) => string,
+): CacheEntry {
+  // Assigned, not spread, and the date formatted only when read: a warm
+  // run's probe builds one per hit and reads neither (~4 ms of 8,002
+  // entries, 2026-11-07).
+  const entry: CacheEntry = {
     hash: row.hash,
     taskId: `${row.project}#${row.task}`,
     command: row.command,
     exitCode: row.exit_code,
     durationMs: row.duration_ms,
     sizeBytes: row.size_bytes,
-    ...(row.cpu_ms !== null ? { cpuMs: row.cpu_ms } : {}),
-    ...(row.peak_rss_bytes !== null ? { peakRssBytes: row.peak_rss_bytes } : {}),
     outputFiles: fileRows.map((r) => r.path),
     outputRows: fileRows,
-    stdout: row.stdout,
-    storedAt: new Date(row.created_at).toISOString(),
+    get stdout() {
+      return row.stdout_apart === 1 ? log(row.hash) : storedLog(row.stdout)
+    },
+    get storedAt() {
+      return new Date(row.created_at).toISOString()
+    },
     source: 'local',
   }
+  if (row.cpu_ms !== null) entry.cpuMs = row.cpu_ms
+  if (row.peak_rss_bytes !== null) entry.peakRssBytes = row.peak_rss_bytes
+  return entry
 }
 
 /** The sidecar's `exec` from a save's entry: only the axes the runner reported. */
@@ -934,6 +983,8 @@ export class Cache implements CacheLayer {
   private readonly selectEntry: ReturnType<Database['prepare']>
   private readonly upsertStdout: ReturnType<Database['prepare']>
   private readonly deleteStdout: ReturnType<Database['prepare']>
+  private readonly selectStdout: ReturnType<Database['prepare']>
+  private readonly logOf = (hash: string): string => this.guard(() => this.stdoutText(hash))
   private readonly entryExists: ReturnType<Database['prepare']>
   private readonly selectBlob: ReturnType<Database['prepare']>
   private readonly upsertBlob: ReturnType<Database['prepare']>
@@ -958,7 +1009,14 @@ export class Cache implements CacheLayer {
   private heldTimer: ReturnType<typeof setTimeout> | undefined
   /** Saves' index writes waiting for this turn's one transaction (`indexInBatch`). */
   private indexQueue: Array<{ write: () => void; settle: (err?: unknown) => void }> = []
-  private heldRest: () => Array<[string, number]> = () => []
+  /**
+   * The held sizes being stored, `oid\0size` in OID order, and how many
+   * are: fields, not a closure's, so the store lets them go.
+   */
+  private storing: string[] | undefined
+  private stored = 0
+  /** The checkpoint thread: `armed` until a save commits (`checkpointOffThread`). */
+  private checkpoints: 'armed' | WalCheckpointer | undefined
   private readonly insertEntryInput: ReturnType<Database['prepare']>
   /** The per-file (mtime, size) → blob-OID memo behind `hashFile`. */
   private readonly files: FileHashStore
@@ -1005,13 +1063,6 @@ export class Cache implements CacheLayer {
   readonly schemaReset: SchemaReset | null = null
 
   /**
-   * Set when THIS open found entries written under another
-   * `CACHE_VERSION`: the index survives, but no old key is derived again,
-   * so every cached task misses once. Not printed, like `schemaReset`.
-   */
-  readonly formatChange: SchemaReset | null = null
-
-  /**
    * Set when THIS open found the shared store written under another
    * `SCHEMA_VERSION` and dropped its inventory; the artifacts stay and are
    * indexed again as they hit. Never printed: the cache is vx's to keep.
@@ -1050,8 +1101,7 @@ export class Cache implements CacheLayer {
      * and the store's own schema is `store_meta.schema` (`matchStoreSchema`). Or
      * `null` for an index that holds its entries itself (a `cacheDir`).
      * Undefined follows the layout the index records: a reading verb, a
-     * plugin's handle. A reading open reads it only where the index
-     * records none (deleted, or never written beside a run's store).
+     * plugin's handle.
      */
     storeRoot?: string | null,
     private readonly store: StoreOptions = DEFAULT_STORE,
@@ -1236,16 +1286,10 @@ export class Cache implements CacheLayer {
           } | null
         )?.value,
     )
-    // A dry prune names what the real one takes, so it reads the store a
-    // run opens (today's), not the one the index last recorded.
-    let storeDir =
-      mode === 'inspect'
-        ? (recorded ?? (typeof storeRoot === 'string' ? storeRoot : undefined))
-        : storeRoot === undefined
-          ? recorded
-          : storeRoot === null
-            ? undefined
-            : storeRoot
+    // A store named by the caller is the one a run opens (today's), and
+    // every mode reads it: a dry prune names what the real one takes, and
+    // `vx info` the store the next run fills, not one a moved HOME left.
+    let storeDir = storeRoot === undefined ? recorded : (storeRoot ?? undefined)
     if (storeDir !== undefined && mode === 'open' && this.writeBlocked === null) {
       const blocked = storeBlocked(storeDir, typeof storeRoot === 'string' ? storeRoot : null)
       if (blocked !== null) {
@@ -1317,9 +1361,10 @@ export class Cache implements CacheLayer {
     )
     this.upsertStdout = lazyStatement(
       this.db,
-      'INSERT INTO entry_stdout(hash, stdout) VALUES (?, CAST(? AS TEXT)) ON CONFLICT(hash) DO UPDATE SET stdout = excluded.stdout',
+      'INSERT INTO entry_stdout(hash, stdout) VALUES (?, ?) ON CONFLICT(hash) DO UPDATE SET stdout = excluded.stdout',
     )
     this.deleteStdout = lazyStatement(this.db, 'DELETE FROM entry_stdout WHERE hash = ?')
+    this.selectStdout = lazyStatement(this.db, 'SELECT stdout FROM entry_stdout WHERE hash = ?')
     this.selectEntry = lazyStatement(this.db, SELECT_ENTRY)
     // `has` asks only whether the row is there and where its artifact is,
     // with no stdout joined. A column off the index, so the table row is
@@ -1354,17 +1399,13 @@ export class Cache implements CacheLayer {
     this.remoteHits = new IndexRemoteHits(this.db, this.writeBlocked === null && !this.inspecting)
 
     // A CACHE_VERSION bump keeps the index but moves every key, so the run
-    // after an upgrade misses everything. Roadmap 3.3: that is announced,
-    // never silent. A store with no recorded version and no entries is
-    // new; one with entries predates the record (item 671).
+    // after an upgrade misses everything, in silence: the cache is vx's to
+    // keep (2026-10-06). The version is recorded for whoever reads the
+    // index by hand; a reading verb writes nothing (item 1080).
     const format = this.db
       .prepare("SELECT value FROM schema_meta WHERE key = 'cache_version'")
       .get() as { value: string } | null
     if (format?.value !== CACHE_VERSION && this.writeBlocked === null && !this.inspecting) {
-      const hasEntries = this.db.prepare('SELECT 1 FROM entries LIMIT 1').get() != null
-      if (this.schemaReset === null && (format !== null || hasEntries)) {
-        this.formatChange = { from: format?.value ?? 'an earlier format', to: CACHE_VERSION }
-      }
       this.db
         .prepare(
           "INSERT INTO schema_meta(key, value) VALUES ('cache_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -1676,13 +1717,46 @@ export class Cache implements CacheLayer {
     const held = this.heldBlobSizes
     this.heldBlobSizes = undefined
     if (held === undefined || held.length === 0) return
-    let at = 0
-    const step = (): void => {
-      this.guard(() => this.files.rememberBlobSizes(new Map(held.slice(at, (at += HELD_SLICE)))))
-      this.heldTimer = at < held.length ? setTimeout(step, 0) : undefined
+    // In OID order, so each slice appends at the key index's right edge:
+    // in git's path order every slice dirtied pages across the whole
+    // index, and the 160 commits of a cold 9,603-task run cost its main
+    // thread ~5x more (2026-11-06). Sorted as `oid\0size` strings with no
+    // comparator: a JS comparator over 40,000 entries was 32 ms of a cold
+    // 8,002-task run's main thread before its first task, the native
+    // string sort 8 (2026-11-07). `\0` sorts below every OID character,
+    // so the order is the OIDs'. No entry outlives this: the strings are
+    // all the store keeps.
+    const keys: string[] = []
+    for (let i = 0; i < held.length; i++) keys.push(`${held[i]![0]}\0${held[i]![1]}`)
+    keys.sort()
+    this.storing = keys
+    this.stored = 0
+    this.heldTimer = setTimeout(this.storeHeldSlice, 0)
+  }
+
+  // A closure over the sizes kept all of them while anything held it (the
+  // rest's getter, a fired timer's callback): a cold 9,603-task run's
+  // 38,331 to its end, ~5 MB of heap (2026-11-06).
+  private readonly storeHeldSlice = (): void => {
+    const held = this.storing
+    if (held === undefined) return
+    const at = this.stored
+    this.stored = at + HELD_SLICE
+    this.guard(() => this.files.rememberBlobSizes(this.heldSizes(held, at, this.stored)))
+    if (this.stored < held.length) this.heldTimer = setTimeout(this.storeHeldSlice, 0)
+    else {
+      this.heldTimer = undefined
+      this.storing = undefined
     }
-    this.heldRest = () => held.slice(at)
-    this.heldTimer = setTimeout(step, 0)
+  }
+  private heldSizes(held: readonly string[], from: number, to: number): Map<string, number> {
+    const out = new Map<string, number>()
+    for (let i = from; i < Math.min(to, held.length); i++) {
+      const k = held[i]!
+      const at = k.indexOf('\0')
+      out.set(k.slice(0, at), Number(k.slice(at + 1)))
+    }
+    return out
   }
   /** `BlobSizeMemo`: the paths an index with this digest distrusts, when known. */
   blobVerdict(digest: string): string[] | undefined {
@@ -1914,7 +1988,7 @@ export class Cache implements CacheLayer {
     // for four up-to-date hits on ~70 MB binaries). restoreOutputs
     // reads the artifact itself, only when extraction actually runs.
     const fileRows = this.loadOutputFilesBatch([hash]).get(hash) ?? []
-    const entry = entryOf(row as LiveRow, fileRows)
+    const entry = entryOf(row as LiveRow, fileRows, this.logOf)
     entry.outputDirRows = this.loadOutputDirsBatch([hash]).get(hash) ?? []
     return entry
   }
@@ -1998,7 +2072,7 @@ export class Cache implements CacheLayer {
     const dirRows = this.loadOutputDirsBatch(liveHashes)
     for (const row of live) {
       if (row.accessed_at < refreshStart) this.touched.add(row.hash)
-      const entry = entryOf(row, fileRows.get(row.hash) ?? [])
+      const entry = entryOf(row, fileRows.get(row.hash) ?? [], this.logOf)
       entry.outputDirRows = dirRows.get(row.hash) ?? []
       out.set(row.hash, entry)
     }
@@ -2094,21 +2168,50 @@ export class Cache implements CacheLayer {
     workspaceRoot?: string,
     outputs?: DeclaredOutputs,
   ): Promise<void> {
+    const used: { rows: readonly OutputFileRow[] } = { rows: [] }
     try {
-      await this.restoreOutputsOnce(hash, projectDir, workspaceRoot, outputs)
+      await this.restoreOutputsOnce(hash, projectDir, workspaceRoot, outputs, used, false)
     } catch (err) {
       if (!(err instanceof CorruptArtifactError)) throw err
+      let failed = err
+      // A file artifact has no `at` to say a re-save in another process
+      // replaced it since the probe: the probe's rows then name another
+      // build's files, and this one reads as corrupt. Rows that changed
+      // since are that race, so the restore runs once more on the rows read
+      // now, and an entry is dropped only while its rows are the ones that
+      // failed: another process's fresh entry is never taken.
+      if (this.entryChanged(hash, used.rows)) {
+        try {
+          await this.restoreOutputsOnce(hash, projectDir, workspaceRoot, outputs, used, true)
+          return
+        } catch (again) {
+          if (!(again instanceof CorruptArtifactError)) throw again
+          failed = again
+        }
+      }
       // Bad bytes under a good key failed the task on every run until
       // `--force`, since nothing rewrote them (J's lead, nx#30338). The
       // entry goes, and the caller runs the task, whose save stores it
       // again; running is always correct, only slower than a hit.
-      if (this.write) await this.dropEntry(hash)
+      if (this.write && !(await this.dropUnchanged(hash, used.rows)))
+        throw new ArtifactVanishedError(hash)
       throw new ArtifactVanishedError(
         hash,
-        `${err.message}; ${this.write ? 'dropped it' : 'left it (this cache is read-only)'}`,
-        err,
+        `${failed.message}; ${this.write ? 'dropped it' : 'left it (this cache is read-only)'}`,
+        failed,
       )
     }
+  }
+
+  /** Whether `hash`'s committed rows are no longer `rows` (path, size, mode, mtime). */
+  private entryChanged(hash: string, rows: readonly OutputFileRow[]): boolean {
+    const now = this.guard(() => this.outputs.loadOutputFilesBatch([hash]).get(hash) ?? [])
+    if (now.length !== rows.length) return true
+    const was = new Map(rows.map((r) => [r.path, r]))
+    return now.some((r) => {
+      const w = was.get(r.path)
+      return w === undefined || w.size !== r.size || w.mode !== r.mode || w.mtimeMs !== r.mtimeMs
+    })
   }
 
   /**
@@ -2120,6 +2223,7 @@ export class Cache implements CacheLayer {
   private async restoreTree(
     hash: string,
     tree: string,
+    treeIno: number,
     rows: readonly OutputFileRow[],
     projectDir: string,
     workspaceRoot: string | undefined,
@@ -2135,7 +2239,8 @@ export class Cache implements CacheLayer {
         `its outputs hold ${formatBytes(bytes)}, past the ${formatBytes(this.artifactCeiling)} artifact ceiling`,
       )
     }
-    if (await this.copyTree(hash, tree, rows, files, projectDir, accept)) return
+    if (await this.copyTree(hash, tree, treeIno, rows, files, projectDir, workspaceRoot, accept))
+      return
     await extractArtifactStream(
       packArtifactStream(this.treePlan(hash, tree, rows)),
       projectDir,
@@ -2177,14 +2282,21 @@ export class Cache implements CacheLayer {
    * and every directory on the way either is a real directory or is absent
    * and made here. solid's build outputs `store/dist/**` beside the sources
    * in `store/`; asking that each output's TOP be absent sent every such
-   * restore through the tar extractor, ~25 ms a task (2026-10-22).
+   * restore through the tar extractor, ~25 ms a task (2026-10-22). The
+   * files of each absent top directory are copied into the workspace's
+   * `.vx/tmp/` (`copyStaging`) and the directory renamed in once, so a
+   * reader finds it complete or not at all; one staging cannot rename into
+   * as a write in place would land (another filesystem, a setgid
+   * directory) is the extractor's.
    */
   private async copyTree(
     hash: string,
     tree: string,
+    ino: number,
     rows: readonly OutputFileRow[],
     files: readonly OutputFileRow[],
     projectDir: string,
+    workspaceRoot: string | undefined,
     accept: ((name: string) => boolean) | undefined,
   ): Promise<boolean> {
     for (const r of rows) {
@@ -2194,14 +2306,19 @@ export class Cache implements CacheLayer {
     }
     // What stands at each path, asked once: a real directory, nothing, or
     // anything else (a file, a link), which the extractor's rules decide.
-    const standing = new Map<string, Promise<'dir' | 'absent' | 'other'>>()
-    const at = (rel: string): Promise<'dir' | 'absent' | 'other'> => {
+    // Synchronous: the walk before this one looked these paths up, so each
+    // answer is a cached dentry, and the async form cost a 1,600-restore run
+    // ~40 ms of its main thread in promises (2026-11-07).
+    const standing = new Map<string, 'dir' | 'absent' | 'other'>()
+    const at = (rel: string): 'dir' | 'absent' | 'other' => {
       let known = standing.get(rel)
       if (known === undefined) {
-        known = lstat(path.join(projectDir, rel)).then(
-          (st) => (st.isDirectory() ? 'dir' : 'other'),
-          (err: NodeJS.ErrnoException) => (err.code === 'ENOENT' ? 'absent' : 'other'),
-        )
+        try {
+          const st = lstatSync(path.join(projectDir, rel), { throwIfNoEntry: false })
+          known = st === undefined ? 'absent' : st.isDirectory() ? 'dir' : 'other'
+        } catch {
+          known = 'other'
+        }
         standing.set(rel, known)
       }
       return known
@@ -2210,24 +2327,22 @@ export class Cache implements CacheLayer {
     // writes into a directory that stood: what a failure removes, and only that.
     const made = new Set<string>()
     const placed: string[] = []
-    const fits = await Promise.all(
-      rows.map(async (r) => {
-        const segs = r.path.replace(/\/$/, '').split('/')
-        for (let i = 1; i <= segs.length; i++) {
-          const rel = segs.slice(0, i).join('/')
-          const isLeaf = i === segs.length
-          const state = await at(rel)
-          if (state === 'absent') {
-            if (!isLeaf || r.path.endsWith('/')) made.add(rel)
-            else placed.push(rel)
-            return true
-          }
-          if (state === 'other' || (isLeaf && !r.path.endsWith('/'))) return false
+    const fits = rows.every((r) => {
+      const segs = r.path.replace(/\/$/, '').split('/')
+      for (let i = 1; i <= segs.length; i++) {
+        const rel = segs.slice(0, i).join('/')
+        const isLeaf = i === segs.length
+        const state = at(rel)
+        if (state === 'absent') {
+          if (!isLeaf || r.path.endsWith('/')) made.add(rel)
+          else placed.push(rel)
+          return true
         }
-        return true
-      }),
-    )
-    if (fits.includes(false)) return false
+        if (state === 'other' || (isLeaf && !r.path.endsWith('/'))) return false
+      }
+      return true
+    })
+    if (!fits) return false
     // A directory made under another one made here is the outer one's.
     const roots = [...made].filter((d) => ![...made].some((o) => d.startsWith(`${o}/`)))
     readUmask()
@@ -2235,8 +2350,8 @@ export class Cache implements CacheLayer {
     // Another process's re-save of this key renames the tree aside and a
     // new one in mid-copy: the files copied after came from another build.
     // A changed inode is that race, a miss (the task runs), and the entry
-    // the other process saved is kept.
-    const ino = lstatSync(tree).ino
+    // the other process saved is kept. `ino` is the tree's as the restore
+    // found it, before this walk: a swap since is caught all the same.
     const swapped = (): boolean => lstatSync(tree, { throwIfNoEntry: false })?.ino !== ino
     // A standing directory of this user's that withholds its own write (a
     // task's `chmod 555 dist/ro`) gets owner write and search for the copy
@@ -2252,6 +2367,46 @@ export class Cache implements CacheLayer {
       chmodSync(dir, (st.mode & 0o7777) | 0o300)
       return true
     }
+    // A missing top directory is built whole in staging and renamed in
+    // once, as the extractor does: copied in place, a reader met its files
+    // empty, then short. A file missing from a directory that stands is
+    // copied straight to its place: a temp renamed in cost such a restore
+    // a fifth to a third more (tmpfs, 3,000 files, 2026-11-06).
+    if (roots.length === 0 && placed.length === 0) return true
+    // A restore into a project directory not there yet makes it, as the
+    // copy in place did.
+    // Its stat also answers, below, what a rename into it keeps.
+    let projectStat: Stats | undefined
+    try {
+      projectStat = statSync(projectDir, { throwIfNoEntry: false })
+    } catch {
+      projectStat = undefined
+    }
+    if (projectStat === undefined) await mkdir(projectDir, { recursive: true })
+    const staging = roots.length > 0 ? await copyStaging(workspaceRoot) : undefined
+    if (staging?.stats !== undefined) {
+      const fits = new Map<string, boolean>()
+      for (const rel of roots) {
+        const dir = path.dirname(path.join(projectDir, rel))
+        let fit = fits.get(dir)
+        if (fit === undefined) {
+          const top = !rel.includes('/') && projectStat !== undefined
+          fit = stagesInto(
+            staging.stats,
+            top ? projectStat : statSync(dir, { throwIfNoEntry: false }),
+          )
+          fits.set(dir, fit)
+        }
+        if (!fit) return false
+      }
+    }
+    const temps = new Map(roots.map((rel) => [rel, staging!.temp(path.join(projectDir, rel))]))
+    const target = (rel: string): string => {
+      for (const d of roots) {
+        if (rel === d || rel.startsWith(`${d}/`)) return temps.get(d)! + rel.slice(d.length)
+      }
+      return path.join(projectDir, rel)
+    }
     const copy = async (to: string, from: string): Promise<number> => {
       try {
         return await Bun.write(to, Bun.file(from), { createPath: false })
@@ -2260,15 +2415,19 @@ export class Cache implements CacheLayer {
         return await Bun.write(to, Bun.file(from), { createPath: false })
       }
     }
+    const landed: string[] = []
+    let landing = false
     try {
       const dirs = new Set<string>()
       for (const r of rows) {
-        dirs.add(path.join(projectDir, r.path.endsWith('/') ? r.path : path.dirname(r.path)))
+        dirs.add(target(r.path.endsWith('/') ? r.path.slice(0, -1) : path.posix.dirname(r.path)))
       }
       for (const d of dirs) await mkdir(d, { recursive: true })
-      await Promise.all(
+      // Every copy settles before a failure is handled: one still in flight
+      // would write its file again after the cleanup removed it.
+      const copied = await Promise.allSettled(
         files.map(async (r) => {
-          const to = path.join(projectDir, r.path)
+          const to = target(r.path)
           const n = await copy(to, path.join(tree, treeName(r.path)))
           if (n !== r.size)
             throw new CorruptArtifactError(hash, `${r.path} holds ${n} bytes, recorded ${r.size}`)
@@ -2278,11 +2437,24 @@ export class Cache implements CacheLayer {
           await utimes(to, at, at)
         }),
       )
+      const failed = copied.find((c) => c.status === 'rejected')
+      if (failed !== undefined) throw failed.reason
       if (swapped()) throw new ArtifactVanishedError(hash)
+      landing = true
+      for (const rel of roots) {
+        await rename(temps.get(rel)!, path.join(projectDir, rel))
+        landed.push(rel)
+      }
     } catch (err) {
+      await Promise.all([...temps.values()].map((t) => rm(t, { recursive: true, force: true })))
+      // Something made at a missing directory's place since the walk: what
+      // landed holds the entry's bytes, and the extractor restores the rest.
+      const code = landing ? (err as NodeJS.ErrnoException).code : undefined
+      if (code === 'EEXIST' || code === 'ENOTEMPTY' || code === 'EISDIR' || code === 'ENOTDIR')
+        return false
       await Promise.all([
-        ...roots.map((d) => rm(path.join(projectDir, d), { recursive: true, force: true })),
-        ...placed.map((f) => rm(path.join(projectDir, f), { force: true })),
+        ...landed.map((rel) => rm(path.join(projectDir, rel), { recursive: true, force: true })),
+        ...placed.map((rel) => rm(path.join(projectDir, rel), { force: true })),
       ])
       if (!(err instanceof ArtifactVanishedError) && swapped())
         throw new ArtifactVanishedError(hash)
@@ -2300,28 +2472,45 @@ export class Cache implements CacheLayer {
   }
 
   private stdoutText(hash: string): string {
-    const row = this.db.query('SELECT stdout FROM entry_stdout WHERE hash = ?').get(hash) as {
-      stdout: string | Uint8Array
-    } | null
-    if (row === null) return ''
-    return typeof row.stdout === 'string' ? row.stdout : utf8Decode.decode(row.stdout)
+    const row = this.selectStdout.get(hash) as { stdout: Uint8Array } | null
+    return storedLog(row?.stdout ?? null)
   }
 
-  /** Remove one entry: its artifact first, then its rows (as `prune` orders them). */
-  private async dropEntry(hash: string): Promise<void> {
-    await rm(this.tarPath(hash), { force: true })
-    await rm(this.treePath(hash), { recursive: true, force: true })
+  /**
+   * Remove one entry while its rows are still `rows`: false, touching
+   * nothing, once another process re-saved the key. Checked and dropped
+   * under the write lock a save renames its artifact in under, so no save
+   * lands between; the artifact is moved aside inside, unlinked after.
+   */
+  private async dropUnchanged(hash: string, rows: readonly OutputFileRow[]): Promise<boolean> {
+    const aside: string[] = []
     const drop = this.db.transaction(() => {
+      if (this.entryChanged(hash, rows)) return false
+      for (const [from, to] of [
+        [this.tarPath(hash), this.tempPath(hash)],
+        [this.treePath(hash), this.tempTreePath(hash)],
+      ] as const) {
+        try {
+          renameSync(from, to)
+          aside.push(to)
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+        }
+      }
       this.deleteBlob.run(hash)
       this.deleteEntryRow.run(hash)
       this.outputs.forget([hash])
+      return true
     })
+    let dropped: boolean
     try {
-      drop()
+      dropped = drop.immediate()
     } catch (err) {
       if (!isIndexFull(err)) throw err
-      drop()
+      dropped = drop.immediate()
     }
+    for (const a of aside) await rm(a, { recursive: true, force: true })
+    return dropped
   }
 
   private async restoreOutputsOnce(
@@ -2329,6 +2518,8 @@ export class Cache implements CacheLayer {
     projectDir: string,
     workspaceRoot: string | undefined,
     outputs: DeclaredOutputs | undefined,
+    used: { rows: readonly OutputFileRow[] },
+    fresh: boolean,
   ): Promise<void> {
     // In-process extraction — no fork+exec on the hot path
     // (~5-10ms reclaimed per hit vs the prior subprocess `tar -xf`).
@@ -2372,19 +2563,51 @@ export class Cache implements CacheLayer {
     // in one commit, and two reads could pair its rows with the old bytes.
     // The probe's held rows (X-162) serve only while the blob carries the
     // `at` the probe saw: a re-save or a renewal since moves it, and then
-    // the rows are read again in the blob's snapshot.
+    // the rows are read again in the blob's snapshot. A file artifact's
+    // re-save is caught after, by its rows (`restoreOutputs`).
     let rows: readonly OutputFileRow[] = []
     let inline: Uint8Array | undefined
-    this.guard(() =>
-      this.db.transaction(() => {
-        const blob = this.selectBlob.get(hash) as { at: number; bytes: Uint8Array } | null
-        inline = blob?.bytes
-        rows =
-          blob === null || blob.at === this.heldInlineAt.get(hash)
-            ? this.outputs.rowsOf(hash)
-            : (this.outputs.loadOutputFilesBatch([hash]).get(hash) ?? [])
-      })(),
-    )
+    // With the probe's rows held, no transaction: a file artifact's tree,
+    // standing now, is the live one, read with no statement (an inline save
+    // moves the tree aside in the commit that adds its blob, and one moved
+    // aside mid-copy is the race `copyTree` catches); an inline one is the
+    // blob read alone, its own snapshot. The blob read and its transaction
+    // cost a 1,600-restore run ~70 ms of its main thread (2026-11-07).
+    const held = fresh ? undefined : this.outputs.heldRowsOf(hash)
+    const heldAt = this.heldInlineAt.get(hash)
+    let treeIno: number | undefined
+    let treeAsked = false
+    if (held !== undefined && heldAt === undefined) {
+      treeIno = lstatSync(this.treePath(hash), { throwIfNoEntry: false })?.ino
+      treeAsked = true
+      if (treeIno !== undefined) rows = held
+    } else if (held !== undefined) {
+      const blob = this.guard(() => this.selectBlob.get(hash)) as {
+        at: number
+        bytes: Uint8Array
+      } | null
+      if (blob?.at === heldAt) {
+        inline = blob!.bytes
+        rows = held
+      }
+    }
+    if (treeIno === undefined && inline === undefined) {
+      this.guard(() =>
+        this.db.transaction(() => {
+          const blob = this.selectBlob.get(hash) as { at: number; bytes: Uint8Array } | null
+          inline = blob?.bytes
+          rows =
+            !fresh && (blob === null || blob.at === this.heldInlineAt.get(hash))
+              ? this.outputs.rowsOf(hash)
+              : (this.outputs.loadOutputFilesBatch([hash]).get(hash) ?? [])
+        })(),
+      )
+      // A tree asked of above and absent: the artifact is the blob or the
+      // tar, and a tree saved since is a miss at worst (the tar is gone).
+      if (inline === undefined && !treeAsked)
+        treeIno = lstatSync(this.treePath(hash), { throwIfNoEntry: false })?.ino
+    }
+    used.rows = rows
     const expected = rows
       .filter((r) => workspaceRoot !== undefined || !r.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
       .map((r) => (r.path.startsWith(WORKSPACE_OUTPUT_PREFIX) ? r.path : `outputs/${r.path}`))
@@ -2409,8 +2632,7 @@ export class Cache implements CacheLayer {
     // when every artifact is a one-file `dist/` (measured: 390 vs 355 ms
     // per 1 000). The local artifact was validated at ingest, so a missing
     // declared size is allowed; the output ceiling applies to both.
-    const tree =
-      inline === undefined && existsSync(this.treePath(hash)) ? this.treePath(hash) : undefined
+    const tree = treeIno === undefined ? undefined : this.treePath(hash)
     const endExtract = span('restore: extract')
     try {
       // Every step here is an async filesystem call on purpose: a
@@ -2420,7 +2642,16 @@ export class Cache implements CacheLayer {
       // the other three (1,000-project restore row 1.1–1.2 s → 1.5 s).
       const accept = outputs === undefined ? undefined : declaredName(outputs)
       if (tree !== undefined) {
-        await this.restoreTree(hash, tree, rows, projectDir, workspaceRoot, verify, accept)
+        await this.restoreTree(
+          hash,
+          tree,
+          treeIno!,
+          rows,
+          projectDir,
+          workspaceRoot,
+          verify,
+          accept,
+        )
       } else {
         const tar = await decodedTar(inline ?? Bun.file(src), hash, this.artifactCeiling)
         await extractArtifactStream(tar, projectDir, workspaceRoot, verify, accept, workspaceRoot)
@@ -2463,7 +2694,7 @@ export class Cache implements CacheLayer {
             ? 'a directory stands where the entry holds a file'
             : 'a file stands where the entry needs a directory'
         throw new UserError(
-          `restore of ${hash} into ${projectDir} was blocked by what is on disk (${msg.startsWith(code) ? msg : `${code}: ${msg}`}): ${what}. ` +
+          `restore of ${hash} into ${projectDir} was blocked by what is on disk (${codeFirst(code, msg)}): ${what}. ` +
             `A restore replaces what the output globs select, not this — remove it and re-run.`,
         )
       }
@@ -2489,7 +2720,7 @@ export class Cache implements CacheLayer {
         (err.path === src || (tree !== undefined && inTree(err.path, tree)))
       ) {
         throw new UserError(
-          `restore of ${hash} could not read its artifact (${code}: ${err.message}). ` +
+          `restore of ${hash} could not read its artifact (${codeFirst(code, err.message)}). ` +
             `Make the cache directory readable by this user, or point cacheDir / --cache-dir at one that is.`,
         )
       }
@@ -2498,7 +2729,7 @@ export class Cache implements CacheLayer {
           ? 'Free space on that disk and re-run.'
           : 'Make the declared output paths writable by this user, or stop declaring them as outputs.'
         throw new UserError(
-          `restore of ${hash} into ${projectDir} could not write its outputs (${code}: ${err.message}). ${remedy}`,
+          `restore of ${hash} into ${projectDir} could not write its outputs (${codeFirst(code, err.message)}). ${remedy}`,
         )
       }
       // The process is out of descriptors: the artifact is fine, and
@@ -2513,14 +2744,20 @@ export class Cache implements CacheLayer {
       if (code === 'ENOENT' && (err as NodeJS.ErrnoException).path === src) {
         throw new ArtifactVanishedError(hash)
       }
-      // So is a tree file: a prune or another process's re-save moved the
-      // tree aside mid-copy.
-      if (
-        code === 'ENOENT' &&
-        tree !== undefined &&
-        inTree((err as NodeJS.ErrnoException).path, tree)
-      ) {
-        throw new ArtifactVanishedError(hash)
+      // So is a tree a prune or another process's re-save moved aside
+      // mid-copy. The tree the restore found, still in place, lacking a
+      // file is damage at rest (a hand-deleted file): called vanished "(a
+      // vx cache clean)" that never ran, and kept, so the demoted task's
+      // own probe hit it again and said so twice.
+      const missing = (err as NodeJS.ErrnoException).path
+      if (code === 'ENOENT' && tree !== undefined && inTree(missing, tree)) {
+        if (lstatSync(tree, { throwIfNoEntry: false })?.ino !== treeIno)
+          throw new ArtifactVanishedError(hash)
+        const rel = path.relative(tree, missing!).split(path.sep).join('/')
+        throw new CorruptArtifactError(
+          hash,
+          `${rel.startsWith('outputs/') ? rel.slice('outputs/'.length) : rel} is missing from its stored tree`,
+        )
       }
       // A staged file the restore itself just wrote is gone before its
       // commit: another process cleaned the same outputs under us (two runs
@@ -3160,7 +3397,10 @@ export class Cache implements CacheLayer {
         Bun.hash.crc32(bytes),
       ])
     }
-    const stdoutText = scanned.stdout
+    // Compressed before the write lock is taken: logs are most of what the
+    // index held as text (v52).
+    const stdoutBlob =
+      scanned.stdout === '' ? null : await zstdCompress(utf8.encode(scanned.stdout))
 
     const [project, task] = splitTaskId(meta.taskId)
     const now = Date.now()
@@ -3258,14 +3498,8 @@ export class Cache implements CacheLayer {
         scanned.exec?.cpuMs ?? null,
         scanned.exec?.peakRssBytes ?? null,
       )
-      if (stdoutText === '') deleteStdout.run(hash)
-      // bun:sqlite drops a leading U+FEFF from a bound string; its UTF-8
-      // bytes, cast to TEXT, keep it.
-      else
-        upsertStdout.run(
-          hash,
-          stdoutText.startsWith('\uFEFF') ? utf8.encode(stdoutText) : stdoutText,
-        )
+      if (stdoutBlob === null) deleteStdout.run(hash)
+      else upsertStdout.run(hash, stdoutBlob)
       outputBytes = outputs.replaceFileRows(hash, outputFileRows)
       // INSERT OR IGNORE: identical inputs derive this same hash, so a
       // re-save's row is identical — keep the first, skip the rest.
@@ -3338,7 +3572,34 @@ export class Cache implements CacheLayer {
       for (let i = 0; i < batch.length; i++) batch[i]!.settle(failed.get(i) ?? err)
       return
     }
+    if (this.checkpoints === 'armed') this.startCheckpointer()
     for (let i = 0; i < batch.length; i++) batch[i]!.settle(failed.get(i))
+  }
+
+  /**
+   * A run's saves from now on leave the WAL's checkpoints to a thread of
+   * their own (checkpointer.ts), started by the first save's commit, so a
+   * run that saves nothing starts none. `stopCheckpoints` ends it.
+   */
+  checkpointOffThread(): void {
+    if (this.checkpoints === undefined && historyFiles(this) !== undefined)
+      this.checkpoints = 'armed'
+  }
+
+  private startCheckpointer(): void {
+    const files = historyFiles(this)!
+    this.db.exec('PRAGMA wal_autocheckpoint = 0')
+    this.checkpoints = new WalCheckpointer(files, () => {
+      // No thread: the run's connection checkpoints as it did.
+      this.db.exec(`PRAGMA wal_autocheckpoint = ${WAL_AUTOCHECKPOINT}`)
+    })
+  }
+
+  /** Ends the checkpoint thread before `close`, so this connection's close is the last. */
+  async stopCheckpoints(): Promise<void> {
+    const c = this.checkpoints
+    this.checkpoints = undefined
+    if (c instanceof WalCheckpointer) await c.stop()
   }
 
   private tempTreePath(hash: string): string {
@@ -3392,9 +3653,12 @@ export class Cache implements CacheLayer {
     if (this.writeBlocked !== null) return
     return this.guard(() => this.history.recordRun(run))
   }
-  recordRuns(runs: readonly RunRecord[]): void {
+  recordRuns(
+    runs: readonly RunRecord[],
+    head?: Pick<InvocationRecord, 'branch' | 'commitSha'>,
+  ): void {
     if (this.writeBlocked !== null) return
-    return this.guard(() => this.history.recordRuns(runs))
+    return this.guard(() => this.history.recordRuns(runs, head))
   }
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void {
     if (this.writeBlocked !== null) return
@@ -3694,10 +3958,16 @@ export class Cache implements CacheLayer {
     try {
       this.flushIndex()
       clearTimeout(this.heldTimer)
-      const held = this.heldBlobSizes ?? (this.heldTimer !== undefined ? this.heldRest() : [])
+      const held =
+        this.heldBlobSizes !== undefined
+          ? new Map(this.heldBlobSizes)
+          : this.storing !== undefined
+            ? this.heldSizes(this.storing, this.stored, this.storing.length)
+            : undefined
       this.heldBlobSizes = undefined
+      this.storing = undefined
       this.heldTimer = undefined
-      if (held.length > 0) this.files.rememberBlobSizes(new Map(held))
+      if (held !== undefined && held.size > 0) this.files.rememberBlobSizes(held)
       this.flushAccessed()
       this.outputs.flushOutputDirs()
       this.folds.flush()
@@ -3710,6 +3980,8 @@ export class Cache implements CacheLayer {
       // `rm -rf .vx/cache`): macOS answers SQLITE_IOERR_VNODE on a
       // write to an unlinked file where Linux happily writes on.
     }
+    if (this.checkpoints instanceof WalCheckpointer) this.checkpoints.terminate()
+    this.checkpoints = undefined
     closeDb(this.db)
   }
 
@@ -3771,6 +4043,53 @@ export function closeDb(db: Database): void {
   } catch {
     db.close()
   }
+}
+
+/**
+ * Wait until no other connection has the shared store in `storeDir` open,
+ * then hold it alone until the release. Every checkout of a repository
+ * shares its store and each has a run lock of its own, so a clean in one
+ * deleted store.db under a run in another. A run holds the store open from
+ * its run lock to its end (never while it waits for that lock, which a
+ * clean holds while it waits here), and in WAL mode every open connection keeps a
+ * shared lock on the file: SQLite grants an exclusive one only to a sole
+ * holder, and a holder's lock dies with its process. The run path pays
+ * nothing. Holds nothing where the store has no readable file.
+ */
+export async function holdStore(
+  storeDir: string,
+  log: (line: string) => void,
+): Promise<() => void> {
+  const file = path.join(storeDir, 'store.db')
+  if (!existsSync(file)) return () => {}
+  let db: Database
+  try {
+    db = new Database(file)
+    db.exec('PRAGMA busy_timeout = 0')
+    db.exec('PRAGMA locking_mode = EXCLUSIVE')
+  } catch {
+    return () => {}
+  }
+  const started = Date.now()
+  let said = false
+  for (;;) {
+    try {
+      db.exec('BEGIN EXCLUSIVE')
+      break
+    } catch (err) {
+      if ((err as { code?: string }).code !== 'SQLITE_BUSY') {
+        // Not a store SQLite reads: nothing opens it to wait for.
+        closeDb(db)
+        return () => {}
+      }
+    }
+    if (!said && Date.now() - started >= 1_000) {
+      said = true
+      log(`[vx] waiting for another vx process using the cache store ${storeDir} to finish…`)
+    }
+    await Bun.sleep(50)
+  }
+  return () => closeDb(db)
 }
 
 /**
@@ -3848,11 +4167,25 @@ function treeName(rowPath: string): string {
   return rowPath.startsWith(WORKSPACE_OUTPUT_PREFIX) ? rowPath : `outputs/${rowPath}`
 }
 
+/** `code: message`, where Bun's message does not already open with the code. */
+function codeFirst(code: string | undefined, message: string): string {
+  return code === undefined || message.startsWith(code) ? message : `${code}: ${message}`
+}
+
 function inTree(p: string | undefined, tree: string): boolean {
   return p !== undefined && (p === tree || p.startsWith(`${tree}/`))
 }
 
 const utf8Decode = new TextDecoder('utf-8', { ignoreBOM: true })
+
+/**
+ * An `entry_stdout` row's log (v52): a zstd frame of its UTF-8, which keeps
+ * a leading U+FEFF a bound string loses. Null, no row, reads as ''. The
+ * index is vx's own, so the frame is trusted, as a tree's files are.
+ */
+export function storedLog(blob: Uint8Array | null): string {
+  return blob === null ? '' : utf8Decode.decode(Bun.zstdDecompressSync(blob))
+}
 
 /**
  * Whether an artifact entry names one of the task's declared outputs, as

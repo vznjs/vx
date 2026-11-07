@@ -160,7 +160,10 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     out.strayReviews = strayReviews
     out.shadowed = shadowed
     // The one load that evaluates: every reader reads the lock this writes.
-    const configs = await loadProjectConfigs(found.map((f) => f.configPath))
+    const configs = await loadProjectConfigs(
+      found.map((f) => f.configPath),
+      root,
+    )
     // In the lock's form: a field left `undefined` is a key the stored JSON
     // never has. Entries, not assignment: a directory named `__proto__` is
     // a key of its own (D-152).
@@ -220,6 +223,9 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
           name,
           dirs.map((dir) => ({ name: nameOf.get(dir)!, dir })),
         ]),
+      ),
+      projectConfigs: out.all.flatMap((m) =>
+        m.configPath === null ? [] : [{ name: m.name, configPath: m.configPath }],
       ),
     })
     if (hasHook(plugins, 'graph'))
@@ -534,6 +540,27 @@ function warnShadowed(root: string, check: GraphCheck, verb: string): void {
 }
 
 /**
+ * `read` with each file's record taken from `fresh` where only the files
+ * its digests read moved (same bytes, same extra files): a run digests
+ * anew on such an edit (`lockfileClaim`'s `lockedOnce`), and cli.md says
+ * it needs no `vx lock`, yet `--check` failed every edit in a `file:`
+ * directory or a patch.
+ */
+function liveExtras(read: DependenciesLock, fresh: DependenciesLock): DependenciesLock {
+  const files = { ...read.files }
+  for (const [name, now] of Object.entries(fresh.files)) {
+    const was = files[name]
+    if (
+      was !== undefined &&
+      was.hash === now.hash &&
+      Bun.deepEquals(Object.keys(was.extras ?? {}), Object.keys(now.extras ?? {}))
+    )
+      files[name] = now
+  }
+  return { ...read, files }
+}
+
+/**
  * Audit the lock: find and re-evaluate every config in the CURRENT
  * environment and deep-compare it with the locked object. That sees an
  * edit to the config, to a file it imports, and to the environment it
@@ -645,7 +672,10 @@ async function checkLock(root: string, json: boolean): Promise<number> {
       .catch(() => null)
     // Compared as JSON: a formatter may lay the file out its own way.
     const read = parseDependenciesLock(text)
-    if (read === null || !Bun.deepEquals(read, check.dependencies, true))
+    if (
+      read === null ||
+      !Bun.deepEquals(liveExtras(read, check.dependencies), check.dependencies, true)
+    )
       failures.push(
         `${DEPENDENCIES_LOCK_NAME} ${text === null ? 'is missing' : 'is not what the dependencies resolve to here'} — run 'vx lock'`,
       )

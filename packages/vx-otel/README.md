@@ -96,9 +96,11 @@ otel({
   is counted, `-- <N arguments>`, never quoted, and a secret value
   before it is `***`), CI provider,
   host/os/arch, vx version, and `cicd.pipeline.result` (`success`, `failure`, or
-  `cancellation` for a run stopped with nothing failed); a red run sets
+  `cancellation` for a run stopped with nothing failed), and the counts:
+  `vx.run.aborted_count` the tasks the stop cut short, `vx.run.not_run_count`
+  the ones it reached first; a red run sets
   span status `ERROR`;
-- a child `vx.task` span per task — `cicd.pipeline.task.name`,
+- a child `vx.task` span per task (none for one the stop reached before it started) — `cicd.pipeline.task.name`,
   `cicd.pipeline.task.run.result` (the convention's enum: `success` for a
   run or a hit, `failure`, `timeout` (vx's own `timeout`, or a server's readiness wait), `skip`, `cancellation`), vx's own
   status as `vx.task.status`, `vx.cache.source` (miss/local/remote, or none for a task that never ran),
@@ -140,7 +142,7 @@ otel({
   stage does, before the run lock, and that start is the
   `vx.run.started_at` every task's `vx.task.run_started_at` names.
 
-**Metrics per run**: `vx.tasks.total`, `vx.tasks.failed`,
+**Metrics per run**: `vx.tasks.total` (the terminal's total, not-run tasks included), `vx.tasks.failed`,
 `vx.tasks.cache_hits{source=local|remote}`, what those hits did to the disk as
 `vx.tasks.cache_restored{source=local|remote}` and `vx.tasks.cache_up_to_date`,
 and the `vx.run.duration_ms` and `vx.run.time_saved_ms` (what the hits'

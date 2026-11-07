@@ -68,6 +68,6 @@ you will read it to understand cache invalidation history.
 The current version and the reasoning live in `CLAUDE.md` § Live
 invariants and `docs/caching.md`; the history is in git (the decision log
 was retired 2026-09-02). Current: `vx-cache-v51`, core `SCHEMA_VERSION`
-`v51` (bumped 2026-10-29: the runs rows gained the rest of a results
-row: queued_ms, output_bytes, blocks, flaky_*; a `SCHEMA_VERSION` bump
+`v52` (bumped 2026-11-06: entry_stdout holds a zstd frame of each
+log, not its text; a `SCHEMA_VERSION` bump
 drops the whole index, so it is taken only when a stored shape changes).

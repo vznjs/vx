@@ -43,6 +43,8 @@ export interface LiveTask {
   durationMs: number | null
 }
 
+type Ended = { status: OutcomeView['status']; startedAt: number | null; durationMs: number }
+
 /** What `vx last --live --format json` prints, the snapshot line. */
 export interface LiveSnapshot {
   live: { runId: string; command: string; pid: number; startedAt: number; elapsedMs: number }
@@ -113,11 +115,8 @@ export function serveLive(opts: {
   nodes: () => Iterable<TaskNode>
   warnings: () => readonly string[]
 }): { unlisten(): void; dispose(): void } {
-  const started = new Map<string, number>()
-  const ended = new Map<
-    string,
-    OutcomeView['status'] | { status: OutcomeView['status']; durationMs: number }
-  >()
+  // Each task's start, then its end: one map, not one for each.
+  const seen = new Map<string, number | Ended>()
   const peers = new Map<Socket<Peer>, Peer>()
   let followers = 0
 
@@ -155,12 +154,11 @@ export function serveLive(opts: {
     const tasks: LiveTask[] = []
     for (const node of opts.nodes()) {
       if (isGroupTask(node)) continue
-      const at = started.get(node.id) ?? null
-      const end = ended.get(node.id)
+      const at = seen.get(node.id)
       tasks.push(
-        end !== undefined && typeof end === 'object'
-          ? { taskId: node.id, status: end.status, startedAt: at, durationMs: end.durationMs }
-          : at !== null
+        typeof at === 'object'
+          ? { taskId: node.id, ...at }
+          : at !== undefined
             ? { taskId: node.id, status: 'running', startedAt: at, durationMs: null }
             : { taskId: node.id, status: 'waiting', startedAt: null, durationMs: null },
       )
@@ -184,10 +182,15 @@ export function serveLive(opts: {
   }
 
   const unsubscribe = opts.bus.subscribe((event) => {
-    if (event.kind === 'task:start') started.set(event.node.id, Date.now())
-    else if (event.kind === 'task:complete') {
-      ended.set(event.node.id, {
+    if (event.kind === 'task:start') {
+      const at = seen.get(event.node.id)
+      if (typeof at === 'object') at.startedAt = Date.now()
+      else seen.set(event.node.id, Date.now())
+    } else if (event.kind === 'task:complete') {
+      const at = seen.get(event.node.id)
+      seen.set(event.node.id, {
         status: event.outcome.status,
+        startedAt: typeof at === 'object' ? at.startedAt : (at ?? null),
         durationMs: event.outcome.durationMs,
       })
     }

@@ -59,7 +59,9 @@ describe('a task without a cache block is `no-cache`, never `miss`', () => {
     const r = vx(root, ['run', 'build', '--all'])
     expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
     expect(r.out).toMatch(/success miss +\d+% +(?:—|[\d.]+[KMG]?B) +0B +\d+ local +cached#build/)
-    expect(r.out).toMatch(/success no-cache +\d+% +(?:—|[\d.]+[KMG]?B) +\d+ local +plain#build/)
+    expect(r.out).toMatch(
+      /success no-cache +\d+% +(?:—|[\d.]+[KMG]?B) +(?:—|[\d.]+[KMG]?B) +\d+ local +plain#build/,
+    )
     expect(r.out).toContain('local 1∅ 1↑')
   })
 

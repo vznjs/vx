@@ -74,11 +74,12 @@ So every other package builds after it (`^build`) and includes its key.
 Editing it re-runs them all, and `--affected` selects them.
 
 Each plugin also puts its manager's install settings in every task's
-key, and adds a package's `package.json` to its tasks' inputs:
+key, and adds a package's manifest (`package.json`, or under `pnpm()` a
+`package.json5` or `package.yaml`) to its tasks' inputs:
 
 | Plugin | Install settings in the key |
 | --- | --- |
-| `pnpm()` | `pnpm-workspace.yaml` except `patchedDependencies`, `overrides` and the catalogs (the lockfile records their effect per package), `.npmrc`, the root `package.json`'s `pnpm` field |
+| `pnpm()` | `pnpm-workspace.yaml` except `patchedDependencies`, `overrides` and the catalogs (the lockfile records their effect per package), `.npmrc`, the root manifest's `pnpm` field |
 | `bun()` | `bunfig.toml`, `.npmrc` |
 | `npm()` | `.npmrc` |
 | `yarn()` | `.yarnrc.yml`, `.yarnrc` and `.npmrc` (yarn 1), the root `package.json`'s `workspaces.nohoist` and `installConfig` |

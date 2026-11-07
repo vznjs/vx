@@ -15,6 +15,9 @@
     "ALLOW": "https://token.actions.githubusercontent.com:vznjs/vx:ci.yml",
     "EXPIRY_DAYS": 1,
   },
+  // No cron: the Worker exports no scheduled(). A cron set 2026-10-25
+  // failed daily until 11-06; wrangler clears one only when told [].
+  "triggers": { "crons": [] },
   // Expiry: one bucket lifecycle rule, every object after 1 day
   // (README): names are hashed, so no prefix tells main from a branch.
   "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "vx-cache" }],

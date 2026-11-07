@@ -120,6 +120,12 @@ it('a query SQLite cannot run is refused with its reason', () => {
 
 it('--sql needs a query and combines with nothing but --format and --cache-dir', () => {
   expect(vx('last', '--sql').err).toContain('--sql requires a query')
+  // The next flag was read as the query, then blamed for combining with it.
+  for (const flag of ['--format', '--list']) {
+    const r = vx('last', '--sql', flag, 'json')
+    expect(r.code).toBe(1)
+    expect(r.err).toContain(`--sql requires a query, like 'SELECT * FROM runs' (got flag ${flag}`)
+  }
   for (const extra of [['--list'], ['--failed'], ['--stats'], ['--log', 'a#build'], ['abc12345']]) {
     const r = vx('last', '--sql', 'SELECT 1', ...extra)
     expect(r.code).toBe(1)

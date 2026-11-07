@@ -74,6 +74,27 @@ describe('exec.platforms', () => {
     ])
   })
 
+  // A start with no run behind it opened a single task's live frame
+  // (`┌─ … $ cmd`) that nothing closed, above the skip's row. A skip
+  // blocked upstream never starts either; observers already expect that.
+  for (const continueMode of [undefined, 'always'] as const) {
+    it(`starts no task it skips off its platforms (continue=${continueMode ?? 'default'})`, async () => {
+      const dir = await addProject(root, 'app', CONFIG)
+      const events: string[] = []
+      await run({
+        cwd: dir,
+        tasks: ['other'],
+        ...(continueMode !== undefined ? { continueMode } : {}),
+        log: {
+          ...logger([]),
+          taskStart: (n) => void events.push(`start ${n.id}`),
+          taskComplete: (n, o) => void events.push(`${o.status} ${n.id}`),
+        },
+      })
+      expect(events).toEqual(['skipped app#other'])
+    })
+  }
+
   // `--continue=always` runs a FAILURE's dependants; a platform skip is no
   // failure, and its dependant ran with nothing beneath it and turned the
   // run red.

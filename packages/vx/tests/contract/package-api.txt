@@ -22,7 +22,6 @@ export class Cache implements CacheLayer {
   readonly remoteHits: RemoteHits
   readonly storeDir: string | undefined
   readonly schemaReset: SchemaReset | null
-  readonly formatChange: SchemaReset | null
   readonly storeReset: SchemaReset | null
   static inspect(cacheDir: string): Cache
   constructor(
@@ -97,14 +96,27 @@ export class Cache implements CacheLayer {
     | { tmpPath: string }
     | { plan: true; saved: SavedTree }
   >
+  checkpointOffThread(): void
+  async stopCheckpoints(): Promise<void>
   recordRun(run: RunRecord): void
-  recordRuns(runs: readonly RunRecord[]): void
+  recordRuns(
+    runs: readonly RunRecord[],
+    head?: Pick<InvocationRecord, 'branch' | 'commitSha'>,
+  ): void
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
   recordRemoteErrors(runId: string, errors: readonly (readonly [string, string])[]): void
   stats(opts: CacheStatsOptions = {}): CacheStats
   async prune(options: PruneOptions): Promise<PruneResult>
   async orphanStats(): Promise<{ orphans: number; orphanBytes: number }>
   close(): void
+}
+== class CorruptArtifactError (src/cache/layer.ts)
+export class CorruptArtifactError extends Error {
+  constructor(
+    public readonly hash: string,
+    reason: string,
+    public override readonly cause?: unknown,
+  )
 }
 == class FingerprintWatch (src/orchestrator/fingerprint-watch.ts)
 export class FingerprintWatch {
@@ -147,6 +159,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   oidsFor(projectDir: string): ReadonlyMap<string, string> | undefined
   setOids(projectDir: string, oids: Map<string, string>): void
   setLazyOids(projectDir: string, build: () => Map<string, string>): void
+  absPaths(snapshot: readonly string[]): Array<string | undefined>
   snapshotFor(projectDir: string, inputGlobs: readonly Bun.Glob[]): readonly string[] | undefined
   override set(key: string, value: readonly string[]): this
   override delete(key: string): boolean
@@ -458,9 +471,12 @@ export interface AffectedChanges {
   paths: ReadonlyMap<string, readonly string[]>
   whole: ReadonlySet<string>
   wholeBy?: ReadonlyMap<string, string>
+  wide?: boolean
   nested?: readonly string[]
   dirLinks?: ReadonlySet<string>
   dirLinksIn?: ReadonlyMap<string, ReadonlySet<string>>
+  untrackedIn?: ReadonlyMap<string, ReadonlySet<string>>
+  untracked?: ReadonlySet<string>
 }
 == type AffectedReason (src/orchestrator/affected-tasks.ts)
 export interface AffectedReason {
@@ -468,6 +484,7 @@ export interface AffectedReason {
   file?: string
   project?: string
   via?: string[]
+  wide?: true
 }
 == type ApplyMigrationArgs (src/workspace/migration.ts)
 export interface ApplyMigrationArgs {
@@ -1079,6 +1096,7 @@ export interface LocalFloor {
 == type LocalHistory (src/history/history.ts)
 export interface LocalHistory extends HistoryProvider {
   resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>>
+  durationsFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>>
   hasImported(sha: string): boolean
   importTimings(
     sha: string,
@@ -1409,6 +1427,7 @@ export interface PreparedRun {
   gitFilesCache: GitFilesCache
   workspaceProjectCount: number
   hashCache: HashCache
+  dependents?: ReadonlyMap<string, number>
   empty: null | 'no-tasks-declared' | 'none-affected' | 'empty-graph'
 }
 == type ProjectConfig (src/config.ts)
@@ -1480,7 +1499,7 @@ export interface RemoteCacheLayer {
   has(hash: string): Promise<ArtifactInfo | null>
   hasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
   get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
-  put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void | false>
+  put(hash: string, body: Blob, meta: { durationMs: number; replace?: true }): Promise<void | false>
   missing?(hash: string): void
 }
 == type RemoteHit (src/cache/remote-hits.ts)
@@ -1523,6 +1542,7 @@ export interface ResolvedSandboxConfig {
   allowRead: readonly string[]
   allowWrite: readonly string[]
   pendingWrites?: readonly string[]
+  linkedWrites?: readonly { readonly link: string; readonly target: string }[]
   network?: true | readonly string[]
   denyNetwork?: readonly string[]
   systemInfo?: readonly string[]
@@ -1734,6 +1754,7 @@ export interface RunResult {
   stderr: string
   signal?: string | number
   timedOut?: boolean
+  killedAfterGrace?: true
   cpuMs?: number
   peakRssBytes?: number
   spawnFailed?: true
@@ -1779,6 +1800,7 @@ export interface RunSummaryRecord {
   taskCount: number
   failedCount: number
   abortedCount: number
+  notRunCount?: number
   hitCount: number
   hitLocalCount: number
   hitRemoteCount: number
@@ -1839,6 +1861,7 @@ export interface SandboxViolation {
   hint?: true
   path?: string
   via?: string
+  opened?: 'read' | 'write'
   ignorable?: readonly ('read' | 'write' | 'network' | 'systemInfo')[]
 }
 == type SaveArgs (src/cache/layer.ts)

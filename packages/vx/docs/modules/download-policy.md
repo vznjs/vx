@@ -18,7 +18,7 @@ export function deferralEligibility(nodes: Map<string, TaskNode>): Map<string, s
 export function resolveDownloadModes(args: {
   nodes: Map<string, TaskNode>
   policy: 'all' | 'toplevel' | 'none'
-  localPlaced: ReadonlySet<string> // placed on a local executor — they write in place
+  localPlaced: (id: string) => boolean // placed on a local executor — it writes in place
   remoteOnly: ReadonlySet<string> // `exec.remote: 'only'`
 }): { modeOf: Map<string, DownloadMode>; downgrades: Map<string, string> }
 ```
@@ -28,7 +28,8 @@ export function resolveDownloadModes(args: {
   task; `eager` for a requested or surfaced task under `toplevel`;
   `eager` for an ineligible producer, with the reason in `downgrades`
   (what `--dry` prints); else `deferred`. Groups get no mode. Under
-  `all` the eligibility gate is not even computed.
+  `all` neither a run nor `--dry` asks it: every task is eager, and no
+  per-task map says so.
 - `deferralEligibility(nodes)` → ineligible ids mapped to the reason.
 
 ## The gate
