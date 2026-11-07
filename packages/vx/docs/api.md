@@ -802,10 +802,8 @@ export interface ExecuteSandbox {
   readonly reportLinked: readonly string[]
   readonly config: ResolvedSandboxConfig
   readonly keyed?: readonly string[]
-  readonly dependencyReads?: {
-    readonly reads: readonly string[]
-    readonly reported: readonly string[]
-  }
+  readonly dependencyReads?: readonly string[]
+  readonly dependencyReported?: readonly string[]
 }
 ```
 
@@ -2741,7 +2739,8 @@ export async function sandboxRequestFor(
   keyed: ReadonlySet<string> | undefined,
   nested: readonly string[] = [],
   cacheDir?: string,
-  dependencyOutputs: DependencyReads = { reads: [], reported: [] },
+  dependencyOutputs: readonly string[] = [],
+  dependencyReported: readonly string[] = [],
 ): Promise<SandboxRequest>
 ```
 

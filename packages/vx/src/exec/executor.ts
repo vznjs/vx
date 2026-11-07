@@ -44,14 +44,15 @@ export interface ExecuteSandbox {
    */
   readonly keyed?: readonly string[]
   /**
-   * The dependencies' outputs it may read (absolute), and the heads under
-   * which a refused read is reported, which an executor that builds the
-   * request again hands `sandboxRequestFor` too.
+   * The dependencies' outputs it may read (absolute), which an executor
+   * that builds the request again hands `sandboxRequestFor` too.
    */
-  readonly dependencyReads?: {
-    readonly reads: readonly string[]
-    readonly reported: readonly string[]
-  }
+  readonly dependencyReads?: readonly string[]
+  /**
+   * The heads of those outputs (absolute): a refused read under one is a
+   * file beside them, reported. Handed `sandboxRequestFor` with them.
+   */
+  readonly dependencyReported?: readonly string[]
 }
 
 /** One declared input file, as the cache key saw it. */

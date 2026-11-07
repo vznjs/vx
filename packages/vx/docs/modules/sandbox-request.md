@@ -49,7 +49,8 @@ export async function sandboxRequestFor(
   keyed: ReadonlySet<string> | undefined, // keyed-projects.ts's set; undefined for a task with no `cache`
   nested?: readonly string[], // dirs of the projects nested in this one: a wall its grants do not reach
   cacheDir?: string, // the run's cache dir, walled wherever it is
-  dependencyOutputs?: DependencyReads, // dependencyReads(): the dependencies' outputs it may read
+  dependencyOutputs?: readonly string[], // dependencyReads().reads: the dependencies' outputs it may read
+  dependencyReported?: readonly string[], // dependencyReads().reported: heads whose refused reads are reported
 ): Promise<SandboxRequest>
 export interface DependencyReads {
   readonly reads: readonly string[] // the paths to bind: output files, or directories wholly outputs

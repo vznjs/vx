@@ -203,7 +203,9 @@ export async function sandboxRequestFor(
    */
   cacheDir?: string,
   /** The dependencies' outputs it may read (`dependencyReads`): absolute paths. */
-  dependencyOutputs: DependencyReads = { reads: [], reported: [] },
+  dependencyOutputs: readonly string[] = [],
+  /** The heads walked for them (`dependencyReads`): a refused read under one is reported. */
+  dependencyReported: readonly string[] = [],
 ): Promise<SandboxRequest> {
   // The runtime reads a path holding a bracket as a pattern: on Linux it
   // mounts no such write path (B-60); seatbelt's rules compile it as a
@@ -245,7 +247,7 @@ export async function sandboxRequestFor(
   // own `package.json` depends on (2026-09-05) — when the key
   // moves with it.
   const links = await linkedDeps(depDirs, node.projectDir, workspaceRoot, keyed)
-  depDirs.push(...links.granted, ...dependencyOutputs.reads)
+  depDirs.push(...links.granted, ...dependencyOutputs)
   // bwrap cannot --bind a path that does not exist: the bind silently
   // becomes a no-op and writes to it appear to succeed but never land.
   // Pre-create what the task said it will write — after the grants are
@@ -311,20 +313,11 @@ export async function sandboxRequestFor(
     // withholding exists to stop, not the wall.
     // So is a read beside a dependency's outputs, under the head its glob
     // walked: a file no key answers for (`dependencyReads`).
-    reportLinked: [
-      ...links.withheld.map((w) => w.dir),
-      ...dependencyOutputs.reported.map(toRealPath),
-    ],
+    reportLinked: [...links.withheld.map((w) => w.dir), ...dependencyReported.map(toRealPath)],
     config,
     ...(keyed === undefined ? {} : { keyed: [...keyed] }),
-    ...(dependencyOutputs.reads.length === 0
-      ? {}
-      : {
-          dependencyReads: {
-            reads: [...dependencyOutputs.reads],
-            reported: [...dependencyOutputs.reported],
-          },
-        }),
+    ...(dependencyOutputs.length === 0 ? {} : { dependencyReads: [...dependencyOutputs] }),
+    ...(dependencyReported.length === 0 ? {} : { dependencyReported: [...dependencyReported] }),
   }
   return { sandbox: request, placeholders, withheld: links.withheld }
 }

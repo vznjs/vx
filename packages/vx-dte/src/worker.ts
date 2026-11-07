@@ -444,10 +444,8 @@ export async function runWorker(opts: {
                 : new Set(m.sandbox.keyed.map((k) => path.join(opts.root, k))),
               m.nested.map((n) => path.join(opts.root, n)),
               undefined,
-              {
-                reads: (m.sandbox.reads ?? []).map((r) => path.join(opts.root, r)),
-                reported: (m.sandbox.reported ?? []).map((r) => path.join(opts.root, r)),
-              },
+              (m.sandbox.reads ?? []).map((r) => path.join(opts.root, r)),
+              (m.sandbox.reported ?? []).map((r) => path.join(opts.root, r)),
             )
       const output = new BoundedCapture()
       const req: ExecuteRequest = {
