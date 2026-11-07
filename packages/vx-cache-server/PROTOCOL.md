@@ -120,6 +120,14 @@ vx-max-check-hashes: 500
 vx-max-upload-bytes: 100000000
 ```
 
+A server with a cache in front of its bucket (the Worker's data center
+cache) also names where each answer's reads came from, so a client can
+total a run's split; a server without one sends nothing:
+
+```
+vx-reads: edge=1, bucket=2
+```
+
 `PUT /v1/artifacts/<hash>` (a token that writes, as Turbo's
 `PUT /v8/artifacts/<hash>`), with `Content-Length`: the body is the
 artifact's bytes, stored in the token's scope. One the scope already

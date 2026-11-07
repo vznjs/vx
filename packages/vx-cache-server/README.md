@@ -114,6 +114,8 @@ artifact (a check, a `HEAD`, an upload's skip) is asked of R2, never
 of that copy: it can outlive R2's, and a writer told "held" there would
 skip an upload another data center then cannot read. An upload drops
 the copy in the data center it reaches: R2 had let those bytes go.
+Each answer's `vx-reads` header says how many of its reads that cache
+answered and how many R2 did (PROTOCOL.md).
 A read R2 answers "try again" (10001, 10058) is asked up to three
 times before the request fails `502`. The deploy clears any cron: the
 Worker has no `scheduled()`.

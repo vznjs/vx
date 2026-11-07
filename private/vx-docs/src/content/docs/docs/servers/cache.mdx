@@ -254,6 +254,9 @@ until R2 may drop the result. A repeat check there skips R2.
 
 A miss always asks R2, so a later upload is never hidden.
 
+Each answer's `vx-reads` header counts its reads: `edge` from that
+data center, `bucket` from R2.
+
 ## API
 
 Turbo's routes under `/v1`, each read naming the branches it reads

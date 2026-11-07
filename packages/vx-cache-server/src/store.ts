@@ -17,6 +17,12 @@ export interface Blobs {
   get(name: string): Promise<Blob | null>
   /** Its size, read off its metadata, or null when there is none. */
   size(name: string): Promise<number | null>
+  /**
+   * This request's reads so far: how many a cache in front of the
+   * bucket answered (`edge`) and how many the bucket did. Only a store
+   * with such a cache counts (the Worker's data center cache).
+   */
+  reads?(): { edge: number; bucket: number }
 }
 
 /**

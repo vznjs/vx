@@ -105,7 +105,9 @@ export function r2Blobs(
     const headers = { [SIZE]: String(size), 'cache-control': `max-age=${left}` }
     ctx.waitUntil(cache.then((c) => c.put(heldOf(name), new Response(null, { headers }))))
   }
+  const reads = { edge: 0, bucket: 0 }
   return {
+    reads: () => reads,
     async put(name, body, size) {
       // Before R2's own upload time, so the mark ends no later than R2's copy.
       const started = Date.now()
@@ -132,7 +134,11 @@ export function r2Blobs(
       const key = keyOf(name)
       const hit = await (await cache).match(key)
       // No mark from this copy: it can outlive R2's.
-      if (hit?.body) return { body: hit.body, size: Number(hit.headers.get('content-length')) }
+      if (hit?.body) {
+        reads.edge++
+        return { body: hit.body, size: Number(hit.headers.get('content-length')) }
+      }
+      reads.bucket++
       const o = await again(() => bucket.get(name))
       if (o === null) return null
       mark(name, o.size, o.uploaded.getTime())
@@ -164,8 +170,12 @@ export function r2Blobs(
     size: async (name) => {
       if (expiryDays !== undefined) {
         const held = await (await cache).match(heldOf(name))
-        if (held !== undefined) return Number(held.headers.get(SIZE))
+        if (held !== undefined) {
+          reads.edge++
+          return Number(held.headers.get(SIZE))
+        }
       }
+      reads.bucket++
       const o = await again(() => bucket.head(name))
       if (o === null) return null
       mark(name, o.size, o.uploaded.getTime())

@@ -4,7 +4,7 @@
 // hash, and a read names the exact scope it wants (2026-10-25).
 
 import { type Access, type Authorize, errorJson, notAllowed, Refusal } from '@vzn/vx-devtools'
-import { isCount, isHash, LIMIT_HEADERS, SCOPE_HEADER } from './protocol.js'
+import { isCount, isHash, LIMIT_HEADERS, READS_HEADER, SCOPE_HEADER } from './protocol.js'
 import { blobName, type Blobs } from './store.js'
 
 /** What an operator may set; each defaults, and a backend may cap them. */
@@ -251,8 +251,12 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     // Every /v1/artifacts answer, a refusal too: a client holding older
     // limits (a restart with new ones, a Worker's rollout) learns them from
     // the answer that refused it, or it was refused every check of the run.
-    if (/^\/v1\/artifacts(\/|$)/.test(new URL(req.url).pathname))
+    if (/^\/v1\/artifacts(\/|$)/.test(new URL(req.url).pathname)) {
       for (const [h, v] of Object.entries(limitHeaders)) res.headers.set(h, v)
+      const reads = blobs.reads?.()
+      if (reads !== undefined && reads.edge + reads.bucket > 0)
+        res.headers.set(READS_HEADER, `edge=${reads.edge}, bucket=${reads.bucket}`)
+    }
     return res
   }
 

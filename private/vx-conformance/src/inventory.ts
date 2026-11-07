@@ -498,6 +498,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-cache-server/r2-blobs',
     'vx-cache-server/r2-held',
     'vx-cache-server/r2-put',
+    'vx-cache-server/r2-reads',
     'vx-cache-server/start-line',
     'vx-cache-server/worker',
     'vx-cache/oidc-endpoint',

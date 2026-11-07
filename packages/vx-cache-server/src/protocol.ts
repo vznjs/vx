@@ -14,6 +14,13 @@ export const LIMIT_HEADERS = {
   maxUploadBytes: 'vx-max-upload-bytes',
 } as const
 
+/**
+ * Where a `/v1/artifacts` answer's reads came from, `edge=<n>, bucket=<n>`:
+ * a cache in front of the bucket, or the bucket. Sent only by a server
+ * with such a cache; a client may total it per run.
+ */
+export const READS_HEADER = 'vx-reads'
+
 /** An artifact's hash, as Turbo's spec has it (hex), and at most 128 long. */
 const HASH = /^[a-fA-F0-9]{1,128}$/
 
