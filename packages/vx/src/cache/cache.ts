@@ -4191,7 +4191,6 @@ function absentModedDirs(
   return out.sort((a, b) => b[0].length - a[0].length)
 }
 
-/** A row's path as the tree names its file. */
 /** `code: message`, where Bun's message does not already open with the code. */
 function codeFirst(code: string | undefined, message: string): string {
   return code === undefined || message.startsWith(code) ? message : `${code}: ${message}`
