@@ -114,6 +114,12 @@ export interface ServerSpec {
   readonly sandbox?: { readonly config: SandboxConfig; readonly nested: readonly string[] }
 }
 
+/**
+ * One task's command, as core hands it to an executor. A plugin
+ * executor's `outputs`, `envDefine` and `forwardArgs` are frozen copies:
+ * core saves the outputs after the command, and a config or the run's
+ * args are shared with other tasks.
+ */
 export interface ExecuteRequest {
   /** `${project}#${task}` — for executors that route or log by task. */
   readonly taskId: string

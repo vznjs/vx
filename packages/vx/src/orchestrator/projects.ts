@@ -38,7 +38,7 @@ import { DEFAULT_BUILD, parseDependencySpec } from '../graph/index.js'
 import { workspaceFile } from '../handoff.js'
 import { applyConfigHooks, applyDiscoverHooks, applyProjectHooks, hasHook } from './plugin-host.js'
 import type { BranchFacts, VxPlugin } from './plugin.js'
-import { freezeDeep } from './read-only.js'
+import { freezeDeep, readOnly } from './read-only.js'
 
 /**
  * The workspace config with the plugin `config` stage applied — the first
@@ -421,7 +421,8 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
             warn: args.warn,
             name: meta.name,
             dir: meta.dir,
-            projects: args.projectMetas,
+            // The view `discover` was handed: nx() keys its graph on its identity.
+            projects: readOnly(args.projectMetas),
             lock: args.lock === true,
           },
           (plugin) => {

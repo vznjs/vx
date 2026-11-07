@@ -582,11 +582,14 @@ misses.
 - A verb that names a core verb, or that two packages both declare.
 
 What a plugin observes is read-only: what a `ctx.on` handler, a bus
-subscriber or a `Logger` gets, telemetry records, the run report and a
-`project` hook's `ctx.projects`.
+subscriber or a `Logger` gets, telemetry records and the run report.
+
+So are `ctx.projects` in `discover` and `project`, the task a `key` or
+`admit` hook gets, the nodes a `schedule` hook gets, and a plugin
+executor's `outputs`, `envDefine` and `forwardArgs`.
 
 A write to them throws, so a handler can never turn a failed task into
-a pass.
+a pass, nor a hook change a command after its key is taken.
 
 A sink, `ctx.on` handler or `admit` that throws is switched off for the
 run with one warning. A verb that throws fails in one line.

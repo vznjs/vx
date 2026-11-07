@@ -122,7 +122,7 @@ export interface VxPlugin {
    * feature flag, anything the declared inputs cannot see. Runs once per
    * task per run, before any key is derived. Return undefined to add
    * nothing. Values must be deterministic for the same inputs or the key
-   * never hits.
+   * never hits. The task is read-only (a write throws): `graph` edits tasks.
    */
   key?(
     task: TaskNode,
@@ -154,6 +154,7 @@ export interface VxPlugin {
    * The run waits for this answer before its first task, so it should
    * come from what is at hand (local history); better weights that need
    * a fetch go to `ctx.refine` when they arrive, without holding the run.
+   * The nodes are read-only (a write throws): their keys are taken.
    */
   schedule?(
     nodes: ReadonlyMap<string, TaskNode>,
@@ -171,7 +172,8 @@ export interface VxPlugin {
    * hold no local resources: never asked, never in `ctx.running`. When
    * several plugins answer, all must admit. Core keeps no notion of what a task needs: a plugin that
    * packs memory or CPU learns or declares the numbers itself
-   * (`@vzn/vx-history` packs what past executions used).
+   * (`@vzn/vx-history` packs what past executions used). The task and
+   * `ctx.running` are read-only (a write throws, and admits from then on).
    */
   admit?(task: TaskNode, ctx: AdmitContext): boolean
 
@@ -402,7 +404,11 @@ export interface ConfigContext extends WorkspaceHookContext {
 export interface DiscoverContext extends WorkspaceHookContext {
   /** Where vx's cache lives: a plugin may keep what it read to answer here. */
   readonly cacheDir: string
-  /** The projects found so far: the lock's, then earlier plugins'. */
+  /**
+   * The projects found so far: the lock's, then earlier plugins'. Read-only,
+   * entries too (a write throws): a project is added by returning it. The
+   * same object `project` hooks get as `ctx.projects`.
+   */
   readonly projects: readonly ProjectMeta[]
   /**
    * What `git status` lists in the workspace, workspace-relative: modified,
@@ -441,7 +447,7 @@ export interface ProjectHookContext extends BaseContext {
    * not — as the `discover` stage left them. A plugin whose mapping needs
    * the whole workspace (a `dependsOn` is only valid against every
    * package's scripts at once) reads it here instead of walking the workspace a
-   * second time. The same array is handed to every visit of a run and a
+   * second time. The same array (`discover`'s) is handed to every visit of a run and a
    * new one to the next run — a plugin instance outlives a run under `vx
    * watch`, so a per-run memo keys on this array's identity, never on the
    * process. Frozen, entries too: a hook edits its own project's config,

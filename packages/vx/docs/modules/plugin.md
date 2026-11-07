@@ -151,15 +151,25 @@ a run explorer's record on this API and reads it back through a verb.
   events (a node, an outcome and all they hold: a write throws a
   TypeError naming the property, in any mode), telemetry records and the
   summary are frozen once for every sink, the `RunReport` is frozen, and
-  a `project` hook's `ctx.projects` is frozen, entries too. The write's
+  a `project` hook's `ctx.projects` is frozen, entries too. So is what a
+  stage reads but does not edit: the task a `key` or `admit` hook gets and
+  `ctx.running`, the nodes a `schedule` hook gets (and its map), and
+  `discover`'s `ctx.projects` (one view from `discover` to `project`, so a
+  plugin keyed on its identity, nx(), sees one list). A plugin executor's
+  request carries frozen copies of its `outputs`, `envDefine` and
+  `forwardArgs`. The write's
   throw is the plugin's own: a stage fails the run naming the plugin, an
   observer is switched off with one warning. Before it, a handler that set
   a failed outcome's `status` to `success` passed the run, an
-  `onTaskStart` handler rewrote the command a task ran under its key, a
-  `project` hook that set one project's `dir` to another's had its outputs
-  clean empty that one, and a sink that cleared a record's array crashed a
-  green run. The views are proxies made once per object per run, not
-  copies: ~1 us per task a hook hears (a frozen deep copy was ~5 us); no
+  `onTaskStart`, `schedule` or `admit` hook rewrote the command a task ran
+  under its key, a `project`, `discover`, `key` or `admit` hook that moved
+  a project or task into another's directory ran it there (its outputs
+  clean emptied that one's), an executor that emptied its `outputs` saved
+  an empty artifact a later hit restored, one that set its `envDefine` ran
+  the next task declared alike with it, and a sink that cleared a record's
+  array crashed a green run. The views are proxies made once per object,
+  not copies: ~1 us per task a hook hears (a frozen deep copy was ~5 us),
+  ~0.5 us per task in `key`, ~0.2 us per `admit` ask (10,000 tasks); no
   plugin, no view.
 - `teardown()` and every telemetry sink's `flush()` ARE invoked at
   end-of-run, each under try/catch and a time bound — plugins may rely

@@ -1450,15 +1450,21 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
     const masked = secrets && maskedStreams(secrets, toOut, toErr)
     flushMasked = () => masked?.end()
+    // A plugin executor gets frozen copies of what core goes on reading:
+    // the outputs it saves, the config two tasks declared alike share, the
+    // run's args. One that emptied its outputs saved an empty artifact a
+    // later hit restored; one that set its define ran the next task with it.
+    const own = <T extends object>(v: T): T =>
+      local ? v : Object.freeze(Array.isArray(v) ? ([...v] as T) : { ...v })
     const base: ExecuteRequest = {
       taskId: node.id,
       ...(attempt > 1 ? { attempt } : {}),
       workspaceRoot: args.workspaceRoot,
       command: step.command,
-      forwardArgs: effectiveForwardArgs,
+      forwardArgs: own(effectiveForwardArgs),
       cwd: node.projectDir,
       env,
-      envDefine: step.env?.define ?? {},
+      envDefine: own(step.env?.define ?? {}),
       capture,
       onStdout: masked ? masked.out : toOut,
       onStderr: masked ? masked.err : toErr,
@@ -1481,7 +1487,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       // `--force`/`--no-cache` reach a remote executor's private record
       // through this flag — the policy gates above only cover vx's OWN cache.
       ...(cfgCacheable && !(policy.localRead || policy.remoteRead) ? { refresh: true } : {}),
-      outputs: { files: outputs, workspaceFiles: wsOutputs },
+      outputs: { files: own(outputs), workspaceFiles: own(wsOutputs) },
       ...(args.terminal === true ? { terminal: true as const } : {}),
       ...(args.servers === undefined
         ? {}
