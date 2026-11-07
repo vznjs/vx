@@ -992,6 +992,11 @@ describe('whyDidThisRerunQuery', () => {
     expect(verdict({ prevBlockedBy: ['pkg#build', false] })).toBe(
       'cache key unchanged — the previous run on this key built on a dependency it left out (pkg#build, --exclude-dependencies), so it saved nothing and there was nothing to hit',
     )
+    // This run saved the key: the left-out dependency still explains the
+    // miss, and a prune named an eviction that never happened.
+    expect(verdict({ prevBlockedBy: ['pkg#build', false], entryAt: 2500 })).toBe(
+      'cache key unchanged — the previous run on this key built on a dependency it left out (pkg#build, --exclude-dependencies), so it saved nothing and there was nothing to hit',
+    )
     // CONTROL: a blocker that run recorded is no left-out dependency.
     expect(verdict({ prevBlockedBy: ['pkg#build', true] })).toBe(unsaved)
     expect(verdict({ prevPolicy: 'local:r,remote:' })).toBe(

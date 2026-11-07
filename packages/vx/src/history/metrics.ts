@@ -468,6 +468,22 @@ function unchangedKeyNote(
       return `cache key unchanged — the previous run on this key ran beside a failed task (${before} failed in it) and was not saved: a task run past a failed dependency (--continue) is never cached, so there was nothing to hit`
     }
   }
+  // A task that passed behind a dependency its run never recorded: the
+  // one `--exclude-dependencies` left out, keyed but not run, so nothing
+  // built on it was saved (excluded-keys.ts). Before the prune: a key this
+  // run saved named an eviction that never happened.
+  if (
+    (createdAt === undefined || createdAt >= this_.startedAt) &&
+    prev.status === 'success' &&
+    prev.cacheHit === 0 &&
+    prev.blockedBy !== null &&
+    prev.runId !== null &&
+    db
+      .query('SELECT 1 FROM runs WHERE run_id = ? AND project = ? AND task = ?')
+      .get(prev.runId, ...splitTaskId(prev.blockedBy)) === null
+  ) {
+    return `cache key unchanged — the previous run on this key built on a dependency it left out (${prev.blockedBy}, --exclude-dependencies), so it saved nothing and there was nothing to hit`
+  }
   if (createdAt !== undefined && createdAt >= this_.startedAt) {
     return 'cache key unchanged — no entry for this key was in the cache when it ran (pruned or evicted), so it executed and saved one'
   }
@@ -492,18 +508,6 @@ function unchangedKeyNote(
           )?.p
     if (prevPolicy !== undefined && !writesCache(prevPolicy)) {
       return 'cache key unchanged — the previous run on this key did not write the cache (--no-cache, or a --cache-policy without write), so there was nothing to hit'
-    }
-    // A task that passed behind a dependency its run never recorded: the
-    // one `--exclude-dependencies` left out, keyed but not run, so nothing
-    // built on it was saved (excluded-keys.ts).
-    if (
-      prev.blockedBy !== null &&
-      prev.runId !== null &&
-      db
-        .query('SELECT 1 FROM runs WHERE run_id = ? AND project = ? AND task = ?')
-        .get(prev.runId, ...splitTaskId(prev.blockedBy)) === null
-    ) {
-      return `cache key unchanged — the previous run on this key built on a dependency it left out (${prev.blockedBy}, --exclude-dependencies), so it saved nothing and there was nothing to hit`
     }
     return 'cache key unchanged — the previous run on this key executed but no entry for it is in the cache (its save failed, or it was pruned since), so there was nothing to hit'
   }

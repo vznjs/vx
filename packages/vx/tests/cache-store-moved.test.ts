@@ -4,6 +4,7 @@
 // the store the next run hits, and the dry run named other entries than the
 // real prune took.
 
+import { existsSync, readdirSync } from 'node:fs'
 import { mkdtemp, realpath, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -74,4 +75,17 @@ it('a dry prune names what the real prune takes', async () => {
   const dry = vx(a, 'cache', 'clean', '--max-size', '1B', '--dry', '--format', 'json')
   const wet = vx(a, 'cache', 'clean', '--max-size', '1B', '--format', 'json')
   expect(dry).toEqual(['0', wet[1]!.replace('"dry":false', '"dry":true'), ''])
+}, 30_000)
+
+// The clear asked the index for its store with today's store passed in,
+// so it got today's back, and the store the index recorded stayed on disk.
+it('`vx cache clean` clears the store the index recorded too', async () => {
+  const a = await moved()
+  const stores = () =>
+    readdirSync(path.join(home, '.vx')).filter((id) =>
+      existsSync(path.join(home, '.vx', id, 'cache', 'store.db')),
+    )
+  expect(stores().length).toBeGreaterThan(0)
+  expect(vx(a, 'cache', 'clean')).toEqual(['0', expect.any(String), ''])
+  expect(stores()).toEqual([])
 }, 30_000)
