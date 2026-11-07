@@ -12,12 +12,14 @@ async function main(): Promise<void> {
   // and the run said nothing and exited 0.
   process.on('unhandledRejection', (reason) => {
     process.exitCode = 1
-    void import('./util/index.js').then(({ maskedLine }) =>
-      process.stderr.write(
-        maskedLine(
-          `vx: unhandled rejection: ${reason instanceof Error ? reason.message : String(reason)}`,
-        ) + '\n',
-      ),
+    void Promise.all([import('./ui/index.js'), import('./util/index.js')]).then(
+      ([ui, { maskedLine }]) =>
+        ui.say(
+          'error',
+          maskedLine(
+            `vx: unhandled rejection: ${reason instanceof Error ? reason.message : String(reason)}\n`,
+          ),
+        ),
     )
   })
   try {
