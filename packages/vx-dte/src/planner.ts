@@ -841,6 +841,55 @@ function chainMs(tasks: readonly PlanTask[], workers: readonly PlanWorker[]): nu
 const twins = (a: PlanWorker, b: PlanWorker): boolean =>
   a.cores === b.cores && a.memory === b.memory && a.platform === b.platform && a.at === b.at
 
+type Played = ReturnType<typeof play>
+
+/**
+ * `kept` less each of `added` (its last ones, in the order the run would
+ * start them) the run ends as soon without, tried last first. Sizes come in
+ * turns, so a prefix holds ones it ends as soon without: a second Mac the
+ * plan needed came after a second Linux worker it did not, and main e118ccf
+ * cancelled that one unjoined (2026-10-24). Dropped when the end moves no
+ * later and its platform's moves no further than the margin, or still ends
+ * two warm-ups before the run: room for runners the CI queues. To the run's
+ * end alone, a 110 s guess of an unmeasured chain cut every other platform
+ * to it; to its platform's alone, 4 Macs started for work 2 ended 40 s
+ * before the Linux work (main a1950a2, 2026-11-07: "we optimize for total
+ * wall time"). The live plan and the footer's advice both trim by it.
+ */
+function dropSpare(
+  added: readonly PlanWorker[],
+  kept: readonly PlanWorker[],
+  before: Played,
+  run: (ws: readonly PlanWorker[]) => Played,
+): { kept: PlanWorker[]; before: Played } {
+  let out = [...kept]
+  for (let i = added.length - 1, dropped = false; i >= 0; i--) {
+    const w = added[i]!
+    // Its twin after it stayed, and nothing moved since: without this
+    // one the play is that one's again, so it stays too. Each was a
+    // play of the whole run (2026-11-05).
+    if (i < added.length - 1 && !dropped && twins(w, added[i + 1]!)) continue
+    const without = out.filter((k) => k !== w)
+    // Given no task in a whole play, the play without it is the same.
+    if (!before.first.has(w.id) && before.cut !== true) {
+      out = without
+      dropped = true
+      continue
+    }
+    const after = run(without)
+    const ends = after.ends.get(w.platform) ?? 0
+    dropped =
+      after.end <= before.end &&
+      (ends <= (before.ends.get(w.platform) ?? 0) + MARGIN_MS ||
+        ends <= before.end - Math.max(MARGIN_MS, 2 * w.at))
+    if (dropped) {
+      out = without
+      before = after
+    }
+  }
+  return { kept: out, before }
+}
+
 /** A worker of `s` that joins `at`. */
 function fresh(
   s: { cpu: number; memory: number; platform?: string | undefined; size?: string | undefined },
@@ -934,42 +983,9 @@ export function plan(
   }
   const n = lo
   let kept = [...workers, ...added.slice(0, n)]
-  // Sizes come in turns, so the prefix can hold one the plan ends as soon
-  // without: a second Mac the plan needed came after a second Linux worker
-  // it did not, and main e118ccf cancelled that one unjoined (2026-10-24).
-  // Dropped only when neither the end nor its platform's moves past the
-  // margin: to the run's end alone, a 110 s guess of an unmeasured chain
-  // cut every other platform to it.
+  // The ones the run ends as soon without go (`dropSpare`).
   let before = best < Infinity && n > 0 ? playOf(n) : undefined
-  if (before !== undefined)
-    for (let i = n - 1, dropped = false; i >= 0; i--) {
-      // Its twin after it stayed, and nothing moved since: without this
-      // one the play is that one's again, so it stays too. Each was a
-      // play of the whole run (2026-11-05).
-      if (i < n - 1 && !dropped && twins(added[i]!, added[i + 1]!)) continue
-      const platform = added[i]!.platform
-      const without = kept.filter((k) => k !== added[i])
-      // Given no task in a whole play, the play without it is the same.
-      if (unused(before, added[i]!.id)) {
-        kept = without
-        dropped = true
-        continue
-      }
-      const after = run(without)
-      // Its platform may end later while it still ends two warm-ups before
-      // the run, room for runners the CI queues: 4 Macs started for work
-      // 2 ended 40 s before the Linux work (main a1950a2, 2026-11-07: "we
-      // optimize for total wall time").
-      const ends = after.ends.get(platform) ?? 0
-      dropped =
-        after.end <= before.end &&
-        (ends <= (before.ends.get(platform) ?? 0) + MARGIN_MS ||
-          ends <= before.end - Math.max(MARGIN_MS, 2 * warm(added[i]!.size)))
-      if (dropped) {
-        kept = without
-        before = after
-      }
-    }
+  if (before !== undefined) ({ kept, before } = dropSpare(added.slice(0, n), kept, before, run))
   const release: string[] = []
   // Played with the rest: left out, the next idle one and the plan's end
   // counted on a worker the run lets go.
@@ -2152,8 +2168,14 @@ export function advise(
       if (simulate(tasks, all.slice(0, mid), how) <= bound) hi = mid
       else lo = mid + 1
     }
-    const kept = all.slice(0, lo)
-    return { fleets: { fleet: fleetOf(kept, of), endMs: simulate(tasks, kept, how) }, kept }
+    // Then each the run ends as soon without, as the live plan trims.
+    const { kept, before } = dropSpare(
+      all.slice(0, lo),
+      all.slice(0, lo),
+      play(tasks, all.slice(0, lo), how),
+      (ws) => play(tasks, ws, how),
+    )
+    return { fleets: { fleet: fleetOf(kept, of), endMs: before.end }, kept }
   }
   const declared = sizes.length === 0 ? undefined : halved(sizes)?.fleets
   const lifted = sizes.map((s) => ({ ...s, max: Math.max(s.max, capOf(s.cpu, s.platform)) }))
