@@ -7,7 +7,6 @@
 
 import type { Database } from 'bun:sqlite'
 import { indexDb, Cache, keptSteps, keptWarnings, type RunStep } from '../cache/index.js'
-import { formatBytes } from './format.js'
 import { buildTaskGraph, expandRequested, isDefaultBuild, taskDefinitions } from '../graph/index.js'
 import { flagHint, formatValue, seeHelp } from './help.js'
 import {
