@@ -79,6 +79,8 @@ export function formatRecordedRow(r: RecordedRow, colors?, note?, usualMs?): str
 export function planList(rows: PlannedRow[]): ui.Block
 // a usual time: `~5.2s`, `~42s`, `~2m 05s`
 export function formatExpected(ms): string
+// a size as the grid's mem and outputs cells print it: `512B`, `48KB`, `3.6MB`, `1.2GB`
+export function formatSize(bytes): string
 export function formatRunningHeader(colors?): string
 // the bold violet title over each list: `Finished`, `Running`
 // `±usual`: the distance from `usualMs`, `—` for null, blank for undefined

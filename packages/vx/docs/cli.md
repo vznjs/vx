@@ -3430,7 +3430,7 @@ run shows: the median of the task's last five timings on the branch,
 else on any branch), p99 of the executed successes, pass and hit rate, failure mode (`stable`,
 `flaky-recoverable`, `flaky-fatal`), the largest peak RSS and the mean CPU
 parallelism (a hit counts what its producing run used), one table row
-per task. A task id narrows to that task, a task name to it in every
+per task, in the run grid's units (`3.6MB`, cpu `127%`, `—` where unknown). A task id narrows to that task, a task name to it in every
 project; one the window has no run of is refused, exit 1. The branch is
 `--branch`, else `VX_RUN_BRANCH`, else git's, then the CI provider's, as
 a run's. With `--format json` it is `{ window, branch, stats }`, each row `{ taskId, runs,
