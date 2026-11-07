@@ -1854,17 +1854,21 @@ $ vx cache clean
   .vx/cache
   /home/me/.vx/3f2a9c01b4d5e6f7/cache
 
+  run history cleared too: vx last and vx why start over
+
 $ vx cache clean --global --dry
 › vx cache clean  would free 3.1 GB (dry run)
 
   .vx/cache
   /home/me/.vx/3f2a9c01b4d5e6f7/cache
   /home/me/.vx/9b8e7d6c5a4f3e2d/cache
+
+  run history goes too: vx last and vx why start over
 ```
 
 It waits for a `vx run` on this workspace to finish first (the run's
 lock), and for every vx process holding a store it deletes open (a run
-in another checkout of the repository), as a trim does. With `--format json` it prints
+in another checkout of the workspace), as a trim does. With `--format json` it prints
 `{ dry, cleared, bytesFreed }` (`schemas/cache.json`), `cleared`
 listing the directories.
 

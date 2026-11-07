@@ -74,7 +74,11 @@ describe('vx cache clean with no bound clears the cache', () => {
       const real = await vx(['cache', 'clean'])
       expect({ code: real.code, err: real.err }).toEqual({ code: 0, err: '' })
       expect(real.out).toMatch(/^✓ vx cache clean {2}freed \d[^\n]*\n\n/)
-      expect(real.out.split('\n\n')[1]).toBe(`  .vx/cache\n  ${st}\n`)
+      expect(real.out.split('\n\n').slice(1)).toEqual([
+        `  .vx/cache\n  ${st}`,
+        // The index holds the run history: say so where the user decides.
+        '  run history cleared too: vx last and vx why start over\n',
+      ])
       expect([existsSync(path.join(root, '.vx', 'cache')), existsSync(st)]).toEqual([false, false])
       // The workspace config, the lock and .vx/.gitignore stay.
       expect(readdirSync(path.join(root, '.vx')).sort()).toEqual(dotVx.filter((e) => e !== 'cache'))

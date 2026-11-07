@@ -431,6 +431,10 @@ async function clearHeld(
       'out',
       freedStatus(dry, bytes, shown.length > 0),
       ...(shown.length > 0 ? [ui.text(...shown)] : []),
+      // The index holds the run history: said where the user decides.
+      ...(doomed.includes(path.resolve(dir))
+        ? [ui.text(`run history ${dry ? 'goes' : 'cleared'} too: vx last and vx why start over`)]
+        : []),
     )
   return 0
 }
