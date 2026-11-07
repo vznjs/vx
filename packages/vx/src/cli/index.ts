@@ -172,7 +172,9 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
         // A name that is no verb here is the typo `vx rnu` is, not a request
         // for the whole reference: it printed 145 lines and no hint.
         const resolved = await (await plugins()).resolvePluginCommand(verb)
-        const unknown = resolved === null || 'declaredVerbs' in resolved
+        // A workspace that failed to load cannot say the verb exists: the
+        // whole reference and exit 0 hid the broken file (`vx okk` says so).
+        const unknown = resolved === null || !('plugin' in resolved)
         if (unknown && verb.startsWith('-')) {
           return refuse(
             'help',
@@ -182,15 +184,20 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
           )
         }
         if (unknown) {
-          const declared = resolved === null ? [] : resolved.declaredVerbs
+          const declared =
+            resolved !== null && 'declaredVerbs' in resolved ? resolved.declaredVerbs : []
+          const loadNote =
+            resolved !== null && 'loadError' in resolved
+              ? ` (plugin verbs could not be looked up: .vx/workspace failed to load: ${resolved.loadError})`
+              : ''
           return refuse(
             'help',
             rest,
-            `unknown command: ${verb}${didYouMeanVerb(verb, declared)} (see \`vx help\`)`,
+            `unknown command: ${verb}${didYouMeanVerb(verb, declared)}${loadNote} (see \`vx help\`)`,
             'VX_E_UNKNOWN_COMMAND',
           )
         }
-        if (resolved !== null && !('loadError' in resolved)) return dispatch(verb, ['--help'])
+        return dispatch(verb, ['--help'])
       }
       await printHelp(await (await plugins()).pluginCommandHelp(), core ? verb : undefined)
       return 0
@@ -263,7 +270,7 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
         // that returned 256 (a count of failures, say) exited 0.
         if (!Number.isInteger(code) || code < 0 || code > 255) {
           throw new UserError(
-            `plugin '${resolved.plugin.name}': command '${command}' resolved ${typeof code === 'number' || typeof code === 'bigint' || code === undefined ? String(code) : JSON.stringify(code)} instead of an exit code (an integer 0–255)`,
+            `plugin '${resolved.plugin.name}': command '${command}' resolved ${typeof code === 'bigint' ? `${String(code)}n` : typeof code === 'number' || code === undefined ? String(code) : JSON.stringify(code)} instead of an exit code (an integer 0–255)`,
           )
         }
         return code
