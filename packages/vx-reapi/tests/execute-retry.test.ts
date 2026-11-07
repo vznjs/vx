@@ -10,7 +10,7 @@ import path from 'node:path'
 import type { ExecuteRequest } from '@vzn/vx'
 import protobuf from 'protobufjs'
 import { reapiExecutor } from '../src/executor.js'
-import { ReapiClient } from '../src/wire.js'
+import { ReapiClient, reattach } from '../src/wire.js'
 import { startFakeReapi, type FakeReapi } from './helpers/fake-reapi.js'
 
 let fake: FakeReapi
@@ -153,12 +153,16 @@ describe('Execute answering FAILED_PRECONDITION', () => {
 
 describe('an operation the client gives up on', () => {
   it('is cancelled by name', async () => {
+    const saved = [...reattach.backoffMs]
+    reattach.backoffMs = [1, 2, 4]
     fake.onExecute = () => ({ stages: ['EXECUTING'], endEarly: true })
-    const { outcome, calls } = await run()
+    // Re-attaches that deliver nothing spend the budget; the client gives up.
+    fake.fail('WaitExecution', 14, 4)
+    const { outcome, calls } = await run().finally(() => {
+      reattach.backoffMs = saved
+    })
     const name = calls.find((c) => c.method === 'WaitExecution')!.request['name']
-    expect(outcome).toBe(
-      `execution stream for ${String(name)} closed before the operation finished`,
-    )
+    expect(outcome).toContain('14 UNAVAILABLE')
     expect(
       calls.filter((c) => c.method === 'CancelOperation').map((c) => c.request['name']),
     ).toEqual([name])

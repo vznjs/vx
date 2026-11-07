@@ -318,8 +318,13 @@ A task placed `exec.remote: 'only'` fails with that reason instead. Unset,
 the task's own `exec.timeout` bounds the queue as it bounds the run (the
 task fails as timed out); with neither, the wait is unbounded.
 A stream that drops with a transient status, or ends cleanly before its
-operation is done, re-attaches with `WaitExecution` (three times, backing
-off 100, 400 and 1600 ms) rather than running the action again. If
+operation is done, re-attaches with `WaitExecution` rather than running the
+action again. Only attaches that deliver no operation spend the budget:
+the fourth such in a row fails the task. A stream that delivered one (a
+proxy cutting a long, progressing action) starts the count over, so a
+long action survives any number of cuts. The wait before each re-attach
+grows per cut in a row (100, 400, 1600, then 5000 ms) and starts over once
+a stream advances the stage or stays open 10 s. If
 `WaitExecution` answers NOT_FOUND — the server lost the operation, as a
 restart does — nothing is left running to re-attach to, and the action is
 executed again on the same budget. Past the budget the task fails and the
@@ -330,10 +335,12 @@ after `FindMissingBlobs` or never stored) uploads them again — the blobs its
 `FindMissingBlobs` — and executes once more; a second FAILED_PRECONDITION
 fails the task.
 Once a worker reports EXECUTING, the task's `exec.timeout` (or
-`executeTimeoutMs`) bounds the wait, and the bound holds across a
-re-attach: firing during the backoff between a dropped stream and its
-`WaitExecution`, it ends the task there rather than being lost. Past it
-the operation is cancelled too (a refused cancel is a warning).
+`executeTimeoutMs`, 10 minutes when neither is set) bounds the wait, and
+the bound holds across a re-attach: firing during the backoff between a
+dropped stream and its `WaitExecution`, it ends the task there rather than
+being lost. It is also what ends a server that answers EXECUTING and hangs
+up on every attach. Past it the operation is cancelled too (a refused
+cancel is a warning).
 The run stopping (Ctrl-C, an embedder's abort) or the task's `exec.timeout`
 closes the stream and cancels the operation with `CancelOperation`, and an
 action not yet submitted is not sent. A record replay, an upstream record
