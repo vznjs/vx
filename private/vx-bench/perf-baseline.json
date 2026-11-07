@@ -13,7 +13,7 @@
         "sqlite statement": 49
       },
       "restore run @25": {
-        "hash xxh3": 85,
+        "hash xxh3": 135,
         "spawn git": 3,
         "sqlite statement": 71
       },
@@ -39,7 +39,7 @@
         "sqlite statement": 127
       },
       "restore run @100": {
-        "hash xxh3": 310,
+        "hash xxh3": 510,
         "spawn git": 3,
         "sqlite statement": 224
       },
