@@ -31,7 +31,7 @@ import {
 import { configImportOwners, realpathOr } from './config-imports.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 import { bunPatchFiles } from './fingerprint.js'
-import { PROJECT_CONFIG_FILENAMES, REVIEW_FILE, type ProjectMeta } from './workspace.js'
+import { inVxDir, PROJECT_CONFIG_FILENAMES, REVIEW_FILE, type ProjectMeta } from './workspace.js'
 
 /**
  * Every git call here goes through these two: a git that is not on PATH
@@ -725,6 +725,8 @@ async function removedProjectConfigs(
   for (const [rel, bytes] of atBase) {
     // A manifest's directory may never have been a project; a config's was.
     if (bytes === null || !CONFIG_NAMES.has(path.posix.basename(rel))) continue
+    // Under `.vx` no config made a project, at the base either.
+    if (inVxDir(rel)) continue
     const dir = path.resolve(workspaceRoot, path.posix.dirname(rel)).normalize('NFC')
     if (dirs.has(dir)) continue
     if (await Bun.file(path.join(workspaceRoot, rel)).exists()) continue

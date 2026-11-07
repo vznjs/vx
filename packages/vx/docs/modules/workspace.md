@@ -142,7 +142,9 @@ marks the root all the same and is refused by name, `VX_E_CONFIG`. Without one t
 
 `vx lock`'s walk; a run never walks. In git: `git ls-files` over the
 config names, tracked and untracked, git's ignore rules applied, so a
-config git ignores is no project. A nested repository is one entry to the
+config git ignores is no project, and none under a `.vx` directory, at
+any depth, as the walk skips it (`.vx/workspace.*` still marks a nested
+workspace). A nested repository is one entry to the
 outer git (a submodule's gitlink, an embedded repository's untracked
 `dir/`): its own git lists its configs, or a walk when it has no `.git`,
 as the input enumeration expands one. Outside git: a walk that skips

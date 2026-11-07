@@ -2010,7 +2010,8 @@ holding a `vx.config.*`, in any language: `vx lock` lists them with git
 nested repository's own configs too), or walks the tree outside git
 (every directory but `.git` and `.vx`), and leaves out any under a
 nested `.vx/workspace.*`, even one the ignore rules hide, or under a
-`node_modules` (an installed package is no project, ignored or not). Configs are
+`node_modules` (an installed package is no project, ignored or not) or
+a `.vx` (vx's own state, in git as outside it). Configs are
 programs; `vx lock` evaluates them in the current environment and
 stores the post-evaluation objects, by directory (version 5; a lock an
 earlier vx wrote is refused, "re-run `vx lock`"). A project is named by
@@ -2080,7 +2081,10 @@ cwd's project or a `--filter` leaves unresolved while one of the
 selected projects holds such a config). An entry edited by
 hand into a shape `vx lock` could not write fails the run with
 `.vx/projects.lock.json is invalid, run \`vx lock\``, checked only once
-something has crashed, so a normal run pays nothing for it.
+something has crashed, so a normal run pays nothing for it. The shapes a
+run walks are checked as it reads the lock: a `name`that is no string,`tags`no list,`tasks`no object, a task no object or its`dependsOn` no
+list is refused there (`entry for "b" is malformed — re-run \`vx lock\``),
+where a string `dependsOn` was walked per character.
 
 ### `--check`
 

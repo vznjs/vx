@@ -443,12 +443,13 @@ async function gitConfigs(root: string): Promise<string[]> {
         ':(glob)**/.vx/workspace.*',
         `:(glob)**/${REVIEW_FILE}`,
         NOT_INSTALLS,
+        ...NOT_VX_STATE,
       ],
       true,
     ),
-    gitZ(root, ['ls-files', '-z', '--stage', '--', NOT_INSTALLS]),
+    gitZ(root, ['ls-files', '-z', '--stage', '--', NOT_INSTALLS, NOT_IN_VX]),
     // An embedded repository is the one untracked entry git lists as `dir/`.
-    gitZ(root, ['ls-files', '-z', '--others', '--exclude-standard', '--', NOT_INSTALLS]),
+    gitZ(root, ['ls-files', '-z', '--others', '--exclude-standard', '--', NOT_INSTALLS, NOT_IN_VX]),
   ])
   // A submodule's `.git` is a file, an embedded repository's a directory.
   const isRepo = (rel: string): Promise<boolean> =>
@@ -478,6 +479,23 @@ async function gitConfigs(root: string): Promise<string[]> {
  * installed package's vx.config as one.
  */
 const NOT_INSTALLS = ':(exclude,glob)**/node_modules/**'
+
+/**
+ * Nothing under a `.vx` directory is a project, as the walk outside git
+ * skips it: a config git listed in `.vx/cache/x` made one only in git.
+ */
+const NOT_IN_VX = ':(exclude,glob)**/.vx/**'
+/** `NOT_IN_VX` that keeps `.vx/workspace.*`, which marks a nested workspace. */
+const NOT_VX_STATE = [
+  ':(exclude,glob)**/.vx/*/**',
+  ':(exclude,glob)**/.vx/vx.config.*',
+  `:(exclude,glob)**/.vx/${REVIEW_FILE}`,
+]
+
+/** Whether root-relative POSIX `rel` lies under a `.vx` directory, where no project lives. */
+export function inVxDir(rel: string): boolean {
+  return rel.startsWith('.vx/') || rel.includes('/.vx/')
+}
 
 /**
  * `git <args>`'s NUL-separated output at `cwd`. `strict`: a path not valid
