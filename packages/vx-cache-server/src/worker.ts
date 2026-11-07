@@ -89,8 +89,9 @@ const SIZE = 'vx-size'
  * With `expiryDays`, the bucket's lifecycle rule, whether R2 holds an
  * object is kept there too, once R2 takes, heads or serves it, until the
  * rule may drop it: counted from its upload, so a mark never outlives
- * R2's copy. Only "held" is kept: a
- * kept "missing" would hide an upload that lands later.
+ * R2's copy unless it is deleted by hand, which a download R2 misses
+ * clears. Only "held" is kept: a kept "missing" would hide an upload
+ * that lands later.
  */
 export function r2Blobs(
   bucket: R2Bucket,
@@ -134,7 +135,12 @@ export function r2Blobs(
       // No mark from this copy: it can outlive R2's.
       if (hit?.body) return { body: hit.body, size: Number(hit.headers.get('content-length')) }
       const o = await again(() => bucket.get(name))
-      if (o === null) return null
+      if (o === null) {
+        // R2 let it go before its expiry (a deletion by hand): the next
+        // check asks R2 again, and its miss sends the upload.
+        if (expiryDays !== undefined) ctx.waitUntil(cache.then((c) => c.delete(heldOf(name))))
+        return null
+      }
       mark(name, o.size, o.uploaded.getTime())
       // The copy is R2 read again, never a tee of the client's body: a tee
       // on Workers reads at its slower branch's pace, and the cache write
@@ -161,8 +167,12 @@ export function r2Blobs(
     // which outlives R2's (expiry, a wipe), so a writer told "held" there
     // skipped its upload and a reader in another data center found nothing
     // (2026-10-27: a DTE worker's save, then the run's read, a 404).
-    size: async (name) => {
-      if (expiryDays !== undefined) {
+    // A PUT's skip asks R2 alone: a mark outlives a deletion by hand, and
+    // the upload it answered was dropped until the mark's expiry. It costs
+    // no head a mark saved: a client checks first and uploads only what
+    // the check missed, which no mark holds.
+    size: async (name, fromBucket) => {
+      if (expiryDays !== undefined && fromBucket !== true) {
         const held = await (await cache).match(heldOf(name))
         if (held !== undefined) return Number(held.headers.get(SIZE))
       }

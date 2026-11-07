@@ -435,10 +435,20 @@ describe('VxCacheLayer', () => {
     ])
   })
 
-  it("names the server's own words when it refuses an upload", async () => {
-    expect(
-      layer(srv.url, write).put('ee55', new Blob([new Uint8Array(65)]), { durationMs: 1 }),
-    ).rejects.toThrow('HTTP 413: an upload is at most 64 bytes')
+  // Before any answer named the limits, the PUT is sent: its 413 names
+  // them (PROTOCOL.md), and was a thrown error where a later one was said.
+  it('says an upload the server refuses for its size, not uploaded, before it named its limits', async () => {
+    const c = layer(srv.url, write)
+    const said: string[] = []
+    c.warn = (m) => said.push(m)
+    expect(await c.put('ee55', new Blob([new Uint8Array(65)]), { durationMs: 1 })).toBe(false)
+    const before = srv.seen.length
+    expect(await c.put('ee56', new Blob([new Uint8Array(65)]), { durationMs: 1 })).toBe(false)
+    expect(srv.seen.length).toBe(before)
+    expect(said).toEqual([
+      "[vx] vx-cache: ee55 is 65 bytes, over the server's upload limit of 64: not uploaded",
+      "[vx] vx-cache: ee56 is 65 bytes, over the server's upload limit of 64: not uploaded",
+    ])
   })
 
   // fetch drops only Authorization on a cross-origin redirect: `headers`
@@ -543,7 +553,7 @@ describe("the server's limits", () => {
       expect((await c.hasMany(keys))?.size).toBe(0)
       expect([lookups[0], ...lookups.slice(1).sort((a, b) => a - b)]).toEqual([3, 1, 2])
       handle = made(2, 4)
-      await expect(c.put('b1', new Blob(['12345']), { durationMs: 1 })).rejects.toThrow('HTTP 413')
+      expect(await c.put('b1', new Blob(['12345']), { durationMs: 1 })).toBe(false)
       // Refused again (a limit that names less than it takes): sent once more, no further.
       const refusing = createCacheServer({
         blobs: memBlobs(blobs),
@@ -569,6 +579,7 @@ describe("the server's limits", () => {
       expect(lookups).toEqual([3, 1, 1, 1])
       expect(await c.put('b2', new Blob(['12345']), { durationMs: 1 })).toBe(false)
       expect(said).toEqual([
+        "[vx] vx-cache: b1 is 5 bytes, over the server's upload limit of 4: not uploaded",
         "[vx] vx-cache: b2 is 5 bytes, over the server's upload limit of 4: not uploaded",
       ])
     } finally {

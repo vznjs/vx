@@ -115,7 +115,8 @@ The Bun server and its image do not start without an `ALLOW`.
 | `EXPIRY_DAYS` | unset: every lookup asks R2 | Workers: your bucket's expiry in days, so a repeat check skips R2 ([How it stores results](#how-it-stores-results)) |
 
 vx learns the limits from the server's answers. A check over them is
-refused and sent again in smaller ones.
+refused and sent again in smaller ones; a result over the upload limit
+is not uploaded, with a warning.
 
 On Workers each lookup is one subrequest, so a higher
 `MAX_CHECK_HASHES` must fit your Cloudflare plan.
@@ -252,7 +253,10 @@ With `EXPIRY_DAYS` set to the bucket's expiry, an upload, a check or a
 download that R2 answers leaves an "exists" mark in that data center
 until R2 may drop the result. A repeat check there skips R2.
 
-A miss always asks R2, so a later upload is never hidden.
+A miss always asks R2, so a later upload is never hidden. An upload
+always asks R2 whether it holds the result, never the mark, so a
+result deleted by hand is stored again; a download R2 misses drops the
+mark.
 
 ## API
 
