@@ -565,6 +565,12 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       capsPromise = undefined
       throw err
     }))
+  // The record each execution here wrote, by vx key, for its dependants to
+  // graft: a run core will not save writes under a key no later run asks for
+  // (as vx-dte's `runKey`), since the key's own would replay as its hit
+  // (`unsaved`). Null: deferred outputs no record holds.
+  const runNonce = crypto.randomUUID()
+  const ranHere = new Map<string, Digest | null>()
   const executor: TaskExecutor = {
     name: 'vx/reapi',
     remote: true,
@@ -809,8 +815,19 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
                 }
                 return { local: present }
               }
-              const record = await client.getActionResult(execDigestFor(up.hash))
-              if (record === null) return {}
+              const known = ranHere.get(up.hash)
+              const record =
+                known === null
+                  ? null
+                  : await client.getActionResult(known ?? execDigestFor(up.hash))
+              if (record === null) {
+                // An upstream with nothing to bring (no outputs, or one that
+                // ran here locally and wrote none) has no record either.
+                if (known === undefined && up.outputs.length === 0) return {}
+                throw new UserError(
+                  `upstream ${up.taskId} outputs are neither on this machine nor in the remote store — re-run it (e.g. --force)`,
+                )
+              }
               // A record can OUTLIVE its blobs: the AC and the CAS evict on
               // independent schedules. On THIS branch nothing is local (that is
               // why we are grafting), so an evicted blob has no local path to
@@ -1146,14 +1163,25 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       // The record is written while the outputs come down: the two share
       // nothing, and in turn the record's round trips (a stdout blob, Tree
       // reads, the update) all sat before the first output byte (F-27).
-      // Never for a run core will not save (`unsaved`): the record would
-      // replay as that key's hit (executor.ts contract).
+      // A run core will not save (`unsaved`) records under this run's own
+      // key instead: under the task's it would replay as that key's hit
+      // (executor.ts contract), and with none a deferred one's dependants
+      // had nothing to graft.
+      const hasOutputs =
+        (result.output_files ?? []).length +
+          (result.output_directories ?? []).length +
+          (result.output_symlinks ?? []).length >
+        0
+      if (req.cacheKey !== undefined && deferred && hasOutputs && (result.exit_code ?? 0) === 0) {
+        ranHere.set(req.cacheKey, null)
+      }
       const recording: Promise<void> =
-        req.cacheKey !== undefined &&
-        req.unsaved !== true &&
-        (result.exit_code ?? 0) === 0 &&
-        tree.moved.length === 0
+        req.cacheKey !== undefined && (result.exit_code ?? 0) === 0 && tree.moved.length === 0
           ? (async (cacheKey: string): Promise<void> => {
+              const recordKey =
+                req.unsaved === true
+                  ? execDigestFor(`${cacheKey}\0${runNonce}`)
+                  : execDigestFor(cacheKey)
               // A whole-tree capture's path is '' — the working directory itself,
               // which `${wd}/` spelled `pkg/`: never matched by a decomposition,
               // and grafted as a directory with an empty name (item 1040).
@@ -1240,7 +1268,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
                 recorded.symlinks.push(...split.symlinks)
               }
               await client
-                .updateActionResult(execDigestFor(cacheKey), {
+                .updateActionResult(recordKey, {
                   exit_code: 0,
                   ...(out.digest === undefined ? {} : { stdout_digest: out.digest }),
                   ...(out.raw === undefined ? {} : { stdout_raw: out.raw }),
@@ -1250,6 +1278,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
                   output_directories: recorded.directories,
                   output_symlinks: recorded.symlinks,
                 })
+                .then(() => ranHere.set(cacheKey, recordKey))
                 .catch((err: Error) =>
                   warn(
                     `[vx] vx-reapi: could not record execution for ${req.taskId}: ${err.message}`,
