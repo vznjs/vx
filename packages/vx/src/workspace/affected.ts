@@ -11,8 +11,10 @@ import { lstat, readlink, realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
   executablePath,
+  gitCaseArgs,
   gitEnv,
   gitSpawnRefusal,
+  ignoreCaseLies,
   isExecutableMissing,
   isInstalledPath,
   notAWorkTree,
@@ -287,7 +289,17 @@ export async function affectedChanges(
   // itself is the base, as before. Turbo's two-dot range `A..HEAD` is the
   // one form that diffs from A itself.
   // Asked beside the base, not after it: the diff's shape waits on it.
-  const partial = isPartialClone(args.workspaceRoot).catch(() => false)
+  const config = gitConfigFacts(args.workspaceRoot).catch(() => ({
+    partial: false,
+    ignoreCase: false,
+  }))
+  const partial = config.then((c) => c.partial)
+  // `core.ignorecase=true` on a disk that tells case apart hid a new
+  // `a.txt` beside the tracked `A.txt` from the untracked listings.
+  const caseArgs = config.then((c) => {
+    if (c.ignoreCase) ignoreCaseLies(args.workspaceRoot, args.workspaceRoot)
+    return gitCaseArgs(args.workspaceRoot)
+  })
   const base = fromMergeBase
     ? await mergeBase(args.workspaceRoot, since)
     : await rangeBase(args.workspaceRoot, since)
@@ -327,7 +339,13 @@ export async function affectedChanges(
     // `--affected` skips a package that genuinely has new work.
     (async () =>
       (await args.untracked?.().catch(() => null)) ??
-      gitPaths(args.workspaceRoot, ['ls-files', '--others', '--exclude-standard', '-z']))(),
+      gitPaths(args.workspaceRoot, [
+        ...(await caseArgs),
+        'ls-files',
+        '--others',
+        '--exclude-standard',
+        '-z',
+      ]))(),
   ])
 
   const projects = await args.projects
@@ -368,7 +386,9 @@ export async function affectedChanges(
       (await listIndex()).filter((e) => e.flagged).map((e) => e.path))(),
   ])
   const dirLinkSet = new Set<string>()
-  changed.push(...(await linkedChanges(args.workspaceRoot, links, changed, dirLinkSet)))
+  changed.push(
+    ...(await linkedChanges(args.workspaceRoot, links, changed, dirLinkSet, await caseArgs)),
+  )
   // A path git was told not to look at (`update-index --assume-unchanged`,
   // `--skip-worktree`): `git diff` reports no edit to it, and the key
   // hashes it from disk, so the task missed and selection left it out.
@@ -916,6 +936,8 @@ async function linkedChanges(
   changed: readonly string[],
   /** Given each link to a directory. */
   dirs: Set<string>,
+  /** `gitCaseArgs`, for the ignored listing. */
+  caseArgs: readonly string[],
 ): Promise<string[]> {
   if (links.length === 0) return []
   const realRoot = await realpath(workspaceRoot).catch(() => workspaceRoot)
@@ -938,6 +960,7 @@ async function linkedChanges(
   if (inside.length === 0) return out
   const named = inside.map((l) => l.target).filter((t) => t !== '')
   const ignored = await gitPaths(workspaceRoot, [
+    ...caseArgs,
     'ls-files',
     '--others',
     '--ignored',
@@ -1127,14 +1150,32 @@ async function statOnly(
   return same
 }
 
-/** A remote that serves missing objects on demand: `--filter` on a clone or a fetch. */
-async function isPartialClone(workspaceRoot: string): Promise<boolean> {
+/**
+ * Two config facts in one `git config`: `partial`, a remote that serves
+ * missing objects on demand (`--filter` on a clone or a fetch), and
+ * `ignoreCase`, `core.ignorecase` set true.
+ */
+async function gitConfigFacts(
+  workspaceRoot: string,
+): Promise<{ partial: boolean; ignoreCase: boolean }> {
   const proc = spawnGit(
-    ['config', '--get-regexp', String.raw`^(remote\..*\.promisor|extensions\.partialclone)$`],
+    [
+      'config',
+      '--get-regexp',
+      String.raw`^(remote\..*\.promisor|extensions\.partialclone|core\.ignorecase)$`,
+    ],
     workspaceRoot,
   )
   const [out] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
-  return out.split('\n').some((l) => l.startsWith('extensions.') || l.endsWith(' true'))
+  let partial = false
+  let ignoreCase = false
+  for (const l of out.split('\n')) {
+    // A bare key (`[core] ignorecase`) is true, as git reads it.
+    if (l.startsWith('core.ignorecase'))
+      ignoreCase = /^core\.ignorecase( (true|yes|on|[-+]?0*[1-9]\d*[kmg]?))?$/i.test(l)
+    else if (l.startsWith('extensions.') || l.endsWith(' true')) partial = true
+  }
+  return { partial, ignoreCase }
 }
 
 /**
@@ -1421,7 +1462,7 @@ async function rangeBase(workspaceRoot: string, ref: string): Promise<string> {
   return ref
 }
 
-/** The clones `fetchOrigin` fetched into, so made partial: `isPartialClone` may have answered first. */
+/** The clones `fetchOrigin` fetched into, so made partial: `gitConfigFacts` may have answered first. */
 const fetchedInto = new Set<string>()
 
 /** Deepening stops here (2,047 commits on each side): past it, the base is the user's to fetch. */

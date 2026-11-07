@@ -9,6 +9,10 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { GitFilesCache, populateGitFilesCache, runGitLsFiles } from '../src/cache/inputs.js'
+import { gitFiles } from '../src/cli/watch-filter.js'
+import { listedSync } from '../src/util/git-ignored.js'
+import { affectedProjects } from '../src/workspace/affected.js'
+import { findProjectConfigs } from '../src/workspace/workspace.js'
 
 function git(cwd: string, ...args: string[]): void {
   const p = Bun.spawnSync({
@@ -68,5 +72,41 @@ describe.skipIf(folds)('core.ignorecase on a case-sensitive filesystem', () => {
     ])
     // The mid-run re-enumeration of the project sees it too.
     expect(runGitLsFiles(p).files.toSorted()).toEqual(['src/A.txt', 'src/a.txt'])
+  })
+
+  // `--affected` with no run beside it lists the untracked files itself.
+  it('--affected selects the project a case-twin file was added to', async () => {
+    const p = await setUp()
+    await mkdir(path.join(root, 'q'))
+    await writeFile(path.join(root, 'q/x.txt'), 'x')
+    git(root, 'add', 'q')
+    git(root, 'commit', '-q', '-m', 'q')
+    const projects = ['p', 'q'].map((name) => ({
+      name,
+      dir: path.join(root, name),
+      packageJson: { name } as never,
+      configPath: null,
+    }))
+    expect([...(await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects }))]).toEqual(
+      [path.basename(p)],
+    )
+  })
+
+  // Watch's inventory, `vx lock`'s listing and discovery read what the
+  // run's enumeration learned: no spawn or stat of their own.
+  it("the other listings see the twin once the run's enumeration has looked", async () => {
+    const p = await setUp()
+    await writeFile(path.join(p, 'vx.config.mjs'), 'export default {}\n')
+    git(root, 'add', 'p/vx.config.mjs')
+    git(root, 'commit', '-q', '-m', 'config')
+    await rm(path.join(p, 'vx.config.mjs'))
+    await mkdir(path.join(root, 'P'))
+    await writeFile(path.join(root, 'P/vx.config.mjs'), 'export default {}\n')
+    await populateGitFilesCache(root, [p], new GitFilesCache())
+    expect([
+      gitFiles(root)?.listed.has(path.join(p, 'src/a.txt')),
+      listedSync(root, ['p/src'])?.toSorted(),
+      (await findProjectConfigs(root)).configs.map((c) => path.basename(c.dir)),
+    ]).toEqual([true, ['p/src/A.txt', 'p/src/a.txt'], ['P']])
   })
 })

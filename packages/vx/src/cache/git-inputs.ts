@@ -29,9 +29,11 @@ import {
 import {
   checkIgnoreSync,
   executablePath,
+  gitCaseArgs,
   gitEnv,
   gitFailure,
   gitSpawnRefusal,
+  ignoreCaseLies,
   isInstalledPath,
   notAWorkTree,
   relPosix,
@@ -130,37 +132,6 @@ export function repoFacts(dir: string): RepoFacts | null {
   repoFactsMemo.set(dir, facts)
   return facts
 }
-
-/**
- * Per absolute git common dir, whether its filesystem folds case, asked
- * only of a repository whose config sets `core.ignorecase`.
- */
-const caseFoldsMemo = new Map<string, boolean>()
-
-/**
- * Whether git's `core.ignorecase=true` holds on disk: one stat of `HEAD` as
- * `head`. A `.git` copied from macOS to Linux keeps the setting, and git
- * then took a new `a.txt` beside the tracked `A.txt` for the tracked file,
- * so no key saw it.
- */
-function caseFolds(commonDir: string): boolean {
-  let folds = caseFoldsMemo.get(commonDir)
-  if (folds === undefined) {
-    folds = existsSync(path.join(commonDir, 'head'))
-    caseFoldsMemo.set(commonDir, folds)
-  }
-  return folds
-}
-
-/** What a git spawn in `dir` prepends so a wrong `core.ignorecase` does not hide a file. */
-function caseArgs(dir: string): readonly string[] {
-  if (caseFoldsMemo.size === 0) return []
-  const facts = repoFacts(dir)
-  if (facts === null) return []
-  return caseFoldsMemo.get(path.resolve(dir, facts.commonDir)) === false ? CASE_SENSITIVE : []
-}
-
-const CASE_SENSITIVE = ['-c', 'core.ignorecase=false']
 
 /**
  * The refusal a run would meet at its enumeration, asked up front by a
@@ -387,7 +358,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
    * Under `core.ignorecase` (macOS's default volume) git's `Foo.txt` is the
    * disk's `foo.txt` after a rename git never saw, so paths are compared
    * case-folded. Decided at the first note: the run's `git var -l` (false
-   * there when the disk does not fold case, `caseFolds`), else
+   * there when the disk does not fold case, `ignoreCaseLies`), else
    * the platform.
    */
   private foldCase: boolean | undefined
@@ -855,7 +826,7 @@ export function runGitLsFiles(cwd: string, env = gitEnv()): GitLsResult {
     proc = Bun.spawnSync({
       cmd: [
         executablePath('git'),
-        ...caseArgs(cwd),
+        ...gitCaseArgs(cwd),
         'ls-files',
         '-s',
         '--others',
@@ -2169,8 +2140,8 @@ export async function startGitEnumeration(
     gitVars.exitCode === 0 &&
     gitVars.stdout.includes('core.ignorecase') &&
     gitBool(gitVarList(gitVars.stdout).get('core.ignorecase')) === true &&
-    !caseFolds(path.resolve(workspaceRoot, gitDir))
-  const status = caseBlind ? await spawnStatus(statusCopy, CASE_SENSITIVE) : firstStatus
+    ignoreCaseLies(workspaceRoot, path.resolve(workspaceRoot, gitDir, 'HEAD'))
+  const status = caseBlind ? await spawnStatus(statusCopy, gitCaseArgs(workspaceRoot)) : firstStatus
   // The listing as git reads it with the override, which `trackedKey` reads too.
   const vars =
     caseBlind && gitVars !== null

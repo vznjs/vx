@@ -124,7 +124,11 @@ export function headBase(workspaceRoot: string, ref: string): string | undefined
    process) to the base's blob is dropped, so a stat-only change selects
    nothing, as the refresh did.
 3. Untracked files (`git ls-files --others --exclude-standard`) are
-   unioned in — a brand-new source file is a change. `.vx/projects.lock.json` is
+   unioned in — a brand-new source file is a change. The `git config`
+   that asks for a partial clone asks `core.ignorecase` too: set true on
+   a disk that tells case apart (`ignoreCaseLies`), the listing runs with
+   `-c core.ignorecase=false`, else a new `a.txt` beside the tracked
+   `A.txt` selected nothing. `.vx/projects.lock.json` is
    no project's path: its entries are compared at the base and now (when
    both have a lock that parses), and a project whose entry changed is
    selected whole, so a lock rewritten over the same configs selects

@@ -332,7 +332,9 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     `.git` copied from macOS to Linux) made `git status` take a new
     `a.txt` for the tracked `A.txt`, so it entered no key; under that
     setting vx stats `HEAD` as `head` once, and on a disk that tells
-    them apart asks git again with `-c core.ignorecase=false`. vx
+    them apart asks git again with `-c core.ignorecase=false`, as every
+    later listing under the workspace does (`--affected`, watch's
+    inventory, `vx lock`'s discovery and ignore checks). vx
     trusts what `git status` calls clean, so a `core.fsmonitor` that
     misses an event (a dead daemon, a network share) keeps an edited
     file's old key: a stale hit.

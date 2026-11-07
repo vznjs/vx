@@ -102,6 +102,8 @@ export { gitEnv, helperEnv, hideEnvFromTasks } from './hide-env.js'
 export {
   checkIgnore,
   checkIgnoreSync,
+  gitCaseArgs,
+  ignoreCaseLies,
   ignoreProbes,
   listedSync,
   wholeIgnored,

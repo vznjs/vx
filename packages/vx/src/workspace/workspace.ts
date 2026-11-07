@@ -11,6 +11,7 @@ import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import {
   executablePath,
+  gitCaseArgs,
   gitEnv,
   gitSpawnRefusal,
   hasControl,
@@ -505,7 +506,7 @@ async function gitZ(cwd: string, args: string[], strict = false): Promise<string
   let proc: Bun.Subprocess<'ignore', 'pipe', 'pipe'>
   try {
     proc = Bun.spawn({
-      cmd: [executablePath('git'), ...args],
+      cmd: [executablePath('git'), ...gitCaseArgs(cwd), ...args],
       cwd,
       env: gitEnv(),
       stdin: 'ignore',
