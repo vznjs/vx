@@ -88,7 +88,6 @@ export function formatRunningHeader(colors?): string
 export function usualCell(ms, usualMs, colors?): { text; painted }
 // the `usual` cell of a task history never timed
 export function unknownUsual(colors?): { text; painted }
-export const TIME_COL = 7 // the time cell's width
 // `project#task` halves in identity hues, hashed from `hueSource`
 export function paintIdParts(hueSource, projectText, taskText, colors, opts?): string
 
