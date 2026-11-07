@@ -466,7 +466,11 @@ export interface MachineReport {
   /** Bytes in use at once, at the most and on average. */
   memoryPeakBytes: number
   memoryAvgBytes: number
-  /** Core-time its tasks used over the core-time it had, 0 to 1. */
+  /**
+   * Its machine's busy core-time over the core-time it had, from its first
+   * task's send to its last one's end, 0 to 1 (its tasks' own where its
+   * machine said none): whether cores were left idle.
+   */
   utilization: number
   /** Cores the executor booked for the tasks it ran, on average over its time online. */
   bookedAvg?: number

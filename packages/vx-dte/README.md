@@ -759,8 +759,9 @@ on a worker and none joined (none started, or each refused) says
 Under each worker, and `local`, the footer then spells out what it did:
 its time online, busy and idle; its CPU peak and average in cores and
 the cores the run booked for the tasks it was running, on average (a
-booked from a task's start to its command's end); its cpu utilization (the core-time its
-tasks used over the core-time it had); its memory peak and average, when its tasks reported any; and, for a worker, the messages and
+booked from a task's start to its command's end); its cpu utilization from its first task's send to its last
+one's end, the warm-up and the wait for a first task left out: its machine's (any process's busy core-time over
+the core-time it had, so what is left is idle cores), its tasks' and its worker process's; its memory peak and average, when its tasks reported any; and, for a worker, the messages and
 bytes the run sent it and received from it. The `probe` line says when
 core's cache probe answered, how many tasks it left to run (held in no
 cache, or not answered for) and how many of them it found in none. The `asked` line says each
@@ -777,14 +778,15 @@ the worker started, any process's, as its last frame said. Where the
 rest went, the worker says in its own log as it leaves: `cpu over 61.2s:
 machine 2.80 cores · tasks 2.00 cores · this worker 0.15 cores · its other
 children 0.05 cores · most besides: Runner.Worker 0.30 cores`, the last
-from one `ps` as it starts and one as it leaves. The `total` line is the cpu utilization of every
+from one `ps` as it starts and one as it leaves. The `total` line is the same cpu utilization of every
 machine together, and the share of their history the run's tasks used:
 
 ```
             linux.small#1  stopped  5 done · warm-up 0.2s
                      declared 4c/14G · actual 4c/14G
                      online 12.1s · busy 9.8s · idle 2.3s
-                     cpu peak 3.6 · used avg 2.4 cores · machine avg 2.9 · booked avg 3.8 · cpu utilization 61%
+                     cpu peak 3.6 · used avg 2.4 cores · machine avg 2.9 · booked avg 3.8
+                     cpu utilization machine 78% · tasks 64% · worker 2%
                      memory peak 1.2 GB · avg 640.0 MB
                      sent 6 messages · 3.1 MB, received 15 messages · 8.4 MB
             probe    at 0.4s: 5 tasks left to run, 5 known misses
@@ -793,7 +795,7 @@ machine together, and the share of their history the run's tasks used:
             best     2 × linux.small (4c/14G): 11.4s, the fewest of its sizes
             more     3 × linux.small (4c/14G): 10.8s, past its sizes' max
             any      1 × (8c/28G): 10.9s, of any cores, the least core time
-            total    cpu utilization 58%
+            total    cpu utilization machine 74% · tasks 60% · worker 2%
 ```
 
 `vx run --profile[=<path>]` adds the run in time to the profile it

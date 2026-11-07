@@ -43,7 +43,7 @@ plus online), its warm-up, its time online after the warm-up and the part
 of that with no task on it (a task counts from its send to its result,
 restore and save included), its tasks, the cores
 its tasks were expected to use (their last run's) beside the cores it used, its peak RAM of its memory, and
-its utilization, under a line
+its machine's cpu utilization from its first task's send to its last one's end, under a line
 of the expected and used share of all their core-time (the expected share over the workers whose executor reports one). Tasks the executor left to the run's own machine get a `this machine` row, and a line splits the executed count between workers and this machine. A footer line
 names the vx version, the command (what follows `--` counted, not
 quoted), tasks passed and outputs restored.

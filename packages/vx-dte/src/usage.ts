@@ -17,9 +17,19 @@ export interface UsageStats {
   readonly cpuAvg: number
   readonly memoryPeak: number
   readonly memoryAvg: number
-  /** Core-time its tasks used over the core-time it had. */
+  /**
+   * Its machine's busy core-time over the core-time it had, from its first
+   * task's send to its last one's end: whether the run left cores idle. Its
+   * tasks' own CPU when its machine said none.
+   */
   readonly utilization: number
+  /** Its tasks' core-time over the same, and its worker process's (undefined when it said none). */
+  readonly tasksUtilization: number
+  readonly workerUtilization?: number | undefined
   readonly cpuMs: number
+  /** From its first task's send to its last one's end, and its busy core-time then. */
+  readonly workMs: number
+  readonly workCoreMs: number
   /** Cores the run held for its tasks, on average over its time online: what packing gave it. */
   readonly bookedAvg: number
   /**
@@ -28,6 +38,12 @@ export interface UsageStats {
    * indexer, a task's orphans). Undefined when it said none.
    */
   readonly machineAvg?: number | undefined
+}
+
+interface Point {
+  readonly at: number
+  readonly busy: number
+  readonly self?: number
 }
 
 export class Usage {
@@ -48,8 +64,23 @@ export class Usage {
   private bookedAt = 0
   /** Its machine's busy cores on average, as its last frame said. */
   machineAvg: number | undefined
+  /** Its machine's busy core-time since it joined, as its last frame said, and when. */
+  private heard: Point
+  private first: Point | undefined
+  private last: Point | undefined
+  private firstAt: number | undefined
+  private lastAt: number | undefined
 
-  constructor(readonly from: number = performance.now()) {}
+  constructor(readonly from: number = performance.now()) {
+    this.heard = { at: from, busy: 0, self: 0 }
+  }
+
+  /** Its machine said `avg` cores busy on average since it started, its worker process `self`. */
+  machine(avg: number, self: number | undefined, at: number = performance.now()): void {
+    this.machineAvg = avg
+    const ms = Math.max(0, at - this.from)
+    this.heard = { at, busy: avg * ms, ...(self === undefined ? {} : { self: self * ms }) }
+  }
 
   /**
    * A task it finished, as it ends: on it `from` its send (else its
@@ -73,6 +104,8 @@ export class Usage {
       this.aborted++
     else this.failed++
     const end = performance.now()
+    this.lastAt = end
+    this.last = this.heard
     const ms = Math.max(1, from === undefined ? r.durationMs : end - from)
     this.spans.push({
       start: end - ms,
@@ -80,6 +113,13 @@ export class Usage {
       cores: (r.cpuMs ?? 0) / ms,
       memory: r.peakRssBytes ?? 0,
     })
+  }
+
+  /** The run sent it a task at `at`: its first send opens the window utilization reads. */
+  sent(at: number = performance.now()): void {
+    if (this.firstAt !== undefined) return
+    this.firstAt = at
+    this.first = this.heard
   }
 
   /** The run now holds `cores` more of it for its tasks (fewer when negative). */
@@ -119,6 +159,24 @@ export class Usage {
       cpuMs += s.cores * (s.end - s.start)
       memoryMs += s.memory * (s.end - s.start)
     }
+    const workMs =
+      this.firstAt !== undefined && this.lastAt !== undefined && this.lastAt > this.firstAt
+        ? this.lastAt - this.firstAt
+        : onlineMs
+    const f = this.first
+    const l = this.last
+    // Between the frames nearest its first send and its last end: an avg
+    // since it started says nothing of a window inside that.
+    const framed = f !== undefined && l !== undefined && l.at > f.at
+    const tasksUtilization = Math.min(1, cpuMs / (cores * workMs))
+    const utilization =
+      framed && this.machineAvg !== undefined
+        ? Math.min(1, (l.busy - f.busy) / (cores * (l.at - f.at)))
+        : tasksUtilization
+    const workerUtilization =
+      framed && l.self !== undefined && f.self !== undefined
+        ? Math.min(1, (l.self - f.self) / (cores * (l.at - f.at)))
+        : undefined
     return {
       onlineMs,
       busyMs,
@@ -126,8 +184,12 @@ export class Usage {
       cpuAvg: cpuMs / onlineMs,
       memoryPeak,
       memoryAvg: memoryMs / onlineMs,
-      utilization: cpuMs / (cores * onlineMs),
+      utilization,
+      tasksUtilization,
+      ...(workerUtilization === undefined ? {} : { workerUtilization }),
       cpuMs,
+      workMs,
+      workCoreMs: utilization * cores * workMs,
       bookedAvg: (this.bookedMs + this.booked * Math.max(0, end - this.bookedAt)) / onlineMs,
       machineAvg: this.machineAvg,
     }
