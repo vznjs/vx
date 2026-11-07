@@ -249,13 +249,6 @@ function assumptions(
 const isDuration = (ms: unknown): ms is number =>
   typeof ms === 'number' && ms >= 0 && ms <= Number.MAX_SAFE_INTEGER
 
-/** The timings file's durations a run can take; the rest are not carried. */
-function carriedOf(read: Readonly<Record<string, number>>): Record<string, number> {
-  const out: Record<string, number> = {}
-  for (const [id, ms] of Object.entries(read)) if (isDuration(ms)) out[id] = ms
-  return out
-}
-
 /** Each option `VxHistoryOptions` names, with its kind: derived from the type, so the two cannot drift. */
 const VX_HISTORY_KEYS: PluginOptionKinds<VxHistoryOptions> = {
   window: 'number',
@@ -412,7 +405,7 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
       const carried =
         file === undefined
           ? {}
-          : carriedOf((await import('./timings-file.js')).readTimings(file, ctx.warn) ?? {})
+          : ((await import('./timings-file.js')).readTimings(file, ctx.warn) ?? {})
       const defs = taskDefinitions(nodes.values())
       if (file !== undefined)
         scheduled = {
@@ -633,7 +626,7 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
         const timings = await import('./timings-file.js')
         // With no `schedule`, the file is first read here, and its fault said here.
         let now = sched === undefined ? timings.readTimings(done.file, done.warn) : undefined
-        const carried = sched?.carried ?? carriedOf(now ?? {})
+        const carried = sched?.carried ?? now ?? {}
         // A run that executed nothing and restored only tasks the file already
         // times leaves it as it was: an all-cached CI run re-reads no history.
         if (done.ran || [...done.nodes.keys()].some((id) => !(id in carried))) {

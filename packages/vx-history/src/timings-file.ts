@@ -43,13 +43,17 @@ export function readTimings(
     )
     return undefined
   }
-  const out: Record<string, number> = {}
-  for (const [id, ms] of Object.entries(tasks)) {
+  // Filtered in place: the parse is this read's own, and a copy of an
+  // 8,002-task file, filtered again by the caller, was ~6 ms of each
+  // all-cached run's teardown (2026-11-07).
+  const out = tasks as Record<string, unknown>
+  for (const id in out) {
+    const ms = out[id]
     // Bounded so no chain of them sums past a number: core refuses a
     // weight that is not finite, and the run failed on a hint.
-    if (typeof ms === 'number' && ms >= 0 && ms <= Number.MAX_SAFE_INTEGER) out[id] = ms
+    if (!(typeof ms === 'number' && ms >= 0 && ms <= Number.MAX_SAFE_INTEGER)) delete out[id]
   }
-  return out
+  return out as Record<string, number>
 }
 
 /**
