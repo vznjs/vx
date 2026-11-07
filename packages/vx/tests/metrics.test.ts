@@ -770,6 +770,49 @@ describe('cacheKeyDiff', () => {
       )
     })
   })
+  // `--no-cache` / `--cache-policy=local:r` passes and saves nothing: the
+  // note blamed a prune for it.
+  it('names a run that did not write the cache, not a prune', () => {
+    const run = (cache: Cache, hash: string, runId: string, startedAt: number, policy: string) =>
+      cache.recordRunBundle({
+        runs: [mkRun({ hash, project: 'pkg', task: 'test', runId, startedAt })],
+        invocation: mkInvocation({ runId, startedAt, cachePolicy: policy }),
+      })
+    const rw = 'local:rw,remote:'
+    for (const policy of ['local:,remote:', 'local:r,remote:']) {
+      withCache((cache) => {
+        run(cache, 'hA', 'r-1', 1000, rw)
+        run(cache, 'hB', 'r-2', 2000, policy)
+        seedEntryInputs(cache, 'hA', [{ kind: 'file', name: 'a.ts', hash: 'x' }])
+        expect(cacheKeyDiff(indexDb(cache), 'r-2', 'pkg#test').note).toBe(
+          'cache key changed but input fingerprints are unavailable — this run did not write the cache (--no-cache, or a --cache-policy without write) and saved no entry; only the key change is known',
+        )
+      })
+    }
+    // The previous run did not write: the last saved entry still names what moved.
+    withCache((cache) => {
+      run(cache, 'hA', 'r-1', 1000, rw)
+      run(cache, 'hB', 'r-2', 2000, 'local:,remote:')
+      run(cache, 'hC', 'r-3', 3000, rw)
+      seedEntryInputs(cache, 'hA', [{ kind: 'file', name: 'a.ts', hash: 'x' }])
+      seedEntryInputs(cache, 'hC', [{ kind: 'file', name: 'a.ts', hash: 'z' }])
+      const diff = cacheKeyDiff(indexDb(cache), 'r-3', 'pkg#test')
+      expect([diff.previousRunId, diff.entries.map((e) => e.name), diff.note]).toEqual([
+        'r-1',
+        ['a.ts'],
+        '1 cache-key component(s) changed since run r-1, the last that saved an entry (the previous run did not write the cache: --no-cache, or a --cache-policy without write)',
+      ])
+    })
+    // With no saved run before it, the cause is still named.
+    withCache((cache) => {
+      run(cache, 'hB', 'r-2', 2000, 'local:,remote:')
+      run(cache, 'hC', 'r-3', 3000, rw)
+      seedEntryInputs(cache, 'hC', [{ kind: 'file', name: 'a.ts', hash: 'z' }])
+      expect(cacheKeyDiff(indexDb(cache), 'r-3', 'pkg#test').note).toBe(
+        'cache key changed but input fingerprints are unavailable — the previous run did not write the cache (--no-cache, or a --cache-policy without write) and saved no entry; only the key change is known',
+      )
+    })
+  })
 })
 
 describe('getRun', () => {
