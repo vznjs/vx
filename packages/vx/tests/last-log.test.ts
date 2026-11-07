@@ -147,7 +147,10 @@ it('a task no run recorded, or one outside the run named, is refused', () => {
   expect(vx('last', '--log', 'a#nope')).toEqual({
     code: 1,
     out: '',
-    err: noticed('vx last: no recorded run of a#nope\n'),
+    // No near name: what of `a` ran, to pick from.
+    err: noticed(
+      "vx last: no recorded run of a#nope; a's recorded tasks: bad, build, mute, plain, quiet\n",
+    ),
   })
   expect(vx('last', runIds['bad']!, '--log', 'a#build').code).toBe(1)
   // A typo of a task that ran is named, as `vx why` names it.
