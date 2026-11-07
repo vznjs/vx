@@ -1516,7 +1516,7 @@ hit restores. A task without `cache: true` always runs.
 build: {
   exec: { command: 'tsc -b' },
   inputs: { files: ['src/**', 'tsconfig.json'] },
-  outputs: { files: ['dist/**'] },
+  outputs: { files: ['dist/**', '*.tsbuildinfo'] },
   cache: true,
 }
 ```
@@ -2260,7 +2260,9 @@ own output path, or set run.rules.exclusiveOutputs: false in
   the exceptions below applies: `<reader> reads "<glob>" in inputs.<field>,
 which matches <writer>'s output "<glob>" … Exclude it: add "!<glob>"
 to <reader>'s inputs.<field>, or depend on <writer> and leave it out of
-<reader>'s inputs.tasks, so its key hashes those bytes instead.` Such a key
+<reader>'s inputs.tasks, so its key hashes those bytes instead.` (A reader
+  that already depends on the writer is told so, and only to leave it out of
+  `inputs.tasks`.) Such a key
   reads what the producer writes this run, so vx cannot know it before
   the producer ran: it is not probed, prefetched or restored ahead of
   the schedule (`caching.md` § Local restore tier). The upstream's key
@@ -2384,7 +2386,7 @@ export default defineProject({
         files: ['src/**', '!**/*.test.ts', 'tsconfig.json'],
         env: ['NODE_ENV'],
       },
-      outputs: { files: ['dist/**'] },
+      outputs: { files: ['dist/**', '*.tsbuildinfo'] },
       cache: true,
     },
 
@@ -2552,7 +2554,7 @@ export function tsBuild(opts?: { tsconfig?: string }): TaskConfig {
     description: 'compile TypeScript',
     exec: { command: `tsc -b ${opts?.tsconfig ?? ''}`.trim() },
     inputs: { files: ['src/**', opts?.tsconfig ?? 'tsconfig.json'] },
-    outputs: { files: ['dist/**'] },
+    outputs: { files: ['dist/**', '*.tsbuildinfo'] },
     cache: true,
   }
 }
@@ -2653,7 +2655,7 @@ a user meets most:
 
 | Symptom                                                                                                                               | Cause                                                                                                                                                                                                                                                           |
 | ------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `did not export a default object`                                                                                                     | Forgot `export default`, or exported a non-object; a function (Vite's `defineConfig(() => …)` shape) adds that it is one and to export what it returns (D-110).                                                                                                 |
+| `did not export a default object`                                                                                                     | Forgot `export default` (said so, framed at a named export), or exported a non-object; a function (Vite's `defineConfig(() => …)` shape) adds that it is one and to export what it returns (D-110).                                                             |
 | `tasks must be an object keyed by task name`                                                                                          | `tasks` is not an object — an ARRAY included.                                                                                                                                                                                                                   |
 | `<path> is <what> — a config must be JSON data, because the cache key is built from its JSON`                                         | A value JSON cannot carry, anywhere in the config: a function, a symbol, a bigint, `NaN` / `±Infinity`, `undefined` in an array, a cycle, a getter, an object that is not plain (`Date`, `Map`, `RegExp`, a class instance), or nesting deeper than 256 levels. |
 | `<level> has unknown field "<key>"`                                                                                                   | Typo'd / unsupported key (see below).                                                                                                                                                                                                                           |

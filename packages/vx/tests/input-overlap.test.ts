@@ -104,6 +104,17 @@ describe('vx lock refuses inputs that read another task’s outputs', () => {
     })
   }
 
+  // "or depend on app#build" was said to a task that already did.
+  it('says a reader that depends on the writer does, and only the fix left', () => {
+    const test = task(['**'], [], { dependsOn: ['build'] })
+    expect(refusal(app({ build, test }))).toBe(
+      'app#test reads "**" in inputs.files, which matches app#build\'s output "dist/**" — ' +
+        'it depends on app#build, whose key its own already includes. ' +
+        'Exclude it: add "!dist/**" to app#test\'s inputs.files, or leave ' +
+        "app#build out of app#test's inputs.tasks, so its key hashes those bytes instead.",
+    )
+  })
+
   it('refuses with or without an edge, whichever is declared first', () => {
     const test = task(['**'], [], { dependsOn: ['build'] })
     expect(refusal(app({ test, build }))).toMatch(/^app#test reads "\*\*"/)

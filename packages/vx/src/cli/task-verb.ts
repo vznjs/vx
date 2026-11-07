@@ -72,7 +72,9 @@ export async function nxTargetHint(tasks: readonly string[], cwd: string): Promi
  * every project's, sorted; null when no workspace loads. What a run with
  * no task and no terminal for the picker names instead of a guess.
  */
-export async function taskNamesHere(cwd: string): Promise<string[] | null> {
+export async function taskNamesHere(
+  cwd: string,
+): Promise<{ names: string[]; inProject: boolean } | null> {
   const projects = await workspaceProjects(cwd)
   if (projects === null) return null
   const own = await findCwdProject(cwd)
@@ -81,7 +83,7 @@ export async function taskNamesHere(cwd: string): Promise<string[] | null> {
     if (own === null || p.name === own)
       for (const [t, task] of Object.entries(p.config.tasks ?? {}))
         if (!isDefaultBuild(task)) names.add(t)
-  return [...names].sort()
+  return { names: [...names].sort(), inProject: own !== null }
 }
 
 /**

@@ -599,7 +599,13 @@ export function validateProjectConfig(
     }
     if (exec !== undefined) {
       if (typeof exec !== 'object' || exec === null) {
-        throw new UserError(`${where}.exec must be an object with a \`command\` string`)
+        // A command written as the exec itself, as the task-as-a-string
+        // refusal above spells its fix.
+        throw new UserError(
+          typeof exec === 'string'
+            ? `${where}.exec must be an object — a command is { exec: { command: ${JSON.stringify(exec)} } }`
+            : `${where}.exec must be an object with a \`command\` string`,
+        )
       }
       assertKnownFields(exec, EXEC_FIELDS, `${where}.exec`)
       const sandbox = (exec as { sandbox?: unknown }).sandbox
@@ -654,6 +660,24 @@ export function validateProjectConfig(
       if (env !== undefined) {
         if (typeof env !== 'object' || env === null) {
           throw new UserError(`${where}.exec.env must be an object (or omitted)`)
+        }
+        // `env: { NODE_ENV: 'production' }` (Turbo's and Nx's shape): name
+        // the level the variable belongs at, not only the allowed fields.
+        const plain = Array.isArray(env)
+          ? undefined
+          : Object.entries(env).find(
+              ([k, v]) =>
+                !ENV_FIELDS.has(k) &&
+                // `passthrough` is a typo of a field, not a variable.
+                nearest(k, ENV_FIELDS) === undefined &&
+                ['string', 'number', 'boolean'].includes(typeof v),
+            )
+        if (plain !== undefined) {
+          throw new UserError(
+            `${where}.exec.env has unknown field "${plain[0]}" ` +
+              `(allowed: ${[...ENV_FIELDS].sort().join(', ')}) — vx spells it ` +
+              `exec.env.define: { ${plain[0]}: ${JSON.stringify(String(plain[1]))} }`,
+          )
         }
         // `env: { set: {...} }` loaded and defined nothing — the one level
         // without this check until 2026-09-10 (tests/schema-unknown-keys).
@@ -808,9 +832,12 @@ export function validateProjectConfig(
     }
     if (dependsOn !== undefined) {
       if (!Array.isArray(dependsOn) || dependsOn.some((s) => typeof s !== 'string')) {
+        // One name, not in a list: the fix is that list.
         throw new UserError(
-          `${where}.dependsOn must be an array of strings ` +
-            `(Turbo/Nx micro-syntax: 'name', '^name', 'pkg#name')`,
+          typeof dependsOn === 'string'
+            ? `${where}.dependsOn must be an array — write dependsOn: [${JSON.stringify(dependsOn)}]`
+            : `${where}.dependsOn must be an array of strings ` +
+                `(Turbo/Nx micro-syntax: 'name', '^name', 'pkg#name')`,
         )
       }
     }

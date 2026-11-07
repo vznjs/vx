@@ -58,7 +58,10 @@ it.each([
   [
     'named exports and no default',
     'export const config = { tasks: {} }\n',
-    `${REFUSED}Project config at <root>/p/vx.config.ts did not export a default object`,
+    framed(
+      1,
+      'did not export a default object: it has no `export default` — write `export default { … }`',
+    ),
   ],
   [
     'an unknown top-level field',
@@ -90,12 +93,36 @@ it.each([
     ),
   ],
   [
+    'an env var written straight under `exec.env`',
+    task("exec: { command: 'x', env: { NODE_ENV: 'production' } }"),
+    framed(65, 'tasks.build.exec.env has unknown field "NODE_ENV"', {
+      allowed: 'define, passThrough, secret',
+      fix: 'use exec.env.define: { NODE_ENV: "production" }',
+    }),
+  ],
+  [
+    'an env var with a number value under `exec.env`: the fix spells it a string',
+    task("exec: { command: 'x', env: { PORT: 3000 } }"),
+    framed(65, 'tasks.build.exec.env has unknown field "PORT"', {
+      allowed: 'define, passThrough, secret',
+      fix: 'use exec.env.define: { PORT: "3000" }',
+    }),
+  ],
+  [
+    'a zero `exec.timeout`',
+    task("exec: { command: 'x', timeout: '0s' }"),
+    framed(58, 'tasks.build.exec.timeout must be more than 0 — omit it for no limit (got "0s")'),
+  ],
+  [
     'a string `dependsOn`',
     task("exec: { command: 'x' }, dependsOn: '^build'"),
-    framed(
-      60,
-      "tasks.build.dependsOn must be an array of strings (Turbo/Nx micro-syntax: 'name', '^name', 'pkg#name')",
-    ),
+    framed(60, 'tasks.build.dependsOn must be an array — write dependsOn: ["^build"]'),
+  ],
+  [
+    // As a task written as a string is told (`a command is …`).
+    'an exec written as the command',
+    task("exec: 'tsc -b'"),
+    framed(36, 'tasks.build.exec must be an object — a command is { exec: { command: "tsc -b" } }'),
   ],
   [
     'a timeout with no unit',

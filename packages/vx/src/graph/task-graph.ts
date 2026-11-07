@@ -687,8 +687,16 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
             'VX_E_DEPENDS_ON',
           )
         const meant = nearestTarget(projects, spec.project, spec.task)
+        // Which half is missing: a project that exists was told "no such
+        // project or task", though only its task was.
+        const owner = projects.get(spec.project)
+        const tasks = Object.keys(owner?.config.tasks ?? {})
+        const what =
+          owner === undefined
+            ? `no project is named ${spec.project}`
+            : `${spec.project} declares no task ${spec.task}${meant === undefined && tasks.length > 0 ? ` (its tasks: ${tasks.join(', ')})` : ''}`
         throw new UserError(
-          `${id}: dependsOn ${taskId(spec.project, spec.task)} but no such project or task is declared${meant === undefined ? '' : `. Did you mean ${meant}?`}`,
+          `${id}: dependsOn ${taskId(spec.project, spec.task)}, but ${what}${meant === undefined ? '' : `. Did you mean ${meant}?`}`,
           'VX_E_DEPENDS_ON',
         )
       }
@@ -2151,11 +2159,17 @@ function readsOutputs(
         refuse: () =>
           new UserError(
             `${reader.node.id} reads ${JSON.stringify(gi.slice(at.length))} in inputs.${field}, which matches ` +
-              `${writer.node.id}'s output ${JSON.stringify(shown)} — a task's key must not read ` +
-              `the outputs of a task it does not depend on, or whose key it already includes. ` +
-              `Exclude it: add ${JSON.stringify(`!${out}`)} to ${reader.node.id}'s ` +
-              `inputs.${field}, or depend on ${writer.node.id} and leave it out of ` +
-              `${reader.node.id}'s inputs.tasks, so its key hashes those bytes instead.`,
+              `${writer.node.id}'s output ${JSON.stringify(shown)} — ` +
+              // "or depend on it" told a task that already did to do it.
+              (reader.node.deps.includes(writer.node.id)
+                ? `it depends on ${writer.node.id}, whose key its own already includes. ` +
+                  `Exclude it: add ${JSON.stringify(`!${out}`)} to ` +
+                  `${reader.node.id}'s inputs.${field}, or leave ${writer.node.id} out of ` +
+                  `${reader.node.id}'s inputs.tasks, so its key hashes those bytes instead.`
+                : `a task's key must not read the outputs of a task it does not depend on, or whose key it already includes. ` +
+                  `Exclude it: add ${JSON.stringify(`!${out}`)} to ${reader.node.id}'s ` +
+                  `inputs.${field}, or depend on ${writer.node.id} and leave it out of ` +
+                  `${reader.node.id}'s inputs.tasks, so its key hashes those bytes instead.`),
             'VX_E_INPUT_IS_OUTPUT',
           ),
       })

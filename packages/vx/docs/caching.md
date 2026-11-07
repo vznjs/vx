@@ -928,7 +928,9 @@ A declared set that resolves to **nothing** is said on the run's
 status line. `inputs matched no files (lib/**)` — the key would
 not change when the source does — is said on every miss of a cacheable
 task, right after `describeTaskInputs` and before the command, whether
-or not it saves. `outputs matched no files (build/**)` — an empty
+or not it saves. It is said too when every wildcard glob matched nothing
+and only literal files did (`scr/**` beside the `package.json` a
+lockfile plugin appends), naming the wildcard globs. `outputs matched no files (build/**)` — an empty
 artifact was saved and a later hit restores nothing — is said on the
 save path, and when a deferred fetch (`--cache-download=none`) lands
 nothing. Both are almost always a glob

@@ -423,7 +423,14 @@ async function scopeFilters(
   const filterStrings = [...parsed.filters]
   let affectedFilter: string | undefined
   if (parsed.affected !== undefined) {
-    const f = await affectedFilterFor(cwd, parsed.affected)
+    // With --all given, "run --all" is advice already taken.
+    const f = await affectedFilterFor(
+      cwd,
+      parsed.affected,
+      parsed.all
+        ? 'drop --affected, --all runs every project (the cache skips what did not change)'
+        : undefined,
+    )
     if (typeof f === 'object') return f
     affectedFilter = f
     filterStrings.unshift(affectedFilter)
@@ -615,13 +622,19 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     // agent on a pty waited at the picker forever.
     const forProgram = parsed.dry === 'json'
     if (!process.stdin.isTTY || forProgram) {
-      const names = await taskNamesHere(cwd)
-      const shown = (names ?? []).slice(0, TASKS_SHOWN)
-      const more = (names?.length ?? 0) - shown.length
+      const here = await taskNamesHere(cwd)
+      const names = here?.names ?? []
+      const shown = names.slice(0, TASKS_SHOWN)
+      const more = names.length - shown.length
+      const list = `${shown.join(', ')}${more > 0 ? ` and ${more} more` : ''}`
+      // Outside a project a bare name is refused without --all: the list
+      // said "tasks here", and `vx run build` then said "not inside a project".
       const tasksHere =
         shown.length === 0
           ? 'vx run <task>, e.g. vx run build'
-          : `tasks here: ${shown.join(', ')}${more > 0 ? ` and ${more} more` : ''}`
+          : here?.inProject === false
+            ? `not inside a project, the workspace's tasks with --all: ${list}`
+            : `tasks here: ${list}`
       return refuse(
         'run',
         args,

@@ -49,7 +49,7 @@ describe('a root vx.config makes the root a project (D-39)', () => {
   it('is a project with the config, and is not without it', async () => {
     // Without it, `vx lock` refuses a's edge to the root.
     await expect(names()).rejects.toThrow(
-      'a#test: dependsOn fixture-root#build but no such project or task is declared',
+      'a#test: dependsOn fixture-root#build, but no project is named fixture-root',
     )
     await writeFile(path.join(fixture.root, 'vx.config.mjs'), ROOT_CONFIG)
     expect(await names()).toEqual(['a', 'fixture-root'])

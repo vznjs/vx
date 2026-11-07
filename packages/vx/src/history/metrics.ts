@@ -620,8 +620,8 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
           this_.keylessBy === null
           ? 'this task declares no `cache: true` — it runs on every invocation; its key is folded by dependents only'
           : this_.keylessBy === taskId
-            ? 'this task declares no `cache: true` — it runs on every invocation; it declares no `inputs` either, so each run derives a new key and every task that depends on it misses; declare its `inputs`'
-            : `this task declares no \`cache\` block — it runs on every invocation; its key includes ${this_.keylessBy}, which declares no \`inputs\`, so each run derives a new key and every task that depends on it misses; declare inputs on ${this_.keylessBy}`
+            ? 'this task declares no `cache: true` — it runs on every invocation; it declares no `inputs` either, so each run derives a new key and every task that depends on it misses; declare its `inputs` (and `outputs` with `cache: true` to cache it too)'
+            : `this task declares no \`cache: true\` — it runs on every invocation; its key includes ${this_.keylessBy}, which declares no \`inputs\`, so each run derives a new key and every task that depends on it misses; declare inputs on ${this_.keylessBy}`
         : this_.keylessBy !== null
           ? keylessNote(taskId, this_.keylessBy)
           : prev && prev.hash !== this_.hash

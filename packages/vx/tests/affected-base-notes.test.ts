@@ -97,6 +97,17 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     )
   })
 
+  // With --all already given, "run --all" was advice the user had followed.
+  it('on the base branch, --affected beside --all says to drop --affected', () => {
+    git(root, 'update-ref', 'refs/remotes/origin/feat', 'HEAD')
+    git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/feat')
+    const r = vx(root, 'run', 'build', '--all', '--affected')
+    expect(r.exitCode).not.toBe(0)
+    expect(r.out).toContain(
+      '--affected has no default on the base branch (feat): drop --affected, --all runs every project (the cache skips what did not change), or name the last good commit, --affected=<sha>',
+    )
+  })
+
   it('an explicit base that is HEAD itself is named as such, with the two bases you probably meant', () => {
     git(root, 'update-ref', 'refs/remotes/origin/feat', 'HEAD')
     const r = vx(root, 'run', 'build', '--affected=origin/feat')

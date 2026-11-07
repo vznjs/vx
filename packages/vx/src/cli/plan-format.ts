@@ -51,7 +51,7 @@ export function planReport(plan: RunPlan): ui.Block {
     rows.push({
       node: t.node,
       ...(skipped ? NOOP : LOOK[t.cacheStatus]),
-      ...(executes && t.p50Ms !== undefined ? { usualMs: t.p50Ms } : {}),
+      ...(executes ? { usualMs: t.p50Ms ?? null } : {}),
       ...(t.cacheStatus === 'hit-remote' && t.remoteBytes !== undefined
         ? { outputBytes: t.remoteBytes }
         : {}),

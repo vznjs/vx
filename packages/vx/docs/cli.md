@@ -73,10 +73,13 @@ The refusal adds what helps:
   `alpha#build` for `alpha` at `p/a`.
 - Otherwise what exists: `Tasks: build, test.`, `No
 project is named zzz; projects: a, b.`, or `a's tasks: build, test.`
+- With no task declared anywhere (right after `vx init`): ``No project
+declares a task yet: add one under `tasks` in a vx.config, then run
+`vx lock`.``
 - A `pkg` that matches a project only after Unicode normalization (`café`
   typed in NFC, the project's directory in NFD) is said to differ in
   Unicode form, with the fix: set `name` in its vx.config.
-- Then ``A run reads the lock: after editing a
+- Otherwise ``A run reads the lock: after editing a
 vx.config, run `vx lock`.``, since a task added since the last lock is not in it.
 - `Only projects outside the selection declare <name> — pass
 --all, or a --filter that includes them.` when the run was scoped and a project
@@ -104,7 +107,8 @@ affected: the change reaches no test task.`
 There is no `-V`; use `vx --version`, as in Turbo.
 
 `vx <verb> --help` (also `-h`, `vx help <verb>` and `vx --help <verb>`) prints this
-reference for that verb: its usage lines and sections, then
+reference for that verb: its usage lines and sections (of a section several
+verbs share, only its own entries), then
 `Full reference: vx help`. Every argument error points at it.
 `vx help <plugin verb>` is `vx <plugin verb> --help`: the plugin answers.
 
@@ -191,8 +195,9 @@ If no task name is given:
     (under `tasks` in a vx.config, or `vx init`).
 - **Not a TTY** — exits `1` with
   `missing task name (stdin is not a TTY, so no picker; tasks here: build, test)`.
-  It names the cwd project's tasks, else every project's (twelve, then
-  `and N more`). Outside a workspace it reads `vx run <task>, e.g. vx run build`.
+  It names the cwd project's tasks, else every project's as
+  `not inside a project, the workspace's tasks with --all: build, test`
+  (twelve, then `and N more`). Outside a workspace it reads `vx run <task>, e.g. vx run build`.
 - **Under `--dry=json`**, on a terminal too — the
   same refusal (`a JSON answer opens no picker; …`), with the
   `VX_E_USAGE` error document on stdout: a program cannot pick.
@@ -961,7 +966,7 @@ other persistent task`), and a non-zero exit makes the run exit 1
    reads history for it, and the final summary never shows it. A p50
    here is the median of the task's last five timings on this branch,
    else on any branch; the timings are shared by every worktree of the
-   repo, so a new one has a forecast on its first run.
+   workspace, so a new one has a forecast on its first run.
 
 In a terminal known to read them, the region also sends zero-width
 escapes: tab or taskbar progress (OSC 9;4: Ghostty, iTerm2 3.6+,
@@ -1224,8 +1229,8 @@ id, and its JSON object carries an `affected` reason:
 
 ```
 $ vx run build lint --affected=main --dry
- ⏺︎                 run     miss                                0 local        app#build  affected: packages/lib/src/a.ts changed (an input), via lib#build
- ⏺︎                 run     no-cache                            0 local        lib#lint  affected: packages/lib/src/a.ts changed (in its project)
+ ⏺︎               — run     miss                                0 local        app#build  affected: packages/lib/src/a.ts changed (an input), via lib#build
+ ⏺︎               — run     no-cache                            0 local        lib#lint  affected: packages/lib/src/a.ts changed (in its project)
 ```
 
 `kind` is `input` (a changed `file` is a declared input), `project` (its
@@ -1676,7 +1681,7 @@ watch`.
 `vx cache clean` evicts old or oversized cache entries, or with no
 bound clears the cache. It operates on the entries and
 `<hash>.tar.zst` artifacts of the store a run opens
-(`~/.vx/<id>/cache`, shared by every checkout of the repository), or of
+(`~/.vx/<id>/cache`, shared by every checkout of the workspace), or of
 `<cacheDir>` itself when the workspace names one (`cache.dir`,
 `VX_CACHE_DIR`, `--cache-dir`).
 
@@ -2400,7 +2405,7 @@ vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--pl
 $ vx init --dry
 
 ─ vx init 0.0.0 ──────────────────────────────────────────────
-  from      no turbo.json or nx.json: one project, the root
+  from      no turbo.json or nx.json
   dry run   nothing written
   files     .vx/workspace.ts
             vx.config.ts
@@ -2820,6 +2825,7 @@ $ vx show app#build
   inputs.files   src/**
   inputs.env     NODE_ENV
   outputs.files  dist/**
+  cache          yes
 ```
 
 ### Options
@@ -2837,7 +2843,9 @@ task count, and `no vx config` for config-less packages; one whose
 tasks all come from plugins reads `N tasks from plugins (no vx
 config)`, and one a configured project depends on reads `1 task,
 default build (no vx config)`: a run loads it for that dependant's
-`^build` (X-48). One nothing configured reaches has no task in any
+`^build` (X-48). A configured project that declares no `build` reads
+`N tasks, default build`, and `vx show <project>` marks that task
+`<project>#build  default`. One nothing configured reaches has no task in any
 view: `vx show bare` lists none, and `vx run bare#build` refuses it. A `tags` column appears when any project has tags. With `--format json`
 it's an array of `{ name, dir, tags: string[], tasks: string[] }`.
 
@@ -2850,7 +2858,8 @@ it's an array of `{ name, dir, tags: string[], tasks: string[] }`.
 `no`), and `cache: true`
 (`inputs.files` / `.workspaceFiles` / `.env` / `.tasks` / `.runtime` /
 `.workspaceRuntime`, `outputs.files` / `.workspaceFiles` / `.clean`
-(`yes` / `no`), `inputs.stability.strategy` / `.severity`). Fields the
+(`yes` / `no`), `inputs.stability.strategy` / `.severity`), then `cache  yes`
+for a cached task. Fields the
 task does not set are not printed, an empty list prints `none`; a value that spans lines (a
 multi-line command) continues under its first line. `--format json` emits `{ name, dir,
 config }` with the config exactly as resolved. `vx show <pkg>#<task>`
@@ -3105,10 +3114,10 @@ app#build — run 01a1193a-7b39-75a9-870b-5c03e26d7104
 
 ### Arguments
 
-| Argument   | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PKG#TASK` | one project's task                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `TASK`     | a bare task name: resolves when exactly one project ran it (several → the project the current directory is in, as `vx run` picks, else an error listing the candidates; unknown → include-match suggestions, or, with none near, a pointer to `vx last --list`, or word that nothing has run yet; after runs of only groups, which record no task row, that no run executed a task and to ask about one the group depends on, X-50) |
+| Argument   | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PKG#TASK` | one project's task                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `TASK`     | a bare task name: inside a project that declares it, that project's (`no runs of <project>#<task> yet` when it never ran), as `vx run` picks; elsewhere it resolves when exactly one project ran it (several → an error listing the candidates; unknown → include-match suggestions, or, with none near, a pointer to `vx last --list`, or word that nothing has run yet; after runs of only groups, which record no task row, that no run executed a task and to ask about one the group depends on, X-50) |
 
 ### Options
 
@@ -3321,7 +3330,8 @@ when, duration, branch @ sha, CI, task/hit/failure counts) and its
 tasks on the run's own grid (time, ±usual, status, cache, cpu, mem,
 outputs, blocks, worker, task), drawn by the same component: a replay
 reads as the run did. `±usual` measures an executed task against its
-usual time now, as a run on this branch reads history (`—`: never timed). A hit's cpu and mem are
+usual time now, as a run on this branch reads history (`—`: never timed, or
+timed only by this run). A hit's cpu and mem are
 blank (it spent nothing); `—` is a value the run could not read. The
 cache key is in `--format json`. Failures come first, each with its
 exit after the id, `exit 137`, and the signal an exit above 128 stands
@@ -3395,7 +3405,8 @@ as a hit's replay is; a task's `env.define` / `env.secret` values only
 the run knows), so a passing task's log reads too, on a hit
 or in the run that saved it. An uncached task that passed, or a skip,
 kept none, nor does a failed task past the newest 50 failed runs:
-stdout is empty and stderr says so, exit 0. A kept log that is empty
+stdout is empty and stderr says so, exit 0; a skip names what blocked
+it (`c#after did not run: c#gate blocked it (vx last --log c#gate)`). A kept log that is empty
 says the task printed nothing. A task that retried shows every
 attempt, each under a heading (`── attempt 1 of 2 · exit 1 ──`), the
 last `passed` when a retry passed. With
@@ -3606,7 +3617,7 @@ not one. After a flag with a fixed value set the script offers that
 set: `--format` pretty or json, `--output-logs` full, errors-only,
 hash-only or none, `--cache-download` all, toplevel or none, `--schedule`
 its four rules — each value one
-the flag's parser takes (`tests/completions.test.ts` holds it). A plugin verb completes `--help` only. Task and project
+the flag's parser takes (`tests/completions.test.ts` holds it). A plugin verb completes `--help` only; `vx help` completes the verbs. Task and project
 names are not completed (they are the workspace's, and a completion
 that evaluates configs on every Tab is the wrong price). The zsh script
 works both ways zsh loads one: from `$fpath` it completes on the first
@@ -3932,7 +3943,8 @@ only failures is a recovery (a missing tool installed), not a flake.
 Only tasks with `cache: true` are judged: "same inputs, red after
 green" is a claim
 only declared inputs can back, and a task without them keys on its
-config alone. It is judged as the task finishes, so the row carries
+config alone; such a task that needed a retry says only `2 attempts`
+on its row. It is judged as the task finishes, so the row carries
 it: zero cost for a hit or a skip, one probe of the failed-row index
 for a green miss; `vx info` keeps the standing list.
 

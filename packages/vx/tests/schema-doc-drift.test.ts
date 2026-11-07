@@ -149,10 +149,7 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
       }),
   ],
   ['tasks.<name> must be an object', () => validated({ tasks: { b: 'not-an-object' } })],
-  [
-    'exec must be an object with a command string',
-    () => validated({ tasks: { b: { exec: 'build' } } }),
-  ],
+  ['exec must be an object with a command string', () => validated({ tasks: { b: { exec: 1 } } })],
   [
     'exec.command must be a non-empty string',
     () => validated({ tasks: { b: { exec: { command: '' } } } }),
@@ -235,7 +232,7 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
   ],
   [
     'dependsOn must be an array of strings',
-    () => validated({ tasks: { b: { ...ok, dependsOn: 'build' } } }),
+    () => validated({ tasks: { b: { ...ok, dependsOn: [1] } } }),
   ],
   [
     'inputs must be an object',

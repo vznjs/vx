@@ -281,7 +281,7 @@
         "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got 0)": [
           "0"
         ],
-        "$CONFIG: `run.timeout` takes a duration with its unit, like '1ms' or '1s' (got 1)": ["1"],
+        "$CONFIG: `run.timeout` takes a duration with its unit, like '1s' or '1ms' (got 1)": ["1"],
         "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got 1.5)": [
           "1.5"
         ],
@@ -309,7 +309,7 @@
         "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"10G\")": [
           "\"10G\""
         ],
-        "$CONFIG: `run.timeout` takes a duration with its unit, like '10ms' or '1s' (got \"10\")": [
+        "$CONFIG: `run.timeout` takes a duration with its unit, like '10s' or '10ms' (got \"10\")": [
           "\"10\""
         ],
         "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [])": [
@@ -1949,17 +1949,17 @@
           "-1",
           "65536",
           "2147483648",
-          "\"\"",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
-          "\"10\"",
           "[1]",
           "[3000]",
           "{}",
           "{\"x\":\"y\"}"
-        ]
+        ],
+        "$CONFIG: tasks.t.dependsOn must be an array — write dependsOn: [\"\"]": ["\"\""],
+        "$CONFIG: tasks.t.dependsOn must be an array — write dependsOn: [\"x\"]": ["\"x\""],
+        "$CONFIG: tasks.t.dependsOn must be an array — write dependsOn: [\"(\"]": ["\"(\""],
+        "$CONFIG: tasks.t.dependsOn must be an array — write dependsOn: [\"30d\"]": ["\"30d\""],
+        "$CONFIG: tasks.t.dependsOn must be an array — write dependsOn: [\"10G\"]": ["\"10G\""],
+        "$CONFIG: tasks.t.dependsOn must be an array — write dependsOn: [\"10\"]": ["\"10\""]
       },
       "tasks.*.exec": {
         "ok": ["<absent>", "<seed>"],
@@ -1972,12 +1972,24 @@
           "1.5",
           "-1",
           "65536",
-          "2147483648",
-          "\"\"",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
+          "2147483648"
+        ],
+        "$CONFIG: tasks.t.exec must be an object — a command is { exec: { command: \"\" } }": [
+          "\"\""
+        ],
+        "$CONFIG: tasks.t.exec must be an object — a command is { exec: { command: \"x\" } }": [
+          "\"x\""
+        ],
+        "$CONFIG: tasks.t.exec must be an object — a command is { exec: { command: \"(\" } }": [
+          "\"(\""
+        ],
+        "$CONFIG: tasks.t.exec must be an object — a command is { exec: { command: \"30d\" } }": [
+          "\"30d\""
+        ],
+        "$CONFIG: tasks.t.exec must be an object — a command is { exec: { command: \"10G\" } }": [
+          "\"10G\""
+        ],
+        "$CONFIG: tasks.t.exec must be an object — a command is { exec: { command: \"10\" } }": [
           "\"10\""
         ],
         "$CONFIG: tasks.t.exec must be an object (fields: command, env, interactive, persistent, platforms, remote, retries, sandbox, timeout), not an array": [
@@ -2081,7 +2093,7 @@
         "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got 0)": [
           "0"
         ],
-        "$CONFIG: tasks.t.exec.timeout takes a duration with its unit, like '1ms' or '1s' (got 1)": [
+        "$CONFIG: tasks.t.exec.timeout takes a duration with its unit, like '1s' or '1ms' (got 1)": [
           "1"
         ],
         "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got 1.5)": [
@@ -2111,7 +2123,7 @@
         "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"10G\")": [
           "\"10G\""
         ],
-        "$CONFIG: tasks.t.exec.timeout takes a duration with its unit, like '10ms' or '1s' (got \"10\")": [
+        "$CONFIG: tasks.t.exec.timeout takes a duration with its unit, like '10s' or '10ms' (got \"10\")": [
           "\"10\""
         ],
         "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got [])": [
@@ -2198,7 +2210,7 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: tasks.t.exec.env has unknown field \"x\" (allowed: define, passThrough, secret)": [
+        "$CONFIG: tasks.t.exec.env has unknown field \"x\" (allowed: define, passThrough, secret) — vx spells it exec.env.define: { x: \"y\" }": [
           "{\"x\":\"y\"}"
         ]
       },

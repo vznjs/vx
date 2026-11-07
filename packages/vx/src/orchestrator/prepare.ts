@@ -539,11 +539,15 @@ export async function prepareRunLocked(
   // short name for `@scope/pkg`) was measured against nothing and got no
   // "did you mean". Only a failing run pays for the rest of the workspace.
   let hintProjects: ReadonlyMap<string, ProjectEntry> = projects
+  // So does a bare name where no project in scope declares a task: "no
+  // project declares a task yet" must be true of the workspace, not of the
+  // root project a run from the root selects.
   if (
     unresolvedTasks.some((t) => {
       const at = t.indexOf('#')
       return at > 0 && !projects.has(t.slice(0, at))
-    })
+    }) ||
+    (unresolvedTasks.some((t) => !t.includes('#')) && !declaresAny(projects))
   ) {
     try {
       hintProjects = (
@@ -976,6 +980,13 @@ async function declaredNowhere(
     return [...unresolved]
   }
   return undeclaredIn(unresolved, all.projects)
+}
+
+/** Whether any project in `projects` declares a task: its default `build` is none. */
+function declaresAny(projects: LoadedProjects['projects']): boolean {
+  for (const p of projects.values())
+    for (const task of Object.values(p.config.tasks ?? {})) if (!isDefaultBuild(task)) return true
+  return false
 }
 
 /**

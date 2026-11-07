@@ -593,8 +593,8 @@ export interface PlannedRow {
   tone: Style
   cache: string
   cacheTone: Style | ''
-  /** Its usual time, from history. */
-  usualMs?: number
+  /** Its usual time, from history; null for a task that runs and history never timed. */
+  usualMs?: number | null
   /** What a remote hit would download. */
   outputBytes?: number
   /** How many tasks are downstream of it. */
@@ -610,7 +610,12 @@ export function planList(rows: readonly PlannedRow[]): ui.Block {
     lines: (c) => [
       formatRunningHeader(c),
       ...rows.map((r) => {
-        const usual = r.usualMs === undefined ? undefined : formatExpected(r.usualMs)
+        const usual =
+          r.usualMs === undefined
+            ? undefined
+            : r.usualMs === null
+              ? UNKNOWN
+              : formatExpected(r.usualMs)
         const row = formatTaskRow(
           paint(r.tone, r.glyph, c),
           null,
@@ -764,10 +769,14 @@ function placeNote(where: string, colors: ColorSupport = NO_COLOR): string {
 /**
  * The dim note a flaky task's row and frame carry (`flaky - failed 1×
  * before`): nothing prints below the footer, so the task's own line is
- * where the reader learns it. '' when the run did not prove it flaky.
+ * where the reader learns it. Not proved flaky: its attempts, when more
+ * than one; else ''.
  */
 export function flakyNote(o: TaskOutcome, colors: ColorSupport = NO_COLOR): string {
-  if (o.flaky === undefined) return ''
+  // A retry with no key to prove a flake (no `cache: true`) still ran:
+  // the row is the only place a live run says so (`vx last` did).
+  if (o.flaky === undefined)
+    return (o.attempts ?? 1) > 1 ? ` ${paint('muted', `${o.attempts} attempts`, colors)}` : ''
   const said: string[] = []
   if (o.status === 'failed' && o.flaky.passes > 0)
     said.push(`passed ${o.flaky.passes}\u00d7 before`)

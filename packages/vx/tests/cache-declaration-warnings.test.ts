@@ -63,6 +63,10 @@ describe('cache declarations that match nothing', () => {
         // Both globs against directories that do not exist.
         lost: { exec: { command: 'true' },
           inputs: { files: ['lib/**'] }, outputs: { files: ['build/**'] }, cache: true },
+        // A lockfile plugin appends the literal package.json to every task's
+        // inputs: it matched, and hid that the source glob matched nothing.
+        typo: { exec: { command: 'true' },
+          inputs: { files: ['scr/**', 'package.json'] }, outputs: { files: [] }, cache: true },
         // The control: matching inputs, matching outputs.
         found: { exec: { command: 'mkdir -p dist && echo x > dist/a.js' },
           inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true },
@@ -115,6 +119,12 @@ describe('cache declarations that match nothing', () => {
     ])
     // The hit says nothing: the warning belongs to the run that saved.
     expect(await runTask('lost')).toEqual([])
+  })
+
+  it('a wildcard glob that matches nothing is named though a literal input matched', async () => {
+    expect(await runTask('typo')).toEqual([
+      "[vx] app#typo: inputs matched no files (scr/**) — the key will not change when this project's source does",
+    ])
   })
 
   // A literal output read through a linked parent is nx#37661 (2026-11).

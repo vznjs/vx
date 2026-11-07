@@ -850,19 +850,27 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         // The id's form is hinted only when it lacks one: a task that
         // never ran was told how to spell a task id. A typo of one that
         // ran is named, as `vx why` names it.
-        const ran = parsed.log.includes('#')
-          ? nearest(
-              parsed.log,
-              (
-                db.query('SELECT DISTINCT project, task FROM runs').all() as {
-                  project: string
-                  task: string
-                }[]
-              ).map((r) => `${r.project}#${r.task}`),
-            )
-          : undefined
+        const recorded = parsed.log.includes('#')
+          ? (
+              db.query('SELECT DISTINCT project, task FROM runs').all() as {
+                project: string
+                task: string
+              }[]
+            ).map((r) => `${r.project}#${r.task}`)
+          : []
+        const ran = nearest(parsed.log, recorded)
+        // No near name: what of that project has run, so the next try is a pick.
+        const project = parsed.log.slice(0, parsed.log.lastIndexOf('#') + 1)
+        const theirs = recorded
+          .filter((id) => project !== '' && id.startsWith(project))
+          .map((id) => id.slice(project.length))
+          .sort()
+        const listed =
+          ran === undefined && theirs.length > 0
+            ? `; ${project.slice(0, -1)}'s recorded tasks: ${theirs.join(', ')}`
+            : ''
         throw new UserError(
-          `vx last: no recorded run of ${parsed.log}${parsed.runId === undefined ? '' : ` in run ${parsed.runId}`}${parsed.log.includes('#') ? '' : ' (a task id is project#task)'}${ran === undefined ? '' : ` — did you mean ${ran}?`}`,
+          `vx last: no recorded run of ${parsed.log}${parsed.runId === undefined ? '' : ` in run ${parsed.runId}`}${parsed.log.includes('#') ? '' : ' (a task id is project#task)'}${ran === undefined ? '' : ` — did you mean ${ran}?`}${listed}`,
           'VX_E_NO_HISTORY',
         )
       }
@@ -881,14 +889,27 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
               .query('SELECT cached FROM runs WHERE run_id = ? AND project = ? AND task = ?')
               .get(log.runId, project, task) as { cached: number | null } | null
           )?.cached === 1
+        // A skip ran nothing: the output to read is its blocker's.
+        const blocker =
+          log.status === 'skipped'
+            ? (
+                db
+                  .query(
+                    'SELECT blocked_by AS b FROM runs WHERE run_id = ? AND project = ? AND task = ?',
+                  )
+                  .get(log.runId, project, task) as { b: string | null } | null
+              )?.b
+            : null
         sayNotice(
           'info',
           'vx last',
-          log.status === 'failed'
-            ? `${log.taskId} ended failed, and vx kept no output for it: it keeps the newest 50 failed runs`
-            : cached
-              ? `${log.taskId} ended ${log.status}, and its entry is not in the cache: the run did not save it, or it was pruned since`
-              : `${log.taskId} ended ${log.status}. vx keeps output only for failed and cached tasks`,
+          typeof blocker === 'string'
+            ? `${log.taskId} did not run: ${blocker} blocked it (vx last --log ${blocker})`
+            : log.status === 'failed'
+              ? `${log.taskId} ended failed, and vx kept no output for it: it keeps the newest 50 failed runs`
+              : cached
+                ? `${log.taskId} ended ${log.status}, and its entry is not in the cache: the run did not save it, or it was pruned since`
+                : `${log.taskId} ended ${log.status}. vx keeps output only for failed and cached tasks`,
         )
       } else if (log.output === '') {
         sayNotice('info', 'vx last', `${log.taskId} ended ${log.status} and printed nothing`)
@@ -944,6 +965,13 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         { code: 'VX_E_NO_HISTORY', message: 'vx last: no recorded runs yet — run something first' },
       )
     }
+    // Nothing failed is no fault: said as `--list --failed` says it.
+    if ((inv === null || inv === undefined) && parsed.failed === true) {
+      throw refusal(
+        { tone: 'info', headline: 'no failed runs', fix: 'vx last' },
+        { code: 'VX_E_NO_HISTORY', message: 'vx last: no failed runs' },
+      )
+    }
     if (inv === null || inv === undefined) {
       throw new UserError(
         noRuns()
@@ -952,9 +980,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
             ? `vx last: ${parsed.runId} is a task, not a run id — \`vx last --log ${parsed.runId}\` prints its output, \`vx last --stats ${parsed.runId}\` its durations`
             : parsed.runId !== undefined
               ? `vx last: no recorded run ${parsed.runId} (vx last --list shows recent runs)`
-              : parsed.failed === true
-                ? 'vx last: no recorded run failed'
-                : 'vx last: no recorded runs yet — run something first',
+              : 'vx last: no recorded runs yet — run something first',
         'VX_E_NO_HISTORY',
       )
     }
@@ -1022,7 +1048,17 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
     const ranIds = (detail?.tasks ?? [])
       .filter((t) => t.status === 'success' || t.status === 'failed')
       .map((t) => `${t.project}#${t.task}`)
-    const usual = new LocalHistoryProvider(db, undefined, currentBranch(root)).p50sNow(ranIds)
+    const usual = new Map(
+      new LocalHistoryProvider(db, undefined, currentBranch(root)).p50sNow(ranIds),
+    )
+    // A task whose one timing is this run's own has no usual to compare
+    // with: `+0ms` claimed a baseline the live row rightly showed as `—`.
+    const alone = db
+      .query(
+        'SELECT project, task FROM task_durations GROUP BY project, task HAVING COUNT(*) = 1 AND MIN(recorded_at) >= ?',
+      )
+      .all(inv.startedAt) as { project: string; task: string }[]
+    for (const r of alone) usual.delete(`${r.project}#${r.task}`)
     const taskRows = formatTaskRows(detail?.tasks ?? [], moved, usual)
     if (taskRows.length > 0)
       blocks.push(ui.section('Tasks', String(detail?.tasks.length ?? 0), ...taskRows))

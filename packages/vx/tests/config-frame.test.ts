@@ -149,8 +149,15 @@ describe('configErrorFrame', () => {
         cwd,
       )?.split('\n')[0],
     ).toBe('.vx/workspace.ts:4:1: did not export a default object: it exports a function')
-    // No `export default` to point at: the message as it was.
+    // No `export default`: at the named export written instead.
     await writeFile(imports, 'export const config = {}\n')
+    expect(
+      configErrorFrame(`Workspace config at ${imports} did not export a default object`, cwd),
+    ).toBe(
+      '.vx/workspace.ts:1:1: did not export a default object\n\n> 1 | export const config = {}\n    | ^',
+    )
+    // No export at all: the message as it was.
+    await writeFile(imports, 'const config = {}\n')
     expect(
       configErrorFrame(`Workspace config at ${imports} did not export a default object`, cwd),
     ).toBeUndefined()

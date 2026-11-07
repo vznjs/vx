@@ -423,7 +423,7 @@ async function starter(
 ): Promise<number> {
   if (args.mode !== undefined) {
     throw new UserError(
-      `vx init: --${args.mode} answers a Turbo or Nx repo's question, and there is no turbo.json or nx.json here`,
+      `vx init: --${args.mode} answers a Turbo or Nx workspace's question, and there is no turbo.json or nx.json here`,
       'VX_E_USAGE',
     )
   }
@@ -483,7 +483,7 @@ async function starter(
     )
     return 0
   }
-  const rows: ui.FieldRow[] = [['from', 'no turbo.json or nx.json: one project, the root']]
+  const rows: ui.FieldRow[] = [['from', 'no turbo.json or nx.json']]
   // The files are root-relative: a root above the cwd is named, or they read as written here.
   if (root !== process.cwd()) rows.push(['root', root])
   if (args.dry) rows.push(['dry run', 'nothing written'])

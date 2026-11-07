@@ -71,6 +71,28 @@ describe('loadProjectConfig', () => {
     expect(err?.message).toContain('Expected "}"')
   })
 
+  // A missing named export parses fine: "does not parse" sent the user to
+  // look for a syntax error.
+  it('an import of an export its module lacks says so, first load and repeat', async () => {
+    await writeFile(path.join(dir, 'lib.mjs'), 'export const yes = 1\n')
+    const file = path.join(dir, 'vx.config.mjs')
+    await writeFile(
+      file,
+      "import { nope } from './lib.mjs'\nexport default { tasks: {}, n: nope }\n",
+    )
+    for (let i = 0; i < 2; i++) {
+      const err = await loadProjectConfig(file).then(
+        () => null,
+        (e: unknown) => e as Error,
+      )
+      expect(err?.name).toBe('UserError')
+      expect(err?.message).toStartWith(
+        `Project config ${file}: an import names an export its module lacks: `,
+      )
+      expect(err?.message).toContain("'nope'")
+    }
+  })
+
   it('a malformed JSON import names the config, first load and repeat', async () => {
     // Bun's JSON loader throws a SyntaxError naming no file.
     await writeFile(path.join(dir, 'data.json'), '{bad\n')

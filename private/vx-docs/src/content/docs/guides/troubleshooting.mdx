@@ -23,13 +23,13 @@ prints names its own fix too.
 | `not inside a project`                             | Run from a package directory, or pass `--all` or `--filter <pattern>`.  |
 | `two projects are named "…": …` | Two directories got one name (a config's `name`, a plugin's, or the path): set another `name` in one's `vx.config.ts`, then `vx lock`. |
 | `… locks …, but its … is gone` | A project's `vx.config.ts` was deleted or renamed since `vx lock`: run `vx lock`. A new config waits for it too. |
-| `vx requires git: … is not inside a git work tree` | Run `git init` at the workspace root.                                   |
+| `vx requires git: … is not inside a git work tree` | A run needs git: run `git init` at the workspace root.                  |
 | `vx requires git: failed to spawn 'git'`           | Install git.                                                            |
 | `--affected has no base here`                      | Set `baseBranch`, or pass `--affected=<ref>`.                           |
 | `--affected has no default on the base branch`     | On `main` itself, run `--all`: the cache skips what did not change. `vx show` drops `--affected`. |
 | `… has unknown field "<key>"`                      | A typo, or a Turbo or Nx key: the message lists the fields vx allows.  |
 | `dependsOn cycle`                     | Remove one `dependsOn` edge of the loop it prints.                      |
-| `dependsOn … but no such project or task is declared`  | Take the name it suggests, or declare that task in that package.    |
+| `dependsOn …, but` `no project is named …` / `… declares no task …` | Take the name it suggests, or declare that task in that package.    |
 | `no projects declare task(s)`                      | A typo, a config edited since `vx lock`, or no config declares it: `vx show` lists every task. |
 | `unknown flag`                                     | `vx run --help` lists the flags.                                        |
 | `no projects matched filter(s)`                    | A typo: the message suggests the closest name. `vx show` lists every project. |

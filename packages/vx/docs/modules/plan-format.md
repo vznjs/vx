@@ -50,7 +50,7 @@ left out, the words are plain. The cache key is in `--dry=json`.
  ⇢                 cached  local                               1 local        @vzn/vx#format-check
  ⇣                 cached  remote                   12MB       2 local        @vzn/vx#lint  oxlint with tsgolint-backed type-aware checks
  ⏺︎           ~4.2s run     miss                                1 local        @vzn/vx#test
- ⏺︎                 run     no-cache                            0 local        @vzn/vx#dev
+ ⏺︎               — run     no-cache                            0 local        @vzn/vx#dev
 
   tasks      4 planned · 2 cache hits (1 local, 1 remote, 12 MB) · 1 would run · 1 no-cache
   predicted  ~4.20s wall · ~4.20s total execution · 1 task without history (+?)
@@ -82,7 +82,7 @@ task on, `local` when none:
 ─ Plan 2 ─────────────────────────────────────────────────────
       time   usual status  cache      cpu    mem outputs  blocks worker       task
  ⏺︎           ~4.2s run     miss                                0 vx/reapi     @vzn/vx#test
- ⏺︎                 run     miss                                0 local        @vzn/vx#docker
+ ⏺︎               — run     miss                                0 local        @vzn/vx#docker
 
   tasks     2 planned · 2 would run
 ```
