@@ -13,6 +13,7 @@ import {
   isOutOfFds,
   killGraceMs,
   OUT_OF_FDS_HINT,
+  POST_EXIT_DRAIN_MS,
   testTimerMs,
   helperEnv,
   type SecretMask,
@@ -557,20 +558,6 @@ export function armTimeout(
     },
   }
 }
-
-/**
- * Grace after the direct child exits before we abort the stdout/stderr readers.
- * The pipe reaches EOF only when EVERY write-end fd is closed, so a task that
- * backgrounds a process inheriting fd 1/2 (`server & echo up` — `execWrap`
- * leaves compound commands as `sh -c`, so `sh` exits while the grandchild holds
- * the pipe) never EOFs. On a clean exit with no lingering writer the pipe EOFs
- * at once, so the readers win this race immediately and normal tasks pay
- * nothing; only a stuck reader waits out the grace. Residual buffered output is
- * bounded by the OS pipe buffer (streamToString drains continuously DURING the
- * run), so this is far longer than any real drain needs. What the leftover
- * process writes after the bound is lost, and `POST_EXIT_CUT_LINE` says so.
- */
-const POST_EXIT_DRAIN_MS = 250
 
 /**
  * The line a task's frame gets when the drain bound cut its pipes. The cut

@@ -199,7 +199,15 @@ run added or changed against that stamp (`ownOutputsSince`), handed to
 `ownWorkspaceOutputsSince`, `ownWsOutputFiles`; A-43). A run that removed a file
 it found (a bundler deleting its upstream's intermediate) saves nothing:
 an artifact holds what a run wrote, never what it took away, and the
-upstream's restore puts the file back (X-32).
+upstream's restore puts the file back (X-32). Before a retry, what the
+failed attempt added against the stamp is removed by path
+(`dropFailedAdditions`, `cleanOutputPaths`); a found file it changed or
+removed cannot be put back, so that task saves nothing.
+
+A process any attempt's shell left running (`ExecuteResult.leftRunning`)
+withholds the save, a failed attempt's too: it may write into the
+passing attempt's outputs. It is not killed, as a passing attempt's
+is not.
 
 What a miss leaves behind — outputs resolved, artifact and rows saved,
 output prefixes recorded, git snapshot marked — is

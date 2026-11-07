@@ -73,6 +73,9 @@ The refusal adds what helps:
   `alpha#build` for `alpha` at `p/a`.
 - Otherwise what exists: `Tasks: build, test.`, `No
 project is named zzz; projects: a, b.`, or `a's tasks: build, test.`
+- A `pkg` that matches a project only after Unicode normalization (`café`
+  typed in NFC, the project's directory in NFD) is said to differ in
+  Unicode form, with the fix: set `name` in its vx.config.
 - Then ``A run reads the lock: after editing a
 vx.config, run `vx lock`.``, since a task added since the last lock is not in it.
 - `Only projects outside the selection declare <name> — pass
@@ -2661,10 +2664,11 @@ message is that plugin's or check's: do what it says.
 #### `VX_E_FS`
 
 The file system refused a read or a write, or the cache index could not
-be opened: permissions, a full disk, a file where the cache directory
+be opened: permissions, a full disk, a path longer than it allows
+(`ENAMETOOLONG`, an output past PATH_MAX), a file where the cache directory
 goes, a directory where `cache.db` goes. The message names the path. Free
 space (`vx cache clean --max-size <size>` trims the cache), grant the
-access, or move the path away, then re-run.
+access, shorten the path, or move it away, then re-run.
 
 #### `VX_E_FDS`
 

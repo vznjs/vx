@@ -46,6 +46,7 @@ import {
   slashBraceExpansions,
   braceAlternatives,
   ESSENTIAL_ENV,
+  POST_EXIT_DRAIN_MS,
   splitNegations,
   staticPrefix,
   stripTrailingSlash,
@@ -602,7 +603,21 @@ function resolveEnvValues(
   names: readonly string[],
   source: NodeJS.ProcessEnv,
 ): Array<[string, string | undefined]> {
-  return [...names].sort().map((name) => [name, source[name]])
+  return [...names].sort().map((name) => {
+    const value = source[name]
+    // Bun decodes the environment lossily and offers no raw bytes on every
+    // platform (Linux's /proc/self/environ misses what vx sets itself), so
+    // Latin-1 é and è both read as U+FFFD and replayed each other's build.
+    // A value that truly holds U+FFFD is refused with them: the two read
+    // alike. The value is never shown; it may be a secret.
+    if (value?.includes('�') === true) {
+      throw new UserError(
+        `inputs.env ${name} holds U+FFFD: its value is not UTF-8, or holds that character, ` +
+          `and a lossy decode keys every invalid byte alike. Set it as UTF-8.`,
+      )
+    }
+    return [name, value]
+  })
 }
 
 /**
@@ -671,12 +686,27 @@ async function runRuntimeCommand(
   }
   killProbesOnExit()
   let stdout, stderr, exitCode
+  const ac = new AbortController()
   try {
-    ;[stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).bytes(),
-      new Response(proc.stderr).bytes(),
-      proc.exited,
+    const streams = Promise.all([
+      probeBytes(proc.stdout, ac.signal),
+      probeBytes(proc.stderr, ac.signal),
     ])
+    exitCode = await proc.exited
+    // A child the shell left holding the pipes (`sleep 6 & echo x`) kept
+    // them open past the shell's exit, and the run waited for the child. As
+    // a task's (exec/runner.ts): a short drain, then the reads stop and the
+    // group goes. What was read is what the shell printed, so the key folds
+    // it; what the child prints later is no part of the answer.
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const cut = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, POST_EXIT_DRAIN_MS)
+    })
+    await Promise.race([streams, cut])
+    clearTimeout(timer)
+    ac.abort()
+    killGroup(proc.pid)
+    ;[stdout, stderr] = await streams
   } finally {
     liveProbes.delete(proc)
     mine?.delete(proc)
@@ -745,24 +775,51 @@ const probesOf = new WeakMap<RuntimeMemo, Set<ReturnType<typeof Bun.spawn>>>()
 export function stopRuntimeProbes(...memos: readonly RuntimeMemo[]): void {
   for (const memo of memos) {
     for (const p of probesOf.get(memo) ?? []) {
-      try {
-        process.kill(-p.pid, 'SIGKILL')
-      } catch {
-        // the group is gone
-      }
+      killGroup(p.pid)
     }
   }
 }
+/** SIGKILL a probe's group, its own since the spawn (`detached`). */
+function killGroup(pid: number): void {
+  try {
+    process.kill(-pid, 'SIGKILL')
+  } catch {
+    // the group is gone
+  }
+}
+
+/**
+ * A probe's stream, read to its end or until `signal`: then the pending
+ * read is cancelled and what was read is returned. `new Response().bytes()`
+ * offers no way out while a leftover child holds the pipe.
+ */
+async function probeBytes(
+  stream: ReadableStream<Uint8Array>,
+  signal: AbortSignal,
+): Promise<Uint8Array> {
+  const reader = stream.getReader()
+  const onAbort = (): void => void reader.cancel().catch(() => {})
+  signal.addEventListener('abort', onAbort, { once: true })
+  const parts: Uint8Array[] = []
+  try {
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
+      parts.push(value)
+    }
+  } finally {
+    signal.removeEventListener('abort', onAbort)
+    reader.releaseLock()
+  }
+  return Buffer.concat(parts)
+}
+
 function killProbesOnExit(): void {
   if (probeExitHooked) return
   probeExitHooked = true
   process.on('exit', () => {
     for (const p of liveProbes) {
-      try {
-        process.kill(-p.pid, 'SIGKILL')
-      } catch {
-        // the group is gone
-      }
+      killGroup(p.pid)
     }
   })
 }

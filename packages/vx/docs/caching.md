@@ -83,8 +83,10 @@ over (in order):
    so boundaries are unambiguous). Listed names get their current
    values; an unset name folds its bare name, with no `\0`, so unset
    and set-to-empty are two keys (the child tells them apart:
-   `passThrough` leaves an unset name out). A name holding a NUL is
-   refused at load.
+   `passThrough` leaves an unset name out). A name holding a NUL or
+   another control character is refused at load, and a value holding
+   U+FFFD at hash time (a value that is not UTF-8 reads as it, so two
+   such values would key alike).
 6. **`inputs.runtime` resolved output** — `[command, output]`
    pairs, where `output` is the trimmed stdout of each command run via
    `sh -c` in the **project dir** at hash time; a command with stderr
@@ -1072,6 +1074,10 @@ With the rule off, an edge fixes the order, and the dependant is
   upstream's intermediate) saves nothing: an artifact holds what a run
   wrote, never what it took away, and the upstream's restore puts the
   file back, so the dependant runs again on every warm run (X-32);
+- before a **retry**, what the failed attempt added is removed, so its
+  partial outputs are neither left nor saved; a failed attempt that
+  changed or removed a file it found saves nothing on the retry's pass,
+  since no retry puts that file back;
 - it **cleans by recorded rows**, never by glob, before a run (nothing:
   stale files of its own are its command's to clean, as under Turbo) and
   before a restore (its rows only, pruning emptied directories only

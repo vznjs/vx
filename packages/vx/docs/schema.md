@@ -300,7 +300,12 @@ test: { exec: { command: 'bun test', retries: 1 } }
   was already announced and preparing.
 - Declared outputs are re-cleaned before each retry, exactly like the
   first attempt — a failed attempt's partial outputs can't leak into
-  the next.
+  the next. An [additive](caching.md#additive-outputs-two-tasks-one-tree-an-edge-between-them)
+  task removes what the failed attempt added instead; one that changed
+  or removed a file it found saves nothing on its pass. A process a
+  failed attempt left running may still write into the next attempt's
+  outputs, so its pass is not saved, with the same warning as a
+  passing attempt's leftover.
 - Every attempt streams its output live. Between attempts vx emits one
   stderr line into the task's stream, ending in the reason:
   `vx: retrying <id> (attempt <k>/<total>) after exit <code>`, or
@@ -1098,6 +1103,13 @@ the names, and each value, with "unset" folded apart from every value
 (the child tells unset from empty too — `process.env.X ?? 'dflt'`,
 `${X-dflt}`). A name holding a NUL is refused.
 
+A value that is not UTF-8 fails the run, naming the variable and never
+its value: Bun reads the environment with a lossy decode, so Latin-1 `é`
+and `è` both read as U+FFFD and would key alike. A value that truly
+holds U+FFFD is refused with them, since vx cannot tell the two apart.
+A `passThrough` value reaches the child as that decode too, U+FFFD's
+UTF-8 bytes in place of each invalid byte.
+
 ##### `inputs.runtime` (optional, default `[]`)
 
 Shell commands whose **trimmed stdout and stderr, kept apart,** are folded
@@ -1135,6 +1147,13 @@ Semantics:
   flaky probe should not silently degrade to a stale hit.
 - **Output that is not UTF-8 fails the run** too: a lossy decode keyed
   every invalid byte alike. Pipe binary output through a hash or `od`.
+- **A process the command leaves running does not hold the run.** As a
+  task's output is (`POST_EXIT_DRAIN_MS`), the probe's pipes are read
+  for `250ms` after its shell exits, then the reads stop and the probe's
+  process group is killed. The answer is what was read: the shell has
+  exited, so that is all it printed, and what a leftover child prints
+  later is not part of it. `sleep 30 & echo x` answers `x` at once;
+  it used to hold every run, `--dry` and `--no-cache` included, for 30 s.
 - The command sees **only the essential environment** every task sees
   (the essential allowlist under `ExecEnv`: `PATH`, `HOME`, the locale), with
   vx's values. Not the task's `exec.env.define` or `passThrough`, which

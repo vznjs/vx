@@ -12,6 +12,7 @@ testTimerMs(name, defaultMs, zero = false): number // VX_TEST_<name>, else defau
 teardownTimeoutMs(): number                       // default 3000
 settleWithin(p: Promise<unknown>, ms): Promise<boolean>
 killGraceMs(defaultMs: number): number            // defaultMs
+POST_EXIT_DRAIN_MS                                // 250: the drain after a shell exits
 claimExitForSignal(): void                        // a signal's handler will end the process
 exitClaimedBySignal(): boolean
 dieOf(signal: 'SIGINT' | 'SIGTERM' | 'SIGHUP'): void // die of it, waiting (1 s bound) for it to land
@@ -42,6 +43,12 @@ dieOf(signal: 'SIGINT' | 'SIGTERM' | 'SIGHUP'): void // die of it, waiting (1 s 
   `VX_TEST_KILL_GRACE` shortens all three: each escalation test used to
   wait the full two seconds, a third of the suite's wall time, for a
   claim 200 ms proves.
+
+- `POST_EXIT_DRAIN_MS` is how long a task's or a runtime probe's pipes
+  are read after its shell exits before the reads stop: a child the
+  shell left running holds them open, and the run waited for the child.
+  Here, not in `exec/`, because `cache/inputs.ts` (the probe) cannot
+  import `exec/`.
 
 - `claimExitForSignal` / `exitClaimedBySignal`: bin.ts exits once its
   verb has settled and both streams have ended, so a timer a config left

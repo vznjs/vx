@@ -282,6 +282,8 @@ result's `stderr` (after a newline only when the output ended mid-line,
 2026-09-24). A timeout aborts the readers at once, with its own line.
 The sandboxed runner does the same; on Linux bwrap's PID namespace
 kills the leftover with the shell, so there the bound is unreachable.
+An `inputs.runtime` probe is bounded by the same constant (`util/`,
+since `cache/` cannot import `exec/`), then its group is killed.
 
 ### Stream capture
 

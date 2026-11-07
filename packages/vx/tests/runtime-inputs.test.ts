@@ -6,6 +6,8 @@ import { existsSync } from 'node:fs'
 import { readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, setDefaultTimeout } from 'bun:test'
+import { answerRuntime } from '../src/cache/index.js'
+import { isAlive } from './helpers/alive.js'
 import { addProject, gitIn, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
 
 setDefaultTimeout(30_000)
@@ -262,5 +264,116 @@ describe('runtime inputs — e2e', () => {
     await rm(path.join(keyed, '.env.local'))
     expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
     expect(await built(keyed)).toBe('none\n')
+  })
+})
+
+// A probe that leaves a child holding its stdout (`sleep 30 & echo x`) held
+// the run until the child exited: the probe waited for its pipes to close,
+// and --dry and --no-cache waited too. It stops as a task's output does: a
+// short drain after the shell exits, then the probe's group is killed.
+describe('a runtime probe that leaves a child holding its output', () => {
+  let root: string
+  beforeEach(async () => {
+    root = await makeWorkspace()
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it("answers with what the shell printed, under the child's 30 s sleep, and kills the child", async () => {
+    const pidFile = path.join(root, 'bg.pid')
+    const started = performance.now()
+    const answer = await answerRuntime(`sleep 30 & echo $! > ${pidFile}; echo x`, root, root)
+    expect(answer).toBe('x')
+    expect(performance.now() - started).toBeLessThan(20_000)
+    const pid = Number((await readFile(pidFile, 'utf8')).trim())
+    // SIGKILL lands asynchronously: ask the state, never a clock.
+    for (let i = 0; i < 400 && isAlive(pid); i++) await Bun.sleep(25)
+    expect(isAlive(pid)).toBe(false)
+  })
+
+  it('keys a run under --dry without waiting for the child', async () => {
+    await addProject(
+      root,
+      'a',
+      `export default {
+        tasks: {
+          build: {
+            exec: { command: 'true' },
+            inputs: { files: [], runtime: ['sleep 30 & echo x'] },
+            outputs: { files: [] },
+            cache: true,
+          },
+        },
+      }`,
+    )
+    const started = performance.now()
+    const r = await vx(root, ['run', 'build', '--all', '--dry'])
+    expect(r.code).toBe(0)
+    expect(performance.now() - started).toBeLessThan(20_000)
+  })
+})
+
+// Bun reads the environment with a lossy decode: Latin-1 é and è both read
+// as U+FFFD, so `inputs.env` keyed them alike and replayed each other's
+// build. vx cannot read the raw bytes on every platform, so a value
+// holding U+FFFD is refused, by name, never printing the value.
+describe('an inputs.env value that is not UTF-8', () => {
+  let root: string
+  beforeEach(async () => {
+    root = await makeWorkspace()
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('is refused by name rather than keyed as its lossy decode', async () => {
+    const log = path.join(root, 'execlog')
+    await addProject(
+      root,
+      'a',
+      `export default {
+        tasks: {
+          build: {
+            exec: { command: "echo built >> ${log}" },
+            inputs: { files: [], env: ['LATIN'] },
+            outputs: { files: [] },
+            cache: true,
+          },
+        },
+      }`,
+    )
+    gitIn(root)('add', '-A')
+    gitIn(root)('commit', '-q', '-m', 'init')
+    // The raw byte 0xE9, as a Latin-1 shell exports it: a JS string would
+    // reach vx as UTF-8.
+    const proc = Bun.spawn(
+      [
+        'sh',
+        '-c',
+        'LATIN="$(printf "\\351")" exec "$@"',
+        'sh',
+        process.execPath,
+        BIN,
+        'run',
+        'build',
+        '--all',
+      ],
+      {
+        cwd: root,
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '' },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    )
+    const [out, err, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ])
+    expect(code).not.toBe(0)
+    expect(out + err).toContain('inputs.env LATIN holds U+FFFD')
+    expect(out + err).not.toContain('internal error')
+    expect(existsSync(log)).toBe(false)
   })
 })

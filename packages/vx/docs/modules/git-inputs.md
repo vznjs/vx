@@ -30,6 +30,20 @@ check once per enumeration (a run starts it as its cache opens) and
 this file talks to git; `inputs.ts` decides which files a task declared
 and where the project boundary is.
 
+A scoped run passes each project dir as `:(literal)<dir>`: a dir is a
+path, never pathspec magic. Raw, `:top` was read as `top` and listed
+none of its files, and `*g` as a glob also listed `:top/src/log`, so
+`:top`'s slice was not empty and an edit to its `src/f` left the key
+(a stale hit).
+
+git warns `could not open directory` and exits 0 when a walk cannot
+enter a directory, so the files under it were in no key: past PATH_MAX
+(4096 bytes on Linux) an edit there was a stale hit. The status walk and
+`runGitLsFiles` refuse such a warning, naming the directory (git cuts its
+message at 4096 bytes, so a long one is shown cut). A directory this user
+may not read is left out as before: no task of theirs reads it either,
+and a root-owned volume beside the projects must not stop every run.
+
 Every enumeration spawn runs `git --no-optional-locks`. A plain `status`
 refreshes the index under `index.lock` when files are stat-dirty, and the
 user's own `git add` or `commit` failed on that lock while a vx run held

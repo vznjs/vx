@@ -34,7 +34,7 @@ export function isPermissionError(err: unknown): err is NodeJS.ErrnoException //
 export const PERMISSION_HINT: string
 export function isDiskFull(err: unknown): err is NodeJS.ErrnoException // ENOSPC, EDQUOT
 export const DISK_FULL_HINT: string
-export function isFsRefusal(err: unknown): err is NodeJS.ErrnoException // either of the two
+export function isFsRefusal(err: unknown): err is NodeJS.ErrnoException // either of the two, or ENAMETOOLONG (an output past PATH_MAX)
 export function fsRefusalHint(err: NodeJS.ErrnoException): string
 export function isOutOfFds(err: unknown): err is NodeJS.ErrnoException // EMFILE, ENFILE
 export const OUT_OF_FDS_HINT: string // "raise the limit (ulimit -n 4096)"

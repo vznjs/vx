@@ -352,6 +352,11 @@ host's `process.env`):
 - Unset names → `[name, undefined]`, which the key folds apart from
   every value, `''` included, and from "name was never listed".
 - Sorted by name for deterministic key ordering.
+- A value holding U+FFFD is a `UserError` naming the variable, never
+  its value. Bun decodes the environment lossily, so Latin-1 `é` and
+  `è` both read as U+FFFD and keyed alike; no raw bytes are readable on
+  every platform (Linux's `/proc/self/environ` misses what vx sets
+  itself), so a value that truly holds U+FFFD is refused with them.
 
 ## Output resolution rules
 

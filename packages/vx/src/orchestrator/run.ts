@@ -2159,6 +2159,15 @@ function didYouMean(
       continue
     }
     if (!projects.has(proj)) {
+      // NFC typed, NFD on disk (or back): two edits apart, so no hint, and
+      // the list named the project exactly as typed.
+      const form = [...projects.keys()].find((n) => n.normalize('NFC') === proj.normalize('NFC'))
+      if (form !== undefined) {
+        lists.add(
+          `${proj} is not the project ${form}, though they look the same: the two are written in different Unicode forms (NFC and NFD). Set \`name\` in its vx.config to the form you type.`,
+        )
+        continue
+      }
       // A project's directory first: by edit distance, `p/a` hinted `p/b`.
       const p =
         projectNamed(proj, projects) ??

@@ -124,9 +124,9 @@ describe('git spawns on a cold run', () => {
       expect(await coldRun(['a#build'])).toEqual(
         [
           ...ENUMERATION,
-          '--no-optional-locks ls-files -s -v -z -- packages/a',
-          '--no-optional-locks ls-files -s -v -z --debug -- packages/a',
-          '--no-optional-locks status --porcelain -z -uall --ignored=matching --no-renames -- packages/a',
+          '--no-optional-locks ls-files -s -v -z -- :(literal)packages/a',
+          '--no-optional-locks ls-files -s -v -z --debug -- :(literal)packages/a',
+          '--no-optional-locks status --porcelain -z -uall --ignored=matching --no-renames -- :(literal)packages/a',
         ].sort(),
       )
     },

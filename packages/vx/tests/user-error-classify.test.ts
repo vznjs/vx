@@ -91,6 +91,16 @@ describe('isDiskFull and the refusal hint', () => {
     ])
   })
 
+  // An output past PATH_MAX failed its save as "internal error in p#build:
+  // ENAMETOOLONG …": the path is the user's, not a defect.
+  it('a path too long for the file system is a refusal, and is called one', () => {
+    const long = Object.assign(errno('ENAMETOOLONG'), { syscall: 'open' })
+    expect([isFsRefusal(long), fsRefusalHint(long)]).toEqual([
+      true,
+      'that path is longer than the file system allows; shorten it',
+    ])
+  })
+
   it('a permission code is a refusal too', () => {
     for (const code of ['EACCES', 'EPERM', 'EROFS']) expect(isFsRefusal(errno(code))).toBe(true)
   })
