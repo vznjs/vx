@@ -16,11 +16,6 @@ import { neverStarted } from '../report/index.js'
 
 export interface RunRecordsInput {
   outcomes: readonly TaskOutcome[]
-  /**
-   * Tasks that ran behind a failed dependency (`--continue=always`) or one
-   * `--exclude-dependencies` dropped, each with the task at the root of it.
-   */
-  tainted?: ReadonlyMap<string, string>
   runId: string
   /** Wall-clock ms at run start; every per-task ns offset is anchored to it. */
   startedAtMs: number
@@ -50,7 +45,7 @@ export interface RunRecordsInput {
 /** What a task's `runs` row reads besides its outcome. */
 export type RunRecordContext = Pick<
   RunRecordsInput,
-  'tainted' | 'runId' | 'startedAtMs' | 'endedAtMs' | 'forwardArgs' | 'blocks' | 'remoteTraffic'
+  'runId' | 'startedAtMs' | 'endedAtMs' | 'forwardArgs' | 'blocks' | 'remoteTraffic'
 >
 
 export interface RunRecords {
@@ -147,7 +142,7 @@ export type RecordedOutcome = TaskOutcome & { status: RunRecord['status'] }
 /** One outcome's `runs` row. */
 export function runRecordOf(o: RecordedOutcome, input: RunRecordContext): RunRecord {
   const { runId, startedAtMs, endedAtMs } = input
-  const blockedBy = o.blockedBy ?? input.tainted?.get(o.node.id)
+  const blockedBy = o.blockedBy ?? o.taintedBy
   const remoteError = remoteErrorOf(input.remoteTraffic, o.hash)
   // Built field by field: a spread per optional field was ~2 µs of each
   // of a 1,200-hit warm run's rows.

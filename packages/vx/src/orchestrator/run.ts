@@ -1229,7 +1229,8 @@ async function runOnBus(
     // dispatch, and the tracker carries it to what is built on it.
     const taintSeeds = new Set(excluded.seeds)
     const taint = taintTracker(options.continueMode === 'always', taintSeeds, nodes)
-    // Each task that ran tainted, and the task at the root of it.
+    // Each task that ran tainted, and the task at the root of it: its
+    // outcome's `taintedBy` once it finishes.
     const taintedRan = new Map<string, string>()
     const depended = dependedOn(nodes.values())
 
@@ -1366,7 +1367,7 @@ async function runOnBus(
     const historyDb = indexDb(prepared.localCache)
     const cacheOff = cachesNothing(policy)
     const judgeFlaky = (o: TaskOutcome): void => {
-      const candidates = flakyCandidates([o], taintedRan)
+      const candidates = flakyCandidates([o])
       if (candidates.length === 0) return
       try {
         const found = detectFlaky(historyDb, candidates)[0]
@@ -1412,7 +1413,6 @@ async function runOnBus(
       stream.add(
         o,
         runRecordOf(o as RecordedOutcome, {
-          tainted: taintedRan,
           runId,
           startedAtMs: endedAtMsAtStart,
           endedAtMs: endedAtMsAtStart,
@@ -1442,6 +1442,8 @@ async function runOnBus(
       },
       onFinish: (o) => {
         if (cacheOff) o.cacheOff = true
+        const root = taintedRan.get(o.node.id)
+        if (root !== undefined && o.blockedBy === undefined) o.taintedBy = root
         taint.settled(o)
         judgeFlaky(o)
         keeper?.taskDone(o)
@@ -1642,7 +1644,6 @@ async function runOnBus(
     const recordsOf = (final: TaskOutcome[], runOk: boolean) =>
       assembleRunRecords({
         outcomes: final,
-        tainted: taintedRan,
         runId,
         startedAtMs: endedAtMsAtStart,
         endedAtMs,
@@ -2318,10 +2319,7 @@ export function projectAtDir(
 }
 
 /** The executed, keyed outcomes of a run — what flakiness is judged on. */
-function flakyCandidates(
-  outcomes: readonly TaskOutcome[],
-  tainted: ReadonlyMap<string, string>,
-): FlakyCandidate[] {
+function flakyCandidates(outcomes: readonly TaskOutcome[]): FlakyCandidate[] {
   const out: FlakyCandidate[] = []
   for (const o of outcomes) {
     if (o.status !== 'success' && o.status !== 'failed') continue
@@ -2333,7 +2331,7 @@ function flakyCandidates(
     // Behind a failed dependency the outcome is not the key's: a failure is
     // the dependency's, and a pass built on bytes the key never named, so a
     // later failure relapsed from it and read as a flake for thirty days.
-    if (tainted.has(o.node.id)) continue
+    if (o.taintedBy !== undefined) continue
     out.push({
       project: o.node.projectName,
       task: o.node.taskName,

@@ -3053,6 +3053,7 @@ export interface TaskOutcome {
   keylessBy?: string
   cacheOff?: true
   blockedBy?: string
+  taintedBy?: string
   otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
   timedOut?: true
   failedOutput?: string
