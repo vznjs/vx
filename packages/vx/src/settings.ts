@@ -222,7 +222,7 @@ export const SETTINGS: readonly Setting[] = [
     path: 'config.workerTimeout',
     kind: { type: 'duration', timer: true },
     default: '30s',
-    doc: 'How long one config evaluation may take; at 5 s vx names the config still evaluating.',
+    doc: 'How long one config evaluation may await; at 5 s vx names the config still evaluating. A synchronous loop on the first load holds the thread the deadline needs, so it hangs until killed.',
     config: false,
   },
   {

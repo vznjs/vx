@@ -386,18 +386,22 @@ async function isFile(p: string): Promise<boolean> {
  */
 async function gitConfigs(root: string): Promise<string[]> {
   const [configs, index, untracked] = await Promise.all([
-    gitZ(root, [
-      'ls-files',
-      '-z',
-      '--cached',
-      '--others',
-      '--exclude-standard',
-      '--',
-      ':(glob)**/vx.config.*',
-      ':(glob)**/.vx/workspace.*',
-      `:(glob)**/${REVIEW_FILE}`,
-      NOT_INSTALLS,
-    ]),
+    gitZ(
+      root,
+      [
+        'ls-files',
+        '-z',
+        '--cached',
+        '--others',
+        '--exclude-standard',
+        '--',
+        ':(glob)**/vx.config.*',
+        ':(glob)**/.vx/workspace.*',
+        `:(glob)**/${REVIEW_FILE}`,
+        NOT_INSTALLS,
+      ],
+      true,
+    ),
     gitZ(root, ['ls-files', '-z', '--stage', '--', NOT_INSTALLS]),
     // An embedded repository is the one untracked entry git lists as `dir/`.
     gitZ(root, ['ls-files', '-z', '--others', '--exclude-standard', '--', NOT_INSTALLS]),
@@ -431,8 +435,11 @@ async function gitConfigs(root: string): Promise<string[]> {
  */
 const NOT_INSTALLS = ':(exclude,glob)**/node_modules/**'
 
-/** `git <args>`'s NUL-separated output at `cwd`. */
-async function gitZ(cwd: string, args: string[]): Promise<string[]> {
+/**
+ * `git <args>`'s NUL-separated output at `cwd`. `strict`: a path not valid
+ * UTF-8 is refused, as decoding turns it into one no file has.
+ */
+async function gitZ(cwd: string, args: string[], strict = false): Promise<string[]> {
   let proc: Bun.Subprocess<'ignore', 'pipe', 'pipe'>
   try {
     proc = Bun.spawn({
@@ -454,10 +461,53 @@ async function gitZ(cwd: string, args: string[]): Promise<string[]> {
   ])
   if (code !== 0)
     throw new UserError(`git ls-files failed (exit ${code}): ${err.trim()}`, 'VX_E_GIT')
-  return new TextDecoder('utf-8', { ignoreBOM: true })
-    .decode(out)
-    .split('\0')
-    .filter((p) => p !== '')
+  const text = new TextDecoder('utf-8', { ignoreBOM: true }).decode(out)
+  // U+FFFD alone is cheap to look for; a valid name may hold it, so the bytes confirm.
+  if (strict && text.includes('\uFFFD')) {
+    let start = 0
+    for (let i = 0; i <= out.length; i++) {
+      if (i < out.length && out[i] !== 0) continue
+      const entry = out.subarray(start, i)
+      start = i + 1
+      if (!isUtf8(entry)) {
+        const slash = entry.lastIndexOf(0x2f)
+        throw notUtf8(slash === -1 ? entry : entry.subarray(0, slash))
+      }
+    }
+  }
+  return text.split('\0').filter((p) => p !== '')
+}
+
+const strictUtf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
+
+function isUtf8(bytes: Uint8Array): boolean {
+  try {
+    strictUtf8.decode(bytes)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** `rel`, a root-relative directory, with each byte that is not UTF-8 shown as `\xNN`. */
+function notUtf8(rel: Uint8Array): UserError {
+  let shown = ''
+  for (let i = 0; i < rel.length;) {
+    const lead = rel[i]!
+    const n =
+      lead < 0x80 ? 1 : lead < 0xc2 ? 0 : lead < 0xe0 ? 2 : lead < 0xf0 ? 3 : lead < 0xf5 ? 4 : 0
+    const seq = rel.subarray(i, i + n)
+    if (n > 0 && isUtf8(seq)) {
+      shown += strictUtf8.decode(seq)
+      i += n
+    } else {
+      shown += `\\x${lead.toString(16).padStart(2, '0')}`
+      i++
+    }
+  }
+  return new UserError(
+    `${printable(shown)}: the directory's name is not valid UTF-8, which no project path may hold — rename it`,
+  )
 }
 
 /** The config paths under `root` outside git, root-relative: none under `node_modules`, `.git` or `.vx`. */
@@ -475,15 +525,54 @@ async function scanConfigs(root: string): Promise<string[]> {
     if (rel !== '' && entries.some((e) => e.name === '.vx') && (await workspaceFileIn(root, rel)))
       return
     const below: string[] = []
+    let lossy = false
     for (const e of entries) {
       const child = rel === '' ? e.name : `${rel}/${e.name}`
       if (CONFIG_RANK.has(e.name) || e.name === REVIEW_FILE) out.push(child)
-      else if (e.isDirectory() && !SCAN_SKIPS.has(e.name)) below.push(child)
+      else if (e.isDirectory() && !SCAN_SKIPS.has(e.name)) {
+        below.push(child)
+        // A name not valid UTF-8 decodes to one no directory has (a valid one may hold U+FFFD).
+        if (e.name.includes('\uFFFD')) lossy = true
+      }
     }
+    if (lossy) await refuseNotUtf8(root, rel)
     await Promise.all(below.map(walk))
   }
   await walk('')
   return out
+}
+
+/**
+ * Refuses a directory in `rel` whose name is not valid UTF-8 and that holds
+ * a config: walked by bytes, as no string path reaches it.
+ */
+async function refuseNotUtf8(root: string, rel: string): Promise<void> {
+  const dir = Buffer.from(rel === '' ? root : path.join(root, rel))
+  for (const name of await readdir(dir, { encoding: 'buffer' })) {
+    if (isUtf8(name)) continue
+    if (await holdsConfig(Buffer.concat([dir, Buffer.from('/'), name]))) {
+      throw notUtf8(rel === '' ? name : Buffer.concat([Buffer.from(`${rel}/`), name]))
+    }
+  }
+}
+
+// Bun 1.4.4 drops `withFileTypes` under `encoding: 'buffer'`, so each entry is an lstat.
+async function holdsConfig(dir: Buffer): Promise<boolean> {
+  let names: Buffer[]
+  try {
+    names = await readdir(dir, { encoding: 'buffer' })
+  } catch (err) {
+    if (isOutOfFds(err)) throw err
+    return false
+  }
+  for (const name of names) {
+    const shown = name.toString()
+    if (CONFIG_RANK.has(shown)) return true
+    if (SCAN_SKIPS.has(shown)) continue
+    const at = Buffer.concat([dir, Buffer.from('/'), name])
+    if ((await lstat(at)).isDirectory() && (await holdsConfig(at))) return true
+  }
+  return false
 }
 
 // `.vx` holds vx's state (the cache), which a checkout ignores.

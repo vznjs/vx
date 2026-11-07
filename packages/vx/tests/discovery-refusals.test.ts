@@ -1,7 +1,7 @@
 // A plugin's `discover` hook names projects by `{ dir, name?, deps?, reach? }`,
 // and `discoveredProject` / `linkDiscoveredEdges` / `checkProjectNames`
 // refuse what discovery cannot hold. Each is compared whole.
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
@@ -178,4 +178,35 @@ describe('`vx lock` finding the configs', () => {
       await rm(repo, { recursive: true, force: true })
     }
   })
+
+  for (const git of [true, false]) {
+    it(`a project directory whose name is not UTF-8 is refused, named escaped (${git ? 'in' : 'outside'} git)`, async () => {
+      const repo = await mkdtemp(path.join(os.tmpdir(), 'vx-utf8-'))
+      try {
+        if (git) Bun.spawnSync(['git', 'init', '-q'], { cwd: repo })
+        // CONTROL: a valid name holding U+FFFD itself is a project.
+        for (const d of ['a', 'pkgs/y\uFFFD']) {
+          await mkdir(path.join(repo, d), { recursive: true })
+          await Bun.write(path.join(repo, d, 'vx.config.mjs'), 'export default {}\n')
+        }
+        const rels = async () =>
+          (await findProjectConfigs(repo)).configs.map((c) => path.relative(repo, c.dir))
+        expect(await rels()).toEqual(['a', 'pkgs/y\uFFFD'])
+        // No string path names it: `x` + byte 0xff.
+        const bad = Buffer.concat([Buffer.from(`${repo}/pkgs/x`), Buffer.from([0xff])])
+        await mkdir(bad)
+        await writeFile(Buffer.concat([bad, Buffer.from('/vx.config.mjs')]), 'export default {}\n')
+        expect(
+          await rels().then(
+            (r) => r.join(','),
+            (e: Error) => e.message,
+          ),
+        ).toBe(
+          "pkgs/x\\xff: the directory's name is not valid UTF-8, which no project path may hold — rename it",
+        )
+      } finally {
+        await rm(repo, { recursive: true, force: true })
+      }
+    })
+  }
 })
