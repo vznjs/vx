@@ -451,6 +451,12 @@ export interface TelemetrySource {
    */
   flush(step?: <T>(id: string, work: () => Promise<T>) => Promise<T>): Promise<void>
   /**
+   * Send the held `task.end` of each persistent task not in `keep`, read
+   * from `final` (by id): a server's outcome can change after its ready,
+   * when it dies before the run stops it or ends a kept session.
+   */
+  endServers(final: readonly TaskOutcome[], keep?: ReadonlySet<string>): void
+  /**
    * Sample this task's process tree every `SAMPLE_MS` until the returned
    * function is called, the root exits, or the run ends. Present only when
    * a sink wants `task.sample`: nobody asking costs no timer and no read.
@@ -687,6 +693,13 @@ export function createTelemetrySource(args: {
         // The stop reached it first: no task.start, and the summary counts
         // it in `notRunCount`, not `tasks`, so no task.end either.
         if (neverStarted(outcome)) return
+        // A server's end waits for its final outcome (`endServers`): one
+        // task.end per task, and the one sent at ready read `success` over
+        // a crash after it.
+        if (node.config.exec.persistent !== undefined) {
+          heldEnds.set(node.id, { ts, outcome })
+          return
+        }
         deliver({
           v: TELEMETRY_SCHEMA_VERSION,
           kind: 'task.end',
@@ -707,9 +720,24 @@ export function createTelemetrySource(args: {
     }
   }
 
+  const heldEnds = new Map<string, { ts: number; outcome: TaskOutcome }>()
   return {
     subscriber,
     ...(wantsSample ? { track } : {}),
+    endServers(final, keep) {
+      for (const [id, held] of heldEnds) {
+        if (keep?.has(id) === true) continue
+        heldEnds.delete(id)
+        const outcome = final.find((o) => o.node.id === id) ?? held.outcome
+        deliver({
+          v: TELEMETRY_SCHEMA_VERSION,
+          kind: 'task.end',
+          runId,
+          ts: held.ts,
+          ...taskTelemetryOf(outcome),
+        })
+      }
+    },
     emitSummary(summary: RunSummaryRecord): void {
       for (const sink of sinks) {
         if (disabled.has(sink) || sink.onRunSummary === undefined) continue

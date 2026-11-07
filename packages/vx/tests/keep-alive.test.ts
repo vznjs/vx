@@ -347,29 +347,44 @@ describe('foreground keep-alive ends when one requested server exits', () => {
   // The telemetry summary went out before the wait, so a requested server
   // that crashed in it left every sink (vx-ci's job summary: `✅ 1/1
   // passed`) reading a pass under the run's exit 1 and `vx last`'s FAILED.
+  // Its task.end went out at ready, so a trace read the crash as a
+  // success, and the summary's end was the summary's, not the session's.
+  /** A workspace whose sink writes each task.end and each summary to `out`. */
+  function writeRecorder(out: string): void {
+    mkdirSync(path.join(root, '.vx'), { recursive: true })
+    writeFileSync(
+      path.join(root, '.vx/workspace.mjs'),
+      localWorkspaceSource(
+        [
+          pluginSource(
+            'org/sum',
+            `{
+              telemetry: () => ({
+                name: 'sum',
+                wants: ['task.end'],
+                onRecord(r) {
+                  appendFileSync(${JSON.stringify(out)}, JSON.stringify({ end: r.task + ':' + r.status + ':' + r.exitCode }) + '\\n')
+                },
+                onRunSummary(s) {
+                  appendFileSync(${JSON.stringify(out)}, JSON.stringify({ exitOk: s.exitOk, aborted: s.abortedCount, tasks: s.tasks.map((t) => t.task + ':' + t.status), heldMs: s.endedAt - s.startedAt }) + '\\n')
+                },
+              }),
+            }`,
+          ),
+        ],
+        "import { appendFileSync } from 'node:fs'\n",
+      ),
+    )
+  }
+  const recorded = (out: string): Array<Record<string, unknown>> =>
+    readFileSync(out, 'utf8')
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l))
   for (const exitCode of [1, 0]) {
-    it(`a telemetry sink's summary reads a requested server exiting ${exitCode}`, async () => {
-      const sums = path.join(root, 'summaries.jsonl')
-      mkdirSync(path.join(root, '.vx'), { recursive: true })
-      writeFileSync(
-        path.join(root, '.vx/workspace.mjs'),
-        localWorkspaceSource(
-          [
-            pluginSource(
-              'org/sum',
-              `{
-                telemetry: () => ({
-                  name: 'sum',
-                  onRunSummary(s) {
-                    appendFileSync(${JSON.stringify(sums)}, JSON.stringify({ exitOk: s.exitOk, tasks: s.tasks.map((t) => t.task + ':' + t.status) }) + '\\n')
-                  },
-                }),
-              }`,
-            ),
-          ],
-          "import { appendFileSync } from 'node:fs'\n",
-        ),
-      )
+    it(`a telemetry sink reads a requested server exiting ${exitCode}`, async () => {
+      const out = path.join(root, 'records.jsonl')
+      writeRecorder(out)
       await addProject(
         root,
         'app',
@@ -387,19 +402,51 @@ describe('foreground keep-alive ends when one requested server exits', () => {
         }),
       )
       expect(await proc.exited).toBe(exitCode)
-      // One summary, the run's final word.
-      expect(
-        readFileSync(sums, 'utf8')
-          .trim()
-          .split('\n')
-          .map((l) => JSON.parse(l)),
-      ).toEqual([
+      const [end, summary, ...rest] = recorded(out)
+      // One task.end, with the final status; one summary, the run's last word.
+      expect(rest).toEqual([])
+      expect(end).toEqual({ end: exitCode === 0 ? 'dev:success:0' : `dev:failed:${exitCode}` })
+      const { heldMs, ...verdict } = summary!
+      expect(verdict).toEqual(
         exitCode === 0
-          ? { exitOk: true, tasks: ['dev:success'] }
-          : { exitOk: false, tasks: ['dev:failed'] },
-      ])
+          ? { exitOk: true, aborted: 0, tasks: ['dev:success'] }
+          : { exitOk: false, aborted: 0, tasks: ['dev:failed'] },
+      )
+      // The run's end is the session's: the server held it 0.5 s after ready.
+      expect(heldMs as number).toBeGreaterThanOrEqual(500)
     }, 30_000)
   }
+
+  // A Ctrl-C in the wait exits 130, yet the summary read a pass (vx-ci's
+  // `✅`) where a Ctrl-C anywhere else reads stopped (`⏹️`).
+  it('a telemetry sink reads a Ctrl-C in the wait as a stop', async () => {
+    const out = path.join(root, 'records.jsonl')
+    writeRecorder(out)
+    const dir = await addProject(root, 'app', config(0))
+    const proc = track(
+      Bun.spawn([process.execPath, BIN, 'run', 'app#dev'], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_TEST_KILL_GRACE: '200ms' },
+      }),
+    )
+    let text = ''
+    const reading = (async () => {
+      for await (const chunk of proc.stdout) text += new TextDecoder().decode(chunk)
+    })()
+    await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    const deadline = Date.now() + 10_000
+    while (!text.includes('─ Summary ') && Date.now() < deadline) await Bun.sleep(20)
+    proc.kill('SIGINT')
+    expect(await proc.exited).toBe(130)
+    await reading
+    const [end, summary, ...rest] = recorded(out)
+    expect(rest).toEqual([])
+    expect(end).toEqual({ end: 'dev:aborted:130' })
+    const { heldMs: _, ...verdict } = summary!
+    expect(verdict).toEqual({ exitOk: false, aborted: 1, tasks: ['dev:aborted'] })
+  }, 30_000)
 
   // C-46: a kept server keeps the persistent tasks it depends on. Under
   // `--filter app` only app#dev was kept, and the api#dev it was started

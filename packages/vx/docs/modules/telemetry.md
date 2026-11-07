@@ -43,7 +43,9 @@ is pre-folded, bigint wallclock spans are decimal strings.
   `cache.dir` (a STRING, not a Cache handle — a sink cannot reach the
   cache) and `warn`.
 - `TelemetrySource` — the live projection: a bus `subscriber`,
-  `emitSummary` and `flush`.
+  `emitSummary`, `flush` and `endServers(final, keep?)`, which sends the
+  held `task.end` of each persistent task not in `keep`, read from
+  `final`.
 - The status vocabulary every record carries (`TaskStatus`,
   `CacheSource`, `isPassStatus`, `isCacheHit`) is graph's
   (`graph/task-status.ts`, scheduler.md).
@@ -172,7 +174,13 @@ Each streaming record carries `v` and `kind`, and:
 | `task.end`    | `runId`, `ts`, every `TaskTelemetry` field                         |
 
 A task the stop reached before it started gets neither `task.start` nor
-`task.end`, as it is not in the summary's `tasks`.
+`task.end`, as it is not in the summary's `tasks`. A persistent task's
+`task.end` (its `ts` still its ready) waits for its final outcome: the
+end of the graph, or, for a server the foreground keeps, the end of
+that session, with the summary, whose `endedAt` is then the session's.
+A server that crashed after its ready reads `failed` there, and one a
+stop took down in the session reads `aborted`, as a stop's tasks do
+elsewhere (the run history keeps it a success).
 | `run.end` | `runId`, `ts` |
 
 ## Invariants

@@ -1682,6 +1682,11 @@ async function runOnBus(
     // cache closes: its history is written once the wait has decided, or it
     // read `ok` over the exit 1 and fed the flaky list a pass (X-23).
     const historyAfterWait = keepAlive.children.length > 0 && !hold && stop.stoppedBy === undefined
+    // The servers this run is done with end now; the kept ones once the wait decides.
+    telemetry?.endServers(
+      list,
+      historyAfterWait ? new Set(keepAlive.nodes.map((n) => n.id)) : undefined,
+    )
     // A failed task's output, for `vx last` and an agent (run-failures.ts).
     // A cache directory this user cannot write keeps none of the run's
     // records: the run's one notice said so.
@@ -1767,13 +1772,15 @@ async function runOnBus(
       final: TaskOutcome[],
       runOk: boolean,
       timed?: typeof step,
+      ended = { at: endedAtMs, totalMs },
     ): Promise<void> => {
       if (sinks === undefined || runContextRecord === undefined) return
+      sinks.endServers(final)
       const tasks = final === list ? records.telemetryTasks : recordsOf(final, runOk).telemetryTasks
       const summary = assembleRunSummary(runContextRecord, tasks, {
         startedAt: endedAtMsAtStart,
-        endedAt: endedAtMs,
-        totalDurationMs: Math.round(totalMs),
+        endedAt: ended.at,
+        totalDurationMs: Math.round(ended.totalMs),
         exitOk: runOk,
         // As the terminal counts them: `1 aborted · 1 not run`.
         abortedCount: tasks.filter((t) => t.status === 'aborted').length,
@@ -1902,7 +1909,27 @@ async function runOnBus(
           }
         })
         // After the footer and the plugins' teardown: no step line there.
-        await summarize(final, ok && !crashed)
+        // The run ended with the session, not with the summary above. A stop
+        // reads as one, as a stop anywhere else does: the servers it took
+        // down are aborted there. The history keeps them as a dev session's
+        // usual end (item 854).
+        const stopped = stop.signal.aborted
+        const told = stopped
+          ? final.map((o) =>
+              keepAlive.nodes.some((n) => n.id === o.node.id) && isPassStatus(o.status)
+                ? {
+                    ...o,
+                    status: 'aborted' as const,
+                    exitCode:
+                      typeof first.code === 'number' ? first.code : signalExitCode(first.code),
+                  }
+                : o,
+            )
+          : final
+        await summarize(told, ok && !crashed && !stopped, undefined, {
+          at: Date.now(),
+          totalMs: Number(process.hrtime.bigint() - runStartHrTimeNs) / 1_000_000,
+        })
       }
       return { ok: ok && !crashed, outcomes: final }
     }
