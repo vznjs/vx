@@ -64,9 +64,7 @@ describe('a bare name does not select a default build', () => {
       const r = await vx(root, [...args])
       expect(r.code).toBe(1)
       expect(r.text).toBe(
-        noticed(
-          `vx run: no projects declare task(s): build. Tasks: ${listed}. A run reads the lock: after editing a vx.config, run \`vx lock\`.\n`,
-        ),
+        noticed(`vx run: no projects declare task(s): build. Tasks: ${listed}.\n`),
       )
     }
   }, 30_000)

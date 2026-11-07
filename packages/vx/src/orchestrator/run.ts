@@ -10,6 +10,7 @@ import {
   inputStabilityEnv,
   LOCK_INVALID,
   lockEntryBroken,
+  loadProjectConfigs,
   lockKey,
   readLockfile,
 } from '../workspace/index.js'
@@ -2158,9 +2159,37 @@ async function unresolvedHint(prepared: {
   }
   const lock =
     init === '' && elsewhere === '' && !near.startsWith(' Did you mean') && !near.includes(NO_TASK)
-      ? ' A run reads the lock: after editing a vx.config, run `vx lock`.'
+      ? await lockHint(prepared.workspaceRoot, prepared.unresolvedTasks)
       : ''
   return `${elsewhere}${near}${init}${lock}`
+}
+
+/**
+ * The lock hint, said only when it is the fix: a config declares the name
+ * and the lock does not. Beside a current lock it sent a typo to a command
+ * that changed nothing. Evaluates every config, on the refusal path only;
+ * a config that does not load keeps the plain hint.
+ */
+async function lockHint(root: string, unresolved: readonly string[]): Promise<string> {
+  const names = new Set(unresolved.map((t) => t.slice(t.lastIndexOf('#') + 1)))
+  try {
+    const [{ configs }, lock] = await Promise.all([findProjectConfigs(root), readLockfile(root)])
+    const fresh = await loadProjectConfigs(
+      configs.map((c) => c.configPath),
+      root,
+    )
+    for (const [i, c] of configs.entries()) {
+      const locked = lock?.projects[lockKey(root, c.dir)]?.config.tasks ?? {}
+      const name = Object.keys(fresh[i]!.tasks ?? {}).find(
+        (n) => names.has(n) && !Object.hasOwn(locked, n),
+      )
+      if (name !== undefined)
+        return ` ${relPosix(root, c.configPath)} declares ${name}, but the lock is older: run \`vx lock\`.`
+    }
+    return ''
+  } catch {
+    return ' A run reads the lock: after editing a vx.config, run `vx lock`.'
+  }
 }
 
 /**

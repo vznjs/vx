@@ -63,7 +63,7 @@ it('a task the lock does not hold yet names `vx lock` as the fix', async () => {
   expect(p.exitCode).toBe(1)
   expect(p.stderr.toString()).toBe(
     noticed(
-      'vx run: no projects declare task(s): lint. Tasks: build. A run reads the lock: after editing a vx.config, run `vx lock`.\n',
+      'vx run: no projects declare task(s): lint. Tasks: build. packages/app/vx.config.mjs declares lint, but the lock is older: run `vx lock`.\n',
     ),
   )
 }, 30_000)

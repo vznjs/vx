@@ -34,17 +34,13 @@ describe('the default build is no declared task', () => {
     expect(vx('run', 'build', '--all')).toEqual([
       1,
       '',
-      noticed(
-        'vx run: no projects declare task(s): build. Tasks: test. A run reads the lock: after editing a vx.config, run `vx lock`.\n',
-      ),
+      noticed('vx run: no projects declare task(s): build. Tasks: test.\n'),
     ])
   })
 
   it('a project-scoped typo neither lists nor hints it', () => {
     expect(vx('run', 'x#nope')[2]).toBe(
-      noticed(
-        "vx run: no projects declare task(s): x#nope. x's tasks: test. A run reads the lock: after editing a vx.config, run `vx lock`.\n",
-      ),
+      noticed("vx run: no projects declare task(s): x#nope. x's tasks: test.\n"),
     )
     expect(vx('run', 'x#buil')[2]).not.toContain('x#build')
   })

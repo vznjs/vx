@@ -327,9 +327,7 @@ describe('cli run()', () => {
       // among the unresolved; they appear only as what exists (M-56). The
       // whole line, because `toContain` would pass on the fallback's wording.
       expect(stderr).toBe(
-        noticed(
-          'vx run: no projects declare task(s): typo-here. Tasks: build, lint. A run reads the lock: after editing a vx.config, run `vx lock`.\n',
-        ),
+        noticed('vx run: no projects declare task(s): typo-here. Tasks: build, lint.\n'),
       )
     } finally {
       process.chdir(origCwd)

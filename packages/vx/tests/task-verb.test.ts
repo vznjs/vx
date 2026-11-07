@@ -124,9 +124,7 @@ describe('a task typed as a verb', () => {
       ),
     )
     expect(run(root, 'app:nope', '--all')[2]).toBe(
-      noticed(
-        'vx run: no projects declare task(s): app:nope. Tasks: build, dev. A run reads the lock: after editing a vx.config, run `vx lock`.\n',
-      ),
+      noticed('vx run: no projects declare task(s): app:nope. Tasks: build, dev.\n'),
     )
     // Nor does one the project inherits from Object.prototype.
     expect(run(root, 'app:toString')[2]).toBe(

@@ -79,8 +79,10 @@ declares a task yet: add one under `tasks` in a vx.config, then run
 - A `pkg` that matches a project only after Unicode normalization (`café`
   typed in NFC, the project's directory in NFD) is said to differ in
   Unicode form, with the fix: set `name` in its vx.config.
-- Otherwise ``A run reads the lock: after editing a
-vx.config, run `vx lock`.``, since a task added since the last lock is not in it.
+- Otherwise, when a vx.config declares the name and the lock does not
+  (a task added since the last lock), ``<config> declares <task>, but the
+lock is older: run `vx lock`.`` (the refusal evaluates every config to
+  tell; one that does not load keeps the plain hint).
 - `Only projects outside the selection declare <name> — pass
 --all, or a --filter that includes them.` when the run was scoped and a project
   outside the scope declares it.

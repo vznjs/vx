@@ -195,10 +195,10 @@ describe('task selection', () => {
         await said('packages/a#build'),
         await said('packages/a/#tset'),
       ]).toEqual([
-        'no projects declare task(s): deploy. Tasks: build, test. A run reads the lock: after editing a vx.config, run `vx lock`.',
-        'no projects declare task(s): zzz#build. No project is named zzz; projects: a, b. A run reads the lock: after editing a vx.config, run `vx lock`.',
-        "no projects declare task(s): a#deploy. a's tasks: build, test. A run reads the lock: after editing a vx.config, run `vx lock`.",
-        "no projects declare task(s): aa#deploy. No project is named aa; a's tasks: build, test. A run reads the lock: after editing a vx.config, run `vx lock`.",
+        'no projects declare task(s): deploy. Tasks: build, test.',
+        'no projects declare task(s): zzz#build. No project is named zzz; projects: a, b.',
+        "no projects declare task(s): a#deploy. a's tasks: build, test.",
+        "no projects declare task(s): aa#deploy. No project is named aa; a's tasks: build, test.",
         'no projects declare task(s): aa#tset. Did you mean a#test?',
         'no projects declare task(s): biuld. Did you mean build?',
         'no projects declare task(s): packages/a#build. Did you mean a#build?',
@@ -217,7 +217,7 @@ describe('task selection', () => {
       await addProject(nfd, ['build'])
       const r = await run({ cwd: root, tasks: ['café#build'], log: silent() })
       expect(r.refused).toBe(
-        `no projects declare task(s): café#build. café is not the project ${nfd}, though they look the same: the two are written in different Unicode forms (NFC and NFD). Set \`name\` in its vx.config to the form you type. A run reads the lock: after editing a vx.config, run \`vx lock\`.`,
+        `no projects declare task(s): café#build. café is not the project ${nfd}, though they look the same: the two are written in different Unicode forms (NFC and NFD). Set \`name\` in its vx.config to the form you type.`,
       )
     },
     TIMEOUT,

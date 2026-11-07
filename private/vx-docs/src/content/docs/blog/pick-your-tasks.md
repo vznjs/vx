@@ -32,7 +32,6 @@ $ vx run build lnit --all
 ✗ vx run  no projects declare task(s): lnit
 
   Tasks: build, check, codegen, color, count, dev, e2e, env, and 9 more
-  A run reads the lock: after editing a vx.config, run `vx lock`
 $ echo $?
 1
 ```
