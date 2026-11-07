@@ -1145,6 +1145,7 @@ export interface LockfileClaimOptions {
 export interface LockfileImporter {
   readonly deps: Readonly<Record<string, string>>
   readonly peers: Readonly<Record<string, string>>
+  readonly transitive?: readonly string[]
 }
 == type LockSettings (src/config.ts)
 export interface LockSettings {

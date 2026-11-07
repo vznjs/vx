@@ -16,6 +16,7 @@ const SHARDS: readonly (readonly string[])[] = [
     'npm',
     'pnpm-workspace-precise',
     'rehoist-identity',
+    'transitive-workspace',
     'yarn-package-settings',
   ],
   [

@@ -88,6 +88,11 @@ export interface LockfileImporter {
   readonly deps: Readonly<Record<string, string>>
   /** Its peers that resolve to an importer, each with no installed entry of the same name. */
   readonly peers: Readonly<Record<string, string>>
+  /**
+   * The importers it reaches only through installed packages, sorted: a
+   * registry package's dependency the install resolved to a workspace.
+   */
+  readonly transitive?: readonly string[]
 }
 
 /** What a lockfile plugin spreads into `definePlugin` (`fingerprint`, `key`), and `importers` for its own stages. */

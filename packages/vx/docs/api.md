@@ -1397,6 +1397,7 @@ importers: dependency name → importer directory (root-relative POSIX,
 export interface LockfileImporter {
   readonly deps: Readonly<Record<string, string>>
   readonly peers: Readonly<Record<string, string>>
+  readonly transitive?: readonly string[]
 }
 ```
 
