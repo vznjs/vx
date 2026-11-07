@@ -119,6 +119,32 @@ describe('failedOutputLog — what it says was dropped', () => {
   })
 })
 
+describe('failedOutputLog — secrets', () => {
+  // The re-bound masked the capture's head and its tail apart. Nothing is
+  // dropped between them, so a value written across the head's end (a
+  // retry of an uncached task past 8 KB, an entry's capture past 8 MB) was
+  // a whole occurrence no side matched, and the failure row kept it.
+  it('masks a value across the head and tail when nothing between them was dropped', () => {
+    const mask = secretMask([{ MY_TOKEN: 'abcdefghij' }])!
+    for (const [headChars, tailChars] of [
+      [8 * 1024, 56 * 1024],
+      [64, 1024],
+    ] as const) {
+      const c = new BoundedCapture(headChars, tailChars)
+      c.push(`${'x'.repeat(headChars - 3)}abc`)
+      c.push('defghij\nexit 2\n')
+      const text = decodeOutputLog(failedOutputLog(c, true, mask))
+        .map((t) => t.text)
+        .join('')
+      expect([
+        headChars,
+        text.includes('abcdefghij'),
+        text.endsWith(`${MASKED}\nexit 2\n`),
+      ]).toEqual([headChars, false, true])
+    }
+  })
+})
+
 describe('fileLocations', () => {
   it('lists the existing files the text names with line and column, unique, in order', () => {
     const dir = '/w/app'
