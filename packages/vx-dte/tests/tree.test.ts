@@ -1,10 +1,10 @@
 // The run's snapshot of its tracked files (src/tree.ts).
 
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
-import { snapshot } from '../src/tree.ts'
+import { snapshot, untrackedWorkspace } from '../src/tree.ts'
 
 // Mid-merge, `git stash create` refuses the unmerged index, and the run
 // took HEAD for its tree: workers ran HEAD's files under keys of the
@@ -72,6 +72,90 @@ it('takes HEAD when nothing changed, and no commit as none', async () => {
     git('commit', '-qm', 'a')
     const head = git('rev-parse', 'HEAD').stdout.toString().trim()
     expect((await snapshot(repo)).commit).toBe(head)
+  } finally {
+    await rm(repo, { recursive: true, force: true })
+  }
+})
+
+// `git add -u` passes over an entry flagged assume-unchanged or
+// skip-worktree (a sparse checkout sets it), so the snapshot kept HEAD's
+// blob while core's key hashed the file on disk: a worker built HEAD's
+// bytes and saved them under the edited file's key, a stale hit.
+it('snapshots a flagged file as it is on disk, and leaves the flags be', async () => {
+  const repo = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-tree-'))
+  try {
+    const git = (...a: string[]) =>
+      Bun.spawnSync(
+        [
+          'git',
+          '-c',
+          'user.email=t@vx.local',
+          '-c',
+          'user.name=t',
+          '-c',
+          'commit.gpgsign=false',
+          ...a,
+        ],
+        { cwd: repo, stdout: 'pipe', stderr: 'ignore' },
+      )
+    git('init', '-q')
+    for (const f of ['a', 's', 'gone']) await writeFile(path.join(repo, f), 'old\n')
+    git('add', '.')
+    git('commit', '-qm', 'a')
+    git('update-index', '--assume-unchanged', 'a')
+    git('update-index', '--skip-worktree', 's', 'gone')
+    await writeFile(path.join(repo, 'a'), 'new a\n')
+    await writeFile(path.join(repo, 's'), 'new s\n')
+    // A sparse checkout leaves its skip-worktree files off disk: they are
+    // the index's, not deleted.
+    await rm(path.join(repo, 'gone'))
+    const { tree } = await snapshot(repo)
+    const blob = (f: string) => git('cat-file', 'blob', `${tree}:${f}`).stdout.toString()
+    expect([blob('a'), blob('s'), blob('gone')]).toEqual(['new a\n', 'new s\n', 'old\n'])
+    expect(git('ls-files', '-v').stdout.toString()).toBe('h a\nS gone\nS s\n')
+    // A sparse checkout's patterns keep `add` off a file outside them, and
+    // its index reads unflag that file in memory only.
+    await mkdir(path.join(repo, 'in'))
+    await mkdir(path.join(repo, 'out'))
+    for (const f of ['in/f', 'out/f', 'out/gone']) await writeFile(path.join(repo, f), 'old\n')
+    git('add', '.')
+    git('commit', '-qm', 'b')
+    git('sparse-checkout', 'set', 'in')
+    await mkdir(path.join(repo, 'out'))
+    await writeFile(path.join(repo, 'out/f'), 'new\n')
+    const sparse = (await snapshot(repo)).tree
+    const at = (f: string) => git('cat-file', 'blob', `${sparse}:${f}`).stdout.toString()
+    expect([at('out/f'), at('out/gone')]).toEqual(['new\n', 'old\n'])
+  } finally {
+    await rm(repo, { recursive: true, force: true })
+  }
+})
+
+// A worker reads the workspace config from the run's tree: one untracked
+// is not there, and every worker failed `unknown command: dte`, started
+// again three times, before a task said why.
+it('names an untracked workspace config, the one core loads', async () => {
+  const repo = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-tree-'))
+  try {
+    const git = (...a: string[]) =>
+      Bun.spawnSync(['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', ...a], {
+        cwd: repo,
+        stdout: 'pipe',
+        stderr: 'ignore',
+      })
+    git('init', '-q')
+    const ws = path.join(repo, 'ws')
+    await mkdir(path.join(ws, '.vx'), { recursive: true })
+    await writeFile(path.join(ws, '.vx/workspace.mjs'), 'export default {}\n')
+    await writeFile(path.join(ws, 'f'), 'f\n')
+    git('add', 'ws/f')
+    git('commit', '-qm', 'a')
+    expect(await untrackedWorkspace(ws, (await snapshot(ws)).tree)).toBe('.vx/workspace.mjs')
+    git('add', '-A')
+    expect(await untrackedWorkspace(ws, (await snapshot(ws)).tree)).toBeUndefined()
+    // A .ts beside it is the one core loads.
+    await writeFile(path.join(ws, '.vx/workspace.ts'), 'export default {}\n')
+    expect(await untrackedWorkspace(ws, (await snapshot(ws)).tree)).toBe('.vx/workspace.ts')
   } finally {
     await rm(repo, { recursive: true, force: true })
   }

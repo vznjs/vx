@@ -426,6 +426,18 @@ export class Orchestrator {
     // machine's CPU on it (2026-11-05).
     const nodes = this.o.nodes()
     const up = upstream(nodes, req.taskId)
+    // A worker runs a task in its project's directory of the run's tree: a
+    // project whose config is untracked is not there, and every worker
+    // failed to spawn it, exit 127 (2026-11-07).
+    const dir = path.relative(this.o.root, req.cwd)
+    if (dir !== '' && !dir.startsWith('..')) {
+      this.inTree ??= listTree(this.o.root, this.o.tree)
+      const tree = await this.inTree
+      if (tree !== undefined && !holds(tree, dir))
+        throw new UserError(
+          `${req.taskId} runs in ${dir}, which is not in the commit workers check out: commit its project (its vx.config file is untracked)`,
+        )
+    }
     // A worker runs the run's tree: a file its key includes that the tree
     // lacks (untracked) is not there, and the output it saved under that
     // key was a stale hit for the next run (2026-10-24).
@@ -2466,17 +2478,37 @@ const nested = new WeakMap<
   { dirs: string[]; by: Map<string, readonly string[]> }
 >()
 
-/** A tree's file paths, and its submodules' (gitlinks). */
-type Tree = { files: Set<string>; links: string[] }
+/** A tree's file paths, and its submodules' (gitlinks); `dirs` once asked. */
+type Tree = { files: Set<string>; links: string[]; dirs?: Set<string> }
+
+/** Whether `tree` has a file under `dir`, or `dir` in a submodule (checked out or not, its own say). */
+function holds(tree: Tree, dir: string): boolean {
+  if (tree.dirs === undefined) {
+    const dirs = (tree.dirs = new Set<string>())
+    const above = (f: string): void => {
+      for (let d = path.posix.dirname(f); d !== '.' && !dirs.has(d); d = path.posix.dirname(d))
+        dirs.add(d)
+    }
+    for (const f of tree.files) above(f)
+    for (const l of tree.links) above(l)
+  }
+  return tree.dirs.has(dir) || tree.links.some((l) => dir === l || dir.startsWith(`${l}/`))
+}
 
 /** `tree`'s files and submodules under `root`, relative to it; undefined when git cannot list it. */
 async function listTree(root: string, tree: string): Promise<Tree | undefined> {
-  const p = Bun.spawn(['git', 'ls-tree', '-r', '-z', tree], {
-    cwd: root,
-    stdin: 'ignore',
-    stdout: 'pipe',
-    stderr: 'ignore',
-  })
+  let p
+  try {
+    p = Bun.spawn(['git', 'ls-tree', '-r', '-z', tree], {
+      cwd: root,
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'ignore',
+    })
+  } catch {
+    // quiet: no git, or no root, is git unable to say.
+    return undefined
+  }
   const [out, code] = await Promise.all([new Response(p.stdout).text(), p.exited])
   if (code !== 0) return undefined
   const files = new Set<string>()
