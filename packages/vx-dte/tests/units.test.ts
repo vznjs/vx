@@ -265,8 +265,9 @@ it('a send to a worker the relay would not take is said', async () => {
       { v: 1, cores: 1, memory: 1, tree: 'bbb' },
       undefined,
     )
-    for (let i = 0; i < 40 && said.length === 0; i++) await Bun.sleep(50)
+    for (let i = 0; i < 40 && said.length < 2; i++) await Bun.sleep(50)
     expect(said).toEqual([
+      `[vx] dte: refused worker ${worker.id}: checked out tree bbb, the run is on aaa`,
       `[vx] dte: sending refused to ${worker.id} failed: relay: 503 overloaded`,
     ])
     await o.close()
@@ -892,6 +893,7 @@ async function harness(
     kept?: (id: string) => void
     sent?: Map<string, number>
     pinWaitMs?: number
+    warn?: (m: string) => void
   } = {},
 ) {
   const store = fakeArtifacts()
@@ -1363,6 +1365,30 @@ it('says a task waited on a worker that never joined, once the run is over', asy
   await h.stop()
   expect(h.o.footer().map(([k, line]) => [k, ui.inline(line, { enabled: false })])).toEqual([
     ['workers', 'none joined: a task waited on one'],
+  ])
+})
+
+// A worker on another tree was refused while a task waited: only the
+// worker heard why, and the footer said none joined (2026-11-07).
+it('says a worker it refused, as it refuses and once the run is over', async () => {
+  const said: string[] = []
+  const h = await harness(new Map([node('t1')]), undefined, undefined, undefined, undefined, {
+    warn: (m) => said.push(m),
+  })
+  void h.o.execute(h.req('t1'))
+  const w = await join(
+    h.served.url,
+    R,
+    'worker',
+    { v: 1, cores: 1, memory: 1, tree: 'x', id: 'ci#1' },
+    undefined,
+  )
+  let got: unknown[] = []
+  for (let i = 0; i < 20 && got.length === 0; i++) got = await w.poll()
+  expect(said).toEqual(['[vx] dte: refused worker ci#1: checked out tree x, the run is on c'])
+  await h.stop()
+  expect(h.o.footer().map(([k, line]) => [k, ui.inline(line, { enabled: false })])).toEqual([
+    ['workers', 'none joined: 1 refused (checked out tree x, the run is on c)'],
   ])
 })
 

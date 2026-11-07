@@ -593,7 +593,8 @@ use your own instead.
   never the entry it bypassed.
 - A worker whose tracked files differ from the orchestrator's (another
   tree, or the same commit with a tracked file changed, such as by a
-  prepare step) is refused. Both sides read their tracked files as they
+  prepare step) is refused, and the orchestrator says so as it happens:
+  `[vx] dte: refused worker <id>: <reason>`. Both sides read their tracked files as they
   are on disk, a file flagged `assume-unchanged` or `skip-worktree` too
   (one a sparse checkout left off disk is its index's), so the same change
   on both is the same tree.
@@ -757,8 +758,9 @@ not:
 
 A run over that started none (every task a hit) says
 `workers   none started: no task needed one`; one where a task waited
-on a worker and none joined (none started, or each refused) says
-`workers   none joined: a task waited on one`.
+on a worker and none joined says
+`workers   none joined: a task waited on one`, or, when the run refused
+workers, `workers   none joined: 2 refused (<first reason>)`.
 
 Under each worker, and `local`, the footer then spells out what it did:
 its time online, busy and idle; its CPU peak and average in cores and

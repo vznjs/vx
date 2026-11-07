@@ -335,6 +335,8 @@ export class Orchestrator {
   private readonly unstarted = new Map<string, string>()
   /** A task waited here on a worker: one ended with none joined needed one. */
   private waited = false
+  /** Why each worker this run refused was refused, in order. */
+  private readonly refused: string[] = []
   /** Started, then not needed before they joined (`release`), or given up as late. */
   private readonly cancelled = new Set<string>()
   /** Of `cancelled`, those given up past their join limit, not let go: taken if they join. */
@@ -1467,7 +1469,11 @@ export class Orchestrator {
     if (body.type === 'joined') {
       const info = body.info as Partial<WorkerInfo> | null
       const id = body.id!
+      // Only the worker heard why: the run sat silent and its footer said
+      // none joined (2026-11-07).
       const refuse = (reason: string): void => {
+        this.refused.push(reason)
+        this.warn(`dte: refused worker ${typeof info?.id === 'string' ? info.id : id}: ${reason}`)
         void this.o.me
           .send(id, { type: 'refused', reason } satisfies ToWorker)
           .catch(this.unsent('refused', id))
@@ -2256,15 +2262,21 @@ export class Orchestrator {
   ): [string, ui.Inline][] {
     // Over with none, it says so: core's own `N workers` (this machine's
     // pool) read as the run's when no task needed one (2026-10-25), and
-    // says when one did and none joined (2026-11-06).
+    // says when one did and none joined (2026-11-06), and why any it
+    // refused was (2026-11-07).
     if (this.spawnedAt.size === 0 && this.workers.size === 0 && this.gone.length === 0)
       return this.ended
         ? [
             [
               'workers',
-              this.waited
-                ? ui.tone('warn', 'none joined: a task waited on one')
-                : ui.dim('none started: no task needed one'),
+              this.refused.length > 0
+                ? ui.tone(
+                    'warn',
+                    `none joined: ${this.refused.length} refused (${this.refused[0]})`,
+                  )
+                : this.waited
+                  ? ui.tone('warn', 'none joined: a task waited on one')
+                  : ui.dim('none started: no task needed one'),
             ],
           ]
         : []
