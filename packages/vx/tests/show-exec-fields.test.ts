@@ -88,6 +88,7 @@ export default {
         '  inputs.stability.severity  error',
         '  outputs.files              dist/**',
         '  outputs.clean              no',
+        '  cache                      yes',
         '',
       ].join('\n'),
     ])
@@ -140,6 +141,7 @@ export default {
         '  inputs.stability.severity  error',
         '  outputs.files              dist/**',
         '  outputs.clean              no',
+        '  cache                      yes',
         '',
       ].join('\n'),
     )

@@ -530,5 +530,8 @@ function taskRows(raw: TaskConfig): ui.FieldRow[] {
     add('outputs.workspaceFiles', list(outputs.workspaceFiles))
     add('outputs.clean', outputs.clean === undefined ? undefined : outputs.clean ? 'yes' : 'no')
   }
+  // The first question `vx why` raises ("declares no `cache: true`"), which
+  // only --format json answered.
+  if (task.cache === true) add('cache', 'yes')
   return rows
 }

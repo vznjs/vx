@@ -524,7 +524,7 @@ describe('a refusal under --format json', () => {
         1,
         {
           code: 'VX_E_NO_HISTORY',
-          message: 'vx last: no recorded run of a#lint',
+          message: "vx last: no recorded run of a#lint; a's recorded tasks: build",
           docs: 'https://vznjs.github.io/vx/cli/#vx_e_no_history',
         },
       ])

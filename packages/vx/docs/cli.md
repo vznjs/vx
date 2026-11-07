@@ -2825,6 +2825,7 @@ $ vx show app#build
   inputs.files   src/**
   inputs.env     NODE_ENV
   outputs.files  dist/**
+  cache          yes
 ```
 
 ### Options
@@ -2857,7 +2858,8 @@ it's an array of `{ name, dir, tags: string[], tasks: string[] }`.
 `no`), and `cache: true`
 (`inputs.files` / `.workspaceFiles` / `.env` / `.tasks` / `.runtime` /
 `.workspaceRuntime`, `outputs.files` / `.workspaceFiles` / `.clean`
-(`yes` / `no`), `inputs.stability.strategy` / `.severity`). Fields the
+(`yes` / `no`), `inputs.stability.strategy` / `.severity`), then `cache  yes`
+for a cached task. Fields the
 task does not set are not printed, an empty list prints `none`; a value that spans lines (a
 multi-line command) continues under its first line. `--format json` emits `{ name, dir,
 config }` with the config exactly as resolved. `vx show <pkg>#<task>`
