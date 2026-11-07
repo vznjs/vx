@@ -681,6 +681,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-migrate/nx-release-publish',
     'vx-migrate/nx-root-outside',
     'vx-migrate/nx-root-tsconfig',
+    'vx-migrate/nx-root-tsconfig-reads',
     'vx-migrate/nx-run-commands-args-name-live',
     'vx-migrate/nx-run-commands-decoration',
     'vx-migrate/nx-run-commands-override-live',
