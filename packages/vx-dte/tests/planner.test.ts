@@ -797,3 +797,20 @@ it("starts a platform's fewest workers that end before the run does", () => {
   expect(p.endsInMs).toBeGreaterThan(150_000)
   expect(start.filter((s) => s === 'mac').length).toBe(1)
 })
+
+// #5134's run started 2 Macs while its footer's best said 4: the advice
+// kept every Mac of its prefix. It trims as the live plan does.
+it('advises the Macs the live plan would start', () => {
+  const linux: Size = { ...small, max: 9, platform: 'linux-x64' }
+  const mac: Size = { name: 'mac', max: 4, cpu: 3, memory: 7e9, platform: 'darwin-arm64' }
+  const work: PlanTask[] = [
+    ...Array.from({ length: 200 }, (_, i) => ({ ...task(`l${i}`, 30_000), platform: 'linux-x64' })),
+    ...Array.from({ length: 9 }, (_, i) => ({
+      ...task(`m${i}`, 30_000),
+      platform: 'darwin-arm64',
+    })),
+  ]
+  const advice = advise(work, [linux, mac], () => WARM)
+  const macs = advice.declared!.fleet.find((f) => f.size === 'mac')
+  expect(macs?.count).toBe(1)
+})
