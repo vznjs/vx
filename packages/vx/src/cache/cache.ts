@@ -101,7 +101,7 @@ import {
   stagesInto,
   writeTree,
 } from './archive.js'
-import { readUmask, restoredMode } from './umask.js'
+import { modeMatches, readUmask, restoredMode } from './umask.js'
 import {
   ArtifactVanishedError,
   type CacheEntry,
@@ -2677,7 +2677,7 @@ export class Cache implements CacheLayer {
       .filter((r) => workspaceRoot !== undefined || !r.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
       .map((r) => (r.path.startsWith(WORKSPACE_OUTPUT_PREFIX) ? r.path : `outputs/${r.path}`))
     endRows()
-    const moded = absentModedDirs(rows, projectDir, workspaceRoot)
+    const moded = modedDirs(rows, projectDir, workspaceRoot)
     const verify = (provided: ReadonlySet<string>): void => {
       const missing = expected.filter((name) => !provided.has(name))
       if (missing.length > 0) {
@@ -4288,12 +4288,14 @@ function assertArtifactNames(
 
 /**
  * The directories with a mode to restore (`DIR_MODE` rows) that are absent
- * before the restore, deepest first: the restore makes them with mkdir's
- * default, and each is then given the mode the miss left, minus the umask
- * as a file's is. One that stands is the tree's, left as it is. A mode
- * only ever narrows mkdir's default, whatever an artifact says.
+ * before the restore, or stand with another mode, deepest first: the
+ * restore makes a missing one with mkdir's default, and each is then given
+ * the mode the miss left, minus the umask as a file's is. A standing one
+ * kept its own mode once, so a branch switch A → B → A left B's 0755 on
+ * A's `chmod 700 dist/keys`. A symlink is never followed. A mode only ever
+ * narrows mkdir's default, whatever an artifact says.
  */
-function absentModedDirs(
+function modedDirs(
   rows: readonly OutputFileRow[],
   projectDir: string,
   workspaceRoot: string | undefined,
@@ -4307,7 +4309,9 @@ function absentModedDirs(
     const dir = ws
       ? path.join(workspaceRoot!, rel.slice(WORKSPACE_OUTPUT_PREFIX.length))
       : path.join(projectDir, rel)
-    if (lstatSync(dir, { throwIfNoEntry: false }) === undefined) out.push([dir, r.mode & 0o777])
+    const st = lstatSync(dir, { throwIfNoEntry: false })
+    if (st === undefined || (st.isDirectory() && !modeMatches(st.mode, r.mode)))
+      out.push([dir, r.mode & 0o777])
   }
   return out.sort((a, b) => b[0].length - a[0].length)
 }

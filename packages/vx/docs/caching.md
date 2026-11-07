@@ -990,6 +990,10 @@ Declared `outputs.files` are wiped in two distinct places:
 - **After restore on a cache hit.** The post-restore tree is the
   cached snapshot byte-for-byte: the restore renames the entry's files
   over the ones it finds, then removes what the entry does not hold.
+  Each output directory with a recorded mode (`dirModes`) gets it whether
+  the restore made it or found it standing with another, and a mode that
+  differs makes the tree stale (2026-11-07: a branch switch A → B → A
+  left B's 0755 on A's `chmod 700 dist/keys`).
   Hand-edits to output files don't persist through a cache replay. When
   the hit's own check walked the output globs to find the tree stale,
   the removal uses that walk's list instead of walking again (X-161).
