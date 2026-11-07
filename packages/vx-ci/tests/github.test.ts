@@ -105,6 +105,29 @@ describe('renderJobSummary', () => {
     expect(md).not.toContain('| Verify |')
   })
 
+  it('marks a retried or flaky task as the run’s own row does', () => {
+    const md = renderJobSummary(
+      summary([
+        task({ attempts: 2 }),
+        task({ taskId: 'a#test', task: 'test', attempts: 3, flaky: { passes: 4, failures: 1 } }),
+        task({
+          taskId: 'a#e2e',
+          task: 'e2e',
+          status: 'failed',
+          exitCode: 1,
+          flaky: { passes: 2, failures: 1 },
+        }),
+        task({ taskId: 'a#lint', task: 'lint', flaky: { passes: 1, failures: 0 } }),
+      ]),
+    )
+    expect(md).toContain('| a#build | ✅ ran · 2 attempts | 1.2s |')
+    expect(md).toContain('| a#test | ✅ ran · flaky - failed 1× before · 3 attempts | 1.2s |')
+    expect(md).toContain('| a#e2e | ❌ failed · flaky - passed 2× before | 1.2s |')
+    expect(md).toContain('| a#lint | ✅ ran · flaky | 1.2s |')
+    // The mark does not move a row out of its status group.
+    expect(md.indexOf('| a#e2e |')).toBeLessThan(md.indexOf('| a#build |'))
+  })
+
   // 2026-10-23: "Sort summary by status and then time".
   it('lists tasks by status, failures first, then the longest first', () => {
     const md = renderJobSummary(

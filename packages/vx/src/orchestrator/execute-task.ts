@@ -315,6 +315,8 @@ export interface ExecuteArgs {
    * the task's outcome has been logged).
    */
   serverReady?: (id: string) => void
+  /** A `vx watch` cycle (`RunOptions.watch`): an input edited mid-run is the next cycle's. */
+  watch?: true
 }
 
 /**
@@ -1709,13 +1711,16 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     const read =
       moved !== null &&
       keyedInputs(described!.facts).some((f) => f.path === moved && f.digest !== ABSENT_INPUT)
+    // Under watch the edit starts the next cycle, which runs on it: said
+    // first, or the way out read as the fix for the user's own edit.
     const hint =
-      moved === null || rewroteBy !== undefined || (read && !existsSync(moved))
+      (args.watch === true && rewroteBy === undefined ? '; the next cycle runs on it' : '') +
+      (moved === null || rewroteBy !== undefined || (read && !existsSync(moved))
         ? ''
         : '; if the task generates it, declare it in outputs' +
           (read && stability.strategy !== 'mutable'
             ? "; if it rewrites it in place, set inputs.stability: { strategy: 'mutable' }"
-            : '')
+            : ''))
     if (stability.severity === 'error') {
       warnOf(log)(
         `[vx] ${node.id}: ${what} — the result is not saved, ` +

@@ -55,6 +55,7 @@ import {
   MODE_QUESTION,
   ownVersion,
   packageManagerOf,
+  type PackageManager,
   parseModeAnswer,
   uninstall,
 } from './adopt.js'
@@ -327,9 +328,11 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
     writesWorkspace && !bare
       ? [
           ...kept,
-          ...workspacePlugins(root, runner === 'vite-task' ? undefined : runner).filter(
-            (p) => !kept.some((k) => k.factory === p.factory),
-          ),
+          ...workspacePlugins(
+            root,
+            runner === 'vite-task' ? undefined : runner,
+            installer(root, parsed),
+          ).filter((p) => !kept.some((k) => k.factory === p.factory)),
         ]
       : []
   let workspaceText: string | undefined
@@ -494,6 +497,13 @@ async function rewriteWorkspace(
   return [['config', `${dropped.length > 0 ? `dropped ${names} from` : 'rewrote'} ${file}`]]
 }
 
+/** The manager `prepareRepo` installs with, or none under `--no-install`. */
+function installer(root: string, args: MigrateArgs): PackageManager | undefined {
+  return args.noInstall === true
+    ? undefined
+    : packageManagerOf(root, process.env['npm_config_user_agent'])
+}
+
 /**
  * Install what the written files import and remove what they no longer
  * do. Returns the report's rows; changes nothing under `--dry`.
@@ -555,7 +565,10 @@ async function keep(
 ): Promise<number> {
   const format: MigrationFormat = args.mjs ? 'mjs' : 'ts'
   const name = `.vx/workspace.${format}`
-  const all = [{ pkg: '@vzn/vx-migrate', factory: runner }, ...workspacePlugins(root, runner)]
+  const all = [
+    { pkg: '@vzn/vx-migrate', factory: runner },
+    ...workspacePlugins(root, runner, installer(root, args)),
+  ]
   const existing = workspaceFileAt(root)
   const before =
     existing === undefined || args.force
@@ -735,7 +748,8 @@ async function scripts(
   }
   const unmapped = namelessNotes(root, nameless)
   // Only a workspace file this run writes declares it; one already here is the user's.
-  const lockfile = workspaceFileAt(root) === undefined ? lockfilePlugin(root) : undefined
+  const lockfile =
+    workspaceFileAt(root) === undefined ? lockfilePlugin(root, installer(root, args)) : undefined
   const plugins =
     lockfile === undefined ? [] : [{ pkg: '@vzn/vx-lockfile', factory: lockfile.factory }]
   const plan = migrateScripts(

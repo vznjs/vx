@@ -43,6 +43,21 @@ function statusLabel(t: TaskTelemetry): string {
   return STATUS_LABEL[t.status] ?? t.status
 }
 
+/**
+ * A retried or flaky task's mark, in the words of the run's own row
+ * (`flaky - failed 1× before · 2 attempts`): a pass that needed a retry
+ * read as a plain `ran`. Numbers only, so no escape.
+ */
+function flakyMark(t: TaskTelemetry): string {
+  const attempts = (t.attempts ?? 1) > 1 ? `${t.attempts} attempts` : undefined
+  if (t.flaky === undefined) return attempts === undefined ? '' : ` · ${attempts}`
+  const said: string[] = []
+  if (t.status === 'failed' && t.flaky.passes > 0) said.push(`passed ${t.flaky.passes}× before`)
+  if (t.status !== 'failed' && t.flaky.failures > 0) said.push(`failed ${t.flaky.failures}× before`)
+  if (attempts !== undefined) said.push(attempts)
+  return said.length === 0 ? ' · flaky' : ` · flaky - ${said.join(' · ')}`
+}
+
 /** Rows by status label, in this order; any other after them. */
 const ORDER = [
   '❌ failed',
@@ -218,7 +233,7 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
   for (const t of ordered) {
     const cells = [
       escapeMarkdownCell(escapeInline(t.taskId)),
-      statusLabel(t),
+      statusLabel(t) + flakyMark(t),
       t.carried === true || t.status === 'skipped' ? '' : fmtMs(t.durationMs),
     ]
     lines.push(`| ${cells.join(' | ')} |`)

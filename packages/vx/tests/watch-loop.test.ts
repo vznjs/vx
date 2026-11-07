@@ -236,6 +236,26 @@ describe('vx watch loop (e2e)', () => {
     await until(() => w.cycles() === 2, 'the cycle the restored lock starts')
   }, 40_000)
 
+  it('a workspace file that does not load is said once per cycle, by the cycle', async () => {
+    // The re-read before the cycle said `cannot re-read the workspace`
+    // above the cycle's header, `cycle failed` said it, and the re-read
+    // after said it again: three lines, one cause.
+    f.watch = startWatch(f.root)
+    const w = f.watch
+    await until(() => w.out().includes('watching '), 'the watching marker')
+    const file = path.join(f.root, '.vx', 'workspace.mjs')
+    const good = await readFile(file, 'utf8')
+    await writeFile(file, 'export default {\n')
+    await until(() => w.err().includes('cycle failed'), 'the failed cycle')
+    await Bun.sleep(SETTLE_MS)
+    expect(w.err().split('workspace.mjs:1:').length - 1).toBe(1)
+    expect(w.err()).not.toContain('cannot re-read the workspace')
+
+    // Restored, the loop runs again.
+    await writeFile(file, good)
+    await until(() => w.cycles() === 2, 'the cycle the restored workspace starts')
+  }, 40_000)
+
   it('a task with no cache re-runs on a git-ignored file it reads (item 947)', async () => {
     // The git-ignore filter's reason is "no cache key can see it", and a
     // task with no cache has no key: its `.env.local` edit re-ran nothing.

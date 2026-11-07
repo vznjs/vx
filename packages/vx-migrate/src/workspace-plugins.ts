@@ -6,6 +6,7 @@
 
 import { existsSync } from 'node:fs'
 import path from 'node:path'
+import type { PackageManager } from './adopt.js'
 import { REMOTE_CACHE, remoteCacheSignal } from './remote-cache.js'
 import { lockfilePlugin } from './workspace-notes.js'
 
@@ -16,12 +17,19 @@ export interface WorkspacePlugin {
   readonly factory: string
 }
 
-/** `runner`: the Turbo or Nx repo's own remote cache, where the repo shows one. */
-export function workspacePlugins(root: string, runner?: 'turbo' | 'nx'): WorkspacePlugin[] {
+/**
+ * `runner`: the Turbo or Nx repo's own remote cache, where the repo shows
+ * one. `installer`: the manager this run installs with (`lockfilePlugin`).
+ */
+export function workspacePlugins(
+  root: string,
+  runner?: 'turbo' | 'nx',
+  installer?: PackageManager,
+): WorkspacePlugin[] {
   const out: WorkspacePlugin[] = []
   if (runner !== undefined && remoteCacheSignal(root, runner) !== undefined)
     out.push({ pkg: '@vzn/vx-migrate', factory: REMOTE_CACHE[runner] })
-  const lock = lockfilePlugin(root)
+  const lock = lockfilePlugin(root, installer)
   if (lock !== undefined) out.push({ pkg: '@vzn/vx-lockfile', factory: lock.factory })
   out.push({ pkg: '@vzn/vx-history', factory: 'vxHistory' })
   if (existsSync(path.join(root, '.github', 'workflows')))

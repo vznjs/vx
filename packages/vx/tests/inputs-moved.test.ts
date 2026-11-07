@@ -617,6 +617,27 @@ describe('an input the user edits during the run', () => {
     TIMEOUT,
   )
 
+  // 2026-11-07: a `vx watch` cycle's line read as if the user's own edit
+  // were the task's to declare; the next cycle runs on it.
+  it(
+    'under vx watch: the line says the next cycle runs on the edit',
+    async () => {
+      const app = await addProject(root, 'app', { config: BUILD, files: { 'src/a.ts': 'X\n' } })
+      await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\nstarted\ngo\n')
+      commit()
+      status = []
+      const pending = run({ cwd: root, tasks: ['build'], log: logger, watch: true })
+      await reached(path.join(app, 'started'))
+      await writeFile(path.join(app, 'src', 'a.ts'), 'EDITED\n')
+      await writeFile(path.join(app, 'go'), '')
+      expect((await pending).ok).toBe(true)
+      expect(status.filter((l) => MOVED.test(l))).toEqual([
+        "[vx] app#build: `packages/app/src/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; the next cycle runs on it; if the task generates it, declare it in outputs; if it rewrites it in place, set inputs.stability: { strategy: 'mutable' }",
+      ])
+    },
+    TIMEOUT,
+  )
+
   // Edited and edited BACK while the command ran: the content matches the
   // key again, the output was built from the edit, and the entry filed it
   // under the key — the next run restored it over the original source

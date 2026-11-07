@@ -247,8 +247,9 @@ export interface ApplyMigrationArgs {
    * the migrated workspace has its .vx/projects.lock.json and its graph rules checked
    * (2026-10-14). On success `said` is its line, shown as the
    * report's `lock` row; a refusal (a graph rule, a plugin not installed
-   * yet) prints above the report and the migration still succeeds: its
-   * files are written, and `vx lock` is the step to re-run.
+   * yet) prints above the report, the files stay written, `vx lock` is the
+   * step to re-run, and the exit is 1: a run reads only the lock, so the
+   * migration is not done (as `vx init`'s own path exits).
    */
   lock?: (root: string) => Promise<{ code: number; said: string }>
   /** Rows of what the tool did before the write, e.g. `['ran', 'bun add -d …']`. */
@@ -539,7 +540,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     lock === undefined || lock.code === 0 ? next : `fix the above, then vx lock and ${next}`
   rows.push(null, ['next', said])
   ui.print('out', ui.report(`${verb} ${VERSION}`, rows))
-  return 0
+  return lock === undefined || lock.code === 0 ? 0 : 1
 }
 
 /**

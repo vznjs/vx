@@ -45,6 +45,7 @@ export interface RunOptions {
   handleSignals?: boolean
   signal?: AbortSignal
   holdPersistent?: boolean // hand requested persistent tasks, and those they depend on, back on RunSummary.persistent
+  watch?: boolean // a vx watch cycle: a save withheld over an input edited mid-run says the next cycle runs on it
   keep?: HeldPersistent // an earlier hand-back: a server still up whose task is unchanged stays up; the rest stop first
   summaryTable?: boolean // --verbosity 1: the per-task table, just above the footer
   tty?: boolean // vx's stdin is a terminal: each exec.interactive task is handed it, alone

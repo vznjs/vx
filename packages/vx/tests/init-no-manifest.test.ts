@@ -118,6 +118,21 @@ describe('vx init with no package.json', () => {
     ]).toEqual([0, false, PROJECT])
   })
 
+  // 2026-11-07: with vx.config.mjs and vx.config.ts both here, --force
+  // replaced only the first found, and the other stayed beside it.
+  it('--force replaces every config name already here', async () => {
+    const root = await tmp('vx-init-bare-two-')
+    for (const n of ['vx.config.mjs', 'vx.config.ts', 'vx.config.js'])
+      await writeFile(path.join(root, n), 'export default { tasks: { b: 5 } }\n')
+    const r = await vx(root, ['init', '--force'])
+    expect([
+      r.code,
+      ['vx.config.mjs', 'vx.config.js'].filter((n) => existsSync(path.join(root, n))),
+      await readFile(path.join(root, 'vx.config.ts'), 'utf8'),
+    ]).toEqual([0, [], PROJECT])
+    expect(r.out).toContain('  replaced  vx.config.js\n            vx.config.mjs\n')
+  })
+
   it('a lock that is not written fails init, as vx-migrate fails', async () => {
     // A kept config that does not load printed `lock  not written` and exited 0.
     const root = await tmp('vx-init-bare-badlock-')

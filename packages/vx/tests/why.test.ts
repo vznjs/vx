@@ -1199,3 +1199,69 @@ describe('vx why — an upstream that is a group', () => {
     TIMEOUT,
   )
 })
+
+describe('vx why — an upstream that ran alone between the dependant runs', () => {
+  const A = `export default { tasks: { build: {
+    exec: { command: 'true' }, inputs: { files: ['src/**'], env: ['FOO'] }, outputs: { files: [] }, cache: true,
+  } } }`
+  const B = `export default { tasks: { build: {
+    exec: { command: 'true' }, dependsOn: ['a#build'], inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
+  } } }`
+  async function setup(): Promise<string> {
+    const root = await makeWorkspaceRoot({ prefix: 'vx-why-alone-', git: false })
+    for (const [name, config] of [
+      ['a', A],
+      ['b', B],
+    ] as const) {
+      const dir = path.join(root, 'packages', name)
+      await mkdir(path.join(dir, 'src'), { recursive: true })
+      await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name }))
+      await writeFile(path.join(dir, 'vx.config.mjs'), config)
+      await writeFile(path.join(dir, 'src', 'x.txt'), 'v1\n')
+    }
+    const git = gitIn(root)
+    git('init', '-q')
+    git('add', '-A')
+    return root
+  }
+  const rootsOf = async (root: string): Promise<Array<[string, string[]]>> => {
+    const j = JSON.parse((await vx(root, ['why', 'b#build', '--format', 'json'])).out) as {
+      roots: { chain: string[]; entries: { kind: string; name: string }[] }[]
+    }
+    return j.roots.map((r) => [r.chain.join(' <- '), r.entries.map((e) => `${e.kind} ${e.name}`)])
+  }
+
+  it(
+    "names what moved between the two keys the dependant folded, not the upstream's own last run",
+    async () => {
+      const root = await setup()
+      try {
+        expect((await vx(root, ['run', 'b#build'], { FOO: '1' })).code).toBe(0)
+        expect((await vx(root, ['run', 'a#build'], { FOO: '2' })).code).toBe(0)
+        await writeFile(path.join(root, 'packages', 'a', 'src', 'x.txt'), 'v2\n')
+        expect((await vx(root, ['run', 'b#build'], { FOO: '1' })).code).toBe(0)
+        expect(await rootsOf(root)).toEqual([['b#build <- a#build', ['file packages/a/src/x.txt']]])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'names the root cause when the upstream already ran on the edit before the dependant',
+    async () => {
+      const root = await setup()
+      try {
+        expect((await vx(root, ['run', 'b#build'], { FOO: '1' })).code).toBe(0)
+        await writeFile(path.join(root, 'packages', 'a', 'src', 'x.txt'), 'v2\n')
+        expect((await vx(root, ['run', 'a#build'], { FOO: '1' })).code).toBe(0)
+        expect((await vx(root, ['run', 'b#build'], { FOO: '1' })).code).toBe(0)
+        expect(await rootsOf(root)).toEqual([['b#build <- a#build', ['file packages/a/src/x.txt']]])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
