@@ -78,6 +78,7 @@ wrap(line, width): string[]        // never cuts; a colour carries across rows
 
 render(blocks, colors): string     // blocks a blank line apart, trailing newline
 print(stream: StreamName, ...blocks) say(tone, line, stream?) data(stream, bytes)
+dataPieces(stream, pieces): Promise<void> // data too big for one string, waiting on a slow pipe
 transient(line): () => void        // a line that stands while something runs
 tagged(tone, line, colors) colorsOf(stream)
 paint(style, text, colors, bold?) detectColors(stream?) dumbTerminal()

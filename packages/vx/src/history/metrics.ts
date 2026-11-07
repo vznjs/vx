@@ -955,10 +955,54 @@ export function upstreamTask(name: string): string {
   return i < 0 ? name : name.slice(i + GROUP_VIA.length)
 }
 
+/**
+ * The tasks `runId` recorded a row for, as `project#task`. One read: runs
+ * has no (project, task) index (schema.ts), so asking per task scans the
+ * run's rows each time, and a 10,000-task fan-in asked 10,000 times.
+ */
+export function recordedTasks(db: Database, runId: string): Set<string> {
+  const rows = db.query('SELECT project, task FROM runs WHERE run_id = ?').all(runId) as {
+    project: string
+    task: string
+  }[]
+  return new Set(rows.map((r) => `${r.project}#${r.task}`))
+}
+
 export interface RootCause {
-  /** From the asked task down to the one whose own inputs moved. */
-  chain: string[]
-  entries: CacheKeyDiff['entries']
+  /**
+   * From the asked task down to the one whose own inputs moved. Built on
+   * each read, as long as the chain: a deep graph has as many roots as
+   * tasks, so read it only for a root that is shown.
+   */
+  readonly chain: string[]
+  /** The task whose own inputs moved: the chain's last id. */
+  readonly task: string
+  readonly entries: CacheKeyDiff['entries']
+}
+
+/** A visited task: the step that reached it (`group ← task` through a group) and the visit it came from. */
+interface Reach {
+  readonly up: Reach | null
+  readonly step: readonly string[]
+}
+
+class Cause implements RootCause {
+  constructor(
+    private readonly reach: Reach,
+    readonly task: string,
+    readonly entries: CacheKeyDiff['entries'],
+  ) {}
+
+  get chain(): string[] {
+    const steps: (readonly string[])[] = []
+    for (let r: Reach | null = this.reach; r !== null; r = r.up) steps.push(r.step)
+    return steps.reverse().flat()
+  }
+
+  /** `--format json`'s root: its chain and entries, as before the back links. */
+  toJSON(): { chain: string[]; entries: CacheKeyDiff['entries'] } {
+    return { chain: this.chain, entries: this.entries }
+  }
 }
 
 /**
@@ -969,7 +1013,9 @@ export interface RootCause {
  * moved since a run of it alone in between. A task visited once is not
  * walked again (a diamond names its root once). A group records no run,
  * so `groups` (group id → the tasks it gathers) carries the walk through
- * it.
+ * it. Depth first, on a stack of its own: a 20,000-task chain is deeper
+ * than recursion goes, and each visit keeps only a link to the one that
+ * reached it, so no chain is copied per level.
  */
 export function rootCauses(
   db: Database,
@@ -978,44 +1024,50 @@ export function rootCauses(
   entries: CacheKeyDiff['entries'],
   groups: ReadonlyMap<string, readonly string[]> = new Map(),
 ): RootCause[] {
-  const recorded = db.query('SELECT 1 FROM runs WHERE run_id = ? AND project = ? AND task = ?')
+  const recorded = recordedTasks(db, runId)
   const roots: RootCause[] = []
   const seen = new Set([taskId])
-  const walk = (chain: string[], moved: CacheKeyDiff['entries']): void => {
-    for (const e of moved) {
-      if (e.kind !== 'upstream') continue
-      const task = upstreamTask(e.name)
-      if (seen.has(task)) continue
-      seen.add(task)
-      const next = [...chain, ...e.name.split(GROUP_VIA)]
-      if (recorded.get(runId, ...splitTaskId(task)) === null) {
-        // A group: its members carry the walk, by their own rows named
-        // through it (`group ← task`) when the key has them, else by the
-        // graph, whose members carry none of the dependant's keys.
-        const via = `${e.name}${GROUP_VIA}`
-        if (moved.some((x) => x.kind === 'upstream' && x.name.startsWith(via))) continue
-        const members = groups.get(task) ?? []
-        walk(
-          next,
-          members.map((name) => ({ ...e, name, before: null, after: null })),
-        )
-        continue
-      }
-      let d: CacheKeyDiff['entries']
-      if (e.before !== null && e.after !== null) {
-        const before = loadEntryInputs(db, e.before)
-        const after = loadEntryInputs(db, e.after)
-        // A pruned or unsaved side kept no fingerprints: nothing to name.
-        d = before.length > 0 && after.length > 0 ? diffKeyComponents(before, after).entries : []
-      } else {
-        d = cacheKeyDiff(db, runId, task).entries
-      }
-      const own = d.filter((x) => x.kind !== 'upstream')
-      if (own.length > 0) roots.push({ chain: next, entries: own })
-      walk(next, d)
+  const stack = [{ from: { up: null, step: [taskId] } as Reach, moved: entries, i: 0 }]
+  while (stack.length > 0) {
+    const frame = stack.at(-1)!
+    const { moved } = frame
+    if (frame.i === moved.length) {
+      stack.pop()
+      continue
     }
+    const e = moved[frame.i++]!
+    if (e.kind !== 'upstream') continue
+    const task = upstreamTask(e.name)
+    if (seen.has(task)) continue
+    seen.add(task)
+    const reach: Reach = { up: frame.from, step: e.name.split(GROUP_VIA) }
+    if (!recorded.has(task)) {
+      // A group: its members carry the walk, by their own rows named
+      // through it (`group ← task`) when the key has them, else by the
+      // graph, whose members carry none of the dependant's keys.
+      const via = `${e.name}${GROUP_VIA}`
+      if (moved.some((x) => x.kind === 'upstream' && x.name.startsWith(via))) continue
+      const members = groups.get(task) ?? []
+      stack.push({
+        from: reach,
+        moved: members.map((name) => ({ ...e, name, before: null, after: null })),
+        i: 0,
+      })
+      continue
+    }
+    let d: CacheKeyDiff['entries']
+    if (e.before !== null && e.after !== null) {
+      const before = loadEntryInputs(db, e.before)
+      const after = loadEntryInputs(db, e.after)
+      // A pruned or unsaved side kept no fingerprints: nothing to name.
+      d = before.length > 0 && after.length > 0 ? diffKeyComponents(before, after).entries : []
+    } else {
+      d = cacheKeyDiff(db, runId, task).entries
+    }
+    const own = d.filter((x) => x.kind !== 'upstream')
+    if (own.length > 0) roots.push(new Cause(reach, task, own))
+    stack.push({ from: reach, moved: d, i: 0 })
   }
-  walk([taskId], entries)
   return roots
 }
 
@@ -1049,34 +1101,51 @@ export function inputWriters(
   entries: CacheKeyDiff['entries'],
   roots: readonly RootCause[],
 ): InputWriter[] {
+  // Bounded on both sides by the longest recorded window, so the query
+  // walks `runs_started_at` over that span, not every older row.
   const during = db.query(
     `SELECT project, task FROM main.runs
-      WHERE started_at <= ?1 + ${WRITE_SLACK_MS} AND ended_at >= ?1 - ${WRITE_SLACK_MS}
-        AND status != 'skipped'
+      WHERE started_at BETWEEN ?1 - ?2 - ${WRITE_SLACK_MS} AND ?1 + ${WRITE_SLACK_MS}
+        AND ended_at >= ?1 - ${WRITE_SLACK_MS} AND status != 'skipped'
       GROUP BY project, task ORDER BY MIN(started_at) LIMIT 3`,
   )
+  let longest: number | undefined
+  // A deep graph has as many roots as tasks, most reading the same files:
+  // each file is stat'd and asked about once.
+  const byFile = new Map<string, string[] | null>()
+  const writersOf = (file: string): string[] | null => {
+    let w = byFile.get(file)
+    if (w !== undefined) return w
+    w = null
+    let mtime: number | undefined
+    try {
+      mtime = statSync(path.join(workspaceRoot, file)).mtimeMs
+    } catch {}
+    if (mtime !== undefined) {
+      longest ??=
+        (
+          db
+            .query(
+              `SELECT MAX(ended_at - started_at) AS ms FROM main.runs WHERE status != 'skipped'`,
+            )
+            .get() as { ms: number | null }
+        ).ms ?? 0
+      const rows = during.all(mtime, longest) as { project: string; task: string }[]
+      if (rows.length > 0) w = rows.map((r) => `${r.project}#${r.task}`)
+    }
+    byFile.set(file, w)
+    return w
+  }
   const out: InputWriter[] = []
   const owners = [
     { taskId, entries },
-    ...roots.map((r) => ({ taskId: r.chain.at(-1)!, entries: r.entries })),
+    ...roots.map((r) => ({ taskId: r.task, entries: r.entries })),
   ]
   for (const owner of owners) {
     for (const e of owner.entries) {
       if (e.kind !== 'file' || e.change === 'removed') continue
-      let mtime: number
-      try {
-        mtime = statSync(path.join(workspaceRoot, e.name)).mtimeMs
-      } catch {
-        continue
-      }
-      const rows = during.all(mtime) as { project: string; task: string }[]
-      if (rows.length > 0) {
-        out.push({
-          taskId: owner.taskId,
-          file: e.name,
-          writers: rows.map((r) => `${r.project}#${r.task}`),
-        })
-      }
+      const writers = writersOf(e.name)
+      if (writers !== null) out.push({ taskId: owner.taskId, file: e.name, writers })
     }
   }
   return out

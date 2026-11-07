@@ -3260,7 +3260,8 @@ moves it and how to stop a move the task does not need. An upstream
 row is only the carrier, so `vx why` follows each dependency that moved
 in the same run down to the tasks whose OWN inputs moved and prints
 them under `root cause`, one chain per root (five at most, then a
-count), and `what to do` speaks to those kinds instead. Each upstream is
+count; a chain of more than six tasks prints its first two and last
+three around `N more`), and `what to do` speaks to those kinds instead. Each upstream is
 compared between the two keys the dependant folded, so a run of the
 upstream alone in between changes nothing it names:
 
@@ -3329,7 +3330,8 @@ the key change and says so.
 why, diff, roots, writers }`); when the task's recorded runs predate run ids, `{ taskId,
 why, diff, explanation }`, `why` and `diff` null and `explanation` the
 latest cache entry's key. `roots` is the root-cause walk (`chain`,
-`entries`); `writers` the changed-during-a-run files (`taskId`, `file`,
+`entries`), every root with its whole chain, written as it goes: a
+20,000-task chain where every task moved is 2 GB of JSON; `writers` the changed-during-a-run files (`taskId`, `file`,
 `writers`).
 
 ### Exit codes

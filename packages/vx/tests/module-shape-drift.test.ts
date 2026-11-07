@@ -292,6 +292,7 @@ describe('a module page lists the functions the module exports', () => {
       'nine',
       'ten',
       'eleven',
+      'twelve',
     ]
     expect(doc).toContain(`the same ${WORDS[overStore.length]} signatures`)
   })

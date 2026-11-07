@@ -13,6 +13,7 @@ import {
   explainCacheKey,
   inputWriters,
   latestRunId,
+  recordedTasks,
   rootCauses,
   upstreamTask,
   whyDidThisRerun,
@@ -20,6 +21,7 @@ import {
 import { resolveRunId } from '../orchestrator/index.js'
 import { MASKED, nearMatches, printable, refusal, UserError } from '../util/index.js'
 import * as ui from '../ui/index.js'
+import type { InputWriter, RootCause } from '../history/index.js'
 import type { Style } from '../ui/index.js'
 import { runRules } from '../settings.js'
 import { buildPackageGraph, findWorkspaceRoot } from '../workspace/index.js'
@@ -348,18 +350,16 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
     // each moved dependency in this run down to the tasks whose own
     // inputs moved, so one `vx why` names the file, not the next task.
     // A group records no run: the graph names what it gathers.
+    const recorded = recordedTasks(db, runId)
     const unrecorded = diff.entries.filter(
-      (e) =>
-        e.kind === 'upstream' &&
-        e.change === 'changed' &&
-        !cacheKeyDiff(db, runId, upstreamTask(e.name)).found,
+      (e) => e.kind === 'upstream' && e.change === 'changed' && !recorded.has(upstreamTask(e.name)),
     )
     const groups = unrecorded.length > 0 ? await groupMembers(root, taskId) : new Map()
     const roots = rootCauses(db, runId, taskId, diff.entries, groups)
     const writers = inputWriters(db, root, taskId, diff.entries, roots)
 
     if (parsed.format === 'json') {
-      ui.data('out', `${JSON.stringify({ taskId, runId, why, diff, roots, writers })}\n`)
+      await ui.dataPieces('out', jsonPieces({ taskId, runId, why, diff }, roots, writers))
       return 0
     }
 
@@ -426,8 +426,18 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
           const what = r.entries.map((e) =>
             e.name === e.kind ? e.kind : `${e.kind} ${printable(e.name)}`,
           )
+          // A 20,000-task chain printed whole is one 389 KB line.
+          const chain = r.chain
+          const ids =
+            chain.length > CHAIN_SHOWN
+              ? [
+                  ...chain.slice(0, 2).map((id) => ui.id(id)),
+                  ui.dim(`${chain.length - 5} more`),
+                  ...chain.slice(-3).map((id) => ui.id(id)),
+                ]
+              : chain.map((id) => ui.id(id))
           return [
-            ...r.chain.flatMap((id, i) => [...(i > 0 ? [ui.dim(' \u2190 ')] : []), ui.id(id)]),
+            ...ids.flatMap((id, i) => [...(i > 0 ? [ui.dim(' \u2190 ')] : []), id]),
             ui.dim(' \u2190 '),
             ui.strong(
               `${what.slice(0, 3).join(', ')}${what.length > 3 ? ` and ${what.length - 3} more` : ''}`,
@@ -488,6 +498,33 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
 }
 
 const ROOTS_SHOWN = 5
+
+/** Longer root-cause chains print their two ends around a count. */
+const CHAIN_SHOWN = 6
+
+/** Bytes of roots per piece written. */
+const PIECE_BYTES = 1 << 20
+
+/**
+ * `{ ...head, roots, writers }` as one `JSON.stringify` of it gives, in
+ * pieces: every root carries its whole chain, so a 20,000-task chain's
+ * roots hold 2×10⁸ ids, more than one string holds.
+ */
+function* jsonPieces(
+  head: object,
+  roots: readonly RootCause[],
+  writers: readonly InputWriter[],
+): Generator<string> {
+  let piece = `${JSON.stringify(head).slice(0, -1)},"roots":[`
+  for (let i = 0; i < roots.length; i++) {
+    piece += `${i > 0 ? ',' : ''}${JSON.stringify(roots[i])}`
+    if (piece.length >= PIECE_BYTES) {
+      yield piece
+      piece = ''
+    }
+  }
+  yield `${piece}],"writers":${JSON.stringify(writers)}}\n`
+}
 
 const CHANGE_HUE: Record<string, Style> = { added: 'ok', removed: 'error', changed: 'warn' }
 
