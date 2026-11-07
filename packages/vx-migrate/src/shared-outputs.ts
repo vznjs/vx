@@ -294,16 +294,24 @@ export function resolveSharedOutputs(tasks: GeneratedTask[]): GeneratedTask[] {
       }
       dropped.add(c.index)
       const shared = c.files.find((gb) => clash.files.some((ga) => hits(clash, ga, gb)))!
+      const theirs = clash.files.find((ga) => hits(clash, ga, shared))!
       uncache(t.task!)
       t.todos.push(
-        `declares the output ${JSON.stringify(shared)} that ${JSON.stringify(clash.name)} also ` +
-          "declares — vx cleans a task's outputs before it runs and before a restore, so two " +
+        `declares the output ${sharing(shared, theirs, JSON.stringify(clash.name))} — ` +
+          "vx cleans a task's outputs before it runs and before a restore, so two " +
           "cached tasks on one path would delete each other's work; this one runs uncached. " +
           'Give it its own output path to cache it.',
       )
     }
   }
   return tasks
+}
+
+/** `"<mine>" that <owner> also declares`, or both globs when they only overlap. */
+function sharing(mine: string, theirs: string, owner: string): string {
+  return mine === theirs
+    ? `${JSON.stringify(mine)} that ${owner} also declares`
+    : `${JSON.stringify(mine)}, which overlaps the output ${JSON.stringify(theirs)} that ${owner} declares`
 }
 
 /**
@@ -476,11 +484,19 @@ export function resolveSharedWorkspaceOutputs(
         a.find((g) => b.some((h) => outputsOverlap(h, g)))
       let clash: (typeof kept)[number] | undefined
       let shared: string | undefined
+      let theirs: string | undefined
       for (const i of candidates([...ws, ...own])) {
         const k = kept[i]!
-        shared =
-          overlap(ws, [...k.ws, ...k.own]) ??
-          overlap(own, k.project === p.name ? k.ws : [...k.ws, ...k.own])
+        const pools: [string[], string[]][] = [
+          [ws, [...k.ws, ...k.own]],
+          [own, k.project === p.name ? k.ws : [...k.ws, ...k.own]],
+        ]
+        for (const [mine, other] of pools) {
+          shared = overlap(mine, other)
+          if (shared === undefined) continue
+          theirs = other.find((h) => outputsOverlap(h, shared!))
+          break
+        }
         if (shared !== undefined) {
           clash = k
           break
@@ -493,7 +509,7 @@ export function resolveSharedWorkspaceOutputs(
       }
       uncache(t.task!)
       t.todos.push(
-        `declares the workspace output ${JSON.stringify(shared)} that ${clash.id} also declares — ` +
+        `declares the workspace output ${sharing(shared!, theirs!, clash.id)} — ` +
           "vx cleans a task's outputs before it runs and before a restore, so two cached tasks " +
           "on one path would delete each other's work; this one runs uncached. Give it its own " +
           'output path to cache it.',
