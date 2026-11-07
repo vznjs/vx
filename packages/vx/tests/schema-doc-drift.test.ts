@@ -590,6 +590,10 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
     workspaceConfig('{ run: { timeout: 30000 } }'),
   ],
   [
+    "<setting> takes a size with its unit, like '<n>KiB' or '<n>B' (got <n>)",
+    workspaceConfig("{ cache: { store: { embeddings: '32' } } }"),
+  ],
+  [
     '<setting> of <value> exceeds the maximum timer delay',
     workspaceConfig('{ run: { timeout: "9999999999999ms" } }'),
   ],

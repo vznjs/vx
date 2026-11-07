@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## settings: refuse a size with no unit, as durations are
+
+a size setting with no unit is refused; write '32KiB'.
+
 ## cache: let a remote layer's get answer undefined for no answer
 
 RemoteCacheLayer.get may return undefined (no answer), so a caller that tests only for null must treat undefined as a miss too.
