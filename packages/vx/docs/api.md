@@ -1303,6 +1303,7 @@ One local cache's run history, read and written by core (`localHistory`): plain 
 ```ts
 export interface LocalHistory extends HistoryProvider {
   resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>>
+  durationsFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>>
   hasImported(sha: string): boolean
   importTimings(
     sha: string,
