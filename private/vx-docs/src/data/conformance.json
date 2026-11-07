@@ -1,8 +1,14 @@
 {
   "coverage": {
-    "ported": 220,
+    "ported": 227,
     "rest": {
-      "pending": [],
+      "pending": [
+        "clean-readonly-dir",
+        "deferred-output-empty",
+        "uncached-outputs",
+        "watch-dependency-gone",
+        "workspace-file-broken"
+      ],
       "vx-only": [
         "branch-scope",
         "builtins-restore",
@@ -31,6 +37,7 @@
         "config-error-audit",
         "config-eval",
         "config-eval-sync-loop",
+        "config-fd-stdout",
         "config-frame",
         "config-function-export",
         "config-global-leak",
@@ -99,6 +106,7 @@
         "info-corrupt-index",
         "info-git-status-cache",
         "info-lock",
+        "info-store",
         "init",
         "init-global-berry",
         "init-lockfile-plugin.unsafe",
@@ -124,6 +132,7 @@
         "lock",
         "lock-bracket-literal",
         "lock-check-broken",
+        "lock-config-cwd",
         "lock-discover-stage",
         "lock-graph-rules",
         "lock-help",
@@ -158,6 +167,7 @@
         "plugin-name",
         "plugin-output",
         "plugin-pipeline",
+        "plugin-read-only",
         "plugin-run-facts",
         "plugin-run-record",
         "plugin-setup-warn",
@@ -187,6 +197,7 @@
         "sandbox-chdir-denied.unsafe",
         "sandbox-deny-scan",
         "sandbox-deny-scan.unsafe",
+        "sandbox-dirfd-open.unsafe",
         "sandbox-dirfd-quote.unsafe",
         "sandbox-empty-grant-spelling.unsafe",
         "sandbox-fd-records",
@@ -207,6 +218,7 @@
         "sandbox-noscan-dir.unsafe",
         "sandbox-noscan-gone.unsafe",
         "sandbox-observer-drain.unsafe",
+        "sandbox-open-flags",
         "sandbox-output-link.unsafe",
         "sandbox-paths",
         "sandbox-placeholder-nested.unsafe",
@@ -216,7 +228,6 @@
         "sandbox-proxy-ready.unsafe",
         "sandbox-readonly-masks.unsafe",
         "sandbox-records-key.unsafe",
-        "sandbox-request",
         "sandbox-run-direct.unsafe",
         "sandbox-runtime.unsafe",
         "sandbox-scratch-probe.unsafe",
@@ -233,6 +244,7 @@
         "sandbox-violation-secret-mask.unsafe",
         "sandbox-widened-reads.unsafe",
         "sandbox-write-glob-new-file.unsafe",
+        "sandbox-write-through-link.unsafe",
         "schedule-refine",
         "schedule-strategy",
         "scoped-config-loading",
@@ -272,6 +284,7 @@
         "upgrade-write-preflight",
         "vx-cache-server/bun",
         "vx-cache-server/oidc",
+        "vx-cache-server/r2-again",
         "vx-cache-server/r2-blobs",
         "vx-cache-server/r2-held",
         "vx-cache-server/r2-put",
@@ -329,6 +342,7 @@
         "vx-history-server/start-line",
         "vx-history-server/worker",
         "vx-history/assume",
+        "vx-history/flaky-shared",
         "vx-history/history-e2e",
         "vx-history/history-schema",
         "vx-history/history-server",
@@ -352,10 +366,13 @@
         "vx-lockfile/pnpm",
         "vx-lockfile/pnpm-exclude-links",
         "vx-lockfile/pnpm-ignored-optional",
+        "vx-lockfile/pnpm-injected-workspace",
+        "vx-lockfile/pnpm-manifest-files",
         "vx-lockfile/pnpm-workspace-precise",
         "vx-lockfile/refusal-message",
         "vx-lockfile/rehoist-identity",
         "vx-lockfile/settings",
+        "vx-lockfile/transitive-workspace",
         "vx-lockfile/unknown-options",
         "vx-lockfile/yarn",
         "vx-lockfile/yarn-bound-descriptor",
@@ -419,6 +436,7 @@
         "vx-migrate/nx-exec-stale-graph",
         "vx-migrate/nx-executors",
         "vx-migrate/nx-export-lerna",
+        "vx-migrate/nx-external-dependencies",
         "vx-migrate/nx-extglob-outputs",
         "vx-migrate/nx-forward-todo",
         "vx-migrate/nx-graph-edges",
@@ -453,6 +471,7 @@
         "vx-migrate/nx-task-env",
         "vx-migrate/nx-tracked-output-input",
         "vx-migrate/nx-uncached-outputs",
+        "vx-migrate/nx-uncached-producer",
         "vx-migrate/nx-unknown-named-input",
         "vx-migrate/nx-unlisted-projects",
         "vx-migrate/nx-upstream",
@@ -511,6 +530,7 @@
         "vx-migrate/turbo-cache-temp-dir",
         "vx-migrate/turbo-caret-stop",
         "vx-migrate/turbo-dependency-outputs",
+        "vx-migrate/turbo-dependency-outputs-upstream",
         "vx-migrate/turbo-dotenv-globs",
         "vx-migrate/turbo-entry-root-edge",
         "vx-migrate/turbo-env-key",
@@ -522,6 +542,7 @@
         "vx-migrate/turbo-map-spliced-dedupe",
         "vx-migrate/turbo-map-sweep",
         "vx-migrate/turbo-nested-inputs",
+        "vx-migrate/turbo-negated-output-inputs",
         "vx-migrate/turbo-noop-node",
         "vx-migrate/turbo-oidc",
         "vx-migrate/turbo-output-mode",
@@ -529,6 +550,7 @@
         "vx-migrate/turbo-persistent-unreached",
         "vx-migrate/turbo-proto-names",
         "vx-migrate/turbo-root-engines",
+        "vx-migrate/turbo-scriptless-build",
         "vx-migrate/turbo-scriptless-task",
         "vx-migrate/turbo-staged-output",
         "vx-migrate/turbo-v1-root-deps",
@@ -584,6 +606,7 @@
         "vx-reapi/read-bounds",
         "vx-reapi/reapi-e2e",
         "vx-reapi/record-digest-sizes",
+        "vx-reapi/record-streams",
         "vx-reapi/request-metadata-action",
         "vx-reapi/stream-cache",
         "vx-reapi/string-map-options",
@@ -639,6 +662,7 @@
         "cache-perf",
         "cache-save-batch",
         "cache-save-lock",
+        "cache-stdout-bytes",
         "cache-store",
         "cache-store-moved",
         "cache-unreadable",
@@ -677,20 +701,21 @@
         "fold-memo",
         "footer-run-id",
         "forward-args-frame",
+        "frame-big-output",
+        "frame-secret-mask",
         "framed-output",
         "free-port",
         "gates",
         "git-env",
         "git-listing-temp",
-        "git-oid",
         "git-optional-locks",
         "git-reftable.unsafe",
-        "git-spawns-once",
         "git-subdir-workspace",
         "git-trust",
         "gitlink-without-git",
         "graph-counts",
         "group-key-once",
+        "hash-extra-dir",
         "hash-list",
         "held-blob-sizes",
         "held-server-exit",
@@ -731,6 +756,7 @@
         "output-dirs-snapshot",
         "output-log",
         "output-memory.unsafe",
+        "output-stamps-scale",
         "package-entry-shims.unsafe",
         "painted-output",
         "persistent-lifecycle-properties.unsafe",
@@ -767,9 +793,11 @@
         "run-bus-subscribers",
         "run-context",
         "run-history-blocks",
+        "run-history-bytes",
         "run-history-row-cells",
         "run-id",
         "run-keys",
+        "run-keys-token",
         "run-lock",
         "run-lock-e2e",
         "run-lock-fs",
@@ -808,6 +836,7 @@
         "stable-keys",
         "staged-once",
         "stale-hit-memo",
+        "stall-watch",
         "status-line",
         "status-vocabulary",
         "stop-display",
@@ -827,6 +856,7 @@
         "task-hash",
         "task-hash-properties",
         "task-log-buffer",
+        "task-outputs-shape",
         "task-platforms",
         "task-verb",
         "term-dumb",
@@ -853,7 +883,7 @@
         "vanished-artifact",
         "version-fast-path",
         "vx-lockfile/link-outside-root",
-        "warm-shell",
+        "wal-checkpointer",
         "watch-affected",
         "watch-claimed-files",
         "watch-cycle-clock",
@@ -869,6 +899,7 @@
         "watch-timing",
         "watch-ws-import-in-project",
         "workspace-files-shared-memo",
+        "workspace-output-config",
         "zstd-frames"
       ],
       "docs": [
@@ -926,6 +957,7 @@
         "readme-words.unsafe",
         "check-binary-path",
         "release",
+        "release-images.unsafe",
         "release-notes",
         "release-provenance.unsafe",
         "schema-doc-drift",
@@ -972,19 +1004,19 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 971,
-        "can": 971,
-        "of": 973
+        "pass": 982,
+        "can": 982,
+        "of": 984
       },
       "correctness": {
-        "pass": 798,
-        "can": 798,
-        "of": 800
+        "pass": 806,
+        "can": 806,
+        "of": 808
       },
       "efficiency": {
-        "pass": 164,
-        "can": 164,
-        "of": 164
+        "pass": 167,
+        "can": 167,
+        "of": 167
       },
       "data": {
         "pass": 9,
@@ -1007,29 +1039,29 @@
         "of": 73
       },
       "affected": {
-        "pass": 96,
-        "can": 96,
-        "of": 96
+        "pass": 97,
+        "can": 97,
+        "of": 97
       },
       "cache": {
-        "pass": 41,
-        "can": 41,
-        "of": 41
+        "pass": 42,
+        "can": 42,
+        "of": 42
       },
       "inputs": {
-        "pass": 299,
-        "can": 299,
-        "of": 299
+        "pass": 302,
+        "can": 302,
+        "of": 302
       },
       "env": {
-        "pass": 29,
-        "can": 29,
-        "of": 31
+        "pass": 30,
+        "can": 30,
+        "of": 32
       },
       "outputs": {
-        "pass": 222,
-        "can": 222,
-        "of": 222
+        "pass": 223,
+        "can": 223,
+        "of": 223
       },
       "report": {
         "pass": 9,
@@ -1037,31 +1069,31 @@
         "of": 9
       },
       "sandbox": {
-        "pass": 16,
-        "can": 16,
-        "of": 16
+        "pass": 18,
+        "can": 18,
+        "of": 18
       },
       "watch": {
-        "pass": 29,
-        "can": 29,
-        "of": 29
+        "pass": 31,
+        "can": 31,
+        "of": 31
       }
     },
     "turbo": {
       "all": {
-        "pass": 622,
-        "can": 894,
-        "of": 973
+        "pass": 627,
+        "can": 901,
+        "of": 984
       },
       "correctness": {
-        "pass": 503,
-        "can": 727,
-        "of": 800
+        "pass": 506,
+        "can": 731,
+        "of": 808
       },
       "efficiency": {
-        "pass": 115,
-        "can": 159,
-        "of": 164
+        "pass": 117,
+        "can": 162,
+        "of": 167
       },
       "data": {
         "pass": 4,
@@ -1084,29 +1116,29 @@
         "of": 73
       },
       "affected": {
-        "pass": 67,
-        "can": 96,
-        "of": 96
+        "pass": 68,
+        "can": 97,
+        "of": 97
       },
       "cache": {
-        "pass": 33,
-        "can": 41,
-        "of": 41
+        "pass": 34,
+        "can": 42,
+        "of": 42
       },
       "inputs": {
         "pass": 187,
-        "can": 290,
-        "of": 299
+        "can": 292,
+        "of": 302
       },
       "env": {
-        "pass": 25,
-        "can": 29,
-        "of": 31
+        "pass": 26,
+        "can": 30,
+        "of": 32
       },
       "outputs": {
         "pass": 160,
         "can": 220,
-        "of": 222
+        "of": 223
       },
       "report": {
         "pass": 4,
@@ -1116,29 +1148,29 @@
       "sandbox": {
         "pass": 1,
         "can": 1,
-        "of": 16
+        "of": 18
       },
       "watch": {
-        "pass": 26,
-        "can": 29,
-        "of": 29
+        "pass": 28,
+        "can": 31,
+        "of": 31
       }
     },
     "nx": {
       "all": {
-        "pass": 634,
-        "can": 918,
-        "of": 973
+        "pass": 640,
+        "can": 926,
+        "of": 984
       },
       "correctness": {
-        "pass": 479,
-        "can": 747,
-        "of": 800
+        "pass": 482,
+        "can": 752,
+        "of": 808
       },
       "efficiency": {
-        "pass": 151,
-        "can": 163,
-        "of": 164
+        "pass": 154,
+        "can": 166,
+        "of": 167
       },
       "data": {
         "pass": 4,
@@ -1161,29 +1193,29 @@
         "of": 73
       },
       "affected": {
-        "pass": 56,
-        "can": 96,
-        "of": 96
+        "pass": 57,
+        "can": 97,
+        "of": 97
       },
       "cache": {
-        "pass": 36,
-        "can": 39,
-        "of": 41
+        "pass": 37,
+        "can": 40,
+        "of": 42
       },
       "inputs": {
-        "pass": 184,
-        "can": 299,
-        "of": 299
+        "pass": 186,
+        "can": 302,
+        "of": 302
       },
       "env": {
-        "pass": 23,
-        "can": 29,
-        "of": 31
+        "pass": 24,
+        "can": 30,
+        "of": 32
       },
       "outputs": {
         "pass": 156,
         "can": 220,
-        "of": 222
+        "of": 223
       },
       "report": {
         "pass": 4,
@@ -1193,29 +1225,29 @@
       "sandbox": {
         "pass": 0,
         "can": 1,
-        "of": 16
+        "of": 18
       },
       "watch": {
-        "pass": 26,
-        "can": 29,
-        "of": 29
+        "pass": 27,
+        "can": 31,
+        "of": 31
       }
     },
     "vite-task": {
       "all": {
-        "pass": 496,
-        "can": 735,
-        "of": 973
+        "pass": 499,
+        "can": 739,
+        "of": 984
       },
       "correctness": {
-        "pass": 409,
-        "can": 609,
-        "of": 800
+        "pass": 410,
+        "can": 611,
+        "of": 808
       },
       "efficiency": {
-        "pass": 85,
-        "can": 118,
-        "of": 164
+        "pass": 87,
+        "can": 120,
+        "of": 167
       },
       "data": {
         "pass": 2,
@@ -1240,27 +1272,27 @@
       "affected": {
         "pass": 0,
         "can": 0,
-        "of": 96
+        "of": 97
       },
       "cache": {
-        "pass": 33,
-        "can": 34,
-        "of": 41
+        "pass": 34,
+        "can": 35,
+        "of": 42
       },
       "inputs": {
-        "pass": 176,
-        "can": 291,
-        "of": 299
+        "pass": 177,
+        "can": 293,
+        "of": 302
       },
       "env": {
-        "pass": 27,
-        "can": 28,
-        "of": 31
+        "pass": 28,
+        "can": 29,
+        "of": 32
       },
       "outputs": {
         "pass": 139,
         "can": 220,
-        "of": 222
+        "of": 223
       },
       "report": {
         "pass": 2,
@@ -1270,29 +1302,29 @@
       "sandbox": {
         "pass": 1,
         "can": 1,
-        "of": 16
+        "of": 18
       },
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 29
+        "of": 31
       }
     },
     "nix": {
       "all": {
-        "pass": 467,
-        "can": 693,
-        "of": 973
+        "pass": 473,
+        "can": 699,
+        "of": 984
       },
       "correctness": {
-        "pass": 403,
-        "can": 574,
-        "of": 800
+        "pass": 407,
+        "can": 578,
+        "of": 808
       },
       "efficiency": {
-        "pass": 62,
-        "can": 111,
-        "of": 164
+        "pass": 64,
+        "can": 113,
+        "of": 167
       },
       "data": {
         "pass": 2,
@@ -1317,27 +1349,27 @@
       "affected": {
         "pass": 0,
         "can": 0,
-        "of": 96
+        "of": 97
       },
       "cache": {
-        "pass": 27,
-        "can": 34,
-        "of": 41
+        "pass": 28,
+        "can": 35,
+        "of": 42
       },
       "inputs": {
-        "pass": 173,
-        "can": 290,
-        "of": 299
+        "pass": 175,
+        "can": 292,
+        "of": 302
       },
       "env": {
-        "pass": 20,
-        "can": 28,
-        "of": 31
+        "pass": 21,
+        "can": 29,
+        "of": 32
       },
       "outputs": {
         "pass": 158,
         "can": 218,
-        "of": 222
+        "of": 223
       },
       "report": {
         "pass": 2,
@@ -1345,31 +1377,31 @@
         "of": 9
       },
       "sandbox": {
-        "pass": 13,
-        "can": 15,
-        "of": 16
+        "pass": 15,
+        "can": 17,
+        "of": 18
       },
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 29
+        "of": 31
       }
     },
     "moon": {
       "all": {
-        "pass": 576,
-        "can": 880,
-        "of": 973
+        "pass": 579,
+        "can": 887,
+        "of": 984
       },
       "correctness": {
-        "pass": 448,
-        "can": 722,
-        "of": 800
+        "pass": 449,
+        "can": 726,
+        "of": 808
       },
       "efficiency": {
-        "pass": 123,
-        "can": 149,
-        "of": 164
+        "pass": 125,
+        "can": 152,
+        "of": 167
       },
       "data": {
         "pass": 5,
@@ -1392,29 +1424,29 @@
         "of": 73
       },
       "affected": {
-        "pass": 68,
-        "can": 96,
-        "of": 96
+        "pass": 69,
+        "can": 97,
+        "of": 97
       },
       "cache": {
-        "pass": 37,
-        "can": 40,
-        "of": 41
+        "pass": 38,
+        "can": 41,
+        "of": 42
       },
       "inputs": {
         "pass": 192,
-        "can": 299,
-        "of": 299
+        "can": 302,
+        "of": 302
       },
       "env": {
-        "pass": 25,
-        "can": 29,
-        "of": 31
+        "pass": 26,
+        "can": 30,
+        "of": 32
       },
       "outputs": {
         "pass": 122,
-        "can": 222,
-        "of": 222
+        "can": 223,
+        "of": 223
       },
       "report": {
         "pass": 5,
@@ -1424,12 +1456,12 @@
       "sandbox": {
         "pass": 0,
         "can": 1,
-        "of": 16
+        "of": 18
       },
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 29
+        "of": 31
       }
     }
   },
@@ -32929,6 +32961,74 @@
       }
     },
     {
+      "id": "watch/edit-undone-during-run-rebuilds",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "An edit undone while its build runs leaves the output of the bytes on disk",
+      "why": "The running build read the edit, so its output belongs to bytes no longer on disk. Comparing the file with the state seen before the edit says nothing changed, and the watch stays green on a build of code that is gone. Save, undo, save is how editors are used, so the output must end as the bytes on disk build it, run again or replayed.",
+      "from": [
+        "watch-loop-edit-undone"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs watch"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "needs watch"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "needs watch"
+        }
+      }
+    },
+    {
+      "id": "watch/edit-during-first-run-rebuilds",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "An edit made during the watch’s first build is built right after it",
+      "why": "The first build of a watch is a build like any other, and it can read a file before the user saves it. Arming the watcher only after that build ends misses the save, so the watch idles on output from the old bytes. The edit must lead to one more build.",
+      "from": [
+        "watch-initial-edit"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "phase 2: after 30 s: did not run app#build"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs watch"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "needs watch"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "needs watch"
+        }
+      }
+    },
+    {
       "id": "watch/keeps-watching-after-failure",
       "category": "watch",
       "kind": "correctness",
@@ -34310,6 +34410,313 @@
           "status": "fail",
           "step": 3,
           "detail": "ran a#build, expected it replayed or left out"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs affected"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "needs affected"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/retry-saves-only-the-passing-attempt",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A file only a failed attempt wrote is not saved with the retry that passed",
+      "why": "The stored result should be what a passing run produces. Here the first attempt writes `dist/stale.txt` and fails; the retry writes only `dist/out.txt` and passes. A tool that saves everything under `dist` stores the failed attempt’s leftover as part of a good build and restores it on every hit.",
+      "from": [
+        "retries",
+        "overlapping-outputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs retries"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs retries"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs retries"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "needs retries"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/a/dist/stale.txt exists, expected none"
+        }
+      }
+    },
+    {
+      "id": "inputs/runtime-command-child-does-not-hold-the-run",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "A key command that leaves a background child running does not hold up the run",
+      "why": "A key command is done once its shell exits and its answer is printed. A child it started in the background, such as a daemon a version check wakes, can keep the output pipe open for a long time. A tool that waits for the pipe to close waits on that child, and every run, even one with nothing to do, stalls with it.",
+      "from": [
+        "runtime-inputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs runtime-inputs"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "did not finish within 30 s"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs runtime-inputs"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "needs runtime-inputs"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "did not finish within 30 s"
+        }
+      }
+    },
+    {
+      "id": "env/inherited-ifs-does-not-split-words",
+      "category": "env",
+      "kind": "correctness",
+      "title": "An `IFS` in the runner’s environment does not change how a task’s shell splits words",
+      "why": "A task command is a shell command, and a fresh `sh` sets `IFS` to space, tab and newline whatever its environment says. A tool that hands the command to a shell that kept an inherited `IFS` splits words differently. The same command under the same key then prints different output depending on who started the run.",
+      "from": [
+        "warm-shell"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/project-directory-starting-with-colon",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "An edit in a project whose directory name starts with `:` runs its task again",
+      "why": "A directory name is just a name, and `:top` is a legal one. Git reads a leading `:` in a path argument as special syntax, so a tool that passes the name to git unquoted lists the wrong files or none. The edit then falls outside the key and the stale result is replayed.",
+      "from": [
+        "git-spawns-once",
+        "stale-hit-git"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        }
+      }
+    },
+    {
+      "id": "inputs/project-directory-with-glob-character",
+      "category": "inputs",
+      "kind": "efficiency",
+      "title": "A project directory named `*g` keys only its own files, not those of `big` beside it",
+      "why": "A `*` in a directory name is a literal character. A tool that passes the name to git as a pattern matches `big` too, so an edit in `big` changes the key of `*g` and runs it for nothing. The project’s files are the ones under its own directory, whatever its name looks like.",
+      "from": [
+        "git-spawns-once",
+        "stale-hit-git"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "ran star#build, expected it replayed or left out"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        }
+      }
+    },
+    {
+      "id": "cache/conflicted-input-keys-as-resolved",
+      "category": "cache",
+      "kind": "efficiency",
+      "title": "An input built during a merge conflict replays once the conflict is resolved with the same bytes",
+      "why": "A key is about the bytes a task reads. During a merge conflict git lists the file once per side, but the file on disk is one file. A tool that hashes each listing keys the same bytes differently before and after `git add`, so marking the conflict resolved rebuilds a task whose inputs did not change.",
+      "from": [
+        "git-oid"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "sandbox/dependency-output-read-passes",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task may read the outputs of a task it depends on",
+      "why": "Reading what a dependency built is the reason to depend on it, and those outputs fold into the task’s key through the dependency. Refusing the read makes isolation unusable for every build that consumes another project. The grant is the dependency’s declared outputs.",
+      "from": [
+        "sandbox-request"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        }
+      }
+    },
+    {
+      "id": "sandbox/read-beside-dependency-output-fails",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task that reads a dependency file beside its declared outputs fails",
+      "why": "The dependency declared `gen/**/*.js` as its outputs, so only those files are what it hands on. `gen/note.txt` sits in the same folder but nothing keys it: an edit to it would replay the dependant’s stale result. Granting the whole folder hides that gap, so the read must fail.",
+      "from": [
+        "sandbox-request"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        }
+      }
+    },
+    {
+      "id": "affected/own-untracked-output-selects-nothing",
+      "category": "affected",
+      "kind": "efficiency",
+      "title": "Outputs a task wrote and git does not track do not make its project affected",
+      "why": "Running a build leaves its outputs in the tree, often without a `.gitignore` line for them. Those files are what the task produced, not a change anyone made. A tool that reads them as new sources selects every project that was built once, and an affected run turns into a full one.",
+      "from": [
+        "affected",
+        "affected-dry-reasons"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
         },
         "nx": {
           "status": "pass"
