@@ -1570,7 +1570,8 @@ function literalHead(glob: string): { path: string; rest: string[] } {
 /**
  * The action's environment: `inputs.env` (values read from THIS
  * machine's environment, already folded into the cache key) plus
- * `exec.env.define` (literals from the task config). A define wins on
+ * `exec.env.define` (literals from the task config), plus the
+ * `FORCE_COLOR=1` vx sets on every local child. A define wins on
  * collision — it is the more explicit statement of intent. An `inputs.env`
  * name crosses only when the local child gets the same value (`childEnv`,
  * the request's resolved environment): a name the config only TRACKS is in
@@ -1599,6 +1600,10 @@ export function commandEnvironment(
     if (e.value !== undefined && childEnv[e.name] === e.value) merged.set(e.name, e.value)
   }
   for (const [name, value] of Object.entries(envDefine)) merged.set(name, value)
+  // Core's exec/env.ts gives the local child FORCE_COLOR=1 unless it already
+  // sees FORCE_COLOR or a non-empty NO_COLOR. Without it here a worker
+  // stored plain bytes under the key a local run stores coloured ones.
+  if (!merged.has('FORCE_COLOR') && !merged.get('NO_COLOR')) merged.set('FORCE_COLOR', '1')
   return [...merged].map(([name, value]) => ({ name, value }))
 }
 

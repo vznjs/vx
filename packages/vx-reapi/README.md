@@ -534,6 +534,10 @@ sorted by name — the proto requires that, so equivalent Commands hash alike:
 A `define` wins over an `inputs.env` entry of the same name: it is the more
 explicit statement of intent.
 
+One constant is vx's own: `FORCE_COLOR=1`, which every local child gets
+too (unless the task sees a `FORCE_COLOR` or a non-empty `NO_COLOR`), so a
+remote entry holds the same coloured bytes a local one does.
+
 Nothing else crosses. In particular **`exec.env.passThrough` does not reach a
 remote worker**, and neither does the essential allowlist (`PATH`, `HOME`,
 `TMPDIR`, …) — those are the submitting machine's resolved environment, and

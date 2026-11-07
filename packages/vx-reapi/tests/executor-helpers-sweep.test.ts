@@ -212,6 +212,7 @@ describe('the action’s environment', () => {
     ).toEqual([
       { name: 'A', value: '1' },
       { name: 'D', value: 'defined' },
+      { name: 'FORCE_COLOR', value: '1' },
     ])
   })
 })
