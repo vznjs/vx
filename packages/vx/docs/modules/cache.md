@@ -468,6 +468,10 @@ export function storedLog(blob: Uint8Array | null): string
 // What vx wrote in a cache dir (index, artifacts, run history, its `*`
 // ignore): all a clear of a dir the user named may delete (item 968).
 export function vxCacheEntries(cacheDir: string): string[]
+// Throws (VX_E_CONFIG) when `cacheDir` resolves, through links, to home, `/`,
+// or a directory holding `workspaceRoot` or a `.git`. Every open of an index
+// asks it, and the clear before it deletes.
+export function refuseForeignCacheDir(cacheDir: string, workspaceRoot: string | undefined): void
 
 // The two WHERE fragments every history query shares, so "a run that
 // executed" and "a run with a key" mean one thing across metrics.ts,

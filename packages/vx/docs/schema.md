@@ -2198,7 +2198,10 @@ interface CacheSettings {
   `.vx/workspace.*` (`''` and `'.'` name the
   root), whose subdirectory does (`'packages'`), or that holds the
   workspace (`'..'`, `'/'`) is refused before anything is written, since its `*`
-  `.gitignore` would hide the sources from git and the cache keys. A
+  `.gitignore` would hide the sources from git and the cache keys. One
+  that resolves, through links (a `.vx/cache` linked to `~` or `..`), to
+  the home directory, `/`, or a directory holding the workspace or a
+  `.git` is refused on every open, an index already there or not. A
   directory other than the default `.vx/cache` gets that `*` `.gitignore`;
   the default is ignored by `.vx/.gitignore` (`/cache`, `/tmp`) instead, written
   when missing and never edited.

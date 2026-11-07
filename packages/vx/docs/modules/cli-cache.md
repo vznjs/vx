@@ -81,12 +81,17 @@ shared, so each waits for the other. A dry run takes no lock.
 With neither bound, deletes the cache directory a run would use (`.vx/cache`, `cache.dir`,
 `--cache-dir`) when it holds a `cache.db`, and the store that index
 records (`Cache.storeDir`, else `resolveStoreRoot`): the entries live
-in `~/.vx/<id>/cache`. A target that is `.vx` or holds it (the
-workspace config, the lock, `.vx/.gitignore`) is refused. A cache
+in `~/.vx/<id>/cache`. The recorded store goes only when its `<id>` is
+one of `repoIdsOf(root)`: an index copied from another workspace named
+that one's store. A target that is `.vx` or holds it (the
+workspace config, the lock, `.vx/.gitignore`) is refused, and so,
+first, is a cache directory `refuseForeignCacheDir` refuses (home, `/`,
+the workspace, a `.git`, reached through a link). A cache
 directory other than `.vx/cache` is the user's: only `vxCacheEntries`
 (the index and its WAL, `VX_ARTIFACT_NAME` files, an unchanged `*`
 `.gitignore`; every other record is in the index) go, then the
-directory if empty (item 968). The size is
+directory if empty (item 968). A linked `.vx/cache` loses those and
+`compiled/`, never the rest of what its target holds. The size is
 summed before the delete (links not followed); the delete takes the run
 lock, as a prune does, and holds each store it deletes alone
 (`holdStore`, in path order) once no other process has it open: a

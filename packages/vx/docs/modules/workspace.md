@@ -102,6 +102,15 @@ export function resolveStoreRoot(
 ): Promise<string | null>
 ```
 
+From `src/workspace/repo-id.ts`:
+
+```ts
+// Every id `repoIdOf` gives `root` now or gave it before a remote was added
+// (the remote's, the root commit's): the stores `vx cache clean` may delete
+// when its index names them.
+export function repoIdsOf(root: string): Promise<string[]>
+```
+
 From `src/workspace/load-reads.ts`, what one load has read of the root:
 
 ```ts

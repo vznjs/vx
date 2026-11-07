@@ -44,6 +44,7 @@ import {
   openSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   renameSync,
   type Stats,
   statSync,
@@ -61,6 +62,7 @@ import {
   utimes,
   writeFile,
 } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import path from 'node:path'
 import {
   createArtifactTables,
@@ -721,7 +723,8 @@ function usageOfEntry(entry: { cpuMs?: number; peakRssBytes?: number }): ExecUsa
  * failure is another question's answer: `access` on the directory is also
  * "does it exist" (made only on ENOENT), `access` on the database also "is
  * it there", and the ignore file is created exclusively instead of probed
- * first. An existing cache costs three calls; it cost six.
+ * first. An existing cache costs three calls, it cost six, and two more
+ * resolve it (`refuseForeignCacheDir`).
  */
 function openCacheDir(cacheDir: string, workspaceRoot?: string, index = 'cache.db'): string | null {
   const [ignore, ignoreText] = ignoreFileFor(cacheDir)
@@ -742,6 +745,7 @@ function openCacheDir(cacheDir: string, workspaceRoot?: string, index = 'cache.d
     if (code !== 'ENOENT') return errorText(err)
     refuseManifestDir(cacheDir, workspaceRoot)
   }
+  if (index === 'cache.db') refuseForeignCacheDir(cacheDir, workspaceRoot)
   writeIgnore(ignore, ignoreText)
   return null
 }
@@ -857,6 +861,49 @@ function ignoreFileFor(cacheDir: string): [string, string] {
     return [path.join(parent, '.gitignore'), DOT_VX_GITIGNORE]
   }
   return [path.join(cacheDir, '.gitignore'), IGNORE_ALL]
+}
+
+/**
+ * Refuses a cache directory that resolves to the home directory, the file
+ * system root, or a directory holding the workspace or a repository:
+ * compared unresolved, a `.vx/cache` linked to `~` or `..` passed, the run
+ * wrote its index there, and `vx cache clean` deleted every entry (the
+ * home directory; the workspace's `.git` and config). One realpath; a
+ * directory not there yet is made as named, below.
+ */
+export function refuseForeignCacheDir(cacheDir: string, workspaceRoot: string | undefined): void {
+  let real: string
+  try {
+    real = realpathSync(cacheDir)
+  } catch {
+    return
+  }
+  const home = process.env['HOME'] || homedir()
+  let what: string | undefined
+  if (real === path.parse(real).root) what = 'the file system root'
+  else if (sameDir(real, home)) what = 'the home directory'
+  else if (
+    (workspaceRoot !== undefined && !path.relative(real, workspaceRoot).startsWith('..')) ||
+    existsSync(path.join(real, '.git'))
+  )
+    what = 'a directory holding the workspace or a repository'
+  if (what === undefined) return
+  throw new UserError(
+    `cache directory ${cacheDir} resolves to ${real}, ${what}: vx would keep its index there and \`vx cache clean\` would delete from it. ${OWN_DIR_HINT}`,
+    'VX_E_CONFIG',
+  )
+}
+
+function sameDir(a: string, b: string): boolean {
+  if (a === path.resolve(b)) return true
+  // A home named through a link: stats only when the names could agree.
+  if (path.basename(a) !== path.basename(b)) return false
+  try {
+    const [x, y] = [statSync(a), statSync(b)]
+    return x.ino === y.ino && x.dev === y.dev
+  } catch {
+    return false
+  }
 }
 
 /**

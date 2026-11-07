@@ -27,6 +27,30 @@ import { gitEnv } from '../util/index.js'
  * git: those share nothing.
  */
 export async function repoIdOf(root: string): Promise<string | null> {
+  const repo = locateRepo(root)
+  if (repo === null) return null
+  const identity =
+    (await remoteIdentity(root, repo.commonDir)) ?? (await firstCommit(repo.commonDir, root))
+  return identity === null ? null : idOf(identity, repo.rel)
+}
+
+/**
+ * Every id `repoIdOf` gives `root` now or gave it before a remote was
+ * added: the remote's and the root commit's. `vx cache clean` deletes a
+ * store its index recorded only under one of these; any other is another
+ * workspace's.
+ */
+export async function repoIdsOf(root: string): Promise<string[]> {
+  const repo = locateRepo(root)
+  if (repo === null) return []
+  const identities = await Promise.all([
+    remoteIdentity(root, repo.commonDir),
+    firstCommit(repo.commonDir, root),
+  ])
+  return identities.flatMap((identity) => (identity === null ? [] : [idOf(identity, repo.rel)]))
+}
+
+function locateRepo(root: string): (GitDir & { rel: string }) | null {
   // Git walks the physical path; the logical one found no `.git` through a
   // symlink from outside the repository, and an alias inside it another id.
   let real: string
@@ -37,12 +61,11 @@ export async function repoIdOf(root: string): Promise<string | null> {
   }
   const located = locateGitDir(real)
   if (located === null) return null
-  const identity =
-    (await remoteIdentity(root, located.commonDir)) ?? (await firstCommit(located.commonDir, root))
-  if (identity === null) return null
-  const rel = path.relative(located.gitRoot, real).split(path.sep).join('/')
-  const key = sha256(`${identity}#${rel}`)
-  return sha256(key).slice(0, 16)
+  return { ...located, rel: path.relative(located.gitRoot, real).split(path.sep).join('/') }
+}
+
+function idOf(identity: string, rel: string): string {
+  return sha256(sha256(`${identity}#${rel}`)).slice(0, 16)
 }
 
 const sha256 = (s: string): string => new Bun.CryptoHasher('sha256').update(s).digest('hex')

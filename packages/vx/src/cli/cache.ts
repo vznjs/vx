@@ -1,7 +1,13 @@
 import { accessSync, constants, existsSync, lstatSync, readdirSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
-import { Cache, holdCacheDir, holdStore, vxCacheEntries } from '../cache/index.js'
+import {
+  Cache,
+  holdCacheDir,
+  holdStore,
+  refuseForeignCacheDir,
+  vxCacheEntries,
+} from '../cache/index.js'
 import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
 import {
   errorCode,
@@ -14,7 +20,7 @@ import {
 } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import { acquireRunLock } from '../orchestrator/index.js'
-import { findWorkspaceRoot } from '../workspace/index.js'
+import { findWorkspaceRoot, repoIdsOf } from '../workspace/index.js'
 import {
   cliCacheDir,
   loadCliWorkspace,
@@ -355,6 +361,12 @@ async function clearHeld(
   // The store the index recorded and today's (a changed HOME, an origin
   // added) both go; a directory with no index is not a vx cache to delete.
   const targets: string[] = []
+  try {
+    refuseForeignCacheDir(dir, root)
+  } catch (err) {
+    if (!isUserError(err)) throw err
+    return refuse('cache clean', args, err.message, errorCode(err))
+  }
   if (existsSync(path.join(dir, 'cache.db'))) {
     // An index SQLite cannot read is what its own refusal sends here to
     // clear: today's store stands in for the one it recorded.
@@ -370,8 +382,12 @@ async function clearHeld(
     }
     targets.push(dir)
     // The index is a file in the checkout (committed, or restored from a CI
-    // cache): the store it names is deleted only when it is one.
-    if (store !== undefined && isStore(store)) targets.push(store)
+    // cache): the store it names is deleted only when it is one, and this
+    // workspace's: an index copied from another named that one's store.
+    if (store !== undefined && store !== storeRoot && isStore(store)) {
+      const id = path.basename(path.dirname(path.resolve(store)))
+      if ((await repoIdsOf(root)).includes(id)) targets.push(store)
+    }
     // Today's store too: the next run reads it, whichever store the index
     // last recorded (a moved HOME, an origin added).
     if (storeRoot !== null) targets.push(storeRoot)
@@ -402,8 +418,9 @@ async function clearHeld(
   const dry = parsed.dry === true
   // `.vx/cache` and the stores are vx's own; any other directory is the
   // user's, cleared entry by entry and removed only if that empties it.
-  // A `.vx/cache` linked to a volume (a CI cache mount) is emptied through
-  // the link: removing the link alone left the cache where it points.
+  // A `.vx/cache` linked to a volume (a CI cache mount) is cleared through
+  // the link: removing the link alone left the cache where it points. Only
+  // vx's entries there: emptying it took whatever else the target held.
   const own = path.join(dotVx, 'cache')
   const named = path.resolve(dir) === own ? undefined : path.resolve(dir)
   const linked = named === undefined && existsSync(own) && lstatSync(own).isSymbolicLink()
@@ -429,7 +446,9 @@ async function clearHeld(
     t === named
       ? vxCacheEntries(t).map((e) => path.join(t, e))
       : linked && t === own
-        ? readdirSync(t).map((e) => path.join(t, e))
+        ? [...vxCacheEntries(t), 'compiled']
+            .map((e) => path.join(t, e))
+            .filter((e) => existsSync(e))
         : [t]
   const bytes = doomed.reduce((n, t) => n + entries(t).reduce((m, e) => m + treeBytes(e), 0), 0)
   if (!dry) {

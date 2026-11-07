@@ -1884,9 +1884,11 @@ workspace root) is refused. A `cache.dir` you named may be shared
 its artifacts, run history, its `*` `.gitignore`); your own files stay,
 and the directory goes only if that empties it. A directory with no
 `cache.db` is not a vx cache and is left alone, and the store an index
-names goes only if it is one (`.vx/<id>/cache` holding a `store.db`): the
-index is a file in the checkout, which a commit or a restored CI cache
-could point at any directory. Every target is checked before the
+names goes only if it is one (`.vx/<id>/cache` holding a `store.db`)
+and this workspace's (its `<id>` is the workspace's, or the one it had
+before an origin was added): the index is a file in the checkout, which
+a commit, a copy or a restored CI cache could point at any directory or
+another workspace's store. Every target is checked before the
 first delete: a store this user cannot remove (another user's, after one
 `sudo vx run`) stays, as runs leave it for `.vx/cache`, and stderr says
 `cache store <dir> left as is: this user cannot remove it (EACCES)`; a
@@ -1896,8 +1898,12 @@ deleted. A workspace that never ran says
 and saves again.
 
 A `.vx/cache` linked to another directory (a CI cache volume) is
-emptied through the link, and the link stays. An index SQLite cannot
-read is cleared like any other.
+cleared through the link of what vx wrote there (the files above and
+`compiled/`), and the link stays. A cache directory that resolves,
+through links, to the home directory, `/`, or a directory holding the
+workspace or a `.git` is refused, by the clear and by every run, with
+the resolved path named. An index SQLite cannot read is cleared like
+any other.
 
 ```
 $ vx cache clean

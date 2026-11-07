@@ -5,7 +5,7 @@
 // store by hand (2026-10-14).
 
 import { Database } from 'bun:sqlite'
-import { existsSync, mkdirSync, readdirSync, realpathSync, symlinkSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readdirSync, realpathSync, symlinkSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -409,6 +409,72 @@ describe('vx cache clean with no bound clears the cache', () => {
       expect(r.code).toBe(0)
       expect(r.out).toContain('.vx/cache')
       expect(readdirSync(mount)).toEqual([])
+    },
+    TIMEOUT,
+  )
+  it(
+    "a linked .vx/cache: the clear deletes only vx's entries where it points",
+    async () => {
+      // The clear emptied the link's target entry by entry, whatever it held.
+      const mount = path.join(home, 'ci-mount')
+      mkdirSync(mount)
+      symlinkSync(mount, path.join(root, '.vx', 'cache'))
+      expect((await vx(['run', 'build', '--all'])).code).toBe(0)
+      await Bun.write(path.join(mount, 'notes', 'keep.txt'), 'mine')
+      await Bun.write(path.join(mount, 'keep.txt'), 'mine')
+
+      const r = await vx(['cache', 'clean'])
+      expect(r.code).toBe(0)
+      expect(readdirSync(mount).sort()).toEqual(['keep.txt', 'notes'])
+    },
+    TIMEOUT,
+  )
+  it.each([
+    ['the home directory', () => home],
+    ['the workspace root', () => '..'],
+  ])(
+    'a .vx/cache linked to %s is refused by the run and by the clear',
+    async (_, target) => {
+      // Compared unresolved, the link passed every check: the run wrote its
+      // index into home, and the clear then deleted every entry there (the
+      // workspace's .git, package.json and .vx/workspace.ts with `..`).
+      await Bun.write(path.join(home, 'keep.txt'), 'mine')
+      symlinkSync(target(), path.join(root, '.vx', 'cache'))
+      const run = await vx(['run', 'build', '--all'])
+      expect(run.code).toBe(1)
+      expect(run.err).toMatch(/cache directory \S+ (resolves to|holds a package\.json)/)
+      expect(existsSync(path.join(home, 'cache.db'))).toBe(false)
+      expect(existsSync(path.join(root, 'cache.db'))).toBe(false)
+      // An index already there (an older vx wrote it) does not make it vx's.
+      await Bun.write(path.join(realpathSync(path.join(root, '.vx', 'cache')), 'cache.db'), '')
+      const clean = await vx(['cache', 'clean'])
+      expect(clean.code).toBe(1)
+      expect(clean.err).toContain('resolves to')
+      const again = await vx(['run', 'build', '--all'])
+      expect(again.code).toBe(1)
+      expect(again.err).toContain('resolves to')
+      expect(existsSync(path.join(home, 'keep.txt'))).toBe(true)
+      for (const f of ['.git', 'package.json', path.join('.vx', 'workspace.mjs')])
+        expect(existsSync(path.join(root, f))).toBe(true)
+    },
+    TIMEOUT,
+  )
+  it(
+    "keeps the store the index names when it is another workspace's",
+    async () => {
+      // An index copied or committed from another workspace named that
+      // workspace's store, and the clear deleted it: it has a store's shape.
+      expect((await vx(['run', 'build', '--all'])).code).toBe(0)
+      const other = path.join(home, '.vx', '0123456789abcdef', 'cache')
+      cpSync(store(), other, { recursive: true })
+      const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
+      db.query("UPDATE schema_meta SET value = ? WHERE key = 'store_dir'").run(other)
+      db.close()
+      const r = await vx(['cache', 'clean'])
+      expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
+      expect(r.out).not.toContain(other)
+      expect(existsSync(path.join(other, 'store.db'))).toBe(true)
+      expect(existsSync(path.join(root, '.vx', 'cache'))).toBe(false)
     },
     TIMEOUT,
   )
