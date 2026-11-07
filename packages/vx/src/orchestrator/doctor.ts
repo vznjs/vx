@@ -20,6 +20,7 @@ import {
   machineParallelism,
   treeBytes,
 } from '../util/index.js'
+import { isDefaultBuild } from '../graph/index.js'
 import * as ui from '../ui/index.js'
 import { vxPath } from '../handoff.js'
 import { VERSION } from '../version.js'
@@ -277,7 +278,9 @@ async function collectWorkspaceInfo(
     })
     for (const p of loaded.projects.values()) {
       const tasks = p.config.tasks ?? {}
-      taskCount += Object.keys(tasks).length
+      // The default build is no declared task: `vx run build` denies it, and
+      // right after `vx init` the doctor said `1 (1 task)` of `tasks: {}`.
+      taskCount += Object.values(tasks).filter((t) => !isDefaultBuild(t)).length
       for (const t of Object.values(tasks)) if (t?.exec?.sandbox !== undefined) sandboxed++
     }
   } catch (err) {

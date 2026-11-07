@@ -472,10 +472,11 @@ describe('vx show under a `project` plugin (e2e)', () => {
       const list = JSON.parse(across.out) as { name: string }[]
       expect(list.map((e) => e.name)).toEqual(['one', 'two'])
       // The doctor counts through the same load, so its number is the
-      // one a run would see, not the number of config files.
+      // one a run would see, not the number of config files; a default
+      // build is no declared task, as `vx show` and `vx run build` say.
       const info = await vx(root, ['info'])
       expect(info.code).toBe(0)
-      expect(info.out).toMatch(/^  projects +2 \(4 tasks\)/m)
+      expect(info.out).toMatch(/^  projects +2 \(2 tasks\)/m)
       // The doctor names each plugin and the seams it fills, in pipeline
       // order.
       expect(info.out).toMatch(/^  plugins +2 — vx-test-packages \(discover\); gen \(project\)$/m)

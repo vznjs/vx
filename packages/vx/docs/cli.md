@@ -2921,7 +2921,8 @@ on stderr (`no projects`) and names `vx init`.
 `vx info` prints one screen of facts about the workspace and this
 machine, for bug reports and sanity checks. The task count and the
 sandbox row's declared count come from the same load a run uses: the
-lock, plugin stages included. `vx info` evaluates no config; with no
+lock, plugin stages included. A default build is no declared task and is
+not counted. `vx info` evaluates no config; with no
 lock the `projects` row reads `—` and `projects lock` says `no`; with one a
 run would refuse, `projects` reads `—` and `projects lock` says `refused:` and
 why (`lockError` in JSON, where the counts are zero). A broken config is `vx lock`'s to report.
