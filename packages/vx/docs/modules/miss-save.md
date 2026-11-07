@@ -115,7 +115,8 @@ the upstream's output rows, which the save writes.
    refused (item 444; until 2026-10-02 a single-package workspace's
    mask took them unnoticed, and this line was the only signal). An
    output directory linked out of the project, or a `workspaceFiles` one
-   out of the workspace, is named the same way (M-61, M-65).
+   out of the workspace, never gets here: the resolver refuses the task,
+   naming the link (X-88, M-65).
 3. `markOutputsChanged` / `markWorkspaceOutputsChanged` /
    `invalidateWorkspacePartition` — the git snapshot learns the exact
    paths, not "everything changed"; on a 1,000-package cold run that

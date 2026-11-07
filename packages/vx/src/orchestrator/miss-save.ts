@@ -7,7 +7,7 @@
 // a later run replays. Moved out of execute-task.ts 2026-09-09 as pure
 // code motion.
 
-import { existsSync, lstatSync, realpathSync, statSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import path from 'node:path'
 import {
   type CacheLayer,
@@ -26,7 +26,6 @@ import {
   relPosix,
   span,
   splitNegations,
-  staticPrefix,
   taskGlob,
 } from '../util/index.js'
 import { type Logger, warnOf } from '../report/index.js'
@@ -213,17 +212,12 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
     // `outputs` is not a write grant; `exec.sandbox.allow.write` is.
     const sandboxed = node.config.exec?.sandbox !== undefined
     const grantsWrite = (node.config.exec?.sandbox?.allow?.write?.length ?? 0) > 0
-    // A `workspaceFiles` directory linked out of the workspace drops every
-    // file (M-65); a project one is refused by the resolver (X-88).
-    const linkedOut = outputDirLinkedOut(a.workspaceRoot, a.wsOutputs)
     warnOf(log)(
       `[vx] ${node.id}: outputs matched no files (${[...a.outputs, ...a.wsOutputs].join(', ')}) — ` +
         `an empty artifact is saved; a later hit restores nothing` +
-        (linkedOut !== undefined
-          ? ` — ${linkedOut.dir} is a symlink to ${linkedOut.target}, outside ${linkedOut.base}, and vx keeps only outputs inside it: make ${linkedOut.dir} a directory`
-          : sandboxed && !grantsWrite
-            ? ` — the task is sandboxed and declares no exec.sandbox.allow.write, so its writes never reached disk`
-            : '') +
+        (sandboxed && !grantsWrite
+          ? ` — the task is sandboxed and declares no exec.sandbox.allow.write, so its writes never reached disk`
+          : '') +
         bracketLiteralHint([
           ...a.outputs.map((g) => [node.projectDir, g] as const),
           ...a.wsOutputs.map((g) => [a.workspaceRoot, g] as const),
@@ -396,46 +390,6 @@ function markWritten(
   // to git" rule as the project drop above.
   if (outputFiles.length + wsOutputFiles.length > 0) {
     a.gitFilesCache?.invalidateWorkspacePartition()
-  }
-}
-
-/**
- * The first `workspaceFiles` directory that is a symlink resolving outside
- * the workspace root: every file under it is dropped as outside, and the
- * empty-artifact warning blamed the glob (M-65).
- */
-function outputDirLinkedOut(
-  baseDir: string,
-  outputs: readonly string[],
-): { dir: string; target: string; base: string } | undefined {
-  const realProject = realpathOrNull(baseDir) ?? baseDir
-  // `dist` names the tree `dist/**`: the same reading the resolver gives.
-  for (const pattern of asTrees(outputs.filter((o) => !o.startsWith('!')))) {
-    const literal = staticPrefix(pattern)
-      .split('/')
-      .filter((p) => p !== '' && p !== '.')
-    for (let i = 1; i <= literal.length; i++) {
-      const dir = literal.slice(0, i).join('/')
-      const abs = path.join(baseDir, dir)
-      try {
-        if (!lstatSync(abs).isSymbolicLink()) continue
-      } catch {
-        break
-      }
-      const target = realpathOrNull(abs)
-      if (target !== null && target !== realProject && !target.startsWith(realProject + path.sep)) {
-        return { dir, target, base: 'the workspace' }
-      }
-    }
-  }
-  return undefined
-}
-
-function realpathOrNull(p: string): string | null {
-  try {
-    return realpathSync(p)
-  } catch {
-    return null
   }
 }
 

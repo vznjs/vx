@@ -1123,6 +1123,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'watch-timing',
     'watch-ws-import-in-project',
     'workspace-files-shared-memo',
+    'workspace-output-config',
     'zstd-frames',
   ],
   docs: [

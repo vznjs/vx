@@ -1010,7 +1010,9 @@ watch` re-runs it on an edit there.
   `['**/*', '!dist/**']`, or ignore `dist/`. An input entry the task's OWN outputs take
   back whole is always refused (X-55): vx removes outputs before a run,
   so a formatter declaring `src/**` as both would delete its sources. A
-  task that rewrites files in place declares no outputs.
+  task that rewrites files in place declares no outputs. The two fields
+  are compared across too, read from the root: `inputs.files: ['src/**']`
+  beside `outputs.workspaceFiles: ['app/src/**']` is the same refusal.
 - **Nested-project subtree** — files belonging to a project rooted
   inside this one's dir are excluded. No cross-project leakage via
   globs; the only cross-project relationship is `dependsOn` +
@@ -1470,7 +1472,14 @@ outputs: {
 
 **No boundary rule — deliberate escape hatch.** These globs may
 capture (and on restore, overwrite; on clean, wipe) files anywhere in
-the workspace, including inside other projects' dirs. Prefer
+the workspace, including inside other projects' dirs. Two limits: a
+glob that covers a project's `vx.config.*`, the task's own or another's
+(`packages/b/**`), is refused by `vx lock`, since the clean would
+delete that project's config and its untracked files (take the config
+back with `!packages/b/vx.config.ts` only if the rest is truly the
+task's); and a directory on a glob's literal head that is a symlink
+out of the workspace refuses the task, as one out of the project does
+for `files`. Prefer
 project-relative `files` whenever the task can write inside its own
 dir. Two tasks whose workspace outputs provably overlap (equal
 literals, or a literal a glob matches) are refused at graph build, like

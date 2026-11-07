@@ -1652,7 +1652,9 @@ followed by the clean as by the save and restore, named by a glob
 (`dist/**`) or a literal (`dist`) alike, so its target is the
 output and an entry holds only what its run wrote (X-88); one that
 resolves outside the project refuses the task, naming the link, and
-nothing is deleted through it (X-5). So does one, in either scope, that
+nothing is deleted through it (X-5), and so does an
+`outputs.workspaceFiles` directory that resolves outside the workspace
+(it saved an empty entry under a warning, M-65). So does one, in either scope, that
 resolves into the root's own `.git` (any case) or its `.vx`: for the root
 project and `outputs.workspaceFiles` those are inside, and `dist -> .git`
 under `dist/**` had the clean delete the repository. A recorded row

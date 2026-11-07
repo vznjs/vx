@@ -968,8 +968,9 @@ export function committedFiles(
  * below it is an output, kept as the link (`archive.ts`). One into `.git`
  * or `.vx` is refused in either scope: for the root project and for
  * workspace outputs those are inside, and the clean deleted the
- * repository through `dist -> .git`. One out of a workspace output's root
- * is left to `containedIn`.
+ * repository through `dist -> .git`. One out of the root is refused in
+ * either scope too: a workspace output's every file was dropped as outside
+ * and an empty entry saved, while the project twin refused the task (M-65).
  */
 function refuseDirLinkedOut(
   root: string,
@@ -1006,10 +1007,9 @@ function refuseDirLinkedOut(
       }
       realRoot ??= realOr(root)
       if (!isInside(realRoot, real)) {
-        if (scope === 'workspace') break
         throw new UserError(
           `${at} is a symbolic link to ${real}, outside ${root} — vx never cleans, saves ` +
-            'or restores declared outputs through a link that leaves the project. Remove the ' +
+            `or restores declared outputs through a link that leaves the ${scope}. Remove the ` +
             'link and re-run, or stop declaring outputs under it.',
         )
       }

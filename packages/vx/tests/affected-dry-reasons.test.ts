@@ -259,7 +259,7 @@ describe("vx run --affected: a path under a task's own outputs, by its workspace
   tasks: {
     gen: {
       exec: { command: 'true' },
-      inputs: { files: ['src/**'], workspaceFiles: ['shared/**', 'packages/cg/dist/**'] },
+      inputs: { files: ['src/**'], workspaceFiles: ['shared/**', 'packages/cg/**'] },
       outputs: { files: ['dist/**'], workspaceFiles: ['shared/gen/**'] },
       cache: true,
     },
