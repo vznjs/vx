@@ -2390,6 +2390,23 @@ it('sends a host name such as HOME only when the task’s env.define sets it', a
   }
 })
 
+// A plain object's `__proto__` is the setter: the name a task defined was
+// keyed and never sent.
+it('sends a name `__proto__` as any other name', async () => {
+  const h = await harness(new Map([node('t1')]))
+  try {
+    const a = await h.worker(1)
+    await Bun.sleep(50)
+    const env: NodeJS.ProcessEnv = Object.create(null)
+    env['__proto__'] = 'P1'
+    void h.o.execute({ ...h.req('t1'), env, envDefine: { ['__proto__']: 'P1' } })
+    expect(await a.batches()).toEqual([['t1']])
+    expect(Object.getOwnPropertyDescriptor(a.orders[0]!.env, '__proto__')?.value).toBe('P1')
+  } finally {
+    await h.stop()
+  }
+})
+
 // A remote keeps the first bytes put under a key: a retry saved under its
 // first attempt's run key replayed that failure under a green result
 // (2026-10-24).

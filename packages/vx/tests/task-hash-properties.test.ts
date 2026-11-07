@@ -452,27 +452,30 @@ describe('computeTaskHash over random resolved configs', () => {
     }
   })
 
-  it('the order of inputs.env and exec.env.passThrough names keeps the key', async () => {
-    // Both are sets of names: the values are read by name, so listing
+  it('the order of inputs.env, exec.env.passThrough and exec.env.secret names keeps the key', async () => {
+    // All are sets of names: the values are read by name, so listing
     // `['C', 'A']` for `['A', 'C']` reran the task (conformance
     // env/declared-order-irrelevant).
     let shuffled = 0
     for (const { c, r } of draws(0x0e4d, 40)) {
       const env = shuffle(r, ['VX_KEYPROP_A', 'VX_KEYPROP_B', 'VX_KEYPROP_C'])
       const pass = shuffle(r, ['P1', 'P2', 'P3'])
-      const withEnv = (e: string[], p: string[]): Case => ({
+      const secret = shuffle(r, ['S1', 'S2', 'S3'])
+      const withEnv = (e: string[], p: string[], s: string[]): Case => ({
         ...c,
         cfg: {
           ...c.cfg,
           inputs: { ...c.cfg.inputs!, env: e },
-          exec: { ...c.cfg.exec!, env: { ...c.cfg.exec!.env, passThrough: p } },
+          exec: { ...c.cfg.exec!, env: { ...c.cfg.exec!.env, passThrough: p, secret: s } },
         },
       })
-      const base = await key(withEnv(env, pass))
+      const base = await key(withEnv(env, pass, secret))
       const e2 = [...env].reverse()
       const p2 = [...pass].reverse()
-      expect(await key(withEnv(e2, p2))).toBe(base)
-      expect(await key(withEnv(env, p2))).toBe(base)
+      const s2 = [...secret].reverse()
+      expect(await key(withEnv(e2, p2, s2))).toBe(base)
+      expect(await key(withEnv(env, p2, secret))).toBe(base)
+      expect(await key(withEnv(env, pass, s2))).toBe(base)
       shuffled++
     }
     expect(shuffled).toBe(40)

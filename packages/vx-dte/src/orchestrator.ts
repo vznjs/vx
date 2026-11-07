@@ -2659,7 +2659,8 @@ function defined(
   env: NodeJS.ProcessEnv,
   define: Readonly<Record<string, string>>,
 ): Record<string, string> {
-  const out: Record<string, string> = {}
+  // No prototype: on `{}`, a name `__proto__` hit the setter and was not sent.
+  const out: Record<string, string> = Object.create(null)
   for (const [k, v] of Object.entries(env))
     if (v !== undefined && (!HOST_ENV.includes(k) || k in define)) out[k] = v
   return out
