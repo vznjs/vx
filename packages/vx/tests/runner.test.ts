@@ -1128,6 +1128,42 @@ describe('withForwardArgs', () => {
     expect(shOut(withForwardArgs(command, ['--fix', 'a b']))).toBe(printed)
   })
 
+  // A redirection after the closer hid it: `(cmd) 2>&1 --fix` was a
+  // syntax error. The args go inside, the redirections stay after.
+  it.each([
+    ['a subshell then 2>&1', '(echo args:) 2>&1', 'args: --fix a b\n'],
+    ['a subshell then a glued redirect', '(echo args:)2>/dev/null', 'args: --fix a b\n'],
+    [
+      'a for loop reading a file',
+      'for x in args:; do echo $x; done < /dev/null',
+      'args: --fix a b\n',
+    ],
+    ['an if then a redirect', 'if true; then echo args:; fi >&1', 'args: --fix a b\n'],
+    ['a brace group then 2>/dev/null', '{ echo args:; } 2>/dev/null', 'args: --fix a b\n'],
+    ['two redirects', '(echo args:) </dev/null 2>&1', 'args: --fix a b\n'],
+    ['a quoted target', `(echo args:) 2>'/dev/null'`, 'args: --fix a b\n'],
+    ['a redirect then ;', '(echo args:) 2>&1;', 'args: --fix a b\n'],
+    ['a redirect then a comment', '(echo args:) 2>&1 # c', 'args: --fix a b\n'],
+    ['control: a simple command', 'echo args: 2>/dev/null', 'args: --fix a b\n'],
+    ['control: a redirect in quotes', `echo '(a) 2>&1'`, '(a) 2>&1 --fix a b\n'],
+  ])('%s', (_name, command, printed) => {
+    expect(shOut(withForwardArgs(command, ['--fix', 'a b']))).toBe(printed)
+  })
+
+  // Compared as text: these name files a shell would create, or need bash.
+  it.each([
+    ['a ) in a quoted target', `(echo a) >"b)"`, `(echo a --fix) >"b)"`],
+    ['control: a ) in a quoted target of a command', `echo a >"(b)"`, `echo a >"(b)" --fix`],
+    [
+      'a process substitution',
+      'while read x; do echo $x; done < <(ls)',
+      'while read x; do echo $x --fix; done < <(ls)',
+    ],
+    ['control: a redirect inside an open quote', `echo "a; fi >""`, `echo "a; fi >"" --fix`],
+  ])('%s', (_name, command, forwarded) => {
+    expect(withForwardArgs(command, ['--fix'])).toBe(forwarded)
+  })
+
   it('leaves the command alone with no args', () => {
     expect(withForwardArgs('echo hi # c', [])).toBe('echo hi # c')
     expect(withForwardArgs('echo hi # c', undefined)).toBe('echo hi # c')

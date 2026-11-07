@@ -188,7 +188,12 @@ export function shellQuote(arg: string): string {
  * `<<X` in a comment or quotes opens no heredoc, and a quote in a body
  * opens nothing (X-110).
  */
-function shellShape(command: string): { comment: number; body: boolean[]; subshell: boolean } {
+function shellShape(command: string): {
+  comment: number
+  body: boolean[]
+  subshell: boolean
+  quoted: boolean
+} {
   const lines = command.split('\n')
   const body = lines.map(() => false)
   const pending: Array<{ delim: string; tabs: boolean }> = []
@@ -267,8 +272,35 @@ function shellShape(command: string): { comment: number; body: boolean[]; subshe
     }
     atWordStart = /[\s;&|()<>]/.test(c)
   }
-  return { comment, body, subshell }
+  return { comment, body, subshell, quoted: quote !== '' }
 }
+
+// One redirection at the end of a command: an fd, an operator, and a
+// target word (quoted parts and `<(…)` / `>(…)` included).
+const TRAILING_REDIRECT =
+  /(?:^|[\s)])(?:&>>?|\d*(?:<<<|>>|>&|<&|<>|>\||>|<))[ \t]*(?:[<>]\([^()]*\)|(?:[^\s;&|()<>'"\\]|\\.|'[^']*'|"(?:[^"\\]|\\.)*")+)$/
+
+/**
+ * Where trailing redirections start, when a compound command's closer
+ * stands before them (`(cmd) 2>&1`, `done < f`), or -1. One inside quotes
+ * or a comment is not peeled.
+ */
+function redirectsAfterCloser(command: string): number {
+  let head = command
+  for (;;) {
+    const m = TRAILING_REDIRECT.exec(head)
+    if (m === null) break
+    const start = m.index + (/^[\s)]/.test(m[0]) ? 1 : 0)
+    const rest = head.slice(0, start)
+    const shape = shellShape(rest)
+    if (shape.quoted || shape.comment >= 0 || /(?:^|[^\\])(?:\\\\)*\\$/.test(rest)) break
+    head = rest.trimEnd()
+  }
+  if (head.length === command.length) return -1
+  return shellShape(head).subshell || COMPOUND_CLOSER.test(head) ? head.length : -1
+}
+
+const COMPOUND_CLOSER = /(?:^|[^\\])(?:\\\\)*[;&\n][ \t]*(fi|done|esac|\})$/
 
 /**
  * The command a task runs with the args after `--` appended, shell-quoted.
@@ -306,10 +338,12 @@ export function withForwardArgs(command: string, args: readonly string[] | undef
     // After a compound command's closer they were a syntax error
     // (`(cmd) --fix`, `fi --fix`): they go to the last command inside it.
     // A closer word counts only where a command starts, after a separator.
-    const closer = shape.subshell
-      ? ')'
-      : /(?:^|[^\\])(?:\\\\)*[;&\n][ \t]*(fi|done|esac|\})$/.exec(trimmed)?.[1]
+    const closer = shape.subshell ? ')' : COMPOUND_CLOSER.exec(trimmed)?.[1]
     const end = sep ?? closer
+    // Redirections after the closer (`(cmd) 2>&1`, `done < f`) hid it: the
+    // args go inside it and the redirections stay after.
+    const at = end === undefined ? redirectsAfterCloser(trimmed) : -1
+    if (at >= 0) return `${withForwardArgs(trimmed.slice(0, at), args)}${trimmed.slice(at)}`
     if (end !== undefined) {
       const head = trimmed.slice(0, -end.length).trimEnd()
       return `${withForwardArgs(head, args)}${trimmed.slice(head.length)}`

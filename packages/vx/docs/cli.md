@@ -551,7 +551,8 @@ them as a command of their own), before a trailing `;` or `&` for the
 same reason (an escaped `\;`, as in `find … -exec … \;`, takes them
 after), inside a compound command that ends the line, on its last
 command (`(cd web && vite)`, `{ …; }`, `if …; fi`, `for …; done`,
-`case … esac` get them where the shell still reads arguments), or
+`case … esac` get them where the shell still reads arguments, and
+redirections after its closer stay there: `(cmd) 2>&1`, `done < f`), or
 before a `#` comment still
 open there (`echo args: # show` gets them; with comment-only lines
 below a commented line, before the earliest). A heredoc's body and
