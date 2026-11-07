@@ -179,6 +179,18 @@ describe('computeTaskHash — what the config contributes', () => {
     expect(only).toBe(plain)
   })
 
+  it('STABILITY: exec.worker does NOT move the key', async () => {
+    // Which worker type runs a task is placement, as exec.remote is.
+    const plain = await key({ node: node({}, { exec: { command: 'build' } }) })
+    const typed = await key({ node: node({}, { exec: { command: 'build', worker: 'ubuntu' } }) })
+    const both = await key({
+      node: node({}, { exec: { command: 'build', worker: 'ubuntu', remote: true } }),
+    })
+    expect([typed, both]).toEqual([plain, plain])
+    const other = await key({ node: node({}, { exec: { command: 'test', worker: 'ubuntu' } }) })
+    expect(other).not.toBe(plain)
+  })
+
   it('STABILITY: stripping remote leaves the REST of exec folded', async () => {
     // The control for the strip: `hashableConfig` rebuilds `exec` without
     // `remote`, so a bug that dropped a sibling field with it would make two
@@ -201,7 +213,7 @@ describe('computeTaskHash — what the config contributes', () => {
   // exists to stop. Both lists are READ: the fields from `config-schema.ts`,
   // the strip from `hashableConfig`'s own destructuring, so a second stripped
   // field arrives here as a failure rather than as silence.
-  it('every exec and task field but the stripped one moves the key', async () => {
+  it('every exec and task field but the stripped ones moves the key', async () => {
     const src = path.resolve(import.meta.dir, '..', 'src')
     const schema = readFileSync(path.join(src, 'workspace', 'config-schema.ts'), 'utf8')
     const taskHash = readFileSync(path.join(src, 'orchestrator', 'task-hash.ts'), 'utf8')
@@ -213,9 +225,11 @@ describe('computeTaskHash — what the config contributes', () => {
       ]
         .map((m) => m[1]!)
         .sort()
-    const stripped = [...taskHash.matchAll(/const \{ (\w+): _\w+, \.\.\.\w+ \} = cfg\.exec/g)].map(
-      (m) => m[1]!,
-    )
+    const stripped = [
+      ...(/const \{([^}]*?)\.\.\.\w+\s*\} = cfg\.exec/.exec(taskHash)?.[1] ?? '').matchAll(
+        /(\w+): _\w+/g,
+      ),
+    ].map((m) => m[1]!)
     // A projection that stops destructuring (a whitelist rebuild, say) reads
     // as "nothing is stripped" here, and the `remote` row then fails — the
     // safe direction for a selector that misses.
@@ -231,6 +245,7 @@ describe('computeTaskHash — what the config contributes', () => {
       remote: true,
       sandbox: {},
       platforms: ['linux-x64'],
+      worker: 'ubuntu',
     }
     const taskValues: Record<string, unknown> = {
       description: 'what it does',

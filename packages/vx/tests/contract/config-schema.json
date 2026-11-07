@@ -1699,7 +1699,8 @@
         "remote",
         "retries",
         "sandbox",
-        "timeout"
+        "timeout",
+        "worker"
       ],
       "tasks.*.exec.env": ["define", "passThrough", "secret"],
       "tasks.*.exec.persistent": ["readyWhen"],
@@ -1997,7 +1998,7 @@
         "$CONFIG: tasks.t.exec must be an object — a command is { exec: { command: \"10\" } }": [
           "\"10\""
         ],
-        "$CONFIG: tasks.t.exec must be an object (fields: command, env, interactive, persistent, platforms, remote, retries, sandbox, timeout), not an array": [
+        "$CONFIG: tasks.t.exec must be an object (fields: command, env, interactive, persistent, platforms, remote, retries, sandbox, timeout, worker), not an array": [
           "[]",
           "[\"x\"]",
           "[\"\"]",
@@ -2014,7 +2015,7 @@
           "[\"A*\"]"
         ],
         "$CONFIG: tasks.t.exec.command must be a non-empty string": ["{}"],
-        "$CONFIG: tasks.t.exec has unknown field \"x\" (allowed: command, env, interactive, persistent, platforms, remote, retries, sandbox, timeout)": [
+        "$CONFIG: tasks.t.exec has unknown field \"x\" (allowed: command, env, interactive, persistent, platforms, remote, retries, sandbox, timeout, worker)": [
           "{\"x\":\"y\"}"
         ]
       },
@@ -3271,6 +3272,37 @@
           "\"30d\"",
           "\"10G\"",
           "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]",
+          "{}",
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "tasks.*.exec.worker": {
+        "ok": ["<absent>", "\"x\"", "\"(\"", "\"30d\"", "\"10G\"", "\"10\"", "\"ubuntu\""],
+        "$CONFIG: tasks.i.exec.worker must be a worker type's name (or omitted)": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
           "[]",
           "[\"x\"]",
           "[\"\"]",

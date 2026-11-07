@@ -197,6 +197,7 @@ interface ExecConfig {
   command: string // shell command, run from the project's dir
   remote?: boolean | 'only' // placement: pin here, or remote-only (see below)
   platforms?: readonly Platform[] // the machines it can run on, any of them (see below)
+  worker?: string // the worker type a distributed run runs it on (see below)
   env?: ExecEnv // optional per-task env layering
   timeout?: Duration // '30s', '2m': before vx SIGTERMs the child (see below)
   retries?: number // max additional attempts after a failure (see below)
@@ -443,19 +444,44 @@ export default defineProject({
   any task starts. Run a target that holds only this platform's tasks, or
   one DTE run with a worker of each platform.
 - **With an executor that routes by platform** (`@vzn/vx-dte`, whose
-  worker sizes each name a `platform`), the task
+  machines each name a `platform`), the task
   runs on a worker of one of its platforms: this machine's if the
   executor has one, else the first it lists that the executor has. A task
   none of whose platforms the executor runs refuses the run before
   anything starts. Other remote executors are never offered it.
   `@vzn/vx-dte` runs a task naming none on this machine's platform when
-  it has workers of it, so a worker of another platform runs only the
+  its worker type has machines of it, so a worker of another platform runs only the
   tasks that name it and leaves once they are done.
 - **In the key:** the list is config, and the platform the task runs on is
   folded too, so each platform keeps its own entry. A task that names no
   platforms keys as before.
 - Names are fixed (`os-arch`, as Bun's compile targets); any other
   refuses the config at lock.
+
+#### `worker` (optional)
+
+```ts
+worker?: string // a worker type's name, as `@vzn/vx-dte`'s `workers` names it
+```
+
+Where a distributed run runs this task. `platforms` says where it _can_
+run; `worker` says where it _should_.
+
+```ts
+e2e: {
+  exec: { command: 'bunx playwright test', worker: 'ubuntu' },
+}
+```
+
+- **With `@vzn/vx-dte`**, only machines of that worker type take it.
+  The run is refused before anything starts when no type has the name,
+  or none of its machines runs one of the task's `platforms`.
+- **Omitted**, the task goes to the first worker type, in declared
+  order, with a machine on one of its platforms. List a slow or costly
+  type last and it gets only the tasks no other type can take.
+- **Locally**, and with an executor that names no worker types, it is
+  ignored.
+- **Not in the key:** it is placement, like `remote`.
 
 #### `persistent` (optional)
 

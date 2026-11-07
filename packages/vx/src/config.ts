@@ -497,6 +497,15 @@ export interface ExecConfig {
    * it on a worker that is. Omitted → anywhere.
    */
   platforms?: readonly Platform[]
+  /**
+   * The worker type to run it on, by name (`'ubuntu'`), when an executor
+   * that names worker types (`TaskExecutor.workers`, `@vzn/vx-dte`'s
+   * `workers`) runs it: only that type's machines take it, and a run
+   * whose executor has no such type, or none on one of `platforms`, is
+   * refused before it starts. Placement only: not in the key, and a run
+   * on this machine ignores it. Omitted → the first type that fits.
+   */
+  worker?: string
   /** Environment exposed to the child process. */
   env?: ExecEnv
   /**

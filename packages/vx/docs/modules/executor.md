@@ -58,7 +58,12 @@ cpuPeak; cpuAvg; memoryPeakBytes; memoryAvgBytes; utilization }`), asked
   whose key folds a probe is not pinned for it; `platforms` (a non-empty
   list of `PLATFORMS`, else the run is refused) are the machines it runs
   tasks on: a task naming `exec.platforms` is offered only to it when one
-  is shared, and to no other remote executor; `capacity` is how
+  is shared, and to no other remote executor; `workers` (distinct
+  `[name, platforms]` pairs, each platform one of its `platforms`, else
+  the run is refused) are its worker types in order of preference: a
+  task naming `exec.worker` is offered it only when it has that type on
+  one of the task's platforms, and any task it takes carries its type
+  in `req.worker`; `capacity` is how
   many tasks it runs at once (a positive integer, else the run is
   refused), which makes its tasks a POOL of that size instead of local
   worker slots. Each flag (`remote`, `sandbox`, `servers`, `runtime`,
@@ -118,7 +123,9 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   results for dependants keeps them off the key too), `remoteOnly?` (`exec.remote: 'only'`:
   leave outputs off this disk), `platform?` (one of the task's
   `exec.platforms` the executor's `platforms` lists: run it there; its key
-  folds it), `download?: 'eager' | 'deferred'`.
+  folds it), `worker?` (the type of the executor's `workers` to run it
+  on: `exec.worker`, else the first with one of its platforms; unkeyed),
+  `download?: 'eager' | 'deferred'`.
   `outputs` is the DECLARED output globs (`files` project-relative,
   `workspaceFiles` root-relative) — what an executor running elsewhere has
   to bring back.
@@ -255,7 +262,11 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   if not, it is `otherPlatform`: a local run skips it and its dependants,
   green, while CI, or a routing executor that runs none of its platforms
   (`unroutable`), refuses the run before any task starts
-  (`platformVerdict`, `tests/task-platforms.test.ts`).
+  (`platformVerdict`, `tests/task-platforms.test.ts`). On an executor
+  with `workers`, the platform is chosen from the task's type
+  (`node.worker`): `exec.worker`'s, else the first whose platforms fit.
+  An `exclusive` executor with no such type refuses the run; one with no
+  `workers` ignores `exec.worker`, as this machine does.
 - The executor list is resolved ONCE per run (`plugin-host.resolveExecutors`)
   and each task is PLACED once, before scheduling — every attempt of a task,
   including retries, runs on the executor it was placed on. Placement must

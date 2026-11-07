@@ -78,6 +78,11 @@ export interface TaskNode {
    */
   platform?: string
   /**
+   * The worker type its executor runs it on (`TaskExecutor.workers`), set
+   * by placement when that executor names types: placement only, unkeyed.
+   */
+  worker?: string
+  /**
    * Ids of upstream tasks whose declared outputs this task's outputs
    * overlap: this task ADDS to their trees (twenty's `build:individual`
    * into `build`'s `dist`; item 588). Its own output set is what its run

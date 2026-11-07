@@ -967,6 +967,29 @@ export async function resolveExecutors(
         `plugin '${plugin.name}' returned executor '${executor.name}' with platforms ${JSON.stringify(platforms)}: it must be a non-empty array of ${PLATFORMS.join(', ')}`,
       )
     }
+    const workers: unknown = executor.workers
+    if (workers !== undefined) {
+      const offered = (platforms ?? []) as readonly unknown[]
+      const names = new Set<unknown>()
+      const ok =
+        Array.isArray(workers) &&
+        workers.length > 0 &&
+        workers.every(
+          (w: unknown) =>
+            Array.isArray(w) &&
+            typeof w[0] === 'string' &&
+            w[0].length > 0 &&
+            !names.has(w[0]) &&
+            names.add(w[0]) !== undefined &&
+            Array.isArray(w[1]) &&
+            w[1].length > 0 &&
+            (w[1] as unknown[]).every((p) => offered.includes(p)),
+        )
+      if (!ok)
+        throw new UserError(
+          `plugin '${plugin.name}' returned executor '${executor.name}' with workers ${JSON.stringify(workers)}: it must be a non-empty array of distinct [name, platforms] pairs, each platform one of its platforms`,
+        )
+    }
     for (const hook of EXECUTOR_HOOKS) {
       const v: unknown = executor[hook]
       if (v !== undefined && typeof v !== 'function')

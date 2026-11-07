@@ -508,7 +508,7 @@ export function hashTaskConfig(cfg: TaskConfig, hashCache?: HashCache): string {
 }
 
 /**
- * Project the config for hashing: `exec.remote` is a pure PLACEMENT hint
+ * Project the config for hashing: `exec.remote` (and `exec.worker`) is a pure PLACEMENT hint
  * with zero effect on outputs, so it is stripped — pinning a task to this
  * machine never busts a cache. It must not: the whole contract of a remote
  * executor is that the same command over the same inputs produces the
@@ -534,9 +534,18 @@ function hashableConfig(cfg: TaskConfig): unknown {
   // writes a config the lock never sorted (2026-10-25).
   const env = cfg.inputs?.env
   const pass = cfg.exec?.env?.passThrough
-  if (cfg.exec?.remote === undefined && sortedNames(env) && sortedNames(pass))
+  if (
+    cfg.exec?.remote === undefined &&
+    cfg.exec?.worker === undefined &&
+    sortedNames(env) &&
+    sortedNames(pass)
+  )
     return keysSorted(cfg)
-  const { remote: _remote, ...execRest } = cfg.exec ?? ({} as NonNullable<TaskConfig['exec']>)
+  const {
+    remote: _remote,
+    worker: _worker,
+    ...execRest
+  } = cfg.exec ?? ({} as NonNullable<TaskConfig['exec']>)
   // Env names are sets: each value is read by its name, so their order
   // keys nothing (conformance env/declared-order-irrelevant).
   if (!sortedNames(pass)) execRest.env = { ...execRest.env, passThrough: [...pass!].sort() }
