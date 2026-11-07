@@ -3,9 +3,10 @@
 // and core's renderer is the run's, byte for byte.
 
 import { terminalSubscriber, type RunEventSubscriber } from '../report/index.js'
-import type { Logger } from '../report/index.js'
+import type { Logger, RunEvent } from '../report/index.js'
 import { settleWithin, teardownTimeoutMs, thrownMessage } from '../util/index.js'
 import type { OutputContext, VxPlugin } from './plugin.js'
+import { readOnlyEvents } from './read-only.js'
 
 const REQUIRED = ['status', 'taskStdout', 'taskStderr', 'taskComplete'] as const
 const OPTIONAL = [
@@ -87,24 +88,35 @@ export function guardedOutput(
   }
   // An `async` method's rejection reached no one: an unhandled rejection
   // ended the run with a stack, exit 1, after its tasks had passed. It
-  // fails the Logger as a throw does; the event it was handed stays its.
+  // fails the Logger as a throw does, and core draws the event it was
+  // handed, as after a throw: a rejected `taskComplete` lost its task's row.
+  let current: RunEvent | undefined
   const logger = Object.create(claimed.logger) as Logger
   for (const k of [...REQUIRED, ...OPTIONAL, 'warn'] as const) {
     const method = claimed.logger[k] as ((...args: unknown[]) => unknown) | undefined
     if (typeof method !== 'function') continue
     ;(logger as unknown as Record<string, unknown>)[k] = (...args: unknown[]): void => {
+      const event = current
       const ret = method.apply(claimed.logger, args)
-      if (ret instanceof Promise) ret.catch(fail)
+      if (ret instanceof Promise)
+        ret.catch((err: unknown) => {
+          fail(err)
+          if (event !== undefined) fallback(event)
+        })
     }
   }
   const render = terminalSubscriber(logger)
+  const viewOf = readOnlyEvents()
   return (event) => {
     if (failed) return fallback(event)
+    current = event
     try {
-      render(event)
+      render(viewOf(event))
     } catch (err) {
       fail(err)
       fallback(event)
+    } finally {
+      current = undefined
     }
   }
 }

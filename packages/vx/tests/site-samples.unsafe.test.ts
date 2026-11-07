@@ -2369,13 +2369,17 @@ describe('the sandboxing guide says a server is never traced', () => {
   })
 })
 
-// J2-45: five pages and the source called a telemetry record immutable;
-// every sink receives the same unfrozen object, so a change one sink makes
-// reaches the next.
+// J2-45: five pages and the source called a telemetry record immutable
+// while every sink received the same unfrozen object, so a change one sink
+// made reached the next. Since 2026-11-07 the record is frozen once for
+// every sink (plugin-read-only.test.ts): the change throws, that sink is
+// switched off, and the next reads the record as core made it.
 describe('no page calls a telemetry record immutable', () => {
-  it('a sink sees what the sink before it changed', () => {
+  it("a sink's change throws and never reaches the next sink", () => {
     const seen: unknown[] = []
+    const warned: string[] = []
     const first: TelemetrySink = {
+      name: 'first',
       onRunSummary: (s) => {
         ;(s as unknown as { changed: boolean }).changed = true
       },
@@ -2388,9 +2392,15 @@ describe('no page calls a telemetry record immutable', () => {
     const source = createTelemetrySource({
       sinks: [first, second],
       run: { runId: 'r' } as never,
+      warn: (m) => warned.push(m),
     })
     source.emitSummary({ kind: 'run.summary' } as unknown as RunSummaryRecord)
-    expect(seen).toEqual([true])
+    expect(seen).toEqual([undefined])
+    expect(warned).toEqual([
+      expect.stringMatching(
+        /^\[vx\] telemetry sink 'first' threw in onRunSummary; disabled for this run: /,
+      ),
+    ])
   })
 
   it('the docs and the site say plain-data records', () => {

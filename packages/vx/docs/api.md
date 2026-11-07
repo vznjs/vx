@@ -2476,7 +2476,8 @@ only when a remote takes the run's writes (CI by default): the log of a
 task that saved no entry, and a failed task's log and the files its
 outputs left when `cache.upload.failures` covers the run. Read
 them with `ctx.cache.getRun(name)`. Core keeps no manifest of its own; a
-plugin that wants one writes it from here (`ctx.cache.put`).
+plugin that wants one writes it from here (`ctx.cache.put`). Frozen:
+every teardown reads the same report.
 
 ```ts
 export interface RunReport {
@@ -3303,7 +3304,9 @@ export type TelemetryRecord =
 
 type · `src/orchestrator/telemetry.ts`
 
-A telemetry consumer. Observe-only: receives records, holds no run handle.
+A telemetry consumer. Observe-only: receives records, frozen, holds no
+run handle. A write to a record throws, and the sink is switched off for
+the run as for any throw.
 
 ```ts
 export interface TelemetrySink {

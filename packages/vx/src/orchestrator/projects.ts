@@ -38,6 +38,7 @@ import { DEFAULT_BUILD, parseDependencySpec } from '../graph/index.js'
 import { workspaceFile } from '../handoff.js'
 import { applyConfigHooks, applyDiscoverHooks, applyProjectHooks, hasHook } from './plugin-host.js'
 import type { BranchFacts, VxPlugin } from './plugin.js'
+import { freezeDeep } from './read-only.js'
 
 /**
  * The workspace config with the plugin `config` stage applied — the first
@@ -284,6 +285,10 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
   // behind `^build`. Left out, its edit replayed the dependant's stale
   // output as a hit (X-9).
   const projectStage = hasHook(plugins, 'project')
+  // A hook that set one project's `dir` to another's moved it there: the
+  // graph's directory guard read the moved entry, and its outputs clean
+  // emptied the other project's.
+  if (projectStage) freezeDeep(args.projectMetas)
   const configured = args.projectMetas.filter(
     (m) => projectStage || (typeof m.configPath === 'string' && m.configPath.length > 0),
   )

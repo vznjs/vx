@@ -102,7 +102,10 @@ a `RunReport`: `runId` (its history rows' `run_id`), `commit`, `ciRun`
 and every task (`id`, `status`, `durationMs`, `key`, and `log` /
 `outputs` names when kept). `ctx.cache.getRun(name)` reads one from the
 first readable remote. Core writes no manifest: a plugin that wants a
-run record writes one from the report with `ctx.cache.put`.
+run record writes one from the report with `ctx.cache.put`. The report
+is frozen, so every teardown reads the same one; a run a stop ended
+(Ctrl-C, an embedder's `signal` aborted with a signal's name) passes none,
+as plugin.ts says.
 
 ```ts
 interface RunReport {
@@ -142,6 +145,22 @@ a run explorer's record on this API and reads it back through a verb.
   on. An async hook's rejection counts as its throw. `ctx.on` with a
   hook name it does not know fails the load (H-16), as does a handler (or
   a `ctx.bus.subscribe` subscriber) that is not a function.
+- **What a plugin observes is read-only** (`read-only.ts`,
+  `tests/plugin-read-only.test.ts`): a `ctx.on` handler, a `ctx.bus`
+  subscriber and an `output` Logger get read-only views of the run's
+  events (a node, an outcome and all they hold: a write throws a
+  TypeError naming the property, in any mode), telemetry records and the
+  summary are frozen once for every sink, the `RunReport` is frozen, and
+  a `project` hook's `ctx.projects` is frozen, entries too. The write's
+  throw is the plugin's own: a stage fails the run naming the plugin, an
+  observer is switched off with one warning. Before it, a handler that set
+  a failed outcome's `status` to `success` passed the run, an
+  `onTaskStart` handler rewrote the command a task ran under its key, a
+  `project` hook that set one project's `dir` to another's had its outputs
+  clean empty that one, and a sink that cleared a record's array crashed a
+  green run. The views are proxies made once per object per run, not
+  copies: ~1 us per task a hook hears (a frozen deep copy was ~5 us); no
+  plugin, no view.
 - `teardown()` and every telemetry sink's `flush()` ARE invoked at
   end-of-run, each under try/catch and a time bound — plugins may rely
   on them to drain buffers. A run a SIGINT/SIGTERM/SIGHUP stops is no

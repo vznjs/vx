@@ -64,7 +64,17 @@ Rules that keep it a pipeline and not a soup:
    like a hand edit. `key` material is folded as one more part. `graph`
    edits change `dependsOn` closure, which changes upstream folding.
 4. **Observe hooks cannot change behaviour.** `telemetry` keeps its
-   handle-free contract. `setup` gets the bus, read-only.
+   handle-free contract. `setup` gets the bus, read-only. Until
+   2026-11-07 "read-only" held for the handle, not the data: a handler
+   got core's own outcome, and setting a failed one's `status` to
+   `success` passed the run. Now everything a plugin is handed to
+   observe is read-only (`orchestrator/read-only.ts`): bus events
+   through proxies whose writes throw (a handler, a subscriber, an
+   `output` Logger), telemetry records, the summary and the
+   `RunReport` frozen once, and a `project` hook's `ctx.projects`
+   frozen, entries too (a transform hook edits its own object, never
+   the list it reads). A write throws in the plugin's own call, so the
+   crash rule below names it.
 5. **No hook is applied by default.** ~~A workspace with no `executor` or
    `cache` still fails before any task runs, naming the fix.~~
    **SUPERSEDED.** Running here and caching here became core's FLOOR

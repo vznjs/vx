@@ -366,6 +366,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'plugin-name',
     'plugin-output',
     'plugin-pipeline',
+    'plugin-read-only',
     'plugin-run-facts',
     'plugin-run-record',
     'plugin-setup-warn',
