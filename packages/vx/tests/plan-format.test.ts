@@ -183,7 +183,9 @@ describe('formatPlanText — time prediction', () => {
     expect(out).toContain('predicted  ~1.20s wall')
     expect(out).toContain('1 task never timed (+?)')
     // Its usual cell is unknown, as a run's row says it, not blank.
-    expect(out.split('\n').find((l) => l.endsWith(' a#fresh'))).toMatch(/^ {12}run {5}miss +\u2014 /)
+    expect(out.split('\n').find((l) => l.endsWith(' a#fresh'))).toMatch(
+      /^ {12}run {5}miss +\u2014 /,
+    )
   })
 
   it('omits the footer when EVERY would-run task is unknown (nothing to say)', () => {
