@@ -191,7 +191,9 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     A whole-tree run starts the check as its cache opens, beside the
     config load and graph build. The sizes it learns are
     stored while the tasks run, not before the first one (40,030 cost
-    217 ms there at 9,603 tasks), and a cold cache skips the lookup.
+    217 ms there at 9,603 tasks), in OID order by a native string sort
+    (a JS comparator was 32 ms before the first task, 2026-11-07), and a
+    cold cache skips the lookup.
     The check is by size,
     so a filter that keeps the size (a `filter` driver such as
     `tr a-z A-Z`), removed after an add, still leaves a blob that

@@ -1003,9 +1003,11 @@ export class Cache implements CacheLayer {
   private heldTimer: ReturnType<typeof setTimeout> | undefined
   /** Saves' index writes waiting for this turn's one transaction (`indexInBatch`). */
   private indexQueue: Array<{ write: () => void; settle: (err?: unknown) => void }> = []
-  /** The held sizes being stored, and how many are: fields, not a closure's, so the store lets them go. */
-  private storing: Array<[string, number]> | undefined
-  private storingOrder: Uint32Array = new Uint32Array(0)
+  /**
+   * The held sizes being stored, `oid\0size` in OID order, and how many
+   * are: fields, not a closure's, so the store lets them go.
+   */
+  private storing: string[] | undefined
   private stored = 0
   /** The checkpoint thread: `armed` until a save commits (`checkpointOffThread`). */
   private checkpoints: 'armed' | WalCheckpointer | undefined
@@ -1730,14 +1732,16 @@ export class Cache implements CacheLayer {
     // In OID order, so each slice appends at the key index's right edge:
     // in git's path order every slice dirtied pages across the whole
     // index, and the 160 commits of a cold 9,603-task run cost its main
-    // thread ~5x more (2026-11-06). Indices are sorted, not the entries:
-    // the sort's merge buffer then holds no entry, where a stale stack
-    // slot naming it kept all of them alive (2026-11-06).
-    const order = new Uint32Array(held.length)
-    for (let i = 0; i < order.length; i++) order[i] = i
-    order.sort((a, b) => (held[a]![0] < held[b]![0] ? -1 : held[a]![0] > held[b]![0] ? 1 : 0))
-    this.storing = held
-    this.storingOrder = order
+    // thread ~5x more (2026-11-06). Sorted as `oid\0size` strings with no
+    // comparator: a JS comparator over 40,000 entries was 32 ms of a cold
+    // 8,002-task run's main thread before its first task, the native
+    // string sort 8 (2026-11-07). `\0` sorts below every OID character,
+    // so the order is the OIDs'. No entry outlives this: the strings are
+    // all the store keeps.
+    const keys: string[] = []
+    for (let i = 0; i < held.length; i++) keys.push(`${held[i]![0]}\0${held[i]![1]}`)
+    keys.sort()
+    this.storing = keys
     this.stored = 0
     this.heldTimer = setTimeout(this.storeHeldSlice, 0)
   }
@@ -1755,15 +1759,14 @@ export class Cache implements CacheLayer {
     else {
       this.heldTimer = undefined
       this.storing = undefined
-      this.storingOrder = new Uint32Array(0)
     }
   }
-  private heldSizes(held: Array<[string, number]>, from: number, to: number): Map<string, number> {
+  private heldSizes(held: readonly string[], from: number, to: number): Map<string, number> {
     const out = new Map<string, number>()
-    const order = this.storingOrder
-    for (let i = from; i < Math.min(to, order.length); i++) {
-      const e = held[order[i]!]!
-      out.set(e[0], e[1])
+    for (let i = from; i < Math.min(to, held.length); i++) {
+      const k = held[i]!
+      const at = k.indexOf('\0')
+      out.set(k.slice(0, at), Number(k.slice(at + 1)))
     }
     return out
   }
@@ -3975,7 +3978,6 @@ export class Cache implements CacheLayer {
             : undefined
       this.heldBlobSizes = undefined
       this.storing = undefined
-      this.storingOrder = new Uint32Array(0)
       this.heldTimer = undefined
       if (held !== undefined && held.size > 0) this.files.rememberBlobSizes(held)
       this.flushAccessed()
