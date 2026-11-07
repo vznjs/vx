@@ -11,6 +11,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { CORE_INDEX } from './helpers/local-workspace.js'
 
 const CORE_ALIAS = path.resolve(import.meta.dir, '..', 'src', 'cli', 'core-alias.ts')
+const CORE_CONFIG = path.resolve(import.meta.dir, '..', 'src', 'config.ts')
+const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 
 let root: string
 beforeAll(async () => {
@@ -29,7 +31,7 @@ beforeAll(async () => {
   await writeFile(
     path.join(root, 'entry.ts'),
     `import { registerCoreAlias } from ${JSON.stringify(CORE_ALIAS)}\n` +
-      `if (process.argv[2] === 'alias') registerCoreAlias(() => require(${JSON.stringify(CORE_INDEX)}))\n` +
+      `if (process.argv[2] === 'alias') registerCoreAlias(() => require(${JSON.stringify(CORE_INDEX)}), () => require(${JSON.stringify(CORE_CONFIG)}))\n` +
       `await import('./use.mjs')\n`,
   )
   // A second entry that REGISTERS the alias and then decides whether to
@@ -41,7 +43,7 @@ beforeAll(async () => {
       `registerCoreAlias(() => {\n` +
       `  console.log('LOADED')\n` +
       `  return require(${JSON.stringify(CORE_INDEX)})\n` +
-      `})\n` +
+      `}, () => require(${JSON.stringify(CORE_CONFIG)}))\n` +
       `console.log('REGISTERED')\n` +
       `if (process.argv[2] === 'import') await import('./use.mjs')\n` +
       `console.log('DONE')\n`,
@@ -103,5 +105,26 @@ describe('registerCoreAlias', () => {
     // The control: the same entry that DOES import proves the loader is
     // reachable at all, and that it runs only once the import asks for it.
     expect(await lazy('import')).toEqual(['REGISTERED', 'LOADED', expect.any(String), 'DONE'])
+  })
+
+  // A config's `import { defineProject } from '@vzn/vx/config'`, in a
+  // workspace with a node_modules and no `@vzn/vx` in it: only the bare
+  // specifier was aliased, so the lock was refused ("cannot find '@vzn/vx'").
+  it('serves `@vzn/vx/config` to a config too', async () => {
+    const ws = await mkdtemp(path.join(os.tmpdir(), 'vx-core-alias-config-'))
+    try {
+      Bun.spawnSync(['git', 'init', '-q'], { cwd: ws })
+      await mkdir(path.join(ws, 'node_modules', 'other'), { recursive: true })
+      await mkdir(path.join(ws, '.vx'))
+      await writeFile(path.join(ws, '.vx', 'workspace.ts'), 'export default {}\n')
+      await writeFile(
+        path.join(ws, 'vx.config.ts'),
+        "import { defineProject } from '@vzn/vx/config'\nexport default defineProject({ tasks: { b: { exec: { command: 'true' } } } })\n",
+      )
+      const r = Bun.spawnSync(['bun', BIN, 'lock'], { cwd: ws, stderr: 'pipe', stdout: 'pipe' })
+      expect([r.exitCode, r.stderr.toString()]).toEqual([0, ''])
+    } finally {
+      await rm(ws, { recursive: true, force: true })
+    }
   })
 })

@@ -35,8 +35,9 @@ and sets exit 1 (item 921). The wrapper is an explicit `async main()`
 because `bun build --compile` refuses top-level await.
 
 Before any verb runs, bin.ts registers the **core alias**
-(`cli/core-alias.ts`): a Bun virtual module for the exact specifier
-`@vzn/vx`, served lazily from this process's own façade. Every plugin
+(`cli/core-alias.ts`): a Bun virtual module for the exact specifiers
+`@vzn/vx` and `@vzn/vx/config`, served lazily from this process's own
+façade and config module. Every plugin
 package, workspace file and project config that imports `@vzn/vx`
 then gets the running core — one module state per process, and in the
 compiled binary no second copy of core transpiled from `node_modules`

@@ -46,7 +46,11 @@ export const FLAG_VALUES: Readonly<Record<string, readonly string[]>>
 // `vx.config.ts` can import the façade inside the compiled binary,
 // where no node_modules copy exists. `bin.ts` calls it before dispatch.
 // Synchronous: the workspace config's CommonJS bundle requires it.
-export function registerCoreAlias(load: () => Record<string, unknown>): void
+// `@vzn/vx/config` resolves to `loadConfig`'s module the same way.
+export function registerCoreAlias(
+  load: () => Record<string, unknown>,
+  loadConfig: () => Record<string, unknown>,
+): void
 ```
 
 `helpText` is the whole reference, hard-coded. `verbHelpText` is the

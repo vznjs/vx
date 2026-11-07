@@ -9,7 +9,10 @@
  * and two module states — two `definePlugin` memos, two of everything
  * keyed by identity rather than by registry symbol.
  *
- * The alias is a Bun virtual module for the exact specifier `@vzn/vx`,
+ * The alias is a Bun virtual module for the exact specifiers `@vzn/vx`
+ * and `@vzn/vx/config` (the second for `import { defineProject }` in a
+ * config: with a node_modules and no `@vzn/vx` in it, the import failed
+ * though the page says vx runs a config without it),
  * served from the host's own façade, loaded lazily on the first import
  * so a verb that never loads a plugin never loads the façade. The
  * source form (`bun src/bin.ts`) resolves the specifier to the same file
@@ -18,11 +21,15 @@
  * (workspace/config-bytecode.ts) is CommonJS, and `require` refuses a
  * module whose loader is async.
  */
-export function registerCoreAlias(load: () => Record<string, unknown>): void {
+export function registerCoreAlias(
+  load: () => Record<string, unknown>,
+  loadConfig: () => Record<string, unknown>,
+): void {
   Bun.plugin({
     name: 'vx-core-alias',
     setup(build) {
       build.module('@vzn/vx', () => ({ exports: load(), loader: 'object' }))
+      build.module('@vzn/vx/config', () => ({ exports: loadConfig(), loader: 'object' }))
     },
   })
 }
