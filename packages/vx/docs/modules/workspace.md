@@ -131,7 +131,9 @@ git. Nothing else decides it: not a `package.json`, `pnpm-workspace.yaml`
 or a lockfile (2026-10-13: "Workspace file is the ultimate",
 "never go out of git root"). A file above the checkout is never read.
 Outside git, a file another user owns above `start` is refused (root
-aside): it is code that would run as you. Without one the error is
+aside): it is code that would run as you. An entry by a workspace name
+that is no file (a broken link, a directory), with no file beside it,
+marks the root all the same and is refused by name, `VX_E_CONFIG`. Without one the error is
 `VX_E_NO_WORKSPACE`, naming `vx init`
 (`tests/workspace-root-file.test.ts`). The lookup is `workspaceFile` in
 `handoff.ts`, shared with the hand-off and the config loader, once per run.
@@ -146,10 +148,14 @@ outer git (a submodule's gitlink, an embedded repository's untracked
 as the input enumeration expands one. Outside git: a walk that skips
 `node_modules`, `.git` and `.vx`, and enters every other dot-directory,
 as git lists `.github/actions/x`. A config at or under a nested
-`.vx/workspace.*` is that workspace's and is left out. Where a directory
+`.vx/workspace.*` is that workspace's and is left out: any entry, a
+broken link or a directory too, as the root walk stops at one, but not a
+tracked one deleted from the worktree. Where a directory
 holds several, `PROJECT_CONFIG_FILENAMES` order picks the first that is a
-file (a directory may carry a config's name; git lists a tracked config
-deleted from the worktree). Every other file there is `shadowed`, with
+file (git lists a tracked config deleted from the worktree, skipped).
+With no file, an entry by a config's name (a broken link, a directory)
+is refused by name, as the root walk refuses one: skipped, its project
+was in no lock and nothing said so. Every other file there is `shadowed`, with
 the one read, and so is a root `.vx/workspace.*` behind another: `vx lock`
 names each, since an edit to it changes nothing. The same listing names each `vx.lock.json`
 (`REVIEW_FILE`): one in a directory with no config is `strayReviews`,

@@ -37,8 +37,12 @@ export async function handOff(bin: string, args: readonly string[]): Promise<nev
 // a submodule's goes on to its superproject), null outside git; once per dir
 export function gitTop(dir: string): Promise<string | null>
 // the nearest .vx/workspace.* from `dir` up to the git top-level (or `/`
-// outside git), null when none; once per directory walked
+// outside git), null when none; once per directory walked. Any entry by
+// a name marks the root; the first that is a file wins, else the first
 export function workspaceFile(dir: string): Promise<string | null>
+// the entry workspaceFile found is no file (a broken link, a directory):
+// findWorkspaceRoot refuses it by name
+export function workspaceFileBroken(file: string): boolean
 // vx wrote a workspace config (`vx init`): forget what the walks learned
 export function workspaceFileWritten(): void
 // the six paths from the root, in lookup order (ts mts js mjs cts cjs)
@@ -64,8 +68,12 @@ export function vxPath(): string // the compiled binary, else the source entry
   (principle 9; `tests/load-reads.test.ts`). The one write vx makes to
   it, `vx init`'s, clears what was learned, so the lock init runs next
   loads the plugins just written (`tests/init.test.ts`, "ends with the lock").
-- The walk is a stat per name per level, no read but a `.git` file's
-  first line, no import beyond `node:fs`: `tests/handoff.test.ts` holds
+- The walk is a stat of `.vx/workspace.ts` per level, then, without
+  it, one listing of `.vx` (`Bun.Glob`: a level with none is one failed
+  open, where a stat per name was six) and a stat of the names it holds, no read but a `.git` file's first line, no import
+  of `node:fs`. Any entry by a name stops it, a broken link or a
+  directory too, as `findProjectConfigs` counts one a nested workspace
+  and `npm-launcher.sh` tests `-e` or `-L`: `tests/handoff.test.ts` holds
   the shapes (a local install, none, the global itself, a pnpm symlink,
   a submodule, a worktree) for both halves, and
   `tests/workspace-root-file.test.ts` the root.

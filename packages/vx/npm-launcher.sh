@@ -48,7 +48,8 @@ if [ -z "${VX_HANDED_OFF-}" ] && [ -z "$stay" ]; then
   while :; do
     root=
     for ext in ts mts js mjs cts cjs; do
-      if [ -f "$d/.vx/workspace.$ext" ]; then
+      # Any entry, a broken link or a directory too: vx refuses it there.
+      if [ -e "$d/.vx/workspace.$ext" ] || [ -L "$d/.vx/workspace.$ext" ]; then
         root=${d:-/}
         break
       fi
