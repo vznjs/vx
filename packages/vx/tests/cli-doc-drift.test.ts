@@ -14,6 +14,7 @@ import { describe, expect, it } from 'bun:test'
 import { PLUGIN_HOOKS } from '../src/config.js'
 import { SETTINGS } from '../src/settings.js'
 import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
+import { LOCKFILE_VERSION } from '../src/workspace/lockfile.js'
 import { formatRunSummary } from '../src/report/summary.js'
 import { parseInfoArgs } from '../src/cli/info.js'
 import {
@@ -114,6 +115,15 @@ describe('docs/cli.md Flags table matches the run parser', () => {
     const undocumented = [...parsed].filter((f) => !documented.has(f)).sort()
     const unparsed = [...documented].filter((f) => !parsed.has(f)).sort()
     expect({ undocumented, unparsed }).toEqual({ undocumented: [], unparsed: [] })
+  })
+})
+
+// It said version 4 after the lock moved to 5.
+describe('docs/cli.md — `vx lock` names the lock version it writes', () => {
+  it('matches LOCKFILE_VERSION', async () => {
+    const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url)).text()
+    const named = [...doc.matchAll(/post-evaluation objects, by directory\s+\(version (\d+);/g)]
+    expect(named.map((m) => Number(m[1]))).toEqual([LOCKFILE_VERSION])
   })
 })
 

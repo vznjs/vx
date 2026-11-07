@@ -219,9 +219,14 @@ export function verifiedRelease(
   const version = typeof m.version === 'string' ? m.version : ''
   const tarball = m.dist?.tarball
   const integrity = m.dist?.integrity
-  if (version === '' || typeof tarball !== 'string' || !tarball.startsWith('https://')) {
+  if (version === '' || typeof tarball !== 'string') {
     throw new UserError(
       `vx upgrade: the npm registry published no tarball for ${pkg}${version === '' ? '' : `@${version}`} — nothing replaced`,
+    )
+  }
+  if (!tarball.startsWith('https://')) {
+    throw new UserError(
+      `vx upgrade: the npm registry's tarball for ${pkg}@${version} is not https (${tarball}) — nothing replaced; serve the mirror's tarballs over https`,
     )
   }
   if (typeof integrity !== 'string' || !/^sha512-[A-Za-z0-9+/]+=*$/.test(integrity)) {
@@ -353,13 +358,23 @@ export async function releaseBinary(
     )
   }
   if (release.version === current) return null
-  if (spec === 'latest' && Bun.semver.order(release.version, current) < 0) {
-    throw new UserError(
-      `vx upgrade: the registry's latest ${pkg} is ${release.version}, below this vx's ${current} — nothing replaced; to go back, ask for it: vx upgrade v${release.version}`,
-    )
-  }
+  if (spec === 'latest') refuseOlderLatest(release.version, current, pkg)
   announce(release.version)
   return binaryFromTarball(await downloadVerified(release, registry))
+}
+
+/**
+ * Refuses `latest` below `current`, the vx it would replace: a mirror
+ * behind, or a release pulled back, is no upgrade. One rule for every
+ * install kind — a binary, a package manager's, the global a run moves
+ * too; a package-manager install went down to it with exit 0. A version
+ * asked for by name goes back on purpose and is never refused here.
+ */
+function refuseOlderLatest(latest: string, current: string, pkg = PACKAGE): void {
+  if (Bun.semver.order(latest, current) >= 0) return
+  throw new UserError(
+    `vx upgrade: the registry's latest ${pkg} is ${latest}, below this vx's ${current} — nothing replaced; to go back, ask for it: vx upgrade v${latest}`,
+  )
 }
 
 /**
@@ -661,14 +676,17 @@ export async function targetVersion(tag: string | undefined, verb = 'vx upgrade'
 /**
  * Run the package manager that owns a vx at `current` to bring it to
  * `version`; vx never installs one. `step` names the install when a run
- * moves two (`project `, `global `).
+ * moves two (`project `, `global `). `latest`: `version` is the
+ * registry's latest, not one the user named (`refuseOlderLatest`).
  */
 export async function upgradeManaged(
   install: ManagedInstall,
   version: string,
   current = VERSION,
   step = '',
+  latest = false,
 ): Promise<boolean> {
+  if (latest) refuseOlderLatest(version, current)
   const plugins = install.plugins ?? []
   if (version === current && plugins.every((p) => installedVersion(install.cwd, p) === version)) {
     ui.print('out', ui.status('info', 'vx upgrade', `${step}already at ${current}`))
@@ -713,15 +731,24 @@ export async function upgradeManaged(
 
 /**
  * Replace the binary at `dest`, at `current`, with the verified release
- * `spec` names (`latest` or a version). `step` as in `upgradeManaged`.
+ * `spec` names (`latest` or a version). `step` and `latest` as in
+ * `upgradeManaged`.
  */
-async function upgradeBinary(
+export async function upgradeBinary(
   dest: string,
   spec: string,
   current = VERSION,
   step = '',
   key: SigningKey = NPM_SIGNING_KEY,
+  latest = false,
 ): Promise<boolean> {
+  // The version it already is needs no registry: it fetched and verified
+  // the release before saying so.
+  if (spec === current) {
+    ui.print('out', ui.status('info', 'vx upgrade', `${step}already at ${current}`))
+    return false
+  }
+  if (latest) refuseOlderLatest(spec, current)
   const pkg = platformPackage()
   let installed: string | undefined
   const replaced = await replaceBinary(
@@ -770,6 +797,7 @@ export async function upgradeGlobal(
   from: string,
   version: string,
   key: SigningKey = NPM_SIGNING_KEY,
+  latest = false,
 ): Promise<void> {
   await named(`global vx ${from}`, async () => {
     const current = answeredVersion(from)
@@ -781,8 +809,8 @@ export async function upgradeGlobal(
       return
     }
     const install = managedInstall(from, path.dirname(from))
-    if (install === null) await upgradeBinary(from, version, current, 'global ', key)
-    else await upgradeManaged(install, version, current, 'global ')
+    if (install === null) await upgradeBinary(from, version, current, 'global ', key, latest)
+    else await upgradeManaged(install, version, current, 'global ', latest)
   })
 }
 
@@ -795,6 +823,7 @@ export async function upgradeOnlyGlobal(
   self: string,
   version: string,
   current = VERSION,
+  latest = false,
 ): Promise<void> {
   if (current === version) {
     ui.print('out', ui.status('info', 'vx upgrade', `global already at ${current}`))
@@ -807,8 +836,8 @@ export async function upgradeOnlyGlobal(
       `vx upgrade -g: no global vx ran — ${self} is the project's own. Install one (bun add -g ${PACKAGE}), or run \`vx upgrade\` to move the project's`,
     )
   }
-  if (install === null) await upgradeBinary(self, version, current, 'global ')
-  else await upgradeManaged(install, version, current, 'global ')
+  if (install === null) await upgradeBinary(self, version, current, 'global ', undefined, latest)
+  else await upgradeManaged(install, version, current, 'global ', latest)
 }
 
 /** `run`, its refusal naming `what` after the verb: a run that moves two installs says which failed. */
@@ -865,11 +894,13 @@ export async function upgradeCmd(argv: readonly string[]): Promise<number> {
   }
   const dest = process.execPath
   const handedOffFrom = process.env['VX_HANDED_OFF'] || undefined
+  const latest = tag === undefined
   if (global) {
     // A launcher from before -g handed the call over: the global is the one that did.
     const version = await targetVersion(tag)
-    if (handedOffFrom !== undefined) await upgradeGlobal(handedOffFrom, version)
-    else await upgradeOnlyGlobal(dest, version)
+    if (handedOffFrom !== undefined)
+      await upgradeGlobal(handedOffFrom, version, NPM_SIGNING_KEY, latest)
+    else await upgradeOnlyGlobal(dest, version, VERSION, latest)
     return 0
   }
   const install = managedInstall(dest, process.cwd())
@@ -880,16 +911,16 @@ export async function upgradeCmd(argv: readonly string[]): Promise<number> {
     const version = await targetVersion(tag)
     const moved = await named('project vx', () =>
       install === null
-        ? upgradeBinary(dest, version, VERSION, 'project ')
-        : upgradeManaged(install, version, VERSION, 'project '),
+        ? upgradeBinary(dest, version, VERSION, 'project ', NPM_SIGNING_KEY, latest)
+        : upgradeManaged(install, version, VERSION, 'project ', latest),
     )
-    await upgradeGlobal(from, version)
+    await upgradeGlobal(from, version, NPM_SIGNING_KEY, latest)
     if (moved) await relock(newVx(install, dest))
     return 0
   }
   const moved =
     install !== null
-      ? await upgradeManaged(install, await targetVersion(tag))
+      ? await upgradeManaged(install, await targetVersion(tag), VERSION, '', latest)
       : await upgradeBinary(dest, versionSpec(tag))
   if (moved) await relock(newVx(install, dest))
   return 0

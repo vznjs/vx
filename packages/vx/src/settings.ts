@@ -222,7 +222,7 @@ export const SETTINGS: readonly Setting[] = [
     path: 'config.workerTimeout',
     kind: { type: 'duration', timer: true },
     default: '30s',
-    doc: 'How long one config evaluation may take.',
+    doc: 'How long one config evaluation may take; at 5 s vx names the config still evaluating.',
     config: false,
   },
   {

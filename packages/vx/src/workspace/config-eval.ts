@@ -36,7 +36,8 @@
 // with the message the first load gives (item 701).
 
 import path from 'node:path'
-import { MAX_TIMEOUT_MS, parseDuration, UserError } from '../util/index.js'
+import * as ui from '../ui/index.js'
+import { MAX_TIMEOUT_MS, parseDuration, testTimerMs, UserError } from '../util/index.js'
 import { nonJsonMessage, nonJsonPaths, type NonJsonValue } from './json-data.js'
 
 /** Why a config's `process.exit` throws, on both load paths (D-65). */
@@ -289,6 +290,41 @@ export function evalBudgetMs(): number {
   return n !== null && n > 0 && n <= MAX_TIMEOUT_MS ? n : 30_000
 }
 
+/** How long a config evaluates before vx says it is still waiting on it. */
+const EVAL_NOTICE_MS = 5_000
+
+/**
+ * Calls `expire` once `budget` ms pass, and says once, at the notice mark,
+ * which config is still evaluating: a top-level await that never settles
+ * was otherwise `budget` ms of silence. One timer at a time, re-armed at the
+ * notice, so a load costs the one timer it always had. Returns the clear.
+ * `hold` keeps the process alive for it: in process, nothing else holds
+ * it under a never-settled top-level await, and the run exited silently.
+ */
+export function evalDeadline(
+  kind: string,
+  configPath: string,
+  budget: number,
+  expire: () => void,
+  hold: boolean,
+): () => void {
+  const noticeMs = testTimerMs('CONFIG_EVAL_NOTICE', EVAL_NOTICE_MS)
+  let timer: ReturnType<typeof setTimeout>
+  if (noticeMs < budget) {
+    timer = setTimeout(() => {
+      const time = (ms: number): string => (ms < 1000 ? `${ms} ms` : `${ms / 1000} s`)
+      ui.sayLine(
+        'warn',
+        `${kind} config ${configPath} still evaluating after ${time(noticeMs)}; vx gives up at ${time(budget)} (VX_CONFIG_WORKER_TIMEOUT)`,
+      )
+      timer = setTimeout(expire, budget - noticeMs)
+      if (!hold) timer.unref()
+    }, noticeMs)
+  } else timer = setTimeout(expire, budget)
+  if (!hold) timer.unref()
+  return () => clearTimeout(timer)
+}
+
 const pending = new Map<number, Pending>()
 let worker: Worker | null = null
 let inFlight = 0
@@ -410,7 +446,7 @@ export async function evaluateConfigFresh(configPath: string): Promise<unknown> 
   inFlight++
   // Declared out here so the `finally` can clear it on EVERY exit, including a
   // rejection. See the note at the clear itself.
-  let timer: ReturnType<typeof setTimeout> | undefined
+  let clear: (() => void) | undefined
   try {
     const w = acquireWorker()
     // A worker thread the OS kills — memory pressure on a loaded CI box, a
@@ -422,14 +458,19 @@ export async function evaluateConfigFresh(configPath: string): Promise<unknown> 
     const budget = evalBudgetMs()
     const reply = await new Promise<WorkerReply>((resolve, reject) => {
       pending.set(id, { resolve, reject, configPath })
-      timer = setTimeout(() => {
-        rejectAll(new Error(`config worker did not answer within ${budget}ms`))
-        if (worker !== null) {
-          worker.terminate()
-          worker = null
-        }
-      }, budget)
-      timer.unref?.()
+      clear = evalDeadline(
+        'Project',
+        configPath,
+        budget,
+        () => {
+          rejectAll(new Error(`config worker did not answer within ${budget}ms`))
+          if (worker !== null) {
+            worker.terminate()
+            worker = null
+          }
+        },
+        false,
+      )
       w.postMessage({ id, path: abs, env: { ...process.env } })
     })
     const [nonJson] = reply.nonJson
@@ -445,7 +486,7 @@ export async function evaluateConfigFresh(configPath: string): Promise<unknown> 
     // later fired it ran `rejectAll()` and terminated whatever worker was
     // current by then, killing an unrelated healthy round with a timeout
     // message naming a budget nobody set for it.
-    clearTimeout(timer)
+    clear?.()
     pending.delete(id)
     retireIfIdle()
   }

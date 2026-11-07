@@ -6,7 +6,7 @@
 // `vx init --plugin <hook>` writes a runnable plugin for one hook and its
 // test instead (plugin-templates.ts, the examples the gate runs).
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { mkdir, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { gitTop, workspaceFileWritten } from '../handoff.js'
@@ -451,6 +451,13 @@ async function starter(
     [PROJECT_CONFIG_FILENAMES, config, starterProject(ext)],
   ] as const) {
     const existing = names.find((n) => existsSync(path.join(root, n)))
+    // Kept, a directory read as the workspace's marker, and every verb after
+    // then found none and sent the user back here.
+    if (existing !== undefined && statSync(path.join(root, existing)).isDirectory()) {
+      throw new UserError(
+        `vx init: ${existing} is a directory, where the ${name === config ? 'project config' : 'workspace file'} goes; move it and re-run`,
+      )
+    }
     if (existing !== undefined && !args.force) kept.push(existing)
     else {
       files.push({ path: name, contents })
@@ -465,7 +472,10 @@ async function starter(
     if (!existsSync(path.join(root, name))) files.push({ path: name, contents })
   }
   const declare = `declare a task in ${kept.find((f) => f.startsWith('vx.config.')) ?? config}, then vx lock && vx run <task>`
-  const next = `${noGit ? 'git init, ' : ''}${hasScripts(pkgRoot) ? `bunx @vzn/vx-migrate${args.mjs ? ' --mjs' : ''} to make package.json scripts tasks, or ${declare}` : declare}`
+  // Run in the cwd, a git init below the root it chose hides the workspace from every verb.
+  const gitInit =
+    root === process.cwd() ? 'git init' : `git init ${path.relative(process.cwd(), root)}`
+  const next = `${noGit ? `${gitInit}, ` : ''}${hasScripts(pkgRoot) ? `bunx @vzn/vx-migrate${args.mjs ? ' --mjs' : ''} to make package.json scripts tasks, or ${declare}` : declare}`
   if (args.json === true) {
     ui.data(
       'out',

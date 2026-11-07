@@ -78,3 +78,21 @@ it(
   },
   HANG_MS + 5_000,
 )
+
+it(
+  'a config still evaluating is named once at the notice mark, then fails at the budget',
+  async () => {
+    const r = await lock(
+      'await new Promise(() => { setInterval(() => {}, 1000) })\nexport default {}\n',
+      { VX_CONFIG_WORKER_TIMEOUT: '1500ms', VX_TEST_CONFIG_EVAL_NOTICE: '300ms' },
+    )
+    expect({ code: r.code, out: r.out, err: r.err }).toEqual({
+      code: 1,
+      out: '',
+      err:
+        `! vx  Project config ${r.file} still evaluating after 300 ms; vx gives up at 1.5 s (VX_CONFIG_WORKER_TIMEOUT)\n` +
+        `✗ vx lock  lock not written\n\n  Project config ${r.file} did not finish evaluating within 1500ms (VX_CONFIG_WORKER_TIMEOUT)\n`,
+    })
+  },
+  HANG_MS + 5_000,
+)

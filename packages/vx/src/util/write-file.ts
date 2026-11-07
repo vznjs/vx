@@ -23,6 +23,16 @@ export function refuseSymlink(file: string): void {
 }
 
 /**
+ * A rename over a directory (EISDIR) as a refusal naming `shown`, not a
+ * stack trace; any other error as it was.
+ */
+export function directoryInTheWay(err: unknown, shown: string): unknown {
+  return (err as NodeJS.ErrnoException | null)?.code === 'EISDIR'
+    ? new UserError(`cannot write ${shown}: a directory stands there; remove it and run again`)
+    : err
+}
+
+/**
  * Writes `text` to `file`, never through a link: a temp beside it, made
  * with O_EXCL, renamed over it. A rename replaces a link put there after
  * the check, never its target.

@@ -716,7 +716,13 @@ Reads via `get()` are non-blocking thanks to WAL.
   and throws `ArtifactVanishedError` the same way (A-52). So is one
   holding an unsafe name or an escape by name (`ArchiveSecurityError`,
   as the `CorruptArtifactError`'s cause): the save proved every name
-  safe, so the bytes changed since (X-115). A directory on the tree side that links out of the
+  safe, so the bytes changed since (X-115). A file artifact (tar or
+  tree) has no blob `at`, so a re-save in another process after the
+  probe pairs the probe's held rows with the new bytes: a failure whose
+  entry's rows changed since restores once more on the rows read now,
+  and an entry is dropped only while its rows, checked under the write
+  lock, are the ones that failed, so another process's fresh entry is
+  never dropped (a miss instead). A directory on the tree side that links out of the
   anchor is the tree's fault, not the artifact's: a `UserError` naming
   the link and its target (it is kept, never written through). A link
   that stays inside the anchor is written through, a dangling one too:
