@@ -209,6 +209,9 @@ interface DecomposedOutputs {
  *  it for one alias is the speculative widening the project rejects. */
 type DescribedInputs = NonNullable<ExecuteRequest['inputs']>
 
+/** `google.rpc.Code.FAILED_PRECONDITION`: the action's inputs are not all in the CAS. */
+const FAILED_PRECONDITION = 9
+
 /** Message text from an unknown throw, for a warning line. */
 function errText(err: unknown): string {
   return err instanceof Error ? err.message.split('\n')[0]! : String(err)
@@ -218,7 +221,7 @@ interface DecodedExecuteResponse {
   result?: ActionResult
   message?: string
   cachedResult?: boolean
-  status?: { code: number; message: string }
+  status?: RpcStatus
   /** name → log blob; fetched and surfaced when the action FAILS. */
   serverLogs: Array<{ name: string; digest: Digest; humanReadable: boolean }>
 }
@@ -265,9 +268,16 @@ export function decodeExecuteResponseBytes(buf: Uint8Array): DecodedExecuteRespo
   return out
 }
 
-/** `google.rpc.Status { code = 1, message = 2 }` */
-function decodeRpcStatus(buf: Uint8Array): { code: number; message: string } {
-  const st = { code: 0, message: '' }
+interface RpcStatus {
+  code: number
+  message: string
+  /** Hashes a `PreconditionFailure` detail names MISSING. */
+  missing: string[]
+}
+
+/** `google.rpc.Status { code = 1, message = 2, details = 3 (repeated Any) }` */
+function decodeRpcStatus(buf: Uint8Array): RpcStatus {
+  const st: RpcStatus = { code: 0, message: '', missing: [] }
   let i = 0
   while (i < buf.length) {
     const [key, k] = readVarintAt(buf, i)
@@ -281,11 +291,61 @@ function decodeRpcStatus(buf: Uint8Array): { code: number; message: string } {
     } else if (wire === 2) {
       const [len, l] = readVarintAt(buf, i)
       i = l
-      if (field === 2) st.message = new TextDecoder().decode(buf.subarray(i, i + len))
+      const slice = buf.subarray(i, i + len)
+      if (field === 2) st.message = new TextDecoder().decode(slice)
+      else if (field === 3) st.missing.push(...decodeMissing(slice))
       i += len
     } else break
   }
   return st
+}
+
+/** Length-delimited fields of a message, as `[field, bytes]`; other wire types skipped. */
+function* bytesFields(buf: Uint8Array): Generator<[number, Uint8Array]> {
+  let i = 0
+  while (i < buf.length) {
+    const [key, k] = readVarintAt(buf, i)
+    i = k
+    const wire = key & 7
+    if (wire === 0) i = readVarintAt(buf, i)[1]
+    else if (wire === 2) {
+      const [len, l] = readVarintAt(buf, i)
+      yield [key >>> 3, buf.subarray(l, l + len)]
+      i = l + len
+    } else if (wire === 5) i += 4
+    else if (wire === 1) i += 8
+    else return
+  }
+}
+
+/**
+ * A detail `Any { type_url = 1, value = 2 }` holding
+ * `PreconditionFailure { violations = 1 (Violation { type = 1, subject = 2 }) }`:
+ * the hash of each MISSING `blobs/{hash}/{size}` subject.
+ */
+function decodeMissing(any: Uint8Array): string[] {
+  const text = new TextDecoder()
+  let typeUrl = ''
+  let value: Uint8Array | undefined
+  for (const [f, b] of bytesFields(any)) {
+    if (f === 1) typeUrl = text.decode(b)
+    else if (f === 2) value = b
+  }
+  if (!typeUrl.endsWith('/google.rpc.PreconditionFailure') || value === undefined) return []
+  const hashes: string[] = []
+  for (const [f, violation] of bytesFields(value)) {
+    if (f !== 1) continue
+    let type = ''
+    let subject = ''
+    for (const [vf, b] of bytesFields(violation)) {
+      if (vf === 1) type = text.decode(b)
+      else if (vf === 2) subject = text.decode(b)
+    }
+    const [kind, hash] = subject.split('/')
+    if (type === 'MISSING' && kind === 'blobs' && hash !== undefined && hash !== '')
+      hashes.push(hash)
+  }
+  return hashes
 }
 
 /** One `server_logs` map entry: `{ key = 1 (string), value = 2 (LogFile{digest=1, human_readable=2}) }` */
@@ -1015,22 +1075,38 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         )
       let op: Operation
       try {
-        if (req.signal?.aborted === true) throw new Error('aborted before Execute')
-        op = await client.execute(
-          actionDigest,
-          {
-            ...(opts.priority === undefined ? {} : { priority: opts.priority }),
-            onOperation: (name) => {
-              operation = name
+        for (let reuploaded = false; ; reuploaded = true) {
+          if (req.signal?.aborted === true) throw new Error('aborted before Execute')
+          op = await client.execute(
+            actionDigest,
+            {
+              ...(opts.priority === undefined ? {} : { priority: opts.priority }),
+              onOperation: (name) => {
+                operation = name
+              },
+              // Stage transitions are consumed, not printed: they arrive many
+              // times per action and said nothing a reader could act on.
+              onStage: (stage) => {
+                if (stage.toUpperCase() === 'EXECUTING') armStall()
+              },
             },
-            // Stage transitions are consumed, not printed: they arrive many
-            // times per action and said nothing a reader could act on.
-            onStage: (stage) => {
-              if (stage.toUpperCase() === 'EXECUTING') armStall()
-            },
-          },
-          stop,
-        )
+            stop,
+          )
+          // FAILED_PRECONDITION: inputs the server lacks, evicted since
+          // FindMissingBlobs answered (or it answered wrong). The spec's
+          // remedy is to upload them and execute again; once, so a server
+          // that keeps refusing still fails the task. Without the named
+          // violations every input is sent, past FindMissingBlobs.
+          const status = op.error === undefined ? decodeExecuteResponse(op).status : undefined
+          if (reuploaded || status?.code !== FAILED_PRECONDITION) break
+          operation = ''
+          const named = new Set(status.missing)
+          const again = upload.filter((b) => named.has(b.digest.hash))
+          await untilAborted(
+            client.uploadBlobs(again.length > 0 ? again : upload, caps.maxBatchBytes, true),
+            stop,
+          )
+        }
       } catch (err) {
         if (req.signal?.aborted === true) {
           // Core aborts on the run's stop and on `exec.timeout`. A refusal
@@ -1059,6 +1135,9 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
               `is legitimately this slow; otherwise the remote is not making progress.`,
           )
         }
+        // The client gave up on the stream (its re-attach budget spent);
+        // the action it named still runs on its worker unless cancelled.
+        if (operation !== '') await client.cancelOperation(operation).catch(cancelFailed)
         throw err
       } finally {
         clearTimeout(queueTimer)

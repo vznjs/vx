@@ -39,13 +39,15 @@ pbRoot.resolvePath = (_origin, target) =>
 await pbRoot.load('build/bazel/remote/execution/v2/remote_execution.proto')
 const V2 = 'build.bazel.remote.execution.v2'
 
+// `type_url` stays snake: protobufjs's bundled any.proto spells it so, and a
+// camel `typeUrl` is dropped (a status detail's Any reached the client nameless).
 const camel = (o: unknown): unknown => {
   if (Array.isArray(o)) return o.map(camel)
   if (o instanceof Uint8Array) return o
   if (o === null || typeof o !== 'object') return o
   return Object.fromEntries(
     Object.entries(o as Record<string, unknown>).map(([k, v]) => [
-      k.replace(/_([a-z])/g, (_m, c: string) => c.toUpperCase()),
+      k === 'type_url' ? k : k.replace(/_([a-z])/g, (_m, c: string) => c.toUpperCase()),
       camel(v),
     ]),
   )

@@ -322,7 +322,13 @@ operation is done, re-attaches with `WaitExecution` (three times, backing
 off 100, 400 and 1600 ms) rather than running the action again. If
 `WaitExecution` answers NOT_FOUND — the server lost the operation, as a
 restart does — nothing is left running to re-attach to, and the action is
-executed again on the same budget.
+executed again on the same budget. Past the budget the task fails and the
+operation is cancelled, so the action does not run on unwatched.
+An Execute answered FAILED_PRECONDITION (inputs the server lacks, evicted
+after `FindMissingBlobs` or never stored) uploads them again — the blobs its
+`PreconditionFailure` names MISSING, else every input, without asking
+`FindMissingBlobs` — and executes once more; a second FAILED_PRECONDITION
+fails the task.
 Once a worker reports EXECUTING, the task's `exec.timeout` (or
 `executeTimeoutMs`) bounds the wait, and the bound holds across a
 re-attach: firing during the backoff between a dropped stream and its

@@ -909,17 +909,19 @@ export class ReapiClient {
   /**
    * Upload blobs, choosing the transport per blob: batched while they fit the
    * server's batch budget, ByteStream for the rest. Only what
-   * `FindMissingBlobs` reports absent is sent at all.
+   * `FindMissingBlobs` reports absent is sent, unless `everyBlob`: a server
+   * whose Execute just named them missing has already contradicted it.
    */
   async uploadBlobs(
     blobs: ReadonlyArray<{ digest: Digest; data: Uint8Array }>,
     maxBatchBytes = 0,
+    everyBlob = false,
   ): Promise<void> {
     if (blobs.length === 0) return
-    const missing = new Set(
-      (await this.findMissingBlobs(blobs.map((b) => b.digest))).map((d) => d.hash),
-    )
-    const todo = blobs.filter((b) => missing.has(b.digest.hash))
+    const missing = everyBlob
+      ? undefined
+      : new Set((await this.findMissingBlobs(blobs.map((b) => b.digest))).map((d) => d.hash))
+    const todo = missing === undefined ? blobs : blobs.filter((b) => missing.has(b.digest.hash))
     // 0 means the server did not say; the gRPC default max message is 4 MB and
     // the request carries framing on top, so leave headroom rather than
     // discovering the limit as a RESOURCE_EXHAUSTED mid-run.
