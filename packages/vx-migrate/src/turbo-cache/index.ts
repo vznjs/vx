@@ -625,7 +625,9 @@ export class TurboRemoteCache implements RemoteCacheLayer {
    * never reaches a third-party store. The answer's status is not read, as
    * in Turbo. A redirect is not followed: its `Location` is the answer, and
    * the token's verdict stays the API's. Following one let the redirected
-   * host's `Access-Control-Allow-Headers` admit the token to itself.
+   * host's `Access-Control-Allow-Headers` admit the token to itself. A
+   * `Location` that is not http(s), or plain http the token would go to
+   * from an https API, is a request error.
    */
   private async preflight(
     url: string,
@@ -647,12 +649,21 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     await res.body?.cancel()
     const location = res.headers.get('location')
     const allowed = res.headers.get('access-control-allow-headers') ?? ''
-    return {
-      url: location === null ? url : new URL(location, this.config.url).toString(),
-      auth:
-        allowed.trim() === '*' ||
-        allowed.split(',').some((h) => h.trim().toLowerCase() === 'authorization'),
-    }
+    const auth =
+      allowed.trim() === '*' ||
+      allowed.split(',').some((h) => h.trim().toLowerCase() === 'authorization')
+    if (location === null) return { url, auth }
+    const to = new URL(location, this.config.url)
+    // `checkRemoteUrl` saw only the configured URL. A `file:` Location read
+    // a local file as the artifact, and a PUT to it "succeeded" storing
+    // nothing.
+    if (to.protocol !== 'http:' && to.protocol !== 'https:')
+      throw new Error(`the preflight pointed at ${to.protocol}, not an http(s) URL`)
+    if (auth && to.protocol === 'http:' && new URL(this.config.url).protocol === 'https:')
+      throw new Error(
+        `the preflight pointed an https API at ${to.origin}, which would send the token in the clear`,
+      )
+    return { url: to.toString(), auth }
   }
 
   /**
