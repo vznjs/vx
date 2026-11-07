@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, readdirSync, rmSync } from 'node:fs'
+import { accessSync, constants, existsSync, lstatSync, readdirSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { Cache, holdCacheDir, holdStore, vxCacheEntries } from '../cache/index.js'
@@ -389,8 +389,8 @@ async function clearHeld(
   // `cache.dir: '.vx'` (or the root) would take the workspace config and
   // the lock with it.
   const dotVx = path.join(root, '.vx')
-  const doomed = [...new Set(targets.map((t) => path.resolve(t)))].filter((t) => existsSync(t))
-  const unsafe = doomed.find((t) => t === dotVx || !path.relative(t, dotVx).startsWith('..'))
+  const found = [...new Set(targets.map((t) => path.resolve(t)))].filter((t) => existsSync(t))
+  const unsafe = found.find((t) => t === dotVx || !path.relative(t, dotVx).startsWith('..'))
   if (unsafe !== undefined) {
     return refuse(
       'cache clean',
@@ -407,6 +407,24 @@ async function clearHeld(
   const own = path.join(dotVx, 'cache')
   const named = path.resolve(dir) === own ? undefined : path.resolve(dir)
   const linked = named === undefined && existsSync(own) && lstatSync(own).isSymbolicLink()
+  // Every target is asked before the first delete: a store another user
+  // owns (one `sudo vx run`) failed the clear after `.vx/cache` was gone.
+  // Such a store is left, as runs leave it for `.vx/cache`; a cache
+  // directory this user cannot remove refuses the clear whole.
+  const doomed: string[] = []
+  for (const t of found) {
+    const why = removeBlocked(t, t !== named && !(linked && t === own))
+    if (why === null) doomed.push(t)
+    else if (t !== path.resolve(dir))
+      warnToStderr(`cache store ${t} left as is: this user cannot remove it (${why})`)
+    else
+      return refuse(
+        'cache clean',
+        args,
+        `cache directory ${t} cannot be removed by this user (${why}); nothing was deleted`,
+        'VX_E_FS',
+      )
+  }
   const entries = (t: string): string[] =>
     t === named
       ? vxCacheEntries(t).map((e) => path.join(t, e))
@@ -450,6 +468,17 @@ async function clearHeld(
         : []),
     )
   return 0
+}
+
+/** Why this user cannot remove `t` (`whole`) or empty it, or null. */
+function removeBlocked(t: string, whole: boolean): string | null {
+  try {
+    accessSync(t, constants.R_OK | constants.W_OK | constants.X_OK)
+    if (whole) accessSync(path.dirname(t), constants.W_OK | constants.X_OK)
+    return null
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code ?? String(err)
+  }
 }
 
 /** A store's shape: `<home>/.vx/<id>/cache` holding its `store.db`. */

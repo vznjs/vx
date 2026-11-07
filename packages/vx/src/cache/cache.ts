@@ -746,8 +746,12 @@ function openCacheDir(cacheDir: string, workspaceRoot?: string, index = 'cache.d
   return null
 }
 
-/** `openCacheDir` for the shared store: why it cannot be used, or null. Never throws. */
-function storeBlocked(storeDir: string, storeRoot: string | null): string | null {
+/**
+ * `openCacheDir` for the shared store: why it cannot be used, or null. Never
+ * throws. `make` false asks the same question and makes or changes
+ * nothing, so a reading verb settles where the entries are as a run does.
+ */
+function storeBlocked(storeDir: string, storeRoot: string | null, make: boolean): string | null {
   try {
     if (storeRoot !== null) {
       // `~/.vx`, `~/.vx/<id>`, `~/.vx/<id>/cache`: owner-only, each level
@@ -755,21 +759,53 @@ function storeBlocked(storeDir: string, storeRoot: string | null): string | null
       // replayed into the workspace, so nobody else may write them.
       const vxHome = path.dirname(path.dirname(storeRoot))
       for (const dir of [vxHome, path.dirname(storeRoot), storeRoot]) {
-        const refused = ensurePrivateDir(dir)
+        // The levels below one not made yet are made by this user, 0700.
+        if (!make && lstatSync(dir, { throwIfNoEntry: false }) === undefined)
+          return mkdirBlocked(dir, false)
+        const refused = ensurePrivateDir(dir, make)
         if (refused !== null) return refused
       }
     }
-    return openCacheDir(storeDir, undefined, 'store.db')
+    if (make) return openCacheDir(storeDir, undefined, 'store.db')
+    try {
+      accessSync(storeDir, constants.W_OK)
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') return errorText(err)
+      return mkdirBlocked(storeDir, true)
+    }
+    try {
+      accessSync(path.join(storeDir, 'store.db'), constants.W_OK)
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') return errorText(err)
+      refuseManifestDir(storeDir, undefined)
+    }
+    return null
   } catch (err) {
     return errorText(err)
   }
 }
 
-function ensurePrivateDir(dir: string): string | null {
+/** Why `mkdir` (`-p` with `recursive`) of `dir` would fail, asked without making it. */
+function mkdirBlocked(dir: string, recursive: boolean): string | null {
+  let up = path.dirname(dir)
+  if (recursive)
+    while (lstatSync(up, { throwIfNoEntry: false }) === undefined) up = path.dirname(up)
   try {
-    mkdirSync(dir, { mode: 0o700 })
+    if (!statSync(up).isDirectory()) return `${up} is not a directory`
+    accessSync(up, constants.W_OK)
+    return null
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') return errorText(err)
+    return errorText(err)
+  }
+}
+
+function ensurePrivateDir(dir: string, make: boolean): string | null {
+  if (make) {
+    try {
+      mkdirSync(dir, { mode: 0o700 })
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') return errorText(err)
+    }
   }
   const st = lstatSync(dir)
   if (!st.isDirectory()) return `${dir} is not a directory`
@@ -781,7 +817,7 @@ function ensurePrivateDir(dir: string): string | null {
   // The user's own directory open to others (a `~/.vx` made at the
   // default umask, 0755) is vx's to close: refusing it left the store
   // unused on a stock macOS home (2026-10-06: "you should own it").
-  if ((st.mode & 0o077) !== 0) {
+  if (make && (st.mode & 0o077) !== 0) {
     try {
       chmodSync(dir, 0o700)
     } catch (err) {
@@ -1303,15 +1339,18 @@ export class Cache implements CacheLayer {
     // every mode reads it: a dry prune names what the real one takes, and
     // `vx info` the store the next run fills, not one a moved HOME left.
     let storeDir = storeRoot === undefined ? recorded : (storeRoot ?? undefined)
-    if (storeDir !== undefined && mode === 'open' && this.writeBlocked === null) {
-      const blocked = storeBlocked(storeDir, typeof storeRoot === 'string' ? storeRoot : null)
-      if (blocked !== null) {
+    // Every mode settles the store as a run does, the reading ones without
+    // touching it: `vx info` and a dry prune read the entries runs use, not
+    // a store another user owns (one `sudo vx run`).
+    if (storeDir !== undefined && (this.writeBlocked === null || absent)) {
+      const root = typeof storeRoot === 'string' ? storeRoot : null
+      if (storeBlocked(storeDir, root, mode === 'open') !== null) {
         // A home this user cannot write (a container, a read-only mount):
         // the entries stay in this workspace rather than fail the run.
         const fallback = cacheDir
         if (fallback !== storeDir) {
           storeDir = fallback
-          openCacheDir(fallback)
+          if (mode === 'open') openCacheDir(fallback)
         }
       }
     }

@@ -1438,7 +1438,10 @@ cache is vx's to keep), and keeps every artifact, each indexed again
 when its task next hits. The check, drop, re-create and stamp are one
 write transaction, so another version's open waits rather than landing
 between them. A home this user cannot write keeps the store
-in `<workspaceRoot>/.vx/cache/` instead, silently. Name a
+in `<workspaceRoot>/.vx/cache/` instead, silently, and so does a store
+another user owns (one `sudo vx run`). `vx info` and `vx cache clean`
+decide it the same way, the reading ones without making or changing
+anything, so they read the entries runs use. Name a
 cache directory (`cache.dir` in .vx/workspace.ts, `--cache-dir`, or
 `VX_CACHE_DIR`, in that order of precedence, relative to the workspace
 root) and it holds everything, shared with no other workspace:

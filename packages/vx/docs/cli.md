@@ -1824,7 +1824,8 @@ either flag, and reports separately from the policy's evictions.
 `--dry` picks the victims under the same policy and counts the
 orphans the sweep would take, then returns without touching the index
 or the directory; the real prune with the same flags reaps exactly what
-it named (an in-flight save aside). On an index an earlier vx wrote,
+it named (an in-flight save aside), from the same store: one a run
+would not use is passed over by both. On an index an earlier vx wrote,
 which the real prune resets first, it reads the index as that reset
 leaves it: the shared store's entries still face the policy, and every
 artifact in the workspace's own directory is row-less, judged by the
@@ -1885,7 +1886,12 @@ and the directory goes only if that empties it. A directory with no
 `cache.db` is not a vx cache and is left alone, and the store an index
 names goes only if it is one (`.vx/<id>/cache` holding a `store.db`): the
 index is a file in the checkout, which a commit or a restored CI cache
-could point at any directory. A workspace that never ran says
+could point at any directory. Every target is checked before the
+first delete: a store this user cannot remove (another user's, after one
+`sudo vx run`) stays, as runs leave it for `.vx/cache`, and stderr says
+`cache store <dir> left as is: this user cannot remove it (EACCES)`; a
+cache directory it cannot remove refuses the clear, exit 1, with nothing
+deleted. A workspace that never ran says
 `› vx cache clean  nothing to free`. The next run misses every task once
 and saves again.
 
@@ -3093,7 +3099,9 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   with its size on disk, or `none: the cache dir holds the entries` when
   the workspace names its cache dir. It is the store the next run opens,
   before a first run too, not one the index recorded under a home since
-  moved. A bare `vx cache clean` frees both sizes.
+  moved. A store a run would not use (another user's, after one `sudo vx
+run`) reads as the cache dir, where runs keep the entries then. A bare
+  `vx cache clean` frees both sizes.
 - `cache entries` counts the entries and their size. An index SQLite
   cannot read reads `unreadable: <why and the fix>` there, and the
   history rows read 0: the report still prints, exit 0.
