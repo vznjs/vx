@@ -341,3 +341,54 @@ it('counts a worker its adapter left running against its size again', async () =
     await rm(root, { recursive: true, force: true })
   }
 }, 30_000)
+
+// Main a1950a2, 2026-11-07: core's pool for dte() was twice every
+// machine's cores, 104 tasks shared by all platforms, filled in core's
+// order. The 2 s arm task ranked last and waited 79 s behind x64 work
+// with the arm worker idle; two Macs idled 20 s and 56 s the same way.
+it('hands every ready task over, whatever its machines hold', async () => {
+  const relay = serveRelay({ port: 0, hostname: '127.0.0.1' })
+  const env = { run: process.env['VX_DTE_RUN'], secret: process.env['VX_DTE_SECRET'] }
+  process.env['VX_DTE_RUN'] = crypto.randomUUID()
+  process.env['VX_DTE_SECRET'] = 'pool-secret'
+  const plugin = dte({
+    relay: relay.url,
+    workers: {
+      hosted: {
+        machines: {
+          small: { max: 1, cpu: 1, memory: '1GB' },
+          arm: { max: 1, cpu: 1, memory: '1GB', platform: 'linux-arm64' },
+        },
+      },
+    },
+    adapter: { spawn: () => {} },
+  })
+  const root = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-pool-'))
+  try {
+    await writeFile(path.join(root, 'f'), 'x')
+    const git = (...args: string[]) =>
+      Bun.spawnSync(['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', ...args], {
+        cwd: root,
+      })
+    git('init', '-q')
+    git('add', '.')
+    git('commit', '-qm', 'r')
+    const ex = (await plugin.executor!({
+      workspaceRoot: root,
+      cacheDir: root,
+      warn: () => {},
+      concurrency: 1,
+      artifacts: {},
+      cacheFacts: () => ({}),
+    } as never)) as { capacity?: number }
+    expect(ex.capacity).toBe(Number.MAX_SAFE_INTEGER)
+  } finally {
+    await plugin.teardown?.({} as never)
+    await relay.stop()
+    if (env.run === undefined) delete process.env['VX_DTE_RUN']
+    else process.env['VX_DTE_RUN'] = env.run
+    if (env.secret === undefined) delete process.env['VX_DTE_SECRET']
+    else process.env['VX_DTE_SECRET'] = env.secret
+    await rm(root, { recursive: true, force: true })
+  }
+})

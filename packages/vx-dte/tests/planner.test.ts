@@ -770,3 +770,30 @@ it('plans tasks read by number as it plans them read by id', () => {
   expect(a.endsInMs).toBeGreaterThan(0)
   expect(a).toEqual(b)
 })
+
+// Main a1950a2, 2026-11-07: 4 Macs started for ~410 s of Mac work that 2
+// would have ended 40 s before the Linux work did. The run is judged by
+// its end, not each platform's: a platform may end later while it ends
+// two warm-ups before the run.
+it("starts a platform's fewest workers that end before the run does", () => {
+  const linux: Size = { ...small, max: 9, platform: 'linux-x64' }
+  const mac: Size = { name: 'mac', max: 4, cpu: 3, memory: 7e9, platform: 'darwin-arm64' }
+  const work: PlanTask[] = [
+    ...Array.from({ length: 200 }, (_, i) => ({ ...task(`l${i}`, 30_000), platform: 'linux-x64' })),
+    ...Array.from({ length: 9 }, (_, i) => ({
+      ...task(`m${i}`, 30_000),
+      platform: 'darwin-arm64',
+    })),
+  ]
+  const platforms = new Map([
+    ['linux-x64', 200],
+    ['darwin-arm64', 9],
+  ])
+  const sizes = candidates([linux, mac], new Map(), [], 13, platforms)
+  const p = plan(work, [], sizes, WARM)
+  const start = p.start.map((s) => s.name)
+  // One Mac ends at 110 s, the run past 150 s: two warm-ups of room for
+  // a Mac the CI queues.
+  expect(p.endsInMs).toBeGreaterThan(150_000)
+  expect(start.filter((s) => s === 'mac').length).toBe(1)
+})
