@@ -21,7 +21,7 @@ export interface LiveOptions {
   readonly cores: number
   /** How long a task runs on its worker. */
   readonly taskMs: number
-  /** Tasks handed over at once, as core's executor pool (`capacity`); default twice the cores, as `dte()`'s. */
+  /** Tasks handed over at once, as core's executor pool (`capacity`); default all, as `dte()`'s. */
   readonly capacity?: number
 }
 
@@ -168,7 +168,7 @@ export async function liveRun(
   const dependants = new Map<string, string[]>()
   for (const t of graph)
     for (const d of t.deps) dependants.set(d, [...(dependants.get(d) ?? []), t.id])
-  const capacity = options.capacity ?? 2 * options.workers * options.cores
+  const capacity = options.capacity ?? Infinity
   await new Promise<void>((done, fail) => {
     let ended = 0
     let active = 0

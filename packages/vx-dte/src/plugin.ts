@@ -925,15 +925,11 @@ export function dte(options: DteOptions = {}) {
                   ] as const,
               ),
             }),
-        // Room for the workers' cores and their prefetch; the orchestrator
-        // queues the rest. Workers that join on their own are as many as join.
-        capacity:
-          adapter === undefined || sizes.some((s) => s.max === Infinity)
-            ? JOINED_CAPACITY
-            : Math.max(
-                1,
-                sizes.reduce((n, s) => n + 2 * s.max * s.cpu, 0),
-              ),
+        // Every ready task: the orchestrator's queue knows which platform's
+        // worker is free, core's order does not. A pool of twice the cores,
+        // shared by all platforms, held a 2 s arm task 79 s behind x64 work
+        // with its worker idle (main a1950a2, 2026-11-07).
+        capacity: Number.MAX_SAFE_INTEGER,
         execute: (req) => {
           // A miss: the run's known work grows.
           missed = true
@@ -1076,9 +1072,6 @@ export function needOf(r: TaskResources | undefined, ask: Need = FRESH): Need {
   // 100%"). A quarter at least, so a task that only waits is not free.
   return { cores: Math.max(0.25, r.maxCpuParallelism), memory: r.maxPeakRssBytes ?? 0 }
 }
-
-/** The executor's pool when workers are uncapped: more than any run starts at once. */
-const JOINED_CAPACITY = 1024
 
 const UNITS: Record<string, number> = {
   B: 1,
