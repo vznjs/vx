@@ -93,10 +93,18 @@ it('github() writes the workers workflow: the inputs it dispatches, a runner per
   )
 })
 
-it('github({ runsOn }) names a size its runner; pnpm gets its setup step', async () => {
+it('a machine’s runsOn names its runner; pnpm gets its setup step', async () => {
   await writeFile(path.join(root, 'pnpm-lock.yaml'), '')
-  const adapter = github({ workflow: 'w.yml', runsOn: { 'linux.small': 'ubuntu-latest-16-cores' } })
-  expect(await init({ workers: sizes, adapter })).toBe(0)
+  const adapter = github({ workflow: 'w.yml' })
+  const workers = {
+    linux: {
+      machines: {
+        ...sizes.linux.machines,
+        small: { ...sizes.linux.machines.small, runsOn: 'ubuntu-latest-16-cores' },
+      },
+    },
+  }
+  expect(await init({ workers, adapter })).toBe(0)
   const yml = await readFile(path.join(root, '.github/workflows/w.yml'), 'utf8')
   expect(yml).toContain(`'{"linux.small":"ubuntu-latest-16-cores","linux.mac":"macos-latest"}'`)
   expect(yml).toContain(
@@ -142,12 +150,20 @@ it('runs vx with Bun in a Yarn workspace', async () => {
 })
 
 // An empty or non-string label was written into runs-on, a workflow GitHub refuses.
-it('github({ runsOn }) refuses a label that is not one, as gitlab({ tags }) does', async () => {
-  await writeFile(path.join(root, 'bun.lock'), '')
-  for (const label of ['', 5])
-    await expect(
-      init({ workers: sizes, adapter: github({ runsOn: { 'linux.small': label as string } }) }),
-    ).rejects.toThrow('vx dte init: github() runsOn.linux.small is a runner label')
+it('refuses a machine runsOn that is not a runner label', () => {
+  for (const label of ['', ' ', 5])
+    expect(() =>
+      dte({
+        workers: {
+          linux: { machines: { small: { cpu: 1, memory: '1GB', runsOn: label as string } } },
+        },
+        adapter: github(),
+      }),
+    ).toThrow(
+      typeof label === 'string'
+        ? 'dte() option "workers.linux.machines.small.runsOn" must be a runner label'
+        : 'workers.linux.machines.small',
+    )
 })
 
 // A `: ` in a plain scalar made GitHub refuse the workflow (2026-10-25).

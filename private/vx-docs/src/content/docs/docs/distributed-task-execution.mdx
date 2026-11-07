@@ -85,7 +85,7 @@ export default defineWorkspace({
 
 Declare what your runners really have: vx plans by it. For other
 runners, add a machine and name its label:
-`github({ runsOn: { 'linux.large': 'ubuntu-latest-16-cores' } })`.
+`large: { cpu: 16, memory: '64GB', runsOn: 'ubuntu-latest-16-cores' }`.
 
 ### 3. Write the workflows
 

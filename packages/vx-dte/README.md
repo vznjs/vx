@@ -297,7 +297,7 @@ workspace in a subdirectory of its repository gets them at the repository's
 root, its jobs running in that directory. Each size runs on
 its platform's GitHub-hosted runner (`ubuntu-latest` for none named,
 `ubuntu-24.04-arm`, `macos-latest`, `macos-15-intel`), or on the label
-`github({ runsOn: { 'linux.small': 'ubuntu-latest-16-cores' } })` names, as
+a machine's `runsOn: 'ubuntu-latest-16-cores'` names, as
 `gitlab({ tags })` does. It installs with the package manager your lockfile
 names and runs vx as `bun vx`, which runs the repo's own and never
 downloads one, as `pnpm exec` does (Yarn too: Bun reads no Plug'n'Play,
@@ -871,7 +871,8 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     preference (`exec.worker` picks one). Each machine is a size the
     adapter may start, named `<type>.<machine>` (`linux.small`) in the
     run's output and an adapter's options, and is a `WorkerSize`,
-    `{ cpu, memory, max?, platform? }`: its cores
+    `{ cpu, memory, max?, platform?, runsOn? }` (`runsOn`: the runner
+    label `vx dte init` writes for it): its cores
     and memory (bytes, or `'8GB'`, `'512MiB'`), which the run counts on
     when it starts one, until the worker reports what its machine has,
     how many of it one run may start (absent, no cap), and its machines'
@@ -990,10 +991,9 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
   of its own on loopback. `DockerOptions` is `{ image, prepare? }`.
 - `github(options?: GithubOptions)` dispatches workers as matrix jobs of
   one workflow, one dispatch per size and demand (at most 256 workers,
-  a matrix's limit). `GithubOptions` is `{ workflow?, runsOn?, env? }`:
+  a matrix's limit). `GithubOptions` is `{ workflow?, env? }`:
   `workflow` defaults to `vx-worker.yml`, a file name in
-  `.github/workflows` other than `ci.yml`, the run's own; `runsOn` is the runner label
-  of each size, which `vx dte init` writes; `env` is variables every
+  `.github/workflows` other than `ci.yml`, the run's own; `env` is variables every
   worker gets (one-line strings, no secret-named one: the worker job's
   log shows them), sent as the
   dispatch's `env` input only when set, which `vx dte init`'s workflow

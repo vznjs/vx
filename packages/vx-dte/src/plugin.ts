@@ -38,6 +38,8 @@ export interface WorkerSize {
   readonly memory: number | string
   /** Its machines' platform, which a joining worker must report; absent, planned as this machine's and not checked. A task naming `exec.platforms` runs only on a worker of one of them. */
   readonly platform?: Platform
+  /** The CI runner label its workers run on, which `vx dte init` writes (`github()`); absent, its platform's GitHub-hosted runner. */
+  readonly runsOn?: string
 }
 
 /** What an adapter is asked to start: one worker of `size`. */
@@ -157,6 +159,7 @@ const SIZE_KEYS: PluginOptionKinds<WorkerSize> = {
   cpu: 'number',
   memory: 'any',
   platform: 'string',
+  runsOn: 'string',
 }
 const UNMEASURED_KEYS: PluginOptionKinds<NonNullable<DteOptions['unmeasured']>> = {
   cpu: 'number',
@@ -221,6 +224,8 @@ export function dte(options: DteOptions = {}) {
       refuse(`${at}.memory`, "bytes above 0 or a size such as '8GB'", s.memory)
     if (!(s.max === undefined || (Number.isInteger(s.max) && s.max >= 0)))
       refuse(`${at}.max`, 'a whole number ≥ 0', s.max)
+    if (s.runsOn !== undefined && s.runsOn.trim() === '')
+      refuse(`${at}.runsOn`, 'a runner label', s.runsOn)
     if (s.platform !== undefined && !PLATFORMS.includes(s.platform))
       refuse(`${at}.platform`, `one of ${PLATFORMS.join(', ')}`, s.platform)
     return {
@@ -231,6 +236,7 @@ export function dte(options: DteOptions = {}) {
       memory: memory!,
       platform: s.platform ?? hostPlatform(),
       named: s.platform,
+      runsOn: s.runsOn,
     }
   })
   const types = [...new Set(sized.map((s) => s.type))]
@@ -407,10 +413,11 @@ export function dte(options: DteOptions = {}) {
       workspaceRoot: root,
       dir: git('--show-prefix').replace(/\/$/, ''),
       ...(options.relay !== undefined ? { relay: options.relay } : {}),
-      sizes: sizes.map((s) => ({
+      sizes: sized.map((s) => ({
         name: s.name,
         ...(s.max === Infinity ? {} : { max: s.max }),
-        ...named(s.name),
+        ...(s.named === undefined ? {} : { platform: s.named }),
+        ...(s.runsOn === undefined ? {} : { runsOn: s.runsOn }),
       })),
       manager: managerOf(root),
       tasks: askTasks(),

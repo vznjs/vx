@@ -14,8 +14,6 @@ import { printable } from './printable.js'
 export interface GithubOptions {
   /** The workers' workflow file in `.github/workflows` (default `vx-worker.yml`). */
   readonly workflow?: string
-  /** The runner label of each size, by size name, which `vx dte init` writes; absent, its platform's GitHub-hosted runner. */
-  readonly runsOn?: Readonly<Record<string, string>>
   /**
    * Variables the run hands its workers, as the workflow's `env` input (a
    * JSON object): a value the run's job decides, such as a server's URL
@@ -33,7 +31,6 @@ interface Job {
 
 const KEYS: PluginOptionKinds<GithubOptions> = {
   workflow: 'string',
-  runsOn: 'object',
   env: 'object',
 }
 

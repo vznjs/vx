@@ -3915,7 +3915,7 @@ it('refuses options it does not read and workers it cannot start', () => {
       }),
     ),
   ).toBe(
-    'dte() option "workers.linux.machines.s" has unknown option "maxx" (allowed: cpu, max, memory, platform) — did you mean max?',
+    'dte() option "workers.linux.machines.s" has unknown option "maxx" (allowed: cpu, max, memory, platform, runsOn) — did you mean max?',
   )
   expect(
     refusal(() =>
@@ -4123,7 +4123,7 @@ it('a worker size or unmeasured with a key dte() does not read is refused', () =
       }),
     ),
   ).toBe(
-    'dte() option "workers.linux.machines.s" has unknown option "maxx" (allowed: cpu, max, memory, platform) — did you mean max?',
+    'dte() option "workers.linux.machines.s" has unknown option "maxx" (allowed: cpu, max, memory, platform, runsOn) — did you mean max?',
   )
   expect(
     refusal(() =>
