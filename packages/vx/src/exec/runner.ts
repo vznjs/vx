@@ -565,7 +565,7 @@ export function armTimeout(
     timer = afterPendingExits(fire)
   }, timeoutMs)
   function fire(): void {
-    firedAt = Date.now()
+    firedAt = performance.now()
     killTree(proc, 'SIGTERM')
     // Escalate to SIGKILL after a grace: a child that TRAPS+IGNORES SIGTERM
     // (`trap '' TERM`) would otherwise defeat the timeout entirely and hang
@@ -586,7 +586,7 @@ export function armTimeout(
       clearTimeout(timer)
       if (killTimer !== undefined) clearTimeout(killTimer)
       if (firedAt === undefined) return
-      const left = await untilGroupsGone([proc], Math.max(0, firedAt + graceMs - Date.now()))
+      const left = await untilGroupsGone([proc], Math.max(0, firedAt + graceMs - performance.now()))
       for (const child of left) killTree(child, 'SIGKILL')
       if (left.length > 0) sigkilled = true
     },
@@ -823,7 +823,7 @@ export interface PersistentOptions extends Omit<RunOptions, 'forwardArgs' | 'cap
  * `onStderr` callbacks for the whole lifetime of the child.
  */
 export function runPersistent(opts: PersistentOptions): PersistentSpawn {
-  const start = Date.now()
+  const start = performance.now()
   let readyAt: number | undefined
   // When the readiness wait gave up: the wait's length, not the kill grace
   // a TERM-trapping server runs out after it.
@@ -895,7 +895,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
       ready: Promise.reject(
         new PersistentReadyError(`failed to spawn persistent task: ${message}`, 'spawn'),
       ),
-      readyMs: () => Date.now() - start,
+      readyMs: () => Math.round(performance.now() - start),
       gaveUp: () => false,
     }
   } finally {
@@ -912,7 +912,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   const markReady = (): void => {
     // A marker printed on the way down, once the wait gave up, is not ready.
     if (readyAt === undefined && gaveUpAt === undefined && !failedExit) {
-      readyAt = Date.now()
+      readyAt = performance.now()
       if (readyTimer !== undefined) clearTimeout(readyTimer)
       resolveReady()
       opts.onReady?.()
@@ -1029,7 +1029,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     const limit = opts.timeoutMs
     const giveUp = async (): Promise<void> => {
       if (readyAt !== undefined) return
-      gaveUpAt = Date.now()
+      gaveUpAt = performance.now()
       // Listed on the group guard until the SIGKILL: the shell may die on
       // the SIGTERM and let the group go while the server runs out the
       // grace, and a vx killed inside it leaves the server to the guard
@@ -1095,7 +1095,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   return {
     child,
     ready,
-    readyMs: () => (readyAt ?? gaveUpAt ?? Date.now()) - start,
+    readyMs: () => Math.round((readyAt ?? gaveUpAt ?? performance.now()) - start),
     gaveUp: () => gaveUpAt !== undefined,
   }
 }
@@ -1211,7 +1211,9 @@ async function stopLate(proc: Child, signal: 'SIGINT' | 'SIGTERM'): Promise<void
 }
 
 export async function runCommand(opts: RunOptions): Promise<RunResult> {
-  const start = Date.now()
+  // Elapsed time, not wall time: an NTP step mid-task gave a negative or
+  // hour-long duration (the executor check refuses a negative one).
+  const start = performance.now()
   const fullCommand = withForwardArgs(opts.command, opts.forwardArgs)
 
   let proc: Child
@@ -1265,7 +1267,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
       opts.onStderr?.(stderr)
       return {
         exitCode: 127,
-        durationMs: Date.now() - start,
+        durationMs: Math.round(performance.now() - start),
         stdout: '',
         stderr,
         spawnFailed: true,
@@ -1327,7 +1329,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
     opts.onStderr?.(text)
     return {
       exitCode: 127,
-      durationMs: Date.now() - start,
+      durationMs: Math.round(performance.now() - start),
       stdout,
       stderr: stderr + text,
       spawnFailed: true,
@@ -1338,7 +1340,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   const exitCode = exited === 0 && timeout.timedOut() ? signalExitCode('SIGTERM') : exited
   return {
     exitCode,
-    durationMs: Date.now() - start,
+    durationMs: Math.round(performance.now() - start),
     stdout,
     stderr,
     ...(proc.signalCode != null ? { signal: proc.signalCode } : {}),

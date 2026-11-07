@@ -64,3 +64,43 @@ describe.skipIf(!available)("a sandboxed task's timeout starts at its spawn", ()
     ])
   }, 30_000)
 })
+
+// A sandboxed task's duration is elapsed time too: a wall clock step back
+// mid-task gave a negative `durationMs`, which the executor check refuses.
+describe.skipIf(!available)('a wall clock step under a sandboxed task', () => {
+  let root = ''
+  afterEach(async () => {
+    vi.restoreAllMocks()
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('the task succeeds with a sane duration', async () => {
+    root = await makeWorkspace({ prefix: 'vx-sbx-step-' })
+    await addProject(
+      root,
+      'p',
+      `export default {
+        tasks: { build: { exec: { command: 'echo go; sleep 0.1', sandbox: {} } } },
+      }
+      `,
+    )
+    const real = Date.now.bind(Date)
+    let step = 0
+    vi.spyOn(Date, 'now').mockImplementation(() => real() + step)
+    const r = await run({
+      cwd: root,
+      tasks: ['build'],
+      projects: ['p'],
+      log: {
+        ...silent,
+        taskStdout(_node: unknown, chunk: string) {
+          if (chunk.includes('go')) step = -3_600_000
+        },
+      },
+    })
+    const o = r.outcomes[0]!
+    expect(o.status).toBe('success')
+    expect(o.durationMs).toBeGreaterThanOrEqual(0)
+    expect(o.durationMs).toBeLessThan(60_000)
+  }, 30_000)
+})

@@ -105,6 +105,11 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   planRun bound redded at 6.6 s of wall on a CI worker booked 3.7 of 4
   cores, and took 1.6-1.9 s of CPU idle or beside 24 busy loops
   (2026-10-23). A deadline the code itself enforces stays on the wall.
+- Elapsed time is `performance.now()`, never a difference of `Date.now()`:
+  an NTP step back mid-task gave `durationMs` -3599787, the executor check
+  refused it and a task that exited 0 failed the run; a step forward put an
+  hour into the timings history (2026-11-07, `tests/wall-clock-step.test.ts`).
+  `Date.now()` is for timestamps only.
 - Bun's per-test timeout is a wall budget too. A test that spawns vx and
   git (457 ms idle, 1.3 s under strace) passed 5 s on a packed DTE worker
   (#4198), so every task that launches `bun test` passes `--timeout=30000`

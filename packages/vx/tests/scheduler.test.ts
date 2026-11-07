@@ -2309,10 +2309,10 @@ describe('runGraph — an admission policy over the count limit (`admit`)', () =
     // `Math.max(1, …)` is a FLOOR, not a rounding: a task the policy
     // refused and then admitted within the same millisecond would
     // otherwise compute 0 and drop `admissionHeldMs` entirely, so the
-    // outcome would say the policy never held it. Date.now is pinned so
-    // the elapsed time is exactly 0 and the floor is the only thing that
+    // outcome would say the policy never held it. performance.now is pinned
+    // so the elapsed time is exactly 0 and the floor is the only thing that
     // can produce the field.
-    const clock = spyOn(Date, 'now').mockReturnValue(1_700_000_000_000)
+    const clock = spyOn(performance, 'now').mockReturnValue(1_000)
     try {
       let refusals = 0
       const out = await runGraph({

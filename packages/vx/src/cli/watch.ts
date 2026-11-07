@@ -533,9 +533,9 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     changes.sawEvent(abs)
     if (running) return interruptIfWaiting()
     if (debounceTimer) {
-      if (Date.now() - windowOpened >= DEBOUNCE_MAX_MS) return
+      if (performance.now() - windowOpened >= DEBOUNCE_MAX_MS) return
       clearTimeout(debounceTimer)
-    } else windowOpened = Date.now()
+    } else windowOpened = performance.now()
     debounceTimer = setTimeout(() => {
       debounceTimer = null
       if (running) return

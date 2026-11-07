@@ -1137,6 +1137,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'version-fast-path',
     'vx-lockfile/link-outside-root',
     'wal-checkpointer',
+    'wall-clock-step',
     'warm-shell',
     'watch-affected',
     'watch-claimed-files',

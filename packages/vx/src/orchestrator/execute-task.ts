@@ -686,7 +686,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     signal: AbortSignal | undefined,
   ): Promise<unknown> {
     if (signal === undefined || isLocalExecutor(args.executor)) return running
-    const started = Date.now()
+    const started = performance.now()
     let graceTimer: ReturnType<typeof setTimeout> | undefined
     let onAbort: (() => void) | undefined
     const abandoned = new Promise<ExecuteResult>((resolve) => {
@@ -701,7 +701,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
           const reason: unknown = signal.reason
           resolve({
             exitCode: signalExitCode(reason === 'SIGINT' ? 'SIGINT' : 'SIGTERM'),
-            durationMs: Date.now() - started,
+            durationMs: Math.round(performance.now() - started),
             stdout: '',
             stderr: '',
             violations: [],

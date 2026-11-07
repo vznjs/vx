@@ -4142,7 +4142,7 @@ export async function holdStore(
   } catch {
     return () => {}
   }
-  const started = Date.now()
+  const started = performance.now()
   let said = false
   for (;;) {
     try {
@@ -4155,7 +4155,7 @@ export async function holdStore(
         return () => {}
       }
     }
-    if (!said && Date.now() - started >= 1_000) {
+    if (!said && performance.now() - started >= 1_000) {
       said = true
       log(`[vx] waiting for another vx process using the cache store ${storeDir} to finish…`)
     }
@@ -4189,7 +4189,7 @@ export async function holdCacheDir(
   signal?: AbortSignal,
 ): Promise<() => void> {
   const file = path.join(dir, DIR_LOCK)
-  const started = Date.now()
+  const started = performance.now()
   let said = false
   for (;;) {
     if (signal?.aborted === true) return () => {}
@@ -4230,7 +4230,7 @@ export async function holdCacheDir(
       closeDb(db)
       if ((err as { code?: string }).code !== 'SQLITE_BUSY') return () => {}
     }
-    if (!said && Date.now() - started >= 1_000) {
+    if (!said && performance.now() - started >= 1_000) {
       said = true
       log(
         mode === 'exclusive'
