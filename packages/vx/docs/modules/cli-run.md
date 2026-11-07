@@ -114,12 +114,15 @@ two bases that would compare something.
 When `tasks.length === 0`:
 
 - Non-TTY → exits 1 with `missing task name (stdin is not a TTY, so no
-picker; tasks here: …)`: `taskNamesHere(cwd)` (`cli/task-verb.ts`) names
-  the cwd project's tasks, else every project's, twelve then `and N more`;
-  with no workspace, `vx run <task>, e.g. vx run build`.
+picker; tasks here: …)`: `taskNamesHere(cwd, asked)` (`cli/task-verb.ts`) names
+  the tasks of the projects `--filter` / `--affected` select (`asked`), or
+  every project's under `--all`, else the cwd project's, else every
+  project's, twelve then `and N more`; with no workspace, `vx run <task>,
+e.g. vx run build`.
 - TTY → `pickTask(cwd)` loads every project's tasks (only the projects
   `--filter` / `--affected` select, through `scopeFilters` and
-  `resolveFilters`, the scope a bare task gets), prints a numbered
+  `resolveFilters`, the scope a bare task gets; one `selection()` serves
+  both branches), prints a numbered
   list with `description` next to each id on stderr (a redirected stdout
   hid it), reads a 1-based index via `readline/promises`, emits one
   anchored `pkg#task` into `tasks`.

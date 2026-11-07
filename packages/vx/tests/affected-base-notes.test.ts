@@ -200,6 +200,25 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     expect(run({ VX_AFFECTED_BASE: '' }, '--affected')).toEqual({ affectedBase: 'HEAD', tasks: [] })
   })
 
+  // A ref the variable gave was reported as if typed: nothing on the line
+  // said where `origin/develop` came from.
+  for (const base of ['origin/develop', 'nope..HEAD']) {
+    it(`a VX_AFFECTED_BASE=${base} that does not resolve is named as the variable's`, () => {
+      const p = Bun.spawnSync({
+        cmd: ['bun', CLI, 'run', 'build', '--affected', '--dry'],
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1', VX_AFFECTED_BASE: base },
+      })
+      expect(p.exitCode).toBe(1)
+      const ref = base.split('..')[0]
+      expect(p.stderr.toString()).toContain(
+        `VX_AFFECTED_BASE=${base}: git ref "${ref}" did not resolve`,
+      )
+    })
+  }
+
   it('CONTROL: a real base that happens to select nothing keeps the plain note', async () => {
     await writeFile(path.join(root, 'README.md'), 'docs only\n')
     git(root, 'add', '-A')

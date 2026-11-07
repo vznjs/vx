@@ -22,7 +22,7 @@ import {
 } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import { sayNotice } from '../ui/index.js'
-import { affectedFilterFor, resolveFilters } from './select.js'
+import { type AffectedFilter, affectedFilterFor, resolveFilters } from './select.js'
 import {
   discoverCliProjects,
   loadCliProjects,
@@ -167,16 +167,16 @@ export async function showCmd(args: readonly string[]): Promise<number> {
       )
     }
     const raw = [...parsed.filters]
-    let affected: string | undefined
+    let affected: AffectedFilter | undefined
     if (parsed.affected !== undefined) {
       const f = await affectedFilterFor(
         process.cwd(),
         parsed.affected,
         'drop --affected to list them all',
       )
-      if (typeof f === 'object') throw new UserError(`vx show: ${f.error}`, f.code ?? 'VX_E_USAGE')
+      if ('error' in f) throw new UserError(`vx show: ${f.error}`, f.code ?? 'VX_E_USAGE')
       affected = f
-      raw.unshift(f)
+      raw.unshift(f.filter)
     }
     const r = await resolveFilters(process.cwd(), raw, {}, affected, 'show')
     if ('error' in r) throw new UserError(`vx show: ${r.error}`, r.code ?? 'VX_E_USAGE')
