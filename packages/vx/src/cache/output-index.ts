@@ -67,8 +67,12 @@ export class OutputIndex {
    * stage, 47–72 ms at run end (item 622).
    */
   private readonly pendingDirs = new Map<string, Array<[string, number]> | null>()
-  /** Stamps taken and not yet written, flushed with the directory snapshots. */
-  private readonly pendingStamps = new Map<string, Array<[string, number, number]>>()
+  /**
+   * Stamps taken and not yet written, flushed with the directory snapshots:
+   * inode and ctime by path, so a batch read finds a row's stamp without
+   * scanning them all (rows × stamps was ~7 s for a 40,000-file output).
+   */
+  private readonly pendingStamps = new Map<string, Map<string, [number, number]>>()
   /**
    * The rows the last batched probe loaded, by hash: a hit's restore and
    * the stamps after it read their rows here instead of the index, twice
@@ -209,14 +213,10 @@ export class OutputIndex {
         row.ino = r.ino
         row.ctimeMs = r.ctime_ms
       }
-      const pending = this.pendingStamps.get(r.entry_hash)
-      if (pending !== undefined) {
-        for (const [rel, ino, ctime] of pending) {
-          if (rel !== r.path) continue
-          row.ino = ino
-          row.ctimeMs = ctime
-          break
-        }
+      const stamp = this.pendingStamps.get(r.entry_hash)?.get(r.path)
+      if (stamp !== undefined) {
+        row.ino = stamp[0]
+        row.ctimeMs = stamp[1]
       }
       list.push(row)
     }
@@ -372,7 +372,7 @@ export class OutputIndex {
   recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void {
     if (!this.memo) return
     const rows = this.rowsOf(hash)
-    const stamps: Array<[string, number, number]> = []
+    const stamps = new Map<string, [number, number]>()
     for (const e of rows) {
       if (e.path.endsWith('/') || e.mode === LINK_MODE) continue
       const ws = e.path.startsWith(WORKSPACE_OUTPUT_PREFIX)
@@ -386,13 +386,13 @@ export class OutputIndex {
           modeMatches(s.mode, e.mode) &&
           Math.abs(s.mtimeMs - e.mtimeMs) < 1
         ) {
-          stamps.push([e.path, s.ino, Math.floor(s.ctimeMs)])
+          stamps.set(e.path, [s.ino, Math.floor(s.ctimeMs)])
         }
       } catch {
         // gone: left unstamped
       }
     }
-    if (stamps.length > 0) this.pendingStamps.set(hash, stamps)
+    if (stamps.size > 0) this.pendingStamps.set(hash, stamps)
   }
 
   /** Land every pending stamp and snapshot in one transaction each; a null snapshot clears its rows. */
@@ -418,7 +418,7 @@ export class OutputIndex {
           for (const [hash, rows] of stamps) {
             // A stamp outlives nothing: an entry pruned since has no rows to vouch for.
             if (this.entryExists.get(hash) === null) continue
-            for (const [rel, ino, ctime] of rows) this.stampOutputFile.run(hash, rel, ino, ctime)
+            for (const [rel, [ino, ctime]] of rows) this.stampOutputFile.run(hash, rel, ino, ctime)
           }
         })
         .immediate()

@@ -969,6 +969,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'output-dirs-snapshot',
     'output-log',
     'output-memory.unsafe',
+    'output-stamps-scale',
     'package-entry-shims.unsafe',
     'package-graph',
     'package-json-bom',
