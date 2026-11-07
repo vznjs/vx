@@ -33,6 +33,8 @@ it("the PR's title is a Conventional Commits header", () => {
 const KNOWN = new Set([
   // #5044's dead-source-glob commit, pushed before its subject was cut: 74 chars.
   '0c01008f271ea5a2b11225131eb907a2a11e712e',
+  // #5044's site troubleshooting quote fix: 73 chars.
+  '42f6dd13749cac4897a212cca02e69082c8e5fd6',
   // The conformance page's coverage drop, pushed before its subject was cut: 76 chars.
   '07826d51a0d3c97cfe85b518c92635ada75560c7',
   // #4909's first commit, pushed before its subject was cut: 82 chars.
