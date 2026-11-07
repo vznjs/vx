@@ -35,14 +35,51 @@ function refused(key: string | symbol): TypeError {
  * the same view and a node keeps one identity from its start to its end.
  * A view, not a copy: core still writes an outcome after its task ends
  * (`serverExit`), and a frozen deep copy of each node and outcome was ~5 us
- * of every task a hook heard (10,000 tasks: 45 ms). Only plain objects and
- * arrays are wrapped: a Map's methods need the Map itself, and a frozen
- * object is read-only already.
+ * of every task a hook heard (10,000 tasks: 45 ms).
  */
 export function readOnlyEvents(): (event: RunEvent) => RunEvent {
+  return readOnlyViews()
+}
+
+/**
+ * What a stage hands a plugin that core goes on using live: a task node in
+ * `key`, `schedule` and `admit` (core writes its key parts, platform and
+ * deps after, so it is not frozen), the project list in `discover` (core
+ * names and grows it after each plugin). A key hook that moved a node's
+ * `projectDir` ran it in another project; an admit hook that rewrote its
+ * command ran it under the declared one's key. One view per object for the
+ * process, so a plugin that keys on identity (nx() on the project list,
+ * from `discover` to `project`) sees one object across stages.
+ */
+export const readOnly: <T>(value: T) => T = readOnlyViews()
+
+/** `nodes` as a `schedule` hook reads it: each node a read-only view, the map itself unwritable. */
+export function readOnlyNodes<V>(nodes: ReadonlyMap<string, V>): ReadonlyMap<string, V> {
+  const out = new Map<string, V>()
+  for (const [id, node] of nodes) out.set(id, readOnly(node))
+  for (const key of ['set', 'delete', 'clear'] as const)
+    Object.defineProperty(out, key, {
+      value: () => {
+        throw refused(key)
+      },
+    })
+  return out
+}
+
+/**
+ * Read-only views of plain objects and arrays, each made at its first read
+ * and kept. Only plain objects and arrays are wrapped: a Map's methods need
+ * the Map itself, and a frozen object is read-only already.
+ */
+function readOnlyViews(): <T>(value: T) => T {
   const views = new WeakMap<object, object>()
   const handler: ProxyHandler<object> = {
-    get: (target, key) => view(Reflect.get(target, key)),
+    // A frozen target's own values are its own: a proxy must answer them
+    // unchanged, and they are read-only already.
+    get: (target, key) => {
+      const value: unknown = Reflect.get(target, key)
+      return Object.isFrozen(target) ? value : view(value)
+    },
     // Each refused whatever the plugin's mode: a frozen object's write is
     // silent outside strict code.
     set: (_target, key) => {
@@ -62,12 +99,17 @@ export function readOnlyEvents(): (event: RunEvent) => RunEvent {
     },
   }
   function view<T>(value: T): T {
-    if (typeof value !== 'object' || value === null || Object.isFrozen(value)) return value
+    if (typeof value !== 'object' || value === null) return value
+    // Before the frozen check: the project list is viewed in `discover`
+    // and frozen before `project`, and keeps its one view.
+    const seen = views.get(value)
+    if (seen !== undefined) return seen as T
+    if (Object.isFrozen(value)) return value
     const proto: unknown = Object.getPrototypeOf(value)
     if (proto !== Object.prototype && proto !== Array.prototype && proto !== null) return value
-    let seen = views.get(value)
-    if (seen === undefined) views.set(value, (seen = new Proxy(value, handler)))
-    return seen as T
+    const made = new Proxy(value, handler)
+    views.set(value, made)
+    return made as T
   }
   return view
 }

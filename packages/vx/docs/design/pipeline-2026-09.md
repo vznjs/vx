@@ -73,7 +73,10 @@ Rules that keep it a pipeline and not a soup:
    `output` Logger), telemetry records, the summary and the
    `RunReport` frozen once, and a `project` hook's `ctx.projects`
    frozen, entries too (a transform hook edits its own object, never
-   the list it reads). A write throws in the plugin's own call, so the
+   the list it reads). What a stage reads and must not edit is read-only
+   too: `discover`'s `ctx.projects`, the task `key` and `admit` get, the
+   nodes `schedule` gets, a plugin executor's `outputs`, `envDefine` and
+   `forwardArgs`. A write throws in the plugin's own call, so the
    crash rule below names it.
 5. **No hook is applied by default.** ~~A workspace with no `executor` or
    `cache` still fails before any task runs, naming the fix.~~

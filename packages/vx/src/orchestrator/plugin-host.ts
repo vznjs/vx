@@ -46,6 +46,7 @@ import type {
 } from './plugin.js'
 import type { ProjectMeta } from '../workspace/index.js'
 import { hashExtra } from './lockfile-claim.js'
+import { readOnly, readOnlyNodes } from './read-only.js'
 
 /** `a string`, `an array`, `null`, `a number` — for a refusal that names what came back. */
 function describeValue(v: unknown): string {
@@ -203,7 +204,9 @@ export async function applyDiscoverHooks(
   const edges: DiscoveredEdges[] = []
   for (const plugin of plugins) {
     if (plugin.discover === undefined) continue
-    const named = await safe(plugin, 'discover', () => plugin.discover!({ ...ctx, projects }))
+    const named = await safe(plugin, 'discover', () =>
+      plugin.discover!({ ...ctx, projects: readOnly(projects) }),
+    )
     if (!Array.isArray(named)) {
       throw new UserError(
         `plugin '${plugin.name}' failed in discover: expected an array, got ${describeValue(named)}`,
@@ -333,9 +336,10 @@ export async function applyKeyHooks(
 ): Promise<void> {
   for (const node of nodes.values()) {
     const parts: Array<readonly [string, string]> = []
+    const task = readOnly(node)
     for (const plugin of plugins) {
       if (plugin.key === undefined) continue
-      const material = await safe(plugin, 'key', () => plugin.key!(node, ctx))
+      const material = await safe(plugin, 'key', () => plugin.key!(task, ctx))
       if (material === undefined) continue
       // `Object.entries` over a string yields its characters as string
       // values, so a plugin returning `'v22'` used to fold parts named
@@ -568,6 +572,9 @@ export async function applyScheduleHooks(
   const refining = async (): Promise<void> => {
     while (promised.size > 0) await Promise.all(promised)
   }
+  // The keys are derived by now: a node a hook edited ran under the key of
+  // the one declared.
+  const viewed = readOnlyNodes(nodes)
   const merged = (): ReadonlyMap<string, number> => {
     const out = new Map<string, number>()
     for (const set of sets) if (set !== undefined) for (const [id, w] of set) out.set(id, w)
@@ -614,7 +621,7 @@ export async function applyScheduleHooks(
     const flaky = (taskIds: Iterable<string>): void => run.flaky?.(taskIds)
     const own = { ...ctx, cache: cacheFor(plugin.name), refine, onRefine, refining, flaky }
     const call = (): Promise<ReadonlyMap<string, number> | undefined> =>
-      safe(plugin, 'schedule', () => plugin.schedule!(nodes, own))
+      safe(plugin, 'schedule', () => plugin.schedule!(viewed, own))
     const weights = await (run.step === undefined
       ? call()
       : run.step(`${plugin.name}:schedule`, call))
@@ -676,9 +683,13 @@ export function buildAdmission(
     // The scheduler asks only about ids in this same map, so the lookup
     // always lands: an unknown-id arm here was deleted with the whole core
     // suite green (item 651).
-    const task = nodes.get(id)!
+    // Read-only: the key is derived, and a hook's edit ran under it.
+    const task = readOnly(nodes.get(id)!)
     const ctx = {
-      running: [...running].flatMap((r) => nodes.get(r) ?? []),
+      running: [...running].flatMap((r) => {
+        const node = nodes.get(r)
+        return node === undefined ? [] : [readOnly(node)]
+      }),
       concurrency,
     }
     for (const plugin of answering) {
