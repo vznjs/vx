@@ -5,7 +5,7 @@ assets) is vx compiled with Bun. It embeds the Bun runtime and the npm
 packages below; their licenses follow. vx itself is MIT (LICENSE).
 
 Bun v1.4.4
-@anthropic-ai/sandbox-runtime@0.0.76 (Apache-2.0)
+@anthropic-ai/sandbox-runtime@0.0.81 (Apache-2.0)
 @pondwader/socks5-server@1.0.10 (MIT)
 node-forge@1.4.0 ((BSD-3-Clause OR GPL-2.0), used under BSD-3-Clause)
 zod@3.25.76 (MIT)
@@ -129,7 +129,7 @@ For compatibility reasons, the following packages are embedded into Bun's binary
 - Credit to [@kipply](https://github.com/kipply) for the name "Bun"!
 
 ========================================================================
-@anthropic-ai/sandbox-runtime@0.0.76 (Apache-2.0)
+@anthropic-ai/sandbox-runtime@0.0.81 (Apache-2.0)
 ========================================================================
 
                                  Apache License
