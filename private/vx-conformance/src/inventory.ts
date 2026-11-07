@@ -170,6 +170,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-lockfile/root-workspace-dep',
     'warnings-stderr',
     'watch-anchored-scope',
+    'watch-dependency-gone',
     'watch-empty-dir',
     'watch-initial-edit',
     'watch-judge-fence',
