@@ -86,8 +86,8 @@ describe('restoring into an output directory that links out of the project', () 
         expect(lstatSync(dist).isSymbolicLink()).toBe(true)
         expect(existsSync(path.join(outside, 'o.txt'))).toBe(false)
         // The hit's restore failed: the task failed, in no cache column
-        // (neither a miss nor its layer's hit), and ran no command.
-        expect(r.out).toMatch(/^ +failed  — +— +0ms +— +— +— +0 local +app#build$/m)
+        // (neither a miss nor its layer's hit), and ran no command. (Its grid
+        // row is pinned by `vx last` below: CI's static output draws no grid.)
         expect(r.out).toContain('└─ app#build ── (0ms) failed (cache restore failed)')
         expect(r.out).toMatch(/^ {12}1 failed · 1 total$/m)
         // The cache bar fills with it, as the tasks bar does; no legend counts it.
