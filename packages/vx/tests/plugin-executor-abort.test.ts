@@ -306,6 +306,41 @@ describe('an executor that ignores the signal', () => {
     expect(stderr.join('')).toStartWith(
       "working\nvx: plugin 'org/deaf' (executor 'deaf') did not return within 200ms of the timeout (300ms); abandoned\n",
     )
+    // Core killed nothing: the executor's child is its own.
+    expect(stderr.join('')).toContain('[vx] timed out after 300ms — its executor was aborted\n')
+  }, 30_000)
+
+  // An abandoned attempt may still write: core cannot reach what it started,
+  // so the retry's pass stands but is not saved (schema.md, retries).
+  it("a retry's pass after an abandoned attempt is not saved", async () => {
+    const once = pluginSource(
+      'org/deaf-once',
+      `{ executor() { let calls = 0; return { name: 'deaf-once', execute() {
+          calls++
+          if (calls === 1) return new Promise(() => {})
+          return Promise.resolve({ exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] })
+        } } } }`,
+    )
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([once]))
+    await addProject(root, 'app', {
+      files: { 'src/a.txt': 'a' },
+      config: `export default { tasks: { slow: {
+        exec: { command: 'true', timeout: '300ms', retries: 1 },
+        inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+      } } }`,
+    })
+    const said: string[] = []
+    const r = await run({
+      cwd: root,
+      tasks: ['slow'],
+      projects: ['app'],
+      log: { ...silent, status: (line) => said.push(line), warn: (line) => said.push(line) },
+      handleSignals: false,
+    })
+    expect(r.outcomes.map((o) => [o.node.id, o.status])).toEqual([['app#slow', 'success']])
+    expect(said.join('\n')).toContain(
+      'app#slow: a process it left running may still write its outputs',
+    )
   }, 30_000)
 
   it('is abandoned after the grace once the run stops, and the task is aborted', async () => {
