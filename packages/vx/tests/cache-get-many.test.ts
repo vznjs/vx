@@ -181,6 +181,34 @@ describe('Cache.getMany agrees with Cache.get', () => {
     }
   })
 
+  // An `IN (SELECT … json_each(?))` builds a lookup of every hash before it
+  // reads a row: ~3 ms of 8,002 hits over the two output tables. The probe
+  // joins from its hashes, which it holds once each.
+  it('joins the output rows from the hits, each once however often a hash is asked', async () => {
+    const cache = new Cache(cacheDir)
+    try {
+      await seed(cache, ['aa', 'bb', 'cc'])
+      const db = indexDb(cache)
+      const query = spyOn(db, 'query')
+      let many: Awaited<ReturnType<Cache['getMany']>>
+      try {
+        many = await cache.getMany(['aa', 'bb', 'aa', 'cc', 'bb'])
+        const sql = query.mock.calls.map(([s]) => s)
+        expect(sql.filter((s) => /output_(files|dirs)/.test(s))).toHaveLength(2)
+        expect(sql.filter((s) => s.includes('IN (SELECT value FROM json_each'))).toEqual([])
+      } finally {
+        query.mockRestore()
+      }
+      expect([...many.keys()].sort()).toEqual(['aa', 'bb', 'cc'])
+      for (const hash of ['aa', 'bb', 'cc']) {
+        expect(many.get(hash)!.outputFiles).toEqual([`dist/${hash}.txt`])
+        expect(many.get(hash)).toEqual((await cache.get(hash))!)
+      }
+    } finally {
+      cache.close()
+    }
+  })
+
   it('a cache with local writes off saves nothing (A-34)', async () => {
     const off = new Cache(cacheDir, { read: true, write: false })
     try {

@@ -2047,29 +2047,37 @@ export class Cache implements CacheLayer {
         ? [this.selectEntry.get(hashes[0]!)].filter((r) => r !== null)
         : this.db.query(SELECT_ENTRIES).all(JSON.stringify(hashes))
     ) as EntryRow[]
-    const rows: LiveRow[] = []
-    for (const r of found) {
-      if (r.hash === null) this.rowless.add(r.key)
-      else rows.push(r as LiveRow)
-    }
-    if (rows.length === 0) return out
     const graceStart = Date.now() - ORPHAN_GRACE_MS
     const refreshStart = Date.now() - ACCESS_REFRESH_MS
-    const live = rows.filter((r) => {
+    // A hash asked twice is one row here: the output queries join from the
+    // live hashes as given (`loadOutputFilesBatch`'s `distinct`).
+    const seen = new Set<string>()
+    const live: LiveRow[] = []
+    const liveHashes: string[] = []
+    for (const r of found) {
+      if (r.hash === null) {
+        this.rowless.add(r.key)
+        continue
+      }
+      if (seen.has(r.hash)) continue
+      seen.add(r.hash)
       if (r.inline_at !== null) {
         if (r.inline_at < graceStart) this.staleInline.add(r.hash)
-        return true
+      } else {
+        const st = this.artifactStat(r.hash)
+        if (st === undefined) continue
+        if (st.mtimeMs < graceStart) this.staleTimes.add(r.hash)
       }
-      const st = this.artifactStat(r.hash)
-      if (st !== undefined && st.mtimeMs < graceStart) this.staleTimes.add(r.hash)
-      return st !== undefined
-    })
-    const liveHashes = live.map((r) => r.hash)
-    const fileRows = this.loadOutputFilesBatch(liveHashes)
+      live.push(r as LiveRow)
+      liveHashes.push(r.hash)
+    }
+    if (seen.size === 0) return out
+    const distinct = JSON.stringify(liveHashes)
+    const fileRows = this.outputs.loadOutputFilesBatch(liveHashes, distinct)
     this.outputs.hold(fileRows)
     this.heldInlineAt.clear()
     for (const r of live) if (r.inline_at !== null) this.heldInlineAt.set(r.hash, r.inline_at)
-    const dirRows = this.loadOutputDirsBatch(liveHashes)
+    const dirRows = this.outputs.loadOutputDirsBatch(liveHashes, distinct)
     for (const row of live) {
       if (row.accessed_at < refreshStart) this.touched.add(row.hash)
       const entry = entryOf(row, fileRows.get(row.hash) ?? [], this.logOf)
