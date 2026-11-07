@@ -215,4 +215,31 @@ export default [
       { affected: 'build', base: 'HEAD', expect: { exit: 0, notRan: ['a#build'] } },
     ],
   }),
+  defineCase({
+    id: 'env/variable-named-proto-reaches-task',
+    category: 'env',
+    kind: 'correctness',
+    title: 'A declared variable named `__proto__` reaches the task and keys it',
+    why: '`__proto__` is a legal variable name. A tool that builds the task’s environment as a plain JavaScript object sets the object’s prototype instead of a variable, so the task never sees it while the key still counts it. The task then runs without a value the key says it had.',
+    from: ['env'],
+    needs: ['env-inputs'],
+    workspace: one(
+      build({
+        command: "mkdir -p dist && env | sed -n 's/^__proto__=//p' > dist/out.txt",
+        env: ['__proto__'],
+      }),
+    ),
+    steps: [
+      {
+        run: 'build',
+        env: { ['__proto__']: 'v1' },
+        expect: { exit: 0, files: { [out('a')]: 'v1\n' } },
+      },
+      {
+        run: 'build',
+        env: { ['__proto__']: 'v2' },
+        expect: { exit: 0, ran: ['a#build'], files: { [out('a')]: 'v2\n' } },
+      },
+    ],
+  }),
 ]
