@@ -255,7 +255,8 @@ before it is ready (`persistent-task.ts`), gets one frame line from
 `shell-verdict.ts` (`shellVerdict`), because the shell's own line names
 the word and nothing about why. A bare word is a PATH lookup and the
 PATH is vx's: the line names the word (`execWord`, the predicate
-`execWrap` uses, so a pipeline says "a command in this task"), the two
+`execWrap` uses; for a compound command, the word the shell's own "not
+found" line names in the step's stderr, else "a command in this task"), the two
 bin directories `taskBinDirs` prepends, and that a sibling project's bin
 is never on it; a bare word on 126 gets `chmod +x`. A word with a slash
 is a file, and the file says why, under either code: missing (the

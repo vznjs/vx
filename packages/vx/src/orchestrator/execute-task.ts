@@ -1215,6 +1215,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         bins: taskBinDirs(node, args.workspaceRoot),
         signal: res.signal,
         hidden: req.sandbox && ((f: string) => !sandboxReads(req.sandbox!, f)),
+        stderr: errTail,
       })
       // The line quotes the command's first word, which a config may have
       // built from a secret: masked as the task's own output is (L-37).
@@ -1256,6 +1257,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // printed a blank line under the OUTPUT rule or the task's last line. Glued, a frame read
   // `partialvx: retrying …`.
   let midLine = false
+  /** The attempt's last stderr: the shell's "not found" line names the word a compound command missed (shell-verdict.ts). */
+  let errTail = ''
   // The attempt's output as the logger got it (masked): the entry's when
   // the task saves, else only what a failure reports (`failedOutput`).
   let output: BoundedCapture | undefined
@@ -1397,6 +1400,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         : new BoundedCapture(FAILED_OUTPUT_HEAD_CHARS, FAILED_OUTPUT_TAIL_CHARS)
     output = kept
     midLine = false
+    errTail = ''
     const toOut = (t: string): void => {
       kept.push(t)
       if (t.length > 0) midLine = !t.endsWith('\n')
@@ -1405,6 +1409,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     const toErr = (t: string): void => {
       kept.push(t, true)
       if (t.length > 0) midLine = !t.endsWith('\n')
+      errTail = (errTail + t).slice(-2048)
       log.taskStderr(node, t)
     }
     const masked = secrets && maskedStreams(secrets, toOut, toErr)
