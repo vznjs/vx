@@ -223,6 +223,8 @@ readers that reach it here.
 - A first load has the Worker's deadline too (`VX_CONFIG_WORKER_TIMEOUT`,
   30 s): a top-level await that never settles fails the load, naming
   the config and the budget, where it hung `vx run` silently (D-66).
+  A Promise default export is awaited under the budget too, its own
+  after the import's: one that never settled hung every verb.
   At 5 s, on both paths, vx says once which config is still evaluating,
   so the wait to the budget is not silent; a load that ends clears it.
   The evaluation itself cannot be cancelled; a timer it left running

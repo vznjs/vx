@@ -240,7 +240,6 @@ async function loadDefaultExport(
   let compiled: { default?: unknown } | null | undefined
   let loaded: Set<string> | undefined
   const unguard = guardExit()
-  let clearDeadline: (() => void) | undefined
   try {
     // A bundle that throws is evaluated from source below, so the error
     // the user sees is the source's.
@@ -249,14 +248,13 @@ async function loadDefaultExport(
     // Awaited here: a default that is a rejected Promise is the config's
     // throw too, and passed out unawaited it reached bin.ts as a vx
     // defect (2026-10-28).
-    if (compiled) return await defaultOf(compiled, kind, configPath)
+    if (compiled) return await withinBudget(defaultOf(compiled, kind, configPath), kind, configPath)
     if (compiled === undefined) loaded = loadedModules(compiledRoot!)
     // The worker's budget, here too: a top-level await that never settled
     // while a timer kept the loop alive hung `vx run` for good, silently
     // (D-66).
     if (!checked) await refuseUnprovidedClosure(text, configPath, kind, reads)
-    const budget = evalBudgetMs()
-    ns = (await Promise.race([
+    ns = (await withinBudget(
       plain === null
         ? import(specifier)
         : import(configPath).then(
@@ -266,6 +264,43 @@ async function loadDefaultExport(
               return import(specifier)
             },
           ),
+      kind,
+      configPath,
+    )) as { default?: unknown }
+  } catch (err) {
+    // A served module's frames name its specifier; the user wrote the path.
+    const seen = new Set<unknown>()
+    for (let e: unknown = err; e instanceof Error && !seen.has(e); e = e.cause) {
+      seen.add(e)
+      if (e.stack !== undefined)
+        e.stack = e.stack.replaceAll(specifier, configPath).replace(BUST_QUERY, '')
+    }
+    throw loadFailure(err, configPath, kind)
+  } finally {
+    unguard()
+    if (source !== null) releaseSource(hash, plain, configPath)
+  }
+  const mod = defaultOf(ns, kind, configPath)
+  if (compiledRoot !== undefined && loaded !== undefined) {
+    await buildCompiled(compiledRoot, configPath, bytes, loaded, ns)
+  }
+  try {
+    // The budget again: a default that is a Promise which never settles
+    // hung every verb once the import's deadline was cleared.
+    return await withinBudget(mod, kind, configPath)
+  } catch (err) {
+    throw loadFailure(err, configPath, kind)
+  }
+}
+
+/** `work` settled, or a UserError once the eval budget (VX_CONFIG_WORKER_TIMEOUT) passes. */
+async function withinBudget<T>(work: T | Promise<T>, kind: string, configPath: string): Promise<T> {
+  if (!(work instanceof Promise)) return work
+  const budget = evalBudgetMs()
+  let clearDeadline: (() => void) | undefined
+  try {
+    return await Promise.race([
+      work,
       new Promise<never>((_, reject) => {
         clearDeadline = evalDeadline(
           kind,
@@ -280,29 +315,9 @@ async function loadDefaultExport(
           true,
         )
       }),
-    ])) as { default?: unknown }
-  } catch (err) {
-    // A served module's frames name its specifier; the user wrote the path.
-    const seen = new Set<unknown>()
-    for (let e: unknown = err; e instanceof Error && !seen.has(e); e = e.cause) {
-      seen.add(e)
-      if (e.stack !== undefined)
-        e.stack = e.stack.replaceAll(specifier, configPath).replace(BUST_QUERY, '')
-    }
-    throw loadFailure(err, configPath, kind)
+    ])
   } finally {
     clearDeadline?.()
-    unguard()
-    if (source !== null) releaseSource(hash, plain, configPath)
-  }
-  const mod = defaultOf(ns, kind, configPath)
-  if (compiledRoot !== undefined && loaded !== undefined) {
-    await buildCompiled(compiledRoot, configPath, bytes, loaded, ns)
-  }
-  try {
-    return await mod
-  } catch (err) {
-    throw loadFailure(err, configPath, kind)
   }
 }
 
