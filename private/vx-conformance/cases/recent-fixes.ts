@@ -291,4 +291,29 @@ export default [
       },
     ],
   }),
+  defineCase({
+    id: 'sandbox/other-project-read-through-git-fails',
+    category: 'sandbox',
+    kind: 'correctness',
+    title: 'An isolated task that reads another project’s file through git fails',
+    why: 'Git’s object store holds every committed file of every project. A task that runs `git show` against it reads another project’s source without touching that project’s folder, and nothing keys the file. Walling off the folders but not the repository leaves the same stale-hit hole open through git.',
+    from: ['sandbox-grants.unsafe'],
+    needs: ['sandbox'],
+    workspace: {
+      projects: {
+        a: {
+          tasks: {
+            build: build({
+              command:
+                'mkdir -p dist && git --git-dir=../../.git show HEAD:packages/b/src/b.txt > dist/out.txt',
+              sandbox: {},
+            }),
+          },
+          files: { 'src/a.txt': 'a\n' },
+        },
+        b: { files: { 'src/b.txt': 'b\n' } },
+      },
+    },
+    steps: [{ run: 'build', expect: { exit: 'fail' } }],
+  }),
 ]
