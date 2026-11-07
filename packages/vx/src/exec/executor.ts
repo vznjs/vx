@@ -346,7 +346,11 @@ export interface TaskExecutor {
    * is refused when the executor is resolved. Absent = the local pool.
    */
   readonly capacity?: number
-  /** Per-task opt-out at placement time. Absent = accepts every task it is offered. */
+  /**
+   * Per-task opt-out at placement time. Absent = accepts every task it is
+   * offered. `false` or `undefined` declines; any other non-boolean is
+   * refused, naming the plugin.
+   */
   accepts?(task: TaskPlacement): boolean
   /**
    * The tasks placed here that will run and have NOT finished yet — called
@@ -604,6 +608,17 @@ export function selectExecutor(
       if (taken instanceof Promise) {
         taken.catch(() => {})
         throw new Error('returned a Promise; accepts is synchronous')
+      }
+      // `'no'` was truthy and took the task; admit refuses the same answer.
+      if (taken !== undefined && typeof taken !== 'boolean') {
+        const t = typeof taken
+        const what =
+          taken === null
+            ? 'null'
+            : Array.isArray(taken)
+              ? 'an array'
+              : `${t === 'object' ? 'an' : 'a'} ${t}`
+        throw new Error(`returned ${what}, not true or false`)
       }
     } catch (err) {
       const m = thrownMessage(err)

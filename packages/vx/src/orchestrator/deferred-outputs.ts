@@ -20,6 +20,8 @@ import {
   type GitFilesCache,
 } from '../cache/index.js'
 import type { TaskNode } from '../graph/index.js'
+import { type Logger, warnOf } from '../report/index.js'
+import { bracketLiteralHint } from './miss-save.js'
 
 export interface DeferredEntry {
   /** Fetches this task's outputs onto disk. At-most-once by construction. */
@@ -37,6 +39,7 @@ export interface DeferredOutputsArgs {
   gitFilesCache?: GitFilesCache
   /** False when the run's policy writes no local entries. */
   localWrite: boolean
+  log: Logger
 }
 
 export class DeferredOutputs {
@@ -153,6 +156,15 @@ export class DeferredOutputs {
     // and nothing downstream learns a second shape. Policy still governs —
     // a run that writes no local entries writes none here either.
     if (this.args.localWrite && entry.hash !== undefined) {
+      // The eager save's warning: a fetch that landed nothing under the
+      // declared outputs saves an empty artifact the next run replays.
+      if (outputs.length > 0 && outputFiles.length === 0) {
+        warnOf(this.args.log)(
+          `[vx] ${taskId}: outputs matched no files (${outputs.join(', ')}) — ` +
+            `an empty artifact is saved; a later hit restores nothing` +
+            bracketLiteralHint(outputs.map((g) => [producer.projectDir, g] as const)),
+        )
+      }
       await this.args.cache.save({
         hash: entry.hash,
         projectDir: producer.projectDir,

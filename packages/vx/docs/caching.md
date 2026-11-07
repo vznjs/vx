@@ -926,7 +926,8 @@ not change when the source does — is said on every miss of a cacheable
 task, right after `describeTaskInputs` and before the command, whether
 or not it saves. `outputs matched no files (build/**)` — an empty
 artifact was saved and a later hit restores nothing — is said on the
-save path. Both are almost always a glob
+save path, and when a deferred fetch (`--cache-download=none`) lands
+nothing. Both are almost always a glob
 against the wrong directory; the output line names one other cause when
 it applies: a sandboxed task with no `exec.sandbox.allow.write`, whose
 writes never reached disk, or a `workspaceFiles` directory that is a

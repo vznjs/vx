@@ -22,6 +22,7 @@ export interface DeferredOutputsArgs {
   nestedDirsByProject: Map<string, string[]>
   gitFilesCache?: GitFilesCache
   localWrite: boolean
+  log: Logger
 }
 
 export class DeferredOutputs {
@@ -57,6 +58,8 @@ export class DeferredOutputs {
   `markOutputsChanged` → ordinary `cache.save`, mirroring `restoreHit`'s sequence
   so the two cannot drift. Afterwards the machine is indistinguishable
   from a `--cache-download=all` run, so no third storage state persists.
+  A fetch that lands nothing under declared outputs gets the eager save's
+  `outputs matched no files … an empty artifact is saved` warning.
 - A failed fetch is the CONSUMER's failure, named with the producer and
   the remedy — executing against a half-materialised tree is the
   stale-input class with extra steps.
@@ -69,4 +72,5 @@ export class DeferredOutputs {
 `tests/download-policy.test.ts` — no-local-entry, lazy materialisation,
 memoisation (two consumers, one fetch), convergence to a local hit,
 never-clean, fail-loud, the `--continue` interactions, and a producer
-50,000 tasks below its consumer.
+50,000 tasks below its consumer. `tests/deferred-output-empty.test.ts` — the
+empty-fetch warning.

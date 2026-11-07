@@ -176,7 +176,9 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   `pinnedLocal` task, then `accepts` decides. An `accepts` that throws
   is a `UserError` naming the executor as `label` does (the run passes
   `executorLabel`, which names its plugin too; item 1022), and so is
-  one that answers a Promise (`async accepts`), which read as a yes.
+  one that answers a Promise (`async accepts`), which read as a yes,
+  or any other non-boolean (`'no'` took the task), as `admit` refuses
+  one; `undefined` declines.
   The local
   executor is the tail of the list and accepts everything, so the
   throw for "every executor declined" is unreachable from `run()`; it

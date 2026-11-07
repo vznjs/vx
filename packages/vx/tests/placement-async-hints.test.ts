@@ -76,6 +76,32 @@ it('an async accepts is refused by name, not read as a yes', async () => {
   )
 })
 
+// `'no'` was read as a yes: admit refuses an answer that is not a boolean.
+it('an accepts answering neither true nor false is refused by name', async () => {
+  for (const [answer, said] of [
+    [`'no'`, 'a string'],
+    ['0', 'a number'],
+    ['null', 'null'],
+  ] as const) {
+    let message = ''
+    await runWith(`{ name: 'ex', accepts() { return ${answer} }, execute: ${ok} }`).then(
+      () => (message = 'resolved'),
+      (err: unknown) => (message = err instanceof Error ? err.message : String(err)),
+    )
+    expect(message).toBe(
+      `plugin 'org/ex' (executor 'ex') failed in accepts for a#build: returned ${said}, not true or false`,
+    )
+  }
+})
+
+// Control: an accepts answering false or nothing declines, and the floor runs it.
+it('an accepts answering false or undefined declines the task', async () => {
+  for (const answer of ['false', 'undefined']) {
+    const got = await runWith(`{ name: 'ex', accepts() { return ${answer} }, execute: ${ok} }`)
+    expect([answer, got.ok]).toEqual([answer, true])
+  }
+})
+
 // Control: a demand that throws synchronously was already named (item 1022).
 it('a demand that throws is named once and the run goes on', async () => {
   const got = await runWith(

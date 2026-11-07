@@ -836,6 +836,7 @@ async function runOnBus(
       nestedDirsByProject,
       ...(gitFilesCache !== undefined ? { gitFilesCache } : {}),
       localWrite: policy.localWrite,
+      log,
     })
 
     // Per-run context for the Tier-3 `invocations` header row. Captured
