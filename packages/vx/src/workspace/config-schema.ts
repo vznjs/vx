@@ -1315,7 +1315,11 @@ function assertKnownFields(value: object, allowed: ReadonlySet<string>, where: s
     if (!allowed.has(key)) {
       // The nearest accepted spelling first: the list says what the level
       // takes, the hint says which one was meant.
-      const foreign = FOREIGN_FIELDS.get(allowed)?.[key] ?? nestedHome(allowed, key)
+      // Own keys only: `constructor` read Object's and printed its source.
+      const spellings = FOREIGN_FIELDS.get(allowed)
+      const foreign =
+        (spellings !== undefined && Object.hasOwn(spellings, key) ? spellings[key] : undefined) ??
+        nestedHome(allowed, key)
       const near =
         nearest(key, allowed) ?? (allowed === WORKSPACE_FIELDS ? nearestSetting(key) : undefined)
       throw new UserError(

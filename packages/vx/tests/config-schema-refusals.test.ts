@@ -569,6 +569,18 @@ describe('task refusals the sweep found unheld (item 653)', () => {
     expect(where({ dependOn: [] })).toBe('did you mean dependsOn?')
   })
 
+  it("an Object.prototype name is no runner's spelling", () => {
+    // The lookup read inherited props: `constructor` was refused with
+    // "vx spells it function Object() { [native code] }".
+    for (const key of ['constructor', 'toString', 'hasOwnProperty']) {
+      const task = taskRefusal({ exec: { command: 'x' }, [key]: 1 })
+      const exec = taskRefusal({ exec: { command: 'x', [key]: 1 } })
+      expect(task).toStartWith(`${CFG}: tasks.t has unknown field "${key}"`)
+      expect(exec).toStartWith(`${CFG}: tasks.t.exec has unknown field "${key}"`)
+      expect([task, exec].filter((m) => m?.includes('vx spells it'))).toEqual([])
+    }
+  })
+
   // `retries` or `timeout` beside `exec` was refused with the task's own
   // fields alone, none of which is it.
   it('a field of exec, inputs or cache written on the task names its level', () => {
