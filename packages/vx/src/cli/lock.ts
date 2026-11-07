@@ -3,6 +3,7 @@
 // `vx lock --check` — audit the lock against a fresh evaluation in the
 // current environment. Design: docs/design/config-lock-2026-06.md.
 
+import { readdirSync } from 'node:fs'
 import { open } from 'node:fs/promises'
 import path from 'node:path'
 import type { ProjectConfig } from '../config.js'
@@ -42,6 +43,7 @@ import {
   findProjectConfigs,
   findWorkspaceRoot,
   REVIEW_FILE,
+  PROJECT_CONFIG_FILENAMES,
   loadProjectConfigs,
   LOCKFILE_NAME,
   LOCKFILE_VERSION,
@@ -538,8 +540,26 @@ async function strayCopies(check: GraphCheck): Promise<string[]> {
   return [...new Set([...kept.filter((f) => f !== null), ...check.strayReviews])].sort()
 }
 
-const strayLine = (root: string, file: string): string =>
-  `${relPosix(root, file)} has no vx.config beside it — delete it`
+/**
+ * A copy's config renamed to a name vx does not read (`.json`, `.tsx`)
+ * is still there: "delete it" was the wrong advice. Looked for only here,
+ * once a copy is already stray.
+ */
+function strayLine(root: string, file: string): string {
+  const copy = `${relPosix(root, file)} has no vx.config beside it`
+  let names: string[] = []
+  try {
+    names = readdirSync(path.dirname(file))
+  } catch {
+    // gone or unreadable: nothing beside it to name
+  }
+  const unread = names
+    .filter((n) => n.startsWith('vx.config.') && !PROJECT_CONFIG_FILENAMES.includes(n))
+    .sort()[0]
+  if (unread === undefined) return `${copy} — delete it`
+  const exts = PROJECT_CONFIG_FILENAMES.map((n) => n.slice('vx.config.'.length)).join(', ')
+  return `${copy}: ${unread} is not a config vx reads (${exts})`
+}
 
 /**
  * Each place an evaluated config holds the value of a secret in this

@@ -1128,6 +1128,27 @@ describe('a config is JSON data, on every path (item 701)', () => {
       'tasks.build.description',
       'a setter',
     ],
+    // JSON writes only own enumerable string keys, and on an array only its
+    // indices: anything else vanished, `vx lock` stored `"config":{}` and
+    // the run said no project declares the task.
+    [
+      'a non-enumerable property',
+      `const c = {}\nObject.defineProperty(c, 'tasks', { value: { build: { exec: { command: 'true' } } }, enumerable: false })\nexport default c\n`,
+      'tasks',
+      'a non-enumerable property, which JSON drops',
+    ],
+    [
+      'a symbol key',
+      `export default { tasks: { build: { exec: { command: 'true' }, [Symbol('x')]: 1 } } }\n`,
+      'tasks.build[Symbol(x)]',
+      'a symbol key, which JSON drops',
+    ],
+    [
+      'a symbol key on an array',
+      `const files = ['src/**']\nfiles[Symbol('x')] = 1\nexport default { tasks: { build: { exec: { command: 'true' }, inputs: { files } } } }\n`,
+      'tasks.build.inputs.files[Symbol(x)]',
+      'a symbol key, which JSON drops',
+    ],
   ]
 
   for (const [label, body, at, is] of KINDS) {
