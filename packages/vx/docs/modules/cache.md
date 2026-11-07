@@ -349,7 +349,7 @@ export interface CacheEntry {
   outputRows?: OutputFileRow[] // the rows behind outputFiles, when the layer had them
   outputDirRows?: OutputDirRow[] // the directory short-circuit's rows, from getMany
   stdout: string // the output log: both streams in order (output-log.ts); a local entry reads it on access
-  storedAt: string // ISO timestamp
+  storedAt: string // ISO timestamp; a local entry formats it on access
   source?: 'local' | 'remote' // (LayeredCache) which layer served the hit
   sizeBytes?: number // the artifact's compressed size, from the index
   fetchMs?: number // (LayeredCache) a remote hit this run pulled: download + ingest

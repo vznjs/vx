@@ -666,23 +666,29 @@ function entryOf(
   fileRows: OutputFileRow[],
   log: (hash: string) => string,
 ): CacheEntry {
-  return {
+  // Assigned, not spread, and the date formatted only when read: a warm
+  // run's probe builds one per hit and reads neither (~4 ms of 8,002
+  // entries, 2026-11-07).
+  const entry: CacheEntry = {
     hash: row.hash,
     taskId: `${row.project}#${row.task}`,
     command: row.command,
     exitCode: row.exit_code,
     durationMs: row.duration_ms,
     sizeBytes: row.size_bytes,
-    ...(row.cpu_ms !== null ? { cpuMs: row.cpu_ms } : {}),
-    ...(row.peak_rss_bytes !== null ? { peakRssBytes: row.peak_rss_bytes } : {}),
     outputFiles: fileRows.map((r) => r.path),
     outputRows: fileRows,
     get stdout() {
       return row.stdout_apart === 1 ? log(row.hash) : storedLog(row.stdout)
     },
-    storedAt: new Date(row.created_at).toISOString(),
+    get storedAt() {
+      return new Date(row.created_at).toISOString()
+    },
     source: 'local',
   }
+  if (row.cpu_ms !== null) entry.cpuMs = row.cpu_ms
+  if (row.peak_rss_bytes !== null) entry.peakRssBytes = row.peak_rss_bytes
+  return entry
 }
 
 /** The sidecar's `exec` from a save's entry: only the axes the runner reported. */
