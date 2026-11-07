@@ -94,8 +94,8 @@ it('a task id narrows to that task, a task name to it in every project', () => {
 it('the text view is one table, a row per task', () => {
   const r = vx('last', '--stats', 'build')
   expect(r.code).toBe(0)
-  // Under the Task stats rule, a header and a row per task.
-  expect(r.out).toStartWith('─ Task stats ')
+  // Under the Task stats title, a header and a row per task.
+  expect(r.out).toStartWith('  Task stats\n')
   const lines = r.out
     .trimEnd()
     .split('\n')

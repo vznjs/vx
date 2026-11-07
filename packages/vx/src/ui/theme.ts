@@ -204,7 +204,9 @@ const UNDER_RULE = `${UNDERLINE}\x1b[58;2;110;118;129m`
 /** A title line underlined end to end, gaps included, each hue kept. */
 export function underlined(line: string, c: ColorSupport): string {
   if (!c.enabled) return line.trimEnd()
-  return `${UNDER_RULE}${line.replaceAll(RESET, RESET + UNDER_RULE)}${RESET}`
+  // A trailing reset is the line's own end: re-opening the underline there left an empty pair.
+  const body = line.endsWith(RESET) ? line.slice(0, -RESET.length) : line
+  return `${UNDER_RULE}${body.replaceAll(RESET, RESET + UNDER_RULE)}${RESET}`
 }
 
 /** `text` in a style; `bold` adds weight to a hue. */

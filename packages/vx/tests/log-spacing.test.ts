@@ -1,6 +1,7 @@
-// One blank line between blocks (org/devex/log-design.md): a failure's
-// frame ends with its own blank line, and the footer opened with another,
-// so a red run printed two above `─ vx`.
+// One blank line between blocks (org/devex/log-design.md), two above the
+// Summary (2026-11-06): a failure's frame ends with its own blank line, and
+// the footer opens with two, so a red run printed three above it until the
+// frame's blank stood for the footer's first.
 
 import { rm } from 'node:fs/promises'
 import { expect, it } from 'bun:test'
@@ -45,24 +46,26 @@ const runs = async (lint: string): Promise<string> => {
 }
 
 it(
-  'a failure frame and the footer are one blank line apart',
+  'a failure frame and the footer are two blank lines apart',
   async () => {
     const out = await runs('echo broke >&2; exit 1')
     // A slow `vx:close` on a loaded box prints its row between them.
     expect(out).toMatch(
-      /└─ app#lint ── \([^)]+\) failed \(exit 1\)\n\n(?: ⏺︎ +\S+ +success internal .*vx:\w+\n\n)?─ Summary /,
+      /└─ app#lint ── \([^)]+\) failed \(exit 1\)\n\n(?: {12}success internal .*vx:\w+\n\n)?\n {2}Summary /,
     )
   },
   TIMEOUT,
 )
 
 it(
-  'CONTROL: a green run’s last row and the footer are one blank line apart',
+  'CONTROL: a green run’s last row and the footer are two blank lines apart',
   async () => {
     const out = await runs('true')
     // The last row may be an internal step the run waited on (`vx:close` on
     // a loaded box), not only a task.
-    expect(out).toMatch(/success (?:no-cache .* app#\w+|internal +local +vx:\w+)\n\n─ Summary /)
+    expect(out).toMatch(
+      /success (?:no-cache .* app#\w+|internal .* local +vx:\w+)\n\n\n {2}Summary /,
+    )
   },
   TIMEOUT,
 )

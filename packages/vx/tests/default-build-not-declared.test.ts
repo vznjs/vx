@@ -67,7 +67,8 @@ describe('the default build is no declared task', () => {
     expect(
       vx('show', 'test')[1]
         .split('\n')
-        .filter((l) => l.startsWith('─ ')),
+        // A title line is its one word in the gutter; a field row has a value past its label.
+        .filter((l) => /^ {2}\S+$/.test(l)),
     ).toEqual([
       gradientRule({ enabled: false }, 'x#test'),
       gradientRule({ enabled: false }, 'y#test'),

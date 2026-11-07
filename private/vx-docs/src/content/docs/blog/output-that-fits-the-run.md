@@ -49,17 +49,19 @@ success packages/b#build e8c0e9d5b1f5d0c9
 …
 ```
 
-The glyph at the start of a line says where the result came from:
+The status and cache words that start a line say how the task ended
+and where its result came from. The status word's colour carries the
+outcome.
 
-| Glyph | Result |
-| ----- | ------ |
-| `⏺` | ran (cache miss) |
-| `►` | up to date, nothing to restore |
-| `⇢` | restored from the local cache |
-| `⇣` | restored from the remote cache |
-| `◼` | failed |
-| `⊘` | skipped, with the failure that blocked it |
-| `▸` | persistent, like a dev server |
+| Words              | Result                                     |
+| ------------------ | ------------------------------------------ |
+| `success miss`     | ran (cache miss)                           |
+| `success fresh`    | up to date, nothing to restore             |
+| `success local`    | restored from the local cache              |
+| `success remote`   | restored from the remote cache             |
+| `failed miss`      | failed                                     |
+| `skipped`          | skipped, with the failure that blocked it  |
+| `running`          | persistent, like a dev server              |
 
 ## A report for the pull request
 

@@ -90,7 +90,7 @@ async function build(f: Fixture): Promise<{ status: string; restored: boolean | 
  * any line vx printed of its own (a store fallback, a move, a reset).
  */
 function said(f: Fixture): { log: string[]; err: string[] } {
-  const summary = /^(|─ Summary .*|  (projects|tasks|cache|info|time|result) .*| {12}\S.*)$/
+  const summary = /^(| {2}Summary .*|  (projects|tasks|cache|info|time|result) .*| {12}\S.*)$/
   return { log: f.log.filter((l) => !summary.test(l)), err: f.err }
 }
 

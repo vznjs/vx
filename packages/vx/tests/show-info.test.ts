@@ -236,7 +236,9 @@ describe('vx show (e2e)', () => {
         .split('\n')
         .filter((l) => l.startsWith('  '))
         .map((l) => l.trim().replace(/ {2,}/, ': '))
+      // The title line first, then a row per field.
       expect(rows).toEqual([
+        'app#lint',
         'dir: packages/app',
         'command: echo lint',
         'retries: 2',
@@ -257,7 +259,7 @@ describe('vx show (e2e)', () => {
     async () => {
       const r = await vx(root, ['show', 'build'])
       expect(r.code).toBe(0)
-      expect(r.out).toContain('─ app#build ')
+      expect(r.out).toContain('  app#build\n')
       expect(r.out).toContain('echo build')
       const j = await vx(root, ['show', 'build', '--format=json'])
       expect(j.code).toBe(0)
@@ -878,7 +880,7 @@ describe('vx info — the rendered rows', () => {
     expect(renderInfo(healthy)).toBe(
       [
         '',
-        '─ vx info ────────────────────────────────────────────────────',
+        '  vx info',
         '  vx                0.1.0 (/usr/local/bin/vx)',
         '  bun               1.4.4',
         '  git               2.43.0',
@@ -932,7 +934,7 @@ describe('vx info — the rendered rows', () => {
     expect(renderInfo(degraded)).toBe(
       [
         '',
-        '─ vx info ────────────────────────────────────────────────────',
+        '  vx info',
         '  vx                0.1.0 (/usr/local/bin/vx)',
         '  bun               1.3.11 — unsupported, vx needs >= 1.4.4; answers may be wrong',
         '  git               (not found)',
@@ -996,7 +998,7 @@ describe('vx info — the rendered rows', () => {
       handedOffFrom: '/usr/local/bin/vx',
     })
       .split('\n')
-      .find((l) => l.startsWith('  vx '))
+      .find((l) => /^ {2}vx {2,}/.test(l))
     expect(vx).toBe(
       '  vx                0.1.0 (/repo/node_modules/@vzn/vx-linux-x64/vx, handed off from /usr/local/bin/vx)',
     )

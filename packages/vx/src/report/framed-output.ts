@@ -252,11 +252,10 @@ function paintTaskId(node: TaskNode, colors: ColorSupport, opts: { bold?: boolea
   return paintId(node.projectName, node.taskName, colors, opts)
 }
 
-// ── Reported-line grid: glyph · time · status · cache · name ────────
-// glyph SHAPE encodes the cache axis (⏺ miss · ► fresh · ⇢ local · ⇣
-// remote; ◼ failed · ⊘ skipped · ✗ aborted · ◌ not run), glyph COLOR encodes the
-// task axis (green/red/yellow/cyan). The status and cache WORDS spell
-// the two axes out, each in its own color. Time is right-aligned in a
+// ── Reported-line grid: status · cache · usual · time · … · name ────────
+// No glyph (2026-11-06): the status word, first at the Summary's value
+// column, is the task axis and the cache word the cache axis, each in
+// its own color. Time is right-aligned in a
 // fixed cell so durations line up and a ticking elapsed never shifts
 // the row. All detail (exit code, output) lives in the framed block.
 export const TIME_COL = 7 // "0ms" … "999.99s", then "16m 40s" … "99m 59s"
@@ -298,24 +297,6 @@ function cell(text: string, color: Style | '', width: number, colors: ColorSuppo
   return painted + pad(width - text.length)
 }
 
-/** The cache-shape glyph (task-shape for non-success). */
-function glyphShape(o: TaskOutcome): string {
-  switch (o.status) {
-    case 'success':
-      return '⏺\uFE0E' // ⏺ miss (ran), text-presentation (narrow)
-    case 'cache-hit':
-      return o.restored === false ? '\u25ba' : '\u21e2' // ► fresh : ⇢ local
-    case 'cache-hit-remote':
-      return o.restored === false ? '\u25ba' : '\u21e3' // ► fresh : ⇣ remote
-    case 'failed':
-      return '\u25fc\uFE0E' // ◼ failed, text-presentation (narrow)
-    case 'skipped':
-      return '\u2298' // ⊘ skipped
-    default:
-      return '⏺\uFE0E'
-  }
-}
-
 /** Task-axis word + color (a cache hit is a success). */
 function statusOf(o: TaskOutcome): { word: string; color: Style } {
   switch (o.status) {
@@ -348,20 +329,14 @@ function cacheOf(o: TaskOutcome): { word: string; color: Style } {
   }
 }
 
-/** The painted status glyph (shape = cache axis, color = task axis). */
-function taskGlyph(o: TaskOutcome, colors: ColorSupport): string {
-  return paint(statusOf(o).color, glyphShape(o), colors)
-}
-
 /**
- * One reported task row on the list grid: `<glyph> <time> <usual>
- * <status> <cache> <cpu> <mem> <blocks> <worker> <name>`. `glyph` is
- * pre-painted; status/cache are raw text + color, padded to their
+ * One reported task row on the list grid: `<status> <cache> <usual>
+ * <time> <cpu> <mem> <outputs> <blocks> <worker> <mark> <name>`, the status at
+ * the Summary's value column, no glyph (2026-11-06). Status/cache are raw text + color, padded to their
  * columns; `paintedId` carries identity coloring. `ms = null` blanks the
  * time (a skip never ran); `cache = ''` and an absent cell blank theirs.
  */
 export function formatTaskRow(
-  glyph: string,
   ms: number | null,
   status: string,
   statusColor: Style | '',
@@ -389,15 +364,22 @@ export function formatTaskRow(
   const blocks = cells.blocks || UNKNOWN
   const worker = workerName(cells.worker || UNKNOWN)
   return (
-    `${ROW_LEAD}${glyph} ${timeCell(ms, colors)} ${us} ${st} ${ca} ` +
+    `${ROW_LEAD}${st} ${ca} ${us} ${timeCell(ms, colors)} ` +
     `${right(cpu, CPU_COL, colors)} ${right(mem, MEM_COL, colors)} ${right(out, OUT_COL, colors)} ` +
     `${pad(BLOCKED_COL - blocks.length)}${paint(blocks === '0' || blocks === UNKNOWN ? 'muted' : 'value', blocks, colors)} ` +
-    `${placeCell(worker, colors)}${pad(WORKER_COL - worker.length)} ${paintedId}`
+    `${placeCell(worker, colors)}${pad(WORKER_COL - worker.length)} ` +
+    `${cells.critical === true ? paint('warn', CRITICAL_MARK, colors) : ' '} ${paintedId}`
   )
 }
 
 /** A cell with nothing in it: unknown, or not applying to the row (a hit ran nothing). */
 const UNKNOWN = '\u2014'
+
+/**
+ * The critical path's mark, before the task's name: the row's task held the
+ * run's end while others ran beside it. One glyph, yellow (2026-11-06).
+ */
+const CRITICAL_MARK = '\u25c6'
 
 /** A grid row's lead: the gutter, so a row starts where a field's value does. */
 const ROW_LEAD = ' '.repeat(GUTTER)
@@ -416,6 +398,8 @@ export interface RowCells {
   blocks?: string
   /** The machine it runs or ran on: `local`, or the executor's name for it. */
   worker?: string
+  /** On the critical path: `◆` before the task's name. */
+  critical?: boolean
 }
 
 function right(text: string, width: number, colors: ColorSupport): string {
@@ -500,9 +484,9 @@ export function formatRunningHeader(colors: ColorSupport = NO_COLOR): string {
 
 function header(usual: string, colors: ColorSupport): string {
   const head =
-    `  ${'time'.padStart(TIME_COL)} ${usual.padStart(USUAL_COL)} ` +
-    `${'status'.padEnd(STATUS_COL)} ${'cache'.padEnd(CACHE_COL)} ${'cpu'.padStart(CPU_COL)} ` +
-    `${'mem'.padStart(MEM_COL)} ${'outputs'.padStart(OUT_COL)} ${'blocks'.padStart(BLOCKED_COL)} ${'worker'.padEnd(WORKER_COL)} task`
+    `${'status'.padEnd(STATUS_COL)} ${'cache'.padEnd(CACHE_COL)} ${usual.padStart(USUAL_COL)} ` +
+    `${'time'.padStart(TIME_COL)} ${'cpu'.padStart(CPU_COL)} ` +
+    `${'mem'.padStart(MEM_COL)} ${'outputs'.padStart(OUT_COL)} ${'blocks'.padStart(BLOCKED_COL)} ${'worker'.padEnd(WORKER_COL)}   task`
   return paint('muted', head, colors)
 }
 
@@ -585,9 +569,8 @@ export function formatExpected(ms: number): string {
 /** A task `--dry` lists: what the run would do with it, on the running list's grid. */
 export interface PlannedRow {
   node: TaskNode
-  glyph: string
   status: string
-  /** The glyph's and the status word's hue. */
+  /** The status word's hue. */
   tone: Style
   cache: string
   cacheTone: Style | ''
@@ -610,7 +593,6 @@ export function planList(rows: readonly PlannedRow[]): ui.Block {
       rows.map((r) => {
         const usual = r.usualMs === undefined ? undefined : formatExpected(r.usualMs)
         const row = formatTaskRow(
-          paint(r.tone, r.glyph, c),
           null,
           r.status,
           r.tone,
@@ -718,9 +700,8 @@ function formatOutcomeRow(
 ): string {
   const st = statusOf(o)
   const ca = cacheOf(o)
-  const row =
+  return (
     formatTaskRow(
-      taskGlyph(o, colors),
       ms,
       st.word,
       st.color,
@@ -728,17 +709,9 @@ function formatOutcomeRow(
       ca.color,
       paintedId,
       colors,
-      cells,
+      onPath ? { ...cells, critical: true } : cells,
     ) + flakyNote(o, colors)
-  return onPath ? withPathNote(row, colors) : row
-}
-
-/**
- * `critical path` flush right on `row`: the row's task held the run's end
- * while others ran beside it. Yellow, as a run still going is (2026-11-06).
- */
-export function withPathNote(row: string, colors: ColorSupport = NO_COLOR): string {
-  return ui.atRight(row, paint('warn', 'critical path', colors), colors)
+  )
 }
 
 /** Where an executor ran the task, when not here, right after its id: `@small#2` (2026-10-21). */
@@ -787,7 +760,6 @@ export function formatTaskSkippedLine(
   const suffix = why === '' ? '' : ` ${paint('muted', `• ${why}`, colors)}`
   return (
     formatTaskRow(
-      paint('warn', '\u2298', colors),
       null,
       'skipped',
       'warn',
@@ -814,29 +786,9 @@ export function formatTaskAbortedLine(
   const id = paintTaskId(node, colors)
   const bl: RowCells = blocks === undefined ? {} : { blocks: String(blocks) }
   if (neverStarted(o)) {
-    return formatTaskRow(
-      paint('muted', '\u25cc', colors),
-      null,
-      'not run',
-      '',
-      '',
-      '',
-      id,
-      colors,
-      bl,
-    )
+    return formatTaskRow(null, 'not run', '', '', '', id, colors, bl)
   }
-  return formatTaskRow(
-    paint('aborted', '\u2717', colors),
-    o.durationMs,
-    'aborted',
-    'aborted',
-    '',
-    '',
-    id,
-    colors,
-    ranCells(o, blocks),
-  )
+  return formatTaskRow(o.durationMs, 'aborted', 'aborted', '', '', id, colors, ranCells(o, blocks))
 }
 
 /**

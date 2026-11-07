@@ -255,6 +255,9 @@ describe('the tasks line counts what is blocked', () => {
 
 // In DTE the list is what runs; a task on the critical path says so on
 // its finished row too; the lists have a header.
+/** p#a's running row in the live region, its cells past `cache` blank (`—`) but time and `blocks`. */
+const RUNNING_A = /running (?:miss|no-cache) +— +\d+ms( +—){3} +\d+ local +p#a\b/
+
 describe('rows under an executor that places tasks', () => {
   it('no blank or nested rows, only running ones', () => {
     const lines = formatStatusRegion(
@@ -269,15 +272,15 @@ describe('rows under an executor that places tasks', () => {
       },
       { enabled: false },
     )
+    // The divider (blank off colour), a blank, then the running row alone.
     expect(lines).toEqual([
       '',
-      expect.stringMatching(/^─ Running \d+ ─+$/),
-      '      time   usual status  cache      cpu    mem outputs  blocks worker       task',
-      '     500ms         running miss                                0 small#2      p#a',
+      '',
+      '            running miss           —   500ms     —      —       —       0 small#2        p#a',
     ])
   })
 
-  it('the critical path note follows the id; the agent is the worker column', () => {
+  it('the critical path mark sits before the id; the agent is the worker column', () => {
     const lines = formatStatusRegion(
       {
         pinnedPersistent: [],
@@ -292,8 +295,11 @@ describe('rows under an executor that places tasks', () => {
       },
       { enabled: false },
     )
+    expect(lines[2]).toBe(
+      '            running miss           —   500ms     —      —       —       0 small#2      ◆ p#a',
+    )
     expect(lines[3]).toBe(
-      '     500ms         running miss                                0 small#2      p#a  critical path',
+      '            running miss           —   500ms     —      —       —       0 small#2        p#d',
     )
   })
 
@@ -316,17 +322,12 @@ describe('rows under an executor that places tasks', () => {
     for (const t of [x, a, d]) log.taskComplete(t, done(t))
     log.runEnd?.()
     const rows = out.text().split(/[\n\r]/)
-    expect(rows.find((l) => l.endsWith('p#a  critical path'))).toBeDefined()
-    expect(rows.find((l) => /success .*p#d$/.test(l))).toBeDefined()
-    // The list's title and header, once, over its first row.
-    expect(rows.filter((l) => Bun.stripANSI(l).startsWith('─ Tasks '))).toHaveLength(1)
-    expect(
-      rows.filter(
-        (l) =>
-          Bun.stripANSI(l) ===
-          '      time  ±usual status  cache      cpu    mem outputs  blocks worker       task',
-      ),
-    ).not.toHaveLength(0)
+    expect(rows.find((l) => /success .*◆ p#a$/.test(l))).toBeDefined()
+    expect(rows.find((l) => /success .* {2}p#d$/.test(l))).toBeDefined()
+    // The list's title, carrying its header, once, over its first row.
+    expect(rows.filter((l) => Bun.stripANSI(l).startsWith('  Tasks '))).toEqual([
+      '  Tasks     status  cache     ±usual    time   cpu    mem outputs  blocks worker         task',
+    ])
   })
 })
 
@@ -432,7 +433,7 @@ describe('a long run ends with a desktop notification', () => {
 })
 
 describe('a worker row says when it holds the critical path', () => {
-  it('critical path on its row, after the count of what it holds back', () => {
+  it('the critical path mark on its row, after the count of what it holds back', () => {
     const lines = formatStatusRegion(
       {
         pinnedPersistent: [],
@@ -446,8 +447,8 @@ describe('a worker row says when it holds the critical path', () => {
       },
       { enabled: false },
     )
-    expect(lines[3]).toEndWith(' 0 local        p#a  critical path')
-    expect(lines[4]).toEndWith(' 0 local        p#d')
+    expect(lines[2]).toEndWith(' 0 local        ◆ p#a')
+    expect(lines[3]).toEndWith(' 0 local          p#d')
   })
 
   // 2026-10-27 counted only direct dependents; 2026-10-29: `blocks` is
@@ -561,8 +562,8 @@ describe('free worker rows hold the planned tasks', () => {
       log.taskComplete(n, { node: n, status: 'success', exitCode: 0, durationMs: 1 } as TaskOutcome)
     const frame = (): string[] => {
       const lines = out.text().split('\n')
-      const i = lines.findLastIndex((l) => l.includes('worker       task'))
-      return lines.slice(i + 1, i + 4).map((l) => l.trimEnd())
+      const i = lines.findLastIndex((l) => RUNNING_A.test(l))
+      return lines.slice(i, i + 3).map((l) => l.trimEnd())
     }
     return { log, frame }
   }
@@ -574,9 +575,9 @@ describe('free worker rows hold the planned tasks', () => {
       { id: 'p#d', by: 'p#a' },
     ])
     expect(frame()).toEqual([
-      expect.stringMatching(/running (?:miss|no-cache) +3 local +p#a$/),
-      '                   blocked                                                    └ p#c',
-      '                   blocked                                                    └ p#b',
+      expect.stringMatching(/running (?:miss|no-cache) +— +\d+ms( +—){3} +3 local +p#a$/),
+      '            blocked —              —       —     —      —       —       — —              └ p#c',
+      '            blocked —              —       —     —      —       —       — —              └ p#b',
     ])
     log.runEnd?.()
   })
@@ -586,8 +587,8 @@ describe('free worker rows hold the planned tasks', () => {
   it('a free row with nothing planned adds no blank row', () => {
     const { log, frame } = live([{ id: 'p#c', by: 'p#a' }])
     expect(frame()).toEqual([
-      expect.stringMatching(/running (?:miss|no-cache) +1 local +p#a$/),
-      '                   blocked                                                    └ p#c',
+      expect.stringMatching(/running (?:miss|no-cache) +— +\d+ms( +—){3} +1 local +p#a$/),
+      '            blocked —              —       —     —      —       —       — —              └ p#c',
       '',
     ])
     log.runEnd?.()
@@ -625,8 +626,8 @@ describe('the live view knows blocked tasks from the graph, from the first frame
     for (const n of [x, y])
       log.taskComplete(n, { node: n, status: 'success', exitCode: 0, durationMs: 1 } as TaskOutcome)
     const lines = out.text().split('\n')
-    const i = lines.findLastIndex((l) => /running (?:miss|no-cache) +\d+ local +p#a\b/.test(l))
-    const rows = lines.slice(i + 1, i + 3).map((l) => l.trimEnd())
+    const i = lines.findLastIndex((l) => RUNNING_A.test(l))
+    const rows = lines.slice(i + 1, i + 4).map((l) => l.trimEnd())
     log.runEnd?.()
     return { rows, asked }
   }
@@ -635,14 +636,16 @@ describe('the live view knows blocked tasks from the graph, from the first frame
     const r = live(['p#a', 'p#x', 'p#y', 'p#b', 'p#c'])
     expect(r.asked).toBe(0)
     expect(r.rows).toEqual([
-      '                   blocked                                                    └ p#b',
-      '                   blocked                                                    └ p#c',
+      '            blocked —              —       —     —      —       —       — —              └ p#b',
+      '            blocked —              —       —     —      —       —       — —              └ p#c',
+      '',
     ])
   })
 
   it('a free row with nothing planned shows nothing: the footer follows', () => {
     const r = live(['p#a', 'p#x', 'p#y'])
-    expect(r.rows).toEqual(['', `─ Summary ${'─'.repeat(52)}`])
+    // The Summary's two blank lines, then its title.
+    expect(r.rows).toEqual(['', '', '  Summary'])
   })
 })
 

@@ -8,7 +8,6 @@ import * as ui from './kit.js'
 export { ui }
 
 export {
-  atRight,
   bar,
   divider,
   barWidth,

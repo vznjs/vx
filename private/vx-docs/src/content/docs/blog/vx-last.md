@@ -13,22 +13,21 @@ it and gives you the command to run only that again:
 
 ```sh frame="terminal"
 $ vx last --failed
-─ Run 01a16ada-e526-75db-8cd6-f58c924aa0a3 ───────────────────
+  Run 01a16ada-e526-75db-8cd6-f58c924aa0a3
   status    FAILED
   command   vx run build test --all
   when      2026-10-23T22:21:32.842Z · 49ms · master @ aa76c317+dirty
   tasks     8 tasks · 5 hits (5 up-to-date, 0 restored) · 1 failed
 
-─ Tasks 8 ────────────────────────────────────────────────────
-      time  ±usual status  cache      cpu    mem outputs  blocks worker       task
- ◼︎    14ms       — failed  miss       60%      —       —       0 local        packages/b#test  exit 1
- ⏺︎    16ms    +0ms success miss       50%      —     2KB       1 local        packages/b#build
- ⏺︎    10ms    +0ms success miss       90%      —       —       0 local        packages/c#test
- ►     3ms         success fresh                      0B       1 local        packages/c#build
- ►     0ms         success fresh                      0B       0 local        packages/d#test
- ►     0ms         success fresh                      0B       0 local        packages/a#test
- ►     0ms         success fresh                      0B       1 local        packages/d#build
- ►     1ms         success fresh                      0B       2 local        packages/a#build
+  Tasks 8   status  cache    ±usual    time   cpu    mem outputs  blocks worker         task
+            failed  miss           —    14ms   60%      —       —       0 local          packages/b#test  exit 1
+            success miss        +0ms    16ms   50%      —     2KB       1 local          packages/b#build
+            success miss        +0ms    10ms   90%      —       —       0 local          packages/c#test
+            success fresh          —     3ms     —      —      0B       1 local          packages/c#build
+            success fresh          —     0ms     —      —      0B       0 local          packages/d#test
+            success fresh          —     0ms     —      —      0B       0 local          packages/a#test
+            success fresh          —     0ms     —      —      0B       1 local          packages/d#build
+            success fresh          —     1ms     —      —      0B       2 local          packages/a#build
 
   next      vx run packages/b#test
 

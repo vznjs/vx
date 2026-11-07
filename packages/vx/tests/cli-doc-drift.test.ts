@@ -450,11 +450,11 @@ describe("vx info's plugins row lists the seams the doctor shows", () => {
   })
 })
 
-describe('docs/cli.md — the glyph table is the renderer', () => {
-  // The table gave `⏺` the status words "success/failed", but a failed
-  // task always draws `◼`: no row ever printed `⏺ … failed` (J2-58). The
-  // expected map comes from rendering every outcome, not from a list here.
-  it('each glyph carries the status words a rendered row gives it', async () => {
+describe('docs/cli.md — the status and cache legends are the renderer', () => {
+  // The glyph table gave `⏺` the status words "success/failed", but a failed
+  // task always drew `◼` (J2-58). Rows lead with their status word now
+  // (2026-11-06): every word a rendered row prints is in a legend.
+  it('each rendered status and cache word is in its legend', async () => {
     const node = {
       id: 'a#b',
       projectName: 'a',
@@ -474,27 +474,21 @@ describe('docs/cli.md — the glyph table is the renderer', () => {
         [true, false].map((restored) => ({ node, status, exitCode: 0, durationMs: 1, restored })),
       ),
     ]
-    const rendered = new Map<string, Set<string>>()
-    for (const o of outcomes) {
-      const [glyph, ...cells] = formatTaskExecutedLine(node, o)
-        .replaceAll('︎', '')
-        .trim()
-        .split(/\s+/)
-      const word = cells.find((c) => ['success', 'failed', 'skipped'].includes(c))!
-      rendered.set(glyph!, (rendered.get(glyph!) ?? new Set()).add(word))
-    }
     const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url)).text()
-    const table = doc.slice(doc.indexOf('| Glyph |'))
-    const documented = new Map<string, Set<string>>()
-    for (const row of table.split('\n').slice(2)) {
-      if (!row.startsWith('|')) break
-      const cells = row.split('|').map((c) => c.trim())
-      const glyph = cells[1]!.replaceAll('`', '')
-      // The persistent pin is drawn by the live region, not a task row.
-      if (glyph !== '▸') documented.set(glyph, new Set(cells[3]!.split('/')))
+    const legend = (head: string): Set<string> => {
+      const table = doc.slice(doc.indexOf(`\n| ${head} `) + 1)
+      const words = new Set<string>()
+      for (const row of table.split('\n').slice(2)) {
+        if (!row.startsWith('|')) break
+        words.add(row.split('|')[1]!.trim().replaceAll('`', ''))
+      }
+      return words
     }
-    const plain = (m: Map<string, Set<string>>) =>
-      Object.fromEntries([...m].map(([g, s]) => [g, [...s].toSorted()]))
-    expect(plain(documented)).toEqual(plain(rendered))
+    const statuses = legend('Status')
+    const caches = legend('Cache')
+    for (const o of outcomes) {
+      const [status, cache] = formatTaskExecutedLine(node, o).trim().split(/\s+/)
+      expect([o.status, statuses.has(status!), caches.has(cache!)]).toEqual([o.status, true, true])
+    }
   })
 })

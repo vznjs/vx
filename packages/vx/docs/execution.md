@@ -470,14 +470,13 @@ wire forwarders attach beside it). What renders:
   silence for cache hits; truthy `CI` env (and the programmatic
   default) keeps full grouped output. `--output-logs` overrides
   everything. Full table in [`cli.md`](./cli.md#output).
-- **The glyph grid.** Reported task lines share one column grid —
-  `<glyph> <time> <status> <cache> <name>`. Glyph SHAPE = cache axis
-  (`⏺` miss / `►` fresh / `⇢` local / `⇣` remote / `◼` failed / `⊘`
-  skipped, plus `▸` for a pinned persistent row; a live worker row has
-  no glyph — its ticking elapsed time leads instead); glyph COLOR + the
-  status word = task axis
-  (success / failed / skipped / running); the cache word (miss /
-  fresh / local / remote) spells it out.
+- **The task grid.** Reported task lines share one column grid:
+  `<status> <cache> <±usual> <time> <cpu> <mem> <outputs> <blocks>
+<worker> <mark> <task>`, with no glyph. The status word, at column 12,
+  is the task axis and its colour the outcome (`success` green,
+  `failed` red, `skipped` and `running` yellow). The cache word (`miss`,
+  `no-cache`, `fresh`, `local`, `remote`) is the cache axis. The mark is
+  a yellow `◆` on the critical path. An empty cell shows `—`.
 - **Buffered, framed (non-focused paths).** `runCommand` listens to
   the child's stdout/stderr and calls `onStdout` / `onStderr` per
   chunk, a line at a time across the two: a chunk on one stream waits
@@ -499,8 +498,8 @@ wire forwarders attach beside it). What renders:
   failure as it happens; the full frames replay together at run end,
   right above the summary.
 - **Status region.** On TTY stdout outside CI, a multi-row region
-  tracks the run live: a blank separator, pinned `▸` persistent rows,
-  one row per worker slot (the ticking elapsed time IS the motion —
+  tracks the run live: a blank separator, a pinned `running` row per
+  persistent task, one row per worker slot (the ticking elapsed time IS the motion —
   no spinner), and the live summary section (the same meters as the
   final footer). Redrawn in place; forced redraws coalesce under a
   30 ms floor; erased before the summary prints. All default-logger
@@ -573,13 +572,13 @@ The colors / framing modules:
 - `ui/theme.ts` — ANSI truecolor (`ansi-16m`), gated by
   `NO_COLOR` / `FORCE_COLOR` / `isTTY`. Programmatic-logger callers
   always see plain text.
-- `report/framed-output.ts` — the `┌─` frames, the glyph grid
+- `report/framed-output.ts` — the `┌─` frames, the task grid
   (`formatTaskRow`), one-liners, persistent markers.
 - `report/status-line.ts` — the serialized writer + the worker
   region.
 - `report/logger.ts` — composes them; resolves the output view
   and applies the per-flow visibility policy.
-- `report/summary.ts` — the closing footer (wordmark rule,
+- `report/summary.ts` — the closing footer (underlined title line,
   projects/tasks/cache meters, info and time rows).
 
 ## Concurrency

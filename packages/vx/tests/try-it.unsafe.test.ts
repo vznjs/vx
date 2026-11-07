@@ -268,9 +268,9 @@ function printedPlain(fence: string): string {
   return versionless(`\n${fence.replace(SGR, '')}`)
 }
 
-/** A report's rule names the version: a checkout's is 0.0.0, the guide's a release. */
+/** A report's title names the version: a checkout's is 0.0.0, the guide's a release. */
 function versionless(out: string): string {
-  return out.replace(/^─ (vx-migrate|vx init) \S+ ─+$/m, '─ $1 ─')
+  return out.replace(/^  (vx-migrate|vx init) \S+$/m, '  $1')
 }
 
 // The migrate guide shows what `vx init` and `bunx @vzn/vx-migrate` write

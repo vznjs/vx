@@ -45,7 +45,8 @@ describe('formatRunSummary', () => {
     const lines = formatRunSummary([outcome('a#x', 'success'), outcome('b#x', 'success')], 1234)
     expect(lines).toEqual([
       '',
-      '─ Summary ' + '─'.repeat(52),
+      '',
+      '  Summary',
       '  tasks     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰',
       '            2 success · 2 total',
       '  cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰',
@@ -64,8 +65,8 @@ describe('formatRunSummary', () => {
       ],
       420,
     )
-    expect(lines[3]).toBe('            3 success · 3 total')
-    expect(lines[5]).toBe('            1 no-cache · 2 up-to-date')
+    expect(lines[4]).toBe('            3 success · 3 total')
+    expect(lines[6]).toBe('            1 no-cache · 2 up-to-date')
     expect(lines.at(-1)).toBe('  time      420ms')
   })
 
@@ -74,8 +75,8 @@ describe('formatRunSummary', () => {
       [outcome('a#test', 'success'), outcome('b#test', 'failed', 1)],
       850,
     )
-    expect(lines[3]).toBe('            1 failed · 1 success · 2 total')
-    expect(lines[5]).toBe('            2 no-cache')
+    expect(lines[4]).toBe('            1 failed · 1 success · 2 total')
+    expect(lines[6]).toBe('            2 no-cache')
   })
 
   it('never lists failed task ids — count lives in the legend (owner: can be hundreds)', () => {
@@ -99,13 +100,13 @@ describe('formatRunSummary', () => {
       [outcome('a#x', 'success'), outcome('b#x', 'failed', 2), outcome('c#x', 'skipped')],
       50,
     )
-    expect(lines[3]).toBe('            1 failed · 1 success · 1 skipped · 3 total')
+    expect(lines[4]).toBe('            1 failed · 1 success · 1 skipped · 3 total')
   })
 
   it('treats cache-hit-remote as successful', () => {
     const lines = formatRunSummary([outcome('a#x', 'cache-hit-remote')], 10)
-    expect(lines[3]).toBe('            1 success · 1 total')
-    expect(lines[5]).toBe('            1 up-to-date')
+    expect(lines[4]).toBe('            1 success · 1 total')
+    expect(lines[6]).toBe('            1 up-to-date')
   })
 
   // The ⚡ instant stamp was removed by owner decision — full-cache
@@ -139,15 +140,15 @@ describe('formatRunSummary', () => {
         durationMs: 0,
       }
     }
-    expect(formatRunSummary([group('a#build'), group('b#build')], 0)[2]).toBe(
+    expect(formatRunSummary([group('a#build'), group('b#build')], 0)[3]).toBe(
       '  tasks     0 tasks · build has no command in these projects',
     )
-    expect(formatRunSummary([group('a#build'), group('a#check')], 0)[2]).toBe(
+    expect(formatRunSummary([group('a#build'), group('a#check')], 0)[3]).toBe(
       '  tasks     0 tasks · build, check have no command in these projects',
     )
     // Control: a run with one command task is not a run of groups.
     expect(
-      formatRunSummary([group('a#build'), outcome('a#x', 'aborted', 130)], 0)[2],
+      formatRunSummary([group('a#build'), outcome('a#x', 'aborted', 130)], 0)[3],
     ).not.toContain('no command')
   })
 
@@ -156,15 +157,16 @@ describe('formatRunSummary', () => {
       enabled: true,
     })
     // legend line colorized (sits below the tasks bar)
-    expect(lines[3]).toContain('\x1b[')
-    expect(lines[3]).toContain('1 success')
-    expect(lines[3]).toContain('1 failed')
+    expect(lines[4]).toContain('\x1b[')
+    expect(lines[4]).toContain('1 success')
+    expect(lines[4]).toContain('1 failed')
   })
 
-  it('gradient rule injects color escapes when enabled', () => {
+  it('the title line injects color escapes when enabled: hued title, underlined', () => {
     const lines = formatRunSummary([outcome('a#x', 'cache-hit')], 10, { enabled: true })
-    expect(lines[1]).toContain('\x1b[38;2;')
-    expect(lines[1]).toContain('Summary')
+    expect(lines[2]).toContain('\x1b[38;2;')
+    expect(lines[2]).toContain('Summary')
+    expect(lines[2]!.startsWith('\x1b[4m\x1b[58;')).toBe(true)
   })
 
   it('folds run context into the footer: version on the rule + info row', () => {
@@ -181,7 +183,8 @@ describe('formatRunSummary', () => {
         runId: '01a14941-c8cf-7a3e-9b51-2f06d4e8c713',
       },
     )
-    expect(lines[1]).toBe('─ Summary ' + '─'.repeat(41) + ' vx 1.2.3 ─')
+    // The version sits flush right at the title width (120 with no terminal).
+    expect(lines[2]).toBe('  Summary' + ' '.repeat(120 - 9 - 8) + 'vx 1.2.3')
     expect(lines).toContain(
       '  info      8 workers · local + remote cache · run 01a14941-c8cf-7a3e-9b51-2f06d4e8c713',
     )
@@ -524,15 +527,15 @@ describe('formatRunSummary', () => {
         workspaceProjectCount: 4,
       },
     )
-    expect(lines[2]).toBe('  projects  ' + '▰'.repeat(13) + '▱'.repeat(37))
-    expect(lines[3]).toBe('            1 affected · 4 total')
+    expect(lines[3]).toBe('  projects  ' + '▰'.repeat(13) + '▱'.repeat(37))
+    expect(lines[4]).toBe('            1 affected · 4 total')
     // local-only mode reads on the info row (no worker count here)
     expect(lines).toContain('  info      local cache')
   })
 
-  it('no context keeps a bare `vx` rule and no projects/info rows (live-region parity)', () => {
+  it('no context keeps a bare title and no projects/info rows (live-region parity)', () => {
     const lines = formatRunSummary([outcome('a#x', 'success')], 10)
-    expect(lines[1]).toBe('─ Summary ' + '─'.repeat(52))
+    expect(lines.slice(0, 3)).toEqual(['', '', '  Summary'])
     expect(lines.find((l) => l.startsWith('  projects'))).toBeUndefined()
     expect(lines.find((l) => l.startsWith('  info'))).toBeUndefined()
     expect(lines.find((l) => l.startsWith('  result'))).toBeUndefined()
@@ -608,14 +611,14 @@ describe('aborted and not-run tasks', () => {
   it('the tasks legend counts each in the total, a group in neither', () => {
     const ctx = { version: '0.0.0', packageCount: 1, remoteCacheEnabled: false }
     const lines = formatRunSummary(run, 10, { enabled: false }, ctx)
-    expect(lines[3]).toBe('            1 success · 1 aborted · 2 not run · 4 total')
+    expect(lines[4]).toBe('            1 success · 1 aborted · 2 not run · 4 total')
     expect(lines.at(-1)).toBe('  time      10ms')
   })
 
   it('a stop before any task finished fills the bar with what it took down', () => {
     const lines = formatRunSummary([killed('a#t')], 10)
-    expect(lines[2]).toBe(`  tasks     ${'\u25b0'.repeat(50)}`)
-    expect(lines[3]).toBe('            1 aborted · 1 total')
+    expect(lines[3]).toBe(`  tasks     ${'\u25b0'.repeat(50)}`)
+    expect(lines[4]).toBe('            1 aborted · 1 total')
   })
 
   it('failed, aborted and not run are each a visibly distinct segment', () => {
@@ -636,21 +639,21 @@ describe('aborted and not-run tasks', () => {
     expect(new Set(paints).size).toBe(4)
   })
 
-  it('the rows: `aborted` with its time, `not run` with none, cache blank', () => {
+  it('the rows: `aborted` with its time, `not run` with none, empty cells `—`', () => {
     const node = (id: string): TaskNode => {
       const [projectName, taskName] = id.split('#')
       return { id, projectName, taskName, config: { exec: { command: 'noop' } } } as TaskNode
     }
     expect(formatTaskAbortedLine(node('a#t'), killed('a#t'))).toBe(
-      ' ✗   100ms         aborted                             —         local        a#t',
+      '            aborted —              —   100ms     —      —       —       — local          a#t',
     )
     expect(formatTaskAbortedLine(node('a#after'), outcome('a#after', 'aborted', 1))).toBe(
-      ' ◌                 not run                                                    a#after',
+      '            not run —              —       —     —      —       —       — —              a#after',
     )
   })
 
   it('a run with nothing aborted reads as before', () => {
-    expect(formatRunSummary([outcome('a#x', 'success')], 10)[3]).toBe(
+    expect(formatRunSummary([outcome('a#x', 'success')], 10)[4]).toBe(
       '            1 success · 1 total',
     )
   })
@@ -694,13 +697,15 @@ describe('a flaky task says so on its own row', () => {
     expect(flakyNote(outcome('a#x', 'success'))).toBe('')
     expect(
       formatTaskExecutedLine(node('a#x'), { ...outcome('a#x', 'success'), node: node('a#x') }),
-    ).toBe(' ⏺︎   100ms         success miss         —      —       —         local        a#x')
+    ).toBe(
+      '            success miss           —   100ms     —      —       —       — local          a#x',
+    )
   })
 
   it('the note rides the row, dim', () => {
     const o = flaky('solid-js#types', 'success', 1, 1)
     expect(formatTaskExecutedLine(o.node, o)).toBe(
-      ' ⏺︎   100ms         success miss         —      —       —         local        solid-js#types flaky - failed 1× before',
+      '            success miss           —   100ms     —      —       —       — local          solid-js#types flaky - failed 1× before',
     )
     const colored = formatTaskExecutedLine(o.node, o, { enabled: true })
     expect(colored).toContain('\x1b[2mflaky - failed 1× before')
@@ -742,9 +747,10 @@ describe('docs/modules/summary.md shows what the footer prints', () => {
         },
       },
     )
-    // The leading blank line stands the footer apart from the last frame;
-    // the page's block starts at the rule.
-    expect(block![1]).toBe(lines.join('\n').replace(/^\n/, '') + '\n')
+    // The two leading blank lines stand the footer apart from the task list;
+    // the page's block starts at the title line.
+    expect(lines.slice(0, 2)).toEqual(['', ''])
+    expect(block![1]).toBe(lines.slice(2).join('\n') + '\n')
   })
 })
 

@@ -226,12 +226,6 @@ export function panelTop(
   return underlined(line, c)
 }
 
-/** `note` flush right on `line`, where a title line ends (two spaces apart at least). */
-export function atRight(line: string, note: string, c: ColorSupport): string {
-  const gap = titleWidth(c) - Bun.stringWidth(line) - Bun.stringWidth(note)
-  return `${line}${' '.repeat(Math.max(2, gap))}${note}`
-}
-
 /**
  * A list's divider: the underline alone, from the grid's first column to the
  * title lines' end (off colour, a blank line).

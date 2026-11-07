@@ -390,20 +390,20 @@ export const MORE: readonly Feature[] = [
     },
   },
   {
-    slug: 'cache-glyphs',
-    title: 'Glyphs that show the cache',
+    slug: 'status-and-cache',
+    title: 'Status and cache words',
     category: 'output',
-    hook: 'Each task’s line shows at a glance whether it ran, was fresh, or came from a cache.',
+    hook: 'Each task’s row says whether it ran, was fresh, or came from a cache.',
     body: [
-      '“Success” hides the most useful fact: did it run, or come back from the cache, and which one. vx’s glyph says it in one character.',
-      'Ran, up to date, restored from the local or the remote cache, failed, skipped or persistent: a broad run reads at a glance.',
+      '“Success” hides the most useful fact: did it run, or come back from the cache, and which one. Each row says both: its status word, then its cache word.',
+      'The status leads the row, coloured by outcome; the cache word beside it says ran, up to date, or restored from the local or the remote cache.',
     ],
     example: {
       lang: 'text',
-      code: '⏺  ran (cache miss)\n►  up to date, nothing to restore\n⇢  restored from the local cache\n⇣  restored from the remote cache\n◼  failed\n⊘  skipped, with the failure that blocked it\n▸  persistent, like a dev server',
+      code: 'success miss      ran, a cache asked\nsuccess fresh     up to date, nothing to restore\nsuccess local     restored from the local cache\nsuccess remote    restored from the remote cache\nfailed  miss      exited non-zero\nskipped —         blocked, with what blocked it\nrunning miss      live, or a dev server',
     },
-    image: 'cache-glyphs.png',
-    imageAlt: 'The task glyphs: ran, fresh, restored, failed, skipped.',
+    image: 'status-and-cache.png',
+    imageAlt: 'Status and cache words: ran, fresh, restored, failed, skipped.',
     docs: {
       label: 'Output',
       href: 'cli/run/',
@@ -1001,7 +1001,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'text',
-      code: '⇢  restored from the local cache   files copied back\n►  up to date                        outputs already match: nothing to do',
+      code: 'local  restored from the local cache   files copied back\nfresh  up to date                     outputs already match: nothing to do',
     },
     image: 'warm-hits.png',
     imageAlt: 'An up-to-date task: outputs already match, nothing restored.',

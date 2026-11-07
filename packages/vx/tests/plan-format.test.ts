@@ -43,11 +43,11 @@ describe('formatPlanText', () => {
       ],
     }
     const out = formatPlanText(plan)
-    expect(out).toStartWith('─ Plan 3 ')
+    expect(out).toMatch(/^ {2}Plan 3 {4}status {2}cache +usual +time /)
     expect(out).not.toContain('a#ci') // group hidden
-    expect(out).toMatch(/ ⇢ +cached +local +0 local +a#lint\n/)
-    expect(out).toMatch(/ ⇣ +cached +remote +0 local +a#test\n/)
-    expect(out).toMatch(/ ⏺\uFE0E +run +miss +0 local +a#build\n/)
+    expect(out).toMatch(/\n {12}cached {2}local +— +— +— +— +— +0 local +a#lint\n/)
+    expect(out).toMatch(/\n {12}cached {2}remote +— +— +— +— +— +0 local +a#test\n/)
+    expect(out).toMatch(/\n {12}run {5}miss +— +— +— +— +— +0 local +a#build\n/)
     expect(out).toContain('3 planned')
     expect(out).toContain('2 cache hits (1 local, 1 remote)')
     expect(out).toContain('1 would run')
@@ -76,7 +76,7 @@ describe('formatPlanText', () => {
     })
     expect(out).toContain('3 cache hits (3 remote, 4.0 MB)')
     // Each remote hit's own size sits in its outputs cell.
-    expect(out).toMatch(/cached +remote +3\.0MB +0 local +a#test\n/)
+    expect(out).toMatch(/cached +remote +— +— +— +— +3\.0MB +0 local +a#test\n/)
   })
 
   it('an @noop task is counted as noop, not as a would-run with a cost', () => {
@@ -86,7 +86,7 @@ describe('formatPlanText', () => {
         task('a#build', 'miss', '22222222', ['a#install'], undefined, 1000),
       ],
     })
-    expect(out).toMatch(/ · +noop +1 {14}a#install\n/)
+    expect(out).toMatch(/\n {12}noop {4}— +— +— +— +— +— +1 — {14}a#install\n/)
     expect(out).toContain('2 planned · 1 would run · 1 noop\n')
   })
 
@@ -142,8 +142,8 @@ describe('formatPlanText', () => {
     const out = formatPlanText({
       tasks: [task('a#lint', 'miss', '11111111')],
     })
-    // The rule, the header, the row, '', the counts, '' (trailing newline).
-    expect(out.split('\n')).toHaveLength(6)
+    // The title line with the header, the row, '', the counts, '' (trailing newline).
+    expect(out.split('\n')).toHaveLength(5)
     expect(out).toMatch(/ a#lint\n/)
   })
 })
@@ -291,7 +291,7 @@ describe('docs/modules/plan-format.md shows what the formatters print', () => {
     lang: m[1]!,
     body: m[2]!,
   }))
-  const texts = fenced.filter((b) => b.lang === '' && b.body.startsWith('─ Plan'))
+  const texts = fenced.filter((b) => b.lang === '' && b.body.startsWith('  Plan'))
   const planned = (
     id: string,
     hash: string,

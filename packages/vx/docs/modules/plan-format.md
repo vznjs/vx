@@ -35,8 +35,8 @@ caller writes it to stdout or a file (`Bun.write(path, out)`).
 
 The `Plan` panel: one row per real task (groups are hidden, as the live
 runner hides them) on the running list's grid (`planList`, the same
-component and header the run draws): the glyph and words the run would
-print (`cached` `local` or `remote`, `run` `miss` or `no-cache`), its
+component and header the run draws): the status and cache words the run
+would print (`cached` `local` or `remote`, `run` `miss` or `no-cache`), its
 usual time from history on a task that would run (`~p50`), a remote
 hit's download size under `outputs`, how many tasks are downstream of
 it under `blocks` (as the run counts them), and where it would run
@@ -45,28 +45,28 @@ after the id. Painted when `c` is enabled (the run passes stdout's);
 left out, the words are plain. The cache key is in `--dry=json`.
 
 ```
-─ Plan 4 ─────────────────────────────────────────────────────
-      time   usual status  cache      cpu    mem outputs  blocks worker       task
- ⇢                 cached  local                               1 local        @vzn/vx#format-check
- ⇣                 cached  remote                   12MB       2 local        @vzn/vx#lint  oxlint with tsgolint-backed type-aware checks
- ⏺︎           ~4.2s run     miss                                1 local        @vzn/vx#test
- ⏺︎                 run     no-cache                            0 local        @vzn/vx#dev
+  Plan 4    status  cache      usual    time   cpu    mem outputs  blocks worker         task
+            cached  local          —       —     —      —       —       1 local          @vzn/vx#format-check
+            cached  remote         —       —     —      —    12MB       2 local          @vzn/vx#lint  oxlint with tsgolint-backed type-aware checks
+            run     miss       ~4.2s       —     —      —       —       1 local          @vzn/vx#test
+            run     no-cache       —       —     —      —       —       0 local          @vzn/vx#dev
 
   tasks      4 planned · 2 cache hits (1 local, 1 remote, 12 MB) · 1 would run · 1 no-cache
   predicted  ~4.20s wall · ~4.20s total execution · 1 task without history (+?)
 ```
 
-Glyphs and words, as the run's rows use them:
+Words, as the run's rows use them; the status word's colour carries the
+outcome, and an empty cell shows `—`:
 
-| Glyph | Status    | Cache      | Plan status   |
-| ----- | --------- | ---------- | ------------- |
-| `⇢`   | `cached`  | `local`    | `hit-local`   |
-| `⇣`   | `cached`  | `remote`   | `hit-remote`  |
-| `⏺`   | `run`     | `miss`     | `miss`        |
-| `⏺`   | `run`     | `no-cache` | `no-cache`    |
-| `·`   | `noop`    |            | `@noop`       |
-| `⊘`   | `skipped` |            | `skipped`     |
-| `◌`   | `not run` |            | `not-started` |
+| Status    | Cache      | Plan status   |
+| --------- | ---------- | ------------- |
+| `cached`  | `local`    | `hit-local`   |
+| `cached`  | `remote`   | `hit-remote`  |
+| `run`     | `miss`     | `miss`        |
+| `run`     | `no-cache` | `no-cache`    |
+| `noop`    | `—`        | `@noop`       |
+| `skipped` | `—`        | `skipped`     |
+| `not run` | `—`        | `not-started` |
 
 The fields under the rows: `tasks` counts them; `predicted` prints only
 when history gave the plan something to say (at least one would-run
@@ -79,10 +79,9 @@ eligibility gate kept eager and why.
 task on, `local` when none:
 
 ```
-─ Plan 2 ─────────────────────────────────────────────────────
-      time   usual status  cache      cpu    mem outputs  blocks worker       task
- ⏺︎           ~4.2s run     miss                                0 vx/reapi     @vzn/vx#test
- ⏺︎                 run     miss                                0 local        @vzn/vx#docker
+  Plan 2    status  cache      usual    time   cpu    mem outputs  blocks worker         task
+            run     miss       ~4.2s       —     —      —       —       0 vx/reapi       @vzn/vx#test
+            run     miss           —       —     —      —       —       0 local          @vzn/vx#docker
 
   tasks     2 planned · 2 would run
 ```

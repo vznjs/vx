@@ -107,22 +107,22 @@ describe('vx watch loop (e2e)', () => {
         .replace(/ +\d+ms/g, ' Nms')
         .replace(/ +\d+%/g, ' C')
         .replace(/ +(?:\u2014|[\d.]+[KMG]?B)(?= +\d+B )/g, ' M')
-        .replace(/ +\u2014 success/g, ' U success'),
+        .replace(/miss +\u2014 /g, 'miss U '),
     ).toBe(
       [
-        ' ⏺︎ Nms U success miss C M' +
+        '            success miss U Nms C M' +
           ' '.repeat(6) +
           '3B' +
           ' '.repeat(7) +
-          '0 local        app#build',
+          '0 local          app#build',
         'watching 1 project · 1 task',
         '',
         'changed app src/b.txt (+1 more)',
-        ' ⏺︎ Nms D success miss C M' +
+        '            success miss D Nms C M' +
           ' '.repeat(6) +
           '6B' +
           ' '.repeat(7) +
-          '0 local        app#build',
+          '0 local          app#build',
         '',
       ].join('\n'),
     )
@@ -149,22 +149,22 @@ describe('vx watch loop (e2e)', () => {
         .replace(/ +\d+ms/g, ' Nms')
         .replace(/ +\d+%/g, ' C')
         .replace(/ +(?:\u2014|[\d.]+[KMG]?B)(?= +\d+B )/g, ' M')
-        .replace(/ +\u2014 success/g, ' U success'),
+        .replace(/miss +\u2014 /g, 'miss U '),
     ).toBe(
       [
-        ' ⏺︎ Nms U success miss C M' +
+        '            success miss U Nms C M' +
           ' '.repeat(6) +
           '3B' +
           ' '.repeat(7) +
-          '0 local        app#build',
+          '0 local          app#build',
         'watching 1 project · 1 task',
         '',
         'changed app src/a.txt',
-        ' ⏺︎ Nms D success miss C M' +
+        '            success miss D Nms C M' +
           ' '.repeat(6) +
           '3B' +
           ' '.repeat(7) +
-          '0 local        app#build',
+          '0 local          app#build',
         '',
         'changed app src/a.txt',
         ' 1 task cached, nothing ran',

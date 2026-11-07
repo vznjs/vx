@@ -378,7 +378,7 @@ describe('the flaky-tasks post shows the rows a run prints', () => {
   it('its sample is the two rows of the findings it describes', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'flaky-tasks.md'), 'utf8')
     // eslint-disable-next-line no-control-regex
-    const painted = /```ansi\n( \x1b\[[^\n]*◼[\s\S]*?)\n```/.exec(page)![1]!
+    const painted = /```ansi\n( +\x1b\[[^\n]*failed[\s\S]*?)\n```/.exec(page)![1]!
     expect(painted).toContain('\x1b[')
     // eslint-disable-next-line no-control-regex
     const sample = painted.replace(/\x1b\[[0-9;]*m/g, '')
@@ -1404,72 +1404,31 @@ describe('the tasks guide states which wildcards dependsOn takes', () => {
   })
 })
 
-// The glyph set is `glyphShape` in framed-output.ts plus the `▸` a pinned
-// persistent row carries. Two pages and the module's own docblock listed a
-// seventh, `⦿ running`, which the renderer has never printed: a live worker
-// row leads with its ticking elapsed time and carries NO glyph, as
-// status-line.ts says in the same breath (item 359, 2026-09-19). Item 302
-// struck one glyph a docblock invented and never grepped the class; this is
-// the grep, over the three places that enumerate the set.
-describe('the documented glyph set is the set the renderer prints', () => {
-  const REPORT = path.resolve(import.meta.dir, '..', 'src', 'report')
-  /** Characters in the grid's glyph ranges, from any text. */
-  const glyphsIn = (text: string): Set<string> =>
-    new Set(text.match(/[\u23fa\u25ba\u25fc\u21e2\u21e3\u2298\u29bf\u25b8]/g) ?? [])
-
-  it('framed-output.ts emits six, and the docblock beside it names those six', () => {
-    const framed = readFileSync(path.join(REPORT, 'framed-output.ts'), 'utf8')
-    const decl = /function glyphShape\(o: TaskOutcome\): string \{([\s\S]*?)\n\}/.exec(framed)
-    expect(decl).not.toBeNull()
-    const emitted = new Set(
-      [...decl![1]!.matchAll(/\\u([0-9a-fA-F]{4})|(\u23fa)/g)].map((m) =>
-        m[1] !== undefined ? String.fromCodePoint(Number.parseInt(m[1], 16)) : (m[2] as string),
-      ),
-    )
-    emitted.delete('\ufe0e') // the text-presentation selector, not a glyph
-    expect([...emitted].sort()).toEqual([
-      '\u21e2',
-      '\u21e3',
-      '\u2298',
-      '\u23fa',
-      '\u25ba',
-      '\u25fc',
-    ])
-    const grid = framed.slice(framed.indexOf('// ── Reported-line grid'))
-    expect([...glyphsIn(grid.slice(0, grid.indexOf('export const TIME_COL')))].sort()).toEqual(
-      [...emitted].sort(),
-    )
+// The grid had a glyph column (`⏺ ► ⇢ ⇣ ◼ ⊘`, `▸` for a persistent row);
+// since 2026-11-06 a row leads with its status word, coloured by outcome,
+// at the Summary's value column. No page may still tabulate the glyphs.
+describe('a grid row leads with its status word, and no page lists a glyph', () => {
+  const GLYPHS = /[\u23fa\u25ba\u25fc\u21e2\u21e3\u2298\u29bf]/
+  it('the rows print no glyph', () => {
+    const node = {
+      id: 'a#t',
+      projectName: 'a',
+      taskName: 't',
+      config: { exec: { command: 'noop' }, cache: true },
+    } as TaskNode
+    const ok = formatTaskExecutedLine(node, { node, status: 'success', exitCode: 0, durationMs: 5 })
+    const failed = formatFailureLine('a#t', 5)
+    for (const row of [ok, failed]) {
+      expect(row).toMatch(/^ {12}(success|failed) /)
+      expect(row).not.toMatch(GLYPHS)
+    }
   })
 
-  it('cli.md tabulates those six plus the persistent mark, and no other', () => {
+  it('cli.md and execution.md hold no glyph legend', () => {
     const cli = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'cli.md'), 'utf8')
-    const start = cli.indexOf('| Glyph | Cache axis')
-    expect(start).toBeGreaterThan(-1)
-    const table = cli.slice(start, cli.indexOf('\n\n', start))
-    expect([...glyphsIn(table)].sort()).toEqual([
-      '\u21e2',
-      '\u21e3',
-      '\u2298',
-      '\u23fa',
-      '\u25b8',
-      '\u25ba',
-      '\u25fc',
-    ])
-  })
-
-  it('execution.md lists the same set in prose', () => {
     const doc = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'execution.md'), 'utf8')
-    const start = doc.indexOf('**The glyph grid.**')
-    expect(start).toBeGreaterThan(-1)
-    expect([...glyphsIn(doc.slice(start, doc.indexOf('\n- **', start)))].sort()).toEqual([
-      '\u21e2',
-      '\u21e3',
-      '\u2298',
-      '\u23fa',
-      '\u25b8',
-      '\u25ba',
-      '\u25fc',
-    ])
+    expect(cli).not.toContain('| Glyph |')
+    expect(doc).not.toContain('**The glyph grid.**')
   })
 })
 describe('the what-vx-is post names every plugin hook', () => {

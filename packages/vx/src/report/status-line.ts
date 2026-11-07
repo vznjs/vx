@@ -6,7 +6,6 @@ import {
   formatExpected,
   formatTaskRow,
   paintIdParts,
-  withPathNote,
   type RowCells,
   unknownUsual,
 } from './framed-output.js'
@@ -92,7 +91,7 @@ function paintPinnedId(id: string, colors: ColorSupport): string {
 /**
  * Permanent one-liner logged the moment a task fails (owner design:
  * "log the failure and continue, full frames at the end"). On the grid:
- * red ◼ glyph + exec time + `failed` + `miss` + id. The exit code and
+ * `failed` in red + exec time + `miss` + id. The exit code and
  * output live in the framed block that replays at runEnd, not the line.
  */
 export function formatFailureLine(
@@ -103,7 +102,6 @@ export function formatFailureLine(
   cells: RowCells = {},
 ): string {
   return formatTaskRow(
-    paint('error', '\u25fc\uFE0E', colors),
     durationMs,
     'failed',
     'error',
@@ -114,9 +112,6 @@ export function formatFailureLine(
     cells,
   )
 }
-
-/** A running row's mark: the run's dot, yellow while the task is still going. */
-const RUNNING_DOT = (colors: ColorSupport): string => paint('warn', '\u23fa\uFE0E', colors)
 
 /** A step's cache column, dim as `no-cache` is. */
 const INTERNAL = 'internal'
@@ -133,7 +128,6 @@ export function formatStepLine(
   colors: ColorSupport = NO_COLOR,
 ): string {
   return formatTaskRow(
-    ok ? paint('ok', '\u23fa\uFE0E', colors) : paint('error', '\u25fc\uFE0E', colors),
     durationMs,
     ok ? 'success' : 'failed',
     ok ? 'ok' : 'error',
@@ -170,26 +164,18 @@ export function formatStatusRegion(
   }
   // The Running panel's rows; its box and header go round them below.
   const lines: string[] = []
-  // Persistent (dev-server) rows: ▸ glyph, no elapsed, `running`, no
+  // Persistent (dev-server) rows: `running`, no elapsed, no
   // cache state (it's still alive).
   for (const id of s.pinnedPersistent) {
     lines.push(
-      formatTaskRow(
-        paint('warn', '▸', colors),
-        null,
-        'running',
-        'warn',
-        '',
-        '',
-        paintPinnedId(id, colors),
-        colors,
-        { worker: 'local' },
-      ),
+      formatTaskRow(null, 'running', 'warn', '', '', paintPinnedId(id, colors), colors, {
+        worker: 'local',
+      }),
     )
   }
 
-  // Running rows: NO glyph — the live elapsed time leads (no spinner;
-  // the ticking time IS the motion), then `running`, the usual duration,
+  // Running rows: `running` in yellow, then the live elapsed time (no
+  // spinner; the ticking time IS the motion), the usual duration,
   // how many tasks wait on it, and the full id (never truncated — name is
   // the last column). The rows no task runs in hold the tasks planned
   // next, each nested under what it waits on. No blank rows pad the list
@@ -217,7 +203,6 @@ export function formatStatusRegion(
     if (s.stopping === true) {
       lines.push(
         formatTaskRow(
-          ' ',
           Math.max(0, s.nowMs - slot.startedMs),
           'aborting',
           'warn',
@@ -233,7 +218,6 @@ export function formatStatusRegion(
     const at = s.where?.(slot.id)
     const use = s.usage?.(slot.id)
     const row = formatTaskRow(
-      RUNNING_DOT(colors),
       Math.max(0, s.nowMs - slot.startedMs),
       'running',
       'warn',
@@ -246,13 +230,13 @@ export function formatStatusRegion(
         ...(use !== undefined ? { cpu: use.cores, memBytes: use.rssBytes } : {}),
         blocks: String(s.blockedBy?.get(slot.id) ?? 0),
         worker: at ?? 'local',
+        ...(s.critical === slot.id ? { critical: true } : {}),
       },
     )
-    lines.push(s.critical === slot.id ? withPathNote(row, colors) : row)
+    lines.push(row)
     for (const b of nested.get(slot.id) ?? []) {
       lines.push(
         formatTaskRow(
-          ' ',
           null,
           'blocked',
           '',
@@ -268,7 +252,6 @@ export function formatStatusRegion(
   for (const step of s.steps ?? []) {
     lines.push(
       formatTaskRow(
-        RUNNING_DOT(colors),
         Math.max(0, s.nowMs - step.startedMs),
         'running',
         'warn',

@@ -35,15 +35,15 @@ export function formatTaskBlock(
   links?: boolean, // the terminal opens OSC 8: a failed task's file paths link to the file
 ): string
 
-// ` ⇢ <time> success local <id>` — quiet cache hit
+// `success local … <id>` — quiet cache hit
 export function formatTaskHitLine(node, outcome, colors?, onPath?, blocks?): string
 
-// ` ⏺ <time> success miss <id>` — broad-mode executed task
+// `success miss … <id>` — broad-mode executed task
 export function formatTaskExecutedLine(node, outcome, colors?, onPath?, blocks?, usualMs?): string
 // ` flaky - failed N× before · N attempts`, dim — on a flaky task's row and
 // frame footer; '' when the run did not prove it flaky (`outcome.flaky`)
 export function flakyNote(outcome, colors?): string
-// ` ⊘ <blank> skipped <id> • blocked by <id>` (or `• needs linux-x64,
+// `skipped — … <id> • blocked by <id>` (or `• needs linux-x64,
 // this is darwin-arm64`, its `exec.platforms`) — a skip never ran
 export function formatTaskSkippedLine(
   node,
@@ -51,13 +51,13 @@ export function formatTaskSkippedLine(
   skip?: { blockedBy?; otherPlatform? },
   blocks?,
 ): string
-// ` ✗ <time> aborted <id>` — killed by a shutdown signal;
-// ` ◌ <blank> not run <id>` — the stop reached it before it ran
+// `aborted — … <time> … <id>` — killed by a shutdown signal;
+// `not run — … <id>` — the stop reached it before it ran
 export function formatTaskAbortedLine(node, outcome, colors?, blocks?): string
-// the grid they all share: `<glyph> <time> <usual> <status>
-// <cache> <cpu> <mem> <blocks> <worker> <id>`; a cell `cells` leaves out is blank, a null one `—` (unknown)
+// the grid they all share, no glyph: `<status> <cache> <usual> <time> <cpu> <mem>
+// <outputs> <blocks> <worker> <mark> <id>`, the status at column 12 in its outcome's colour;
+// every empty cell shows `—`, and the mark is a yellow `◆` on the critical path
 export function formatTaskRow(
-  glyph,
   ms,
   status,
   statusColor,
@@ -65,9 +65,9 @@ export function formatTaskRow(
   cacheColor,
   paintedId,
   colors?,
-  cells?: RowCells, // { usual?, cpu?, memBytes?, outputBytes?, blocks?, worker? }
+  cells?: RowCells, // { usual?, cpu?, memBytes?, outputBytes?, blocks?, worker?, critical? }
 ): string
-// the headers: `time ±usual status cache cpu mem outputs blocks worker task`,
+// the headers: `status cache ±usual time cpu mem outputs blocks worker task`,
 // the live list's `usual` where the results list has `±usual`
 export function formatListHeader(colors?): string
 // the results list under its header, as a Block: the run's Tasks panel body and `vx last`'s
@@ -75,13 +75,14 @@ export function taskList(rows: ((colors) => string)[]): ui.Block
 // a row history kept (`RecordedRow`: status, time, cpu, mem, outputs, blocks, placement),
 // drawn as the run drew it, `note` dim after the id, `±usual` against `usualMs` (history's now)
 export function formatRecordedRow(r: RecordedRow, colors?, note?, usualMs?): string
-// `--dry`'s list: the running list's header, a `PlannedRow` per task (glyph, words, usual, worker)
+// `--dry`'s list: a `PlannedRow` per task (words, usual, worker); its `head` (the running
+// header) rides the section's title line
 export function planList(rows: PlannedRow[]): ui.Block
 // a usual time: `~5.2s`, `~42s`, `~2m 05s`
 export function formatExpected(ms): string
 export function formatRunningHeader(colors?): string
-// the bold violet title over each list: `Finished`, `Running`
-// `±usual`: the distance from `usualMs`, `—` for null, blank for undefined
+// the grid's header, on the Tasks title line past the gutter
+// `±usual`: the distance from `usualMs`, `—` for null, blank for undefined (the row then shows `—`)
 export function usualCell(ms, usualMs, colors?): { text; painted }
 // the `usual` cell of a task history never timed
 export function unknownUsual(colors?): { text; painted }

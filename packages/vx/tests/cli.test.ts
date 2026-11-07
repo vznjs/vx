@@ -605,7 +605,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
 
     const code = await run(['run', '--all', 'hello', '--dry'])
     expect(code).toBe(0)
-    expect(stdout).toStartWith('─ Plan 1 ')
+    expect(stdout).toStartWith('  Plan 1 ')
     expect(stdout).toMatch(/ run +miss .* one#hello\n/)
     // The actual task would have echoed `hello-cli`; it must NOT run.
     expect(stdout).not.toContain('hello-cli')
@@ -1012,7 +1012,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     // invented a task with no command.
     expect(rows.map((r) => r.split(/\s+/)[0])).toEqual(['one#hello'])
     // Nothing prints below the footer (owner rule).
-    const footer = lines.findIndex((l) => l.startsWith('─ Summary '))
+    const footer = lines.findIndex((l) => l.startsWith('  Summary'))
     expect(header).toBeGreaterThan(-1)
     expect(footer).toBeGreaterThan(header)
   })
