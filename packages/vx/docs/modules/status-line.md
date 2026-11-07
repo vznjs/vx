@@ -51,7 +51,9 @@ when disabled (CI). When active:
   secret prompt on the terminal); the release draws the latest state.
 
 Off a TTY, `coalesce: true` holds writes and hands them to the stream
-once per turn of the event loop (`setImmediate`), in order; `settle()`
+once per turn of the event loop (`setImmediate`), or as soon as 64 KiB
+are held, in order (a warm run replays its hits in one turn, so the
+turn's end held every hit's log); `settle()`
 hands over what is held and writes straight through from then on. A
 warm 476-package run wrote each of its 952 task lines as its own
 syscall; coalesced, the warm run's wall went 184.0 → 167.8 ms (min of

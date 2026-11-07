@@ -142,7 +142,8 @@ export interface CacheEntry {
   outputDirRows?: OutputDirRow[]
   /**
    * The task's output log, always present (may be empty): both streams in
-   * the order the run printed them (`orchestrator/output-log.ts`).
+   * the order the run printed them (`orchestrator/output-log.ts`). A local
+   * entry's is a getter that reads it on each access: read it once.
    */
   stdout: string
   storedAt: string
