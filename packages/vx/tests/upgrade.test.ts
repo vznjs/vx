@@ -31,6 +31,7 @@ import {
   replaceBinary,
   startedVersion,
   upgradeArgv,
+  upgradeBinary,
   upgradeCmd,
   upgradeGlobal,
   upgradeManaged,
@@ -402,6 +403,17 @@ describe('a release from the npm registry', () => {
     expect((await upgradeAgainst(bare, TEST_KEY)).outcome).toBe(
       `vx upgrade: the npm registry published no SHA-512 integrity for ${PKG}@9.9.9 — nothing to verify the download against, so it is not attempted`,
     )
+  })
+
+  it('a tarball URL that is not https is refused, saying so', async () => {
+    // A mirror serving http:// heard "published no tarball", which it had.
+    const plain = manifest() as { dist: { tarball: string } }
+    plain.dist.tarball = TARBALL_URL.replace('https://', 'http://')
+    const r = await upgradeAgainst(plain, TEST_KEY)
+    expect(r.outcome).toBe(
+      `vx upgrade: the npm registry's tarball for ${PKG}@9.9.9 is not https (${plain.dist.tarball}) — nothing replaced; serve the mirror's tarballs over https`,
+    )
+    expect([r.asked, r.dest]).toEqual([[MANIFEST_URL], 'old'])
   })
 
   it('a signed release of another version than the one asked for is refused before the tarball', async () => {
@@ -1103,6 +1115,99 @@ describe('upgradeManaged: core and its plugins move together', () => {
     await expect(run()).rejects.toThrow(
       'vx upgrade: pnpm add @vzn/vx@9.9.9 @vzn/vx-otel@9.9.9 --save-dev failed (exit 1) — vx changed nothing itself; if pnpm refused a version published within its minimumReleaseAge, list @vzn/vx, @vzn/vx-otel under minimumReleaseAgeExclude in pnpm-workspace.yaml',
     )
+  })
+})
+
+describe('latest below the running vx is refused on every install path', () => {
+  // A package manager's install went down from 0.0.5 to a registry's latest
+  // 0.0.1 and exited 0; only the hand-installed binary refused it.
+  const BELOW =
+    "vx upgrade: the registry's latest @vzn/vx is 0.0.1, below this vx's 0.0.5 — nothing replaced; to go back, ask for it: vx upgrade v0.0.1"
+  /** A fake `manager` on PATH that records its argv; `body` runs with it. */
+  const withManager = async (
+    manager: string,
+    body: (root: string) => Promise<unknown>,
+  ): Promise<{ outcome: string; said: boolean }> => {
+    const root = mkdtempSync(path.join(dir, 'below-'))
+    const tools = path.join(root, 'tools')
+    await mkdir(tools)
+    await writeFile(path.join(tools, manager), `#!/bin/sh\necho "$*" > ${root}/said\n`)
+    await chmod(path.join(tools, manager), 0o755)
+    const PATH = process.env['PATH']
+    process.env['PATH'] = `${tools}:${PATH}`
+    try {
+      const outcome = await body(root).then(
+        () => 'ran',
+        (err: Error) => err.message,
+      )
+      return { outcome, said: existsSync(path.join(root, 'said')) }
+    } finally {
+      process.env['PATH'] = PATH
+    }
+  }
+  const projectInstall = (cwd: string) => ({
+    manager: 'npm' as const,
+    scope: 'project' as const,
+    cwd,
+    field: 'devDependencies' as const,
+  })
+
+  it("a project's package manager is not run", async () => {
+    expect(
+      await withManager('npm', (root) =>
+        upgradeManaged(projectInstall(root), '0.0.1', '0.0.5', '', true),
+      ),
+    ).toEqual({ outcome: BELOW, said: false })
+  })
+
+  it("a manager's global install is not run (vx upgrade -g)", async () => {
+    expect(
+      await withManager('npm', async (root) => {
+        const bin = path.join(root, 'lib/node_modules/@vzn/vx-linux-x64/vx')
+        await mkdir(path.dirname(bin), { recursive: true })
+        await writeFile(bin, '')
+        await upgradeOnlyGlobal(bin, '0.0.1', '0.0.5', true)
+      }),
+    ).toEqual({ outcome: BELOW, said: false })
+  })
+
+  it('a global binary installed by hand fetches nothing', async () => {
+    const bin = path.join(mkdtempSync(path.join(dir, 'below-')), 'vx')
+    await writeFile(bin, '#!/bin/sh\necho "vx 0.0.5"\n')
+    await chmod(bin, 0o755)
+    const r = await withFetch({}, async (asked) => ({
+      outcome: await upgradeGlobal(bin, '0.0.1', TEST_KEY, true).then(
+        () => 'ran',
+        (err: Error) => err.message,
+      ),
+      asked,
+    }))
+    expect(r).toEqual({ outcome: BELOW.replace(': ', `: global vx ${bin}: `), asked: [] })
+    expect(startedVersion(bin)).toBe('vx 0.0.5')
+  })
+
+  it('a version asked for by name goes back', async () => {
+    expect(
+      await withManager('npm', (root) =>
+        upgradeManaged(projectInstall(root), '0.0.1', '0.0.5', '', false),
+      ),
+    ).toEqual({ outcome: 'ran', said: true })
+  })
+})
+
+describe('upgradeBinary: the version it already is', () => {
+  it('says so before any network', async () => {
+    // `vx upgrade v<current>` fetched the release and verified its
+    // signature, then said "already at".
+    const sub = mkdtempSync(path.join(dir, 'same-'))
+    const dest = path.join(sub, 'vx')
+    await writeFile(dest, 'old')
+    const r = await withFetch({}, async (asked) => ({
+      moved: await upgradeBinary(dest, '0.0.5', '0.0.5', '', TEST_KEY),
+      asked,
+    }))
+    expect(r).toEqual({ moved: false, asked: [] })
+    expect(await readFile(dest, 'utf8')).toBe('old')
   })
 })
 

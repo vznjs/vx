@@ -2197,6 +2197,14 @@ refused first, not dropped), the way
 it was installed. Named `upgrade` per CLI convention (`bun upgrade`,
 `deno upgrade`). Refuses when running from source: use `git pull`.
 
+However vx was installed (by hand, a package manager's global or a
+project's dependency, the global a run moves too), `latest` below the
+running vx is refused before anything runs (`the registry's latest
+@vzn/vx is 0.3.0, below this vx's 0.4.0 — nothing replaced; to go back,
+ask for it: vx upgrade v0.3.0`); a `TAG` that names an older release
+goes back. A `TAG` that names the running version says `already at`
+without asking the registry.
+
 ### Usage
 
 ```
@@ -2251,10 +2259,11 @@ integrity npm signed … nothing replaced`. A release signed with a key
 id vx does not pin says so: `… is signed with an npm key this vx does
 not know (…) — if npm rotated its signing key, this vx's installer
 needs updating`. A release with no signature or no integrity is refused
-before the download, and so is a signed release of another version than
+before the download, and so is a tarball URL that is not https (`the npm
+registry's tarball for … is not https (…)`), and a signed release of another version than
 the `TAG` asked for (`the npm registry answered …@<TAG> with version …`):
 npm signs its old releases too. `latest` below the running vx is refused
-(`… is 0.3.0, below this vx's 0.4.0`); go back by naming the version.
+here too (above).
 Every refusal comes before anything is written.
 There is no fallback to GitHub's release digest: when the registry is
 unreachable, the upgrade is refused.
