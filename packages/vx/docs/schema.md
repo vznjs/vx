@@ -1010,7 +1010,9 @@ watch` re-runs it on an edit there.
   `['**/*', '!dist/**']`, or ignore `dist/`. An input entry the task's OWN outputs take
   back whole is always refused (X-55): vx removes outputs before a run,
   so a formatter declaring `src/**` as both would delete its sources. A
-  task that rewrites files in place declares no outputs.
+  task that rewrites files in place declares no outputs. The two fields
+  are compared across too, read from the root: `inputs.files: ['src/**']`
+  beside `outputs.workspaceFiles: ['app/src/**']` is the same refusal.
 - **Nested-project subtree** — files belonging to a project rooted
   inside this one's dir are excluded. No cross-project leakage via
   globs; the only cross-project relationship is `dependsOn` +
@@ -1228,6 +1230,11 @@ task". Defaults:
 - **Omitted** → all upstream contribute (`['*', '^*']`). Most common.
 - **`[]`** → fully decoupled; no upstream contributes.
 
+A list of **only negations** (`['!gen']`) is refused at load, as a
+negation-only `inputs.files` is: the selection starts empty and a `!`
+entry only subtracts, so it would fold no upstream hash. Write the
+positive entries it subtracts from (`['*', '^*', '!gen']`), or `[]`.
+
 An **exact** entry (`'codegen'`, `'^build'`, `'lib#build'`) must be
 named by some `dependsOn` entry of the same task — exactly, or by that
 entry's own `*` pattern (`dependsOn: ['build.*']` names
@@ -1244,7 +1251,11 @@ dependencies is refused (`['nope#build']`, or `['a#build']` for a
 project named `packages/a`, over `dependsOn: ['build']`; `['build']`
 over another project's `['b#build']`; `['^build']` over this project's
 own), unless a `^` entry or a pattern in `dependsOn` names its task,
-which a preset's project may legally lack. Patterns, wildcards and
+which a preset's project may legally lack. That exemption ends where the
+`pkg#task` is a transitive dependency: `a → b → c` with
+`dependsOn: ['^build']` and `tasks: ['c#build']` selects none of a's
+own dependencies (b's `build`), so it is refused too; name `^build`,
+which reaches c's through b's key. Patterns, wildcards and
 negations stay silent (a preset-spread pattern legitimately matches
 nothing in some projects); `[]` is the explicit way to decouple.
 
@@ -1461,7 +1472,14 @@ outputs: {
 
 **No boundary rule — deliberate escape hatch.** These globs may
 capture (and on restore, overwrite; on clean, wipe) files anywhere in
-the workspace, including inside other projects' dirs. Prefer
+the workspace, including inside other projects' dirs. Two limits: a
+glob that covers a project's `vx.config.*`, the task's own or another's
+(`packages/b/**`), is refused by `vx lock`, since the clean would
+delete that project's config and its untracked files (take the config
+back with `!packages/b/vx.config.ts` only if the rest is truly the
+task's); and a directory on a glob's literal head that is a symlink
+out of the workspace refuses the task, as one out of the project does
+for `files`. Prefer
 project-relative `files` whenever the task can write inside its own
 dir. Two tasks whose workspace outputs provably overlap (equal
 literals, or a literal a glob matches) are refused at graph build, like
@@ -2662,6 +2680,7 @@ a user meets most:
 | `inputs.workspaceRuntime must be an array of non-empty shell command strings with no NUL`                                             | Non-string / blank entry (whitespace alone runs as a no-op), or one holding a NUL.                                                                                                                                             |
 | `inputs.tasks must be an array of non-empty strings`                                                                                  | Non-string / empty entry, or a bare string.                                                                                                                                                                                    |
 | `inputs.tasks: "<name>" names no task in <task>.dependsOn`                                                                            | An exact entry no `dependsOn` entry of its form names.                                                                                                                                                                         |
+| `inputs.tasks: every entry is a negation, which selects NOTHING`                                                                      | Only `!` entries: a `!` entry only takes back what a positive entry selected.                                                                                                                                                  |
 | `invalid inputs.tasks "<entry>": <reason>`                                                                                            | A malformed entry (`^`, `a#`, `#x`, `!`, `^a#b`), refused at load with the parser's reason.                                                                                                                                    |
 | `cache must be true or false`                                                                                                         | `cache: {...}` or `'yes'`; caching is a switch.                                                                                                                                                                                |
 | `cache needs outputs — what the task produces, outputs: { files: [...] } ([] for none)`                                               | Forgot `outputs` on a cached task.                                                                                                                                                                                             |

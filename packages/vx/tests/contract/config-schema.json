@@ -3496,7 +3496,7 @@
         ]
       },
       "tasks.*.inputs.tasks": {
-        "ok": ["<absent>", "[]", "[\"!/x\"]", "[\"!x\"]", "[\"**\"]", "[\"A*\"]"],
+        "ok": ["<absent>", "[]", "[\"**\"]", "[\"A*\"]"],
         "$CONFIG: tasks.c.inputs.tasks must be an array of non-empty strings (Turbo/Nx micro-syntax: 'name', '^name', 'pkg#name', '*', '^*', '!name')": [
           "null",
           "true",
@@ -3525,8 +3525,14 @@
         "$CONFIG: tasks.c.inputs.tasks: \"/x\" names no task in tasks.c.dependsOn (none declared) — it would match nothing and fold no upstream hash, decoupling the task from its dependencies. `name` is this project's task, `^name` its dependencies', `pkg#name` one project's. Fix the name, or use [] to decouple on purpose.": [
           "[\"/x\"]"
         ],
+        "$CONFIG: tasks.c.inputs.tasks: every entry is a negation, which selects NOTHING (got [\"!/x\"]) — negations only subtract from the dependencies a positive entry already selected, so this task would fold no upstream hash and its cache key would stop tracking its dependencies. Add the positive entry you meant, e.g. ['*', '^*', \"!/x\"], or use [] to decouple on purpose.": [
+          "[\"!/x\"]"
+        ],
         "$CONFIG: tasks.c.inputs.tasks: \"../x\" names no task in tasks.c.dependsOn (none declared) — it would match nothing and fold no upstream hash, decoupling the task from its dependencies. `name` is this project's task, `^name` its dependencies', `pkg#name` one project's. Fix the name, or use [] to decouple on purpose.": [
           "[\"../x\"]"
+        ],
+        "$CONFIG: tasks.c.inputs.tasks: every entry is a negation, which selects NOTHING (got [\"!x\"]) — negations only subtract from the dependencies a positive entry already selected, so this task would fold no upstream hash and its cache key would stop tracking its dependencies. Add the positive entry you meant, e.g. ['*', '^*', \"!x\"], or use [] to decouple on purpose.": [
+          "[\"!x\"]"
         ],
         "$CONFIG: tasks.c.inputs.tasks: \"y\" names no task in tasks.c.dependsOn (none declared) — it would match nothing and fold no upstream hash, decoupling the task from its dependencies. `name` is this project's task, `^name` its dependencies', `pkg#name` one project's. Fix the name, or use [] to decouple on purpose.": [
           "[\"!!x\",\"y\"]"

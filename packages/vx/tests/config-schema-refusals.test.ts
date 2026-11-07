@@ -707,6 +707,25 @@ describe('glob and filter refusals the sweep found unheld (item 653)', () => {
     ).not.toBeNull()
   })
 
+  // The selection starts empty and a `!` entry only subtracts, so a list of
+  // negations folded no dependency at all and the key stopped moving with
+  // every upstream: a stale hit. Refused as inputs.files refuses the shape.
+  it('a negation-only inputs.tasks is refused; [] and a list with a positive entry load', () => {
+    for (const tasks of [['!gen'], ['!^build', '!lib#build']]) {
+      expect(cacheRefusal({ files: ['src/**'], tasks }, { files: [] }, ['^build', 'gen'])).toBe(
+        `${CFG}: tasks.t.inputs.tasks: every entry is a negation, which selects NOTHING ` +
+          `(got ${JSON.stringify(tasks)}) — negations only subtract from the dependencies a ` +
+          `positive entry already selected, so this task would fold no upstream hash and its ` +
+          `cache key would stop tracking its dependencies. Add the positive entry you meant, ` +
+          `e.g. ['*', '^*', ${JSON.stringify(tasks[0])}], or use [] to decouple on purpose.`,
+      )
+    }
+    expect(cacheRefusal({ files: ['src/**'], tasks: [] }, { files: [] }, ['gen'])).toBeNull()
+    expect(
+      cacheRefusal({ files: ['src/**'], tasks: ['*', '!gen'] }, { files: [] }, ['gen']),
+    ).toBeNull()
+  })
+
   // The selection picks among the task's own dependencies and a group's
   // members are not among them (schema.md: name the group, whose hash
   // rolls its members up), so a name reached only through a group would

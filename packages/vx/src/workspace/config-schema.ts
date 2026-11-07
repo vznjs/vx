@@ -924,6 +924,10 @@ export function validateProjectConfig(
             throw err
           }
         }
+        // The selection starts empty and a `!` entry only subtracts, so a
+        // list of negations folded no dependency and the key stopped moving
+        // with every upstream, as a negation-only inputs.files does.
+        assertTaskFiltersNotNegationOnly(taskFilters, `${where}.inputs.tasks`)
         assertFilterNamesDeclaredDeps(taskFilters, task.dependsOn, where)
       }
       for (const field of ['runtime', 'workspaceRuntime'] as const) {
@@ -1738,6 +1742,18 @@ function assertNotNegationOnly(globs: readonly string[], where: string): void {
       `negations only subtract from the files a positive glob already matched, so this task ` +
       `would fold zero file inputs and its cache key would stop tracking its source. ` +
       `Add the positive glob you meant, e.g. ['**/*', ${JSON.stringify(globs[0])}].`,
+  )
+}
+
+function assertTaskFiltersNotNegationOnly(filters: readonly string[], where: string): void {
+  if (filters.length === 0) return
+  if (filters.some((f) => !f.startsWith('!'))) return
+  throw new UserError(
+    `${where}: every entry is a negation, which selects NOTHING (got ${JSON.stringify(filters)}) — ` +
+      `negations only subtract from the dependencies a positive entry already selected, so this ` +
+      `task would fold no upstream hash and its cache key would stop tracking its dependencies. ` +
+      `Add the positive entry you meant, e.g. ['*', '^*', ${JSON.stringify(filters[0])}], ` +
+      `or use [] to decouple on purpose.`,
   )
 }
 

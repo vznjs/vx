@@ -2731,7 +2731,8 @@ its own output path, or make one depend on the other.
 #### `VX_E_INPUT_IS_OUTPUT`
 
 A task's `inputs` match outputs: its own (vx cleans outputs before
-a run, so it would delete its sources) or another task's (its key must
+a run, so it would delete its sources; `files` and `workspaceFiles` are
+compared across, read from the root) or another task's (its key must
 not read them; `dependsOn` already cascades). Exclude the outputs from
 the inputs with a `!` glob, as the message shows, or declare no outputs
 for a task that rewrites files in place.

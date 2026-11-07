@@ -41,6 +41,9 @@ export interface BuildGraphOptions {
   // By project name, every project rooted inside its dir; with `workspaceRoot`
   // and unlocked (`vx lock`), an `inputs.files` entry rooted in one is refused.
   nestedProjects?: ReadonlyMap<string, ReadonlyArray<{ name: string; dir: string }>>
+  // Every project's config (absolute); with `workspaceRoot`, an
+  // `outputs.workspaceFiles` glob covering one is refused (`vx lock`).
+  projectConfigs?: ReadonlyArray<{ name: string; configPath: string }>
 }
 
 // `locked`: a run, which never checks the rules; `vx lock` does.
@@ -280,7 +283,15 @@ reader with every other and built the graph in 15 s; 0.2 s now.
 Whatever the rules, `refuseSelfClean` refuses a task whose own outputs
 take back one of its input entries whole (`src/**` as both): vx removes
 a task's outputs before it runs, so it would delete its own sources. An
-in-place rewriter (a formatter) declares no outputs.
+in-place rewriter (a formatter) declares no outputs. With the workspace
+root known, `files` is rebased to it and compared with `workspaceFiles`
+both ways (`src/**` read, `app/src/**` written).
+
+Given every project's config path (`projectConfigs`, from `vx lock`),
+`refuseConfigOutputs` refuses an `outputs.workspaceFiles` glob that
+covers any project's `vx.config.*` unless an output `!` entry takes it
+back: the clean deleted another project's untracked files through
+`packages/b/**`. `outputs.files` refuses its own config at load.
 
 ## Definitions
 

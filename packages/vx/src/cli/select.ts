@@ -526,7 +526,11 @@ export async function resolveFilters(
     // app, and `--affected` a `...[<base>]` nobody typed.
     const hint =
       (await unlockedHint(root, parsed, unmatched)) ?? didYouMean(unmatched, projects, tags)
-    return { error: `no projects matched filter(s): ${unmatched.join(', ')}${hint}` }
+    // Quoted, as the warning below quotes it: bare, `apq...` and the hint's
+    // full stop read `apq....` in the flat message `--format json` carries.
+    return {
+      error: `no projects matched filter(s): ${unmatched.map((f) => `"${f}"`).join(', ')}${hint}`,
+    }
   }
   // Something matched, so the run proceeds; a pattern that matched nothing
   // alongside it is still worth a line — it is probably a typo.

@@ -224,6 +224,9 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
           dirs.map((dir) => ({ name: nameOf.get(dir)!, dir })),
         ]),
       ),
+      projectConfigs: out.all.flatMap((m) =>
+        m.configPath === null ? [] : [{ name: m.name, configPath: m.configPath }],
+      ),
     })
     if (hasHook(plugins, 'graph'))
       await applyGraphStage(plugins, nodes, {

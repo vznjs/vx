@@ -9,7 +9,11 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
-## vx-cache: type put's meta with replace
+## graph: refuse inputs.tasks lists that fold no upstream
+
+a negation-only inputs.tasks list, and an exact pkg#task entry naming only a transitive dependency, are now refused.
+
+## close affected, sandbox, summary and migrate bugs from the hunt
 
 VxCacheLayer.put's meta parameter carries replace.
 
