@@ -1019,6 +1019,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'run-history-row-cells',
     'run-id',
     'run-keys',
+    'run-keys-token',
     'run-lock',
     'run-lock-e2e',
     'run-lock-fs',
