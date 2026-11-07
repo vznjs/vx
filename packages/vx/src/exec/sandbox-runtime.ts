@@ -84,6 +84,7 @@ import {
   bindableReads,
   bindableWrites,
   buildCustomConfig,
+  type TaskSandboxConfig,
   linkedWriteBinds,
   readOnlyMasks,
   scratchWrites,
@@ -1890,9 +1891,7 @@ function asksUnixSockets(c: Pick<ResolvedSandboxConfig, 'unixSockets'>): boolean
  * walled. `[[]` is a class of one `[`; a lone `]` is plain text to it. A
  * `*` or `?` has no such spelling: `bindableReads` leaves its grant out.
  */
-function literalReadPaths(
-  config: Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2],
-): Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2] {
+function literalReadPaths(config: TaskSandboxConfig | undefined): TaskSandboxConfig | undefined {
   const fs = config?.filesystem
   if (fs === undefined) return config
   const escape = (paths: readonly string[]): string[] => paths.map((p) => p.replaceAll('[', '[[]'))
@@ -1929,9 +1928,9 @@ function literalReadPaths(
  * (`bindableReads`).
  */
 export function seatbeltBrackets(
-  config: Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2],
+  config: TaskSandboxConfig | undefined,
   names: readonly string[] = [],
-): Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2] {
+): TaskSandboxConfig | undefined {
   const fs = config?.filesystem
   if (fs === undefined) return config
   const literal = (p: string): string => p.replaceAll('\\[', '[[]').replaceAll('\\]', ']')
@@ -1984,7 +1983,7 @@ function seatbeltSpells(grant: string, kind: 'read' | 'write', name: boolean): b
 function wrapForTask(
   SandboxManager: SrtModule['SandboxManager'],
   command: string,
-  customConfig: Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2],
+  customConfig: TaskSandboxConfig | undefined,
   sockets: boolean,
   gitConfig: boolean,
 ): Promise<string> {

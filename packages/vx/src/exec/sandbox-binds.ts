@@ -18,6 +18,21 @@ import type { ResolvedSandboxConfig, SandboxedRunArgs } from './sandbox-runtime.
 import * as ui from '../ui/index.js'
 
 type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')
+type SrtTaskConfig = NonNullable<Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2]>
+
+/**
+ * SRT's per-task config as vx builds it: every path a plain string. SRT
+ * also takes `{ path, literal: true }`; vx spells literals itself.
+ */
+export type TaskSandboxConfig = Omit<SrtTaskConfig, 'filesystem'> & {
+  filesystem?: {
+    denyRead: string[]
+    allowRead?: string[]
+    allowWrite: string[]
+    denyWrite: string[]
+    allowGitConfig?: boolean
+  }
+}
 
 /**
  * Write grants as bwrap can actually honour them.
@@ -364,7 +379,7 @@ export function buildCustomConfig(
     allowRead: readonly string[]
     denyRead: readonly string[]
   },
-): Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2] {
+): TaskSandboxConfig {
   const c = args.config
   const denyRead = unique([...baselines.denyRead])
   const allowWrite = bindableWrites(unique([...c.allowWrite]))
@@ -375,7 +390,7 @@ export function buildCustomConfig(
     [...baselines.allowRead, ...c.allowRead].flatMap((r) => punchWritePaths(r, punched)),
   )
 
-  const custom: Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2] = {
+  const custom: TaskSandboxConfig = {
     filesystem: {
       denyRead,
       allowRead,

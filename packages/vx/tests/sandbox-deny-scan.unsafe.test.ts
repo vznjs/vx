@@ -145,7 +145,7 @@ describe.skipIf(!available || process.platform !== 'linux')('the scoped deny sca
         baseDenyRead: [],
         config: resolveSandboxConfig({ allow: { write: ['.'] } }, path.join(root, 'a')),
       })
-      const denyWrite = spy.mock.calls[0]![2]!.filesystem!.denyWrite!
+      const denyWrite = spy.mock.calls[0]![2]!.filesystem!.denyWrite! as string[]
       expect([...denyWrite].sort()).toEqual(
         [
           path.join(root, 'a/.mcp.json'),
