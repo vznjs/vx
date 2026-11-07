@@ -400,6 +400,13 @@ export class LocalHistoryProvider implements LocalHistory {
     const out = new Map<string, number>()
     this.lackedBranchHistory = false
     if (wanted.size === 0) return out
+    // A store that has timed nothing (a cold cache, a first run) answers no
+    // tier: one row's probe, where asking every task of 8,002 was 20 ms of
+    // a cold run's schedule stage (2026-11-07).
+    if (this.db.query('SELECT 1 FROM task_durations LIMIT 1').get() === null) {
+      this.lackedBranchHistory = true
+      return out
+    }
     // Tiers, first answer wins: a WHERE over `task_durations`, its params,
     // and how many of the newest rows it reads.
     type Tier = { where: string; params: string[]; limit: number }

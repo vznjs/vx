@@ -140,6 +140,40 @@ it('held blob sizes are stored in OID order, the key index appended at its edge'
   cache.close()
 })
 
+// A JS comparator over a cold run's 40,000 sizes was 32 ms of its main
+// thread before the first task; the native string sort is 8 (2026-11-07).
+it('held blob sizes are ordered by the native sort, no JS comparator', () => {
+  const cache = open()
+  cache.holdBlobSizes()
+  cache.rememberBlobSizes(new Map(Array.from({ length: 600 }, (_, i) => [`oid${999 - i}`, i])))
+  const sorts = [Array.prototype, Object.getPrototypeOf(Uint32Array.prototype)] as Array<{
+    sort: (cmp?: unknown) => unknown
+  }>
+  const saved = sorts.map((p) => p.sort)
+  let comparators = 0
+  let natives = 0
+  sorts.forEach((p, i) => {
+    p.sort = function (this: unknown, cmp?: unknown) {
+      if (cmp === undefined) natives++
+      else comparators++
+      return saved[i]!.call(this, cmp)
+    }
+  })
+  try {
+    cache.storeHeldBlobSizes()
+  } finally {
+    sorts.forEach((p, i) => (p.sort = saved[i]!))
+  }
+  expect({ comparators, natives }).toEqual({ comparators: 0, natives: 1 })
+  cache.close()
+  expect(open().knownBlobSizes(['oid400', 'oid999'])).toEqual(
+    new Map([
+      ['oid400', 599],
+      ['oid999', 0],
+    ]),
+  )
+})
+
 it('an empty memo answers no size', () => {
   const cache = open()
   expect(cache.knownBlobSizes(['a', 'b'])).toEqual(new Map())

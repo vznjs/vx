@@ -95,7 +95,7 @@ import { applyGraphStage } from './graph-stage.js'
 import { keyExcludedDependencies } from './excluded-keys.js'
 import { FingerprintWatch } from './fingerprint-watch.js'
 import type { VxPlugin } from './plugin.js'
-import { memoGraph, type GraphMemo } from './graph-memo.js'
+import { graphCounts, memoGraph, type GraphMemo } from './graph-memo.js'
 import { askIgnoredOutputs, gatedOutputs } from './stable-keys.js'
 import { cacheRefs, currentBranch, resolveCacheScope } from './run-context.js'
 import { createHashCache, type HashCache } from './task-hash.js'
@@ -209,6 +209,12 @@ export interface PreparedRun {
    */
   hashCache: HashCache
   /**
+   * Each task's count of the tasks downstream of it (`graphCounts`), when
+   * nothing after the graph build can edit `nodes`: counted while git's
+   * blob-size check runs, so `run` reads it instead of counting.
+   */
+  dependents?: ReadonlyMap<string, number>
+  /**
    * Reason `nodes` is empty. `null` when the prepared run is ready to
    * execute. Either:
    *   - `'no-tasks-declared'` — `requested.length === 0` after the
@@ -245,11 +251,14 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
  * `prepareRun`, with `beforeOpen` run once the workspace root is known and
  * before the cache opens: a run takes its lock there (run.ts), so it never
  * holds the store while it waits for a `vx cache clean` that holds the lock.
+ * `countDependents`: a run's, which schedules by them (`PreparedRun.dependents`);
+ * a plan never reads them.
  */
 export async function prepareRunLocked(
   options: RunOptions,
   log: Logger,
   beforeOpen?: (workspaceRoot: string) => Promise<void>,
+  countDependents = false,
 ): Promise<PreparedRun> {
   beginRun()
   mark('startup')
@@ -807,7 +816,7 @@ export async function prepareRunLocked(
     const settleIgnored = askIgnoredOutputs(gatedOutputs(nodes, workspaceRoot), workspaceRoot)
     const enumeration = await enumerating
     localCache.holdBlobSizes()
-    await applyGitEnumeration(
+    const applied = applyGitEnumeration(
       enumeration,
       workspaceRoot,
       projectDirs,
@@ -815,6 +824,19 @@ export async function prepareRunLocked(
       usesWorkspaceInputs,
       localCache,
     )
+    // The dependents count while the blob-size check's `cat-file` runs: the
+    // thread waited ~80 ms on it in a cold 8,002-task run, and counting
+    // after it, before the first task, took 40 ms (2026-11-07). Only when
+    // nothing below edits the nodes: a graph or key hook, or
+    // `--exclude-dependencies`.
+    const excluding =
+      options.excludeDependencies !== undefined &&
+      (options.excludeDependencies === 'all' || options.excludeDependencies.length > 0)
+    const dependents =
+      !countDependents || (hasGraphHook && !hooksFirst) || hasHook(plugins, 'key') || excluding
+        ? undefined
+        : graphCounts(nodes, hashCache.folds, hashCache.graph)
+    await applied
     await settleIgnored(gitFilesCache)
     mark('git enumeration')
     if (hasGraphHook && !hooksFirst) await graphStage()
@@ -926,6 +948,7 @@ export async function prepareRunLocked(
       nestedDirsByProject,
       gitFilesCache,
       hashCache,
+      ...(dependents !== undefined ? { dependents } : {}),
       workspaceProjectCount: projectMetas.length,
       empty: nodes.size === 0 ? 'empty-graph' : null,
     }

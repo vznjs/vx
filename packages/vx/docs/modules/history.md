@@ -111,7 +111,9 @@ crowd of the run it learned from. An import (`importTimings`, by
 `@vzn/vx-history` from its history server) is rows tagged `remote` with
 the commit, unique per (commit, task), so a repeat import from any worktree
 adds nothing; a store with no import pays one probe of that partial
-index, never a query per task. `resourcesFor` gives a task with no run
+index, never a query per task, and a store with no timing at all (a
+cold cache, a first run) one probe of the table, no tier (20 ms of a
+cold 8,002-task schedule stage). `resourcesFor` gives a task with no run
 in its window the newest imported row's need, so a fresh machine packs
 by what the default branch measured. Each tier is one statement over every
 task still unanswered (`json_each`), an index probe per task inside
