@@ -36,8 +36,8 @@ export interface Answer {
  * named: neither says anything of the key.
  */
 export function outcomeOf(o: TaskOutcome, def: string): ServerOutcome | undefined {
-  if (o.node.config.cache === undefined || o.hash === undefined || o.hash === '') return undefined
-  if (o.blockedBy !== undefined) return undefined
+  if (o.node.config.cache !== true || o.hash === undefined || o.hash === '') return undefined
+  if (o.blockedBy !== undefined || o.taintedBy !== undefined) return undefined
   if (o.status === 'failed') return { hash: def, key: o.hash, outcome: 'fail' }
   if (o.status !== 'success') return undefined
   const flaky = (o.attempts ?? 1) > 1 || o.flaky !== undefined
