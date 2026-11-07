@@ -102,6 +102,35 @@ describe('vx lock and a secret in an evaluated config', () => {
     expect(r.err).toContain('a: tasks.up.exec.command holds $SIGNING_KEY\n')
   })
 
+  // The output masks a secret-named define's value whatever variable it was
+  // read from; the lock asked only process.env's own names, and wrote it.
+  it("refuses a secret-named define's value read from a variable of any name", async () => {
+    const r = await lock(
+      `export default { tasks: { up: { exec: {
+  command: 'up',
+  env: { define: { API_TOKEN: process.env.MY_CREDS, SECRET_KEY: process.env.API_KEY, NODE_AUTH_TOKEN: '\${NPM_TOKEN}' } },
+} } } }
+`,
+      { MY_CREDS: 'creds-value-789', API_KEY: 'apikey-value-456' },
+    )
+    expect([r.code, r.written]).toEqual([1, false])
+    // Each place once, though API_KEY is a secret by its own name too.
+    expect(r.err.split('\n').filter((l) => l.includes(' holds '))).toEqual([
+      '  a: tasks.up.exec.env.define.API_TOKEN holds $MY_CREDS',
+      '  a: tasks.up.exec.env.define.SECRET_KEY holds $API_KEY',
+    ])
+  })
+
+  // A literal define is the config's own text, committed already; npm's
+  // `\${NPM_TOKEN}` spelling is no secret at all.
+  it('locks a secret-named define written in the config (control)', async () => {
+    const r = await lock(
+      `export default { tasks: { up: { exec: { command: 'up', env: { define: { NODE_AUTH_TOKEN: '\${NPM_TOKEN}' } } } } } }\n`,
+      { MY_CREDS: 'creds-value-789' },
+    )
+    expect(r).toEqual({ code: 0, err: '', written: true })
+  })
+
   it('locks a command the shell expands (control)', async () => {
     const r = await lock(
       `export default { tasks: { deploy: { exec: { command: 'deploy --token $API_TOKEN', env: { passThrough: ['API_TOKEN'] } } } } }\n`,

@@ -229,8 +229,10 @@ nothing. `tests/sandbox-parent-env.unsafe.test.ts` prints the cost of one
 The value, of 6 characters or more, of a variable whose name holds
 `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD` or `CREDENTIAL` (not one
 ending `_FILE`, `_PATH` or `_DIR`, nor `GIT_CONFIG_KEY_<n>`), or that a
-task lists in `exec.env.secret`, and the password of a URL
-(`scheme://user:<password>@`) in any variable's value, is printed as `***` wherever vx shows, stores or
+task lists in `exec.env.secret`, the password of a URL
+(`scheme://user:<password>@`, split at the last `@` before the path as a
+URL parser splits it) in any variable's value, and the sandbox proxy's
+session token a networked task's env carries, is printed as `***` wherever vx shows, stores or
 exports it: task output, the stdout a hit replays, commands, an
 executor's error, telemetry,
 `vx show` (L-26). Values in the run history are digests under a per-store
@@ -241,8 +243,10 @@ local child gets, never `passThrough`; those values sit unmasked in the
 action's Command, which the remote stores in its CAS, as Bazel's
 `--action_env` does, so a secret a remote task needs is trusted to that
 remote. `vx lock` refuses to write a lock holding a secret value, or
-any piece of one the output masks (a URL's password, a key's line): the
-lock is committed (L-42).
+any piece of one the output masks (a URL's password, a key's line),
+including a secret-named `define` read from a variable of any name
+(`API_TOKEN: process.env.MY_CREDS`): the lock is committed (L-42). A
+define the config spells literally is its own committed text and locks.
 
 Masking covers the text vx shows and stores, not a task's outputs: they
 are cached and uploaded as the task wrote them, so a build that bakes a

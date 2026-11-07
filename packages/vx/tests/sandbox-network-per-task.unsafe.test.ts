@@ -34,6 +34,25 @@ describe.skipIf(!available)('a network grant', () => {
     ])
   })
 
+  // The runtime hands a networked task its proxy's session token in the
+  // env (CLOUDSDK_PROXY_PASSWORD, the proxy URLs' password); a task that
+  // printed its env put it in the terminal, the cached log and `vx last`.
+  it("masks the proxy's token in what the task prints", async () => {
+    await addProject(root, 'app', {
+      config: `export default { tasks: {
+        a: { exec: { command: 'echo "P=$CLOUDSDK_PROXY_PASSWORD U=$HTTPS_PROXY"', sandbox: { allow: { read: ['.'], network: ['a.example.com'] } } } },
+      } }\n`,
+    })
+    let out = ''
+    const r = await run({
+      cwd: root,
+      tasks: ['a'],
+      log: { ...quiet, taskStdout: (_n, c) => void (out += c) },
+    })
+    expect(r.outcomes[0]?.status).toBe('success')
+    expect(out).toMatch(/^P=\*\*\* U=http:\/\/[^:@\s]+:\*\*\*@localhost:\d+\n$/)
+  })
+
   it('reaches nothing from a task that lists no network', async () => {
     await addProject(root, 'app', {
       config: `export default { tasks: {

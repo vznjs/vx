@@ -48,6 +48,7 @@ import {
 import { isGroupTask, RestoreDemoted, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import {
   anyTaskGlob,
+  heldSecrets,
   isLiteralPattern,
   killGraceMs,
   MASKED,
@@ -56,6 +57,7 @@ import {
   printable,
   relPosix,
   secretMask,
+  type SecretMask,
   secretNamed,
   span,
   UserError,
@@ -889,7 +891,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         c.hash = MASKED + c.hash
   // The values of secret-named variables, masked in what the task prints
   // and what the cache keeps of it (L-11); null when there are none.
-  const secrets = secretMask([process.env, env, step.env?.define], step.env?.secret)
+  // Built again once the sandbox starts: its proxy token joins them.
+  const taskMask = (): SecretMask | null =>
+    secretMask([process.env, env, step.env?.define], step.env?.secret)
+  let secrets = taskMask()
+  let maskHeld = heldSecrets()
   // A runtime probe's row is named by its command, which a TS config may
   // build from `process.env`: the run history stored it and `vx why`
   // printed it (L-11).
@@ -1273,8 +1279,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // the task saves, else only what a failure reports (`failedOutput`).
   let output: BoundedCapture | undefined
   // Masked again whole: the live stream lets a held piece go after a pause.
-  const storeMask = secrets ?? undefined
-  const storedOutput = (): string => encodeOutputLog(output?.chunks() ?? [], storeMask)
+  const storedOutput = (): string => encodeOutputLog(output?.chunks() ?? [], secrets ?? undefined)
   const failedAttempts: { endedAt: number; exitCode: number; timedOut?: true }[] = []
   // Each failed attempt's output, beside `failedAttempts`: kept for `vx last --log`.
   const attemptOutputs: string[] = []
@@ -1396,7 +1401,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       exitCode: effectiveExitCode,
       ...(result.timedOut === true ? { timedOut: true as const } : {}),
     })
-    attemptOutputs.push(output === undefined ? '' : failedOutputLog(output, true, storeMask))
+    attemptOutputs.push(
+      output === undefined ? '' : failedOutputLog(output, true, secrets ?? undefined),
+    )
     log.taskStderr(
       node,
       `${midLine ? '\n' : ''}vx: retrying ${node.id} (attempt ${attempt + 1}/${maxAttempts}) after ${result.timedOut === true ? 'a timeout' : `exit ${effectiveExitCode}`}\n`,
@@ -1404,6 +1411,16 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   }
 
   async function buildRequest(local: boolean): Promise<ExecuteRequest> {
+    // A remote executor enforces it where it runs the task. Armed before
+    // the streams' mask: its start holds the proxy's token, which the
+    // task's env carries (`initSandbox`).
+    if (userSandbox && args.executor.remote !== true) {
+      await args.armSandbox?.()
+      if (maskHeld !== heldSecrets()) {
+        maskHeld = heldSecrets()
+        secrets = taskMask()
+      }
+    }
     const kept =
       willSave || args.keepRun !== undefined
         ? new BoundedCapture()
@@ -1466,11 +1483,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
           }),
     }
     // The signal last: it arms a plugin's `exec.timeout`, and the sandbox's arming
-    // below is vx's work, not the task's. Armed first, a 60 ms timeout
+    // above is vx's work, not the task's. Armed first, a 60 ms timeout
     // expired before the spawn and failed `echo` as timed out, unrun.
     if (!userSandbox) return { ...base, signal: requestSignal(local) }
-    // A remote executor enforces it where it runs the task.
-    if (args.executor.remote !== true) await args.armSandbox?.()
     const sb = await sandboxRequestFor(
       node,
       step.sandbox!,
@@ -1767,7 +1782,13 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     ...(saved ? { saved: true as const } : {}),
     ...(unsavedBytes !== undefined ? { outputBytes: unsavedBytes } : {}),
     ...(effectiveExitCode !== 0 && output !== undefined
-      ? { failedOutput: failedOutputLog(output, willSave || args.keepRun !== undefined, storeMask) }
+      ? {
+          failedOutput: failedOutputLog(
+            output,
+            willSave || args.keepRun !== undefined,
+            secrets ?? undefined,
+          ),
+        }
       : {}),
     ...(args.keepRun !== undefined &&
     (effectiveExitCode !== 0 ? args.keepRun.failures : !willSave) &&

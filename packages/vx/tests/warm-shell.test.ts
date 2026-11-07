@@ -1,9 +1,10 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, symlink } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { runCommand } from '../src/exec/runner.js'
 import * as spawnOffModule from '../src/exec/spawn-off.js'
+import { spareScript } from '../src/exec/warm-shell.js'
 
 const linux = process.platform === 'linux'
 
@@ -47,6 +48,84 @@ describe.skipIf(!linux)('a task runs in a shell started before it', () => {
       spy.mockRestore()
     }
   })
+
+  // sh sets these itself at start, whatever its env says (IFS, OPTIND,
+  // PPID) or keeps PWD only when it names the directory; the spare is
+  // already started, so exporting them changed what the command saw.
+  it('gives a name sh sets at its start the value a fresh shell gives it', async () => {
+    const probe =
+      'X=a:b; for w in $X; do echo "[$w]"; done; echo "$PWD $OPTIND $PPID"; env | grep -E "^(IFS|OPTIND|PPID|PWD)=" | sort'
+    const shellSet = { ...env, IFS: ':', PWD: '/etc', OPTIND: '5', PPID: '7' }
+    const warm = await runCommand({ command: probe, cwd, env: shellSet })
+    const fresh = await runCommand({ command: probe, cwd, env: { ...shellSet, 'A-B': '1' } })
+    expect(warm.stdout).toBe(fresh.stdout)
+    expect(warm.stdout).toStartWith('[a:b]\n')
+  })
+
+  // A fresh shell's PWD is the directory's physical path; `cd` alone kept
+  // the spelling it was given.
+  it('reads a directory reached through a link as a fresh shell does', async () => {
+    const link = `${cwd}-link`
+    await symlink(cwd, link)
+    try {
+      const warm = await runCommand({ command: 'pwd; echo "$PWD"', cwd: link, env })
+      const fresh = await runCommand({
+        command: 'pwd; echo "$PWD"',
+        cwd: link,
+        env: { ...env, 'A-B': '1' },
+      })
+      expect(warm.stdout).toBe(fresh.stdout)
+    } finally {
+      await rm(link, { force: true })
+    }
+  })
+
+  // The script's own lines came before the command, one per env name, so
+  // sh's "not found" named line 3 + that count: the same task printed a
+  // different line as its env grew. The builtin the spare runs it through
+  // still names itself (`eval:`): only an exec would drop it.
+  it("numbers the command's lines as a fresh shell does, whatever its env", async () => {
+    const many = { ...env, VX_A: '1', VX_B: '2', VX_C: '3' }
+    const warm = await runCommand({ command: 'true\nvx_no_such_cmd', cwd, env: many })
+    const fresh = await runCommand({
+      command: 'true\nvx_no_such_cmd',
+      cwd,
+      env: { ...many, 'A-B': '1' },
+    })
+    expect(fresh.stderr).toBe('sh: 2: vx_no_such_cmd: not found\n')
+    expect(warm.stderr).toBe('sh: 2: eval: vx_no_such_cmd: not found\n')
+  })
+
+  // A distro's sh may be bash, which counts SHLVL up and dies assigning
+  // its read-only names: the script must read as `sh -c` under either.
+  it.each(['dash', 'bash'].filter((s) => Bun.which(s) !== null))(
+    'runs a script %s reads as a fresh sh -c',
+    (shell) => {
+      const probe = 'echo "$SHLVL $SHELLOPTS $BASHOPTS $UID $EUID $PPID [$IFS] $PWD $OPTIND"'
+      const names = [
+        'SHLVL',
+        'SHELLOPTS',
+        'BASHOPTS',
+        'UID',
+        'EUID',
+        'PPID',
+        'IFS',
+        'PWD',
+        'OPTIND',
+      ]
+      for (const name of names) {
+        const taskEnv = { PATH: env.PATH, [name]: name === 'IFS' ? ':' : '7' }
+        const script = spareScript('/', taskEnv, probe)
+        // Undefined: the task spawns fresh, as `sh -c`.
+        if (script === undefined) continue
+        const run = (cmd: string, e: Record<string, string>): string => {
+          const r = Bun.spawnSync([Bun.which(shell)!, '-c', cmd], { argv0: 'sh', cwd: '/', env: e })
+          return r.stdout.toString() + r.stderr.toString()
+        }
+        expect(run(script, {})).toBe(run(probe, taskEnv))
+      }
+    },
+  )
 
   // A run's env holds `undefined` for a name it unsets; a spawn drops it.
   it('leaves a name the env holds as undefined unset, as a spawn does', async () => {
