@@ -153,7 +153,7 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   sees the file; `test.bun.unsafe`'s `UNSAFE_SHARD_COUNT` (10) shards
   run them, dealt by `--unsafe` from `tests/unsafe-shard-weights.json`.
   Mac workers take only the platform's files (`test.platform`, dealt
-  by `--platform`). The unsafe shards of both, `@vzn/vx-reapi#test` and
+  by `--platform`). The unsafe shards of both, `@vzn/vx-reapi#test.shard-*` and
   `@vzn/vx-reapi#test.live` (which dial service containers on the host's
   loopback, unreachable from a Linux sandbox's network namespace), its
   `services.cache` / `services.exec` (Docker), `@vzn/vx-dte-server#test.live`

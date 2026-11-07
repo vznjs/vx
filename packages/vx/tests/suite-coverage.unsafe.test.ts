@@ -121,7 +121,7 @@ describe('every test file is launched by a task', () => {
     }
     expect(launchers).toContain('vx#test.bun.shard-1')
     expect(launchers).toContain('vx#test.bun.unsafe.shard-1')
-    expect(launchers).toContain('vx-reapi#test')
+    expect(launchers).toContain('vx-reapi#test.shard-1')
     expect(verbose).toEqual([])
   })
 
