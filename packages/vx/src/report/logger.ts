@@ -1041,9 +1041,13 @@ export function defaultLogger(
         // the terminal where a frame would have: a task that traps Ctrl-C
         // and exits 0 is aborted since item 962, and its frame was dropped
         // with the count. A task that never started opened no frame.
+        // A list view prints a failure's output; a killed task's partial
+        // output is what tells where a run hung, so it prints too.
         const framed =
           !neverStarted(outcome) &&
           (view.mode === 'full' ||
+            view.mode === 'broad' ||
+            view.mode === 'errors-only' ||
             (view.mode === 'focused' && isPrimary(node)) ||
             (framesTerminal && holdsTerminal(node)))
         if (framed && streamsLive(node)) {
@@ -1051,6 +1055,23 @@ export function defaultLogger(
           return
         }
         if (framed && output.some((c) => c.text.length > 0)) {
+          // A list view treats it as a failure: the row now, the frame
+          // with the deferred failures above the summary.
+          if (view.mode === 'broad' || view.mode === 'errors-only') {
+            emitRow(formatTaskAbortedLine(node, outcome, colors, blocksOf(node.id)))
+            deferredFailures.push(
+              formatTaskBlock(
+                node,
+                outcome,
+                { output, ...dropped },
+                colors,
+                true,
+                forwardArgs,
+                links,
+              ),
+            )
+            return
+          }
           emitBlock(
             fenced(
               formatTaskBlock(
