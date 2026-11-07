@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: keep tree entries without sidecar or outputs/ level
+
+CACHE_VERSION is vx-cache-v52: every cached task misses once after upgrading.
+
 ## history: name a runs row's run by integer, not 36-char text
 
 the local cache index is schema v53; run history recorded before it is dropped on first open.

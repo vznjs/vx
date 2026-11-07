@@ -320,7 +320,7 @@ describe('a local cache artifact whose bytes are corrupt', () => {
       const quiet = (): Logger => logger({ status: [], complete: [], started: [] })
       const cold = await run({ cwd: root, tasks: ['build'], log: quiet() })
       const hash = cold.outcomes[0]!.hash!
-      await rm(path.join(root, '.vx', 'cache', `${hash}.tree`, 'outputs', 'dist', 'b.bin'))
+      await rm(path.join(root, '.vx', 'cache', `${hash}.tree`, 'dist', 'b.bin'))
       await rm(path.join(dir, 'dist'), { recursive: true, force: true })
 
       const seen: Seen = { status: [], complete: [], started: [] }
