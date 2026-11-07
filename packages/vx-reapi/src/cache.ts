@@ -36,7 +36,9 @@ export function actionDigestFor(vxKey: string): Digest {
  * without ever landing on the submitter's disk.
  */
 export function execDigestFor(vxKey: string): Digest {
-  const payload = Buffer.from(`vx-reapi-exec-v1\0${vxKey}`, 'utf8')
+  // v2 records keep stderr. A v1 record cannot tell "printed nothing" from
+  // "not kept", so it is never read: its key executes once more.
+  const payload = Buffer.from(`vx-reapi-exec-v2\0${vxKey}`, 'utf8')
   return { hash: createHash('sha256').update(payload).digest('hex'), size_bytes: payload.length }
 }
 
@@ -194,7 +196,7 @@ export class ReapiRemoteCache {
     }
     // The server normalised our inline bytes into CAS (bazel-remote does).
     // An absent digest arrives as `null` on this path (proto-loader's
-    // message default, as `this_readStream` in executor.ts records).
+    // message default, as `readStream` in executor.ts records).
     // The duration is metadata: a read of it that fails (retries spent, a
     // blob failing its digest) leaves it unknown, where it made core drop a
     // valid hit as a miss (F-21).

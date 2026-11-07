@@ -1009,14 +1009,14 @@ export class ReapiClient {
 
   /**
    * `GetActionResult`; `null` on NOT_FOUND — a miss is not an error.
-   * `inline` asks the server to return stdout and the named output files in
-   * the reply. The spec lets it decline (and requires it past the message
-   * limit), so a caller reads `stdout_raw` / `contents` when present and
-   * fetches otherwise.
+   * `inline` asks the server to return the streams it names and the named
+   * output files in the reply. The spec lets it decline (and requires it
+   * past the message limit), so a caller reads `*_raw` / `contents` when
+   * present and fetches otherwise.
    */
   async getActionResult(
     action: Digest,
-    inline?: { stdout: boolean; files: readonly string[] },
+    inline?: { stdout: boolean; stderr?: boolean; files: readonly string[] },
   ): Promise<ActionResult | null> {
     try {
       const result = await this.unary<ActionResult>(
@@ -1027,7 +1027,11 @@ export class ReapiClient {
           action_digest: action,
           ...(inline === undefined
             ? {}
-            : { inline_stdout: inline.stdout, inline_output_files: inline.files }),
+            : {
+                inline_stdout: inline.stdout,
+                ...(inline.stderr === true ? { inline_stderr: true } : {}),
+                inline_output_files: inline.files,
+              }),
         },
         this.meta(),
         this.boundedMeta(),
