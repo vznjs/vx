@@ -300,7 +300,12 @@ test: { exec: { command: 'bun test', retries: 1 } }
   was already announced and preparing.
 - Declared outputs are re-cleaned before each retry, exactly like the
   first attempt — a failed attempt's partial outputs can't leak into
-  the next.
+  the next. An [additive](caching.md#additive-outputs-two-tasks-one-tree-an-edge-between-them)
+  task removes what the failed attempt added instead; one that changed
+  or removed a file it found saves nothing on its pass. A process a
+  failed attempt left running may still write into the next attempt's
+  outputs, so its pass is not saved, with the same warning as a
+  passing attempt's leftover.
 - Every attempt streams its output live. Between attempts vx emits one
   stderr line into the task's stream, ending in the reason:
   `vx: retrying <id> (attempt <k>/<total>) after exit <code>`, or

@@ -1070,6 +1070,10 @@ With the rule off, an edge fixes the order, and the dependant is
   upstream's intermediate) saves nothing: an artifact holds what a run
   wrote, never what it took away, and the upstream's restore puts the
   file back, so the dependant runs again on every warm run (X-32);
+- before a **retry**, what the failed attempt added is removed, so its
+  partial outputs are neither left nor saved; a failed attempt that
+  changed or removed a file it found saves nothing on the retry's pass,
+  since no retry puts that file back;
 - it **cleans by recorded rows**, never by glob, before a run (nothing:
   stale files of its own are its command's to clean, as under Turbo) and
   before a restore (its rows only, pruning emptied directories only
