@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { initSandbox, resetSandbox, resolveSandboxConfig, runSandboxed } from '../src/exec/index.js'
 import { deniedCalls } from '../src/exec/sandbox-violations.js'
 import { sandboxFix } from '../src/orchestrator/sandbox-fix.js'
+import { relPosix } from '../src/util/index.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 
 describe('deniedCalls › reads', () => {
@@ -166,7 +167,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
     // secret's bytes, replayed after it changed; a write to a sibling
     // landed on the host unreported.
     const targets = (r: { violations: { target?: string }[] }): string[] =>
-      [...new Set(r.violations.map((v) => path.relative(path.join(dir, 'proj'), v.target!)))].sort()
+      [...new Set(r.violations.map((v) => relPosix(path.join(dir, 'proj'), v.target!)))].sort()
 
     it('a hard link of a sibling no grant covers is reported, and named for a read', async () => {
       const r = await run('ln -f secret.txt out.txt', ['out.txt'])
