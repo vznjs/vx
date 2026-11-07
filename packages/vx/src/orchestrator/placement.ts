@@ -2,8 +2,9 @@
 // executors, and the plan-mode view of it. Split from run.ts on 2026-09-10
 // (pure motion). A task is pinned to this machine when it is persistent,
 // depends on a persistent task no `servers` executor carries, is sandboxed, says `exec.remote: false`, or
-// folds a runtime probe into its key; an `exec.interactive` task goes to the
-// local floor directly, as only it can hand over this terminal;
+// folds a runtime probe into its key; a sandboxed task goes to no executor
+// that does not declare `sandbox`, here or remote; an `exec.interactive`
+// task goes to the local floor directly, as only it can hand over this terminal;
 // everything else asks the executors in declaration order, and the local
 // floor takes what nothing claimed. An `exclusive` executor lifts every
 // pin and leaves the floor nothing: a task that would land here refuses.
@@ -328,6 +329,7 @@ export function placeTasks(
       continue
     }
     const wants: readonly string[] | undefined = node.config.exec?.platforms
+    const sandboxed = node.config.exec?.sandbox !== undefined
     const routes = (e: TaskExecutor): boolean =>
       wants === undefined || e.platforms?.some((p) => wants.includes(p)) === true
     const executor = selectExecutor(
@@ -342,15 +344,18 @@ export function placeTasks(
       },
       executorLabel,
       (e) => pinsOf(e).has(node.id) || !routes(e),
+      (e) => sandboxed && e.sandbox !== true && e !== floor,
     )
     if (sole !== undefined && executor === floor) {
       refuse(
         node.id,
-        pinsOf(sole).has(node.id)
-          ? 'its key includes a runtime probe, which it does not check'
-          : routes(sole)
-            ? 'it declined the task'
-            : `it offers ${sole.platforms?.join(', ') ?? 'no platform'}, and exec.platforms asks for ${wants!.join(', ')}`,
+        sandboxed && sole.sandbox !== true
+          ? 'it does not enforce exec.sandbox'
+          : pinsOf(sole).has(node.id)
+            ? 'its key includes a runtime probe, which it does not check'
+            : routes(sole)
+              ? 'it declined the task'
+              : `it offers ${sole.platforms?.join(', ') ?? 'no platform'}, and exec.platforms asks for ${wants!.join(', ')}`,
       )
     }
     placements.executors.set(node.id, executor)

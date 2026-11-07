@@ -86,6 +86,9 @@ export function localFloor(sandboxes?: readonly SandboxConfig[]): LocalFloor
   declares `runtime` and checks it there; its dependants stay free, C-2). Pinned tasks never reach a remote
   executor;
   `selectExecutor` is told so and a remote executor declines. A
+  sandboxed task is offered to no executor that does not declare
+  `sandbox`, remote or not (`barred`): the local floor runs it in its
+  sandbox instead of a plugin running it with none. A
   persistent task itself, like a group, is not placed at all — it runs
   on this machine outside the executor list. An `exec.interactive` task
   goes to core's local executor without asking a plugin: only it can

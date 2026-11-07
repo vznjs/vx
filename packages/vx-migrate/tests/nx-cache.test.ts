@@ -150,6 +150,15 @@ describe('NxRemoteCache against the spec server', () => {
     expect(await (await c.get('aa11'))!.body.bytes()).toEqual(body) // immutable record kept
   })
 
+  // The spec's 409 keeps the held record: told the copy there is bad, a put
+  // that answered success had the run count it fixed (2026-11-07).
+  it('a put told replace that meets the 409 says it could not write over the copy', async () => {
+    const c = cache()
+    await c.put('cc33', new Blob(['bad']))
+    expect(await c.put('cc33', new Blob(['good']), { replace: true })).toBe(false)
+    expect(await c.put('dd44', new Blob(['new']), { replace: true })).toBeUndefined()
+  })
+
   // Core asks `has` only for a `--dry` prediction; no `get` follows it.
   // The kept response the next probe released held the last one's
   // connection until the deadline.

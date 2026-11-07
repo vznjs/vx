@@ -874,10 +874,17 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     this.absent.add(hash)
   }
 
-  async put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void | false> {
+  async put(
+    hash: string,
+    body: Blob,
+    meta: { durationMs: number; replace?: true },
+  ): Promise<void | false> {
     // Nothing sent, so no upload is counted.
     if (this.disabled || this.writesRefused) return false
-    if (!this.absent.has(hash) && !this.served.has(hash)) {
+    // `replace`: the copy there did not read back, maybe on another machine
+    // of the run (a vx-dte worker), so a HEAD's 200 is the bad copy. Turbo's
+    // PUT writes over a held key.
+    if (meta.replace !== true && !this.absent.has(hash) && !this.served.has(hash)) {
       // Part of the upload, so under its deadline. Any answer but 200 or 404
       // uploads: a lost store costs more. A server the HEAD cannot reach
       // fails the put, as the PUT would.

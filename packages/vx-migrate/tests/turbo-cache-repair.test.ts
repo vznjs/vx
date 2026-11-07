@@ -43,6 +43,17 @@ describe('turboCache() repairs an entry its own get could not use', () => {
     })
   }
 
+  // vx-dte: a worker read the bad copy, the orchestrator saves the good
+  // bytes. It never read the key, so its HEAD found it held and kept it,
+  // and the run counted the bad copy fixed (2026-11-07).
+  it('a put told replace goes over a key this process never read, asking nothing first', async () => {
+    const { sent, fetchImpl } = server()
+    const config = resolveTurboCacheConfig({ url: 'https://cache.example', token: 't' }, {})!
+    const c = new TurboRemoteCache(config, fetchImpl, tmpdir())
+    expect(await c.put('bb', new Blob(['good']), { durationMs: 1, replace: true })).toBeUndefined()
+    expect(sent).toEqual(['PUT /v8/artifacts/bb'])
+  })
+
   it('CONTROL: a key this process never read is asked first, and a held one is kept', async () => {
     const { sent, fetchImpl } = server()
     const config = resolveTurboCacheConfig({ url: 'https://cache.example', token: 't' }, {})!

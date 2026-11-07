@@ -285,7 +285,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
       // rejects (a wire down, a malformed result caught by
       // `assertExecuteResult`), the sweep in the catch is the only thing
       // that takes the file back, and nothing in the repo drove it: the
-      // combination needs a plugin executor AND a sandboxed task with a
+      // combination needs a sandboxing plugin executor AND a sandboxed task with a
       // literal grant. Left behind, the file is exactly the trap the whole
       // placeholder machinery exists to prevent — the task's own `mkdir`
       // says "File exists" on every later run, and a `dist/**` clean
@@ -305,6 +305,8 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
             `{ executor() {
                return {
                  name: 'thrower',
+                 // Only an executor that enforces the sandbox is offered a sandboxed task.
+                 sandbox: true,
                  async execute() { throw new Error('WIRE-DOWN') },
                }
              } }`,

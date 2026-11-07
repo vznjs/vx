@@ -292,9 +292,12 @@ export interface TaskExecutor {
   /** Runs the command somewhere else. Never offered a `pinnedLocal` task. */
   readonly remote?: boolean
   /**
-   * A `remote` executor that enforces `ExecuteRequest.sandbox` where it
-   * runs the command, as the local one does. It is offered sandboxed tasks
-   * and their dependants; the request's violations come back on the result.
+   * Enforces `ExecuteRequest.sandbox` where it runs the command, as the
+   * local one does; the request's violations come back on the result. Only
+   * such an executor is offered a task that declares `exec.sandbox`, here
+   * or remote: one that ran it unsandboxed passed a boundary it never
+   * checked and cached the output. A `remote` one is offered the
+   * dependants of a sandboxed task too.
    */
   readonly sandbox?: boolean
   /**
@@ -581,8 +584,8 @@ export function assertExecuteResult(
 
 /**
  * Place one task: the first executor, in declaration order, that may take
- * it — a `remote` executor is skipped for a `pinnedLocal` task, then
- * `accepts()` decides. Decided once per task before scheduling. The local
+ * it — a `remote` executor is skipped for a `pinnedLocal` task, any one
+ * `barred` names is skipped, then `accepts()` decides. Decided once per task before scheduling. The local
  * executor accepts everything, so with it declared the only throw is an
  * `accepts()` that threw: refused as `label` names that executor, where it
  * surfaced as a bare stack naming no plugin (item 1022).
@@ -593,10 +596,12 @@ export function selectExecutor(
   label: (executor: TaskExecutor) => string = (e) => `executor '${e.name}'`,
   /** `task.pinnedLocal` as `executor` sees it: one that enforces the sandbox or carries servers lifts some pins. */
   pinnedFor: (executor: TaskExecutor) => boolean = () => task.pinnedLocal,
+  /** Never offered the task: a sandboxed one is barred from an executor that does not enforce it. */
+  barred: (executor: TaskExecutor) => boolean = () => false,
 ): TaskExecutor {
   for (const executor of executors) {
     const pinned = pinnedFor(executor)
-    if (pinned && executor.remote === true) continue
+    if ((pinned && executor.remote === true) || barred(executor)) continue
     if (executor.accepts === undefined) return executor
     let taken: unknown
     try {

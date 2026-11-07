@@ -7,6 +7,8 @@ import { definePlugin, withForwardArgs, type TaskExecutor, type VxPlugin } from 
 export function shellExecutor(): VxPlugin {
   const executor: TaskExecutor = {
     name: 'shell',
+    // No `sandbox: true`: it ignores `req.sandbox`, so vx runs a task that
+    // declares `exec.sandbox` itself, inside one.
     async execute(req) {
       const started = Date.now()
       // A stop before the spawn is work not to start: an abort fires no
