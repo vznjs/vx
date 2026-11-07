@@ -139,7 +139,7 @@ function suggest(query: string, ids: readonly string[], invoked: boolean): strin
   // No near name: say where to look, or that there is nothing yet.
   // A run of only group tasks records no task row: "nothing has run" was
   // false there, and its advice re-ran the group to the same answer.
-  if (ids.length > 0) return '; `vx last --list` shows what has run'
+  if (ids.length > 0) return '; `vx last --stats` lists the tasks that ran'
   return invoked
     ? '; no recorded run executed a task (a group records none: ask about a task it depends on)'
     : `; nothing has run here yet (vx run ${query}, then vx why)`

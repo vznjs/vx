@@ -374,7 +374,7 @@ describe('parseWhyArgs', () => {
         expect((await vx(root, ['run', 'gen', '--all'])).code).toBe(0)
         const why = await vx(root, ['why', 'lib#gen'])
         expect(why.out).toContain(
-          'it declares no `inputs` either, so each run derives a new key and every task that depends on it misses',
+          'it declares no `inputs` either, so each run derives a new key and every task that depends on it misses; declare its `inputs` (and `outputs` with `cache: true` to cache it too)',
         )
         expect(why.out).not.toContain('folded by dependents only')
       } finally {
@@ -658,7 +658,7 @@ describe('vx why (e2e) — the exact lines', () => {
       expect(none.code).toBe(1)
       expect(err(none)).toBe(
         noticed(
-          'vx why: no recorded runs for "app#zzzzzzzz"; `vx last --list` shows what has run',
+          'vx why: no recorded runs for "app#zzzzzzzz"; `vx last --stats` lists the tasks that ran',
         ).trimEnd(),
       )
       const bare = await vx(root, ['why'])
