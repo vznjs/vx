@@ -139,9 +139,11 @@ The file is `{ "version": 1, "tasks": { "<task id>": <ms> } }`, keys
 sorted; an entry that is not a number of ms from 0 to 2^53 is dropped. A p50 recorded on this machine wins over it, and it wins over
 `assume`; like `assume`, it never feeds the workspace median. A task the
 run did not see keeps its time, one another writer put there while the
-run ran included. A file that is not one warns and is read as empty, one
-it cannot write warns and the run goes on; `--dry` writes
-nothing.
+run ran included. A run that executed nothing and restored only tasks
+the file already times leaves it as it was; an all-cached run writes a
+missing one. A file that is not one warns, is read as empty and is never
+written over; one it cannot write warns and the run goes on; `--dry`
+writes nothing.
 
 ## Reservations learned from history
 

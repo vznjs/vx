@@ -728,8 +728,8 @@ const LS_FILES_STAGE_RE = /^(?:([A-Za-z]) )?([0-7]{6}) ([0-9a-f]{40,64}) ([0-3])
  * Run `git ls-files -s --others --exclude-standard -z .` in `cwd`.
  * One spawn yields BOTH the file list (identical visibility to the
  * pre-v20 `--cached --others` form, verified empirically: same set
- * including staged-but-deleted files and per-stage conflict
- * duplicates) AND each tracked file's index OID — the heart of the
+ * including staged-but-deleted files; an unmerged path, listed there
+ * once per stage, is listed once) AND each tracked file's index OID — the heart of the
  * Turbo-parity "hashes come from git's index" fast path. Throws a
  * `UserError` when git is unavailable or `cwd` isn't a git work
  * tree; vx requires git. `-z` survives filenames with newlines /
@@ -954,6 +954,14 @@ function parseLsFilesOutput(
     const m = LS_FILES_STAGE_RE.exec(record)
     const filePath = m === null ? record : record.slice(m[0].length) // --others: bare path
     if (m === null && isInstalledPath(filePath)) continue
+    // An unmerged path prints once per stage (1, 2, 3), in a row. Listed
+    // each time, the key folded the file once per stage, so a conflict
+    // resolved on disk keyed apart from the same bytes once added. It
+    // carries no OID either way: its worktree bytes are what folds.
+    if (m !== null && m[4] !== '0' && files.length > 0 && files[files.length - 1] === filePath) {
+      if (m[2] === '160000') gitlinks.add(filePath)
+      continue
+    }
     files.push(filePath)
     if (undecodableRecords.size > 0 && undecodableRecords.has(record)) undecodable.push(filePath)
     if (m === null) continue

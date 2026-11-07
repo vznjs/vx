@@ -905,7 +905,10 @@ describe('pollWatcher', () => {
       await writeFile(path.join(dir, 'node_modules', 'pkg', 'index.js'), '2')
       await writeFile(path.join(dir, 'real.txt'), 'x')
       await settle(seen, 'real.txt')
-      expect(seen).toEqual(['real.txt'])
+      // A scan that lands between writeFile's create and its write sees
+      // real.txt twice (two stamps); the claim is only that node_modules
+      // is never walked.
+      expect(new Set(seen)).toEqual(new Set(['real.txt']))
     } finally {
       w.close()
       await rm(dir, { recursive: true, force: true })

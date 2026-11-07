@@ -8,8 +8,15 @@ import type { TaskResources } from '@vzn/vx'
 
 const VERSION = 1
 
-/** The file's durations; none when it is absent, and none, with a warning, when it is not one. */
-export function readTimings(file: string, warn: (m: string) => void): Record<string, number> {
+/**
+ * The file's durations; none when it is absent or unread (with a warning),
+ * and undefined, with a warning, when it is a file but not a timings file:
+ * not one to write over.
+ */
+export function readTimings(
+  file: string,
+  warn: (m: string) => void,
+): Record<string, number> | undefined {
   let text: string
   try {
     text = readFileSync(file, 'utf8')
@@ -35,7 +42,7 @@ export function readTimings(file: string, warn: (m: string) => void): Record<str
     warn(
       `[vx] vx-history: timings file ${file} ignored: not { "version": ${VERSION}, "tasks": { id: ms } }`,
     )
-    return {}
+    return undefined
   }
   const out: Record<string, number> = {}
   for (const [id, ms] of Object.entries(tasks)) {

@@ -424,7 +424,9 @@ export function currentHit(restore: RestoreHitArgs): (() => TaskOutcome) | undef
 function hitOutcome(restore: RestoreHitArgs, restored: boolean): TaskOutcome {
   const { args, hash, hit, cacheOpStart, taskStartNs } = restore
   const { node, log } = args
-  if (hit.stdout) {
+  // Read here, once: a local entry reads its log from the index on access.
+  const stored = hit.stdout
+  if (stored) {
     // An entry saved before masking, or by another machine, can hold a
     // secret-named variable's value (L-11). Asked only of a hit that prints.
     const secrets = secretMask(
@@ -432,7 +434,7 @@ function hitOutcome(restore: RestoreHitArgs, restored: boolean): TaskOutcome {
       node.config.exec?.env?.secret,
     )
     // The stored log holds both streams in the order the run printed them.
-    for (const c of maskStreams(decodeOutputLog(hit.stdout), secrets ?? undefined)) {
+    for (const c of maskStreams(decodeOutputLog(stored), secrets ?? undefined)) {
       if (c.err) log.taskStderr(node, c.text)
       else log.taskStdout(node, c.text)
     }

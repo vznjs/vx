@@ -10,9 +10,30 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { storedKeys } from './helpers/stored-artifact.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import { acquireRunLock, runLockPath } from '../src/orchestrator/run-lock.js'
+import { resolveStoreRoot } from '../src/workspace/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 30_000
+
+/**
+ * Whether another connection has the SQLite file open: the exclusive lock
+ * `holdStore` waits for, tried once.
+ */
+function openElsewhere(file: string): boolean {
+  const db = new Database(file)
+  try {
+    db.exec('PRAGMA busy_timeout = 0')
+    db.exec('PRAGMA locking_mode = EXCLUSIVE')
+    db.exec('BEGIN EXCLUSIVE')
+    db.exec('ROLLBACK')
+    return false
+  } catch (err) {
+    if ((err as { code?: string }).code === 'SQLITE_BUSY') return true
+    throw err
+  } finally {
+    db.close()
+  }
+}
 
 const SLOW = `
   export default {
@@ -226,6 +247,50 @@ describe('two runs on one workspace', () => {
         expect(await proc.exited).toBe(0)
         expect(JSON.parse(await out).bytesFreed).toBeGreaterThanOrEqual(3_000_000)
         expect(existsSync(cacheDir)).toBe(false)
+      } finally {
+        if (!released) await release()
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a run waiting for the lock holds neither the index nor the store open',
+    async () => {
+      // A run opened both, then waited for the lock; a clean took the lock,
+      // then waited for every process with the store open: each waited on
+      // the other for ever. A clean deleting the store under a run opening
+      // it crashed that run (SQLiteError: disk I/O error).
+      await addProject(root, 'app', { config: MANY, files: { 'src/index.js': 'export {}\n' } })
+      const git = gitIn(root)
+      git('add', '-A')
+      git('commit', '-q', '-m', 'init')
+      expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
+      // The gate keeps a fixture's whole cache in its index (VX_CACHE_DIR);
+      // a store, where there is one, is probed too.
+      const store = await resolveStoreRoot(root, null)
+      const files = [
+        path.join(root, '.vx', 'cache', 'cache.db'),
+        ...(store === null ? [] : [path.join(store, 'store.db')]),
+      ]
+      for (const file of files) expect(existsSync(file)).toBe(true)
+      const release = await acquireRunLock(root, { log: () => {} })
+      let released = false
+      try {
+        let heard = ''
+        let waiting!: () => void
+        const said = new Promise<void>((r) => (waiting = r))
+        const run = vx(root, ['run', 'build', '--all'], (chunk) => {
+          heard += chunk
+          if (heard.includes('waiting for another vx run')) waiting()
+        })
+        await Promise.race([said, run])
+        expect(heard).toContain(`waiting for another vx run (pid ${process.pid})`)
+        expect(files.filter(openElsewhere)).toEqual([])
+        await release()
+        released = true
+        const r = await run
+        expect(`${r.code}\n${r.err}`).toStartWith('0\n')
       } finally {
         if (!released) await release()
       }

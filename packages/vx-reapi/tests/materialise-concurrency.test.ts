@@ -20,7 +20,11 @@ const client = {
   batchReadBlobs: async () => new Map<string, Uint8Array>(),
   readBlob: async (d: { hash: string }) => {
     peak = Math.max(peak, ++inFlight)
-    await Bun.sleep(2)
+    // Held until all five are in flight: a fixed 2 ms let the first read
+    // end before a loaded CI host started the fifth (peak 4). Serial code
+    // still reads one at a time, each after the wait runs out.
+    const until = Date.now() + 500
+    while (inFlight < names.length && Date.now() < until) await Bun.sleep(1)
     inFlight--
     return have.get(d.hash) ?? null
   },

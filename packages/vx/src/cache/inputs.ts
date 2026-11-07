@@ -1379,20 +1379,13 @@ const SYNC_CLEAN_MAX = 128
  * `chmod 555 dist/ro`, which a hit restores too) gets owner write and
  * search for the remove and its mode back after, as a restore's write
  * into it does (archive.ts `reopen`): else that task could never run or
- * restore again until someone chmodded the tree by hand.
+ * restore again until someone chmodded the tree by hand. The prune after
+ * reopens the same way for the subdirectories it removes (`pruneEmptiedDirs`).
  */
 async function removeAll(all: readonly string[], root: string): Promise<string[]> {
   const files = insideRoot(all, root)
-  const reopened = new Map<string, number>()
-  const reopen = (dir: string): boolean => {
-    if (reopened.has(dir)) return true
-    const st = lstatSync(dir, { throwIfNoEntry: false })
-    if (st?.isDirectory() !== true || st.uid !== process.getuid?.()) return false
-    if ((st.mode & 0o300) === 0o300) return false
-    reopened.set(dir, st.mode & 0o7777)
-    chmodSync(dir, (st.mode & 0o7777) | 0o300)
-    return true
-  }
+  const reopened: Reopened = new Map()
+  const reopen = (dir: string): boolean => reopenDir(dir, reopened)
   const refused = (f: string, err: NodeJS.ErrnoException): UserError => {
     const rel = relPosix(root, f)
     return new UserError(
@@ -1433,12 +1426,30 @@ async function removeAll(all: readonly string[], root: string): Promise<string[]
     )
     return files
   } finally {
-    for (const [dir, mode] of reopened) {
-      try {
-        chmodSync(dir, mode)
-      } catch {
-        // gone since: nothing to give back
-      }
+    giveBack(reopened)
+  }
+}
+
+/** Directories given owner write and search for a remove, with the mode each had. */
+type Reopened = Map<string, number>
+
+/** Whether `dir` is now open to a remove: this user's, and its missing owner bits given. */
+function reopenDir(dir: string, reopened: Reopened): boolean {
+  if (reopened.has(dir)) return true
+  const st = lstatSync(dir, { throwIfNoEntry: false })
+  if (st?.isDirectory() !== true || st.uid !== process.getuid?.()) return false
+  if ((st.mode & 0o300) === 0o300) return false
+  reopened.set(dir, st.mode & 0o7777)
+  chmodSync(dir, (st.mode & 0o7777) | 0o300)
+  return true
+}
+
+function giveBack(reopened: Reopened): void {
+  for (const [dir, mode] of reopened) {
+    try {
+      chmodSync(dir, mode)
+    } catch {
+      // gone since (the prune removed it): nothing to give back
     }
   }
 }
@@ -1508,33 +1519,53 @@ async function pruneEmptiedDirs(
   // the memo is correct and 60 ms, because every child re-attempts the
   // shared parent. This is correct at 44 ms.
   let level = new Set([...removed.map((f) => path.dirname(f)), ...emptyDirs])
-  while (level.size > 0) {
-    const parents = new Set<string>()
-    const dirs = [...level].filter(
-      (dir) =>
-        dir !== rootResolved &&
-        dir.startsWith(rootResolved + path.sep) &&
-        (scope === undefined || inScope(dir, scope)) &&
-        keep?.has(dir) !== true,
-    )
-    const gone = (err: NodeJS.ErrnoException): boolean => err.code === 'ENOENT'
-    if (dirs.length <= SYNC_CLEAN_MAX) {
-      for (const dir of dirs) {
-        try {
-          rmdirSync(dir)
-          parents.add(path.dirname(dir))
-        } catch (err) {
-          if (gone(err as NodeJS.ErrnoException)) parents.add(path.dirname(dir))
-        }
-      }
-    } else {
-      await Promise.all(
-        dirs.map(async (dir) => {
-          if (await rmdir(dir).then(() => true, gone)) parents.add(path.dirname(dir))
-        }),
+  // A subdirectory of a read-only directory of this user's (`dist/x/s` under
+  // a `chmod 555 dist/x`) is removed as `removeAll` removes a file there.
+  const reopened: Reopened = new Map()
+  const gone = (err: NodeJS.ErrnoException): boolean => err.code === 'ENOENT'
+  const denied = (err: NodeJS.ErrnoException, dir: string): boolean =>
+    err.code === 'EACCES' && reopenDir(path.dirname(dir), reopened)
+  try {
+    while (level.size > 0) {
+      const parents = new Set<string>()
+      const dirs = [...level].filter(
+        (dir) =>
+          dir !== rootResolved &&
+          dir.startsWith(rootResolved + path.sep) &&
+          (scope === undefined || inScope(dir, scope)) &&
+          keep?.has(dir) !== true,
       )
+      if (dirs.length <= SYNC_CLEAN_MAX) {
+        for (const dir of dirs) {
+          try {
+            try {
+              rmdirSync(dir)
+            } catch (err) {
+              if (!denied(err as NodeJS.ErrnoException, dir)) throw err
+              rmdirSync(dir)
+            }
+            parents.add(path.dirname(dir))
+          } catch (err) {
+            if (gone(err as NodeJS.ErrnoException)) parents.add(path.dirname(dir))
+          }
+        }
+      } else {
+        await Promise.all(
+          dirs.map(async (dir) => {
+            const ok = await rmdir(dir)
+              .catch((err: NodeJS.ErrnoException) => {
+                if (!denied(err, dir)) throw err
+                return rmdir(dir)
+              })
+              .then(() => true, gone)
+            if (ok) parents.add(path.dirname(dir))
+          }),
+        )
+      }
+      level = parents
     }
-    level = parents
+  } finally {
+    giveBack(reopened)
   }
 }
 

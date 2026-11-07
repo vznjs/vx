@@ -172,6 +172,21 @@ describe('createOutputWriter', () => {
     expect(s.chunks).toEqual(['a\n', 'b\n', 'summary\n'])
   })
 
+  // A warm run replays its hits without yielding, so a turn of the event loop
+  // can carry every hit's log: 500 hits printing 1 MiB each were held at
+  // once, 2 GB of heap, before the turn ended.
+  it('holds at most 64 KiB in a turn: past it, the held writes go at once', () => {
+    const s = pipe()
+    const w = createOutputWriter(s, { coalesce: true })
+    const line = `${'x'.repeat(1023)}\n`
+    for (let i = 0; i < 63; i++) w.write(line)
+    expect(s.chunks).toEqual([])
+    w.write(line)
+    expect(s.chunks).toEqual([line.repeat(64)])
+    w.write('a\n')
+    expect(s.chunks.length).toBe(1)
+  })
+
   it('settle hands over what is held and writes straight through after it', () => {
     const s = pipe()
     const w = createOutputWriter(s, { coalesce: true })

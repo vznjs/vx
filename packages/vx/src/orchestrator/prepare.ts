@@ -238,6 +238,19 @@ export interface PreparedRun {
  * empty plan).
  */
 export async function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRun> {
+  return prepareRunLocked(options, log)
+}
+
+/**
+ * `prepareRun`, with `beforeOpen` run once the workspace root is known and
+ * before the cache opens: a run takes its lock there (run.ts), so it never
+ * holds the store while it waits for a `vx cache clean` that holds the lock.
+ */
+export async function prepareRunLocked(
+  options: RunOptions,
+  log: Logger,
+  beforeOpen?: (workspaceRoot: string) => Promise<void>,
+): Promise<PreparedRun> {
   beginRun()
   mark('startup')
   // A claimed root file is read once. A watch cycle is a new run and reads
@@ -364,13 +377,15 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     options.remoteReadOnlyByDefault === true &&
     !(options.cache === undefined && namesRemote(workspaceConfig?.cache?.policy))
   const wanted: CachePolicy = readOnly ? { ...asked, remoteWrite: false } : asked
+  const resolvedStore = await storeRoot
+  await beforeOpen?.(workspaceRoot)
   const localCache = new Cache(
     cacheDir,
     { read: wanted.localRead, write: wanted.localWrite },
     workspaceRoot,
     options.artifactCeiling,
     'open',
-    await storeRoot,
+    resolvedStore,
     {
       embeddings: (resolveSetting('cache.store.embeddings', workspaceConfig).value ??
         DEFAULT_STORE.embeddings) as number,

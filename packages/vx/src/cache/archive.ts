@@ -341,9 +341,18 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
             `${shown} is a symlink to an absolute path (${to}): vx restores a link as written, and an absolute one names this machine's checkout — make it relative, or take it back with a '!' entry`,
           )
         }
-        if (args.root === undefined || !inside(path.resolve(path.dirname(abs), to), args.root)) {
+        const refused =
+          args.root === undefined
+            ? 'out'
+            : linkRefused(path.resolve(path.dirname(abs), to), args.root)
+        if (refused === 'out') {
           throw new UserError(
             `${shown} is a symlink to ${to}, outside the workspace: vx restores a link as written, and a project's outputs stay in its workspace — emit a file there, or take it back with a '!' entry`,
+          )
+        }
+        if (refused === '.git') {
+          throw new UserError(
+            `${shown} is a symlink to ${to}, inside .git: vx never restores into Git's metadata — emit a file there, or take it back with a '!' entry`,
           )
         }
         return { name, link: to, abs, shown }
@@ -916,6 +925,18 @@ const inside = (p: string, root: string): boolean => {
   return p === r || p.startsWith(r + path.sep)
 }
 
+/**
+ * Where a link resolving to `at` lands against `bound`, if a restore may not
+ * write it: out of it, or into its `.git` (lexical: a write through a link
+ * is judged where it resolves, so an alias chain into .git gets no further
+ * than this link would). The save asks it too, or it stored a link every
+ * restore refused, an entry that never hit on any machine.
+ */
+function linkRefused(at: string, bound: string): 'out' | '.git' | undefined {
+  if (!inside(at, bound)) return 'out'
+  return writableUnder(at, path.resolve(bound)) ? undefined : '.git'
+}
+
 /** The usage worth carrying: each axis a finite non-negative number, or absent; nothing → undefined. */
 function usageOf(raw: unknown): ExecUsage | undefined {
   if (typeof raw !== 'object' || raw === null) return undefined
@@ -1043,7 +1064,8 @@ export async function extractArtifactStream(
       const target = path.join(dest.base, dest.rel)
       await x.assertContained(dest.base, target, name)
       const at = path.resolve(path.dirname(target), to)
-      if (!inside(at, bound)) {
+      const refused = linkRefused(at, bound)
+      if (refused === 'out') {
         throw new ArchiveSecurityError(`archive link ${name} points out of the workspace: ${to}`)
       }
       const via = throughLink(path.dirname(target), to, linked)
@@ -1052,9 +1074,7 @@ export async function extractArtifactStream(
           `archive link ${name} points through ${linked.get(via)}, another link it restores: ${to}`,
         )
       }
-      // Lexical: a write through a link is judged where it resolves, so an
-      // alias chain into .git gets no further than this link would.
-      if (!writableUnder(at, path.resolve(bound))) {
+      if (refused === '.git') {
         throw new ArchiveSecurityError(`archive link ${name} points into .git: ${to}`)
       }
       await x.stageLink(name, dest.base, target, to)

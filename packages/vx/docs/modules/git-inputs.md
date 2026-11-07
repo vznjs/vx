@@ -234,7 +234,10 @@ reads: a tracked-clean path carries a trusted OID and skips both the
 existence probe and the hash; a dirty or untracked path falls back to a
 content hash. The OID trust is pruned for merge-conflict stages,
 gitlinks, paths a filter converts, and paths flagged skip-worktree /
-assume-unchanged (`docs/caching.md` § Clean filters).
+assume-unchanged (`docs/caching.md` § Clean filters). An unmerged path,
+which `ls-files` prints once per stage, is listed once: listed per stage,
+its worktree bytes folded up to three times, so a conflict resolved on
+disk keyed apart from the same bytes once added.
 
 ## A name that is not UTF-8
 

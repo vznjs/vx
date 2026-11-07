@@ -1318,6 +1318,41 @@ it('says no worker started once a run that needed none is over', async () => {
   ])
 })
 
+// A task waited on a worker that never joined, and Ctrl-C ended the run:
+// the footer said no task needed one (2026-11-06).
+it('says a task waited on a worker that never joined, once the run is over', async () => {
+  const h = await harness(new Map([node('t1')]))
+  void h.o.execute(h.req('t1'))
+  await Bun.sleep(50)
+  await h.stop()
+  expect(h.o.footer().map(([k, line]) => [k, ui.inline(line, { enabled: false })])).toEqual([
+    ['workers', 'none joined: a task waited on one'],
+  ])
+})
+
+// The relay died mid-run: the run failed, and the footer read the worker
+// that had run its tasks as `not joined  the run ended first` (2026-11-06).
+it('says a worker the run lost with its relay was lost, with what it ran', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]))
+  try {
+    const a = await h.worker(1)
+    await Bun.sleep(50)
+    const t1 = h.o.execute(h.req('t1'))
+    expect(await a.batches()).toEqual([['t1']])
+    await a.finish('t1')
+    await t1
+    const t2 = h.o.execute(h.req('t2'))
+    expect(await a.batches()).toEqual([['t2']])
+    await h.served.stop()
+    expect(await t2.catch((e: Error) => e.message)).toStartWith('the relay is unreachable')
+    await h.o.close()
+    const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
+    expect(rows[0]).toMatch(/ lost +1 done · t1$/)
+  } finally {
+    await h.stop()
+  }
+}, 30_000)
+
 it('says a worker that never joined did not, once the run is over', async () => {
   const h = await harness(new Map([node('t1')]))
   h.o.spawned('small#1', { size: 'small', cpu: 1, memory: 1 })

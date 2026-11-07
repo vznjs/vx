@@ -927,7 +927,7 @@ other persistent task`), and a non-zero exit makes the run exit 1
 4. **vx's own steps** — what vx does around the tasks that the run
    waits on, before its first task starts or before it ends, as rows of
    their own below the worker rows: `vx:load` (configs and graph from
-   the lock), `vx:run-lock`, `<plugin>:setup`, `vx:keys` (keys and local
+   the lock; `vx:run-lock` inside it, before the cache opens), `<plugin>:setup`, `vx:keys` (keys and local
    probes), `<plugin>:schedule`, then after the graph `vx:uploads`,
    `vx:history`, `<plugin>:telemetry`, `<plugin>:teardown`,
    `vx:snapshots`, `vx:retention`, `vx:close` and `vx:sandbox`. A step
@@ -1782,7 +1782,7 @@ finish first (the run's lock; it says `[vx] waiting for another vx run
 evicts what that run is restoring. One started by a task of that run
 is refused instead: the run holds the lock until the task ends. A run
 in another checkout of the repository takes no lock of this one's but
-holds the shared store open from start to end: the prune waits for
+holds the shared store open until it ends: the prune waits for
 every process holding the store (`[vx] waiting for another vx process
 using the cache store <dir> to finish…`). A run it cannot see — another
 workspace sharing the `--cache-dir` — survives a prune anyway: an

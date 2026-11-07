@@ -348,7 +348,7 @@ export interface CacheEntry {
   outputFiles: string[] // project-relative POSIX paths
   outputRows?: OutputFileRow[] // the rows behind outputFiles, when the layer had them
   outputDirRows?: OutputDirRow[] // the directory short-circuit's rows, from getMany
-  stdout: string // the output log: both streams in order (output-log.ts)
+  stdout: string // the output log: both streams in order (output-log.ts); a local entry reads it on access
   storedAt: string // ISO timestamp
   source?: 'local' | 'remote' // (LayeredCache) which layer served the hit
   sizeBytes?: number // the artifact's compressed size, from the index
@@ -428,7 +428,7 @@ export interface FoldMemo {
 // index handle from `indexDb(cache)`, never from a `Cache` member.
 export function indexDb(cache: Cache): Database
 // Wait until no other connection has `<storeDir>/store.db` open (a run in
-// any checkout holds it start to end; WAL connections keep a shared lock),
+// any checkout holds it from its run lock to its end; WAL connections keep a shared lock),
 // then hold it alone until the release. Nothing to hold without the file.
 export function holdStore(storeDir: string, log: (line: string) => void): Promise<() => void>
 // The files a second connection writes a run's hits through; undefined
@@ -753,9 +753,13 @@ Reads via `get()` are non-blocking thanks to WAL.
   us.
 - Marks the hash touched; `accessed_at` (the LRU order `prune`'s
   `maxBytes` evicts by) is written in one batch at prune, stats or close.
-- Pure SQL: stdout from its `entry_stdout` row (one LEFT JOIN on the
-  entry; none for an empty one), `outputFiles` from the
-  `output_files` rows. The artifact is not opened — the caller decides
+- Pure SQL: `outputFiles` from the `output_files` rows. The log is
+  `CacheEntry.stdout`, a getter: a compressed log of up to 4 KiB comes
+  with the entry (one LEFT JOIN; none for an empty one) and is
+  decompressed on access; a larger one is read from its `entry_stdout`
+  row on access. A warm run probes every key in one batch and replays
+  the hits later, so each log is held only while its hit replays: 500
+  hits printing 1 MiB each held 3.4 GB RSS, now 0.2 GB. Read it once. The artifact is not opened — the caller decides
   when to call `restoreOutputs`.
 
 ## Run history & stats

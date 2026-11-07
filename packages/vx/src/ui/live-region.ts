@@ -75,14 +75,18 @@ export interface OutputWriterOptions {
   now?: () => number
   /**
    * Off a TTY, hold writes and hand them to the stream once per turn of
-   * the event loop until `settle()`. A warm 476-package run wrote each of
-   * its 952 task lines as its own syscall (item 753). Off by default: a
-   * caller reading its stream right after a write sees it.
+   * the event loop, or once 64 KiB are held, until `settle()`. A warm
+   * 476-package run wrote each of its 952 task lines as its own syscall
+   * (item 753). Off by default: a caller reading its stream right after a
+   * write sees it.
    */
   coalesce?: boolean
   /** Floor between two coalesced writes; 0 writes once per turn. */
   coalesceMs?: number
 }
+
+/** What `coalesce` holds before it writes without waiting for the turn's end. */
+const HELD_MAX_CHARS = 64 * 1024
 
 export function createOutputWriter(
   stream: StatusStream,
@@ -96,20 +100,25 @@ export function createOutputWriter(
   // The coalesced writes not yet handed over; null once settled or when
   // not coalescing.
   let held: string[] | null = !enabled && opts.coalesce === true ? [] : null
+  let heldChars = 0
   let flushQueued = false
   let flushTimer: ReturnType<typeof setTimeout> | null = null
   let lastFlush = -Infinity
+  const writeHeld = (): void => {
+    if (held === null || held.length === 0) return
+    const text = held.join('')
+    held.length = 0
+    heldChars = 0
+    lastFlush = now()
+    stream.write(text)
+  }
   const flushHeld = (): void => {
     flushQueued = false
     if (flushTimer !== null) {
       clearTimeout(flushTimer)
       flushTimer = null
     }
-    if (held === null || held.length === 0) return
-    const text = held.join('')
-    held.length = 0
-    lastFlush = now()
-    stream.write(text)
+    writeHeld()
   }
 
   let current: Region | null = null
@@ -290,6 +299,14 @@ export function createOutputWriter(
           return
         }
         held.push(chunk)
+        heldChars += chunk.length
+        // A warm run replays its hits without yielding to the event loop,
+        // so the turn's end came only after every hit's log: 500 hits
+        // printing 1 MiB each were held at once (2 GB of heap).
+        if (heldChars >= HELD_MAX_CHARS) {
+          writeHeld()
+          return
+        }
         if (!flushQueued) {
           flushQueued = true
           // At most one write per floor: a restore settles its hits over
