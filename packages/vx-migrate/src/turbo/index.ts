@@ -18,7 +18,7 @@ import { refuseUnknownOptions, UserError, type PluginOptionKinds } from '@vzn/vx
 import { type AdoptionRun, adoptionPlugin } from '../adoption-plugin.js'
 import type { AdoptionMapping } from '../mapping-cache.js'
 import { collectGaps } from '../plugin-gaps.js'
-import { gitIgnored, trackedKinds } from '../tracked-outputs.js'
+import { gitIgnored, gitIgnoredUnder, trackedKinds } from '../tracked-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
 import { onceReader, type ReadText, tscBuildInfo } from '../tsc-buildinfo.js'
 import type * as TurboMap from './turbo-map.js'
@@ -317,6 +317,7 @@ async function mapAll(
     ...(tracked === null ? {} : { tracked: trackedKinds(tracked) }),
     ownConfig: (rel) => configs.get(rel === '.' ? '' : rel) ?? null,
     ignored: (rels) => gitIgnored(root, rels),
+    ignoredUnder: (globs) => gitIgnoredUnder(root, globs),
     buildInfo: (rel, command) => tscBuildInfo(read, path.join(root, rel), command),
   })
   const byName = new Map<string, TurboMappedProject>()

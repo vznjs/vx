@@ -73,6 +73,47 @@ export async function gitIgnored(root: string, rels: readonly string[]): Promise
 }
 
 /**
+ * What git ignores under the fixed prefixes of the root-relative `globs`:
+ * each ignored file, and a directory ignored whole (or holding only
+ * ignored files) as one `dir/` entry (`--directory`: `dist/` is never
+ * walked). Entries under `node_modules` (the lockfile keys an install) or
+ * vx's own `.vx/` are left out. One spawn; empty outside a repo or
+ * without git.
+ */
+export async function gitIgnoredUnder(root: string, globs: readonly string[]): Promise<string[]> {
+  if (globs.length === 0) return []
+  const prefixes = [...new Set(globs.map((g) => literalPrefix(g) || '.'))].sort()
+  // A prefix under another adds nothing; `ls-files` takes no pathspec file.
+  const kept = prefixes.includes('.')
+    ? ['.']
+    : prefixes.filter((p, i) => !prefixes.slice(0, i).some((q) => p.startsWith(`${q}/`)))
+  try {
+    const p = Bun.spawn(
+      [
+        'git',
+        'ls-files',
+        '-z',
+        '--others',
+        '--ignored',
+        '--exclude-standard',
+        '--directory',
+        '--no-empty-directory',
+        '--',
+        ...kept,
+      ],
+      { cwd: root, stdout: 'pipe', stderr: 'ignore' },
+    )
+    const out = await new Response(p.stdout).text()
+    if ((await p.exited) !== 0) return []
+    return out
+      .split('\0')
+      .filter((f) => f !== '' && !f.startsWith('.vx/') && !f.split('/').includes('node_modules'))
+  } catch {
+    return []
+  }
+}
+
+/**
  * What a project's tracked files are: their extensions (lower case, no
  * dot), directory names at any depth, and top-level entry names.
  */

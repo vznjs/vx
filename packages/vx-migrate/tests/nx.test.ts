@@ -442,6 +442,41 @@ describe('nx()', () => {
     TIMEOUT,
   )
 
+  // A local plugin nx.json names shapes the graph from outside every
+  // project root, and so does a root tool config an inferring plugin
+  // reads: an edit to either kept the old snapshot until the next commit.
+  it(
+    'an edited local plugin, a file beside it, or a root tool config re-exports',
+    async () => {
+      await mkdir(path.join(root, 'tools'), { recursive: true })
+      await mkdir(path.join(root, 'plugins', 'obj'), { recursive: true })
+      await writeFile(path.join(root, 'tools', 'plugin.js'), 'module.exports = {}\n')
+      await writeFile(path.join(root, 'tools', 'helper.js'), '\n')
+      await writeFile(path.join(root, 'plugins', 'obj', 'index.js'), 'module.exports = {}\n')
+      await writeFile(path.join(root, 'jest.preset.js'), 'module.exports = {}\n')
+      await writeFile(
+        path.join(root, 'nx.json'),
+        JSON.stringify({ plugins: ['./tools/plugin.js', { plugin: './plugins/obj' }] }),
+      )
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      await planRun({ cwd: root, tasks: ['lint'], log: silent() })
+      expect(await nxCalls(root)).toBe(1)
+      const calls: number[] = []
+      for (const rel of [
+        'tools/plugin.js',
+        'tools/helper.js',
+        'plugins/obj/index.js',
+        'jest.preset.js',
+      ]) {
+        await appendFile(path.join(root, rel), '\n')
+        await planRun({ cwd: root, tasks: ['lint'], log: silent() })
+        calls.push(await nxCalls(root))
+      }
+      expect(calls).toEqual([2, 3, 4, 5])
+    },
+    TIMEOUT,
+  )
+
   it(
     'a touch alone, or a stray file at the root, does not re-export',
     async () => {

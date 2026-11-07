@@ -2582,7 +2582,7 @@ core (`src/cli/plugin-templates.ts`) and held equal by
 
 Mapping a repo's own config to vx is `@vzn/vx-migrate`, its own
 package, run before a workspace file exists (it writes one); `vx init`
-runs it in any repo with a `package.json` —
+runs it in a repo with a `turbo.json`, `turbo.jsonc` or `nx.json` —
 
 ```
 bunx @vzn/vx-migrate           # turbo.json, an Nx graph, vite-plus run.tasks, else package.json scripts → vx.config.ts (vx init hands it only Turbo and Nx)
