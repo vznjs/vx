@@ -169,6 +169,11 @@ export class OutputIndex {
     for (const [hash, list] of rows) this.held.set(hash, list)
   }
 
+  /** The probe's rows of `hash` when held: no read. */
+  heldRowsOf(hash: string): readonly OutputFileRow[] | undefined {
+    return this.held.get(hash)
+  }
+
   /** `hash`'s rows: the probe's when held, else read. Path, size, mode and mtime only. */
   rowsOf(hash: string): readonly OutputFileRow[] {
     return this.held.get(hash) ?? this.loadOutputFilesBatch([hash]).get(hash) ?? []

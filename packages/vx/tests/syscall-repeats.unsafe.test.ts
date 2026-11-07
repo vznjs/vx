@@ -15,7 +15,11 @@
 //     globs twice (the check, then the clean) and asked realpath about the
 //     missing output directory (X-161, X-163);
 //   - a hit stat'ed its artifact file to prove it was there, which an
-//     artifact inline in the index (v33) is by its row.
+//     artifact inline in the index (v33) is by its row;
+//   - a tree hit's restore asked about its tree three times, its project
+//     directory and the staging directory twice each, and the walk asked
+//     about a missing output directory the link check had just found
+//     absent (2026-11-07).
 //
 // Unsafe: strace ptraces its tracee, which a sandboxed shard cannot host.
 // Linux only — strace is Linux's. CI's Linux job installs strace for the
@@ -318,18 +322,12 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
         await import('$SRC/bin.ts')
         `,
       )
-      // The link check and the walk's absent-prefix probe, once each (the
-      // clean takes the walk's answer), then the extractor's containment
-      // probe, which an lstat answers and the staged tree reuses; the
-      // directory is built in `.vx/tmp/` and renamed in whole, so nothing
-      // else asks about it before the run-end snapshot.
-      expect(on(calls, path.join(proj, 'dist'))).toEqual([
-        'lstat',
-        'lstat',
-        'lstat',
-        'lstat',
-        'openat',
-      ])
+      // The link check, whose "absent" the walk takes (the clean takes the
+      // walk's answer), then the extractor's containment probe, which an
+      // lstat answers and the staged tree reuses; the directory is built in
+      // `.vx/tmp/` and renamed in whole, so nothing else asks about it
+      // before the run-end snapshot.
+      expect(on(calls, path.join(proj, 'dist'))).toEqual(['lstat', 'lstat', 'lstat', 'openat'])
     },
     TIMEOUT,
   )
@@ -380,6 +378,58 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
           on(calls, path.join(cacheDir, `${h}.tree`)),
         ]),
       ).toEqual([[], [], [], [], [], ['stat']])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a tree hit restored: its tree asked twice, its project and staging directories once each',
+    async () => {
+      const root = path.join(dir, 'tree-hit')
+      const cacheDir = path.join(root, '.vx', 'cache')
+      const proj = path.join(root, 'p')
+      const hash = '00000000000000e1'
+      await mkdir(path.join(proj, 'dist'), { recursive: true })
+      const seed = new Cache(cacheDir)
+      try {
+        // Incompressible and past INLINE_MAX: a tree.
+        await writeFile(
+          path.join(proj, 'dist', 'blob.bin'),
+          crypto.getRandomValues(new Uint8Array(48 * 1024)),
+        )
+        await seed.save({
+          hash,
+          projectDir: proj,
+          outputFiles: [path.join(proj, 'dist', 'blob.bin')],
+          entry: { taskId: 'p#build', command: 'c', durationMs: 1, stdout: '' },
+        })
+        expect(isInline(seed, hash)).toBe(false)
+      } finally {
+        seed.close()
+      }
+      await rm(path.join(proj, 'dist'), { recursive: true })
+      const calls = await trace(
+        dir,
+        `
+        import { Cache } from '$SRC/cache/index.js'
+        const cache = new Cache(${JSON.stringify(cacheDir)})
+        if ((await cache.getMany([${JSON.stringify(hash)}])).size !== 1) throw new Error('no hit')
+        // Twice: the staging directory is made by the first restore and
+        // only stat'ed by the next.
+        await cache.restoreOutputs(${JSON.stringify(hash)}, ${JSON.stringify(proj)}, ${JSON.stringify(root)})
+        await (await import('node:fs/promises')).rm(${JSON.stringify(path.join(proj, 'dist'))}, { recursive: true })
+        await cache.restoreOutputs(${JSON.stringify(hash)}, ${JSON.stringify(proj)}, ${JSON.stringify(root)})
+        cache.close()
+        `,
+      )
+      const tree = path.join(cacheDir, `${hash}.tree`)
+      const own = calls.find((c) => path.dirname(c.path) === path.join(root, '.vx', 'tmp'))
+      // The probe's stat, then per restore the lstat that finds it and the
+      // one after the copy that proves it was not swapped.
+      expect(on(calls, tree)).toEqual(['stat', 'lstat', 'lstat', 'lstat', 'lstat'])
+      expect(on(calls, proj)).toEqual(['stat', 'stat'])
+      // The first restore makes it and stats it; the second only stats it.
+      expect(on(calls, own?.path ?? '').filter((c) => c !== 'mkdir')).toEqual(['stat', 'stat'])
     },
     TIMEOUT,
   )

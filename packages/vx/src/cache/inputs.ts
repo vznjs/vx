@@ -868,7 +868,7 @@ async function scanOutputs(
   if (positive.length === 0) return { files: [] }
   const excludeGlobs = [...outputExcludes(positive, 'project'), ...asTrees(negative).map(globFor)]
   const trees = asTrees(positive)
-  refuseDirLinkedOut(args.projectDir, trees, 'project')
+  const absent = refuseDirLinkedOut(args.projectDir, trees, 'project')
   const scanned = [
     ...(await scanUnion(
       trees,
@@ -877,6 +877,7 @@ async function scanOutputs(
       inNestedProject(args.projectDir, args.nestedProjectDirs),
       emptyDirs,
       special,
+      absent,
     )),
   ]
   // Containment, enforced HERE and not only at the loader. `cleanOutputs`
@@ -917,7 +918,10 @@ function refuseDirLinkedOut(
   root: string,
   trees: readonly string[],
   scope: 'project' | 'workspace',
-): void {
+): Set<string> {
+  // The heads found absent: the scan that follows skips them without
+  // asking again (a restore after a clean asks of every one).
+  const absent = new Set<string>()
   let realRoot: string | undefined
   for (const tree of trees) {
     let at = root
@@ -931,7 +935,10 @@ function refuseDirLinkedOut(
       } catch {
         break
       }
-      if (st === undefined) break
+      if (st === undefined) {
+        absent.add(at)
+        break
+      }
       if (!st.isSymbolicLink()) continue
       let real: string
       try {
@@ -958,6 +965,7 @@ function refuseDirLinkedOut(
       }
     }
   }
+  return absent
 }
 
 /**
@@ -1620,9 +1628,17 @@ export async function resolveWorkspaceOutputs(
   if (positive.length === 0) return []
   const excludeGlobs = [...outputExcludes(positive, 'workspace'), ...asTrees(negative).map(globFor)]
   const trees = asTrees(positive)
-  refuseDirLinkedOut(args.workspaceRoot, trees, 'workspace')
+  const absent = refuseDirLinkedOut(args.workspaceRoot, trees, 'workspace')
   const scanned = [
-    ...(await scanUnion(trees, excludeGlobs, args.workspaceRoot, undefined, emptyDirs, special)),
+    ...(await scanUnion(
+      trees,
+      excludeGlobs,
+      args.workspaceRoot,
+      undefined,
+      emptyDirs,
+      special,
+      absent,
+    )),
   ]
   // Same containment as the project twin, anchored one level out. These globs
   // deliberately ignore PROJECT boundaries — that is the escape hatch — but
@@ -2617,6 +2633,7 @@ async function scanUnion(
   nested: (rel: string) => boolean = () => false,
   emptyDirs?: Set<string>,
   special?: Set<string>,
+  absent?: ReadonlySet<string>,
 ): Promise<Set<string>> {
   const matches = new Set<string>()
   const links: string[] = []
@@ -2657,7 +2674,7 @@ async function scanUnion(
     return matches
   }
   for (const pattern of patterns) {
-    if (absentPrefix(cwd, pattern)) continue
+    if (absentPrefix(cwd, pattern, absent)) continue
     const from = scanRoot(cwd, pattern)
     if (from === null) continue
     walked?.add(from === undefined ? cwd : from.dir)
@@ -2758,11 +2775,13 @@ function scanRoot(
  * cost ~58 µs where the lstat costs a few. Anything this cannot read
  * plainly (no prefix, an escape, an absolute path, a refused stat) scans.
  */
-function absentPrefix(cwd: string, pattern: string): boolean {
+function absentPrefix(cwd: string, pattern: string, known?: ReadonlySet<string>): boolean {
   const prefix = staticPrefix(pattern)
   if (prefix === '.' || prefix.includes('\\') || path.isAbsolute(prefix)) return false
+  const at = path.join(cwd, prefix)
+  if (known?.has(at) === true) return true
   try {
-    return lstatSync(path.join(cwd, prefix), { throwIfNoEntry: false }) === undefined
+    return lstatSync(at, { throwIfNoEntry: false }) === undefined
   } catch {
     return false
   }

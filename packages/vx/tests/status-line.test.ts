@@ -132,7 +132,7 @@ describe('createOutputWriter', () => {
   // hands over what is held before the summary prints below it.
   it('coalesces off a TTY: one write per turn of the event loop, in order', async () => {
     const s = pipe()
-    const w = createOutputWriter(s, { coalesce: true })
+    const w = createOutputWriter(s, { coalesce: true, coalesceMs: 0 })
     w.write('a\n')
     w.write('b\n')
     expect(s.chunks).toEqual([])
@@ -140,6 +140,36 @@ describe('createOutputWriter', () => {
     w.write('c\n')
     await new Promise((r) => setImmediate(r))
     expect(s.chunks).toEqual(['a\nb\n', 'c\n'])
+  })
+
+  // A restore settles its hits over hundreds of turns: a write per turn
+  // was ~100 ms of a 9,603-task restore's main thread on ext4 (2026-11-07).
+  it('coalesces off a TTY: a write inside the floor waits for it, then lands with the rest', async () => {
+    const s = pipe()
+    let t = 0
+    const w = createOutputWriter(s, { coalesce: true, coalesceMs: 20, now: () => t })
+    w.write('a\n')
+    await new Promise((r) => setImmediate(r))
+    expect(s.chunks).toEqual(['a\n'])
+    t = 5
+    w.write('b\n')
+    await new Promise((r) => setImmediate(r))
+    w.write('c\n')
+    await new Promise((r) => setImmediate(r))
+    expect(s.chunks).toEqual(['a\n'])
+    await new Promise((r) => setTimeout(r, 30))
+    expect(s.chunks).toEqual(['a\n', 'b\nc\n'])
+  })
+
+  it('settle inside the floor hands over what is held at once', async () => {
+    const s = pipe()
+    const w = createOutputWriter(s, { coalesce: true, coalesceMs: 60_000, now: () => 0 })
+    w.write('a\n')
+    await new Promise((r) => setImmediate(r))
+    w.write('b\n')
+    w.settle()
+    w.write('summary\n')
+    expect(s.chunks).toEqual(['a\n', 'b\n', 'summary\n'])
   })
 
   // A warm run replays its hits without yielding, so a turn of the event loop

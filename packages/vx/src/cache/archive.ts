@@ -2002,7 +2002,7 @@ const stagingMade = new Set<string>()
  */
 async function stagingDir(root: string): Promise<string> {
   const top = path.join(root, '.vx', STAGING)
-  const own = path.join(top, `${process.pid.toString(36)}-0`)
+  const own = ownStaging(root)
   if (stagingMade.has(own) && existsSync(own)) return own
   await mkdir(own, { recursive: true })
   // Ignored by git whatever `.vx/.gitignore` an older init committed.
@@ -2015,6 +2015,10 @@ async function stagingDir(root: string): Promise<string> {
   return own
 }
 
+function ownStaging(root: string): string {
+  return path.join(root, '.vx', STAGING, `${process.pid.toString(36)}-0`)
+}
+
 /**
  * Where a tree restore's copy-out stages: this process's directory under
  * `root`'s `.vx/tmp/`, its stats, and a fresh name in it per call of
@@ -2024,8 +2028,15 @@ export async function copyStaging(
   root: string | undefined,
 ): Promise<{ stats: Stats | undefined; temp: (target: string) => string }> {
   if (root === undefined) return { stats: undefined, temp: siblingTemp }
-  const dir = await stagingDir(root)
-  return { stats: statSync(dir), temp: () => path.join(dir, (tmpSeq++).toString(36)) }
+  // Made already: its stat is the check that it still stands, one call
+  // where `stagingDir`'s check and a stat were two on every restore.
+  let dir = ownStaging(root)
+  let stats = stagingMade.has(dir) ? statSync(dir, { throwIfNoEntry: false }) : undefined
+  if (stats === undefined) {
+    dir = await stagingDir(root)
+    stats = statSync(dir)
+  }
+  return { stats, temp: () => path.join(dir, (tmpSeq++).toString(36)) }
 }
 
 /**
