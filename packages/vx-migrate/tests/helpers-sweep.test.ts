@@ -95,7 +95,9 @@ describe('resolveSharedOutputs: an edge keeps no pair cached (core default rules
       task('c', ['lib/x'], ['b']),
     ])
     expect(cached(ts)).toEqual([true, true, false])
-    expect(ts[2]!.todos[0]).toContain('"b" also declares')
+    expect(ts[2]!.todos[0]).toContain(
+      '"lib/x", which overlaps the output "lib/**" that "b" declares',
+    )
   })
 
   it('a same-project edge is not a ^ edge: the first declared keeps', () => {

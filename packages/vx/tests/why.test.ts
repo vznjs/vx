@@ -374,7 +374,7 @@ describe('parseWhyArgs', () => {
         expect((await vx(root, ['run', 'gen', '--all'])).code).toBe(0)
         const why = await vx(root, ['why', 'lib#gen'])
         expect(why.out).toContain(
-          'it declares no `inputs` either, so each run derives a new key and every task that depends on it misses',
+          'it declares no `inputs` either, so each run derives a new key and every task that depends on it misses; declare its `inputs` (and `outputs` with `cache: true` to cache it too)',
         )
         expect(why.out).not.toContain('folded by dependents only')
       } finally {
@@ -658,7 +658,7 @@ describe('vx why (e2e) — the exact lines', () => {
       expect(none.code).toBe(1)
       expect(err(none)).toBe(
         noticed(
-          'vx why: no recorded runs for "app#zzzzzzzz"; `vx last --list` shows what has run',
+          'vx why: no recorded runs for "app#zzzzzzzz"; `vx last --stats` lists the tasks that ran',
         ).trimEnd(),
       )
       const bare = await vx(root, ['why'])
@@ -888,6 +888,15 @@ describe('vx why in a workspace that never ran (E-39)', () => {
           err: `› vx why  no project declares ${target}\n\n  fix  vx show lists the tasks\n`,
         })
       }
+      // At a root whose own project has only the default build, a bare
+      // `vx run build` is refused: the advice is the run that works.
+      await writeFile(path.join(root, 'vx.config.mjs'), 'export default { tasks: {} }\n')
+      expect((await vx(root, ['lock'])).code).toBe(0)
+      const atRoot = await vx(root, ['why', 'build'])
+      expect({ code: atRoot.code, err: atRoot.err }).toEqual({
+        code: 1,
+        err: '› vx why  no runs of build yet\n\n  fix  vx run build --all\n',
+      })
     } finally {
       await rm(root, { recursive: true, force: true })
     }

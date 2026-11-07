@@ -394,7 +394,7 @@ export default [
     title:
       'An input `src/*:bar.txt` keys `foo:bar.txt` and `foo::bar.txt`: a `:` is part of a name',
     why: 'In a glob, a `:` is an ordinary character of a file name, not syntax. A runner that reads `src/*:bar.txt` as something else, such as a prefix or a path list, matches no file, and the task is keyed on nothing. Edits to `foo:bar.txt` then replay the old output. Both `foo:bar.txt` and `foo::bar.txt` match and must count.',
-    from: ['hash-scenarios'],
+    from: ['hash-scenarios-names'],
     workspace: proj(stamp(['src/*:bar.txt']), NAMES),
     steps: [
       build(true),
@@ -409,7 +409,7 @@ export default [
     kind: 'correctness',
     title: 'An input `src/a,b.ts` keys the file named so: a `,` outside braces is part of a name',
     why: 'A `,` means something in a glob only inside braces; elsewhere it is part of the name. A runner that splits `src/a,b.ts` into two patterns keys on `src/a` and `b.ts`, neither of which exists, so the file named `a,b.ts` is no input. Editing it then replays the old output, and the build ships stale code.',
-    from: ['hash-scenarios'],
+    from: ['hash-scenarios-names'],
     workspace: proj(stamp(['src/a,b.ts']), NAMES),
     steps: [build(true), inA({ 'src/a,b.ts': 'ab2\n' }), build(true)],
   }),
@@ -418,7 +418,7 @@ export default [
     kind: 'correctness',
     title: 'Inputs through `@scope`, `a+b` and `(marketing)` directories key the files under them',
     why: 'Paths with `@scope`, `a+b` and `(marketing)` are common: package scopes, and route groups in web frameworks. A glob engine that reads `+`, `@` or `( )` as pattern syntax matches nothing under them. The task is then keyed without its pages or modules, and an edit there replays the old build. These characters must match themselves.',
-    from: ['hash-scenarios'],
+    from: ['hash-scenarios-names'],
     workspace: proj(stamp(['src/@scope/pkg/*.js', 'src/a+b/**', 'app/(marketing)/**']), NAMES),
     steps: [
       build(true),
@@ -436,7 +436,7 @@ export default [
     title:
       'Inputs named with a `$`, quotes, a space or a tab, committed or not, each rerun the task when edited',
     why: 'File names may hold `$`, quotes, spaces or tabs, and route files such as `$id.tsx` are common. If the runner passes names through a shell, or splits a list on white space, such a file is mangled or lost. Its edits then replay the old output. Names must be handled as bytes from the file system to the key, committed or not.',
-    from: ['hash-scenarios'],
+    from: ['hash-scenarios-names'],
     workspace: proj(stamp(['src/**']), Object.fromEntries(SHELL_NAMES.map((n) => [n, 'v1']))),
     steps: [
       inA({ 'src/untracked $u.ts': 'v1' }),
@@ -470,7 +470,7 @@ export default [
     kind: 'correctness',
     title: 'An input `src/[invalid` keys the file named so, or is refused, never left unkeyed',
     why: 'An unclosed `[` opens no character class, so `src/[invalid` is the name of a file. A runner may key that file, or refuse the glob as malformed; both tell the truth. What it must not do is match nothing and run with the input silently left out, since an edit to the file would then replay the old build.',
-    from: ['hash-scenarios'],
+    from: ['hash-scenarios-names'],
     workspace: proj(stamp(['src/[invalid']), { 'src/[invalid': 'v1\n', 'src/i': 'v1\n' }),
     steps: [
       build(true, { orRefused: true }),
@@ -745,7 +745,7 @@ export default [
     title:
       'A task stored by a run of every project replays when the run names its project, or excludes another',
     why: 'Which projects a run selects is not an input of a task: the same task on the same tree is one entry. A developer who builds everything, then only `lib`, should get a replay. A runner that folds the selection into the key misses whenever the filter differs, so local runs and CI jobs with other filters never share results.',
-    from: ['hash-scenarios', 'parity-turbo-hashing'],
+    from: ['hash-scenarios-names', 'parity-turbo-hashing'],
     needs: ['filter'],
     workspace: {
       projects: {
@@ -769,7 +769,7 @@ export default [
     kind: 'efficiency',
     title: 'A task an affected run selects replays what a run of every project stored',
     why: 'A run limited to changed projects asks for the same tasks on the same files as a full run. The full run already stored them, so the affected run should replay. A runner that keys on how a task was selected misses here, and CI rebuilds work that a full run on the same commit has already done.',
-    from: ['hash-scenarios'],
+    from: ['hash-scenarios-names'],
     needs: ['affected'],
     workspace: {
       projects: {
@@ -792,7 +792,7 @@ export default [
     kind: 'correctness',
     title: 'A task keyed on a root file and no project file runs again when the root file changes',
     why: 'A task may depend on a file at the workspace root, such as a shared config, and declare it explicitly. That file is then part of its key even when no project file is. A runner that ignores root inputs when the project lists none replays the old output after the root file changes, and the new config never reaches the build.',
-    from: ['hash-scenarios'],
+    from: ['hash-scenarios-names'],
     workspace: proj(
       { ...stamp([]), rootInputs: ['g.txt'] },
       { 'src/a.txt': 'a\n' },

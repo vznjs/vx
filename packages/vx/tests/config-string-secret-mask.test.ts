@@ -93,6 +93,7 @@ it('vx show masks every string of the task', () => {
       '  inputs.files    package.json',
       '  inputs.runtime  echo *** $(cat stamp), echo *** $(cat stamp)',
       '  outputs.files   none',
+      '  cache           yes',
       '',
     ].join('\n'),
   )

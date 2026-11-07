@@ -116,9 +116,9 @@ vx lock --check --format json  # a vx.config that changed since the lock, or no 
   print whole.
 - Docs as markdown: https://vznjs.github.io/vx/llms.txt (its index).
   When that host is unreachable, the same pages are
-  `https://raw.githubusercontent.com/vznjs/vx/main/private/vx-docs/src/content/docs/<page>.md`:
-  `quickstart`, `guides/migrate`, `guides/configure`, `guides/agents`,
-  `guides/troubleshooting`, `guides/ci`, `guides/plugins`.
+  `https://raw.githubusercontent.com/vznjs/vx/main/private/vx-docs/src/content/docs/<page>.mdx`:
+  `quickstart`, `guides/migrate`, `docs/workspace`, `docs/agents`,
+  `guides/troubleshooting`, `docs/ci`, `docs/plugins`.
 
 ## Install
 

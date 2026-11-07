@@ -30,7 +30,8 @@ sends one query: its repository, the refs it reads (its branch, then the
 branch it merges into, then the default branch) and every task hash;
 the server answers each from the first ref that holds it. A token of
 another repository than the query names is refused. `AUDIENCE` is the
-`aud` a token must name: the origin clients reach the server at. On
+`aud` a token must name: the origin clients reach the server at (a URL
+is read as its origin; one that is no URL stops the server). On
 Workers, unset, it is that origin (Cloudflare routes only the Worker's
 own hostnames to it); on Bun and Docker it is required, since there the
 origin is the request's `Host` header, which a client picks.

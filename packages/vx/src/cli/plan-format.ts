@@ -50,7 +50,7 @@ export function planReport(plan: RunPlan): ui.Block {
     rows.push({
       node: t.node,
       ...(skipped ? NOOP : LOOK[t.cacheStatus]),
-      ...(executes && t.p50Ms !== undefined ? { usualMs: t.p50Ms } : {}),
+      ...(executes ? { usualMs: t.p50Ms ?? null } : {}),
       ...(t.cacheStatus === 'hit-remote' && t.remoteBytes !== undefined
         ? { outputBytes: t.remoteBytes }
         : {}),
@@ -113,7 +113,7 @@ export function planReport(plan: RunPlan): ui.Block {
     const parts = [`~${formatElapsed(p.wallMs)} wall`]
     parts.push(`~${formatElapsed(p.workMs)} total execution`)
     if (p.unknownCount > 0) {
-      parts.push(`${p.unknownCount} task${p.unknownCount === 1 ? '' : 's'} without history (+?)`)
+      parts.push(`${p.unknownCount} task${p.unknownCount === 1 ? '' : 's'} never timed (+?)`)
     }
     facts.push(['predicted', parts.join(' · ')])
   }

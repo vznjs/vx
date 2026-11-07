@@ -185,9 +185,18 @@ export function isOutOfFds(err: unknown): err is NodeJS.ErrnoException {
 export const OUT_OF_FDS_HINT =
   'the process is out of file descriptors; raise the limit (ulimit -n 4096) and re-run'
 
-/** A file system refusing a write for a reason no code path caused: permission or space. */
+/**
+ * `ENAMETOOLONG`: a path past what the file system takes (PATH_MAX, 4096
+ * bytes on Linux; NAME_MAX for one name). The path is the user's: an
+ * output that deep failed its save as an internal error.
+ */
+function isNameTooLong(err: unknown): err is NodeJS.ErrnoException {
+  return err instanceof Error && (err as NodeJS.ErrnoException).code === 'ENAMETOOLONG'
+}
+
+/** A file system refusing a path for a reason no code path caused: permission, space or length. */
 export function isFsRefusal(err: unknown): err is NodeJS.ErrnoException {
-  return isPermissionError(err) || isDiskFull(err)
+  return isPermissionError(err) || isDiskFull(err) || isNameTooLong(err)
 }
 
 export const DISK_FULL_HINT = 'the disk that path is on is full'
@@ -205,6 +214,7 @@ const READ_SYSCALLS = new Set(['scandir', 'stat', 'lstat', 'readlink', 'read', '
 export function fsRefusalHint(err: NodeJS.ErrnoException): string {
   const { syscall } = err
   if (isDiskFull(err)) return DISK_FULL_HINT
+  if (isNameTooLong(err)) return 'that path is longer than the file system allows; shorten it'
   // A listing told to be a write sent the user to chmod the wrong thing.
   return READ_SYSCALLS.has(syscall ?? '') ? READ_PERMISSION_HINT : PERMISSION_HINT
 }

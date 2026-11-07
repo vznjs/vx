@@ -266,8 +266,15 @@ describe('vx migrate (turbo)', () => {
       // `turbo()` lists it: the preset spread holds the explicit entry, and
       // written twice the migrated config keyed apart from the live run.
       // `codegen`'s and `test`'s outputs taken back: no key reads another
-      // task's outputs (core X-54).
-      expect(build.inputs?.files).toEqual(['**/*', '!**/*.md', '!src/gen/**', '!coverage/**'])
+      // task's outputs (core X-54), and its own `!` output: the build
+      // still writes those maps.
+      expect(build.inputs?.files).toEqual([
+        '**/*',
+        '!**/*.md',
+        '!dist/**/*.map',
+        '!src/gen/**',
+        '!coverage/**',
+      ])
       expect(build.inputs?.workspaceFiles).toEqual(['tsconfig.base.json'])
       // env → BOTH inputs.env and passThrough; globalEnv spread into
       // both; globalPassThroughEnv into passThrough only; wildcard dropped.

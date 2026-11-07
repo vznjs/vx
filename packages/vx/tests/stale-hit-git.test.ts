@@ -15,6 +15,7 @@ import {
   gitStatWeakened,
   parseCheckAttrOutput,
   populateGitFilesCache,
+  runGitLsFiles,
 } from '../src/cache/inputs.js'
 
 const TIMEOUT = 60_000
@@ -658,6 +659,65 @@ describe('stale cache hits', () => {
     )
   }
 
+  // A project dir went to git as a pathspec: `:top` read as magic (`top`)
+  // listed none of its files, and `*g` as a glob also listed `:top/src/log`,
+  // so `:top`'s slice was not empty and its edited `src/f` left the key.
+  it(
+    'a scoped enumeration lists a project dir that reads as pathspec magic, and only its own files',
+    async () => {
+      for (const f of ['package.json', 'src/f', 'src/log'])
+        await write(path.join(root, ':top', f), f)
+      for (const f of ['package.json', 'src/f']) await write(path.join(root, '*g', f), f)
+      git(root, 'init', '-q')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+      await write(path.join(root, ':top/src/new'), 'untracked')
+      await write(path.join(root, ':top/src/f'), 'edited')
+      const top = path.join(root, ':top')
+      const g = path.join(root, '*g')
+      const memo = new GitFilesCache()
+      await populateGitFilesCache(root, [top, g], memo)
+      const all = [new Bun.Glob('**')]
+      expect([memo.snapshotFor(top, all), memo.snapshotFor(g, all)]).toEqual([
+        ['package.json', 'src/f', 'src/log', 'src/new'],
+        ['package.json', 'src/f'],
+      ])
+      expect(memo.oidsFor(top)?.has(path.join(top, 'src/f'))).toBe(false)
+    },
+    TIMEOUT,
+  )
+
+  // git cannot open a directory past PATH_MAX, warns, and exits 0: the
+  // files under it were in no key, and an edit there was a stale hit.
+  it(
+    'a directory git could not open refuses the enumeration, by name',
+    async () => {
+      await write(path.join(root, 'p/package.json'), '{}')
+      git(root, 'init', '-q')
+      const seg = 'd'.repeat(200)
+      const made = Bun.spawnSync({
+        cmd: [
+          'sh',
+          '-c',
+          `cd p && for i in $(seq 21); do mkdir ${seg} && cd ${seg}; done; echo x > f`,
+        ],
+        cwd: root,
+      })
+      expect(made.exitCode).toBe(0)
+      const p = path.join(root, 'p')
+      const enumerate = (dirs: string[]) => populateGitFilesCache(root, dirs, new GitFilesCache())
+      for (const dirs of [[root], [p]]) {
+        await expect(enumerate(dirs)).rejects.toThrow(
+          /^git could not open the directory p\/d{38}…[d/]{40}, so no key would see the files under it\. Shorten the path, or ignore it in \.gitignore\.$/,
+        )
+      }
+      expect(() => runGitLsFiles(p)).toThrow(/^git could not open the directory p\/d{38}…/)
+      await write(path.join(root, '.gitignore'), `p/${seg}/\n`)
+      await enumerate([p])
+    },
+    TIMEOUT,
+  )
+
   it(
     'the index OIDs are kept under the default stat and dropped under a weakened one',
     async () => {
@@ -1192,6 +1252,28 @@ describe.skipIf(process.platform === 'darwin')('a name that is not UTF-8', () =>
       const second = vxExit(root, 'run', 'build')
       expect(second.out).not.toContain('restored')
       expect(second.out).not.toMatch(/ \d+✓/)
+    },
+    TIMEOUT,
+  )
+
+  // A hit saves nothing: one left by hand among the outputs is refused for
+  // the clean, not as a file vx "cannot save".
+  it(
+    'one left among the outputs before a hit is refused for the clean',
+    async () => {
+      await project('mkdir -p dist && printf a > dist/ok')
+      git(root, 'init', '-q')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'init')
+      expect(vxExit(root, 'run', 'build').code).toBe(0)
+      await writeFile(badIn(path.join(root, 'dist')), 'stray')
+      const second = vxExit(root, 'run', 'build')
+      expect(second.out).toContain('dist/x�y')
+      expect(second.out).toContain('not valid UTF-8')
+      expect(second.out).toContain(
+        'vx cannot clear a file by it before the task runs or a hit restores',
+      )
+      expect(second.out).not.toContain('cannot save')
     },
     TIMEOUT,
   )

@@ -566,6 +566,68 @@ describe('overlapping outputs: a dependant that removes an upstream file', () =>
   )
 })
 
+// A retry of the dependant: what a failed attempt added is removed before
+// the next, as an exclusive task's clean removes it, and a file it found
+// and changed cannot be put back, so that retry saves nothing.
+describe('overlapping outputs: a dependant that passes on a retry', () => {
+  const configWith = (failing: string): string => `
+    export default {
+      tasks: {
+        build: {
+          exec: { command: 'mkdir -p dist && cp src/a.txt dist/a.js' },
+          inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+        },
+        post: {
+          dependsOn: ['build'],
+          exec: {
+            command: 'n=$(cat n 2>/dev/null || echo 0); n=$((n+1)); echo $n > n; ' +
+              'if [ $n -eq 1 ]; then ${failing}; exit 1; fi; echo b > dist/b.js',
+            retries: 1,
+          },
+          inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+        },
+      },
+    }
+  `
+  const want: Array<[string, string]> = [
+    ['dist/a.js', 'A1'],
+    ['dist/b.js', 'b\n'],
+  ]
+  let ws: Ws | undefined
+  afterEach(async () => {
+    if (ws !== undefined) await rm(ws.root, { recursive: true, force: true })
+  })
+
+  it(
+    "a failed attempt's addition is neither left nor saved",
+    async () => {
+      ws = await workspace('A1', 'B1', configWith('echo partial > dist/partial.js'))
+      expect(statusOf(await run({ cwd: ws.root, tasks: ['post'], log: silent }))).toEqual({
+        build: 'success',
+        post: 'success',
+      })
+      expect(tree(ws.app)).toEqual(want)
+      await rm(path.join(ws.app, 'dist'), { recursive: true })
+      const warm = await run({ cwd: ws.root, tasks: ['post'], log: silent })
+      expect(statusOf(warm)).toEqual({ build: 'cache-hit+restored', post: 'cache-hit+restored' })
+      expect(tree(ws.app)).toEqual(want)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a failed attempt that changed a found file: the retry saves nothing',
+    async () => {
+      ws = await workspace('A1', 'B1', configWith('echo bad > dist/a.js'))
+      expect((await run({ cwd: ws.root, tasks: ['post'], log: silent })).ok).toBe(true)
+      const warm = await run({ cwd: ws.root, tasks: ['post'], log: silent })
+      expect(statusOf(warm)).toEqual({ build: 'cache-hit+restored', post: 'success' })
+      expect(tree(ws.app)).toEqual(want)
+    },
+    TIMEOUT,
+  )
+})
+
 // The rewrite-in-place shape where size and mtime hold: a dependant that
 // rewrites its upstream's file to bytes of the same length and stamps the
 // mtime back (a tool honouring SOURCE_DATE_EPOCH). Judged by size + mtime,

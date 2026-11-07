@@ -33,7 +33,10 @@ export function wholeIgnored(
   a file below them (a tracked one, or one a `!` rule takes back) must be
   looked for in git's listing. Null when no few paths stand (`*.js`).
 - `checkIgnore` / `checkIgnoreSync`: one `git check-ignore --stdin -z`;
-  null when git cannot answer (no work tree).
+  null when git cannot answer (no work tree). Each path is sent as
+  `./<path>`: git reads a line as a pathspec, so `:top/dist/` was asked as
+  `top/dist/` (the command refuses `:(literal)`). `migration.ts` asks
+  through `checkIgnoreSync` too.
 - `listedSync`: `git ls-files --cached --others --exclude-standard` under
   `dirs`, for `vx lock`; a run reads its own enumeration instead.
 - `wholeIgnored`: the globs whose probes git ignores and, when deep, no

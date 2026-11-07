@@ -31,6 +31,12 @@ it("the PR's title is a Conventional Commits header", () => {
 // subject cannot change without rewriting the branch every landed PR
 // shares (2026-10-28).
 const KNOWN = new Set([
+  // #5044's dead-source-glob commit, pushed before its subject was cut: 74 chars.
+  '0c01008f271ea5a2b11225131eb907a2a11e712e',
+  // #5044's site troubleshooting quote fix: 73 chars.
+  '42f6dd13749cac4897a212cca02e69082c8e5fd6',
+  // #5044's vx why pointer fix: 75 chars.
+  '652a7e6686a0ec53ceee50e8b2644ae2e80e8c02',
   // The conformance page's coverage drop, pushed before its subject was cut: 76 chars.
   '07826d51a0d3c97cfe85b518c92635ada75560c7',
   // #4909's first commit, pushed before its subject was cut: 82 chars.
@@ -103,6 +109,12 @@ const KNOWN = new Set([
   '11bada098e010efa3031faae4a5458d2724f59ed',
   // #5049's, 72 chars; the branch takes no force push.
   '0264bf0118d8c77550f1b764bb345dc5ba2d9dbf',
+  // #5067's, 73 chars; the branch takes no force push.
+  'f1d846e6c771f173a2614587a83b502c0b98fe4d',
+  // #5078's, 72 chars; the branch takes no force push.
+  '86c8e5262993ad10ada2e65b5ebde7f5f098b4f6',
+  // #5104's, type style; the branch takes no force push.
+  'a44b8b967f2da77043670c960504325915286cf4',
   // #5065's three `wip` commits; the branch takes no force push.
   'bea041bc4005450e12f902bcf9d8b5234532f89f',
   '62b13c98e22d6ac9b9ee41fa9a8ce3a1df406c37',

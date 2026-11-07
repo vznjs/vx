@@ -34,7 +34,7 @@ import {
   teardownTimeoutMs,
   thrownMessage,
 } from '../util/index.js'
-import type { RunEvent, RunEventSubscriber } from '../report/index.js'
+import { neverStarted, type RunEvent, type RunEventSubscriber } from '../report/index.js'
 
 /** Bumped when the record shape changes. Readers MUST check `v`. */
 export const TELEMETRY_SCHEMA_VERSION = 4
@@ -256,6 +256,7 @@ export interface RunSummaryRecord {
   startedAt: number
   endedAt: number
   totalDurationMs: number
+  /** Every task the run had, as the terminal's total: `tasks` plus `notRunCount`. */
   taskCount: number
   failedCount: number
   /**
@@ -323,8 +324,9 @@ export interface RunStage {
  * computed: both a local `run()` and the distributed controller build their
  * `TaskTelemetry[]` (each via `deriveCacheSource`) and call this, so a
  * distributed run and a local run produce byte-identical summaries and land in
- * the same ingest. The per-task tallies (taskCount / failedCount /
- * hitLocal|Remote|Count) derive from `tasks`; `totalDurationMs` (wall time) and
+ * the same ingest. The per-task tallies (failedCount /
+ * hitLocal|Remote|Count) derive from `tasks`, and `taskCount` from `tasks`
+ * plus `notRunCount`; `totalDurationMs` (wall time) and
  * `exitOk` (the run's overall verdict — which counts skipped tasks beyond the
  * recorded task list) are run-level facts and are passed in.
  */
@@ -366,7 +368,9 @@ export function assembleRunSummary(
     startedAt: timing.startedAt,
     endedAt: timing.endedAt,
     totalDurationMs: timing.totalDurationMs,
-    taskCount: tasks.length,
+    // The terminal's total: the tasks a stop reached first are not in
+    // `tasks`, yet a summary of 2 beside a terminal's 3 read as a lost task.
+    taskCount: tasks.length + (timing.notRunCount ?? 0),
     failedCount,
     abortedCount: timing.abortedCount,
     ...(timing.notRunCount !== undefined && timing.notRunCount > 0
@@ -446,6 +450,12 @@ export interface TelemetrySource {
    * each as the step `<plugin>:telemetry` through `step`.
    */
   flush(step?: <T>(id: string, work: () => Promise<T>) => Promise<T>): Promise<void>
+  /**
+   * Send the held `task.end` of each persistent task not in `keep`, read
+   * from `final` (by id): a server's outcome can change after its ready,
+   * when it dies before the run stops it or ends a kept session.
+   */
+  endServers(final: readonly TaskOutcome[], keep?: ReadonlySet<string>): void
   /**
    * Sample this task's process tree every `SAMPLE_MS` until the returned
    * function is called, the root exits, or the run ends. Present only when
@@ -680,6 +690,16 @@ export function createTelemetrySource(args: {
       case 'task:complete': {
         const { node, outcome } = event
         if (node.config.exec === undefined) return // group task
+        // The stop reached it first: no task.start, and the summary counts
+        // it in `notRunCount`, not `tasks`, so no task.end either.
+        if (neverStarted(outcome)) return
+        // A server's end waits for its final outcome (`endServers`): one
+        // task.end per task, and the one sent at ready read `success` over
+        // a crash after it.
+        if (node.config.exec.persistent !== undefined) {
+          heldEnds.set(node.id, { ts, outcome })
+          return
+        }
         deliver({
           v: TELEMETRY_SCHEMA_VERSION,
           kind: 'task.end',
@@ -700,9 +720,24 @@ export function createTelemetrySource(args: {
     }
   }
 
+  const heldEnds = new Map<string, { ts: number; outcome: TaskOutcome }>()
   return {
     subscriber,
     ...(wantsSample ? { track } : {}),
+    endServers(final, keep) {
+      for (const [id, held] of heldEnds) {
+        if (keep?.has(id) === true) continue
+        heldEnds.delete(id)
+        const outcome = final.find((o) => o.node.id === id) ?? held.outcome
+        deliver({
+          v: TELEMETRY_SCHEMA_VERSION,
+          kind: 'task.end',
+          runId,
+          ts: held.ts,
+          ...taskTelemetryOf(outcome),
+        })
+      }
+    },
     emitSummary(summary: RunSummaryRecord): void {
       for (const sink of sinks) {
         if (disabled.has(sink) || sink.onRunSummary === undefined) continue
@@ -725,9 +760,12 @@ export function createTelemetrySource(args: {
       // accessed_at bumps and every later plugin's teardown lost with it.
       // Sinks race concurrently, so each still gets the whole budget.
       const deadline = new AbortController()
+      // The deadline's warning names the sinks still out, as a throw names its own.
+      const pending = new Set<TelemetrySink>()
       const all = Promise.all(
         sinks.map(async (sink) => {
           if (disabled.has(sink) || sink.flush === undefined) return
+          pending.add(sink)
           try {
             await step(`${args.owners?.get(sink) ?? label(sink)}:telemetry`, () =>
               sink.flush!(deadline.signal),
@@ -736,12 +774,17 @@ export function createTelemetrySource(args: {
             // A flush failure can never break the run — but it still costs
             // this sink its export, so say so rather than dropping it.
             warn?.(`[vx] telemetry sink '${label(sink)}' failed to flush: ${thrownMessage(err)}`)
+          } finally {
+            pending.delete(sink)
           }
         }),
       )
       if (!(await settleWithin(all, ms))) {
         deadline.abort(new Error(`telemetry flush deadline (${ms}ms)`))
-        warn?.(`[vx] telemetry flush timed out after ${ms}ms; buffered records lost`)
+        const names = [...pending].map((s) => `'${label(s)}'`).join(', ')
+        warn?.(
+          `[vx] telemetry flush timed out after ${ms}ms (sink${pending.size === 1 ? '' : 's'} ${names}); buffered records lost`,
+        )
         // A sink told of the abort says what it lost as its request ends; the
         // run ended first and that line was lost (vx-otel, on CI). Briefly.
         await settleWithin(all, ABORT_GRACE_MS)

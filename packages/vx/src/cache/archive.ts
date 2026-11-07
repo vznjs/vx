@@ -341,9 +341,16 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
             `${shown} is a symlink to an absolute path (${to}): vx restores a link as written, and an absolute one names this machine's checkout — make it relative, or take it back with a '!' entry`,
           )
         }
-        if (args.root === undefined || !inside(path.resolve(path.dirname(abs), to), args.root)) {
+        const refused =
+          args.root === undefined ? 'out' : linkRefused(path.dirname(abs), to, args.root)
+        if (refused === 'out') {
           throw new UserError(
             `${shown} is a symlink to ${to}, outside the workspace: vx restores a link as written, and a project's outputs stay in its workspace — emit a file there, or take it back with a '!' entry`,
+          )
+        }
+        if (refused === '.git') {
+          throw new UserError(
+            `${shown} is a symlink to ${to}, inside .git: vx never restores into Git's metadata — emit a file there, or take it back with a '!' entry`,
           )
         }
         return { name, link: to, abs, shown }
@@ -916,6 +923,29 @@ const inside = (p: string, root: string): boolean => {
   return p === r || p.startsWith(r + path.sep)
 }
 
+/**
+ * Where a link in `dir` reading `to` lands against `bound`, if a restore may
+ * not write it: out of it, or into its `.git` (lexical: a write through a
+ * link is judged where it resolves, so an alias chain into .git gets no
+ * further than this link would). Out is any step above `bound`, even one
+ * that comes back: `../../../ws/app/x` resolves inside only a root named
+ * `ws`, so judged by where it ends it saved here and was refused on every
+ * checkout under another name. The save asks it too, or it stored a link
+ * every restore refused, an entry that never hit on any machine.
+ */
+function linkRefused(dir: string, to: string, bound: string): 'out' | '.git' | undefined {
+  const root = path.resolve(bound)
+  const from = path.resolve(dir)
+  if (!inside(from, root)) return 'out'
+  let depth = from === root ? 0 : path.relative(root, from).split(path.sep).length
+  for (const seg of to.split(path.sep === '/' ? '/' : /[\\/]/)) {
+    if (seg === '..') depth--
+    else if (seg !== '' && seg !== '.') depth++
+    if (depth < 0) return 'out'
+  }
+  return writableUnder(path.resolve(from, to), root) ? undefined : '.git'
+}
+
 /** The usage worth carrying: each axis a finite non-negative number, or absent; nothing → undefined. */
 function usageOf(raw: unknown): ExecUsage | undefined {
   if (typeof raw !== 'object' || raw === null) return undefined
@@ -1042,8 +1072,8 @@ export async function extractArtifactStream(
       if (dest === null || dest.rel.length === 0) continue
       const target = path.join(dest.base, dest.rel)
       await x.assertContained(dest.base, target, name)
-      const at = path.resolve(path.dirname(target), to)
-      if (!inside(at, bound)) {
+      const refused = linkRefused(path.dirname(target), to, bound)
+      if (refused === 'out') {
         throw new ArchiveSecurityError(`archive link ${name} points out of the workspace: ${to}`)
       }
       const via = throughLink(path.dirname(target), to, linked)
@@ -1052,9 +1082,7 @@ export async function extractArtifactStream(
           `archive link ${name} points through ${linked.get(via)}, another link it restores: ${to}`,
         )
       }
-      // Lexical: a write through a link is judged where it resolves, so an
-      // alias chain into .git gets no further than this link would.
-      if (!writableUnder(at, path.resolve(bound))) {
+      if (refused === '.git') {
         throw new ArchiveSecurityError(`archive link ${name} points into .git: ${to}`)
       }
       await x.stageLink(name, dest.base, target, to)
@@ -1982,7 +2010,7 @@ const stagingMade = new Set<string>()
  */
 async function stagingDir(root: string): Promise<string> {
   const top = path.join(root, '.vx', STAGING)
-  const own = path.join(top, `${process.pid.toString(36)}-0`)
+  const own = ownStaging(root)
   if (stagingMade.has(own) && existsSync(own)) return own
   await mkdir(own, { recursive: true })
   // Ignored by git whatever `.vx/.gitignore` an older init committed.
@@ -1995,6 +2023,10 @@ async function stagingDir(root: string): Promise<string> {
   return own
 }
 
+function ownStaging(root: string): string {
+  return path.join(root, '.vx', STAGING, `${process.pid.toString(36)}-0`)
+}
+
 /**
  * Where a tree restore's copy-out stages: this process's directory under
  * `root`'s `.vx/tmp/`, its stats, and a fresh name in it per call of
@@ -2004,8 +2036,15 @@ export async function copyStaging(
   root: string | undefined,
 ): Promise<{ stats: Stats | undefined; temp: (target: string) => string }> {
   if (root === undefined) return { stats: undefined, temp: siblingTemp }
-  const dir = await stagingDir(root)
-  return { stats: statSync(dir), temp: () => path.join(dir, (tmpSeq++).toString(36)) }
+  // Made already: its stat is the check that it still stands, one call
+  // where `stagingDir`'s check and a stat were two on every restore.
+  let dir = ownStaging(root)
+  let stats = stagingMade.has(dir) ? statSync(dir, { throwIfNoEntry: false }) : undefined
+  if (stats === undefined) {
+    dir = await stagingDir(root)
+    stats = statSync(dir)
+  }
+  return { stats, temp: () => path.join(dir, (tmpSeq++).toString(36)) }
 }
 
 /**

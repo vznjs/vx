@@ -68,20 +68,25 @@ export async function nxTargetHint(tasks: readonly string[], cwd: string): Promi
 }
 
 /**
- * The task names `vx run <task>` can take here: the cwd project's, else
- * every project's, sorted; null when no workspace loads. What a run with
- * no task and no terminal for the picker names instead of a guess.
+ * The task names `vx run <task>` can take in the asked scope (`asked`: the
+ * projects `--filter` / `--affected` selected, or `all`), else the cwd
+ * project's, else every project's, sorted; null when no workspace loads.
+ * What a run with no task and no terminal for the picker names instead of
+ * a guess.
  */
-export async function taskNamesHere(cwd: string): Promise<string[] | null> {
+export async function taskNamesHere(
+  cwd: string,
+  asked?: ReadonlySet<string> | 'all',
+): Promise<{ names: string[]; inProject: boolean } | null> {
   const projects = await workspaceProjects(cwd)
   if (projects === null) return null
-  const own = await findCwdProject(cwd)
+  const own = asked === undefined ? await findCwdProject(cwd) : null
   const names = new Set<string>()
   for (const p of projects.values())
-    if (own === null || p.name === own)
+    if (typeof asked === 'object' ? asked.has(p.name) : own === null || p.name === own)
       for (const [t, task] of Object.entries(p.config.tasks ?? {}))
         if (!isDefaultBuild(task)) names.add(t)
-  return [...names].sort()
+  return { names: [...names].sort(), inProject: own !== null }
 }
 
 /**

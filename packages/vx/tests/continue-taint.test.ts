@@ -97,6 +97,27 @@ describe('--continue=always never caches a task built behind a failure', () => {
     expect(statusOf(second, 'p#c')).toBe('success')
   })
 
+  // A plugin hears only the outcome (vx-history's flaky record sent such a
+  // pass, and fresh machines retried a real failure as a flake), so the
+  // taint rides it by the time any observer hears it.
+  it('the outcome each observer hears names the failure it ran behind', async () => {
+    await writeFile(path.join(root, 'packages', 'p', 'flag.txt'), '')
+    const heard: string[] = []
+    const r = await run({
+      cwd: root,
+      tasks: ['c'],
+      projects: ['p'],
+      continueMode: 'always',
+      log: {
+        ...silent,
+        taskComplete: (node, o) => heard.push(`${node.id} ${o.status} ${o.taintedBy}`),
+      },
+      handleSignals: false,
+    })
+    expect(r.ok).toBe(false)
+    expect(heard).toEqual(['p#a failed undefined', 'p#b success p#a', 'p#c success p#a'])
+  })
+
   it('CONTROL: with no failure, the second run is a hit for every task', async () => {
     const first = await runAll('always')
     expect(first.ok).toBe(true)

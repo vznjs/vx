@@ -141,8 +141,8 @@ function prefixesOverlap(a: string, b: string): boolean {
 export function resolveDownloadModes(args: {
   nodes: Map<string, TaskNode>
   policy: 'all' | 'toplevel' | 'none'
-  /** Task ids placed on a LOCAL executor — they write in place. */
-  localPlaced: ReadonlySet<string>
+  /** Placed on a LOCAL executor: it writes in place. */
+  localPlaced: (id: string) => boolean
   /** Task ids with `exec.remote: 'only'`. */
   remoteOnly: ReadonlySet<string>
 }): { modeOf: Map<string, DownloadMode>; downgrades: Map<string, string> } {
@@ -156,7 +156,7 @@ export function resolveDownloadModes(args: {
       modeOf.set(n.id, 'never')
       continue
     }
-    if (args.policy === 'all' || args.localPlaced.has(n.id)) {
+    if (args.policy === 'all' || args.localPlaced(n.id)) {
       modeOf.set(n.id, 'eager')
       continue
     }

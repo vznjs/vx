@@ -19,7 +19,7 @@ is pre-folded, bigint wallclock spans are decimal strings.
   `tasks` as `aborted`; `notRunCount` the ones the stop reached before
   they started, which are not. Without them a stopped run read as a
   failure with nothing failed; they count as the terminal's `1 aborted ·
-1 not run` does.
+1 not run` does, and `taskCount` as its `total` does, both included.
 - `assembleRunSummary(run, tasks, timing)` — builds the `RunSummaryRecord`
   from the context and the `TaskTelemetry[]`, the per-task tallies
   derived from `tasks`, so a DTE run and a local one produce
@@ -43,7 +43,9 @@ is pre-folded, bigint wallclock spans are decimal strings.
   `cache.dir` (a STRING, not a Cache handle — a sink cannot reach the
   cache) and `warn`.
 - `TelemetrySource` — the live projection: a bus `subscriber`,
-  `emitSummary` and `flush`.
+  `emitSummary`, `flush` and `endServers(final, keep?)`, which sends the
+  held `task.end` of each persistent task not in `keep`, read from
+  `final`.
 - The status vocabulary every record carries (`TaskStatus`,
   `CacheSource`, `isPassStatus`, `isCacheHit`) is graph's
   (`graph/task-status.ts`, scheduler.md).
@@ -129,7 +131,7 @@ interface RunSummaryRecord {
   startedAt: number
   endedAt: number
   totalDurationMs: number
-  taskCount: number
+  taskCount: number // every task, as the terminal's total: `tasks` plus `notRunCount`
   failedCount: number
   abortedCount: number // started, then stopped by a signal or an abort; in `tasks` (v3)
   notRunCount?: number // the stop reached them first; not in `tasks`, absent when none
@@ -170,7 +172,16 @@ Each streaming record carries `v` and `kind`, and:
 | `task.log`    | `runId`, `taskId`, `stream`, `chunk`, `ts` (opt-in)                |
 | `task.sample` | `runId`, `taskId`, `ts`, `cpuMs`, `rssBytes` (opt-in)              |
 | `task.end`    | `runId`, `ts`, every `TaskTelemetry` field                         |
-| `run.end`     | `runId`, `ts`                                                      |
+
+A task the stop reached before it started gets neither `task.start` nor
+`task.end`, as it is not in the summary's `tasks`. A persistent task's
+`task.end` (its `ts` still its ready) waits for its final outcome: the
+end of the graph, or, for a server the foreground keeps, the end of
+that session, with the summary, whose `endedAt` is then the session's.
+A server that crashed after its ready reads `failed` there, and one a
+stop took down in the session reads `aborted`, as a stop's tasks do
+elsewhere (the run history keeps it a success).
+| `run.end` | `runId`, `ts` |
 
 ## Invariants
 

@@ -33,6 +33,8 @@ $ sed -i 's/--outdir dist`/--outdir dist --minify`/' vx-preset.ts
 $ vx lock --check
 ✗ vx lock --check  packages/b/vx.config.ts evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'
 
+  tasks.build.exec.command: "bun build src/index.ts --outdir dist" → "bun build src/index.ts --outdir dist --minify"
+
 $ vx lock && vx run packages/b#build
   cache     local 1↑
 

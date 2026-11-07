@@ -181,6 +181,17 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
       : {}),
     ...(signalChannel ? { signalChannel } : {}),
     ...(args.terminal === true ? { terminal: true } : {}),
+    // What the pre-ready text left held goes out first, so the run can
+    // tell it from what the server writes since ready.
+    ...(args.serverReady !== undefined
+      ? {
+          onReady: () => {
+            serverMasked?.end()
+            ends.end()
+            args.serverReady!(node.id)
+          },
+        }
+      : {}),
   }
   if (step.persistent.readyWhen !== undefined) {
     persistentOpts.readyWhen = step.persistent.readyWhen
@@ -290,10 +301,7 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
     // (an embedder) never saw a bare stderr write at all. What waited on
     // an open line goes first.
     ends.end()
-    log.taskStderr(
-      node,
-      ends.own(`[vx] ${node.id}: persistent task failed to become ready: ${message}\n`),
-    )
+    log.taskStderr(node, ends.own(`[vx] ${node.id}: not ready: ${message}\n`))
     // A server's 127, 126 or signal death needs the line a one-shot task's
     // gets (execute-task.ts): a dev server whose tool sits in a sibling's
     // bin said only "exit 127".

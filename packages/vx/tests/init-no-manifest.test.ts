@@ -68,7 +68,7 @@ describe('vx init with no package.json', () => {
       ui.render(
         [
           ui.report(`vx init ${VERSION}`, [
-            ['from', 'no turbo.json or nx.json: one project, the root'],
+            ['from', 'no turbo.json or nx.json'],
             ['files', '.vx/workspace.ts', 'vx.config.ts', '.vx/.gitignore', '.vx/.gitattributes'],
             ['lock', '1 project config → .vx/projects.lock.json'],
             null,
@@ -142,12 +142,34 @@ describe('vx init with no package.json', () => {
     ])
   })
 
+  // A directory at .vx/workspace.ts was "kept" and locked, and every verb
+  // after found no workspace file and sent the user back to init.
+  it('a directory where a config goes is refused by name, --force or not', async () => {
+    const root = await tmp('vx-init-bare-dir-')
+    await mkdir(path.join(root, '.vx', 'workspace.ts'), { recursive: true })
+    for (const args of [['init'], ['init', '--force']]) {
+      const r = await vx(root, args)
+      expect([r.code, r.err, existsSync(path.join(root, '.vx', 'projects.lock.json'))]).toEqual([
+        1,
+        '✗ vx init  .vx/workspace.ts is a directory, where the workspace file goes; move it and re-run\n',
+        false,
+      ])
+    }
+    const other = await tmp('vx-init-bare-dir-config-')
+    await mkdir(path.join(other, 'vx.config.ts'))
+    const f = await vx(other, ['init', '--force'])
+    expect([f.code, f.err]).toEqual([
+      1,
+      '✗ vx init  vx.config.ts is a directory, where the project config goes; move it and re-run\n',
+    ])
+  })
+
   it('--native and --keep answer a Turbo or Nx question, and are refused here', async () => {
     const root = await tmp('vx-init-bare-keep-')
     const r = await vx(root, ['init', '--keep'])
     expect([r.code, r.err, existsSync(path.join(root, '.vx'))]).toEqual([
       1,
-      "✗ vx init  --keep answers a Turbo or Nx repo's question, and there is no turbo.json or nx.json here\n",
+      "✗ vx init  --keep answers a Turbo or Nx workspace's question, and there is no turbo.json or nx.json here\n",
       false,
     ])
     // A flag this repo cannot take is usage, not the catch-all VX_E_REFUSED.
@@ -266,6 +288,43 @@ describe('vx init in a repo with a package.json and no Turbo or Nx', () => {
       existsSync(path.join(lone, 'vx.config.ts')),
       existsSync(path.join(outer, '.vx')),
     ]).toEqual([true, false])
+  })
+
+  // `git init` run in the cwd, below the root init wrote to, hid that workspace.
+  it('outside git, next names the directory to git init in when the root is above', async () => {
+    const outer = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-init-nogit-next-')))
+    roots.push(outer)
+    await writeFile(path.join(outer, 'package.json'), '{"name":"stray"}\n')
+    await mkdir(path.join(outer, 'app', 'src'), { recursive: true })
+    const env = { GIT_CEILING_DIRECTORIES: path.dirname(outer) }
+    const next = async (cwd: string): Promise<string> => {
+      const r = await vx(cwd, ['init', '--dry', '--format', 'json'], env)
+      expect([r.code, r.err]).toEqual([0, ''])
+      return (JSON.parse(r.out) as { next: string }).next
+    }
+    const declare = 'declare a task in vx.config.ts, then vx lock && vx run <task>'
+    expect([await next(path.join(outer, 'app', 'src')), await next(outer)]).toEqual([
+      `git init ../.., ${declare}`,
+      `git init, ${declare}`,
+    ])
+  })
+
+  // A kept workspace file stood in for the git top-level, so the hint went
+  // missing and the next `vx run` refused with "vx requires git".
+  it('outside git, next says git init when the workspace file is kept', async () => {
+    const outer = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-init-nogit-kept-')))
+    roots.push(outer)
+    await mkdir(path.join(outer, '.vx'))
+    await writeFile(path.join(outer, '.vx', 'workspace.ts'), 'export default {}\n')
+    const r = await vx(outer, ['init', '--dry', '--format', 'json'], {
+      GIT_CEILING_DIRECTORIES: path.dirname(outer),
+    })
+    expect([r.code, r.err]).toEqual([0, ''])
+    const plan = JSON.parse(r.out) as { kept: string[]; next: string }
+    expect([plan.kept, plan.next]).toEqual([
+      ['.vx/workspace.ts'],
+      'git init, declare a task in vx.config.ts, then vx lock && vx run <task>',
+    ])
   })
 
   // npm strips a byte-order mark, and so does every other package.json

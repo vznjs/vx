@@ -574,8 +574,8 @@ export interface PlannedRow {
   tone: Style
   cache: string
   cacheTone: Style | ''
-  /** Its usual time, from history. */
-  usualMs?: number
+  /** Its usual time, from history; null for a task that runs and history never timed. */
+  usualMs?: number | null
   /** What a remote hit would download. */
   outputBytes?: number
   /** How many tasks are downstream of it. */
@@ -591,7 +591,12 @@ export function planList(rows: readonly PlannedRow[]): ui.Block {
     head: formatRunningHeader,
     lines: (c) =>
       rows.map((r) => {
-        const usual = r.usualMs === undefined ? undefined : formatExpected(r.usualMs)
+        const usual =
+          r.usualMs === undefined
+            ? undefined
+            : r.usualMs === null
+              ? UNKNOWN
+              : formatExpected(r.usualMs)
         const row = formatTaskRow(
           null,
           r.status,
@@ -622,9 +627,14 @@ export function formatTaskHitLine(
   onPath = false,
   blocks?: number,
 ): string {
-  return formatOutcomeRow(o, paintTaskId(node, colors), o.durationMs, colors, onPath, {
-    ...ranCells(o, blocks),
-  })
+  return formatOutcomeRow(
+    o,
+    paintTaskId(node, colors),
+    o.durationMs,
+    colors,
+    onPath,
+    ranCells(o, blocks),
+  )
 }
 
 /**
@@ -651,13 +661,11 @@ export function formatTaskExecutedLine(
   blocks?: number,
   usualMs?: number | null,
 ): string {
-  return formatOutcomeRow(o, paintTaskId(node, colors), o.durationMs, colors, onPath, {
-    ...executedCells(o, blocks),
-    // A hit's time is a restore's, not the task's: nothing to compare.
-    ...(o.status === 'success' || o.status === 'failed'
-      ? { usual: usualCell(o.durationMs, usualMs, colors) }
-      : {}),
-  })
+  const cells = executedCells(o, blocks)
+  // A hit's time is a restore's, not the task's: nothing to compare.
+  if (o.status === 'success' || o.status === 'failed')
+    cells.usual = usualCell(o.durationMs, usualMs, colors)
+  return formatOutcomeRow(o, paintTaskId(node, colors), o.durationMs, colors, onPath, cells)
 }
 
 /**
@@ -667,26 +675,27 @@ export function formatTaskExecutedLine(
 export function executedCells(o: TaskOutcome, blocks: number | undefined): RowCells {
   const cores = coresOf(o)
   const ran = o.status === 'success' || o.status === 'failed'
-  return {
-    ...ranCells(o, blocks),
-    ...(cores !== undefined ? { cpu: cores } : ran ? { cpu: null } : {}),
-    ...(o.peakRssBytes !== undefined
-      ? { memBytes: o.peakRssBytes }
-      : ran
-        ? { memBytes: null }
-        : {}),
-  }
+  const cells = ranCells(o, blocks)
+  if (cores !== undefined) cells.cpu = cores
+  else if (ran) cells.cpu = null
+  if (o.peakRssBytes !== undefined) cells.memBytes = o.peakRssBytes
+  else if (ran) cells.memBytes = null
+  return cells
 }
 
-/** The cells every row of a task that reached a machine carries. */
+/**
+ * The cells every row of a task that reached a machine carries. Assigned,
+ * not spread: a warm run builds one per hit, and the spreads, copied again
+ * by the caller, were ~4 ms of 8,002 hits' rows (2026-11-07).
+ */
 function ranCells(o: TaskOutcome, blocks: number | undefined): RowCells {
-  return {
-    // A skip reached no machine.
-    ...(o.status === 'skipped' ? {} : { worker: o.where ?? 'local' }),
-    ...(blocks !== undefined ? { blocks: String(blocks) } : {}),
-    // A row with no outputs size says so (`—`); blank read as a column left out.
-    ...(o.status === 'skipped' ? {} : { outputBytes: o.outputBytes ?? null }),
-  }
+  const cells: RowCells = {}
+  // A skip reached no machine.
+  if (o.status !== 'skipped') cells.worker = o.where ?? 'local'
+  if (blocks !== undefined) cells.blocks = String(blocks)
+  // A row with no outputs size says so (`—`); blank read as a column left out.
+  if (o.status !== 'skipped') cells.outputBytes = o.outputBytes ?? null
+  return cells
 }
 
 /** Shared: render any outcome on the grid. */
@@ -730,10 +739,14 @@ function placeNote(where: string, colors: ColorSupport = NO_COLOR): string {
 /**
  * The dim note a flaky task's row and frame carry (`flaky - failed 1×
  * before`): nothing prints below the footer, so the task's own line is
- * where the reader learns it. '' when the run did not prove it flaky.
+ * where the reader learns it. Not proved flaky: its attempts, when more
+ * than one; else ''.
  */
 export function flakyNote(o: TaskOutcome, colors: ColorSupport = NO_COLOR): string {
-  if (o.flaky === undefined) return ''
+  // A retry with no key to prove a flake (no `cache: true`) still ran:
+  // the row is the only place a live run says so (`vx last` did).
+  if (o.flaky === undefined)
+    return (o.attempts ?? 1) > 1 ? ` ${paint('muted', `${o.attempts} attempts`, colors)}` : ''
   const said: string[] = []
   if (o.status === 'failed' && o.flaky.passes > 0)
     said.push(`passed ${o.flaky.passes}\u00d7 before`)

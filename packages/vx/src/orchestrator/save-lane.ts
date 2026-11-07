@@ -6,8 +6,8 @@
 // A bounded number run at once (memory: each pack holds an artifact's
 // bytes); the scheduler finishes a task only once its save has settled
 // (`settledOf`), so a run ends with every save in the cache; and a save
-// that fails degrades to a miss next time, said once — the task's work
-// ran.
+// that fails degrades to a miss next time, reported with its task — the
+// task's work ran.
 
 export interface SaveLane {
   /**
@@ -17,34 +17,45 @@ export interface SaveLane {
    * task's outcome, and a duplicate of the same task in another run
    * (admission's in-flight join).
    */
-  defer(save: () => Promise<void>): Promise<boolean>
+  defer(save: () => Promise<void>, taskId: string): Promise<boolean>
 }
 
-export function createSaveLane(cap: number, onError: (err: unknown) => void): SaveLane {
-  const queue: Array<{ save: () => Promise<void>; settle: (stored: boolean) => void }> = []
+interface Queued {
+  save: () => Promise<void>
+  taskId: string
+  settle: (stored: boolean) => void
+}
+
+export function createSaveLane(
+  cap: number,
+  onError: (err: unknown, taskId: string) => void,
+): SaveLane {
+  const queue: Queued[] = []
   let running = 0
-  const start = (save: () => Promise<void>, settle: (stored: boolean) => void): void => {
-    void save()
+  const start = (q: Queued): void => {
+    void q
+      .save()
       .then(
         () => true,
         (err: unknown) => {
-          onError(err)
+          onError(err, q.taskId)
           return false
         },
       )
       .then((stored) => {
         running--
-        settle(stored)
+        q.settle(stored)
         const next = queue.shift()
-        if (next !== undefined) start(next.save, next.settle)
+        if (next !== undefined) start(next)
       })
     running++
   }
   return {
-    defer(save) {
+    defer(save, taskId) {
       return new Promise<boolean>((settle) => {
-        if (running < cap) start(save, settle)
-        else queue.push({ save, settle })
+        const q = { save, taskId, settle }
+        if (running < cap) start(q)
+        else queue.push(q)
       })
     },
   }

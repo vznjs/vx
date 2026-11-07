@@ -6,6 +6,7 @@
 // resolved config. `<pkg>#<task>`: one task. `<task>`: that task in every
 // project declaring it.
 
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import type { ProjectConfig, TaskConfig } from '../config.js'
 import { declaredTask } from '../graph/index.js'
@@ -22,7 +23,7 @@ import {
 } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import { sayNotice } from '../ui/index.js'
-import { affectedFilterFor, resolveFilters } from './select.js'
+import { type AffectedFilter, affectedFilterFor, resolveFilters } from './select.js'
 import {
   discoverCliProjects,
   loadCliProjects,
@@ -34,6 +35,7 @@ import {
   buildPackageGraph,
   EMPTY_LOCK,
   findWorkspaceRoot,
+  PROJECT_CONFIG_FILENAMES,
   type ProjectEntry,
   type ProjectMeta,
 } from '../workspace/index.js'
@@ -167,16 +169,16 @@ export async function showCmd(args: readonly string[]): Promise<number> {
       )
     }
     const raw = [...parsed.filters]
-    let affected: string | undefined
+    let affected: AffectedFilter | undefined
     if (parsed.affected !== undefined) {
       const f = await affectedFilterFor(
         process.cwd(),
         parsed.affected,
         'drop --affected to list them all',
       )
-      if (typeof f === 'object') throw new UserError(`vx show: ${f.error}`, f.code ?? 'VX_E_USAGE')
+      if ('error' in f) throw new UserError(`vx show: ${f.error}`, f.code ?? 'VX_E_USAGE')
       affected = f
-      raw.unshift(f)
+      raw.unshift(f.filter)
     }
     const r = await resolveFilters(process.cwd(), raw, {}, affected, 'show')
     if ('error' in r) throw new UserError(`vx show: ${r.error}`, r.code ?? 'VX_E_USAGE')
@@ -264,7 +266,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
   const dir = projectDir(root, meta)
 
   if (taskName === undefined) {
-    emit(renderProject(meta.name, dir, config, meta.configPath !== null, parsed.format))
+    emit(renderProject(meta.name, dir, config, configNote(meta), parsed.format))
     return 0
   }
 
@@ -375,7 +377,9 @@ function renderList(
       tags: projects.get(meta.name)?.config.tags ?? [],
       tasks: Object.keys(tasks),
       onlyDefault: Object.values(tasks).every((t) => isDefaultBuild(t)),
+      hasDefault: Object.values(tasks).some((t) => isDefaultBuild(t)),
       configured: meta.configPath !== null,
+      note: configNote(meta),
     }
   })
   if (format === 'json') {
@@ -389,23 +393,38 @@ function renderList(
     // A package with no config file has only tasks a plugin gave it, or the
     // default `build` a configured dependant's closure gave it.
     const tasks = r.configured
-      ? count
-      : n === 0
-        ? 'no vx config'
-        : r.onlyDefault
-          ? `${count}, default build (no vx config)`
-          : `${count} from plugins (no vx config)`
+      ? r.tasks.length > 0 && r.hasDefault
+        ? `${count}, default build`
+        : count
+      : r.note !== null && r.note !== 'none'
+        ? r.note
+        : n === 0
+          ? 'no vx config'
+          : r.onlyDefault
+            ? `${count}, default build (no vx config)`
+            : `${count} from plugins (no vx config)`
     return [ui.id(r.name), r.dir, tasks, ...(anyTags ? [r.tags.join(', ')] : [])]
   })
   const columns = ['project', 'dir', 'tasks', ...(anyTags ? ['tags'] : [])]
   return [ui.section('Projects', String(rows.length), ui.table(columns, cells))]
 }
 
+/**
+ * Null for a project the lock holds a config for; else `none`, or a config
+ * written after the lock: "no vx config" sent a user who had just written
+ * one looking for a typo.
+ */
+function configNote(meta: ProjectMeta): string | null {
+  if (meta.configPath !== null) return null
+  const file = PROJECT_CONFIG_FILENAMES.find((n) => existsSync(path.join(meta.dir, n)))
+  return file === undefined ? 'none' : `${file} not locked — run vx lock`
+}
+
 function renderProject(
   name: string,
   dir: string,
   config: ProjectConfig | null,
-  hasConfigFile: boolean,
+  note: string | null,
   format: 'pretty' | 'json',
 ): Shown {
   if (format === 'json') {
@@ -420,11 +439,16 @@ function renderProject(
     ['dir', dir],
     ...(tags.length > 0 ? [['tags', tags.join(', ')] as const] : []),
     // A config-less package a dependant reaches has the default `build` (X-9).
-    ...(hasConfigFile ? [] : [['config', 'none'] as const]),
-    ...(tasks.length === 0 && hasConfigFile ? [['tasks', 'none declared'] as const] : []),
+    ...(note === null ? [] : [['config', note] as const]),
+    ...(tasks.length === 0 && note === null ? [['tasks', 'none declared'] as const] : []),
   ]
   const blocks = tasks.map(([taskName, task]) =>
-    joined([ui.text(ui.id(`${name}#${taskName}`)), ui.fields(taskRows(task))]),
+    joined([
+      isDefaultBuild(task)
+        ? ui.line('  ', ui.id(`${name}#${taskName}`), ui.dim('  default'))
+        : ui.text(ui.id(`${name}#${taskName}`)),
+      ui.fields(taskRows(task)),
+    ]),
   )
   return [ui.section(name, ui.fields(head), ...blocks)]
 }
@@ -522,5 +546,8 @@ function taskRows(raw: TaskConfig): ui.FieldRow[] {
     add('outputs.workspaceFiles', list(outputs.workspaceFiles))
     add('outputs.clean', outputs.clean === undefined ? undefined : outputs.clean ? 'yes' : 'no')
   }
+  // The first question `vx why` raises ("declares no `cache: true`"), which
+  // only --format json answered.
+  if (task.cache === true) add('cache', 'yes')
   return rows
 }

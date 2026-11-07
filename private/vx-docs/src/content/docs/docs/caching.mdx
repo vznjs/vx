@@ -7,7 +7,7 @@ import { Aside } from '@astrojs/starlight/components'
 
 A task with `cache: true` runs once per set of inputs. List what the
 command reads under `inputs`, and what it writes under `outputs`
-(`[]` for test or lint).
+(`{ files: [] }` for test or lint).
 
 ```sh
 vx run build
@@ -17,7 +17,7 @@ vx run build
 The first run executes the task and stores `dist/`. The second finds the
 same inputs and skips the work.
 
-```ts title="packages/app/vx.config.ts" {9-14,16-18}
+```ts title="packages/app/vx.config.ts" {8-14}
 import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
@@ -83,7 +83,7 @@ Every part, in order: [Caching in depth](../../caching/).
   hit that finds them already as stored writes nothing.
 - A restore writes only files the task's `outputs` declare.
 - A failed task is never saved.
-- `--force` runs and refreshes the cache; `--no-cache` ignores it.
+- `--force` runs everything and saves only what the cache lacks; `--no-cache` ignores it.
 
 ---
 
@@ -121,7 +121,7 @@ A hit after you changed something means that something is not declared.
 | `cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)` | no invocation recorded this run's cache policy, so vx cannot rule the flags out |
 | `cache key unchanged — this run recorded no cache outcome, so whether it re-ran is unknown` | vx does not guess |
 | `` this task declares no `cache: true` — it runs on every invocation; its key is folded by dependents only `` | not cached at all |
-| `` this task declares no `cache: true` — it runs on every invocation; it declares no `inputs` either, so each run derives a new key and every task that depends on it misses; declare its `inputs` `` | not cached, and no task depending on it can hit |
+| `` this task declares no `cache: true` — it runs on every invocation; it declares no `inputs` either, so each run derives a new key and every task that depends on it misses; declare its `inputs` (and `outputs` with `cache: true` to cache it too) `` | not cached, and no task depending on it can hit |
 | `this task recorded no cache key (skipped, or a persistent task) — nothing to compare` | no key to compare |
 | `no prior run for this (project, task)` | nothing to compare with yet |
 

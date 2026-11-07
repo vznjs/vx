@@ -52,6 +52,7 @@ export function runCommand(opts: RunOptions): Promise<RunResult>
 export interface PersistentOptions extends Omit<RunOptions, 'forwardArgs' | 'capture'> {
   readyWhen?: string // string regex; matched against streamed output
   timeoutMs?: number // bounds the readiness wait
+  onReady?: () => void // at ready: after the text up to the ready line's end, before the rest
   signalChannel?: boolean // fd 3 carries SIGINT/SIGTERM (a Linux sandboxed command, item 752)
 }
 
@@ -123,7 +124,7 @@ export interface CapturedChunk {
 export class BoundedCapture {
   constructor(headChars?: number, tailChars?: number) // default CAPTURE_HEAD_CHARS / CAPTURE_TAIL_CHARS
   push(text: string, err?: boolean): void
-  rebound(headChars: number, tailChars: number, through?: (c: CapturedChunk[]) => CapturedChunk[]): BoundedCapture // tighter bounds; counts what this one already dropped; through maps each side first
+  rebound(headChars: number, tailChars: number, through?: (c: CapturedChunk[]) => CapturedChunk[]): BoundedCapture // tighter bounds; counts what this one already dropped; through maps the kept text first, each side apart only past a drop
   chunks(): CapturedChunk[] // the dropped middle named on stdout
   text(): string
 }
@@ -281,6 +282,8 @@ result's `stderr` (after a newline only when the output ended mid-line,
 2026-09-24). A timeout aborts the readers at once, with its own line.
 The sandboxed runner does the same; on Linux bwrap's PID namespace
 kills the leftover with the shell, so there the bound is unreachable.
+An `inputs.runtime` probe is bounded by the same constant (`util/`,
+since `cache/` cannot import `exec/`), then its group is killed.
 
 ### Stream capture
 
@@ -400,6 +403,15 @@ A persistent task's output reaches the caller ONLY through the live
 logger keeps the one bounded tail (registered at `taskStart`, so it
 covers the pre-ready window too), which is what surfaces pre-ready
 output on a fail-before-ready outcome.
+
+`onReady` marks where the since-ready stream begins: the chunk that
+holds the ready line is split after that line's break (a CRLF's `\n`
+too; a prompt-style marker splits at the chunk's end), the first part
+forwarded, `onReady` called, then the rest. Handed over whole, the
+lines after the ready line in the same write read as pre-ready, the
+frame a ready server's row never prints: Vite's `Network:` line after
+`readyWhen: 'Local:'` was never shown. With no `readyWhen` it fires at
+spawn, before any output.
 
 ## What an unsandboxed task costs (Linux, 2026-10-02)
 

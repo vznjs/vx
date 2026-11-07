@@ -7,7 +7,7 @@
 
 import { indexDb, Cache } from '../cache/index.js'
 import { anchoredSpecError, flagHint, formatValue, seeHelp } from './help.js'
-import { buildTaskGraph, isGroupTask, splitTaskId } from '../graph/index.js'
+import { buildTaskGraph, isDefaultBuild, isGroupTask, splitTaskId } from '../graph/index.js'
 import {
   cacheKeyDiff,
   explainCacheKey,
@@ -139,7 +139,7 @@ function suggest(query: string, ids: readonly string[], invoked: boolean): strin
   // No near name: say where to look, or that there is nothing yet.
   // A run of only group tasks records no task row: "nothing has run" was
   // false there, and its advice re-ran the group to the same answer.
-  if (ids.length > 0) return '; `vx last --list` shows what has run'
+  if (ids.length > 0) return '; `vx last --stats` lists the tasks that ran'
   return invoked
     ? '; no recorded run executed a task (a group records none: ask about a task it depends on)'
     : `; nothing has run here yet (vx run ${query}, then vx why)`
@@ -156,6 +156,7 @@ async function resolveTarget(
   target: string,
   cwdProject: () => Promise<string | null>,
   declared: () => Promise<boolean>,
+  declaresId: (id: string) => Promise<boolean>,
 ): Promise<string> {
   const db = indexDb(cache)
   if (target.includes('#')) {
@@ -176,10 +177,21 @@ async function resolveTarget(
         project: string
       }[]
     ).map((r) => `${r.project}#${target}`)
+    const here = matches.length > 0 ? await cwdProject() : null
+    if (here !== null) {
+      const own = `${here}#${target}`
+      if (matches.includes(own)) return own
+      // `vx run build` here runs this project's own: another project's
+      // runs were explained in its place, unsaid.
+      if (await declaresId(own)) {
+        throw refusal(
+          { tone: 'info', headline: `no runs of ${own} yet`, fix: `vx run ${target}` },
+          { code: 'VX_E_NO_HISTORY', message: `vx why: no recorded runs for "${own}"` },
+        )
+      }
+    }
     if (matches.length === 1) return matches[0]!
     if (matches.length > 1) {
-      const here = await cwdProject()
-      if (here !== null && matches.includes(`${here}#${target}`)) return `${here}#${target}`
       throw new UserError(
         `vx why: "${target}" ran in ${matches.length} projects — pick one:\n` +
           matches.map((m) => `  ${m}`).join('\n'),
@@ -195,9 +207,13 @@ async function resolveTarget(
   if (ids.length === 0 && !invoked) {
     // `vx run` of a task no project declares is refused: its advice was that.
     const known = await declared()
+    // Where the cwd's project does not declare it (a monorepo root), a bare
+    // `vx run build` is refused too: that advice sent the user in a circle.
+    const here = known && !target.includes('#') ? await cwdProject() : null
+    const all = here !== null && !(await declaresId(`${here}#${target}`)) ? ' --all' : ''
     throw refusal(
       known
-        ? { tone: 'info', headline: `no runs of ${target} yet`, fix: `vx run ${target}` }
+        ? { tone: 'info', headline: `no runs of ${target} yet`, fix: `vx run ${target}${all}` }
         : {
             tone: 'info',
             headline: `no project declares ${target}`,
@@ -271,6 +287,8 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
       target,
       () => findCwdProject(process.cwd()),
       () => declares(root, target),
+      // The cwd project's own: a bare `vx run` there skips its default build.
+      (id) => declares(root, id, true),
     )
     let runId: string | null
     if (parsed.runId !== undefined) {
@@ -503,13 +521,15 @@ function upstreamTodo(upstream: readonly DiffEntry[], unrecorded: readonly DiffE
 }
 
 /** Whether a project declares `target` (`pkg#task`, or a bare task); true when no config loads. */
-async function declares(root: string, target: string): Promise<boolean> {
+async function declares(root: string, target: string, own = false): Promise<boolean> {
   try {
     const projects = await loadCliProjects(root, await discoverCliProjects(root), 'all')
     const [project, task] = target.includes('#') ? splitTaskId(target) : [undefined, target]
     return [...projects.values()].some(
       (p) =>
-        (project === undefined || p.name === project) && Object.hasOwn(p.config.tasks ?? {}, task),
+        (project === undefined || p.name === project) &&
+        Object.hasOwn(p.config.tasks ?? {}, task) &&
+        !(own && isDefaultBuild(p.config.tasks?.[task])),
     )
   } catch {
     // quiet: with no lock or a broken config, the run says why itself

@@ -3,11 +3,13 @@ import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import { isUserError, UserError, xxh3hex } from '../util/index.js'
 import { isSkippedPlugin, validateProjectConfig, validateWorkspace } from './config-schema.js'
+import { nonJsonMessage, nonJsonPaths } from './json-data.js'
 import {
   beginEvalRound,
   builtinsChangedBy,
   CONFIG_EXIT,
   evalBudgetMs,
+  evalDeadline,
   evaluateConfigFresh,
   thrownValueMessage,
   WATCHED_BUILTIN_NAMES,
@@ -37,7 +39,11 @@ function assertDefaultObject(mod: unknown, kind: string, configPath: string): vo
     // the bare refusal did not say what was there instead (D-110).
     throw new UserError(
       `${kind} config at ${configPath} did not export a default object` +
-        (typeof mod === 'function' ? `: ${EXPORTED_A_FUNCTION}` : ''),
+        (typeof mod === 'function'
+          ? `: ${EXPORTED_A_FUNCTION}`
+          : mod === undefined
+            ? ': it has no `export default` — write `export default { … }`'
+            : ''),
     )
   }
 }
@@ -230,7 +236,7 @@ async function loadDefaultExport(
   let compiled: { default?: unknown } | null | undefined
   let loaded: Set<string> | undefined
   const unguard = guardExit()
-  let deadline: ReturnType<typeof setTimeout> | undefined
+  let clearDeadline: (() => void) | undefined
   try {
     // A bundle that throws is evaluated from source below, so the error
     // the user sees is the source's.
@@ -257,14 +263,17 @@ async function loadDefaultExport(
             },
           ),
       new Promise<never>((_, reject) => {
-        deadline = setTimeout(
+        clearDeadline = evalDeadline(
+          kind,
+          configPath,
+          budget,
           () =>
             reject(
               new UserError(
                 `${kind} config ${configPath} did not finish evaluating within ${budget}ms (VX_CONFIG_WORKER_TIMEOUT)`,
               ),
             ),
-          budget,
+          true,
         )
       }),
     ])) as { default?: unknown }
@@ -278,7 +287,7 @@ async function loadDefaultExport(
     }
     throw loadFailure(err, configPath, kind)
   } finally {
-    clearTimeout(deadline)
+    clearDeadline?.()
     unguard()
     if (source !== null) releaseSource(hash, plain, configPath)
   }
@@ -452,7 +461,12 @@ export function configLoadError(err: unknown, configPath: string, kind: string):
   // printed `vx: JSON Parse error: Expected '}'` and named nothing. A
   // config's own `JSON.parse` has its line in the stack and passes through.
   if (name === 'SyntaxError' && !NAMED_FRAME.test(String((err as { stack?: unknown }).stack))) {
-    return new UserError(`${kind} config ${configPath}: an import does not parse: ${message}`)
+    // A missing named export is a SyntaxError too, though nothing failed to
+    // parse: "does not parse" sent the user looking for a typo.
+    const what = message.startsWith('Export named ')
+      ? 'an import names an export its module lacks'
+      : 'an import does not parse'
+    return new UserError(`${kind} config ${configPath}: ${what}: ${message}`)
   }
   if (name === 'ResolveMessage') {
     const spec = /Cannot find (?:package|module) ['"]([^'"]+)['"]/.exec(message)?.[1]
@@ -640,16 +654,23 @@ export async function loadProjectConfigs(
       throw overlapping ? new ChangedInRound(changed) : builtinsChanged(changed, configPath)
     }
     assertDefaultObject(mod, 'Project', configPath)
-    // Validation runs HERE, on whichever object we ended up with, so a
-    // malformed config reports the identical UserError whether it was
-    // evaluated in-process or in a worker.
-    validateProjectConfig(mod as ProjectConfig, configPath)
+    // What JSON cannot carry is refused on the live object: the copy below
+    // would drop it unseen.
+    const [nonJson] = nonJsonPaths(mod)
+    if (nonJson !== undefined) throw new UserError(nonJsonMessage(configPath, nonJson))
     // A tree of its own, as the lock hands out. The module object shares
     // what the config shares: one preset's task in two configs, one `exec`
     // in two tasks. A `project` hook that edits in place then edited them
     // all (item 967). A config is JSON data (config-schema.ts), so the copy
     // loses nothing.
-    return JSON.parse(JSON.stringify(mod)) as ProjectConfig
+    const copy = JSON.parse(JSON.stringify(mod)) as ProjectConfig
+    // Validation runs on the copy, the object every reader gets, so a
+    // malformed config reports the identical UserError whether it was
+    // evaluated in-process or in a worker. On the live object, a getter in
+    // an array or a Proxy answered the check with one value and the copy
+    // with another: `outputs.files: ['../victim/**']` reached the lock.
+    validateProjectConfig(copy, configPath, configPath, true)
+    return copy
   }
   // One worker for every repeat load in this round, however many there are.
   const endRound = beginEvalRound()

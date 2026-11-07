@@ -83,8 +83,10 @@ over (in order):
    so boundaries are unambiguous). Listed names get their current
    values; an unset name folds its bare name, with no `\0`, so unset
    and set-to-empty are two keys (the child tells them apart:
-   `passThrough` leaves an unset name out). A name holding a NUL is
-   refused at load.
+   `passThrough` leaves an unset name out). A name holding a NUL or
+   another control character is refused at load, and a value holding
+   U+FFFD at hash time (a value that is not UTF-8 reads as it, so two
+   such values would key alike).
 6. **`inputs.runtime` resolved output** — `[command, output]`
    pairs, where `output` is the trimmed stdout of each command run via
    `sh -c` in the **project dir** at hash time; a command with stderr
@@ -191,7 +193,9 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     A whole-tree run starts the check as its cache opens, beside the
     config load and graph build. The sizes it learns are
     stored while the tasks run, not before the first one (40,030 cost
-    217 ms there at 9,603 tasks), and a cold cache skips the lookup.
+    217 ms there at 9,603 tasks), in OID order by a native string sort
+    (a JS comparator was 32 ms before the first task, 2026-11-07), and a
+    cold cache skips the lookup.
     The check is by size,
     so a filter that keeps the size (a `filter` driver such as
     `tr a-z A-Z`), removed after an add, still leaves a blob that
@@ -280,7 +284,9 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     hashed: a task whose globs select one is refused by name, and so
     is a task whose declared outputs hold one, rather than the file
     dropping out of the key or the artifact without a word
-    (turborepo#9345). Rename it, or exclude it with a negated glob.
+    (turborepo#9345); one found by the clean before a run or a
+    restore is refused as one vx cannot clear. Rename it, or exclude
+    it with a negated glob.
 
     Your globs are a **filter over the set git reports**, so a broad
     glob never reaches a gitignored file. An entry that names one
@@ -438,7 +444,7 @@ On a hit:
    with its mtime forged back, still matches.
 3. Otherwise the `outputs/<rel>` (+ `workspace-outputs/<rel>`) entries
    are extracted from the artifact (its bytes inline in the index, read
-   in one read transaction with the entry's rows, or
+   in one snapshot with the entry's rows, or
    `<cacheDir>/<hash>.tar.zst`) **in place**: every entry is staged in
    the workspace's `.vx/tmp/` (never an output folder), and only once the
    whole archive has staged is each renamed over the file it replaces.
@@ -924,9 +930,12 @@ A declared set that resolves to **nothing** is said on the run's
 status line. `inputs matched no files (lib/**)` — the key would
 not change when the source does — is said on every miss of a cacheable
 task, right after `describeTaskInputs` and before the command, whether
-or not it saves. `outputs matched no files (build/**)` — an empty
+or not it saves. It is said too when every wildcard glob matched nothing
+and only literal files did (`scr/**` beside the `package.json` a
+lockfile plugin appends), naming the wildcard globs. `outputs matched no files (build/**)` — an empty
 artifact was saved and a later hit restores nothing — is said on the
-save path. Both are almost always a glob
+save path, and when a deferred fetch (`--cache-download=none`) lands
+nothing. Both are almost always a glob
 against the wrong directory; the output line names one other cause when
 it applies: a sandboxed task with no `exec.sandbox.allow.write`, whose
 writes never reached disk, or a `workspaceFiles` directory that is a
@@ -1020,7 +1029,8 @@ Skipped when:
 
 A directory of this user's that withholds its own write (a task's
 `chmod 555 dist/ro`, which a hit restores too) gets owner write for the
-clean's remove, then its mode back, as a restore's write into it does.
+clean's remove, then its mode back, as a restore's write into it does; the
+subdirectories the clean empties in it go too.
 A declared output the process cannot remove even so (a `dist/` another
 user wrote, a read-only checkout) fails the task with `cannot remove
 declared output <path>: EACCES — …`, and a restore that cannot write
@@ -1068,6 +1078,10 @@ With the rule off, an edge fixes the order, and the dependant is
   upstream's intermediate) saves nothing: an artifact holds what a run
   wrote, never what it took away, and the upstream's restore puts the
   file back, so the dependant runs again on every warm run (X-32);
+- before a **retry**, what the failed attempt added is removed, so its
+  partial outputs are neither left nor saved; a failed attempt that
+  changed or removed a file it found saves nothing on the retry's pass,
+  since no retry puts that file back;
 - it **cleans by recorded rows**, never by glob, before a run (nothing:
   stale files of its own are its command's to clean, as under Turbo) and
   before a restore (its rows only, pruning emptied directories only
@@ -1268,7 +1282,7 @@ same reason `lock --check` ignores `inputs.env` value changes.
 
 Two vx processes on one workspace (a `vx watch` beside a `vx run`, two
 CI jobs on one checkout) take turns: a run takes the workspace's run
-lock before it schedules and releases it with its cache handle — before
+lock before it opens the cache and releases it with its cache handle — before
 a persistent task's wait, so a dev server never holds it — and the
 second run waits, saying after a second whom it waits for:
 
@@ -1304,9 +1318,10 @@ has staged). Machines sharing a workspace over a network file system
 do not share a temp directory, so they do not share the lock.
 
 A `vx cache clean` in any checkout of the repository waits for every
-vx process holding the shared store open (a run holds it from start to
-end), so it never deletes the store under a run in a sibling checkout,
-whose own lock it never took. An eviction can still land between a
+vx process holding the shared store open (a run holds it from its lock
+to its end), so it never deletes the store under a run in a sibling checkout,
+whose own lock it never took. A run waiting for the lock holds no cache
+open, so a clean holding the lock never waits on it. An eviction can still land between a
 hit's probe and its restore: a clean or a run for another workspace
 that shares the `--cache-dir` (a different workspace, so a
 different lock), which cannot see this run's pending `accessed_at`
@@ -1328,6 +1343,9 @@ for <hash>: …; dropped it — running it`. The entry is dropped, so the
 task's save stores the key again; it failed the task as an internal
 error on every run until `--force` before A-52. A cache the run may
 only read keeps the entry (`…; left it (this cache is read-only)`).
+A failure that is another process re-saving the key since the probe
+(its rows changed) restores the new entry instead, or is a plain miss
+that keeps it: vx drops only the entry that failed.
 
 ## Storage layout
 
@@ -1349,8 +1367,10 @@ named as the one to move away. The readers and `vx cache clean` find no
 cache and go on.
 A full disk is the same kind of failure and is reported the same way,
 never as a corrupt artifact and never as a stack: a save that runs out
-of room is `[vx] cache save failed: ENOSPC …` (the task's work ran, the
-footer counts it not saved rather than `↑`, and the next run misses), a restore that does is the task's failure line
+of room is `[vx] cache save failed: <task>: ENOSPC …` (the task's work ran, the
+footer counts it not saved rather than `↑`, and the next run misses; the
+saves that fail after it are one line once the graph ends,
+`[vx] cache save failed for N more tasks: …`), a restore that does is the task's failure line
 `could not write its outputs (ENOSPC: …). Free space on that disk and
 re-run.`, and a run record that does is `[vx] run history not recorded:
 … — the verdict above stands` (the run exits by its tasks; `vx last`
@@ -1360,7 +1380,7 @@ access times are skipped and the run goes on; a prune unlinks the
 artifacts first, so the rows it then deletes have room to go, and a
 save's temp file is removed when its write fails.
 A process out of file descriptors (`EMFILE`, `ENFILE`) is named the
-same way: a save is `[vx] cache save failed: save of <hash> could not
+same way: a save is `[vx] cache save failed: <task>: save of <hash> could not
 open a file (EMFILE: …) — … raise the limit (ulimit -n 4096) and
 re-run`, and a restore fails the task with that hint, never as a
 corrupt artifact (A-39). Opening the index is named the same way: SQLite reports a
@@ -1601,13 +1621,23 @@ file found in it goes while the directory stays. `links` (v45) maps each
 symlink under the outputs to its target as written (`outputs/dist/latest`
 → `v2.txt`). A hit makes the link apart from its place and renames it
 over the target like a file, and only if the target is relative and
-stays inside the workspace; any other fails the whole restore. Its index
+stays inside the workspace at every step, read segment by segment from
+the link's own directory; any other fails the whole restore. A target
+that climbs above the root and comes back (`../../../ws/app/x`) is out:
+judged by where it ends, it resolved inside only on a checkout whose root
+is named `ws`, saved there and was refused as corrupt everywhere else
+(until 2026-11-07). Its index
 row carries the link type in its mode and the target's length and CRC-32
 where a file has its size and mtime, so the skip-restore check compares
 the target and never follows the link. A FIFO, socket or device under
 the outputs holds no bytes to store and stays out of the entry; the
 save names each one in a warning, since a hit restores the tree without
-it (until 2026-11-06 it was left out without a word). Tar entries that are not regular
+it (until 2026-11-06 it was left out without a word). The clean before
+a miss and a restore removes one, as it removes a file: a FIFO left at a
+declared output path hung the task that wrote there, and a stray one
+survived a restore (until 2026-11-07). A hit whose tree is otherwise
+current still leaves one standing: listing them reads every directory
+again, ~17% of the walk that proves the tree. Tar entries that are not regular
 files (symlinks, hardlinks, devices) are never materialised — the
 reader reports them only to be skipped — so a
 poisoned artifact cannot smuggle one onto disk. Nor can it name a file
@@ -1629,15 +1659,18 @@ same gate (`restorableOutput`). On the save side a
 link to a file, to a directory or to nothing comes back as that link,
 and no byte of its target is read, so a link a sandboxed task planted to
 a file it could not read packs nothing of it (L-23). An absolute link, or
-one leading out of the workspace, fails the save by name, as the config
+one leading out of the workspace or into `.git`, fails the save by name
+(the restore's own check, so no entry is stored that every restore refuses), as the config
 spells the path (`workspaceFiles output gen/latest`). The clean before exec and restore removes every
-file AND symlink the output globs cover (a link is unlinked, never
+file, symlink, FIFO, socket and device the output globs cover (a link is unlinked, never
 followed). An output directory that is a symlink (`dist -> real-out`) is
 followed by the clean as by the save and restore, named by a glob
 (`dist/**`) or a literal (`dist`) alike, so its target is the
 output and an entry holds only what its run wrote (X-88); one that
 resolves outside the project refuses the task, naming the link, and
-nothing is deleted through it (X-5). So does one, in either scope, that
+nothing is deleted through it (X-5), and so does an
+`outputs.workspaceFiles` directory that resolves outside the workspace
+(it saved an empty entry under a warning, M-65). So does one, in either scope, that
 resolves into the root's own `.git` (any case) or its `.vx`: for the root
 project and `outputs.workspaceFiles` those are inside, and `dist -> .git`
 under `dist/**` had the clean delete the repository. A recorded row

@@ -380,7 +380,7 @@ export function defaultLogger(
   let saved = 0
   let notSaved = 0
   let skippedCount = 0
-  // Each finished task's cache bucket by its key: its remote traffic moves it.
+  // Each finished task's cache bucket by its key, with a remote: its traffic moves it.
   const buckets = new Map<string, TaskBucket>()
   // The graph is done and vx's own closing steps run: the region stays,
   // footer and step rows, until the footer replaces it (2026-10-15).
@@ -1103,7 +1103,9 @@ export function defaultLogger(
             if (qi >= 0) slotQueue.splice(qi, 1)
           }
         }
-        const bucket = cacheBucketOf(outcome)
+        // Only a remote's traffic moves a bucket: without one, an entry per
+        // task was held for the run and never read.
+        const bucket = runContext?.cache?.remote === true ? cacheBucketOf(outcome) : undefined
         if (bucket !== undefined) {
           const entry = { task: node.id, bucket }
           if (outcome.hash !== undefined) buckets.set(outcome.hash, entry)

@@ -1427,10 +1427,10 @@ export const MORE: readonly Feature[] = [
     slug: 'config-timeout',
     title: 'A config that hangs, named',
     category: 'config',
-    hook: 'A config whose evaluation runs away fails after a deadline, naming the file.',
+    hook: 'A config whose evaluation never settles fails after a deadline, naming the file.',
     body: [
-      'A config is code, and code can loop or wait on the network. A run that hangs at “loading” with no hint is the worst kind of bug.',
-      'vx bounds each config evaluation, 30 seconds by default, and fails naming the config. `VX_CONFIG_WORKER_TIMEOUT` changes the limit.',
+      'A config is code, and code can wait on the network forever. A run that hangs at “loading” with no hint is the worst kind of bug.',
+      'vx bounds each config evaluation, 30 seconds by default, and fails naming the config. `VX_CONFIG_WORKER_TIMEOUT` changes the limit. A synchronous loop holds the thread the deadline needs, so it hangs until killed.',
     ],
     example: {
       lang: 'sh',

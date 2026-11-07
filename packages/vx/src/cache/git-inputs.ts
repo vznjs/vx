@@ -8,7 +8,9 @@
 import os from 'node:os'
 import path from 'node:path'
 import {
+  accessSync,
   closeSync,
+  constants as fsConstants,
   existsSync,
   fstatSync,
   lstatSync,
@@ -281,6 +283,8 @@ class OidSlot {
 
 interface IgnoredListing {
   root: string
+  /** `root/` when `root` is absolute and normalized: a normalized path under it is relative as its rest. */
+  base: string | undefined
   paths: readonly string[]
   asked: Map<string, boolean>
 }
@@ -414,7 +418,13 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   private ignored: IgnoredListing | null = null
 
   setIgnored(root: string, paths: readonly string[]): void {
-    this.ignored = { root, paths, asked: new Map() }
+    const base =
+      path.sep === '/' && path.isAbsolute(root) && path.normalize(root) === root
+        ? root.endsWith('/')
+          ? root
+          : `${root}/`
+        : undefined
+    this.ignored = { root, base, paths, asked: new Map() }
   }
 
   /**
@@ -429,7 +439,17 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   newFilesIgnored(dir: string): boolean {
     const ig = this.ignored
     if (ig === null || ig.paths.length === 0) return false
-    const rel = relPosix(ig.root, dir)
+    // Asked once per project a run keys: `path.relative` was ~2 ms of
+    // 1,601 (2026-11-07). Below a normalized root, a path with no `.`
+    // segment and no doubled or trailing slash is its rest.
+    const rel =
+      ig.base !== undefined &&
+      dir.startsWith(ig.base) &&
+      !dir.includes('/.') &&
+      !dir.includes('//') &&
+      !dir.endsWith('/')
+        ? dir.slice(ig.base.length)
+        : relPosix(ig.root, dir)
     if (rel === '' || rel.startsWith('../')) return false
     let known = ig.asked.get(rel)
     if (known !== undefined) return known
@@ -724,12 +744,51 @@ const FATAL_UTF8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
 
 const LS_FILES_STAGE_RE = /^(?:([A-Za-z]) )?([0-7]{6}) ([0-9a-f]{40,64}) ([0-3])\t/
 
+const UNOPENED = "warning: could not open directory '"
+
+/**
+ * Refuses a walk git did not finish. `could not open directory` is a
+ * warning and the exit is 0, so the files under it were in no key: past
+ * PATH_MAX (4096 bytes on Linux) an edit there was a stale hit. A directory
+ * this user may not read is left out as before: no task of theirs reads it
+ * either, and a root-owned volume beside the projects must not stop every
+ * run. git cuts its message at 4096 bytes, so a long path comes with no
+ * reason. `cwd`: where git ran; it names the directory from its work tree's top.
+ */
+function refuseUnopenedDirs(cwd: string, stderr: string): void {
+  if (!stderr.includes(UNOPENED)) return
+  const prefix = repoFacts(cwd)?.prefix ?? ''
+  const top = path.resolve(
+    cwd,
+    ...prefix
+      .split('/')
+      .filter((s) => s !== '')
+      .map(() => '..'),
+  )
+  for (const line of stderr.split('\n')) {
+    if (!line.startsWith(UNOPENED)) continue
+    const rest = line.slice(UNOPENED.length)
+    const end = rest.indexOf("': ")
+    const dir = end === -1 ? rest : rest.slice(0, end)
+    try {
+      accessSync(path.resolve(top, dir), fsConstants.R_OK | fsConstants.X_OK)
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'EACCES') continue
+    }
+    const shown = dir.length > 100 ? `${dir.slice(0, 40)}…${dir.slice(-40)}` : dir
+    throw new UserError(
+      `git could not open the directory ${shown}, so no key would see the files under it. Shorten the path, or ignore it in .gitignore.`,
+      'VX_E_GIT',
+    )
+  }
+}
+
 /**
  * Run `git ls-files -s --others --exclude-standard -z .` in `cwd`.
  * One spawn yields BOTH the file list (identical visibility to the
  * pre-v20 `--cached --others` form, verified empirically: same set
- * including staged-but-deleted files and per-stage conflict
- * duplicates) AND each tracked file's index OID — the heart of the
+ * including staged-but-deleted files; an unmerged path, listed there
+ * once per stage, is listed once) AND each tracked file's index OID — the heart of the
  * Turbo-parity "hashes come from git's index" fast path. Throws a
  * `UserError` when git is unavailable or `cwd` isn't a git work
  * tree; vx requires git. `-z` survives filenames with newlines /
@@ -753,6 +812,7 @@ export function runGitLsFiles(cwd: string, env = gitEnv()): GitLsResult {
     // cannot be enumerated, and the two have different fixes.
     throw gitFailure(cwd, 'ls-files', proc.exitCode, new TextDecoder().decode(proc.stderr).trim())
   }
+  refuseUnopenedDirs(cwd, new TextDecoder().decode(proc.stderr))
   const { text, undecodable } = decodeGitZ(proc.stdout)
   const parsed = parseLsFilesOutput(text.length === 0 ? [] : text.split('\0'), undecodable)
   const nested = expandNestedRepos(cwd, parsed.files, parsed.gitlinks)
@@ -954,6 +1014,14 @@ function parseLsFilesOutput(
     const m = LS_FILES_STAGE_RE.exec(record)
     const filePath = m === null ? record : record.slice(m[0].length) // --others: bare path
     if (m === null && isInstalledPath(filePath)) continue
+    // An unmerged path prints once per stage (1, 2, 3), in a row. Listed
+    // each time, the key folded the file once per stage, so a conflict
+    // resolved on disk keyed apart from the same bytes once added. It
+    // carries no OID either way: its worktree bytes are what folds.
+    if (m !== null && m[4] !== '0' && files.length > 0 && files[files.length - 1] === filePath) {
+      if (m[2] === '160000') gitlinks.add(filePath)
+      continue
+    }
     files.push(filePath)
     if (undecodableRecords.size > 0 && undecodableRecords.has(record)) undecodable.push(filePath)
     if (m === null) continue
@@ -1829,6 +1897,9 @@ export async function startGitEnumeration(
   pathspecs: readonly string[],
 ): Promise<GitEnumeration> {
   attributeReads.clear()
+  // A dir is a path, never pathspec magic: `:top` listed `top`, `*g` matched
+  // `:top/src/log`, and a project's edit left its key (a stale hit).
+  const literal = pathspecs.map((p) => (p === '.' ? p : `:(literal)${p}`))
   // The spawns are independent — run them concurrently so the
   // bulk-populate costs max(ls-files, status) wall time, not the sum
   // (status alone is ~74 ms on a 1000-project tree; serial spawning
@@ -1950,7 +2021,7 @@ export async function startGitEnumeration(
   // tracked paths are dirty AND which files are untracked. Asking
   // `ls-files --others` for the untracked set walked the same tree a second
   // time (~50 ms of CPU, concurrent with status but contending with it).
-  const listing = spawnGit(['ls-files', '-s', '-v', '-z', '--', ...pathspecs])
+  const listing = spawnGit(['ls-files', '-s', '-v', '-z', '--', ...literal])
   // Read synchronously: `status` spawns once the read is in, and an async
   // read's answer waited for the main thread to yield, behind the workspace
   // config and discovery (~5 ms of a 1,200-task warm run's wait for git).
@@ -1993,7 +2064,7 @@ export async function startGitEnumeration(
         '--ignored=matching',
         '--no-renames',
         '--',
-        ...pathspecs,
+        ...literal,
       ],
       undefined,
       index === undefined ? undefined : { GIT_INDEX_FILE: index },
@@ -2058,6 +2129,7 @@ export async function startGitEnumeration(
   }
   if (parsedLs === undefined)
     throw gitFailure(workspaceRoot, 'ls-files', ls.exitCode, ls.stderr.trim())
+  if (status !== null && status.exitCode === 0) refuseUnopenedDirs(workspaceRoot, status.stderr)
   const { files: tracked, oids, flagged, gitlinks, undecodable } = parsedLs
   // Normalize `status`'s repo-root-relative paths to workspace-relative (strip
   // the `--show-prefix`) so the dirty set is keyed identically to the trusted
@@ -2158,7 +2230,7 @@ export async function startGitEnumeration(
           return null
         }
         const run = await spawnGit(
-          ['ls-files', '-s', '-v', '-z', '--debug', '--', ...pathspecs],
+          ['ls-files', '-s', '-v', '-z', '--debug', '--', ...literal],
           undefined,
           statusCopy === undefined ? undefined : { GIT_INDEX_FILE: statusCopy },
         )

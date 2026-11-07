@@ -19,8 +19,10 @@ import { Cache, type RemoteCacheLayer } from '../src/cache/index.js'
 import type { ProjectConfig } from '../src/config.js'
 import type { Logger } from '../src/report/index.js'
 import { prepareRun as prepareFromLock } from '../src/orchestrator/index.js'
+import { prepareRunLocked } from '../src/orchestrator/prepare.js'
 import { lock, prepareRun } from './helpers/orchestrator.js'
-import { pluginSource, writeEdges } from './helpers/plugin.js'
+import { edgesSource, PLUGIN_IMPORT, pluginSource, writeEdges } from './helpers/plugin.js'
+import { computeReverseDepCount } from '../src/graph/index.js'
 import { UserError } from '../src/util/index.js'
 
 const TIMEOUT = 30_000
@@ -367,9 +369,15 @@ describe('a ^name no project declares is refused in a scoped run too', () => {
       await pkg('cart', cfg(task('build')))
       await pkg('web', cfg(task('build')))
 
-      await expect(lock(root)).rejects.toThrow(
-        '✗ vx lock  lock not written\n\n  app#typo: dependsOn ^biuld but no project in the workspace declares biuld\n\n  fix  ^build',
+      // Placed at the field, its near name the fix.
+      const placed = await lock(root).then(
+        () => 'locked',
+        (e: Error) => e.message,
       )
+      expect(placed).toContain(
+        'packages/app/vx.config.mjs:1:67\n  tasks.typo.dependsOn names ^biuld but no project in the workspace declares biuld\n',
+      )
+      expect(placed).toEndWith('fix  use ^build')
       await typoLocked()
       const err = await refusal({ tasks: ['app#typo'], locked: true })
       expect(err).toBeInstanceOf(UserError)
@@ -535,6 +543,58 @@ describe('--exclude-dependencies keys a 50,000-deep dropped chain', () => {
       expect(excluded[0]!.hash).toMatch(/^[0-9a-f]{16,}$/)
     },
     TIMEOUT * 4,
+  )
+})
+
+// Counted beside git's blob-size check: after it, before the first task,
+// the count was 40 ms of a cold 8,002-task run (2026-11-07).
+describe('the dependents count is taken while git answers', () => {
+  /** As `run` prepares: locked, counting dependents. */
+  async function prepareForRun(): Promise<Awaited<ReturnType<typeof prepareRun>>> {
+    await lock(root)
+    const p = await prepareRunLocked(
+      { cwd: root, tasks: ['build', 'test'], concurrency: 1 },
+      log,
+      undefined,
+      true,
+    )
+    opened.push(p)
+    return p
+  }
+
+  it(
+    'is the graph closure, when nothing after the graph edits the nodes',
+    async () => {
+      await pkg('lib', cfg(task('build')))
+      await pkg('app', cfg(task('build', ['^build']), task('test', ['build'])), ['lib'])
+      const p = await prepareForRun()
+      expect(Object.fromEntries(p.dependents ?? [])).toEqual(
+        Object.fromEntries(computeReverseDepCount(p.nodes)),
+      )
+      expect(p.dependents?.get('lib#build')).toBe(2)
+      // A plan never reads them, so it counts none.
+      expect((await prepare({ tasks: ['build', 'test'] })).dependents).toBeUndefined()
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'is left to the run when a graph hook edits the nodes after it',
+    async () => {
+      await pkg('lib', cfg(task('build')))
+      await pkg('app', cfg(task('build')))
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
+        `${PLUGIN_IMPORT}export default { plugins: [${edgesSource()}, ${pluginSource(
+          'org/edge',
+          `{ graph(nodes) { nodes.get('app#build').deps.push('lib#build') } }`,
+        )}] }\n`,
+      )
+      const p = await prepareForRun()
+      expect(p.nodes.get('app#build')?.deps).toContain('lib#build')
+      expect(p.dependents).toBeUndefined()
+    },
+    TIMEOUT,
   )
 })
 

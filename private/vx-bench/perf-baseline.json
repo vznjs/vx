@@ -13,14 +13,14 @@
         "sqlite statement": 49
       },
       "restore run @25": {
-        "hash xxh3": 85,
+        "hash xxh3": 135,
         "spawn git": 3,
         "sqlite statement": 71
       },
       "plan @25": {
         "hash xxh3": 615,
         "spawn git": 3,
-        "sqlite statement": 65
+        "sqlite statement": 66
       },
       "one-edit run @25": {
         "hash blob update": 2,
@@ -39,14 +39,14 @@
         "sqlite statement": 127
       },
       "restore run @100": {
-        "hash xxh3": 310,
+        "hash xxh3": 510,
         "spawn git": 3,
         "sqlite statement": 224
       },
       "plan @100": {
         "hash xxh3": 2490,
         "spawn git": 3,
-        "sqlite statement": 215
+        "sqlite statement": 216
       },
       "one-edit run @100": {
         "hash blob update": 2,

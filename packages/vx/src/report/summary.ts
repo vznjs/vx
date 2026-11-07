@@ -584,9 +584,19 @@ function tableStatusColor(o: TaskOutcome): Style {
 
 // Local byte formatter — the orchestrator can't import cli/format.ts
 // (module boundary), and the footer only needs one compact form.
-/** Ran here with `cache: true`, succeeded, and its result was not saved. */
+/**
+ * Ran here with `cache: true`, succeeded, and its result was not saved.
+ * Outputs left in the executor's store (`outputs: 'deferred'`) ran
+ * elsewhere, whether or not the executor names a `where`.
+ */
 export function ranUnsaved(o: TaskOutcome): boolean {
-  return o.status === 'success' && !ranNoCache(o) && o.saved !== true && o.where === undefined
+  return (
+    o.status === 'success' &&
+    !ranNoCache(o) &&
+    o.saved !== true &&
+    o.where === undefined &&
+    o.outputs !== 'deferred'
+  )
 }
 
 export function formatRunSummary(
@@ -645,7 +655,8 @@ export function formatRunSummary(
           }
         : {}),
       ...(emptyGroups.length > 0 ? { emptyGroups } : {}),
-      buckets: bucketsOf(outcomes),
+      // Read only to move a task by its remote traffic.
+      ...(context?.cache?.remote === true ? { buckets: bucketsOf(outcomes) } : {}),
     },
     totalMs,
     colors,

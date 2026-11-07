@@ -9,6 +9,9 @@ answer (`hasHook` is the zero-cost gate that skips a stage nobody
 declares). It consults the
 run-level capabilities (`executor`, `cache`), and runs each plugin's
 `teardown()` at the end of the run, crash-isolated and time-bounded.
+A hook's throw reads `plugin '<p>' failed in <hook>: <message>`; a bug
+(a `TypeError`, `ReferenceError`, `RangeError` or `SyntaxError`) adds
+`(at <file>:<line>:<col>)`, the first frame outside vx.
 After the `graph` stage the graph is re-checked the way the builder
 checks its own (`checkGraph`: each node under its own id, every dep a
 node, no cycle, no two tasks deleting each other's outputs, the addition

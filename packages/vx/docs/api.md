@@ -228,7 +228,6 @@ export class Cache implements CacheLayer {
   readonly remoteHits: RemoteHits
   readonly storeDir: string | undefined
   readonly schemaReset: SchemaReset | null
-  readonly formatChange: SchemaReset | null
   readonly storeReset: SchemaReset | null
   static inspect(cacheDir: string): Cache
   constructor(
@@ -1304,6 +1303,7 @@ One local cache's run history, read and written by core (`localHistory`): plain 
 ```ts
 export interface LocalHistory extends HistoryProvider {
   resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>>
+  durationsFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>>
   hasImported(sha: string): boolean
   importTimings(
     sha: string,
@@ -2018,6 +2018,7 @@ export interface PreparedRun {
   gitFilesCache: GitFilesCache
   workspaceProjectCount: number
   hashCache: HashCache
+  dependents?: ReadonlyMap<string, number>
   empty: null | 'no-tasks-declared' | 'none-affected' | 'empty-graph'
 }
 ```
@@ -2229,7 +2230,9 @@ export interface RemoteCacheLayer {
   lend?(): Promise<LentAccess | undefined>
   has(hash: string): Promise<ArtifactInfo | null>
   hasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
-  get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
+  get(
+    hash: string,
+  ): Promise<{ body: Blob | Response; durationMs: number | undefined } | null | undefined>
   put(hash: string, body: Blob, meta: { durationMs: number; replace?: true }): Promise<void | false>
   missing?(hash: string): void
 }
@@ -3052,6 +3055,7 @@ export interface TaskOutcome {
   keylessBy?: string
   cacheOff?: true
   blockedBy?: string
+  taintedBy?: string
   otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
   timedOut?: true
   failedOutput?: string

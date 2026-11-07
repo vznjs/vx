@@ -73,10 +73,16 @@ The refusal adds what helps:
   `alpha#build` for `alpha` at `p/a`.
 - Otherwise what exists: `Tasks: build, test.`, `No
 project is named zzz; projects: a, b.`, or `a's tasks: build, test.`
-- Then ``A run reads the lock: after editing a
+- With no task declared anywhere (right after `vx init`): ``No project
+declares a task yet: add one under `tasks` in a vx.config, then run
+`vx lock`.``
+- A `pkg` that matches a project only after Unicode normalization (`café`
+  typed in NFC, the project's directory in NFD) is said to differ in
+  Unicode form, with the fix: set `name` in its vx.config.
+- Otherwise ``A run reads the lock: after editing a
 vx.config, run `vx lock`.``, since a task added since the last lock is not in it.
 - `Only projects outside the selection declare <name> — pass
---all, or --filter to pick them.` when the run was scoped and a project
+--all, or a --filter that includes them.` when the run was scoped and a project
   outside the scope declares it.
 
 A name declared by only some projects is fine; the check fires only when
@@ -101,7 +107,8 @@ affected: the change reaches no test task.`
 There is no `-V`; use `vx --version`, as in Turbo.
 
 `vx <verb> --help` (also `-h`, `vx help <verb>` and `vx --help <verb>`) prints this
-reference for that verb: its usage lines and sections, then
+reference for that verb: its usage lines and sections (of a section several
+verbs share, only its own entries), then
 `Full reference: vx help`. Every argument error points at it.
 `vx help <plugin verb>` is `vx <plugin verb> --help`: the plugin answers.
 
@@ -191,8 +198,11 @@ If no task name is given:
     (under `tasks` in a vx.config, or `vx init`).
 - **Not a TTY** — exits `1` with
   `missing task name (stdin is not a TTY, so no picker; tasks here: build, test)`.
-  It names the cwd project's tasks, else every project's (twelve, then
-  `and N more`). Outside a workspace it reads `vx run <task>, e.g. vx run build`.
+  It names the cwd project's tasks, else every project's as
+  `not inside a project, the workspace's tasks with --all: build, test`
+  (twelve, then `and N more`). Under `--all` it names
+  `every project's tasks: …`; under `--filter` or `--affected`,
+  `the selected projects' tasks: …`, or why nothing was selected. Outside a workspace it reads `vx run <task>, e.g. vx run build`.
 - **Under `--dry=json`**, on a terminal too — the
   same refusal (`a JSON answer opens no picker; …`), with the
   `VX_E_USAGE` error document on stdout: a program cannot pick.
@@ -238,25 +248,25 @@ filter(s): …`, plus a hint:
   it: `no projects
 selected: !app excluded every project the other filters matched`.
 
-| Form               | Meaning                                                                                                                                                                                                                                                                                                                                 |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `<pattern>`        | Match by package name. `*` matches any characters, including `/`. A pattern matching no package may leave out the scope, as pnpm reads it (`cart` is `@nx-example/cart` when one package carries it). One holding a `/` outside a scope that matches no package is a directory, as Nx's `--projects` reads it (`apps/*` is `./apps/*`). |
-| `./<dir>`          | The package at `<dir>` alone, as Turbo and pnpm read it (`.` is the root project); a `<dir>` that is no package matches the packages under it (relative to workspace root; D-43). A link to a package's directory names that package.                                                                                                   |
-| `{<dir>}`          | Same as `./<dir>`.                                                                                                                                                                                                                                                                                                                      |
-| `<pattern>{<dir>}` | The packages `<pattern>` selects inside `<dir>` (a `{<dir>}` path form), as pnpm and Turbo read it: `@acme/*{apps}`, `*web*{./packages/*}`. Takes every operator a name takes.                                                                                                                                                          |
-| `./<glob>`         | A glob over root-relative project dirs: `./packages/*` (direct children), `{apps/**}` (nested too; a trailing `**` matches zero dirs, so `./packages/kit/**` holds kit itself, as pnpm and Turbo read it). A path that names a project dir literally is read literally first, so `./packages/[abc]` is that directory.                  |
-| `.`                | The root project alone, when the root is a project (D-39); otherwise the packages under the root, i.e. every package, not the one you are standing in.                                                                                                                                                                                  |
-| `//`               | The root project alone, Turbo's name for it; matches nothing when the root is no project (D-46).                                                                                                                                                                                                                                        |
-| `tag:<pattern>`    | The projects whose config `tags` hold a match, as Nx's `tag:` reads them (`*` as in a name). Takes every operator a name takes: `!tag:x`, `...tag:x`, `tag:x^...`, `tag:x[main]`. Nx's `--projects tag:x` aliases it.                                                                                                                   |
-| `<pattern>...`     | Match + all transitive dependencies (see below what an edge is).                                                                                                                                                                                                                                                                        |
-| `...<pattern>`     | Match + all transitive dependents.                                                                                                                                                                                                                                                                                                      |
-| `<pattern>^...`    | Only the transitive dependencies, excluding the matched package itself.                                                                                                                                                                                                                                                                 |
-| `...^<pattern>`    | Only the transitive dependents, excluding the matched package itself.                                                                                                                                                                                                                                                                   |
-| `...<pattern>...`  | Match + its dependents + the dependencies of all of them, as Turbo selects (`...db...` takes the packages the apps that use db build on).                                                                                                                                                                                               |
-| `<sel>[<ref>]`     | The packages `<sel>` (a name pattern or `{<dir>}`) selects that changed since `<ref>`, as Turbo and pnpm read `@scope/*[main]` (D-44).                                                                                                                                                                                                  |
-| `<sel>...[<ref>]`  | The packages `<sel>` selects that changed since `<ref>` or depend on one that did; no dependency is added (Turbo: `@acme/api...[HEAD]` is api when only its dependency changed).                                                                                                                                                        |
-| `!<pattern>`       | Exclude packages matching `<pattern>`, from everything the includes select, in any order.                                                                                                                                                                                                                                               |
-| `[<git-ref>]`      | Projects whose files changed since `<git-ref>` (`main`, `HEAD~5`, …).                                                                                                                                                                                                                                                                   |
+| Form               | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<pattern>`        | Match by package name. `*` matches any characters, including `/`. A pattern matching no package may leave out the scope, as pnpm reads it (`cart` is `@nx-example/cart` when one package carries it). One holding a `/` outside a scope that matches no package is a directory, as Nx's `--projects` reads it (`apps/*` is `./apps/*`).                                                                                                                                                                                    |
+| `./<dir>`          | The package at `<dir>` alone, as Turbo and pnpm read it (`.` is the root project); a `<dir>` that is no package matches the packages under it (relative to workspace root; D-43). A link to a package's directory names that package.                                                                                                                                                                                                                                                                                      |
+| `{<dir>}`          | Same as `./<dir>`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `<pattern>{<dir>}` | The packages `<pattern>` selects inside `<dir>` (a `{<dir>}` path form), as pnpm and Turbo read it: `@acme/*{apps}`, `*web*{./packages/*}`. Takes every operator a name takes.                                                                                                                                                                                                                                                                                                                                             |
+| `./<glob>`         | A glob over root-relative project dirs: `./packages/*` (direct children), `{apps/**}` (nested too; a trailing `**` matches zero dirs, so `./packages/kit/**` holds kit itself, as pnpm and Turbo read it). A path that names a project dir literally is read literally first, so `./packages/[abc]` is that directory. A glob matches a package's real directory and follows no link: with `packages/l -> ../ext/l`, `./packages/l` names l, while `./packages/*` and `./packages/l/**` leave it out (`./ext/*` holds it). |
+| `.`                | The root project alone, when the root is a project (D-39); otherwise the packages under the root, i.e. every package, not the one you are standing in.                                                                                                                                                                                                                                                                                                                                                                     |
+| `//`               | The root project alone, Turbo's name for it; matches nothing when the root is no project (D-46).                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `tag:<pattern>`    | The projects whose config `tags` hold a match, as Nx's `tag:` reads them (`*` as in a name). Takes every operator a name takes: `!tag:x`, `...tag:x`, `tag:x^...`, `tag:x[main]`. Nx's `--projects tag:x` aliases it.                                                                                                                                                                                                                                                                                                      |
+| `<pattern>...`     | Match + all transitive dependencies (see below what an edge is).                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `...<pattern>`     | Match + all transitive dependents.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `<pattern>^...`    | Only the transitive dependencies, excluding the matched package itself.                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `...^<pattern>`    | Only the transitive dependents, excluding the matched package itself.                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `...<pattern>...`  | Match + its dependents + the dependencies of all of them, as Turbo selects (`...db...` takes the packages the apps that use db build on).                                                                                                                                                                                                                                                                                                                                                                                  |
+| `<sel>[<ref>]`     | The packages `<sel>` (a name pattern or `{<dir>}`) selects that changed since `<ref>`, as Turbo and pnpm read `@scope/*[main]` (D-44).                                                                                                                                                                                                                                                                                                                                                                                     |
+| `<sel>...[<ref>]`  | The packages `<sel>` selects that changed since `<ref>` or depend on one that did; no dependency is added (Turbo: `@acme/api...[HEAD]` is api when only its dependency changed).                                                                                                                                                                                                                                                                                                                                           |
+| `!<pattern>`       | Exclude packages matching `<pattern>`, from everything the includes select, in any order.                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `[<git-ref>]`      | Projects whose files changed since `<git-ref>` (`main`, `HEAD~5`, …).                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 A dependency between projects comes from one of two places:
 
@@ -296,7 +306,8 @@ vx run build --filter '[origin/main]'         # projects with files changed sinc
 Run the task only in projects whose files changed since `<base>`.
 
 - `--affected` with no value picks its base, the first that applies:
-  1. `VX_AFFECTED_BASE`;
+  1. `VX_AFFECTED_BASE`; a ref it gives that does not resolve is named as
+     its: `VX_AFFECTED_BASE=origin/develop: git ref "origin/develop" did not resolve`;
   2. a plugin's base commit (`setBranch({ base })`): `github()` a pull
      request's base, `nx()` `NX_BASE`, `turbo()` `TURBO_SCM_BASE`, or,
      for `turbo()` on GitHub Actions as Turbo does, the pull request's
@@ -950,7 +961,7 @@ other persistent task`), and a non-zero exit makes the run exit 1
 4. **vx's own steps** — what vx does around the tasks that the run
    waits on, before its first task starts or before it ends, as rows of
    their own below the worker rows: `vx:load` (configs and graph from
-   the lock), `vx:run-lock`, `<plugin>:setup`, `vx:keys` (keys and local
+   the lock; `vx:run-lock` inside it, before the cache opens), `<plugin>:setup`, `vx:keys` (keys and local
    probes), `<plugin>:schedule`, then after the graph `vx:uploads`,
    `vx:history`, `<plugin>:telemetry`, `<plugin>:teardown`,
    `vx:snapshots`, `vx:retention`, `vx:close` and `vx:sandbox`. A step
@@ -981,7 +992,7 @@ other persistent task`), and a non-zero exit makes the run exit 1
    reads history for it, and the final summary never shows it. A p50
    here is the median of the task's last five timings on this branch,
    else on any branch; the timings are shared by every worktree of the
-   repo, so a new one has a forecast on its first run.
+   workspace, so a new one has a forecast on its first run.
 
 In a terminal known to read them, the region also sends zero-width
 escapes: tab or taskbar progress (OSC 9;4: Ghostty, iTerm2 3.6+,
@@ -1169,8 +1180,8 @@ typical executed duration under `usual` (`~p50` over its recent non-hit
 runs in the local `cache.db`). The `predicted` field forecasts the run: `wall` is the longest dependency
 chain of would-run cost (cache hits restore near-instantly and count
 as 0), `total execution` is the sum across would-run tasks. Tasks with
-no history count as 0 and are called out (`N tasks without history
-(+?)`) — the totals are honest lower bounds. The field is omitted
+no timing (no executed success yet) count as 0 and are called out (`N tasks
+never timed (+?)`) — the totals are honest lower bounds. The field is omitted
 when nothing would run or when no would-run task has history.
 
 **Placement.** Each row's `worker` is where the task would land: the
@@ -1420,6 +1431,10 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
 
 1. **Initial run.** Same code path as `vx run` — same scope resolution,
    same task graph, same cache behaviour, printed as its rows alone.
+   No watcher is armed yet, so an edit made while it runs is unheard;
+   one to the inputs of a task it was running leaves that task unsaved
+   (its key no longer describes them), and the loop starts its first
+   cycle on that, labelled `<task> inputs, edited during the first run`.
 2. **Watch loop.** After the initial run finishes (or once it waits only
    on a server's readiness, X-139), the directory of
    every project a cycle can run — the scope (the bare tasks' scope
@@ -1691,7 +1706,7 @@ watch`.
 `vx cache clean` evicts old or oversized cache entries, or with no
 bound clears the cache. It operates on the entries and
 `<hash>.tar.zst` artifacts of the store a run opens
-(`~/.vx/<id>/cache`, shared by every checkout of the repository), or of
+(`~/.vx/<id>/cache`, shared by every checkout of the workspace), or of
 `<cacheDir>` itself when the workspace names one (`cache.dir`,
 `VX_CACHE_DIR`, `--cache-dir`).
 
@@ -1768,8 +1783,9 @@ artifact (a `<hash>.tree` directory, or a `<hash>.tar.zst`) the index
 has no row for (a `SCHEMA_VERSION` bump drops every table and leaves
 the artifacts behind, as a deleted `cache.db` does) and a
 `<hash>.tree.tmp-*` or `<hash>.tar.zst.tmp-*` a save that crashed never
-renamed. A run that asks for an orphan's key indexes it again from its
-bytes and hits; one no task asks for again is only reclaimed here. The
+renamed. A run that asks for a row-less `<hash>.tar.zst`'s key indexes
+it again from its bytes and hits; a row-less tree (its stdout lived in
+its row) and an archive no task asks for again are only reclaimed here. The
 policy judges a row-less artifact as it judges an entry, by its file
 time plus an hour (a hit renews a file time over an hour old): another
 vx version sharing the store may still use it. A temp goes once it is an
@@ -1804,7 +1820,7 @@ finish first (the run's lock; it says `[vx] waiting for another vx run
 evicts what that run is restoring. One started by a task of that run
 is refused instead: the run holds the lock until the task ends. A run
 in another checkout of the repository takes no lock of this one's but
-holds the shared store open from start to end: the prune waits for
+holds the shared store open until it ends: the prune waits for
 every process holding the store (`[vx] waiting for another vx process
 using the cache store <dir> to finish…`). A run it cannot see — another
 workspace sharing the `--cache-dir` — survives a prune anyway: an
@@ -1838,7 +1854,7 @@ and `vx why` start over), the store a run opens and the one its index
 last named, if another (a changed HOME, an origin added), where the
 entries live (`~/.vx/<id>/cache`, shared by this workspace's
 checkouts, so their entries go too). `--global` also clears every other
-workspace's store under `~/.vx` (`~/.vx/*/cache`); it takes no bound
+workspace's store under `~/.vx` (each `~/.vx/*/cache` holding a `store.db`; any other directory there stays); it takes no bound
 and no `--cache-dir`. `.vx/workspace.ts`, the lock and `.vx/.gitignore`
 sit outside them and stay; a `cache.dir` that holds them (`.vx`, the
 workspace root) is refused. A `cache.dir` you named may be shared
@@ -1863,17 +1879,21 @@ $ vx cache clean
   .vx/cache
   /home/me/.vx/3f2a9c01b4d5e6f7/cache
 
+  run history cleared too: vx last and vx why start over
+
 $ vx cache clean --global --dry
 › vx cache clean  would free 3.1 GB (dry run)
 
   .vx/cache
   /home/me/.vx/3f2a9c01b4d5e6f7/cache
   /home/me/.vx/9b8e7d6c5a4f3e2d/cache
+
+  run history goes too: vx last and vx why start over
 ```
 
 It waits for a `vx run` on this workspace to finish first (the run's
 lock), and for every vx process holding a store it deletes open (a run
-in another checkout of the repository), as a trim does. With `--format json` it prints
+in another checkout of the workspace), as a trim does. With `--format json` it prints
 `{ dry, cleared, bytesFreed }` (`schemas/cache.json`), `cleared`
 listing the directories.
 
@@ -1911,7 +1931,7 @@ parses the lockfile, so after an install, run `vx lock`; a run whose
 lockfile changed since refuses (`VX_E_LOCK`), and so does one with no
 dependencies lock while a plugin claims a lockfile that is there. An
 edit in a `link:` or `file:` directory the lockfile names needs no
-`vx lock`: the plugin digests anew. `--affected` reads the base commit's copy to find a deleted
+`vx lock`: the plugin digests anew, and `vx lock --check` accepts it. `--affected` reads the base commit's copy to find a deleted
 project's dependants and a changed lockfile's base digests, and `vx
 lock --check` fails when it is missing or stale.
 
@@ -1937,7 +1957,13 @@ After an edit the lock has not seen:
 ```
 $ vx lock --check
 ✗ vx lock --check  packages/lib/vx.config.ts evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'
+
+  tasks.build.exec.command: "tsc -b" → "tsc -b --force"
 ```
+
+Under the line, up to three places where the evaluated config
+differs from the locked one: a config that reads the environment
+shows no file diff to find them by.
 
 ### When to run it
 
@@ -1966,7 +1992,7 @@ nested repository's own configs too), or walks the tree outside git
 nested `.vx/workspace.*`, even one the ignore rules hide, or under a
 `node_modules` (an installed package is no project, ignored or not). Configs are
 programs; `vx lock` evaluates them in the current environment and
-stores the post-evaluation objects, by directory (version 4; a lock an
+stores the post-evaluation objects, by directory (version 5; a lock an
 earlier vx wrote is refused, "re-run `vx lock`"). A project is named by
 its config's `name`, else by a plugin's `discover` stage (vx-lockfile
 gives `package.json`'s `name`), else by its root-relative path (`//` for
@@ -2219,6 +2245,14 @@ refused first, not dropped), the way
 it was installed. Named `upgrade` per CLI convention (`bun upgrade`,
 `deno upgrade`). Refuses when running from source: use `git pull`.
 
+However vx was installed (by hand, a package manager's global or a
+project's dependency, the global a run moves too), `latest` below the
+running vx is refused before anything runs (`the registry's latest
+@vzn/vx is 0.3.0, below this vx's 0.4.0 — nothing replaced; to go back,
+ask for it: vx upgrade v0.3.0`); a `TAG` that names an older release
+goes back. A `TAG` that names the running version says `already at`
+without asking the registry.
+
 ### Usage
 
 ```
@@ -2273,10 +2307,11 @@ integrity npm signed … nothing replaced`. A release signed with a key
 id vx does not pin says so: `… is signed with an npm key this vx does
 not know (…) — if npm rotated its signing key, this vx's installer
 needs updating`. A release with no signature or no integrity is refused
-before the download, and so is a signed release of another version than
+before the download, and so is a tarball URL that is not https (`the npm
+registry's tarball for … is not https (…)`), and a signed release of another version than
 the `TAG` asked for (`the npm registry answered …@<TAG> with version …`):
 npm signs its old releases too. `latest` below the running vx is refused
-(`… is 0.3.0, below this vx's 0.4.0`); go back by naming the version.
+here too (above).
 Every refusal comes before anything is written.
 There is no fallback to GitHub's release digest: when the registry is
 unreachable, the upgrade is refused.
@@ -2405,7 +2440,7 @@ vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--pl
 $ vx init --dry
 
   vx init 0.0.0
-  from      no turbo.json or nx.json: one project, the root
+  from      no turbo.json or nx.json
   dry run   nothing written
   files     .vx/workspace.ts
             vx.config.ts
@@ -2674,10 +2709,11 @@ message is that plugin's or check's: do what it says.
 #### `VX_E_FS`
 
 The file system refused a read or a write, or the cache index could not
-be opened: permissions, a full disk, a file where the cache directory
+be opened: permissions, a full disk, a path longer than it allows
+(`ENAMETOOLONG`, an output past PATH_MAX), a file where the cache directory
 goes, a directory where `cache.db` goes. The message names the path. Free
 space (`vx cache clean --max-size <size>` trims the cache), grant the
-access, or move the path away, then re-run.
+access, shorten the path, or move it away, then re-run.
 
 #### `VX_E_FDS`
 
@@ -2740,7 +2776,8 @@ its own output path, or make one depend on the other.
 #### `VX_E_INPUT_IS_OUTPUT`
 
 A task's `inputs` match outputs: its own (vx cleans outputs before
-a run, so it would delete its sources) or another task's (its key must
+a run, so it would delete its sources; `files` and `workspaceFiles` are
+compared across, read from the root) or another task's (its key must
 not read them; `dependsOn` already cascades). Exclude the outputs from
 the inputs with a `!` glob, as the message shows, or declare no outputs
 for a task that rewrites files in place.
@@ -2823,6 +2860,7 @@ $ vx show app#build
   inputs.files   src/**
   inputs.env     NODE_ENV
   outputs.files  dist/**
+  cache          yes
 ```
 
 ### Options
@@ -2840,8 +2878,12 @@ task count, and `no vx config` for config-less packages; one whose
 tasks all come from plugins reads `N tasks from plugins (no vx
 config)`, and one a configured project depends on reads `1 task,
 default build (no vx config)`: a run loads it for that dependant's
-`^build` (X-48). One nothing configured reaches has no task in any
-view: `vx show bare` lists none, and `vx run bare#build` refuses it. A `tags` column appears when any project has tags. With `--format json`
+`^build` (X-48). A configured project that declares no `build` reads
+`N tasks, default build`, and `vx show <project>` marks that task
+`<project>#build  default`. One nothing configured reaches has no task in any
+view: `vx show bare` lists none, and `vx run bare#build` refuses it. A
+config written after the lock reads `vx.config.ts not locked — run vx
+lock`, in the list and in `vx show <project>`'s `config` row. A `tags` column appears when any project has tags. With `--format json`
 it's an array of `{ name, dir, tags: string[], tasks: string[] }`.
 
 **A project or task.** A report naming the project opens it: its `dir`, its `tags`, and
@@ -2853,7 +2895,8 @@ it's an array of `{ name, dir, tags: string[], tasks: string[] }`.
 `no`), and `cache: true`
 (`inputs.files` / `.workspaceFiles` / `.env` / `.tasks` / `.runtime` /
 `.workspaceRuntime`, `outputs.files` / `.workspaceFiles` / `.clean`
-(`yes` / `no`), `inputs.stability.strategy` / `.severity`). Fields the
+(`yes` / `no`), `inputs.stability.strategy` / `.severity`), then `cache  yes`
+for a cached task. Fields the
 task does not set are not printed, an empty list prints `none`; a value that spans lines (a
 multi-line command) continues under its first line. `--format json` emits `{ name, dir,
 config }` with the config exactly as resolved. `vx show <pkg>#<task>`
@@ -2911,7 +2954,8 @@ on stderr (`no projects`) and names `vx init`.
 `vx info` prints one screen of facts about the workspace and this
 machine, for bug reports and sanity checks. The task count and the
 sandbox row's declared count come from the same load a run uses: the
-lock, plugin stages included. `vx info` evaluates no config; with no
+lock, plugin stages included. A default build is no declared task and is
+not counted. `vx info` evaluates no config; with no
 lock the `projects` row reads `—` and `projects lock` says `no`; with one a
 run would refuse, `projects` reads `—` and `projects lock` says `refused:` and
 why (`lockError` in JSON, where the counts are zero). A broken config is `vx lock`'s to report.
@@ -3009,16 +3053,19 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   is on disk. `cache store` is where the entries and their artifacts
   live: the store shared by this workspace's checkouts (`docs/caching.md`),
   with its size on disk, or `none: the cache dir holds the entries` when
-  the workspace names its cache dir. Before a first run it is the store a
-  run would open. A bare `vx cache clean` frees both sizes.
+  the workspace names its cache dir. It is the store the next run opens,
+  before a first run too, not one the index recorded under a home since
+  moved. A bare `vx cache clean` frees both sizes.
 - `cache entries` counts the entries and their size. An index SQLite
   cannot read reads `unreadable: <why and the fix>` there, and the
   history rows read 0: the report still prints, exit 0.
   Paths under the home directory print as `~/…`; the JSON keeps them
   absolute.
-- `settings` appears only when a variable or `.vx/workspace` changed a
-  setting: each such one by path, its value and where it came from
-  (`cache.policy local:r (VX_CACHE_POLICY), run.timeout 30m (.vx/workspace)`).
+- `settings` appears only when a variable, `.vx/workspace` or a plugin's
+  `config` hook changed a setting: each such one by path, its value and
+  where it came from
+  (`cache.policy local:r (VX_CACHE_POLICY), run.timeout 30m (.vx/workspace)`,
+  `cache.scope pr-2 (plugin @org/ci)`).
   A setting not named runs at its default (`cache.policy`: every layer
   on, remote writes off off CI; `cache.scope`: a plugin's, else the
   branch's from git). The JSON `settings` holds every one. A variable
@@ -3105,10 +3152,10 @@ app#build — run 01a1193a-7b39-75a9-870b-5c03e26d7104
 
 ### Arguments
 
-| Argument   | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PKG#TASK` | one project's task                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `TASK`     | a bare task name: resolves when exactly one project ran it (several → the project the current directory is in, as `vx run` picks, else an error listing the candidates; unknown → include-match suggestions, or, with none near, a pointer to `vx last --list`, or word that nothing has run yet; after runs of only groups, which record no task row, that no run executed a task and to ask about one the group depends on, X-50) |
+| Argument   | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PKG#TASK` | one project's task                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `TASK`     | a bare task name: inside a project that declares it, that project's (`no runs of <project>#<task> yet` when it never ran), as `vx run` picks; elsewhere it resolves when exactly one project ran it (several → an error listing the candidates; unknown → include-match suggestions, or, with none near, a pointer to `vx last --list`, or word that nothing has run yet, whose fix is `vx run <task> --all` where the cwd's project does not declare it; after runs of only groups, which record no task row, that no run executed a task and to ask about one the group depends on, X-50) |
 
 ### Options
 
@@ -3320,7 +3367,8 @@ when, duration, branch @ sha, CI, task/hit/failure counts) and its
 tasks on the run's own grid (time, ±usual, status, cache, cpu, mem,
 outputs, blocks, worker, task), drawn by the same component: a replay
 reads as the run did. `±usual` measures an executed task against its
-usual time now, as a run on this branch reads history (`—`: never timed). A hit's cpu and mem are
+usual time now, as a run on this branch reads history (`—`: never timed, or
+timed only by this run). A hit's cpu and mem are
 blank (it spent nothing); `—` is a value the run could not read. The
 cache key is in `--format json`. Failures come first, each with its
 exit after the id, `exit 137`, and the signal an exit above 128 stands
@@ -3394,7 +3442,8 @@ as a hit's replay is; a task's `env.define` / `env.secret` values only
 the run knows), so a passing task's log reads too, on a hit
 or in the run that saved it. An uncached task that passed, or a skip,
 kept none, nor does a failed task past the newest 50 failed runs:
-stdout is empty and stderr says so, exit 0. A kept log that is empty
+stdout is empty and stderr says so, exit 0; a skip names what blocked
+it (`c#after did not run: c#gate blocked it (vx last --log c#gate)`). A kept log that is empty
 says the task printed nothing. A task that retried shows every
 attempt, each under a heading (`── attempt 1 of 2 · exit 1 ──`), the
 last `passed` when a retry passed. With
@@ -3414,7 +3463,7 @@ run shows: the median of the task's last five timings on the branch,
 else on any branch), p99 of the executed successes, pass and hit rate, failure mode (`stable`,
 `flaky-recoverable`, `flaky-fatal`), the largest peak RSS and the mean CPU
 parallelism (a hit counts what its producing run used), one table row
-per task. A task id narrows to that task, a task name to it in every
+per task, in the run grid's units (`3.6MB`, cpu `127%`, `—` where unknown). A task id narrows to that task, a task name to it in every
 project; one the window has no run of is refused, exit 1. The branch is
 `--branch`, else `VX_RUN_BRANCH`, else git's, then the CI provider's, as
 a run's. With `--format json` it is `{ window, branch, stats }`, each row `{ taskId, runs,
@@ -3605,7 +3654,7 @@ not one. After a flag with a fixed value set the script offers that
 set: `--format` pretty or json, `--output-logs` full, errors-only,
 hash-only or none, `--cache-download` all, toplevel or none, `--schedule`
 its four rules — each value one
-the flag's parser takes (`tests/completions.test.ts` holds it). A plugin verb completes `--help` only. Task and project
+the flag's parser takes (`tests/completions.test.ts` holds it). A plugin verb completes `--help` only; `vx help` completes the verbs. Task and project
 names are not completed (they are the workspace's, and a completion
 that evaluates configs on every Tab is the wrong price). The zsh script
 works both ways zsh loads one: from `$fpath` it completes on the first
@@ -3708,7 +3757,7 @@ what a TASK sees is `exec.env` in `docs/schema.md`.
 | `VX_CACHE_STORE_DECOMPRESS`       | [`cache.store.decompress`](schema.md#settings)     | Keep a larger entry as its plain files, which a hit copies or clones out; off, as one `.tar.zst`.                                                                                                |
 | `VX_LOCK_REVIEW_FILES`            | [`lock.reviewFiles`](schema.md#settings)           | `vx lock` writes each project's resolved config, pretty, to `vx.lock.json` beside its `vx.config`, for review; vx never reads it.                                                                |
 | `VX_WATCH_POLL`                   | [`watch.poll`](schema.md#settings)                 | Poll for changes from the start instead of the OS watcher.                                                                                                                                       |
-| `VX_CONFIG_WORKER_TIMEOUT`        | [`config.workerTimeout`](schema.md#settings)       | How long one config evaluation may take.                                                                                                                                                         |
+| `VX_CONFIG_WORKER_TIMEOUT`        | [`config.workerTimeout`](schema.md#settings)       | How long one config evaluation may await; at 5 s vx names the config still evaluating. A synchronous loop on the first load holds the thread the deadline needs, so it hangs until killed.       |
 | `VX_DEBUG_TIMING`                 | [`debug.timing`](schema.md#settings)               | Print the run's stage timings to stderr.                                                                                                                                                         |
 | `VX_DEBUG_WATCH`                  | [`debug.watch`](schema.md#settings)                | `vx watch`: say on stderr each time the loop arms, with the projects it watches.                                                                                                                 |
 | `VX_DEBUG_DUMPABLE`               | [`debug.dumpable`](schema.md#settings)             | Linux: keep vx dumpable, so strace or a debugger can read its memory and `/proc/<pid>/fd`, and an unsandboxed task its env.                                                                      |
@@ -3931,7 +3980,8 @@ only failures is a recovery (a missing tool installed), not a flake.
 Only tasks with `cache: true` are judged: "same inputs, red after
 green" is a claim
 only declared inputs can back, and a task without them keys on its
-config alone. It is judged as the task finishes, so the row carries
+config alone; such a task that needed a retry says only `2 attempts`
+on its row. It is judged as the task finishes, so the row carries
 it: zero cost for a hit or a skip, one probe of the failed-row index
 for a green miss; `vx info` keeps the standing list.
 

@@ -21,7 +21,8 @@ afterEach(async () => {
     await watch.proc.exited
     watch = undefined
   }
-  for (const pid of await lines('pids').then((l) => l.map(Number))) killIfAlive(pid)
+  for (const name of ['pids', 'fast', 'slow'])
+    for (const pid of await lines(name).then((l) => l.map(Number))) killIfAlive(pid)
   await rm(root, { recursive: true, force: true })
   await rm(outside, { recursive: true, force: true })
 })
@@ -85,6 +86,40 @@ it('an edit stops a cycle waiting on a server that never becomes ready', async (
   expect(pids).toHaveLength(3)
   expect([isAlive(pids[1]!), isAlive(pids[2]!)]).toEqual([false, true])
   expect(w.cycles()).toBe(2)
+  w.proc.kill('SIGTERM')
+  expect(await w.proc.exited).toBe(0)
+}, 40_000)
+
+// The initial run is handed no servers: an edit while one server still
+// started stopped it, and the server already ready restarted with it,
+// losing its state. It stays up, and the next cycle keeps it, as a
+// mid-watch cycle does.
+it('an edit in the initial run keeps the servers already ready', async () => {
+  root = await makeWorkspace({ prefix: 'vx-watch-ready-' })
+  outside = await mkdtemp(path.join(os.tmpdir(), 'vx-watch-ready-marks-'))
+  const server = (name: string, ready: string): string =>
+    `export default { tasks: { dev: {
+      inputs: { files: ['src/**'] },
+      exec: {
+        command: 'echo $$ >> ${outside}/${name}; ${ready}; exec sleep 1000',
+        persistent: { readyWhen: 'READY' },
+      },
+    } } }`
+  const gate = path.join(outside, 'gate')
+  await addProject(root, 'fast', server('fast', 'echo READY'))
+  const slow = await addProject(root, 'slow', server('slow', `[ -f ${gate} ] && echo READY`))
+  for (const dir of [path.join(root, 'fast'), slow])
+    await Bun.write(path.join(dir, 'src', 'a.txt'), 'ok\n')
+  watch = startWatch(root, ['--all'], {}, 'dev')
+  const w = watch
+  await until(() => w.out().includes('watching '), 'the watching marker')
+  await until(async () => (await lines('fast')).length === 1, 'the fast server')
+  await writeFile(gate, '')
+  await writeFile(path.join(slow, 'src', 'a.txt'), 'edit\n')
+  await until(async () => (await lines('slow')).length === 2, 'the restarted slow server')
+  await until(() => (w.out().match(/ slow#dev$/gm)?.length ?? 0) === 2, 'the slow server ready')
+  const fast = (await lines('fast')).map(Number)
+  expect([fast.length, isAlive(fast[0]!)]).toEqual([1, true])
   w.proc.kill('SIGTERM')
   expect(await w.proc.exited).toBe(0)
 }, 40_000)

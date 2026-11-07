@@ -50,6 +50,13 @@ function linkCurrent(abs: string, e: { size: number; mtimeMs: number }): boolean
   return to.byteLength === e.size && Bun.hash.crc32(to) === e.mtimeMs
 }
 
+const FILES_SELECT =
+  'SELECT f.entry_hash, f.path, f.size_bytes, f.mode, f.mtime_ms, s.ino, s.ctime_ms'
+const FILES_STAMPS = 'LEFT JOIN output_stamps s ON s.entry_hash = f.entry_hash AND s.path = f.path'
+const FILES_JOINED = `${FILES_SELECT} FROM json_each(?) q JOIN output_files f ON f.entry_hash = q.value ${FILES_STAMPS}`
+const DIRS_JOINED =
+  'SELECT d.entry_hash, d.path, d.mtime_ms FROM json_each(?) q JOIN output_dirs d ON d.entry_hash = q.value'
+
 export class OutputIndex {
   private readonly insertOutputFile: ReturnType<Database['prepare']>
   private readonly deleteOutputFiles: ReturnType<Database['prepare']>
@@ -67,8 +74,12 @@ export class OutputIndex {
    * stage, 47–72 ms at run end (item 622).
    */
   private readonly pendingDirs = new Map<string, Array<[string, number]> | null>()
-  /** Stamps taken and not yet written, flushed with the directory snapshots. */
-  private readonly pendingStamps = new Map<string, Array<[string, number, number]>>()
+  /**
+   * Stamps taken and not yet written, flushed with the directory snapshots:
+   * inode and ctime by path, so a batch read finds a row's stamp without
+   * scanning them all (rows × stamps was ~7 s for a 40,000-file output).
+   */
+  private readonly pendingStamps = new Map<string, Map<string, [number, number]>>()
   /**
    * The rows the last batched probe loaded, by hash: a hit's restore and
    * the stamps after it read their rows here instead of the index, twice
@@ -165,12 +176,24 @@ export class OutputIndex {
     for (const [hash, list] of rows) this.held.set(hash, list)
   }
 
+  /** The probe's rows of `hash` when held: no read. */
+  heldRowsOf(hash: string): readonly OutputFileRow[] | undefined {
+    return this.held.get(hash)
+  }
+
   /** `hash`'s rows: the probe's when held, else read. Path, size, mode and mtime only. */
   rowsOf(hash: string): readonly OutputFileRow[] {
     return this.held.get(hash) ?? this.loadOutputFilesBatch([hash]).get(hash) ?? []
   }
 
-  loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]> {
+  /**
+   * `distinct`: `hashes` as a JSON array with no hash twice, which the probe
+   * has to hand. The rows are then joined from it, not filtered by an `IN`
+   * that builds a lookup of every hash first: ~1.5 ms of 8,002 hits, and as
+   * much again for `loadOutputDirsBatch` (2026-11-07). A repeated hash
+   * would repeat its rows, hence the caller's promise.
+   */
+  loadOutputFilesBatch(hashes: readonly string[], distinct?: string): Map<string, OutputFileRow[]> {
     const out = new Map<string, OutputFileRow[]>()
     if (hashes.length === 0) return out
     // `db.query` (not `db.prepare`) caches the compiled statement keyed by
@@ -180,11 +203,14 @@ export class OutputIndex {
     // the stamps taken, not only the ones flushed: overlaid below from
     // memory. A flush here committed a transaction per read, and a restore
     // reads its rows twice.
-    const { test, params } = inHashes(hashes)
-    const stmt = this.db.query(
-      `SELECT f.entry_hash, f.path, f.size_bytes, f.mode, f.mtime_ms, s.ino, s.ctime_ms FROM output_files f LEFT JOIN output_stamps s ON s.entry_hash = f.entry_hash AND s.path = f.path WHERE f.entry_hash ${test}`,
-    )
-    const rows = stmt.all(...params) as Array<{
+    let sql = FILES_JOINED
+    let params = [distinct!]
+    if (distinct === undefined || hashes.length === 1) {
+      const where = inHashes(hashes)
+      sql = `${FILES_SELECT} FROM output_files f ${FILES_STAMPS} WHERE f.entry_hash ${where.test}`
+      params = where.params
+    }
+    const rows = this.db.query(sql).all(...params) as Array<{
       entry_hash: string
       path: string
       size_bytes: number
@@ -209,14 +235,10 @@ export class OutputIndex {
         row.ino = r.ino
         row.ctimeMs = r.ctime_ms
       }
-      const pending = this.pendingStamps.get(r.entry_hash)
-      if (pending !== undefined) {
-        for (const [rel, ino, ctime] of pending) {
-          if (rel !== r.path) continue
-          row.ino = ino
-          row.ctimeMs = ctime
-          break
-        }
+      const stamp = this.pendingStamps.get(r.entry_hash)?.get(r.path)
+      if (stamp !== undefined) {
+        row.ino = stamp[0]
+        row.ctimeMs = stamp[1]
       }
       list.push(row)
     }
@@ -372,7 +394,7 @@ export class OutputIndex {
   recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void {
     if (!this.memo) return
     const rows = this.rowsOf(hash)
-    const stamps: Array<[string, number, number]> = []
+    const stamps = new Map<string, [number, number]>()
     for (const e of rows) {
       if (e.path.endsWith('/') || e.mode === LINK_MODE) continue
       const ws = e.path.startsWith(WORKSPACE_OUTPUT_PREFIX)
@@ -386,13 +408,13 @@ export class OutputIndex {
           modeMatches(s.mode, e.mode) &&
           Math.abs(s.mtimeMs - e.mtimeMs) < 1
         ) {
-          stamps.push([e.path, s.ino, Math.floor(s.ctimeMs)])
+          stamps.set(e.path, [s.ino, Math.floor(s.ctimeMs)])
         }
       } catch {
         // gone: left unstamped
       }
     }
-    if (stamps.length > 0) this.pendingStamps.set(hash, stamps)
+    if (stamps.size > 0) this.pendingStamps.set(hash, stamps)
   }
 
   /** Land every pending stamp and snapshot in one transaction each; a null snapshot clears its rows. */
@@ -418,7 +440,7 @@ export class OutputIndex {
           for (const [hash, rows] of stamps) {
             // A stamp outlives nothing: an entry pruned since has no rows to vouch for.
             if (this.entryExists.get(hash) === null) continue
-            for (const [rel, ino, ctime] of rows) this.stampOutputFile.run(hash, rel, ino, ctime)
+            for (const [rel, [ino, ctime]] of rows) this.stampOutputFile.run(hash, rel, ino, ctime)
           }
         })
         .immediate()
@@ -437,16 +459,21 @@ export class OutputIndex {
     })()
   }
 
-  loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]> {
+  /** `distinct` as `loadOutputFilesBatch` takes it. */
+  loadOutputDirsBatch(hashes: readonly string[], distinct?: string): Map<string, OutputDirRow[]> {
     const out = new Map<string, OutputDirRow[]>()
     if (hashes.length === 0) return out
     // A reader in the same process (`vx watch`'s next cycle, a test) sees
     // what was snapshotted, not what was flushed.
     this.flushOutputDirs()
-    const { test, params } = inHashes(hashes)
-    const rows = this.db
-      .query(`SELECT entry_hash, path, mtime_ms FROM output_dirs WHERE entry_hash ${test}`)
-      .all(...params) as Array<{
+    let sql = DIRS_JOINED
+    let params = [distinct!]
+    if (distinct === undefined || hashes.length === 1) {
+      const where = inHashes(hashes)
+      sql = `SELECT entry_hash, path, mtime_ms FROM output_dirs WHERE entry_hash ${where.test}`
+      params = where.params
+    }
+    const rows = this.db.query(sql).all(...params) as Array<{
       entry_hash: string
       path: string
       mtime_ms: number

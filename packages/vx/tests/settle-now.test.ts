@@ -132,4 +132,25 @@ describe('ScheduleOptions.settleNow (X-192)', () => {
     ])
     expect([out.get('a#build')!.hash, out.get('b#build')!.hash]).toEqual(['settled', 'h-b#build'])
   })
+  it('hands observers the settled outcome itself, its queue time set on it', async () => {
+    const slow = node('a#build')
+    const held = node('b#build')
+    let settled: TaskOutcome | undefined
+    const heard = new Map<string, TaskOutcome>()
+    await runGraph({
+      nodes: graph(slow, held),
+      concurrency: 1,
+      execute: async (n) => {
+        await Bun.sleep(20)
+        return outcome(n)
+      },
+      settleNow: (n) => {
+        if (n.id !== 'b#build') return undefined
+        return () => (settled = { ...outcome(n), hash: 'settled' })
+      },
+      onFinish: (o) => heard.set(o.node.id, o),
+    })
+    expect(heard.get('b#build')).toBe(settled!)
+    expect(settled!.queuedMs).toBeGreaterThan(0)
+  })
 })

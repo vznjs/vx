@@ -54,7 +54,7 @@ export interface KeysCache {
 export interface OidcOptions {
   /** `ALLOW` (`parseAllow`): who may take part. */
   readonly allow: readonly Allowed[]
-  /** The `aud` a token must name; unset, the origin the server is reached at. */
+  /** The `aud` a token must name, read as its origin (a URL that is not one throws); unset, the origin the server is reached at. */
   readonly audience?: string
   /**
    * Reads a URL as JSON (`cachedFetchJson` on a Worker); tests serve keys

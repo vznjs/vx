@@ -11,7 +11,7 @@ request runs only the projects it changed and the projects that depend
 on them.
 
 This page sets that up on GitHub Actions. You need no server and no
-token, only a repository where `vx run` already works on your machine
+token, only a workspace where `vx run` already works on your machine
 ([Quickstart](../../quickstart/)).
 
 ## GitHub Actions
@@ -48,7 +48,7 @@ Then update the lock and commit:
 
 ```sh
 vx lock
-git add .vx package.json bun.lock
+git add -A
 git commit -m "ci: run vx on GitHub Actions"
 ```
 
@@ -107,7 +107,7 @@ Each run writes a summary on the workflow run's page:
 > | @acme/web#test | ✅ ran | 4.2s |
 > | @acme/api#build | ☁️ restored remote | 0ms |
 > | @acme/ui#build | ✔️ up-to-date | 0ms |
-> | @acme/ui#lint | ⏭️ skipped | 0ms |
+> | @acme/ui#lint | ⏭️ skipped |  |
 >
 > <sub>vx 0.0.21 · `vx run ci --all` · 3/5 passed · 1 up-to-date · 1 restored</sub>
 

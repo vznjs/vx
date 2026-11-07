@@ -222,7 +222,7 @@ export const SETTINGS: readonly Setting[] = [
     path: 'config.workerTimeout',
     kind: { type: 'duration', timer: true },
     default: '30s',
-    doc: 'How long one config evaluation may take.',
+    doc: 'How long one config evaluation may await; at 5 s vx names the config still evaluating. A synchronous loop on the first load holds the thread the deadline needs, so it hangs until killed.',
     config: false,
   },
   {
@@ -327,7 +327,9 @@ export function parseSettingValue(kind: SettingKind, raw: unknown): unknown {
     }
     case 'size':
       if (kind.off === true && (raw === false || raw === 'false')) return 0
-      return typeof raw === 'string' ? parseSize(raw) : null
+      // A size carries its unit, as a duration does: a bare `32` read as
+      // bytes turns the store off without a word.
+      return typeof raw === 'string' && !/^\d+$/.test(raw) ? parseSize(raw) : null
     case 'bool':
       if (typeof raw === 'boolean') return raw
       return raw === 'true' || raw === '1' ? true : raw === 'false' || raw === '0' ? false : null
@@ -362,7 +364,16 @@ export function settingRefusal(
     // A bare number past the ceiling is past it in either unit it could mean.
     const ms = bare ? n : typeof raw === 'string' ? parseDuration(raw) : null
     if (bare && !(kind.timer === true && n > MAX_TIMEOUT_MS)) {
-      return `${where} takes a duration with its unit, like '${n}ms' or '${Math.max(1, Math.round(n / 1000))}s' (got ${got})`
+      // Below a thousand the number most likely meant seconds (`--timeout
+      // 5`): that reading leads.
+      const like = n < 1000 ? `'${n}s' or '${n}ms'` : `'${n}ms' or '${Math.round(n / 1000)}s'`
+      return `${where} takes a duration with its unit, like ${like} (got ${got})`
+    }
+    // `'0s'` looks like the examples the generic refusal gives.
+    const negative = typeof raw === 'string' && raw.startsWith('-') && parseDuration(raw.slice(1))
+    if (ms === 0 || (negative !== false && negative !== null)) {
+      const none = kind.timer === true ? ' — omit it for no limit' : ''
+      return `${where} must be more than 0${none} (got ${got})`
     }
     if (kind.timer === true && ms !== null && ms > MAX_TIMEOUT_MS) {
       return (
@@ -371,6 +382,18 @@ export function settingRefusal(
         (path === 'run.timeout' ? ' — omit it for no limit' : '')
       )
     }
+  }
+  const bytes =
+    typeof raw === 'number'
+      ? raw
+      : typeof raw === 'string' && /^\d+$/.test(raw)
+        ? Number(raw)
+        : null
+  if (kind.type === 'size' && bytes !== null && Number.isSafeInteger(bytes) && bytes >= 0) {
+    if (bytes === 0 && kind.off === true) return `${where} is false to keep none (got ${got})`
+    // A small number most likely meant KiB (`32`): that reading leads.
+    const like = bytes < 1024 ? `'${bytes}KiB' or '${bytes}B'` : `'${bytes}B'`
+    return `${where} takes a size with its unit, like ${like} (got ${got})`
   }
   return `${where} must be ${kindHint(kind)} (got ${got})`
 }

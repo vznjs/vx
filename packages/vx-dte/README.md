@@ -5,7 +5,8 @@ Website: <https://vznjs.github.io/vx/> · source: <https://github.com/vznjs/vx>
 Distributed task execution for vx: one `vx run` spread over workers your
 own CI starts, replayed here as one run. The run you start is the
 orchestrator. It runs no task itself, only restores cache hits: it starts
-workers and hands the ready tasks to the workers with room, critical path first. A worker runs it in its own checkout and saves the task's
+workers and hands the ready tasks to the workers with room, critical path first,
+ranked by history and ranked again when fetched timings land. A worker runs it in its own checkout and saves the task's
 output and the files its declared outputs left to the workspace's cache,
 under the task's key. They land here before the task ends, so the run
 reports the task as its own. No file travels through the relay: it
@@ -602,6 +603,7 @@ use your own instead.
 - A relay that answers nothing for 10 s, every try counted, fails every task not done
   (`the relay is unreachable`); none runs here, which may be far smaller
   than the workers. What finished is saved, so a rerun resumes from it.
+  The footer counts each worker that had joined `lost`, with what it ran.
   A fault (a `5xx`, a dropped or refused connection) is tried again 3
   times, by the orchestrator and workers alike, and the third failed
   retry ends them (`no socket in 3 dials`). The waits are random, from
@@ -616,10 +618,12 @@ use your own instead.
   keeps what it runs, and one sent a task it runs already
   does not run it again, so no work repeats. One not back by then
   ends: a worker's tasks run elsewhere, an orchestrator's run fails.
-  Joining has the same 10 s in all, its socket and request together, and
-  the same 3 retries: a relay silent that long, or refusing all four
-  tries, fails the run with
-  `cannot connect to the relay <origin>: no answer in 10 s`.
+  Joining has the same 10 s in all and the same 3 retries, its waits
+  spread over the 10 s (1.25 s doubling, jittered to half: 4.4 to 8.75 s
+  in all), so a relay or network down a few seconds is still joined. A
+  relay silent that long fails the run with `cannot connect to the relay
+<origin>: no answer in 10 s`; four failed tries say why and how long,
+  as `cannot connect to the relay <origin>: ENOTFOUND, 4 dials in 9.1 s`.
 - A worker that never joins says why on its row (`failed  exited 1:
 …`); its job ending, a success too, is what says so. Once the first
   worker of a size joins, each other of that size not joined within twice
@@ -702,7 +706,7 @@ workspace's cache under its commit, and the next commit's run plans by it
 before any worker of that size joins.
 
 The `workers` rows, live while the run goes and again in the footer,
-give each worker its status (`starting`, `online`, `left`, `gone`, or `failed`
+give each worker its status (`starting`, `online`, `left`, `lost`, or `failed`
 with why, such as `exited 1: Cannot find package '@vzn/vx-dte'`; once the
 run is over, one still starting is `not joined`), the tasks it
 has done, failed or had aborted by a stop, and the ones it runs now; while the run goes, those that left
@@ -735,7 +739,9 @@ not:
 ```
 
 A run over that started none (every task a hit) says
-`workers   none started: no task needed one`.
+`workers   none started: no task needed one`; one where a task waited
+on a worker and none joined (none started, or each refused) says
+`workers   none joined: a task waited on one`.
 
 Under each worker, and `local`, the footer then spells out what it did:
 its time online, busy and idle; its CPU peak and average in cores and
@@ -870,9 +876,11 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     That margin is spent once: later plans keep its deadline until new
     work is known. A task waiting on one that runs waits until it ends.
     Then the run follows that plan: a start it wants later is asked when
-    due, and a worker idle with its planned work done goes. It plays again
+    due, and a worker idle with its planned work done goes, once every
+    task planned on it has started. It plays again
     only when reality leaves the plan: new work, work that leaves without
-    running, a worker that joins, leaves or warms up off plan, a task past
+    running, a worker idle at its planned end with a task planned on it not
+    started, a worker that joins, leaves or warms up off plan, a task past
     its time or ending sooner, one of no known time ending, a task starting
     with its time, CPU or memory more than 5% off (1 s, 0.05 cores, 64 MiB
     at least), or its window moving on.

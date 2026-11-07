@@ -109,7 +109,7 @@ export default [
     'odd-file-name',
     'An edit to an input named with spaces, `$` and quotes runs the task again',
     'File names with spaces, quotes or `$` are legal and occur in real repos, for example among assets and fixtures. If such a name is mangled when it is listed, quoted or passed through a shell, the file drops out of the key. Edits to it then never rerun the task, and the build ships its old content.',
-    ['hash-scenarios', 'git-enum-unicode'],
+    ['hash-scenarios-names', 'git-enum-unicode'],
     { "packages/a/src/it's $x y.txt": 'two\n' },
     'a\ntwo\n',
     { 'src/a.txt': 'a\n', "src/it's $x y.txt": 'one\n' },

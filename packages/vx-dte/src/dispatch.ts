@@ -486,6 +486,24 @@ export class Queue {
     if (!front) this.back = seq
   }
 
+  /**
+   * History changed (`tail`, `need`): the waiting rank and group by it,
+   * ties in the order they stood. A rank is read once, as a task joins:
+   * on CI the roots join before the default branch's timings land, each
+   * at an unknown task's 30 s, and every test shard ready later ranked
+   * above them, so `test.wire` (73 s) waited 129 s for a worker (main
+   * 1c91c9d, 2026-11-07). `graphene` reads ranks at each pass.
+   */
+  rerank(): void {
+    if (this.list !== undefined) return
+    const ids = this.ids()
+    this.groups.clear()
+    this.of.clear()
+    this.front = 0
+    this.back = 0
+    this.add(ids)
+  }
+
   delete(id: string): boolean {
     if (this.list !== undefined) {
       const at = this.list.indexOf(id)

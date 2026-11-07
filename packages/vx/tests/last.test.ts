@@ -133,8 +133,8 @@ describe('vx last (e2e)', () => {
       const list = await vx(root, ['last', '--list', '--format', 'json'])
       const first = (JSON.parse(list.out) as Array<{ runId: string }>).at(-1)!.runId
       const r = await vx(root, ['last', first])
-      // One timed run: its usual is its own time, so the cell is a zero delta.
-      expect(r.out).toMatch(/^ {12}success miss +[+−]\d\S* +\d\S* .* app#build$/m)
+      // One timed run, this one: no usual to compare with, as its live row said.
+      expect(r.out).toMatch(/^ {12}success miss +— +\d\S* .* app#build$/m)
     },
     TIMEOUT,
   )
@@ -393,7 +393,7 @@ describe('vx last (e2e)', () => {
         const r = await vx(clean, ['last', '--failed'])
         expect({ code: r.code, err: r.err.trim() }).toEqual({
           code: 1,
-          err: '✗ vx last  no recorded run failed',
+          err: '› vx last  no failed runs\n\n  fix  vx last',
         })
       } finally {
         await rm(clean, { recursive: true, force: true })

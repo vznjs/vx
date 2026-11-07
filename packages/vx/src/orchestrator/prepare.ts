@@ -47,6 +47,7 @@ import {
 import {
   buildPackageGraph,
   computeNestedProjectDirs,
+  findProjectConfigs,
   findWorkspaceRoot,
   configuredBaseBranch,
   type LoadReads,
@@ -94,7 +95,7 @@ import { applyGraphStage } from './graph-stage.js'
 import { keyExcludedDependencies } from './excluded-keys.js'
 import { FingerprintWatch } from './fingerprint-watch.js'
 import type { VxPlugin } from './plugin.js'
-import { memoGraph, type GraphMemo } from './graph-memo.js'
+import { graphCounts, memoGraph, type GraphMemo } from './graph-memo.js'
 import { askIgnoredOutputs, gatedOutputs } from './stable-keys.js'
 import { cacheRefs, currentBranch, resolveCacheScope } from './run-context.js'
 import { createHashCache, type HashCache } from './task-hash.js'
@@ -208,6 +209,12 @@ export interface PreparedRun {
    */
   hashCache: HashCache
   /**
+   * Each task's count of the tasks downstream of it (`graphCounts`), when
+   * nothing after the graph build can edit `nodes`: counted while git's
+   * blob-size check runs, so `run` reads it instead of counting.
+   */
+  dependents?: ReadonlyMap<string, number>
+  /**
    * Reason `nodes` is empty. `null` when the prepared run is ready to
    * execute. Either:
    *   - `'no-tasks-declared'` — `requested.length === 0` after the
@@ -237,6 +244,22 @@ export interface PreparedRun {
  * empty plan).
  */
 export async function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRun> {
+  return prepareRunLocked(options, log)
+}
+
+/**
+ * `prepareRun`, with `beforeOpen` run once the workspace root is known and
+ * before the cache opens: a run takes its lock there (run.ts), so it never
+ * holds the store while it waits for a `vx cache clean` that holds the lock.
+ * `countDependents`: a run's, which schedules by them (`PreparedRun.dependents`);
+ * a plan never reads them.
+ */
+export async function prepareRunLocked(
+  options: RunOptions,
+  log: Logger,
+  beforeOpen?: (workspaceRoot: string) => Promise<void>,
+  countDependents = false,
+): Promise<PreparedRun> {
   beginRun()
   mark('startup')
   // A claimed root file is read once. A watch cycle is a new run and reads
@@ -363,13 +386,15 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     options.remoteReadOnlyByDefault === true &&
     !(options.cache === undefined && namesRemote(workspaceConfig?.cache?.policy))
   const wanted: CachePolicy = readOnly ? { ...asked, remoteWrite: false } : asked
+  const resolvedStore = await storeRoot
+  await beforeOpen?.(workspaceRoot)
   const localCache = new Cache(
     cacheDir,
     { read: wanted.localRead, write: wanted.localWrite },
     workspaceRoot,
     options.artifactCeiling,
     'open',
-    await storeRoot,
+    resolvedStore,
     {
       embeddings: (resolveSetting('cache.store.embeddings', workspaceConfig).value ??
         DEFAULT_STORE.embeddings) as number,
@@ -471,7 +496,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // nothing, exit 0.
   if (options.selectedByDiff === true && candidateProjects.length === 0)
     unresolvedTasks = [...new Set([...tasks.filter((t) => !t.includes('#')), ...unresolvedTasks])]
-  refuseUnlockedConfig(tasks, projects, projectMetas, workspaceRoot)
+  await refuseUnlockedConfig(tasks, projects, projectMetas, workspaceRoot)
   // A scope that loaded no candidate judged no bare name: each is unresolved.
   if (options.projects !== undefined && options.selectedByDiff !== true)
     refuseUnlockedScope(
@@ -514,11 +539,15 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // short name for `@scope/pkg`) was measured against nothing and got no
   // "did you mean". Only a failing run pays for the rest of the workspace.
   let hintProjects: ReadonlyMap<string, ProjectEntry> = projects
+  // So does a bare name where no project in scope declares a task: "no
+  // project declares a task yet" must be true of the workspace, not of the
+  // root project a run from the root selects.
   if (
     unresolvedTasks.some((t) => {
       const at = t.indexOf('#')
       return at > 0 && !projects.has(t.slice(0, at))
-    })
+    }) ||
+    (unresolvedTasks.some((t) => !t.includes('#')) && !declaresAny(projects))
   ) {
     try {
       hintProjects = (
@@ -791,7 +820,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     const settleIgnored = askIgnoredOutputs(gatedOutputs(nodes, workspaceRoot), workspaceRoot)
     const enumeration = await enumerating
     localCache.holdBlobSizes()
-    await applyGitEnumeration(
+    const applied = applyGitEnumeration(
       enumeration,
       workspaceRoot,
       projectDirs,
@@ -799,6 +828,19 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       usesWorkspaceInputs,
       localCache,
     )
+    // The dependents count while the blob-size check's `cat-file` runs: the
+    // thread waited ~80 ms on it in a cold 8,002-task run, and counting
+    // after it, before the first task, took 40 ms (2026-11-07). Only when
+    // nothing below edits the nodes: a graph or key hook, or
+    // `--exclude-dependencies`.
+    const excluding =
+      options.excludeDependencies !== undefined &&
+      (options.excludeDependencies === 'all' || options.excludeDependencies.length > 0)
+    const dependents =
+      !countDependents || (hasGraphHook && !hooksFirst) || hasHook(plugins, 'key') || excluding
+        ? undefined
+        : graphCounts(nodes, hashCache.folds, hashCache.graph)
+    await applied
     await settleIgnored(gitFilesCache)
     mark('git enumeration')
     if (hasGraphHook && !hooksFirst) await graphStage()
@@ -910,6 +952,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       nestedDirsByProject,
       gitFilesCache,
       hashCache,
+      ...(dependents !== undefined ? { dependents } : {}),
       workspaceProjectCount: projectMetas.length,
       empty: nodes.size === 0 ? 'empty-graph' : null,
     }
@@ -937,6 +980,13 @@ async function declaredNowhere(
     return [...unresolved]
   }
   return undeclaredIn(unresolved, all.projects)
+}
+
+/** Whether any project in `projects` declares a task: its default `build` is none. */
+function declaresAny(projects: LoadedProjects['projects']): boolean {
+  for (const p of projects.values())
+    for (const task of Object.values(p.config.tasks ?? {})) if (!isDefaultBuild(task)) return true
+  return false
 }
 
 /**
@@ -1023,7 +1073,7 @@ export function workspaceCachePolicy(
     return parseCachePolicy(spec)
   } catch (err) {
     throw new UserError(
-      `.vx/workspace: \`cache.policy\`: ${err instanceof Error ? err.message : String(err)}`,
+      `.vx/workspace: \`cache.policy\` ${err instanceof Error ? err.message : String(err)}`,
       'VX_E_CONFIG',
     )
   }
@@ -1049,12 +1099,12 @@ function unlockedConfigOf(
  * one that runs nothing: ran, `c#build` was 0 tasks, exit 0, where a
  * renamed task gets "run `vx lock`" (Growth, lock drift).
  */
-function refuseUnlockedConfig(
+async function refuseUnlockedConfig(
   tasks: readonly string[],
   projects: ReadonlyMap<string, ProjectEntry>,
   metas: ReadonlyArray<{ name: string; dir: string; configPath?: string | null }>,
   workspaceRoot: string,
-): void {
+): Promise<void> {
   for (const spec of tasks) {
     const at = spec.indexOf('#')
     if (at < 0) continue
@@ -1062,7 +1112,11 @@ function refuseUnlockedConfig(
     const entry = projects.get(name)
     // No entry: a package the lock holds no project for, whose config came after it.
     if (entry !== undefined && !isDefaultBuild(entry.config.tasks?.[spec.slice(at + 1)])) continue
-    const config = unlockedConfig(name, metas)
+    const config =
+      unlockedConfig(name, metas) ??
+      (metas.some((m) => m.name === name)
+        ? undefined
+        : await unlockedDir(name, metas, workspaceRoot))
     if (config === undefined) continue
     throw new UserError(
       `${spec}: ${relPosix(workspaceRoot, config)} is not in the lock yet — run \`vx lock\``,
@@ -1107,6 +1161,27 @@ function unlockedConfig(
   if (typeof meta.configPath === 'string' && meta.configPath !== '') return undefined
   const config = PROJECT_CONFIG_FILENAMES.find((n) => existsSync(path.join(meta.dir, n)))
   return config === undefined ? undefined : path.join(meta.dir, config)
+}
+
+/**
+ * The config `vx lock` would find in the directory a name no project has
+ * reads as (`packages/d`, `c`): with no discover plugin a config written
+ * after the lock makes no project, so `unlockedConfig` never sees it.
+ * Asked only for a name that matches nothing, a run about to be refused;
+ * the listing is paid only when the directory holds a config.
+ */
+async function unlockedDir(
+  name: string,
+  metas: ReadonlyArray<{ dir: string }>,
+  workspaceRoot: string,
+): Promise<string | undefined> {
+  const dir = path.resolve(workspaceRoot, name)
+  // A project's directory typed for its name is that project, hinted as such.
+  if (!dir.startsWith(workspaceRoot + path.sep) || metas.some((m) => m.dir === dir))
+    return undefined
+  if (!PROJECT_CONFIG_FILENAMES.some((n) => existsSync(path.join(dir, n)))) return undefined
+  const { configs } = await findProjectConfigs(workspaceRoot)
+  return configs.find((c) => c.dir === dir)?.configPath
 }
 
 /**

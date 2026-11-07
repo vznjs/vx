@@ -97,6 +97,17 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     )
   })
 
+  // With --all already given, "run --all" was advice the user had followed.
+  it('on the base branch, --affected beside --all says to drop --affected', () => {
+    git(root, 'update-ref', 'refs/remotes/origin/feat', 'HEAD')
+    git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/feat')
+    const r = vx(root, 'run', 'build', '--all', '--affected')
+    expect(r.exitCode).not.toBe(0)
+    expect(r.out).toContain(
+      '--affected has no default on the base branch (feat): drop --affected, --all runs every project (the cache skips what did not change), or name the last good commit, --affected=<sha>',
+    )
+  })
+
   it('an explicit base that is HEAD itself is named as such, with the two bases you probably meant', () => {
     git(root, 'update-ref', 'refs/remotes/origin/feat', 'HEAD')
     const r = vx(root, 'run', 'build', '--affected=origin/feat')
@@ -188,6 +199,25 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     // An empty one is unset, as Turbo reads an empty TURBO_SCM_BASE (#9053).
     expect(run({ VX_AFFECTED_BASE: '' }, '--affected')).toEqual({ affectedBase: 'HEAD', tasks: [] })
   })
+
+  // A ref the variable gave was reported as if typed: nothing on the line
+  // said where `origin/develop` came from.
+  for (const base of ['origin/develop', 'nope..HEAD']) {
+    it(`a VX_AFFECTED_BASE=${base} that does not resolve is named as the variable's`, () => {
+      const p = Bun.spawnSync({
+        cmd: ['bun', CLI, 'run', 'build', '--affected', '--dry'],
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1', VX_AFFECTED_BASE: base },
+      })
+      expect(p.exitCode).toBe(1)
+      const ref = base.split('..')[0]
+      expect(p.stderr.toString()).toContain(
+        `VX_AFFECTED_BASE=${base}: git ref "${ref}" did not resolve`,
+      )
+    })
+  }
 
   it('CONTROL: a real base that happens to select nothing keeps the plain note', async () => {
     await writeFile(path.join(root, 'README.md'), 'docs only\n')

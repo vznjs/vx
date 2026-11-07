@@ -118,8 +118,8 @@ describe('a run whose collector fails', () => {
       name: 'never answers',
       endpoint: () => collector('hang'),
       said: [
-        '[vx] telemetry flush timed out after 1500ms; buffered records lost',
-        ...['traces', 'metrics', 'logs'].map((s) => fail(s, 'The operation was aborted.')),
+        "[vx] telemetry flush timed out after 1500ms (sink '@vzn/vx-otel'); buffered records lost",
+        ...['traces', 'metrics', 'logs'].map((s) => fail(s, 'telemetry flush deadline (1500ms)')),
       ],
     },
   ]

@@ -1022,6 +1022,8 @@ describe('LocalHistoryProvider', () => {
         ['get', 50],
         ['all', 0],
         ['get'],
+        // Whether the store timed anything: an empty one asks no tier.
+        ['get'],
         // The forecast: one statement for every task, not one per task.
         [
           'all',

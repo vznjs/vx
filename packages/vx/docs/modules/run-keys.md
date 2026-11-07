@@ -64,18 +64,26 @@ export function codeIdentity(): string
   upgrade unseen), the workspace root, forward args, claimed root files,
   nested project dirs, the outputs git ignores, then per task its id,
   project, edges, `requested`, resolved config hash, plugin key parts,
-  output adders and files token (`inputs.md`, the fold memo's), and the
+  output adders and files token's hash (`inputs.md`, the fold memo's), and the
   declared env values. When the nodes are a remembered graph no plugin
   or flag edited (`hashCache.graph`, graph-memo.md), that graph's token
   stands for each task's project, edges, config and adders, and a task
-  adds only its id, `requested` and files token. It answers undefined, and the run derives as
+  adds only its id, `requested` and files token hash. It answers undefined, and the run derives as
   before, when there is no fold memo, or any task is keyless, has an
   excluded upstream, declares `runtime`, `workspaceRuntime` or
   `workspaceFiles` inputs, or has no files token (an untrusted input, an
-  ignored path a declaration reaches).
+  ignored path a declaration reaches). A files token is computed and
+  hashed once per project and declaration (inputs and outputs), and the
+  declaration's text once per config object: the lock shares one among
+  the tasks that declare it alike. The hash, not the ~200-character
+  token, is what each task adds (2 MB of token at 8,002 tasks,
+  2026-11-07), and it is the delta's files token hash too.
 - `readRunKeys` / `writeRunKeys` — the row lives in `fold_memo`
-  (`hashCache.folds`) as JSON of stable and uncached keys by task id. A
-  row naming a task this run lacks reads as absent.
+  (`hashCache.folds`) as JSON of the stable and uncached keys, each by
+  its task's place in the run's node order, which the token pins (every
+  id, in order): by id, the ids and a lookup per task were ~5 ms of
+  8,002 (2026-11-07). A row naming a place this run lacks reads as
+  absent.
 
 - `readRunDelta` / `writeRunDelta` — a second row (`\0rund\0` + the
   selection hash), written beside the run row, read only when the run
@@ -96,4 +104,7 @@ Tests: `tests/run-keys.test.ts` (a stored row is what the run uses; an
 upstream edit, env value, config edit outside the project's files, and a
 dirty edit each run what they reach; an edit derives only the keys it
 reaches, and they equal a full derivation's; a keyless task stores
-nothing).
+nothing); `tests/run-keys-token.test.ts` (a shared declaration taken
+once; each distinct files token hashed once; each ingredient of a files
+token moves the token and the delta's files but not the global token; a
+row read back by place, and another node order is another row).

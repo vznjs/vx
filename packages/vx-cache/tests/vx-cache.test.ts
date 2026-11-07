@@ -10,6 +10,7 @@ import { UserError } from '@vzn/vx'
 import { hashPart, oidcAuth } from '@vzn/vx-devtools'
 import { createCacheServer } from '@vzn/vx-cache-server'
 import type { JWTPayload } from 'jose'
+import { Cache, indexDb } from '../../vx/src/cache/index.js'
 import { run } from '../../vx/tests/helpers/orchestrator.js'
 import { silentLogger } from '../../vx/tests/helpers/orchestrator-fixture.js'
 import {
@@ -226,29 +227,37 @@ describe('VxCacheLayer', () => {
     }
   })
 
-  it('uploads each artifact alone by PUT, at most four at once', async () => {
+  // Core bounds uploads (`cache.concurrency.upload`, 64 to 96): a cap
+  // of four here held a 1,500-task cold run 11 s past its last task on a
+  // remote 40 ms away.
+  it('uploads each artifact alone by PUT, as many at once as core sends', async () => {
+    const keys = ['e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7']
     let open = 0
     let most = 0
+    const all = Promise.withResolvers<void>()
     const counted: typeof fetch = Object.assign(
       async (input: string | URL | Request, init?: RequestInit) => {
-        if (init?.method === 'PUT') most = Math.max(most, ++open)
+        if (init?.method !== 'PUT') return fetch(input, init)
+        most = Math.max(most, ++open)
+        if (open === keys.length) all.resolve()
+        // Held until every upload is open; a cap below them gives up after a second.
+        await Promise.race([all.promise, Bun.sleep(1000)])
         try {
           return await fetch(input, init)
         } finally {
-          if (init?.method === 'PUT') open--
+          open--
         }
       },
       { preconnect: fetch.preconnect },
     )
     const c = layer(srv.url, write, [MAIN], counted)
     const before = srv.seen.length
-    const keys = ['e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7']
     await Promise.all(keys.map((k) => c.put(k, new Blob([k]), { durationMs: 1 })))
     const seen = srv.seen.slice(before).filter((r) => r.path !== '/v1/capabilities')
     expect(seen.map((r) => [r.method, r.path]).sort(byJson)).toEqual(
       keys.map((k) => ['PUT', `/v1/artifacts/${k}`]),
     )
-    expect(most).toBe(4)
+    expect(most).toBe(keys.length)
     for (const k of keys) expect(await (await c.get(k))!.body.text()).toBe(k)
   })
 
@@ -391,6 +400,8 @@ describe('VxCacheLayer', () => {
     // No answer, not "none held": core rewrites the keys a has-many answers
     // (`remote_hits`), and an empty map forgot every hit the remote holds.
     expect(await c.hasMany(['aa11'])).toBeNull()
+    // … and a download's: a null forgot the hit.
+    expect(await c.get('aa11')).toBeUndefined()
     expect(srv.seen.length).toBe(n)
   })
 
@@ -539,14 +550,22 @@ describe("the server's limits", () => {
         authorize: oidcAuth({ allow: ALLOW, fetchJson: (u) => iss.fetchJson(u) }),
         limits: { maxCheckHashes: 1 },
       })
+      // The chunks' refusals land apart: the lookup ends only once every
+      // chunk's request has (a first refusal ended it with two in flight).
+      let open = 0
+      let answered = 0
       handle = async (req) => {
+        open++
         const res = await refusing(req)
+        if (res.status === 200 && answered++ > 0) await Bun.sleep(50)
+        open--
         return res.status === 200 ? new Response('{}', { status: 400, headers: res.headers }) : res
       }
       lookups.length = 0
       await expect(
         layer(url, await iss.sign(MAIN_JOB, new URL(url).origin)).hasMany(keys),
       ).rejects.toThrow('HTTP 400')
+      expect(open).toBe(0)
       expect(lookups).toEqual([3, 1, 1, 1])
       expect(await c.put('b2', new Blob(['12345']), { durationMs: 1 })).toBe(false)
       expect(said).toEqual([
@@ -1397,6 +1416,43 @@ describe('vx run with vxCache()', () => {
         .map((r) => `${r.method} ${r.path.replace(/[0-9a-f]+$/, '<hash>')}`)
         .sort(),
     ).toEqual(['GET /v1/artifacts/<hash>', 'POST /v1/artifacts'])
+  })
+
+  // A refused token answered nothing: its download's null forgot the hits
+  // the index kept, and the next run with a good token fetched none.
+  it('a run whose token is refused keeps the hits the index holds', async () => {
+    const cacheDir = path.join(root, '.vx', 'cache')
+    const log = silentLogger({ root, log: [], err: [] })
+    await run({ cwd: root, tasks: ['build'], handleSignals: false, cacheDir, log })
+    await rm(cacheDir, { recursive: true, force: true })
+    await run({ cwd: root, tasks: ['build'], handleSignals: false, cacheDir, log })
+    const hits = (): number => {
+      const local = new Cache(cacheDir)
+      try {
+        return (
+          indexDb(local).query('SELECT count(*) AS n FROM remote_hits').get() as { n: number }
+        ).n
+      } finally {
+        local.close()
+      }
+    }
+    expect(hits()).toBe(1)
+    const token = Bun.env.VX_CACHE_TOKEN
+    Bun.env.VX_CACHE_TOKEN = 'nope'
+    try {
+      const r = await run({
+        cwd: root,
+        tasks: ['build'],
+        handleSignals: false,
+        cacheDir,
+        cache: { localRead: false, localWrite: false, remoteRead: true, remoteWrite: false },
+        log,
+      })
+      expect(r.outcomes.map((o) => o.status)).toEqual(['success'])
+    } finally {
+      Bun.env.VX_CACHE_TOKEN = token
+    }
+    expect(hits()).toBe(1)
   })
 
   // Bun.serve sends a streamed answer chunked, with no Content-Length

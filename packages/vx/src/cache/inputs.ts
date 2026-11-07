@@ -46,6 +46,7 @@ import {
   slashBraceExpansions,
   braceAlternatives,
   ESSENTIAL_ENV,
+  POST_EXIT_DRAIN_MS,
   splitNegations,
   staticPrefix,
   stripTrailingSlash,
@@ -223,7 +224,18 @@ export type ProjectFilesCache = Map<
  * relative to it) and everything `resolveFiles` keys its memo on.
  * Undefined when only resolving the files can say.
  */
-export function filesToken(args: ResolveInputsArgs): string | undefined {
+export function filesToken(
+  args: Pick<
+    ResolveInputsArgs,
+    | 'projectDir'
+    | 'workspaceRoot'
+    | 'inputs'
+    | 'ownOutputs'
+    | 'ownWorkspaceOutputs'
+    | 'nestedProjectDirs'
+    | 'gitFilesCache'
+  >,
+): string | undefined {
   if ((args.inputs?.workspaceFiles?.length ?? 0) > 0) return undefined
   const plan = filesPlan(args.inputs?.files, args.ownOutputs)
   const cache = args.gitFilesCache
@@ -602,7 +614,21 @@ function resolveEnvValues(
   names: readonly string[],
   source: NodeJS.ProcessEnv,
 ): Array<[string, string | undefined]> {
-  return [...names].sort().map((name) => [name, source[name]])
+  return [...names].sort().map((name) => {
+    const value = source[name]
+    // Bun decodes the environment lossily and offers no raw bytes on every
+    // platform (Linux's /proc/self/environ misses what vx sets itself), so
+    // Latin-1 é and è both read as U+FFFD and replayed each other's build.
+    // A value that truly holds U+FFFD is refused with them: the two read
+    // alike. The value is never shown; it may be a secret.
+    if (value?.includes('�') === true) {
+      throw new UserError(
+        `inputs.env ${name} holds U+FFFD: its value is not UTF-8, or holds that character, ` +
+          `and a lossy decode keys every invalid byte alike. Set it as UTF-8.`,
+      )
+    }
+    return [name, value]
+  })
 }
 
 /**
@@ -671,12 +697,27 @@ async function runRuntimeCommand(
   }
   killProbesOnExit()
   let stdout, stderr, exitCode
+  const ac = new AbortController()
   try {
-    ;[stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).bytes(),
-      new Response(proc.stderr).bytes(),
-      proc.exited,
+    const streams = Promise.all([
+      probeBytes(proc.stdout, ac.signal),
+      probeBytes(proc.stderr, ac.signal),
     ])
+    exitCode = await proc.exited
+    // A child the shell left holding the pipes (`sleep 6 & echo x`) kept
+    // them open past the shell's exit, and the run waited for the child. As
+    // a task's (exec/runner.ts): a short drain, then the reads stop and the
+    // group goes. What was read is what the shell printed, so the key folds
+    // it; what the child prints later is no part of the answer.
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const cut = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, POST_EXIT_DRAIN_MS)
+    })
+    await Promise.race([streams, cut])
+    clearTimeout(timer)
+    ac.abort()
+    killGroup(proc.pid)
+    ;[stdout, stderr] = await streams
   } finally {
     liveProbes.delete(proc)
     mine?.delete(proc)
@@ -745,24 +786,51 @@ const probesOf = new WeakMap<RuntimeMemo, Set<ReturnType<typeof Bun.spawn>>>()
 export function stopRuntimeProbes(...memos: readonly RuntimeMemo[]): void {
   for (const memo of memos) {
     for (const p of probesOf.get(memo) ?? []) {
-      try {
-        process.kill(-p.pid, 'SIGKILL')
-      } catch {
-        // the group is gone
-      }
+      killGroup(p.pid)
     }
   }
 }
+/** SIGKILL a probe's group, its own since the spawn (`detached`). */
+function killGroup(pid: number): void {
+  try {
+    process.kill(-pid, 'SIGKILL')
+  } catch {
+    // the group is gone
+  }
+}
+
+/**
+ * A probe's stream, read to its end or until `signal`: then the pending
+ * read is cancelled and what was read is returned. `new Response().bytes()`
+ * offers no way out while a leftover child holds the pipe.
+ */
+async function probeBytes(
+  stream: ReadableStream<Uint8Array>,
+  signal: AbortSignal,
+): Promise<Uint8Array> {
+  const reader = stream.getReader()
+  const onAbort = (): void => void reader.cancel().catch(() => {})
+  signal.addEventListener('abort', onAbort, { once: true })
+  const parts: Uint8Array[] = []
+  try {
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
+      parts.push(value)
+    }
+  } finally {
+    signal.removeEventListener('abort', onAbort)
+    reader.releaseLock()
+  }
+  return Buffer.concat(parts)
+}
+
 function killProbesOnExit(): void {
   if (probeExitHooked) return
   probeExitHooked = true
   process.on('exit', () => {
     for (const p of liveProbes) {
-      try {
-        process.kill(-p.pid, 'SIGKILL')
-      } catch {
-        // the group is gone
-      }
+      killGroup(p.pid)
     }
   })
 }
@@ -846,29 +914,63 @@ export async function resolveOutputTree(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
-  /** Also list the FIFOs, sockets and devices the globs name (a save refuses them). */
-  special?: boolean
-}): Promise<{ files: string[]; emptyDirs: string[]; special: string[] }> {
+  /**
+   * Also list the FIFOs, sockets and devices the globs name: a save refuses
+   * them, a clean removes them. `'later'` leaves `special` empty and hands
+   * `findSpecial` instead, for a walk that needs them only if it restores.
+   */
+  special?: boolean | 'later'
+  /** The walk feeds a clean or a restore (`refuseUndecodableOutput`). */
+  clearing?: boolean
+}): Promise<OutputTree> {
   const emptyDirs = new Set<string>()
-  const special = args.special === true ? new Set<string>() : undefined
-  const { files } = await scanOutputs(args, emptyDirs, special)
-  return {
+  const probe: SpecialProbe | undefined =
+    args.special === undefined || args.special === false ? undefined : {}
+  const { files } = await scanOutputs(args, emptyDirs, probe)
+  return treeOf(args.projectDir, files, emptyDirs, args.special, probe)
+}
+
+/** What `resolveOutputTree` and its workspace twin return. */
+type OutputTree = {
+  files: string[]
+  emptyDirs: string[]
+  special: string[]
+  findSpecial?: () => string[]
+}
+
+function treeOf(
+  root: string,
+  files: string[],
+  emptyDirs: Set<string>,
+  asked: boolean | 'later' | undefined,
+  probe: SpecialProbe | undefined,
+): OutputTree {
+  const findSpecial = (): string[] =>
+    probe?.find === undefined ? [] : containedIn(root, probe.find()).sort()
+  const tree: OutputTree = {
     files,
-    emptyDirs: containedIn(args.projectDir, [...emptyDirs]).sort(),
-    special: special === undefined ? [] : containedIn(args.projectDir, [...special]).sort(),
+    emptyDirs: containedIn(root, [...emptyDirs]).sort(),
+    special: asked === true ? findSpecial() : [],
   }
+  if (asked === 'later') tree.findSpecial = findSpecial
+  return tree
 }
 
 async function scanOutputs(
-  args: { projectDir: string; outputs: readonly string[]; nestedProjectDirs: string[] },
+  args: {
+    projectDir: string
+    outputs: readonly string[]
+    nestedProjectDirs: string[]
+    clearing?: boolean
+  },
   emptyDirs?: Set<string>,
-  special?: Set<string>,
+  special?: SpecialProbe,
 ): Promise<{ files: string[] }> {
   const { positive, negative } = splitNegations(args.outputs)
   if (positive.length === 0) return { files: [] }
   const excludeGlobs = [...outputExcludes(positive, 'project'), ...asTrees(negative).map(globFor)]
   const trees = asTrees(positive)
-  refuseDirLinkedOut(args.projectDir, trees, 'project')
+  const absent = refuseDirLinkedOut(args.projectDir, trees, 'project')
   const scanned = [
     ...(await scanUnion(
       trees,
@@ -877,6 +979,8 @@ async function scanOutputs(
       inNestedProject(args.projectDir, args.nestedProjectDirs),
       emptyDirs,
       special,
+      absent,
+      args.clearing,
     )),
   ]
   // Containment, enforced HERE and not only at the loader. `cleanOutputs`
@@ -910,14 +1014,18 @@ export function committedFiles(
  * below it is an output, kept as the link (`archive.ts`). One into `.git`
  * or `.vx` is refused in either scope: for the root project and for
  * workspace outputs those are inside, and the clean deleted the
- * repository through `dist -> .git`. One out of a workspace output's root
- * is left to `containedIn`.
+ * repository through `dist -> .git`. One out of the root is refused in
+ * either scope too: a workspace output's every file was dropped as outside
+ * and an empty entry saved, while the project twin refused the task (M-65).
  */
 function refuseDirLinkedOut(
   root: string,
   trees: readonly string[],
   scope: 'project' | 'workspace',
-): void {
+): Set<string> {
+  // The heads found absent: the scan that follows skips them without
+  // asking again (a restore after a clean asks of every one).
+  const absent = new Set<string>()
   let realRoot: string | undefined
   for (const tree of trees) {
     let at = root
@@ -931,7 +1039,10 @@ function refuseDirLinkedOut(
       } catch {
         break
       }
-      if (st === undefined) break
+      if (st === undefined) {
+        absent.add(at)
+        break
+      }
       if (!st.isSymbolicLink()) continue
       let real: string
       try {
@@ -942,10 +1053,9 @@ function refuseDirLinkedOut(
       }
       realRoot ??= realOr(root)
       if (!isInside(realRoot, real)) {
-        if (scope === 'workspace') break
         throw new UserError(
           `${at} is a symbolic link to ${real}, outside ${root} — vx never cleans, saves ` +
-            'or restores declared outputs through a link that leaves the project. Remove the ' +
+            `or restores declared outputs through a link that leaves the ${scope}. Remove the ` +
             'link and re-run, or stop declaring outputs under it.',
         )
       }
@@ -958,6 +1068,7 @@ function refuseDirLinkedOut(
       }
     }
   }
+  return absent
 }
 
 /**
@@ -1121,17 +1232,18 @@ export async function cleanOutputs(args: {
   )
   sweepRestoreTemps(args.projectDir, args.outputs, committed)
   // An empty directory under the outputs is one too (a save keeps it): one
-  // an older build left would otherwise be saved by this run.
+  // an older build left would otherwise be saved by this run. So is a FIFO,
+  // socket or device: a task writing a FIFO's path blocks on it forever.
   const tree =
     args.resolved === undefined
-      ? await resolveOutputTree(args)
-      : { files: args.resolved, emptyDirs: [] }
+      ? await resolveOutputTree({ ...args, special: true, clearing: true })
+      : { files: args.resolved, emptyDirs: [], special: [] }
   const matched = tree.files
   // `force: true` makes rm tolerate ENOENT (e.g. when two output
   // globs overlap and a sibling already deleted a path mid-iteration).
   // A symlink is unlinked, never followed.
   const removed = await removeAll(
-    matched.filter((f) => !committed(f)),
+    [...matched, ...tree.special].filter((f) => !committed(f)),
     args.projectDir,
   )
   await pruneEmptiedDirs(
@@ -1371,20 +1483,13 @@ const SYNC_CLEAN_MAX = 128
  * `chmod 555 dist/ro`, which a hit restores too) gets owner write and
  * search for the remove and its mode back after, as a restore's write
  * into it does (archive.ts `reopen`): else that task could never run or
- * restore again until someone chmodded the tree by hand.
+ * restore again until someone chmodded the tree by hand. The prune after
+ * reopens the same way for the subdirectories it removes (`pruneEmptiedDirs`).
  */
 async function removeAll(all: readonly string[], root: string): Promise<string[]> {
   const files = insideRoot(all, root)
-  const reopened = new Map<string, number>()
-  const reopen = (dir: string): boolean => {
-    if (reopened.has(dir)) return true
-    const st = lstatSync(dir, { throwIfNoEntry: false })
-    if (st?.isDirectory() !== true || st.uid !== process.getuid?.()) return false
-    if ((st.mode & 0o300) === 0o300) return false
-    reopened.set(dir, st.mode & 0o7777)
-    chmodSync(dir, (st.mode & 0o7777) | 0o300)
-    return true
-  }
+  const reopened: Reopened = new Map()
+  const reopen = (dir: string): boolean => reopenDir(dir, reopened)
   const refused = (f: string, err: NodeJS.ErrnoException): UserError => {
     const rel = relPosix(root, f)
     return new UserError(
@@ -1425,12 +1530,30 @@ async function removeAll(all: readonly string[], root: string): Promise<string[]
     )
     return files
   } finally {
-    for (const [dir, mode] of reopened) {
-      try {
-        chmodSync(dir, mode)
-      } catch {
-        // gone since: nothing to give back
-      }
+    giveBack(reopened)
+  }
+}
+
+/** Directories given owner write and search for a remove, with the mode each had. */
+type Reopened = Map<string, number>
+
+/** Whether `dir` is now open to a remove: this user's, and its missing owner bits given. */
+function reopenDir(dir: string, reopened: Reopened): boolean {
+  if (reopened.has(dir)) return true
+  const st = lstatSync(dir, { throwIfNoEntry: false })
+  if (st?.isDirectory() !== true || st.uid !== process.getuid?.()) return false
+  if ((st.mode & 0o300) === 0o300) return false
+  reopened.set(dir, st.mode & 0o7777)
+  chmodSync(dir, (st.mode & 0o7777) | 0o300)
+  return true
+}
+
+function giveBack(reopened: Reopened): void {
+  for (const [dir, mode] of reopened) {
+    try {
+      chmodSync(dir, mode)
+    } catch {
+      // gone since (the prune removed it): nothing to give back
     }
   }
 }
@@ -1500,33 +1623,53 @@ async function pruneEmptiedDirs(
   // the memo is correct and 60 ms, because every child re-attempts the
   // shared parent. This is correct at 44 ms.
   let level = new Set([...removed.map((f) => path.dirname(f)), ...emptyDirs])
-  while (level.size > 0) {
-    const parents = new Set<string>()
-    const dirs = [...level].filter(
-      (dir) =>
-        dir !== rootResolved &&
-        dir.startsWith(rootResolved + path.sep) &&
-        (scope === undefined || inScope(dir, scope)) &&
-        keep?.has(dir) !== true,
-    )
-    const gone = (err: NodeJS.ErrnoException): boolean => err.code === 'ENOENT'
-    if (dirs.length <= SYNC_CLEAN_MAX) {
-      for (const dir of dirs) {
-        try {
-          rmdirSync(dir)
-          parents.add(path.dirname(dir))
-        } catch (err) {
-          if (gone(err as NodeJS.ErrnoException)) parents.add(path.dirname(dir))
-        }
-      }
-    } else {
-      await Promise.all(
-        dirs.map(async (dir) => {
-          if (await rmdir(dir).then(() => true, gone)) parents.add(path.dirname(dir))
-        }),
+  // A subdirectory of a read-only directory of this user's (`dist/x/s` under
+  // a `chmod 555 dist/x`) is removed as `removeAll` removes a file there.
+  const reopened: Reopened = new Map()
+  const gone = (err: NodeJS.ErrnoException): boolean => err.code === 'ENOENT'
+  const denied = (err: NodeJS.ErrnoException, dir: string): boolean =>
+    err.code === 'EACCES' && reopenDir(path.dirname(dir), reopened)
+  try {
+    while (level.size > 0) {
+      const parents = new Set<string>()
+      const dirs = [...level].filter(
+        (dir) =>
+          dir !== rootResolved &&
+          dir.startsWith(rootResolved + path.sep) &&
+          (scope === undefined || inScope(dir, scope)) &&
+          keep?.has(dir) !== true,
       )
+      if (dirs.length <= SYNC_CLEAN_MAX) {
+        for (const dir of dirs) {
+          try {
+            try {
+              rmdirSync(dir)
+            } catch (err) {
+              if (!denied(err as NodeJS.ErrnoException, dir)) throw err
+              rmdirSync(dir)
+            }
+            parents.add(path.dirname(dir))
+          } catch (err) {
+            if (gone(err as NodeJS.ErrnoException)) parents.add(path.dirname(dir))
+          }
+        }
+      } else {
+        await Promise.all(
+          dirs.map(async (dir) => {
+            const ok = await rmdir(dir)
+              .catch((err: NodeJS.ErrnoException) => {
+                if (!denied(err, dir)) throw err
+                return rmdir(dir)
+              })
+              .then(() => true, gone)
+            if (ok) parents.add(path.dirname(dir))
+          }),
+        )
+      }
+      level = parents
     }
-    level = parents
+  } finally {
+    giveBack(reopened)
   }
 }
 
@@ -1581,17 +1724,27 @@ export async function resolveWorkspaceOutputs(
   args: {
     workspaceRoot: string
     outputs: readonly string[]
+    clearing?: boolean
   },
   emptyDirs?: Set<string>,
-  special?: Set<string>,
+  special?: SpecialProbe,
 ): Promise<string[]> {
   const { positive, negative } = splitNegations(args.outputs)
   if (positive.length === 0) return []
   const excludeGlobs = [...outputExcludes(positive, 'workspace'), ...asTrees(negative).map(globFor)]
   const trees = asTrees(positive)
-  refuseDirLinkedOut(args.workspaceRoot, trees, 'workspace')
+  const absent = refuseDirLinkedOut(args.workspaceRoot, trees, 'workspace')
   const scanned = [
-    ...(await scanUnion(trees, excludeGlobs, args.workspaceRoot, undefined, emptyDirs, special)),
+    ...(await scanUnion(
+      trees,
+      excludeGlobs,
+      args.workspaceRoot,
+      undefined,
+      emptyDirs,
+      special,
+      absent,
+      args.clearing,
+    )),
   ]
   // Same containment as the project twin, anchored one level out. These globs
   // deliberately ignore PROJECT boundaries — that is the escape hatch — but
@@ -1605,16 +1758,14 @@ export async function resolveWorkspaceOutputTree(args: {
   workspaceRoot: string
   outputs: readonly string[]
   /** As `resolveOutputTree`'s. */
-  special?: boolean
-}): Promise<{ files: string[]; emptyDirs: string[]; special: string[] }> {
+  special?: boolean | 'later'
+  clearing?: boolean
+}): Promise<OutputTree> {
   const emptyDirs = new Set<string>()
-  const special = args.special === true ? new Set<string>() : undefined
-  const files = await resolveWorkspaceOutputs(args, emptyDirs, special)
-  return {
-    files,
-    emptyDirs: containedIn(args.workspaceRoot, [...emptyDirs]).sort(),
-    special: special === undefined ? [] : containedIn(args.workspaceRoot, [...special]).sort(),
-  }
+  const probe: SpecialProbe | undefined =
+    args.special === undefined || args.special === false ? undefined : {}
+  const files = await resolveWorkspaceOutputs(args, emptyDirs, probe)
+  return treeOf(args.workspaceRoot, files, emptyDirs, args.special, probe)
 }
 
 /**
@@ -1639,13 +1790,13 @@ export async function cleanWorkspaceOutputs(args: {
   sweepRestoreTemps(args.workspaceRoot, args.outputs, committed)
   const tree =
     args.resolved === undefined
-      ? await resolveWorkspaceOutputTree(args)
-      : { files: args.resolved, emptyDirs: [] }
+      ? await resolveWorkspaceOutputTree({ ...args, special: true, clearing: true })
+      : { files: args.resolved, emptyDirs: [], special: [] }
   const matched = tree.files
   await pruneEmptiedDirs(
     args.workspaceRoot,
     await removeAll(
-      matched.filter((f) => !committed(f)),
+      [...matched, ...tree.special].filter((f) => !committed(f)),
       args.workspaceRoot,
     ),
     pruneScope(args.workspaceRoot, args.outputs),
@@ -2366,13 +2517,17 @@ function listingFor(
  * yields names no file and the output dropped out of the artifact without
  * a word: a hit then restored a tree without it (turborepo#9345's output
  * half). A `\ufffd` that does not stat is that case or a file that left
- * mid-scan; `undecodableOnDisk` tells them apart.
+ * mid-scan; `undecodableOnDisk` tells them apart. `clearing`: the walk
+ * feeds a clean or a restore, which nothing saves.
  */
-function refuseUndecodableOutput(abs: string): void {
+function refuseUndecodableOutput(abs: string, clearing: boolean): void {
   if (!undecodableOnDisk(abs)) return
+  const why = clearing
+    ? 'vx cannot clear a file by it before the task runs or a hit restores'
+    : 'vx cannot save a file by it'
   throw new UserError(
     `outputs matched ${JSON.stringify(abs)}: the name is not valid UTF-8 (shown with ` +
-      `\ufffd), and vx cannot save a file by it. Rename it, or keep it out of the outputs.`,
+      `\ufffd), and ${why}. Rename it, or keep it out of the outputs.`,
   )
 }
 
@@ -2585,31 +2740,45 @@ async function scanUnion(
   cwd: string,
   nested: (rel: string) => boolean = () => false,
   emptyDirs?: Set<string>,
-  special?: Set<string>,
+  special?: SpecialProbe,
+  absent?: ReadonlySet<string>,
+  clearing = false,
 ): Promise<Set<string>> {
   const matches = new Set<string>()
   const links: string[] = []
-  // Directories the walk entered: Bun's scan skips a FIFO, socket or
-  // device outright, so `special` is found by listing them.
-  const walked = special === undefined ? undefined : new Set<string>()
+  // Bun's scan skips a FIFO, socket or device outright, so `special` is
+  // found by listing the directories the walk entered: its roots, the
+  // directories it took and the parents of what it took. Derived only when
+  // asked, so a walk that may never need them pays a set add per directory.
+  const roots = special === undefined ? undefined : new Set<string>()
+  const dirs = special === undefined ? undefined : new Set<string>()
   const take = (rel: string): void => {
     if (nested(rel) || excludeGlobs.some((g) => g.match(rel))) return
     const abs = path.resolve(cwd, rel)
-    walked?.add(path.dirname(abs))
     const st = lstatSync(abs, { throwIfNoEntry: false })
-    if (walked !== undefined && st?.isDirectory() === true) walked.add(abs)
     if (st !== undefined && (st.isFile() || st.isSymbolicLink())) {
       matches.add(abs)
       if (st.isSymbolicLink()) links.push(abs)
-    } else if (emptyDirs !== undefined && st?.isDirectory() === true) {
-      if (readdirSync(abs).length === 0) emptyDirs.add(abs)
-    } else if (st === undefined && rel.includes('\ufffd')) refuseUndecodableOutput(abs)
+    } else if (st?.isDirectory() === true) {
+      dirs?.add(abs)
+      if (emptyDirs !== undefined && readdirSync(abs).length === 0) emptyDirs.add(abs)
+    } else if (st === undefined && rel.includes('\ufffd')) refuseUndecodableOutput(abs, clearing)
   }
   const opts = { cwd, onlyFiles: false, followSymlinks: false, dot: true }
   // `Bun.Glob`'s scan finds nothing for a brace whose alternatives hold a
   // `/`: `{dist,lib/esm}/**` saved an empty artifact, and a hit restored
   // nothing over a cleaned tree (A-10). Expanded here, as discovery does.
   const patterns = positive.flatMap(slashBraceExpansions)
+  if (special !== undefined) {
+    special.find = () => {
+      const walked = new Set(roots)
+      for (const f of [...matches, ...links]) walked.add(path.dirname(f))
+      for (const d of dirs!) walked.add(d).add(path.dirname(d))
+      const into = new Set<string>()
+      findSpecial(walked, cwd, anyTaskGlob(patterns), excludeGlobs, nested, into)
+      return [...into]
+    }
+  }
   // A leading `**` walks the whole project whatever else is listed, so the
   // list is one walk: Turbo's `dist/**`, `**/dist/**`, `**/dist` was three,
   // ~2 ms of a warm hit on solid.
@@ -2622,21 +2791,17 @@ async function scanUnion(
   ) {
     const any = anyTaskGlob(patterns)
     for (const rel of WHOLE_TREE.scanSync(opts)) if (any(rel)) take(rel)
-    if (special !== undefined) findSpecial(walked!, cwd, any, excludeGlobs, nested, special)
     return matches
   }
   for (const pattern of patterns) {
-    if (absentPrefix(cwd, pattern)) continue
+    if (absentPrefix(cwd, pattern, absent)) continue
     const from = scanRoot(cwd, pattern)
     if (from === null) continue
-    walked?.add(from === undefined ? cwd : from.dir)
+    roots?.add(from === undefined ? cwd : from.dir)
     if (from === undefined) for (const rel of globFor(pattern).scanSync(opts)) take(rel)
     else
       for (const rel of globFor(from.rest).scanSync({ ...opts, cwd: from.dir }))
         take(`${from.prefix}/${rel}`)
-  }
-  if (special !== undefined) {
-    findSpecial(walked!, cwd, anyTaskGlob(patterns), excludeGlobs, nested, special)
   }
   // A literal names the path and its tree (`dist`, `dist/**`), and a tree
   // whose head is a directory link is walked through it: the link and the
@@ -2651,6 +2816,11 @@ async function scanUnion(
     }
   }
   return matches
+}
+
+/** Filled by a walk asked for it: what lists the FIFOs, sockets and devices its globs name. */
+interface SpecialProbe {
+  find?: () => string[]
 }
 
 /** The FIFOs, sockets and devices in `dirs` that the output globs name. */
@@ -2727,11 +2897,13 @@ function scanRoot(
  * cost ~58 µs where the lstat costs a few. Anything this cannot read
  * plainly (no prefix, an escape, an absolute path, a refused stat) scans.
  */
-function absentPrefix(cwd: string, pattern: string): boolean {
+function absentPrefix(cwd: string, pattern: string, known?: ReadonlySet<string>): boolean {
   const prefix = staticPrefix(pattern)
   if (prefix === '.' || prefix.includes('\\') || path.isAbsolute(prefix)) return false
+  const at = path.join(cwd, prefix)
+  if (known?.has(at) === true) return true
   try {
-    return lstatSync(path.join(cwd, prefix), { throwIfNoEntry: false }) === undefined
+    return lstatSync(at, { throwIfNoEntry: false }) === undefined
   } catch {
     return false
   }

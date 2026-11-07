@@ -308,6 +308,11 @@ export interface BuildGraphOptions {
    * entry rooted inside one is refused (`refuseNestedInputs`).
    */
   nestedProjects?: ReadonlyMap<string, ReadonlyArray<{ name: string; dir: string }>>
+  /**
+   * Every project's config file (absolute). Given with `workspaceRoot`, an
+   * `outputs.workspaceFiles` glob covering one is refused (`refuseConfigOutputs`).
+   */
+  projectConfigs?: ReadonlyArray<{ name: string; configPath: string }>
 }
 
 /**
@@ -682,8 +687,16 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
             'VX_E_DEPENDS_ON',
           )
         const meant = nearestTarget(projects, spec.project, spec.task)
+        // Which half is missing: a project that exists was told "no such
+        // project or task", though only its task was.
+        const owner = projects.get(spec.project)
+        const tasks = Object.keys(owner?.config.tasks ?? {})
+        const what =
+          owner === undefined
+            ? `no project is named ${spec.project}`
+            : `${spec.project} declares no task ${spec.task}${meant === undefined && tasks.length > 0 ? ` (its tasks: ${tasks.join(', ')})` : ''}`
         throw new UserError(
-          `${id}: dependsOn ${taskId(spec.project, spec.task)} but no such project or task is declared${meant === undefined ? '' : `. Did you mean ${meant}?`}`,
+          `${id}: dependsOn ${taskId(spec.project, spec.task)}, but ${what}${meant === undefined ? '' : `. Did you mean ${meant}?`}`,
           'VX_E_DEPENDS_ON',
         )
       }
@@ -788,7 +801,50 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
   checkGraph(nodes, options.workspaceRoot, options.rules)
   if (options.nestedProjects !== undefined && options.rules?.locked !== true)
     refuseNestedInputs(nodes, options.nestedProjects, options.workspaceRoot)
+  if (options.projectConfigs !== undefined && options.workspaceRoot !== undefined)
+    refuseConfigOutputs(nodes, options.projectConfigs, options.workspaceRoot)
   return nodes
+}
+
+/**
+ * Refuse an `outputs.workspaceFiles` glob that covers a project's config,
+ * the task's own or another's: vx cleans a task's outputs before it runs,
+ * so `packages/b/**` deleted b's untracked files, and its config with them
+ * once untracked. `outputs.files` refuses its own config at load; a
+ * root-anchored glob can reach any project, so it is judged here, where
+ * every config is known.
+ */
+function refuseConfigOutputs(
+  nodes: ReadonlyMap<string, TaskNode>,
+  configs: ReadonlyArray<{ name: string; configPath: string }>,
+  workspaceRoot: string,
+): void {
+  let rels: Array<{ name: string; rel: string }> | undefined
+  for (const n of nodes.values()) {
+    const ws = n.config.outputs?.workspaceFiles
+    if (ws === undefined || ws.length === 0) continue
+    const { positive, negative } = splitNegations(ws)
+    rels ??= configs.map((c) => ({ name: c.name, rel: relPosix(workspaceRoot, c.configPath) }))
+    const back = asTrees(negative)
+    for (const g of positive) {
+      // Only a config under the glob's fixed prefix can match it.
+      const root = rootless(staticPrefix(g))
+      const trees = asTrees([g])
+      const hit = rels.find(
+        (c) =>
+          (root === '' || c.rel === root || c.rel.startsWith(`${root}/`)) &&
+          trees.some((t) => taskGlob(t).match(c.rel)) &&
+          !back.some((t) => taskGlob(t).match(c.rel)),
+      )
+      if (hit === undefined) continue
+      throw new UserError(
+        `${n.id}: outputs.workspaceFiles ${JSON.stringify(g)} covers ${hit.rel}, the config of ` +
+          `the project ${hit.name} — vx deletes a task's outputs before it runs and restores ` +
+          `them on a hit, so the project would lose its config. Name the directory the task ` +
+          `writes, or take the file back with "!${hit.rel}".`,
+      )
+    }
+  }
 }
 
 /**
@@ -879,7 +935,7 @@ export function checkGraph(
     delete node.addsToOutputsOf
     delete node.outputsAddedToBy
   }
-  for (const node of nodes.values()) refuseSelfClean(node)
+  for (const node of nodes.values()) refuseSelfClean(node, workspaceRoot)
   detectCycle(nodes)
   const exclusive = rules?.exclusiveOutputs !== false
   const locked = rules?.locked === true
@@ -1703,39 +1759,65 @@ export function outputTakenBack(output: string, negatives: readonly string[]): b
  * sources: vx removes a task's outputs before it runs, so a formatter
  * declaring `src/**` as both deleted every committed file under `src`,
  * and its key read nothing (hunt 8). Always refused, whatever the rules.
+ * The two fields are compared across too, `files` rebased to the root:
+ * `src/**` read as `files` and written as the root's `app/src/**` deleted
+ * an untracked source.
  */
-function refuseSelfClean(node: TaskNode): void {
-  const declaredOutputs = node.config.outputs
-  const declared = node.config.inputs
-  if (declaredOutputs === undefined || declared === undefined) return
-  for (const field of ['files', 'workspaceFiles'] as const) {
-    if (!coversAny(declared[field], declaredOutputs[field])) continue
-    const inputs = splitNegations(declared[field] ?? [])
-    const out = splitNegations(declaredOutputs[field] ?? [])
-    const outputs = out.positive
-    if (outputs.length === 0) continue
-    const roots = outputs.map((g) => rootless(staticPrefix(g)))
-    for (const gi of inputs.positive) {
-      // Only an output rooted at or above the input's prefix can cover it;
-      // the prefix test keeps the glob matchers off the common disjoint pair.
-      const pi = rootless(staticPrefix(gi))
-      const near = outputs.filter((_, k) => {
-        const r = roots[k]!
-        return r === '' || pi === r || pi.startsWith(`${r}/`)
-      })
-      // Taken back by the task's own `!` inputs, or by an output `!` (no
-      // output, so never cleaned: A-44), the entry reads what it says.
-      if (near.length === 0 || outputTakenBack(gi, inputs.negative)) continue
-      if (outputTakenBack(gi, out.negative)) continue
-      if (!outputTakenBack(gi, near)) continue
-      throw new UserError(
-        `${node.id}: every file ${JSON.stringify(gi)} in inputs.${field} selects is also ` +
-          `its own output — vx removes a task's outputs before it runs, so the task would ` +
-          `delete its own sources. A task that rewrites files in place (a formatter) declares ` +
-          `no outputs.`,
-        'VX_E_INPUT_IS_OUTPUT',
-      )
-    }
+function refuseSelfClean(node: TaskNode, workspaceRoot: string | undefined): void {
+  const outputs = node.config.outputs
+  const inputs = node.config.inputs
+  if (outputs === undefined || inputs === undefined) return
+  selfClean(node, 'files', inputs.files, outputs.files)
+  selfClean(node, 'workspaceFiles', inputs.workspaceFiles, outputs.workspaceFiles)
+  const wsOut = (outputs.workspaceFiles?.length ?? 0) > 0
+  const wsIn = (inputs.workspaceFiles?.length ?? 0) > 0
+  if (workspaceRoot === undefined || (!wsOut && !wsIn)) return
+  const rel = relPosix(workspaceRoot, node.projectDir)
+  const rebased = (globs: readonly string[] | undefined) =>
+    globs?.map((g) => {
+      const neg = g.startsWith('!') ? '!' : ''
+      const body = g.slice(neg.length).replace(/^\.\//, '')
+      return rel === '' ? g : `${neg}${rel}/${body}`
+    })
+  if (wsOut) selfClean(node, 'files', rebased(inputs.files), outputs.workspaceFiles, inputs.files)
+  if (wsIn) selfClean(node, 'workspaceFiles', inputs.workspaceFiles, rebased(outputs.files))
+}
+
+/** Throws when an output in `out` takes back an entry of `ins` whole. `said` is `ins` as declared. */
+function selfClean(
+  node: TaskNode,
+  field: 'files' | 'workspaceFiles',
+  ins: readonly string[] | undefined,
+  out: readonly string[] | undefined,
+  said: readonly string[] | undefined = ins,
+): void {
+  if (!coversAny(ins, out)) return
+  const inputs = splitNegations(ins ?? [])
+  const declared = said === ins ? inputs : splitNegations(said ?? [])
+  const taken = splitNegations(out ?? [])
+  const outputs = taken.positive
+  if (outputs.length === 0) return
+  const roots = outputs.map((g) => rootless(staticPrefix(g)))
+  for (const [i, gi] of inputs.positive.entries()) {
+    // Only an output rooted at or above the input's prefix can cover it;
+    // the prefix test keeps the glob matchers off the common disjoint pair.
+    const pi = rootless(staticPrefix(gi))
+    const near = outputs.filter((_, k) => {
+      const r = roots[k]!
+      return r === '' || pi === r || pi.startsWith(`${r}/`)
+    })
+    // Taken back by the task's own `!` inputs, or by an output `!` (no
+    // output, so never cleaned: A-44), the entry reads what it says.
+    if (near.length === 0 || outputTakenBack(gi, inputs.negative)) continue
+    if (outputTakenBack(gi, taken.negative)) continue
+    if (!outputTakenBack(gi, near)) continue
+    throw new UserError(
+      `${node.id}: every file ${JSON.stringify(declared.positive[i])} in inputs.${field} selects ` +
+        `is also its own output — vx removes a task's outputs before it runs, so the task would ` +
+        `delete its own sources. A task that rewrites files in place (a formatter) declares ` +
+        `no outputs.`,
+      'VX_E_INPUT_IS_OUTPUT',
+    )
   }
 }
 
@@ -2077,11 +2159,17 @@ function readsOutputs(
         refuse: () =>
           new UserError(
             `${reader.node.id} reads ${JSON.stringify(gi.slice(at.length))} in inputs.${field}, which matches ` +
-              `${writer.node.id}'s output ${JSON.stringify(shown)} — a task's key must not read ` +
-              `the outputs of a task it does not depend on, or whose key it already includes. ` +
-              `Exclude it: add ${JSON.stringify(`!${out}`)} to ${reader.node.id}'s ` +
-              `inputs.${field}, or depend on ${writer.node.id} and leave it out of ` +
-              `${reader.node.id}'s inputs.tasks, so its key hashes those bytes instead.`,
+              `${writer.node.id}'s output ${JSON.stringify(shown)} — ` +
+              // "or depend on it" told a task that already did to do it.
+              (reader.node.deps.includes(writer.node.id)
+                ? `it depends on ${writer.node.id}, whose key its own already includes. ` +
+                  `Exclude it: add ${JSON.stringify(`!${out}`)} to ` +
+                  `${reader.node.id}'s inputs.${field}, or leave ${writer.node.id} out of ` +
+                  `${reader.node.id}'s inputs.tasks, so its key hashes those bytes instead.`
+                : `a task's key must not read the outputs of a task it does not depend on, or whose key it already includes. ` +
+                  `Exclude it: add ${JSON.stringify(`!${out}`)} to ${reader.node.id}'s ` +
+                  `inputs.${field}, or depend on ${writer.node.id} and leave it out of ` +
+                  `${reader.node.id}'s inputs.tasks, so its key hashes those bytes instead.`),
             'VX_E_INPUT_IS_OUTPUT',
           ),
       })

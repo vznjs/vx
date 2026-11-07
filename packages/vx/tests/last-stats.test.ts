@@ -109,6 +109,9 @@ it('the text view is one table, a row per task', () => {
   expect(lines[1]).toContain('100%')
   expect(lines[1]).toContain('50%')
   expect(lines[1]).toContain('stable')
+  // The run grid's units and unknown mark: cpu as `127%`, never `1.3×` or `-`.
+  expect(lines[1]).toMatch(/ (\d+%|\u2014)$/)
+  expect(lines[1]).not.toMatch(/×| - /)
 })
 
 it('a task nothing recorded is refused; --stats combines with no run selector', () => {

@@ -148,6 +148,18 @@ describe('resolveSharedOutputs — two targets on one output path', () => {
     }
   })
 
+  it('names both globs when they only overlap', () => {
+    // build declares only dist/**; the todo said test declared "**/*.snap"
+    // "that build also declares".
+    const [, test] = resolveSharedOutputs([
+      task('build', ['dist/**'], ['^build']),
+      task('test', ['**/*.snap']),
+    ])
+    expect(test!.todos[0]).toStartWith(
+      'declares the output "**/*.snap", which overlaps the output "dist/**" that "build" declares — ',
+    )
+  })
+
   it('keeps the first declared when no task has a ^ edge', () => {
     const tasks = resolveSharedOutputs([task('a', ['out/**']), task('b', ['out/**'])])
     expect(tasks[0]!.task!['cache']).toBeDefined()

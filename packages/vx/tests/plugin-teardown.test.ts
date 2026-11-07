@@ -14,7 +14,7 @@
 // before any teardown, and a healthy plugin must never be penalised for a
 // broken neighbour.
 
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
@@ -22,6 +22,7 @@ import { Cache } from '../src/cache/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { gitInitCommit } from './helpers/workspace.js'
 import { teardownPlugins } from '../src/orchestrator/plugin-host.js'
+import { runLockPath } from '../src/orchestrator/run-lock.js'
 import { type Logger } from '../src/index.js'
 import { lock, planRun, run } from './helpers/orchestrator.js'
 import { planRun as planFromLock, run as runFromLock } from '../src/orchestrator/index.js'
@@ -343,6 +344,141 @@ describe('the lifecycle is reached on a run a signal stops', () => {
     expect(await proc.exited).toBe(130)
     expect(Date.now() - t0).toBeLessThan(1_500)
     expect(await lifecycle()).toEqual(['flush', 'teardown'])
+  }, 30_000)
+
+  // The handlers went on with the run's stop, after every plugin's setup:
+  // a signal between the run lock and there (a slow setup made it seconds)
+  // killed vx by the default action, with no teardown and its lock entry
+  // left in the temp dir. The setup waits on a file the test writes once
+  // the signal is sent, never a clock.
+  it('a signal during a plugin setup tears it down, leaves no lock, and exits 130', async () => {
+    const file = (name: string): string => JSON.stringify(path.join(root, name))
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      localWorkspaceSource(
+        [
+          pluginSource(
+            'org/probe',
+            `{ async setup() {
+                 appendFileSync(${file('lifecycle.txt')}, 'setup\\n')
+                 while (!existsSync(${file('go')})) await new Promise((r) => setTimeout(r, 10))
+               },
+               teardown() { appendFileSync(${file('lifecycle.txt')}, 'teardown\\n') },
+             }`,
+          ),
+        ],
+        `import { appendFileSync, existsSync } from 'node:fs'
+`,
+      ),
+    )
+    const tmp = mkdtempSync(path.join(tmpdir(), 'vx-sig-tmp-'))
+    try {
+      const proc = Bun.spawn([process.execPath, BIN, 'run', 'slow', '--all'], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, TMPDIR: tmp, VX_TEST_KILL_GRACE: '200ms' },
+      })
+      const deadline = Date.now() + 10_000
+      while (!(await lifecycle()).includes('setup') && Date.now() < deadline) await Bun.sleep(20)
+      expect(await lifecycle()).toEqual(['setup'])
+      proc.kill('SIGINT')
+      await Bun.write(path.join(root, 'go'), '')
+      expect(await proc.exited).toBe(130)
+      const uid = process.getuid?.()
+      const lockRoot = uid === undefined ? tmp : path.join(tmp, `vx-runs-${uid}`)
+      expect({
+        lifecycle: await lifecycle(),
+        left: readdirSync(lockRoot).filter((n) => n.startsWith('vx-run-')),
+      }).toEqual({ lifecycle: ['setup', 'teardown'], left: [] })
+    } finally {
+      rmSync(tmp, { recursive: true, force: true })
+    }
+  }, 30_000)
+
+  // A run that leaves before its stop takes over (here a setup that
+  // throws) still owes the signal its exit: it left with the refusal's 1.
+  // The setup throws once its own listener heard the signal, which vx's,
+  // added at the lock, heard first.
+  it('a signal heard before a setup throws still exits 130', async () => {
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      localWorkspaceSource(
+        [
+          pluginSource(
+            'org/probe',
+            `{ async setup() {
+               let heard = false
+               process.once('SIGINT', () => { heard = true })
+               writeFileSync(${JSON.stringify(path.join(root, 'lifecycle.txt'))}, 'setup\\n')
+               while (!heard) await new Promise((r) => setTimeout(r, 10))
+               throw new Error('refused')
+             },
+           }`,
+          ),
+        ],
+        `import { writeFileSync } from 'node:fs'
+`,
+      ),
+    )
+    const proc = Bun.spawn([process.execPath, BIN, 'run', 'slow', '--all'], {
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const deadline = Date.now() + 10_000
+    while (!(await lifecycle()).includes('setup') && Date.now() < deadline) await Bun.sleep(20)
+    proc.kill('SIGINT')
+    expect(await proc.exited).toBe(130)
+  }, 30_000)
+
+  // A signal ends the wait for another run's lock holding no lock, and the
+  // run then leaves: going on would open the store (and set the plugins
+  // up) beside a `vx cache clean` that holds the lock to delete it.
+  it('a signal while waiting for the run lock leaves before any plugin setup', async () => {
+    const marker = JSON.stringify(path.join(root, 'lifecycle.txt'))
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      localWorkspaceSource(
+        [pluginSource('org/probe', `{ setup() { appendFileSync(${marker}, 'setup\\n') } }`)],
+        `import { appendFileSync } from 'node:fs'
+`,
+      ),
+    )
+    const tmp = mkdtempSync(path.join(tmpdir(), 'vx-sig-tmp-'))
+    const holder = Bun.spawn(['sleep', '30'], { stdout: 'ignore', stderr: 'ignore' })
+    try {
+      const uid = process.getuid?.()
+      const lockRoot = uid === undefined ? tmp : path.join(tmp, `vx-runs-${uid}`)
+      mkdirSync(lockRoot, { mode: 0o700, recursive: true })
+      const lockDir = runLockPath(root, lockRoot)
+      mkdirSync(lockDir)
+      writeFileSync(path.join(lockDir, `h-${holder.pid}-x-1`), '')
+      const proc = Bun.spawn([process.execPath, BIN, 'run', 'slow', '--all'], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, TMPDIR: tmp },
+      })
+      // The wait says so after a second: the run is in it. Read to the
+      // end, so no write of vx's meets a closed pipe.
+      const { promise: waiting, resolve } = Promise.withResolvers<void>()
+      void (async () => {
+        let err = ''
+        const decoder = new TextDecoder()
+        for await (const chunk of proc.stderr) {
+          err += decoder.decode(chunk)
+          if (err.includes('waiting for another vx run')) resolve()
+        }
+        resolve()
+      })()
+      await waiting
+      proc.kill('SIGINT')
+      expect([await proc.exited, await lifecycle()]).toEqual([130, []])
+    } finally {
+      holder.kill()
+      rmSync(tmp, { recursive: true, force: true })
+    }
   }, 30_000)
 })
 

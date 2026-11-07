@@ -200,16 +200,19 @@ export class NxRemoteCache implements RemoteCacheLayer {
     return res
   }
 
-  async get(hash: string): Promise<{ body: Response; durationMs: number | undefined } | null> {
+  async get(
+    hash: string,
+  ): Promise<{ body: Response; durationMs: number | undefined } | null | undefined> {
     const res = await this.fetch(hash)
     // The Nx wire carries no producing-task duration.
-    return res === null ? null : { body: res, durationMs: undefined }
+    return res === null || res === undefined ? res : { body: res, durationMs: undefined }
   }
 
-  private async fetch(hash: string): Promise<Response | null> {
-    if (this.disabled) return null
+  /** The record; null when the server holds none, undefined when off or refused (no answer). */
+  private async fetch(hash: string): Promise<Response | null | undefined> {
+    if (this.disabled) return undefined
     const res = await this.request('GET', hash)
-    if (res === undefined) return null
+    if (res === undefined) return undefined
     if (res.status !== 200) {
       if (res.status === 404) {
         await res.body?.cancel()
@@ -222,7 +225,7 @@ export class NxRemoteCache implements RemoteCacheLayer {
 
   async has(hash: string): Promise<{ size?: number } | null> {
     const res = await this.fetch(hash)
-    if (res === null) return null
+    if (res === null || res === undefined) return null
     await res.body?.cancel()
     const size = Number(res.headers.get('content-length') ?? NaN)
     return Number.isFinite(size) ? { size } : {}

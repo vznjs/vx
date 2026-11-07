@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { CORE_VERBS, helpText, verbHelpText } from '../src/cli/help.js'
+import { CORE_VERBS, flagHint, helpText, verbHelpText } from '../src/cli/help.js'
 
 const DOC = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'cli.md'), 'utf8')
 
@@ -93,5 +93,32 @@ it('vx lock --check is described as what it does', () => {
     '                       check the graph rules. Exits 1 on drift (e.g. configs that',
     '                       read env vars). Run it before the run in CI. With --format json',
     '                       it prints {upToDate, audited, notAudited, problems}.',
+  ])
+})
+
+// A section shared by several verbs printed whole for each: `vx why --help`
+// listed show, info and last too. A verb's cut keeps its own entries and
+// the shared flags that name it.
+it("a shared section cuts to the verb's own entries", () => {
+  const text = verbHelpText('why')
+  const at = text.indexOf('Introspection:')
+  expect(text.slice(at, text.indexOf('\n\n', at)).split('\n')).toEqual([
+    'Introspection:',
+    "  vx why <task>        Why did this task re-run? Compares the task's latest",
+    '                       run (or --run RUNID) against its previous run: names the',
+    '                       exact changed cache-key components (files / env / runtime',
+    '                       / upstream) from the persisted input fingerprints.',
+    '      --format <fmt>   pretty (default) | json.',
+    '  info, why and last:',
+    '      --cache-dir <path>  Read the cache a run with the same flag uses.',
+  ])
+})
+
+// `-F` is pnpm's and Turbo's short `--filter`: no edit budget reaches it.
+it("pnpm's and Turbo's -F hints --filter where the verb takes it", () => {
+  expect([flagHint('run', '-F'), flagHint('show', '-F'), flagHint('lock', '-F')]).toEqual([
+    ' (did you mean --filter?)',
+    ' (did you mean --filter?)',
+    '',
   ])
 })

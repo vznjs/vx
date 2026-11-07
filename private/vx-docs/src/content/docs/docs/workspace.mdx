@@ -5,8 +5,8 @@ description: "The .vx/workspace.ts file: the workspace root, its plugins and its
 
 import { Aside, FileTree } from '@astrojs/starlight/components'
 
-A workspace is a git repository with a `.vx/workspace.ts` at its root and a
-`vx.config.ts` in each project.
+A workspace is a directory in a git checkout with a `.vx/workspace.ts` at its
+root and a `vx.config.ts` in each project.
 
 <FileTree>
 - .vx/
@@ -36,7 +36,8 @@ name is the first of these that exists:
 ## The lock
 
 Runs read configs from `.vx/projects.lock.json`, never from the files.
-After you add or edit a `vx.config.ts`, run `vx lock` and commit the lock.
+After you add or edit a `vx.config.ts`, run `vx lock` and commit what it
+writes: the lock, and the `vx.lock.json` beside each config.
 
 ```sh
 vx lock
@@ -71,7 +72,7 @@ export default defineWorkspace({
     timeout: '10m', // default: none
   },
   cache: {
-    dir: 'build/.vx', // unset: entries shared by this repo's checkouts in ~/.vx/<id>/cache
+    dir: 'build/.vx', // unset: entries shared by this workspace's checkouts in ~/.vx/<id>/cache
   },
 })
 ```
@@ -96,7 +97,7 @@ setting is in [the settings table](../../schema/workspace/#settings).
 | `baseBranch` | the default branch, by name; default `origin/HEAD`'s branch, then `main`, then `master`. A bare `--affected` compares with its merge base off it, and on it has no default unless `VX_AFFECTED_BASE` names one |
 | `run.schedule` | which ready task starts first: `'most-work'` (default, most tasks waiting behind it), `'critical-path'` (longest path of dependent tasks), `'direct-dependents'`, `'ready-order'`; a `schedule` plugin's weights come first ([Blog](../../blog/scheduling-strategies/#pick-the-guess)) |
 | `run.rules` | graph checks: `exclusiveOutputs` (on unless `false`) refuses two tasks on one output path even when one depends on the other; `vx lock` and `vx lock --check` check it, never a run. A task whose inputs can match another task's outputs is always refused, unless it is a dependency the key leaves out of `inputs.tasks`, so every key is known before anything runs ([Schema](../../schema/workspace/)) |
-| `cache.dir`      | keep the whole cache here, shared with no other workspace; unset, entries live in `~/.vx/<id>/cache` and every checkout of the repo hits them |
+| `cache.dir`      | keep the whole cache here, shared with no other workspace; unset, entries live in `~/.vx/<id>/cache` and every checkout of the workspace hits them |
 | `cache.policy` | which layers read and write (`'local:rw,remote:r'`) |
 | `inputs.stability` | every task's `inputs.stability` default, `{ strategy, severity }`: `'immutable'` / `'warn'` unless set; a task's own field wins, the `VX_INPUTS_STABILITY_*` variables win over both ([Schema](../../schema/inputs/)) |
 | `outputs.clean` | `false` keeps every task's declared outputs on a miss instead of removing them first; a task's own `outputs.clean` wins ([Schema](../../schema/outputs/)) |

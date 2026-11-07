@@ -11,11 +11,11 @@
 //     eval-free.
 //   - `vx lock --check` AUDITS it: full re-evaluation + deep equality.
 
-import { readFileSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import { rename, rm } from 'node:fs/promises'
 import path from 'node:path'
 import type { ProjectConfig } from '../config.js'
-import { keysSorted, relPosix, UserError, xxh3, xxh3hex } from '../util/index.js'
+import { directoryInTheWay, keysSorted, relPosix, UserError, xxh3, xxh3hex } from '../util/index.js'
 import { VERSION } from '../version.js'
 import { validateProjectConfig } from './config-schema.js'
 import { PROJECT_CONFIG_FILENAMES } from './workspace.js'
@@ -101,7 +101,16 @@ export function lockDigest(lock: Lockfile): string | undefined {
  */
 export async function readLockfile(root: string): Promise<Lockfile | null> {
   const file = Bun.file(lockfilePath(root))
-  if (!(await file.exists())) return null
+  if (!(await file.exists())) {
+    // A directory reads as no file: `--check` said "run `vx lock`", which cannot write over it.
+    if (statSync(lockfilePath(root), { throwIfNoEntry: false })?.isDirectory()) {
+      throw new UserError(
+        `${LOCKFILE_NAME} is a directory — remove it and run \`vx lock\``,
+        'VX_E_LOCK',
+      )
+    }
+    return null
+  }
   let parsed: unknown
   let text: string
   try {
@@ -359,7 +368,7 @@ export async function writeLockfile(root: string, lock: Lockfile): Promise<void>
     const e = err as NodeJS.ErrnoException
     if (typeof e.message === 'string') e.message = e.message.split(tmp).join(file)
     if (e.path === tmp) e.path = file
-    throw err
+    throw directoryInTheWay(err, LOCKFILE_NAME)
   }
 }
 

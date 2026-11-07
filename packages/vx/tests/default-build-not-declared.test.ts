@@ -2,7 +2,7 @@
 // but no task `vx run build --all` takes: no project declares it. So
 // `vx build` and `vx show build` must not name it as one (X-145).
 
-import { rm } from 'node:fs/promises'
+import { rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -77,10 +77,56 @@ describe('the default build is no declared task', () => {
       [
         panelTop('Projects', { enabled: false }, '2'),
         '  project  dir         tasks',
-        '  x        packages/x  2 tasks',
-        '  y        packages/y  2 tasks',
+        '  x        packages/x  2 tasks, default build',
+        '  y        packages/y  2 tasks, default build',
         '',
       ].join('\n'),
     )
+  })
+})
+
+describe('a workspace that declares no task yet', () => {
+  let fresh: string
+  beforeAll(async () => {
+    fresh = await makeWorkspace({ prefix: 'vx-no-task-yet-' })
+    await addProject(fresh, 'x', 'export default { tasks: {} }')
+  })
+  afterAll(async () => {
+    await rm(fresh, { recursive: true, force: true })
+  })
+
+  // Right after `vx init` the lock is current: "run `vx lock`" alone sent
+  // a new user to a command that changed nothing.
+  it('`vx run build` says to declare a task, not only to lock', () => {
+    const p = Bun.spawnSync({
+      cmd: [process.execPath, BIN, 'run', 'build', '--all'],
+      cwd: fresh,
+      stdin: 'ignore',
+    })
+    expect([p.exitCode, p.stderr.toString()]).toEqual([
+      1,
+      noticed(
+        'vx run: no projects declare task(s): build. No project declares a task yet: add one under `tasks` in a vx.config, then run `vx lock`.\n',
+      ),
+    ])
+  })
+
+  // From the root, the run selects the root project alone, which declares
+  // nothing: that is no sign the workspace declares nothing.
+  it('a run from a root that declares nothing still lists the tasks elsewhere', async () => {
+    const ws = await makeWorkspace({ prefix: 'vx-root-no-task-' })
+    try {
+      await writeFile(path.join(ws, 'vx.config.mjs'), 'export default { tasks: {} }\n')
+      await addProject(ws, 'x', TEST)
+      const p = Bun.spawnSync({
+        cmd: [process.execPath, BIN, 'run', 'lint'],
+        cwd: ws,
+        stdin: 'ignore',
+      })
+      expect(p.stderr.toString()).not.toContain('No project declares a task yet')
+      expect(p.stderr.toString()).toContain('Tasks: test')
+    } finally {
+      await rm(ws, { recursive: true, force: true })
+    }
   })
 })

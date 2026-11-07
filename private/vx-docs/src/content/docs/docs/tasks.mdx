@@ -24,7 +24,7 @@ export default defineProject({
       exec: { command: 'tsc -b' },
       // codegen's output reaches this key through codegen's own key; a key
       // that read it could not be known until codegen ran, so vx refuses it.
-      inputs: { files: ['src/**', '!src/gen/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+      inputs: { files: ['src/**', '!src/gen/**'] }, outputs: { files: ['dist/**', '*.tsbuildinfo'] }, cache: true,
     },
     e2e: {
       dependsOn: ['build', 'api#build'],
@@ -95,7 +95,7 @@ vx run test --all --continue=never
 
 ## Explore your graph
 
-See what each task waits on and what waits on it, in your own repo:
+See what each task waits on and what waits on it, in your own workspace:
 
 ```sh
 vx run build --all --dry=json > plan.json

@@ -163,3 +163,30 @@ it(
   },
   TIMEOUT,
 )
+
+it(
+  '`vx lock --check` passes after an edit to a file the digests read: runs digest anew',
+  async () => {
+    const check = (...args: string[]): [number, string] => {
+      const p = Bun.spawnSync({
+        cmd: [
+          process.execPath,
+          path.resolve(import.meta.dir, '..', 'src', 'bin.ts'),
+          'lock',
+          ...args,
+        ],
+        cwd: root,
+        env: { ...process.env, NO_COLOR: '1' },
+      })
+      return [p.exitCode, p.stderr.toString()]
+    }
+    expect(check()).toEqual([0, ''])
+    expect(check('--check')).toEqual([0, ''])
+    await writeFile(path.join(root, 'patches', 'p.patch'), 'two')
+    expect(check('--check')).toEqual([0, ''])
+    // CONTROL: the claimed file itself moved still fails.
+    await claimed('packages/a=a2\nextra:patches/p.patch\n')
+    expect(check('--check')[0]).toBe(1)
+  },
+  TIMEOUT,
+)

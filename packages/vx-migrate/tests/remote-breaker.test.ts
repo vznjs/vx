@@ -139,7 +139,9 @@ describe('a hit whose body stalls past the deadline is an outage too', () => {
   afterAll(() => void stalled.stop(true))
 
   // Read to the end, as core's ingest reads a hit.
-  async function count(get: () => Promise<{ body: Response } | null>): Promise<string[]> {
+  async function count(
+    get: () => Promise<{ body: Response } | null | undefined>,
+  ): Promise<string[]> {
     seen = 0
     const errors: string[] = []
     for (let i = 0; i < 6; i++)

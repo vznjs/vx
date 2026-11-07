@@ -208,6 +208,8 @@ readers that reach it here.
 - A first load has the Worker's deadline too (`VX_CONFIG_WORKER_TIMEOUT`,
   30 s): a top-level await that never settles fails the load, naming
   the config and the budget, where it hung `vx run` silently (D-66).
+  At 5 s, on both paths, vx says once which config is still evaluating,
+  so the wait to the budget is not silent; a load that ends clears it.
   The evaluation itself cannot be cancelled; a timer it left running
   still holds the process open after the run reports. A synchronous
   loop (`while (true) {}`) holds the thread the deadline fires on, so it
@@ -217,11 +219,14 @@ readers that reach it here.
   config resolves to its object on the first load and in the Worker
   alike (D-5). The awaited value is checked again, a workspace
   config's too (D-6).
-- Validation runs on whichever object the two paths produced, so a
-  malformed config reports the identical `UserError` either way.
+- Validation runs on the JSON copy both paths produce, so a malformed
+  config reports the identical `UserError` either way. On the live
+  object, a getter in an array or a Proxy answered the check with one
+  value and the copy, which the lock stores, with another
+  (`outputs.files: ['../victim/**']` reached the lock unchecked).
 - A value JSON cannot carry (a function, `NaN`, a `Map`, …) is refused
   by both paths with one message (item 701, config-schema.md): the first
-  load's `validateProjectConfig` sees the live object, and the Worker
+  load runs `nonJsonPaths` on the live object before its copy, and the Worker
   runs the same `nonJsonPaths`, embedded in its inline source by
   `toString()`, BEFORE its `JSON.stringify` would drop the evidence. It
   replies with the paths instead of the JSON, and `evaluateConfigFresh`

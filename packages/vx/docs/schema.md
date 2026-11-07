@@ -80,7 +80,7 @@ symbol, a bigint, `NaN` or `±Infinity`, `undefined` inside an array
 (JSON writes `null`), a cycle, a getter or setter (code that each read
 may answer differently; vx never calls it), and any object that is not a
 plain object or an array (a `Date`, `Map`, `Set`, `RegExp` or class
-instance). An
+instance), and nesting deeper than 256 levels. An
 `undefined` property is fine: JSON drops it and the schema reads it as
 absent, which is what a conditional spread
 (`...(ci ? { retries: 2 } : {})`) relies on. The workspace config is not
@@ -300,7 +300,12 @@ test: { exec: { command: 'bun test', retries: 1 } }
   was already announced and preparing.
 - Declared outputs are re-cleaned before each retry, exactly like the
   first attempt — a failed attempt's partial outputs can't leak into
-  the next.
+  the next. An [additive](caching.md#additive-outputs-two-tasks-one-tree-an-edge-between-them)
+  task removes what the failed attempt added instead; one that changed
+  or removed a file it found saves nothing on its pass. A process a
+  failed attempt left running may still write into the next attempt's
+  outputs, so its pass is not saved, with the same warning as a
+  passing attempt's leftover.
 - Every attempt streams its output live. Between attempts vx emits one
   stderr line into the task's stream, ending in the reason:
   `vx: retrying <id> (attempt <k>/<total>) after exit <code>`, or
@@ -1005,7 +1010,9 @@ watch` re-runs it on an edit there.
   `['**/*', '!dist/**']`, or ignore `dist/`. An input entry the task's OWN outputs take
   back whole is always refused (X-55): vx removes outputs before a run,
   so a formatter declaring `src/**` as both would delete its sources. A
-  task that rewrites files in place declares no outputs.
+  task that rewrites files in place declares no outputs. The two fields
+  are compared across too, read from the root: `inputs.files: ['src/**']`
+  beside `outputs.workspaceFiles: ['app/src/**']` is the same refusal.
 - **Nested-project subtree** — files belonging to a project rooted
   inside this one's dir are excluded. No cross-project leakage via
   globs; the only cross-project relationship is `dependsOn` +
@@ -1098,6 +1105,13 @@ the names, and each value, with "unset" folded apart from every value
 (the child tells unset from empty too — `process.env.X ?? 'dflt'`,
 `${X-dflt}`). A name holding a NUL is refused.
 
+A value that is not UTF-8 fails the run, naming the variable and never
+its value: Bun reads the environment with a lossy decode, so Latin-1 `é`
+and `è` both read as U+FFFD and would key alike. A value that truly
+holds U+FFFD is refused with them, since vx cannot tell the two apart.
+A `passThrough` value reaches the child as that decode too, U+FFFD's
+UTF-8 bytes in place of each invalid byte.
+
 ##### `inputs.runtime` (optional, default `[]`)
 
 Shell commands whose **trimmed stdout and stderr, kept apart,** are folded
@@ -1135,6 +1149,13 @@ Semantics:
   flaky probe should not silently degrade to a stale hit.
 - **Output that is not UTF-8 fails the run** too: a lossy decode keyed
   every invalid byte alike. Pipe binary output through a hash or `od`.
+- **A process the command leaves running does not hold the run.** As a
+  task's output is (`POST_EXIT_DRAIN_MS`), the probe's pipes are read
+  for `250ms` after its shell exits, then the reads stop and the probe's
+  process group is killed. The answer is what was read: the shell has
+  exited, so that is all it printed, and what a leftover child prints
+  later is not part of it. `sleep 30 & echo x` answers `x` at once;
+  it used to hold every run, `--dry` and `--no-cache` included, for 30 s.
 - The command sees **only the essential environment** every task sees
   (the essential allowlist under `ExecEnv`: `PATH`, `HOME`, the locale), with
   vx's values. Not the task's `exec.env.define` or `passThrough`, which
@@ -1209,6 +1230,11 @@ task". Defaults:
 - **Omitted** → all upstream contribute (`['*', '^*']`). Most common.
 - **`[]`** → fully decoupled; no upstream contributes.
 
+A list of **only negations** (`['!gen']`) is refused at load, as a
+negation-only `inputs.files` is: the selection starts empty and a `!`
+entry only subtracts, so it would fold no upstream hash. Write the
+positive entries it subtracts from (`['*', '^*', '!gen']`), or `[]`.
+
 An **exact** entry (`'codegen'`, `'^build'`, `'lib#build'`) must be
 named by some `dependsOn` entry of the same task — exactly, or by that
 entry's own `*` pattern (`dependsOn: ['build.*']` names
@@ -1225,7 +1251,11 @@ dependencies is refused (`['nope#build']`, or `['a#build']` for a
 project named `packages/a`, over `dependsOn: ['build']`; `['build']`
 over another project's `['b#build']`; `['^build']` over this project's
 own), unless a `^` entry or a pattern in `dependsOn` names its task,
-which a preset's project may legally lack. Patterns, wildcards and
+which a preset's project may legally lack. That exemption ends where the
+`pkg#task` is a transitive dependency: `a → b → c` with
+`dependsOn: ['^build']` and `tasks: ['c#build']` selects none of a's
+own dependencies (b's `build`), so it is refused too; name `^build`,
+which reaches c's through b's key. Patterns, wildcards and
 negations stay silent (a preset-spread pattern legitimately matches
 nothing in some projects); `[]` is the explicit way to decouple.
 
@@ -1365,8 +1395,8 @@ A **symlink** the globs match is an output: it is cached and restored
 as the link, its target as written (a link to a file, to a directory,
 or to nothing yet), and the clean unlinks it (never following it). No
 byte of its target is read. A link must be relative and lead somewhere
-inside the workspace: an absolute one, or `../../../etc/hosts`, fails
-the save by name and caches nothing, so the next run executes again. An
+inside the workspace, out of `.git`: an absolute one, `../../../etc/hosts`, or
+`../../.git/config` fails the save by name and caches nothing, so the next run executes again. An
 output DIRECTORY that is a symlink (`dist -> real-out`) is followed: its
 target is cleaned, saved and restored as the output; one that resolves
 outside the project refuses the task, naming the link. The clean also prunes the directories it
@@ -1442,7 +1472,14 @@ outputs: {
 
 **No boundary rule — deliberate escape hatch.** These globs may
 capture (and on restore, overwrite; on clean, wipe) files anywhere in
-the workspace, including inside other projects' dirs. Prefer
+the workspace, including inside other projects' dirs. Two limits: a
+glob that covers a project's `vx.config.*`, the task's own or another's
+(`packages/b/**`), is refused by `vx lock`, since the clean would
+delete that project's config and its untracked files (take the config
+back with `!packages/b/vx.config.ts` only if the rest is truly the
+task's); and a directory on a glob's literal head that is a symlink
+out of the workspace refuses the task, as one out of the project does
+for `files`. Prefer
 project-relative `files` whenever the task can write inside its own
 dir. Two tasks whose workspace outputs provably overlap (equal
 literals, or a literal a glob matches) are refused at graph build, like
@@ -1479,7 +1516,7 @@ hit restores. A task without `cache: true` always runs.
 build: {
   exec: { command: 'tsc -b' },
   inputs: { files: ['src/**', 'tsconfig.json'] },
-  outputs: { files: ['dist/**'] },
+  outputs: { files: ['dist/**', '*.tsbuildinfo'] },
   cache: true,
 }
 ```
@@ -1640,12 +1677,15 @@ an active file mount — every atomic writer stages beside its target and
 renames — so a FILE-shaped grant is bound as its DIRECTORY. That
 directory is then readable AND writable in full: with
 `write: ['out.txt']` in the project root, every file in the project root
-can be read. Such a read succeeds, so there is no denial; vx reports it
-from the trace instead, as a violation: a read of anything that was in
-that directory when the task started and that no grant covers, the
-directory's listing included. The declared file and what the task made
-there itself stay readable. Put declared outputs in a subdirectory and
-the rest stays denied outright. macOS matches paths rather than
+can be read, and written. Such a read or write succeeds, so there is no
+denial; vx reports it instead, as a violation: an open, hard link or move
+of anything that was in that directory when the task started and that no
+grant covers, the directory's listing included, and a write, removal or
+move of it, or a new file or directory the task leaves there. The
+declared file and what the task made and then moved or removed stay its
+own. A `stat` of a sibling (its size, times or presence) is not seen.
+Put declared outputs in a subdirectory and the rest stays denied
+outright. macOS matches paths rather than
 mounting, so a file grant stays exact there. Pinned in
 `tests/sandbox-grants.unsafe.test.ts` (2026-09-20) and
 `tests/sandbox-widened-reads.unsafe.test.ts`.
@@ -2010,7 +2050,7 @@ default and where it came from.
 | `cache.upload.failures`                        | —                                | —                              | one of 'ci', 'local', 'always'                                          | ci                                                                            | Where a failed task's log and outputs are kept in the remote: CI runs, local runs, or both.                                                                                                      |
 | `lock.reviewFiles`                             | `VX_LOCK_REVIEW_FILES`           | —                              | true or false                                                           | true                                                                          | `vx lock` writes each project's resolved config, pretty, to `vx.lock.json` beside its `vx.config`, for review; vx never reads it.                                                                |
 | `watch.poll`                                   | `VX_WATCH_POLL`                  | `vx watch --poll`              | true or false                                                           | false                                                                         | Poll for changes from the start instead of the OS watcher.                                                                                                                                       |
-| `config.workerTimeout` (variable or flag only) | `VX_CONFIG_WORKER_TIMEOUT`       | —                              | a duration like '500ms', '30s' or '5m', at most 24 days                 | 30s                                                                           | How long one config evaluation may take.                                                                                                                                                         |
+| `config.workerTimeout` (variable or flag only) | `VX_CONFIG_WORKER_TIMEOUT`       | —                              | a duration like '500ms', '30s' or '5m', at most 24 days                 | 30s                                                                           | How long one config evaluation may await; at 5 s vx names the config still evaluating. A synchronous loop on the first load holds the thread the deadline needs, so it hangs until killed.       |
 | `debug.timing` (variable or flag only)         | `VX_DEBUG_TIMING`                | —                              | true or false                                                           | false                                                                         | Print the run's stage timings to stderr.                                                                                                                                                         |
 | `debug.watch` (variable or flag only)          | `VX_DEBUG_WATCH`                 | —                              | true or false                                                           | false                                                                         | `vx watch`: say on stderr each time the loop arms, with the projects it watches.                                                                                                                 |
 | `debug.dumpable` (variable or flag only)       | `VX_DEBUG_DUMPABLE`              | —                              | true or false                                                           | false                                                                         | Linux: keep vx dumpable, so strace or a debugger can read its memory and `/proc/<pid>/fd`, and an unsandboxed task its env.                                                                      |
@@ -2220,7 +2260,9 @@ own output path, or set run.rules.exclusiveOutputs: false in
   the exceptions below applies: `<reader> reads "<glob>" in inputs.<field>,
 which matches <writer>'s output "<glob>" … Exclude it: add "!<glob>"
 to <reader>'s inputs.<field>, or depend on <writer> and leave it out of
-<reader>'s inputs.tasks, so its key hashes those bytes instead.` Such a key
+<reader>'s inputs.tasks, so its key hashes those bytes instead.` (A reader
+  that already depends on the writer is told so, and only to leave it out of
+  `inputs.tasks`.) Such a key
   reads what the producer writes this run, so vx cannot know it before
   the producer ran: it is not probed, prefetched or restored ahead of
   the schedule (`caching.md` § Local restore tier). The upstream's key
@@ -2344,7 +2386,7 @@ export default defineProject({
         files: ['src/**', '!**/*.test.ts', 'tsconfig.json'],
         env: ['NODE_ENV'],
       },
-      outputs: { files: ['dist/**'] },
+      outputs: { files: ['dist/**', '*.tsbuildinfo'] },
       cache: true,
     },
 
@@ -2512,7 +2554,7 @@ export function tsBuild(opts?: { tsconfig?: string }): TaskConfig {
     description: 'compile TypeScript',
     exec: { command: `tsc -b ${opts?.tsconfig ?? ''}`.trim() },
     inputs: { files: ['src/**', opts?.tsconfig ?? 'tsconfig.json'] },
-    outputs: { files: ['dist/**'] },
+    outputs: { files: ['dist/**', '*.tsbuildinfo'] },
     cache: true,
   }
 }
@@ -2611,58 +2653,59 @@ named in one run: the first in full, then up to four more as `✗ vx lock
 also refused`, then a count of the rest. The table below lists the messages
 a user meets most:
 
-| Symptom                                                                                                                               | Cause                                                                                                                                                                                                                          |
-| ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `did not export a default object`                                                                                                     | Forgot `export default`, or exported a non-object; a function (Vite's `defineConfig(() => …)` shape) adds that it is one and to export what it returns (D-110).                                                                |
-| `tasks must be an object keyed by task name`                                                                                          | `tasks` is not an object — an ARRAY included.                                                                                                                                                                                  |
-| `<path> is <what> — a config must be JSON data, because the cache key is built from its JSON`                                         | A value JSON cannot carry, anywhere in the config: a function, a symbol, a bigint, `NaN` / `±Infinity`, `undefined` in an array, a cycle, a getter or an object that is not plain (`Date`, `Map`, `RegExp`, a class instance). |
-| `<level> has unknown field "<key>"`                                                                                                   | Typo'd / unsupported key (see below).                                                                                                                                                                                          |
-| `<level> must be an object (fields: <fields>), not an array`                                                                          | An array where an object goes — `outputs: ['dist/**']` (Turbo's spelling) is `outputs: { files: ['dist/**'] }`, and the message says so.                                                                                       |
-| `cannot find '<name>' — no node_modules above the config provides it; install the workspace's dependencies first`                     | A bare import nothing installed serves — a fresh clone before its install, or a typo. Refused before the config is evaluated, so Bun never auto-installs it from the registry (it would, when no `node_modules` exists above). |
-| `<file> imports '<name>', which no node_modules above it provides; install the workspace's dependencies first`                        | The same, in a file the config imports by relative path (a preset), looked up from that file.                                                                                                                                  |
-| `cannot find '<name>' — Yarn Plug'n'Play installed the workspace's dependencies into .pnp.cjs, which Bun does not read; set <remedy>` | The same, with a `.pnp.cjs` at or above the config: the install is there and Bun cannot read it, so the remedy is `nodeLinker: node-modules` in `.yarnrc.yml` and `yarn install` (D-109).                                      |
-| `tasks.<name> must be an object`                                                                                                      | The task value is null / a string / etc.; a string (package.json's `name: 'command'`) adds the `{ exec: { command } }` it goes in.                                                                                             |
-| `exec must be an object with a command string`                                                                                        | `exec` is malformed.                                                                                                                                                                                                           |
-| `exec.command must be a non-empty string`                                                                                             | Forgot `command`, or an empty or whitespace-only string.                                                                                                                                                                       |
-| `exec.command holds a NUL, which no command line can carry`                                                                           | A `\0` in the command (a template slip); the spawn refused it as exit 127, "not on this task's PATH", with the NUL printed as a space.                                                                                         |
-| `exec.persistent must be an object (or omitted)`                                                                                      | Wrong shape.                                                                                                                                                                                                                   |
-| `exec.persistent.readyWhen must be a string regex`                                                                                    | Non-string `readyWhen`.                                                                                                                                                                                                        |
-| `exec.persistent.readyWhen is not a valid regex (<error>)`                                                                            | A `readyWhen` the runner could not compile (`(`); it failed the task as an internal error at run time.                                                                                                                         |
-| `cache is not allowed on a persistent task`                                                                                           | persistent + cache combined.                                                                                                                                                                                                   |
-| `exec.interactive must be a boolean (or omitted)`                                                                                     | Wrong shape.                                                                                                                                                                                                                   |
-| `cache is not allowed on an interactive task`                                                                                         | interactive + cache combined: what it does depends on what is typed.                                                                                                                                                           |
-| `sandbox is not allowed on an interactive task`                                                                                       | interactive + sandbox combined.                                                                                                                                                                                                |
-| `persistent.readyWhen is not allowed on an interactive task`                                                                          | vx reads none of an interactive task's output.                                                                                                                                                                                 |
-| `a task with no exec must declare dependsOn`                                                                                          | Group task with no edges.                                                                                                                                                                                                      |
-| `cache needs exec — a task with no command produces nothing to cache`                                                                 | `cache` on a group: a task with no command writes nothing to cache.                                                                                                                                                            |
-| `dependsOn must be an array of strings`                                                                                               | Wrong shape.                                                                                                                                                                                                                   |
-| `cache needs inputs — the key is the task's inputs`                                                                                   | Forgot `inputs` on a cached task.                                                                                                                                                                                              |
-| `inputs must be an object`                                                                                                            | Present but not an object: a string (`outputs: 'dist'`). An array is the row above.                                                                                                                                            |
-| `inputs.files must be an array`                                                                                                       | Wrong shape.                                                                                                                                                                                                                   |
-| `inputs.runtime must be an array of non-empty shell command strings with no NUL`                                                      | Non-string / blank entry (whitespace alone runs as a no-op), or one holding a NUL.                                                                                                                                             |
-| `inputs.workspaceRuntime must be an array of non-empty shell command strings with no NUL`                                             | Non-string / blank entry (whitespace alone runs as a no-op), or one holding a NUL.                                                                                                                                             |
-| `inputs.tasks must be an array of non-empty strings`                                                                                  | Non-string / empty entry, or a bare string.                                                                                                                                                                                    |
-| `inputs.tasks: "<name>" names no task in <task>.dependsOn`                                                                            | An exact entry no `dependsOn` entry of its form names.                                                                                                                                                                         |
-| `invalid inputs.tasks "<entry>": <reason>`                                                                                            | A malformed entry (`^`, `a#`, `#x`, `!`, `^a#b`), refused at load with the parser's reason.                                                                                                                                    |
-| `cache must be true or false`                                                                                                         | `cache: {...}` or `'yes'`; caching is a switch.                                                                                                                                                                                |
-| `cache needs outputs — what the task produces, outputs: { files: [...] } ([] for none)`                                               | Forgot `outputs` on a cached task.                                                                                                                                                                                             |
-| `outputs needs exec — a task with no command writes nothing`                                                                          | `outputs` on a group task.                                                                                                                                                                                                     |
-| `inputs.stability needs exec — a task with no command runs nothing that could write its inputs`                                       | `inputs.stability` on a group task.                                                                                                                                                                                            |
-| `inputs.stability must be an object`                                                                                                  | A bare string (`stability: 'mutable'`).                                                                                                                                                                                        |
-| `inputs.stability.strategy must be 'immutable', 'mutable' or 'unchecked'`                                                             | Any other value (`'content'`, `false`).                                                                                                                                                                                        |
-| `inputs.stability.severity must be 'warn' or 'error'`                                                                                 | Any other value (`'fail'`, `true`).                                                                                                                                                                                            |
-| `outputs must be an object`                                                                                                           | Present but not an object: a string (`outputs: 'dist'`). An array is the row above.                                                                                                                                            |
-| `outputs.files must be an array`                                                                                                      | Wrong shape.                                                                                                                                                                                                                   |
-| `inputs.files: every entry is a negation, which selects NOTHING`                                                                      | Only `!` globs — nothing to subtract from.                                                                                                                                                                                     |
-| `inputs.files: "<file>" is taken back by "!<glob>"`                                                                                   | A literal input a `!` entry covers: the negation subtracts wherever it sits, so the file never entered the key.                                                                                                                |
-| `outputs.files: every entry is a negation, which selects NOTHING`                                                                     | Only `!` globs: a `!` entry only takes back what a positive glob selected (A-44).                                                                                                                                              |
-| `outputs.files: "<file>" is taken back by "!<glob>"`                                                                                  | A literal output a `!` entry covers: it is never saved, so a hit left it missing and said up-to-date.                                                                                                                          |
-| `outputs.files: "<glob>" covers the project's own <file>`                                                                             | An output glob that matches the project's own `vx.config.*` (`**`, `*.ts`): the clean before a run would delete it. A `!` entry that takes the file back (`!vx.config.ts`) lets it load.                                       |
-| `outputs.files: "<glob>" is under workspace-outputs/`                                                                                 | A project output named into the artifact's namespace for `outputs.workspaceFiles`: every hit read it back as a workspace output.                                                                                               |
-| `inputs.files: '!!' is not a double negation`                                                                                         | `!!x` inverts the set — it folds only `x`.                                                                                                                                                                                     |
-| `exec.timeout of <value> exceeds the maximum timer delay`                                                                             | Past 2^31-1 ms a timer fires at once, not never.                                                                                                                                                                               |
-| `description must be a string`                                                                                                        | Non-string description.                                                                                                                                                                                                        |
-| `tag "<tag>" <why> — --filter tag:<name> could not name it`                                                                           | A tag with surrounding whitespace or a `*`, or one ending in `...` or `[<ref>]`, which a filter reads as a pattern, a dependency walk or a git range.                                                                          |
+| Symptom                                                                                                                               | Cause                                                                                                                                                                                                                                                           |
+| ------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `did not export a default object`                                                                                                     | Forgot `export default` (said so, framed at a named export), or exported a non-object; a function (Vite's `defineConfig(() => …)` shape) adds that it is one and to export what it returns (D-110).                                                             |
+| `tasks must be an object keyed by task name`                                                                                          | `tasks` is not an object — an ARRAY included.                                                                                                                                                                                                                   |
+| `<path> is <what> — a config must be JSON data, because the cache key is built from its JSON`                                         | A value JSON cannot carry, anywhere in the config: a function, a symbol, a bigint, `NaN` / `±Infinity`, `undefined` in an array, a cycle, a getter, an object that is not plain (`Date`, `Map`, `RegExp`, a class instance), or nesting deeper than 256 levels. |
+| `<level> has unknown field "<key>"`                                                                                                   | Typo'd / unsupported key (see below).                                                                                                                                                                                                                           |
+| `<level> must be an object (fields: <fields>), not an array`                                                                          | An array where an object goes — `outputs: ['dist/**']` (Turbo's spelling) is `outputs: { files: ['dist/**'] }`, and the message says so.                                                                                                                        |
+| `cannot find '<name>' — no node_modules above the config provides it; install the workspace's dependencies first`                     | A bare import nothing installed serves — a fresh clone before its install, or a typo. Refused before the config is evaluated, so Bun never auto-installs it from the registry (it would, when no `node_modules` exists above).                                  |
+| `<file> imports '<name>', which no node_modules above it provides; install the workspace's dependencies first`                        | The same, in a file the config imports by relative path (a preset), looked up from that file.                                                                                                                                                                   |
+| `cannot find '<name>' — Yarn Plug'n'Play installed the workspace's dependencies into .pnp.cjs, which Bun does not read; set <remedy>` | The same, with a `.pnp.cjs` at or above the config: the install is there and Bun cannot read it, so the remedy is `nodeLinker: node-modules` in `.yarnrc.yml` and `yarn install` (D-109).                                                                       |
+| `tasks.<name> must be an object`                                                                                                      | The task value is null / a string / etc.; a string (package.json's `name: 'command'`) adds the `{ exec: { command } }` it goes in.                                                                                                                              |
+| `exec must be an object with a command string`                                                                                        | `exec` is malformed.                                                                                                                                                                                                                                            |
+| `exec.command must be a non-empty string`                                                                                             | Forgot `command`, or an empty or whitespace-only string.                                                                                                                                                                                                        |
+| `exec.command holds a NUL, which no command line can carry`                                                                           | A `\0` in the command (a template slip); the spawn refused it as exit 127, "not on this task's PATH", with the NUL printed as a space.                                                                                                                          |
+| `exec.persistent must be an object (or omitted)`                                                                                      | Wrong shape.                                                                                                                                                                                                                                                    |
+| `exec.persistent.readyWhen must be a string regex`                                                                                    | Non-string `readyWhen`.                                                                                                                                                                                                                                         |
+| `exec.persistent.readyWhen is not a valid regex (<error>)`                                                                            | A `readyWhen` the runner could not compile (`(`); it failed the task as an internal error at run time.                                                                                                                                                          |
+| `cache is not allowed on a persistent task`                                                                                           | persistent + cache combined.                                                                                                                                                                                                                                    |
+| `exec.interactive must be a boolean (or omitted)`                                                                                     | Wrong shape.                                                                                                                                                                                                                                                    |
+| `cache is not allowed on an interactive task`                                                                                         | interactive + cache combined: what it does depends on what is typed.                                                                                                                                                                                            |
+| `sandbox is not allowed on an interactive task`                                                                                       | interactive + sandbox combined.                                                                                                                                                                                                                                 |
+| `persistent.readyWhen is not allowed on an interactive task`                                                                          | vx reads none of an interactive task's output.                                                                                                                                                                                                                  |
+| `a task with no exec must declare dependsOn`                                                                                          | Group task with no edges.                                                                                                                                                                                                                                       |
+| `cache needs exec — a task with no command produces nothing to cache`                                                                 | `cache` on a group: a task with no command writes nothing to cache.                                                                                                                                                                                             |
+| `dependsOn must be an array of strings`                                                                                               | Wrong shape.                                                                                                                                                                                                                                                    |
+| `cache needs inputs — the key is the task's inputs`                                                                                   | Forgot `inputs` on a cached task.                                                                                                                                                                                                                               |
+| `inputs must be an object`                                                                                                            | Present but not an object: a string (`outputs: 'dist'`). An array is the row above.                                                                                                                                                                             |
+| `inputs.files must be an array`                                                                                                       | Wrong shape.                                                                                                                                                                                                                                                    |
+| `inputs.runtime must be an array of non-empty shell command strings with no NUL`                                                      | Non-string / blank entry (whitespace alone runs as a no-op), or one holding a NUL.                                                                                                                                                                              |
+| `inputs.workspaceRuntime must be an array of non-empty shell command strings with no NUL`                                             | Non-string / blank entry (whitespace alone runs as a no-op), or one holding a NUL.                                                                                                                                                                              |
+| `inputs.tasks must be an array of non-empty strings`                                                                                  | Non-string / empty entry, or a bare string.                                                                                                                                                                                                                     |
+| `inputs.tasks: "<name>" names no task in <task>.dependsOn`                                                                            | An exact entry no `dependsOn` entry of its form names.                                                                                                                                                                                                          |
+| `inputs.tasks: every entry is a negation, which selects NOTHING`                                                                      | Only `!` entries: a `!` entry only takes back what a positive entry selected.                                                                                                                                                                                   |
+| `invalid inputs.tasks "<entry>": <reason>`                                                                                            | A malformed entry (`^`, `a#`, `#x`, `!`, `^a#b`), refused at load with the parser's reason.                                                                                                                                                                     |
+| `cache must be true or false`                                                                                                         | `cache: {...}` or `'yes'`; caching is a switch.                                                                                                                                                                                                                 |
+| `cache needs outputs — what the task produces, outputs: { files: [...] } ([] for none)`                                               | Forgot `outputs` on a cached task.                                                                                                                                                                                                                              |
+| `outputs needs exec — a task with no command writes nothing`                                                                          | `outputs` on a group task.                                                                                                                                                                                                                                      |
+| `inputs.stability needs exec — a task with no command runs nothing that could write its inputs`                                       | `inputs.stability` on a group task.                                                                                                                                                                                                                             |
+| `inputs.stability must be an object`                                                                                                  | A bare string (`stability: 'mutable'`).                                                                                                                                                                                                                         |
+| `inputs.stability.strategy must be 'immutable', 'mutable' or 'unchecked'`                                                             | Any other value (`'content'`, `false`).                                                                                                                                                                                                                         |
+| `inputs.stability.severity must be 'warn' or 'error'`                                                                                 | Any other value (`'fail'`, `true`).                                                                                                                                                                                                                             |
+| `outputs must be an object`                                                                                                           | Present but not an object: a string (`outputs: 'dist'`). An array is the row above.                                                                                                                                                                             |
+| `outputs.files must be an array`                                                                                                      | Wrong shape.                                                                                                                                                                                                                                                    |
+| `inputs.files: every entry is a negation, which selects NOTHING`                                                                      | Only `!` globs — nothing to subtract from.                                                                                                                                                                                                                      |
+| `inputs.files: "<file>" is taken back by "!<glob>"`                                                                                   | A literal input a `!` entry covers: the negation subtracts wherever it sits, so the file never entered the key.                                                                                                                                                 |
+| `outputs.files: every entry is a negation, which selects NOTHING`                                                                     | Only `!` globs: a `!` entry only takes back what a positive glob selected (A-44).                                                                                                                                                                               |
+| `outputs.files: "<file>" is taken back by "!<glob>"`                                                                                  | A literal output a `!` entry covers: it is never saved, so a hit left it missing and said up-to-date.                                                                                                                                                           |
+| `outputs.files: "<glob>" covers the project's own <file>`                                                                             | An output glob that matches the project's own `vx.config.*` (`**`, `*.ts`): the clean before a run would delete it. A `!` entry that takes the file back (`!vx.config.ts`) lets it load.                                                                        |
+| `outputs.files: "<glob>" is under workspace-outputs/`                                                                                 | A project output named into the artifact's namespace for `outputs.workspaceFiles`: every hit read it back as a workspace output.                                                                                                                                |
+| `inputs.files: '!!' is not a double negation`                                                                                         | `!!x` inverts the set — it folds only `x`.                                                                                                                                                                                                                      |
+| `exec.timeout of <value> exceeds the maximum timer delay`                                                                             | Past 2^31-1 ms a timer fires at once, not never.                                                                                                                                                                                                                |
+| `description must be a string`                                                                                                        | Non-string description.                                                                                                                                                                                                                                         |
+| `tag "<tag>" <why> — --filter tag:<name> could not name it`                                                                           | A tag with surrounding whitespace or a `*`, or one ending in `...` or `[<ref>]`, which a filter reads as a pattern, a dependency walk or a git range.                                                                                                           |
 
 **Unknown fields are rejected**, not ignored, at every object level —
 the project's top level (`tasks`), the task itself, `exec`, `exec.env`,
@@ -2697,16 +2740,17 @@ is no object (Turbo's `cache: false`) and a `persistent` that is none
 
 Project-discovery errors (`src/workspace/workspace.ts`, `src/orchestrator/projects.ts`):
 
-| Symptom                                                                                         | Cause                                                                     |
-| ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `two projects are named "<name>": <dir> and <dir> — give one another \`name\` in its vx.config` | Two directories got one name: a config's `name`, a plugin's, or the path. |
-| `<dir>: a project is named by its path unless named, and this one holds "#" …`                  | A path no task spec can address: set `name` in its config.                |
-| `<dir>: "//" names the workspace root — set another \`name\``                                   | A config away from the root says `name: '//'`.                            |
-| `.vx/projects.lock.json locks <dir>, but its <file> is gone — run \`vx lock\``                  | A locked project's config was deleted or renamed (X-144).                 |
-| `.vx/projects.lock.json locks <dir>, but its <file> is not readable by this user (<code>)`      | This user may not search the project's directory (D-132).                 |
-| `.vx/projects.lock.json has unsupported version <n> (this vx expects 5) — re-run \`vx lock\``   | A lock an earlier vx wrote.                                               |
-| `.vx/projects.lock.json: no <pool> <n> in its pool — re-run \`vx lock\``                        | A hand-edited lock names a pooled value it does not hold.                 |
-| `git ls-files failed (exit <n>): <why>`                                                         | `vx lock` could not list the configs (a torn index).                      |
+| Symptom                                                                                         | Cause                                                                      |
+| ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `two projects are named "<name>": <dir> and <dir> — give one another \`name\` in its vx.config` | Two directories got one name: a config's `name`, a plugin's, or the path.  |
+| `<dir>: a project is named by its path unless named, and this one holds "#" …`                  | A path no task spec can address: set `name` in its config.                 |
+| `<dir>: the directory's name is not valid UTF-8, which no project path may hold — rename it`    | A project directory's name has bytes UTF-8 cannot decode, shown as `\xNN`. |
+| `<dir>: "//" names the workspace root — set another \`name\``                                   | A config away from the root says `name: '//'`.                             |
+| `.vx/projects.lock.json locks <dir>, but its <file> is gone — run \`vx lock\``                  | A locked project's config was deleted or renamed (X-144).                  |
+| `.vx/projects.lock.json locks <dir>, but its <file> is not readable by this user (<code>)`      | This user may not search the project's directory (D-132).                  |
+| `.vx/projects.lock.json has unsupported version <n> (this vx expects 5) — re-run \`vx lock\``   | A lock an earlier vx wrote.                                                |
+| `.vx/projects.lock.json: no <pool> <n> in its pool — re-run \`vx lock\``                        | A hand-edited lock names a pooled value it does not hold.                  |
+| `git ls-files failed (exit <n>): <why>`                                                         | `vx lock` could not list the configs (a torn index).                       |
 
 Core reads no `package.json` or `pnpm-workspace.yaml`; the errors reading them are `@vzn/vx-migrate`'s (its README, "Errors reading the members").
 
@@ -2716,6 +2760,7 @@ Workspace-config errors:
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `<setting> must be <what its kind takes> (got <value>)`                                                                                                                               | A setting of the wrong type or out of range: `run.concurrency: 0`, `cache.dir: 42`, `run.schedule: 'fastest'`. The [settings table](#settings) says what each takes; a count is a number and a switch a boolean, never a string.                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `<setting> takes a duration with its unit, like '<n>ms' or '<n>s' (got <n>)`                                                                                                          | A bare number for a duration: `run.timeout: 30000`. Durations carry a unit, so `30000` cannot be read as seconds by mistake.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `<setting> takes a size with its unit, like '<n>KiB' or '<n>B' (got <n>)`                                                                                                             | A bare number for a size: `cache.store.embeddings: '32'`. Sizes carry a unit, so `32` cannot turn the store off as 32 bytes; `0` is refused naming `false`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `<setting> of <value> exceeds the maximum timer delay`                                                                                                                                | A timer past 2^31-1 ms fires at once, not never. Omit `run.timeout` for no limit.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `<group> must be an object (fields: <fields>)`                                                                                                                                        | `run`, `watch`, `run.rules` or `cache.retention` that is not an object.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `cache must be an object like { dir, policy }; a task caches through its own cache in its project's vx.config`                                                                        | Not an object: Turbo's and Nx's workspace `cache: true` is a task's own `cache` in vx.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |

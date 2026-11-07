@@ -47,7 +47,7 @@ export default defineProject({
       exec: { command: 'tsc -b' },
       dependsOn: ['^build'], // dependencies build first
       inputs: { files: ['src/**', 'tsconfig.json'] },
-      outputs: { files: ['dist/**'] },
+      outputs: { files: ['dist/**', '*.tsbuildinfo'] }, // tsc's incremental state too
       cache: true,
     },
   },
@@ -126,7 +126,7 @@ Beside `turbo.json` or `nx.json`, `bunx @vzn/vx init` runs `@vzn/vx-migrate`:
 it writes a `vx.config.ts` per package from `turbo.json` or the Nx graph,
 and you keep those and delete the old config. `vx init --keep` writes only
 a `.vx/workspace.ts` that maps the old config instead, and its lock: a temporary start,
-not a way to run the repo. The benchmark below uses native vx config.
+not a way to run the workspace. The benchmark below uses native vx config.
 [Migration guide](https://vznjs.github.io/vx/guides/migrate/).
 
 ## How it compares

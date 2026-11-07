@@ -63,7 +63,8 @@ import { names } from './outputs.js'
 
 interface Job {
   readonly req: ExecuteRequest
-  readonly need: Need
+  /** Read as it joined the queue, and again while it waits when history changes (`rerank`). */
+  need: Need
   /** The cores and memory it holds on its worker: its need, or the whole worker for one that filled its worker. */
   held?: Need
   readonly resolve: (r: ExecuteResult) => void
@@ -323,6 +324,8 @@ export class Orchestrator {
   private readonly retired = new Set<Worker>()
   /** Workers asked for that never joined, with why. */
   private readonly unstarted = new Map<string, string>()
+  /** A task waited here on a worker: one ended with none joined needed one. */
+  private waited = false
   /** Started, then not needed before they joined (`release`), or given up as late. */
   private readonly cancelled = new Set<string>()
   /** Of `cancelled`, those given up past their join limit, not let go: taken if they join. */
@@ -567,9 +570,23 @@ export class Orchestrator {
     })
   }
 
+  /**
+   * History changed (`need`, `tail`): the waiting book and rank by it. On
+   * CI the default branch's timings land a moment after the roots joined
+   * the queue, each booked as unmeasured and ranked as an unknown task:
+   * shards ready later went first, and test.wire waited 129 s (2026-11-07).
+   */
+  rerank(): void {
+    for (const [id, job] of this.waiting)
+      job.need = { ...this.o.need(id), platform: job.need.platform }
+    this.queue.rerank()
+    this.pumpSoon()
+  }
+
   /** `jobs` wait, in order, behind the waiting tasks or, `front`, before them. */
   private enqueue(jobs: readonly Job[], front = false): void {
     for (const j of jobs) this.waiting.set(j.req.taskId, j)
+    if (jobs.length > 0) this.waited = true
     this.queue.add(
       jobs.map((j) => j.req.taskId),
       front,
@@ -1981,8 +1998,14 @@ export class Orchestrator {
 
   /** Every task sent here and not done fails with `reason`; later ones too. */
   private fail(reason: string): void {
-    for (const a of this.workers.values())
+    const now = performance.now()
+    for (const a of this.workers.values()) {
       for (const j of a.busy.values()) j.reject(new Error(reason))
+      // Lost, keeping what it ran: dropped, the footer read it as never joined.
+      a.usage.to = now
+      this.trace.left(a.label, 'lost', now)
+      this.gone.push(a)
+    }
     for (const [id, j] of this.waiting) {
       this.queue.delete(id)
       j.reject(new Error(reason))
@@ -2197,9 +2220,19 @@ export class Orchestrator {
     advice?: () => readonly WorkerAdvice[],
   ): [string, ui.Inline][] {
     // Over with none, it says so: core's own `N workers` (this machine's
-    // pool) read as the run's when no task needed one (2026-10-25).
+    // pool) read as the run's when no task needed one (2026-10-25), and
+    // says when one did and none joined (2026-11-06).
     if (this.spawnedAt.size === 0 && this.workers.size === 0 && this.gone.length === 0)
-      return this.ended ? [['workers', ui.dim('none started: no task needed one')]] : []
+      return this.ended
+        ? [
+            [
+              'workers',
+              this.waited
+                ? ui.tone('warn', 'none joined: a task waited on one')
+                : ui.dim('none started: no task needed one'),
+            ],
+          ]
+        : []
     const gone = new Set(this.gone)
     const all = [...this.workers.values(), ...this.gone]
     const joined = new Set(all.map((a) => a.label))

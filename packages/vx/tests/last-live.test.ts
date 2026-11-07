@@ -140,6 +140,8 @@ it('a run in progress: what runs, what ended, what waits, and its warnings', asy
       durationMs: null,
     })
     expect(typeof by['a#quick']!.durationMs).toBe('number')
+    // An ended task keeps when it started: the start and the end share a map.
+    expect(typeof by['a#quick']!.startedAt).toBe('number')
     // Running first, then what ended, then what waits.
     expect(l.tasks[0]!.taskId).toBe('a#slow')
     expect(l.tasks.at(-1)!.taskId).toBe('a#after')

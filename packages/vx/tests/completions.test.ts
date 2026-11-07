@@ -282,6 +282,17 @@ describe('the bash script, run', () => {
     expect(await offers(script, { words: ['vx', 'mcp', ''], cword: 2 })).toEqual(['--help'])
   })
 
+  // `vx help <Tab>` offered only `--help`; it takes a verb, plugin verbs too.
+  it('after help: the verbs', async () => {
+    const withHelp = completionScript('bash', ['run', 'cache', 'help', 'mcp'])
+    expect(await offers(withHelp, { words: ['vx', 'help', ''], cword: 2 })).toEqual([
+      'run',
+      'cache',
+      'mcp',
+      '--help',
+    ])
+  })
+
   it("after a flag with a value set: that set, in the verb's spellings", async () => {
     const full = completionScript('bash', ['run', 'last', 'upgrade'])
     expect(

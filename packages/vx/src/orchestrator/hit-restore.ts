@@ -130,14 +130,20 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
         .filter((e) => e.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
         .map((e) => ({ ...e, path: e.path.slice(WORKSPACE_OUTPUT_PREFIX.length) }))
       const endGlob = span('output glob')
+      // The FIFOs, sockets and devices listed only if the tree is stale: a
+      // listing reads every directory again, ~17% of a walk.
       const projTree = await resolveOutputTree({
         projectDir: node.projectDir,
         outputs,
         nestedProjectDirs: args.nestedProjectDirs,
+        special: 'later',
+        clearing: true,
       })
       const wsTree = await resolveWorkspaceOutputTree({
         workspaceRoot: args.workspaceRoot,
         outputs: wsOutputs,
+        special: 'later',
+        clearing: true,
       })
       endGlob()
       const actualAbs = projTree.files
@@ -232,10 +238,14 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
         projectDir: node.projectDir,
         outputs,
         nestedProjectDirs: args.nestedProjectDirs,
+        special: 'later',
+        clearing: true,
       })
       const actualWs = await resolveWorkspaceOutputTree({
         workspaceRoot: args.workspaceRoot,
         outputs: wsOutputs,
+        special: 'later',
+        clearing: true,
       })
       endGlob()
       skipRestore =
@@ -268,6 +278,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
     // to run first: a reader polling a 64 MB output while ten hits restored
     // met ENOENT on 153,336 of 204,411 reads (2026-10-16). An ADDITIVE task
     // owns only its rows (item 588), and the restore rewrites exactly those.
+    const walkArgs = { special: 'later', clearing: true } as const
     let foundRels: string[] = []
     let foundWsRels: string[] = []
     let staleRels: string[] = []
@@ -278,8 +289,12 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
       sweepRestoreTemps(node.projectDir, outputs, cleanArgs.committed)
       sweepRestoreTemps(args.workspaceRoot, wsOutputs, wsCleanArgs.committed)
       if (outputs.length > 0) {
-        const tree = walked?.proj ?? (await resolveOutputTree(cleanArgs))
-        foundRels = tree.files.map((f) => relPosix(node.projectDir, f))
+        const tree = walked?.proj ?? (await resolveOutputTree({ ...walkArgs, ...cleanArgs }))
+        // A FIFO, socket or device is found too: one the entry does not hold
+        // is a stray like any file, and one in a held path's way goes first.
+        foundRels = [...tree.files, ...(tree.findSpecial?.() ?? [])].map((f) =>
+          relPosix(node.projectDir, f),
+        )
         const blocking = inTheWay(foundRels, heldRels)
         staleRels = notHeld(foundRels, heldRels).filter((f) => !blocking.has(f))
         const dirs = splitDirs(node.projectDir, tree.emptyDirs, heldRels)
@@ -295,8 +310,11 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
         }
       }
       if (wsOutputs.length > 0) {
-        const tree = walked?.ws ?? (await resolveWorkspaceOutputTree(wsCleanArgs))
-        foundWsRels = tree.files.map((f) => relPosix(args.workspaceRoot, f))
+        const tree =
+          walked?.ws ?? (await resolveWorkspaceOutputTree({ ...walkArgs, ...wsCleanArgs }))
+        foundWsRels = [...tree.files, ...(tree.findSpecial?.() ?? [])].map((f) =>
+          relPosix(args.workspaceRoot, f),
+        )
         const blocking = inTheWay(foundWsRels, heldWsRels)
         staleWsRels = notHeld(foundWsRels, heldWsRels).filter((f) => !blocking.has(f))
         const dirs = splitDirs(args.workspaceRoot, tree.emptyDirs, heldWsRels)
@@ -424,7 +442,9 @@ export function currentHit(restore: RestoreHitArgs): (() => TaskOutcome) | undef
 function hitOutcome(restore: RestoreHitArgs, restored: boolean): TaskOutcome {
   const { args, hash, hit, cacheOpStart, taskStartNs } = restore
   const { node, log } = args
-  if (hit.stdout) {
+  // Read here, once: a local entry reads its log from the index on access.
+  const stored = hit.stdout
+  if (stored) {
     // An entry saved before masking, or by another machine, can hold a
     // secret-named variable's value (L-11). Asked only of a hit that prints.
     const secrets = secretMask(
@@ -432,7 +452,7 @@ function hitOutcome(restore: RestoreHitArgs, restored: boolean): TaskOutcome {
       node.config.exec?.env?.secret,
     )
     // The stored log holds both streams in the order the run printed them.
-    for (const c of maskStreams(decodeOutputLog(hit.stdout), secrets ?? undefined)) {
+    for (const c of maskStreams(decodeOutputLog(stored), secrets ?? undefined)) {
       if (c.err) log.taskStderr(node, c.text)
       else log.taskStdout(node, c.text)
     }
@@ -446,7 +466,9 @@ function hitOutcome(restore: RestoreHitArgs, restored: boolean): TaskOutcome {
   // date is fresh here, and a remote hit waited on the network and
   // downloaded its entry, outputs or none (2026-10-24: "Up to date is
   // a fresh. It should not require any cache").
-  return {
+  // Assigned, not spread: one outcome per hit, and five conditional
+  // spreads were ~3 ms of an 8,002-hit warm run (2026-11-07).
+  const outcome: TaskOutcome = {
     node,
     status,
     exitCode: hit.exitCode,
@@ -454,18 +476,21 @@ function hitOutcome(restore: RestoreHitArgs, restored: boolean): TaskOutcome {
     // `storedDurationMs`, which is what the hit skipped.
     durationMs: Math.round(performance.now() - cacheOpStart),
     storedDurationMs: hit.durationMs,
-    ...(hit.cpuMs !== undefined ? { storedCpuMs: hit.cpuMs } : {}),
-    ...(hit.peakRssBytes !== undefined ? { storedPeakRssBytes: hit.peakRssBytes } : {}),
-    ...(hit.sizeBytes !== undefined ? { artifactBytes: hit.sizeBytes } : {}),
-    ...(hit.outputRows !== undefined
-      ? { outputBytes: hit.outputRows.reduce((n, r) => n + r.size, 0) }
-      : {}),
-    ...(hit.fetchMs !== undefined ? { fetchMs: hit.fetchMs } : {}),
     hash,
     restored: restored || hit.source === 'remote',
     wallclockStartNs: taskStartNs,
     wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
   }
+  if (hit.cpuMs !== undefined) outcome.storedCpuMs = hit.cpuMs
+  if (hit.peakRssBytes !== undefined) outcome.storedPeakRssBytes = hit.peakRssBytes
+  if (hit.sizeBytes !== undefined) outcome.artifactBytes = hit.sizeBytes
+  if (hit.outputRows !== undefined) {
+    let bytes = 0
+    for (const r of hit.outputRows) bytes += r.size
+    outcome.outputBytes = bytes
+  }
+  if (hit.fetchMs !== undefined) outcome.fetchMs = hit.fetchMs
+  return outcome
 }
 
 /**
@@ -521,7 +546,7 @@ function inTheWay(found: readonly string[], held: readonly string[]): Set<string
 }
 
 /** The found outputs the entry does not hold: the stale ones, once it has restored. */
-type Tree = { files: string[]; emptyDirs: string[] }
+type Tree = { files: string[]; emptyDirs: string[]; findSpecial?: () => string[] }
 
 /**
  * The empty directories found under the outputs (absolute) that the entry

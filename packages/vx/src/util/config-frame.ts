@@ -115,7 +115,8 @@ function positionFrame(message: string, cwd: string): string | undefined {
     const [, file, said] = notObject as unknown as [string, string, string]
     return sourceFrame(
       file,
-      (src) => /^export\s+default\b/m.exec(src)?.index ?? -1,
+      // No default: at the named export written instead, when there is one.
+      (src) => (/^export\s+default\b/m.exec(src) ?? /^export\b/m.exec(src))?.index ?? -1,
       `: ${said}`,
       cwd,
     )

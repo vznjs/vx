@@ -940,24 +940,26 @@ describe('output resolution contains itself — the loader guard is now the SECO
     expect(existsSync(path.join(root, 'generated', 'schema.ts'))).toBe(false)
   })
 
-  it('a symlinked WORKSPACE output dir resolves to nothing — the escape hatch stops at the root', async () => {
+  it('a symlinked WORKSPACE output dir is refused — the escape hatch stops at the root', async () => {
     // The class sweep. `outputs.workspaceFiles` deliberately ignores PROJECT
     // boundaries — that IS the escape hatch — but escaping the WORKSPACE was
     // never part of it, and this twin had no containment at all while its
     // project sibling did. On a Bun that follows symlinked directories (1.4.0),
     // `generated -> <outside>` would have made `cleanWorkspaceOutputs` delete
-    // outside the workspace entirely.
+    // outside the workspace entirely. It resolved to nothing and saved an
+    // empty entry; it is refused now, as the project twin is (M-65).
     const outside = await mkdtemp(path.join(os.tmpdir(), 'vx-ws-victim-'))
     try {
       await write(path.join(outside, 'precious.txt'), 'precious')
       await symlink(outside, path.join(root, 'linked-gen'))
 
-      expect(
-        await resolveWorkspaceOutputs({ workspaceRoot: root, outputs: ['linked-gen/**'] }),
-      ).toEqual([])
-      expect(
-        await cleanWorkspaceOutputs({ workspaceRoot: root, outputs: ['linked-gen/**'] }),
-      ).toEqual([])
+      const said = 'through a link that leaves the workspace'
+      await expect(
+        resolveWorkspaceOutputs({ workspaceRoot: root, outputs: ['linked-gen/**'] }),
+      ).rejects.toThrow(said)
+      await expect(
+        cleanWorkspaceOutputs({ workspaceRoot: root, outputs: ['linked-gen/**'] }),
+      ).rejects.toThrow(said)
       expect(await readFile(path.join(outside, 'precious.txt'), 'utf8')).toBe('precious')
     } finally {
       await rm(outside, { recursive: true, force: true })

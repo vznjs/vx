@@ -31,10 +31,12 @@ export default defineWorkspace({
       // platform's worker starts only when a task of it is in the graph.
       // A full Linux run asks ~46 cores of work at once: 8 workers ran it
       // in 157-196 s at 50% CPU (2026-10-23). GitHub runs 20 of the
-      // account's jobs at once (2026-10-24: 20 ran, 12 queued): these 18
-      // and ci.yml's linux and perf jobs fill it.
+      // account's jobs at once (2026-10-24: 20 ran, 12 queued). At 13
+      // small one run filled it, and the next run's workers queued: a
+      // quarter of 975 small jobs waited 78-384 s for a runner, while
+      // each run's own advice wanted 6-9 small (60 runs, 2026-11-07).
       workers: {
-        small: { max: 13, cpu: 4, memory: '16GB', platform: 'linux-x64' },
+        small: { max: 9, cpu: 4, memory: '16GB', platform: 'linux-x64' },
         arm: { max: 1, cpu: 4, memory: '16GB', platform: 'linux-arm64' },
         mac: { max: 4, cpu: 3, memory: '7GB', platform: 'darwin-arm64' },
       },

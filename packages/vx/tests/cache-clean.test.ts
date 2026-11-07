@@ -74,7 +74,11 @@ describe('vx cache clean with no bound clears the cache', () => {
       const real = await vx(['cache', 'clean'])
       expect({ code: real.code, err: real.err }).toEqual({ code: 0, err: '' })
       expect(real.out).toMatch(/^✓ vx cache clean {2}freed \d[^\n]*\n\n/)
-      expect(real.out.split('\n\n')[1]).toBe(`  .vx/cache\n  ${st}\n`)
+      expect(real.out.split('\n\n').slice(1)).toEqual([
+        `  .vx/cache\n  ${st}`,
+        // The index holds the run history: say so where the user decides.
+        '  run history cleared too: vx last and vx why start over\n',
+      ])
       expect([existsSync(path.join(root, '.vx', 'cache')), existsSync(st)]).toEqual([false, false])
       // The workspace config, the lock and .vx/.gitignore stay.
       expect(readdirSync(path.join(root, '.vx')).sort()).toEqual(dotVx.filter((e) => e !== 'cache'))
@@ -89,18 +93,23 @@ describe('vx cache clean with no bound clears the cache', () => {
   )
 
   it(
-    '--global clears every store under ~/.vx; a bound with it is refused',
+    '--global clears every store under ~/.vx and nothing else there; a bound with it is refused',
     async () => {
       expect((await vx(['run', 'build', '--all'])).code).toBe(0)
+      const st = store()
       const other = path.join(home, '.vx', 'another-repo', 'cache')
-      await Bun.write(path.join(other, 'cache.db'), 'x')
+      await Bun.write(path.join(other, 'store.db'), 'x')
+      // A `cache` directory with no store.db is not a store: --global
+      // deleted it whole, as it deleted any `~/.vx/*/cache`.
+      const notStore = path.join(home, '.vx', 'mine', 'cache')
+      await Bun.write(path.join(notStore, 'keep.txt'), 'mine')
       const bounded = await vx(['cache', 'clean', '--global', '--older-than', '1d'])
       expect([bounded.code, existsSync(other)]).toEqual([1, true])
       const r = await vx(['cache', 'clean', '--global', '--format', 'json'])
       expect(r.code).toBe(0)
       const cleared = (JSON.parse(r.out) as { cleared: string[] }).cleared
-      expect(cleared).toContain(other)
-      expect(cleared).toContain('.vx/cache')
+      expect(cleared.sort()).toEqual(['.vx/cache', other, st].sort())
+      expect(existsSync(path.join(notStore, 'keep.txt'))).toBe(true)
       expect([existsSync(other), existsSync(path.join(root, '.vx', 'cache'))]).toEqual([
         false,
         false,
@@ -237,20 +246,35 @@ describe('vx cache clean with no bound clears the cache', () => {
       const st = store()
       const held = new Database(path.join(st, 'store.db'))
       held.query('SELECT count(*) FROM entries').get()
-      let done = false
-      const clean = vx(args).finally(() => {
-        done = true
+      const proc = Bun.spawn([process.execPath, BIN, ...args], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, NO_COLOR: '1', HOME: home, VX_CACHE_DIR: '' },
       })
+      const out = new Response(proc.stdout).text()
+      // Released once the clean says it waits, not after a fixed sleep: a
+      // CI runner's stall outlasted 1.5 s before the clean reached the
+      // store, so it never waited and never said so (2026-11-07).
+      let err = ''
+      const reader = proc.stderr.getReader()
+      const decoder = new TextDecoder()
       try {
-        await Bun.sleep(1500)
-        expect([done, existsSync(path.join(st, 'store.db'))]).toEqual([false, true])
+        while (!err.includes('waiting for another vx process')) {
+          const { done, value } = await reader.read()
+          if (done) break
+          err += decoder.decode(value, { stream: true })
+        }
+        expect(err).toContain(`waiting for another vx process using the cache store ${st}`)
+        expect([proc.exitCode, existsSync(path.join(st, 'store.db'))]).toEqual([null, true])
         expect((held.query('SELECT count(*) AS n FROM entries').get() as { n: number }).n).toBe(1)
       } finally {
         held.close()
       }
-      const r = await clean
+      // Drained to the end, so the clean never writes into a closed pipe.
+      for (let c = await reader.read(); !c.done; c = await reader.read()) decoder.decode(c.value)
+      const r = { code: await proc.exited, out: await out }
       expect(r.code).toBe(0)
-      expect(r.err).toContain(`waiting for another vx process using the cache store ${st}`)
       if (args.length === 2) expect(existsSync(st)).toBe(false)
       else expect(r.out).toContain('1 entry')
     },

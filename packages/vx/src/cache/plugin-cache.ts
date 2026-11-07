@@ -172,7 +172,7 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
       for (const r of readers) {
         try {
           const got = await r.remote.get(key)
-          if (got === null) continue
+          if (got == null) continue
           const bytes = await capped(got.body)
           if (bytes === null) continue
           if (policy.localWrite) localPut(local, bytes)
@@ -245,7 +245,7 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
         for (const key of runReadKeys(name, scope)) {
           try {
             const got = await r.remote.get(key)
-            if (got === null) continue
+            if (got == null) continue
             const bytes = await capped(got.body, Infinity)
             if (bytes !== null) return bytes
           } catch (err) {

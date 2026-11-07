@@ -104,6 +104,17 @@ describe('vx lock refuses inputs that read another task’s outputs', () => {
     })
   }
 
+  // "or depend on app#build" was said to a task that already did.
+  it('says a reader that depends on the writer does, and only the fix left', () => {
+    const test = task(['**'], [], { dependsOn: ['build'] })
+    expect(refusal(app({ build, test }))).toBe(
+      'app#test reads "**" in inputs.files, which matches app#build\'s output "dist/**" — ' +
+        'it depends on app#build, whose key its own already includes. ' +
+        'Exclude it: add "!dist/**" to app#test\'s inputs.files, or leave ' +
+        "app#build out of app#test's inputs.tasks, so its key hashes those bytes instead.",
+    )
+  })
+
   it('refuses with or without an edge, whichever is declared first', () => {
     const test = task(['**'], [], { dependsOn: ['build'] })
     expect(refusal(app({ test, build }))).toMatch(/^app#test reads "\*\*"/)
@@ -397,6 +408,57 @@ describe('a task whose own outputs take back an input entry whole is always refu
     expect(refusal(app({ fmt: wsTask(['docs/**'], ['**', '!package.json']) }), off)).toBe(
       said('docs/**', 'workspaceFiles'),
     )
+  })
+
+  // Each field was compared only with its own kind, so `src/**` read by
+  // `files` and written as `app/src/**` by `workspaceFiles` passed and the
+  // run deleted an untracked source.
+  it('across the two fields, in workspace-relative form', () => {
+    const cross = (
+      inputs: NonNullable<TaskConfig['inputs']>,
+      outputs: NonNullable<TaskConfig['outputs']>,
+    ): TaskConfig => ({
+      exec: { command: 'x' },
+      inputs,
+      outputs,
+      cache: true,
+    })
+    expect(
+      refusal(
+        app({ fmt: cross({ files: ['src/**'] }, { files: [], workspaceFiles: ['app/src/**'] }) }),
+      ),
+    ).toBe(said('src/**'))
+    expect(
+      refusal(
+        app({ fmt: cross({ files: [], workspaceFiles: ['app/src/**'] }, { files: ['src/**'] }) }),
+      ),
+    ).toBe(said('app/src/**', 'workspaceFiles'))
+    expect(
+      refusal(
+        app({
+          fmt: cross(
+            { files: ['src/x.ts'] },
+            { files: [], workspaceFiles: ['app/**', '!app/vx.config.ts'] },
+          ),
+        }),
+      ),
+    ).toBe(said('src/x.ts'))
+    // CONTROL: another project's tree, and an output `!` taking it back.
+    expect(
+      refusal(
+        app({ gen: cross({ files: ['src/**'] }, { files: [], workspaceFiles: ['lib/src/**'] }) }),
+      ),
+    ).toBeNull()
+    expect(
+      refusal(
+        app({
+          gen: cross(
+            { files: ['src/**'] },
+            { files: [], workspaceFiles: ['app/**', '!app/src/**'] },
+          ),
+        }),
+      ),
+    ).toBeNull()
   })
 
   it('CONTROL: an output that takes back only part of an input passes', () => {

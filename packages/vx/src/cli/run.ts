@@ -18,7 +18,13 @@ import {
   gitRefusal,
   parseCachePolicy,
 } from '../cache/index.js'
-import { affectedFilterFor, findCwdSelection, pickTask, resolveFilters } from './select.js'
+import {
+  type AffectedFilter,
+  affectedFilterFor,
+  findCwdSelection,
+  pickTask,
+  resolveFilters,
+} from './select.js'
 import { nxTargetHint, taskNamesHere, undeclaredTasks } from './task-verb.js'
 import { envFlagOn, hasControl, parseDecimalInt } from '../util/index.js'
 import * as ui from '../ui/index.js'
@@ -408,7 +414,7 @@ async function scopeFilters(
   parsed: RunArgs,
   cwd: string,
 ): Promise<
-  { filterStrings: string[]; affectedFilter?: string } | { error: string; code?: string }
+  { filterStrings: string[]; affected?: AffectedFilter } | { error: string; code?: string }
 > {
   // `--affected[=<base>]` is sugar for `--filter '...[<base>]'`: the
   // changed projects AND their dependents — what a CI gate must run, what
@@ -421,14 +427,21 @@ async function scopeFilters(
   // drops app from either side (item 955 had put it first for that). First
   // it stays, so a message naming the filters names it first.
   const filterStrings = [...parsed.filters]
-  let affectedFilter: string | undefined
+  let affected: AffectedFilter | undefined
   if (parsed.affected !== undefined) {
-    const f = await affectedFilterFor(cwd, parsed.affected)
-    if (typeof f === 'object') return f
-    affectedFilter = f
-    filterStrings.unshift(affectedFilter)
+    // With --all given, "run --all" is advice already taken.
+    const f = await affectedFilterFor(
+      cwd,
+      parsed.affected,
+      parsed.all
+        ? 'drop --affected, --all runs every project (the cache skips what did not change)'
+        : undefined,
+    )
+    if ('error' in f) return f
+    affected = f
+    filterStrings.unshift(f.filter)
   }
-  return { filterStrings, ...(affectedFilter !== undefined ? { affectedFilter } : {}) }
+  return { filterStrings, ...(affected !== undefined ? { affected } : {}) }
 }
 
 /**
@@ -477,10 +490,10 @@ export async function resolveRunOptions(
 
   const scope = await scopeFilters(parsed, cwd)
   if ('error' in scope) return scope
-  const { filterStrings, affectedFilter } = scope
+  const { filterStrings, affected: affectedFilter } = scope
   // `...[<base>]`: the base alone.
   if (scopeOut !== undefined && affectedFilter !== undefined)
-    scopeOut.affectedBase = affectedFilter.slice(4, -1)
+    scopeOut.affectedBase = affectedFilter.filter.slice(4, -1)
 
   // Project scope applies to bare task names only. Anchored entries
   // (pkg#task) resolve directly to their own project regardless.
@@ -611,17 +624,47 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   // anchored pkg#task; the rest of the pipeline treats it like any
   // explicit anchored positional.
   if (tasks.length === 0) {
+    const load = parsed.cacheDir !== undefined ? { cacheDir: parsed.cacheDir } : {}
+    // `--filter` / `--affected` scope the menu and the list, as they scope a
+    // bare task: the menu listed every project and the anchored pick ran
+    // outside it; the list named the cwd's tasks.
+    const selection = async (): Promise<
+      { only?: ReadonlySet<string> } | { error: string; code?: string } | { empty: string }
+    > => {
+      const scope = await scopeFilters(parsed, cwd)
+      if ('error' in scope) return scope
+      if (scope.filterStrings.length === 0) return {}
+      const selected = await resolveFilters(cwd, scope.filterStrings, load, scope.affected)
+      if ('error' in selected || 'empty' in selected) return selected
+      return { only: new Set(selected.names) }
+    }
     // A JSON answer is for a program, which cannot pick from a menu: an
     // agent on a pty waited at the picker forever.
     const forProgram = parsed.dry === 'json'
     if (!process.stdin.isTTY || forProgram) {
-      const names = await taskNamesHere(cwd)
-      const shown = (names ?? []).slice(0, TASKS_SHOWN)
-      const more = (names?.length ?? 0) - shown.length
+      const scoped = await selection()
+      if ('error' in scoped) return refuse('run', args, scoped.error, scoped.code ?? 'VX_E_USAGE')
+      const asked =
+        'empty' in scoped ? undefined : (scoped.only ?? (parsed.all ? 'all' : undefined))
+      const here = 'empty' in scoped ? null : await taskNamesHere(cwd, asked)
+      const names = here?.names ?? []
+      const shown = names.slice(0, TASKS_SHOWN)
+      const more = names.length - shown.length
+      const list = `${shown.join(', ')}${more > 0 ? ` and ${more} more` : ''}`
+      // Outside a project a bare name is refused without --all: the list
+      // said "tasks here", and `vx run build` then said "not inside a project".
       const tasksHere =
-        shown.length === 0
-          ? 'vx run <task>, e.g. vx run build'
-          : `tasks here: ${shown.join(', ')}${more > 0 ? ` and ${more} more` : ''}`
+        'empty' in scoped
+          ? scoped.empty
+          : shown.length === 0
+            ? 'vx run <task>, e.g. vx run build'
+            : asked === 'all'
+              ? `every project's tasks: ${list}`
+              : asked !== undefined
+                ? `the selected projects' tasks: ${list}`
+                : here?.inProject === false
+                  ? `not inside a project, the workspace's tasks with --all: ${list}`
+                  : `tasks here: ${list}`
       return refuse(
         'run',
         args,
@@ -635,23 +678,13 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       sayLine('error', refusal.message, 'vx run')
       return 1
     }
-    const load = parsed.cacheDir !== undefined ? { cacheDir: parsed.cacheDir } : {}
-    // `--filter` / `--affected` scope the menu, as they scope a bare task:
-    // the menu listed every project and the anchored pick ran outside it.
-    const scope = await scopeFilters(parsed, cwd)
-    if ('error' in scope) return refuse('run', args, scope.error, scope.code ?? 'VX_E_USAGE')
-    let only: ReadonlySet<string> | undefined
-    if (scope.filterStrings.length > 0) {
-      const selected = await resolveFilters(cwd, scope.filterStrings, load, scope.affectedFilter)
-      if ('error' in selected)
-        return refuse('run', args, selected.error, selected.code ?? 'VX_E_USAGE')
-      if ('empty' in selected) {
-        sayNotice('info', 'vx run', selected.empty)
-        return 0
-      }
-      only = new Set(selected.names)
+    const scoped = await selection()
+    if ('error' in scoped) return refuse('run', args, scoped.error, scoped.code ?? 'VX_E_USAGE')
+    if ('empty' in scoped) {
+      sayNotice('info', 'vx run', scoped.empty)
+      return 0
     }
-    const chosen = await pickTask(cwd, {}, load, only)
+    const chosen = await pickTask(cwd, {}, load, scoped.only)
     if (chosen === 'interrupted') return 130
     if (!chosen) return 1
     picked = `${chosen.project}#${chosen.task}`

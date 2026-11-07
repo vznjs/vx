@@ -114,7 +114,7 @@ describe('resolveFilters', () => {
       const { value } = await quiet(() => resolveFilters(root, ['./packages/fresh']))
       expect(value).toEqual({
         error:
-          'no projects matched filter(s): ./packages/fresh. packages/fresh/vx.config.mjs is not in the lock yet — run `vx lock`',
+          'no projects matched filter(s): "./packages/fresh". packages/fresh/vx.config.mjs is not in the lock yet — run `vx lock`',
       })
       // CONTROL: beside a filter that matched, the line is a warning.
       const { stderr } = await quiet(() => resolveFilters(root, ['app', './packages/fresh']))
@@ -129,7 +129,7 @@ describe('resolveFilters', () => {
     // and the typo exited 0 as "nothing affected since HEAD".
     const { value } = await quiet(() => resolveFilters(root, ['nosuch', '[HEAD]']))
     expect(value).toEqual({
-      error: 'no projects matched filter(s): nosuch. Projects: app, lib',
+      error: 'no projects matched filter(s): "nosuch". Projects: app, lib',
     })
   })
 
@@ -137,7 +137,7 @@ describe('resolveFilters', () => {
     // `apq[HEAD]` exited 0 as "nothing affected since HEAD" whatever the diff.
     const { value } = await quiet(() => resolveFilters(root, ['apq...[HEAD]']))
     expect(value).toEqual({
-      error: 'no projects matched filter(s): apq...[HEAD]. Did you mean app...[HEAD]?',
+      error: 'no projects matched filter(s): "apq...[HEAD]". Did you mean app...[HEAD]?',
     })
     // CONTROL: a selector that names a project with an empty diff is "nothing affected".
     const named = await quiet(() => resolveFilters(root, ['app[HEAD]']))
@@ -149,11 +149,11 @@ describe('resolveFilters', () => {
     // package in CI ran nothing and exited 0 (vercel/turborepo#9102's class).
     for (const f of ['nosuch[HEAD]', 'nosuch...[HEAD]', '{packages/nosuch}[HEAD]']) {
       const { value } = await quiet(() => resolveFilters(root, [f]))
-      expect(value).toEqual({ error: `no projects matched filter(s): ${f}. Projects: app, lib` })
+      expect(value).toEqual({ error: `no projects matched filter(s): "${f}". Projects: app, lib` })
     }
     const near = await quiet(() => resolveFilters(root, ['apq[HEAD]']))
     expect(near.value).toEqual({
-      error: 'no projects matched filter(s): apq[HEAD]. Did you mean app[HEAD]?',
+      error: 'no projects matched filter(s): "apq[HEAD]". Did you mean app[HEAD]?',
     })
     // CONTROL: a real name its diff did not reach is the exit-0 note.
     const named = await quiet(() => resolveFilters(root, ['app[HEAD]']))
@@ -165,7 +165,7 @@ describe('resolveFilters', () => {
     // nothing. The empty walk's error hid the typo and its "did you mean".
     const { value } = await quiet(() => resolveFilters(root, ['apq', 'lib^...']))
     expect(value).toEqual({
-      error: 'no projects matched filter(s): apq. Did you mean app?',
+      error: 'no projects matched filter(s): "apq". Did you mean app?',
     })
   })
 
@@ -195,7 +195,7 @@ describe('resolveFilters', () => {
     // It listed every filter: `app` and `!app` matched app, and an
     // `--affected` base appeared as a `...[<base>]` nobody typed.
     const { value } = await quiet(() => resolveFilters(root, ['app', '!app', 'apq']))
-    expect(value).toEqual({ error: 'no projects matched filter(s): apq. Did you mean app?' })
+    expect(value).toEqual({ error: 'no projects matched filter(s): "apq". Did you mean app?' })
   })
 
   it('a comma list is named as one pattern per --filter, not a typo of its first name', async () => {
@@ -203,7 +203,7 @@ describe('resolveFilters', () => {
     const { value } = await quiet(() => resolveFilters(root, ['app,lib']))
     expect(value).toEqual({
       error:
-        'no projects matched filter(s): app,lib. A filter is one pattern: --filter app --filter lib',
+        'no projects matched filter(s): "app,lib". A filter is one pattern: --filter app --filter lib',
     })
     // CONTROL: beside a filter that matched, the warning says the same.
     const beside = await quiet(() => resolveFilters(root, ['app', 'app,lib']))
@@ -222,30 +222,32 @@ describe('resolveFilters', () => {
     const { value } = await quiet(() => resolveFilters(root, ['{packages/app,packages/lib}']))
     expect(value).toEqual({
       error:
-        'no projects matched filter(s): {packages/app,packages/lib}. A filter is one pattern: --filter {packages/app} --filter {packages/lib}',
+        'no projects matched filter(s): "{packages/app,packages/lib}". A filter is one pattern: --filter {packages/app} --filter {packages/lib}',
     })
     // A comma inside a glob's own braces is no list: `./packages/{app,nope}` is one pattern.
     const glob = await quiet(() => resolveFilters(root, ['./packages/{nope,none}']))
     expect(glob.value).toEqual({
-      error: 'no projects matched filter(s): ./packages/{nope,none}. Projects: app, lib',
+      error: 'no projects matched filter(s): "./packages/{nope,none}". Projects: app, lib',
     })
     // A malformed glob class is a filter that matched nothing, not a crash.
     const bad = await quiet(() => resolveFilters(root, ['{packages/a[}']))
     expect(bad.value).toEqual({
-      error: 'no projects matched filter(s): {packages/a[}. Projects: app, lib',
+      error: 'no projects matched filter(s): "{packages/a[}". Projects: app, lib',
     })
   })
 
   it("the hint reads a pattern's name through its graph operators", async () => {
     const { value } = await quiet(() => resolveFilters(root, ['apq...']))
-    expect(value).toEqual({ error: 'no projects matched filter(s): apq.... Did you mean app...?' })
+    expect(value).toEqual({
+      error: 'no projects matched filter(s): "apq...". Did you mean app...?',
+    })
   })
 
   it('a task id given as a filter is hinted as its project', async () => {
     const { value } = await quiet(() => resolveFilters(root, ['app#build...']))
     expect(value).toEqual({
       error:
-        'no projects matched filter(s): app#build.... A filter names projects; did you mean app...?',
+        'no projects matched filter(s): "app#build...". A filter names projects; did you mean app...?',
     })
   })
 
@@ -290,7 +292,7 @@ describe('resolveFilters', () => {
   it('a `tag:` filter in a workspace with no tags says so, not a project name', async () => {
     const { value } = await quiet(() => resolveFilters(root, ['tag:app']))
     expect(value).toEqual({
-      error: 'no projects matched filter(s): tag:app. No project declares tags',
+      error: 'no projects matched filter(s): "tag:app". No project declares tags',
     })
   })
 
@@ -359,9 +361,9 @@ describe('resolveFilters — a scoped name typed without its scope (E-32)', () =
       errors.push((await quiet(() => resolveFilters(scoped, [f]))).value)
     }
     expect(errors).toEqual([
-      { error: 'no projects matched filter(s): wbe. Did you mean @acme/web?' },
+      { error: 'no projects matched filter(s): "wbe". Did you mean @acme/web?' },
       // Two scopes share the name: no single answer, so the projects (M-56).
-      { error: 'no projects matched filter(s): dup. Projects: @acme/dup, @acme/web, @other/dup' },
+      { error: 'no projects matched filter(s): "dup". Projects: @acme/dup, @acme/web, @other/dup' },
     ])
   })
 })

@@ -80,3 +80,32 @@ it(
   },
   TIMEOUT,
 )
+
+// A failed attempt's leftover writes into the retry's tree: the retry
+// passes, but its outputs are not only its own, so nothing is saved.
+it(
+  "a retry is not saved while a failed attempt's writer may still run",
+  async () => {
+    const root = await makeWorkspace({ prefix: 'vx-left-running-' })
+    made.push(root)
+    const app = await addProject(root, 'app', {
+      files: { 'src/a.txt': 'a', '.gitignore': 'dist/\nn\n' },
+      config: `export default { tasks: { build: {
+        exec: { command: 'n=$(cat n 2>/dev/null || echo 0); n=$((n+1)); echo $n > n; mkdir -p dist; if [ $n -eq 1 ]; then (sleep 0.3; echo leaked > dist/leak.txt) >/dev/null 2>&1 & exit 1; fi; sleep 0.6; echo good > dist/good.txt', retries: 1 },
+        inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+      } } }`,
+    })
+    const fx = { root, log: [] as string[], err: [] as string[] }
+    const opts = { cwd: root, tasks: ['build'], log: silentLogger(fx) }
+    const first = await run(opts)
+    expect(first.outcomes.map((o) => o.status)).toEqual(['success'])
+    expect(fx.log.join('\n')).toContain(
+      'app#build: a process it left running may still write its outputs',
+    )
+    await rm(path.join(app, 'dist'), { recursive: true })
+    const second = await run(opts)
+    expect(second.outcomes.map((o) => o.status)).toEqual(['success'])
+    expect(existsSync(path.join(app, 'dist', 'leak.txt'))).toBe(false)
+  },
+  TIMEOUT,
+)

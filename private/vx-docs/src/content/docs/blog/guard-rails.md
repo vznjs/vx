@@ -60,9 +60,11 @@ and names the glob to exclude.
 
 ## A config that hangs
 
-A `vx.config.ts` is code, and code can hang on a dead server or a
-loop. Each config gets 30 seconds, then `vx lock` fails and names it.
-`VX_CONFIG_WORKER_TIMEOUT` changes the limit.
+A `vx.config.ts` is code, and code can hang waiting on a dead server.
+Each config gets 30 seconds, then `vx lock` fails and names it.
+`VX_CONFIG_WORKER_TIMEOUT` changes the limit. A synchronous loop
+(`while (true) {}`) holds the thread the limit needs, so it hangs until
+killed.
 
 ## A run never runs a config
 

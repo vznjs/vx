@@ -4,12 +4,18 @@
 
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import type { TaskResources } from '@vzn/vx'
 
 const VERSION = 1
 
-/** The file's durations; none when it is absent, and none, with a warning, when it is not one. */
-export function readTimings(file: string, warn: (m: string) => void): Record<string, number> {
+/**
+ * The file's durations; none when it is absent or unread (with a warning),
+ * and undefined, with a warning, when it is a file but not a timings file:
+ * not one to write over.
+ */
+export function readTimings(
+  file: string,
+  warn: (m: string) => void,
+): Record<string, number> | undefined {
   let text: string
   try {
     text = readFileSync(file, 'utf8')
@@ -35,32 +41,34 @@ export function readTimings(file: string, warn: (m: string) => void): Record<str
     warn(
       `[vx] vx-history: timings file ${file} ignored: not { "version": ${VERSION}, "tasks": { id: ms } }`,
     )
-    return {}
+    return undefined
   }
-  const out: Record<string, number> = {}
-  for (const [id, ms] of Object.entries(tasks)) {
+  // Filtered in place: the parse is this read's own, and a copy of an
+  // 8,002-task file, filtered again by the caller, was ~6 ms of each
+  // all-cached run's teardown (2026-11-07).
+  const out = tasks as Record<string, unknown>
+  for (const id in out) {
+    const ms = out[id]
     // Bounded so no chain of them sums past a number: core refuses a
     // weight that is not finite, and the run failed on a hint.
-    if (typeof ms === 'number' && ms >= 0 && ms <= Number.MAX_SAFE_INTEGER) out[id] = ms
+    if (!(typeof ms === 'number' && ms >= 0 && ms <= Number.MAX_SAFE_INTEGER)) delete out[id]
   }
-  return out
+  return out as Record<string, number>
 }
 
 /**
- * The carried durations with this machine's p50s over them, written whole:
- * a task this run did not see keeps its carried time. Through a temp and a
- * rename, so a reader never sees half a file. Its directory is made: a CI
- * cache that missed restores none.
+ * The carried durations with this machine's p50s (`durationsFor`) over
+ * them, written whole: a task this run did not see keeps its carried time.
+ * Through a temp and a rename, so a reader never sees half a file. Its
+ * directory is made: a CI cache that missed restores none.
  */
 export function writeTimings(
   file: string,
   carried: Readonly<Record<string, number>>,
-  table: ReadonlyMap<string, TaskResources>,
+  p50s: ReadonlyMap<string, number>,
 ): void {
   const merged: Record<string, number> = { ...carried }
-  for (const [id, h] of table) {
-    if (h.p50DurationMs !== undefined) merged[id] = Math.round(h.p50DurationMs)
-  }
+  for (const [id, ms] of p50s) merged[id] = Math.round(ms)
   const tasks: Record<string, number> = {}
   for (const id of Object.keys(merged).sort()) tasks[id] = merged[id]!
   const tmp = `${file}.${process.pid}.tmp`
@@ -75,23 +83,45 @@ export function writeTimings(
 }
 
 /**
- * Says so when git does not ignore the file it rewrote: a task whose
- * inputs cover it (a root project's `**`) keyed each run's new timings,
- * and missed the run after every write. Asked after the write, off the run.
+ * Whether git ignores `file`, asked now and answered when git exits: true
+ * for a file outside the root, no repository, or a git that cannot run,
+ * which say nothing of it. Started before the history read, the check runs
+ * beside it: asked after the write, it held the run's end 7-10 ms.
  */
-export function warnUnignored(file: string, root: string, warn: (m: string) => void): void {
+export function askIgnored(file: string, root: string): Promise<boolean> {
   const rel = path.relative(root, file)
   // `..x.json` is a name inside the root, not a step out of it.
-  if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) return
-  const p = Bun.spawnSync({
-    cmd: ['git', 'check-ignore', '-q', '--', rel],
-    cwd: root,
-    stdout: 'ignore',
-    stderr: 'ignore',
-  })
-  // 0: ignored; 128: no repository or git refused, which says nothing of it.
-  if (p.exitCode !== 1) return
+  if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel))
+    return Promise.resolve(true)
+  try {
+    const p = Bun.spawn({
+      cmd: ['git', 'check-ignore', '-q', '--', rel],
+      cwd: root,
+      stdin: 'ignore',
+      stdout: 'ignore',
+      stderr: 'ignore',
+    })
+    // 0: ignored; 128: no repository or git refused.
+    return p.exited.then((code) => code !== 1)
+  } catch {
+    // quiet: no git to run is no workspace git, which ignores nothing to warn of.
+    return Promise.resolve(true)
+  }
+}
+
+/**
+ * Says so when git does not ignore the file it rewrote: a task whose
+ * inputs cover it (a root project's `**`) keyed each run's new timings,
+ * and missed the run after every write.
+ */
+export async function warnUnignored(
+  file: string,
+  root: string,
+  warn: (m: string) => void,
+  ignored: Promise<boolean> = askIgnored(file, root),
+): Promise<void> {
+  if (await ignored) return
   warn(
-    `[vx] vx-history: timings file ${rel} is not git-ignored, so a task whose inputs cover it re-keys on every rewrite — add it to .gitignore`,
+    `[vx] vx-history: timings file ${path.relative(root, file)} is not git-ignored, so a task whose inputs cover it re-keys on every rewrite — add it to .gitignore`,
   )
 }

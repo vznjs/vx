@@ -70,7 +70,13 @@ both paths share are `taskEnv` and `taskTimeoutMs` in `task-process.ts`.
    Spawned anyway, the server came up after the teardown, and a Ctrl-C
    took 7 s to end the run.
 4. Call `runPersistent(opts)`. Stash the returned `child` in
-   `persistentRegistry[node.id]`.
+   `persistentRegistry[node.id]`. Its `onReady` flushes what the
+   secret mask and the open-line hold kept of the pre-ready text, then
+   calls `serverReady`: run.ts holds the server's output from there
+   until it has logged the task's outcome, so a renderer files every
+   byte after the ready line as since-ready, never into the frame (the
+   lines after the ready line, and what came before the outcome, were
+   lost from a success row's view).
 5. `await spawn.ready`. On reject (child exited before ready) →
    stop what its group left running (SIGTERM, grace, SIGKILL), then
    return `failed` with the captured streams.
@@ -193,7 +199,15 @@ run added or changed against that stamp (`ownOutputsSince`), handed to
 `ownWorkspaceOutputsSince`, `ownWsOutputFiles`; A-43). A run that removed a file
 it found (a bundler deleting its upstream's intermediate) saves nothing:
 an artifact holds what a run wrote, never what it took away, and the
-upstream's restore puts the file back (X-32).
+upstream's restore puts the file back (X-32). Before a retry, what the
+failed attempt added against the stamp is removed by path
+(`dropFailedAdditions`, `cleanOutputPaths`); a found file it changed or
+removed cannot be put back, so that task saves nothing.
+
+A process any attempt's shell left running (`ExecuteResult.leftRunning`)
+withholds the save, a failed attempt's too: it may write into the
+passing attempt's outputs. It is not killed, as a passing attempt's
+is not.
 
 What a miss leaves behind — outputs resolved, artifact and rows saved,
 output prefixes recorded, git snapshot marked — is
@@ -241,7 +255,8 @@ before it is ready (`persistent-task.ts`), gets one frame line from
 `shell-verdict.ts` (`shellVerdict`), because the shell's own line names
 the word and nothing about why. A bare word is a PATH lookup and the
 PATH is vx's: the line names the word (`execWord`, the predicate
-`execWrap` uses, so a pipeline says "a command in this task"), the two
+`execWrap` uses; for a compound command, the word the shell's own "not
+found" line names in the step's stderr, else "a command in this task"), the two
 bin directories `taskBinDirs` prepends, and that a sibling project's bin
 is never on it; a bare word on 126 gets `chmod +x`. A word with a slash
 is a file, and the file says why, under either code: missing (the

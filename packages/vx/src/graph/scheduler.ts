@@ -149,6 +149,14 @@ export interface TaskOutcome {
    */
   blockedBy?: string
   /**
+   * On an outcome that ran behind a failed dependency (`continueMode:
+   * 'always'`) or one `--exclude-dependencies` dropped: the task at the root
+   * of it. Its result is not its key's, so no flaky verdict reads it and
+   * its run row names the root as a skip's `blockedBy` does. Set by `run()`
+   * before any observer (a plugin's `onTaskComplete`) hears the outcome.
+   */
+  taintedBy?: string
+  /**
    * On a `skipped` outcome: its `exec.platforms` leave out this machine.
    * Its dependants are skipped with `blockedBy` naming it, and neither
    * fails the run.
@@ -336,6 +344,8 @@ export interface ScheduleOptions {
    * dispatch, the slot and the promise around it were ~10 µs of each of a
    * warm run's 1,090 groups (X-192); a hit whose tree is current does no
    * more. A restore-tier task's `upstream` may hold undefined entries.
+   * The thunk's outcome is the scheduler's: its queue time is set on it,
+   * not on a copy (a copy per hit, 2026-11-07).
    */
   settleNow?: (node: TaskNode, upstream: TaskOutcome[]) => (() => TaskOutcome) | undefined
   /**
@@ -431,23 +441,23 @@ export interface ScheduleOptions {
 class ReadyHeap {
   private readonly ids: string[] = []
   private readonly seq: number[] = []
-  // Each slot's priority, read once at push: a map lookup per comparison
+  // Each slot's priority, read once at push: a lookup per comparison
   // was two per heap level on every push and pop.
   private readonly prio: number[] = []
   private next = 0
   /** Queued ids `counts` holds true for. */
   counted = 0
   constructor(
-    private priority: ReadonlyMap<string, number>,
+    private priority: (id: string) => number,
     private readonly counts?: (id: string) => boolean,
   ) {}
   get size(): number {
     return this.ids.length
   }
   /** Re-rank every queued id under `priority`, and every later push. */
-  reprioritize(priority: ReadonlyMap<string, number>): void {
+  reprioritize(priority: (id: string) => number): void {
     this.priority = priority
-    for (let i = 0; i < this.ids.length; i++) this.prio[i] = priority.get(this.ids[i]!) ?? 0
+    for (let i = 0; i < this.ids.length; i++) this.prio[i] = priority(this.ids[i]!)
     for (let i = (this.ids.length >> 1) - 1; i >= 0; i--) this.down(i)
   }
   private down(i: number): void {
@@ -498,7 +508,7 @@ class ReadyHeap {
     if (this.counts?.(id) === true) this.counted++
     this.ids.push(id)
     this.seq.push(seq)
-    this.prio.push(this.priority.get(id) ?? 0)
+    this.prio.push(this.priority(id))
     let i = this.ids.length - 1
     while (i > 0) {
       const parent = (i - 1) >> 1
@@ -606,9 +616,9 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
       : options.restoreTier !== undefined && options.restoreTier.size > 0
         ? tieredReverseDepCount(nodes, options.restoreTier)
         : (options.reverseDeps?.() ?? computeReverseDepCount(nodes))
-  const priority: ReadonlyMap<string, number> = options.priorities
+  const priority: (id: string) => number = options.priorities
     ? mergePriorities(baseline, options.priorities)
-    : baseline
+    : (id) => baseline.get(id) ?? 0
 
   // Two ready queues — exec-tier (cache misses + unstable tasks) and
   // restore-tier (confirmed stable local hits). Each is a max-heap keyed by
@@ -1120,7 +1130,8 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
           }
         }
         if (now !== undefined) {
-          finishOne(id, queuedMs === 0 ? now : { ...now, queuedMs })
+          if (queuedMs !== 0) now.queuedMs = queuedMs
+          finishOne(id, now)
           continue
         }
         const leave = admit(id)

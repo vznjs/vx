@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, rm, symlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { planned } from './helpers/parity.js'
 import { makeWorkspace } from './helpers/workspace.js'
@@ -637,6 +637,32 @@ describe('applyFilters with the workspace root as a project', () => {
     expect(pick('./apps/web/examples/x')).toEqual(['web-example'])
     expect(pick('./apps/web/examples')).toEqual(['web-example'])
   })
+})
+
+// A glob matches discovery's real directories, which record no link: knowing
+// one would cost a walk of the glob's directories on every run (cli.md).
+describe('a path filter and a link to a package', () => {
+  it('./<dir> names the linked package; a glob matches only its real directory', async () => {
+    const root = await makeWorkspace({ prefix: 'vx-filter-link-', workspaceFile: false })
+    try {
+      for (const [name, rel] of [
+        ['a', 'packages/a'],
+        ['l', 'ext/l'],
+      ] as const) {
+        await mkdir(path.join(root, rel), { recursive: true })
+        await writeFile(
+          path.join(root, rel, 'vx.config.mjs'),
+          `export default { name: '${name}', tasks: { build: { exec: { command: 'true' } } } }`,
+        )
+      }
+      await symlink('../ext/l', path.join(root, 'packages/l'))
+      expect(await planned(root, ['build', '--filter', './packages/l'])).toEqual(['l#build'])
+      expect(await planned(root, ['build', '--filter', './packages/*'])).toEqual(['a#build'])
+      expect(await planned(root, ['build', '--filter', './ext/*'])).toEqual(['l#build'])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 30_000)
 })
 
 // turborepo#8599: a member discovered through a `./`-prefixed package glob

@@ -155,7 +155,10 @@ describe('a refusal under --format json', () => {
     ]
     expect(said).toEqual({
       cycle: refused('dependsOn cycle: p#x -> p#y -> p#x — remove one edge of the loop'),
-      dependsOn: refused('p#d: dependsOn p#ghost but no such task is declared'),
+      // Placed at the field, as a schema refusal is.
+      dependsOn: refused(
+        "packages/p/vx.config.mjs:1:59\n  tasks.d.dependsOn names p#ghost but no such task is declared\n\n  > 1 | export default { tasks: { d: { exec: { command: 'true' }, dependsOn: ['ghost'] } } }\n      |                                                           ^",
+      ),
       outputOverlap: refused(
         "p#p and p#q both write dist/**\n  vx clears a task's outputs before it runs, so one deletes the other's\n\n  fix  give each task its own output path",
       ),
@@ -524,7 +527,7 @@ describe('a refusal under --format json', () => {
         1,
         {
           code: 'VX_E_NO_HISTORY',
-          message: 'vx last: no recorded run of a#lint',
+          message: "vx last: no recorded run of a#lint; a's recorded tasks: build",
           docs: 'https://vznjs.github.io/vx/cli/#vx_e_no_history',
         },
       ])

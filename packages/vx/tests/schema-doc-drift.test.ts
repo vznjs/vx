@@ -149,10 +149,7 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
       }),
   ],
   ['tasks.<name> must be an object', () => validated({ tasks: { b: 'not-an-object' } })],
-  [
-    'exec must be an object with a command string',
-    () => validated({ tasks: { b: { exec: 'build' } } }),
-  ],
+  ['exec must be an object with a command string', () => validated({ tasks: { b: { exec: 1 } } })],
   [
     'exec.command must be a non-empty string',
     () => validated({ tasks: { b: { exec: { command: '' } } } }),
@@ -235,7 +232,7 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
   ],
   [
     'dependsOn must be an array of strings',
-    () => validated({ tasks: { b: { ...ok, dependsOn: 'build' } } }),
+    () => validated({ tasks: { b: { ...ok, dependsOn: [1] } } }),
   ],
   [
     'inputs must be an object',
@@ -296,6 +293,22 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
             ...ok,
             dependsOn: ['build'],
             inputs: { files: [], tasks: ['buidl'] },
+            outputs: { files: [] },
+            cache: true,
+          },
+        },
+      }),
+  ],
+  [
+    // The selection starts empty and `!` only subtracts: no upstream folded.
+    'inputs.tasks: every entry is a negation, which selects NOTHING',
+    () =>
+      validated({
+        tasks: {
+          b: {
+            ...ok,
+            dependsOn: ['build'],
+            inputs: { files: [], tasks: ['!build'] },
             outputs: { files: [] },
             cache: true,
           },
@@ -575,6 +588,10 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
   [
     "<setting> takes a duration with its unit, like '<n>ms' or '<n>s' (got <n>)",
     workspaceConfig('{ run: { timeout: 30000 } }'),
+  ],
+  [
+    "<setting> takes a size with its unit, like '<n>KiB' or '<n>B' (got <n>)",
+    workspaceConfig("{ cache: { store: { embeddings: '32' } } }"),
   ],
   [
     '<setting> of <value> exceeds the maximum timer delay',

@@ -149,8 +149,15 @@ describe('configErrorFrame', () => {
         cwd,
       )?.split('\n')[0],
     ).toBe('.vx/workspace.ts:4:1: did not export a default object: it exports a function')
-    // No `export default` to point at: the message as it was.
+    // No `export default`: at the named export written instead.
     await writeFile(imports, 'export const config = {}\n')
+    expect(
+      configErrorFrame(`Workspace config at ${imports} did not export a default object`, cwd),
+    ).toBe(
+      '.vx/workspace.ts:1:1: did not export a default object\n\n> 1 | export const config = {}\n    | ^',
+    )
+    // No export at all: the message as it was.
+    await writeFile(imports, 'const config = {}\n')
     expect(
       configErrorFrame(`Workspace config at ${imports} did not export a default object`, cwd),
     ).toBeUndefined()
@@ -222,6 +229,20 @@ describe('configErrorFrame', () => {
     )
     // Past the last element: the array itself.
     expect(atPlugin(`${plugins}: \`plugins[7]\` must be an object`)).toBe('.vx/workspace.ts:2:3')
+    // A dependency rule is an element of a nested list: its message split
+    // the code span (`run.rules.dependencies`[0].deny) and went unframed.
+    const rules = path.join(dir, 'rules', '.vx', 'workspace.ts')
+    await mkdir(path.dirname(rules), { recursive: true })
+    await writeFile(
+      rules,
+      "export default {\n  run: {\n    rules: {\n      dependencies: [\n        { from: 'a', deny: ['b'] },\n        { from: 'tag:lib', deny: 'tag:app' },\n      ],\n    },\n  },\n}\n",
+    )
+    expect(
+      configErrorFrame(
+        `${rules}: \`run.rules.dependencies[1].deny\` must be an array of selectors like 'tag:lib'`,
+        path.join(dir, 'rules'),
+      )?.split('\n')[0],
+    ).toStartWith('.vx/workspace.ts:6:9')
     expect(atOdd(`${odd}: task name "" is empty`)).toBe('vx.config.ts:4:6')
     expect(
       atOdd(`${odd}: task name ${JSON.stringify('\u001b[31mred')} holds a control character`),

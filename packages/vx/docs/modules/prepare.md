@@ -46,6 +46,7 @@ export interface PreparedRun {
   gitFilesCache: GitFilesCache // per-run memo of `git ls-files`, by project dir
   workspaceProjectCount: number // every project discovery found, in or out of scope
   hashCache: HashCache // per-run memo of derived digests (see task-hash.md)
+  dependents?: ReadonlyMap<string, number> // the dependents count, taken beside git (Steps, 5)
   /**
    * Reason `nodes` is empty:
    *   - `null`                — graph is non-empty, ready to execute.
@@ -125,6 +126,14 @@ export function openRemotes(
    Under `--affected` the selection (`affected-tasks.md`) prunes the
    graph; with a `graph` plugin the hooks run before it, so it sees
    their edges and inputs, else after the git enumeration.
+   While the enumeration's blob-size check runs (`git-inputs.md`), the
+   dependents count (`graphCounts`, `scheduler.md`) is taken and handed
+   back as `PreparedRun.dependents`, which `run` reads instead of
+   counting before its first task (40 ms of a cold 8,002-task run that
+   waited ~80 ms on `cat-file`). Not when anything after the graph can
+   edit the nodes: a `graph` hook still to run, a `key` hook, or
+   `--exclude-dependencies`; `run` counts then. Only a run asks for it
+   (`prepareRunLocked`'s `countDependents`): a plan never reads it.
 
 The cache + fingerprint are constructed even when the result will be
 empty so callers always have a uniform `try { ... } finally {

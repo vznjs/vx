@@ -12,7 +12,7 @@
 // See docs/design/observability-architecture-2026-06.md §1, §3.
 
 import type { EventBus } from '../report/index.js'
-import type { TaskNode } from '../graph/index.js'
+import type { TaskNode, TaskOutcome } from '../graph/index.js'
 import type {
   RunContextRecord,
   RunSummaryRecord,
@@ -31,6 +31,8 @@ export interface TelemetryHandle {
   emitSummary(summary: RunSummaryRecord): void
   /** Await every sink's flush (crash-isolated, time-bounded by the sink), each as a `<plugin>:telemetry` step. */
   flush(step?: <T>(id: string, work: () => Promise<T>) => Promise<T>): Promise<void>
+  /** Send the held `task.end` of each server not in `keep`; see `TelemetrySource.endServers`. */
+  endServers(final: readonly TaskOutcome[], keep?: ReadonlySet<string>): void
   /** Remove the bus subscription. Idempotent. */
   dispose(): void
   /** Sample a running task's process tree; see `TelemetrySource.track`. */
@@ -147,6 +149,7 @@ export async function subscribeTelemetry(
   return {
     emitSummary: (summary) => source.emitSummary(summary),
     flush: (step) => source.flush(step),
+    endServers: (final, keep) => source.endServers(final, keep),
     dispose,
     ...(source.track !== undefined ? { track: source.track } : {}),
   }

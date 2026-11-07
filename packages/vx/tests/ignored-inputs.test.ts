@@ -6,9 +6,9 @@
 
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { afterEach, expect, it } from 'bun:test'
+import { afterEach, expect, it, spyOn } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
-import { namedIgnoredReach } from '../src/cache/index.js'
+import { GitFilesCache, namedIgnoredReach } from '../src/cache/index.js'
 import { gitFiles } from '../src/cli/watch-filter.js'
 import { dry, planned, PARITY_TIMEOUT as TIMEOUT, summarized, vx } from './helpers/parity.js'
 
@@ -251,8 +251,11 @@ it(
       return r.code === 0 ? null : r.out + r.err
     }
     const refusal = "leave it out of lib#t's inputs.tasks, so its key hashes those bytes instead"
-    expect(await lock({ t: reader("'build'", '') })).toContain(refusal)
-    expect(await lock({ t: reader("'build'", ", tasks: ['build']") })).toContain(refusal)
+    // A direct dependant is told it depends, and only the fix left to it.
+    const direct =
+      "leave lib#build out of lib#t's inputs.tasks, so its key hashes those bytes instead"
+    expect(await lock({ t: reader("'build'", '') })).toContain(direct)
+    expect(await lock({ t: reader("'build'", ", tasks: ['build']") })).toContain(direct)
     // `mid` folds `build`, and `t` folds `mid`: `build`'s key reaches `t`'s.
     const mid = `{ exec: { command: 'true' }, dependsOn: ['build'], inputs: { files: [] }, outputs: { files: [] }, cache: true }`
     expect(await lock({ mid, t: reader("'mid'", ", tasks: ['mid']") })).toContain(refusal)
@@ -380,3 +383,22 @@ it(
   },
   TIMEOUT,
 )
+
+// Asked once per project a run keys: `path.relative` per ask was ~2 ms of
+// 1,601 projects (2026-11-07). A normalized path under the root is its rest.
+it('asks no path.relative for a normalized directory under the root', () => {
+  const cache = new GitFilesCache()
+  cache.setIgnored('/w', ['packages/a/dist/', 'packages/b/dist/'])
+  const relative = spyOn(path, 'relative')
+  try {
+    for (let i = 0; i < 50; i++) expect(cache.newFilesIgnored(`/w/packages/p${i}/src`)).toBe(false)
+    expect(relative).toHaveBeenCalledTimes(0)
+    // CONTROL: a spelling that is not plainly below the root is still
+    // resolved, and answers as before.
+    for (const dir of ['/w', '/w/', '/w/x/../packages/c', '/w//packages/c', '/v/packages/c'])
+      expect(cache.newFilesIgnored(dir)).toBe(false)
+    expect(relative).toHaveBeenCalledTimes(5)
+  } finally {
+    relative.mockRestore()
+  }
+})

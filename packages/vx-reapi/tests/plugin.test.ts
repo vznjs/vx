@@ -206,10 +206,13 @@ describe('reapi(): the endpoint is checked where it is set', () => {
     expect([
       served('grpc://cache.test:9092/'),
       served('grpcs://cache.test//'),
+      // A host whose name begins `unix` is no socket path.
+      served('unixcache.test:443/'),
       outcome('grpcs://10.0.0.5:443/'),
     ]).toEqual([
       'grpc://cache.test:9092',
       'grpcs://cache.test',
+      'unixcache.test:443',
       '`reapi({ endpoint })` is "grpcs://10.0.0.5:443", TLS to an IP address, which Bun cannot open (it refuses an IP as the TLS server name) — name the server by host name, or use grpc:// for plaintext',
     ])
   })

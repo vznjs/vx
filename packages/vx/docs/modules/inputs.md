@@ -124,7 +124,18 @@ export function addedInput(
 export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedInputs>
 
 // What a task's files fold to is a function of this token, or undefined (only resolving says).
-export function filesToken(args: ResolveInputsArgs): string | undefined
+export function filesToken(
+  args: Pick<
+    ResolveInputsArgs,
+    | 'projectDir'
+    | 'workspaceRoot'
+    | 'inputs'
+    | 'ownOutputs'
+    | 'ownWorkspaceOutputs'
+    | 'nestedProjectDirs'
+    | 'gitFilesCache'
+  >,
+): string | undefined
 
 export async function resolveOutputs(args: {
   projectDir: string
@@ -142,13 +153,16 @@ export function outputWalkTakes(
 
 // resolveOutputs, plus the empty directories the globs match: a save keeps them.
 // `special` also lists the FIFOs, sockets and devices they name (Bun's walk
-// skips them): a save leaves them out and warns.
+// skips them): a save leaves them out and warns, a clean removes them.
+// `'later'` hands `findSpecial` instead: a hit's walk lists them only when
+// it restores. `clearing` words a non-UTF-8 name's refusal for a clean.
 export async function resolveOutputTree(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
-  special?: boolean
-}): Promise<{ files: string[]; emptyDirs: string[]; special: string[] }>
+  special?: boolean | 'later'
+  clearing?: boolean
+}): Promise<OutputTree> // { files, emptyDirs, special: string[], findSpecial?: () => string[] }
 
 /**
  * Remove every file currently matching the declared output globs.
@@ -168,16 +182,17 @@ export async function cleanOutputs(args: {
 // no project-dir exclusion; the clean returns the root-relative paths
 // it removed, for `GitFilesCache.markWorkspaceOutputsChanged`.
 export async function resolveWorkspaceOutputs(
-  args: { workspaceRoot: string; outputs: readonly string[] },
+  args: { workspaceRoot: string; outputs: readonly string[]; clearing?: boolean },
   emptyDirs?: Set<string>, // filled with the empty directories the globs match
-  special?: Set<string>, // filled with the FIFOs, sockets and devices they name
+  special?: SpecialProbe, // its `find` set to list the FIFOs, sockets and devices they name
 ): Promise<string[]>
 // `resolveOutputTree` for `outputs.workspaceFiles`: the files and the empty directories.
 export async function resolveWorkspaceOutputTree(args: {
   workspaceRoot: string
   outputs: readonly string[]
-  special?: boolean
-}): Promise<{ files: string[]; emptyDirs: string[]; special: string[] }>
+  special?: boolean | 'later'
+  clearing?: boolean
+}): Promise<OutputTree>
 export async function cleanWorkspaceOutputs(args: {
   workspaceRoot: string
   outputs: readonly string[]
@@ -352,6 +367,11 @@ host's `process.env`):
 - Unset names → `[name, undefined]`, which the key folds apart from
   every value, `''` included, and from "name was never listed".
 - Sorted by name for deterministic key ordering.
+- A value holding U+FFFD is a `UserError` naming the variable, never
+  its value. Bun decodes the environment lossily, so Latin-1 `é` and
+  `è` both read as U+FFFD and keyed alike; no raw bytes are readable on
+  every platform (Linux's `/proc/self/environ` misses what vx sets
+  itself), so a value that truly holds U+FFFD is refused with them.
 
 ## Output resolution rules
 
@@ -393,7 +413,8 @@ written into it. An additive task's clean by its recorded rows
 (`cleanOutputPaths`, item 588) prunes by the same scope, from the
 task's declared outputs. A
 directory of this user's that withholds its own write (`chmod 555
-dist/ro`) gets owner write for the remove and its mode back after
+dist/ro`) gets owner write for the remove and its mode back after, and
+the prune reopens one the same way to remove an emptied subdirectory
 (`tests/clean-readonly-dir.test.ts`). A declared output the process
 cannot remove even so — another user's `dist/`, a read-only checkout —
 is a `UserError` naming the path, not an internal error.
@@ -414,7 +435,9 @@ is a `UserError` naming the path, not an internal error.
   link, unlinked on clean) and never descends through one below
   a glob's literal head. A link IN that head (`dist -> real-out` for
   `dist/**`) is followed by the scan and the clean alike; one resolving
-  outside the project is a `UserError` naming it (X-88).
+  outside the project is a `UserError` naming it (X-88). The heads that
+  check finds absent the scan skips without asking again: a restore
+  after a clean asked twice about each missing `dist` (2026-11-07).
 
 ## Tests
 

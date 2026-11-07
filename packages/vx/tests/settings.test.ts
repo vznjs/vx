@@ -167,6 +167,16 @@ describe('a workspace', () => {
     )
   })
 
+  // `'0s'` looks like the examples the refusal gave, and read as valid.
+  it('refuses a zero or negative duration as one, saying how to have no limit', () => {
+    expect(() => validateWorkspace({ run: { timeout: '0s' } } as never, 'w')).toThrow(
+      'w: `run.timeout` must be more than 0 — omit it for no limit (got "0s")',
+    )
+    expect(() => validateWorkspace({ run: { timeout: '-1s' } } as never, 'w')).toThrow(
+      'w: `run.timeout` must be more than 0 — omit it for no limit (got "-1s")',
+    )
+  })
+
   it('refuses a flat key from before the groups as any unknown field, with no history', () => {
     expect(() => validateWorkspace({ concurrency: 1 } as never, 'w')).toThrow(
       'w has unknown field "concurrency"',
@@ -268,7 +278,7 @@ describe('flags', () => {
   })
   it('refuse a bare number for a duration', () => {
     expect(parseRunArgs(['build', '--timeout', '500']).error).toBe(
-      "--timeout takes a duration with its unit, like '500ms' or '1s' (got 500)",
+      "--timeout takes a duration with its unit, like '500s' or '500ms' (got 500)",
     )
   })
 })

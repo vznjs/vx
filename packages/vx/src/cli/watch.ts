@@ -224,8 +224,9 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // ahead of the run to decide which watchers to install, and that marks every
   // config loaded — so the initial run's own loads become REPEATs and pay a
   // worker round-trip each (see config-eval.ts). Trading a hot-path regression
-  // on every `vx watch` for a window a user rarely edits into is a bad deal;
-  // configs.
+  // on every `vx watch` for a window a user rarely edits into is a bad deal.
+  // An edit to the inputs of a task the run was running is caught anyway:
+  // the run leaves that task unsaved, and the loop starts on it (`drifted`).
   // The exception: once the run waits on a server's readiness alone, every
   // config is loaded, and the loop arms with the run as its cycle in
   // flight. Unarmed, a server that never got ready held the initial run
@@ -245,8 +246,11 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // Uncaught, it ended watch at start while the same break mid-watch did
   // not (item 1017).
   let refusedToStart = false
+  /** A task whose inputs the user edited while the initial run ran it: no watcher heard the edit. */
+  let drifted: string | undefined
   initial.held = runOrchestrator(initial.cycle.opts).then(
     async (run) => {
+      drifted = run.outcomes.find((o) => o.unkeyed === true)?.node.id
       if (run.refused !== undefined) {
         const hint = run.refused.startsWith('no projects declare')
           ? await spacedHint(parsed, cwd)
@@ -289,10 +293,14 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     sayNotice('error', 'vx watch', 'no projects in scope')
     return 1
   }
-  await armLoop(undefined, held)
+  await armLoop(undefined, held, drifted)
   return stopped()
 
-  async function armLoop(initial?: InitialCycle, held?: HeldPersistent): Promise<void> {
+  async function armLoop(
+    initial?: InitialCycle,
+    held?: HeldPersistent,
+    drifted?: string,
+  ): Promise<void> {
     // `--affected`'s diff is the tree at start; judged again, it held every
     // later edit out of the scope it picked. A cycle is an edit, and the
     // cache keys decide what in the scope it re-runs.
@@ -310,6 +318,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
       held,
       initial,
       tasks: openingTasks,
+      drifted,
       stop: stop.signal,
       workspaceRoot,
       projects: watched,
@@ -376,6 +385,8 @@ interface WatchLoopArgs {
   initial: InitialCycle | undefined
   /** The initial run's task count, once it has started. */
   tasks: () => number | undefined
+  /** A task the initial run left unsaved because its inputs moved under it (`TaskOutcome.unkeyed`). */
+  drifted: string | undefined
   /** Aborted by the SIGINT/SIGTERM handlers `watchCmd` installed; the loop drains its cycle and resolves. */
   stop: AbortSignal
   workspaceRoot: string
@@ -1228,6 +1239,11 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   lastTasks = args.tasks()
   sayWatching(projects.length)
   sayArmed(projects.length)
+  // An edit made while the initial run ran landed before any watcher, and
+  // its mtime predates the arm, so no event or judgement can find it: the
+  // run's own re-check did (it left the task unsaved), and that starts the
+  // first cycle. Unheard, watch idled over output built from the old bytes.
+  if (args.drifted !== undefined) void cycle(`${args.drifted} inputs, edited during the first run`)
 
   return await new Promise<void>((resolve) => {
     const cleanup = async (): Promise<void> => {

@@ -37,6 +37,12 @@ export function ignoreProbes(glob: string): { paths: string[]; deep: boolean; di
 
 const CHECK_IGNORE = ['check-ignore', '--stdin', '-z']
 
+// git reads each line as a pathspec, so `:top/dist/` was asked as
+// `top/dist/`. `./` keeps it the path it is (this command refuses
+// `:(literal)`), and git echoes each path back as given.
+const stdinOf = (paths: readonly string[]): Buffer =>
+  Buffer.from(paths.map((p) => `./${p}\0`).join(''))
+
 function ignoredOf(exitCode: number, stdout: Uint8Array): Set<string> | null {
   // 0: some ignored; 1: none; anything else (no work tree): undecided.
   if (exitCode === 1) return new Set()
@@ -45,7 +51,8 @@ function ignoredOf(exitCode: number, stdout: Uint8Array): Set<string> | null {
     new TextDecoder()
       .decode(stdout)
       .split('\0')
-      .filter((p) => p !== ''),
+      .filter((p) => p !== '')
+      .map((p) => p.slice(2)),
   )
 }
 
@@ -60,7 +67,7 @@ export async function checkIgnore(
       cmd: [executablePath('git'), ...CHECK_IGNORE],
       env: gitEnv(),
       cwd,
-      stdin: Buffer.from(paths.map((p) => `${p}\0`).join('')),
+      stdin: stdinOf(paths),
       stdout: 'pipe',
       stderr: 'ignore',
     })
@@ -79,7 +86,7 @@ export function checkIgnoreSync(cwd: string, paths: readonly string[]): Set<stri
       cmd: [executablePath('git'), ...CHECK_IGNORE],
       env: gitEnv(),
       cwd,
-      stdin: Buffer.from(paths.map((p) => `${p}\0`).join('')),
+      stdin: stdinOf(paths),
       stdout: 'pipe',
       stderr: 'ignore',
     })

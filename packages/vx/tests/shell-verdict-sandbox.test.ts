@@ -85,6 +85,26 @@ describe('a program a hermetic sandbox hides', () => {
     )
   })
 
+  // A redirect or `&&` leaves the command no one word: the shell's own
+  // line names it, and the verdict said "install it in this package".
+  it("is named from the shell's line when the command is compound", () => {
+    const mkdirPath = Bun.which('mkdir')!
+    const said = (stderr: string) =>
+      shellVerdict({
+        code: 127,
+        command: 'mkdir -p dist && cp a dist',
+        cwd: dir,
+        bins: [],
+        hidden,
+        stderr,
+      })
+    const want = `[vx] exit 127 is the shell's "command not found": mkdir is ${mkdirPath} on the host, but no sandbox grant reads it, so inside the sandbox it is not there — add it (or its directory) to exec.sandbox.allow.read`
+    expect([
+      said('sh: 1: mkdir: not found\n'),
+      said('bash: line 1: mkdir: command not found\n'),
+    ]).toEqual([want, want])
+  })
+
   it('reads only what a grant holds, outside every denial too', () => {
     expect([
       sandboxReads(hermetic(), path.join(dir, 'build.sh')),

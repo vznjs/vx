@@ -1,11 +1,11 @@
 ---
 title: Quickstart
-description: Cache your first task in two minutes, in a repo you already have.
+description: Cache your first task in two minutes, in a workspace you already have.
 ---
 
 import { Steps, Aside, LinkCard, CardGrid } from '@astrojs/starlight/components'
 
-Cache your first task in two minutes, in a repo you already have.
+Cache your first task in two minutes, in a workspace you already have.
 
 <Aside title="What you need">
   Git, and macOS or Linux with glibc (not Alpine's musl). On Windows, use WSL2.
@@ -15,7 +15,7 @@ Cache your first task in two minutes, in a repo you already have.
 
 1. **Set up vx**
 
-   Run this at the root of your git repository:
+   Run this at the root of your workspace, inside a git checkout:
 
    ```sh
    bunx @vzn/vx init
@@ -50,11 +50,16 @@ Cache your first task in two minutes, in a repo you already have.
    `package.json`, and add `dependsOn: ['^build']` to build a package's
    dependencies first. `vx show` lists every project vx found.
 
+   At the root, `vx run build --all` runs every package's build.
+
    Then save the change for every run to read:
 
    ```sh
    vx lock
    ```
+
+   Commit `.vx/` and each `vx.lock.json` it writes beside a config: runs
+   read the lock, and a reviewer reads a config's tasks in its `vx.lock.json`.
 
 3. **Run it twice**
 

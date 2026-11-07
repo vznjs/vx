@@ -129,7 +129,7 @@ export default [
     kind: 'efficiency',
     title: 'Switching a declared variable back and forth replays each value’s own result',
     why: 'Each value of a keyed variable has its own entry, and a new value must not push out the old one. Builds that switch between modes, such as dev and prod or two targets, go back and forth all day. A cache that keeps only the latest value rebuilds on every switch, though both results are already known.',
-    from: ['env', 'hash-scenarios'],
+    from: ['env', 'hash-scenarios-names'],
     needs: ['env-inputs'],
     workspace: one(keyed),
     steps: [

@@ -6,16 +6,22 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { afterEach, expect, it, spyOn } from 'bun:test'
+import { Database } from 'bun:sqlite'
+import { afterEach, describe, expect, it, spyOn } from 'bun:test'
 import { Cache } from '../src/cache/index.js'
 import { OutputIndex } from '../src/cache/output-index.js'
+import { isInline } from './helpers/stored-artifact.js'
 
 const HASH = '0123456789abcdef'
 let root = ''
 
 afterEach(() => rmSync(root, { recursive: true, force: true }))
 
-async function saveFiles(cache: Cache, proj: string, files: Record<string, string>): Promise<void> {
+async function saveFiles(
+  cache: Cache,
+  proj: string,
+  files: Record<string, string | Uint8Array>,
+): Promise<void> {
   for (const [rel, body] of Object.entries(files)) writeFileSync(path.join(proj, rel), body)
   await cache.save({
     hash: HASH,
@@ -92,5 +98,120 @@ it('an inline artifact re-saved by another writer after the probe restores with 
   } finally {
     other.close()
     cache.close()
+  }
+})
+
+// A tree entry the probe held rows for restores with no statement at all:
+// the blob read and its transaction were ~70 ms of a 1,600-restore run's
+// main thread (2026-11-07). A tree found is the live artifact: an inline
+// save moves it aside in the commit that adds its blob.
+it('a probed tree hit restores without a statement', async () => {
+  root = mkdtempSync(path.join(tmpdir(), 'vx-rows-held-'))
+  const proj = path.join(root, 'proj')
+  mkdirSync(proj)
+  const cache = new Cache(path.join(root, 'cache'), { read: true, write: true })
+  const blob = Buffer.from(crypto.getRandomValues(new Uint8Array(48 * 1024)))
+  const spies = (['prepare', 'query', 'transaction'] as const).map((m) =>
+    spyOn(Database.prototype, m),
+  )
+  try {
+    await saveFiles(cache, proj, { 'big.bin': blob })
+    expect(isInline(cache, HASH)).toBe(false)
+    expect((await cache.getMany([HASH])).get(HASH)?.outputFiles).toEqual(['big.bin'])
+    for (const s of spies) s.mockClear()
+    const out = path.join(root, 'out')
+    await cache.restoreOutputs(HASH, out)
+    expect(spies.map((s) => s.mock.calls.length)).toEqual([0, 0, 0])
+    expect(readFileSync(path.join(out, 'big.bin')).equals(blob)).toBe(true)
+  } finally {
+    for (const s of spies) s.mockRestore()
+    cache.close()
+  }
+})
+
+it('a probed inline hit restores with its blob read alone, in no transaction', async () => {
+  root = mkdtempSync(path.join(tmpdir(), 'vx-rows-held-'))
+  const proj = path.join(root, 'proj')
+  mkdirSync(proj)
+  const cache = new Cache(path.join(root, 'cache'), { read: true, write: true })
+  const tx = spyOn(Database.prototype, 'transaction')
+  try {
+    await saveFiles(cache, proj, { 'a.txt': 'a' })
+    expect(isInline(cache, HASH)).toBe(true)
+    expect((await cache.getMany([HASH])).get(HASH)?.outputFiles).toEqual(['a.txt'])
+    tx.mockClear()
+    const out = path.join(root, 'out')
+    await cache.restoreOutputs(HASH, out)
+    expect(tx.mock.calls.length).toBe(0)
+    expect(readFileSync(path.join(out, 'a.txt'), 'utf8')).toBe('a')
+  } finally {
+    tx.mockRestore()
+    cache.close()
+  }
+})
+
+it("a tree the probe saw, moved aside by another writer's inline save, restores the inline bytes", async () => {
+  root = mkdtempSync(path.join(tmpdir(), 'vx-rows-held-'))
+  const proj = path.join(root, 'proj')
+  const cacheDir = path.join(root, 'cache')
+  mkdirSync(proj)
+  const cache = new Cache(cacheDir, { read: true, write: true })
+  const other = new Cache(cacheDir, { read: true, write: true })
+  try {
+    const blob = Buffer.from(crypto.getRandomValues(new Uint8Array(48 * 1024)))
+    await saveFiles(cache, proj, { 'big.bin': blob })
+    expect(isInline(cache, HASH)).toBe(false)
+    expect((await cache.getMany([HASH])).get(HASH)?.outputFiles).toEqual(['big.bin'])
+    rmSync(path.join(proj, 'big.bin'))
+    await saveFiles(other, proj, { 'small.txt': 'small' })
+    expect(isInline(other, HASH)).toBe(true)
+    const out = path.join(root, 'out')
+    await cache.restoreOutputs(HASH, out)
+    expect(readFileSync(path.join(out, 'small.txt'), 'utf8')).toBe('small')
+  } finally {
+    other.close()
+    cache.close()
+  }
+})
+
+describe.each([
+  ['tree', true],
+  ['tar', false],
+])('a %s re-saved by another writer after the probe', (_form, decompress) => {
+  // A file artifact has no blob `at` to move: the probe's rows named the
+  // first build's files, and the restore held the second build's artifact
+  // to them, called it corrupt and dropped the other writer's good entry.
+  const open = (dir: string): Cache =>
+    new Cache(dir, undefined, undefined, undefined, undefined, undefined, {
+      embeddings: 0,
+      decompress,
+    })
+  for (const [label, second] of [
+    ['other names', { 'c.txt': 'c 2' }],
+    ['other sizes', { 'a.txt': 'a longer 2' }],
+  ] as const) {
+    it(`restores the artifact it opens (${label}) and keeps the entry`, async () => {
+      root = mkdtempSync(path.join(tmpdir(), 'vx-rows-held-'))
+      const cacheDir = path.join(root, 'cache')
+      const reader = open(cacheDir)
+      const writer = open(cacheDir)
+      try {
+        const w1 = path.join(root, 'w1')
+        mkdirSync(w1)
+        await saveFiles(writer, w1, { 'a.txt': 'a 1' })
+        expect((await reader.getMany([HASH])).get(HASH)?.outputFiles).toEqual(['a.txt'])
+        const w2 = path.join(root, 'w2')
+        mkdirSync(w2)
+        await saveFiles(writer, w2, second)
+        const out = path.join(root, 'out')
+        await reader.restoreOutputs(HASH, out)
+        for (const [rel, body] of Object.entries(second))
+          expect(readFileSync(path.join(out, rel), 'utf8')).toBe(body)
+        expect(await reader.has(HASH)).toBe('local')
+      } finally {
+        writer.close()
+        reader.close()
+      }
+    })
   }
 })

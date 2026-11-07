@@ -53,9 +53,9 @@ it('past a green run, --list --failed says none failed', () => {
   expect(vx('last', '--list', '--failed')).toEqual([0, '› vx last  no failed runs\n', ''])
 }, 30_000)
 
-it('past a run, a failed or unknown one is named as before (control)', () => {
+it('past a green run, --failed says none failed; an unknown run is named', () => {
   expect([vx('last', '--failed'), vx('last', '0199')]).toEqual([
-    [1, '', noticed('vx last: no recorded run failed\n')],
+    [1, '', '› vx last  no failed runs\n\n  fix  vx last\n'],
     [1, '', noticed('vx last: no recorded run 0199 (vx last --list shows recent runs)\n')],
   ])
 }, 30_000)

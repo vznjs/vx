@@ -13,6 +13,7 @@ import {
   isOutOfFds,
   killGraceMs,
   OUT_OF_FDS_HINT,
+  POST_EXIT_DRAIN_MS,
   testTimerMs,
   helperEnv,
   type SecretMask,
@@ -559,20 +560,6 @@ export function armTimeout(
 }
 
 /**
- * Grace after the direct child exits before we abort the stdout/stderr readers.
- * The pipe reaches EOF only when EVERY write-end fd is closed, so a task that
- * backgrounds a process inheriting fd 1/2 (`server & echo up` — `execWrap`
- * leaves compound commands as `sh -c`, so `sh` exits while the grandchild holds
- * the pipe) never EOFs. On a clean exit with no lingering writer the pipe EOFs
- * at once, so the readers win this race immediately and normal tasks pay
- * nothing; only a stuck reader waits out the grace. Residual buffered output is
- * bounded by the OS pipe buffer (streamToString drains continuously DURING the
- * run), so this is far longer than any real drain needs. What the leftover
- * process writes after the bound is lost, and `POST_EXIT_CUT_LINE` says so.
- */
-const POST_EXIT_DRAIN_MS = 250
-
-/**
  * The line a task's frame gets when the drain bound cut its pipes. The cut
  * was silent: a backgrounded child's late output vanished from the frame and
  * the cached replay with no word (nx#35302 reproduced on vx, 2026-09-24).
@@ -781,6 +768,12 @@ export interface PersistentOptions extends Omit<RunOptions, 'forwardArgs' | 'cap
    */
   timeoutMs?: number
   /**
+   * Called once, at ready: after `onStdout` / `onStderr` had the text up to
+   * the end of the ready line, before anything after it. What follows is
+   * the since-ready stream; a chunk holding both is split there.
+   */
+  onReady?: () => void
+  /**
    * Spawn it with fd 3 as its signal channel and route its polite signals
    * there (`signalThrough`): a Linux sandboxed command, whose group signal
    * would kill bwrap instead (`wrapSandboxedCommand`'s `forwardsSignals`).
@@ -883,6 +876,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
       readyAt = Date.now()
       if (readyTimer !== undefined) clearTimeout(readyTimer)
       resolveReady()
+      opts.onReady?.()
     }
   }
 
@@ -903,45 +897,60 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   ): Promise<void> => {
     if (!stream || typeof stream === 'number') return
     let fragment = ''
+    // Chunks are forwarded, never retained. The one consumer of a
+    // persistent task's text is the logger, which keeps its OWN bounded
+    // tail fed from these same callbacks (registered at taskStart, so it
+    // covers the pre-ready window too) — a second copy here was read by
+    // nobody.
+    const forward = (text: string): void => {
+      if (text.length === 0) return
+      if (isStderr) opts.onStderr?.(text)
+      else opts.onStdout?.(text)
+    }
+    // Where in `chunk` the ready line ends (past its break, a CRLF's `\n`
+    // too), or -1 while not ready. The fragment holds no break, so every
+    // break found is in `chunk`.
+    const readyEnd = (re: RegExp, chunk: string): number => {
+      const base = fragment.length
+      fragment += chunk
+      let start = 0
+      for (let i = base; i < fragment.length; i++) {
+        const c = fragment.charCodeAt(i)
+        if (c !== 10 && c !== 13) continue
+        if (readyLine(re, fragment.slice(start, i))) {
+          fragment = ''
+          return i + 1 - base + (c === 13 && chunk.charCodeAt(i + 1 - base) === 10 ? 1 : 0)
+        }
+        start = i + 1
+      }
+      fragment = fragment.slice(start)
+      if (readyLine(re, fragment)) {
+        fragment = ''
+        return chunk.length
+      }
+      // Dropping complete lines assumes the stream HAS line breaks. Output
+      // with none is one endless line, so the fragment would become a
+      // third unbounded accumulator (measured 464 MiB in 6 s, and the
+      // per-chunk `test` over an ever-growing string makes it quadratic
+      // in CPU too). Keep the most RECENT window: a match may span the
+      // chunk boundary, and no readiness marker is anywhere near this
+      // long.
+      if (fragment.length > READY_MATCH_WINDOW_CHARS) {
+        fragment = fragment.slice(fragment.length - READY_MATCH_WINDOW_CHARS)
+      }
+      return -1
+    }
     const handleChunk = (chunk: string): void => {
       if (chunk.length === 0) return
-      // Chunks are forwarded, never retained. The one consumer of a
-      // persistent task's text is the logger, which keeps its OWN bounded
-      // tail fed from these same callbacks (registered at taskStart, so it
-      // covers the pre-ready window too) — a second copy here was read by
-      // nobody.
-      if (isStderr) opts.onStderr?.(chunk)
-      else opts.onStdout?.(chunk)
-      if (readyRe && readyAt === undefined) {
-        fragment += chunk
-        let start = 0
-        for (let i = 0; i < fragment.length; i++) {
-          const c = fragment.charCodeAt(i)
-          if (c !== 10 && c !== 13) continue
-          if (readyLine(readyRe, fragment.slice(start, i))) {
-            markReady()
-            fragment = ''
-            return
-          }
-          start = i + 1
-        }
-        fragment = fragment.slice(start)
-        if (readyLine(readyRe, fragment)) {
-          markReady()
-          fragment = ''
-          return
-        }
-        // Dropping complete lines assumes the stream HAS line breaks. Output
-        // with none is one endless line, so the fragment would become a
-        // third unbounded accumulator (measured 464 MiB in 6 s, and the
-        // per-chunk `test` over an ever-growing string makes it quadratic
-        // in CPU too). Keep the most RECENT window: a match may span the
-        // chunk boundary, and no readiness marker is anywhere near this
-        // long.
-        if (fragment.length > READY_MATCH_WINDOW_CHARS) {
-          fragment = fragment.slice(fragment.length - READY_MATCH_WINDOW_CHARS)
-        }
-      }
+      if (!readyRe || readyAt !== undefined) return forward(chunk)
+      const end = readyEnd(readyRe, chunk)
+      if (end < 0) return forward(chunk)
+      // Split where the ready line ends: handed over whole, the lines after
+      // it in the same write read as pre-ready, the frame a ready server's
+      // row never prints (Vite's `Network:` line after `Local:`).
+      forward(chunk.slice(0, end))
+      markReady()
+      forward(chunk.slice(end))
     }
     const reader = stream.getReader()
     const decoder = new TextDecoder('utf-8', { ignoreBOM: true })
@@ -978,6 +987,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   // fires so a healthy server is never killed by a stale timer.
   let readyTimer: ReturnType<typeof setTimeout> | undefined
   if (readyRe && opts.timeoutMs !== undefined) {
+    const limit = opts.timeoutMs
     const giveUp = async (): Promise<void> => {
       if (readyAt !== undefined) return
       gaveUpAt = Date.now()
@@ -998,8 +1008,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
       }
       rejectReady(
         new PersistentReadyError(
-          `persistent task not ready within ${opts.timeoutMs}ms — ` +
-            `readyWhen pattern never matched; child killed`,
+          `no line matched readyWhen /${readyRe.source}/ within ${asWritten(limit)}; killed`,
           'timeout',
         ),
       )
@@ -1031,8 +1040,8 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     if (readyAt === undefined && gaveUpAt === undefined) {
       rejectReady(
         new PersistentReadyError(
-          `persistent task exited before becoming ready (exit ${code ?? '?'})` +
-            (readyRe ? ` — readyWhen pattern never matched` : ''),
+          `exited (exit ${code ?? '?'})` +
+            (readyRe ? ` before a line matched readyWhen /${readyRe.source}/` : ''),
           'exited',
           code ?? undefined,
         ),
@@ -1456,8 +1465,10 @@ export class BoundedCapture {
    * The same output under tighter bounds. What this capture already
    * dropped is counted in the new one's dropped line: pushed through
    * `chunks()`, the old line fell into the new middle with its count.
-   * `through` maps each side's chunks before the new cut (the store's
-   * mask), so the cut cannot split a value first.
+   * `through` maps the chunks before the new cut (the store's mask), so
+   * the cut cannot split a value first: each side apart only when this
+   * capture dropped text between them, else a value across the head's end
+   * was matched by neither side.
    */
   rebound(
     headChars: number,
@@ -1465,8 +1476,8 @@ export class BoundedCapture {
     through: (chunks: CapturedChunk[]) => CapturedChunk[] = (c) => c,
   ): BoundedCapture {
     const to = new BoundedCapture(headChars, tailChars)
-    for (const c of through(this.head)) to.push(c.text, c.err)
-    for (const c of through(this.tail)) to.push(c.text, c.err)
+    const sides = this.dropped === 0 ? [[...this.head, ...this.tail]] : [this.head, this.tail]
+    for (const side of sides) for (const c of through(side)) to.push(c.text, c.err)
     to.dropped += this.dropped
     return to
   }
@@ -1607,4 +1618,9 @@ export function resourceUsageToCpuRss(
   const peak = peakRssBytes(usage.maxRSS)
   const floor = typeof floorBytes === 'number' ? floorBytes : floorBytes(peak)
   return peak > floor + RSS_FLOOR_SLACK_BYTES ? { cpuMs, peakRssBytes: peak } : { cpuMs }
+}
+
+/** A limit as a config writes it: `'2s'` reads back `2s`, not `2000ms`. */
+function asWritten(ms: number): string {
+  return ms % 1000 === 0 ? `${ms / 1000}s` : `${ms}ms`
 }

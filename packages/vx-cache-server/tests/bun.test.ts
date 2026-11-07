@@ -239,15 +239,16 @@ it('refuses to start without AUDIENCE', () => {
   })
   expect([cli.exitCode, Bun.stripANSI(cli.stderr.toString()).split('\n')[0]]).toEqual([
     2,
-    '✗ vx-cache-server  set AUDIENCE: the aud a CI token names, the URL clients reach this server at',
+    '✗ vx-cache-server  set AUDIENCE: the aud a CI token names, the origin clients reach this server at',
   ])
 })
 
-// jose matches aud exactly: AUDIENCE with a pasted newline refused every
-// token as the wrong audience. The Workers entry trims it
-// (worker.test.ts); so does this one. The issuer is on loopback, as the
+// jose matches aud exactly: AUDIENCE with a pasted newline, or as a URL
+// with a slash or path after its origin (vxCache() asks CI for the origin),
+// refused every token as the wrong audience. The Workers entry reads its
+// origin (worker.test.ts); so does this one. The issuer is on loopback, as the
 // image's smoke test serves it, so the spawned server reaches its keys.
-it('reads AUDIENCE without the blanks around it', async () => {
+it('reads AUDIENCE as its origin, without the blanks around it', async () => {
   const { privateKey, publicKey } = await generateKeyPair('RS256')
   const jwks = { keys: [{ ...(await exportJWK(publicKey)), kid: 'k1', alg: 'RS256' }] }
   const keys = Bun.serve({
@@ -269,7 +270,7 @@ it('reads AUDIENCE without the blanks around it', async () => {
         S3_ACCESS_KEY_ID: 'a',
         S3_SECRET_ACCESS_KEY: 's',
         ALLOW: `${at}:${REPO}:.gitlab-ci.yml`,
-        AUDIENCE: ' https://cache.example\n',
+        AUDIENCE: ' https://cache.example/\n',
       },
       stdout: 'pipe',
     },
@@ -303,6 +304,26 @@ it('reads AUDIENCE without the blanks around it', async () => {
     await cli.exited
     await keys.stop(true)
   }
+})
+
+it('refuses to start with an AUDIENCE that is no URL', () => {
+  const cli = Bun.spawnSync(['bun', `${import.meta.dir}/../src/bun.ts`, '--port', '0'], {
+    env: {
+      ...process.env,
+      S3_BUCKET: 'b',
+      S3_ACCESS_KEY_ID: 'a',
+      S3_SECRET_ACCESS_KEY: 's',
+      ALLOW: ALLOW_VAR,
+      AUDIENCE: 'cache.example',
+    },
+    stderr: 'pipe',
+    // Started, it would listen until killed.
+    timeout: 10_000,
+  })
+  expect([cli.exitCode, Bun.stripANSI(cli.stderr.toString()).split('\n')[0]]).toEqual([
+    2,
+    '✗ vx-cache-server  AUDIENCE: the origin clients reach this server at (https://cache.example.com), not cache.example',
+  ])
 })
 
 it('refuses an empty --port: Number of it is 0, a random port', () => {

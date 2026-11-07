@@ -20,6 +20,7 @@ import {
   machineParallelism,
   treeBytes,
 } from '../util/index.js'
+import { isDefaultBuild } from '../graph/index.js'
 import * as ui from '../ui/index.js'
 import { vxPath } from '../handoff.js'
 import { VERSION } from '../version.js'
@@ -105,14 +106,17 @@ export interface InfoFacts {
   cacheIndexError: string | null
   /**
    * Every setting (src/settings.ts) as a run with no flags takes it: its
-   * variable's value, else the workspace's (after the `config` stage),
+   * variable's value, else the workspace's (after the `config` stage;
+   * source `plugin`, naming it, when a plugin's `config` hook set it),
    * else null with source `default` (docs/schema.md names each default).
    */
   settings: Record<
     string,
     {
       value: string | number | boolean | null
-      source: 'env' | 'workspace' | 'default'
+      source: 'env' | 'workspace' | 'plugin' | 'default'
+      /** The plugin whose `config` hook set it, with source `plugin`. */
+      plugin?: string
       /** Why a run refuses this variable's value; absent when it takes it. */
       refused?: string
     }
@@ -199,7 +203,7 @@ async function collectInfoChecked(cwd: string, opts: CollectInfoOptions): Promis
 async function collectWorkspaceInfo(
   cwd: string,
   root: string,
-  { workspaceConfig, plugins }: Awaited<ReturnType<typeof loadWorkspacePlugins>>,
+  { workspaceConfig, plugins, settingPlugins }: Awaited<ReturnType<typeof loadWorkspacePlugins>>,
   opts: CollectInfoOptions,
   probing: Promise<Omit<InfoFacts['sandbox'], 'declared'>>,
 ): Promise<InfoFacts> {
@@ -274,7 +278,9 @@ async function collectWorkspaceInfo(
     })
     for (const p of loaded.projects.values()) {
       const tasks = p.config.tasks ?? {}
-      taskCount += Object.keys(tasks).length
+      // The default build is no declared task: `vx run build` denies it, and
+      // right after `vx init` the doctor said `1 (1 task)` of `tasks: {}`.
+      taskCount += Object.values(tasks).filter((t) => !isDefaultBuild(t)).length
       for (const t of Object.values(tasks)) if (t?.exec?.sandbox !== undefined) sandboxed++
     }
   } catch (err) {
@@ -332,7 +338,7 @@ async function collectWorkspaceInfo(
     cacheEntries: stats.entryCount,
     cacheBytes: stats.totalBytes,
     cacheIndexError: indexError,
-    settings: settingsFact(workspaceConfig),
+    settings: settingsFact(workspaceConfig, settingPlugins),
     // A row-less artifact is indexed again only when its task asks for its
     // key; the rest only `vx cache clean` reclaims (after an upgrade's
     // schema reset, most often).
@@ -469,17 +475,23 @@ function gitVersion(): string | null {
   }
 }
 
-function settingsFact(config: WorkspaceConfig | null): InfoFacts['settings'] {
+function settingsFact(
+  config: WorkspaceConfig | null,
+  settingPlugins: ReadonlyMap<string, string>,
+): InfoFacts['settings'] {
   const out: InfoFacts['settings'] = {}
   for (const s of SETTINGS) {
     const env = s.env === false ? undefined : process.env[envName(s.path)]
     const declared = s.config === false ? undefined : atPath(config, s.path)
+    const plugin = settingPlugins.get(s.path)
     out[s.path] =
       env !== undefined && env !== ''
         ? { value: env, source: 'env' }
-        : declared !== undefined
-          ? { value: declared as string | number | boolean, source: 'workspace' }
-          : { value: null, source: 'default' }
+        : declared === undefined
+          ? { value: null, source: 'default' }
+          : plugin !== undefined
+            ? { value: declared as string | number | boolean, source: 'plugin', plugin }
+            : { value: declared as string | number | boolean, source: 'workspace' }
   }
   return out
 }

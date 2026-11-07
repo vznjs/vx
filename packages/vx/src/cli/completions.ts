@@ -48,7 +48,7 @@ export function completionScript(shell: CompletionShell, verbs: readonly string[
     verb: v,
     // A plugin verb owns its own arguments; only `--help` is known here.
     words: [
-      ...(VERB_WORDS[v] ?? []),
+      ...(v === 'help' ? verbs.filter((w) => w !== 'help') : (VERB_WORDS[v] ?? [])),
       ...((CORE_VERBS as readonly string[]).includes(v) ? verbFlags(v) : ['--help']),
     ],
   }))

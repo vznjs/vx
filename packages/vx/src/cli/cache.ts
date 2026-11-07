@@ -353,7 +353,9 @@ async function clearHeld(
     // clear: today's store stands in for the one it recorded.
     let store: string | undefined = storeRoot ?? undefined
     try {
-      const cache = new Cache(dir, undefined, undefined, undefined, 'preview', storeRoot)
+      // No store root: given today's, the index answers with it, never
+      // the store it recorded.
+      const cache = new Cache(dir, undefined, undefined, undefined, 'preview')
       store = cache.storeDir
       cache.close()
     } catch (err) {
@@ -370,7 +372,12 @@ async function clearHeld(
   if (parsed.global === true) {
     const vxHome = path.join(process.env['HOME'] || homedir(), '.vx')
     const ids = existsSync(vxHome) ? readdirSync(vxHome) : []
-    for (const id of ids) targets.push(path.join(vxHome, id, 'cache'))
+    // `~/.vx` is not vx's alone to fill: a `cache` directory with no
+    // store.db is someone else's and stays.
+    for (const id of ids) {
+      const store = path.join(vxHome, id, 'cache')
+      if (isStore(store)) targets.push(store)
+    }
   }
   // `cache.dir: '.vx'` (or the root) would take the workspace config and
   // the lock with it.
@@ -424,6 +431,10 @@ async function clearHeld(
       'out',
       freedStatus(dry, bytes, shown.length > 0),
       ...(shown.length > 0 ? [ui.text(...shown)] : []),
+      // The index holds the run history: said where the user decides.
+      ...(doomed.includes(path.resolve(dir))
+        ? [ui.text(`run history ${dry ? 'goes' : 'cleared'} too: vx last and vx why start over`)]
+        : []),
     )
   return 0
 }

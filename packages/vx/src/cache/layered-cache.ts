@@ -182,7 +182,9 @@ export interface RemoteCacheLayer {
    */
   hasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
   /**
-   * Fetch an artifact; `null` = miss. `body` is read once, by core,
+   * Fetch an artifact; `null` = miss, `undefined` = no answer (the layer
+   * is off, its refusal already said): a miss that keeps the hits the
+   * index holds. `body` is read once, by core,
    * straight into the local cache — an HTTP wire returns its `fetch`
    * `Response`, a chunked wire `new Response(stream)`, bytes in hand
    * `new Blob([bytes])`. `durationMs` is the producing task's duration
@@ -190,7 +192,9 @@ export interface RemoteCacheLayer {
    * nothing and the read is a miss, so a layer can check bytes as they pass
    * (a digest, a signature) and refuse at the end.
    */
-  get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
+  get(
+    hash: string,
+  ): Promise<{ body: Blob | Response; durationMs: number | undefined } | null | undefined>
   /**
    * Store an artifact (fire-and-forget from LayeredCache's perspective).
    * `body` is file-backed (`Bun.file`) when the local store holds the

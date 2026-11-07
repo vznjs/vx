@@ -39,7 +39,11 @@ and key derivation logic live here.
 - `fs-clock.ts` — how far the workspace's file system clock runs behind
   this process's, measured once a run; `racyWindowMs` adds it.
 - `output-index.ts` — `OutputIndex`: `output_files` / `output_dirs` rows
-  and the two proofs a hit runs before skipping a restore.
+  and the two proofs a hit runs before skipping a restore. The batched
+  `getMany` hands both batch reads its live hashes as one JSON array,
+  each hash once, and the rows are joined from it: an `IN (SELECT …
+json_each(?))` builds a lookup of every hash first (~3 ms of 8,002
+  hits, 2026-11-07).
 - `run-history.ts` — `RunHistory`: `runs` + `invocations` writes (one
   transaction per run, plus one per streamed batch of hits), the SQL
   binders, and the 30-day retention (run by a prune only, never a run's
@@ -348,8 +352,8 @@ export interface CacheEntry {
   outputFiles: string[] // project-relative POSIX paths
   outputRows?: OutputFileRow[] // the rows behind outputFiles, when the layer had them
   outputDirRows?: OutputDirRow[] // the directory short-circuit's rows, from getMany
-  stdout: string // the output log: both streams in order (output-log.ts)
-  storedAt: string // ISO timestamp
+  stdout: string // the output log: both streams in order (output-log.ts); a local entry reads it on access
+  storedAt: string // ISO timestamp; a local entry formats it on access
   source?: 'local' | 'remote' // (LayeredCache) which layer served the hit
   sizeBytes?: number // the artifact's compressed size, from the index
   fetchMs?: number // (LayeredCache) a remote hit this run pulled: download + ingest
@@ -428,7 +432,7 @@ export interface FoldMemo {
 // index handle from `indexDb(cache)`, never from a `Cache` member.
 export function indexDb(cache: Cache): Database
 // Wait until no other connection has `<storeDir>/store.db` open (a run in
-// any checkout holds it start to end; WAL connections keep a shared lock),
+// any checkout holds it from its run lock to its end; WAL connections keep a shared lock),
 // then hold it alone until the release. Nothing to hold without the file.
 export function holdStore(storeDir: string, log: (line: string) => void): Promise<() => void>
 // The files a second connection writes a run's hits through; undefined
@@ -684,7 +688,16 @@ layer carries it as it carried stdout (v42).
 process cannot pair its rows with the other bytes. The rows a probe
 held (X-162) serve it only while the blob's `at` is the one the probe
 read; a re-save or renewal since moves it and the rows are read again
-in the blob's snapshot. `pinArtifact()`
+in the blob's snapshot. With the rows held, no transaction is opened:
+an inline artifact is its blob read alone (one statement is its own
+snapshot), and a file artifact whose tree stands is read with no
+statement at all, since an inline save moves the tree aside in the
+commit that adds its blob (2026-11-07: ~70 ms of a 1,600-restore run's
+main thread). The tree's inode is taken once, before the copy, and
+asked again after it to catch a swap; the project directory and the
+staging directory are each stat'ed once per restore, and the copy-out
+asks what stands at each path synchronously, on dentries the walk just
+looked up. `pinArtifact()`
 (the upload's body) hands an inline artifact over as a `Blob` of its
 bytes, read once; a file as a private hard link.
 
@@ -716,7 +729,13 @@ Reads via `get()` are non-blocking thanks to WAL.
   and throws `ArtifactVanishedError` the same way (A-52). So is one
   holding an unsafe name or an escape by name (`ArchiveSecurityError`,
   as the `CorruptArtifactError`'s cause): the save proved every name
-  safe, so the bytes changed since (X-115). A directory on the tree side that links out of the
+  safe, so the bytes changed since (X-115). A file artifact (tar or
+  tree) has no blob `at`, so a re-save in another process after the
+  probe pairs the probe's held rows with the new bytes: a failure whose
+  entry's rows changed since restores once more on the rows read now,
+  and an entry is dropped only while its rows, checked under the write
+  lock, are the ones that failed, so another process's fresh entry is
+  never dropped (a miss instead). A directory on the tree side that links out of the
   anchor is the tree's fault, not the artifact's: a `UserError` naming
   the link and its target (it is kept, never written through). A link
   that stays inside the anchor is written through, a dangling one too:
@@ -726,7 +745,10 @@ Reads via `get()` are non-blocking thanks to WAL.
   A path that resolves into the anchor's own `.git` (any case) is
   refused as a link out is (a deeper `.git` is an output, as by name), and an artifact's link into one is an
   `ArchiveSecurityError` (`writableUnder` in util, the rule the output
-  clean holds a glob root's link and a recorded row to as well).
+  clean holds a glob root's link and a recorded row to as well). An
+  artifact's link is out when its target, read segment by segment from
+  the link's directory, steps above the anchor at any point, even if it
+  comes back (`linkRefused`, which the save asks too).
   A path holding a backslash is resolved link by link (`realOf`): Bun's
   `realpath` answers ENOENT for any such path.
   A directory where an entry holds a file (one `dist/**` covers and the
@@ -744,9 +766,13 @@ Reads via `get()` are non-blocking thanks to WAL.
   us.
 - Marks the hash touched; `accessed_at` (the LRU order `prune`'s
   `maxBytes` evicts by) is written in one batch at prune, stats or close.
-- Pure SQL: stdout from its `entry_stdout` row (one LEFT JOIN on the
-  entry; none for an empty one), `outputFiles` from the
-  `output_files` rows. The artifact is not opened — the caller decides
+- Pure SQL: `outputFiles` from the `output_files` rows. The log is
+  `CacheEntry.stdout`, a getter: a compressed log of up to 4 KiB comes
+  with the entry (one LEFT JOIN; none for an empty one) and is
+  decompressed on access; a larger one is read from its `entry_stdout`
+  row on access. A warm run probes every key in one batch and replays
+  the hits later, so each log is held only while its hit replays: 500
+  hits printing 1 MiB each held 3.4 GB RSS, now 0.2 GB. Read it once. The artifact is not opened — the caller decides
   when to call `restoreOutputs`.
 
 ## Run history & stats
@@ -835,10 +861,9 @@ pass, stats read, run record and config-evaluation read or write passes
 through `guard` (A-8). Before, every task of a run failed on it as an
 "internal error" and `vx cache clean` printed a stack. The open that drops them records it:
 `Cache.schemaReset` carries a `SchemaReset`, `{ from, to }`, on that one open (null on
-every later one). A `CACHE_VERSION` bump alone keeps the index, so
-`Cache.formatChange` carries `{ from, to }` on the open that first sees
-the new version (from `schema_meta.cache_version`; a store with entries
-and no record reads `an earlier format`). Neither is printed, nor is a
+every later one). A `CACHE_VERSION` bump alone keeps the index and
+records the new version in `schema_meta.cache_version`; every key moves,
+so each cached task misses once. Neither is printed, nor is a
 shared store moved to or fallen back from: the cache is vx's to keep
 (2026-10-06; `tests/schema-reset-notice.test.ts`). A new
 `CacheKeyInput` field that is **NOT folded** (a pure side-channel like

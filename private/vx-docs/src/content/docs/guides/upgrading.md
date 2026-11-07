@@ -9,7 +9,23 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
-## vx-cache: type put's meta with replace
+## settings: refuse a size with no unit, as durations are
+
+a size setting with no unit is refused; write '32KiB'.
+
+## cache: let a remote layer's get answer undefined for no answer
+
+RemoteCacheLayer.get may return undefined (no answer), so a caller that tests only for null must treat undefined as a miss too.
+
+## cache: clean only vx stores under ~/.vx; name failed saves once
+
+Cache.formatChange is gone; it was never read.
+
+## graph: refuse configs that fold no upstream or clean sources
+
+a negation-only inputs.tasks list, and an exact pkg#task entry naming only a transitive dependency, are now refused.
+
+## close affected, sandbox, summary and migrate bugs from the hunt
 
 VxCacheLayer.put's meta parameter carries replace.
 
