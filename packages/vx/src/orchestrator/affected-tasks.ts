@@ -141,7 +141,9 @@ export function affectedRoots(
         if (visited.has(target)) continue
         visited.add(target)
         if (holds(target)) continue
-        if (changes.projects.has(target)) {
+        // A loaded project without the task folds nothing into the key; the
+        // holders past it seed as nodes of their own.
+        if (!projects.has(target) && changes.projects.has(target)) {
           seeds?.set(n.id, { kind: 'package', project: target })
           return true
         }

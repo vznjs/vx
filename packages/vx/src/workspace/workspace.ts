@@ -786,6 +786,7 @@ export function projectNameProblem(name: string): string | null {
     return walk
   }
   if (f.withDeps || f.withDependents || f.onlyDeps || f.onlyDependents) return walk
+  if (f.within !== undefined) return "ends in '{…}', which a filter reads as a directory"
   if (f.gitSince !== undefined)
     return `ends in "[${f.gitSince}]", which a filter reads as a git range`
   if (f.tag === true) return "starts with 'tag:', which a filter reads as a tag selector"

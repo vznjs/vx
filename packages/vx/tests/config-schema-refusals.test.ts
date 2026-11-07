@@ -412,6 +412,8 @@ describe('task refusals the sweep found unheld (item 653)', () => {
       ['b.*', "holds '*', which makes it a pattern"],
       ['^gen', "starts with '^', which names dependencies' tasks or negates"],
       ['!gen', "starts with '!', which names dependencies' tasks or negates"],
+      // `vx run -x` read it as a flag.
+      ['-x', "starts with '-', which the CLI reads as a flag"],
       // Printed raw by the status line, `ESC ]0;` retitled the terminal.
       ['b\x1b]0;x\x07', 'holds a control character'],
       ['b\rc', 'holds a control character'],
@@ -1163,6 +1165,8 @@ describe('project name', () => {
     ['ui[2]', 'ends in "[2]", which a filter reads as a git range'],
     ['./ui', 'reads as a directory to a filter'],
     ['{ui}', 'reads as a directory to a filter'],
+    // `ui{x}` read as the projects named `ui` in directory `x`.
+    ['ui{x}', "ends in '{…}', which a filter reads as a directory"],
   ])('refuses %j, which dependsOn or --filter cannot name', (name, why) => {
     expect(refusal(name)).toBe(
       `${CFG}: \`name\` ${JSON.stringify(name)} ${why} — dependsOn, --filter and the CLI could not name the project. Rename it.`,

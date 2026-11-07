@@ -99,7 +99,8 @@ referenced by `dependsOn`, by `inputs.tasks`, and by the CLI
 (`vx run <taskName>` or `vx run <pkg>#<taskName>`), so a name those
 could not spell is refused at load: an empty one, one with surrounding
 whitespace, one holding `#` (the project separator) or `*` (a pattern),
-and one starting with `^` (dependencies' tasks) or `!` (a negation).
+and one starting with `^` (dependencies' tasks), `!` (a negation) or
+`-` (a CLI flag).
 A task or project name holding a control character (`ESC`, `\r`) is
 refused too: vx prints names raw, and one could retitle the terminal.
 
@@ -107,7 +108,7 @@ refused too: vx prints names raw, and one could retitle the terminal.
 spell it: surrounding whitespace, a `#`, a `*` (a pattern), a leading
 `^` (dependencies' tasks) or `!` (an exclusion), a leading `tag:`, a
 leading or trailing `...` (a dependency walk), a trailing `[<ref>]` (a
-git range), or a directory form (`./x`, `{x}`). A name a plugin gives
+git range), or a directory form (`./x`, `{x}`, `x{dir}`). A name a plugin gives
 and a project's path name are held to the same rule.
 
 `tags` label the project for selection: `--filter tag:<name>` selects

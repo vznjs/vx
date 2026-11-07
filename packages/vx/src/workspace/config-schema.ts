@@ -1715,8 +1715,8 @@ function isEnvName(name: unknown): name is string {
  * A task name `dependsOn`, `inputs.tasks` and the CLI can name. Each
  * refused shape loaded and could not be referenced: `x#y` read as project
  * `x`, `^gen` as every dependency's `gen`, a `*` as a pattern, `''` ran
- * under `--all` as `a#` and `vx run a#` refused it, and a padded name was
- * trimmed away by the reader (item 1000).
+ * under `--all` as `a#` and `vx run a#` refused it, `-x` as a flag, and a
+ * padded name was trimmed away by the reader (item 1000).
  */
 function assertTaskName(name: string, configPath: string): void {
   const why = taskNameProblem(name)
@@ -1739,9 +1739,11 @@ export function taskNameProblem(name: string): string | null {
           ? "holds '*', which makes it a pattern"
           : name.startsWith('^') || name.startsWith('!')
             ? `starts with '${name[0]}', which names dependencies' tasks or negates`
-            : hasControl(name)
-              ? 'holds a control character'
-              : null
+            : name.startsWith('-')
+              ? "starts with '-', which the CLI reads as a flag"
+              : hasControl(name)
+                ? 'holds a control character'
+                : null
 }
 
 /**

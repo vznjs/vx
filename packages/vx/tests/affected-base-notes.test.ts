@@ -481,6 +481,20 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     ])
   }, 30_000)
 
+  it('an edit no project holds keeps "nothing affected", without "no change against HEAD"', async () => {
+    // The note claimed a clean tree whenever no project was selected, though
+    // a tracked root file no task declares had been edited.
+    await writeFile(path.join(root, 'README.md'), 'r1\n')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'readme')
+    await writeFile(path.join(root, 'README.md'), 'r2\n')
+    const r = vx(root, 'run', 'build', '--affected=HEAD')
+    expect({ exitCode: r.exitCode, out: r.out.trim() }).toEqual({
+      exitCode: 0,
+      out: noticed('vx run: nothing affected since HEAD', 'info').trimEnd(),
+    })
+  })
+
   it('no origin/HEAD and no parent commit: no base at all, exit 1', () => {
     const r = vx(root, 'run', 'build', '--affected')
     expect(r.exitCode).toBe(1)

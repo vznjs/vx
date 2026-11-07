@@ -31,6 +31,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'affected-head-range',
     'affected-linked-inputs',
     'affected-moves',
+    'affected-pass-through',
     'affected-shallow',
     'affected-sparse-tasks',
     'affected-submodule',

@@ -479,6 +479,9 @@ export async function resolveFilters(
   // Every `[<since>]` filter's diff, started above, is in before the pure
   // applyFilters pass runs.
   const affectedByFilter = new Map<(typeof parsed)[number], Set<string>>()
+  // The diffs that named a change, though maybe in no project: a root file
+  // no task declares. Then the tree is not clean against HEAD.
+  const changedAny = new Set<(typeof parsed)[number]>()
   let changes: AffectedChanges | undefined
   for (const [f, diff] of diffs) {
     try {
@@ -489,6 +492,7 @@ export async function resolveFilters(
       } else {
         changes = answer
         names = changes.projects
+        if (changes.changed.length > 0 || changes.nested !== undefined) changedAny.add(f)
         // A `graph` plugin may tie any task to a changed path (an edge, an
         // input), and the run alone builds that graph: every project is a
         // candidate, and the run keeps the tasks its final graph reaches.
@@ -569,7 +573,7 @@ export async function resolveFilters(
         // `HEAD` asked by name checks uncommitted work: "HEAD is HEAD itself"
         // read as nonsense for a valid question.
         const hint =
-          self === undefined
+          self === undefined || (self === 'HEAD' && includes.some((f) => changedAny.has(f)))
             ? ''
             : self === 'HEAD'
               ? ' — the working tree has no change against HEAD; to compare commits, use the branch you merge into (--affected=origin/main) or the previous commit (--affected=HEAD~1)'
