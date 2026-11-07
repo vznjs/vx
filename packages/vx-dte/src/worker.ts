@@ -717,6 +717,13 @@ function cpuTimes(): [number, number] {
   return [total - idle, total]
 }
 
+function selfAvg(from: NodeJS.CpuUsage, since: number): { self?: number } {
+  const ms = performance.now() - since
+  if (ms <= 0) return {}
+  const u = process.cpuUsage(from)
+  return { self: Math.round(((u.user + u.system) / 1000 / ms) * 1000) / 1000 }
+}
+
 /**
  * The share of a core each runnable thread gets now: the machine's cores
  * over the threads Linux has runnable (`procs_running`, less the one
@@ -756,6 +763,8 @@ export function loadMeter(
 } {
   let last = times()
   const first = last
+  const self = process.cpuUsage()
+  const since = performance.now()
   let cpu = 0
   const timer = setInterval(() => {
     const next = times()
@@ -798,6 +807,7 @@ export function loadMeter(
         cpu: Math.round(cpu * 100) / 100,
         memory: os.totalmem() - available(),
         ...(total > 0 ? { avg: Math.round(((t[0] - first[0]) / total) * cores * 100) / 100 } : {}),
+        ...selfAvg(self, since),
       }
     },
     mark: () => ({ ...crowd, times: times() }),

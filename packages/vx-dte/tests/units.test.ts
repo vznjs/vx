@@ -1310,6 +1310,26 @@ it('says each worker’s machine busy average from the loads it sent', async () 
   expect(rows.find((r) => r.includes('used avg'))).toContain('· machine avg 3.0 ·')
 })
 
+// 2026-11-07: utilization read the tasks' CPU alone, 54% of machines 85%
+// busy, and could not say whether a run had room left.
+it('says cpu utilization from the machine, not from its tasks alone', async () => {
+  const h = await harness(new Map([node('t1')]))
+  const a = await h.worker(4)
+  void h.o.execute(h.req('t1'))
+  expect(await a.batches()).toEqual([['t1']])
+  await Bun.sleep(20)
+  await a.say({ type: 'ran', task: 't1', load: { cpu: 3, memory: 0, avg: 3, self: 0.2 } })
+  await a.finish('t1')
+  await Bun.sleep(50)
+  await h.stop()
+  const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
+  const worker = rows.find((r) => r.trim().startsWith('cpu utilization'))
+  expect(worker).toContain('cpu utilization machine 75% · tasks 0% · worker 5%')
+  expect(rows.find((r) => r.includes('total'))).toContain(
+    'cpu utilization machine 75% · tasks 0% · worker 5%',
+  )
+})
+
 it('says no worker started once a run that needed none is over', async () => {
   const h = await harness(new Map([node('t1')]))
   expect(h.o.footer()).toEqual([])
@@ -4286,8 +4306,12 @@ it('a machine’s usage: peaks of tasks at once, averages over its time online',
     memoryPeak: 300,
     memoryAvg: 87.5,
     utilization: 0.25,
+    tasksUtilization: 0.25,
     cpuMs: 4000,
+    workMs: 4000,
+    workCoreMs: 4000,
     bookedAvg: 0,
+    machineAvg: undefined,
   })
 })
 

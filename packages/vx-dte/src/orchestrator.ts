@@ -656,6 +656,7 @@ export class Orchestrator {
       const a = to.get(job.req.taskId)!.a
       job.worker = a.id
       job.sentAt = performance.now()
+      a.usage.sent(job.sentAt)
       a.busy.set(job.req.taskId, job)
       job.held = {
         cores: Math.min(this.booking(job.need).cores, a.cores),
@@ -863,7 +864,9 @@ export class Orchestrator {
     if (load === undefined) return
     a.load = { cpu: Number(load.cpu) || 0, memory: Number(load.memory) || 0, at: performance.now() }
     const avg = Number(load.avg)
-    if (Number.isFinite(avg) && avg >= 0) a.usage.machineAvg = avg
+    const self = Number(load.self)
+    if (Number.isFinite(avg) && avg >= 0)
+      a.usage.machine(avg, Number.isFinite(self) && self >= 0 ? self : undefined, a.load.at)
     const tasks = Number(load.tasks)
     this.trace.load(a.label, a.load.cpu, a.load.at, Number.isFinite(tasks) ? tasks : undefined)
   }
@@ -2331,13 +2334,18 @@ export class Orchestrator {
     // Once over, what each did, under its line.
     const usage = new Map<string, readonly string[]>()
     let cpuMs = 0
+    let tasksMs = 0
+    let workerMs: number | undefined
     let coreMs = 0
     if (this.ended)
       for (const a of all) {
         resources(a.label, a.reported.cores, a.reported.memory, a.declared)
         const st = a.usage.stats(a.cores, this.endedAt)
-        cpuMs += st.cpuMs
-        coreMs += a.cores * st.onlineMs
+        cpuMs += st.workCoreMs
+        tasksMs += st.tasksUtilization * a.cores * st.workMs
+        if (st.workerUtilization !== undefined)
+          workerMs = (workerMs ?? 0) + st.workerUtilization * a.cores * st.workMs
+        coreMs += a.cores * st.workMs
         usage.set(a.label, describe(st, a.usage))
       }
     return [
@@ -2415,7 +2423,7 @@ export class Orchestrator {
         ? [
             [
               '',
-              `${'total'.padEnd(width)}  cpu utilization ${percent(cpuMs / coreMs)}${this.needMs < LEARN_MS ? '' : ` · tasks used ${percent(this.usedMs / this.needMs)} of their history`}`,
+              `${'total'.padEnd(width)}  ${utilization(cpuMs / coreMs, tasksMs / coreMs, workerMs === undefined ? undefined : workerMs / coreMs)}${this.needMs < LEARN_MS ? '' : ` · tasks used ${percent(this.usedMs / this.needMs)} of their history`}`,
             ] as [string, ui.Inline],
           ]
         : []),
@@ -2583,11 +2591,17 @@ function upstream(nodes: ReadonlyMap<string, TaskNode> | undefined, id: string):
   return out
 }
 
+/** Core-time busy over core-time had, from first send to last end: its machine, its tasks, its worker. */
+function utilization(machine: number, tasks: number, worker: number | undefined): string {
+  return `cpu utilization machine ${percent(machine)} · tasks ${percent(tasks)}${worker === undefined ? '' : ` · worker ${percent(worker)}`}`
+}
+
 /** A worker's run, spelled out: time, CPU, memory and the relay. */
 function describe(st: UsageStats, u: Usage): string[] {
   return [
     `online ${seconds(st.onlineMs)} · busy ${seconds(st.busyMs)} · idle ${seconds(Math.max(0, st.onlineMs - st.busyMs))}`,
-    `cpu peak ${st.cpuPeak.toFixed(1)} · used avg ${st.cpuAvg.toFixed(1)} cores${st.machineAvg === undefined ? '' : ` · machine avg ${st.machineAvg.toFixed(1)}`} · booked avg ${st.bookedAvg.toFixed(1)} · cpu utilization ${percent(st.utilization)}`,
+    `cpu peak ${st.cpuPeak.toFixed(1)} · used avg ${st.cpuAvg.toFixed(1)} cores${st.machineAvg === undefined ? '' : ` · machine avg ${st.machineAvg.toFixed(1)}`} · booked avg ${st.bookedAvg.toFixed(1)}`,
+    utilization(st.utilization, st.tasksUtilization, st.workerUtilization),
     // No task said what it held: `memory peak 0 B` would be a claim.
     ...(st.memoryPeak > 0
       ? [`memory peak ${bytes(st.memoryPeak)} · avg ${bytes(st.memoryAvg)}`]

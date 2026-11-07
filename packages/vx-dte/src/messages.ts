@@ -153,6 +153,8 @@ export interface Load {
    * `cpu` (one that sent 3, each as a task started, read 0.6 of 2.0 used).
    */
   readonly avg?: number
+  /** Cores the worker's own process used on average since it started: what the run's bookkeeping costs it. */
+  readonly self?: number
   /** When it was read, by the worker's clock: its task times are read against it. */
   readonly at?: number
 }
