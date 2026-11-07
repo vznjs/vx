@@ -21,7 +21,13 @@ import {
   relPosix,
   UserError,
 } from '../util/index.js'
-import { gitTop, WORKSPACE_CONFIG_FILENAMES, workspaceFile, workspaceRootOf } from '../handoff.js'
+import {
+  gitTop,
+  WORKSPACE_CONFIG_FILENAMES,
+  workspaceFile,
+  workspaceFileBroken,
+  workspaceRootOf,
+} from '../handoff.js'
 import { canonicalDir } from './canonical-dir.js'
 import { parseFilter } from './filter.js'
 import { repoIdOf } from './repo-id.js'
@@ -86,6 +92,7 @@ export async function findWorkspaceRoot(
       { code: 'VX_E_NO_WORKSPACE', message: `${headline} — run \`vx init\` to create one` },
     )
   }
+  if (workspaceFileBroken(file)) await refuseNotAFile(file)
   const root = workspaceRootOf(file)
   if (uid !== 0 && root !== start && (await gitTop(start)) === null) {
     // The link itself and the `.vx` holding it, not what a link names: a
@@ -108,6 +115,22 @@ export async function findWorkspaceRoot(
     }
   }
   return root
+}
+
+/**
+ * Refuses a config path that is no file: it marks a root or a project all
+ * the same, so skipping it ran nothing there and said nothing. Learned by
+ * `lstat` here, off the normal path.
+ */
+async function refuseNotAFile(file: string): Promise<never> {
+  const link = await stat(file).then(
+    () => false,
+    () => true,
+  )
+  throw new UserError(
+    `${file}: is ${link ? 'a broken link' : 'not a file'} — fix or remove it`,
+    'VX_E_CONFIG',
+  )
 }
 
 /**
@@ -265,11 +288,16 @@ export interface ProjectConfigs {
 export async function findProjectConfigs(root: string): Promise<ProjectConfigs> {
   const inGit = (await gitTop(root)) !== null
   const rels = inGit ? await gitConfigs(root) : await scanConfigs(root)
-  const nested: string[] = []
-  for (const rel of rels) {
+  // Each on disk, a broken link included, as the root walk takes one: git
+  // lists a tracked one deleted from the worktree, which marks no root.
+  const marks = rels.filter((rel) => {
     const at = rel.lastIndexOf('/.vx/')
-    if (at > 0 && WORKSPACE_RANK.has(rel.slice(at + 1))) nested.push(rel.slice(0, at))
-  }
+    return at > 0 && WORKSPACE_RANK.has(rel.slice(at + 1))
+  })
+  const onDisk = await Promise.all(marks.map((rel) => entryAt(path.join(root, rel))))
+  const nested = marks
+    .filter((_, i) => onDisk[i])
+    .map((rel) => rel.slice(0, rel.lastIndexOf('/.vx/')))
   if (inGit) nested.push(...(await unlistedNested(root, rels, nested)))
   const byDir = new Map<string, string[]>()
   const reviewed: string[] = []
@@ -286,8 +314,10 @@ export async function findProjectConfigs(root: string): Promise<ProjectConfigs> 
   }
   const shadowed: { file: string; read: string }[] = []
   // The files among `names` (ranked), the first of them the one read: git
-  // lists a tracked config deleted from the worktree, and a directory may
-  // carry a config's name. Every other file is shadowed, said by `vx lock`.
+  // lists a tracked config deleted from the worktree, which is skipped.
+  // Every other file is shadowed, said by `vx lock`. With no file, an entry
+  // by a config's name (a broken link, a directory) is refused, as the root
+  // walk refuses one: skipped, its project was in no lock and nothing said so.
   const firstFile = async (
     dir: string,
     names: string[],
@@ -297,6 +327,9 @@ export async function findProjectConfigs(root: string): Promise<ProjectConfigs> 
     const files = (
       await Promise.all(names.map(async (n) => ((await isFile(path.join(dir, n))) ? n : null)))
     ).filter((n) => n !== null)
+    if (files.length === 0)
+      for (const n of names)
+        if (await entryAt(path.join(dir, n))) await refuseNotAFile(path.join(dir, n))
     for (const n of files.slice(1))
       shadowed.push({ file: path.join(dir, n), read: path.join(dir, files[0]!) })
     return files[0] === undefined ? null : path.join(dir, files[0])
@@ -366,6 +399,17 @@ async function unlistedNested(
     ),
   )
   return found.filter((d) => d !== null)
+}
+
+/** An entry by that name, whatever it is (`lstat`): a broken link counts. */
+async function entryAt(p: string): Promise<boolean> {
+  try {
+    await lstat(p)
+    return true
+  } catch (err) {
+    if (isOutOfFds(err)) throw err
+    return false
+  }
 }
 
 async function isFile(p: string): Promise<boolean> {

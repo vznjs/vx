@@ -113,11 +113,10 @@ describe('a run reads each root file once', () => {
       expect(ops).toEqual({
         // The root lookup's git bound: the fixture is the top-level.
         '.git/HEAD': ['exists'],
-        // The root lookup probes by precedence (three absent names, then the
-        // file), and the loader reads the file it found.
+        // The root lookup probes the name `vx init` writes, lists `.vx` (no
+        // probe of the names it lacks), then stats the file; the loader
+        // reads the file it found.
         '.vx/workspace.ts': ['exists'],
-        '.vx/workspace.mts': ['exists'],
-        '.vx/workspace.js': ['exists'],
         '.vx/workspace.mjs': ['exists', 'bytes'],
         // The projects and their configs come from the lock.
         '.vx/projects.lock.json': ['exists', 'text'],

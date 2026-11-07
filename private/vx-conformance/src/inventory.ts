@@ -199,6 +199,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'watch-workspace-file-gone',
     'whole-second-stamps',
     'wildcard-depends',
+    'workspace-file-broken',
     'workspace-files',
     'workspace-files-nested-repo',
     'workspace-path-chars',

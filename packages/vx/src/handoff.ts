@@ -2,8 +2,9 @@
 // from the workspace root, the one lookup every verb shares. Here for
 // the compiled binary installed by hand; an npm install's launcher
 // (npm-launcher.sh) walks the same way and `exec`s, which Bun cannot. The
-// walk runs before anything else loads, through `Bun.file(…).exists()`:
-// importing `node:fs` alone was ~1.1 ms of a 4 ms start (2026-10-13).
+// walk runs before anything else loads, through `Bun.Glob` and
+// `Bun.file(…).exists()`: importing `node:fs` alone was ~1.1 ms of a 4 ms
+// start (2026-10-13).
 
 /** `vx upgrade -g`: moves only the global vx, so it never hands off (2026-10-16). */
 export function upgradesOnlyItself(argv: readonly string[]): boolean {
@@ -85,21 +86,55 @@ export function workspaceFile(dir: string): Promise<string | null> {
 /** vx wrote a workspace config (`vx init`): what was learned before it is stale. */
 export function workspaceFileWritten(): void {
   files.clear()
+  broken.clear()
+}
+
+const workspaceNames = new Bun.Glob('workspace.*')
+const broken = new Set<string>()
+
+/**
+ * The workspace config in `d`'s `.vx`: the first of the names that is a
+ * file, else the first entry by one of them (a broken link, a directory),
+ * which marks the root all the same, as `vx lock`'s discovery counts it,
+ * and is refused there ({@link workspaceFileBroken}). A level without
+ * one costs a stat and a failed open, where a stat per name was six:
+ * 9 us against 15 us from three levels down, 1 us at a root holding
+ * `.vx/workspace.ts` either way (min of 2000, 2026-11-07).
+ */
+async function workspaceEntryIn(d: string): Promise<string | null> {
+  // The name `vx init` writes, first: at the root, the stat it always was.
+  const first = `${d}/${WORKSPACE_CONFIG_FILENAMES[0]}`
+  if (await Bun.file(first).exists()) return first
+  let names: string[]
+  try {
+    names = [...workspaceNames.scanSync({ cwd: `${d}/.vx`, onlyFiles: false })]
+  } catch {
+    return null
+  }
+  const ranked = WORKSPACE_CONFIG_FILENAMES.filter((n) => names.includes(n.slice(4)))
+  if (ranked.length === 0) return null
+  // `exists()` is false for a directory and a broken link.
+  for (const name of ranked)
+    if (name !== WORKSPACE_CONFIG_FILENAMES[0] && (await Bun.file(`${d}/${name}`).exists()))
+      return `${d}/${name}`
+  const file = `${d}/${ranked[0]}`
+  broken.add(file)
+  return file
+}
+
+/** The workspace config {@link workspaceFile} found is no file: a broken link, a directory. */
+export function workspaceFileBroken(file: string): boolean {
+  return broken.has(file)
 }
 
 async function findWorkspaceFile(start: string): Promise<string | null> {
   let top = await gitTop(start)
   const passed: string[] = []
   let found: string | null = null
-  walk: for (let d = start; ; d = d.slice(0, d.lastIndexOf('/'))) {
+  for (let d = start; ; d = d.slice(0, d.lastIndexOf('/'))) {
     passed.push(d || '/')
-    for (const name of WORKSPACE_CONFIG_FILENAMES) {
-      const file = `${d}/${name}`
-      if (await Bun.file(file).exists()) {
-        found = file
-        break walk
-      }
-    }
+    found = await workspaceEntryIn(d)
+    if (found !== null) break
     if (d === '') break
     if (d === top) {
       // A submodule whose `.git` is a directory (added from a clone, not

@@ -111,6 +111,23 @@ describe.skipIf(!loaderPresent)('npm-launcher.sh hands off', () => {
     expect(run(bare)).toBe(`outer [${globalLauncher}] run a`)
   })
 
+  it('a .vx/workspace.* that is a broken link or a directory stops the walk, as vx stops', () => {
+    // vx refuses it there; handing off to the install above ran the outer root's vx.
+    const outer = path.join(root, 'outer-broken')
+    install(path.join(outer, 'node_modules'), 'outer')
+    mkdirSync(path.join(outer, '.vx'), { recursive: true })
+    writeFileSync(path.join(outer, '.vx/workspace.ts'), '')
+    for (const [name, plant] of [
+      ['link', (at: string) => symlinkSync('../nowhere.ts', at)],
+      ['dir', (at: string) => mkdirSync(at)],
+    ] as const) {
+      const inner = path.join(outer, name)
+      mkdirSync(path.join(inner, '.vx'), { recursive: true })
+      plant(path.join(inner, '.vx/workspace.mjs'))
+      expect(run(inner)).toBe('global [] run a')
+    }
+  })
+
   it("from a submodule to the superproject's install; a worktree's .git file stops the walk", () => {
     const sup = path.join(root, 'super')
     mkdirSync(path.join(sup, '.git'), { recursive: true })

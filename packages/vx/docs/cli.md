@@ -2227,7 +2227,10 @@ worktree is its own, a submodule's too; a submodule, its `.git` a file
 or a directory, looks on into its superproject), and
 outside git it looks up to `/`. Nothing else marks the root: not a
 `package.json`, `pnpm-workspace.yaml` or a lockfile (2026-10-13).
-Without one, every verb but `vx init` stops with `VX_E_NO_WORKSPACE`;
+Any entry by one of those names marks the root: one that is a broken
+link or a directory, with no file beside it, is refused by name
+(`<path>: is a broken link — fix or remove it`), not walked past, as
+`vx lock` counts it a nested workspace. Without one, every verb but `vx init` stops with `VX_E_NO_WORKSPACE`;
 `vx init` writes one (`@vzn/vx-migrate` beside a `turbo.json` or
 `nx.json`). A project inside the
 root is a directory holding a `vx.config.*`, which `vx lock` finds
