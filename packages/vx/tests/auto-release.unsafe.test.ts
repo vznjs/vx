@@ -127,16 +127,22 @@ describe('the publishing workflows', () => {
       'refs/tags/${{ inputs.tag }}',
       'refs/tags/${{ inputs.tag }}',
     ])
-    expect(checkouts('npm.yml')).toEqual([
-      "${{ github.event.inputs.ref && format('refs/tags/{0}', github.event.inputs.ref) || '' }}",
-      "${{ github.event.inputs.ref && format('refs/tags/{0}', github.event.inputs.ref) || '' }}",
-    ])
+    expect(checkouts('npm.yml')).toEqual(
+      Array(3).fill(
+        "${{ github.event.inputs.ref && format('refs/tags/{0}', github.event.inputs.ref) || '' }}",
+      ),
+    )
   })
 
   // npm's trusted publisher, bound to this environment, takes a token
-  // only from a job the environment's branch rule admitted.
+  // only from a job the environment's branch rule admitted. The images
+  // job pushes to ghcr with the job token, which npm never sees.
   it('publish to npm from the npm environment', () => {
-    const jobs = Object.values(parse('npm.yml').jobs ?? {})
-    expect(jobs.map((j) => j.environment)).toEqual(['npm', 'npm'])
+    const jobs = Object.entries(parse('npm.yml').jobs ?? {})
+    expect(jobs.map(([name, j]) => [name, j.environment])).toEqual([
+      ['darwin', 'npm'],
+      ['publish', 'npm'],
+      ['images', undefined],
+    ])
   })
 })
