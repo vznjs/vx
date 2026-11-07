@@ -680,9 +680,8 @@ child split at its `=` or not at all. A `passThrough` or `define` name is
 also a shell variable name, `[A-Za-z_][A-Za-z0-9_]*`: the task runs under
 `sh -c`, and dash (Linux's `sh`) drops any other name from the environment
 it hands the command, so `my.var` reached a task on macOS and never on
-Linux. `inputs.env` takes any such name without a control character
-(a newline in a name broke every line that named it): the key reads it
-from vx's own environment.
+Linux. `inputs.env` takes any such name: the key reads it from vx's
+own environment.
 
 vx also sets `npm_execpath` to the workspace's package manager (the root
 `package.json`'s `packageManager`, else its lockfile, found on the root's
@@ -1150,7 +1149,7 @@ Semantics:
   every invalid byte alike. Pipe binary output through a hash or `od`.
 - **A process the command leaves running does not hold the run.** As a
   task's output is (`POST_EXIT_DRAIN_MS`), the probe's pipes are read
-  for 250 ms after its shell exits, then the reads stop and the probe's
+  for `250ms` after its shell exits, then the reads stop and the probe's
   process group is killed. The answer is what was read: the shell has
   exited, so that is all it printed, and what a leftover child prints
   later is not part of it. `sleep 30 & echo x` answers `x` at once;

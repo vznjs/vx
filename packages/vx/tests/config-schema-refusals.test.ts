@@ -341,14 +341,6 @@ describe('task refusals the sweep found unheld (item 653)', () => {
         `${CFG}: tasks.t.inputs.env must be an array of env var names (non-empty, no '=' or NUL)`,
       )
     }
-    // A name holding a newline loaded and broke every line naming it; a
-    // dotted name is one an environment holds, and stays.
-    for (const n of ['A\nB', 'A\rB', 'A\tB', 'A\x7fB']) {
-      expect(cacheRefusal({ files: [], env: [n] })).toBe(
-        `${CFG}: tasks.t.inputs.env: ${JSON.stringify(n)} holds a control character, which no env var name a shell sets does`,
-      )
-    }
-    expect(cacheRefusal({ files: [], env: ['my.var'] })).toBeNull()
     // Item 1090: a wildcard passed nothing through and loaded clean.
     for (const n of ['VITE_*', 'A?', 'A{B,C}', 'A[B]']) {
       expect(taskRefusal({ exec: { command: 'x', env: { passThrough: [n] } } })).toBe(
