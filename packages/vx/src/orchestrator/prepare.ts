@@ -1073,7 +1073,7 @@ export function workspaceCachePolicy(
     return parseCachePolicy(spec)
   } catch (err) {
     throw new UserError(
-      `.vx/workspace: \`cache.policy\`: ${err instanceof Error ? err.message : String(err)}`,
+      `.vx/workspace: \`cache.policy\` ${err instanceof Error ? err.message : String(err)}`,
       'VX_E_CONFIG',
     )
   }

@@ -23,8 +23,8 @@ import {
 } from '../workspace/index.js'
 import type { WorkspaceConfig } from '../config.js'
 import { atPath, SETTINGS } from '../settings.js'
-import { lazyGitEnumeration, type LazyGitEnumeration } from '../cache/index.js'
-import { relPosix, UserError } from '../util/index.js'
+import { lazyGitEnumeration, type LazyGitEnumeration, parseCachePolicy } from '../cache/index.js'
+import { isUserError, relPosix, UserError } from '../util/index.js'
 import {
   cacheScopeError,
   isCacheScope,
@@ -35,6 +35,7 @@ import {
   validateWorkspace,
 } from '../workspace/index.js'
 import { DEFAULT_BUILD, parseDependencySpec } from '../graph/index.js'
+import { workspaceFile } from '../handoff.js'
 import { applyConfigHooks, applyDiscoverHooks, applyProjectHooks, hasHook } from './plugin-host.js'
 import type { BranchFacts, VxPlugin } from './plugin.js'
 
@@ -54,6 +55,18 @@ export async function loadWorkspacePlugins(
   settingPlugins: ReadonlyMap<string, string>
 }> {
   const loaded = await loadWorkspaceConfig(workspaceRoot)
+  const policy = loaded?.cache?.policy
+  if (policy !== undefined) {
+    // The grammar is the cache module's, which the schema may not import:
+    // checked here, where the file is known, so the refusal is framed.
+    try {
+      parseCachePolicy(policy)
+    } catch (err) {
+      const file = await workspaceFile(workspaceRoot)
+      if (!isUserError(err) || file === null) throw err
+      throw new UserError(`${file}: \`cache.policy\` ${err.message}`, 'VX_E_CONFIG')
+    }
+  }
   const plugins = (loaded?.plugins ?? []) as readonly VxPlugin[]
   const branch: BranchFacts = {}
   const settingPlugins = new Map<string, string>()

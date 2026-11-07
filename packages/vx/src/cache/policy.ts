@@ -1,7 +1,7 @@
 // The run-level cache policy: four axes (local/remote × read/write) and
 // the `--cache-policy=<spec>` grammar that sets them. Pure data + parsing; no I/O.
 
-import { UserError } from '../util/index.js'
+import { nearest, UserError } from '../util/index.js'
 
 /**
  * Independent read/write control over the two cache layers (local +
@@ -63,7 +63,11 @@ export function parseCachePolicy(spec: string, base: CachePolicy = FULL_CACHE_PO
     const layer = seg.slice(0, colon)
     const flags = seg.slice(colon + 1)
     if (layer !== 'local' && layer !== 'remote') {
-      throw new UserError(`invalid layer '${layer}': expected 'local' or 'remote'`)
+      const near = nearest(layer, ['local', 'remote'])
+      throw new UserError(
+        `invalid layer '${layer}': expected 'local' or 'remote'` +
+          (near === undefined ? '' : ` — did you mean '${near}'?`),
+      )
     }
     if (seen.has(layer)) {
       throw new UserError(`layer '${layer}' specified twice`)
