@@ -559,7 +559,15 @@ nothing is cut, but it is still in the task's process group when the
 shell exits, and the same warning names it. A leftover of a failed
 attempt withholds its retry's save too: it may write into what the
 retry produces. Under a Linux sandbox the
-leftover dies with the task's pid namespace instead. Turbo waits for the pipe instead,
+leftover dies with the task's pid namespace instead, `setsid` or not.
+Unsandboxed, or under macOS's sandbox, a leftover that also left the
+group (`setsid`, a daemon that double-forks) and holds no pipe is not
+seen: the task is saved with its outputs as they stood at exit, and a
+hit replays that. vx does not chase it: macOS keeps nothing that ties
+such a process to the task that started it, Linux's ways (a child
+subreaper, a cgroup) work only there, and either would also take a
+shared daemon a task starts (sccache, Gradle's, Bazel's server) for a
+leftover and stop that task's saves. Turbo waits for the pipe instead,
 which a leftover server holds forever. A task whose output matters
 waits for what it starts (`wait`).
 
