@@ -24,7 +24,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import {
   beginEvalRound,
   configEvalWorkerCount,
@@ -803,6 +803,27 @@ describe('the evaluation deadline', () => {
       5000,
     )
     expect(after).toBe('RESOLVED {"tasks":{"ok":{}}}')
+  }, 30_000)
+
+  it('names a config still evaluating once, at the notice mark, before the budget', async () => {
+    process.env[BUDGET_ENV] = '1500ms'
+    process.env['VX_TEST_CONFIG_EVAL_NOTICE'] = '200ms'
+    let err = ''
+    const spy = spyOn(process.stderr, 'write').mockImplementation((chunk: string | Uint8Array) => {
+      err += String(chunk)
+      return true
+    })
+    try {
+      const file = await write(HANG)
+      const wedged = await settleOrHang(evaluateConfigFresh(file), 5000)
+      expect({ wedged, err }).toEqual({
+        wedged: 'REJECTED config worker did not answer within 1500ms',
+        err: `! vx  Project config ${file} still evaluating after 200 ms; vx gives up at 1.5 s (VX_CONFIG_WORKER_TIMEOUT)\n`,
+      })
+    } finally {
+      spy.mockRestore()
+      delete process.env['VX_TEST_CONFIG_EVAL_NOTICE']
+    }
   }, 30_000)
 
   it('a deadline inside a held round retires the wedged worker, so the next config loads (D-17)', async () => {

@@ -13,6 +13,7 @@
 
 import { rename, rm } from 'node:fs/promises'
 import path from 'node:path'
+import { directoryInTheWay } from '../util/index.js'
 import type { ProjectMeta } from './workspace.js'
 import { lockKey } from './lockfile.js'
 import { type LoadReads, readOnce } from './load-reads.js'
@@ -102,7 +103,7 @@ export async function writeDependenciesLock(root: string, lock: DependenciesLock
     const e = err as NodeJS.ErrnoException
     if (typeof e.message === 'string') e.message = e.message.split(tmp).join(file)
     if (e.path === tmp) e.path = file
-    throw err
+    throw directoryInTheWay(err, DEPENDENCIES_LOCK_NAME)
   }
 }
 
