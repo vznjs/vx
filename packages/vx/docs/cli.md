@@ -1155,8 +1155,8 @@ typical executed duration under `usual` (`~p50` over its recent non-hit
 runs in the local `cache.db`). The `predicted` field forecasts the run: `wall` is the longest dependency
 chain of would-run cost (cache hits restore near-instantly and count
 as 0), `total execution` is the sum across would-run tasks. Tasks with
-no history count as 0 and are called out (`N tasks without history
-(+?)`) — the totals are honest lower bounds. The field is omitted
+no timing (no executed success yet) count as 0 and are called out (`N tasks
+never timed (+?)`) — the totals are honest lower bounds. The field is omitted
 when nothing would run or when no would-run task has history.
 
 **Placement.** Each row's `worker` is where the task would land: the
@@ -1854,17 +1854,21 @@ $ vx cache clean
   .vx/cache
   /home/me/.vx/3f2a9c01b4d5e6f7/cache
 
+  run history cleared too: vx last and vx why start over
+
 $ vx cache clean --global --dry
 › vx cache clean  would free 3.1 GB (dry run)
 
   .vx/cache
   /home/me/.vx/3f2a9c01b4d5e6f7/cache
   /home/me/.vx/9b8e7d6c5a4f3e2d/cache
+
+  run history goes too: vx last and vx why start over
 ```
 
 It waits for a `vx run` on this workspace to finish first (the run's
 lock), and for every vx process holding a store it deletes open (a run
-in another checkout of the repository), as a trim does. With `--format json` it prints
+in another checkout of the workspace), as a trim does. With `--format json` it prints
 `{ dry, cleared, bytesFreed }` (`schemas/cache.json`), `cleared`
 listing the directories.
 
@@ -2917,7 +2921,8 @@ on stderr (`no projects`) and names `vx init`.
 `vx info` prints one screen of facts about the workspace and this
 machine, for bug reports and sanity checks. The task count and the
 sandbox row's declared count come from the same load a run uses: the
-lock, plugin stages included. `vx info` evaluates no config; with no
+lock, plugin stages included. A default build is no declared task and is
+not counted. `vx info` evaluates no config; with no
 lock the `projects` row reads `—` and `projects lock` says `no`; with one a
 run would refuse, `projects` reads `—` and `projects lock` says `refused:` and
 why (`lockError` in JSON, where the counts are zero). A broken config is `vx lock`'s to report.
@@ -3426,7 +3431,7 @@ run shows: the median of the task's last five timings on the branch,
 else on any branch), p99 of the executed successes, pass and hit rate, failure mode (`stable`,
 `flaky-recoverable`, `flaky-fatal`), the largest peak RSS and the mean CPU
 parallelism (a hit counts what its producing run used), one table row
-per task. A task id narrows to that task, a task name to it in every
+per task, in the run grid's units (`3.6MB`, cpu `127%`, `—` where unknown). A task id narrows to that task, a task name to it in every
 project; one the window has no run of is refused, exit 1. The branch is
 `--branch`, else `VX_RUN_BRANCH`, else git's, then the CI provider's, as
 a run's. With `--format json` it is `{ window, branch, stats }`, each row `{ taskId, runs,

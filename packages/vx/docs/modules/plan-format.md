@@ -53,7 +53,7 @@ left out, the words are plain. The cache key is in `--dry=json`.
  ⏺︎               — run     no-cache                            0 local        @vzn/vx#dev
 
   tasks      4 planned · 2 cache hits (1 local, 1 remote, 12 MB) · 1 would run · 1 no-cache
-  predicted  ~4.20s wall · ~4.20s total execution · 1 task without history (+?)
+  predicted  ~4.20s wall · ~4.20s total execution · 1 task never timed (+?)
 ```
 
 Glyphs and words, as the run's rows use them:

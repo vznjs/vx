@@ -171,7 +171,7 @@ describe('formatPlanText — time prediction', () => {
     )
   })
 
-  it('counts would-run tasks without history as unknown (+?)', () => {
+  it('counts would-run tasks never timed as unknown (+?): a failed run times nothing', () => {
     const plan: RunPlan = {
       tasks: [
         task('a#build', 'miss', 'bbbbbbbb22222222', [], undefined, 1200),
@@ -181,7 +181,7 @@ describe('formatPlanText — time prediction', () => {
     }
     const out = formatPlanText(plan)
     expect(out).toContain('predicted  ~1.20s wall')
-    expect(out).toContain('1 task without history (+?)')
+    expect(out).toContain('1 task never timed (+?)')
     // Its usual cell is unknown, as a run's row says it, not blank.
     expect(out.split('\n').find((l) => l.endsWith(' a#fresh'))).toMatch(/^ \S+ +\u2014 run /)
   })

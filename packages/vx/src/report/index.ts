@@ -33,6 +33,7 @@ export {
 export {
   formatPersistentList,
   formatRecordedRow,
+  formatSize,
   planList,
   type PlannedRow,
   taskList,

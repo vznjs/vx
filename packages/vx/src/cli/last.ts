@@ -28,7 +28,13 @@ import {
   shortRunId,
   taskLog,
 } from '../orchestrator/index.js'
-import { formatRecordedRow, outcomeWord, taskList, type WireEvent } from '../report/index.js'
+import {
+  formatRecordedRow,
+  formatSize,
+  outcomeWord,
+  taskList,
+  type WireEvent,
+} from '../report/index.js'
 import {
   formatElapsed,
   nearest,
@@ -67,6 +73,9 @@ interface LastArgs {
   follow?: boolean
   error?: string
 }
+
+/** The run grid's mark for a number history does not hold. */
+const UNKNOWN = '\u2014'
 
 /**
  * A run id as typed beside `--list`: a UUIDv7's first group (8 hex digits)
@@ -325,7 +334,9 @@ async function printStats(
     return 0
   }
   const pct = (r: number): string => `${Math.round(r * 100)}%`
-  const ms = (v: number | null): string => (v === null ? '-' : fmtMs(v))
+  // The run grid's units and its unknown mark, so one number reads alike
+  // in both: cpu `127%` (was `1.3×`), mem `3.6MB` (was `3.6 MB`), `—`.
+  const ms = (v: number | null): string => (v === null ? UNKNOWN : fmtMs(v))
   const right = (title: string): ui.Column => ({ title, align: 'right' })
   ui.print(
     'out',
@@ -351,8 +362,8 @@ async function printStats(
           pct(s.successRate),
           pct(s.hitRate),
           s.failureMode,
-          s.maxPeakRssBytes === null ? '-' : formatBytes(s.maxPeakRssBytes),
-          s.maxCpuParallelism === null ? '-' : `${s.maxCpuParallelism.toFixed(1)}×`,
+          s.maxPeakRssBytes === null ? UNKNOWN : formatSize(s.maxPeakRssBytes),
+          s.maxCpuParallelism === null ? UNKNOWN : pct(s.maxCpuParallelism),
         ]),
       ),
     ),

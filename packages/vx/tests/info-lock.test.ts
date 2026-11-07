@@ -96,13 +96,14 @@ describe('vx info reads the lock', () => {
     )
     const r = vx(root, 'info', '--format', 'json')
     const facts = JSON.parse(r.out) as Record<string, unknown>
-    // app's lint plus its default build, and bare's build and test.
+    // app's lint, and bare's build and test: app's default build is no
+    // declared task (`vx run build` denies it).
     expect({
       code: r.code,
       err: r.err,
       lockfile: facts['lockfile'],
       tasks: facts['tasks'],
-    }).toEqual({ code: 0, err: '', lockfile: true, tasks: 4 })
+    }).toEqual({ code: 0, err: '', lockfile: true, tasks: 3 })
   })
 
   // A lock a run refuses read "projects lock yes" with no task, and exit 0:
