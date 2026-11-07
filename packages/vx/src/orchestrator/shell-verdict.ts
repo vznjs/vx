@@ -25,9 +25,11 @@ export function shellVerdict(args: {
   signal?: string | number | undefined
   /** A sandboxed task's view: whether a file is hidden from it (no grant reads it). */
   hidden?: ((file: string) => boolean) | undefined
+  /** What the step wrote to stderr: the shell's own "not found" line names the word a compound command missed. */
+  stderr?: string | undefined
 }): string | undefined {
   if (args.code !== 127 && args.code !== 126) return signalVerdict(args.code, args.signal)
-  const word = execWord(args.command)
+  const word = execWord(args.command) ?? (args.code === 127 ? notFoundWord(args.stderr) : undefined)
   const what = word ?? 'a command in this task'
   if (word !== undefined && word.includes('/')) {
     const file = path.resolve(args.cwd, word)
@@ -57,6 +59,23 @@ export function shellVerdict(args: {
     return `[vx] exit 127 is the shell's "command not found": ${what} is not on this task's PATH — ${unnamed} holds "${path.delimiter}", which PATH reads as a separator, so vx cannot put it there; move the workspace to a path without "${path.delimiter}"`
   }
   return `[vx] exit 127 is the shell's "command not found": ${what} is not on this task's PATH — vx puts ${args.bins.join(' and ')} first and never a sibling project's bin; install it in this package or at the workspace root`
+}
+
+/**
+ * The word the shell's last "not found" line names: dash's `sh: 1: cat:
+ * not found`, bash's `bash: line 1: cat: command not found`. A command with
+ * a redirect or a `&&` has no one word to read from the command itself, and
+ * a hermetic task's hidden `cat` was told to be installed (almost every
+ * real command has one).
+ */
+function notFoundWord(stderr: string | undefined): string | undefined {
+  if (stderr === undefined) return undefined
+  const lines = stderr.trimEnd().split('\n')
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const m = /: ([^:]+): (?:command )?not found$/.exec(lines[i]!.trimEnd())
+    if (m !== null) return m[1]
+  }
+  return undefined
 }
 
 /** Why the shell could not run a file, read from the file. */
