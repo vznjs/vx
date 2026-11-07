@@ -487,11 +487,14 @@ export function cachedFetchJson(
     const res = await (fetchImpl ?? fetch)(url, { signal: AbortSignal.timeout(10_000) })
     if (!res.ok) throw new Error(`${url}: ${res.status}`)
     const body = await res.text()
+    // Parsed before it is kept: a 200 that is not JSON (a proxy's page) is
+    // not served to every token for the next ten minutes.
+    const json: unknown = JSON.parse(body)
     await cache.put(
       url,
       new Response(body, { headers: { 'cache-control': `max-age=${KEYS_TTL_S}` } }),
     )
-    return JSON.parse(body)
+    return json
   }
 }
 

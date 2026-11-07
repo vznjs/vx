@@ -16,7 +16,13 @@ import { mapTurboWorkspace, type TurboGlobal, type TurboMappedProject } from './
 import { rootTaskProject } from './turbo/turbo-reads.js'
 import { ROOT_ENGINES_PROBE } from './turbo/root-engines.js'
 import { relPosix } from './paths.js'
-import { gitIgnored, spareTrackedOutputs, trackedFiles, trackedKinds } from './tracked-outputs.js'
+import {
+  gitIgnored,
+  gitIgnoredUnder,
+  spareTrackedOutputs,
+  trackedFiles,
+  trackedKinds,
+} from './tracked-outputs.js'
 import { DOTENV_GLOBS_HEAD, DOTENV_PROBE, DOTENV_PROBE_TOP } from './dotenv-probe.js'
 import { adoptedToolNotes } from './workspace-notes.js'
 import { spelledNames } from './spelled-env.js'
@@ -54,6 +60,7 @@ export async function migrateTurbo(
     ownConfig: () => `vx.config.${format}`,
     sourceNames: (dirs) => spelledNames(root, dirs, tracked),
     ignored: (rels) => gitIgnored(root, rels),
+    ignoredUnder: (globs) => gitIgnoredUnder(root, globs),
     buildInfo: (rel, command) => tscBuildInfo(tsc.read, path.join(root, rel), command),
   })
   // A reader whose `!` hides a committed file under another task's output

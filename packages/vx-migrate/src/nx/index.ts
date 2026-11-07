@@ -53,7 +53,7 @@ export type {
 } from './nx-map.js'
 import { listDotenv } from './nx-dotenv.js'
 import { trackedKinds } from '../tracked-outputs.js'
-import { relPosix } from '../paths.js'
+import { isRecord, relPosix } from '../paths.js'
 import { memberProjects, withManifests } from '../manifests.js'
 import type { AdoptionMapping } from '../mapping-cache.js'
 import { yarnrcText } from '../script-command.js'
@@ -63,9 +63,33 @@ import { lockfilePlugin } from '../workspace-notes.js'
 const SNAPSHOT = 'nx-project-graph.json'
 /** What the snapshot was exported from (`graphInputKey`), beside it. */
 const SNAPSHOT_KEY = 'nx-project-graph.key'
-/** The files at the workspace root whose edit can move Nx's graph. */
+/**
+ * The files at the workspace root whose edit can move Nx's graph: Nx's own,
+ * and the tool configs an inferring `@nx/*` plugin reads (a root project's
+ * `jest.config.ts`, the `jest.preset.js` a project's extends).
+ */
 const ROOT_GRAPH_FILE =
-  /^(nx\.json|package\.json|\.nxignore|tsconfig[^/]*\.json|pnpm-workspace\.yaml|pnpm-lock\.yaml|package-lock\.json|yarn\.lock|bun\.lockb?)$/
+  /^(nx\.json|package\.json|\.nxignore|tsconfig[^/]*\.json|pnpm-workspace\.yaml|pnpm-lock\.yaml|package-lock\.json|yarn\.lock|bun\.lockb?|jest\.(config|preset)\.[cm]?[jt]s|\.eslintrc(\.[a-z]+)?|eslint\.config\.[cm]?[jt]s|(vite|vitest|playwright|cypress|webpack|rollup|rspack|next)\.config\.[cm]?[jt]s|vitest\.workspace\.[cm]?[jt]s)$/
+
+/**
+ * Whether a root-relative path can be part of a local plugin nx.json names
+ * by path (`./tools/plugin.js`, `{ plugin: './plugins/obj' }`): anything in
+ * the plugin's directory, where the modules it imports sit; one at the root
+ * is the file itself, with any extension, or its directory.
+ */
+function localPlugins(json: Record<string, unknown> | undefined): (p: string) => boolean {
+  const plugins = Array.isArray(json?.['plugins']) ? (json['plugins'] as unknown[]) : []
+  const tests = plugins.flatMap((e): ((p: string) => boolean)[] => {
+    const spec = typeof e === 'string' ? e : isRecord(e) ? e['plugin'] : undefined
+    if (typeof spec !== 'string' || !spec.startsWith('./')) return []
+    const file = path.posix.normalize(spec)
+    const dir = path.posix.dirname(file)
+    if (dir !== '.') return [(p) => p.startsWith(`${dir}/`)]
+    const stem = file.replace(/\.[^.]+$/, '')
+    return [(p) => p === file || p.startsWith(`${file}/`) || p.startsWith(`${stem}.`)]
+  })
+  return (p) => tests.some((t) => t(p))
+}
 
 export interface NxPluginOptions {
   /**
@@ -604,21 +628,23 @@ async function graphInputKey(
   // A `.gitignore` anywhere too: Nx's project walk honours each one, so an
   // edit between project roots hides or shows a project.
   const roots = dirs.map((d) => relPosix(root, d))
+  // A manifest needs no read of its own: git lists it when it is edited, and
+  // HEAD moves when an edit is committed (reading all 2,000 cost 50 ms at
+  // 1,000 projects). nx.json's chain does: a base may sit in node_modules,
+  // where git does not look.
+  const nxJson = await readNxJson(root).catch(() => null)
+  const plugin = localPlugins(nxJson?.json)
   const graphFile = (p: string): boolean =>
     p === 'project.json' ||
     p.endsWith('/project.json') ||
     p === '.gitignore' ||
     p.endsWith('/.gitignore') ||
     roots.some((r) => r === '' || p.startsWith(`${r}/`)) ||
-    (!p.includes('/') && ROOT_GRAPH_FILE.test(p))
+    (!p.includes('/') && ROOT_GRAPH_FILE.test(p)) ||
+    plugin(p)
   const listed = [
     ...new Set(changed.filter((p) => !inCache(p) && !nxCache(p) && !vxDir(p) && graphFile(p))),
   ]
-  // A manifest needs no read of its own: git lists it when it is edited, and
-  // HEAD moves when an edit is committed (reading all 2,000 cost 50 ms at
-  // 1,000 projects). nx.json's chain does: a base may sit in node_modules,
-  // where git does not look.
-  const nxJson = await readNxJson(root).catch(() => null)
   const files = [
     ...(nxJson?.files ?? [path.join(root, 'nx.json')]),
     ...listed.sort().map((p) => path.join(root, p)),

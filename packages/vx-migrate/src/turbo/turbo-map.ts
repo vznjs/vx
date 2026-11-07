@@ -281,6 +281,12 @@ export interface MapTurboOptions {
    */
   ignored?: (rels: readonly string[]) => Promise<ReadonlySet<string>>
   /**
+   * What git ignores under the root-relative globs' fixed prefixes
+   * (`gitIgnoredUnder`): files, and `dir/` for a directory ignored whole.
+   * Absent, an explicit glob keys none of them.
+   */
+  ignoredUnder?: (globs: readonly string[]) => Promise<readonly string[]>
+  /**
    * The `.tsbuildinfo` files a root-relative package's command writes,
    * relative to the package (`tscBuildInfo`). Absent, none.
    */
@@ -295,6 +301,12 @@ export interface MapTurboOptions {
 interface Literals {
   readonly inputs: Record<string, unknown>
   readonly rels: ReadonlyMap<string, Named>
+  /** The explicit globs, root-relative, with the list that holds them. */
+  readonly globs: ReadonlyMap<string, 'files' | 'workspaceFiles'>
+  /** The global `!` entries, which a preset spread may hide from the lists. */
+  readonly taken: readonly string[]
+  /** The package, root-relative (`files` entries are relative to it). */
+  readonly pkgDir: string
 }
 type Named = readonly ['files' | 'workspaceFiles' | null, string]
 
@@ -361,6 +373,70 @@ function keyIgnored(
   }
   const probes = (inputs.workspaceRuntime as unknown[] | undefined) ?? []
   inputs.workspaceRuntime = [...probes, ignoredFilesProbe(hits.map(([rel]) => rel))]
+}
+
+/**
+ * Turbo walks an explicit input glob on disk, gitignored files and all
+ * (`$TURBO_DEFAULT$` alone skips them); core's globs filter what git
+ * lists, so `src/**` over an ignored `src/gen.ts` keyed nothing and an
+ * edit replayed the old output. Each ignored path a glob matches is named
+ * outright, which core reads from disk: a file as itself, a directory
+ * ignored whole as the glob's rest under it (`src/out/**`). A file a `!`
+ * takes back stays out (core refuses a literal one covers).
+ */
+function keyIgnoredGlobbed(
+  l: Literals,
+  under: readonly string[],
+  projectDirs: readonly string[],
+): void {
+  // The lists as they stand: a sibling's output taken back since counts.
+  const current = (['files', 'workspaceFiles'] as const).flatMap((kind) =>
+    ((l.inputs[kind] as unknown[] | undefined) ?? []).flatMap((e) =>
+      typeof e === 'string' && e.startsWith('!')
+        ? [kind === 'files' && l.pkgDir !== '' ? `${l.pkgDir}/${e.slice(1)}` : e.slice(1)]
+        : [],
+    ),
+  )
+  const taken = [...l.taken, ...current].map((t) => new Bun.Glob(t))
+  for (const [glob, kind] of l.globs) {
+    const matcher = new Bun.Glob(glob)
+    const at = kind === 'files' && l.pkgDir !== '' ? `${l.pkgDir}/` : ''
+    for (const e of under) {
+      if (!e.startsWith(at)) continue
+      // A package nested in this one is another project, which core's
+      // globs stop at: its path is named from the workspace root.
+      const nested = at !== '' && projectDirs.some((d) => d.startsWith(at) && e.startsWith(`${d}/`))
+      const base = nested ? '' : at
+      const entry = e.endsWith('/')
+        ? globUnder(glob.slice(at.length), e.slice(at.length, -1))
+        : matcher.match(e) && !taken.some((t) => t.match(e))
+          ? literalGlob(e.slice(base.length))
+          : null
+      if (entry === null) continue
+      const into = nested ? 'workspaceFiles' : kind
+      const named = nested && e.endsWith('/') ? `${l.pkgDir}/${entry}` : entry
+      const list = (l.inputs[into] as unknown[] | undefined) ?? []
+      if (!list.includes(named)) l.inputs[into] = [...list, named]
+    }
+  }
+}
+
+/**
+ * `glob`'s rest below `dir`, which it reaches into (`a/**\/*.ts` under
+ * `a/gen`: `a/gen/**\/*.ts`), else null: the paths of the glob under it.
+ */
+function globUnder(glob: string, dir: string): string | null {
+  // A brace holding a `/` spans segments; such a glob is not split here.
+  if (/\{[^}]*\//.test(glob)) return null
+  const gs = glob.split('/')
+  const ds = dir.split('/')
+  for (let i = 0; i < ds.length; i++) {
+    const g = gs[i]
+    if (g === undefined) return null
+    if (g === '**') return [...ds.map(literalGlob), ...gs.slice(i)].join('/')
+    if (!new Bun.Glob(g).match(ds[i]!)) return null
+  }
+  return gs.length > ds.length ? [...ds.map(literalGlob), ...gs.slice(ds.length)].join('/') : null
 }
 
 async function readTurboJson(file: string, root: string): Promise<TurboJson> {
@@ -1583,6 +1659,14 @@ export async function mapTurboWorkspace(
   for (const e of opts.splice('inputs', globals.inputs))
     if (typeof e !== 'string') opaque.set(JSON.stringify(e), globals.inputs)
   excludeWorkspaceOutputs(root, projects, (e) => opaque.get(JSON.stringify(e)) ?? [])
+  // After every take-back: a path one takes back is not named back.
+  if (opts.ignoredUnder !== undefined) {
+    const under = await opts.ignoredUnder([
+      ...new Set(literals.tasks.flatMap((l) => [...l.globs.keys()])),
+    ])
+    const dirs = projects.map((p) => relPosix(root, p.dir)).filter((d) => d !== '')
+    if (under.length > 0) for (const l of literals.tasks) keyIgnoredGlobbed(l, under, dirs)
+  }
   pruneUnreachedPersistentNotes(projects, metas, opts.persistentTodo)
   pruneOrphanPersistentNotes(projects, opts.persistentTodo)
   refuseTaskNames(projects, 'task')
@@ -2180,8 +2264,17 @@ function buildTask(
   if (keyEnv.length > 0) inputs.env = keyEnv
   if (pkgDotenv) inputs.runtime = [pkgDotenvDeep ? DOTENV_PROBE : DOTENV_PROBE_TOP]
   if (wsDotenv.length > 0) inputs.workspaceRuntime = [dotenvGlobsProbe(wsDotenv) ?? DOTENV_PROBE]
-  for (const rel of rels.keys()) if (!isLiteral(rel)) rels.delete(rel)
-  literals.tasks.push({ inputs, rels })
+  const globs = new Map<string, 'files' | 'workspaceFiles'>()
+  for (const [rel, [kind]] of rels)
+    if (!isLiteral(rel)) {
+      rels.delete(rel)
+      if (kind !== null) globs.set(rel, kind)
+    }
+  const taken: string[] = []
+  for (const g of globalKept)
+    if (g.startsWith('!')) taken.push(g.slice(1))
+    else if (!isLiteral(g) && !globs.has(g)) globs.set(g, 'workspaceFiles')
+  literals.tasks.push({ inputs, rels, globs, taken, pkgDir: atRoot ? '' : pkgDir })
   // Turbo keys every task on its inputs, cached or not, and a dependant
   // folds that key: an uncached task's inputs still move its dependants.
   task.inputs = inputs
@@ -2275,12 +2368,8 @@ function buildTask(
   subtract('files', outputs.files as string[])
   subtract('workspaceFiles', ws)
   task.cache = true
-  if (rewritesManifest) {
-    task.inputs = {
-      ...(task.inputs as Record<string, unknown>),
-      stability: { strategy: 'mutable' },
-    }
-  }
+  // In place: the ignored-path passes hold this object.
+  if (rewritesManifest) inputs.stability = { strategy: 'mutable' }
 
   return { name, todos, task, uses }
 }

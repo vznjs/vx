@@ -281,4 +281,19 @@ describe('cachedFetchJson', () => {
     expect(net.seen).toEqual(['https://i/keys'])
     expect(JSON.parse(cache.held.get('https://i/keys')!)).toEqual({ keys: [2] })
   })
+
+  // A proxy's HTML page answered 200 once: kept, it failed every token on
+  // that edge 502 for the cache's ten minutes.
+  it('keeps nothing that is not JSON, so the next read asks again', async () => {
+    const cache = memCache()
+    let calls = 0
+    const fetchImpl = (async () =>
+      ++calls === 1
+        ? new Response('<html>')
+        : Response.json({ keys: [1] })) as unknown as typeof fetch
+    const read = cachedFetchJson(cache, fetchImpl)
+    await expect(read('https://i/keys', false)).rejects.toThrow()
+    expect([...cache.held.keys()]).toEqual([])
+    expect(await read('https://i/keys', false)).toEqual({ keys: [1] })
+  })
 })
