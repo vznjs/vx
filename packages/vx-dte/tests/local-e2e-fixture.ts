@@ -23,7 +23,7 @@ export async function setup(): Promise<void> {
     'package.json': JSON.stringify({ name: 'ws', private: true }),
     '.gitignore': 'out\n.vx/cache\n',
     '.vx/workspace.mjs': `import { dte, local } from ${JSON.stringify(DTE)}
-export default { plugins: [dte({ workers: { small: { max: 2, cpu: 1, memory: '1GB' } }, adapter: local() })] }
+export default { plugins: [dte({ workers: { linux: { machines: { small: { max: 2, cpu: 1, memory: '1GB' } } } }, adapter: local() })] }
 `,
     'a/vx.config.mjs': `export default { name: 'a', tasks: { gen: {
   exec: { command: 'mkdir -p out && echo made > out/a.txt' },

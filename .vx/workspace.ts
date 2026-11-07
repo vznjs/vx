@@ -36,9 +36,13 @@ export default defineWorkspace({
       // quarter of 975 small jobs waited 78-384 s for a runner, while
       // each run's own advice wanted 6-9 small (60 runs, 2026-11-07).
       workers: {
-        small: { max: 9, cpu: 4, memory: '16GB', platform: 'linux-x64' },
-        arm: { max: 1, cpu: 4, memory: '16GB', platform: 'linux-arm64' },
-        mac: { max: 4, cpu: 3, memory: '7GB', platform: 'darwin-arm64' },
+        hosted: {
+          machines: {
+            small: { max: 9, cpu: 4, memory: '16GB', platform: 'linux-x64' },
+            arm: { max: 1, cpu: 4, memory: '16GB', platform: 'linux-arm64' },
+            mac: { max: 4, cpu: 3, memory: '7GB', platform: 'darwin-arm64' },
+          },
+        },
       },
       adapter: githubWorkers({ env: { VX_CACHE_URL: cacheUrl } }),
     }),

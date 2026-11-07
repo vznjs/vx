@@ -21,8 +21,8 @@ starts no workers.
 ```mermaid
 flowchart LR
   R["vx run (your job)"] <-->|orders, status| Relay((relay))
-  Relay <--> W1["worker small#1"]
-  Relay <--> W2["worker small#2"]
+  Relay <--> W1["worker linux.small#1"]
+  Relay <--> W2["worker linux.small#2"]
   R <-->|outputs| C[(remote cache)]
   W1 <--> C
   W2 <--> C
@@ -70,20 +70,22 @@ export default defineWorkspace({
     vxCache({ url: 'https://vx-cache-server.acme.workers.dev', issuer: 'https://token.actions.githubusercontent.com', repository: 'acme/app' }),
     dte({
       relay: 'https://vx-dte-server.acme.workers.dev',
-      workers: { small: { max: 8, cpu: 4, memory: '16GB' } },
+      workers: {
+        linux: { machines: { small: { max: 8, cpu: 4, memory: '16GB' } } },
+      },
       adapter: github(),
     }),
   ],
 })
 ```
 
-`workers` names the kinds of worker the run may start. Here: up to 8
-`small` workers with 4 cores and 16 GB each, as GitHub's `ubuntu-latest`
-runner has for a public repository.
+`workers` names the **worker types** the run may start, and each type's
+**machines**. Here: one type, `linux`, of up to 8 `small` machines with
+4 cores and 16 GB each, as GitHub's `ubuntu-latest` has for a public repository.
 
 Declare what your runners really have: vx plans by it. For other
-runners, add a size and name its label:
-`github({ runsOn: { large: 'ubuntu-latest-16-cores' } })`.
+runners, add a machine and name its label:
+`github({ runsOn: { 'linux.large': 'ubuntu-latest-16-cores' } })`.
 
 ### 3. Write the workflows
 
@@ -143,7 +145,7 @@ export default defineWorkspace({
   plugins: [
     bun(),
     dte({
-      workers: { small: { max: 2, cpu: 1, memory: '1GB' } },
+      workers: { linux: { machines: { small: { max: 2, cpu: 1, memory: '1GB' } } } },
       adapter: local({ prepare: 'bun install' }),
     }),
   ],
@@ -192,13 +194,34 @@ run says the relay has no live run.
 
 - Every task runs on a worker, including one with `exec.remote: false`
   and an interactive one. Only cache hits restore on the run's machine.
+- A task with `exec.worker` runs only on that worker type. The rest go
+  to the first type that fits, so a type listed last only gets the tasks
+  no other can take.
 - A task no worker can take, such as one whose `exec.platforms` no
-  worker size offers, stops the run before any task starts.
+  machine offers, stops the run before any task starts.
 - A sandboxed task runs inside the same `exec.sandbox` on its worker.
 - A task's `exec.timeout` counts from its start on its worker, not from
   the wait for one.
 - A worker that is idle and that the rest of the run cannot keep busy
   leaves.
+
+### One task on another machine
+
+Run CI on Alpine, but Playwright on Ubuntu: give Ubuntu its own type,
+and name it on the task.
+
+```ts title=".vx/workspace.ts"
+workers: {
+  alpine: { machines: { small: { max: 8, cpu: 4, memory: '16GB' } } },
+  ubuntu: { machines: { small: { max: 2, cpu: 4, memory: '16GB' } } },
+},
+```
+
+```ts title="apps/web/vx.config.ts"
+e2e: { exec: { command: 'bunx playwright test', worker: 'ubuntu' } },
+```
+
+On your machine `worker` is ignored, and it never changes a cache key.
 
 vx can also send tasks to a Bazel REAPI worker pool you already run:
 [Remote execution](../remote-execution/).

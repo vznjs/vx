@@ -448,7 +448,7 @@ export function gitlabInit(options: GitlabOptions, setup: DteSetup): DteInit {
     // A matrix takes at most 200 jobs; a wave picks its slots.
     if (s.max === undefined || s.max < 1 || s.max > 200)
       throw new UserError(
-        `vx dte init: gitlab() needs workers.${s.name}.max, 1 to 200: its job is a matrix of that many slots`,
+        `vx dte init: gitlab() needs workers.${s.name.replace('.', '.machines.')}.max, 1 to 200: its job is a matrix of that many slots`,
       )
     const slots = Array.from({ length: s.max }, (_, i) => quoted(String(i + 1)))
     return `

@@ -96,7 +96,7 @@ const timings = definePlugin({ dir: ${JSON.stringify(dir)} }, {
   ).toEqual(['m#m1', 'm#m2', 'm#m3'])
   for (const r of tasks) {
     expect(r['status']).toBe('success')
-    expect(r['where']).toMatch(/^small#\d+$/)
+    expect(r['where']).toMatch(/^linux.small#\d+$/)
     expect(r['durationMs'] as number).toBeGreaterThanOrEqual(250)
     expect(typeof r['cpuMs']).toBe('number')
     expect(typeof r['rss']).toBe('number')
@@ -139,7 +139,7 @@ it('profiles a distributed run’s workers with --profile', async () => {
     }
   ).traceEvents
   const names = ev.filter((e) => e.ph === 'M' && e.name === 'process_name')
-  expect(names.map((e) => e.args?.name)).toEqual(['run', 'orchestrator', 'small#1'])
+  expect(names.map((e) => e.args?.name)).toEqual(['run', 'orchestrator', 'linux.small#1'])
   expect(ev.some((e) => e.ph === 'X' && e.cat === 'task' && e.name === 'b#use')).toBe(true)
   expect(ev.some((e) => e.ph === 'X' && e.name === 'warm-up')).toBe(true)
 }, 60_000)
@@ -156,8 +156,8 @@ it('brings a worker’s outputs back under --force', async () => {
 it('keeps an idle worker the rest of the run needs again', () => {
   const r = vx(['run', 'c#z1', 'c#z2'], 'e2e-lull')
   const out = r.stdout.toString() + r.stderr.toString()
-  expect([r.exitCode, out]).toEqual([0, expect.stringContaining('small#2')])
-  expect(out).not.toContain('small#3')
+  expect([r.exitCode, out]).toEqual([0, expect.stringContaining('linux.small#2')])
+  expect(out).not.toContain('linux.small#3')
 }, 60_000)
 
 // The footer prints after teardown: its ideal lost the graph there, and a
@@ -414,10 +414,10 @@ it('runs on a worker the adapter adopted, and starts none of its own', async () 
       `import { appendFileSync } from 'node:fs'
 import { dte } from ${JSON.stringify(DTE)}
 const adapter = {
-  adopt(worker) { worker('small#3', 'small') },
+  adopt(worker) { worker('linux.small#3', 'linux.small') },
   spawn(a) { appendFileSync(${JSON.stringify(spawns)}, a.id + '\\n') },
 }
-export default { plugins: [dte({ relay: ${JSON.stringify(url)}, workers: { small: { max: 1, cpu: 1, memory: '1GB' } }, adapter })] }
+export default { plugins: [dte({ relay: ${JSON.stringify(url)}, workers: { linux: { machines: { small: { max: 1, cpu: 1, memory: '1GB' } } } }, adapter })] }
 `,
     )
     Bun.spawnSync(
@@ -438,7 +438,7 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)}, workers: { small
       () =>
         Bun.spawn([process.execPath, CORE_BIN, 'dte', 'worker'], {
           cwd: root,
-          env: { ...shared, VX_DTE_WORKER: 'small#3' },
+          env: { ...shared, VX_DTE_WORKER: 'linux.small#3' },
           stdout: 'pipe',
           stderr: 'pipe',
         }),
@@ -447,7 +447,7 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)}, workers: { small
     const out = await new Response(run.stdout).text()
     expect([await run.exited, out]).toEqual([
       0,
-      expect.stringMatching(/└─ b#use · small#3 ── .*success/),
+      expect.stringMatching(/└─ b#use · linux.small#3 ── .*success/),
     ])
     expect((await worker).exited).toBe(0)
     expect(await Bun.file(spawns).exists()).toBe(false)
@@ -466,8 +466,8 @@ it('runs on a worker of another platform when its size names none', async () => 
     await writeFile(
       path.join(root, '.vx/workspace.mjs'),
       `import { dte } from ${JSON.stringify(DTE)}
-const adapter = { adopt(worker) { worker('mac#1', 'mac') }, spawn() {} }
-export default { plugins: [dte({ relay: ${JSON.stringify(url)}, workers: { mac: { max: 1, cpu: 1, memory: '1GB' } }, adapter })] }
+const adapter = { adopt(worker) { worker('linux.mac#1', 'linux.mac') }, spawn() {} }
+export default { plugins: [dte({ relay: ${JSON.stringify(url)}, workers: { linux: { machines: { mac: { max: 1, cpu: 1, memory: '1GB' } } } }, adapter })] }
 `,
     )
     // The worker says it runs elsewhere: its own `process.platform`.
@@ -499,7 +499,7 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)}, workers: { mac: 
       () =>
         Bun.spawn([process.execPath, '--preload', preload, CORE_BIN, 'dte', 'worker'], {
           cwd: root,
-          env: { ...shared, VX_DTE_WORKER: 'mac#1' },
+          env: { ...shared, VX_DTE_WORKER: 'linux.mac#1' },
           stdout: 'pipe',
           stderr: 'pipe',
         }),
@@ -508,7 +508,7 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)}, workers: { mac: 
     const out = await new Response(run.stdout).text()
     expect([await run.exited, out]).toEqual([
       0,
-      expect.stringMatching(/└─ b#use · mac#1 ── .*success/),
+      expect.stringMatching(/└─ b#use · linux.mac#1 ── .*success/),
     ])
     expect((await worker).exited).toBe(0)
   } finally {

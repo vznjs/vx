@@ -870,6 +870,7 @@ async function harness(
   more: {
     faulted?: () => void
     home?: string
+    joinedPlace?: (size: string | undefined, platform: string | undefined) => string | undefined
     stalled?: (waiting: string) => void
     stallMs?: number
     overdue?: (id: string) => void
@@ -1639,6 +1640,36 @@ it('a task on a platform goes only to a worker of it', async () => {
   }
 })
 
+// exec.worker (2026-11-07): with several worker types, a worker's type
+// rides its platform, so a Playwright task goes only to the Ubuntu one.
+it('a task of a worker type goes only to a worker of it on the same platform', async () => {
+  const h = await harness(new Map([node('t1')]), undefined, undefined, undefined, undefined, {
+    joinedPlace: (size, platform) =>
+      size === undefined ? platform : `${size.slice(0, size.indexOf('.'))}:${platform}`,
+  })
+  try {
+    const declared = (type: string) => ({
+      size: `${type}.small`,
+      cpu: 4,
+      memory: 100,
+      platform: 'linux-x64',
+      place: `${type}:linux-x64`,
+    })
+    h.o.spawned('alpine.small#1', declared('alpine'))
+    h.o.spawned('ubuntu.small#1', declared('ubuntu'))
+    const alpine = await h.worker(4, 'alpine.small#1', 'linux-x64')
+    const ubuntu = await h.worker(4, 'ubuntu.small#1', 'linux-x64')
+    await Bun.sleep(50)
+    void h.o.execute({ ...h.req('t1'), platform: 'ubuntu:linux-x64' })
+    expect(await ubuntu.batches()).toEqual([['t1']])
+    expect(h.o.planState(() => undefined, 0).workers.find((w) => w.id === alpine.id)?.idle).toBe(
+      true,
+    )
+  } finally {
+    await h.stop()
+  }
+})
+
 it('a task naming no platform goes only to a worker of the run’s home platform', async () => {
   const h = await harness(new Map([node('t1')]), undefined, undefined, undefined, undefined, {
     home: 'linux-x64',
@@ -1674,6 +1705,21 @@ it('plans a worker still starting, of a size naming no platform, as this machine
   } finally {
     await h.stop()
   }
+})
+
+it('dte() refuses a worker type with no machines, or a key it does not take', () => {
+  const adapter = { spawn() {} }
+  expect(refusal(() => dte({ workers: { ubuntu: { machines: {} } }, adapter }))).toContain(
+    'dte() option "workers.ubuntu.machines" must be machines by name',
+  )
+  expect(refusal(() => dte({ workers: { ubuntu: { machine: {} } as never }, adapter }))).toContain(
+    'dte() option "workers.ubuntu" has unknown option "machine"',
+  )
+  expect(
+    refusal(() =>
+      dte({ workers: { ubuntu: { machines: { x64: { cpu: 0, memory: '1GB' } } } }, adapter }),
+    ),
+  ).toContain('workers.ubuntu.machines.x64.cpu')
 })
 
 it('a run’s home platform is this machine’s only beside another it can start', () => {
@@ -3820,34 +3866,56 @@ it('refuses a header it cannot send, never printing a value', () => {
 
 it('refuses options it does not read and workers it cannot start', () => {
   const adapter = local()
-  const W = { s: { cpu: 1, memory: '1GB' } }
+  const W = { linux: { machines: { s: { cpu: 1, memory: '1GB' } } } }
   expect(refusal(() => dte({ workers: W, adapter, relays: 'x' } as never))).toContain(
     'dte() has unknown option "relays"',
   )
   // Each names the field and the value it got: one line for three fields named none.
-  expect(refusal(() => dte({ workers: { s: { max: 1, cpu: 0, memory: '1GB' } }, adapter }))).toBe(
-    'dte() option "workers.s.cpu" must be a whole number ≥ 1, got 0',
-  )
   expect(
-    refusal(() => dte({ workers: { s: { max: 1, cpu: 1, memory: '8 lots' } }, adapter })),
+    refusal(() =>
+      dte({ workers: { linux: { machines: { s: { max: 1, cpu: 0, memory: '1GB' } } } }, adapter }),
+    ),
+  ).toBe('dte() option "workers.linux.machines.s.cpu" must be a whole number ≥ 1, got 0')
+  expect(
+    refusal(() =>
+      dte({
+        workers: { linux: { machines: { s: { max: 1, cpu: 1, memory: '8 lots' } } } },
+        adapter,
+      }),
+    ),
   ).toBe(
-    `dte() option "workers.s.memory" must be bytes above 0 or a size such as '8GB', got "8 lots"`,
-  )
-  expect(refusal(() => dte({ workers: { s: { max: 1.5, cpu: 1, memory: '1GB' } }, adapter }))).toBe(
-    'dte() option "workers.s.max" must be a whole number ≥ 0, got 1.5',
+    `dte() option "workers.linux.machines.s.memory" must be bytes above 0 or a size such as '8GB', got "8 lots"`,
   )
   expect(
     refusal(() =>
-      dte({ workers: { s: { cpu: 1, memory: '1GB', platform: 'win32-x64' as never } }, adapter }),
+      dte({
+        workers: { linux: { machines: { s: { max: 1.5, cpu: 1, memory: '1GB' } } } },
+        adapter,
+      }),
+    ),
+  ).toBe('dte() option "workers.linux.machines.s.max" must be a whole number ≥ 0, got 1.5')
+  expect(
+    refusal(() =>
+      dte({
+        workers: {
+          linux: { machines: { s: { cpu: 1, memory: '1GB', platform: 'win32-x64' as never } } },
+        },
+        adapter,
+      }),
     ),
   ).toBe(
-    'dte() option "workers.s.platform" must be one of linux-x64, linux-arm64, darwin-x64, darwin-arm64, got "win32-x64"',
+    'dte() option "workers.linux.machines.s.platform" must be one of linux-x64, linux-arm64, darwin-x64, darwin-arm64, got "win32-x64"',
   )
   // A size's typo was read as nothing: `maxx: 2` started workers uncapped.
   expect(
-    refusal(() => dte({ workers: { s: { maxx: 2, cpu: 1, memory: '1GB' } as never }, adapter })),
+    refusal(() =>
+      dte({
+        workers: { linux: { machines: { s: { maxx: 2, cpu: 1, memory: '1GB' } as never } } },
+        adapter,
+      }),
+    ),
   ).toBe(
-    'dte() option "workers.s" has unknown option "maxx" (allowed: cpu, max, memory, platform) — did you mean max?',
+    'dte() option "workers.linux.machines.s" has unknown option "maxx" (allowed: cpu, max, memory, platform) — did you mean max?',
   )
   expect(
     refusal(() =>
@@ -3857,7 +3925,11 @@ it('refuses options it does not read and workers it cannot start', () => {
   expect(
     refusal(() =>
       dte({
-        workers: { s: { max: 1, cpu: 1, memory: '1GB', platform: undefined } as never },
+        workers: {
+          linux: {
+            machines: { s: { max: 1, cpu: 1, memory: '1GB', platform: undefined } as never },
+          },
+        },
         adapter,
       }),
     ),
@@ -3876,18 +3948,24 @@ it('refuses options it does not read and workers it cannot start', () => {
     'dte(): with no adapter, set relay: the workers that join it run the tasks',
   )
   expect(refusal(() => dte({ relay: 'http://relay.test' }))).toBe('taken')
-  expect(refusal(() => dte({ workers: { s: { cpu: 2, memory: '8GB' } }, adapter }))).toBe('taken')
+  expect(
+    refusal(() =>
+      dte({ workers: { linux: { machines: { s: { cpu: 2, memory: '8GB' } } } }, adapter }),
+    ),
+  ).toBe('taken')
   expect(refusal(() => local({ prepar: 'x' } as never))).toContain(
     'local() has unknown option "prepar"',
   )
   // An adapter with no size it may start ran nothing, and the run waited until killed.
   const none =
-    "dte(): workers names no size the adapter may start (one with max above 0), such as small: { cpu: 2, memory: '8GB' }"
+    "dte(): workers names no machine the adapter may start (one with max above 0), such as linux: { machines: { small: { cpu: 2, memory: '8GB' } } }"
   expect(refusal(() => dte({ workers: {}, adapter }))).toBe(none)
   expect(refusal(() => dte({ adapter }))).toBe(none)
-  expect(refusal(() => dte({ workers: { s: { max: 0, cpu: 1, memory: '1GB' } }, adapter }))).toBe(
-    none,
-  )
+  expect(
+    refusal(() =>
+      dte({ workers: { linux: { machines: { s: { max: 0, cpu: 1, memory: '1GB' } } } }, adapter }),
+    ),
+  ).toBe(none)
   expect(refusal(() => docker({} as never))).toBe(
     "docker() needs image: one with Bun and git, such as 'oven/bun:1.4' plus git",
   )
@@ -4038,9 +4116,14 @@ it('a worker size or unmeasured with a key dte() does not read is refused', () =
   // A typo of max left the size uncapped, without a word.
   const adapter = local()
   expect(
-    refusal(() => dte({ workers: { s: { cpu: 1, memory: '1GB', maxx: 2 } as never }, adapter })),
+    refusal(() =>
+      dte({
+        workers: { linux: { machines: { s: { cpu: 1, memory: '1GB', maxx: 2 } as never } } },
+        adapter,
+      }),
+    ),
   ).toBe(
-    'dte() option "workers.s" has unknown option "maxx" (allowed: cpu, max, memory, platform) — did you mean max?',
+    'dte() option "workers.linux.machines.s" has unknown option "maxx" (allowed: cpu, max, memory, platform) — did you mean max?',
   )
   expect(
     refusal(() =>
@@ -4079,7 +4162,7 @@ Bun.plugin({ name: 'seen', setup(b) {
   })
 } })
 const m = await import(process.argv[1])
-m.dte({ workers: { s: { cpu: 1, memory: '1GB' } }, adapter: m.local() })
+m.dte({ workers: { linux: { machines: { s: { cpu: 1, memory: '1GB' } } } }, adapter: m.local() })
 console.log(JSON.stringify(seen.sort()))
 `
   const p = Bun.spawnSync([

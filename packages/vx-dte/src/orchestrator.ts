@@ -159,6 +159,8 @@ export interface Declared {
   readonly memory: number
   /** Its size's platform: a worker reporting another is refused. None: planned as this machine's. */
   readonly platform?: string
+  /** Where tasks match it when the run has several worker types: `<type>:<platform>`. */
+  readonly place?: string
 }
 
 export interface OrchestratorOptions {
@@ -198,6 +200,11 @@ export interface OrchestratorOptions {
   readonly how?: Strategy
   /** The platform a task naming none runs on (`homeOf`). */
   readonly home?: string | undefined
+  /** A joined worker's place, by its size and the platform it reported: absent, the platform. */
+  readonly joinedPlace?: (
+    size: string | undefined,
+    platform: string | undefined,
+  ) => string | undefined
   /** No task began or ended for `stallMs`: what the run waits on, one line a task. */
   readonly stalled?: (waiting: string) => void
   /** A fault the run works around (a message the relay would not take); default stderr. */
@@ -234,6 +241,8 @@ const ADVICE: Record<WorkerAdvice['of'], readonly [label: string, note: string]>
   more: ['more', "past its sizes' max"],
   any: ['any', 'of any cores, the least core time'],
 }
+/** A platform as shown: a worker type's place (`ubuntu:linux-x64`) without its type, which its size names. */
+const bare = (platform: string): string => platform.slice(platform.indexOf(':') + 1)
 /** `3 × small (4c/16G linux)`. */
 const fleetText = (w: WorkerAdvice['workers'][number]): string =>
   `${w.count} × ${w.size === undefined ? '' : `${w.size} `}(${w.cores}c/${compact(w.memoryBytes)}${w.platform === undefined ? '' : ` ${w.platform}`})`
@@ -870,7 +879,8 @@ export class Orchestrator {
         !joined.has(id) &&
         !this.unstarted.has(id) &&
         !this.cancelled.has(id) &&
-        (platform === undefined || (declared.platform ?? hostPlatform()) === platform) &&
+        (platform === undefined ||
+          (declared.place ?? declared.platform ?? hostPlatform()) === platform) &&
         (declared.cpu > above.cores || declared.memory > above.memory)
       )
         return true
@@ -1516,7 +1526,7 @@ export class Orchestrator {
         cores,
         memory,
         reported: { cores: Number(info.cores), memory: Number(info.memory) },
-        platform,
+        platform: this.o.joinedPlace?.(spawn?.declared.size, platform) ?? platform,
         usedCores: 0,
         usedMemory: 0,
         label,
@@ -1746,7 +1756,7 @@ export class Orchestrator {
   }): void {
     const work = p.work?.map(
       (t) =>
-        `${t.id} ${t.ms === undefined ? '?' : Math.round(t.ms / 100) / 10}s ${Math.round(t.cores * 100) / 100}c${t.platform === undefined ? '' : ` ${t.platform}`}`,
+        `${t.id} ${t.ms === undefined ? '?' : Math.round(t.ms / 100) / 10}s ${Math.round(t.cores * 100) / 100}c${t.platform === undefined ? '' : ` ${bare(t.platform)}`}`,
     )
     const workers = p.workers.map((w) =>
       w.starting === true
@@ -1878,7 +1888,7 @@ export class Orchestrator {
           // A size naming none is planned as this machine's, as `dte()`
           // planned it: on no platform, no task naming one fit it, and the
           // next plan cancelled it.
-          platform: declared.platform ?? hostPlatform(),
+          platform: declared.place ?? declared.platform ?? hostPlatform(),
           size: declared.size,
           at: Math.max(
             0,
@@ -2127,7 +2137,7 @@ export class Orchestrator {
                 count: w.count,
                 cores: w.cores,
                 memoryBytes: w.memory,
-                ...(w.platform === undefined ? {} : { platform: w.platform }),
+                ...(w.platform === undefined ? {} : { platform: bare(w.platform) }),
                 ...(w.size === undefined || sizes.length === 0 ? {} : { size: w.size }),
               })),
             },

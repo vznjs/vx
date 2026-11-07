@@ -47,14 +47,14 @@ it('saves no entry for a task a stopped run cancelled, even on a 0 exit', async 
     await rm(tmp, { recursive: true, force: true })
   }
   const again = vx(['run', 'b#halt'], 'halt-2')
-  expect([again.exitCode, again.stdout.toString().includes('small#')]).toEqual([0, true])
+  expect([again.exitCode, again.stdout.toString().includes('linux.small#')]).toEqual([0, true])
 }, 60_000)
 
 it('a stopped run exits before its installed worktrees are removed', async () => {
   await writeFile(
     path.join(root, '.vx/workspace.mjs'),
     `import { dte, local } from ${JSON.stringify(DTE)}
-export default { plugins: [dte({ workers: { small: { max: 1, cpu: 1, memory: '1GB' } }, adapter: local({ prepare: 'mkdir nm && touch nm/a' }) })] }
+export default { plugins: [dte({ workers: { linux: { machines: { small: { max: 1, cpu: 1, memory: '1GB' } } } }, adapter: local({ prepare: 'mkdir nm && touch nm/a' }) })] }
 `,
   )
   Bun.spawnSync(
@@ -132,7 +132,7 @@ it("masks what a task's env.secret names out of the entry its worker uploads", a
 import { definePlugin } from ${JSON.stringify(CORE_INDEX)}
 import { dte, local } from ${JSON.stringify(DTE)}
 export default { plugins: [
-  dte({ workers: { small: { max: 1, cpu: 1, memory: '1GB' } }, adapter: local() }),
+  dte({ workers: { linux: { machines: { small: { max: 1, cpu: 1, memory: '1GB' } } } }, adapter: local() }),
   definePlugin({ dir: ${JSON.stringify(path.join(away, 'plugin'))} }, { cache: () => ({
     has: async (h) => (existsSync(${at('h')}) ? {} : null),
     get: async (h) => (existsSync(${at('h')}) ? { body: new Blob([readFileSync(${at('h')})]), durationMs: 1 } : null),
@@ -178,7 +178,7 @@ it('times a task from its start on the worker, not from the wait for one', async
   await writeFile(
     path.join(root, '.vx/workspace.mjs'),
     `import { dte, local } from ${JSON.stringify(DTE)}
-export default { plugins: [dte({ workers: { small: { max: 1, cpu: 1, memory: '1GB' } }, adapter: local({ prepare: 'sleep 3' }) })] }
+export default { plugins: [dte({ workers: { linux: { machines: { small: { max: 1, cpu: 1, memory: '1GB' } } } }, adapter: local({ prepare: 'sleep 3' }) })] }
 `,
   )
   Bun.spawnSync(
@@ -227,7 +227,7 @@ it('saves no entry for a task that timed out, even on a 0 exit', async () => {
 it('saves no entry for a task that left a process running', async () => {
   for (const run of ['bg-1', 'bg-2']) {
     const r = vx(['run', 'b#bg'], run)
-    expect([run, r.exitCode, r.stdout.toString().includes('small#')]).toEqual([run, 0, true])
+    expect([run, r.exitCode, r.stdout.toString().includes('linux.small#')]).toEqual([run, 0, true])
   }
 }, 60_000)
 
@@ -239,7 +239,7 @@ it('fails a task whose outputs link out of its project, not its worker', async (
   const out = r.stdout.toString()
   expect(r.exitCode).toBe(1)
   // Its worker's result, not a fault: the line names the worker that ran it.
-  expect(out).toMatch(/└─ b#away · small#\d ── \(\d+ms\) failed \(exit 1\)/)
+  expect(out).toMatch(/└─ b#away · linux.small#\d ── \(\d+ms\) failed \(exit 1\)/)
   expect(out).toContain('leaves the project')
   expect(await readFile(path.join(root, 'a/out/a.txt'), 'utf8')).toBe('made\n')
 }, 60_000)
@@ -393,7 +393,7 @@ it('saves no entry under its key for a task that changed its input on its worker
     expect.stringContaining('`f/in.txt` changed after its key was taken'),
   ])
   const again = vx(['run', 'f#fmt'], 'fmt-2')
-  expect([again.exitCode, again.stdout.toString().includes('small#')]).toEqual([0, true])
+  expect([again.exitCode, again.stdout.toString().includes('linux.small#')]).toEqual([0, true])
 }, 60_000)
 
 // local() took a snapshot of its own at its first worker, after a hit had
@@ -412,7 +412,7 @@ it('local() checks out the run’s commit, not the tree as it is at its first wo
     cpu: 1,
     memory: 1e9,
     index: 1,
-    id: 'small#1',
+    id: 'linux.small#1',
     workspaceRoot: root,
     commit,
     env: {},
@@ -454,7 +454,7 @@ it('local() starts a worker at the workspace’s place in its repository', async
         cpu: 1,
         memory: 1e9,
         index: 1,
-        id: 'small#1',
+        id: 'linux.small#1',
         workspaceRoot: ws,
         commit: (await snapshot(ws)).commit,
         env: {},
@@ -491,7 +491,7 @@ it('local() starts workers again after a run closed it', async () => {
     cpu: 1,
     memory: 1e9,
     index: 1,
-    id: 'small#1',
+    id: 'linux.small#1',
     workspaceRoot: root,
     commit: (await snapshot(root)).commit,
     env: {},
@@ -525,7 +525,7 @@ it('local() stops a prepare’s whole process tree at close', async () => {
         cpu: 1,
         memory: 1e9,
         index: 1,
-        id: 'small#1',
+        id: 'linux.small#1',
         workspaceRoot: root,
         commit: (await snapshot(root)).commit,
         env: {},
@@ -547,7 +547,7 @@ it('says why a worker never joined, and fails the run when none can', async () =
   await writeFile(
     path.join(root, '.vx/workspace.mjs'),
     `import { dte, local } from ${JSON.stringify(DTE)}
-export default { plugins: [dte({ workers: { small: { max: 1, cpu: 1, memory: '1GB' } }, adapter: local({ prepare: 'echo no bun here >&2; exit 4' }) })] }
+export default { plugins: [dte({ workers: { linux: { machines: { small: { max: 1, cpu: 1, memory: '1GB' } } } }, adapter: local({ prepare: 'echo no bun here >&2; exit 4' }) })] }
 `,
   )
   Bun.spawnSync(
@@ -559,7 +559,7 @@ export default { plugins: [dte({ workers: { small: { max: 1, cpu: 1, memory: '1G
   const r = vx(['run', 'a#gen'], 'e2e-none')
   const out = r.stdout.toString() + r.stderr.toString()
   expect(r.exitCode).not.toBe(0)
-  expect(out).toMatch(/small#1  failed  prepare exited 4: no bun here/)
+  expect(out).toMatch(/linux.small#1  failed  prepare exited 4: no bun here/)
   expect(out).toContain('no worker could start')
   const log = out.match(/\(log: ([^)]+)\)/)?.[1]
   expect(log === undefined ? '' : await readFile(log, 'utf8')).toBe('no bun here\n')
@@ -572,7 +572,7 @@ it("says a prepare's reason it printed on stdout", async () => {
   await writeFile(
     path.join(root, '.vx/workspace.mjs'),
     `import { dte, local } from ${JSON.stringify(DTE)}
-export default { plugins: [dte({ workers: { small: { max: 1, cpu: 1, memory: '1GB' } }, adapter: local({ prepare: 'echo ERR_PNPM_NO_LOCKFILE none; exit 4' }) })] }
+export default { plugins: [dte({ workers: { linux: { machines: { small: { max: 1, cpu: 1, memory: '1GB' } } } }, adapter: local({ prepare: 'echo ERR_PNPM_NO_LOCKFILE none; exit 4' }) })] }
 `,
   )
   Bun.spawnSync(
@@ -583,7 +583,7 @@ export default { plugins: [dte({ workers: { small: { max: 1, cpu: 1, memory: '1G
   const out = r.stdout.toString() + r.stderr.toString()
   const log = out.match(/\(log: ([^)]+)\)/)?.[1]
   if (log !== undefined) await rm(path.dirname(log), { recursive: true, force: true })
-  expect(out).toMatch(/small#1  failed  prepare exited 4: ERR_PNPM_NO_LOCKFILE none/)
+  expect(out).toMatch(/linux.small#1  failed  prepare exited 4: ERR_PNPM_NO_LOCKFILE none/)
 }, 60_000)
 
 it('workers run the tracked files as they are, uncommitted changes too', async () => {
@@ -598,7 +598,7 @@ it('workers run the tracked files as they are, uncommitted changes too', async (
   await writeFile(ws, withDte)
   const r = vx(['run', 'a#gen'], 'e2e-dirty')
   const out = r.stdout.toString() + r.stderr.toString()
-  expect([r.exitCode, out]).toEqual([0, expect.stringContaining(' · small#')])
+  expect([r.exitCode, out]).toEqual([0, expect.stringContaining(' · linux.small#')])
   // Nothing was committed or reset to get there.
   expect(git('status', '--porcelain').stdout.toString()).toContain(' M .vx/workspace.mjs\n')
 }, 60_000)

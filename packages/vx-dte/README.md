@@ -113,7 +113,7 @@ import { dte, local } from '@vzn/vx-dte'
 export default defineWorkspace({
   plugins: [
     dte({
-      workers: { small: { max: 4, cpu: 2, memory: '8GB' } },
+      workers: { linux: { machines: { small: { max: 4, cpu: 2, memory: '8GB' } } } },
       adapter: local({ prepare: 'bun install' }),
     }),
   ],
@@ -160,7 +160,7 @@ names its error line and the log of its whole stderr and all `prepare` printed:
 
 ```ts
 dte({
-  workers: { small: { max: 4, cpu: 2, memory: '4GB' } },
+  workers: { linux: { machines: { small: { max: 4, cpu: 2, memory: '4GB' } } } },
   adapter: docker({ image: 'my/bun-git', prepare: 'bun install' }),
 })
 ```
@@ -234,7 +234,7 @@ export default defineWorkspace({
   plugins: [
     dte({
       relay: 'https://relay.example.com',
-      workers: { small: { max: 8, cpu: 4, memory: '16GB' } },
+      workers: { linux: { machines: { small: { max: 8, cpu: 4, memory: '16GB' } } } },
       adapter: github(),
     }),
   ],
@@ -297,7 +297,7 @@ workspace in a subdirectory of its repository gets them at the repository's
 root, its jobs running in that directory. Each size runs on
 its platform's GitHub-hosted runner (`ubuntu-latest` for none named,
 `ubuntu-24.04-arm`, `macos-latest`, `macos-15-intel`), or on the label
-`github({ runsOn: { small: 'ubuntu-latest-16-cores' } })` names, as
+`github({ runsOn: { 'linux.small': 'ubuntu-latest-16-cores' } })` names, as
 `gitlab({ tags })` does. It installs with the package manager your lockfile
 names and runs vx as `bun vx`, which runs the repo's own and never
 downloads one, as `pnpm exec` does (Yarn too: Bun reads no Plug'n'Play,
@@ -338,7 +338,7 @@ jobs:
       id-token: write
       # A worker of a run that is over cancels its own run.
       actions: write
-    runs-on: ${{ fromJSON('{"small":"ubuntu-latest"}')[inputs.size] }}
+    runs-on: ${{ fromJSON('{"linux.small":"ubuntu-latest"}')[inputs.size] }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -393,7 +393,7 @@ export default defineWorkspace({
   plugins: [
     dte({
       relay: 'https://relay.example.com',
-      workers: { small: { max: 4, cpu: 2, memory: '8GB' } },
+      workers: { linux: { machines: { small: { max: 4, cpu: 2, memory: '8GB' } } } },
       adapter: gitlab(),
     }),
   ],
@@ -449,12 +449,12 @@ vx:
     - bun install --frozen-lockfile
   script: [bun vx dte worker]
 
-'vx-worker small':
+'vx-worker linux.small':
   extends: .vx-worker
   parallel:
     matrix:
       - VX_DTE_SLOT: ['1', '2', '3', '4']
-  rules: [{ if: $VX_DTE_SIZE == "small" && $VX_DTE_SLOT =~ $VX_DTE_PICK }]
+  rules: [{ if: $VX_DTE_SIZE == "linux.small" && $VX_DTE_SLOT =~ $VX_DTE_PICK }]
 ```
 
 `gitlab({ tags })` names each size's runner tags. Each job's ID token
@@ -497,6 +497,13 @@ use your own instead.
   done. The run starts a worker of each
   platform its work needs. A task none of whose platforms any size has
   refuses the run before a worker starts.
+- A task naming `exec.worker` runs only on machines of that worker type;
+  any other on the first type, in declared order, with a machine of one
+  of its platforms. So a type listed last (a costly Mac) gets only the
+  tasks no other type can take. Core refuses the run before a worker
+  starts when no type has the name, or none of its machines runs one of
+  the task's platforms. A worker that joins on its own is of the first
+  type with its platform.
 - Tasks waiting for room go out longest tail first: a task's recorded
   duration and its longest chain of dependants, so a long chain that got
   ready late does not queue behind many short tasks ready at once.
@@ -690,7 +697,7 @@ on its frame, in that worker's own color, by size and the order the run
 started it:
 
 ```
- ⏺︎   308ms success miss     c#build · small#1
+ ⏺︎   308ms success miss     c#build · linux.small#1
 ```
 
 An idle worker the rest of the run cannot keep busy leaves (`left`): one
@@ -730,15 +737,15 @@ declares and its machine reports, green when they agree and red when
 not:
 
 ```
-  workers    small#1  online    3 done · 2 running
-            small#2  starting
+  workers    linux.small#1  online    3 done · 2 running
+            linux.small#2  starting
             local    online    1 done
 ```
 
 ```
-  workers    small#1  stopped  5 done · warm-up 0.1s
+  workers    linux.small#1  stopped  5 done · warm-up 0.1s
                      declared 2c/8G · actual 4c/16G
-            small#2  lost     1 done · warm-up 0.2s
+            linux.small#2  lost     1 done · warm-up 0.2s
                      declared 2c/8G · actual 4c/16G
             local    online   1 done
                      actual 10c/32G
@@ -774,7 +781,7 @@ from one `ps` as it starts and one as it leaves. The `total` line is the cpu uti
 machine together, and the share of their history the run's tasks used:
 
 ```
-            small#1  stopped  5 done · warm-up 0.2s
+            linux.small#1  stopped  5 done · warm-up 0.2s
                      declared 4c/14G · actual 4c/14G
                      online 12.1s · busy 9.8s · idle 2.3s
                      cpu peak 3.6 · used avg 2.4 cores · machine avg 2.9 · booked avg 3.8 · cpu utilization 61%
@@ -783,8 +790,8 @@ machine together, and the share of their history the run's tasks used:
             probe    at 0.4s: 5 tasks left to run, 5 known misses
             asked    1 at 0.5s for 5 tasks (5 measured), plan 12.0s
             ideal    10.8s: each task as long as it took, placed perfectly
-            best     2 × small (4c/14G): 11.4s, the fewest of its sizes
-            more     3 × small (4c/14G): 10.8s, past its sizes' max
+            best     2 × linux.small (4c/14G): 11.4s, the fewest of its sizes
+            more     3 × linux.small (4c/14G): 10.8s, past its sizes' max
             any      1 × (8c/28G): 10.9s, of any cores, the least core time
             total    cpu utilization 58%
 ```
@@ -860,7 +867,11 @@ What `@vzn/vx-dte` reads from the CI job it runs in:
 process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
   a name the dial sets itself (`authorization`, `content-type`,
   `relay-proof`) is refused. The rest:
-  - `workers` names each `WorkerSize`, `{ cpu, memory, max?, platform? }`: its cores
+  - `workers` names each worker type, `{ machines }`, in order of
+    preference (`exec.worker` picks one). Each machine is a size the
+    adapter may start, named `<type>.<machine>` (`linux.small`) in the
+    run's output and an adapter's options, and is a `WorkerSize`,
+    `{ cpu, memory, max?, platform? }`: its cores
     and memory (bytes, or `'8GB'`, `'512MiB'`), which the run counts on
     when it starts one, until the worker reports what its machine has,
     how many of it one run may start (absent, no cap), and its machines'
@@ -970,7 +981,7 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
 - `DteAdapter` is `{ spawn(worker: WorkerSpawn), relay?(), close?(), cancel?(ids), init?(setup: DteSetup), runId?(), adopt?(worker), report?(warn), keyless?, workerRuns?() }`; `init` gets a `DteSetup` (workspace root, its directory in the repository, relay, sizes, the `PackageManager` read from the lockfile, the tasks asked for) and returns a `DteInit`: the CI files `vx dte init` writes and the steps it prints; `report` hands it the run's warning channel as the run starts, where `github()` says a status poll or a cancel the CI API refused, by status and body; `adopt` hands each worker the CI started before the run to `worker(id, size)`, which counts it and returns its spawn; `cancel` stops workers the run no longer needs that have not joined, and may answer with those it left running, which the run takes (with `late`, workers given up on joining, stopped whatever their job holds); `runId` names the run, in the adapter's own CI, when `VX_DTE_RUN` is unset; `workerId` names a worker in a job its CI started for several, when `VX_DTE_WORKER` is unset; `keyless` workers prove themselves by GitHub OIDC, and `workerRuns` names the workflow runs whose jobs alone may join as them (`undefined`: any job of the repository).
   `WorkerSpawn` is `{ run, relay, size, max, cpu, memory, index, id, workspaceRoot, commit, cacheDir?, env }`,
   with `memory` in bytes and `max` its size's (`Infinity` uncapped),
-  where `id` is the worker's name (`small#2`, numbered within its size), `commit` the
+  where `id` is the worker's name (`linux.small#2`, numbered within its size), `commit` the
   tracked files as the run saw them at its start (uncommitted changes included), whose
   tree a worker must check out, `cacheDir` the run's cache dir (absolute) when the
   workspace names one, for workers on this machine to save where the run reads, and
