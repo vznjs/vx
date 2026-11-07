@@ -387,6 +387,8 @@ export function flagHint(verb: string, arg: string): string {
   // `--json` is gh's and Nx's spelling; a verb with `--format` reads it
   // there, and no edit budget reaches `--format json` from `--json`.
   if (name === '--json' && flags.includes('--format')) return ' (did you mean --format json?)'
+  // pnpm's and Turbo's short `--filter`.
+  if (name === '-F') return flags.includes('--filter') ? ' (did you mean --filter?)' : ''
   // `vx run` prints no JSON of its own, and edit distance reached `--force`
   // from `--format`: a run with its cache reads turned off.
   if ((name === '--format' || name === '--json') && flags.includes('--dry'))

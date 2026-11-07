@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { CORE_VERBS, helpText, verbHelpText } from '../src/cli/help.js'
+import { CORE_VERBS, flagHint, helpText, verbHelpText } from '../src/cli/help.js'
 
 const DOC = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'cli.md'), 'utf8')
 
@@ -111,5 +111,14 @@ it("a shared section cuts to the verb's own entries", () => {
     '      --format <fmt>   pretty (default) | json.',
     '  info, why and last:',
     '      --cache-dir <path>  Read the cache a run with the same flag uses.',
+  ])
+})
+
+// `-F` is pnpm's and Turbo's short `--filter`: no edit budget reaches it.
+it("pnpm's and Turbo's -F hints --filter where the verb takes it", () => {
+  expect([flagHint('run', '-F'), flagHint('show', '-F'), flagHint('lock', '-F')]).toEqual([
+    ' (did you mean --filter?)',
+    ' (did you mean --filter?)',
+    '',
   ])
 })
