@@ -565,8 +565,14 @@ function play(
         cores.set(undefined, (cores.get(undefined) ?? 0) + s.cores)
         if (s.platform !== undefined) cores.set(s.platform, (cores.get(s.platform) ?? 0) + s.cores)
       }
-      for (const e of ends.all())
-        work.set(undefined, (work.get(undefined) ?? 0) + e.cores * (e.at - now))
+      // A running task's rest on its own platform too: counted on all
+      // alone, a Mac fewer read the Linux end later (2026-11-07).
+      for (const e of ends.all()) {
+        const w = e.cores * (e.at - now)
+        work.set(undefined, (work.get(undefined) ?? 0) + w)
+        const p = e.s.platform
+        if (p !== undefined) work.set(p, (work.get(p) ?? 0) + w)
+      }
       let end = last
       for (const [p, w] of work) end = Math.max(end, now + w / Math.max(cores.get(p) ?? 0, 1e-9))
       for (const t of ready.live()) end = Math.max(end, now + tailOf(t.id))
@@ -950,9 +956,15 @@ export function plan(
         continue
       }
       const after = run(without)
+      // Its platform may end later while it still ends two warm-ups before
+      // the run, room for runners the CI queues: 4 Macs started for work
+      // 2 ended 40 s before the Linux work (main a1950a2, 2026-11-07: "we
+      // optimize for total wall time").
+      const ends = after.ends.get(platform) ?? 0
       dropped =
         after.end <= before.end &&
-        (after.ends.get(platform) ?? 0) <= (before.ends.get(platform) ?? 0) + MARGIN_MS
+        (ends <= (before.ends.get(platform) ?? 0) + MARGIN_MS ||
+          ends <= before.end - Math.max(MARGIN_MS, 2 * warm(added[i]!.size)))
       if (dropped) {
         kept = without
         before = after
