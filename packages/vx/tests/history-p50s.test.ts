@@ -279,3 +279,32 @@ it('learns a crowded run’s need, not its share, and never past its machine', a
   expect(r.get('p#misread')?.maxCpuParallelism).toBe(4)
   expect(r.get('p#misread')?.saturatedCores).toBe(4)
 })
+
+// Asking every task of a cold 8,002-task run for its forecast tiers cost
+// 20 ms of its schedule stage on a store that had timed nothing (2026-11-07).
+it('a store that has timed nothing asks no per-task forecast', async () => {
+  const empty = new Cache(path.join(dir, 'empty'))
+  try {
+    const db = indexDb(empty)
+    const asked: string[] = []
+    const query = db.query.bind(db)
+    db.query = ((sql: string) => {
+      asked.push(sql)
+      return query(sql)
+    }) as typeof db.query
+    const ids = Array.from({ length: 50 }, (_, i) => `p#t${i}`)
+    const history = new LocalHistoryProvider(db, undefined, 'main')
+    expect([...(await history.p50sFor(ids))]).toEqual([])
+    expect(history.lackedBranchHistory).toBe(true)
+    expect(asked.filter((s) => s.includes('json_each'))).toEqual([])
+    // CONTROL: one timing, and every task is asked again.
+    empty.recordRunBundle({
+      runs: [{ ...run(1, 'one', 't0'), status: 'success', cacheHit: false }],
+      invocation: { ...invocation('one', 9_000), branch: 'main' },
+    })
+    expect([...(await history.p50sFor(ids))]).toEqual([['p#t0', 37]])
+    expect(asked.filter((s) => s.includes('json_each')).length).toBeGreaterThan(0)
+  } finally {
+    empty.close()
+  }
+})

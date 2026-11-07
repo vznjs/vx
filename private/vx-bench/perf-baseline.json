@@ -20,7 +20,7 @@
       "plan @25": {
         "hash xxh3": 615,
         "spawn git": 3,
-        "sqlite statement": 65
+        "sqlite statement": 66
       },
       "one-edit run @25": {
         "hash blob update": 2,
@@ -46,7 +46,7 @@
       "plan @100": {
         "hash xxh3": 2490,
         "spawn git": 3,
-        "sqlite statement": 215
+        "sqlite statement": 216
       },
       "one-edit run @100": {
         "hash blob update": 2,
