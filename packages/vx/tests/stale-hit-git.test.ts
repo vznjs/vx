@@ -718,6 +718,48 @@ describe('stale cache hits', () => {
     TIMEOUT,
   )
 
+  // A directory removed between git's read of its parent and its own open
+  // (a run lock's staging directory renamed in a TMPDIR inside the
+  // workspace) warned `No such file or directory`, and the run was
+  // refused as a path too long. Nothing is under a directory that is not
+  // there; one still there that git could not open still refuses.
+  it(
+    'a directory gone before git opened it is no refusal; one still there is',
+    async () => {
+      await write(path.join(root, 'p/package.json'), '{}')
+      await write(path.join(root, 'p/kept/f'), 'x')
+      git(root, 'init', '-q')
+      const bin = await mkdtemp(path.join(os.tmpdir(), 'vx-git-shim-'))
+      const real = Bun.which('git')!
+      const shim = (dir: string, reason: string) =>
+        writeFile(
+          path.join(bin, 'git'),
+          `#!/bin/sh\nfor a; do case "$a" in ls-files|status) echo "warning: could not open directory '${dir}/': ${reason}" >&2;; esac; done\nexec ${real} "$@"\n`,
+          { mode: 0o755 },
+        )
+      const saved = process.env['PATH']
+      process.env['PATH'] = `${bin}:${saved}`
+      try {
+        const p = path.join(root, 'p')
+        const enumerate = (dirs: string[]) => populateGitFilesCache(root, dirs, new GitFilesCache())
+        await shim('p/gone', 'No such file or directory')
+        for (const dirs of [[root], [p]]) await enumerate(dirs)
+        expect(runGitLsFiles(p).files).toContain('kept/f')
+        await shim('p/package.json/x', 'Not a directory')
+        expect(runGitLsFiles(p).files).toContain('kept/f')
+        await shim('p/kept', 'Too many open files')
+        await expect(enumerate([root])).rejects.toThrow(
+          /^git could not open the directory p\/kept\//,
+        )
+        expect(() => runGitLsFiles(p)).toThrow(/^git could not open the directory p\/kept\//)
+      } finally {
+        process.env['PATH'] = saved
+        await rm(bin, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
   it(
     'the index OIDs are kept under the default stat and dropped under a weakened one',
     async () => {
