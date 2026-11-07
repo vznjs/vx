@@ -770,7 +770,10 @@ Reads via `get()` are non-blocking thanks to WAL.
   clean holds a glob root's link and a recorded row to as well). An
   artifact's link is out when its target, read segment by segment from
   the link's directory, steps above the anchor at any point, even if it
-  comes back (`linkRefused`, which the save asks too).
+  comes back (`linkRefused`, which the save asks too). A target with a
+  `..` is walked on disk too, from the link's real directory, each link
+  already there before the last `..` followed (`linkLandsRefused`): a
+  committed `up -> ..` made `../up/../x` read as inside and land out.
   A path holding a backslash is resolved link by link (`realOf`): Bun's
   `realpath` answers ENOENT for any such path.
   A directory where an entry holds a file (one `dist/**` covers and the

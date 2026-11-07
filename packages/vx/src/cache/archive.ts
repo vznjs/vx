@@ -387,6 +387,23 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
       )
     }
   }
+  if (symlinks.length > 0 && args.root !== undefined) {
+    const realRoot = await realOf(args.root)
+    const realDirs = new Map<string, Promise<string>>()
+    for (const f of symlinks) {
+      const refused = await linkLandsRefused(path.dirname(f.abs), f.link, realRoot, realDirs)
+      if (refused === 'out') {
+        throw new UserError(
+          `${f.shown} is a symlink to ${f.link}, outside the workspace: vx restores a link as written, and a project's outputs stay in its workspace — emit a file there, or take it back with a '!' entry`,
+        )
+      }
+      if (refused === '.git') {
+        throw new UserError(
+          `${f.shown} is a symlink to ${f.link}, inside .git: vx never restores into Git's metadata — emit a file there, or take it back with a '!' entry`,
+        )
+      }
+    }
+  }
   // In the outputs' order, not as each stat settled: one tree, one artifact.
   const regular: Array<Exclude<(typeof files)[number], { link: string }>> = []
   for (const f of files) {
@@ -946,6 +963,58 @@ function linkRefused(dir: string, to: string, bound: string): 'out' | '.git' | u
   return writableUnder(path.resolve(from, to), root) ? undefined : '.git'
 }
 
+/**
+ * `linkRefused` on disk: the kernel resolves a `..` from where the links
+ * before it lead, so with a committed `app/up -> ..` the text
+ * `../up/../x` read as inside and landed beside the workspace. Walked from
+ * `dir`'s real path, each link on disk before the last `..` followed,
+ * every step held to `realBound`. A target with no `..` touches no disk;
+ * the links the artifact itself restores are `throughLink`'s.
+ */
+async function linkLandsRefused(
+  dir: string,
+  to: string,
+  realBound: string,
+  realDirs: Map<string, Promise<string>>,
+): Promise<'out' | '.git' | undefined> {
+  const segs = to.split(path.sep === '/' ? '/' : /[\\/]/)
+  const lastUp = segs.lastIndexOf('..')
+  if (lastUp < 0) return undefined
+  let realDir = realDirs.get(dir)
+  if (realDir === undefined) {
+    // At a restore the link's directory may not exist yet.
+    realDir = realOf(dir).catch(() => resolveThrough(dir))
+    realDirs.set(dir, realDir)
+  }
+  let at = await realDir
+  let onDisk = true
+  for (let i = 0; i <= lastUp; i++) {
+    const seg = segs[i]!
+    if (seg === '' || seg === '.') continue
+    if (seg === '..') at = path.dirname(at)
+    else {
+      at = path.join(at, seg)
+      if (onDisk) {
+        const st = statOrAbsent(at)
+        if (st === undefined) onDisk = false
+        else if (st.isSymbolicLink()) at = await resolveThrough(at)
+      }
+    }
+    if (!inside(at, realBound)) return 'out'
+  }
+  return writableUnder(path.join(at, ...segs.slice(lastUp + 1)), realBound) ? undefined : '.git'
+}
+
+/** `lstat`, or undefined for a name that is not there (under a file too). */
+function statOrAbsent(p: string): Stats | undefined {
+  try {
+    return lstatSync(p, { throwIfNoEntry: false })
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOTDIR') return undefined
+    throw err
+  }
+}
+
 /** The usage worth carrying: each axis a finite non-negative number, or absent; nothing → undefined. */
 function usageOf(raw: unknown): ExecUsage | undefined {
   if (typeof raw !== 'object' || raw === null) return undefined
@@ -1057,6 +1126,8 @@ export async function extractArtifactStream(
       const dest = x.destFor(name)
       if (dest !== null && dest.rel.length > 0) linked.set(path.join(dest.base, dest.rel), name)
     }
+    let realBound: Promise<string> | undefined
+    const realDirs = new Map<string, Promise<string>>()
     for (const [name, to] of links) {
       // Renamed over an entry just written, the link would stand where the
       // sidecar says a file is, and a re-pack of the tree reads through it.
@@ -1072,7 +1143,7 @@ export async function extractArtifactStream(
       if (dest === null || dest.rel.length === 0) continue
       const target = path.join(dest.base, dest.rel)
       await x.assertContained(dest.base, target, name)
-      const refused = linkRefused(path.dirname(target), to, bound)
+      let refused = linkRefused(path.dirname(target), to, bound)
       if (refused === 'out') {
         throw new ArchiveSecurityError(`archive link ${name} points out of the workspace: ${to}`)
       }
@@ -1081,6 +1152,13 @@ export async function extractArtifactStream(
         throw new ArchiveSecurityError(
           `archive link ${name} points through ${linked.get(via)}, another link it restores: ${to}`,
         )
+      }
+      if (refused === undefined) {
+        realBound ??= realOf(bound)
+        refused = await linkLandsRefused(path.dirname(target), to, await realBound, realDirs)
+      }
+      if (refused === 'out') {
+        throw new ArchiveSecurityError(`archive link ${name} points out of the workspace: ${to}`)
       }
       if (refused === '.git') {
         throw new ArchiveSecurityError(`archive link ${name} points into .git: ${to}`)

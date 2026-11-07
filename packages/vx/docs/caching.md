@@ -1662,7 +1662,9 @@ same gate (`restorableOutput`). On the save side a
 link to a file, to a directory or to nothing comes back as that link,
 and no byte of its target is read, so a link a sandboxed task planted to
 a file it could not read packs nothing of it (L-23). An absolute link, or
-one leading out of the workspace or into `.git`, fails the save by name
+one leading out of the workspace or into `.git` (as text, and on disk: a
+link already there before a `..` is followed, so with a committed
+`up -> ..` the target `../up/../x` is out), fails the save by name
 (the restore's own check, so no entry is stored that every restore refuses), as the config
 spells the path (`workspaceFiles output gen/latest`). The clean before exec and restore removes every
 file, symlink, FIFO, socket and device the output globs cover (a link is unlinked, never

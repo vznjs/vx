@@ -344,6 +344,36 @@ it.skipIf(process.platform === 'win32')(
   },
 )
 
+// The other link may already be on disk: a committed `app/up -> ..` read
+// as text was any directory, so `esc -> ../up/../OUTSIDE` passed and
+// landed beside the workspace. A link on disk is followed before a `..`.
+it.skipIf(process.platform === 'win32')(
+  'an artifact whose link reaches out through a link on disk restores nothing',
+  async () => {
+    const outer = mkdtempSync(path.join(os.tmpdir(), 'vx-links-disk-'))
+    made.push(outer)
+    const ws = path.join(outer, 'ws')
+    const dest = path.join(ws, 'app')
+    mkdirSync(dest, { recursive: true })
+    symlinkSync('..', path.join(dest, 'up'))
+    const err = await extractArtifactStream(
+      streamOf(await artifact({ links: { 'outputs/dist/esc': '../up/../OUTSIDE' } })),
+      dest,
+      ws,
+      undefined,
+      undefined,
+      ws,
+    ).then(
+      () => null,
+      (e: unknown) => e,
+    )
+    expect(String(err)).toContain(
+      'ArchiveSecurityError: archive link outputs/dist/esc points out of the workspace: ../up/../OUTSIDE',
+    )
+    expect(lstatSync(path.join(dest, 'dist/esc'), { throwIfNoEntry: false })).toBeUndefined()
+  },
+)
+
 // A link named as a file entry was renamed over the file just written,
 // so a re-pack of the tree (planOfTree) read through it.
 it.skipIf(process.platform === 'win32')(
@@ -401,6 +431,31 @@ it.skipIf(process.platform === 'win32')(
     const r = await build(out.root)
     expect(r.out + r.err).toMatch(
       /output dist\/esc is a symlink to up\/\.\.\/\.\.\/x through output dist\/up, another link/,
+    )
+  },
+  TIMEOUT,
+)
+
+// `packages/app/up -> ../..` is the root, so `../up/../x` lands beside it.
+it.skipIf(process.platform === 'win32')(
+  'a link out of the workspace through a committed link fails the save',
+  async () => {
+    const root = await makeWorkspace({ prefix: 'vx-links-' })
+    made.push(root)
+    const dir = await addProject(root, 'app', {
+      config: `export default { tasks: { build: {
+        exec: { command: 'rm -rf dist && mkdir -p dist && ln -s ../up/../x dist/esc', timeout: '20s' },
+        inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+      } } }`,
+      files: { 'src/in.txt': 'v1\n', '.gitignore': 'dist/\n' },
+    })
+    symlinkSync('../..', path.join(dir, 'up'))
+    const git = gitIn(root)
+    git('add', '-A')
+    git('commit', '-q', '-m', 'init')
+    const r = await build(root)
+    expect(r.out + r.err).toMatch(
+      /output dist\/esc is a symlink to \.\.\/up\/\.\.\/x, outside the workspace/,
     )
   },
   TIMEOUT,
