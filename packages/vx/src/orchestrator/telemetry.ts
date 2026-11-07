@@ -34,7 +34,7 @@ import {
   teardownTimeoutMs,
   thrownMessage,
 } from '../util/index.js'
-import type { RunEvent, RunEventSubscriber } from '../report/index.js'
+import { neverStarted, type RunEvent, type RunEventSubscriber } from '../report/index.js'
 
 /** Bumped when the record shape changes. Readers MUST check `v`. */
 export const TELEMETRY_SCHEMA_VERSION = 4
@@ -684,6 +684,9 @@ export function createTelemetrySource(args: {
       case 'task:complete': {
         const { node, outcome } = event
         if (node.config.exec === undefined) return // group task
+        // The stop reached it first: no task.start, and the summary counts
+        // it in `notRunCount`, not `tasks`, so no task.end either.
+        if (neverStarted(outcome)) return
         deliver({
           v: TELEMETRY_SCHEMA_VERSION,
           kind: 'task.end',
