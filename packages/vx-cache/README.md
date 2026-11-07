@@ -118,7 +118,9 @@ upload is one artifact by `PUT`, as many at once as core's
 `cache.concurrency.upload` lets (64 to 96 by default): its bytes reach the
 bucket untouched by the server's code (a batch, split by that code, ran
 out of Workers' CPU). An artifact over the server's upload limit is not sent: it
-is said once. An answer is read no further than its use: 64 KiB for a
+is said. Before any answer has named the limits, the first such upload
+is sent and refused `413`, which names them: it is said the same way,
+never a failed upload. An answer is read no further than its use: 64 KiB for a
 token, 1 KiB a hash for a check, a refusal's first
 2 KiB; a longer one is refused, so a server's endless answer cannot fill
 memory.

@@ -123,10 +123,13 @@ Set `EXPIRY_DAYS` to the bucket's lifecycle rule (below) and R2's
 answer to a lookup, or a download R2 serves marks the artifact held,
 in the background, until the rule may drop it, counted from its upload. A repeat check or `HEAD` in that data center then
 skips R2. Only "held" is kept: a miss always asks R2, so a later
-upload is never hidden. Unset, every lookup asks R2. A larger value
+upload is never hidden. An upload's skip always asks R2, never a
+mark: a client uploads only what its check missed, which no mark
+holds, so this costs no head a mark saved. Unset, every lookup asks R2. A larger value
 than the rule is wrong: a mark would outlive the artifact. After
-deleting artifacts by hand, a mark may still say "held" for up to
-`EXPIRY_DAYS`; vx then misses the download and runs the task.
+deleting artifacts by hand, a mark may still answer a check "held";
+vx then misses the download and runs the task, the miss drops that
+mark, and the task's upload is stored again.
 
 ## Expiry
 
@@ -153,8 +156,9 @@ over a bucket of your own (`src/index.ts`):
 - `createCacheServer(options: ServerOptions)` returns
   `(req: Request) => Promise<Response>`. `ServerOptions` is
   `{ blobs, authorize, limits? }`: `blobs` is a `Blobs` bucket
-  (`{ put(name, body, size), get(name), size(name) }`, `get` answering a
-  `Blob`, `{ body, size }`), `authorize` an `Authorize`, which maps a
+  (`{ put(name, body, size), get(name), size(name, bucket?) }`, `get` answering a
+  `Blob`, `{ body, size }`, `size` with `bucket` the bucket's own answer,
+  never one the backend kept: an upload's skip; a backend that keeps none ignores it), `authorize` an `Authorize`, which maps a
   request to its `Access` (`{ issuer, repository, write? }`: the token's issuer and
   repository name, which it reads, and the scope it may write) or throws, and `limits` any of `Limits`
   (`{ maxCheckHashes, maxUploadBytes }`) over

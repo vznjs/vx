@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-cache-server: ask Blobs.size for the bucket's own answer
+
+Blobs.size takes a second argument, bucket. A Blobs of your own answers from the bucket itself when it is true, never from a mark it keeps; one that keeps no mark ignores it.
+
 ## cache: show a run's own log; hold a shared cache dir in clean
 
 the local cache index is schema v54; what it recorded before is dropped on first open, so the next run misses once.

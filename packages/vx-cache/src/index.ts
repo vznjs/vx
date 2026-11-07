@@ -776,14 +776,18 @@ export class VxCacheLayer implements RemoteCacheLayer {
       this.saidNoReplace = true
       return false
     }
-    const max = this.limits?.maxUploadBytes
-    if (max !== undefined && body.size > max) {
-      this.warn(
-        `[vx] vx-cache: ${hash} is ${body.size} bytes, over the server's upload limit of ${max}: not uploaded`,
-      )
-      return false
-    }
+    if (this.overLimit(hash, body)) return false
     return this.upload({ hash, body })
+  }
+
+  /** Says an artifact over the upload limit the server last named, which is not sent. */
+  private overLimit(hash: string, body: Blob): boolean {
+    const max = this.limits?.maxUploadBytes
+    if (max === undefined || body.size <= max) return false
+    this.warn(
+      `[vx] vx-cache: ${hash} is ${body.size} bytes, over the server's upload limit of ${max}: not uploaded`,
+    )
+    return true
   }
 
   /**
@@ -822,6 +826,12 @@ export class VxCacheLayer implements RemoteCacheLayer {
       }
       if (res === undefined) return false
       if (res.ok) return
+      // Sent before any answer named the limits: the 413 names them
+      // (PROTOCOL.md), so it is said as a later one is, never a failure.
+      if (res.status === 413 && this.overLimit(item.hash, item.body)) {
+        await res.body?.cancel()
+        return false
+      }
       if ((res.status !== 429 && res.status < 500) || attempt === ASK_ATTEMPTS)
         throw await refusal(res)
       await res.body?.cancel()

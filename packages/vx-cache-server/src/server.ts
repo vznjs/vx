@@ -228,7 +228,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     if (length > limits.maxUploadBytes) {
       throw new Refusal(413, `an upload is at most ${limits.maxUploadBytes} bytes`)
     }
-    if ((await read(blobs.size(name))) !== null) {
+    if ((await read(blobs.size(name, true))) !== null) {
       await req.body?.cancel()
       return new Response(null, { status: 204 })
     }

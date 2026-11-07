@@ -24,7 +24,7 @@ export interface Blob {
 export interface Blobs {
   put(name: string, body: ReadableStream<Uint8Array>, size: number): Promise<void>
   get(name: string): Promise<Blob | null>
-  size(name: string): Promise<number | null>
+  size(name: string, bucket?: boolean): Promise<number | null>
 }
 == type Limits (src/server.ts)
 export interface Limits {

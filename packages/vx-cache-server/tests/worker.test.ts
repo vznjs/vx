@@ -389,7 +389,7 @@ it('takes a limit wrangler.jsonc writes as a number', async () => {
 // A repeat HEAD, check or upload skip in a data center read R2 each time
 // (2026-11-04): with EXPIRY_DAYS, R2's "held" is kept there until the
 // bucket's rule may drop the artifact, and a miss is still asked of R2.
-it('with EXPIRY_DAYS, answers whether it holds an artifact from the mark an upload left', async () => {
+it('with EXPIRY_DAYS, answers a check or HEAD from the mark an upload left, never an upload, until a download misses', async () => {
   const other = await start({ ALLOW: ALLOW_VAR, EXPIRY_DAYS: 1 })
   try {
     const at = await other.ready
@@ -430,6 +430,28 @@ it('with EXPIRY_DAYS, answers whether it holds an artifact from the mark an uplo
     expect(await check.json()).toEqual({
       [hash]: { size: 4, scope: scopeOf('refs/heads/main') },
     })
+    // An upload's skip asks R2, never the mark: told "held" there, the
+    // bytes were dropped and R2 missed them until the mark's expiry.
+    const again = await fetch(url, {
+      method: 'PUT',
+      body: 'held',
+      headers: { ...NAMED, authorization: await auth('main') },
+    })
+    expect(again.status).toBe(204)
+    expect((await bucket.list()).objects).toHaveLength(1)
+    // A download R2 misses drops the mark: the next check asks R2.
+    await bucket.delete((await bucket.list()).objects.map((o) => o.key))
+    const get = await fetch(url, {
+      headers: {
+        ...NAMED,
+        authorization: await auth('read'),
+        'vx-scope': scopeOf('refs/heads/main'),
+      },
+    })
+    expect(get.status).toBe(404)
+    await get.body?.cancel()
+    await Bun.sleep(200)
+    expect(await head()).toBe(404)
   } finally {
     await other.dispose()
   }

@@ -15,8 +15,12 @@ export interface Blobs {
   put(name: string, body: ReadableStream<Uint8Array>, size: number): Promise<void>
   /** The blob, or null when the bucket has none by that name. */
   get(name: string): Promise<Blob | null>
-  /** Its size, read off its metadata, or null when there is none. */
-  size(name: string): Promise<number | null>
+  /**
+   * Its size, read off its metadata, or null when there is none. `bucket`:
+   * the bucket's own answer, never one a backend kept (an upload's skip,
+   * which a stale "held" would drop).
+   */
+  size(name: string, bucket?: boolean): Promise<number | null>
 }
 
 /**

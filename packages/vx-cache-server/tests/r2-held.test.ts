@@ -1,5 +1,5 @@
 // Whether R2 holds an artifact, kept in the data center's cache: a repeat
-// check, HEAD or upload skip there answers without an R2 head. Only
+// check or HEAD there answers without an R2 head; an upload's skip asks R2. Only
 // "held" is kept, and never past the day R2's lifecycle rule may drop the
 // object, so a marker never says "held" of an artifact R2 expired.
 
