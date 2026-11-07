@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-dte: group machines into worker types for exec.worker
+
+dte({ workers: { <size>: {...} } }) is now dte({ workers: { <type>: { machines: { <name>: {...} } } } }); machine names in output and adapter options are <type>.<machine>.
+
 ## vx-cache-server: ask Blobs.size for the bucket's own answer
 
 Blobs.size takes a second argument, bucket. A Blobs of your own answers from the bucket itself when it is true, never from a mark it keeps; one that keeps no mark ignores it.

@@ -306,7 +306,7 @@ describe('vx-worker.yml', () => {
 
   it('runs each size on its runner', () => {
     expect(worker['runs-on']).toBe(
-      `\${{ fromJSON('{"small":"ubuntu-latest","arm":"ubuntu-24.04-arm","mac":"macos-latest"}')[inputs.size] }}`,
+      `\${{ fromJSON('{"hosted.small":"ubuntu-latest","hosted.arm":"ubuntu-24.04-arm","hosted.mac":"macos-latest"}')[inputs.size] }}`,
     )
   })
 

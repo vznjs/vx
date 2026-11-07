@@ -98,6 +98,7 @@ const KITCHEN = `export default {
       exec: {
         command: 'echo all',
         platforms: ['linux-x64', 'linux-arm64', 'darwin-x64', 'darwin-arm64'],
+        worker: 'ubuntu',
         remote: 'only',
         timeout: '5s',
         retries: 1,
@@ -732,6 +733,7 @@ describe('each schema object is its source type', () => {
         interactive: true,
         sandbox: true,
         platforms: true,
+        worker: true,
       }),
     )
     expect(def('show', ...exec, 'properties', 'env')).toEqual(

@@ -468,9 +468,13 @@ Where a distributed run runs this task. `platforms` says where it _can_
 run; `worker` says where it _should_.
 
 ```ts
-e2e: {
-  exec: { command: 'bunx playwright test', worker: 'ubuntu' },
-}
+import { defineProject } from '@vzn/vx/config'
+
+export default defineProject({
+  tasks: {
+    e2e: { exec: { command: 'bunx playwright test', worker: 'ubuntu' } },
+  },
+})
 ```
 
 - **With `@vzn/vx-dte`**, only machines of that worker type take it.

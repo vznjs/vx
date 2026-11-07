@@ -93,6 +93,7 @@
               "type": "array",
               "items": { "enum": ["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64"] }
             },
+            "worker": { "type": "string" },
             "sandbox": {
               "type": "object",
               "description": "as declared; its fields are the `exec.sandbox` section of the config schema"

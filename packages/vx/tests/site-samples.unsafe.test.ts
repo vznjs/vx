@@ -1191,17 +1191,21 @@ describe('the tasks guide names every exec field a task can declare', () => {
     }
   })
 
-  it('`exec.remote` is the ONE field it calls stripped, and the projection strips one', () => {
+  it('`exec.remote` and `exec.worker` are the fields it calls stripped, and the projection strips them', () => {
     // The page's folded/stripped accounting is only true while the
-    // projection has exactly one exception. A second one added quietly makes
+    // projection has exactly these exceptions. Another one added quietly makes
     // this bullet wrong in the direction that produces stale hits.
     const hash = readFileSync(
       path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'task-hash.ts'),
       'utf8',
     )
-    expect(hash).toContain('const { remote: _remote, ...execRest } = cfg.exec')
+    expect(hash.replace(/\s+/g, ' ')).toContain(
+      'const { remote: _remote, worker: _worker, ...execRest } = cfg.exec',
+    )
     const page = readFileSync(path.join(DOCS, 'docs', 'tasks.mdx'), 'utf8').replace(/\s+/g, ' ')
-    expect(page).toContain('the one `exec` field left out of the key')
+    expect(page).toContain(
+      '`exec.remote` and `exec.worker` are the two `exec` fields left out of the key',
+    )
   })
 
   it('it says a `description` reaches the key, as the contract page does', () => {

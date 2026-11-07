@@ -35,7 +35,7 @@ export interface DteInit {
 }
 == type DteOptions (src/plugin.ts)
 export interface DteOptions {
-  readonly workers?: Readonly<Record<string, WorkerSize>>
+  readonly workers?: Readonly<Record<string, WorkerType>>
   readonly adapter?: DteAdapter
   readonly relay?: string
   readonly token?: () => string | undefined | Promise<string | undefined>
@@ -52,6 +52,7 @@ export interface DteSetup {
     readonly name: string
     readonly max?: number
     readonly platform?: Platform
+    readonly runsOn?: string
   }[]
   readonly manager: PackageManager
   readonly tasks: { readonly main: string; readonly change: string }
@@ -61,7 +62,6 @@ export interface DteSetup {
 == type GithubOptions (src/github.ts)
 export interface GithubOptions {
   readonly workflow?: string
-  readonly runsOn?: Readonly<Record<string, string>>
   readonly env?: Readonly<Record<string, string | undefined>>
 }
 == type GitlabOptions (src/gitlab.ts)
@@ -87,6 +87,7 @@ export interface WorkerSize {
   readonly cpu: number
   readonly memory: number | string
   readonly platform?: Platform
+  readonly runsOn?: string
 }
 == type WorkerSpawn (src/plugin.ts)
 export interface WorkerSpawn {
@@ -103,4 +104,8 @@ export interface WorkerSpawn {
   readonly cacheDir?: string
   readonly env: Readonly<Record<string, string>>
   readonly exited: (reason: string) => void
+}
+== type WorkerType (src/plugin.ts)
+export interface WorkerType {
+  readonly machines: Readonly<Record<string, WorkerSize>>
 }
