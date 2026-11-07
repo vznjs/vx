@@ -142,13 +142,16 @@ export function outputWalkTakes(
 
 // resolveOutputs, plus the empty directories the globs match: a save keeps them.
 // `special` also lists the FIFOs, sockets and devices they name (Bun's walk
-// skips them): a save leaves them out and warns.
+// skips them): a save leaves them out and warns, a clean removes them.
+// `'later'` hands `findSpecial` instead: a hit's walk lists them only when
+// it restores. `clearing` words a non-UTF-8 name's refusal for a clean.
 export async function resolveOutputTree(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
-  special?: boolean
-}): Promise<{ files: string[]; emptyDirs: string[]; special: string[] }>
+  special?: boolean | 'later'
+  clearing?: boolean
+}): Promise<OutputTree> // { files, emptyDirs, special: string[], findSpecial?: () => string[] }
 
 /**
  * Remove every file currently matching the declared output globs.
@@ -168,16 +171,17 @@ export async function cleanOutputs(args: {
 // no project-dir exclusion; the clean returns the root-relative paths
 // it removed, for `GitFilesCache.markWorkspaceOutputsChanged`.
 export async function resolveWorkspaceOutputs(
-  args: { workspaceRoot: string; outputs: readonly string[] },
+  args: { workspaceRoot: string; outputs: readonly string[]; clearing?: boolean },
   emptyDirs?: Set<string>, // filled with the empty directories the globs match
-  special?: Set<string>, // filled with the FIFOs, sockets and devices they name
+  special?: SpecialProbe, // its `find` set to list the FIFOs, sockets and devices they name
 ): Promise<string[]>
 // `resolveOutputTree` for `outputs.workspaceFiles`: the files and the empty directories.
 export async function resolveWorkspaceOutputTree(args: {
   workspaceRoot: string
   outputs: readonly string[]
-  special?: boolean
-}): Promise<{ files: string[]; emptyDirs: string[]; special: string[] }>
+  special?: boolean | 'later'
+  clearing?: boolean
+}): Promise<OutputTree>
 export async function cleanWorkspaceOutputs(args: {
   workspaceRoot: string
   outputs: readonly string[]

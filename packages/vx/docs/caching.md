@@ -284,7 +284,9 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     hashed: a task whose globs select one is refused by name, and so
     is a task whose declared outputs hold one, rather than the file
     dropping out of the key or the artifact without a word
-    (turborepo#9345). Rename it, or exclude it with a negated glob.
+    (turborepo#9345); one found by the clean before a run or a
+    restore is refused as one vx cannot clear. Rename it, or exclude
+    it with a negated glob.
 
     Your globs are a **filter over the set git reports**, so a broad
     glob never reaches a gitignored file. An entry that names one
@@ -1619,13 +1621,23 @@ file found in it goes while the directory stays. `links` (v45) maps each
 symlink under the outputs to its target as written (`outputs/dist/latest`
 → `v2.txt`). A hit makes the link apart from its place and renames it
 over the target like a file, and only if the target is relative and
-stays inside the workspace; any other fails the whole restore. Its index
+stays inside the workspace at every step, read segment by segment from
+the link's own directory; any other fails the whole restore. A target
+that climbs above the root and comes back (`../../../ws/app/x`) is out:
+judged by where it ends, it resolved inside only on a checkout whose root
+is named `ws`, saved there and was refused as corrupt everywhere else
+(until 2026-11-07). Its index
 row carries the link type in its mode and the target's length and CRC-32
 where a file has its size and mtime, so the skip-restore check compares
 the target and never follows the link. A FIFO, socket or device under
 the outputs holds no bytes to store and stays out of the entry; the
 save names each one in a warning, since a hit restores the tree without
-it (until 2026-11-06 it was left out without a word). Tar entries that are not regular
+it (until 2026-11-06 it was left out without a word). The clean before
+a miss and a restore removes one, as it removes a file: a FIFO left at a
+declared output path hung the task that wrote there, and a stray one
+survived a restore (until 2026-11-07). A hit whose tree is otherwise
+current still leaves one standing: listing them reads every directory
+again, ~17% of the walk that proves the tree. Tar entries that are not regular
 files (symlinks, hardlinks, devices) are never materialised — the
 reader reports them only to be skipped — so a
 poisoned artifact cannot smuggle one onto disk. Nor can it name a file
@@ -1650,7 +1662,7 @@ a file it could not read packs nothing of it (L-23). An absolute link, or
 one leading out of the workspace or into `.git`, fails the save by name
 (the restore's own check, so no entry is stored that every restore refuses), as the config
 spells the path (`workspaceFiles output gen/latest`). The clean before exec and restore removes every
-file AND symlink the output globs cover (a link is unlinked, never
+file, symlink, FIFO, socket and device the output globs cover (a link is unlinked, never
 followed). An output directory that is a symlink (`dist -> real-out`) is
 followed by the clean as by the save and restore, named by a glob
 (`dist/**`) or a literal (`dist`) alike, so its target is the

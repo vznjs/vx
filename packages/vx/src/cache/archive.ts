@@ -342,9 +342,7 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
           )
         }
         const refused =
-          args.root === undefined
-            ? 'out'
-            : linkRefused(path.resolve(path.dirname(abs), to), args.root)
+          args.root === undefined ? 'out' : linkRefused(path.dirname(abs), to, args.root)
         if (refused === 'out') {
           throw new UserError(
             `${shown} is a symlink to ${to}, outside the workspace: vx restores a link as written, and a project's outputs stay in its workspace — emit a file there, or take it back with a '!' entry`,
@@ -926,15 +924,26 @@ const inside = (p: string, root: string): boolean => {
 }
 
 /**
- * Where a link resolving to `at` lands against `bound`, if a restore may not
- * write it: out of it, or into its `.git` (lexical: a write through a link
- * is judged where it resolves, so an alias chain into .git gets no further
- * than this link would). The save asks it too, or it stored a link every
- * restore refused, an entry that never hit on any machine.
+ * Where a link in `dir` reading `to` lands against `bound`, if a restore may
+ * not write it: out of it, or into its `.git` (lexical: a write through a
+ * link is judged where it resolves, so an alias chain into .git gets no
+ * further than this link would). Out is any step above `bound`, even one
+ * that comes back: `../../../ws/app/x` resolves inside only a root named
+ * `ws`, so judged by where it ends it saved here and was refused on every
+ * checkout under another name. The save asks it too, or it stored a link
+ * every restore refused, an entry that never hit on any machine.
  */
-function linkRefused(at: string, bound: string): 'out' | '.git' | undefined {
-  if (!inside(at, bound)) return 'out'
-  return writableUnder(at, path.resolve(bound)) ? undefined : '.git'
+function linkRefused(dir: string, to: string, bound: string): 'out' | '.git' | undefined {
+  const root = path.resolve(bound)
+  const from = path.resolve(dir)
+  if (!inside(from, root)) return 'out'
+  let depth = from === root ? 0 : path.relative(root, from).split(path.sep).length
+  for (const seg of to.split(path.sep === '/' ? '/' : /[\\/]/)) {
+    if (seg === '..') depth--
+    else if (seg !== '' && seg !== '.') depth++
+    if (depth < 0) return 'out'
+  }
+  return writableUnder(path.resolve(from, to), root) ? undefined : '.git'
 }
 
 /** The usage worth carrying: each axis a finite non-negative number, or absent; nothing → undefined. */
@@ -1063,8 +1072,7 @@ export async function extractArtifactStream(
       if (dest === null || dest.rel.length === 0) continue
       const target = path.join(dest.base, dest.rel)
       await x.assertContained(dest.base, target, name)
-      const at = path.resolve(path.dirname(target), to)
-      const refused = linkRefused(at, bound)
+      const refused = linkRefused(path.dirname(target), to, bound)
       if (refused === 'out') {
         throw new ArchiveSecurityError(`archive link ${name} points out of the workspace: ${to}`)
       }

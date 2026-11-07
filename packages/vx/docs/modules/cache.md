@@ -741,7 +741,10 @@ Reads via `get()` are non-blocking thanks to WAL.
   A path that resolves into the anchor's own `.git` (any case) is
   refused as a link out is (a deeper `.git` is an output, as by name), and an artifact's link into one is an
   `ArchiveSecurityError` (`writableUnder` in util, the rule the output
-  clean holds a glob root's link and a recorded row to as well).
+  clean holds a glob root's link and a recorded row to as well). An
+  artifact's link is out when its target, read segment by segment from
+  the link's directory, steps above the anchor at any point, even if it
+  comes back (`linkRefused`, which the save asks too).
   A path holding a backslash is resolved link by link (`realOf`): Bun's
   `realpath` answers ENOENT for any such path.
   A directory where an entry holds a file (one `dist/**` covers and the
