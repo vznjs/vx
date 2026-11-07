@@ -236,18 +236,28 @@ export interface FlakyTask {
 
 /**
  * Every task with a key that failed after it had passed anywhere in the retained history
- * (30 days, `RunHistory.pruneOlderThan`), most failures first: the
+ * (until a bounded clean's `RunHistory.pruneOlderThan`), most failures first: the
  * doctor's list. A pass that took a retry mixes its key on its own: it is
  * one `success` row whose failed attempts count as failures (`vx info`
- * said `none` over one). A full scan of `task_outcomes`, which an inspection verb
- * affords.
+ * said `none` over one). Only keys with a failure or a retry can be on it,
+ * so one plain pass over `task_outcomes` finds those and the projection
+ * reads their rows alone, by `task_outcomes_hash`: projecting every key
+ * sorted the whole table, 4.2 s at 2M rows against 0.15. An index on the
+ * candidates would make the pass a probe; it is a schema change, which
+ * resets every cache.
  */
 export function flakyTasks(db: Database): FlakyTask[] {
   const rows = db
     .query(
       `SELECT project, task, COUNT(*) AS keys, SUM(passes) AS passes, SUM(failures) AS failures
        FROM (SELECT project, task, passes, failures + retried_failures AS failures
-             FROM (${keyOutcomesSql(OUTCOMES)})
+             FROM (${keyOutcomesSql(
+               OUTCOMES,
+               // NOT INDEXED: by `task_outcomes_hash` the pass looked each
+               // row up from the index, 1.1 s against 0.15.
+               ` AND hash IN (SELECT hash FROM ${OUTCOMES} NOT INDEXED
+                              WHERE attempts > 1 OR status = 'failed')`,
+             )})
              WHERE relapses > 0 OR retried_failures > 0)
        GROUP BY project, task
        ORDER BY failures DESC, passes DESC, project, task`,

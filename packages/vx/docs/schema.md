@@ -334,8 +334,8 @@ affects cache keys.
 
 With neither set, a task the run history knows as **flaky** gets one
 more attempt when it fails: its key passed before, or one of its keys
-failed after it passed, or a pass took a retry, within the history's
-30 days. Only a cached task has that record, and a timeout always fails.
+failed after it passed, or a pass took a retry, in the run history
+(kept until a bounded `vx cache clean` drops what is over 30 days old). Only a cached task has that record, and a timeout always fails.
 Under Distributed task execution (`@vzn/vx-dte`) a retry runs on
 another worker than the attempt that failed. A history server
 (`@vzn/vx-history`) shares that record across CI

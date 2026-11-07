@@ -3081,7 +3081,8 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   cgroup limit — inside a container the raw numbers are the host's,
   and the doctor is where to see which one a run reads.
 - `flaky tasks` is the standing list a run's flaky notes add to:
-  every task whose history (30 days, what the cache keeps) holds a
+  every task whose history (all of it: a run never prunes it, a bounded
+  `vx cache clean` drops what is over 30 days old) holds a
   cache key that failed after it had passed, most failures first, with
   the outcomes over those keys. A cache hit counts as a pass (it
   replayed one), and a pass that took a retry counts too, its failed
@@ -3420,8 +3421,9 @@ when, duration, branch @ sha, CI, task/hit/failure counts) and its
 tasks on the run's own grid (time, ±usual, status, cache, cpu, mem,
 outputs, blocks, worker, task), drawn by the same component: a replay
 reads as the run did. `±usual` measures an executed task against its
-usual time now, as a run on this branch reads history (`—`: never timed, or
-timed only by this run). A hit's cpu and mem are
+usual time now, as a run on this branch reads history, over the timings
+of the definition (command and `env.define`) it ran under (`—`: never
+timed, or timed only by this run). A hit's cpu and mem are
 blank (it spent nothing); `—` is a value the run could not read. The
 cache key is in `--format json`. Failures come first, each with its
 exit after the id, `exit 137`, and the signal an exit above 128 stands
@@ -3526,7 +3528,9 @@ project; one the window has no run of is refused, exit 1. The branch is
 a run's. With `--format json` it is `{ window, branch, stats }`, each row `{ taskId, runs,
 p50DurationMs, p99DurationMs, successRate, hitRate, failureMode,
 maxPeakRssBytes, maxCpuParallelism }`, `null` where nothing was
-measured.
+measured. A task whose command or `env.define` changed counts only its
+runs since, as the scheduler and `--dry` do: its definition is read
+from the lock.
 
 ### `--live`
 
@@ -3616,8 +3620,9 @@ read), `lockfile_memos` (a lockfile plugin's parse, by file and
 claimant). `SELECT name, sql FROM sqlite_schema` lists them all; `runs`
 is a view (in `sqlite_temp_schema`) over the stored rows, which name
 their run by its `run_ids` row. Times
-are epoch milliseconds. The history keeps 30 days; `steps`, `warnings`
-and `failures` the newest 50 runs that had any.
+are epoch milliseconds. The history keeps every run until a bounded
+`vx cache clean` drops what is over 30 days old; `steps`, `warnings`
+and `failures` keep the newest 50 runs that had any.
 
 A write is refused (`--sql reads only`, exit 1), and the query runs
 with SQLite's `query_only` on, so a `WITH` that hides one fails too;

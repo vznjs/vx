@@ -85,7 +85,12 @@ export interface LocalHistoryOptions {
 // Core's own readers (`vx last`, `--dry`) build the provider on the handle.
 export class LocalHistoryProvider implements HistoryProvider {
   // without branch a forecast reads every branch
-  constructor(db: Database, recent?: number, branch?: string | null) // the window; defaults to 50 invocations
+  constructor(
+    db: Database,
+    recent?: number,
+    branch?: string | null,
+    defs?: ReadonlyMap<string, string>,
+  ) // the window; defaults to 50 invocations
   /** `loadFor`'s p50 and resource maxima, without its rates. */
   resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>>
   /** Only `resourcesFor`'s p50s: the forecast, else a restored task's producer time. */
@@ -93,6 +98,10 @@ export class LocalHistoryProvider implements HistoryProvider {
   /** The last forecast read found a task with no timing on this branch. */
   lackedBranchHistory: boolean
   hasImported(sha: string): boolean // rows of default-branch commit `sha` exist
+  // of `taskIds`, each whose one timing is at or after `since` (`vx last`'s `—`): two rows per task by index
+  timedOnlySince(taskIds: readonly string[], since: number): string[]
+  // each task id the window's rows name, sorted: what a mistyped id is matched against
+  recentTaskIds(): string[]
   // one 'remote' row per task, with its measured need from `needs` (v45)
   importTimings(
     sha: string,
@@ -245,7 +254,11 @@ The same rule, applied at the end of every run and by the doctor:
 - `flakyTasks(db)` — every task with a key that failed after a pass in the whole
   retained history, most failures first: the `vx info` row. A pass that
   took a retry is one `success` row; its failed attempts count as
-  failures, so it counts on its own.
+  failures, so it counts on its own. One pass over `task_outcomes` picks
+  the keys with a failure or a retry; the projection reads only theirs, by
+  `task_outcomes_hash` (95 ms at 2M rows, against 4.2 s projecting every
+  key; a partial index on the candidates would make the pass a probe, a
+  schema change). Pinned by plan in `tests/history-scale.test.ts`.
 - Cost follows the run's colour. No candidate: no query. A green miss:
   one probe of `task_outcomes_hash` (a key holds a handful of rows),
   which answers "did this key ever fail?" in microseconds at any history
@@ -265,7 +278,8 @@ The same rule, applied at the end of every run and by the doctor:
 ## Tests
 
 `tests/history.test.ts`, `tests/plan-predict.test.ts`,
-`tests/run-record-completeness.test.ts`; `tests/failure-mode.test.ts`
+`tests/run-record-completeness.test.ts`, `tests/history-scale.test.ts` (the plans of
+`vx last`'s, `vx why`'s and `vx info`'s reads of a long history); `tests/failure-mode.test.ts`
 (the rule, `detectFlaky`, `flakyTasks`, the partial index's plan and
 its creation on an older database); `tests/flaky.test.ts` (end to end:
 footer, `vx last`, `vx info`, with a hit and a changed-key break as

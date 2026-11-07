@@ -13,6 +13,7 @@ import {
   explainCacheKey,
   inputWriters,
   latestRunId,
+  LocalHistoryProvider,
   recordedTasks,
   rootCauses,
   upstreamTask,
@@ -208,10 +209,7 @@ async function resolveTarget(
       )
     }
   }
-  const pairs = db
-    .query('SELECT DISTINCT project, task FROM main.runs ORDER BY project, task')
-    .all() as Array<{ project: string; task: string }>
-  const ids = pairs.map((p) => `${p.project}#${p.task}`)
+  const ids = new LocalHistoryProvider(db).recentTaskIds()
   const invoked = ids.length === 0 && db.query('SELECT 1 FROM invocations LIMIT 1').get() !== null
   if (ids.length === 0 && !invoked) {
     // `vx run` of a task no project declares is refused: its advice was that.
