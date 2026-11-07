@@ -100,6 +100,7 @@ export function askIgnored(file: string, root: string): Promise<boolean> {
     // 0: ignored; 128: no repository or git refused.
     return p.exited.then((code) => code !== 1)
   } catch {
+    // quiet: no git to run is no workspace git, which ignores nothing to warn of.
     return Promise.resolve(true)
   }
 }
