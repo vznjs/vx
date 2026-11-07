@@ -79,23 +79,44 @@ export function writeTimings(
 }
 
 /**
- * Says so when git does not ignore the file it rewrote: a task whose
- * inputs cover it (a root project's `**`) keyed each run's new timings,
- * and missed the run after every write. Asked after the write, off the run.
+ * Whether git ignores `file`, asked now and answered when git exits: true
+ * for a file outside the root, no repository, or a git that cannot run,
+ * which say nothing of it. Started before the history read, the check runs
+ * beside it: asked after the write, it held the run's end 7-10 ms.
  */
-export function warnUnignored(file: string, root: string, warn: (m: string) => void): void {
+export function askIgnored(file: string, root: string): Promise<boolean> {
   const rel = path.relative(root, file)
   // `..x.json` is a name inside the root, not a step out of it.
-  if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) return
-  const p = Bun.spawnSync({
-    cmd: ['git', 'check-ignore', '-q', '--', rel],
-    cwd: root,
-    stdout: 'ignore',
-    stderr: 'ignore',
-  })
-  // 0: ignored; 128: no repository or git refused, which says nothing of it.
-  if (p.exitCode !== 1) return
+  if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel))
+    return Promise.resolve(true)
+  try {
+    const p = Bun.spawn({
+      cmd: ['git', 'check-ignore', '-q', '--', rel],
+      cwd: root,
+      stdin: 'ignore',
+      stdout: 'ignore',
+      stderr: 'ignore',
+    })
+    // 0: ignored; 128: no repository or git refused.
+    return p.exited.then((code) => code !== 1)
+  } catch {
+    return Promise.resolve(true)
+  }
+}
+
+/**
+ * Says so when git does not ignore the file it rewrote: a task whose
+ * inputs cover it (a root project's `**`) keyed each run's new timings,
+ * and missed the run after every write.
+ */
+export async function warnUnignored(
+  file: string,
+  root: string,
+  warn: (m: string) => void,
+  ignored: Promise<boolean> = askIgnored(file, root),
+): Promise<void> {
+  if (await ignored) return
   warn(
-    `[vx] vx-history: timings file ${rel} is not git-ignored, so a task whose inputs cover it re-keys on every rewrite — add it to .gitignore`,
+    `[vx] vx-history: timings file ${path.relative(root, file)} is not git-ignored, so a task whose inputs cover it re-keys on every rewrite — add it to .gitignore`,
   )
 }

@@ -643,6 +643,8 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
           if (sched !== undefined) now = timings.readTimings(done.file, () => {})
           // Not a timings file (a mistyped `file`): never written over.
           if (now !== undefined) {
+            // Asked now, answered beside the read and the write.
+            const ignored = timings.askIgnored(done.file, done.root)
             const cache = sched?.cache ?? new Cache(done.cacheDir)
             let table: ReadonlyMap<string, number>
             try {
@@ -666,7 +668,7 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
                 `[vx] vx-history: timings file ${done.file} not written: ${err instanceof Error ? err.message : String(err)}`,
               )
             }
-            if (written) timings.warnUnignored(done.file, done.root, done.warn)
+            if (written) await timings.warnUnignored(done.file, done.root, done.warn, ignored)
           }
         }
       }

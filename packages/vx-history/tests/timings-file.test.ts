@@ -142,9 +142,11 @@ describe('the file between machines', () => {
   )
 
   // The file takes p50s alone: the run's end re-read the window's resource
-  // maxima too (`resourcesFor`), 40 of its 55 ms at 8,002 tasks.
+  // maxima too (`resourcesFor`), 40 of its 55 ms at 8,002 tasks. And the
+  // ignore check is asked before the read, so it runs beside it: asked
+  // after the write, it held the run's end 7-10 ms.
   it(
-    "the run's end reads each task's p50 alone, the schedule its needs once",
+    "the run's end reads each task's p50 alone, the ignore check asked first",
     async () => {
       await writeFile(
         path.join(root, 'package.json'),
@@ -159,6 +161,12 @@ describe('the file between machines', () => {
           "export default { cache: { dir: '.cache' }, plugins: [vxHistory({ file: 'timings.json' })] }\n",
       )
       const asked: string[] = []
+      const spawn = Bun.spawn
+      Bun.spawn = ((first: string[] | { cmd: string[] }, ...rest: unknown[]) => {
+        const cmd = Array.isArray(first) ? first : first.cmd
+        if (cmd[1] === 'check-ignore') asked.push('check-ignore')
+        return (spawn as (...a: unknown[]) => unknown)(first, ...rest)
+      }) as typeof Bun.spawn
       const proto = LocalHistoryProvider.prototype
       const { resourcesFor, durationsFor } = proto
       proto.resourcesFor = function (ids) {
@@ -173,10 +181,11 @@ describe('the file between machines', () => {
         const opts = { cwd: root, tasks: ['build'], handleSignals: false, log: silent() }
         expect((await run(opts)).ok).toBe(true)
       } finally {
+        Bun.spawn = spawn
         proto.resourcesFor = resourcesFor
         proto.durationsFor = durationsFor
       }
-      expect(asked).toEqual(['resourcesFor', 'durationsFor'])
+      expect(asked).toEqual(['resourcesFor', 'check-ignore', 'durationsFor'])
       expect(Object.keys(readTimings(path.join(root, 'timings.json'), () => {}) ?? {})).toEqual([
         'a#build',
       ])
@@ -403,18 +412,18 @@ it('says a timings file git does not ignore re-keys the tasks over it', async ()
   const said: string[] = []
   const file = path.join(root, '.vx-timings.json')
   await writeFile(file, '{}')
-  warnUnignored(file, root, (m) => said.push(m))
+  await warnUnignored(file, root, (m) => said.push(m))
   expect(said).toEqual([
     '[vx] vx-history: timings file .vx-timings.json is not git-ignored, so a task whose inputs cover it re-keys on every rewrite — add it to .gitignore',
   ])
   await writeFile(path.join(root, '.gitignore'), '.vx-timings.json\n')
-  warnUnignored(file, root, (m) => said.push(m))
-  warnUnignored(path.join(os.tmpdir(), 'elsewhere.json'), root, (m) => said.push(m))
+  await warnUnignored(file, root, (m) => said.push(m))
+  await warnUnignored(path.join(os.tmpdir(), 'elsewhere.json'), root, (m) => said.push(m))
   expect(said).toHaveLength(1)
   // A name that starts with `..` is in the workspace; it read as outside it.
   const dotted = path.join(root, '..vx-timings.json')
   await writeFile(dotted, '{}')
-  warnUnignored(dotted, root, (m) => said.push(m))
+  await warnUnignored(dotted, root, (m) => said.push(m))
   expect(said.slice(1)).toEqual([
     '[vx] vx-history: timings file ..vx-timings.json is not git-ignored, so a task whose inputs cover it re-keys on every rewrite — add it to .gitignore',
   ])
