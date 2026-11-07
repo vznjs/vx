@@ -255,7 +255,7 @@
   "history-definition.test.ts": 66,
   "history-forecast-branch.test.ts": 658,
   "history-p50s.test.ts": 201,
-  "history-stream.test.ts": 4482,
+  "history-stream.test.ts": 15800,
   "history.test.ts": 309,
   "hit-snapshot-stray.test.ts": 214,
   "home-guard.test.ts": 66,
