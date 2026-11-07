@@ -133,7 +133,13 @@ import {
   type PreparedRun,
 } from './prepare.js'
 import { acquireRunLock, runLockPath, type RunLockRelease } from './run-lock.js'
-import { exitOfSignal, type HeldSignals, holdSignals, terminateChildren } from './signals.js'
+import {
+  exitOfSignal,
+  type HeldSignals,
+  holdSignals,
+  terminateChildren,
+  unlessStopped,
+} from './signals.js'
 import { CYCLE_INTERRUPT, runStop } from './run-stop.js'
 import {
   hasPooledExecutor,
@@ -681,6 +687,7 @@ async function runOnBus(
       branch: prepared.branch(),
       secrets,
       step,
+      signal: signals.held?.signal,
     })
   } catch (err) {
     disposePlugins?.()
@@ -729,16 +736,20 @@ async function runOnBus(
   }
 
   // Resolved ONCE per run, in declaration order, the local executor last.
-  // A broken factory aborts here, before any task starts.
+  // A broken factory aborts here, before any task starts, and a held
+  // signal ends the wait on one that never settles.
   const executors: readonly TaskExecutor[] = await abandoning(() =>
-    resolveExecutors(prepared.plugins, {
-      workspaceRoot: prepared.workspaceRoot,
-      cacheDir: prepared.cacheDir,
-      warn: warnOf(log),
-      concurrency,
-      artifacts: taskArtifacts(prepared.cache, prepared.workspaceRoot),
-      cacheFacts: () => cacheFacts(prepared.remotes, prepared.cacheRefs),
-    }),
+    unlessStopped(
+      resolveExecutors(prepared.plugins, {
+        workspaceRoot: prepared.workspaceRoot,
+        cacheDir: prepared.cacheDir,
+        warn: warnOf(log),
+        concurrency,
+        artifacts: taskArtifacts(prepared.cache, prepared.workspaceRoot),
+        cacheFacts: () => cacheFacts(prepared.remotes, prepared.cacheRefs),
+      }),
+      signals.held?.signal,
+    ),
   )
   // Placement: decided ONCE per task, before scheduling, so the scheduler
   // can admit a remote-pooled task against its pool instead of a local

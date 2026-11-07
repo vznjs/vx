@@ -293,4 +293,49 @@ describe('discover stage', () => {
       expect(err?.message).toContain(message)
     })
   }
+
+  // An entry is read once, in the plugin's name: a getter that threw
+  // crashed vx with a stack, and deps that read as a list to the check and
+  // as 5 after it crashed linking the edges ("5 is not iterable").
+  it('a getter or Proxy trap in an entry that throws is refused naming the plugin', async () => {
+    const said = (discover: VxPlugin['discover']): Promise<string> =>
+      discoverProjects(root, lockOf(), [plugin('p', discover)], root, warn).then(
+        () => 'ok',
+        (e: Error) => `${e.constructor.name}: ${e.message}`,
+      )
+    const trap = (): never => {
+      throw new Error('trap')
+    }
+    expect([
+      await said(() => [
+        {
+          get dir(): string {
+            throw new Error('boom')
+          },
+        },
+      ]),
+      await said(() => [new Proxy({ dir: 'packages/a' }, { get: trap })]),
+      // `then` answered: the await of the hook's answer reads it first.
+      await said(() => new Proxy([], { get: (_t, k) => (k === 'then' ? undefined : trap()) })),
+    ]).toEqual([
+      "UserError: plugin 'p' failed in discover: boom",
+      "UserError: plugin 'p' failed in discover: trap",
+      "UserError: plugin 'p' failed in discover: trap",
+    ])
+  })
+
+  it('deps that answer differently on a second read are used as first read', async () => {
+    let reads = 0
+    const entry = {
+      dir: 'tools/gen',
+      get deps(): unknown {
+        return ++reads === 1 ? ['packages/a'] : 5
+      },
+    }
+    const projects = await discover([plugin('p', () => [entry as never])])
+    expect(projects.map((p) => [p.name, p.deps])).toEqual([
+      ['packages/a', undefined],
+      ['tools/gen', ['packages/a']],
+    ])
+  })
 })

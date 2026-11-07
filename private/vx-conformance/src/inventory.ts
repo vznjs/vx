@@ -1205,6 +1205,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'plugin-exports-documented.unsafe',
     'plugin-hooks-doc-drift',
     'plugin-hooks-doc-drift.unsafe',
+    'plugin-hostile-answers',
     'plugin-options-documented.unsafe',
     'readme-imports.unsafe',
     'readme-links.unsafe',
