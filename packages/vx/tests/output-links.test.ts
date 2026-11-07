@@ -2,8 +2,8 @@
 // Turbo and Nx keep it (M's call, 2026-10-16): a link to a file came back
 // as a copy of its target, and a link to a directory failed every save
 // ("vx stores regular files only"), so a Next.js standalone or pnpm layout
-// never hit. A link whose target leaves the workspace, or is absolute, is
-// refused on save and on restore.
+// never hit. A link whose target leaves the workspace, is absolute, or
+// lies in .git is refused on save and on restore.
 
 import {
   existsSync,
@@ -128,7 +128,7 @@ it.skipIf(process.platform === 'win32')(
 )
 
 it.skipIf(process.platform === 'win32')(
-  'a link out of the workspace, or an absolute one, fails the save and names the link',
+  'a link out of the workspace, into .git, or an absolute one fails the save and names the link',
   async () => {
     const out = await workspace(
       'rm -rf dist && mkdir -p dist && ln -s ../../../../../etc/hosts dist/x',
@@ -142,6 +142,16 @@ it.skipIf(process.platform === 'win32')(
     )
     const r2 = await build(abs.root)
     expect(r2.out + r2.err).toMatch(/output dist\/x is a symlink to an absolute path/)
+    // Every restore refuses a link into .git, so a save that kept one
+    // stored an entry no machine could hit.
+    const git = await workspace(
+      'rm -rf dist && mkdir -p dist && echo a > dist/a.txt && ln -s ../../../.git/config dist/x',
+    )
+    const r3 = await build(git.root)
+    expect(r3.out + r3.err).toContain(
+      'output dist/x is a symlink to ../../../.git/config, inside .git',
+    )
+    expect(r3.out + r3.err).not.toContain('↑')
   },
   TIMEOUT,
 )

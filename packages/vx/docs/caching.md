@@ -1020,7 +1020,8 @@ Skipped when:
 
 A directory of this user's that withholds its own write (a task's
 `chmod 555 dist/ro`, which a hit restores too) gets owner write for the
-clean's remove, then its mode back, as a restore's write into it does.
+clean's remove, then its mode back, as a restore's write into it does; the
+subdirectories the clean empties in it go too.
 A declared output the process cannot remove even so (a `dist/` another
 user wrote, a read-only checkout) fails the task with `cannot remove
 declared output <path>: EACCES — …`, and a restore that cannot write
@@ -1629,7 +1630,8 @@ same gate (`restorableOutput`). On the save side a
 link to a file, to a directory or to nothing comes back as that link,
 and no byte of its target is read, so a link a sandboxed task planted to
 a file it could not read packs nothing of it (L-23). An absolute link, or
-one leading out of the workspace, fails the save by name, as the config
+one leading out of the workspace or into `.git`, fails the save by name
+(the restore's own check, so no entry is stored that every restore refuses), as the config
 spells the path (`workspaceFiles output gen/latest`). The clean before exec and restore removes every
 file AND symlink the output globs cover (a link is unlinked, never
 followed). An output directory that is a symlink (`dist -> real-out`) is

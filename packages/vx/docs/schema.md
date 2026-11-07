@@ -1365,8 +1365,8 @@ A **symlink** the globs match is an output: it is cached and restored
 as the link, its target as written (a link to a file, to a directory,
 or to nothing yet), and the clean unlinks it (never following it). No
 byte of its target is read. A link must be relative and lead somewhere
-inside the workspace: an absolute one, or `../../../etc/hosts`, fails
-the save by name and caches nothing, so the next run executes again. An
+inside the workspace, out of `.git`: an absolute one, `../../../etc/hosts`, or
+`../../.git/config` fails the save by name and caches nothing, so the next run executes again. An
 output DIRECTORY that is a symlink (`dist -> real-out`) is followed: its
 target is cleaned, saved and restored as the output; one that resolves
 outside the project refuses the task, naming the link. The clean also prunes the directories it
