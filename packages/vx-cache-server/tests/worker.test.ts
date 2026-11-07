@@ -82,6 +82,12 @@ it('refuses every request, saying why, while ALLOW, a limit or READ_ACCESS is un
       500,
       'AUDIENCE: the aud CI tokens name, or unset, not blank',
     ],
+    // vxCache() asks CI for an origin: a host alone matched no token.
+    [
+      { ALLOW: ALLOW_VAR, AUDIENCE: 'cache.example' },
+      500,
+      'AUDIENCE: the origin clients reach this server at (https://cache.example.com), not cache.example',
+    ],
     // wrangler.jsonc may write a var as JSON: "env.AUDIENCE.trim is not a function".
     [{ ALLOW: ALLOW_VAR, AUDIENCE: 42 }, 500, 'AUDIENCE: one string, the aud CI tokens name'],
     [
@@ -146,10 +152,11 @@ it('refuses every request, saying why, while no R2 bucket is bound as BLOBS', as
   }
 })
 
-// jose matches aud exactly: a pasted newline refused every token as the
-// wrong audience. A blank one is refused above.
-it('reads AUDIENCE without the blanks around it', async () => {
-  const other = await start({ ALLOW: ALLOW_VAR, AUDIENCE: ` ${AUD}\n` })
+// jose matches aud exactly: a pasted newline, or a slash or path after the
+// origin vxCache() asks CI for, refused every token as the wrong audience.
+// A blank one is refused above.
+it('reads AUDIENCE as its origin, without the blanks around it', async () => {
+  const other = await start({ ALLOW: ALLOW_VAR, AUDIENCE: ` ${AUD}/v1\n` })
   try {
     const res = await fetch(new URL('/v1/capabilities', await other.ready), {
       headers: { ...NAMED, authorization: `Bearer ${await iss.sign(JOBS.main, AUD)}` },

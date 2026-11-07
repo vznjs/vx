@@ -155,7 +155,7 @@ function branchOf(iss: string, claims: JWTPayload): string | undefined {
 export interface OidcOptions {
   /** `ALLOW` (`parseAllow`): who may take part. */
   readonly allow: readonly Allowed[]
-  /** The `aud` a token must name; unset, the origin the server is reached at. */
+  /** The `aud` a token must name, read as its origin (a URL that is not one throws); unset, the origin the server is reached at. */
   readonly audience?: string
   /**
    * Reads a URL as JSON (`cachedFetchJson` on a Worker); tests serve keys
@@ -291,9 +291,7 @@ const bearerOf = (req: Request): string | undefined =>
 
 /** A token checked: jose's checks, then ALLOW's repository and workflow, and the branch it may write. */
 function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Promise<Access> {
-  // A blank one is no origin a token names: every token was "wrong audience".
-  if (opts.audience !== undefined && opts.audience.trim() === '')
-    throw new Error('AUDIENCE: the aud CI tokens name, or unset, not blank')
+  const own = opts.audience === undefined ? undefined : originOf(opts.audience)
   const fetchJson = opts.fetchJson ?? defaultFetchJson
   const now = opts.now ?? (() => Date.now() / 1000)
   // jose keeps each issuer's keys, and refetches them for a key it lacks.
@@ -360,7 +358,7 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
           : 'the token names no issuer (iss)',
       )
     }
-    const audience = opts.audience ?? new URL(req.url).origin
+    const audience = own ?? new URL(req.url).origin
     let claims: JWTPayload
     try {
       claims = (
@@ -390,15 +388,35 @@ function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Prom
     const wclaim = workflowClaimOf(iss)
     const ran = claims[wclaim]
     if (typeof ran !== 'string') throw new Refusal(403, `no ${wclaim} claim`)
-    // Cut at the `@` before the ref: GitLab's CI file may itself hold one
-    // (`.gitlab-ci.yml@group/project`, a file kept in another project).
-    const workflow = ran.replace(/@(?:refs\/.*)?$/, '')
+    // Cut at the last `@`: the ref after it is `refs/…` or a SHA (a reusable
+    // workflow pinned by one), and GitLab's CI file may itself hold one
+    // (`.gitlab-ci.yml@group/project`, a file kept in another project, which
+    // a cut at the first `@refs/` matched as this project's own when that
+    // project was `refs/…`). A ref holding an `@` is refused, never widened.
+    const at = ran.lastIndexOf('@')
+    const workflow = at < 0 ? ran : ran.slice(0, at)
     if (!ofRepo.some((a) => same(workflow, workflowPath(iss, a.repository, a.workflow))))
       throw new Refusal(403, `${wclaim} ${workflow} is not in this server's ALLOW`)
     const repo = { issuer: iss, repository }
     const branch = branchOf(iss, claims)
     return branch === undefined ? repo : { ...repo, write: branch }
   }
+}
+
+/**
+ * `AUDIENCE` as tokens name it: the origin, which vxCache() and vxHistory()
+ * ask CI for, so `https://c/` or a URL with a path refused every token.
+ */
+function originOf(audience: string): string {
+  const said = audience.trim()
+  // A blank one is no origin a token names: every token was "wrong audience".
+  if (said === '') throw new Error('AUDIENCE: the aud CI tokens name, or unset, not blank')
+  const url = URL.parse(said)
+  if (url === null || (url.protocol !== 'https:' && url.protocol !== 'http:'))
+    throw new Error(
+      `AUDIENCE: the origin clients reach this server at (https://cache.example.com), not ${said}`,
+    )
+  return url.origin
 }
 
 /** An issuer as a key names it: its URL, no trailing slash. */

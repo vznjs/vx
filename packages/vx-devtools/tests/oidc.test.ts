@@ -67,6 +67,71 @@ describe('oidcTokenAuth', () => {
       ).toEqual(access)
     }
   })
+  // The workflow is matched up to the last `@`: a reusable workflow of the
+  // same workspace pinned by SHA names no `refs/` after it, and was refused.
+  // A CI file kept in another project (`@refs/other`) is not this one's.
+  it('cuts the workflow at the last @, a SHA pin or a ref', async () => {
+    const GITHUB = 'https://token.actions.githubusercontent.com'
+    const sha = '0123456789abcdef0123456789abcdef01234567'
+    const statusOf = async (allow: string, iss: string, claims: JWTPayload) =>
+      oidcTokenAuth({ allow: parseAllow(allow), fetchJson })(req(await sign(iss, claims)), {
+        issuer: iss,
+        repository: iss === GITHUB ? 'acme/app' : 'group/app',
+      }).then(
+        (access) => access,
+        (err: unknown) => {
+          if (!(err instanceof Refusal)) throw err
+          return err.status
+        },
+      )
+    const github = {
+      repository: 'acme/app',
+      ref: 'refs/heads/main',
+      event_name: 'push',
+      job_workflow_ref: `acme/app/.github/workflows/ci.yml@${sha}`,
+    }
+    expect(await statusOf(`${GITHUB}:acme/app:ci.yml`, GITHUB, github)).toEqual({
+      issuer: GITHUB,
+      repository: 'acme/app',
+      write: 'refs/heads/main',
+    })
+    const ci = 'gitlab.example.com/group/app//.gitlab-ci.yml'
+    for (const [uri, status] of [
+      [`${ci}@refs/heads/main`, 200],
+      [`${ci}@refs/other@refs/heads/main`, 403],
+      [`${ci}@group/shared@refs/heads/main`, 403],
+    ] as const) {
+      const got = await statusOf(`${GITLAB}:group/app:.gitlab-ci.yml`, GITLAB, {
+        ci_config_ref_uri: uri,
+      })
+      expect([uri, typeof got === 'number' ? got : 200]).toEqual([uri, status])
+    }
+  })
+  // vxCache() and vxHistory() ask CI for the server's origin: an AUDIENCE
+  // of `https://c/` or with a path refused every token, the fix a guess.
+  it('reads AUDIENCE as its origin, and refuses one that is no URL', async () => {
+    const access = { issuer: GITLAB, repository: 'group/app', write: 'refs/heads/main' }
+    for (const audience of [`${AUD}/`, ` ${AUD}/cache/v1\n`]) {
+      const auth = oidcTokenAuth({
+        allow: parseAllow(`${GITLAB}:group/app:.gitlab-ci.yml`),
+        audience,
+        fetchJson,
+      })
+      expect(
+        await auth(req(await sign(GITLAB)), { issuer: GITLAB, repository: 'group/app' }),
+      ).toEqual(access)
+    }
+    for (const audience of ['cache.example.com', 'urn:vx:cache'])
+      expect(() =>
+        oidcTokenAuth({
+          allow: parseAllow(`${GITLAB}:group/app:.gitlab-ci.yml`),
+          audience,
+          fetchJson,
+        }),
+      ).toThrow(
+        `AUDIENCE: the origin clients reach this server at (https://cache.example.com), not ${audience}`,
+      )
+  })
   // A key set the issuer broke (two keys answering one kid, or no set at
   // all) is the issuer's fault: it read 401 "not a JWT", a token refused,
   // and the client dropped a remote it should have asked again.

@@ -41,7 +41,7 @@ export interface Env {
   readonly BLOBS?: R2Bucket
   /** Who may take part (`parseAllow`): `issuer:owner/repo:workflow` entries, space separated. */
   readonly ALLOW?: string
-  /** The `aud` a CI token names; unset, the origin the Worker is reached at. */
+  /** The `aud` a CI token names, read as its origin; unset, the origin the Worker is reached at. */
   readonly AUDIENCE?: string
   /** `public`: a request with no token reads a repository ALLOW names. */
   readonly READ_ACCESS?: string

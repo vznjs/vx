@@ -25,8 +25,9 @@ option.
   `public`, `named` when ALLOW names it, or `undefined` when none is named.
 - `errorJson(status, message)` is every server's refusal, `{ code, message }`
   (Turbo's spec's `Error`); `notAllowed(allow)` its `405`, naming the methods in `Allow`.
-- `hashPart(text)` is what a server stores in place of an issuer, a repository name or a scope: the first
-  128 bits of its SHA-256 in hex (Web Crypto, so Bun and Workers agree), never the plain value.
+- `hashPart(text)` is what a request names its issuer and repository by (`vx-issuer`, `vx-repository`):
+  the first 128 bits of its SHA-256 in hex (Web Crypto, so Bun and Workers agree). A server stores
+  them plain: a cache object's name and a history row hold the issuer, repository and ref.
 - `statusLine(tone, name, text)` is the line a server prints when it starts (`'ok'`) or refuses to
   (`'err'`): `✓ vx-cache-server  listening on …`, painted as vx's own status lines (NO_COLOR, then
   FORCE_COLOR, then a terminal whose `TERM` is not `dumb`), with any lines after the first dim.
@@ -95,7 +96,7 @@ export function cachedFetchJson(
   checkout's origin names (2026-10-25). One `ALLOW` does not name is
   `403`, and so is one other than the request names.
 - The token's workflow (`job_workflow_ref` on GitHub, `ci_config_ref_uri`
-  on GitLab, up to the `@` before its ref) must be one an entry names for that
+  on GitLab, up to its last `@`, before the ref or SHA) must be one an entry names for that
   repository: any other is `403`.
 - With `readAccess: 'public'` (`READ_ACCESS`), a request with no token
   reads the repository it names when `ALLOW` names it (else `403`), and

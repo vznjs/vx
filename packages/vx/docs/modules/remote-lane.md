@@ -28,7 +28,10 @@ export class RemoteLane {
   get write(): boolean
   has(hash: string): Promise<ArtifactInfo | null> // a failure is null
   hasMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null> // records the rest absent
-  get(hash: string): Promise<{ body: Blob | Response; durationMs?: number } | null>
+  get(
+    hash: string,
+    fresh?: boolean,
+  ): Promise<{ body: Blob | Response; durationMs?: number } | null | undefined> // undefined: no answer
   upload(hash, durationMs, body: () => { body: Blob; release? }, tally): void
   distrust(hash: string): void // its bytes here did not read back: uploaded again, held or not
   drain(): Promise<void>

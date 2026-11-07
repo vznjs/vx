@@ -296,6 +296,7 @@ export class RemoteLane {
       this.report('download', hash, err)
       return undefined
     }
+    if (result === undefined) return undefined
     if (!result) {
       // Gone, whatever a probe said: the re-run's save uploads it.
       this.held.delete(hash)
