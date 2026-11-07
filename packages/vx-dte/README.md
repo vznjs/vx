@@ -867,7 +867,7 @@ What `@vzn/vx-dte` reads from the CI job it runs in:
 process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
   a name the dial sets itself (`authorization`, `content-type`,
   `relay-proof`) is refused. The rest:
-  - `workers` names each worker type, `{ machines }`, in order of
+  - `workers` names each worker type, a `WorkerType` `{ machines }`, in order of
     preference (`exec.worker` picks one). Each machine is a size the
     adapter may start, named `<type>.<machine>` (`linux.small`) in the
     run's output and an adapter's options, and is a `WorkerSize`,
