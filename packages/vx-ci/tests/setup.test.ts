@@ -1,7 +1,7 @@
 // `vx setup github` / `vx setup gitlab` (2026-10-23): a CI step
 // before vx runs, the plugin's verb, not core's. What it runs, by machine.
 import { expect, it } from 'bun:test'
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { debsKey, runSetup, setup, type SetupOptions } from '../src/setup.js'
@@ -135,10 +135,43 @@ it('lets bwrap make user namespaces where AppArmor restricts them', async () => 
   const m = machine({ restricted: () => true })
   await m.go()
   expect(m.ran.slice(-3)).toEqual([
-    expect.stringMatching(/^sudo cp .*vx-bwrap-\d+\.apparmor \/etc\/apparmor\.d\/bwrap$/),
+    expect.stringMatching(/^sudo cp .*vx-bwrap-\w+\/bwrap\.apparmor \/etc\/apparmor\.d\/bwrap$/),
     'sudo apparmor_parser -r /etc/apparmor.d/bwrap',
     PROBE,
   ])
+})
+
+// The profile went to tmpdir/vx-bwrap-<pid>.apparmor, a name anyone on the
+// machine could guess: a symlink planted there had the write follow it,
+// and root then copied whatever that file held into /etc/apparmor.d.
+it("writes the profile where no one else's file can stand, and removes it", async () => {
+  const victim = path.join(mkdtempSync(path.join(os.tmpdir(), 'vx-setup-victim-')), 'victim')
+  writeFileSync(victim, 'ORIGINAL\n')
+  const planted = path.join(os.tmpdir(), `vx-bwrap-${process.pid}.apparmor`)
+  rmSync(planted, { force: true })
+  symlinkSync(victim, planted)
+  const copied: { from: string; profile: string }[] = []
+  try {
+    await setup({
+      ci: 'github',
+      debs: mkdtempSync(path.join(os.tmpdir(), 'vx-setup-')),
+      platform: 'linux',
+      root: true,
+      restricted: () => true,
+      print: () => {},
+      has: () => true,
+      sh: async (argv) => {
+        if (argv[0] === 'cp')
+          copied.push({ from: argv[1]!, profile: readFileSync(argv[1]!, 'utf8') })
+        return 0
+      },
+    })
+  } finally {
+    rmSync(planted, { force: true })
+  }
+  expect(readFileSync(victim, 'utf8')).toBe('ORIGINAL\n')
+  expect(copied.map((c) => c.profile)).toEqual([expect.stringContaining('userns,')])
+  expect(existsSync(copied[0]!.from)).toBe(false)
 })
 
 it('fails, named, where bwrap cannot start a sandbox', async () => {
