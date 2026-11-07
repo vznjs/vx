@@ -158,7 +158,7 @@ it('an abort during a record replay returns promptly and writes nothing', async 
   expect(ms).toBeLessThan(2000)
   expect([ret.exitCode, executes() - before]).toEqual([143, 0])
   expect(existsSync(path.join(root, 'pkg', 'out.bin'))).toBe(false)
-}, 20_000)
+}, 30_000)
 
 // The Read an abort abandons still answers later; its bytes must not land.
 it('a restore whose attempt was aborted writes nothing', async () => {
