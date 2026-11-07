@@ -539,14 +539,22 @@ describe("the server's limits", () => {
         authorize: oidcAuth({ allow: ALLOW, fetchJson: (u) => iss.fetchJson(u) }),
         limits: { maxCheckHashes: 1 },
       })
+      // The chunks' refusals land apart: the lookup ends only once every
+      // chunk's request has (a first refusal ended it with two in flight).
+      let open = 0
+      let answered = 0
       handle = async (req) => {
+        open++
         const res = await refusing(req)
+        if (res.status === 200 && answered++ > 0) await Bun.sleep(50)
+        open--
         return res.status === 200 ? new Response('{}', { status: 400, headers: res.headers }) : res
       }
       lookups.length = 0
       await expect(
         layer(url, await iss.sign(MAIN_JOB, new URL(url).origin)).hasMany(keys),
       ).rejects.toThrow('HTTP 400')
+      expect(open).toBe(0)
       expect(lookups).toEqual([3, 1, 1, 1])
       expect(await c.put('b2', new Blob(['12345']), { durationMs: 1 })).toBe(false)
       expect(said).toEqual([

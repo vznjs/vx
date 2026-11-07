@@ -694,7 +694,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
             (r) =>
               (r as PromiseFulfilledResult<Map<string, { size: number; scope: string }>>).value,
           )
-        : await Promise.all(checks(Math.min(...refused.map((err) => (err as TooMany).max)), false))
+        : await settledAll(checks(Math.min(...refused.map((err) => (err as TooMany).max)), false))
     // A token refused to `open`'s ask, which a check here shared.
     this.sayUnsaid()
     if (this.disabled) return null
@@ -860,6 +860,18 @@ export class VxCacheLayer implements RemoteCacheLayer {
 }
 
 /** A check refused for its size: sent again in checks of `max` lookups. */
+/**
+ * `Promise.all` that ends only once every check has: a refused chunk
+ * rejected the lookup while its siblings were still in flight, so their
+ * requests outlived the call that sent them.
+ */
+async function settledAll<T>(ps: readonly Promise<T>[]): Promise<T[]> {
+  const done = await Promise.allSettled(ps)
+  const failed = done.find((r) => r.status === 'rejected')
+  if (failed !== undefined) throw failed.reason
+  return done.map((r) => (r as PromiseFulfilledResult<T>).value)
+}
+
 class TooMany extends Error {
   constructor(readonly max: number) {
     super(`a check is at most ${max} lookups`)
