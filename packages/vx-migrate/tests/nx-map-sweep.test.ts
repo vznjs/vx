@@ -805,7 +805,8 @@ describe('nx-map: a workspace output two projects declare', () => {
       true,
       undefined,
       [
-        'declares the workspace output "dist/packages/a" that repo#typecheck also declares — ' +
+        'declares the workspace output "dist/packages/a", which overlaps the output "dist" that ' +
+          'repo#typecheck declares — ' +
           "vx cleans a task's outputs before it runs and before a restore, so two cached tasks " +
           "on one path would delete each other's work; this one runs uncached. Give it its own " +
           'output path to cache it.',

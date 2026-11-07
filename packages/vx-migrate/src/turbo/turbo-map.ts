@@ -1315,8 +1315,12 @@ export async function mapTurboWorkspace(
       // Core gives a project with no `build` this very node (a group behind
       // `^build`, keyed on the project's files), so writing it is noise:
       // solid's three script-less packages each got a key-only `build`.
+      // Written configs only: a bare `build` skips core's node (X-102), so
+      // under turbo(), which writes nothing, `vx run build` scoped to such a
+      // package was refused where Turbo runs its dependencies' builds.
       const noopEdges = defFor(name)!.dependsOn ?? []
       if (
+        opts.envNames === undefined &&
         noop &&
         name === 'build' &&
         noopEdges.includes('^build') &&
@@ -2186,6 +2190,8 @@ function buildTask(
   const outFiles: string[] = []
   const zeroed = new Set<string>()
   const wsOutFiles: string[] = []
+  // The user's `!` outputs, not the take-backs added below.
+  const ownNegated = new Set<string>()
   for (const raw of def.outputs ?? []) {
     // Turbo's grammar: an extglob in `dist/**/*.@(js|mjs)` matched
     // nothing, so a hit restored nothing (item 1031).
@@ -2204,9 +2210,10 @@ function buildTask(
     const o = mapped.slice(neg.length)
     const signed = (g: string) => {
       const head = zeroSegments(g)
-      if (head === null) return [neg + g]
-      zeroed.add(neg + head)
-      return [neg + g, neg + head]
+      const out = head === null ? [neg + g] : [neg + g, neg + head]
+      if (head !== null) zeroed.add(neg + head)
+      if (neg) for (const e of out) ownNegated.add(e)
+      return out
     }
     if (o.startsWith('$TURBO_ROOT$/')) {
       wsOutFiles.push(...signed(o.slice('$TURBO_ROOT$/'.length)))
@@ -2257,6 +2264,16 @@ function buildTask(
   const ws = takingBack(wsOutFiles).sort(negationsLast)
   if (ws.length > 0) outputs.workspaceFiles = ws
   task.outputs = outputs
+  // A path a `!` output takes back is still written by the task, often
+  // not gitignored (`dist/skip`): as its own input it changed after the
+  // key was taken, so no run was saved, and no dependant's either.
+  const subtract = (field: 'files' | 'workspaceFiles', from: readonly string[]) => {
+    const list = inputs[field] as unknown[] | undefined
+    const negs = from.filter((g) => ownNegated.has(g) && !list?.includes(g))
+    if (list !== undefined && negs.length > 0) inputs[field] = withoutTakenBack([...list, ...negs])
+  }
+  subtract('files', outputs.files as string[])
+  subtract('workspaceFiles', ws)
   task.cache = true
   if (rewritesManifest) {
     task.inputs = {
