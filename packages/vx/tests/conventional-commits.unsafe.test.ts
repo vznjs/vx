@@ -31,6 +31,8 @@ it("the PR's title is a Conventional Commits header", () => {
 // subject cannot change without rewriting the branch every landed PR
 // shares (2026-10-28).
 const KNOWN = new Set([
+  // #5123's migrate stale-hit fix, pushed before its subject was cut: 74 chars.
+  '2eee96a62fd9218431f3105a7d26e6249b88993e',
   // #5113's v54 doc pins, pushed before its subject was cut: 74 chars.
   '02a96fb35f0ec5ea898976f571e9d6afec16f965',
   // #5044's dead-source-glob commit, pushed before its subject was cut: 74 chars.
