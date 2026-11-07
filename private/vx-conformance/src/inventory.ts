@@ -580,6 +580,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-history/server-answers',
     'vx-history/timings-file',
     'vx-history/unknown-options',
+    'vx-history/url-masked',
     'vx-lockfile/bun',
     'vx-lockfile/bun-catalog-precise',
     'vx-lockfile/bun-patch-precise',
