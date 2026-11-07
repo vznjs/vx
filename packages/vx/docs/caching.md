@@ -328,7 +328,14 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     rewrite that keeps its mtime (`cp -p`, `tar -x`) reads clean to
     git, and until 2026-09-27 (A-6) kept the old bytes' key. Every file
     is then hashed through the memo below, which keys on ctime and
-    inode.
+    inode. `core.ignorecase=true` on a disk that does not fold case (a
+    `.git` copied from macOS to Linux) made `git status` take a new
+    `a.txt` for the tracked `A.txt`, so it entered no key; under that
+    setting vx stats `HEAD` as `head` once, and on a disk that tells
+    them apart asks git again with `-c core.ignorecase=false`. vx
+    trusts what `git status` calls clean, so a `core.fsmonitor` that
+    misses an event (a dead daemon, a network share) keeps an edited
+    file's old key: a stale hit.
 
     Even with ctime trusted, git reads it to the second, and its racy
     rule looks at mtime alone. So a same-size rewrite that keeps an
@@ -1010,7 +1017,8 @@ clean deleted a committed file under an output, and a reader with no edge
 to its producer failed naming only the file (A-48, vueuse's
 `metadata/index.json`). Untracked files under the glob are cleaned as
 before. Paths compare as
-git compares them: case-folded under `core.ignorecase` (macOS), and a
+git compares them: case-folded under `core.ignorecase` where the disk
+folds case too (macOS), and a
 file inside a submodule counts as committed.
 Workspace outputs take the same rules, and a path an output `!` entry
 takes back (A-44) is off the wipe, the artifact and the restore alike.

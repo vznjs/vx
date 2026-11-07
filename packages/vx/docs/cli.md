@@ -3053,6 +3053,8 @@ $ vx info
   worktree, or a hook it names) and `core.untrackedCache` make it
   near-free after the first run; both are off by default, so `vx info`
   says when they are, reading each as git does (the last value set wins).
+  vx trusts the files that walk calls clean, so an fsmonitor that misses
+  an event gives a stale hit; leave it off where events can be lost.
 - `sandbox` is the runtime probe's verdict for THIS host — one sandboxed
   `true`, memoized — and how many loaded tasks declare `exec.sandbox`. A
   declared sandbox whose runtime cannot start fails the task at run

@@ -132,6 +132,37 @@ export function repoFacts(dir: string): RepoFacts | null {
 }
 
 /**
+ * Per absolute git common dir, whether its filesystem folds case, asked
+ * only of a repository whose config sets `core.ignorecase`.
+ */
+const caseFoldsMemo = new Map<string, boolean>()
+
+/**
+ * Whether git's `core.ignorecase=true` holds on disk: one stat of `HEAD` as
+ * `head`. A `.git` copied from macOS to Linux keeps the setting, and git
+ * then took a new `a.txt` beside the tracked `A.txt` for the tracked file,
+ * so no key saw it.
+ */
+function caseFolds(commonDir: string): boolean {
+  let folds = caseFoldsMemo.get(commonDir)
+  if (folds === undefined) {
+    folds = existsSync(path.join(commonDir, 'head'))
+    caseFoldsMemo.set(commonDir, folds)
+  }
+  return folds
+}
+
+/** What a git spawn in `dir` prepends so a wrong `core.ignorecase` does not hide a file. */
+function caseArgs(dir: string): readonly string[] {
+  if (caseFoldsMemo.size === 0) return []
+  const facts = repoFacts(dir)
+  if (facts === null) return []
+  return caseFoldsMemo.get(path.resolve(dir, facts.commonDir)) === false ? CASE_SENSITIVE : []
+}
+
+const CASE_SENSITIVE = ['-c', 'core.ignorecase=false']
+
+/**
  * The refusal a run would meet at its enumeration, asked up front by a
  * verb that waits on the user first (the picker); undefined when git
  * tracks `dir`. Free when it does: `repoFacts` is the answer the run
@@ -355,7 +386,8 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   /**
    * Under `core.ignorecase` (macOS's default volume) git's `Foo.txt` is the
    * disk's `foo.txt` after a rename git never saw, so paths are compared
-   * case-folded. Decided at the first note: the run's `git var -l`, else
+   * case-folded. Decided at the first note: the run's `git var -l` (false
+   * there when the disk does not fold case, `caseFolds`), else
    * the platform.
    */
   private foldCase: boolean | undefined
@@ -821,7 +853,16 @@ export function runGitLsFiles(cwd: string, env = gitEnv()): GitLsResult {
   let proc
   try {
     proc = Bun.spawnSync({
-      cmd: [executablePath('git'), 'ls-files', '-s', '--others', '--exclude-standard', '-z', '.'],
+      cmd: [
+        executablePath('git'),
+        ...caseArgs(cwd),
+        'ls-files',
+        '-s',
+        '--others',
+        '--exclude-standard',
+        '-z',
+        '.',
+      ],
       env,
       cwd,
       stdout: 'pipe',
@@ -2077,9 +2118,10 @@ export async function startGitEnumeration(
   // any other, and the filter gate below must see it (A-19).
   // `--no-renames`: a deletion paired as an unmerged path's rename source
   // prints only as `UU <path>`, and the deleted file stayed trusted (A-59).
-  const spawnStatus = (index: string | undefined) =>
+  const spawnStatus = (index: string | undefined, args: readonly string[] = []) =>
     spawnGit(
       [
+        ...args,
         'status',
         '--porcelain',
         '-z',
@@ -2117,7 +2159,23 @@ export async function startGitEnumeration(
     attributesInIndex({ tracked: parsedLs.files, workspaceRoot, gitDir, gitPrefix, pathspecs })
       ? spawnGit(CHECK_ATTR, [...parsedLs.oids.keys()].join('\0'))
       : undefined
-  const [, status, vars] = await running
+  const [, firstStatus, gitVars] = await running
+  // `core.ignorecase` is known only once `var` answers, so a status run
+  // under a setting the disk does not hold is run again without it: a
+  // cost only that misconfigured repository pays.
+  const caseBlind =
+    facts !== null &&
+    gitVars !== null &&
+    gitVars.exitCode === 0 &&
+    gitVars.stdout.includes('core.ignorecase') &&
+    gitBool(gitVarList(gitVars.stdout).get('core.ignorecase')) === true &&
+    !caseFolds(path.resolve(workspaceRoot, gitDir))
+  const status = caseBlind ? await spawnStatus(statusCopy, CASE_SENSITIVE) : firstStatus
+  // The listing as git reads it with the override, which `trackedKey` reads too.
+  const vars =
+    caseBlind && gitVars !== null
+      ? { ...gitVars, stdout: `${gitVars.stdout}core.ignorecase=false\n` }
+      : gitVars
   const indexMoved = indexStamp() !== stampBefore
   // The key stands for the index `ls-files` listed only when that index
   // was written before the enumeration began (git writes it by rename, so

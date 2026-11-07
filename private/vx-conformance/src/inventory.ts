@@ -943,6 +943,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'free-port',
     'gates',
     'git-env',
+    'git-ignorecase',
     'git-listing-temp',
     'git-oid',
     'git-optional-locks',
