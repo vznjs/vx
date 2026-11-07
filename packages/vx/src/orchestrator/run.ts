@@ -122,7 +122,7 @@ import {
   type PreparedRun,
 } from './prepare.js'
 import { acquireRunLock, runLockPath, type RunLockRelease } from './run-lock.js'
-import { terminateChildren } from './signals.js'
+import { exitOfSignal, type HeldSignals, holdSignals, terminateChildren } from './signals.js'
 import { CYCLE_INTERRUPT, runStop } from './run-stop.js'
 import {
   hasPooledExecutor,
@@ -397,11 +397,21 @@ export async function run(options: RunOptions): Promise<RunSummary> {
           unsubscribeTerminal = bus.subscribe(guardedOutput(claimed, render))
         }
   let held = false
+  const signals: { held?: HeldSignals } = {}
   try {
     // vx's own steps are timed only where something renders them.
     const showsSteps =
       terminal !== null ? terminal.showsSteps : options.log?.stepStart !== undefined
-    const summary = await runOnBus(options, bus, warned, colors, terminal, showsSteps, takeOutput)
+    const summary = await runOnBus(
+      options,
+      bus,
+      warned,
+      colors,
+      terminal,
+      showsSteps,
+      signals,
+      takeOutput,
+    )
     if (summary.persistent === undefined) return summary
     // Servers handed back still running still write: `vx watch dev` printed
     // none of its server's log while it idled, the renderer gone with this
@@ -417,6 +427,11 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     }
   } finally {
     if (!held) detach()
+    // A signal heard before the run's stop took over: the run left before
+    // its tasks (a refusal, a setup that threw), its plugins torn down and
+    // its lock released, and vx leaves as that signal says.
+    const heard = signals.held?.takeOver()
+    if (heard !== undefined) await exitOfSignal(heard)
   }
 }
 
@@ -427,6 +442,7 @@ async function runOnBus(
   colors: ColorSupport,
   terminal: DefaultLogger | null,
   showsSteps: boolean,
+  signals: { held?: HeldSignals },
   takeOutput?: (claimed: { logger: Logger; owner: string }) => void,
 ): Promise<RunSummary> {
   const log = busLogger(bus)
@@ -470,9 +486,18 @@ async function runOnBus(
     // A nested run is refused below with its own reason, holding nothing.
     const outer = process.env[VX_RUN_WORKSPACE_ENV] || undefined
     if (outer !== undefined && canonical(outer) === canonical(root)) return
-    heldLock = await step('vx:run-lock', () =>
-      acquireRunLock(root, { log: warnOf(log), signal: options.signal }),
-    )
+    // Heard from here, not only from the stop below: a signal between the
+    // lock and that stop killed vx with the lock held (`holdSignals`).
+    if (options.handleSignals ?? true) signals.held = holdSignals()
+    const held = signals.held?.signal
+    const signal =
+      held !== undefined && options.signal !== undefined
+        ? AbortSignal.any([options.signal, held])
+        : (held ?? options.signal)
+    heldLock = await step('vx:run-lock', () => acquireRunLock(root, { log: warnOf(log), signal }))
+    // A wait the signal ended holds no lock: opening the store now could
+    // meet a `vx cache clean` deleting it. run() exits of the signal.
+    if (held?.aborted === true) throw new Error(`stopped by ${String(held.reason)}`)
   }
   let prepared: PreparedRun
   try {
@@ -759,6 +784,7 @@ async function runOnBus(
     external: options.signal,
     handleSignals: options.handleSignals ?? true,
     handsTerminal: holders.size > 0,
+    held: signals.held,
     teardowns: prepared.plugins.filter((p) => p.teardown).length,
     onStop: () => {
       log.runStop?.()

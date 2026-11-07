@@ -4,7 +4,7 @@
 // that cannot be made is a warning, not a refusal. A lock naming this
 // process's own pid is stale; one another process now wears is too, where
 // procfs gives start times (run-lock-recycled.unsafe.test.ts).
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { chmod, mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -71,6 +71,28 @@ describe('the run lock', () => {
     await releasing
     expect(left).toBe(false)
     expect(lines).toEqual([])
+  })
+
+  it('an exit while the lock is staged removes the staging directory', async () => {
+    // A taking builds its lock beside its name, randomly suffixed, then
+    // renames it in. An exit between the mkdir and the rename (a second
+    // Ctrl-C) left that directory in the lock root for good. The spin
+    // holds this thread while the mkdir lands on the pool's, so the exit
+    // falls before the rename.
+    const taking = acquireRunLock('/w/app', { dir, log })
+    const staged = (): string[] =>
+      readdirSync(dir).filter((n) => n.startsWith(`${path.basename(lockDir())}.`))
+    const until = Date.now() + 5_000
+    while (staged().length === 0 && Date.now() < until) {
+      // spin: the mkdir runs off this thread
+    }
+    expect(staged()).toHaveLength(1)
+    process.emit('exit', 0)
+    const left = staged()
+    await (
+      await taking
+    )()
+    expect(left).toEqual([])
   })
 
   /** Another live process holding the lock: a sleeping child whose entry is in it. */

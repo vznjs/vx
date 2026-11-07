@@ -243,8 +243,10 @@ the very end (the dev server IS the point of the run).
 ## Signal shutdown
 
 `run()` installs SIGINT + SIGTERM + SIGHUP handlers for its own
-duration (unless `RunOptions.handleSignals === false`) and removes them
-in a `finally`, so repeated `run()` calls never stack listeners. On
+duration, from the run lock on (unless `RunOptions.handleSignals ===
+false`), and removes them in a `finally`, so repeated `run()` calls
+never stack listeners. A signal before the run's stop takes over (a
+slow plugin setup) is held and replayed (`signals.md`). On
 signal: forward it (a SIGHUP as SIGTERM) to everything in
 `liveChildren` + `persistentRegistry`, close the cache, and die of the
 signal once the exit hooks have run (130 / 143 / 129 to the parent; a
@@ -334,7 +336,13 @@ and reclaims a lock whose pid is gone. A signal exit is `process.exit`
 also removes the entry this process still holds, synchronously: a
 Ctrl-C left it for the next run to reclaim (item 848,
 `tests/signal-handling.test.ts` › "a signal exit leaves no run-lock
-entry behind"); a `kill -9` still does. A pid comes back, too: the temp
+entry behind"); a `kill -9` still does. The hook also removes a
+staging directory this process made and has not yet renamed in: an exit
+between the mkdir and the rename left it, randomly named, in the lock
+root for good (`tests/run-lock.test.ts` › "an exit while the lock is
+staged removes the staging directory"). A first signal no longer exits
+there at all: the run hears signals from the lock on (`signals.md`,
+`holdSignals`). A pid comes back, too: the temp
 directory outlives a container restart, and the restarted container's
 vx got the dead run's pid (1) and waited for itself forever (nx#36473,
 reproduced on vx 2026-09-24). So a lock naming this process's OWN pid

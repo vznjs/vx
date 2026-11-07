@@ -40,6 +40,23 @@ and every plugin's teardown, which `plugin.md` promises at the end of
 every run, and the summary raced the exit
 (`tests/plugin-teardown.test.ts` › "SIGINT flushes the sinks and tears
 the plugins down before vx exits 130").
+The run hears signals from the moment it goes for its run lock
+(`holdSignals`), not only once `forwardSignals` is on: every plugin's
+setup runs in between, so a slow one held the window open for seconds,
+and a Ctrl-C in it killed vx by the default action, with no teardown,
+no flush and the lock's entry left behind (2026-11-07). The held
+listener notes the first signal and aborts the lock's wait; a wait it
+ends holds no lock, so the run leaves there rather than open the store
+beside a `vx cache clean`. `forwardSignals` takes the listeners over
+and replays a signal already heard, so the stop is the one above; a run
+that leaves before it (a refusal, a setup that threw) exits of the
+signal from `run()`'s finally (`exitOfSignal`), its plugins torn down
+and its lock released. A second signal in the window exits at once
+(`tests/plugin-teardown.test.ts` › "a signal during a plugin setup
+tears it down, leaves no lock, and exits 130", "a signal heard before a
+setup throws still exits 130", "a signal while waiting for the run lock
+leaves before any plugin setup").
+
 The group, not the pid (`exec/kill-tree.ts`, item 236): a task is
 spawned into its own session, so what it forked dies with it — and so
 the terminal closing reaches vx alone, which is why SIGHUP is handled
@@ -102,7 +119,14 @@ export function forwardSignals(args: {
   done: Promise<void> // settles once run() has left its finally
   boundMs: number // how long a signal waits for `done`
   handsTerminal?: boolean // a task holds the terminal: exit 128 + signo, never die of the signal
+  held?: HeldSignals // taken over once these listeners are on; a signal it heard is replayed
 }): SignalForwarding // { remove(): void }
+export interface HeldSignals {
+  readonly signal: AbortSignal // aborted by the first signal
+  takeOver(): StopSignal | undefined // removes the listeners, once; the signal heard
+}
+export function holdSignals(): HeldSignals // from the run lock on; a second signal exits at once
+export async function exitOfSignal(signal: StopSignal): Promise<never> // stdout drained, then die of it
 ```
 
 A vx started with SIGHUP ignored (`nohup`, a supervisor) installs no
@@ -154,7 +178,9 @@ grace; the in-process lifecycle: handlers removed after every run,
 task each hear the signal as vx forwards it, a Ctrl-C as SIGINT; a
 task is its own session leader); `tests/plugin-teardown.test.ts` (a
 SIGINT flushes the sinks and tears the plugins down before the exit; a
-second signal does not wait for a teardown that hangs); `tests/abort.test.ts`
+second signal does not wait for a teardown that hangs; a signal during a
+plugin's setup, before a setup that throws, or in the lock's wait exits
+130 with the plugins torn down and no lock left); `tests/abort.test.ts`
 (`RunOptions.signal`: the running child and its dependents `aborted`,
 a stubborn child SIGKILLed, an already-aborted signal runs nothing);
 `tests/keep-alive.test.ts` (one requested server exiting ends the
