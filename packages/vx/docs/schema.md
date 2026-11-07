@@ -572,10 +572,13 @@ the run went on`), so a dependant failing against it reads why. Its own outcome 
   code, and the footer counts it so (item 1071). An exit 0 on its own is
   fine (a daemon that forks and returns), and one kept only as a
   dependency does not end the foreground hold (WD-3).
-- **End-of-graph SIGTERM.** Once the rest of the graph finishes
-  (success OR failure of downstream), the orchestrator sends `SIGTERM`
-  to every persistent subprocess it does not keep, and waits for them to
-  exit (`SIGKILL` past the kill grace). In the foreground it KEEPS the
+- **Stopped once nothing needs it.** A persistent task vx does not keep
+  gets `SIGTERM` (`SIGKILL` past the kill grace) as soon as every task
+  that uses it, directly or through groups, has finished, while the rest
+  of the graph still runs: it no longer holds the machine's cores. A
+  server that uses another counts as finished once it is stopped. The
+  stop is no crash. `vx watch` holds its servers for the next cycle, and
+  a Ctrl-C stops them all as before. In the foreground vx KEEPS the
   persistent tasks you requested, those a requested group stands for,
   and the persistent tasks they depend on: vx stays up after the summary
   until one of them exits or you press Ctrl-C, streaming what they write.

@@ -408,8 +408,10 @@ never branches on layering.
    6. `runGraph({ nodes, concurrency, execute, priorities,
 restoreTier, … })` runs the DAG two-tier. Each ready node invokes
       `executeTask({ node, upstream, preProbed?, … })`.
-   7. After the graph drains, dependency-only persistent subprocesses
-      are `SIGTERM`ed (SIGKILL after the kill grace); persistent tasks
+   7. A dependency-only persistent subprocess is `SIGTERM`ed (SIGKILL
+      after the kill grace) once every task using it has finished
+      (`unneededServers`); one left when the graph drains goes then.
+      Persistent tasks
       the user REQUESTED, those a requested group stands for, and the
       persistent tasks they depend on, are kept alive (none when
       anything else failed, unless `--continue=always`) and the process
