@@ -770,8 +770,13 @@ function refuseUnopenedDirs(cwd: string, stderr: string): void {
     const rest = line.slice(UNOPENED.length)
     const end = rest.indexOf("': ")
     const dir = end === -1 ? rest : rest.slice(0, end)
+    const at = path.resolve(top, dir)
+    // Gone since git read its parent (a run lock's staging directory in a
+    // TMPDIR inside the workspace): no file is under it to miss. Only a
+    // line git did not cut: a cut one may name a prefix of a real path.
+    if (end !== -1 && vanished(at)) continue
     try {
-      accessSync(path.resolve(top, dir), fsConstants.R_OK | fsConstants.X_OK)
+      accessSync(at, fsConstants.R_OK | fsConstants.X_OK)
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'EACCES') continue
     }
@@ -780,6 +785,16 @@ function refuseUnopenedDirs(cwd: string, stderr: string): void {
       `git could not open the directory ${shown}, so no key would see the files under it. Shorten the path, or ignore it in .gitignore.`,
       'VX_E_GIT',
     )
+  }
+}
+
+function vanished(p: string): boolean {
+  try {
+    lstatSync(p)
+    return false
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code
+    return code === 'ENOENT' || code === 'ENOTDIR'
   }
 }
 

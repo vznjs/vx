@@ -43,6 +43,9 @@ enter a directory, so the files under it were in no key: past PATH_MAX
 message at 4096 bytes, so a long one is shown cut). A directory this user
 may not read is left out as before: no task of theirs reads it either,
 and a root-owned volume beside the projects must not stop every run.
+A directory gone before git opened it (a run lock's staging directory in a
+TMPDIR inside the workspace) holds no file to miss, so it is skipped too.
+A cut message is never skipped: it may name a prefix of a real path.
 
 Every enumeration spawn runs `git --no-optional-locks`. A plain `status`
 refreshes the index under `index.lock` when files are stat-dirty, and the
