@@ -238,15 +238,19 @@ It never compares all pairs:
 `outputs.files` is compared only within a project and
 `outputs.workspaceFiles` only among its declarers, and within each
 domain a path index (`overlapCandidates`) names the pairs that can
-overlap. Two equal globs are one lookup (equal literals too, through
-their `/**` twins), and a literal meets the globs whose literal head
-names one of its ancestor directories. The head ends at the first
-character `Bun.Glob` may read as other than itself, `*?{}` plus `\`
-and a leading `!`, so a wildcard in the first segment files the glob
-at the root. The pairs are compared in the order all pairs met them,
-so the refusal names the same pair and the marks land in the same
-order. One project of 4,000 tasks with outputs built its graph in
-10.0 s (distinct literals) and now in 10 ms (item 746).
+overlap. Two globs meet only when one's literal prefix lies at or
+under the other's (equal literals too, through their `/**` twins), and
+a literal meets the globs whose literal head names one of its ancestor
+directories. The head ends at the first character `Bun.Glob` may read
+as other than itself, `*?{}` plus `\` and a leading `!`, so a wildcard
+in the first segment files the glob at the root. The pairs are compared
+in the order all pairs met them, so the refusal names the same pair and
+the marks land in the same order. One project of 4,000 tasks with
+outputs built its graph in 10.0 s (distinct literals) and now in 10 ms
+(item 746). Each relation is indexed from both ends, so the pairs are
+found one task at a time as they are compared: 20,000 tasks sharing
+`dist/**` held all 200 million pairs before the first refused, and died
+`RangeError: Out of memory`; now the first pair refuses at once.
 
 ## Inputs inside a nested project
 
