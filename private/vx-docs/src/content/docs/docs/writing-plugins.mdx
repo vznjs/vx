@@ -516,6 +516,8 @@ function signed(remote: RemoteCacheLayer, trustedPem: string, signingPem?: strin
     has: (hash) => remote.has(hash),
     async get(hash) {
       const [got, sig] = await Promise.all([remote.get(hash), remote.get(`${hash}.sig`)])
+      // undefined: a remote that did not answer, which keeps the hits it lists
+      if (got === undefined || sig === undefined) return undefined
       if (got === null || sig === null) return null
       const signature = Buffer.from(await sig.body.arrayBuffer())
       const sha = createHash('sha256')
