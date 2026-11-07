@@ -114,8 +114,14 @@ import { isPassStatus } from '../graph/index.js'
 import type { RunContextRecord } from './telemetry.js'
 import { plan, type RunPlan } from './plan.js'
 import type { AffectedReason } from './affected-tasks.js'
-import { namesRemote, openRemotes, prepareRun, type PreparedRun } from './prepare.js'
-import { acquireRunLock } from './run-lock.js'
+import {
+  namesRemote,
+  openRemotes,
+  prepareRun,
+  prepareRunLocked,
+  type PreparedRun,
+} from './prepare.js'
+import { acquireRunLock, runLockPath, type RunLockRelease } from './run-lock.js'
 import { terminateChildren } from './signals.js'
 import { CYCLE_INTERRUPT, runStop } from './run-stop.js'
 import {
@@ -455,7 +461,33 @@ async function runOnBus(
     for (const event of held) out.bus.emit(event)
   }
 
-  const prepared = await step('vx:load', () => prepareRun(options, log))
+  // Taken before the cache opens, never after: a run that held the store
+  // while it waited here, and a `vx cache clean` that holds this lock while
+  // it waits for every process with the store open, waited on each other
+  // for ever; and a clear deleted the store under a run opening it.
+  let heldLock: RunLockRelease | undefined
+  const takeRunLock = async (root: string): Promise<void> => {
+    // A nested run is refused below with its own reason, holding nothing.
+    const outer = process.env[VX_RUN_WORKSPACE_ENV] || undefined
+    if (outer !== undefined && canonical(outer) === canonical(root)) return
+    heldLock = await step('vx:run-lock', () =>
+      acquireRunLock(root, { log: warnOf(log), signal: options.signal }),
+    )
+  }
+  let prepared: PreparedRun
+  try {
+    prepared = await step('vx:load', () => prepareRunLocked(options, log, takeRunLock))
+  } catch (err) {
+    await heldLock?.()
+    throw err
+  }
+  const releaseRunLock: RunLockRelease =
+    heldLock ?? Object.assign(async () => {}, { path: runLockPath(prepared.workspaceRoot) })
+  // The cache and the lock go together on every exit before the run's own.
+  const closeUnrun = async (): Promise<void> => {
+    prepared.cache.close()
+    await releaseRunLock()
+  }
   mark('plugin stages')
   // Every exit from here tears the plugins down: their capability
   // factories ran in prepareRun, and teardown is what releases what those
@@ -488,7 +520,7 @@ async function runOnBus(
       | undefined
   } catch (err) {
     await teardown()
-    prepared.cache.close()
+    await closeUnrun()
     throw err
   }
   // A task whose command re-enters `vx run` in the workspace running it
@@ -504,7 +536,7 @@ async function runOnBus(
   const outerRoot = process.env[VX_RUN_WORKSPACE_ENV] || undefined
   if (outerRoot !== undefined && canonical(outerRoot) === canonical(prepared.workspaceRoot)) {
     await teardown()
-    prepared.cache.close()
+    await closeUnrun()
     throw new UserError(
       `task ${process.env[VX_RUN_TASK_ENV] ?? '<unknown>'} runs \`vx run\` inside its own workspace: a nested run is invisible to the outer graph (its tasks escape the schedule, the concurrency budget and the cache key) and a loop back to this task forks without bound. Declare what it needs with dependsOn instead.`,
     )
@@ -520,13 +552,13 @@ async function runOnBus(
   if (prepared.unresolvedTasks.length > 0) {
     const refused = `no projects declare task(s): ${prepared.unresolvedTasks.join(', ')}.${await unresolvedHint(prepared)}`
     await teardown()
-    prepared.cache.close()
+    await closeUnrun()
     return { ok: false, outcomes: [], refused }
   }
   if (prepared.empty === 'none-affected') {
     log.status(noneAffected(prepared, options))
     await teardown()
-    prepared.cache.close()
+    await closeUnrun()
     return { ok: true, outcomes: [] }
   }
   if (prepared.empty !== null) {
@@ -539,7 +571,7 @@ async function runOnBus(
         ? `no projects declare task(s): ${options.tasks.join(', ')}.${elsewhereHint(prepared.declaredElsewhere)}${await initHint(prepared)}`
         : 'no tasks to run.'
     await teardown()
-    prepared.cache.close()
+    await closeUnrun()
     return { ok: false, outcomes: [], refused }
   }
   // Install user plugins as additional bus subscribers BEFORE the run
@@ -601,7 +633,7 @@ async function runOnBus(
   } catch (err) {
     disposePlugins?.()
     await teardown(err instanceof PluginSetupError ? err.plugin : undefined)
-    prepared.cache.close()
+    await closeUnrun()
     throw err
   }
   // Until the run's own try below, a throw leaves through here.
@@ -611,7 +643,7 @@ async function runOnBus(
     } catch (err) {
       disposePlugins?.()
       await teardown()
-      prepared.cache.close()
+      await closeUnrun()
       throw err
     }
   }
@@ -639,7 +671,7 @@ async function runOnBus(
     if (options.signal?.aborted === true) {
       disposePlugins?.()
       await teardown()
-      prepared.cache.close()
+      await closeUnrun()
       return { ok: true, outcomes: [] }
     }
   }
@@ -762,16 +794,6 @@ async function runOnBus(
     // waited, but a directory per run is litter the box never sheds.
     await releaseRunLock()
   }
-  // Taken after the early exits above (nothing they do touches a tree) and
-  // before the schedule: from here on tasks clean, restore and write.
-  const releaseRunLock = await abandoning(() =>
-    step('vx:run-lock', () =>
-      acquireRunLock(prepared.workspaceRoot, {
-        log: warnOf(log),
-        signal: stop.signal,
-      }),
-    ),
-  )
   // Answers `vx last --live` while the lock is held (run-live.ts).
   live = serveLive({
     socketPath: liveSocketOf(releaseRunLock.path),

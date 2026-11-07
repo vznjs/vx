@@ -296,9 +296,15 @@ One run at a time per workspace, per machine. Two vx processes on one
 workspace raced on every task's OUTPUT TREE (both clean and restore the
 same `dist/`; a clean landing while the other run's restore is staging
 takes its files out from under it, item 215), so `run()` takes the
-workspace's lock just before it schedules — after the early exits,
-which touch no tree — and releases it with its cache handle, before a
-persistent task's wait. The lock is keyed by the workspace root's real
+workspace's lock before it opens the cache (`prepareRun`'s
+`beforeOpen`) and releases it with its cache handle, before a
+persistent task's wait. Before the cache, never after: a run that held
+the store while it waited for the lock, and a `vx cache clean` that
+holds the lock while it waits for every process with the store open,
+waited on each other for ever, and a clear deleted the store under a
+run opening it (`SQLiteError: disk I/O error`; `tests/run-lock-e2e.test.ts`
+› "a run waiting for the lock holds neither the index nor the store
+open"). The lock is keyed by the workspace root's real
 path, so a symlinked spelling and the canonical cwd a CLI gets (macOS's
 `/var` → `/private/var`) name one lock. It lives in this user's own
 directory under the temp directory (`vx-runs-<uid>`, mode 0700; one that

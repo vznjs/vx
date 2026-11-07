@@ -417,7 +417,7 @@ describe('timing, doctor and plugin-host Purpose sections match the source', () 
   ]
   it("timing.md's prepareRun count is the marks prepareRun records", () => {
     const prep = src('orchestrator/prepare.ts')
-    const start = prep.indexOf('export async function prepareRun(')
+    const start = prep.indexOf('export async function prepareRunLocked(')
     const body = prep.slice(start, prep.indexOf('\n}\n', start))
     const count = [...body.matchAll(/\bmark\('/g)].length
     expect(count).toBeGreaterThan(5)

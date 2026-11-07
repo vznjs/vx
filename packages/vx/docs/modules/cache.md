@@ -428,7 +428,7 @@ export interface FoldMemo {
 // index handle from `indexDb(cache)`, never from a `Cache` member.
 export function indexDb(cache: Cache): Database
 // Wait until no other connection has `<storeDir>/store.db` open (a run in
-// any checkout holds it start to end; WAL connections keep a shared lock),
+// any checkout holds it from its run lock to its end; WAL connections keep a shared lock),
 // then hold it alone until the release. Nothing to hold without the file.
 export function holdStore(storeDir: string, log: (line: string) => void): Promise<() => void>
 // The files a second connection writes a run's hits through; undefined

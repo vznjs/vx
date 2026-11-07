@@ -1020,7 +1020,8 @@ Skipped when:
 
 A directory of this user's that withholds its own write (a task's
 `chmod 555 dist/ro`, which a hit restores too) gets owner write for the
-clean's remove, then its mode back, as a restore's write into it does.
+clean's remove, then its mode back, as a restore's write into it does; the
+subdirectories the clean empties in it go too.
 A declared output the process cannot remove even so (a `dist/` another
 user wrote, a read-only checkout) fails the task with `cannot remove
 declared output <path>: EACCES — …`, and a restore that cannot write
@@ -1268,7 +1269,7 @@ same reason `lock --check` ignores `inputs.env` value changes.
 
 Two vx processes on one workspace (a `vx watch` beside a `vx run`, two
 CI jobs on one checkout) take turns: a run takes the workspace's run
-lock before it schedules and releases it with its cache handle — before
+lock before it opens the cache and releases it with its cache handle — before
 a persistent task's wait, so a dev server never holds it — and the
 second run waits, saying after a second whom it waits for:
 
@@ -1304,9 +1305,10 @@ has staged). Machines sharing a workspace over a network file system
 do not share a temp directory, so they do not share the lock.
 
 A `vx cache clean` in any checkout of the repository waits for every
-vx process holding the shared store open (a run holds it from start to
-end), so it never deletes the store under a run in a sibling checkout,
-whose own lock it never took. An eviction can still land between a
+vx process holding the shared store open (a run holds it from its lock
+to its end), so it never deletes the store under a run in a sibling checkout,
+whose own lock it never took. A run waiting for the lock holds no cache
+open, so a clean holding the lock never waits on it. An eviction can still land between a
 hit's probe and its restore: a clean or a run for another workspace
 that shares the `--cache-dir` (a different workspace, so a
 different lock), which cannot see this run's pending `accessed_at`
@@ -1629,7 +1631,8 @@ same gate (`restorableOutput`). On the save side a
 link to a file, to a directory or to nothing comes back as that link,
 and no byte of its target is read, so a link a sandboxed task planted to
 a file it could not read packs nothing of it (L-23). An absolute link, or
-one leading out of the workspace, fails the save by name, as the config
+one leading out of the workspace or into `.git`, fails the save by name
+(the restore's own check, so no entry is stored that every restore refuses), as the config
 spells the path (`workspaceFiles output gen/latest`). The clean before exec and restore removes every
 file AND symlink the output globs cover (a link is unlinked, never
 followed). An output directory that is a symlink (`dist -> real-out`) is

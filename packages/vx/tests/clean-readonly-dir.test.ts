@@ -54,12 +54,14 @@ afterEach(() => {
   for (const d of made.splice(0)) rmTree(d)
 })
 
-async function workspace(): Promise<{ root: string; app: string }> {
+async function workspace(
+  command = 'mkdir -p dist/ro && cat src/a > dist/ro/f && chmod 555 dist/ro',
+): Promise<{ root: string; app: string }> {
   const root = await makeWorkspace({ prefix: 'vx-ro-dir-' })
   made.push(root)
   const app = await addProject(root, 'app', {
     config: `export default { tasks: { build: {
-      exec: { command: 'mkdir -p dist/ro && cat src/a > dist/ro/f && chmod 555 dist/ro' },
+      exec: { command: ${JSON.stringify(command)} },
       inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
     } } }`,
     files: { 'src/a': '1\n', '.gitignore': 'dist/\n' },
@@ -99,6 +101,36 @@ it.skipIf(skip)(
     expect(`${back.code}\n${back.text}`).toStartWith('0\n')
     expect(back.text).toContain('local 1↓')
     expect(readFileSync(path.join(ro, 'f'), 'utf8')).toBe('2\n')
+  },
+  60_000,
+)
+
+// The clean gave the read-only directory its write back once its files
+// were gone, so the prune after could not remove the subdirectory it held:
+// `dist/x/s` and `dist/x` stood where the next run writes the file `dist/x`.
+it.skipIf(skip)(
+  "a subdirectory of this user's read-only directory goes too, on a miss and before a restore",
+  async () => {
+    const { root, app } = await workspace(
+      'case "$(cat src/a)" in file*) printf F > dist/x;; *) mkdir -p dist/x/s; printf D > dist/x/s/y; chmod 555 dist/x;; esac',
+    )
+    const build = () => vx(root, ['run', 'build', '--all'])
+    const x = path.join(app, 'dist/x')
+    const step = async (a: string, hit: boolean): Promise<void> => {
+      await writeFile(path.join(app, 'src/a'), `${a}\n`)
+      const r = await build()
+      expect(`${r.code}\n${r.text}`).toStartWith('0\n')
+      if (hit) expect(r.text).toContain('local 1↓')
+    }
+
+    await step('dir', false)
+    await step('file1', false)
+    expect(readFileSync(x, 'utf8')).toBe('F')
+    await step('dir', true)
+    expect(readFileSync(path.join(x, 's/y'), 'utf8')).toBe('D')
+    expect(lstatSync(x).mode & 0o777).toBe(0o555)
+    await step('file1', true)
+    expect(readFileSync(x, 'utf8')).toBe('F')
   },
   60_000,
 )
