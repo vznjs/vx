@@ -101,13 +101,13 @@ describe('the schema', () => {
     expect(refusal([{ from: 'tag:app', allow: ['tag:lib'], deny: ['x'] }])).toBeNull()
     expect(refusal({ from: 'a' })).toContain('must be an array of { from, allow?, deny? }')
     expect(refusal([{ from: 'a' }])).toBe(
-      '.vx/workspace.ts: `run.rules.dependencies`[0] names neither `allow` nor `deny`',
+      '.vx/workspace.ts: `run.rules.dependencies[0]` names neither `allow` nor `deny`',
     )
     expect(refusal([{ from: '', deny: ['b'] }])).toBe(
-      ".vx/workspace.ts: `run.rules.dependencies`[0].from must be a selector like 'tag:app'",
+      ".vx/workspace.ts: `run.rules.dependencies[0].from` must be a selector like 'tag:app'",
     )
     expect(refusal([{ from: 'a', deny: 'b' }])).toBe(
-      ".vx/workspace.ts: `run.rules.dependencies`[0].deny must be an array of selectors like 'tag:lib'",
+      ".vx/workspace.ts: `run.rules.dependencies[0].deny` must be an array of selectors like 'tag:lib'",
     )
     expect(refusal([{ from: 'a', deny: ['b'], only: [] }])).toContain('unknown field')
   })
@@ -133,7 +133,7 @@ describe('the schema', () => {
       { from: sel, deny: ['tag:lib'] },
     ]) {
       const msg = refusal([rule])
-      expect(msg).toStartWith('.vx/workspace.ts: `run.rules.dependencies`[0].')
+      expect(msg).toStartWith('.vx/workspace.ts: `run.rules.dependencies[0].')
       expect(msg).toContain(JSON.stringify(sel))
       expect(msg).toContain(why)
       expect(msg).toContain("a selector is 'tag:<tag>' or a project name")
@@ -142,7 +142,7 @@ describe('the schema', () => {
 
   it('names the field, the selector and the forms it takes', () => {
     expect(refusal([{ from: 'tag:lib', deny: ['tag:lib', './apps/*'] }])).toBe(
-      '.vx/workspace.ts: `run.rules.dependencies`[0].deny[1] "./apps/*" reads as a directory to a filter; ' +
+      '.vx/workspace.ts: `run.rules.dependencies[0].deny[1]` "./apps/*" reads as a directory to a filter; ' +
         "a selector is 'tag:<tag>' or a project name, either may hold '*' (like 'tag:app' or '@acme/*')",
     )
   })
