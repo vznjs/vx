@@ -376,7 +376,9 @@ export function dots(): VxPlugin {
 
 `executor` returns a `TaskExecutor`: a `name`, an optional `accepts`,
 and `execute`, which runs one command. A task every executor declines
-runs on this machine. A task with `exec.sandbox` is offered only to an
+runs on this machine.
+
+A task with `exec.sandbox` is offered only to an
 executor that declares `sandbox: true` and enforces `req.sandbox`;
 otherwise vx runs it here, in its own sandbox.
 
