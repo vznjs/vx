@@ -751,13 +751,13 @@ describe('validation stays in the parent process', () => {
     expect(await loadWorkspaceConfig(root)).toEqual({ run: { concurrency: 2 } })
   })
 
-  it('only rejects a typo whose value JSON drops on the FIRST load', async () => {
-    // KNOWN DIVERGENCE, pinned rather than fixed. Unknown-field rejection walks
-    // `Object.keys`, and `JSON.stringify` drops keys whose value is `undefined`
-    // — so `workspaceFile: undefined` is a hard error in-process and invisible
-    // through the worker. Benign for the cache key (an undefined value hashes
-    // as absent either way, so there is no stale hit), but it does mean a
-    // config can fail cycle 1 of `vx watch` and pass cycle 2 unchanged.
+  it('reads a typo whose value JSON drops as absent on both loads', async () => {
+    // Unknown-field rejection walks `Object.keys`, and `JSON.stringify`
+    // drops keys whose value is `undefined`. The first load validated the
+    // live object and refused `workspaceFile: undefined` while the worker
+    // passed it, so a config could fail cycle 1 of `vx watch` and pass
+    // cycle 2 unchanged. Both now validate the JSON copy: an undefined
+    // value is absent to the key either way, so no stale hit is possible.
     const bad =
       `export default { tasks: { build: {\n` +
       `  exec: { command: 'echo hi' },\n` +
@@ -765,7 +765,7 @@ describe('validation stays in the parent process', () => {
       `} } }\n`
 
     const firstFile = await write(bad)
-    await expect(loadProjectConfig(firstFile)).rejects.toThrow(/unknown field "workspaceFile"/)
+    expect((await loadProjectConfig(firstFile)).tasks?.build?.inputs).toEqual({ files: ['src/**'] })
 
     const repeatFile = await write(
       `export default { tasks: { build: { exec: { command: 'x' } } } }\n`,
@@ -1196,5 +1196,31 @@ describe('a config is JSON data, on every path (item 701)', () => {
       '{"tasks":{"build":{"description":"büild — \\"quoted\\"","exec":{"command":"bun run build","timeout":"1m","env":{"passThrough":["HOME"],"define":{"MODE":"prod"}}},"dependsOn":["^build"],"inputs":{"files":["src/**","package.json"],"env":["API_URL"]},"outputs":{"files":["dist/**"]},"cache":true},"ci":{"dependsOn":["build"]}}}'
     expect(JSON.stringify(await loadProjectConfig(file))).toBe(json)
     expect(JSON.stringify(await loadProjectConfig(file))).toBe(json)
+  })
+  // The first load validated the live object, then copied it: a getter in
+  // an array answered the check with one value and the copy with another,
+  // and `outputs.files: ['../victim/**']` reached the lock unchecked.
+  it('the copy a first load returns is the object it validated', async () => {
+    const file = await write(
+      `let n = 0\nconst files = ['dist/**']\nObject.defineProperty(files, 0, { enumerable: true, get: () => (n++ < 2 ? 'dist/**' : '../victim/**') })\nexport default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, outputs: { files }, cache: true } } }\n`,
+    )
+    const config = (await loadProjectConfig(file)) as {
+      tasks: { build: { outputs: { files: string[] } } }
+    }
+    expect(config.tasks.build.outputs.files).toEqual(['dist/**'])
+  })
+
+  // The walk and `JSON.stringify` recurse: a config 100,000 levels deep was
+  // vx's own stack overflow (VX_E_INTERNAL), not a refusal naming the file.
+  it('a config nested past the limit is refused, named', async () => {
+    const file = await write(
+      `let o = {}\nconst r = o\nfor (let i = 0; i < 100000; i++) { o.x = {}; o = o.x }\nexport default { tasks: { build: { exec: { command: 'true', env: { define: r } } } } }\n`,
+    )
+    expect(await settle(loadProjectConfig(file))).toStartWith(
+      `REJECTED ${file}: tasks.build.exec.env.define`,
+    )
+    expect(await settle(loadProjectConfig(file))).toEndWith(
+      `is nested deeper than 256 levels ${JSON_DATA}`,
+    )
   })
 })

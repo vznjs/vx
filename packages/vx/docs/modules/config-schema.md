@@ -17,6 +17,7 @@ export function validateProjectConfig(
   config: ProjectConfig,
   configPath: string,
   ownConfig?: string | null,
+  jsonCopy?: boolean, // the caller refused non-JSON values and passes a JSON copy: the walk is skipped
 ): void
 export function validateWorkspace(config: WorkspaceConfig, configPath: string): void
 // A cache scope's rule, for `VX_CACHE_SCOPE` and a plugin's `setBranch`, and that variable's refusal

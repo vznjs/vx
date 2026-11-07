@@ -3,6 +3,7 @@ import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import { isUserError, UserError, xxh3hex } from '../util/index.js'
 import { isSkippedPlugin, validateProjectConfig, validateWorkspace } from './config-schema.js'
+import { nonJsonMessage, nonJsonPaths } from './json-data.js'
 import {
   beginEvalRound,
   builtinsChangedBy,
@@ -644,16 +645,23 @@ export async function loadProjectConfigs(
       throw overlapping ? new ChangedInRound(changed) : builtinsChanged(changed, configPath)
     }
     assertDefaultObject(mod, 'Project', configPath)
-    // Validation runs HERE, on whichever object we ended up with, so a
-    // malformed config reports the identical UserError whether it was
-    // evaluated in-process or in a worker.
-    validateProjectConfig(mod as ProjectConfig, configPath)
+    // What JSON cannot carry is refused on the live object: the copy below
+    // would drop it unseen.
+    const [nonJson] = nonJsonPaths(mod)
+    if (nonJson !== undefined) throw new UserError(nonJsonMessage(configPath, nonJson))
     // A tree of its own, as the lock hands out. The module object shares
     // what the config shares: one preset's task in two configs, one `exec`
     // in two tasks. A `project` hook that edits in place then edited them
     // all (item 967). A config is JSON data (config-schema.ts), so the copy
     // loses nothing.
-    return JSON.parse(JSON.stringify(mod)) as ProjectConfig
+    const copy = JSON.parse(JSON.stringify(mod)) as ProjectConfig
+    // Validation runs on the copy, the object every reader gets, so a
+    // malformed config reports the identical UserError whether it was
+    // evaluated in-process or in a worker. On the live object, a getter in
+    // an array or a Proxy answered the check with one value and the copy
+    // with another: `outputs.files: ['../victim/**']` reached the lock.
+    validateProjectConfig(copy, configPath, configPath, true)
+    return copy
   }
   // One worker for every repeat load in this round, however many there are.
   const endRound = beginEvalRound()
