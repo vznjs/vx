@@ -22,7 +22,7 @@ $ vx run build test --all
 [vx] telemetry sink 'sink-that-throws' threw in onRecord; disabled for this run: collector is down
  ⏺︎     9ms success miss     packages/a#test
  ⏺︎    15ms success miss     packages/b#test
-[vx] telemetry flush timed out after 3000ms; buffered records lost
+[vx] telemetry flush timed out after 3000ms (sink 'sink-that-hangs'); buffered records lost
             8 success · 8 total
 $ echo $?
 0

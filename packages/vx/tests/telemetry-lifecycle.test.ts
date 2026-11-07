@@ -73,9 +73,10 @@ describe('telemetry flush is time-bounded', () => {
     // a run that failed.
     process.env['VX_TEST_TEARDOWN_TIMEOUT'] = '250ms'
     const warnings: string[] = []
-    const wedged: TelemetrySink = { flush: () => new Promise<void>(() => {}) }
+    const wedged: TelemetrySink = { name: 'wedged', flush: () => new Promise<void>(() => {}) }
+    const prompt: TelemetrySink = { name: 'prompt', flush: async () => {} }
     const source = createTelemetrySource({
-      sinks: [wedged],
+      sinks: [wedged, prompt],
       run: RUN,
       warn: (m) => warnings.push(m),
     })
@@ -84,7 +85,10 @@ describe('telemetry flush is time-bounded', () => {
     const elapsed = Date.now() - started
     expect(elapsed).toBeLessThan(5000)
     expect(elapsed).toBeGreaterThanOrEqual(200)
-    expect(warnings.join('\n')).toContain('telemetry flush timed out')
+    // Named, as a flush that throws is: the one still pending, not the one done.
+    expect(warnings).toEqual([
+      "[vx] telemetry flush timed out after 250ms (sink 'wedged'); buffered records lost",
+    ])
   }, 30_000)
 
   // Abandoned is not ended: a request still in flight kept the event loop,
@@ -128,7 +132,7 @@ describe('telemetry flush is time-bounded', () => {
     })
     await source.flush()
     expect(warnings).toEqual([
-      '[vx] telemetry flush timed out after 100ms; buffered records lost',
+      "[vx] telemetry flush timed out after 100ms (sink '#1'); buffered records lost",
       'export aborted',
     ])
   }, 30_000)

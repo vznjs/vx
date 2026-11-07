@@ -152,12 +152,15 @@ describe('RunOptions.signal aborts a run in flight', () => {
     const s = (globalThis as { __vxAbortSummary?: RunSummaryRecord }).__vxAbortSummary!
     expect({
       exitOk: s.exitOk,
+      taskCount: s.taskCount,
       failedCount: s.failedCount,
       abortedCount: s.abortedCount,
       notRunCount: s.notRunCount,
       tasks: s.tasks.map((t) => [t.taskId, t.status]),
     }).toEqual({
       exitOk: false,
+      // The terminal's total: the task the stop reached first counts too.
+      taskCount: 2,
       failedCount: 0,
       abortedCount: 1,
       notRunCount: 1,
