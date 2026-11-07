@@ -53,6 +53,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'continue-taint',
     'default-build-cycle-key',
     'default-build-not-declared',
+    'deferred-output-empty',
     'deferred-output-link',
     'dot-slash-globs',
     'dotenv-isolation',

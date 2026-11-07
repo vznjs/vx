@@ -22,6 +22,7 @@ import {
   type ProjectMeta,
 } from '../workspace/index.js'
 import type { WorkspaceConfig } from '../config.js'
+import { atPath, SETTINGS } from '../settings.js'
 import { lazyGitEnumeration, type LazyGitEnumeration } from '../cache/index.js'
 import { relPosix, UserError } from '../util/index.js'
 import {
@@ -49,12 +50,15 @@ export async function loadWorkspacePlugins(
   workspaceConfig: WorkspaceConfig | null
   plugins: readonly VxPlugin[]
   branch: BranchFacts
+  /** Setting path → the last plugin whose `config` hook changed it (`vx info`). */
+  settingPlugins: ReadonlyMap<string, string>
 }> {
   const loaded = await loadWorkspaceConfig(workspaceRoot)
   const plugins = (loaded?.plugins ?? []) as readonly VxPlugin[]
   const branch: BranchFacts = {}
+  const settingPlugins = new Map<string, string>()
   if (loaded === null || !hasHook(plugins, 'config'))
-    return { workspaceConfig: loaded, plugins, branch }
+    return { workspaceConfig: loaded, plugins, branch, settingPlugins }
   // Bun keeps one module per specifier, so the file's export is one object
   // per process: the CLI's selection pass, the run and each `vx watch`
   // cycle handed the hooks what the last load's hooks had edited
@@ -91,9 +95,17 @@ export async function loadWorkspacePlugins(
       branch.refs = [...new Set(facts.refs)]
     }
   }
+  const settingPaths = SETTINGS.filter((s) => s.config !== false).map((s) => s.path)
+  const settingValues = new Map(settingPaths.map((p) => [p, atPath(workspaceConfig, p)]))
   await applyConfigHooks(plugins, workspaceConfig, { workspaceRoot, warn, setBranch }, (plugin) => {
     const at = `.vx/workspace (after plugin '${plugin.name}')`
     validateWorkspace(workspaceConfig, at)
+    for (const p of settingPaths) {
+      const v = atPath(workspaceConfig, p)
+      if (v === settingValues.get(p)) continue
+      settingValues.set(p, v)
+      settingPlugins.set(p, plugin.name)
+    }
     // The run takes `plugins` from the file: an edited list validated and was dropped.
     const now = workspaceConfig.plugins
     if (now?.length !== list?.length || now?.some((p, i) => p !== list![i])) {
@@ -102,7 +114,7 @@ export async function loadWorkspacePlugins(
       )
     }
   })
-  return { workspaceConfig, plugins, branch }
+  return { workspaceConfig, plugins, branch, settingPlugins }
 }
 
 const isRef = (r: unknown): boolean =>

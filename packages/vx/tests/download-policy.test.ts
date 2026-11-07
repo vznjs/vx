@@ -1131,6 +1131,7 @@ describe('materializeFor on a 50,000-deep closure', () => {
       workspaceRoot: '/ws',
       nestedDirsByProject: new Map(),
       localWrite: false,
+      log: { status() {} } as never,
     })
     const fetched: string[] = []
     const bottom = `app#t${DEPTH - 1}`
@@ -1157,6 +1158,7 @@ describe('DeferredOutputs', () => {
       workspaceRoot: '/ws',
       nestedDirsByProject: new Map(),
       localWrite: false,
+      log: { status() {} } as never,
       ...extra,
     })
   const entry = (taskId: string, materialize: () => Promise<void>) => ({

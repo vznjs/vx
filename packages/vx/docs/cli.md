@@ -3003,9 +3003,11 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   history rows read 0: the report still prints, exit 0.
   Paths under the home directory print as `~/…`; the JSON keeps them
   absolute.
-- `settings` appears only when a variable or `.vx/workspace` changed a
-  setting: each such one by path, its value and where it came from
-  (`cache.policy local:r (VX_CACHE_POLICY), run.timeout 30m (.vx/workspace)`).
+- `settings` appears only when a variable, `.vx/workspace` or a plugin's
+  `config` hook changed a setting: each such one by path, its value and
+  where it came from
+  (`cache.policy local:r (VX_CACHE_POLICY), run.timeout 30m (.vx/workspace)`,
+  `cache.scope pr-2 (plugin @org/ci)`).
   A setting not named runs at its default (`cache.policy`: every layer
   on, remote writes off off CI; `cache.scope`: a plugin's, else the
   branch's from git). The JSON `settings` holds every one. A variable

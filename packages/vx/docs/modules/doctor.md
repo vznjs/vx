@@ -20,7 +20,8 @@ the rendered row only), `git`, `gitStatusCache`, `workspaceRoot`,
 `workers` (`{ count, source, cores, cpuQuota }`), `memory`
 (`{ usableBytes, totalBytes, cgroupLimitBytes }`), `cacheDir`,
 `cacheVersion`, `schemaVersion`, `cacheEntries`, `cacheBytes`,
-`settings` (`{ [path]: { value, source } }`),
+`settings` (`{ [path]: { value, source, plugin? } }`; source `plugin`, with its
+name, for a value a plugin's `config` hook set),
 `orphans`, `runs24h`, `hits24h`, `restored24h` (of those hits, the ones that restored outputs), `flakyTasks`, `lockfile`, `sandbox`
 (`{ available, reason, declared, untraced }`: whether this host can run
 an `exec.sandbox`, the probe's reason, how many loaded tasks declare
