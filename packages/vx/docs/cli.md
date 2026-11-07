@@ -3968,6 +3968,9 @@ run`). Neither reached the cache:
             aborting —             —   3.37s     —      —       —       — local          api#dev
 ```
 
+In the task list view (`--all`, a filter) what an aborted task printed
+before the stop is framed above the summary, as a failure's output is.
+
 The tasks legend counts them in the total as they land, each state its
 own segment of the bar: `2 success · 1 aborted · 2 not run · 5 total`.
 While the run goes it also counts the tasks running now and those an
