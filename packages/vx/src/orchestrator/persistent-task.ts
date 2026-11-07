@@ -129,6 +129,7 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
     await args.armSandbox?.()
     // A persistent task never declares `cache` (the loader refuses it), so
     // it keeps the whole linked grant: no key of its can be stale.
+    const deps = await dependencyReads(args.readableDeps?.(node) ?? [], args.workspaceRoot)
     const sb = await sandboxRequestFor(
       node,
       step.sandbox,
@@ -136,7 +137,8 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
       undefined,
       args.nestedProjectDirs,
       args.cacheDir,
-      await dependencyReads(args.readableDeps?.(node) ?? [], args.workspaceRoot),
+      deps.reads,
+      deps.reported,
     )
     placeholders = sb.placeholders
     serverSandbox = sb.sandbox

@@ -32,9 +32,14 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
     const xdg = path.join(root, 'xdg')
     await mkdir(path.join(xdg, 'gh'), { recursive: true })
     await writeFile(path.join(xdg, 'gh', 'hosts.yml'), 'GHXDG\n')
+    // git's credential store, where `credential.helper store` writes when
+    // `~/.git-credentials` is absent.
+    await mkdir(path.join(xdg, 'git'), { recursive: true })
+    await writeFile(path.join(xdg, 'git', 'credentials'), 'GITXDG\n')
     for (const [rel, body] of [
       ['.ssh/id_ed25519', 'SSHKEY'],
       ['.npmrc', 'NPMRC'],
+      ['.yarnrc', 'YARNRC'],
       ['.aws/credentials', 'AWSKEY'],
       ['.bunfig.toml', 'BUNFIG'],
       ['.cargo/credentials.toml', 'CARGO'],
@@ -58,6 +63,7 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
     const cmd = [
       '.ssh/id_ed25519',
       '.npmrc',
+      '.yarnrc',
       '.aws/credentials',
       '.bunfig.toml',
       '.cargo/credentials.toml',
@@ -67,6 +73,7 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
     ]
       .map(read)
       .concat(`grep -s . "${xdg}/gh/hosts.yml" || echo "no .xdg/gh"`)
+      .concat(`grep -s . "${xdg}/git/credentials" || echo "no .xdg/git"`)
       .join('; ')
     // A write grant names a store too: on Linux a file grant binds its
     // directory, and the store's deny landed on top of the bind, so the
@@ -103,12 +110,15 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
         .split('\n')
         .map((l) => l.replace(/^.*?│\s?/, '').trim())
         .filter((l) =>
-          /^(no \.|SSHKEY|NPMRC|AWSKEY|BUNFIG|CARGO|FIREBASE|AGENT|CACHE|GHXDG|WROTE|CLI)/.test(l),
+          /^(no \.|SSHKEY|NPMRC|AWSKEY|BUNFIG|CARGO|FIREBASE|AGENT|CACHE|GHXDG|GITXDG|YARNRC|WROTE|CLI)/.test(
+            l,
+          ),
         )
     }
     expect(out('peek')).toEqual([
       'no .ssh/id_ed25519',
       'no .npmrc',
+      'no .yarnrc',
       'no .aws/credentials',
       'no .bunfig.toml',
       'no .cargo/credentials.toml',
@@ -116,6 +126,7 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
       'no .claude/.credentials.json',
       'CACHE',
       'no .xdg/gh',
+      'no .xdg/git',
     ])
     expect(out('granted')).toEqual(['NPMRC'])
     expect(out('written')).toEqual(['NPMRC', 'WROTE', 'CLI', 'no .aws/credentials'])

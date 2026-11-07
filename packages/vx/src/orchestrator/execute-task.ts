@@ -1495,6 +1495,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // above is vx's work, not the task's. Armed first, a 60 ms timeout
     // expired before the spawn and failed `echo` as timed out, unrun.
     if (!userSandbox) return { ...base, signal: requestSignal(local) }
+    const deps = await dependencyReads(args.readableDeps?.(node) ?? [], args.workspaceRoot)
     const sb = await sandboxRequestFor(
       node,
       step.sandbox!,
@@ -1502,7 +1503,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       cfgCacheable ? args.keyedProjects(node) : undefined,
       args.nestedProjectDirs,
       args.cacheDir,
-      await dependencyReads(args.readableDeps?.(node) ?? [], args.workspaceRoot),
+      deps.reads,
+      deps.reported,
     )
     placeholders = sb.placeholders
     withheld = sb.withheld

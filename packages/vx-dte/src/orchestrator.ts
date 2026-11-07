@@ -1024,6 +1024,13 @@ export class Orchestrator {
                   : {
                       reads: req.sandbox.dependencyReads.map((d) => path.relative(this.o.root, d)),
                     }),
+                ...(req.sandbox.dependencyReported === undefined
+                  ? {}
+                  : {
+                      reported: req.sandbox.dependencyReported.map((d) =>
+                        path.relative(this.o.root, d),
+                      ),
+                    }),
               },
             }),
         ...runtimeOrders(req),

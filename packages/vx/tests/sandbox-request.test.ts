@@ -22,7 +22,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { TaskNode } from '../src/graph/index.js'
+import { relPosix } from '../src/util/index.js'
 import {
+  dependencyReads,
   placeholderSweeper,
   reachedWithheld,
   sandboxRequestFor,
@@ -1171,5 +1173,76 @@ describe('vx’s stores outside the workspace are denied', () => {
       else process.env['HOME'] = saved
       await rm(home, { recursive: true, force: true })
     }
+  })
+})
+
+// A dependency's outputs are the files its globs take, not every file under
+// a glob's head: binding `gen/` for `gen/**/*.js` granted an untracked
+// `gen/notes.txt` no key answers for, and an edit to it was a stale hit.
+describe('dependencyReads binds only what the outputs take', () => {
+  const dep = (files: string[]): TaskNode => ({
+    ...node(),
+    id: 'proj#gen',
+    config: { exec: { command: 'true' }, outputs: { files } },
+  })
+  const reads = async (files: string[]) => {
+    const r = await dependencyReads([dep(files)], root)
+    return {
+      reads: r.reads.map((p) => relPosix(dir, p)).sort(),
+      reported: r.reported.map((p) => relPosix(dir, p)),
+    }
+  }
+
+  beforeEach(async () => {
+    await mkdir(path.join(dir, 'gen', 'sub'), { recursive: true })
+    await mkdir(path.join(dir, 'gen', 'js'), { recursive: true })
+    await writeFile(path.join(dir, 'gen', 'out.js'), '')
+    await writeFile(path.join(dir, 'gen', 'notes.txt'), '')
+    await writeFile(path.join(dir, 'gen', 'sub', 'a.js'), '')
+    await writeFile(path.join(dir, 'gen', 'sub', 'a.js.map'), '')
+    await writeFile(path.join(dir, 'gen', 'js', 'b.js'), '')
+    await writeFile(path.join(dir, 'root.tsbuildinfo'), '')
+    await writeFile(path.join(dir, 'other.txt'), '')
+  })
+
+  it('a directory every file of which is an output is bound whole', async () => {
+    expect(await reads(['gen/**'])).toEqual({ reads: ['gen'], reported: ['gen'] })
+  })
+
+  it('a file beside the outputs is left out, each output bound alone', async () => {
+    expect(await reads(['gen/**/*.js'])).toEqual({
+      reads: ['gen/js', 'gen/out.js', 'gen/sub/a.js'],
+      reported: ['gen'],
+    })
+  })
+
+  it('a `!` entry takes a file back', async () => {
+    expect(await reads(['gen/**', '!gen/notes.txt'])).toEqual({
+      reads: ['gen/js', 'gen/out.js', 'gen/sub'],
+      reported: ['gen'],
+    })
+  })
+
+  it('a glob with no head binds the files it matches and reports nothing', async () => {
+    expect(await reads(['*.tsbuildinfo'])).toEqual({ reads: ['root.tsbuildinfo'], reported: [] })
+  })
+
+  it('a link is never bound alone: its target may be no output', async () => {
+    await symlink(path.join(dir, 'other.txt'), path.join(dir, 'gen', 'sub', 'l.js'))
+    expect((await reads(['gen/**/*.js'])).reads).toEqual(['gen/js', 'gen/out.js', 'gen/sub/a.js'])
+  })
+
+  it('more one-by-one binds than the wrap holds is refused, naming the dependency', async () => {
+    const many = path.join(dir, 'gen', 'many')
+    await mkdir(many)
+    for (let i = 0; i < 800; i++) {
+      await writeFile(path.join(many, `${'f'.repeat(40)}${i}.js`), '')
+      await writeFile(path.join(many, `${'f'.repeat(40)}${i}.js.map`), '')
+    }
+    await expect(dependencyReads([dep(['gen/**/*.js'])], root)).rejects.toThrow(
+      'exec.sandbox: the outputs of proj#gen lie among other files, so the sandbox would bind 803 of them one by one',
+    )
+    // Whole, the same tree is one bind.
+    expect(await reads(['gen/**'])).toEqual({ reads: ['gen'], reported: ['gen'] })
   })
 })

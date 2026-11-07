@@ -803,6 +803,7 @@ export interface ExecuteSandbox {
   readonly config: ResolvedSandboxConfig
   readonly keyed?: readonly string[]
   readonly dependencyReads?: readonly string[]
+  readonly dependencyReported?: readonly string[]
 }
 ```
 
@@ -2727,7 +2728,8 @@ with no `cache`, which has no key to be stale.
 
 The other is the outputs of the tasks its key folds
 (`dependencyOutputs`, 2026-11-06): an edge the user drew, whose files
-this key already answers for, so the read can replay nothing stale.
+this key already answers for, so the read can replay nothing stale —
+only the files the outputs take, never what lies beside them.
 
 ```ts
 export async function sandboxRequestFor(
@@ -2738,6 +2740,7 @@ export async function sandboxRequestFor(
   nested: readonly string[] = [],
   cacheDir?: string,
   dependencyOutputs: readonly string[] = [],
+  dependencyReported: readonly string[] = [],
 ): Promise<SandboxRequest>
 ```
 
