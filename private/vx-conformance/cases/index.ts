@@ -39,6 +39,7 @@ import { outputsShared } from './outputs-shared.ts'
 import outputs from './outputs.ts'
 import persistentReady from './persistent-ready.ts'
 import persistentServers from './persistent-servers.ts'
+import recentFixes from './recent-fixes.ts'
 import report from './report.ts'
 import runModes from './run-modes.ts'
 import sandbox from './sandbox.ts'
@@ -98,4 +99,5 @@ export const CASES: Case[] = [
   ...nixSandbox,
   ...nixShell,
   ...moonTests,
+  ...recentFixes,
 ]

@@ -44,7 +44,7 @@ export interface TaskSpec {
   dependencyInputs?: false
   /**
    * The command runs isolated: it may read only its inputs (and its
-   * dependencies' installs) plus `read`, write only its outputs plus
+   * dependencies' installs and declared outputs) plus `read`, write only its outputs plus
    * `write`, and reach no network unless `network`. `hermetic`: no file
    * of the machine outside the workspace either, beyond what the shell
    * needs to start.

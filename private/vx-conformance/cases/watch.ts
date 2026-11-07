@@ -329,6 +329,49 @@ export default [
   }),
 
   watchCase({
+    id: 'watch/edit-undone-during-run-rebuilds',
+    kind: 'correctness',
+    title: 'An edit undone while its build runs leaves the output of the bytes on disk',
+    why: 'The running build read the edit, so its output belongs to bytes no longer on disk. Comparing the file with the state seen before the edit says nothing changed, and the watch stays green on a build of code that is gone. Save, undo, save is how editors are used, so the output must end as the bytes on disk build it, run again or replayed.',
+    from: ['watch-loop-edit-undone'],
+    workspace: app(
+      {},
+      {
+        command:
+          'mkdir -p dist && cp src/a.txt dist/started && sleep 2 && cat src/*.txt > dist/out.txt.tmp && mv dist/out.txt.tmp dist/out.txt',
+      },
+    ),
+    phases: [
+      initial(['app#build'], { [OUT]: 'a1\n' }),
+      {
+        write: { [A]: 'a2\n' },
+        expect: { files: { 'packages/app/dist/started': 'a2\n' }, inFlight: true },
+      },
+      // Built again or replayed: the first build's result fits these bytes.
+      { write: { [A]: 'a1\n' }, expect: { files: { [OUT]: 'a1\n' } } },
+    ],
+  }),
+
+  watchCase({
+    id: 'watch/edit-during-first-run-rebuilds',
+    kind: 'correctness',
+    title: 'An edit made during the watch’s first build is built right after it',
+    why: 'The first build of a watch is a build like any other, and it can read a file before the user saves it. Arming the watcher only after that build ends misses the save, so the watch idles on output from the old bytes. The edit must lead to one more build.',
+    from: ['watch-initial-edit'],
+    workspace: app(
+      {},
+      {
+        command:
+          'mkdir -p dist && cp src/a.txt dist/started && sleep 2 && cat src/*.txt > dist/out.txt.tmp && mv dist/out.txt.tmp dist/out.txt',
+      },
+    ),
+    phases: [
+      { expect: { files: { 'packages/app/dist/started': 'a1\n' }, inFlight: true } },
+      { write: { [A]: 'a2\n' }, expect: { ran: ['app#build'], files: { [OUT]: 'a2\n' } } },
+    ],
+  }),
+
+  watchCase({
     id: 'watch/keeps-watching-after-failure',
     kind: 'correctness',
     title: 'A build that fails while watching is built again once the source is fixed',
