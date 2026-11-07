@@ -613,6 +613,9 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
               interruptIfWaiting,
             )
             const cycle = await runOrchestrator(current.opts)
+            changes.unseen(
+              cycle.outcomes.flatMap((o) => (o.driftedInput === undefined ? [] : [o.driftedInput])),
+            )
             sayAllCached(opts, cycle.outcomes)
             lastTasks = current.tasks ?? lastTasks
             current = undefined

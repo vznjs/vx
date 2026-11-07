@@ -1507,7 +1507,9 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    a state the tree will not keep — so paths that land mid-run are
    judged together one debounce window after it ends, an edit made
    meanwhile included (a task's input edited while it ran is not saved,
-   and its line says the next cycle runs on it). A task that writes into its own project,
+   and its line says the next cycle runs on it: it does, even when the
+   file was put back to the state the last judgement saw, since the
+   task read the other one). A task that writes into its own project,
    `rm -rf dist && tsc` included, costs one extra cycle instead of
    re-running forever — when the bytes it leaves are the same. A file
    it rewrites with DIFFERENT bytes every run (a pid file, a

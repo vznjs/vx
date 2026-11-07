@@ -177,6 +177,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'watch-label-workspace-wide',
     'watch-linked-input',
     'watch-loop',
+    'watch-loop-edit-undone',
     'watch-loop-edits',
     'watch-loop-members',
     'watch-loop-selfwrite',
