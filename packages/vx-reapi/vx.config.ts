@@ -50,7 +50,6 @@ const SHARDS: readonly (readonly string[])[] = [
     'no-env',
     'plugin',
     'record-digest-sizes',
-    'record-streams',
     'stream-cache',
     'vx-run-e2e',
     'wire-only-options',
