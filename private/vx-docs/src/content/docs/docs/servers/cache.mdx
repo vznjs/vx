@@ -255,8 +255,9 @@ until R2 may drop the result. A repeat check there skips R2.
 
 A miss always asks R2, so a later upload is never hidden. An upload
 always asks R2 whether it holds the result, never the mark, so a
-result deleted by hand is stored again; a download R2 misses drops the
-mark.
+result deleted by hand is stored again.
+
+A download R2 misses drops the mark.
 
 ## API
 
