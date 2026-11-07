@@ -108,6 +108,7 @@ export {
   listedSync,
   wholeIgnored,
 } from './git-ignored.js'
+export { OWN_DIR_HINT, refuseForeignCacheDir } from './foreign-cache-dir.js'
 export { realPath, realpathOf } from './real-path.js'
 export {
   IGNORE_ALL,

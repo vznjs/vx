@@ -1,13 +1,7 @@
 import { accessSync, constants, existsSync, lstatSync, readdirSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
-import {
-  Cache,
-  holdCacheDir,
-  holdStore,
-  refuseForeignCacheDir,
-  vxCacheEntries,
-} from '../cache/index.js'
+import { Cache, holdCacheDir, holdStore, vxCacheEntries } from '../cache/index.js'
 import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
 import {
   errorCode,
@@ -15,6 +9,7 @@ import {
   nearest,
   parseDuration,
   parseSize,
+  refuseForeignCacheDir,
   relPosix,
   treeBytes,
 } from '../util/index.js'

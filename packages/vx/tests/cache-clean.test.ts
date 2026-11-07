@@ -445,6 +445,10 @@ describe('vx cache clean with no bound clears the cache', () => {
       expect(run.err).toMatch(/cache directory \S+ (resolves to|holds a package\.json)/)
       expect(existsSync(path.join(home, 'cache.db'))).toBe(false)
       expect(existsSync(path.join(root, 'cache.db'))).toBe(false)
+      // The config bundle went there before the index opened.
+      expect(existsSync(path.join(realpathSync(path.join(root, '.vx', 'cache')), 'compiled'))).toBe(
+        false,
+      )
       // An index already there (an older vx wrote it) does not make it vx's.
       await Bun.write(path.join(realpathSync(path.join(root, '.vx', 'cache')), 'cache.db'), '')
       const clean = await vx(['cache', 'clean'])

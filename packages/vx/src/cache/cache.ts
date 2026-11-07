@@ -44,7 +44,6 @@ import {
   openSync,
   readdirSync,
   readFileSync,
-  realpathSync,
   renameSync,
   type Stats,
   statSync,
@@ -62,7 +61,6 @@ import {
   utimes,
   writeFile,
 } from 'node:fs/promises'
-import { homedir } from 'node:os'
 import path from 'node:path'
 import {
   createArtifactTables,
@@ -81,6 +79,8 @@ import {
   isFsRefusal,
   isOutOfFds,
   OUT_OF_FDS_HINT,
+  OWN_DIR_HINT,
+  refuseForeignCacheDir,
   restorableOutput,
   relPosix,
   span,
@@ -864,49 +864,6 @@ function ignoreFileFor(cacheDir: string): [string, string] {
 }
 
 /**
- * Refuses a cache directory that resolves to the home directory, the file
- * system root, or a directory holding the workspace or a repository:
- * compared unresolved, a `.vx/cache` linked to `~` or `..` passed, the run
- * wrote its index there, and `vx cache clean` deleted every entry (the
- * home directory; the workspace's `.git` and config). One realpath; a
- * directory not there yet is made as named, below.
- */
-export function refuseForeignCacheDir(cacheDir: string, workspaceRoot: string | undefined): void {
-  let real: string
-  try {
-    real = realpathSync(cacheDir)
-  } catch {
-    return
-  }
-  const home = process.env['HOME'] || homedir()
-  let what: string | undefined
-  if (real === path.parse(real).root) what = 'the file system root'
-  else if (sameDir(real, home)) what = 'the home directory'
-  else if (
-    (workspaceRoot !== undefined && !path.relative(real, workspaceRoot).startsWith('..')) ||
-    existsSync(path.join(real, '.git'))
-  )
-    what = 'a directory holding the workspace or a repository'
-  if (what === undefined) return
-  throw new UserError(
-    `cache directory ${cacheDir} resolves to ${real}, ${what}: vx would keep its index there and \`vx cache clean\` would delete from it. ${OWN_DIR_HINT}`,
-    'VX_E_CONFIG',
-  )
-}
-
-function sameDir(a: string, b: string): boolean {
-  if (a === path.resolve(b)) return true
-  // A home named through a link: stats only when the names could agree.
-  if (path.basename(a) !== path.basename(b)) return false
-  try {
-    const [x, y] = [statSync(a), statSync(b)]
-    return x.ino === y.ino && x.dev === y.dev
-  } catch {
-    return false
-  }
-}
-
-/**
  * A first index in a directory that holds a manifest is a cache pointed at
  * the workspace or a project (`cacheDir: ''`, `'.'`, `'packages/a'`): the
  * `*` ignore file above hid every file in it from git, so its inputs
@@ -960,8 +917,6 @@ const MANIFESTS = [
   ...['ts', 'mts', 'js', 'mjs', 'cts', 'cjs'].map((ext) => `vx.config.${ext}`),
   ...['ts', 'mts', 'js', 'mjs', 'cts', 'cjs'].map((ext) => `.vx/workspace.${ext}`),
 ]
-const OWN_DIR_HINT =
-  'Point `cache.dir` in .vx/workspace.ts (or --cache-dir) at a directory of its own, such as .vx/cache.'
 
 function makeCacheDir(cacheDir: string): void {
   try {

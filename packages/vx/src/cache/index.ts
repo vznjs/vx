@@ -41,7 +41,6 @@ export {
   type SchemaReset,
   SCHEMA_VERSION,
   storedLog,
-  refuseForeignCacheDir,
   vxCacheEntries,
 } from './cache.js'
 export { ABSENT_INPUT, absentOr, CACHE_VERSION, foldHead } from './key-fold.js'
