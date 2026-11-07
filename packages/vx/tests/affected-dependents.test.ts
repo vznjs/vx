@@ -445,7 +445,7 @@ describe('--affected follows the graph a `graph` plugin leaves', () => {
       })
       expect([lock.exitCode, lock.stderr.toString()]).toEqual([
         1,
-        '✗ vx lock  lock not written\n\n  tool#build: dependsOn ^nope but no project in the workspace declares nope\n',
+        "✗ vx lock  lock not written\n\n  pkgs/tool/vx.config.mjs:4:7\n  tasks.build.dependsOn names ^nope but no project in the workspace declares nope\n\n    2 |   tasks: {\n    3 |     build: {\n  > 4 |       dependsOn: ['^build', '^nope'],\n      |       ^\n",
       ])
     },
     TIMEOUT,

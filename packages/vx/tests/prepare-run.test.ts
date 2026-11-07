@@ -369,9 +369,15 @@ describe('a ^name no project declares is refused in a scoped run too', () => {
       await pkg('cart', cfg(task('build')))
       await pkg('web', cfg(task('build')))
 
-      await expect(lock(root)).rejects.toThrow(
-        '✗ vx lock  lock not written\n\n  app#typo: dependsOn ^biuld but no project in the workspace declares biuld\n\n  fix  ^build',
+      // Placed at the field, its near name the fix.
+      const placed = await lock(root).then(
+        () => 'locked',
+        (e: Error) => e.message,
       )
+      expect(placed).toContain(
+        'packages/app/vx.config.mjs:1:67\n  tasks.typo.dependsOn names ^biuld but no project in the workspace declares biuld\n',
+      )
+      expect(placed).toEndWith('fix  use ^build')
       await typoLocked()
       const err = await refusal({ tasks: ['app#typo'], locked: true })
       expect(err).toBeInstanceOf(UserError)

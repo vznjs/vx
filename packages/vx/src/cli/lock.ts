@@ -18,6 +18,7 @@ import {
 } from '../orchestrator/index.js'
 import { resolveSetting, runRules } from '../settings.js'
 import {
+  configErrorFrame,
   DOT_VX_GITATTRIBUTES,
   fsRefusalHint,
   isFsRefusal,
@@ -85,6 +86,29 @@ export function parseLockArgs(args: readonly string[]): LockArgs {
 }
 
 type ConfiguredMeta = ProjectMeta & { configPath: string }
+
+/**
+ * A `dependsOn` the graph refused (`a#dep: dependsOn a#nope …`), said as
+ * a schema refusal of that field, so it prints at the config's line with
+ * its frame as every other config error does. Undefined when the task's
+ * `dependsOn` is not in its file (a plugin's task, the default build).
+ */
+function placedDependsOn(
+  err: UserError,
+  all: readonly ProjectMeta[],
+  root: string,
+): string | undefined {
+  if (err.code !== 'VX_E_DEPENDS_ON') return undefined
+  const m = /^(.+)#([^#\s]+): dependsOn (.+)$/s.exec(err.message)
+  if (m === null) return undefined
+  const configPath = all.find((p) => p.name === m[1])?.configPath
+  if (configPath === undefined || configPath === null) return undefined
+  // `does not accept …` reads on from the field; a named dep takes `names`.
+  // The frame turns a trailing ` — did you mean X?` into its fix line.
+  const said = /^(?:does not|patterns are)\b/.test(m[3]!) ? m[3] : `names ${m[3]}`
+  const placed = `${configPath}: tasks.${m[2]}.dependsOn ${said!.replace(/\. Did you mean (.+)\?$/s, ' — did you mean $1?')}`
+  return configErrorFrame(placed, root) === undefined ? undefined : placed
+}
 
 export async function lockCmd(args: readonly string[]): Promise<number> {
   const parsed = parseLockArgs(args)
@@ -240,7 +264,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     if (isUserError(err))
       return {
         ...out,
-        broken: err.message,
+        broken: placedDependsOn(err, out.all, root) ?? err.message,
         ...(err.parts ? { brokenParts: err.parts } : {}),
         ...(err instanceof ConfigsRefused ? { alsoBroken: err.all.slice(1) } : {}),
       }

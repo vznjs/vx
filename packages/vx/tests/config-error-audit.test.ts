@@ -114,6 +114,11 @@ it.each([
     framed(58, 'tasks.build.exec.timeout must be more than 0 — omit it for no limit (got "0s")'),
   ],
   [
+    'a `dependsOn` naming no task, at its line',
+    task("exec: { command: 'x' }, dependsOn: ['nope']"),
+    framed(60, 'tasks.build.dependsOn names p#nope but no such task is declared'),
+  ],
+  [
     'a string `dependsOn`',
     task("exec: { command: 'x' }, dependsOn: '^build'"),
     framed(60, 'tasks.build.dependsOn must be an array — write dependsOn: ["^build"]'),
