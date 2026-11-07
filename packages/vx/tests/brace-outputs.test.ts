@@ -91,3 +91,32 @@ it('a brace of directory literals or ./ spellings saves and restores each tree',
     ]).toEqual(['a\n', 'b\n'])
   }
 })
+
+// An escape turned brace expansion off: `{dist,app/\[id\]}` saved an
+// empty artifact, and the hit restored nothing.
+it('a brace holding an escaped char saves and restores each tree', async () => {
+  const app = await addProject(root, 'app', {
+    config: `
+      export default {
+        tasks: {
+          build: {
+            exec: { command: 'mkdir -p dist "app/[id]" && echo a > dist/a.js && echo b > "app/[id]/b.js"' },
+            inputs: { files: ['src/**'] }, outputs: { files: ['{dist,app/\\\\[id\\\\]}'] }, cache: true,
+          },
+        },
+      }
+    `,
+    files: { 'src/x.ts': 'x', '.gitignore': 'dist/\napp/\n' },
+  })
+  gitIn(root)('add', '-A')
+  gitIn(root)('commit', '-q', '-m', 'fixture')
+  const build = () => run({ cwd: root, tasks: ['app#build'], log, handleSignals: false })
+  expect((await build()).outcomes[0]!.status).toBe('success')
+  await rm(path.join(app, 'dist'), { recursive: true })
+  await rm(path.join(app, 'app'), { recursive: true })
+  expect((await build()).outcomes[0]!.status).toBe('cache-hit')
+  expect([
+    readFileSync(path.join(app, 'dist/a.js'), 'utf8'),
+    readFileSync(path.join(app, 'app/[id]/b.js'), 'utf8'),
+  ]).toEqual(['a\n', 'b\n'])
+})

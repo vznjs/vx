@@ -572,9 +572,15 @@ function classEnd(pattern: string, i: number): number {
   return end === -1 ? i : end
 }
 
+// A `\x` is one character to both scans: it opens, closes and cuts nothing,
+// and stays in its alternative for the glob to read. Expansion turned off
+// at any escape, `{src,app/\[id\]}` named neither tree.
 function expandBraces(pattern: string, slashOnly: boolean): string[] {
-  if (pattern.includes('\\')) return [pattern]
   for (let open = 0; open < pattern.length; open++) {
+    if (pattern[open] === '\\') {
+      open++
+      continue
+    }
     if (pattern[open] === '[') {
       open = classEnd(pattern, open)
       continue
@@ -585,7 +591,8 @@ function expandBraces(pattern: string, slashOnly: boolean): string[] {
     let close = -1
     for (let i = open; i < pattern.length && close === -1; i++) {
       const c = pattern[i]
-      if (c === '[') i = classEnd(pattern, i)
+      if (c === '\\') i++
+      else if (c === '[') i = classEnd(pattern, i)
       else if (c === '{') depth++
       else if (c === '}' && --depth === 0) close = i
       else if (c === ',' && depth === 1) cuts.push(i)

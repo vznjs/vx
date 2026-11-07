@@ -950,7 +950,8 @@ match on their own: `{src/**,lib/**}` is `src/**` plus `lib/**`, and
 spellings fold per alternative (`{./src,lib}/**` is `src/**` plus
 `lib/**`), in inputs and outputs alike. A `,`, `{` or `}` inside a
 class is one of its characters, never a cut: `lib/{a[,]b,x}.ts` is
-`lib/a[,]b.ts` plus `lib/x.ts`. A
+`lib/a[,]b.ts` plus `lib/x.ts`; so is an escaped one (`\,`), and an
+alternative may hold an escape (`{src,app/\[id\]}` is the two trees). A
 backslash escapes: a route directory (Next.js, SvelteKit, Astro) is
 `app/\[id\]/**`; bare, `app/[id]/**` is the class that matches `app/i`
 and `app/d`, never the route. When the path the class spells exists
@@ -968,7 +969,8 @@ Parens with no `|` (`app/(marketing)/**`) are filename characters and
 stay. So is `**` glued to other text in one segment (`src/**.ts`, `a**`):
 the engine reads it as one `*`, a single level, so deeper inputs would
 leave the key and deeper outputs go unsaved; write `src/**/*.ts` for every
-depth or `src/*.ts` for one. A brace range is `Bun.Glob`'s (Bun 1.4.4):
+depth or `src/*.ts` for one; inside a brace too (`src/{a,**}.ts` is
+`src/**.ts`). A brace range is `Bun.Glob`'s (Bun 1.4.4):
 `{1..3}`, `{3..1}`, `{01..03}`, `{a..c}`, `{1..10..3}`; vx expands it as
 a comma brace. A mixed-case range (`{A..c}`) or one of more than 1024
 names is refused wherever it sits in the glob. A leading `!` is still the negation, so `!(group)/**`
