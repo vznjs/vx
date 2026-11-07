@@ -69,7 +69,7 @@ describe('vx show and the default build of a dependency', () => {
       expect(r.code).toBe(0)
       expect(r.out).toBe(
         [
-          `─ Projects 3 ${'─'.repeat(49)}`,
+          '  Projects 3',
           '  project  dir            tasks',
           '  app      packages/app   2 tasks, default build',
           '  lib      packages/lib   1 task, default build (no vx config)',

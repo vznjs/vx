@@ -31,6 +31,7 @@ import { formatElapsed, maskedCommand, printable } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import {
   fileMemo,
+  GUTTER,
   hasEscape,
   idParts,
   lastRedraw,
@@ -251,14 +252,13 @@ function paintTaskId(node: TaskNode, colors: ColorSupport, opts: { bold?: boolea
   return paintId(node.projectName, node.taskName, colors, opts)
 }
 
-// ── Reported-line grid: glyph · time · status · cache · name ────────
-// glyph SHAPE encodes the cache axis (⏺ miss · ► fresh · ⇢ local · ⇣
-// remote; ◼ failed · ⊘ skipped · ✗ aborted · ◌ not run), glyph COLOR encodes the
-// task axis (green/red/yellow/cyan). The status and cache WORDS spell
-// the two axes out, each in its own color. Time is right-aligned in a
+// ── Reported-line grid: status · cache · usual · time · … · name ────────
+// No glyph (2026-11-06): the status word, first at the Summary's value
+// column, is the task axis and the cache word the cache axis, each in
+// its own color. Time is right-aligned in a
 // fixed cell so durations line up and a ticking elapsed never shifts
 // the row. All detail (exit code, output) lives in the framed block.
-export const TIME_COL = 7 // "0ms" … "999.99s", then "16m 40s" … "99m 59s"
+const TIME_COL = 7 // "0ms" … "999.99s", then "16m 40s" … "99m 59s"
 const STATUS_COL = 7 // "success" / "running" / "skipped" / "aborted" / "not run"
 const CACHE_COL = 8 // "no-cache" / "remote" / "local" / "fresh" / "miss"
 const BLOCKED_COL = 7 // `blocks`: how many tasks are downstream of the row's
@@ -279,7 +279,8 @@ function pad(n: number): string {
 
 /** Right-align the duration in a TIME_COL cell (pad on the left). */
 function timeCell(ms: number | null, colors: ColorSupport): string {
-  let raw = ms === null ? '' : formatElapsed(ms)
+  if (ms === null) return pad(TIME_COL - 1) + paint('muted', UNKNOWN, colors)
+  let raw = formatElapsed(ms)
   // `1000.00s` is wider than the cell; minutes fit it up to `99m 59s`.
   if (ms !== null && raw.length > TIME_COL) raw = formatElapsed(ms, true)
   // The time is the row's fact (value level); the cells around it are meta.
@@ -294,24 +295,6 @@ function timeCell(ms: number | null, colors: ColorSupport): string {
 function cell(text: string, color: Style | '', width: number, colors: ColorSupport): string {
   const painted = text === '' ? '' : paint(color === '' ? 'muted' : color, text, colors)
   return painted + pad(width - text.length)
-}
-
-/** The cache-shape glyph (task-shape for non-success). */
-function glyphShape(o: TaskOutcome): string {
-  switch (o.status) {
-    case 'success':
-      return '⏺\uFE0E' // ⏺ miss (ran), text-presentation (narrow)
-    case 'cache-hit':
-      return o.restored === false ? '\u25ba' : '\u21e2' // ► fresh : ⇢ local
-    case 'cache-hit-remote':
-      return o.restored === false ? '\u25ba' : '\u21e3' // ► fresh : ⇣ remote
-    case 'failed':
-      return '\u25fc\uFE0E' // ◼ failed, text-presentation (narrow)
-    case 'skipped':
-      return '\u2298' // ⊘ skipped
-    default:
-      return '⏺\uFE0E'
-  }
 }
 
 /** Task-axis word + color (a cache hit is a success). */
@@ -346,20 +329,14 @@ function cacheOf(o: TaskOutcome): { word: string; color: Style } {
   }
 }
 
-/** The painted status glyph (shape = cache axis, color = task axis). */
-function taskGlyph(o: TaskOutcome, colors: ColorSupport): string {
-  return paint(statusOf(o).color, glyphShape(o), colors)
-}
-
 /**
- * One reported task row on the list grid: `<glyph> <time> <usual>
- * <status> <cache> <cpu> <mem> <blocks> <worker> <name>`. `glyph` is
- * pre-painted; status/cache are raw text + color, padded to their
+ * One reported task row on the list grid: `<status> <cache> <usual>
+ * <time> <cpu> <mem> <outputs> <blocks> <worker> <mark> <name>`, the status at
+ * the Summary's value column, no glyph (2026-11-06). Status/cache are raw text + color, padded to their
  * columns; `paintedId` carries identity coloring. `ms = null` blanks the
  * time (a skip never ran); `cache = ''` and an absent cell blank theirs.
  */
 export function formatTaskRow(
-  glyph: string,
   ms: number | null,
   status: string,
   statusColor: Style | '',
@@ -369,40 +346,43 @@ export function formatTaskRow(
   colors: ColorSupport = NO_COLOR,
   cells: RowCells = {},
 ): string {
-  const st = cell(status, statusColor, STATUS_COL, colors)
-  // `aborting` runs one into the cache cell, which is blank beside it.
-  const ca = cell(cache, cacheColor, CACHE_COL - Math.max(0, status.length - STATUS_COL), colors)
-  const usual = cells.usual ?? { text: '', painted: '' }
+  // Every cell says something: one with nothing in it reads `—` (2026-11-06).
+  const st = cell(status || UNKNOWN, statusColor, STATUS_COL, colors)
+  // `aborting` runs one into the cache cell.
+  const ca = cell(
+    cache || UNKNOWN,
+    cache === '' ? '' : cacheColor,
+    CACHE_COL - Math.max(0, status.length - STATUS_COL),
+    colors,
+  )
+  const usual =
+    cells.usual === undefined || cells.usual.text === '' ? unknownUsual(colors) : cells.usual
   const us = `${pad(USUAL_COL - usual.text.length)}${usual.painted}`
-  const cpu =
-    cells.cpu === undefined ? '' : cells.cpu === null ? UNKNOWN : `${Math.round(cells.cpu * 100)}%`
-  const mem =
-    cells.memBytes === undefined
-      ? ''
-      : cells.memBytes === null
-        ? UNKNOWN
-        : formatSize(cells.memBytes)
-  const out =
-    cells.outputBytes === undefined
-      ? ''
-      : cells.outputBytes === null
-        ? UNKNOWN
-        : formatSize(cells.outputBytes)
-  const blocks = cells.blocks ?? ''
-  const worker = workerName(cells.worker ?? '')
+  const cpu = cells.cpu == null ? UNKNOWN : `${Math.round(cells.cpu * 100)}%`
+  const mem = cells.memBytes == null ? UNKNOWN : formatSize(cells.memBytes)
+  const out = cells.outputBytes == null ? UNKNOWN : formatSize(cells.outputBytes)
+  const blocks = cells.blocks || UNKNOWN
+  const worker = workerName(cells.worker || UNKNOWN)
   return (
-    ` ${glyph} ${timeCell(ms, colors)} ${us} ${st} ${ca} ` +
+    `${ROW_LEAD}${st} ${ca} ${us} ${timeCell(ms, colors)} ` +
     `${right(cpu, CPU_COL, colors)} ${right(mem, MEM_COL, colors)} ${right(out, OUT_COL, colors)} ` +
-    `${pad(BLOCKED_COL - blocks.length)}${paint(blocks === '0' ? 'muted' : 'value', blocks, colors)} ` +
-    `${placeCell(worker, colors)}${pad(WORKER_COL - worker.length)} ${paintedId}`
+    `${pad(BLOCKED_COL - blocks.length)}${paint(blocks === '0' || blocks === UNKNOWN ? 'muted' : 'value', blocks, colors)} ` +
+    `${placeCell(worker, colors)}${pad(WORKER_COL - worker.length)} ` +
+    `${cells.critical === true ? paint('warn', CRITICAL_MARK, colors) : ' '} ${paintedId}`
   )
 }
 
-/**
- * A cell vx cannot know: a peak no look saw, a task history never timed.
- * Blank is a cell that does not apply (a hit ran nothing).
- */
+/** A cell with nothing in it: unknown, or not applying to the row (a hit ran nothing). */
 const UNKNOWN = '\u2014'
+
+/**
+ * The critical path's mark, before the task's name: the row's task held the
+ * run's end while others ran beside it. One glyph, yellow (2026-11-06).
+ */
+const CRITICAL_MARK = '\u25c6'
+
+/** A grid row's lead: the gutter, so a row starts where a field's value does. */
+const ROW_LEAD = ' '.repeat(GUTTER)
 
 /** A row's cells past time, status and cache; each blank when absent, `—` when null. */
 export interface RowCells {
@@ -418,6 +398,8 @@ export interface RowCells {
   blocks?: string
   /** The machine it runs or ran on: `local`, or the executor's name for it. */
   worker?: string
+  /** On the critical path: `◆` before the task's name. */
+  critical?: boolean
 }
 
 function right(text: string, width: number, colors: ColorSupport): string {
@@ -440,7 +422,7 @@ export function formatSize(bytes: number): string {
 const placeCells = new WeakMap<ColorSupport, Map<string, string>>()
 
 function placeCell(worker: string, colors: ColorSupport): string {
-  if (worker === '') return ''
+  if (worker === UNKNOWN) return paint('muted', UNKNOWN, colors)
   let byName = placeCells.get(colors)
   if (byName === undefined) placeCells.set(colors, (byName = new Map()))
   let painted = byName.get(worker)
@@ -502,10 +484,10 @@ export function formatRunningHeader(colors: ColorSupport = NO_COLOR): string {
 
 function header(usual: string, colors: ColorSupport): string {
   const head =
-    `   ${'time'.padStart(TIME_COL)} ${usual.padStart(USUAL_COL)} ` +
-    `${'status'.padEnd(STATUS_COL)} ${'cache'.padEnd(CACHE_COL)} ${'cpu'.padStart(CPU_COL)} ` +
-    `${'mem'.padStart(MEM_COL)} ${'outputs'.padStart(OUT_COL)} ${'blocks'.padStart(BLOCKED_COL)} ${'worker'.padEnd(WORKER_COL)} task`
-  return paint('label', head, colors)
+    `${'status'.padEnd(STATUS_COL)} ${'cache'.padEnd(CACHE_COL)} ${usual.padStart(USUAL_COL)} ` +
+    `${'time'.padStart(TIME_COL)} ${'cpu'.padStart(CPU_COL)} ` +
+    `${'mem'.padStart(MEM_COL)} ${'outputs'.padStart(OUT_COL)} ${'blocks'.padStart(BLOCKED_COL)} ${'worker'.padEnd(WORKER_COL)}   task`
+  return paint('muted', head, colors)
 }
 
 /**
@@ -513,7 +495,7 @@ function header(usual: string, colors: ColorSupport): string {
  * body, and `vx last`'s, so a replay reads as the run did.
  */
 export function taskList(rows: readonly ((colors: ColorSupport) => string)[]): ui.Block {
-  return { lines: (c) => [formatListHeader(c), ...rows.map((row) => row(c))] }
+  return { head: formatListHeader, lines: (c) => rows.map((row) => row(c)) }
 }
 
 /** What history keeps of a task's row: `vx last` draws it again from this. */
@@ -587,9 +569,8 @@ export function formatExpected(ms: number): string {
 /** A task `--dry` lists: what the run would do with it, on the running list's grid. */
 export interface PlannedRow {
   node: TaskNode
-  glyph: string
   status: string
-  /** The glyph's and the status word's hue. */
+  /** The status word's hue. */
   tone: Style
   cache: string
   cacheTone: Style | ''
@@ -607,9 +588,9 @@ export interface PlannedRow {
 /** `--dry`'s list: the running list's header and grid, so a plan reads as the run would. */
 export function planList(rows: readonly PlannedRow[]): ui.Block {
   return {
-    lines: (c) => [
-      formatRunningHeader(c),
-      ...rows.map((r) => {
+    head: formatRunningHeader,
+    lines: (c) =>
+      rows.map((r) => {
         const usual =
           r.usualMs === undefined
             ? undefined
@@ -617,7 +598,6 @@ export function planList(rows: readonly PlannedRow[]): ui.Block {
               ? UNKNOWN
               : formatExpected(r.usualMs)
         const row = formatTaskRow(
-          paint(r.tone, r.glyph, c),
           null,
           r.status,
           r.tone,
@@ -636,7 +616,6 @@ export function planList(rows: readonly PlannedRow[]): ui.Block {
         )
         return r.note === '' ? row : `${row}  ${paint('muted', r.note, c)}`
       }),
-    ],
   }
 }
 
@@ -732,7 +711,6 @@ function formatOutcomeRow(
   const ca = cacheOf(o)
   return (
     formatTaskRow(
-      taskGlyph(o, colors),
       ms,
       st.word,
       st.color,
@@ -740,17 +718,9 @@ function formatOutcomeRow(
       ca.color,
       paintedId,
       colors,
-      cells,
-    ) +
-    (onPath ? pathNote(colors) : '') +
-    flakyNote(o, colors)
+      onPath ? { ...cells, critical: true } : cells,
+    ) + flakyNote(o, colors)
   )
-}
-
-/** `critical path`: the row's task held the run's end while others ran beside it. */
-export function pathNote(colors: ColorSupport = NO_COLOR): string {
-  // A fact worth knowing, not a failure: never red.
-  return `  ${paint('info', 'critical path', colors)}`
 }
 
 /** Where an executor ran the task, when not here, right after its id: `@small#2` (2026-10-21). */
@@ -803,7 +773,6 @@ export function formatTaskSkippedLine(
   const suffix = why === '' ? '' : ` ${paint('muted', `• ${why}`, colors)}`
   return (
     formatTaskRow(
-      paint('warn', '\u2298', colors),
       null,
       'skipped',
       'warn',
@@ -830,29 +799,9 @@ export function formatTaskAbortedLine(
   const id = paintTaskId(node, colors)
   const bl: RowCells = blocks === undefined ? {} : { blocks: String(blocks) }
   if (neverStarted(o)) {
-    return formatTaskRow(
-      paint('muted', '\u25cc', colors),
-      null,
-      'not run',
-      '',
-      '',
-      '',
-      id,
-      colors,
-      bl,
-    )
+    return formatTaskRow(null, 'not run', '', '', '', id, colors, bl)
   }
-  return formatTaskRow(
-    paint('aborted', '\u2717', colors),
-    o.durationMs,
-    'aborted',
-    'aborted',
-    '',
-    '',
-    id,
-    colors,
-    ranCells(o, blocks),
-  )
+  return formatTaskRow(o.durationMs, 'aborted', 'aborted', '', '', id, colors, ranCells(o, blocks))
 }
 
 /**

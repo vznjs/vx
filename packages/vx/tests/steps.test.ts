@@ -164,6 +164,6 @@ it(
 
 it('a step row reads as a task row, `internal` in the cache column', () => {
   expect(formatStepLine('vx:uploads', 4600, true)).toMatch(
-    /^ ⏺︎ +4\.60s +success internal +local +vx:uploads$/,
+    /^ {12}success internal +— +4\.60s +— +— +— +— local +vx:uploads$/,
   )
 })

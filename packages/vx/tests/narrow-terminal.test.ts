@@ -33,8 +33,8 @@ const footer = (columns?: number): string[] =>
     columns === undefined ? { enabled: false } : { enabled: false, columns },
     CONTEXT,
   )
-/** Bars and rules: the rows with no words to wrap. */
-const furniture = (lines: string[]): string[] => lines.filter((l) => /[▰▱]|──/.test(l))
+/** Bars and the title line: the rows padded to a width, with no words to wrap. */
+const furniture = (lines: string[]): string[] => lines.filter((l) => /[▰▱]|^ {2}Summary/.test(l))
 
 describe('on a terminal narrower than the footer', () => {
   it.each([40, 50, 61])('every bar and rule fits %i columns', (columns) => {
@@ -55,10 +55,14 @@ describe('on a terminal narrower than the footer', () => {
     expect(rules[0]!.length).toBeLessThanOrEqual(40)
   })
 
-  it('CONTROL: off a terminal and on a wide one the footer keeps its 62 columns', () => {
-    for (const lines of [footer(), footer(200)]) {
+  it('CONTROL: off a terminal and on a wide one the bars keep their 62 columns', () => {
+    // The title line spans the terminal (120 off one), so its note sits flush right past a task's name.
+    for (const [lines, width] of [
+      [footer(), 120],
+      [footer(200), 200],
+    ] as const) {
       const rows = furniture(lines)
-      expect(rows[0]).toBe('─ Summary ' + '─'.repeat(41) + ' vx 1.2.3 ─')
+      expect(rows[0]).toBe('  Summary' + ' '.repeat(width - 17) + 'vx 1.2.3')
       for (const row of rows.slice(1)) expect(row.length).toBe(62)
     }
   })
@@ -76,7 +80,7 @@ describe('on a terminal narrower than the footer', () => {
         colors,
       )
       const rule = block.split('\n').find((l) => l.startsWith('├─'))!
-      expect(rule.length).toBe(furniture(footer(columns))[0]!.length)
+      expect(rule.length).toBe(furniture(footer(columns))[1]!.length)
     },
   )
 })

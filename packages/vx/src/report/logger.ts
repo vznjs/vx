@@ -12,7 +12,6 @@ import {
   executedCells,
   formatTaskExecutedLine,
   flakyNote,
-  pathNote,
   formatTaskHashLine,
   formatTaskHitLine,
   formatTaskSkippedLine,
@@ -405,7 +404,7 @@ export function defaultLogger(
   // The pinned zone above the worker rows: persistent tasks pin at
   // ready (their outcome lands while the child keeps running) and live
   // until runEnd kills the region. A failure is not pinned: it is a
-  // permanent ◼ row the moment it happens, and its full frame is
+  // permanent failed row the moment it happens, and its full frame is
   // deferred to runEnd (owner: '✗ line, continue, all full frames at
   // the end'). 'full'/CI keeps frames inline.
   const deferredFailures: string[] = []
@@ -706,8 +705,7 @@ export function defaultLogger(
     if (panelOpen === 'Warnings') closePanel()
     inPanel = true
     if (panelOpen !== 'Tasks') {
-      emitLine(ui.panelTop('Tasks', colors))
-      emitLine(formatListHeader(colors))
+      emitLine(ui.panelTop('Tasks', colors, undefined, undefined, formatListHeader(colors)))
       panelOpen = 'Tasks'
     }
     emitLine(line)
@@ -761,9 +759,8 @@ export function defaultLogger(
     formatFailureLine(node.id, outcome.durationMs, colors, cacheWordOf(outcome), {
       ...executedCells(outcome, blocksOf(node.id)),
       usual: usualCell(outcome.durationMs, usualMsOf(node.id), colors),
-    }) +
-    (onPath.has(node.id) ? pathNote(colors) : '') +
-    flakyNote(outcome, colors)
+      ...(onPath.has(node.id) ? { critical: true } : {}),
+    }) + flakyNote(outcome, colors)
 
   return {
     showsSteps: writer.enabled,
@@ -780,8 +777,13 @@ export function defaultLogger(
       // summary row or "exited with code" can follow its partial line.
       endStreamLine()
       closePanel()
-      if (line === '' && endsBlank) return
-      endsBlank = line === ''
+      // A block's own trailing blank stands for the first blank status line; a second one is meant
+      // (two before the Summary).
+      if (line === '' && endsBlank) {
+        endsBlank = false
+        return
+      }
+      endsBlank = false
       writer.write(`${line}\n`)
     },
     warn(line) {
@@ -957,7 +959,7 @@ export function defaultLogger(
         }
       }
       // Failures end the log: every deferred frame replays here, right
-      // above the summary — the ◼ rows marked them in the stream,
+      // above the summary — the failed rows marked them in the stream,
       // the full diagnostics read last where eyes land.
       // Guarded for repeat runEnd calls.
       if (!flushedFailures && deferredFailures.length > 0) {
@@ -1177,7 +1179,7 @@ export function defaultLogger(
           // their replay buffers are deliberately dropped; the counts
           // surface in the end-of-run summary.
           if (outcome.status === 'failed') {
-            // ◼ row now; the full frame replays at runEnd.
+            // failed row now; the full frame replays at runEnd.
             emitRow(failureRow(node, outcome))
             deferredFailures.push(
               formatTaskBlock(
@@ -1260,7 +1262,7 @@ export function defaultLogger(
             return
           }
           // Dependency-pulled nodes: silent on success; a skip gets its
-          // row, failures the ◼ row now and their frame replayed at runEnd.
+          // row, failures the failed row now and their frame replayed at runEnd.
           if (outcome.status === 'skipped') {
             emitRow(formatTaskSkippedLine(node, colors, outcome, blocksOf(node.id)))
           } else if (outcome.status === 'failed') {

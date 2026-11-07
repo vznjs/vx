@@ -432,7 +432,7 @@ export default defineProject({
 
   ```
   [vx] skipped on linux-x64, with what depends on them: app#ios:build needs darwin-arm64 or darwin-x64
-  ⊘ skipped  app#ios:build • needs darwin-arm64 or darwin-x64, this is linux-x64
+              skipped —              —       —     —      —       —       0 —              app#ios:build • needs darwin-arm64 or darwin-x64, this is linux-x64
   ```
 
   A `run()` outcome and telemetry carry it as `otherPlatform: { needs, host }`; a

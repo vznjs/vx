@@ -88,13 +88,13 @@ describe('vx why (e2e)', () => {
     async () => {
       const r = await vx(root, ['why', 'app#build'])
       expect(r.code).toBe(0)
-      expect(r.out).toStartWith('─ Why app#build ')
+      expect(r.out).toStartWith('  Why app#build\n')
       expect(r.out).toContain('cache key changed')
-      expect(r.out).toContain('─ What changed ')
+      expect(r.out).toMatch(/\n {2}What changed \d+ of \d+\n/)
       // The exact changed component: the edited input file, kind `file`.
       expect(r.out).toMatch(/changed\s+file\s+.*input\.txt/)
       // Each changed kind gets what to do about it, once.
-      expect(r.out).toMatch(/\n─ What to do ─+\n {2}file {6}(.*)\n$/)
+      expect(r.out).toMatch(/\n {2}What to do\n {2}file {6}(.*)\n$/)
       expect(r.out).toEndWith(`  file      ${WHAT_TO_DO['file']}\n`)
     },
     TIMEOUT,
@@ -284,7 +284,7 @@ describe('vx why (e2e) — every component kind names its row', () => {
       )
       await vx(root, ['run', 'build', '--all'], { APP_MODE: 'prod' })
       const pkg = await why({ APP_MODE: 'prod' })
-      expect(pkg).toMatch(/─ What changed 1 of \d+ /)
+      expect(pkg).toMatch(/\n {2}What changed 1 of \d+\n/)
       expect(pkg).toMatch(/changed\s+file\s+packages\/app\/package\.json\s+\w+ → \w+/)
 
       // No plugin claims the lockfile, so no key folds it: a hit.
@@ -300,11 +300,11 @@ describe('vx why (e2e) — every component kind names its row', () => {
       await writeFile(path.join(root, 'packages', 'lib', 'src', 'index.js'), 'export {}\n// v2\n')
       await vx(root, ['run', 'build', '--all'], { APP_MODE: 'prod' })
       const up = await why({ APP_MODE: 'prod' })
-      expect(up).toMatch(/─ What changed 1 of \d+ /)
+      expect(up).toMatch(/\n {2}What changed 1 of \d+\n/)
       expect(up).toMatch(/changed\s+upstream\s+lib#build\s+\w+ → \w+/)
       // One `vx why` walks to the file, and what to do is the file's.
       expect(up).toMatch(
-        /\n─ Root cause ─+\n {2}app#build ← lib#build ← file packages\/lib\/src\/index\.js\n\n─ What to do ─+\n {2}file {6}an edit re-runs by design;/,
+        /\n {2}Root cause\n {2}app#build ← lib#build ← file packages\/lib\/src\/index\.js\n\n {2}What to do\n {2}file {6}an edit re-runs by design;/,
       )
 
       // CONTROL: a hit carries no row.
@@ -626,7 +626,7 @@ describe('vx why (e2e) — the exact lines', () => {
     async () => {
       const r = await vx(root, ['why', 'lint'])
       expect(r.code).toBe(0)
-      expect(r.out.split('\n')[0]).toMatch(/^─ Why a#lint ─+$/)
+      expect(r.out.split('\n')[0]).toBe('  Why a#lint')
     },
     TIMEOUT,
   )
@@ -678,7 +678,7 @@ describe('vx why (e2e) — the exact lines', () => {
       const r = await vx(root, ['why', 'app#build'])
       expect(r.code).toBe(0)
       const lines = r.out.split('\n')
-      const head = lines.findIndex((l) => l.startsWith('─ What changed 3 of 6 '))
+      const head = lines.findIndex((l) => l === '  What changed 3 of 6')
       expect(head).toBeGreaterThan(0)
       // Under the rule, the table's header, then its rows.
       const rows = lines.slice(head + 2, lines.indexOf('', head))
@@ -692,7 +692,7 @@ describe('vx why (e2e) — the exact lines', () => {
         /^ {2}removed {2}file {2}packages\/app\/src\/old\.txt {3}- [0-9a-f]+$/,
       )
       // One line per kind, in the rows' order, padded as they are.
-      expect(lines.slice(lines.findIndex((l) => l.startsWith('─ What to do ')) + 1, -1)).toEqual([
+      expect(lines.slice(lines.findIndex((l) => l === '  What to do') + 1, -1)).toEqual([
         `  file      ${WHAT_TO_DO['file']}`,
       ])
     },
@@ -721,7 +721,7 @@ describe('vx why (e2e) — the exact lines', () => {
         const r = await vx(root, ['why', 'app#build'])
         const lines = r.out.split('\n')
         expect(lines).toContainEqual(expect.stringMatching(/^ {2}added +legacy +x +\+ ab$/))
-        expect(lines.slice(lines.findIndex((l) => l.startsWith('─ What to do ')) + 1, -1)).toEqual([
+        expect(lines.slice(lines.findIndex((l) => l === '  What to do') + 1, -1)).toEqual([
           `  file      ${WHAT_TO_DO['file']}`,
         ])
       } finally {
@@ -850,7 +850,7 @@ describe('vx why (e2e) — the exact lines', () => {
       expect(pretty.code).toBe(0)
       const lines = pretty.out.split('\n')
       expect(lines.slice(0, 2)).toEqual([
-        expect.stringMatching(/^─ Why app#build ─+$/),
+        '  Why app#build',
         '  recorded runs carry no run id: the latest cache entry instead',
       ])
       expect(lines.slice(3, 5)).toEqual([
@@ -1091,13 +1091,13 @@ describe('vx why — an input another task rewrites', () => {
         const r = await vx(root, ['why', 'app#build'])
         expect(r.code).toBe(0)
         expect(r.out).toMatch(
-          /\n─ Changed during a run ─+\n {2}file {22}written while\n {2}packages\/lib\/src\/gen\.txt {2}app#build\n/,
+          /\n {2}Changed during a run\n {2}file {22}written while\n {2}packages\/lib\/src\/gen\.txt {2}app#build\n/,
         )
         expect(r.out).toContain('a task that writes a file a key reads re-keys it every run')
         // The `written` row is padded with the kinds it stands beside: a
         // lone `file` kind left it one column of its own.
         const own = (await vx(root, ['why', 'lib#check'])).out.split('\n')
-        expect(own.slice(own.findIndex((l) => l.startsWith('─ What to do ')) + 1, -1)).toEqual([
+        expect(own.slice(own.findIndex((l) => l === '  What to do') + 1, -1)).toEqual([
           `  file      ${WHAT_TO_DO['file']}`,
           '  written   a task that writes a file a key reads re-keys it every run; give that write its own task with the file as an output, or keep the file out of inputs.files',
         ])

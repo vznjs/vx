@@ -148,10 +148,12 @@ The first run executes and saves; the next finds nothing changed:
 
 ```
 $ vx run build --all
- ⏺︎    17ms success miss     lib#build
- ⏺︎     6ms success miss     app#build
 
-─ Summary ───────────────────────────────────────── vx 0.0.0 ─
+            success miss           —    17ms   88%   41MB     2KB       1 local          lib#build
+            success miss           —     6ms   83%   38MB     1KB       0 local          app#build
+
+
+  Summary                                                                                                       vx 0.0.0
   projects  ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
             2 affected · 2 total
   tasks     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
@@ -166,7 +168,8 @@ $ vx run build --all
 ```
 $ vx run build --all
 
-─ Summary ───────────────────────────────────────── vx 0.0.0 ─
+
+  Summary                                                                                                       vx 0.0.0
   projects  ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
             2 affected · 2 total
   tasks     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
@@ -767,23 +770,36 @@ unless explicitly overridden:
 - **CI** — the `CI` env var is truthy (`CI=0` and `CI=false`, in any case, don't
   count). Wins over the flow.
 
-Reported task lines share one column grid —
-`<glyph> <time> <status> <cache> <name>` — with two orthogonal axes:
-the glyph SHAPE encodes the cache axis, the glyph COLOR (and the
-status word) the task axis.
+Reported task lines share one column grid: `<status> <cache> <±usual>
+<time> <cpu> <mem> <outputs> <blocks> <worker> <mark> <task>`. No glyph
+leads a row. The status word starts at column 12, where the Summary's
+values start, and its colour carries the outcome. The cache word is the
+cache axis. An empty cell shows `—`.
 
-| Glyph | Cache axis                 | Status word |
-| ----- | -------------------------- | ----------- |
-| `⏺`   | miss — the task ran        | success     |
-| `►`   | fresh (up-to-date)         | success     |
-| `⇢`   | restored from local cache  | success     |
-| `⇣`   | restored from remote       | success     |
-| `◼`   | failed                     | failed      |
-| `⊘`   | skipped (blocked upstream) | skipped     |
-| `▸`   | persistent (dev server)    | running     |
+| Status     | Colour | Meaning                                                |
+| ---------- | ------ | ------------------------------------------------------ |
+| `success`  | green  | the task ran and passed, or a cache answered it        |
+| `failed`   | red    | the task exited non-zero                               |
+| `skipped`  | yellow | never started: blocked upstream, or another platform   |
+| `running`  | yellow | live: still going, or a persistent server that is up   |
+| `aborting` | yellow | live: a stop asked it to end, and it has not yet       |
+| `blocked`  | dim    | live: picked next, waiting on the running row above it |
+| `aborted`  | orange | a stop cut it short                                    |
+| `not run`  | dim    | a stop came before it started                          |
 
-A live WORKER row carries no glyph: the ticking elapsed time leads it,
-which is the motion the run has instead of a spinner.
+| Cache      | Meaning                                                        |
+| ---------- | -------------------------------------------------------------- |
+| `miss`     | the task ran; a cache was asked and had nothing                |
+| `no-cache` | the task ran with no cache (no `cache: true`, or `--no-cache`) |
+| `fresh`    | up to date: its outputs already on disk                        |
+| `local`    | restored from the local cache                                  |
+| `remote`   | restored from a remote cache                                   |
+| `internal` | one of vx's own steps, which caches nothing                    |
+| `—`        | never reached the cache (skipped, aborted, not run)            |
+
+The 2-column mark slot before the task id holds a yellow `◆` on the
+critical path, otherwise a space. A live row's motion is its ticking
+time; there is no spinner.
 
 Per-task visibility by outcome. Each cell is the SHAPE of what prints —
 `silent`, `one-liner`, `frame`, or a conditional; the table is pinned to
@@ -810,7 +826,7 @@ What the shapes mean in each column:
   `$ cmd` line so a requested task looks the same whether it ran or not.
 - **skipped** is the exception: it never started, so no frame was opened,
   and it produced nothing a frame could hold. The one-liner says
-  everything, the blocker included (`⊘ skipped app#deploy • blocked by
+  everything, the blocker included (`skipped … app#deploy • blocked by
 lib#build`; a fail-fast skip, which nothing blocked, carries no
   suffix). Every view that lists tasks prints it, a dependency's
   included: nothing prints below the footer.
@@ -818,11 +834,11 @@ lib#build`; a fail-fast skip, which nothing blocked, carries no
   worth a frame (the output is the point); a hit with nothing to replay
   compresses to one line, which is what keeps a 2000-task warm run
   readable.
-- **`one-liner + frame replays`** — the `◼ … failed` line prints
+- **`one-liner + frame replays`** — the `failed miss …` row prints
   immediately; the full frame is held and replayed at run end.
 
 When a dependency fails mid-run, the stream gets ONE permanent
-`◼ … failed miss <id>` line and the run continues; **all full failure
+`failed miss … <id>` row and the run continues; **all full failure
 frames replay together at run end**, right above the summary, and are
 never capped.
 
@@ -860,8 +876,8 @@ tracks the run live. Top to bottom:
 
 1. **A blank separator line** — keeps the live region visually apart
    from the completed-task scrollback above it.
-2. **Pinned persistent tasks** — `▸ <id> running` for every persistent
-   task that became ready. The pin lives until run end, or until the
+2. **Pinned persistent tasks** — a `running` row, with no time or cache,
+   for every persistent task that became ready. The pin lives until run end, or until the
    task's process exits on its own (a crash, or a setup step ready by
    its exit 0, whose frame then closes `success`, not `running`), so it
    is the visible evidence the dev server is still alive. After the summary,
@@ -882,45 +898,52 @@ other persistent task`), and a non-zero exit makes the run exit 1
    each one's id (`app#dev │ Local: http://localhost:5173`), except
    under `--output-logs errors-only`, `hash-only` or `none`; a single
    requested server in the focused flow streams raw from its frame.
-3. **The running list** — one row per running task, under the title
-   `Running`; a worker with nothing to run adds no blank row, so the
+3. **The running list** — one row per running task, under the Tasks
+   list's finished rows: an underline from the grid's first column to
+   the edge, a blank line, then the rows; it has no title or header of
+   its own. A worker with nothing to run adds no blank row, so the
    footer sits right under the list. A task stays in its slot for its
    whole life; a task running beyond the slots gets a row after them
-   until one frees, and none is ever folded away. Both lists share one
-   grid, each under its title (`Finished` over the results, `Running`
-   over this one, bold violet) and its header, dim and underlined
-   across the whole line, straight over its rows:
+   until one frees, and none is ever folded away. The `Tasks` title
+   sits in the 12-column gutter (bold violet) with the grid's header
+   on the same line, underlined to the terminal's edge; every grid
+   starts where a field's value does:
 
    ```
-    Running
-         time   usual status  cache      cpu    mem outputs  blocks worker       task
-        3.19s    ~18s running miss      180%  412MB              12 local        solid-js#types  critical path
-                ~6.0s blocked                                                    └ solid-element#build
+     Tasks     status  cache     ±usual    time   cpu    mem outputs  blocks worker         task
+               success miss      −846ms   1.96s  142%  310MB   600KB       0 local          solid-js#build
+
+
+               running miss        ~18s   3.19s  180%  412MB       —      12 local        ◆ solid-js#types
+               blocked —           ~6.0s       —     —      —       —       — —              └ solid-element#build
    ```
 
-   - **time**: the live elapsed time; no glyph and no spinner.
+   A running row's status is yellow.
+
+   - **time**: the live elapsed time; no spinner.
    - **usual**: the task's executed p50 from local history, fixed while
      the time counts up toward it; `—` for a task history never
      timed. History is read once, on the first row that asks, so a run
      that executes nothing never reads it. The results list's `±usual`
      is how far a run landed from it, `+6.00s` red or `−1.40s` green
-     past a fifth either way, dim within it, `—` with no history,
-     and blank on a hit. `—` is always a value vx cannot know; blank is
-     one that does not apply.
+     past a fifth either way, dim within it, `—` with no history or
+     on a hit. A grid cell is never blank: `—` is a value vx cannot
+     know or one that does not apply.
    - **status** and **cache**: `running` and `miss`, or `no-cache` for a
      task with no `cache: true` (or a `--no-cache` run); finished rows
      say `local` or `remote` on a hit.
    - **cpu** and **mem**: the task's process tree's average cores since
      it started and its peak memory so far, looked at every 500 ms only
      while this list draws (a pipe or CI reads nothing); on a finished
-     row its average cores and peak memory over the whole run, blank on
+     row its average cores and peak memory over the whole run, `—` on
      a hit. On Linux the peak the kernel reports at exit includes vx's own
      memory, inherited at exec, so a task lighter than vx takes the peak
      of its tree looked at every 250 ms while it runs; one over before
      the first look shows `—`.
    - **outputs**: on a finished row, the bytes of its outputs: on a hit
      the files it restored, on a miss the files it wrote, saved or not;
-     blank for a remote hit not yet downloaded.
+     `—` when vx has no size for it (a remote hit not yet downloaded,
+     a task with no outputs saved).
    - **blocks**: how many tasks and groups are downstream of it, all
      of them: the count the scheduler ranks by.
    - **worker**: `local`, or the machine an executor (`@vzn/vx-dte`)
@@ -931,9 +954,9 @@ other persistent task`), and a non-zero exit makes the run exit 1
    further ahead, each nested under the running task it waits on with
    its usual time. When an executor places tasks,
    the rows are only what runs: no nested row, blocked tasks
-   are the tasks line's dim `N blocked` alone. `critical path` (red)
-   follows the running task the longest unfinished chain waits on; its
-   row in the list says it too once it ends.
+   are the tasks line's dim `N blocked` alone. A yellow `◆` just
+   before the name marks the running task the longest unfinished chain
+   waits on (the critical path); its finished row keeps it.
 
 4. **vx's own steps** — what vx does around the tasks that the run
    waits on, before its first task starts or before it ends, as rows of
@@ -942,11 +965,11 @@ other persistent task`), and a non-zero exit makes the run exit 1
    probes), `<plugin>:schedule`, then after the graph `vx:uploads`,
    `vx:history`, `<plugin>:telemetry`, `<plugin>:teardown`,
    `vx:snapshots`, `vx:retention`, `vx:close` and `vx:sandbox`. A step
-   shows once it has run 150 ms, ticking like a task
-   (`     1.2s running internal vx:uploads`); no worker slot or
+   shows once it has run 150 ms, ticking like a task (`running`,
+   `internal` in the cache column); no worker slot or
    `--concurrency` holds it back. When it ends it leaves a list row
-   like a task's, `internal` in the cache column
-   (`⏺︎ 4.60s success internal vx:uploads`); a quicker one shows
+   like a task's (`success internal`, then its time, then
+   `vx:uploads`); a quicker one shows
    nowhere. A step that runs beside the tasks, `vx:prefetch` (a
    remote's downloads), never shows: `vx last` lists it. `:` is no task
    id's separator, so a step never reads as a task: a project named
@@ -958,7 +981,7 @@ other persistent task`), and a non-zero exit makes the run exit 1
    `errors-only` only a step that failed leaves a row.
 5. **The live summary section** — the SAME meters the final footer
    prints (`tasks` + `cache` bars with legends, `time`), filling in as
-   the run progresses, under a bare `vx` wordmark rule. A second in,
+   the run progresses, under the same underlined `Summary` title line. A second in,
    the `time` row adds what is left (`time  1.41s · ~3s left`): each
    unfinished task's executed p50 from local history, the longer of
    the longest unfinished chain and that work spread over the
@@ -1139,18 +1162,17 @@ existence check — planning never downloads or ingests artifacts.
 
 ```
 $ vx run ci --dry
-─ Plan 3 ─────────────────────────────────────────────────────
-      time   usual status  cache      cpu    mem outputs  blocks worker       task
- ⇢                 cached  local                               0 local        @vzn/vx#format-check
- ⇢                 cached  local                               0 local        @vzn/vx#lint
- ⏺︎         ~1m 13s run     miss                                0 local        @vzn/vx#test
+  Plan 3    status  cache      usual    time   cpu    mem outputs  blocks worker         task
+            cached  local          —       —     —      —       —       0 local          @vzn/vx#format-check
+            cached  local          —       —     —      —       —       0 local          @vzn/vx#lint
+            run     miss     ~1m 13s       —     —      —       —       0 local          @vzn/vx#test
 
   tasks      3 planned · 2 cache hits (2 local) · 1 would run
   predicted  ~72.64s wall · ~72.64s total execution
 ```
 
-The plan is a `Plan` panel on the run's own grid: each task's glyph and
-words as the run would print them (`cached` `local`, `run` `miss`), and
+The plan is a `Plan` panel on the run's own grid: each task's status and
+cache words as the run would print them (`cached` `local`, `run` `miss`), and
 where it would run under `worker`; the cache key is in `--dry=json`.
 
 **Time prediction.** A would-run task with recorded history shows its
@@ -1180,17 +1202,17 @@ them: the row says why (`needs darwin-arm64, this is linux-x64`,
 `blockedBy`. On CI, or when no executor routes such a task, `--dry`
 refuses as the run does.
 
-Row legend (the run's own glyphs and words):
+Row legend (the run's own words; the status word's colour carries the outcome):
 
-| Glyph | Status / cache    | Meaning                                                                       |
-| ----- | ----------------- | ----------------------------------------------------------------------------- |
-| `⇢`   | `cached` `local`  | entry already in `<cacheDir>/`                                                |
-| `⇣`   | `cached` `remote` | entry would be fetched from the layer                                         |
-| `⏺`   | `run` `miss`      | task would execute (under `--force` too: nothing is read, what runs is saved) |
-| `⏺`   | `run` `no-cache`  | task opts out (no `cache: true`, or `--no-cache`)                             |
-| `·`   | `noop`            | task would not run anywhere                                                   |
-| `◌`   | `not run`         | a server you did not request whose every dependant is a hit, local or remote  |
-| `⊘`   | `skipped`         | `exec.platforms` leave this machine out, or a task it depends on is skipped   |
+| Status / cache    | Meaning                                                                       |
+| ----------------- | ----------------------------------------------------------------------------- |
+| `cached` `local`  | entry already in `<cacheDir>/`                                                |
+| `cached` `remote` | entry would be fetched from the layer                                         |
+| `run` `miss`      | task would execute (under `--force` too: nothing is read, what runs is saved) |
+| `run` `no-cache`  | task opts out (no `cache: true`, or `--no-cache`)                             |
+| `noop`            | task would not run anywhere                                                   |
+| `not run`         | a server you did not request whose every dependant is a hit, local or remote  |
+| `skipped`         | `exec.platforms` leave this machine out, or a task it depends on is skipped   |
 
 Group tasks are left out of the panel (they are in the JSON).
 
@@ -1232,8 +1254,8 @@ id, and its JSON object carries an `affected` reason:
 
 ```
 $ vx run build lint --affected=main --dry
- ⏺︎               — run     miss                                0 local        app#build  affected: packages/lib/src/a.ts changed (an input), via lib#build
- ⏺︎               — run     no-cache                            0 local        lib#lint  affected: packages/lib/src/a.ts changed (in its project)
+            run     miss           —       —     —      —       —       0 local          app#build  affected: packages/lib/src/a.ts changed (an input), via lib#build
+            run     no-cache       —       —     —      —       —       0 local          lib#lint  affected: packages/lib/src/a.ts changed (in its project)
 ```
 
 `kind` is `input` (a changed `file` is a declared input), `project` (its
@@ -2418,7 +2440,7 @@ vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--pl
 ```
 $ vx init --dry
 
-─ vx init 0.0.0 ──────────────────────────────────────────────
+  vx init 0.0.0
   from      no turbo.json or nx.json
   dry run   nothing written
   files     .vx/workspace.ts
@@ -2832,7 +2854,7 @@ $ vx show
 ```
 $ vx show app#build
 
-─ app#build ──────────────────────────────────────────────────
+  app#build
   dir            packages/app
   description    compile the app
   command        tsc -b
@@ -2951,7 +2973,7 @@ vx info [--format pretty|json] [--cache-dir <path>]
 ```
 $ vx info
 
-─ vx info ────────────────────────────────────────────────────
+  vx info
   vx                0.0.0
   bun               1.4.2
   git               2.53.0
@@ -3292,17 +3314,16 @@ vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--stats [<task>] [--bran
 
 ```
 $ vx last
-─ Run 01a16de7-6cd7-7563-984c-5ffba8fb6629 ───────────────────
+  Run 01a16de7-6cd7-7563-984c-5ffba8fb6629
   status    ok
   command   vx run ci --all
   when      2026-10-24T12:34:05.662Z · 425ms · master @ 1587dec6
   tasks     3 tasks · 1 hit (0 up-to-date, 1 restored: 1 local, 0 remote)
 
-─ Tasks 3 ────────────────────────────────────────────────────
-      time  ±usual status  cache      cpu    mem outputs  blocks worker       task
- ⏺︎     3ms         success miss      110%      —      0B       0 local        app#test
- ⏺︎   412ms         success miss       51%   48MB   120KB       1 local        app#build
- ⇢     7ms         success local                    36KB       2 local        lib#build
+  Tasks 3   status  cache     ±usual    time   cpu    mem outputs  blocks worker         task
+            success miss           —     3ms  110%      —      0B       0 local          app#test
+            success miss           —   412ms   51%   48MB   120KB       1 local          app#build
+            success local          —     7ms     —      —    36KB       2 local          lib#build
 ```
 
 ```
@@ -3828,10 +3849,11 @@ on a terminal or not; a note vx prints before it is not part of it.
 A broad run looks like:
 
 ```
- ⇢     4ms         success local                       —         local        @vzn/vx#format-check
- ⏺︎   5.20s         success miss         —      —       —         local        @vzn/vx#test
+            success local          —     4ms     —      —       —       — local          @vzn/vx#format-check
+            success miss           —   5.20s     —      —       —       — local          @vzn/vx#test
 
-─ Summary ───────────────────────────────────────── vx 0.0.0 ─
+
+  Summary                                                                                                       vx 0.0.0
   projects  ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱
             1 affected · 3 total
   tasks     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
@@ -3897,10 +3919,9 @@ warning) prints above the footer: it prints once the run's closing work
 is done, the `VX_DEBUG_TIMING=1` table included. Only a kept server's own output
 follows it.
 
-**Narrow terminals.** The footer is 62 columns: its rule and 50-cell
-bars. On a terminal narrower than that the bars shrink and the rule
-with them, as do a frame's section rules, so none wraps onto a second
-row. Off a terminal they keep their width.
+**Narrow terminals.** The footer is 62 columns: its 12-column gutter
+and 50-cell bars. On a terminal narrower than that the bars shrink, as
+do a frame's section rules, so none wraps onto a second row. Off a terminal they keep their width.
 
 **Warnings on stderr.** A run's warnings, such as `[vx] app#build:
 outputs matched no files …` or a plugin's, go to stderr. Stdout
@@ -3912,8 +3933,8 @@ row naming the failure that blocked it, so the footer's `1 skipped`
 always has a name above it:
 
 ```
- ⊘         skipped          app#build • blocked by lib#build
- ⊘         skipped          web#build • blocked by lib#build
+            skipped —              —       —     —      —       —       1 —              app#build • blocked by lib#build
+            skipped —              —       —     —      —       —       0 —              web#build • blocked by lib#build
 ```
 
 A skip's cause is followed through a chain of skips to the failure at
@@ -3928,10 +3949,10 @@ until its task exits, and the task list names what the stop cut short
 run`). Neither reached the cache:
 
 ```
- ✗   2.41s aborted          app#dev
- ◌         not run          web#build
- ◌         not run          web#test
-     3.37s aborting         api#dev
+            aborted —              —   2.41s     —      —       —       0 local          app#dev
+            not run —              —       —     —      —       —       1 —              web#build
+            not run —              —       —     —      —       —       0 —              web#test
+            aborting —             —   3.37s     —      —       —       — local          api#dev
 ```
 
 The tasks legend counts them in the total as they land, each state its
@@ -3949,8 +3970,8 @@ in a dim note on its own row (and its frame's footer) — from the local
 run history alone, no service:
 
 ```
- ◼︎   4.21s failed  miss     app#test flaky - passed 3× before
- ⏺︎  12.84s success miss     api#e2e flaky - failed 1× before · 2 attempts
+            failed  miss           —   4.21s     —      —       —       — local          app#test flaky - passed 3× before
+            success miss           —  12.84s     —      —       —       — local          api#e2e flaky - failed 1× before · 2 attempts
 ```
 
 A task is flaky when its exact cache key FAILED AFTER IT HAD PASSED

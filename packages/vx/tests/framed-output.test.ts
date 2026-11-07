@@ -14,6 +14,7 @@ import {
   paintIdParts,
 } from '../src/report/framed-output.js'
 import type { TaskOutcome } from '../src/graph/scheduler.js'
+import { paint, type Style } from '../src/ui/theme.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 
 function node(id: string, command?: string): TaskNode {
@@ -138,7 +139,7 @@ describe('a project hue is a function of its name', () => {
 describe('the compact one-liners', () => {
   // docs/modules/framed-output.md showed `◌ <id> ── restored-local • <hash8>`,
   // a shape and a glyph nothing prints (item 312, 2026-09-16): the row is
-  // glyph · time · status · cache · name, and the page's sample says so.
+  // status · cache · usual · time · … · name, and the page's sample says so.
   const doc = readFileSync(
     path.resolve(import.meta.dir, '..', 'docs', 'modules', 'framed-output.md'),
     'utf8',
@@ -148,7 +149,7 @@ describe('the compact one-liners', () => {
     config: { exec: { command: 'oxlint .' }, cache: true },
   } as unknown as TaskNode
 
-  it('a restored local hit is ⇢ · time · success · local · id', () => {
+  it('a restored local hit is success · local · time · id', () => {
     const row = formatTaskHitLine(cached, {
       ...outcome('@vzn/vx#lint', 'cache-hit', {
         durationMs: 12,
@@ -157,17 +158,17 @@ describe('the compact one-liners', () => {
       }),
       node: cached,
     })
-    expect(row).toMatch(/^ ⇢ +12ms +success local +\u2014 +local +@vzn\/vx#lint$/)
-    expect(doc).toContain('// ` ⇢ <time> success local <id>` — quiet cache hit')
+    expect(row).toMatch(/^ {12}success local +— +12ms +— +— +— +— local +@vzn\/vx#lint$/)
+    expect(doc).toContain('// `success local … <id>` — quiet cache hit')
   })
 
-  it('an executed cached task is ⏺ · time · success · miss · id', () => {
+  it('an executed cached task is success · miss · time · id', () => {
     const row = formatTaskExecutedLine(cached, {
       ...outcome('@vzn/vx#lint', 'success', { durationMs: 327, hash: 'abcdef0123456789' }),
       node: cached,
     })
-    expect(row).toMatch(/^ ⏺\uFE0E +327ms +success miss +— +— +— +local +@vzn\/vx#lint$/)
-    expect(doc).toContain('// ` ⏺ <time> success miss <id>` — broad-mode executed task')
+    expect(row).toMatch(/^ {12}success miss +— +327ms +— +— +— +— local +@vzn\/vx#lint$/)
+    expect(doc).toContain('// `success miss … <id>` — broad-mode executed task')
   })
 
   it('a task an executor ran elsewhere says where, on its row and its frame', () => {
@@ -181,10 +182,10 @@ describe('the compact one-liners', () => {
     )
   })
 
-  it('the whole grid: glyph is the cache axis, the two words are the task axis', () => {
+  it('the whole grid: the status word is the task axis, the cache word the cache axis', () => {
     // One guarantee instead of nine rows. Every member here moves exactly
     // one line — the failed word, the skipped word, a failed task's cache
-    // cell, the remote fresh/restored pair, the remote glyph — and a row
+    // cell, the remote fresh/restored pair, the remote word — and a row
     // per member would leave the rest of the grid unheld. A row that says
     // `success` for a task that FAILED is the worst of them: the run
     // reports the opposite of what happened.
@@ -205,16 +206,41 @@ describe('the compact one-liners', () => {
       row(cached, 'cache-hit-remote', { restored: true }),
       row(cached, 'cache-hit-remote', { restored: false }),
     ]).toEqual([
-      ' ⏺\uFE0E   1.23s         success miss         —      —       —         local        @vzn/vx#lint',
-      ' ⏺\uFE0E   1.23s         success no-cache     —      —       —         local        @vzn/vx#fmt',
-      ' ◼\uFE0E   1.23s         failed  miss         —      —       —         local        @vzn/vx#lint',
-      ' ◼\uFE0E   1.23s         failed  no-cache     —      —       —         local        @vzn/vx#fmt',
-      ' ⊘   1.23s         skipped                                                    @vzn/vx#lint',
-      ' ⇢   1.23s         success local                       —         local        @vzn/vx#lint',
-      ' ►   1.23s         success fresh                       —         local        @vzn/vx#lint',
-      ' ⇣   1.23s         success remote                      —         local        @vzn/vx#lint',
-      ' ►   1.23s         success fresh                       —         local        @vzn/vx#lint',
+      '            success miss           —   1.23s     —      —       —       — local          @vzn/vx#lint',
+      '            success no-cache       —   1.23s     —      —       —       — local          @vzn/vx#fmt',
+      '            failed  miss           —   1.23s     —      —       —       — local          @vzn/vx#lint',
+      '            failed  no-cache       —   1.23s     —      —       —       — local          @vzn/vx#fmt',
+      '            skipped —              —   1.23s     —      —       —       — —              @vzn/vx#lint',
+      '            success local          —   1.23s     —      —       —       — local          @vzn/vx#lint',
+      '            success fresh          —   1.23s     —      —       —       — local          @vzn/vx#lint',
+      '            success remote         —   1.23s     —      —       —       — local          @vzn/vx#lint',
+      '            success fresh          —   1.23s     —      —       —       — local          @vzn/vx#lint',
     ])
+    // With no glyph the colours carry the axes: each word in its own hue.
+    const on = { enabled: true }
+    const painted = (status: TaskOutcome['status'], extra: Partial<TaskOutcome> = {}) =>
+      formatTaskExecutedLine(
+        cached,
+        { ...outcome('@vzn/vx#x', status, { durationMs: 1234, ...extra }), node: cached },
+        on,
+      )
+    const words = (row: string, ...pairs: [Style, string][]) =>
+      pairs.map(([style, word]) => row.includes(paint(style, word, on)))
+    expect(words(painted('success'), ['ok', 'success'], ['muted', 'miss'])).toEqual([true, true])
+    expect(words(painted('failed'), ['error', 'failed'], ['muted', 'miss'])).toEqual([true, true])
+    expect(words(painted('skipped'), ['warn', 'skipped'])).toEqual([true])
+    expect(
+      words(painted('cache-hit', { restored: true }), ['ok', 'success'], ['local', 'local']),
+    ).toEqual([true, true])
+    expect(words(painted('cache-hit', { restored: false }), ['ok', 'fresh'])).toEqual([true])
+    expect(words(painted('cache-hit-remote', { restored: true }), ['remote', 'remote'])).toEqual([
+      true,
+    ])
+    expect(words(painted('cache-hit-remote', { restored: false }), ['ok', 'fresh'])).toEqual([true])
+    // The hues differ, or the colour says nothing a word did not.
+    expect(
+      new Set([paint('local', 'x', on), paint('remote', 'x', on), paint('ok', 'x', on)]).size,
+    ).toBe(3)
   })
 
   it('a duration wider than the time column still renders, and does not throw', () => {
@@ -229,7 +255,7 @@ describe('the compact one-liners', () => {
         node: uncached,
       }),
     ).toBe(
-      ' ⏺\uFE0E 1666m 40s         success no-cache     —      —       —         local        @vzn/vx#fmt',
+      '            success no-cache       — 1666m 40s     —      —       —       — local          @vzn/vx#fmt',
     )
   })
 
@@ -244,13 +270,13 @@ describe('the compact one-liners', () => {
         node: uncached,
       })
     expect(row(999_990)).toBe(
-      ' ⏺\uFE0E 999.99s         success no-cache     —      —       —         local        @vzn/vx#fmt',
+      '            success no-cache       — 999.99s     —      —       —       — local          @vzn/vx#fmt',
     )
     expect(row(1_000_000)).toBe(
-      ' ⏺\uFE0E 16m 40s         success no-cache     —      —       —         local        @vzn/vx#fmt',
+      '            success no-cache       — 16m 40s     —      —       —       — local          @vzn/vx#fmt',
     )
     expect(row(5_999_000)).toBe(
-      ' ⏺\uFE0E 99m 59s         success no-cache     —      —       —         local        @vzn/vx#fmt',
+      '            success no-cache       — 99m 59s     —      —       —       — local          @vzn/vx#fmt',
     )
   })
 

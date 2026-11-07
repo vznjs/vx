@@ -113,10 +113,10 @@ describe('vx why names what moved the key', () => {
         cwd: app(),
         env: process.env,
       })
-      expect([inApp.exitCode, inApp.stdout.toString().split('\n')[0]?.split(' ')[2]]).toEqual([
-        0,
-        'app#build',
-      ])
+      expect([
+        inApp.exitCode,
+        inApp.stdout.toString().split('\n')[0]?.trim().split(' ')[1],
+      ]).toEqual([0, 'app#build'])
       const atRoot = Bun.spawnSync({ cmd: [process.execPath, BIN, 'why', 'build'], cwd: root })
       expect(atRoot.stderr.toString()).toContain('"build" ran in 2 projects')
       const unknown = Bun.spawnSync({

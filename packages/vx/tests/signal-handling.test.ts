@@ -648,15 +648,15 @@ describe('signal handling during vx run (e2e)', () => {
       proc.kill('SIGINT')
       expect(await proc.exited).toBe(130)
       // Rows in the task list, each with its own status; the time a killed
-      // task ran is masked, a task that never ran has none.
+      // task ran is masked, a task that never ran has none (`—`).
       const rows = (await text)
         .join('')
         .split('\n')
         .filter((l) => l.endsWith(' app#t') || l.endsWith(' app#after'))
-        .map((l) => l.replace(/^ (\S+) +[\d.]+m?s /, ' $1 <t> '))
+        .map((l) => l.replace(/^( {12}\S+ +\S+ +\S+) +[\d.]+m?s /, '$1 <t> '))
       expect(rows).toEqual([
-        ' ✗ <t>         aborted                             —       1 local        app#t',
-        ' ◌                 not run                                     0              app#after',
+        '            aborted —              — <t>     —      —       —       1 local          app#t',
+        '            not run —              —       —     —      —       —       0 —              app#after',
       ])
     },
     TIMEOUT,

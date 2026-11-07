@@ -12,11 +12,10 @@ import type { ColorSupport } from '../ui/index.js'
  * list's grid (what the run would do with it, its usual time, where it
  * would run), then the counts and the predicted time.
  *
- *   ─ Plan 3 ─────────────────────────────────────────────────────
- *         time   usual status  cache      cpu    mem outputs  blocks worker       task
- *    ⇢                 cached  local                                 local        @vzn/vx#lint
- *    ⇣                 cached  remote                     12MB       local        @vzn/vx#test
- *    ⏺︎               ~1.2s run     miss                                  local        @vzn/vx#build
+ *     Plan 3    status  cache     usual    time   cpu    mem outputs  blocks worker       task
+ *              cached  local          —       —     —      —       —       — local        @vzn/vx#lint
+ *              cached  remote         —       —     —      —    12MB       — local        @vzn/vx#test
+ *              run     miss       ~1.2s       —     —      —       —       — local        @vzn/vx#build
  *
  *     tasks      3 planned · 2 cache hits (1 local, 1 remote, 12MB) · 1 would run
  *     predicted  ~1.20s wall · ~1.20s total execution
@@ -137,37 +136,34 @@ export function formatPlanText(plan: RunPlan, c: ColorSupport = { enabled: false
   return ui.render([planReport(plan)], c)
 }
 
-type Look = Pick<PlannedRow, 'glyph' | 'status' | 'tone' | 'cache' | 'cacheTone'>
+type Look = Pick<PlannedRow, 'status' | 'tone' | 'cache' | 'cacheTone'>
 
-/** Each outcome on the run's grid: its glyph and words, as the run would print them. */
+/** Each outcome on the run's grid: its words, as the run would print them. */
 const LOOK: Record<CacheStatus, Look> = {
   'hit-local': {
-    glyph: '\u21e2',
     status: 'cached',
     tone: 'ok',
     cache: 'local',
     cacheTone: 'local',
   },
   'hit-remote': {
-    glyph: '\u21e3',
     status: 'cached',
     tone: 'ok',
     cache: 'remote',
     cacheTone: 'remote',
   },
-  miss: { glyph: '\u23fa\ufe0e', status: 'run', tone: 'info', cache: 'miss', cacheTone: 'muted' },
+  miss: { status: 'run', tone: 'info', cache: 'miss', cacheTone: 'muted' },
   'no-cache': {
-    glyph: '\u23fa\ufe0e',
     status: 'run',
     tone: 'info',
     cache: 'no-cache',
     cacheTone: 'muted',
   },
-  group: { glyph: '\u25cb', status: 'group', tone: 'muted', cache: '', cacheTone: '' },
-  'not-started': { glyph: '\u25cc', status: 'not run', tone: 'muted', cache: '', cacheTone: '' },
-  skipped: { glyph: '\u2298', status: 'skipped', tone: 'warn', cache: '', cacheTone: '' },
+  group: { status: 'group', tone: 'muted', cache: '', cacheTone: '' },
+  'not-started': { status: 'not run', tone: 'muted', cache: '', cacheTone: '' },
+  skipped: { status: 'skipped', tone: 'warn', cache: '', cacheTone: '' },
 }
-const NOOP: Look = { glyph: '\u00b7', status: 'noop', tone: 'muted', cache: '', cacheTone: '' }
+const NOOP: Look = { status: 'noop', tone: 'muted', cache: '', cacheTone: '' }
 
 /** One `--affected --dry` reason line: the cause, then the edge chain that carried it. */
 function describeReason(r: AffectedReason): string {

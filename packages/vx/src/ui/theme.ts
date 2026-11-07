@@ -77,7 +77,11 @@ export const INDENT = '  '
 export const LABEL_MIN = 8
 /** A meter's widest, and the label column beside it (2 indent + 8 label + 2 gap). */
 const BAR_MAX = 50
-const BAR_LABEL = 12
+/** The gutter a section's title sits in: a field's label column, a grid row's lead. */
+export const GUTTER = 12
+/** A title line's width when the terminal's is unknown (a pipe, a CI log): past a task's name. */
+export const TABLE_WIDTH = 120
+const BAR_LABEL = GUTTER
 
 /**
  * Identity hues for the two halves of a `project#task` id, never a status
@@ -192,6 +196,17 @@ export function paintHex(
   if (opts.underline) prefix += UNDERLINE
   if (hex) prefix += ansiFor(hex)
   return prefix === '' ? text : `${prefix}${text}${RESET}`
+}
+
+// The underline in the rule's grey (SGR 58): a terminal without it underlines in the text's colour.
+const UNDER_RULE = `${UNDERLINE}\x1b[58;2;110;118;129m`
+
+/** A title line underlined end to end, gaps included, each hue kept. */
+export function underlined(line: string, c: ColorSupport): string {
+  if (!c.enabled) return line.trimEnd()
+  // A trailing reset is the line's own end: re-opening the underline there left an empty pair.
+  const body = line.endsWith(RESET) ? line.slice(0, -RESET.length) : line
+  return `${UNDER_RULE}${body.replaceAll(RESET, RESET + UNDER_RULE)}${RESET}`
 }
 
 /** `text` in a style; `bold` adds weight to a hue. */

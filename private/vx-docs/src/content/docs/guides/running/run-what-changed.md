@@ -18,13 +18,12 @@ vx run build --affected --dry
 ```
 
 ```ansi
-[38;2;110;118;129m─ [0m[1m[38;2;167;139;250mPlan[0m [2m2[0m [38;2;110;118;129m─────────────────────────────────────────────────────[0m
-[2m[4m      time   usual status  cache      cpu    mem outputs  blocks worker       task[0m
- [38;2;6;182;212m⏺︎[0m            [2m~9ms[0m [38;2;6;182;212mrun[0m     [2mmiss[0m                                [38;2;203;213;225m1[0m [2mlocal[0m        [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/ui/src/index.ts changed (an input)[0m
- [38;2;6;182;212m⏺︎[0m            [2m~4ms[0m [38;2;6;182;212mrun[0m     [2mmiss[0m                                [2m0[0m [2mlocal[0m        [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/ui/src/index.ts changed (an input), via @demo/ui#build[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m2[0m[4m[58;2;110;118;129m    [2mstatus  cache      usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m       [2m~12ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/ui/src/index.ts changed (an input)[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m        [2m~6ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/ui/src/index.ts changed (an input), via @demo/ui#build[0m
 
   [2mtasks    [0m  [38;2;203;213;225m2 planned · 2 would run[0m
-  [2mpredicted[0m  [38;2;203;213;225m~13ms wall · ~13ms total execution[0m
+  [2mpredicted[0m  [38;2;203;213;225m~18ms wall · ~18ms total execution[0m
 ```
 
 ---

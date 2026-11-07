@@ -76,15 +76,15 @@ the live summary section.
 
 The pinned zone (owner: "always pinned until exit"):
 
-- **Persistent** — a `▸` row (no elapsed, `running`, the id) for every
+- **Persistent** — a `running` row (no elapsed, `—` cache, the id) for every
   ready persistent task (its outcome lands at ready while the child keeps running; the
   orchestrator SIGTERMs persistent children when the graph finishes,
   so runEnd is the honest end). Pins keep identity-colored ids —
-  status colors only on glyph + outcome.
+  status colors only on the status word.
 
 A failure is not pinned: it is logged the moment it happens as a
-permanent row in the stream (`formatFailureLine`: red `◼`, the exec
-time, `failed`, `miss` / `no-cache`, the id — the exit code and the
+permanent row in the stream (`formatFailureLine`: `failed` in red,
+`miss` / `no-cache`, the exec time, the id — the exit code and the
 output live in the frame, which replays at runEnd above the summary,
 `failedLabel` in its header and footer). The region held a Failures
 zone once; the permanent row replaced it, and this page kept
@@ -115,13 +115,13 @@ Slot rules (the point of the design — the display derives from the
   and folds the rows that do not fit into one (`+8 more`); only a summary
   taller than the terminal is cut, at its foot.
 - A worker row is on the results list's grid (cli.md, "The running
-  list"): the ticking elapsed time (no glyph), its usual duration from
-  history (`~5.2s`, dim; `usual`, `—` for a task it never timed,
-  blank with no `usual` to ask), `running`, `miss` or
-  `no-cache`, its tree's average cores since it started and peak memory
+  list"): `running` in yellow, `miss` or `no-cache`, its usual
+  duration from history (`~5.2s`, dim; `usual`, `—` for a task it never
+  timed or with no `usual` to ask), the ticking elapsed time, its tree's average cores since it started and peak memory
   so far (`usage`, a `LiveUsage` of `{ cores, rssBytes }` from
   orchestrator/live-usage.ts, which looks only once the region asks),
-  `blocks`, the worker (`where`, else `local`) and the id. Ids are identity-colored (`paintIdParts`):
+  `blocks`, the worker (`where`, else `local`), the mark slot (a yellow
+  `◆` on the critical path) and the id. Ids are identity-colored (`paintIdParts`):
   each half in a hue hashed stably from its own name (`identityHue`),
   the `#` dim — never status colors. The id is the last column and is never
   truncated.

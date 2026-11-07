@@ -111,16 +111,16 @@ tells them apart: an aborted outcome with no `wallclockStartNs`, which
 only a started task carries.
 
 `formatRunSummary` returns an array of lines (caller writes one per
-`log.status`). Leading blank line is included so the summary stands
-apart from the last framed block. The live status region renders the
+`log.status`). Two leading blank lines are included so the summary stands
+apart from the task list above it. The live status region renders the
 same section with the same context, filling in as the run proceeds, so
-it becomes the final footer. When `context` is omitted the rule reads
-a bare `vx` and the `projects` / `info` rows are skipped.
+it becomes the final footer. When `context` is omitted the title line
+names no vx and the `projects` / `info` rows are skipped.
 
 ## Format
 
 ```
-─ Summary ───────────────────────────────────────── vx 0.0.0 ─
+  Summary                                                                                                       vx 0.0.0
   projects  ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱
             1 affected · 2 total
   tasks     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
@@ -132,8 +132,9 @@ a bare `vx` and the `projects` / `info` rows are skipped.
   time      248ms · max 239ms · avg 215ms · min 190ms
 ```
 
-Labels pad to 8, bars start at column 12, the rule + bars span 50
-cells. `projects` (the projects in the run vs the workspace total) leads the meter stack;
+Labels pad to 8 in the 12-column gutter the title sits in, bars start at
+column 12 and span 50 cells; the title line is underlined to the terminal's
+edge (120 columns off a terminal), the vx version flush right. `projects` (the projects in the run vs the workspace total) leads the meter stack;
 `tasks` and `cache` follow, the tasks legend carrying a dim `N total`.
 An executor's own rows (`TaskExecutor.footer`, such as `@vzn/vx-dte`'s
 `agents`) come next, live and at the end, under a blank line; with them

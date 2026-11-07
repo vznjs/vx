@@ -56,7 +56,7 @@ id(text) place(text) path(text) cmd(text) strong(text) dim(text) tone(style, tex
 inline(x, colors) width(x) idParts(hueSource, project, task, colors, opts)
 
 // blocks
-section(title, count?, ...blocks)  // a panel: ─ Title count ───, then its lines
+section(title, count?, ...blocks)  // a panel: its underlined title line, then its lines
 status(tone, verb, headline)       // ✗ vx lock  lock not written
 line(...items) gap()               // one line at the margin; a blank line
 text(...items) why(line)           // indented facts; an indented dim line
@@ -68,8 +68,12 @@ excerpt(title, body)               // a file shown whole
 code(frame) notice(parts: NoticeParts) trace(lines)
 bar(segments: Segment[], colors) gauge(filled, style, colors)
 
-// a panel's rule, for a panel drawn a row at a time (the run's Tasks list)
-panelTop(title, colors, count?, note?)
+// a panel's title line, for a panel drawn a row at a time (the run's Tasks list):
+// `  Title count` in the GUTTER (12 columns), a grid's `head` past it, a note flush
+// right, the line underlined to the terminal's width (120 off a terminal)
+panelTop(title, colors, count?, note?, head?)
+GUTTER                             // the title column; a grid row and a field's value start past it
+divider(colors)                    // the underline alone, from the GUTTER to the edge (the running rows)
 wrap(line, width): string[]        // never cuts; a colour carries across rows
 
 render(blocks, colors): string     // blocks a blank line apart, trailing newline

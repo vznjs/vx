@@ -112,13 +112,10 @@ describe('vx last (e2e)', () => {
       const unique = await vx(root, ['last', ids[0]!.slice(0, common + 1)])
       expect({ code: unique.code, head: unique.out.split('\n')[0] }).toEqual({
         code: 0,
-        head: expect.stringMatching(new RegExp(`^─ Run ${ids[0]} ─+$`)),
+        head: `  Run ${ids[0]}`,
       })
       const why = await vx(root, ['why', 'app#build', '--run', ids[1]!.slice(0, common + 1)])
-      expect(why.out.split('\n').slice(0, 2)).toEqual([
-        expect.stringMatching(/^─ Why app#build ─+$/),
-        `  run       ${ids[1]}`,
-      ])
+      expect(why.out.split('\n').slice(0, 2)).toEqual(['  Why app#build', `  run       ${ids[1]}`])
       const shared = await vx(root, ['last', ids[0]!.slice(0, common)])
       expect({ code: shared.code, err: shared.err }).toEqual({
         code: 1,
@@ -137,7 +134,7 @@ describe('vx last (e2e)', () => {
       const first = (JSON.parse(list.out) as Array<{ runId: string }>).at(-1)!.runId
       const r = await vx(root, ['last', first])
       // One timed run, this one: no usual to compare with, as its live row said.
-      expect(r.out).toMatch(/ \S+ +— success miss .* app#build$/m)
+      expect(r.out).toMatch(/^ {12}success miss +— +\d\S* .* app#build$/m)
     },
     TIMEOUT,
   )
@@ -147,7 +144,7 @@ describe('vx last (e2e)', () => {
     async () => {
       const r = await vx(root, ['last'])
       expect(r.code).toBe(0)
-      expect(r.out).toMatch(/^─ Run \S+ ─+\n  status +ok\n  command +vx run build --all\n/)
+      expect(r.out).toMatch(/^ {2}Run \S+\n  status +ok\n  command +vx run build --all\n/)
       // The second run found the output in place: a hit that restored nothing.
       expect(r.out).toContain('1 task · 1 hit (1 up-to-date, 0 restored)')
       expect(r.out).toMatch(/success fresh .* app#build$/m)
@@ -169,7 +166,7 @@ describe('vx last (e2e)', () => {
       // 150 MB peaks between that and a few times it — kilobytes read as
       // a process that used nothing, bytes×1024 as one that used
       // gigabytes (the Linux defect of 2026-09-12).
-      expect(miss.out).toMatch(/success miss +\d+% +\d+MB .* app#build$/m)
+      expect(miss.out).toMatch(/success miss +\S+ +\d\S* +\d+% +\d+MB .* app#build$/m)
       const missJson = JSON.parse((await vx(root, ['last', missRun, '--format', 'json'])).out) as {
         tasks: { peakRssBytes: number | null; cpuMs: number | null }[]
       }
@@ -177,8 +174,8 @@ describe('vx last (e2e)', () => {
       expect(missJson.tasks[0]!.peakRssBytes).toBeLessThan(1024 * 1024 * 1024)
       expect(missJson.tasks[0]!.cpuMs).toBeGreaterThan(0)
       const hit = await vx(root, ['last', hitRun])
-      // A hit's cpu and mem do not apply: blank, not `—`.
-      expect(hit.out).toMatch(/success fresh {22}\d+B +\d+ local +app#build$/m)
+      // A hit's cpu and mem do not apply: `—`, not a number.
+      expect(hit.out).toMatch(/success fresh +— +\d\S* +— +— +\d+B +\d+ local +app#build$/m)
     },
     TIMEOUT,
   )
@@ -196,7 +193,7 @@ describe('vx last (e2e)', () => {
       const runId = lines[2]!.trim().split(/\s+/)[2]!
       const detail = await vx(root, ['last', runId])
       expect(detail.code).toBe(0)
-      expect(detail.out).toStartWith(`─ Run ${runId}`)
+      expect(detail.out).toStartWith(`  Run ${runId}`)
     },
     TIMEOUT,
   )
@@ -369,7 +366,7 @@ describe('vx last (e2e)', () => {
       expect(r.out.split('\n')[2]).toBe('  command   vx run boom --all')
       expect({ code: r.code, head: r.out.split('\n').slice(0, 2) }).toEqual({
         code: 0,
-        head: [expect.stringMatching(/^─ Run \S+ ─+$/), '  status    FAILED'],
+        head: [expect.stringMatching(/^ {2}Run \S+$/), '  status    FAILED'],
       })
       const rows = async (args: string[]): Promise<string[]> =>
         (await vx(root, ['last', '--list', '20', ...args])).out
@@ -648,12 +645,12 @@ describe('formatTaskRows', () => {
     [119_600, '119.60s'],
     [1_000_000, '16m 40s'],
   ])('formats %dms as %s', (ms, want) => {
-    expect(L(formatTaskRows([row('t', { durationMs: ms })]))[1]).toContain(want)
+    expect(L(formatTaskRows([row('t', { durationMs: ms })]))[0]).toContain(want)
   })
 
-  it('±usual reads the usual time history holds now; never timed is —, a hit blank', () => {
+  it('±usual reads the usual time history holds now; never timed is —, a hit too', () => {
     const usual = new Map([['p#slow', 1000]])
-    const [, slow, fresh, hitRow] = L(
+    const [slow, fresh, hitRow] = L(
       formatTaskRows(
         [
           row('slow', { durationMs: 3000 }),
@@ -664,18 +661,20 @@ describe('formatTaskRows', () => {
         usual,
       ),
     )
-    expect(slow).toMatch(/ +3\.00s +\+2\.00s success /)
-    expect(fresh).toMatch(/ +5ms +— success /)
-    expect(hitRow).toMatch(/ +5ms +success /)
-    // CONTROL: with no history read, the cell stays blank, as before.
-    expect(L(formatTaskRows([row('slow', { durationMs: 3000 })]))[1]).toMatch(/ +3\.00s +success /)
+    expect(slow).toMatch(/^ {12}success miss +\+2\.00s +3\.00s /)
+    expect(fresh).toMatch(/^ {12}success miss +— +5ms /)
+    expect(hitRow).toMatch(/^ {12}success local +— +5ms /)
+    // CONTROL: with no history read, the cell holds no difference: `—`.
+    expect(L(formatTaskRows([row('slow', { durationMs: 3000 })]))[0]).toMatch(
+      /^ {12}success miss +— +3\.00s /,
+    )
   })
 
   it('a zero-duration task reports no cpu ratio rather than NaN', () => {
     // cpuMs / durationMs with both zero is NaN, and the guard that stops
     // it fails nothing else in the suite. A replay showing `NaN× cpu` is
     // a report that lies about what the run did.
-    const line = L(formatTaskRows([row('t', { durationMs: 0, cpuMs: 0 })]))[1]!
+    const line = L(formatTaskRows([row('t', { durationMs: 0, cpuMs: 0 })]))[0]!
     expect(line).not.toContain('NaN')
     expect(line).not.toContain('Infinity')
     expect(line).not.toContain('%')
@@ -688,7 +687,7 @@ describe('formatTaskRows', () => {
   ])('reports %d sandbox violations as "%s"', (n, want) => {
     const line = L(
       formatTaskRows([row('t', { status: 'failed', exitCode: 1, sandboxViolations: n })]),
-    )[1]!
+    )[0]!
     // The SUFFIX, exactly — not `toContain`. `'1 sandbox violations'`
     // contains `'1 sandbox violation'`, so a containment assertion passes
     // on the wrong plural and the mutation survived this row the first
@@ -704,9 +703,9 @@ describe('formatTaskRows', () => {
   it('names what a remote read or write of the key met (the footer counts it ✗)', () => {
     const line = L(
       formatTaskRows([row('t', { remoteError: 'download: connection refused; upload: 503' })]),
-    )[1]!
+    )[0]!
     expect(noteOf(line)).toBe('remote ✗ download: connection refused; upload: 503')
-    expect(L(formatTaskRows([row('t')]))[1]).not.toContain('remote')
+    expect(L(formatTaskRows([row('t')]))[0]).not.toContain('remote')
   })
 
   // A platform skip and what it blocked are no failure (the run exits 0),
@@ -735,8 +734,8 @@ describe('formatTaskRows', () => {
   })
 
   it('names where an executor ran a task, and nothing for one run here', () => {
-    expect(L(formatTaskRows([row('t', { placement: 'small#1' })]))[1]).toMatch(/ small#1 +p#t$/)
-    expect(L(formatTaskRows([row('t')]))[1]).toMatch(/ local +p#t$/)
+    expect(L(formatTaskRows([row('t', { placement: 'small#1' })]))[0]).toMatch(/ small#1 +p#t$/)
+    expect(L(formatTaskRows([row('t')]))[0]).toMatch(/ local +p#t$/)
   })
 
   it('orders failed, then executed and skipped, then hits, and folds the hits past sixteen', () => {
@@ -750,14 +749,14 @@ describe('formatTaskRows', () => {
         row('after', { status: 'skipped', blockedBy: 'p#boom' }),
       ]),
     )
-    const words = lines
-      .slice(1)
-      .map((l) => /(?:failed|success|skipped) +(?:miss|local|p#)/.exec(l)?.[0].replace(/ +/, ' '))
-    expect(words.slice(0, 3)).toEqual(['failed miss', 'success miss', 'skipped p#'])
+    const words = lines.map((l) =>
+      /(?:failed|success|skipped) +(?:miss|local|—)/.exec(l)?.[0].replace(/ +/, ' '),
+    )
+    expect(words.slice(0, 3)).toEqual(['failed miss', 'success miss', 'skipped —'])
     expect(words.slice(3, 19).every((w) => w === 'success local')).toBe(true)
-    expect(lines.length).toBe(1 + 3 + 16 + 1)
+    expect(lines.length).toBe(3 + 16 + 1)
     // The sixteen shown are the slowest restores, in that order.
-    const shown = lines.slice(4, 20).map((l) => /hit(\d+)/.exec(l)![1])
+    const shown = lines.slice(3, 19).map((l) => /hit(\d+)/.exec(l)![1])
     expect(shown).toEqual(Array.from({ length: 16 }, (_, i) => String(i)))
     expect(lines.at(-1)).toBe(
       '  … +14 more cache hits (the 16 slowest restores shown): `vx last --format json` lists every row',
@@ -773,7 +772,7 @@ describe('formatTaskRows', () => {
 
   it('sixteen hits list in full, no fold (control)', () => {
     const lines = L(formatTaskRows(Array.from({ length: 16 }, (_, i) => hit(i, i))))
-    expect(lines.length).toBe(17)
+    expect(lines.length).toBe(16)
     expect(lines.some((l) => l.includes('more cache hits'))).toBe(false)
   })
 

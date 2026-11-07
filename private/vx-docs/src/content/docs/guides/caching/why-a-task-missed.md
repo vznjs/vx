@@ -12,17 +12,17 @@ vx why @demo/ui#build
 ```
 
 ```ansi
-[38;2;110;118;129m─ [0m[1m[38;2;167;139;250mWhy[0m [2m@demo/ui#build[0m [38;2;110;118;129m─────────────────────────────────────────[0m
-  [2mrun     [0m  [38;2;203;213;225m01a1a6e5-efbf-7173-88b1-3d05abff1b1f[0m
-  [2mthis run[0m  [38;2;203;213;225m2026-11-04T14:10:49.427Z · success · executed · key 45685ae013662a8f[0m
-  [2mprevious[0m  [38;2;203;213;225m2026-11-04T14:10:48.711Z · success · executed · key 2132002e64f489a6[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2m@demo/ui#build[0m[4m[58;2;110;118;129m                                                                                                    [0m
+  [2mrun     [0m  [38;2;203;213;225m01a1b340-c53d-732a-82a6-2ead366e3c78[0m
+  [2mthis run[0m  [38;2;203;213;225m2026-11-06T23:45:28.917Z · success · executed · key 900d8441cc920cba[0m
+  [2mprevious[0m  [38;2;203;213;225m2026-11-06T23:45:28.739Z · success · executed · key 8b6e4889ec598967[0m
   [2mverdict [0m  [38;2;234;179;8mcache key changed: file packages/ui/src/index.ts[0m
 
-[38;2;110;118;129m─ [0m[1m[38;2;167;139;250mWhat changed[0m [2m1 of 3[0m [38;2;110;118;129m────────────────────────────────────────[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 3[0m[4m[58;2;110;118;129m                                                                                                   [0m
   [2mchange   kind  name                      before → after[0m
   [38;2;234;179;8mchanged[0m  [38;2;203;213;225mfile[0m  [1mpackages/ui/src/index.ts[0m  [38;2;203;213;225md00491fd7e5bb6fa28c517a0bb32b8b506539d4d → 0cfbf08886fca9a91cb753ec8734c84fcbe52c9f[0m
 
-[38;2;110;118;129m─ [0m[1m[38;2;167;139;250mWhat to do[0m [38;2;110;118;129m─────────────────────────────────────────────────[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat to do[0m[4m[58;2;110;118;129m                                                                                                            [0m
   [2mfile    [0m  [38;2;203;213;225man edit re-runs by design; a file the task does not read belongs out of inputs.files[0m
 ```
 
@@ -36,20 +36,20 @@ vx why @demo/web#build
 ```
 
 ```ansi
-[38;2;110;118;129m─ [0m[1m[38;2;167;139;250mWhy[0m [2m@demo/web#build[0m [38;2;110;118;129m────────────────────────────────────────[0m
-  [2mrun     [0m  [38;2;203;213;225m01a1a6e6-2269-77e4-ae2f-3663f27cbe8f[0m
-  [2mthis run[0m  [38;2;203;213;225m2026-11-04T14:11:02.431Z · success · executed · key 27d2abc746d63b16[0m
-  [2mprevious[0m  [38;2;203;213;225m2026-11-04T14:11:02.196Z · success · executed · key 87f2bbc0c3174da1[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2m@demo/web#build[0m[4m[58;2;110;118;129m                                                                                                   [0m
+  [2mrun     [0m  [38;2;203;213;225m01a1b340-c53d-732a-82a6-2ead366e3c78[0m
+  [2mthis run[0m  [38;2;203;213;225m2026-11-06T23:45:28.947Z · success · executed · key 6d8a0d5a1c50e288[0m
+  [2mprevious[0m  [38;2;203;213;225m2026-11-06T23:45:28.766Z · success · executed · key 9f5b31f786697a14[0m
   [2mverdict [0m  [38;2;234;179;8mcache key changed: upstream @demo/ui#build[0m
 
-[38;2;110;118;129m─ [0m[1m[38;2;167;139;250mWhat changed[0m [2m1 of 4[0m [38;2;110;118;129m────────────────────────────────────────[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 4[0m[4m[58;2;110;118;129m                                                                                                   [0m
   [2mchange   kind      name            before → after[0m
   [38;2;234;179;8mchanged[0m  [38;2;203;213;225mupstream[0m  [1m@demo/ui#build[0m  [38;2;203;213;225m8b6e4889ec598967 → 900d8441cc920cba[0m
 
-[38;2;110;118;129m─ [0m[1m[38;2;167;139;250mRoot cause[0m [38;2;110;118;129m─────────────────────────────────────────────────[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mRoot cause[0m[4m[58;2;110;118;129m                                                                                                            [0m
   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[1mfile packages/ui/src/index.ts[0m
 
-[38;2;110;118;129m─ [0m[1m[38;2;167;139;250mWhat to do[0m [38;2;110;118;129m─────────────────────────────────────────────────[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat to do[0m[4m[58;2;110;118;129m                                                                                                            [0m
   [2mfile    [0m  [38;2;203;213;225man edit re-runs by design; a file the task does not read belongs out of inputs.files[0m
 ```
 

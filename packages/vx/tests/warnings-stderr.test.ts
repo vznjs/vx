@@ -47,7 +47,7 @@ it(
       expect(err.text()).toContain('app#build: outputs matched no files')
       expect(out.text()).not.toContain('matched no files')
       expect(out.text()).toMatch(/app#build/)
-      expect(out.text()).toContain('─ Summary ')
+      expect(out.text()).toContain('\n  Summary ')
     } finally {
       await rm(fixture.root, { recursive: true, force: true })
     }

@@ -45,7 +45,7 @@ describe('ui components', () => {
     )
   })
 
-  it('report: a blank line, the rule, aligned fields; next is bold', () => {
+  it('report: a blank line, the title line, aligned fields; next is bold', () => {
     const rows: ui.FieldRow[] = [
       ['from', 'turbo.json'],
       ['files', 'a/vx.config.ts', 'b/vx.config.ts'],
@@ -53,9 +53,7 @@ describe('ui components', () => {
       ['next', 'vx run build --all'],
     ]
     expect(plain(ui.report('vx-migrate 1.2.3', rows))).toBe(
-      '\n─ vx-migrate 1.2.3 ' +
-        '─'.repeat(43) +
-        '\n' +
+      '\n  vx-migrate 1.2.3\n' +
         '  from      turbo.json\n' +
         '  files     a/vx.config.ts\n' +
         '            b/vx.config.ts\n' +
@@ -66,6 +64,26 @@ describe('ui components', () => {
     // The label is meta (dim), the value a fact (slate-300), a level above it.
     expect(painted).toContain('\x1b[2mfrom    \x1b[0m  \x1b[38;2;203;213;225mturbo.json\x1b[0m')
     expect(painted).toContain('\x1b[1mvx run build --all\x1b[0m')
+  })
+
+  it('title line: the title in the gutter, a head past it, a note flush right; no rule', () => {
+    const c = { enabled: false, columns: 40 }
+    expect(ui.panelTop('Tasks', c, '3')).toBe('  Tasks 3')
+    expect(ui.panelTop('Tasks', c, '3', 'done')).toBe(`  Tasks 3${' '.repeat(27)}done`)
+    expect(ui.panelTop('Tasks', c, undefined, undefined, 'time')).toBe(
+      `  Tasks${' '.repeat(ui.GUTTER - 7)}time`,
+    )
+    expect(ui.panelTop('Tasks', c, '3', 'done')).not.toContain('─')
+    // Off colour with no width: the same words, trimmed.
+    expect(ui.panelTop('Summary', OFF, '2', 'vx 1.0')).toMatch(/^ {2}Summary 2 +vx 1\.0$/)
+    const on = ui.panelTop('Tasks', { enabled: true, columns: 40 }, '3', 'done')
+    // Underlined end to end in the rule's grey (SGR 4 + 58), padded to the terminal width.
+    expect(on.startsWith('\x1b[4m\x1b[58;2;')).toBe(true)
+    expect(Bun.stringWidth(on)).toBe(40)
+    expect(Bun.stripANSI(on)).toBe(`  Tasks 3${' '.repeat(27)}done`)
+    expect(on).not.toContain('─')
+    // Off colour and no terminal width, the line pads to 120 before the note.
+    expect(ui.panelTop('Tasks', OFF, undefined, 'n')).toBe(`  Tasks${' '.repeat(112)}n`)
   })
 
   it('a label longer than the column widens it', () => {

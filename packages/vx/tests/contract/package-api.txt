@@ -543,6 +543,7 @@ interface BaseContext {
 == type Block (src/ui/components.ts)
 export interface Block {
   readonly lines: (colors: ColorSupport) => string[]
+  readonly head?: (colors: ColorSupport) => string
 }
 == type BranchFacts (src/orchestrator/plugin.ts)
 export interface BranchFacts {

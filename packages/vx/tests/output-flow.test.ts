@@ -136,7 +136,7 @@ describe('defaultLogger visibility matrix — broad', () => {
     log.taskStdout(n, 'noisy build output\n')
     log.taskComplete(n, mkOutcome(n, 'success', { durationMs: 1200 }))
     expect(out.text()).toBe(
-      ' ⏺︎   1.20s         success no-cache     —      —       —         local        one#build\n',
+      '            success no-cache       —   1.20s     —      —       —       — local          one#build\n',
     )
   })
 
@@ -167,7 +167,7 @@ describe('defaultLogger visibility matrix — broad', () => {
     log.runEnd?.()
     const text = out.text()
     expect(text).toContain(
-      '◼︎   100ms         failed  no-cache     —      —       —         local        one#boom',
+      '            failed  no-cache       —   100ms     —      —       —       — local          one#boom',
     )
     expect(text).toContain('┌─ one#boom')
     expect(text).toContain('partial work')
@@ -181,7 +181,7 @@ describe('defaultLogger visibility matrix — broad', () => {
     const n = mkNode('one#later')
     log.taskComplete(n, mkOutcome(n, 'skipped', { blockedBy: 'one#build' }))
     expect(out.text()).toBe(
-      ' ⊘                 skipped                                                    one#later • blocked by one#build\n',
+      '            skipped —              —       —     —      —       —       — —              one#later • blocked by one#build\n',
     )
   })
 
@@ -193,8 +193,8 @@ describe('defaultLogger visibility matrix — broad', () => {
     log.taskComplete(a, mkOutcome(a, 'success', { flaky: { passes: 1, failures: 1 } }))
     log.taskComplete(b, mkOutcome(b, 'failed', { flaky: { passes: 3, failures: 1 } }))
     expect(out.text().split('\n').slice(0, 2)).toEqual([
-      ' ⏺︎   100ms         success no-cache     —      —       —         local        one#types flaky - failed 1× before',
-      ' ◼︎   100ms         failed  no-cache     —      —       —         local        one#test flaky - passed 3× before',
+      '            success no-cache       —   100ms     —      —       —       — local          one#types flaky - failed 1× before',
+      '            failed  no-cache       —   100ms     —      —       —       — local          one#test flaky - passed 3× before',
     ])
   })
 
@@ -219,8 +219,8 @@ describe('defaultLogger visibility matrix — broad', () => {
     log.runEnd?.()
     expect(out.text()).toBe(
       [
-        ' ✗   100ms         aborted                             —         local        one#build',
-        ' ◌                 not run                                                    one#later',
+        '            aborted —              —   100ms     —      —       —       — local          one#build',
+        '            not run —              —       —     —      —       —       — —              one#later',
         '',
       ].join('\n'),
     )
@@ -285,7 +285,7 @@ describe('defaultLogger visibility matrix — focused', () => {
     log.runEnd?.()
     log.taskStdout(db, 'db line\n')
     expect(out.text()).toBe(
-      '┌─ app#dev > $ noop\ncompiling... \n ◼︎   500ms         failed  internal                              local        vx:keys\n' +
+      '┌─ app#dev > $ noop\ncompiling... \n            failed  internal       —   500ms     —      —       —       — local          vx:keys\n' +
         '└─ app#dev ── (100ms) failed (exit 1)\n\nlate, partial\ndb#serve │ db line\n',
     )
   })
@@ -309,7 +309,7 @@ describe('defaultLogger visibility matrix — focused', () => {
     const n = mkNode('one#test', { requested: true })
     log.taskComplete(n, mkOutcome(n, 'aborted', { exitCode: 1, durationMs: 0 }))
     expect(out.text()).toBe(
-      ' ◌                 not run                                                    one#test\n',
+      '            not run —              —       —     —      —       —       — —              one#test\n',
     )
   })
 
@@ -340,7 +340,7 @@ describe('defaultLogger visibility matrix — focused', () => {
     const n = mkNode('one#test', { requested: true })
     log.taskComplete(n, mkOutcome(n, 'skipped'))
     expect(out.text()).toBe(
-      ' ⊘                 skipped                                                    one#test\n',
+      '            skipped —              —       —     —      —       —       — —              one#test\n',
     )
   })
 
@@ -352,7 +352,7 @@ describe('defaultLogger visibility matrix — focused', () => {
     const n = mkNode('one#test', { requested: true })
     log.taskComplete(n, mkOutcome(n, 'skipped', { blockedBy: 'one#build' }))
     expect(out.text()).toBe(
-      ' ⊘                 skipped                                                    one#test • blocked by one#build\n',
+      '            skipped —              —       —     —      —       —       — —              one#test • blocked by one#build\n',
     )
   })
 
@@ -383,7 +383,7 @@ describe('defaultLogger visibility matrix — focused', () => {
     log.runEnd?.()
     const text = out.text()
     expect(text).toContain(
-      '◼︎   100ms         failed  no-cache     —      —       —         local        lib#build',
+      '            failed  no-cache       —   100ms     —      —       —       — local          lib#build',
     )
     expect(text).toContain('┌─ lib#build')
     expect(text).toContain('tsc exploded')
@@ -517,11 +517,11 @@ describe('defaultLogger focused — multiple requested tasks (atomic blocks)', (
     const a = mkNode('one#build', { requested: true })
     log.taskComplete(a, mkOutcome(a, 'skipped'))
     expect(out.text()).toBe(
-      ' ⊘                 skipped                                                    one#build\n',
+      '            skipped —              —       —     —      —       —       — —              one#build\n',
     )
   })
 
-  it('multi-requested failure defers its frame to runEnd with an inline ✗ line', () => {
+  it('multi-requested failure defers its frame to runEnd with an inline failed row', () => {
     const out = sink()
     const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)
     log.runStart?.({ total: 2, requestedCount: 2 })
@@ -529,7 +529,7 @@ describe('defaultLogger focused — multiple requested tasks (atomic blocks)', (
     log.taskStdout(a, 'partial\n')
     log.taskComplete(a, mkOutcome(a, 'failed', { exitCode: 4 }))
     expect(out.text()).toContain(
-      '◼︎   100ms         failed  no-cache     —      —       —         local        one#build',
+      '            failed  no-cache       —   100ms     —      —       —       — local          one#build',
     )
     log.runEnd?.()
     const text = out.text()
@@ -550,7 +550,7 @@ describe('defaultLogger focused — multiple requested tasks (atomic blocks)', (
 })
 
 describe('defaultLogger block separation', () => {
-  it('broad: failure logs an ✗ line inline; the frame replays at runEnd', () => {
+  it('broad: failure logs a failed row inline; the frame replays at runEnd', () => {
     const out = sink()
     const log = defaultLogger(NO_COLORS, { mode: 'broad' }, out)
     const ok = mkNode('one#a')
@@ -561,9 +561,9 @@ describe('defaultLogger block separation', () => {
     log.taskComplete(ok2, mkOutcome(ok2, 'success'))
     log.runEnd?.()
     expect(out.text()).toBe(
-      ' ⏺︎   100ms         success no-cache     —      —       —         local        one#a\n' +
-        ' ◼︎   100ms         failed  no-cache     —      —       —         local        one#boom\n' +
-        ' ⏺︎   100ms         success no-cache     —      —       —         local        one#b\n' +
+      '            success no-cache       —   100ms     —      —       —       — local          one#a\n' +
+        '            failed  no-cache       —   100ms     —      —       —       — local          one#boom\n' +
+        '            success no-cache       —   100ms     —      —       —       — local          one#b\n' +
         '\n' +
         '┌─ one#boom > failed (exit 1)\n' +
         '\n' +
@@ -583,8 +583,8 @@ describe('defaultLogger block separation', () => {
     }
     log.runEnd?.()
     expect(out.text()).toBe(
-      ' ◼︎   100ms         failed  no-cache     —      —       —         local        one#x\n' +
-        ' ◼︎   100ms         failed  no-cache     —      —       —         local        one#y\n' +
+      '            failed  no-cache       —   100ms     —      —       —       — local          one#x\n' +
+        '            failed  no-cache       —   100ms     —      —       —       — local          one#y\n' +
         '\n' +
         '┌─ one#x > failed (exit 1)\n' +
         '\n' +
@@ -636,7 +636,9 @@ describe('defaultLogger visibility matrix — overrides', () => {
     // adding `errors-only` to `discardsOutput` left the repo green while
     // the real CLI printed a frame with no STDOUT/STDERR section at all —
     // `failed (exit 1)` and nothing about why.
-    expect(text).toContain('failed  no-cache     —      —       —         local        one#c')
+    expect(text).toContain(
+      'failed  no-cache       —   100ms     —      —       —       — local          one#c',
+    )
     expect(text).toContain('partial work')
     expect(text).toContain('oops')
   })
@@ -850,7 +852,9 @@ describe('GitHub Actions renderer (full mode + gha)', () => {
     const n = mkNode('one#build')
     log.taskComplete(n, mkOutcome(n, 'cache-hit', { restored: true }))
     const text = out.text()
-    expect(text).toContain('local                       —         local        one#build')
+    expect(text).toContain(
+      '            success local          —   100ms     —      —       —       — local          one#build\n',
+    )
     expect(text).not.toContain('::group::')
   })
 
@@ -1089,21 +1093,19 @@ describe('flow e2e against a real fixture workspace', () => {
 
     // Executed task: one-liner, no raw output.
     expect(text()).toMatch(
-      /success no-cache +\d+% +(?:\u2014|[\d.]+[KMG]?B) +(?:\u2014|[\d.]+[KMG]?B) +\d+ local +one#fresh/,
+      /success no-cache +— +(?:\d+ms|[\d.]+s) +\d+% +(?:\u2014|[\d.]+[KMG]?B) +(?:\u2014|[\d.]+[KMG]?B) +\d+ local +one#fresh/,
     )
     expect(text()).not.toContain('FRESH-OUTPUT')
     // Cache hit: completely silent per-task (no replay, no one-liner).
     expect(text()).not.toContain('CACHED-OUTPUT')
-    expect(text()).not.toContain('◌')
+    expect(text()).not.toContain('one#cached')
     // Failure: full frame.
     expect(text()).toContain('┌─ one#boom')
     expect(text()).toContain('failed (exit 7)')
     // Summary still prints.
-    expect(text()).toContain('─ Summary ')
+    expect(text()).toContain('\n\n\n  Summary ')
     // No failed-id row in the summary (count in legend; frame above).
-    expect(text()).not.toContain(
-      '                   failed                                                     one#boom',
-    )
+    expect(text().slice(text().indexOf('  Summary '))).not.toContain('one#boom')
     expect(text()).toContain('1 failed')
   })
 
@@ -1135,7 +1137,7 @@ describe('flow e2e against a real fixture workspace', () => {
     expect(text()).toContain('failed (exit 3)')
     // Requested task never ran; its skip is framed.
     expect(text()).toContain(
-      'skipped                                     0              one#consumebad',
+      'skipped —              —       —     —      —       —       0 —              one#consumebad',
     )
     expect(text()).not.toContain('NEVER-RUNS')
   })
