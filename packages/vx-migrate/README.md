@@ -249,7 +249,7 @@ Your `package.json` scripts are never edited. `--dry` installs nothing and says 
 
 `--dry` prints the files instead of writing them; `--force` overwrites existing ones; `--mjs` writes `vx.config.mjs` (and `vx-preset.mjs`) instead of `.ts` — the same objects with no type import and no `satisfies`, for a package whose own `tsconfig` includes every `.ts` under it and would compile the config into its dist (TanStack/query, 2026-09-11).
 
-Every source hands a plan to core's `applyMigration` from `@vzn/vx`), which renders, refuses to overwrite without `--force`, writes and reports. Anything a source cannot say becomes a `TODO(vx-migrate)` comment, never a silent wrong value.
+Every source hands a plan to core's `applyMigration` from `@vzn/vx`), which renders, refuses to overwrite without `--force`, writes and reports. No file is written through a symlink, `--keep`'s workspace file and `.vx/.gitignore` included: a target that is a link, a dangling one too, is refused before anything is installed or written. Anything a source cannot say becomes a `TODO(vx-migrate)` comment, never a silent wrong value.
 
 The report reads like a run's footer: a blank line, the `─ vx-migrate <version> ───` rule, then one dim label per row and each fact once: `from` (the source), `ran` (each install or removal command), `tasks` (clean in green, todo in yellow), `todo`, `files`, `kept`, `replaced`, `lock`, `note`, and last, after a blank line, `next` in bold. A terminal sees the install command while it runs, on a line the report replaces; the manager's own output prints only when it fails.
 

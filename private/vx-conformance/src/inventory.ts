@@ -624,6 +624,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-migrate/keychain-token',
     'vx-migrate/mapping-cache',
     'vx-migrate/migrate',
+    'vx-migrate/migrate-keep-nofollow',
     'vx-migrate/migrate-nx-adopted-notes',
     'vx-migrate/migrate-nx-npm-env',
     'vx-migrate/migrate-nx-workspace',

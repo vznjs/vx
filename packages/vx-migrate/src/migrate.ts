@@ -12,7 +12,18 @@
 // The mappers return a plan; core's migration seam
 // (`applyMigration`) renders, guards, writes and reports.
 
-import { existsSync, readFileSync, realpathSync } from 'node:fs'
+import {
+  closeSync,
+  constants,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readlinkSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -494,8 +505,51 @@ async function rewriteWorkspace(
   const names = dropped.map((p) => `${p.factory}()`).join(', ')
   if (dry)
     return [['config', `would ${dropped.length > 0 ? `drop ${names} from` : 'rewrite'} ${file}`]]
-  await Bun.write(path.join(root, file), text)
+  writeNoFollow(root, path.join(root, file), text)
   return [['config', `${dropped.length > 0 ? `dropped ${names} from` : 'rewrote'} ${file}`]]
+}
+
+/**
+ * Refuses a `file` that is a symlink, a dangling one too: a repo can carry
+ * `.vx/.gitignore -> /anywhere`, and a write through it lands outside.
+ */
+function refuseSymlink(root: string, file: string): void {
+  let link: string
+  try {
+    if (!lstatSync(file).isSymbolicLink()) return
+    link = readlinkSync(file)
+  } catch {
+    // quiet: nothing there to write through
+    return
+  }
+  throw new UserError(
+    `refusing to write ${relPosix(root, file)}: it is a symlink to ${link}; remove the link and run again`,
+  )
+}
+
+/**
+ * Writes `text` to `file`, never through a link: O_NOFOLLOW refuses one
+ * put there after `refuseSymlink`'s check.
+ */
+function writeNoFollow(root: string, file: string, text: string): void {
+  refuseSymlink(root, file)
+  mkdirSync(path.dirname(file), { recursive: true })
+  let fd: number
+  try {
+    fd = openSync(
+      file,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW,
+      0o666,
+    )
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ELOOP') refuseSymlink(root, file)
+    throw err
+  }
+  try {
+    writeFileSync(fd, text)
+  } finally {
+    closeSync(fd)
+  }
 }
 
 /** The manager `prepareRepo` installs with, or none under `--no-install`. */
@@ -585,6 +639,14 @@ async function keep(
   const extended = before === undefined ? null : extendWorkspaceFile(before, all)
   const text = before === undefined ? renderWorkspaceFile(all, format) : (extended ?? before)
   const declares = before === undefined || extended !== null
+  const ignore = existsSync(path.join(root, '.vx', '.gitignore')) ? [] : ['.vx/.gitignore']
+  const writes = [
+    ...(before === undefined ? [name] : text !== before ? [existing!] : []),
+    ...ignore,
+  ].map((f) => path.join(root, f))
+  // Before the install and the first write: a link (a dangling one reads
+  // as absent above) is refused with nothing changed.
+  if (!args.dry) for (const f of writes) refuseSymlink(root, f)
   const steps = await prepareRepo(
     root,
     [
@@ -599,14 +661,12 @@ async function keep(
   )
   if (args.json)
     for (const [label, value] of steps) ui.say('info', `vx-migrate: ${label}: ${value}`)
-  const ignore = existsSync(path.join(root, '.vx', '.gitignore')) ? [] : ['.vx/.gitignore']
   if (!args.dry) {
-    if (before === undefined) {
-      if (existing !== undefined && existing !== name) await rm(path.join(root, existing))
-      await Bun.write(path.join(root, name), text)
-    } else if (text !== before) await Bun.write(path.join(root, existing!), text)
+    if (before === undefined && existing !== undefined && existing !== name)
+      await rm(path.join(root, existing))
     // vx's own housekeeping, as a run's first cache open writes it.
-    if (ignore.length > 0) await Bun.write(path.join(root, '.vx', '.gitignore'), DOT_VX_GITIGNORE)
+    for (const f of writes)
+      writeNoFollow(root, f, f.endsWith('.gitignore') ? DOT_VX_GITIGNORE : text)
   }
   const cache = REMOTE_CACHE[runner]
   const cacheLine =
