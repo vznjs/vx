@@ -172,7 +172,10 @@ export function headBase(workspaceRoot: string, ref: string): string | undefined
      (`outputs.workspaceFiles`, or its `outputs.files`) matches nothing,
      as the key folds only a tracked one there; one git stopped
      tracking is in the diff too, and the base key folded it, so it
-     still matches. The `--affected` sugar has staged
+     still matches. A task without `workspaceFiles` is skipped
+     outright, and each distinct list is matched against the changed
+     paths once, not once per task: tasks × paths took 14.5 s on 8000
+     projects with 64k changed paths. The `--affected` sugar has staged
      every config for its graph walk already; a bare `[ref]` filter pays
      that one load when something changed.
 
@@ -208,7 +211,10 @@ exactly that. The config-import channel
 ## Filter integration
 
 `cli/select.ts:resolveFilters` invokes `affectedProjects` once per
-`[<since>]` filter, stuffs the result in
+`[<since>]` filter (`affectedChanges` for `--affected`'s), one after
+another, starting before the workspace config and discovery with the
+whole-tree walk beside them: those need only the root and the ref, and
+`projects` is the discovery's promise. It stuffs the result in
 `affectedByFilter: Map<ParsedFilter, Set<string>>`, then calls
 `applyFilters({ filters, projects, graph, affectedByFilter })`.
 

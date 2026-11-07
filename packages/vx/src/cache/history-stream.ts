@@ -7,11 +7,16 @@
 import type { RunRecord } from './layer.js'
 import type { HistoryWriterIn, HistoryWriterOut } from './history-writer.js'
 
-/**
- * Rows per batch, and the hits a run has before it starts a thread: a
- * run with fewer writes them in its bundle, as cheap as a thread's start.
- */
+/** Rows per batch: one transaction on the thread. */
 const BATCH = 512
+
+/**
+ * The hits a run writes before a thread pays for its start: a run with
+ * fewer writes them all in its bundle. A warm 1,000-project run took
+ * median 170 ms with a thread, 150 without; at 2,500 and 3,000 the two
+ * tie or the thread wins by ~10 ms (2026-11-07, compiled binary).
+ */
+const THREAD_FROM = 2048
 
 /** A record of `T` whose row the stream holds. */
 export interface Streamed<T> {
@@ -32,12 +37,24 @@ export class HistoryStream<T> {
   private readonly refused = new Set<number>()
   private settle: (() => void) | undefined
   private ended: (() => void) | undefined
+  private added = 0
 
-  constructor(private readonly files: { index: string; store?: string }) {}
+  /**
+   * `expected` is the hits the run knows of before its graph runs (its
+   * confirmed local hits): from {@link THREAD_FROM} the first batch starts
+   * the thread; under it, only the hit that reaches it does.
+   */
+  constructor(
+    private readonly files: { index: string; store?: string },
+    private readonly expected: number,
+  ) {}
 
   add(item: T, record: RunRecord): void {
     this.buffer.push({ item, record })
-    if (this.buffer.length >= BATCH && !this.dead) this.send()
+    this.added++
+    if (this.buffer.length < BATCH || this.dead) return
+    if (this.worker === undefined && this.expected < THREAD_FROM && this.added < THREAD_FROM) return
+    this.send()
   }
 
   /**

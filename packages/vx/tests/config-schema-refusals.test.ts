@@ -1411,6 +1411,19 @@ describe('a ** glued to text in a task glob', () => {
     ).toBe(glued('outputs.workspaceFiles', 'out/**.map', 'out/**/*.map', 'out/*.map'))
   })
 
+  // The check split on `{` `}` `,`, so `src/{a,**}.ts` passed and then
+  // expanded to `src/**.ts`, one level: deeper inputs left the key.
+  it('is refused where a brace alternative glues it', () => {
+    const expands = (field: string, g: string, alt: string, deep: string, one: string) =>
+      glued(field, g, deep, one).replace(`"${g}" glues`, `"${g}" expands to "${alt}": that glues`)
+    expect(taskRefusal(task({ files: ['src/{a,**}.ts'] }))).toBe(
+      expands('inputs.files', 'src/{a,**}.ts', 'src/**.ts', 'src/**/*.ts', 'src/*.ts'),
+    )
+    expect(taskRefusal(task({ files: ['**'] }, { files: ['dist/{x,**}.js'] }))).toBe(
+      expands('outputs.files', 'dist/{x,**}.js', 'dist/**.js', 'dist/**/*.js', 'dist/*.js'),
+    )
+  })
+
   it('leaves a whole-segment ** alone', () => {
     // CONTROL: `**` alone in its segment, or a brace arm, is the globstar.
     expect(

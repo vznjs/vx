@@ -207,7 +207,11 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   against 0.3, 2026-10-17). Run `git update-index -q --refresh` in each
   arm's copy before its first timed rep. And give each arm its own
   `HOME`: the shared store lives in `~/.vx/<repo id>/`, so two copies of
-  one repo share it, and arms on different schemas reset it.
+  one repo share it, and arms on different schemas reset it. Refresh
+  under that `HOME`: a global `core.trustctime=false` let a refresh
+  without it keep the old ctimes, so vx's git saw all 4,000 files of a
+  1,000-project copy stat-dirty and `--affected` hashed each (+50 ms,
+  2026-11-07).
 - A sandboxed shard has no git: a pin that asks `git ls-files` there
   reads an empty set and its floor fails on darwin CI (item 615). A
   law that reads the tree walks it; git is for the unsafe suite.

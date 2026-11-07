@@ -125,3 +125,34 @@ it('a `,` `{` or `}` inside a class in a brace alternative is a member, not a cu
     expect([files, await build()]).toEqual([files, 'cache-hit'])
   }
 })
+
+// An escape anywhere in a glob turned brace expansion off, so
+// `{src,app/\[id\]}` stayed one glob naming neither tree: an edit to
+// `src/a.ts` replayed the old output.
+it('a brace holding an escaped char keys what each alternative names', async () => {
+  const app = await addProject(root, 'app', {
+    config: `
+      export default {
+        tasks: {
+          build: {
+            exec: { command: 'true' },
+            inputs: { files: ['{src,app/\\\\[id\\\\]}'] }, outputs: { files: [] }, cache: true,
+          },
+        },
+      }
+    `,
+    files: { 'src/a.ts': 'a', 'app/[id]/page.ts': 'a', 'other/z.ts': 'a' },
+  })
+  gitIn(root)('add', '-A')
+  gitIn(root)('commit', '-q', '-m', 'fixture')
+  const build = async () =>
+    (await run({ cwd: root, tasks: ['app#build'], log, handleSignals: false })).outcomes[0]!.status
+  expect(await build()).toBe('success')
+  writeFileSync(path.join(app, 'src/a.ts'), 'b')
+  expect(await build()).toBe('success')
+  writeFileSync(path.join(app, 'app/[id]/page.ts'), 'b')
+  expect(await build()).toBe('success')
+  // CONTROL: a file no alternative names stays out of the key.
+  writeFileSync(path.join(app, 'other/z.ts'), 'b')
+  expect(await build()).toBe('cache-hit')
+})

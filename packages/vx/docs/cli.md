@@ -564,7 +564,9 @@ them too, with or without a `readyWhen`.
 The command, with its forwarded args, is one argument to `sh -c`, and
 Linux caps one argument at 128 KiB. Past that the task fails to spawn
 (`E2BIG`), and the frame says how long the command was: pass a long
-file list through a file the tool reads instead.
+file list through a file the tool reads instead. The same limit counts
+the task's environment; when that is the cause, the frame names its size
+and its largest variable.
 
 Forwarded args are folded into the cache key — different args produce
 different cache entries. They scope to user-requested tasks only;

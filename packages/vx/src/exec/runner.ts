@@ -884,7 +884,12 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     const message =
       isExecutableMissing(err) && !existsSync(opts.cwd)
         ? `its working directory ${opts.cwd} does not exist`
-        : spawnErrorReason(err, opts.signalChannel === true ? SANDBOXED_TASK : 'task', opts.command)
+        : spawnErrorReason(
+            err,
+            opts.signalChannel === true ? SANDBOXED_TASK : 'task',
+            opts.command,
+            opts.env,
+          )
     return {
       child: undefined,
       ready: Promise.reject(
@@ -1112,6 +1117,8 @@ export function spawnFailureText(
   cwd: string,
   what = 'task',
   command?: string,
+  /** The spawn's environment: an `E2BIG` it caused names it, not the command. */
+  env?: NodeJS.ProcessEnv,
 ): string {
   if (isExecutableMissing(err)) {
     // Bun names `sh` in the ENOENT a missing directory gives too.
@@ -1119,19 +1126,26 @@ export function spawnFailureText(
       ? `[vx] vx runs each task with sh -c: failed to spawn 'sh' (working dir: ${cwd}). Install a POSIX sh and re-run.\n`
       : `[vx] failed to spawn ${what}: its working directory ${cwd} does not exist\n`
   }
-  return `[vx] failed to spawn ${what}: ${spawnErrorReason(err, what, command)}\n`
+  return `[vx] failed to spawn ${what}: ${spawnErrorReason(err, what, command, env)}\n`
 }
 
 /** Bun's text for a spawn that threw, and the way out when the limit hit is a known one. */
-function spawnErrorReason(err: unknown, what: string, command: string | undefined): string {
+function spawnErrorReason(
+  err: unknown,
+  what: string,
+  command: string | undefined,
+  env?: NodeJS.ProcessEnv,
+): string {
   const message = err instanceof Error ? err.message : String(err)
   const hint = isOutOfFds(err)
     ? ` — ${OUT_OF_FDS_HINT}`
     : command !== undefined && (err as NodeJS.ErrnoException | undefined)?.code === 'E2BIG'
-      ? ` — ${argTooLongHint(command, what === SANDBOXED_TASK)}`
+      ? ` — ${argTooLongHint(command, what === SANDBOXED_TASK, env)}`
       : ''
   return `${message}${hint}`
 }
+
+const MAX_ARG_STRLEN = 128 * 1024
 
 /**
  * A task's command, the args after `--` folded in, is ONE argument to
@@ -1139,13 +1153,49 @@ function spawnErrorReason(err: unknown, what: string, command: string | undefine
  * below the argv total: a file list forwarded to a linter failed with a
  * bare E2BIG, which reads as "too many files" and names no way out.
  */
-function argTooLongHint(command: string, wrapped: boolean): string {
-  const kib = Math.ceil(Buffer.byteLength(command) / 1024)
+function argTooLongHint(command: string, wrapped: boolean, env?: NodeJS.ProcessEnv): string {
+  const bytes = Buffer.byteLength(command)
+  const kib = Math.ceil(bytes / 1024)
+  // The limit counts the environment too, and caps each entry as it does
+  // one argument: a task's 4.4 MB `define` was blamed on its 1 KiB command.
+  const vars = env === undefined ? null : envSize(env)
+  if (vars !== null && (bytes <= MAX_ARG_STRLEN || vars.bytes > bytes)) {
+    return (
+      `the task environment is ${Math.ceil(vars.bytes / 1024)} KiB in ${vars.count} variables, ` +
+      `largest ${vars.largest} at ${Math.ceil(vars.largestBytes / 1024)} KiB; Linux caps one ` +
+      `entry at 128 KiB and the command with the environment at a quarter of the stack limit ` +
+      `(often 2 MiB): pass large values through a file the tool reads`
+    )
+  }
   const what = wrapped ? "with the args after -- and the sandbox's wrap" : 'with the args after --'
   return (
     `the command, ${what}, is ${kib} KiB, and one argument to sh -c may hold at ` +
     `most 128 KiB on Linux: pass a long list through a file the tool reads (xargs, a response file)`
   )
+}
+
+/** What `execve` copies of an environment: each `name=value` and its NUL. */
+function envSize(env: NodeJS.ProcessEnv): {
+  bytes: number
+  count: number
+  largest: string
+  largestBytes: number
+} {
+  let bytes = 0
+  let count = 0
+  let largest = ''
+  let largestBytes = 0
+  for (const [name, value] of Object.entries(env)) {
+    if (value === undefined) continue
+    const entry = Buffer.byteLength(name) + Buffer.byteLength(value) + 2
+    bytes += entry
+    count++
+    if (entry > largestBytes) {
+      largest = name
+      largestBytes = entry
+    }
+  }
+  return { bytes, count, largest, largestBytes }
 }
 
 /** A stop's own sweep, for a child it missed: the polite signal, then SIGKILL past the grace. */
@@ -1211,7 +1261,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
             )
     } catch (err) {
       pipes.close()
-      const stderr = spawnFailureText(err, opts.cwd, 'task', fullCommand)
+      const stderr = spawnFailureText(err, opts.cwd, 'task', fullCommand, opts.env)
       opts.onStderr?.(stderr)
       return {
         exitCode: 127,

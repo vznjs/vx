@@ -23,6 +23,7 @@ import {
   UserError,
   BUN_GLOB_WILDCARDS,
   EXTGLOB,
+  braceAlternatives,
   braceRange,
   BRACE_RANGE_LIMIT,
   anyTaskGlob,
@@ -1424,14 +1425,25 @@ function assertNoForeignToken(glob: string, where: string): void {
  * and names both.
  */
 function assertNoGluedGlobstar(glob: string, where: string): void {
+  if (gluesGlobstar(glob)) throw gluedGlobstar(glob, `"${glob}"`, where)
+  // Split on `{` `}` `,` alone, `src/{a,**}.ts` passed and expanded to
+  // `src/**.ts`, one level.
+  const alt = braceAlternatives(glob).find(gluesGlobstar)
+  if (alt !== undefined) throw gluedGlobstar(alt, `"${glob}" expands to "${alt}": that`, where)
+}
+
+function gluesGlobstar(glob: string): boolean {
   const body = glob.startsWith('!') ? glob.slice(1) : glob
-  if (!body.split(/[/{},]/).some((seg) => seg.includes('**') && /[^*]/.test(seg))) return
+  return body.split(/[/{},]/).some((seg) => seg.includes('**') && /[^*]/.test(seg))
+}
+
+function gluedGlobstar(glob: string, subject: string, where: string): UserError {
   const deep = glob.replace(/\*\*([^*/{},]+)/g, '**/*$1').replace(/([^*/{},]+)\*\*/g, '$1*/**')
   const one = glob.replace(/\*{2,}/g, (run, at: number) =>
     /[^*/{},]/.test(glob[at - 1] ?? '') || /[^*/{},]/.test(glob[at + run.length] ?? '') ? '*' : run,
   )
-  throw new UserError(
-    `${where}: "${glob}" glues ** to other text in one path segment, which vx's glob engine ` +
+  return new UserError(
+    `${where}: ${subject} glues ** to other text in one path segment, which vx's glob engine ` +
       `reads as one *, a single directory level. Write "${deep}" for every depth, or "${one}" ` +
       `for one level.`,
   )

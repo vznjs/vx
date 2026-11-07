@@ -109,7 +109,7 @@ export const OPEN_LINE_WAIT_MS = 50
 export const OPEN_LINE_HOLD_CHARS: number
 export function lineEnds(onStdout?, onStderr?): { onStdout?; onStderr?; own(text: string): string; end(): void }
 export function drainOrAbort(streams: Promise<unknown>, ac: AbortController): Promise<boolean>
-export function spawnFailureText(err: unknown, cwd: string, what?: string, command?: string): string // E2BIG with `command`: its size and the 128 KiB limit
+export function spawnFailureText(err: unknown, cwd: string, what?: string, command?: string, env?: NodeJS.ProcessEnv): string // E2BIG with `command`: its size and the 128 KiB limit, or the environment's size and largest entry when that is the cause
 export const SANDBOXED_TASK = 'sandboxed task' // `what` for runSandboxed, whose `command` is the wrap: the hint says the wrap counts
 export const CAPTURE_HEAD_CHARS = 8 * 1024 * 1024
 export const CAPTURE_TAIL_CHARS = 8 * 1024 * 1024
@@ -267,7 +267,9 @@ The promise from `runCommand` always resolves (never rejects) with a
   missing `sh` says `[vx] vx runs each task with sh -c: failed to spawn
 'sh' (working dir: <cwd>). Install a POSIX sh and re-run.`, anything else
   `[vx] failed to spawn task: <message>`, with the way out for an
-  `E2BIG` (the 128 KiB argument limit, a sandbox's wrap counted) or an
+  `E2BIG` (the 128 KiB argument limit, a sandbox's wrap counted, or,
+  when the command is under it or smaller than the environment, the
+  environment's size and its largest entry's name) or an
   `EMFILE`; `runPersistent`'s `spawn` rejection carries the same reason.
   The orchestrator retains no
   stderr, so a reason that only sat on the result reached nobody: a box

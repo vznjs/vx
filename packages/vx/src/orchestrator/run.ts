@@ -1420,7 +1420,10 @@ async function runOnBus(
     // graph runs (history-stream.ts); every other row waits for the bundle.
     // A row with forward args is the bundle's too: only it digests them.
     const historyAt = historyFiles(prepared.localCache)
-    const stream = historyAt === undefined ? undefined : new HistoryStream<TaskOutcome>(historyAt)
+    let expectedHits = 0
+    for (const probe of shortCircuit.preProbed.values()) if (probe.hit !== null) expectedHits++
+    const stream =
+      historyAt === undefined ? undefined : new HistoryStream<TaskOutcome>(historyAt, expectedHits)
     const forwards = (options.forwardArgs?.length ?? 0) > 0
     const streamHit = (o: TaskOutcome): void => {
       if (stream === undefined || isGroupTask(o.node)) return

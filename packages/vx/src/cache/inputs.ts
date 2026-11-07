@@ -2172,9 +2172,43 @@ function throughLinks(
  * read through it, and an edit there was a hit (2026-10-28). Such a path
  * that is a link to a directory is an input (`dirLinkInput`). Generous on
  * purpose: a wrong yes costs one lookup, and folds a linked directory.
+ *
+ * Asked of every path no glob takes, so the prefixes are a map walked by
+ * the path's own `/`s: a scan of every prefix per path was 8,000 globs ×
+ * 200,000 files, minutes per key.
  */
-function mayHoldMatch(positive: readonly string[]): (rel: string) => boolean {
-  const reach = asTrees(positive.flatMap(braceAlternatives)).map((g) => {
+export function mayHoldMatch(positive: readonly string[]): (rel: string) => boolean {
+  // A prefix ends in `/` (or is empty), so the ones a path starts with are
+  // its slices that end at one of its own `/`s.
+  const byPrefix = new Map<string, { deep: boolean; depth: number }>()
+  for (const r of holdReach(positive)) {
+    const seen = byPrefix.get(r.prefix)
+    if (seen === undefined) byPrefix.set(r.prefix, { deep: r.deep, depth: r.depth })
+    else {
+      seen.deep ||= r.deep
+      seen.depth = Math.max(seen.depth, r.depth)
+    }
+  }
+  if (byPrefix.size === 0) return () => false
+  return (rel) => {
+    let slashes = 0
+    for (let i = 0; i < rel.length; i++) if (rel.charCodeAt(i) === 47) slashes++
+    const depth = slashes + 1
+    let r = rel.length > 0 ? byPrefix.get('') : undefined
+    if (r !== undefined && (r.deep || depth < r.depth)) return true
+    for (let i = rel.indexOf('/'); i !== -1 && i < rel.length - 1; i = rel.indexOf('/', i + 1)) {
+      r = byPrefix.get(rel.slice(0, i + 1))
+      if (r !== undefined && (r.deep || depth < r.depth)) return true
+    }
+    return false
+  }
+}
+
+/** Each positive alternative's fixed prefix (`''` or ending in `/`), whether it has a `**`, and its depth. */
+export function holdReach(
+  positive: readonly string[],
+): { prefix: string; deep: boolean; depth: number }[] {
+  return asTrees(positive.flatMap(braceAlternatives)).map((g) => {
     const prefix = staticPrefix(g)
     return {
       prefix: prefix === '.' ? '' : `${prefix}/`,
@@ -2182,14 +2216,6 @@ function mayHoldMatch(positive: readonly string[]): (rel: string) => boolean {
       depth: g.split('/').length,
     }
   })
-  return (rel) => {
-    let depth: number | undefined
-    for (const r of reach) {
-      if (!rel.startsWith(r.prefix) || rel.length === r.prefix.length) continue
-      if (r.deep || (depth ??= rel.split('/').length) < r.depth) return true
-    }
-    return false
-  }
 }
 
 /**

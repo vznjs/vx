@@ -33,12 +33,14 @@ import {
   isLiteralPattern,
   normalizeBunGlob,
   normalizeGlob,
+  outputMatcher,
   relPosix as relPosixViaBarrel,
   staticPrefix,
   anyTaskGlob,
   taskGlob,
 } from '../src/util/index.js'
 import { relPosix, toPosix } from '../src/util/paths.js'
+import { cpuClock } from './helpers/cpu-clock.js'
 
 /**
  * Every input shape a path string can take here, including the ones that are
@@ -843,5 +845,162 @@ describe('a task glob is a standard glob: `[...]` is a class, `\\[` escapes', ()
       'g',
       'packages/[ab]/**',
     ])
+  })
+})
+
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0
+    let t = a
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+describe('anyTaskGlob over thousands of globs', () => {
+  it('matches exactly the union of its globs, one RegExp or several', () => {
+    // Each glob alone is the oracle: anyTaskGlob splits a long list across
+    // RegExps, and a path a split drops is a stale hit.
+    const disagree: string[] = []
+    for (let seed = 1; seed <= 6; seed++) {
+      const rnd = mulberry32(seed)
+      const int = (n: number): number => Math.floor(rnd() * n)
+      const pick = <T>(xs: readonly T[]): T => xs[int(xs.length)]!
+      const dir = (): string => pick(['a', 'b', `d${int(9)}`])
+      // A numbered name keeps each glob narrow, so a path matches few of them.
+      const name = (): string => `f${int(3000)}.${pick(['ts', 'md'])}`
+      const seg = (): string => pick(['*', '?', '**', 'd?', dir(), dir()])
+      const leaf = (): string =>
+        pick([name(), `f${int(3000)}.*`, `*${int(3000)}.ts`, `f${int(300)}?.md`])
+      const globs: string[] = []
+      const count = 900 + int(2000)
+      for (let i = 0; i < count; i++) {
+        // Two `**` in a row are Bun.Glob's to match, and one such glob
+        // would take the whole list off the RegExp path under test; a
+        // trailing `**` would match most paths in the first RegExp.
+        const segs = Array.from({ length: int(3) }, seg)
+          .filter((s, j, all) => s !== '**' || all[j - 1] !== '**')
+          .concat(leaf())
+        globs.push(rnd() < 0.05 ? `{${dir()},${dir()}}/${name()}` : segs.join('/'))
+      }
+      // Half the paths are drawn from a glob, so each RegExp of a split
+      // has paths that only it matches.
+      const instance = (glob: string): string =>
+        glob
+          .replace(/^\{([^,]*),([^}]*)\}/, (_, l: string, r: string) => (rnd() < 0.5 ? l : r))
+          .split('/')
+          .flatMap((s) =>
+            s === '**'
+              ? Array.from({ length: int(3) }, dir)
+              : [
+                  s
+                    .replace(/\*/g, () => pick(['', 'x', 'yz']))
+                    .replace(/\?/g, () => pick(['1', 'q'])),
+                ],
+          )
+          .join('/')
+      const one = globs.map((g) => taskGlob(g))
+      const any = anyTaskGlob(globs)
+      for (let i = 0; i < 2000; i++) {
+        const rel =
+          rnd() < 0.5
+            ? instance(pick(globs))
+            : [...Array.from({ length: int(4) }, dir), name()].join('/')
+        if (rel === '' || rel.endsWith('/')) continue
+        const want = one.some((g) => g.match(rel))
+        if (any(rel) !== want) disagree.push(`seed ${seed}: ${rel} want ${want}`)
+      }
+    }
+    expect(disagree).toEqual([])
+  })
+
+  it('8000 globs over 20k paths stay linear', () => {
+    // Bun's RegExp falls off a cliff past a few thousand alternatives: one
+    // alternation of these took 15 s over 200k paths (2026-11-07).
+    const globs = asTrees(Array.from({ length: 8000 }, (_, i) => `src/d${i % 500}/f${i * 3}.ts`))
+    const paths = Array.from({ length: 20_000 }, (_, i) => `src/d${i % 500}/f${i}.ts`)
+    const cpu = cpuClock()
+    const any = anyTaskGlob(globs)
+    let hits = 0
+    for (const p of paths) if (any(p)) hits++
+    const ms = cpu()
+    const set = new Set(globs)
+    expect(hits).toBe(paths.filter((p) => set.has(p)).length)
+    expect(ms).toBeLessThan(1000)
+  })
+})
+
+describe('anyTaskGlob over many ** globs', () => {
+  it('answers what each glob compiled alone answers, on seeded random globs and paths', () => {
+    // The `**/` globs share one prefix in the list's RegExp: that must not
+    // move one verdict, or a key moves.
+    let seed = 0x9e3779b9
+    const rand = (n: number): number => {
+      seed = (seed + 0x6d2b79f5) | 0
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+      return ((t ^ (t >>> 14)) >>> 0) % n
+    }
+    const pick = <T>(xs: readonly T[]): T => xs[rand(xs.length)]!
+    const names = [
+      'a',
+      'b',
+      'ab',
+      '.a',
+      'x.ts',
+      'a.ts',
+      '.ts',
+      'f1.ts',
+      'node_modules',
+      'a+b',
+      '(x)',
+    ]
+    const globNames = [...names, '*', '*.ts', '.*', '?', 'a?', 'f?.ts', '*b', '**']
+    const rare = ['{a,b}', '{x,f1}.ts', '[ab]', 'a\\*']
+    const glob = (): string => {
+      const segs = Array.from({ length: 1 + rand(3) }, () =>
+        rand(20) === 0 ? pick(rare) : pick(globNames),
+      )
+      if (rand(2) === 0) segs.unshift('**')
+      return segs.join('/')
+    }
+    const relPath = (): string => {
+      const p = Array.from({ length: 1 + rand(4) }, () => pick(names)).join('/')
+      return rand(25) === 0 ? `${p}/` : p
+    }
+    const rels = Array.from({ length: 300 }, relPath)
+    const alone = (globs: readonly string[], rel: string): boolean =>
+      globs.some((g) => taskGlob(g).match(rel))
+    const disagree: string[] = []
+    for (let list = 0; list < 300; list++) {
+      const globs = Array.from({ length: 1 + rand(12) }, glob)
+      const any = anyTaskGlob(globs)
+      const negative = Array.from({ length: rand(3) }, glob)
+      const outputs = outputMatcher([...globs, ...negative.map((g) => `!${g}`)])
+      const pos = asTrees(globs)
+      const neg = asTrees(negative)
+      for (const rel of rels) {
+        if (any(rel) !== alone(globs, rel)) disagree.push(`${globs.join()} ${rel}`)
+        if (outputs(rel) !== (alone(pos, rel) && !alone(neg, rel)))
+          disagree.push(`outputs ${globs.join()} !${negative.join()} ${rel}`)
+      }
+    }
+    expect(disagree).toEqual([])
+  })
+
+  it('a thousand **/name globs over 50,000 paths stay cheap', () => {
+    // Each `(?:.*/)?` alternative was retried at every slash of every path:
+    // 1000 such globs took 24 s over 200,000 paths (2026-11-07).
+    const globs = Array.from({ length: 1000 }, (_, i) => `**/file${i * 7}.ts`)
+    const paths = Array.from(
+      { length: 50_000 },
+      (_, i) => `p${i % 50}/src/d${i % 37}/s/file${i}.ts`,
+    )
+    const cpu = cpuClock()
+    const any = anyTaskGlob(globs)
+    expect(paths.filter((p) => any(p))).toHaveLength(1000)
+    expect(cpu()).toBeLessThan(1500)
   })
 })

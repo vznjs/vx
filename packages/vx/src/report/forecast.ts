@@ -33,6 +33,11 @@ export interface BlockedTask {
   by: string
 }
 
+/**
+ * One pass over what is unfinished. Called again with the same `finished`
+ * set, that set has only grown: the pass reads only what the last one left
+ * unfinished. Another set starts over.
+ */
 export type Forecast = (
   finished: ReadonlySet<string>,
   running: ReadonlyMap<string, number>,
@@ -78,68 +83,129 @@ export function createForecast(
     }
   }
   for (const n of nodes.values()) place(n)
-  const cost = new Map<string, number>()
-  for (const n of order) {
-    const p = isGroupTask(n) ? undefined : p50s.get(n.id)
-    if (p !== undefined) cost.set(n.id, p)
+  // Each node by its place in `order`, its facts in arrays. A pass built
+  // Maps of the whole graph and read every finished task again, and each
+  // task event forces a frame, each frame a pass: a 20,000-task run spent
+  // ~1.6 s of its main thread on them on a terminal (2026-11-07).
+  const size = order.length
+  const position = new Map(order.map((n, i) => [n.id, i]))
+  const deps = order.map((n) => {
+    const at: number[] = []
+    // A dependency outside the graph never has an end: leaving it out changes nothing.
+    for (const d of n.deps) {
+      const i = position.get(d)
+      if (i !== undefined) at.push(i)
+    }
+    return at
+  })
+  const ids = order.map((n) => n.id)
+  const group = Uint8Array.from(order, (n) => (isGroupTask(n) ? 1 : 0))
+  // NaN: no p50.
+  const cost = new Float64Array(size)
+  const ranks = new Float64Array(size)
+  for (let i = 0; i < size; i++) {
+    const n = order[i]!
+    cost[i] = (group[i] ? undefined : p50s.get(n.id)) ?? NaN
+    ranks[i] = rank.get(n.id) ?? 0
   }
   const workers = Math.max(1, concurrency)
   // The scheduler's own baseline ranking (`rank`), most dependents first,
   // ties in graph order.
-  const position = new Map(order.map((n, i) => [n.id, i]))
-  const before = (a: string, b: string): boolean => {
-    const d = (rank.get(a) ?? 0) - (rank.get(b) ?? 0)
-    return d !== 0 ? d > 0 : position.get(a)! < position.get(b)!
+  const before = (a: number, b: number): boolean => {
+    const d = ranks[a]! - ranks[b]!
+    return d !== 0 ? d > 0 : a < b
   }
+  // Reused by every pass. `end` NaN: no end yet (finished, or not reached);
+  // `since` NaN: not running; `head` -1: no running task its chain waits on.
+  const end = new Float64Array(size)
+  const since = new Float64Array(size)
+  const head = new Int32Array(size)
+  // What the last pass left unfinished, in order: a pass reads only these,
+  // not every finished task again. Rebuilt when `finished` is another set
+  // or shrank; the logger's only grows.
+  const live = new Int32Array(size)
+  let liveCount = -1
+  let lastFinished: ReadonlySet<string> | undefined
+  let lastSize = 0
 
   return (finished, running, nowMs) => {
+    if (finished !== lastFinished || finished.size < lastSize || liveCount < 0) {
+      for (let i = 0; i < size; i++) live[i] = i
+      liveCount = size
+    }
+    let kept = 0
+    for (let r = 0; r < liveCount; r++) {
+      const i = live[r]!
+      if (!finished.has(ids[i]!)) live[kept++] = i
+    }
+    liveCount = kept
+    lastFinished = finished
+    lastSize = finished.size
+    end.fill(NaN)
+    since.fill(NaN)
+    head.fill(-1)
+    for (const [id, at] of running) {
+      const i = position.get(id)
+      if (i !== undefined) since[i] = at
+    }
     let waiting = 0
-    const end = new Map<string, number>()
-    // The running task each node's longest chain waits on.
-    const head = new Map<string, string>()
     let chain = 0
-    let chainEnd: string | undefined
+    let chainEnd = -1
     let work = 0
     let known = false
     // The best `workers` blocked tasks, kept sorted as the pass meets them.
     const held: BlockedTask[] = []
+    const heldAt: number[] = []
     const blockedBy = new Map<string, number>()
-    for (const n of order) {
-      if (finished.has(n.id)) continue
+    for (let r = 0; r < liveCount; r++) {
+      const i = live[r]!
+      const ds = deps[i]!
       let start = 0
-      let via: string | undefined
-      for (const d of n.deps) {
-        const e = end.get(d)
-        if (e !== undefined && (via === undefined || e > start)) {
+      let via = -1
+      for (const d of ds) {
+        const e = end[d]!
+        if (e === e && (via < 0 || e > start)) {
           start = e
           via = d
         }
       }
-      const since = running.get(n.id)
-      if (since !== undefined) head.set(n.id, n.id)
-      else if (via !== undefined && head.has(via)) head.set(n.id, head.get(via)!)
-      const by =
-        since === undefined ? (head.get(n.id) ?? n.deps.find((d) => end.has(d))) : undefined
-      if (by !== undefined && !isGroupTask(n)) {
-        waiting++
-        let at = held.length
-        while (at > 0 && before(n.id, held[at - 1]!.id)) at--
-        if (at < workers) {
-          held.splice(at, 0, { id: n.id, by })
-          if (held.length > workers) held.pop()
+      const s = since[i]!
+      const runs = s === s
+      if (runs) head[i] = i
+      else if (via >= 0 && head[via]! >= 0) head[i] = head[via]!
+      if (!runs && !group[i]) {
+        let by = head[i]!
+        if (by < 0)
+          for (const d of ds)
+            if (end[d] === end[d]) {
+              by = d
+              break
+            }
+        if (by >= 0) {
+          waiting++
+          let at = held.length
+          while (at > 0 && before(i, heldAt[at - 1]!)) at--
+          if (at < workers) {
+            held.splice(at, 0, { id: ids[i]!, by: ids[by]! })
+            heldAt.splice(at, 0, i)
+            if (held.length > workers) {
+              held.pop()
+              heldAt.pop()
+            }
+          }
         }
       }
-      const p = cost.get(n.id)
+      const p = cost[i]!
       let own = 0
-      if (p !== undefined) {
+      if (p === p) {
         known = true
-        own = since === undefined ? p : Math.max(0, p - (nowMs - since))
+        own = runs ? Math.max(0, p - (nowMs - s)) : p
       }
       const e = start + own
-      end.set(n.id, e)
-      if (e > chain || chainEnd === undefined) {
+      end[i] = e
+      if (e > chain || chainEnd < 0) {
         chain = e
-        chainEnd = n.id
+        chainEnd = i
       }
       work += own
     }
@@ -148,7 +214,7 @@ export function createForecast(
       if (d !== undefined && d > 0) blockedBy.set(id, d)
     }
     if (!known) return { waiting, blocked: held, blockedBy }
-    const critical = chainEnd === undefined ? undefined : head.get(chainEnd)
+    const critical = chainEnd < 0 || head[chainEnd]! < 0 ? undefined : ids[head[chainEnd]!]!
     return {
       etaMs: Math.max(chain, work / workers),
       ...(critical !== undefined ? { critical } : {}),

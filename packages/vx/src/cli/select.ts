@@ -25,10 +25,10 @@ import {
   type ProjectMeta,
   readLockfile,
 } from '../workspace/index.js'
-import type { ProjectConfig } from '../config.js'
+import type { ProjectConfig, TaskConfig } from '../config.js'
 import type { ProjectEntry } from '../workspace/index.js'
 import { isDefaultBuild, parseDependencySpec } from '../graph/index.js'
-import { declaresInput, workspaceFilesReachInto } from '../cache/index.js'
+import { declaresInput, lazyGitEnumeration, workspaceFilesReachInto } from '../cache/index.js'
 import {
   isUserError,
   listed,
@@ -45,7 +45,6 @@ import {
   claimedExtraFiles,
   claimedDigests,
   fingerprintClaims,
-  gitOfDiscovery,
   hasHook,
   keepDiscoveryGraph,
 } from '../orchestrator/index.js'
@@ -80,15 +79,43 @@ export async function workspaceGlobOwners(
   /** `AffectedChanges.untracked`. */
   untracked: ReadonlySet<string> = new Set(),
 ): Promise<string[]> {
+  // The changed paths a `workspaceFiles` list matches, asked once per
+  // distinct list rather than once per task: tasks × changed paths was
+  // 14.5 s on 8000 projects with 64k changed paths. A tracked match selects
+  // any task declaring the list; an untracked one only a task whose own
+  // outputs it is not, so those are kept for the per-task check.
+  const byList = new Map<string, { tracked: boolean; loose: string[] }>()
+  const matchesOf = (ws: readonly string[]) => {
+    const key = ws.join('\0')
+    let found = byList.get(key)
+    if (found !== undefined) return found
+    found = { tracked: false, loose: [] }
+    const probe = { inputs: { files: [], workspaceFiles: ws } } as unknown as TaskConfig
+    for (const rel of changed) {
+      const loose = untracked.has(rel)
+      if (!declaresInput(probe, null, rel, dirLinks.has(rel))) continue
+      if (!loose) {
+        found.tracked = true
+        break
+      }
+      found.loose.push(rel)
+    }
+    byList.set(key, found)
+    return found
+  }
   const declaresMatch = (config: ProjectConfig, projectAbs: string): boolean => {
     let projectDir: string | undefined
     for (const task of Object.values(config.tasks ?? {})) {
+      const ws = task.inputs?.workspaceFiles
+      if (ws === undefined || ws.length === 0) continue
       const input = (rel: string): boolean => {
         const loose = untracked.has(rel)
         if (loose) projectDir ??= relPosix(root, projectAbs)
         return declaresInput(task, null, rel, dirLinks.has(rel), loose, projectDir)
       }
-      if (changed.some(input)) return true
+      // A hand-edited lock entry that is no list is asked path by path.
+      const found = Array.isArray(ws) ? matchesOf(ws) : { tracked: changed.some(input), loose: [] }
+      if (found.tracked || found.loose.some(input)) return true
       if (nested.some((dir) => workspaceFilesReachInto(task, dir))) return true
     }
     return false
@@ -340,29 +367,85 @@ export async function resolveFilters(
   verb: 'run' | 'show' | 'watch' = 'run',
 ): Promise<FilterResolution> {
   const root = await findWorkspaceRoot(cwd)
-  const projects = await loadWorkspaceProjects(cwd, load)
   let parsed: ReturnType<typeof parseFilter>[]
   try {
     parsed = raw.map((r) => parseFilter(r, root))
   } catch (err) {
+    await loadWorkspaceProjects(cwd, load)
     return refusalOf(err)
   }
+  // A filter that diffs against git reads its untracked files from the
+  // run's whole-tree walk (one walk where it spawned its own), and the run
+  // reuses it with the discovery (I-26). The walk needs only the root, so
+  // it starts before the workspace config and discovery, not after them.
+  const git = parsed.some((f) => f.gitSince !== undefined) ? lazyGitEnumeration(root) : undefined
+  void git?.start()
+  const discovering = discoverCliProjects(root, load, git)
+  discovering.catch(() => {})
   // `sinceViaDeps` (`e2e...[main]`) walks the changed projects' dependents.
   const walksGraph = parsed.some(
     (f) => f.withDeps || f.withDependents || f.onlyDeps || f.sinceViaDeps === true,
   )
-  // A filter that diffs against git starts the run's whole-tree walk now:
-  // the diff reads its untracked files from it (one walk where it spawned
-  // its own), and the run reuses it with the discovery (I-26).
-  const git = parsed.some((f) => f.gitSince !== undefined) ? gitOfDiscovery(projects) : undefined
-  void git?.start()
   // Every reader of the staged configs in this pass — the `pkg#task`
   // edge walk, the `workspaceFiles` owners of a changed path — shares
   // ONE load, and the run reuses it (`RunOptions.staged`): the `project`
   // stage runs once per project per run.
   let stagedPromise: Promise<Map<string, ProjectEntry>> | undefined
   const stagedOnce = (): Promise<Map<string, ProjectEntry>> =>
-    (stagedPromise ??= loadCliProjects(root, projects, 'all', load))
+    (stagedPromise ??= discovering.then((projects) => loadCliProjects(root, projects, 'all', load)))
+  // A scoped enumeration lists only its projects: null asks git.
+  const enumeration = async () => (git === undefined ? undefined : await git.start())
+  // Each `[<since>]` diff starts now, before discovery ends: merge-base and
+  // diff need only the root and the ref, so they overlap the workspace
+  // config, discovery and the config load, where they waited on all three.
+  // One after another, as a shallow clone's fetches must be; each is
+  // awaited in filter order below, so a refusal comes where it came.
+  const diffs = new Map<(typeof parsed)[number], Promise<AffectedChanges | Set<string>>>()
+  let previous: Promise<unknown> | undefined
+  for (const f of parsed) {
+    if (f.gitSince === undefined) continue
+    const args: Parameters<typeof affectedChanges>[0] = {
+      workspaceRoot: root,
+      since: f.gitSince,
+      projects: discovering,
+      workspaceGlobOwners: async (
+        changed: readonly string[],
+        nested: readonly string[],
+        dirLinks: ReadonlySet<string>,
+        untracked: ReadonlySet<string>,
+      ) =>
+        workspaceGlobOwners(
+          root,
+          await discovering,
+          changed,
+          load,
+          stagedOnce,
+          nested,
+          dirLinks,
+          untracked,
+        ),
+      fingerprintClaims: async () => workspaceFingerprintClaims(root, await discovering, load),
+      untracked: async () => (await enumeration())?.untracked ?? null,
+      links: async () => {
+        const g = await enumeration()
+        if (g === undefined || !g.scopes.includes('.')) return null
+        const out: string[] = []
+        for (const [rel, oid] of g.trusted) if (oid.startsWith('120000:')) out.push(rel)
+        return out
+      },
+      flagged: async () => {
+        const g = await enumeration()
+        return g !== undefined && g.scopes.includes('.') ? g.flagged : null
+      },
+    }
+    const diff = (): Promise<AffectedChanges | Set<string>> =>
+      f.raw === affected?.filter ? affectedChanges(args) : affectedProjects(args)
+    const started = previous === undefined ? diff() : previous.then(diff)
+    started.catch(() => {})
+    diffs.set(f, started)
+    previous = started
+  }
+  const projects = await discovering
   let edges: Map<string, string[]> | undefined
   if (walksGraph) {
     try {
@@ -382,60 +465,29 @@ export async function resolveFilters(
     }
   }
   const graph = buildPackageGraph(projects, edges)
-  // The graph a run reusing this discovery builds is this one when no task
-  // edge went into it.
-  if (edges === undefined) keepDiscoveryGraph(projects, graph)
+  // The graph a run reusing this discovery builds is this one when the task
+  // edges added none: each is a discovered edge already, or names no project.
+  const known = new Set(projects.map((p) => p.name))
+  if (
+    edges === undefined ||
+    projects.every((p) =>
+      (edges.get(p.name) ?? []).every((t) => !known.has(t) || p.deps?.includes(t) === true),
+    )
+  )
+    keepDiscoveryGraph(projects, graph)
 
-  // Resolve every `[<since>]` filter against git before the pure
-  // applyFilters pass runs. One spawn per distinct ref — usually
-  // there's only one anyway.
+  // Every `[<since>]` filter's diff, started above, is in before the pure
+  // applyFilters pass runs.
   const affectedByFilter = new Map<(typeof parsed)[number], Set<string>>()
   let changes: AffectedChanges | undefined
-  for (const f of parsed) {
-    if (f.gitSince === undefined) continue
+  for (const [f, diff] of diffs) {
     try {
-      const args = {
-        workspaceRoot: root,
-        since: f.gitSince,
-        projects,
-        workspaceGlobOwners: (
-          changed: readonly string[],
-          nested: readonly string[],
-          dirLinks: ReadonlySet<string>,
-          untracked: ReadonlySet<string>,
-        ) =>
-          workspaceGlobOwners(
-            root,
-            projects,
-            changed,
-            load,
-            stagedOnce,
-            nested,
-            dirLinks,
-            untracked,
-          ),
-        fingerprintClaims: () => workspaceFingerprintClaims(root, projects, load),
-        ...(git !== undefined
-          ? {
-              untracked: async () => (await git.start()).untracked,
-              // A scoped enumeration lists only its projects: null asks git.
-              links: async () => {
-                const g = await git.start()
-                if (!g.scopes.includes('.')) return null
-                const out: string[] = []
-                for (const [rel, oid] of g.trusted) if (oid.startsWith('120000:')) out.push(rel)
-                return out
-              },
-              flagged: async () => {
-                const g = await git.start()
-                return g.scopes.includes('.') ? g.flagged : null
-              },
-            }
-          : {}),
-      }
+      const answer = await diff
       let names: Set<string>
-      if (f.raw === affected?.filter) {
-        changes = await affectedChanges(args)
+      if (answer instanceof Set) {
+        names = answer
+      } else {
+        changes = answer
         names = changes.projects
         // A `graph` plugin may tie any task to a changed path (an edge, an
         // input), and the run alone builds that graph: every project is a
@@ -446,8 +498,6 @@ export async function resolveFilters(
         ) {
           names = new Set(projects.map((p) => p.name))
         }
-      } else {
-        names = await affectedProjects(args)
       }
       affectedByFilter.set(f, names)
     } catch (err) {
