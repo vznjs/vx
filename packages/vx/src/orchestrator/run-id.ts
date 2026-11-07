@@ -16,16 +16,17 @@ export function resolveRunId(db: Database, raw: string, verb: string): string | 
   const id = raw.toLowerCase()
   const exact = db
     .query(
-      'SELECT 1 FROM invocations WHERE run_id = ?1 UNION ALL SELECT 1 FROM runs WHERE run_id = ?1 LIMIT 1',
+      'SELECT 1 FROM invocations WHERE run_id = ?1 UNION ALL SELECT 1 FROM run_ids WHERE run_id = ?1 LIMIT 1',
     )
     .get(id)
   if (exact !== null) return id
-  // A range on `runs`, so its run_id index answers: `substr` read every row.
+  // A range on `run_ids` (every run with rows), so its index answers:
+  // `substr` read every row.
   // `~` sorts after every character of an id.
   const rows = db
     .query(
       `SELECT run_id FROM invocations WHERE substr(run_id, 1, ?1) = ?2
-       UNION SELECT run_id FROM runs WHERE run_id >= ?2 AND run_id < ?2 || '~'
+       UNION SELECT run_id FROM run_ids WHERE run_id >= ?2 AND run_id < ?2 || '~'
        ORDER BY run_id DESC LIMIT 6`,
     )
     .all(id.length, id) as Array<{ run_id: string }>

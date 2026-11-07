@@ -245,7 +245,7 @@ export class LocalHistoryProvider implements LocalHistory {
                    THEN ${NEED_SQL} END),
           MAX(CASE WHEN r.cache_hit = 1 AND e.cpu_ms IS NOT NULL AND e.duration_ms > 0
                    THEN e.cpu_ms * 1.0 / e.duration_ms END)) AS cpu
-      FROM runs r
+      FROM main.runs r
       -- A hit executed nothing here, but its entry carries what the
       -- PRODUCING execution used (the artifact's sidecar, indexed at save
       -- and ingest alike), so a task this machine has only ever restored
@@ -489,7 +489,7 @@ export class LocalHistoryProvider implements LocalHistory {
         `SELECT r.project, r.task${this.byDef}, MAX(r.peak_rss_bytes) AS rss,
            AVG(CASE WHEN r.cpu_ms IS NOT NULL AND r.duration_ms > 0
                     THEN ${NEED_SQL} END) AS cpu
-         FROM runs r
+         FROM main.runs r
          WHERE r.id >= ? AND r.status = 'success' AND (r.cache_hit IS NULL OR r.cache_hit = 0)
          GROUP BY r.project, r.task${this.byDef}`,
       )
@@ -544,7 +544,7 @@ export class LocalHistoryProvider implements LocalHistory {
                  AVG(${NEED_SQL} / r.placement_cores) AS fill,
                  MAX(CASE WHEN r.peak_rss_bytes >= ${SATURATED} * r.placement_memory
                           THEN r.placement_memory END) AS memory
-               FROM runs r
+               FROM main.runs r
                WHERE r.id >= ? AND r.placement_cores IS NOT NULL AND r.duration_ms > 0
                  AND r.status IN ('success', 'failed') AND (r.cache_hit IS NULL OR r.cache_hit = 0)
                GROUP BY r.project, r.task${this.byDef}, r.placement_cores) r
@@ -608,7 +608,7 @@ export class LocalHistoryProvider implements LocalHistory {
            MAX(CASE WHEN e.cpu_ms IS NOT NULL AND e.duration_ms > 0
                     THEN e.cpu_ms * 1.0 / e.duration_ms END) AS cpu,
            MAX(CASE WHEN e.duration_ms > 0 THEN e.duration_ms END) AS ms
-         FROM (SELECT DISTINCT project, task, hash, def FROM runs WHERE id >= ? AND cache_hit = 1) r
+         FROM (SELECT DISTINCT project, task, hash, def FROM main.runs WHERE id >= ? AND cache_hit = 1) r
          JOIN entries e ON e.hash = r.hash
          GROUP BY r.project, r.task${this.byDef}`,
       )
@@ -680,7 +680,7 @@ export class LocalHistoryProvider implements LocalHistory {
     const row = this.db
       .query(
         `SELECT COUNT(*) AS n, MIN(first) AS id,
-           (SELECT COALESCE(MAX(id), 0) + 1 FROM runs) AS past
+           (SELECT COALESCE(MAX(id), 0) + 1 FROM main.runs) AS past
          FROM (SELECT (SELECT MIN(id) FROM runs WHERE run_id = i.run_id) AS first
                FROM (SELECT run_id FROM invocations ORDER BY rowid DESC LIMIT ?) i)`,
       )
@@ -702,7 +702,7 @@ export class LocalHistoryProvider implements LocalHistory {
     const rows = this.db
       .query(
         `SELECT project, task, COUNT(*) AS n FROM (${mixedOutcomeKeysSql(
-          'runs',
+          'main.runs',
           ` AND id >= ? AND (project, task) IN (VALUES ${placeholders})`,
         )}) GROUP BY project, task`,
       )

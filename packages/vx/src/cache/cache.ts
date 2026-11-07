@@ -386,7 +386,11 @@ function cantOpenIndex(dbFile: string, err: unknown): UserError | undefined {
 //   v52: entry_stdout.stdout is a zstd frame of the log's UTF-8, not its
 //        text: stored logs were half a store's bytes, more than every
 //        inline artifact. The cache KEY is unchanged.
-export const SCHEMA_VERSION = 'v52'
+//   v53: a runs row names its run by its row in run_ids, not by the
+//        36-char text; a TEMP view `runs` shows run_id as before. An
+//        all-hit run of 500 tasks added 115 KB to the index. The cache
+//        KEY is unchanged.
+export const SCHEMA_VERSION = 'v53'
 
 /**
  * An entry's key components as its one `entry_inputs` row (v34): JSON
@@ -1243,7 +1247,7 @@ export class Cache implements CacheLayer {
             // keeps it so).
             if (found !== undefined) {
               this.db.exec(
-                'DROP TABLE IF EXISTS main.entries; DROP TABLE IF EXISTS main.runs; DROP TABLE IF EXISTS main.file_hashes; DROP TABLE IF EXISTS main.blob_sizes; DROP TABLE IF EXISTS main.blob_verdicts; DROP TABLE IF EXISTS main.output_files; DROP TABLE IF EXISTS main.output_stamps; DROP TABLE IF EXISTS main.invocations; DROP TABLE IF EXISTS main.run_task_inputs; DROP TABLE IF EXISTS main.entry_inputs; DROP TABLE IF EXISTS main.config_evals; DROP TABLE IF EXISTS main.config_closures; DROP TABLE IF EXISTS main.output_dirs; DROP TABLE IF EXISTS main.entry_stdout; DROP TABLE IF EXISTS main.task_durations; DROP TABLE IF EXISTS main.plugin_blobs; DROP TABLE IF EXISTS main.task_outcomes; DROP TABLE IF EXISTS main.store_meta; DROP TABLE IF EXISTS main.fold_memo; DROP TABLE IF EXISTS main.remote_hits; DROP TABLE IF EXISTS main.steps; DROP TABLE IF EXISTS main.warnings; DROP TABLE IF EXISTS main.failures; DROP TABLE IF EXISTS main.lockfile_memos;',
+                'DROP TABLE IF EXISTS main.entries; DROP TABLE IF EXISTS main.runs; DROP TABLE IF EXISTS main.file_hashes; DROP TABLE IF EXISTS main.blob_sizes; DROP TABLE IF EXISTS main.blob_verdicts; DROP TABLE IF EXISTS main.output_files; DROP TABLE IF EXISTS main.output_stamps; DROP TABLE IF EXISTS main.invocations; DROP TABLE IF EXISTS main.run_task_inputs; DROP TABLE IF EXISTS main.entry_inputs; DROP TABLE IF EXISTS main.config_evals; DROP TABLE IF EXISTS main.config_closures; DROP TABLE IF EXISTS main.output_dirs; DROP TABLE IF EXISTS main.entry_stdout; DROP TABLE IF EXISTS main.task_durations; DROP TABLE IF EXISTS main.plugin_blobs; DROP TABLE IF EXISTS main.task_outcomes; DROP TABLE IF EXISTS main.store_meta; DROP TABLE IF EXISTS main.fold_memo; DROP TABLE IF EXISTS main.remote_hits; DROP TABLE IF EXISTS main.steps; DROP TABLE IF EXISTS main.warnings; DROP TABLE IF EXISTS main.failures; DROP TABLE IF EXISTS main.lockfile_memos; DROP TABLE IF EXISTS main.run_ids;',
               )
             }
             // The tables land under the same write lock as the stamp: made
@@ -3696,7 +3700,7 @@ export class Cache implements CacheLayer {
     const since = Date.now() - 24 * 60 * 60 * 1000
     const runs = this.db
       .prepare(
-        `SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN status IN ('cache-hit', 'cache-hit-remote') THEN 1 ELSE 0 END), 0) AS hits, COALESCE(SUM(restored = 1), 0) AS restored FROM runs WHERE started_at >= ? AND ${EXECUTED_RUNS_SQL}${
+        `SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN status IN ('cache-hit', 'cache-hit-remote') THEN 1 ELSE 0 END), 0) AS hits, COALESCE(SUM(restored = 1), 0) AS restored FROM main.runs WHERE started_at >= ? AND ${EXECUTED_RUNS_SQL}${
           scoped ? ' AND project = ?' : ''
         }`,
       )

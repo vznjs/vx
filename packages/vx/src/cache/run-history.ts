@@ -8,7 +8,7 @@ import { lazyStatement } from './schema.js'
 import type { InvocationRecord, RunRecord } from './layer.js'
 import { isMeasure } from '../util/index.js'
 
-/** The `runs` columns `bindRun` fills, in its order. */
+/** The `main.runs` columns `bindRun` fills, in its order. */
 const RUN_COLUMNS = [
   'hash',
   'project',
@@ -19,7 +19,7 @@ const RUN_COLUMNS = [
   'forward_args',
   'started_at',
   'ended_at',
-  'run_id',
+  'run',
   'cpu_ms',
   'peak_rss_bytes',
   'wallclock_start_ns',
@@ -55,7 +55,7 @@ const RUN_COLUMNS = [
  */
 function insertRunsSql(kept: readonly number[], n: number): string {
   const tuple = `(${kept.map(() => '?').join(', ')})`
-  return `INSERT INTO runs(${kept.map((i) => RUN_COLUMNS[i]).join(', ')}) VALUES ${Array(n).fill(tuple).join(', ')}`
+  return `INSERT INTO main.runs(${kept.map((i) => RUN_COLUMNS[i]).join(', ')}) VALUES ${Array(n).fill(tuple).join(', ')}`
 }
 
 /**
@@ -248,7 +248,13 @@ export class RunHistory {
       if (d === undefined) digests.set(value, (d = this.digestValue(value)))
       return d
     }
-    const bound = runs.map((r) => bindRun(r, digest))
+    const keys = new Map<string, number>()
+    const key = (runId: string): number => {
+      let k = keys.get(runId)
+      if (k === undefined) keys.set(runId, (k = this.runKey(runId)))
+      return k
+    }
+    const bound = runs.map((r) => bindRun(r, digest, key))
     const filled = RUN_COLUMNS.map(() => false)
     for (const row of bound)
       for (let c = 0; c < row.length; c++) if (row[c] !== null) filled[c] = true
@@ -262,6 +268,19 @@ export class RunHistory {
       // `query` caches by text: one statement for every full block.
       this.db.query(insertRunsSql(kept, block.length)).run(...params)
     }
+  }
+
+  /** A run's row in `run_ids`, made on its first rows; inside their transaction. */
+  private runKey(runId: string): number {
+    const found = this.db.query('SELECT id FROM run_ids WHERE run_id = ?').get(runId) as {
+      id: number
+    } | null
+    return (
+      found ??
+      (this.db.query('INSERT INTO run_ids(run_id) VALUES (?) RETURNING id').get(runId) as {
+        id: number
+      })
+    ).id
   }
 
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void {
@@ -300,7 +319,9 @@ export class RunHistory {
     runId: string,
     errors: readonly (readonly [hash: string, text: string])[],
   ): void {
-    const update = this.db.prepare('UPDATE runs SET remote_error = ? WHERE run_id = ? AND hash = ?')
+    const update = this.db.prepare(
+      'UPDATE main.runs SET remote_error = ? WHERE run = (SELECT id FROM run_ids WHERE run_id = ?) AND hash = ?',
+    )
     this.db
       .transaction(() => {
         for (const [hash, text] of errors) update.run(text, runId, hash)
@@ -316,7 +337,13 @@ export class RunHistory {
    * outlive its rows and `vx last` would list a run whose detail is gone.
    */
   pruneOlderThan(cutoff: number): void {
-    this.db.prepare('DELETE FROM runs WHERE started_at < ?').run(cutoff)
+    this.db.prepare('DELETE FROM main.runs WHERE started_at < ?').run(cutoff)
+    // A run's id goes with its last row; ids only grow, so the oldest kept row bounds them.
+    this.db
+      .prepare(
+        'DELETE FROM run_ids WHERE id < COALESCE((SELECT MIN(run) FROM main.runs), (SELECT MAX(id) + 1 FROM run_ids))',
+      )
+      .run()
     this.db.prepare('DELETE FROM invocations WHERE started_at < ?').run(cutoff)
     this.db.prepare('DELETE FROM task_durations WHERE recorded_at < ?').run(cutoff)
     this.db.prepare('DELETE FROM task_outcomes WHERE recorded_at < ?').run(cutoff)
@@ -326,7 +353,11 @@ export class RunHistory {
 }
 
 /** A RunRecord as one value per `RUN_COLUMNS` entry, in its order. */
-function bindRun(run: RunRecord, digestValue: (v: string) => string): SQLQueryBindings[] {
+function bindRun(
+  run: RunRecord,
+  digestValue: (v: string) => string,
+  runKey: (runId: string) => number,
+): SQLQueryBindings[] {
   return [
     // The ONE place the no-key sentinel is applied, so the column's
     // NOT NULL invariant can't be violated from a call site.
@@ -342,7 +373,7 @@ function bindRun(run: RunRecord, digestValue: (v: string) => string): SQLQueryBi
     run.forwardArgs ? digestValue(JSON.stringify(run.forwardArgs)) : null,
     run.startedAt,
     run.endedAt,
-    run.runId ?? null,
+    run.runId === undefined ? null : runKey(run.runId),
     run.cpuMs ?? null,
     run.peakRssBytes ?? null,
     run.wallclockStartNs !== undefined ? run.wallclockStartNs : null,

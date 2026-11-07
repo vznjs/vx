@@ -3245,10 +3245,10 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
       TAR_STORE,
     )
     try {
-      expect(indexesOnRuns(indexDb(cache))).toEqual(['runs_run_id', 'runs_started_at'])
-      indexDb(cache).exec("CREATE INDEX runs_failed ON runs(hash) WHERE status = 'failed'")
-      indexDb(cache).exec('CREATE INDEX runs_project ON runs(project, task)')
-      indexDb(cache).exec('CREATE INDEX runs_ended ON runs(ended_at)')
+      expect(indexesOnRuns(indexDb(cache))).toEqual(['runs_run', 'runs_started_at'])
+      indexDb(cache).exec("CREATE INDEX main.runs_failed ON runs(hash) WHERE status = 'failed'")
+      indexDb(cache).exec('CREATE INDEX main.runs_project ON runs(project, task)')
+      indexDb(cache).exec('CREATE INDEX main.runs_ended ON runs(ended_at)')
     } finally {
       cache.close()
     }
@@ -3262,7 +3262,7 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
       TAR_STORE,
     )
     try {
-      expect(indexesOnRuns(indexDb(reopened))).toEqual(['runs_run_id', 'runs_started_at'])
+      expect(indexesOnRuns(indexDb(reopened))).toEqual(['runs_run', 'runs_started_at'])
     } finally {
       reopened.close()
     }
@@ -3326,6 +3326,8 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
         db.query('SELECT hash FROM runs ORDER BY hash').all() as { hash: string }[]
       ).map((r) => r.hash)
       expect(hashes).toEqual(['h-recent-run'])
+      // A run's id goes with its rows.
+      expect(db.query('SELECT run_id FROM run_ids').all()).toEqual([{ run_id: 'recent-run' }])
     } finally {
       reopened.close()
     }

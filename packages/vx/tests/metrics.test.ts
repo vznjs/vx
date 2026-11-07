@@ -156,7 +156,7 @@ describe('listRuns', () => {
       // a cache block and missed", a claim the row does not make.
       indexDb(cache)
         .query(
-          'UPDATE runs SET cache_hit = NULL, cached = NULL, wallclock_start_ns = 1500000000000',
+          'UPDATE main.runs SET cache_hit = NULL, cached = NULL, wallclock_start_ns = 1500000000000',
         )
         .run()
       const row = listRuns(indexDb(cache))[0]!
@@ -617,7 +617,7 @@ describe('cacheKeyDiff', () => {
       )
       // Only the PREVIOUS side keeps its rows.
       seedEntryInputs(cache, 'hK1', [{ kind: 'file', name: 'a.ts', hash: 'x1' }])
-      indexDb(cache).query('UPDATE runs SET cached = 0').run()
+      indexDb(cache).query('UPDATE main.runs SET cached = 0').run()
       const diff = cacheKeyDiff(indexDb(cache), 'r-2', 'pkg#test')
       expect(diff.entries).toEqual([])
       expect(diff.note).toBe(

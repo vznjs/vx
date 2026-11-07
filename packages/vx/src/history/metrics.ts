@@ -1023,7 +1023,7 @@ export function inputWriters(
   roots: readonly RootCause[],
 ): InputWriter[] {
   const during = db.query(
-    `SELECT project, task FROM runs
+    `SELECT project, task FROM main.runs
       WHERE started_at <= ?1 + ${WRITE_SLACK_MS} AND ended_at >= ?1 - ${WRITE_SLACK_MS}
         AND status != 'skipped'
       GROUP BY project, task ORDER BY MIN(started_at) LIMIT 3`,

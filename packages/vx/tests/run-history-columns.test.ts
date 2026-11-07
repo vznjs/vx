@@ -115,13 +115,15 @@ it('binds at most 999 variables in any history INSERT', () => {
     cached: true,
   }))
   cache.recordRunBundle({ runs, invocation })
-  const inserts = sql.filter((t) => /^\s*INSERT INTO (runs|task_durations|task_outcomes)\b/.test(t))
-  const tables = new Set(inserts.map((t) => /INSERT INTO (\w+)/.exec(t)![1]))
+  const inserts = sql.filter((t) =>
+    /^\s*INSERT INTO (main\.runs|task_durations|task_outcomes)\b/.test(t),
+  )
+  const tables = new Set(inserts.map((t) => /INSERT INTO ([\w.]+)/.exec(t)![1]))
   const widest = Math.max(...inserts.map((t) => t.split('?').length - 1))
   const stored = (db.query('SELECT COUNT(*) AS n FROM runs').get() as { n: number }).n
   cache.close()
   expect([[...tables].sort((x, y) => x!.localeCompare(y!)), stored]).toEqual([
-    ['runs', 'task_durations', 'task_outcomes'],
+    ['main.runs', 'task_durations', 'task_outcomes'],
     500,
   ])
   expect(widest).toBeLessThanOrEqual(999)
@@ -145,8 +147,8 @@ it('binds only the runs columns some row fills', () => {
   const stored = db.query('SELECT task, cpu_ms, blocked_by FROM runs ORDER BY task').all()
   cache.close()
   const columns = sql
-    .filter((t) => /^\s*INSERT INTO runs\b/.test(t))
-    .map((t) => /INSERT INTO runs\(([^)]*)\)/.exec(t)![1]!.split(', '))
+    .filter((t) => /^\s*INSERT INTO main\.runs\b/.test(t))
+    .map((t) => /INSERT INTO main\.runs\(([^)]*)\)/.exec(t)![1]!.split(', '))
   expect(columns).toEqual([
     [
       'hash',
@@ -157,7 +159,7 @@ it('binds only the runs columns some row fills', () => {
       'duration_ms',
       'started_at',
       'ended_at',
-      'run_id',
+      'run',
       'cache_hit',
       'cached',
       'restored',
@@ -195,10 +197,10 @@ describe('the run history stores each field in its own column', () => {
       const runs = db
         .query(
           `SELECT hash, project, task, status, exit_code, duration_ms, forward_args,
-                  started_at, ended_at, run_id, cpu_ms, peak_rss_bytes,
+                  started_at, ended_at, run_ids.run_id, cpu_ms, peak_rss_bytes,
                   wallclock_start_ns, wallclock_end_ns, cache_hit, attempts, cached,
                   blocked_by, timed_out, sandbox_violations, not_ready, restored
-           FROM runs ORDER BY started_at`,
+           FROM runs JOIN run_ids ON run_ids.id = runs.run ORDER BY started_at`,
         )
         .all()
       expect(runs).toEqual([

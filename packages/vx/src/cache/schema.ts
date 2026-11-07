@@ -77,10 +77,10 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       forward_args        TEXT,
       started_at          INTEGER NOT NULL,
       ended_at            INTEGER NOT NULL,
-      -- v11 analytics columns. Nullable until the runner / orchestrator
-      -- PRs populate them. Storing them now means we can swap on the
-      -- producer side without touching the schema again.
-      run_id              TEXT,
+      -- v53: the run's row in run_ids, not its 36-char id: the text
+      -- and its index were a third of what an all-hit run added. The
+      -- \`runs\` view below shows it as run_id again.
+      run                 INTEGER,
       cpu_ms              INTEGER,
       peak_rss_bytes      INTEGER,
       wallclock_start_ns  INTEGER,
@@ -137,7 +137,7 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       flaky_failures      INTEGER
     );
     -- Two whole-table indexes only, and both APPEND: every row of a run carries the
-    -- same run_id and a started_at newer than everything before it, so
+    -- same run and a started_at newer than everything before it, so
     -- 1,000 inserts touch a handful of leaf pages. The dropped ones did
     -- not — the DROPs shed them from existing databases (a schema-meta
     -- bump is for stored shapes, and an index is not one):
@@ -158,7 +158,26 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
     DROP INDEX IF EXISTS main.runs_ended;
     DROP INDEX IF EXISTS main.runs_failed;
     CREATE INDEX IF NOT EXISTS main.runs_started_at ON runs(started_at);
-    CREATE INDEX IF NOT EXISTS main.runs_run_id     ON runs(run_id);
+    CREATE INDEX IF NOT EXISTS main.runs_run        ON runs(run);
+    -- v53: each run's id once; a runs row names it by this rowid.
+    CREATE TABLE IF NOT EXISTS main.run_ids (
+      id     INTEGER PRIMARY KEY,
+      run_id TEXT NOT NULL UNIQUE
+    );
+    -- What every reader and \`vx last --sql\` means by \`runs\`: the rows
+    -- with their run_id, in the columns' old order. TEMP, so no other
+    -- vx meets it: a persistent view would fail an older vx's
+    -- \`DROP TABLE runs\` when it resets this index. It shadows
+    -- main.runs, which only the writers name.
+    CREATE TEMP VIEW IF NOT EXISTS runs AS
+      SELECT r.id, r.hash, r.project, r.task, r.status, r.exit_code, r.duration_ms,
+        r.forward_args, r.started_at, r.ended_at, k.run_id, r.cpu_ms, r.peak_rss_bytes,
+        r.wallclock_start_ns, r.wallclock_end_ns, r.cache_hit, r.attempts, r.cached,
+        r.blocked_by, r.timed_out, r.sandbox_violations, r.not_ready, r.restored,
+        r.remote_error, r.peak_cores, r.avg_rss_bytes, r.placement, r.placement_cores,
+        r.placement_memory, r.keyless_by, r.def, r.cpu_share, r.queued_ms,
+        r.output_bytes, r.blocks, r.flaky_passes, r.flaky_failures
+      FROM main.runs r LEFT JOIN main.run_ids k ON k.id = r.run;
     -- Per-file (mtime, size, content_hash) cache. Lets Cache.key()
     -- skip the content-hash on inputs whose stat hasn't changed
     -- since the last run. Pure performance optimization; the stored

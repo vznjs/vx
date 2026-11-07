@@ -390,7 +390,8 @@ function printQuery(db: Database, sql: string, format: 'pretty' | 'json'): numbe
   db.exec('PRAGMA query_only = ON')
   const refused = (err: unknown): never => {
     const message = err instanceof Error ? err.message : String(err)
-    if (/readonly|query_only/i.test(message)) {
+    // `runs` is a view: a write to it fails before query_only is asked.
+    if (/readonly|query_only|cannot modify/i.test(message)) {
       throw new UserError(`vx last: --sql reads only: ${message}`, 'VX_E_USAGE')
     }
     throw new UserError(`vx last: --sql: ${message}`, 'VX_E_USAGE')
@@ -815,7 +816,9 @@ export function formatRunList(
 async function bareTaskId(db: Database, task: string): Promise<string> {
   if (task.includes('#')) return task
   const ids = (
-    db.query('SELECT DISTINCT project FROM runs WHERE task = ? ORDER BY project').all(task) as {
+    db
+      .query('SELECT DISTINCT project FROM main.runs WHERE task = ? ORDER BY project')
+      .all(task) as {
       project: string
     }[]
   ).map((r) => `${r.project}#${task}`)
@@ -863,7 +866,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         // ran is named, as `vx why` names it.
         const recorded = parsed.log.includes('#')
           ? (
-              db.query('SELECT DISTINCT project, task FROM runs').all() as {
+              db.query('SELECT DISTINCT project, task FROM main.runs').all() as {
                 project: string
                 task: string
               }[]

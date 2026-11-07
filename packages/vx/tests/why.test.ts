@@ -142,10 +142,10 @@ for (const m of ['query', 'prepare']) {
         expect(p.stdout.toString() + p.stderr.toString()).toContain('build')
         return readFileSync(log, 'utf8')
           .split('\n')
-          .filter((s) => s.includes(' FROM runs'))
+          .filter((s) => / FROM (main\.)?runs\b/.test(s))
       }
       const everyPair = (sql: string[]): boolean =>
-        sql.some((s) => s.includes('SELECT DISTINCT project, task FROM runs'))
+        sql.some((s) => s.includes('SELECT DISTINCT project, task FROM main.runs'))
       expect(everyPair(await sqlFor(['why', 'build']))).toBe(false)
       // Control: a miss still lists every pair, for its suggestions.
       expect(everyPair(await sqlFor(['why', 'buld']))).toBe(true)
@@ -845,7 +845,7 @@ describe('vx why (e2e) — the exact lines', () => {
   it(
     'runs with no run id fall back to the latest entry, in both formats, and to nothing',
     async () => {
-      edit('UPDATE runs SET run_id = NULL')
+      edit('UPDATE runs SET run = NULL')
       const pretty = await vx(root, ['why', 'app#build'])
       expect(pretty.code).toBe(0)
       const lines = pretty.out.split('\n')

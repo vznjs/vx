@@ -1771,7 +1771,7 @@ keep). The artifacts stay: each is indexed again from its own bytes
 when its task next asks for its key (below).
 
 ```sql
--- src/cache/schema.ts (SCHEMA_VERSION = 'v52', in cache.ts)
+-- src/cache/schema.ts (SCHEMA_VERSION = 'v53', in cache.ts)
 -- With a shared store, entries, entry_stdout, output_files, entry_inputs,
 -- store_meta, task_durations, task_outcomes, blob_sizes, plugin_blobs and remote_hits live in its store.db, attached as `store`; the rest is
 -- the workspace's cache.db. A named cache dir holds all of them.
@@ -1814,7 +1814,7 @@ CREATE TABLE runs (
   forward_args        TEXT,             -- salted xxh3 of the JSON-encoded `--` args; null when none
   started_at          INTEGER NOT NULL, -- ms-epoch
   ended_at            INTEGER NOT NULL,
-  run_id              TEXT,             -- UUIDv7 shared across all tasks in one invocation
+  run                 INTEGER,          -- v53: the run's run_ids row (the view below shows run_id)
   cpu_ms              INTEGER,
   peak_rss_bytes      INTEGER,
   wallclock_start_ns  INTEGER,          -- bigint; serialized as SQLite INTEGER (signed 64-bit)
@@ -1846,13 +1846,32 @@ CREATE TABLE runs (
 );
 
 -- Two indexes, both append-only under a run's inserts: every row of a run
--- carries the same run_id and a started_at newer than everything before it.
+-- carries the same run and a started_at newer than everything before it.
 -- There is deliberately NO (project, task) index — it scattered every run's
 -- rows over one B-tree leaf per pair (a 1,000-hit warm run's record stage
 -- went 57–79 ms → 14–19 ms without it) while its readers gained nothing;
 -- the history reader bounds its scan by rowid instead (see history.md).
 CREATE INDEX runs_started_at ON runs(started_at);
-CREATE INDEX runs_run_id     ON runs(run_id);
+CREATE INDEX runs_run        ON runs(run);
+
+-- v53: each run's id once. As text in every row, the UUIDv7 and its index
+-- were a third of what an all-hit run added (500 tasks: 115 KB, now 76 KB).
+-- A prune drops ids below the oldest kept row's.
+CREATE TABLE run_ids (
+  id     INTEGER PRIMARY KEY,
+  run_id TEXT NOT NULL UNIQUE      -- UUIDv7 shared across all tasks in one invocation
+);
+
+-- What readers and `vx last --sql` mean by `runs`: the rows above with
+-- run_id in run's place, every column as before. TEMP, made on each open:
+-- an older vx resetting this index runs `DROP TABLE runs`, which a view
+-- in main would fail. It shadows main.runs; writers name main.runs, and
+-- so does a reader with no use for run_id (SQLite keeps the join in an
+-- aggregate).
+CREATE TEMP VIEW runs AS
+  SELECT r.id, r.hash, r.project, r.task, r.status, r.exit_code, r.duration_ms,
+    r.forward_args, r.started_at, r.ended_at, k.run_id, r.cpu_ms, /* … every column */
+  FROM main.runs r LEFT JOIN main.run_ids k ON k.id = r.run;
 
 -- Every non-group, non-aborted outcome of a run gets a row, so
 -- `invocations.task_count` always equals `COUNT(*)` here for that run_id

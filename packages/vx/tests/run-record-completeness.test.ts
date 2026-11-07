@@ -86,7 +86,9 @@ function readRecorded(root: string): { header: HeaderRow; rows: TaskRow[] } {
     expect(headers).toHaveLength(1)
     const header = headers[0]!
     const rows = db
-      .query('SELECT project, task, status, hash FROM runs WHERE run_id = ? ORDER BY project')
+      .query(
+        'SELECT project, task, status, hash FROM runs WHERE run = (SELECT id FROM run_ids WHERE run_id = ?) ORDER BY project',
+      )
       .all(header.run_id) as TaskRow[]
     return { header, rows }
   } finally {

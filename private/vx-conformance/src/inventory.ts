@@ -1021,6 +1021,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'run-bus-subscribers',
     'run-context',
     'run-history-blocks',
+    'run-history-bytes',
     'run-history-columns',
     'run-history-row-cells',
     'run-id',

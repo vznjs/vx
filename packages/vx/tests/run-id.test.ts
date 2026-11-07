@@ -5,17 +5,16 @@ import { Database } from 'bun:sqlite'
 import { describe, expect, it } from 'bun:test'
 import { resolveRunId, shortRunId } from '../src/orchestrator/run-id.js'
 
-/** Runs with a header and their task rows; `stopped` ones have rows alone. */
+/** Runs with a header and task rows (their `run_ids` row); `stopped` ones have rows alone. */
 function db(ids: readonly string[], stopped: readonly string[] = []): Database {
   const d = new Database(':memory:')
   d.run('CREATE TABLE invocations (run_id TEXT PRIMARY KEY)')
-  d.run('CREATE TABLE runs (id INTEGER PRIMARY KEY, run_id TEXT)')
-  d.run('CREATE INDEX runs_run_id ON runs(run_id)')
+  d.run('CREATE TABLE run_ids (id INTEGER PRIMARY KEY, run_id TEXT NOT NULL UNIQUE)')
   for (const id of ids) {
     d.run('INSERT INTO invocations VALUES (?)', [id])
-    d.run('INSERT INTO runs (run_id) VALUES (?), (?)', [id, id])
+    d.run('INSERT INTO run_ids (run_id) VALUES (?)', [id])
   }
-  for (const id of stopped) d.run('INSERT INTO runs (run_id) VALUES (?), (?)', [id, id])
+  for (const id of stopped) d.run('INSERT INTO run_ids (run_id) VALUES (?)', [id])
   return d
 }
 
@@ -36,7 +35,7 @@ describe('resolveRunId', () => {
     )
     // CONTROL: five runs are counted, not "more than 5".
     d.run("DELETE FROM invocations WHERE run_id = 'a6'")
-    d.run("DELETE FROM runs WHERE run_id = 'a6'")
+    d.run("DELETE FROM run_ids WHERE run_id = 'a6'")
     expect(refusal(d, 'a')).toBe(
       'vx last: run id a is the start of 5 runs — type more of it:\n  a5\n  a4\n  a3\n  a2\n  a1',
     )

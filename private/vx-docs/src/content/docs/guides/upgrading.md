@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## history: name a runs row's run by integer, not 36-char text
+
+the local cache index is schema v53; run history recorded before it is dropped on first open.
+
 ## settings: refuse a size with no unit, as durations are
 
 a size setting with no unit is refused; write '32KiB'.

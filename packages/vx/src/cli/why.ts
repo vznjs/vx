@@ -165,7 +165,7 @@ async function resolveTarget(
     // the error's suggestions and the bare-name form only.
     const [project, task] = splitTaskId(target)
     const hit = db
-      .query('SELECT 1 FROM runs WHERE project = ? AND task = ? ORDER BY id DESC LIMIT 1')
+      .query('SELECT 1 FROM main.runs WHERE project = ? AND task = ? ORDER BY id DESC LIMIT 1')
       .get(project, task)
     if (hit !== null) return target
   } else {
@@ -173,7 +173,9 @@ async function resolveTarget(
     // pair sorted the whole history (24 of 26 ms at 58k rows), and its list
     // serves only the miss's suggestions below.
     const matches = (
-      db.query('SELECT DISTINCT project FROM runs WHERE task = ? ORDER BY project').all(target) as {
+      db
+        .query('SELECT DISTINCT project FROM main.runs WHERE task = ? ORDER BY project')
+        .all(target) as {
         project: string
       }[]
     ).map((r) => `${r.project}#${target}`)
@@ -200,7 +202,7 @@ async function resolveTarget(
     }
   }
   const pairs = db
-    .query('SELECT DISTINCT project, task FROM runs ORDER BY project, task')
+    .query('SELECT DISTINCT project, task FROM main.runs ORDER BY project, task')
     .all() as Array<{ project: string; task: string }>
   const ids = pairs.map((p) => `${p.project}#${p.task}`)
   const invoked = ids.length === 0 && db.query('SELECT 1 FROM invocations LIMIT 1').get() !== null
