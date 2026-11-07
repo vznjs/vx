@@ -205,7 +205,12 @@ const warnedSymlinkPunch = new Set<string>()
  * A grant with no write path under it is returned untouched — the common
  * case costs nothing, not even a readdir.
  */
-export function punchWritePaths(readPath: string, writePaths: readonly string[]): string[] {
+export function punchWritePaths(
+  readPath: string,
+  writePaths: readonly string[],
+  /** Whether a link child's real path may be bound; one it may not is dropped. */
+  reachable: (real: string) => boolean = () => true,
+): string[] {
   // Linux only. The shadowing is a property of bwrap MOUNTS; macOS seatbelt
   // evaluates rules by precedence, so a read grant on a directory and a
   // write grant inside it coexist. Punching there costs the directory
@@ -236,11 +241,18 @@ export function punchWritePaths(readPath: string, writePaths: readonly string[])
     // SRT's config carries no `--symlink`, so the only fix is the grant:
     // say which one, loudly.
     try {
-      if (lstatSync(child).isSymbolicLink()) linked.push(child)
+      if (lstatSync(child).isSymbolicLink()) {
+        // Bound by its target, a link out to a denied place (`node_modules
+        // -> ..`, `shared -> ../b`) granted what the whole grant never did:
+        // bound unpunched, the link stays a link into the deny (item 1006's
+        // glob hit, through the punch).
+        if (!reachable(toRealPath(child))) continue
+        linked.push(child)
+      }
     } catch {
       // vanished between readdir and lstat: nothing to bind either way
     }
-    out.push(...punchWritePaths(child, under))
+    out.push(...punchWritePaths(child, under, reachable))
   }
   if (linked.length > 0 && !warnedSymlinkPunch.has(readPath)) {
     warnedSymlinkPunch.add(readPath)
@@ -371,9 +383,17 @@ export function buildCustomConfig(
   // A link a write grant is spelled through is bound by vx, not SRT: a
   // read grant above it is punched around it all the same.
   const punched = [...allowWrite, ...linkedWriteBinds(c.linkedWrites).map(([, at]) => at)]
-  const allowRead = unique(
-    [...baselines.allowRead, ...c.allowRead].flatMap((r) => punchWritePaths(r, punched)),
-  )
+  const reads = [...baselines.allowRead, ...c.allowRead]
+  // Asked only of a link a punch meets: a target under the deny anchor is
+  // bound only where some read grant already reaches it.
+  let fence: { denied: string[]; granted: string[] } | undefined
+  const reachable = (real: string): boolean => {
+    fence ??= { denied: denyRead.map(toRealPath), granted: reads.map(toRealPath) }
+    return (
+      !fence.denied.some((d) => atOrUnder(real, d)) || fence.granted.some((g) => atOrUnder(real, g))
+    )
+  }
+  const allowRead = unique(reads.flatMap((r) => punchWritePaths(r, punched, reachable)))
 
   const custom: Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2] = {
     filesystem: {

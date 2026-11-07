@@ -44,7 +44,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v51'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v52'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -1169,6 +1169,10 @@ the same selection `inputs.tasks` applies at hash time
 `selectFoldedDeps`); every other link target inside the root is
 withheld, so an import of a sibling the key never sees fails and is
 reported instead of caching a result an edit there would not re-run.
+A `node_modules` that is itself a link (`ln -s ../b node_modules`) is
+judged by its target the same way, and one holding the project or `.git`
+is never granted. A granted package's nested projects are walled unless
+the key folds them too: its own key stops at them.
 Any exec task counts, cached or not: its key includes its project's files
 through its `inputs`, and one with no `inputs` is keyless, so a key that
 folds it is never stored or read. A persistent task counts the same way,
@@ -2347,6 +2351,11 @@ breaking footer).
 
 ### History
 
+- **v51 → v52**: stored bytes wrong under a key the change does not move
+  (2026-11-07). A sandboxed task could read through a `node_modules`
+  that is itself a link (to the workspace root or a sibling project), or
+  into a keyed linked package's nested project, and its key folded
+  neither; a v51 entry may hold those bytes, so it is never read.
 - **v50 → v51**: stored bytes wrong under a key the change does not move
   (2026-10-29). An output ending `/.` stored nothing, and a stored stream
   could keep a secret split across stdout and stderr writes unmasked; a

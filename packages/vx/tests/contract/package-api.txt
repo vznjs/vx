@@ -431,6 +431,7 @@ export async function sandboxRequestFor(
   cacheDir?: string,
   dependencyOutputs: readonly string[] = [],
   dependencyReported: readonly string[] = [],
+  nestedOf: (projectDir: string) => readonly string[] = () => [],
 ): Promise<SandboxRequest>
 == function say (src/ui/terminal.ts)
 export function say(t: Tone, line: string, stream: StreamName = 'err'): void

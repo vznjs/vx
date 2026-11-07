@@ -78,7 +78,7 @@ function printTimings(): void {
   if (lines !== undefined) ui.print('err', ui.trace(lines))
 }
 import { detectColors, type ColorSupport } from '../ui/index.js'
-import { keyedProjects, readableDeps } from './keyed-projects.js'
+import { keyedProjects, nestedDirsOf, readableDeps } from './keyed-projects.js'
 import { isDefaultBuild } from '../graph/index.js'
 import { commandWriteReach, prepareSandbox } from './sandbox-request.js'
 import { recordOutputDirSnapshots, type OutputDirSnapshot, type SaveFacts } from './miss-save.js'
@@ -1285,6 +1285,7 @@ async function runOnBus(
       fingerprintWatch,
       keyedProjects: keyed,
       readableDeps: readable,
+      nestedDirsOf: nestedDirsOf(nodes, prepared.keyOnly, nestedDirsByProject),
       outputDirSnapshots,
       deferSave: saveLane.defer,
       deferredSaves,

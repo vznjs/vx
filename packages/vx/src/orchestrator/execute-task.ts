@@ -265,6 +265,12 @@ export interface ExecuteArgs {
    */
   readableDeps?: (node: TaskNode) => readonly TaskNode[]
   /**
+   * The projects nested in a keyed one, by its dir (keyed-projects.ts
+   * `nestedDirsOf`): walled from a task granted that linked package.
+   * Absent: none.
+   */
+  nestedDirsOf?: (projectDir: string) => readonly string[]
+  /**
    * Run-scoped list the miss path appends its output-directory snapshot
    * request to, taken at run end (run.ts) instead of right after the save:
    * a directory written milliseconds ago is inside the snapshot's racy
@@ -1517,6 +1523,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       args.cacheDir,
       deps.reads,
       deps.reported,
+      args.nestedDirsOf,
     )
     placeholders = sb.placeholders
     withheld = sb.withheld
