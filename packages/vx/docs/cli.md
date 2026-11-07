@@ -540,6 +540,9 @@ vx run test -- --watch              # underlying test runner sees "--watch"
 vx run build -- --sourcemap         # build command gets "--sourcemap"
 ```
 
+Only `vx run` and `vx watch` forward. Any other core verb refuses a `--`
+(`vx show forwards nothing after --`, `VX_E_USAGE`).
+
 They are appended to the command's last line (trailing blank lines are
 dropped first, so a multi-line command's closing newline does not run
 them as a command of their own), before a trailing `;` or `&` for the
@@ -603,7 +606,7 @@ span lines.
 | `--cache-concurrency-restore <n>`          | int (1+)       | `cache.concurrency.restore`, else twice `--concurrency`        | Local hits restoring their outputs at once.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `--verbosity <n>`                          | int (0+)       | `0`                                                            | `1` or more prints a per-task table (groups left out, painted as the task list on a colour terminal) after the framed blocks, above the footer. `--verbosity=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `--dry[=pretty\|json]`                     | optional value | off                                                            | Print the task graph + predicted cache hit/miss; skip execution. `VX_DEBUG_TIMING=1` prints the stage table here as it does for a run.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `--profile[=<path>]`                       | optional value | off (`profile.json` when set)                                  | Write Chrome-trace JSON of the run's wallclock spans.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `--profile[=<path>]`                       | optional value | off (`profile.json` when set)                                  | Write Chrome-trace JSON of the run's wallclock spans. A write that fails is a warning (`vx: failed to write profile: <cause>`) and leaves the exit code as the run set it; a directory is refused before the run. See § Run artifacts.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 A value flag given twice keeps the last value (`--concurrency=1 --concurrency=2` runs 2), so a flag appended after a script's own overrides it.
 
@@ -704,7 +707,7 @@ them in this precedence order:
 
 A spec that names a remote axis (`remote:r`, `remote:w`, `remote:rw`)
 in a workspace whose plugins supply no remote layer gets one status
-line saying so, naming where the spec came from (`--cache-policy`,
+line saying so, on a run and a `--dry` plan alike, naming where the spec came from (`--cache-policy`,
 `VX_CACHE_POLICY` or `cache.policy`) — the axes are inert without a layer to serve them, and
 a CI job that believes it is filling a shared cache should be told.
 

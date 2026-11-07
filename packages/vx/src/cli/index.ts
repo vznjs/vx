@@ -43,6 +43,14 @@ export async function run(argv: readonly string[]): Promise<number> {
     await printHelp(await (await plugins()).pluginCommandHelp(), command)
     return 0
   }
+  if (command !== undefined && forwardsNothing(command, rest)) {
+    return refuse(
+      command,
+      rest,
+      'forwards nothing after -- (only vx run and vx watch pass arguments on to a task)',
+      'VX_E_USAGE',
+    )
+  }
   // Each setting's variable once, before any verb: a renamed one is named,
   // and a deep reader trusts what it reads. Not for help, as `vx run
   // --help` above is not: help is where a setting's values are read. Nor
@@ -92,6 +100,21 @@ function refuseControlArgs(command: string, rest: readonly string[]): void {
       'VX_E_USAGE',
     )
   }
+}
+
+/**
+ * A `--` given to a core verb that hands no task its words: each parser
+ * refused it as `unknown flag: --`, true of no flag. A `--sql` query is
+ * the one value that may be `--`.
+ */
+function forwardsNothing(command: string, rest: readonly string[]): boolean {
+  if (command === 'run' || command === 'watch') return false
+  if (!(CORE_VERBS as readonly string[]).includes(command)) return false
+  for (let i = 0; i < rest.length; i++) {
+    if (rest[i] === '--sql') i++
+    else if (rest[i] === '--') return true
+  }
+  return false
 }
 
 /**

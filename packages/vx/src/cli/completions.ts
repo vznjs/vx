@@ -155,7 +155,7 @@ export async function completionsCmd(
         'VX_E_USAGE',
       )
     }
-    const one = shell !== undefined && args.length === 1
+    const one = shell !== undefined && shell !== '' && args.length === 1
     // One edit: shell names are three or four letters, so two edits took
     // `tcsh` to `bash`, a different shell.
     const best = one ? nearest(shell, SHELLS, 1) : undefined

@@ -617,7 +617,9 @@ describe('versionSpec', () => {
       '0.4.0',
       '0.4.0-rc.1',
     ])
-    expect(() => versionSpec('../../evil')).toThrow('vx upgrade: ../../evil is not a version')
+    expect(() => versionSpec('../../evil')).toThrow('vx upgrade: "../../evil" is not a version')
+    // Quoted: an empty TAG read `vx upgrade: is not a version`.
+    expect(() => versionSpec('')).toThrow('vx upgrade: "" is not a version')
   })
 
   // A TAG no release has is usage, refused before anything else is asked:
@@ -637,11 +639,11 @@ describe('versionSpec', () => {
     ]).toEqual([
       {
         code: 'VX_E_USAGE',
-        message: 'vx upgrade: nope is not a version (expected v<major>.<minor>.<patch>)',
+        message: 'vx upgrade: "nope" is not a version (expected v<major>.<minor>.<patch>)',
       },
       {
         code: 'VX_E_USAGE',
-        message: 'vx upgrade: nope is not a version (expected v<major>.<minor>.<patch>)',
+        message: 'vx upgrade: "nope" is not a version (expected v<major>.<minor>.<patch>)',
       },
     ])
   })
@@ -1277,7 +1279,7 @@ describe('vx upgrade (CLI), a tag that is no version', () => {
     const code = await proc.exited
     expect([code, await new Response(proc.stderr).text()]).toEqual([
       1,
-      noticed('vx upgrade: lastest is not a version (expected v<major>.<minor>.<patch>)\n'),
+      noticed('vx upgrade: "lastest" is not a version (expected v<major>.<minor>.<patch>)\n'),
     ])
   })
 })

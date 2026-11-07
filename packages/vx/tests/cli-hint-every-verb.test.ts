@@ -71,6 +71,8 @@ describe('a refused word names the nearest one the verb takes', () => {
       await refused(['completions', 'powershell']),
       await refused(['completions', 'tcsh']),
       await refused(['completions', 'zsh', 'fish']),
+      // An empty word is no shell named: it read `(got )`.
+      await refused(['completions', '']),
     ]).toEqual([
       [
         1,
@@ -83,6 +85,10 @@ describe('a refused word names the nearest one the verb takes', () => {
       [
         1,
         '✗ vx completions  expected one shell — bash, zsh or fish (got tcsh)\n\n  see vx completions --help\n',
+      ],
+      [
+        1,
+        '✗ vx completions  expected one shell — bash, zsh or fish\n\n  see vx completions --help\n',
       ],
       [
         1,
@@ -144,5 +150,20 @@ describe('a refused word names the nearest one the verb takes', () => {
       1,
       '✗ vx lock  unknown flag: --zzz\n\n  see vx lock --help\n',
     ])
+  })
+})
+
+// `vx show --` was refused as `unknown flag: --`: true of no flag, and silent
+// on the reason. Only run and watch hand a task the words after `--`.
+describe('`--` to a verb that forwards nothing', () => {
+  const MSG = 'forwards nothing after -- (only vx run and vx watch pass arguments on to a task)'
+  for (const verb of CORE_VERBS.filter((v) => v !== 'run' && v !== 'watch')) {
+    it(`vx ${verb} -- says the verb forwards nothing`, async () => {
+      expect(await refused([verb, '--', 'x'])).toEqual([1, `✗ vx ${verb}  ${MSG}\n`])
+    })
+  }
+
+  it('--help before `--` still asks for help (control)', async () => {
+    expect(await run(['show', '--help', '--'])).toBe(0)
   })
 })

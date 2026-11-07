@@ -39,6 +39,9 @@ afterAll(async () => {
 
 it('names the flag, the env var, or the workspace setting that asked for the remote', async () => {
   expect(said(['--cache-policy', 'remote:r'])).toContain(line('--cache-policy'))
+  // A plan is told what the run would be told: its plan read no remote.
+  expect(said(['--dry', '--cache-policy', 'remote:r'])).toContain(line('--cache-policy'))
+  expect(said(['--dry'])).not.toContain('named the remote cache')
   expect(said([], { VX_CACHE_POLICY: 'remote:w' })).toContain(line('VX_CACHE_POLICY'))
   expect(said([])).not.toContain('named the remote cache')
   await Bun.write(
