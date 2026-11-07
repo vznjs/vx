@@ -2499,12 +2499,12 @@ async function runSandboxedOnce(
   // one gets the slow form rather than no detection.
   const useStrace = await wantsStraceDetection()
   // Before the spawn: what the task creates under a widened grant is its own.
-  const widened = useStrace ? widenedEntries(args.config.allowWrite) : undefined
+  const widened = widenedEntries(args.config.allowWrite)
   const { wrapped, tag, srtCommand, baselines, scratch, forwardsSignals, traced } =
     await wrapSandboxedCommand({
       ...args,
       ...(useStrace ? { trace: useStrace } : {}),
-      ...(widened !== undefined && widened.size > 0 ? { tracePaths: true } : {}),
+      ...(useStrace && widened.size > 0 ? { tracePaths: true } : {}),
     })
   const takeRecords = collectRecords(
     SandboxManager.getSandboxViolationStore(),
@@ -2715,6 +2715,7 @@ async function runSandboxedOnce(
             bindableWrites(args.config.allowWrite),
             scratch,
             [...baselines.allowRead, ...bindableReads(args.config.allowRead)],
+            { entries: widened, granted: args.config.allowWrite },
           ),
           ...refusedConnections(records.map((v) => v.line)),
         ]

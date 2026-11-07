@@ -1677,12 +1677,15 @@ an active file mount — every atomic writer stages beside its target and
 renames — so a FILE-shaped grant is bound as its DIRECTORY. That
 directory is then readable AND writable in full: with
 `write: ['out.txt']` in the project root, every file in the project root
-can be read. Such a read succeeds, so there is no denial; vx reports it
-from the trace instead, as a violation: a read of anything that was in
-that directory when the task started and that no grant covers, the
-directory's listing included. The declared file and what the task made
-there itself stay readable. Put declared outputs in a subdirectory and
-the rest stays denied outright. macOS matches paths rather than
+can be read, and written. Such a read or write succeeds, so there is no
+denial; vx reports it instead, as a violation: an open, hard link or move
+of anything that was in that directory when the task started and that no
+grant covers, the directory's listing included, and a write, removal or
+move of it, or a new file or directory the task leaves there. The
+declared file and what the task made and then moved or removed stay its
+own. A `stat` of a sibling (its size, times or presence) is not seen.
+Put declared outputs in a subdirectory and the rest stays denied
+outright. macOS matches paths rather than
 mounting, so a file grant stays exact there. Pinned in
 `tests/sandbox-grants.unsafe.test.ts` (2026-09-20) and
 `tests/sandbox-widened-reads.unsafe.test.ts`.

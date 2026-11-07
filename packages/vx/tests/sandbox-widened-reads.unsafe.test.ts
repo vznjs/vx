@@ -10,6 +10,8 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { initSandbox, resetSandbox, resolveSandboxConfig, runSandboxed } from '../src/exec/index.js'
 import { deniedCalls } from '../src/exec/sandbox-violations.js'
+import { sandboxFix } from '../src/orchestrator/sandbox-fix.js'
+import { relPosix } from '../src/util/index.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 
 describe('deniedCalls › reads', () => {
@@ -144,7 +146,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
     })
 
     it('a file the task made there is its own: not reported', async () => {
-      const r = await run('echo t > stage.tmp; cat stage.tmp src/a.txt > out.txt', ['out.txt'])
+      const r = await run('echo t > s.tmp; cat s.tmp src/a.txt > out.txt; rm s.tmp', ['out.txt'])
       expect([r.exitCode, r.violations]).toEqual([0, []])
     })
 
@@ -157,6 +159,51 @@ describe.skipIf(!available || process.platform !== 'linux')(
 
     it('CONTROL: a directory grant is not widened, and reads inside it are its own', async () => {
       const r = await run('cat src/a.txt dist/old.txt > dist/out.txt', ['dist/'])
+      expect([r.exitCode, r.violations]).toEqual([0, []])
+    })
+
+    // The directory is writable too, and a hard link reads without an
+    // open: `ln -f secret.txt out.txt` passed unreported and cached the
+    // secret's bytes, replayed after it changed; a write to a sibling
+    // landed on the host unreported.
+    const targets = (r: { violations: { target?: string }[] }): string[] =>
+      [...new Set(r.violations.map((v) => relPosix(path.join(dir, 'proj'), v.target!)))].sort()
+
+    it('a hard link of a sibling no grant covers is reported, and named for a read', async () => {
+      const r = await run('ln -f secret.txt out.txt', ['out.txt'])
+      expect([r.exitCode, targets(r)]).toEqual([0, ['secret.txt']])
+      expect(sandboxFix(r.violations, path.join(dir, 'proj'), undefined, ['src/**'])).toEqual({
+        read: ['secret.txt'],
+        inputs: ['secret.txt'],
+      })
+    })
+
+    it('a move of a sibling no grant covers is reported', async () => {
+      const r = await run('mv secret.txt out.txt', ['out.txt'])
+      expect(targets(r)).toEqual(['secret.txt'])
+    })
+
+    it('a write, removal or overwrite of what was there is reported', async () => {
+      const r = await run(
+        'echo x > secret.txt; rm dist/old.txt; echo z > src/a.txt; echo y > out.txt',
+        ['out.txt'],
+      )
+      expect(targets(r)).toEqual(['dist/old.txt', 'secret.txt', 'src/a.txt'])
+    })
+
+    it('a file the task made there and left is reported; one it moved or removed is not', async () => {
+      const r = await run(
+        'echo t > left.txt; mkdir d; echo t > s.tmp; mv s.tmp out.txt; echo t > r.tmp; rm r.tmp',
+        ['out.txt'],
+      )
+      expect(targets(r)).toEqual(['d', 'left.txt'])
+    })
+
+    it('CONTROL: a granted input linked, an existing directory made, a staged output', async () => {
+      const r = await run(
+        'mkdir -p src dist; ln -f src/a.txt a.tmp; cat a.tmp > s.tmp; rm a.tmp; mv s.tmp out.txt',
+        ['out.txt'],
+      )
       expect([r.exitCode, r.violations]).toEqual([0, []])
     })
   },

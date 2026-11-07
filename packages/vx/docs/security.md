@@ -156,7 +156,9 @@ A task with `exec.sandbox` runs where only what it declares exists:
 
 - reads of the workspace outside the task's project and grants fail;
 - writes outside its `allow.write` grants fail (declared outputs grant
-  none);
+  none); on Linux a grant naming a file binds its whole directory, so a
+  write to a sibling there lands and is reported as a violation instead,
+  as an open or hard link of one is (a `stat` of one is not seen);
 - the network is closed except to the domains granted, one union per
   run: a task granted any domain reaches every domain the run grants;
   with none, it reaches no listener on the host's loopback and no unix

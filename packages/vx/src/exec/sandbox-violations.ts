@@ -877,6 +877,8 @@ export function refusedConnections(records: readonly string[]): SandboxViolation
 
 /** Write syscalls that act on a path's last component, not what a link there names. */
 const NAME_SYSCALL = /^(?:symlink|unlink|rename|rmdir|mknod|link)/
+/** The calls the observer records twice, source and destination, in that order. */
+const MOVES = /^(?:rename|link)/
 
 /**
  * The writes SRT's Linux observer saw that this task's binds do not cover.
@@ -886,6 +888,17 @@ const NAME_SYSCALL = /^(?:symlink|unlink|rename|rmdir|mknod|link)/
  * that landed, and anything else was refused or fell into the deny
  * anchor's scratch and vanished with the sandbox. Deduplicated by syscall
  * and canonical path; only a `write` ignore list can silence one.
+ *
+ * Under a directory a file grant was widened to (`widened`), the bind
+ * lets every write land, so there each is judged against the grants
+ * themselves: `echo x > other.txt` beside `write: ['o.txt']` wrote the
+ * host unreported, and `ln -f README.md o.txt` (the observer records a
+ * link's or a move's source too) cached README's bytes with no read the
+ * trace could see, replayed after README changed. An entry that was there
+ * when the task started is reported; one the task made is its own unless
+ * it outlives the task, since an atomic writer stages beside its target
+ * (the reason for the widening) and renames. A made directory holds
+ * nothing of its own: only a new one left behind is reported.
  */
 export function refusedWrites(
   records: readonly string[],
@@ -894,9 +907,32 @@ export function refusedWrites(
   scratch: readonly string[] = [],
   /** What the sandbox mounts readable, canonical: a mkdir of what is there is no write. */
   readable: readonly string[] = [],
+  /** `widenedEntries` at the task's start, and the write grants as declared. */
+  widened?: {
+    entries: ReadonlyMap<string, ReadonlySet<string>>
+    granted: readonly string[]
+  },
 ): SandboxViolation[] {
   const binds = new Set(writable.map((w) => toRealPath(absolutize(w))))
+  const granted = new Set((widened?.granted ?? []).map((w) => toRealPath(absolutize(w))))
+  // A brace is literal to the mount (`MOUNT_WILDCARDS`) and widened like
+  // any file grant, but `write: ['g/{a,b}.txt']` means `g/a.txt` too.
+  const braced = [...granted].filter((w) => w.includes('{')).map((w) => new Bun.Glob(w))
   const globs = scratch.map((g) => new Bun.Glob(g))
+  // Whether a write `binds` covers lands under a widened directory where
+  // no grant covers it, and so is reported (see above).
+  const undeclared = (syscall: string, abs: string): boolean => {
+    for (const [dir, entries] of widened?.entries ?? []) {
+      if (abs === dir || !atOrUnder(abs, dir)) continue
+      if (isUnderAny(abs, granted) || underGlob(abs, braced)) return false
+      const top = path.join(dir, path.relative(dir, abs).split(path.sep)[0]!)
+      if (!entries.has(top)) return exists(abs) && !(syscall.startsWith('mkdir') && abs !== top)
+      if (syscall.startsWith('mkdir')) return false
+      // A granted read as a link's source: the read the grant allows.
+      return !(syscall.startsWith('link') && readable.some((r) => atOrUnder(abs, r)))
+    }
+    return false
+  }
   const seen = new Set<string>()
   const out: SandboxViolation[] = []
   for (const record of records) {
@@ -914,14 +950,17 @@ export function refusedWrites(
     const abs = NAME_SYSCALL.test(syscall)
       ? path.join(toRealPath(path.dirname(raw)), path.basename(raw))
       : toRealPath(raw)
-    if (isUnderAny(abs, binds) || underGlob(abs, globs)) continue
+    if (underGlob(abs, globs)) continue
+    const bound = isUnderAny(abs, binds)
+    if (bound && !undeclared(syscall, abs)) continue
+    const moved = bound && MOVES.test(syscall)
     // A directory a write bind lies in exists, since bwrap made it to mount
     // the bind: `mkdir -p node_modules/.cache/tool` under a grant of
     // `node_modules/.cache/` met EEXIST on `node_modules`, wrote nothing,
     // and the attempt failed a clean task (2026-10-03).
     // So does one a read grant shows, or holds: `mkdir -p src` under
     // `read: ['src']` failed a clean task the same way (X-82).
-    if (syscall.startsWith('mkdir') && inSandbox(abs, binds, readable)) continue
+    if (!bound && syscall.startsWith('mkdir') && inSandbox(abs, binds, readable)) continue
     const key = `${syscall}|${abs}`
     if (seen.has(key)) continue
     seen.add(key)
@@ -931,6 +970,14 @@ export function refusedWrites(
       target: abs,
       path: abs,
       ignorable: ['write'],
+      // A link's source is read, and named for a read while it is there
+      // (`sandboxFix`): its bytes reach the output with no open.
+      ...(moved
+        ? {
+            line: `${syscall}(${raw}) = a link or move no grant covers  [${abs}]`,
+            ignorable: ['read', 'write'] as const,
+          }
+        : {}),
     })
   }
   return out
