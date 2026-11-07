@@ -97,7 +97,6 @@ import {
   packArtifactStream,
   planArtifact,
   planOfTree,
-  sealTree,
   stagesInto,
   writeTree,
 } from './archive.js'
@@ -989,6 +988,7 @@ export class Cache implements CacheLayer {
   private readonly upsertStdout: ReturnType<Database['prepare']>
   private readonly deleteStdout: ReturnType<Database['prepare']>
   private readonly selectStdout: ReturnType<Database['prepare']>
+  private readonly selectUsage: ReturnType<Database['prepare']>
   private readonly logOf = (hash: string): string => this.guard(() => this.stdoutText(hash))
   private readonly entryExists: ReturnType<Database['prepare']>
   private readonly selectBlob: ReturnType<Database['prepare']>
@@ -1370,6 +1370,10 @@ export class Cache implements CacheLayer {
     )
     this.deleteStdout = lazyStatement(this.db, 'DELETE FROM entry_stdout WHERE hash = ?')
     this.selectStdout = lazyStatement(this.db, 'SELECT stdout FROM entry_stdout WHERE hash = ?')
+    this.selectUsage = lazyStatement(
+      this.db,
+      'SELECT cpu_ms, peak_rss_bytes FROM entries WHERE hash = ? LIMIT 1',
+    )
     this.selectEntry = lazyStatement(this.db, SELECT_ENTRY)
     // `has` asks only whether the row is there and where its artifact is,
     // with no stdout joined. A column off the index, so the table row is
@@ -2265,24 +2269,33 @@ export class Cache implements CacheLayer {
   }
 
   /**
-   * The tree packed back into its tar, each file held to its row's size:
-   * the tree form keeps no checksum, and a file cut short at rest (a crash
-   * after its rename, before its data reached the disk) was restored, and
-   * uploaded under a fresh sum.
+   * The tree packed back into its tar, its sidecar rebuilt from the rows
+   * and each file held to its row's size: the tree form keeps no checksum,
+   * and a file cut short at rest (a crash after its rename, before its data
+   * reached the disk) was restored, and uploaded under a fresh sum.
    */
   private treePlan(hash: string, tree: string, rows: readonly OutputFileRow[]): ArtifactPlan {
+    const usage = this.selectUsage.get(hash) as {
+      cpu_ms: number | null
+      peak_rss_bytes: number | null
+    } | null
+    const exec = usageOfEntry({
+      ...(usage?.cpu_ms != null ? { cpuMs: usage.cpu_ms } : {}),
+      ...(usage?.peak_rss_bytes != null ? { peakRssBytes: usage.peak_rss_bytes } : {}),
+    })
     let plan: ArtifactPlan
     try {
-      plan = planOfTree(tree, this.stdoutText(hash))
+      plan = planOfTree(tree, this.stdoutText(hash), rows, hash, exec)
     } catch (err) {
-      // A sidecar cut short at rest, as a file is: named as the damage it is.
-      if (err instanceof SyntaxError)
-        throw new CorruptArtifactError(hash, 'its sidecar does not parse')
+      // A kept link retargeted at rest, as a file is cut short: named as the damage it is.
+      if (err instanceof ArchiveSecurityError)
+        throw new CorruptArtifactError(hash, err.message, err)
       throw err
     }
-    const size = new Map(rows.map((r) => [treeName(r.path), r.size]))
+    const size = new Map(rows.map((r) => [r.path, r.size]))
     for (const i of plan.inputs) {
-      const want = size.get(i.name)
+      const rel = i.name.startsWith('outputs/') ? i.name.slice('outputs/'.length) : i.name
+      const want = size.get(rel)
       if (want !== undefined && want !== i.size)
         throw new CorruptArtifactError(hash, `${i.name} holds ${i.size} bytes, recorded ${want}`)
     }
@@ -2441,7 +2454,7 @@ export class Cache implements CacheLayer {
       const copied = await Promise.allSettled(
         files.map(async (r) => {
           const to = target(r.path)
-          const n = await copy(to, path.join(tree, treeName(r.path)))
+          const n = await copy(to, path.join(tree, r.path))
           if (n !== r.size)
             throw new CorruptArtifactError(hash, `${r.path} holds ${n} bytes, recorded ${r.size}`)
           const mode = restoredMode(r.mode)
@@ -2767,10 +2780,7 @@ export class Cache implements CacheLayer {
         if (lstatSync(tree, { throwIfNoEntry: false })?.ino !== treeIno)
           throw new ArtifactVanishedError(hash)
         const rel = path.relative(tree, missing!).split(path.sep).join('/')
-        throw new CorruptArtifactError(
-          hash,
-          `${rel.startsWith('outputs/') ? rel.slice('outputs/'.length) : rel} is missing from its stored tree`,
-        )
+        throw new CorruptArtifactError(hash, `${rel} is missing from its stored tree`)
       }
       // A staged file the restore itself just wrote is gone before its
       // commit: another process cleaned the same outputs under us (two runs
@@ -3269,7 +3279,7 @@ export class Cache implements CacheLayer {
             hash,
             this.artifactCeiling,
           ),
-          path.join(dir, 'outputs'),
+          dir,
           path.join(dir, WORKSPACE_OUTPUT_PREFIX),
           undefined,
           undefined,
@@ -3279,7 +3289,8 @@ export class Cache implements CacheLayer {
           },
         )
         scanned = scan!
-        await sealTree(dir, scanned)
+        // An artifact with no outputs extracts nothing, so nothing made `dir`.
+        await mkdir(dir, { recursive: true })
       } else if (tar !== undefined) {
         // Our own tar, in memory: read in place, on this thread.
         scanned = scanTarBytes(tar)
@@ -3339,10 +3350,10 @@ export class Cache implements CacheLayer {
             : Bun.file(tmpPath!)
         await extractArtifactStream(
           await decodedTar(source, hash, this.artifactCeiling),
-          path.join(dir, 'outputs'),
+          dir,
           path.join(dir, WORKSPACE_OUTPUT_PREFIX),
         )
-        await sealTree(dir, scanned)
+        await mkdir(dir, { recursive: true })
       } catch (err) {
         await rm(dir, { recursive: true, force: true })
         if (tmpPath !== undefined) await unlink(tmpPath).catch(() => undefined)
@@ -3365,7 +3376,7 @@ export class Cache implements CacheLayer {
     // `workspace-outputs/<rel>` name as the namespace discriminator.
     //
     // Mode and MILLISECOND mtime come from the artifact's own sidecar
-    // (`.vx-meta.json`), written from a stat taken while packing. Both
+    // (`.vx-meta.json` in its tar), written from a stat taken while packing. Both
     // paths — save and remote ingest — therefore index the same values,
     // and `restoreOutputs` materialises exactly them, so
     // `isOutputsCurrent` compares equal at ms precision straight after a
@@ -4178,11 +4189,6 @@ function absentModedDirs(
     if (lstatSync(dir, { throwIfNoEntry: false }) === undefined) out.push([dir, r.mode & 0o777])
   }
   return out.sort((a, b) => b[0].length - a[0].length)
-}
-
-/** A row's path as the tree names its file. */
-function treeName(rowPath: string): string {
-  return rowPath.startsWith(WORKSPACE_OUTPUT_PREFIX) ? rowPath : `outputs/${rowPath}`
 }
 
 /** `code: message`, where Bun's message does not already open with the code. */
