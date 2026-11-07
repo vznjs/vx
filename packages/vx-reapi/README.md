@@ -134,12 +134,14 @@ bazel-remote sends when the call's `grpc-timeout` runs out first (a
 ## Repeat runs skip the worker
 
 Every successful remote execution writes an execution record under the
-task's vx key (`vx-reapi-exec-v1`), listing its outputs by digest plus
-its stdout (inline up to 64 KiB, a CAS blob past it), written while the
-outputs come down. A later run whose vx cache missed but whose key already has
-a record skips the Merkle build, the upload pass and `Execute`
-entirely: the outputs are already in the CAS, and stdout replays from
-the record. `--force` bypasses it.
+task's vx key (`vx-reapi-exec-v2`), listing its outputs by digest plus
+its stdout and stderr (each inline up to 64 KiB, a CAS blob past it), written
+while the outputs come down. A later run whose vx cache missed but whose key
+already has a record skips the Merkle build, the upload pass and `Execute`
+entirely: the outputs are already in the CAS, and both streams replay from
+the record, as a vx hit replays them. A `v1` record kept no stderr and is
+never read: its key executes once more and writes a `v2` one. `--force`
+bypasses it.
 
 The input tree is read after the key was taken, so each file's bytes are
 held to the git blob id the key hashed for it. A file edited, removed or
@@ -154,11 +156,11 @@ listed input (`@vzn/vx-lockfile` lists it on every cached task).
 This matters most under `--cache-download=none`, where deferral leaves no
 local cache entry behind, so vx's own probe misses on every later run
 and the record is what makes the second run cheap. Records are checked
-against the CAS first (`FindMissingBlobs`, the outputs and a stdout blob) — the action cache and the
+against the CAS first (`FindMissingBlobs`, the outputs and any stream blob) — the action cache and the
 CAS evict independently, so a record that outlived its blobs falls
 through to a real execution rather than "succeeding" with nothing.
 The replay itself is a cache read too: a transport failure reading the
-record, its stdout or any output warns and executes, after removing
+record, a stream or any output warns and executes, after removing
 whatever the half-done replay created (core cleaned the outputs once,
 before the replay, and the real run's result must not inherit them).
 The probe sees a Tree by its own digest, not the blobs inside it, so
@@ -322,7 +324,9 @@ re-attach: firing during the backoff between a dropped stream and its
 the operation is cancelled too (a refused cancel is a warning).
 The run stopping (Ctrl-C, an embedder's abort) or the task's `exec.timeout`
 closes the stream and cancels the operation with `CancelOperation`, and an
-action not yet submitted is not sent. The task then ends as a killed local
+action not yet submitted is not sent. A record replay, an upstream record
+read or the upload under way stops there too, and writes nothing after: what
+a replay already created is taken back, so a retry starts clean. The task then ends as a killed local
 one does (exit 143, `SIGTERM`): past `exec.timeout` it is `failed (timed
 out)` with its key in `vx last`.
 
@@ -352,8 +356,9 @@ and the task executes normally, with a warning naming why. The UPSTREAM record
 reads are the deliberate exception — those decide whether a dependency's bytes
 exist at all, and carrying on past a failure there is how an action runs
 without its inputs and caches the result. A fresh execution's stdout or
-stderr that cannot be read fails the task, as a declared output does
-(above): those are the task's result, not a shortcut.
+stderr that cannot be read, or whose blob the CAS no longer holds, fails
+the task naming the digest, and no record is written: those are the
+task's result, not a shortcut.
 
 ## Tests
 
@@ -487,7 +492,7 @@ worker (`tests/vx-run-e2e.test.ts`):
   dependents use whatever the machine has ambient — a laptop run behaves
   exactly as it did before the field existed.
 
-The execution record lives under `sha256("vx-reapi-exec-v1\0" + key)` — a
+The execution record lives under `sha256("vx-reapi-exec-v2\0" + key)` — a
 second AC namespace beside the artifact mapping, listing outputs file-by-file
 with workspace-relative paths.
 

@@ -605,28 +605,35 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         // decide whether a dependency's bytes exist at all, and treating a
         // failure there as "carry on" is how an action runs without its
         // inputs and caches the result.
-        // stdout asked inline: a server that moved it into CAS otherwise
-        // costs the replay a Read for it (F-25).
-        const prior = await client
-          .getActionResult(execDigestFor(req.cacheKey), { stdout: true, files: [] })
-          .catch((err) => {
-            warn(
-              `[vx] vx-reapi: ${req.taskId} could not read its execution record (${errText(err)}) — executing`,
-            )
-            return null
-          })
+        // Both streams asked inline: a server that moved them into CAS
+        // otherwise costs the replay a Read each (F-25).
+        const prior = await untilAborted(
+          client.getActionResult(execDigestFor(req.cacheKey), {
+            stdout: true,
+            stderr: true,
+            files: [],
+          }),
+          req.signal,
+        ).catch((err: unknown) => {
+          if (req.signal?.aborted === true) throw err
+          warn(
+            `[vx] vx-reapi: ${req.taskId} could not read its execution record (${errText(err)}) — executing`,
+          )
+          return null
+        })
         if (prior !== null) {
-          // The stdout blob too: a Read of an evicted one answers "none", and
-          // the replay printed nothing where the task had printed.
-          const stdoutBlob =
-            (prior.stdout_raw?.length ?? 0) === 0 &&
-            Number(prior.stdout_digest?.size_bytes ?? 0) > 0
-              ? [prior.stdout_digest!]
-              : []
+          // The stream blobs too: an evicted one fails the replay, and the
+          // probe says so before any output is written.
+          const streamBlobs = [
+            [prior.stdout_raw, prior.stdout_digest] as const,
+            [prior.stderr_raw, prior.stderr_digest] as const,
+          ].flatMap(([raw, digest]) =>
+            (raw?.length ?? 0) === 0 && Number(digest?.size_bytes ?? 0) > 0 ? [digest!] : [],
+          )
           const referenced = [
             ...(prior.output_files ?? []).map((f) => f.digest),
             ...(prior.output_directories ?? []).map((d) => d.tree_digest),
-            ...stdoutBlob,
+            ...streamBlobs,
           ]
           // AC and CAS evict independently, so a record can outlive its
           // blobs. A gap means it cannot produce the outputs — fall through
@@ -636,15 +643,20 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
           // and would replay a record whose blobs were never checked.
           const gone =
             referenced.length > 0
-              ? await client.findMissingBlobs(referenced).catch((err: unknown) => {
-                  warn(
-                    `[vx] vx-reapi: ${req.taskId} could not check its execution record's blobs (${errText(err)}) — executing`,
-                  )
-                  return referenced
-                })
+              ? await untilAborted(client.findMissingBlobs(referenced), req.signal).catch(
+                  (err: unknown) => {
+                    if (req.signal?.aborted === true) throw err
+                    warn(
+                      `[vx] vx-reapi: ${req.taskId} could not check its execution record's blobs (${errText(err)}) — executing`,
+                    )
+                    return referenced
+                  },
+                )
               : []
           // The record's paths are WORKSPACE-relative (rebased when it was
           // written), so the anchor is the workspace root, not the cwd.
+          // Only the replay in this call stops with the attempt: a deferred
+          // one runs later, for a consumer, past this attempt's signal.
           const fromRecord = (created?: string[]): Promise<void> =>
             materialiseOutputs(
               client,
@@ -657,6 +669,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
                 // replayed as a warning under a whole-tree capture: the task
                 // succeeded, a declared output missing, on every run.
                 replay: true,
+                ...(created === undefined || req.signal === undefined ? {} : { stop: req.signal }),
               },
               prior,
               warn,
@@ -671,33 +684,41 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
           // those paths must not have them saved as its outputs. What it
           // overwrote was on disk before (a whole-tree capture lists the
           // inputs) and stays.
+          // An abort takes back the same: core settles the attempt on it and
+          // may retry, and a replay still writing landed over the retry.
           const created: string[] = []
-          const replay = async (): Promise<string> => {
-            const stdout = await this_readStream(client, prior.stdout_raw, prior.stdout_digest)
+          const replay = async (): Promise<[string, string]> => {
+            const streams = await Promise.all([
+              readStream(client, prior.stdout_raw, prior.stdout_digest, `${req.taskId}'s stdout`),
+              readStream(client, prior.stderr_raw, prior.stderr_digest, `${req.taskId}'s stderr`),
+            ])
             if (req.remoteOnly !== true && !deferRecord) await fromRecord(created)
-            return stdout
+            return streams
           }
-          const priorStdout =
+          const printed =
             gone.length > 0
               ? null
-              : await replay().catch(async (err: unknown) => {
+              : await untilAborted(replay(), req.signal).catch(async (err: unknown) => {
                   for (const p of created.reverse()) await rm(p, { recursive: true, force: true })
+                  if (req.signal?.aborted === true) throw err
                   warn(
                     `[vx] vx-reapi: ${req.taskId} could not replay its execution record (${errText(err)}) — executing`,
                   )
                   return null
                 })
-          if (priorStdout !== null) {
+          if (printed !== null) {
+            const [priorStdout, priorStderr] = printed
             // Delivered whatever `capture` says, as on the execute path below:
             // a deferred producer saves nothing, so its replay had printed
             // nothing at all (item 827). Only once the replay has landed, so
             // a replay that falls through does not print twice.
             if (priorStdout.length > 0) req.onStdout(priorStdout)
+            if (priorStderr.length > 0) req.onStderr(priorStderr)
             return {
               exitCode: 0,
               durationMs: Math.round((Bun.nanoseconds() - started) / 1e6),
               stdout: req.capture.stdout === false ? '' : priorStdout,
-              stderr: '',
+              stderr: req.capture.stderr === false ? '' : priorStderr,
               violations: [],
               ...(deferRecord
                 ? { outputs: { kind: 'deferred' as const, materialize: () => fromRecord() } }
@@ -749,103 +770,106 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       // Every upstream at once, and each one's trees at once (F-30): a
       // remote-only upstream costs a record read, a probe and a read per
       // tree, and in sequence N upstreams cost N times that.
-      const grafts = await Promise.all(
-        req.inputs.upstream.map(
-          async (
-            up,
-          ): Promise<{
-            local?: string[]
-            files?: FileGraft[]
-            trees?: TreeGraft[]
-            symlinks?: { path: string; target: string }[]
-          }> => {
-            // LOCAL DISK IS TRUTH when the upstream's outputs are materialised
-            // here (core restored or produced them before this task started).
-            // Grafting from the remote execution record instead can DIVERGE: two
-            // machines racing a nondeterministic miss leave the artifact store
-            // and the execution record holding results of DIFFERENT executions
-            // under one pure-input key, and a worker fed the record would see
-            // bytes this machine's own tasks do not. The graft is for outputs
-            // that exist nowhere locally — a remote-only upstream.
-            // "Materialised here" has to be CHECKED, not assumed. `up.outputs`
-            // comes from the local index, which records what an entry contains —
-            // not whether those files are on this disk right now. A task whose
-            // producer ran remotely and did not bring its outputs home has index
-            // rows and no files, and the tree build then dies on `stat` with
-            // ENOENT naming a path the user never asked about. When they are
-            // genuinely absent, the record graft is the correct source, which is
-            // the branch below.
-            const present = up.outputs.filter((rel) =>
-              existsSync(path.join(req.workspaceRoot, rel)),
-            )
-            if (present.length > 0) {
-              if (present.length !== up.outputs.length) {
-                warn(
-                  `[vx] vx-reapi: ${up.taskId} has ${up.outputs.length - present.length} output${up.outputs.length - present.length === 1 ? '' : 's'} recorded ` +
-                    `but missing on disk — grafting is not possible for a partial set, using what is here`,
-                )
-              }
-              return { local: present }
-            }
-            const record = await client.getActionResult(execDigestFor(up.hash))
-            if (record === null) return {}
-            // A record can OUTLIVE its blobs: the AC and the CAS evict on
-            // independent schedules. On THIS branch nothing is local (that is
-            // why we are grafting), so an evicted blob has no local path to
-            // demote to — the declared upstream's outputs exist NOWHERE. An
-            // action shipped without them is not a degraded build, it is a
-            // different one: a command that tolerates the absence exits 0, and
-            // vx caches that result under a key asserting those inputs were
-            // present. Which upstream bytes a command reads is unknowable —
-            // that is what `dependsOn` declares — so refuse, exactly as core's
-            // own materialisation path does. Verified in one round trip.
-            const referenced = [
-              ...(record.output_files ?? []).map((f) => f.digest),
-              ...(record.output_directories ?? []).map((d) => d.tree_digest),
-            ]
-            const gone = await client.findMissingBlobs(referenced)
-            if (gone.length > 0) {
-              throw new UserError(
-                `upstream ${up.taskId} outputs evicted from the remote store (${gone.length} blob${gone.length === 1 ? '' : 's'}) and never materialised locally — re-run it (e.g. --force)`,
+      const grafts = await untilAborted(
+        Promise.all(
+          req.inputs.upstream.map(
+            async (
+              up,
+            ): Promise<{
+              local?: string[]
+              files?: FileGraft[]
+              trees?: TreeGraft[]
+              symlinks?: { path: string; target: string }[]
+            }> => {
+              // LOCAL DISK IS TRUTH when the upstream's outputs are materialised
+              // here (core restored or produced them before this task started).
+              // Grafting from the remote execution record instead can DIVERGE: two
+              // machines racing a nondeterministic miss leave the artifact store
+              // and the execution record holding results of DIFFERENT executions
+              // under one pure-input key, and a worker fed the record would see
+              // bytes this machine's own tasks do not. The graft is for outputs
+              // that exist nowhere locally — a remote-only upstream.
+              // "Materialised here" has to be CHECKED, not assumed. `up.outputs`
+              // comes from the local index, which records what an entry contains —
+              // not whether those files are on this disk right now. A task whose
+              // producer ran remotely and did not bring its outputs home has index
+              // rows and no files, and the tree build then dies on `stat` with
+              // ENOENT naming a path the user never asked about. When they are
+              // genuinely absent, the record graft is the correct source, which is
+              // the branch below.
+              const present = up.outputs.filter((rel) =>
+                existsSync(path.join(req.workspaceRoot, rel)),
               )
-            }
-            const files = (record.output_files ?? []).map((f) => ({
-              path: f.path, // recorded workspace-relative — see the record write below
-              digest: f.digest,
-              isExecutable: f.is_executable === true,
-            }))
-            // A record's symlinks are outputs too (a worker's own, and a glob's
-            // last-segment matches since item 911); without them the action ran
-            // without an input it declared, and its result was cached (item 920).
-            const symlinks = (record.output_symlinks ?? []).map((sl) => ({
-              path: sl.path,
-              target: sl.target,
-            }))
-            const trees = await Promise.all(
-              (record.output_directories ?? []).map(async (d): Promise<TreeGraft | null> => {
-                const treeBlob = await client.readBlob(d.tree_digest)
-                if (treeBlob === null) {
-                  // Raced an eviction between the completeness check and this
-                  // read; on this branch no local copy exists, so the loss is
-                  // real and silently dropping the graft is the same wrong-result
-                  // hazard as an evicted file.
-                  throw new UserError(
-                    `upstream ${up.taskId} tree ${d.tree_digest.hash.slice(0, 12)} evicted from CAS — re-run it (e.g. --force)`,
+              if (present.length > 0) {
+                if (present.length !== up.outputs.length) {
+                  warn(
+                    `[vx] vx-reapi: ${up.taskId} has ${up.outputs.length - present.length} output${up.outputs.length - present.length === 1 ? '' : 's'} recorded ` +
+                      `but missing on disk — grafting is not possible for a partial set, using what is here`,
                   )
                 }
-                const decodedTree = decodeTreeWithBytes(treeBlob)
-                if (decodedTree.root === undefined) return null
-                return {
-                  path: d.path,
-                  root: decodedTree.root,
-                  children: decodedTree.children,
-                  childDigests: decodedTree.childDigests,
-                }
-              }),
-            )
-            return { files, symlinks, trees: trees.filter((t) => t !== null) }
-          },
+                return { local: present }
+              }
+              const record = await client.getActionResult(execDigestFor(up.hash))
+              if (record === null) return {}
+              // A record can OUTLIVE its blobs: the AC and the CAS evict on
+              // independent schedules. On THIS branch nothing is local (that is
+              // why we are grafting), so an evicted blob has no local path to
+              // demote to — the declared upstream's outputs exist NOWHERE. An
+              // action shipped without them is not a degraded build, it is a
+              // different one: a command that tolerates the absence exits 0, and
+              // vx caches that result under a key asserting those inputs were
+              // present. Which upstream bytes a command reads is unknowable —
+              // that is what `dependsOn` declares — so refuse, exactly as core's
+              // own materialisation path does. Verified in one round trip.
+              const referenced = [
+                ...(record.output_files ?? []).map((f) => f.digest),
+                ...(record.output_directories ?? []).map((d) => d.tree_digest),
+              ]
+              const gone = await client.findMissingBlobs(referenced)
+              if (gone.length > 0) {
+                throw new UserError(
+                  `upstream ${up.taskId} outputs evicted from the remote store (${gone.length} blob${gone.length === 1 ? '' : 's'}) and never materialised locally — re-run it (e.g. --force)`,
+                )
+              }
+              const files = (record.output_files ?? []).map((f) => ({
+                path: f.path, // recorded workspace-relative — see the record write below
+                digest: f.digest,
+                isExecutable: f.is_executable === true,
+              }))
+              // A record's symlinks are outputs too (a worker's own, and a glob's
+              // last-segment matches since item 911); without them the action ran
+              // without an input it declared, and its result was cached (item 920).
+              const symlinks = (record.output_symlinks ?? []).map((sl) => ({
+                path: sl.path,
+                target: sl.target,
+              }))
+              const trees = await Promise.all(
+                (record.output_directories ?? []).map(async (d): Promise<TreeGraft | null> => {
+                  const treeBlob = await client.readBlob(d.tree_digest)
+                  if (treeBlob === null) {
+                    // Raced an eviction between the completeness check and this
+                    // read; on this branch no local copy exists, so the loss is
+                    // real and silently dropping the graft is the same wrong-result
+                    // hazard as an evicted file.
+                    throw new UserError(
+                      `upstream ${up.taskId} tree ${d.tree_digest.hash.slice(0, 12)} evicted from CAS — re-run it (e.g. --force)`,
+                    )
+                  }
+                  const decodedTree = decodeTreeWithBytes(treeBlob)
+                  if (decodedTree.root === undefined) return null
+                  return {
+                    path: d.path,
+                    root: decodedTree.root,
+                    children: decodedTree.children,
+                    childDigests: decodedTree.childDigests,
+                  }
+                }),
+              )
+              return { files, symlinks, trees: trees.filter((t) => t !== null) }
+            },
+          ),
         ),
+        req.signal,
       )
       for (const g of grafts) {
         localUpstreamPaths.push(...(g.local ?? []))
@@ -924,13 +948,13 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       // The action id lets a server group this action's CAS/AC traffic in its
       // UI; named before the upload, which is most of that traffic.
       client.nameAction(actionDigest.hash)
-      const caps = await capabilitiesOnce()
+      const caps = await untilAborted(capabilitiesOnce(), req.signal)
       const upload: Blob[] = [
         ...tree.blobs,
         { digest: commandDigest, data: commandBytes },
         { digest: actionDigest, data: actionBytes },
       ]
-      await client.uploadBlobs(upload, caps.maxBatchBytes)
+      await untilAborted(client.uploadBlobs(upload, caps.maxBatchBytes), req.signal)
 
       // `exec.timeout` rides the Action so the SERVER can enforce it, but a
       // server that ignores it — or has stopped making progress at all —
@@ -998,14 +1022,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
           // is cancelled and the task ends as a killed local one does: 143,
           // which core reports timed out when its timer fired.
           if (operation !== '') await client.cancelOperation(operation).catch(cancelFailed)
-          return {
-            exitCode: 143,
-            durationMs: Math.round((Bun.nanoseconds() - started) / 1e6),
-            stdout: '',
-            stderr: '',
-            violations: [],
-            signal: 'SIGTERM',
-          }
+          return killed(started)
         }
         if (queued.signal.aborted) {
           // Best effort: a server without the service, or one that has lost
@@ -1050,10 +1067,10 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
             return ''
           }
           const [out, err] = await Promise.all([
-            this_readStream(client, result.stdout_raw, result.stdout_digest).catch(
+            readStream(client, result.stdout_raw, result.stdout_digest, 'stdout').catch(
               unread('stdout'),
             ),
-            this_readStream(client, result.stderr_raw, result.stderr_digest).catch(
+            readStream(client, result.stderr_raw, result.stderr_digest, 'stderr').catch(
               unread('stderr'),
             ),
           ])
@@ -1088,11 +1105,18 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       const deferred = req.remoteOnly !== true && req.download === 'deferred'
       const materialised =
         req.remoteOnly !== true && !deferred
-          ? materialiseOutputs(client, matReq, result, warn)
+          ? materialiseOutputs(
+              client,
+              req.signal === undefined ? matReq : { ...matReq, stop: req.signal },
+              result,
+              warn,
+            )
           : Promise.resolve()
+      // A stream the server names and the CAS does not hold fails the task:
+      // read as '', it succeeded printing nothing and was recorded so.
       const logs = Promise.all([
-        this_readStream(client, result.stdout_raw, result.stdout_digest),
-        this_readStream(client, result.stderr_raw, result.stderr_digest),
+        readStream(client, result.stdout_raw, result.stdout_digest, `${req.taskId}'s stdout`),
+        readStream(client, result.stderr_raw, result.stderr_digest, `${req.taskId}'s stderr`),
       ])
       // Settled below with the outputs; a log that cannot be read still
       // fails the task, after the outputs have landed or failed.
@@ -1134,41 +1158,46 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
                   : rel === ''
                     ? workingDirectory
                     : `${workingDirectory}/${rel}`
-              // Stdout rides the record as a blob so a short-circuited repeat run
-              // can replay it. Best-effort: a record without it replays empty,
-              // never wrong bytes.
-              let stdoutDigest: Digest | undefined
-              const stdoutBytes = new TextEncoder().encode(stdout)
-              // Small stdout rides the record itself (`stdout_raw`), which the
-              // replay reads as it reads a digest: two CAS round trips fewer (F-27).
-              const inlineStdout =
-                stdoutBytes.length > 0 && stdoutBytes.length <= INLINE_STDOUT_BYTES
-              // A larger one the server already keeps in CAS is recorded by
-              // its digest: no hash, probe or upload of our own (F-35).
-              if (!inlineStdout && result.stdout_digest !== undefined && stdoutBytes.length > 0) {
-                stdoutDigest = result.stdout_digest
-              } else if (stdoutBytes.length > 0 && !inlineStdout) {
-                const d = sha256(stdoutBytes)
+              // Both streams ride the record so a short-circuited repeat run
+              // replays them. Best-effort: a stream the record could not keep
+              // is left out and replays empty, never as wrong bytes.
+              const kept = async (
+                name: 'stdout' | 'stderr',
+                text: string,
+                serverDigest: Digest | undefined | null,
+              ): Promise<{ raw?: Uint8Array; digest?: Digest }> => {
+                const bytes = new TextEncoder().encode(text)
+                if (bytes.length === 0) return {}
+                // A small one rides the record itself (`*_raw`), which the
+                // replay reads as it reads a digest: two CAS round trips fewer (F-27).
+                if (bytes.length <= INLINE_STREAM_BYTES) return { raw: bytes }
+                // A larger one the server already keeps in CAS is recorded by
+                // its digest: no hash, probe or upload of our own (F-35).
+                if (serverDigest !== undefined && serverDigest !== null) {
+                  return { digest: serverDigest }
+                }
+                const d = sha256(bytes)
                 const missing = await client.findMissingBlobs([d]).catch((err: unknown) => {
                   warn(
-                    `[vx] vx-reapi: ${req.taskId}'s stdout probe failed (${errText(err)}) — uploading it`,
+                    `[vx] vx-reapi: ${req.taskId}'s ${name} probe failed (${errText(err)}) — uploading it`,
                   )
                   return [d]
                 })
-                const uploaded =
-                  missing.length === 0
-                    ? true
-                    : await client.writeBlob(d, stdoutBytes).then(
-                        () => true,
-                        (err: unknown) => {
-                          warn(
-                            `[vx] vx-reapi: ${req.taskId}'s stdout upload failed (${errText(err)}) — recorded without it`,
-                          )
-                          return false
-                        },
-                      )
-                if (uploaded) stdoutDigest = d
+                if (missing.length === 0) return { digest: d }
+                return client.writeBlob(d, bytes).then(
+                  () => ({ digest: d }),
+                  (err: unknown) => {
+                    warn(
+                      `[vx] vx-reapi: ${req.taskId}'s ${name} upload failed (${errText(err)}) — recorded without it`,
+                    )
+                    return {}
+                  },
+                )
               }
+              const [out, err] = await Promise.all([
+                kept('stdout', stdout, result.stdout_digest),
+                kept('stderr', stderr, result.stderr_digest),
+              ])
               // A coarse capture is split into the paths its glob really names
               // before it is recorded — see decomposeOutputDir.
               const declaredGlobs = [
@@ -1208,8 +1237,10 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
               await client
                 .updateActionResult(execDigestFor(cacheKey), {
                   exit_code: 0,
-                  ...(stdoutDigest === undefined ? {} : { stdout_digest: stdoutDigest }),
-                  ...(inlineStdout ? { stdout_raw: stdoutBytes } : {}),
+                  ...(out.digest === undefined ? {} : { stdout_digest: out.digest }),
+                  ...(out.raw === undefined ? {} : { stdout_raw: out.raw }),
+                  ...(err.digest === undefined ? {} : { stderr_digest: err.digest }),
+                  ...(err.raw === undefined ? {} : { stderr_raw: err.raw }),
                   output_files: recorded.files,
                   output_directories: recorded.directories,
                   output_symlinks: recorded.symlinks,
@@ -1245,13 +1276,50 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
     },
   }
   const run = executor.execute.bind(executor)
-  executor.execute = (req) =>
-    client
+  executor.execute = (req) => {
+    const started = Bun.nanoseconds()
+    return client
       .inAction(() => run(req))
       .catch((err: unknown) => {
+        // A step the abort cut short (a record replay, an upstream read, the
+        // upload, a restore) ends the task as the abort at Execute does.
+        if (req.signal?.aborted === true) return killed(started)
         throw namedRefusal(req.taskId, err)
       })
+  }
   return executor
+}
+
+/**
+ * The run's stop or `exec.timeout` ended the task: as a killed local one
+ * ends (143, `SIGTERM`), which core reports timed out when its timer fired.
+ */
+function killed(started: number): ExecuteResult {
+  return {
+    exitCode: 143,
+    durationMs: Math.round((Bun.nanoseconds() - started) / 1e6),
+    stdout: '',
+    stderr: '',
+    violations: [],
+    signal: 'SIGTERM',
+  }
+}
+
+/**
+ * `work`, or a rejection the moment `signal` aborts. The calls `work` made
+ * are not cancelled and run on unheard; a write they would lead to is
+ * refused by the Fence, which checks the same signal.
+ */
+function untilAborted<T>(work: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (signal === undefined) return work
+  // quiet: abandoned on abort, which is the task's outcome
+  work.catch(() => undefined)
+  if (signal.aborted) return Promise.reject(signal.reason)
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => reject(signal.reason)
+    signal.addEventListener('abort', onAbort, { once: true })
+    work.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort))
+  })
 }
 
 /**
@@ -1300,15 +1368,19 @@ async function fetchServerLogs(
  * caught by the node_modules chain test the moment the record
  * short-circuit widened past `remote: 'only'`.
  */
-async function this_readStream(
+async function readStream(
   client: ReapiClient,
   raw: Uint8Array | undefined,
   digest: Digest | undefined | null,
+  what: string,
 ): Promise<string> {
   if (raw !== undefined && raw !== null && raw.length > 0) return new TextDecoder().decode(raw)
   if (digest !== undefined && digest !== null && digest.size_bytes > 0) {
     const bytes = await client.readBlob(digest)
-    if (bytes !== null) return new TextDecoder().decode(bytes)
+    if (bytes === null) {
+      throw new UserError(`${what} ${digest.hash.slice(0, 12)} is missing from the CAS`)
+    }
+    return new TextDecoder().decode(bytes)
   }
   return ''
 }
@@ -1472,6 +1544,8 @@ type MaterialiseRequest = ExecuteRequest & {
    * whose capture holds more than the outputs warns instead.
    */
   readonly replay?: boolean
+  /** The attempt's abort: once it fires, nothing more is written. */
+  readonly stop?: AbortSignal
 }
 
 /**
@@ -1545,7 +1619,7 @@ export async function materialiseOutputs(
     }
     return false
   }
-  const fence = new Fence(req.workspaceRoot, underDeclared)
+  const fence = new Fence(req.workspaceRoot, underDeclared, req.stop)
   // A file or link no declared glob names is neither fetched nor written:
   // the workspace root was the only fence, so a result (or a record planted
   // in the action cache) could write `.git/hooks/post-checkout` 0755 or
@@ -1644,6 +1718,12 @@ class Fence {
     root: string,
     /** A workspace-relative path the task declared as output, or under one. */
     private readonly declared: (rel: string) => boolean = () => true,
+    /**
+     * Once aborted, nothing more is written: each write is preceded by
+     * `landing` or `dir`, which then refuse. A Read already in flight when
+     * the attempt was abandoned lands here, not on disk.
+     */
+    private readonly stop?: AbortSignal,
   ) {
     this.root = path.resolve(root)
   }
@@ -1666,6 +1746,7 @@ class Fence {
     const rel = toPosix(path.relative(this.realRoot, path.join(await real, path.basename(abs))))
     if (rel === '..' || rel.startsWith('../') || path.isAbsolute(rel) || !this.declared(rel))
       throw this.refuse(abs)
+    this.stop?.throwIfAborted()
   }
 
   /** `rel` joined under `base`, refused when the join leaves the root. */
@@ -1687,6 +1768,7 @@ class Fence {
 
   /** `dir`, or its deepest existing ancestor, resolves inside the root. */
   async dir(dir: string): Promise<void> {
+    this.stop?.throwIfAborted()
     if (this.checked.has(dir)) return
     // quiet: a local realpath; the root as given stands
     this.realRoot ??= await realpath(this.root).catch(() => this.root)
@@ -1703,6 +1785,7 @@ class Fence {
       if (probe === this.root || path.dirname(probe) === probe) break
       probe = path.dirname(probe)
     }
+    this.stop?.throwIfAborted()
     this.checked.add(dir)
   }
 
@@ -1839,8 +1922,8 @@ async function placeSymlink(
   }
 }
 
-/** Stdout up to this size is recorded inline (`stdout_raw`) rather than as a CAS blob. */
-const INLINE_STDOUT_BYTES = 64 * 1024
+/** A stream up to this size is recorded inline (`stdout_raw`, `stderr_raw`), not as a CAS blob. */
+const INLINE_STREAM_BYTES = 64 * 1024
 
 /** Small blobs a restore holds in memory at once, fetched batched. */
 const TREE_FETCH_WINDOW_BYTES = 64 * 1024 * 1024

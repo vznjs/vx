@@ -97,7 +97,7 @@ function connection(options: ReapiPluginOptions): ReapiOptions | undefined {
   // socket path is the file system's to read.
   const given = options.endpoint?.trim()
   const endpoint =
-    given?.startsWith('unix') === true ? given : given?.replace(/^(.*[^/:])\/+$/, '$1')
+    given?.startsWith('unix:') === true ? given : given?.replace(/^(.*[^/:])\/+$/, '$1')
   if (endpoint === undefined || endpoint === '') return undefined
   assertEndpoint(endpoint, from)
   // A secrets file's trailing newline sent a name no blob is under, and

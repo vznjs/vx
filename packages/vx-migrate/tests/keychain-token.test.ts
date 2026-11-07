@@ -101,7 +101,8 @@ describe('turboCache(): option, env, config file, then the keychain', () => {
     const srv = server()
     const c = turbo({}, srv.fetchImpl)
     expect(await c.has('aa')).toBeNull()
-    expect(await c.get('aa')).toBeNull()
+    // No answer, not "none held": a null forgot the hits the index kept.
+    expect(await c.get('aa')).toBeUndefined()
     await c.put('aa', new Blob(['x']), { durationMs: 1 })
     expect(srv.auth).toEqual([])
   })

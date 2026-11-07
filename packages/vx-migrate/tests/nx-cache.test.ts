@@ -192,8 +192,9 @@ describe('NxRemoteCache against the spec server', () => {
     const c = cache('also-wrong')
     const names = ['get-a', 'get-b', 'has', 'put']
     const miss: Record<string, unknown> = {
-      'get-a': null,
-      'get-b': null,
+      // No answer, not "none held": a null forgot the hits the index kept.
+      'get-a': undefined,
+      'get-b': undefined,
       has: null,
       put: false,
     }
@@ -220,7 +221,8 @@ describe('NxRemoteCache against the spec server', () => {
     const bad = cache('nope')
     await expect(bad.get('aa11')).rejects.toThrow(/401.*invalid token/)
     const n = srv.seen.length
-    expect(await bad.get('aa11')).toBeNull()
+    // No answer: a null said the remote holds none, and core forgot the hit.
+    expect(await bad.get('aa11')).toBeUndefined()
     expect(await bad.has('aa11')).toBeNull()
     // Not sent, so core counts no upload.
     expect(await bad.put('cc33', new Blob(['x']))).toBe(false)
