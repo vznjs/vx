@@ -41,7 +41,8 @@ export interface RunStartInfo {
  * refs — zero-copy, because the default terminal subscriber runs on the
  * same thread and reads those objects directly. Crossing a thread or RPC
  * needs the serializable WireEvent form (see `projectNode` / `toWireEvent`
- * below); that mapping is the boundary's job, not the producer's.
+ * below); that mapping is the boundary's job, not the producer's. A
+ * plugin gets read-only views of them (orchestrator/read-only.ts).
  */
 export type RunEvent =
   | { kind: 'run:start'; info: RunStartInfo }

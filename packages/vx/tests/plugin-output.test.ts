@@ -147,6 +147,36 @@ describe('the output stage', () => {
     expect(r.stdout).toContain('pkg-a#hello')
   })
 
+  // A sync throw's event was drawn by core; a rejection's was lost.
+  it('core draws the task a rejected taskComplete was handed, as after a throw', async () => {
+    const root = await fixture([
+      pluginSource(
+        'org/crash',
+        `{ output() { return { ...${PRINTER}, async taskComplete() { throw new Error('boom') } } } }`,
+      ),
+    ])
+    const r = vx(root)
+    expect(r.code).toBe(0)
+    expect(r.stderr).toContain(
+      "[vx] plugin 'org/crash' output failed: boom; vx renders the rest of the run",
+    )
+    expect(r.stdout).toMatch(/^└─ pkg-a#hello ── \(\d+ms\) success$/m)
+  })
+
+  // Strict-mode plugin code: the write throws, and core renders the rest.
+  it("a Logger's write to what it is handed changes no row core draws", async () => {
+    const root = await fixture([
+      pluginSource(
+        'org/flip',
+        `{ output() { return { ...${PRINTER}, taskComplete(node, o) { o.status = 'failed' } } } }`,
+      ),
+    ])
+    const r = vx(root)
+    expect(r.code).toBe(0)
+    expect(r.stderr).toMatch(/\[vx\] plugin 'org\/flip' output failed: .*read-?only/i)
+    expect(r.stdout).toMatch(/^└─ pkg-a#hello ── \(\d+ms\) success$/m)
+  })
+
   it('an output hook that never answers is passed over in time, and core renders the run', async () => {
     // Unbounded, it held the run before its first task until the loop
     // drained: exit 1, the task never run (telemetry's item 921).

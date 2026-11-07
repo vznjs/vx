@@ -696,9 +696,9 @@ Hard invariants of the remote prefetch:
   batch answer this run said the key is absent; `reapi()` looks the
   action up beside its upload and keeps a stored result; Nx servers
   answer 409). A `put` told `replace` (the stored bytes did not read
-  back) writes over them, or, on a wire that cannot (`vxCache()`: the
-  server never replaces an artifact it holds), sends nothing, returns
-  `false` and says so once. `ctx.cache.put` and a run's own entries send
+  back) writes over them, or, on a wire that cannot, returns `false`
+  (`vxCache()` sends nothing, as the server never replaces an artifact
+  it holds, and says so once; `nxCache()` meets the 409). `ctx.cache.put` and a run's own entries send
   the `put` alone.
 - **`--dry` batches too.** The plan derives every key first, then asks
   each remote with `hasMany` once, and keeps the hits for the run that
@@ -710,7 +710,7 @@ Hard invariants of the remote prefetch:
   `CorruptArtifactError`, core's or a layer's own digest or signature
   check) is uploaded again after the task re-runs, held or not, with
   `replace`, so the remote heals. A remote that cannot replace it
-  (`vxCache()`) keeps missing the key until its bucket expires it; the
+  (`vxCache()`, `nxCache()`) keeps missing the key until it expires; the
   upload is not counted as landed, so no DTE worker is told it did.
 - **Said once, and said whole.** The warning names the operation
   (`probe`, `download`, `upload`), the artifact and the layer's

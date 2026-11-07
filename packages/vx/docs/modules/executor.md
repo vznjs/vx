@@ -36,9 +36,11 @@ cpuPeak; cpuAvg; memoryPeakBytes; memoryAvgBytes; utilization }`), asked
   under `--continue=never` a failure aborts its `signal` and it is skipped)
   — `remote: true` declares that the executor runs the command somewhere
   else (so it is never offered a `pinnedLocal` task); `sandbox: true`
-  says a remote one enforces `req.sandbox` where it runs and returns the
-  violations, so a sandboxed task and its dependants are not pinned for
-  it (`@vzn/vx-dte`'s workers run them through `localFloor`, which also stops
+  says it enforces `req.sandbox` where it runs and returns the
+  violations: only such an executor is offered a task that declares
+  `exec.sandbox`, here or remote (one that ran it unsandboxed passed a
+  boundary it never checked, and cached the output), and for a remote one
+  a sandboxed task's dependants are not pinned either (`@vzn/vx-dte`'s workers run them through `localFloor`, which also stops
   a request's children when its `signal` aborts and no run holds them);
   a cached task's `req.sandbox.keyed` lists the project directories its
   key answers for, so such an executor can build the request again on
@@ -171,9 +173,11 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   executor-reported placement label (a REAPI worker id); absent = this
   host. Rides `TaskOutcome.where` into telemetry (OTel:
   `vx.task.where`), the task's row and the run history.
-- `selectExecutor(executors, task, label?)` — first executor, in order,
+- `selectExecutor(executors, task, label?, pinnedFor?, barred?)` — first executor, in order,
   that may take the task: a `remote` executor is skipped outright for a
-  `pinnedLocal` task, then `accepts` decides. An `accepts` that throws
+  task `pinnedFor` it says is pinned (default `task.pinnedLocal`), any
+  executor `barred` names is skipped (the run bars one that does not
+  enforce the sandbox from a sandboxed task), then `accepts` decides. An `accepts` that throws
   is a `UserError` naming the executor as `label` does (the run passes
   `executorLabel`, which names its plugin too; item 1022), and so is
   one that answers a Promise (`async accepts`), which read as a yes,
@@ -233,8 +237,9 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   restore there). Nothing is pinned for it: `exec.remote: false`,
   `exec.interactive`, sandboxed and probed tasks and every server a
   dependant needs go to it. A task that would still land on the local
-  floor (a platform it does not offer, one it declines, a probe it does
-  not check, a server requested on its own) refuses the run, naming it.
+  floor (a platform it does not offer, one it declines, a sandbox or a
+  probe it does not enforce, a server requested on its own) refuses the
+  run, naming it.
 - A task is `pinnedLocal` when it is persistent, transitively depends on a
   persistent task its executor does not carry, is
   sandboxed (the sandbox is this machine's machinery), depends on a

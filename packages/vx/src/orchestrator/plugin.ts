@@ -31,7 +31,8 @@ import {
 } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import type { ProjectMeta } from '../workspace/index.js'
-import type { EventBus, Logger, RunStartInfo } from '../report/index.js'
+import type { EventBus, Logger, RunEvent, RunStartInfo } from '../report/index.js'
+import { readOnlyEvents } from './read-only.js'
 import type { CiContext } from './run-context.js'
 import type { CacheFacts, TaskArtifacts } from './task-artifacts.js'
 import type { TelemetryContext, TelemetrySink } from './telemetry.js'
@@ -234,9 +235,10 @@ export interface VxPlugin {
    * renderer in place. The first plugin, in declaration order, that
    * returns one renders the run; the rest are not asked. Not consulted
    * when an embedder passed its own `log`. A logger that throws or rejects
-   * hands the rest of the run back to core's renderer with one warning; a
-   * hook that does not answer within the teardown bound (3 s) is passed
-   * over with one.
+   * hands the rest of the run back to core's renderer with one warning, and
+   * core draws the event it was handed; a hook that does not answer within
+   * the teardown bound (3 s) is passed over with one. The nodes and
+   * outcomes it is handed are read-only: a write throws.
    */
   output?(ctx: OutputContext): Logger | undefined | Promise<Logger | undefined>
 
@@ -268,7 +270,8 @@ export interface VxPlugin {
  * task that saved no entry, and a failed task's log and the files its
  * outputs left when `cache.upload.failures` covers the run. Read
  * them with `ctx.cache.getRun(name)`. Core keeps no manifest of its own; a
- * plugin that wants one writes it from here (`ctx.cache.put`).
+ * plugin that wants one writes it from here (`ctx.cache.put`). Frozen:
+ * every teardown reads the same report.
  */
 export interface RunReport {
   /** The `run_id` the run's history rows and telemetry carry. */
@@ -317,6 +320,8 @@ export interface PluginSetupContext extends BaseContext, PluginSecrets {
   /**
    * Subscribe a lifecycle handler; it leaves with the run. A throw or a
    * rejection warns once and switches the plugin's handlers off for the run.
+   * What a handler is handed is read-only: a write throws, so a handler
+   * can never turn a failed task into a pass.
    */
   on<K extends PluginHookName>(hook: K, handler: PluginHookHandlers[K]): void
 }
@@ -439,7 +444,8 @@ export interface ProjectHookContext extends BaseContext {
    * second time. The same array is handed to every visit of a run and a
    * new one to the next run — a plugin instance outlives a run under `vx
    * watch`, so a per-run memo keys on this array's identity, never on the
-   * process.
+   * process. Frozen, entries too: a hook edits its own project's config,
+   * never which projects there are or where they live.
    */
   readonly projects: readonly ProjectMeta[]
   /**
@@ -656,7 +662,8 @@ export interface ExecutorContext extends BaseContext {
 export interface PluginContext extends PluginSetupContext {
   /**
    * The run event bus. A plugin can subscribe directly if its needs exceed
-   * the hooks; the subscription ends with the run, as a hook's does.
+   * the hooks; the subscription ends with the run, as a hook's does. The
+   * events a subscriber gets are read-only, as a hook's are.
    */
   readonly bus: EventBus
 }
@@ -670,16 +677,16 @@ export type PluginHookName =
   | 'onRunStatus'
   | 'onRunEnd'
 
-// A Record so the compiler holds it to `PluginHookName` both ways: a name
-// missing here, or one the type lacks, does not compile.
-const HOOK_NAMES: Record<PluginHookName, true> = {
-  onRunStart: true,
-  onTaskStart: true,
-  onTaskStdout: true,
-  onTaskStderr: true,
-  onTaskComplete: true,
-  onRunStatus: true,
-  onRunEnd: true,
+// Each hook's event. A Record so the compiler holds it to `PluginHookName`
+// both ways: a name missing here, or one the type lacks, does not compile.
+const HOOK_EVENTS: Record<PluginHookName, RunEvent['kind']> = {
+  onRunStart: 'run:start',
+  onTaskStart: 'task:start',
+  onTaskStdout: 'task:stdout',
+  onTaskStderr: 'task:stderr',
+  onTaskComplete: 'task:complete',
+  onRunStatus: 'run:status',
+  onRunEnd: 'run:end',
 }
 
 export interface PluginHookHandlers {
@@ -932,6 +939,9 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
   const disposers: Array<() => void> = []
   // By object, not name: one package can export two plugins.
   const disabled = new Set<Plugin>()
+  // Made at the first event a plugin hears: a run no handler hears pays nothing.
+  let readOnly: ((event: RunEvent) => RunEvent) | undefined
+  const viewOf = (event: RunEvent): RunEvent => (readOnly ??= readOnlyEvents())(event)
 
   for (const plugin of plugins) {
     if (typeof plugin.name !== 'string' || plugin.name.length === 0) {
@@ -976,7 +986,7 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
             if (disabled.has(plugin)) return
             let ret: unknown
             try {
-              ret = subscriber(event)
+              ret = subscriber(viewOf(event))
             } catch (err) {
               fail('a bus subscriber', err)
               return
@@ -990,9 +1000,9 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
       on(hook, handler) {
         // A misspelt name ('taskComplete') subscribed a handler that never
         // ran, and no word of it; a config file has no type-checker (H-16).
-        if (!Object.hasOwn(HOOK_NAMES, hook)) {
+        if (!Object.hasOwn(HOOK_EVENTS, hook)) {
           throw new Error(
-            `ctx.on: unknown hook '${String(hook)}' (one of ${Object.keys(HOOK_NAMES).join(', ')})`,
+            `ctx.on: unknown hook '${String(hook)}' (one of ${Object.keys(HOOK_EVENTS).join(', ')})`,
           )
         }
         // Taken, it threw at the first event and switched the whole plugin off.
@@ -1002,8 +1012,9 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
           )
         }
         const onFail = (err: unknown): void => fail(hook, err)
-        const dispose = bus.subscribe((event) => {
+        const dispose = bus.subscribe((live) => {
           if (disabled.has(plugin)) return
+          const event = HOOK_EVENTS[hook] === live.kind ? viewOf(live) : live
           // Not awaited: the bus is synchronous and plugin work runs off the
           // critical path. A handler's rejection is caught like its throw.
           let ret: unknown

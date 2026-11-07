@@ -232,13 +232,19 @@ export class NxRemoteCache implements RemoteCacheLayer {
   }
 
   // Nx's record carries no duration.
-  async put(hash: string, body: Blob): Promise<void | false> {
+  async put(hash: string, body: Blob, meta?: { replace?: true }): Promise<void | false> {
     // Nothing sent, so no upload is counted.
     if (this.disabled || this.writesRefused) return false
     const res = await this.request('PUT', hash, body)
     if (res === undefined) return false
     // The spec answers 200; a store behind it may say 201 or 204.
-    if (res.ok || res.status === 409) return
+    if (res.ok) return
+    // The spec's 409 keeps the held record: fine for a fresh put, but a
+    // `replace` came to write over a copy that did not read back.
+    if (res.status === 409) {
+      await res.body?.cancel()
+      return meta?.replace === true ? false : undefined
+    }
     throw await refusal(res)
   }
 }

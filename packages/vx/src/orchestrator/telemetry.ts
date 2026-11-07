@@ -10,7 +10,9 @@
 // rendering-oriented `WireEvent` stream.
 //
 // A sink is observe-only BY CONSTRUCTION: its only input is a plain-data
-// record (one object every sink receives, not frozen); its `TelemetryContext` carries read-only metadata and NO mutable
+// record (one object every sink receives, frozen once, deep: a sink that
+// cleared a `task.end`'s `failedAttempts` cleared the outcome's own and
+// crashed the run's failure log); its `TelemetryContext` carries read-only metadata and NO mutable
 // run handle (no bus, no Cache, no RunRequest). There is no API path from a
 // sink back into scheduling/caching/exec — telemetry provably cannot change
 // what or how tasks run. Contrast `cache`/`executor`, which return objects
@@ -35,6 +37,7 @@ import {
   thrownMessage,
 } from '../util/index.js'
 import { neverStarted, type RunEvent, type RunEventSubscriber } from '../report/index.js'
+import { freezeDeep } from './read-only.js'
 
 /** Bumped when the record shape changes. Readers MUST check `v`. */
 export const TELEMETRY_SCHEMA_VERSION = 4
@@ -396,7 +399,11 @@ export function assembleRunSummary(
   }
 }
 
-/** A telemetry consumer. Observe-only: receives records, holds no run handle. */
+/**
+ * A telemetry consumer. Observe-only: receives records, frozen, holds no
+ * run handle. A write to a record throws, and the sink is switched off for
+ * the run as for any throw.
+ */
 export interface TelemetrySink {
   readonly name?: string
   /**
@@ -625,6 +632,9 @@ export function createTelemetrySource(args: {
   }
 
   function deliver(record: TelemetryRecord): void {
+    // Once, for every sink: a `task.end` holds the outcome's own arrays, and
+    // a sink that cleared `failedAttempts` crashed the run's failure log.
+    freezeDeep(record)
     for (const sink of sinks) {
       if (disabled.has(sink) || sink.onRecord === undefined) continue
       const kinds = sink.wants ?? DEFAULT_KINDS
@@ -739,6 +749,7 @@ export function createTelemetrySource(args: {
       }
     },
     emitSummary(summary: RunSummaryRecord): void {
+      freezeDeep(summary)
       for (const sink of sinks) {
         if (disabled.has(sink) || sink.onRunSummary === undefined) continue
         try {

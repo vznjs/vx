@@ -288,6 +288,8 @@ export function acme(): VxPlugin {
 and the log and outputs vx kept in the remote. `ctx.cache.getRun(name)`
 reads them back. See the [API](../../api/).
 
+After Ctrl-C, `teardown` gets no report: the run did not end.
+
 ---
 
 ## A verb and a sink
@@ -345,8 +347,10 @@ export default defineWorkspace({ plugins: [hello()] })
 ## Draw the terminal
 
 `output` returns a `Logger` that gets every line vx would print. Decline
-off a terminal so pipes, CI and agents read what they always did. A
-`Logger` that throws hands the run back to vx's renderer.
+off a terminal so pipes, CI and agents read what they always did.
+
+A `Logger` that throws or rejects hands the run back to vx's renderer,
+which draws what it was handed.
 
 ```ts
 import { definePlugin, type VxPlugin } from '@vzn/vx'
@@ -373,6 +377,10 @@ export function dots(): VxPlugin {
 `executor` returns a `TaskExecutor`: a `name`, an optional `accepts`,
 and `execute`, which runs one command. A task every executor declines
 runs on this machine.
+
+A task with `exec.sandbox` is offered only to an
+executor that declares `sandbox: true` and enforces `req.sandbox`;
+otherwise vx runs it here, in its own sandbox.
 
 Stop on `req.signal` (Ctrl-C or `exec.timeout`), and stop the shell's
 children too: vx cannot reach them.
@@ -572,6 +580,13 @@ misses.
 - A `name` on the hooks object: the name is the package's.
 - A `config` or `project` edit the loader would refuse from a user.
 - A verb that names a core verb, or that two packages both declare.
+
+What a plugin observes is read-only: what a `ctx.on` handler, a bus
+subscriber or a `Logger` gets, telemetry records, the run report and a
+`project` hook's `ctx.projects`.
+
+A write to them throws, so a handler can never turn a failed task into
+a pass.
 
 A sink, `ctx.on` handler or `admit` that throws is switched off for the
 run with one warning. A verb that throws fails in one line.

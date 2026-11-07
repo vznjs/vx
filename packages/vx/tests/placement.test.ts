@@ -321,6 +321,7 @@ describe('placeTasks — an exclusive executor leaves this machine nothing', () 
     exclusive: true,
     servers: true,
     runtime: true,
+    sandbox: true,
     platforms: ['linux-x64'],
     execute: () => {
       throw new Error('never runs')
@@ -395,7 +396,7 @@ describe('placeTasks — what an executor is offered, and where a task lands', (
 
   it('accepts() is offered the task as placement describes it', () => {
     const offered: TaskPlacement[] = []
-    const lib = node('lib#build', { command: 'tsc -b', sandbox: {} })
+    const lib = node('lib#build', { command: 'tsc -b', remote: false })
     ;(lib.config as { cache?: unknown }).cache = true
     placeTasks(graph(lib, node('app#lint', { command: 'oxlint' })), [taker('x', {}, offered)])
     expect(offered).toEqual([
@@ -468,7 +469,7 @@ describe('a remote executor that enforces the sandbox', () => {
       throw new Error('never runs')
     },
   })
-  const local: TaskExecutor = { name: 'local', execute: () => Promise.reject(new Error('no')) }
+  const local = localExecutor()
   const g = () =>
     graph(
       node('a#lint', { sandbox: {} }),
@@ -490,6 +491,42 @@ describe('a remote executor that enforces the sandbox', () => {
     const p = placeTasks(g(), [remote(false), local])
     expect(p.executors.get('a#lint')!.name).toBe('local')
     expect(p.executors.get('a#test')!.name).toBe('local')
+  })
+})
+
+// A plugin that ran a sandboxed task on this machine with no sandbox let it
+// read another project and cached the output: a stale hit (2026-11-07).
+describe('a sandboxed task goes only to an executor that enforces the sandbox', () => {
+  const floor = localExecutor()
+  const here = (sandbox: boolean): TaskExecutor => ({
+    name: sandbox ? 'boxing' : 'shell',
+    sandbox,
+    execute: () => {
+      throw new Error('never runs')
+    },
+  })
+  const g = () =>
+    graph(node('a#build', { sandbox: {} }), node('a#test', {}, ['a#build']), node('a#lint', {}))
+
+  it('one that runs tasks here without it leaves the sandboxed task to the floor', () => {
+    const p = placeTasks(g(), [here(false), floor])
+    expect([...p.executors].map(([id, e]) => [id, e.name])).toEqual([
+      ['a#build', 'local'],
+      ['a#test', 'shell'],
+      ['a#lint', 'shell'],
+    ])
+  })
+
+  it('one that declares it takes the sandboxed task', () => {
+    const p = placeTasks(g(), [here(true), floor])
+    expect(p.executors.get('a#build')!.name).toBe('boxing')
+  })
+
+  it('an exclusive one without it refuses the run', () => {
+    const sole: TaskExecutor = { ...here(false), remote: true, exclusive: true }
+    expect(() => placeTasks(g(), [sole, floor])).toThrow(
+      "a#build would run on this machine, and executor 'shell' runs every task elsewhere: it does not enforce exec.sandbox",
+    )
   })
 })
 

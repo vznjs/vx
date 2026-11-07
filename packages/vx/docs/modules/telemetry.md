@@ -186,8 +186,11 @@ elsewhere (the run history keeps it a success).
 ## Invariants
 
 - **Observe-only by construction**: sinks receive plain-data records and
-  a read-only context. A record is one object every sink receives, and
-  it is not frozen, so a sink must not change it — no bus, no Cache, no path back into scheduling.
+  a read-only context. A record and the summary are one object every sink
+  receives, frozen once and deep (`freezeDeep`), so a sink's write throws
+  and switches that sink off: it reaches neither core (a `task.end` holds
+  the outcome's own arrays) nor a later sink. No bus, no Cache, no path
+  back into scheduling (`plugin-read-only.test.ts`).
 - **Crash isolation**: a throwing sink is disabled for the run, never
   propagates, and so is an `async` hook that rejects; it is said once,
   however many rejections follow (`telemetry-async-hooks.test.ts`).

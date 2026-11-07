@@ -140,6 +140,7 @@ src/orchestrator/plugin-host.ts
 src/orchestrator/plugin.ts
 src/orchestrator/prepare.ts
 src/orchestrator/projects.ts
+src/orchestrator/read-only.ts
 src/orchestrator/remote-prefetch.ts
 src/orchestrator/run-artifacts.ts
 src/orchestrator/run-context.ts
