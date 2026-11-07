@@ -192,11 +192,26 @@ readers that reach it here.
   (D-122). `globalThis` is watched with the built-ins above: put back,
   refused naming `globalThis.<key>`; a constant configs share goes in a
   module each one imports. Cost: +3 ms on a cold 300-config load, none warm.
-  Not covered: first loads share the module registry, so a config that
-  mutates an imported module's state is read the same way by the configs
-  loaded after it (probed: `--all` read `leaked`, `--filter` of the reader
-  `none`). Isolating it would take a worker per config, which D-68 measured
-  out; keep shared modules constant.
+- Nor change a module another config imports: first loads share the
+  module registry, so a config's `reg.push('a')` on a shared module reached
+  every config evaluated after it, and `vx lock` wrote b's `echo a,b` beside
+  a and `echo b` without it, or when a loaded later. Isolating each config
+  would take a worker per config, which D-68 measured out. Instead, before
+  any config evaluates, a round of several first loads imports each local
+  module that two or more of them reach by static import, in the order the
+  configs reach them, and notes what its exports hold: every value reached
+  through own properties and `Map` / `Set` entries, compared by identity,
+  getters not called (`module-state.ts`). Once every config has loaded, a
+  change is refused, naming the export and the module; a throwaway worker
+  evaluates each importer alone to name the config that made it, as
+  D-119 does. Importing first evaluates nothing a config would not, and
+  what could make a shared module evaluate differently by order is a
+  global or another shared module, both refused when changed. Shared
+  modules that change one another as they evaluate do so in every round
+  alike and are not refused. Not reached: state a module keeps unexported
+  behind a function, a module reached only by dynamic `import()`, and a
+  repeat load in the worker. Cost: none measured on a cold load of 1,000
+  configs sharing one preset (min of 20: 150.7 → 144.0 ms).
 - A first load may not change `process.env` either: a config that set
   a variable gave it to every project's `passThrough` and to vx's own
   `VX_*` reads, and a repeat load, in a worker, gave it to neither

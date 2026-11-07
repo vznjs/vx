@@ -618,12 +618,15 @@ function realDirOf(file: string): string {
  * (item 949). A file that cannot be read ends its branch; an import that
  * cannot be resolved is still listed, by the names it would have.
  * `configSource` is the config's, when the caller has read it; `read` reads the
- * rest, for a caller that keeps what was read.
+ * rest, for a caller that keeps what was read. `statics`, when given,
+ * gets each file the config reaches through static imports alone: the ones
+ * its evaluation always evaluates, a dynamic `import()` aside.
  */
 export async function configImports(
   configPath: string,
   configSource?: string,
   read: (file: string) => Promise<string> = (file) => Bun.file(file).text(),
+  statics?: Set<string>,
 ): Promise<string[]> {
   const seen = new Set<string>([configPath])
   const memo = lookupMemo()
@@ -640,21 +643,20 @@ export async function configImports(
     } finally {
       given = undefined
     }
-    let specs: string[]
+    let specs: Array<{ path: string; kind: string }>
     try {
-      specs = scanner(TS_EXT.has(path.extname(file)) ? 'ts' : 'js')
-        .scanImports(source)
-        .map((i) => i.path)
+      specs = scanner(TS_EXT.has(path.extname(file)) ? 'ts' : 'js').scanImports(source)
     } catch {
       // A source the parser refuses (mid-edit) keeps the imports a plain
       // match sees: watching too few files is what this list exists to
       // prevent.
       specs = [...source.matchAll(/\bfrom\s*['"]([^'"]+)['"]|\bimport\s*['"]([^'"]+)['"]/g)].map(
-        (m) => (m[1] ?? m[2])!,
+        (m) => ({ path: (m[1] ?? m[2])!, kind: 'import-statement' }),
       )
     }
+    const fromStatic = statics !== undefined && (file === configPath || statics.has(file))
     let dir: string | undefined
-    for (const spec of specs) {
+    for (const { path: spec, kind } of specs) {
       let t: ReturnType<typeof localTarget>
       try {
         dir ??= realDirOf(file)
@@ -679,6 +681,7 @@ export async function configImports(
       seen.add(resolved)
       out.push(resolved)
       queue.push(resolved)
+      if (fromStatic && kind === 'import-statement') statics.add(resolved)
     }
   }
   return out

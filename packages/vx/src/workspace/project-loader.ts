@@ -11,12 +11,14 @@ import {
   evalBudgetMs,
   evalDeadline,
   evaluateConfigFresh,
+  modulesChangedBy,
   thrownValueMessage,
   WATCHED_BUILTIN_NAMES,
 } from './config-eval.js'
 import { configImports, hasEsmExport, unprovidedBareImports } from './config-imports.js'
 import { readOnce, unreadable } from './load-reads.js'
 import { buildCompiled, loadCompiled, loadedModules } from './config-bytecode.js'
+import { changedExports, exportState, type ExportState } from './module-state.js'
 
 // The validator lives in config-schema.ts; re-exported so a reader that
 // reaches the loader for it (the tests do) keeps working.
@@ -206,9 +208,11 @@ async function loadDefaultExport(
   compiledRoot?: string,
   /** File texts read for the refusal, kept across one load's configs. */
   reads = new Map<string, Promise<string>>(),
+  /** The round refused unprovided imports in the config and its closure already. */
+  checked = false,
 ): Promise<unknown> {
   const text = new TextDecoder().decode(bytes)
-  refuseUnprovided(text, configPath, configPath, kind)
+  if (!checked) refuseUnprovided(text, configPath, configPath, kind)
   // No random bust for `vx lock`: a project config reaches this import
   // only on its FIRST load in the process, so nothing is cached under the
   // URL yet, and a repeat load (the one that could replay an evaluation
@@ -250,7 +254,7 @@ async function loadDefaultExport(
     // The worker's budget, here too: a top-level await that never settled
     // while a timer kept the loop alive hung `vx run` for good, silently
     // (D-66).
-    await refuseUnprovidedClosure(text, configPath, kind, reads)
+    if (!checked) await refuseUnprovidedClosure(text, configPath, kind, reads)
     const budget = evalBudgetMs()
     ns = (await Promise.race([
       plain === null
@@ -389,13 +393,15 @@ const SCRIPT = /\.[cm]?[jt]sx?$/
  * refused (L-22; `--no-install` holds only the shebang, not `bun src/bin.ts`
  * or an embedder). Only a source evaluation pays: a fresh bundle resolved
  * every import it holds. `reads` keeps each file's text for the load's other
- * configs: a preset a thousand configs share is read once.
+ * configs: a preset a thousand configs share is read once. `statics` gets
+ * the scripts reached by static import (`configImports`).
  */
 async function refuseUnprovidedClosure(
   source: string,
   configPath: string,
   kind: string,
   reads: Map<string, Promise<string>>,
+  statics?: Set<string>,
 ): Promise<void> {
   if (!RELATIVE_IMPORT.test(source)) return
   const read = (file: string): Promise<string> => {
@@ -403,7 +409,7 @@ async function refuseUnprovidedClosure(
     if (text === undefined) reads.set(file, (text = Bun.file(file).text()))
     return text
   }
-  for (const file of await configImports(configPath, source, read)) {
+  for (const file of await configImports(configPath, source, read, statics)) {
     if (!SCRIPT.test(file)) continue
     const text = await read(file).catch(() => null)
     if (text !== null) refuseUnprovided(text, file, configPath, kind)
@@ -565,6 +571,108 @@ function throwSite(stack: string, configPath: string): string | undefined {
   return `${sites[0]}, from ${own}`
 }
 
+// A module several configs import is evaluated once in the process, so a
+// config that changed it handed the change to every config evaluated after
+// it: b locked `echo a,b` beside a, and `echo b` alone or when a loaded
+// later. So before any config evaluates, the round imports each local
+// module that more than one first load reaches by static import, in the
+// order the configs reach them, notes what each one's exports hold, and
+// refuses a change to them once every config has loaded. Importing them
+// first evaluates nothing a config would not: whatever could make a shared
+// module evaluate differently by order is a global or another shared
+// module, both refused when changed.
+interface ModuleWatch {
+  /** Each shared module, its namespace, its state before any config ran, and its importers. */
+  modules: Array<{ file: string; ns: object; state: ExportState; owners: string[] }>
+  /** First loads whose unprovided imports, closure included, were refused here already. */
+  checked: Set<string>
+}
+
+async function watchSharedModules(
+  prepared: ReadonlyArray<{ configPath: string; bytes: Uint8Array }>,
+  reads: Map<string, Promise<string>>,
+): Promise<ModuleWatch> {
+  const statics = await Promise.all(
+    prepared.map(async ({ configPath, bytes }) => {
+      if (loadedConfigs.has(configPath)) return undefined
+      const text = new TextDecoder().decode(bytes)
+      // No relative import, no module to share: its own load checks it, as before.
+      if (!RELATIVE_IMPORT.test(text)) return undefined
+      const own = new Set<string>()
+      try {
+        refuseUnprovided(text, configPath, configPath, 'Project')
+        await refuseUnprovidedClosure(text, configPath, 'Project', reads, own)
+      } catch {
+        // Its own load throws the same refusal, in order.
+        return undefined
+      }
+      return own
+    }),
+  )
+  const checked = new Set<string>()
+  const owners = new Map<string, string[]>()
+  prepared.forEach(({ configPath }, i) => {
+    const own = statics[i]
+    if (own === undefined) return
+    checked.add(configPath)
+    for (const file of own) {
+      if (!SCRIPT.test(file)) continue
+      const list = owners.get(file)
+      if (list === undefined) owners.set(file, [configPath])
+      else list.push(configPath)
+    }
+  })
+  const modules: ModuleWatch['modules'] = []
+  const shared = [...owners].filter(([file, list]) => list.length > 1 && !/[\\?]/.test(file))
+  if (shared.length === 0) return { modules, checked }
+  const loaded: Array<[string, object, string[]]> = []
+  const unguard = guardExit()
+  const budget = evalBudgetMs()
+  try {
+    for (const [file, list] of shared) {
+      let timer: ReturnType<typeof setTimeout> | undefined
+      // A module that throws or never settles is left to the configs that
+      // import it, which report it as their own load does.
+      const ns = await Promise.race([
+        import(file).catch(() => null) as Promise<object | null>,
+        new Promise<undefined>((resolve) => {
+          timer = setTimeout(() => resolve(undefined), budget)
+        }),
+      ])
+      clearTimeout(timer)
+      if (ns === undefined) break
+      if (ns !== null) loaded.push([file, ns, list])
+    }
+  } finally {
+    unguard()
+  }
+  // Noted once all are imported: a shared module that changes another as
+  // it evaluates does so in every round alike.
+  for (const [file, ns, list] of loaded)
+    modules.push({ file, ns, state: exportState(ns), owners: list })
+  return { modules, checked }
+}
+
+function sharedModuleChanged(
+  watch: ModuleWatch,
+): { file: string; exports: string[]; owners: string[] } | undefined {
+  for (const { file, ns, state, owners } of watch.modules) {
+    const exports = changedExports(state, exportState(ns))
+    if (exports.length > 0) return { file, exports, owners }
+  }
+  return undefined
+}
+
+function sharedModuleRefused(
+  shared: { file: string; exports: readonly string[] },
+  configPath?: string,
+): UserError {
+  const what = shared.exports.map((e) => `export ${e}`).join(', ')
+  return new UserError(
+    `${configPath ?? 'a project config'} changed ${what} of ${shared.file} while it was evaluated, and another project config imports that module: configs share one evaluation of it, so what they read from it depended on which loaded first; build a config's own value (\`[...list, x]\`, \`{ ...preset }\`) instead of changing a shared one`,
+  )
+}
+
 /**
  * More than one config refused in one load: the first is the error, and
  * `all` names each. A rename after an upgrade refuses every config at once,
@@ -604,6 +712,7 @@ export async function loadProjectConfigs(
     })),
   )
   let builtins: BuiltinSnapshot | undefined
+  let watch: ModuleWatch | undefined
   let env: Readonly<Record<string, string | undefined>> = {}
   let cwd = ''
   let invokedIn = ''
@@ -630,7 +739,14 @@ export async function loadProjectConfigs(
       ? await evaluateConfigFresh(configPath).catch((err: unknown) => {
           throw loadFailure(err, configPath, 'Project')
         })
-      : await loadDefaultExport(configPath, 'Project', bytes, undefined, reads)
+      : await loadDefaultExport(
+          configPath,
+          'Project',
+          bytes,
+          undefined,
+          reads,
+          watch?.checked.has(configPath),
+        )
     // Before anything reads through them: a replaced `Array.prototype.includes`
     // turned the JSON-data walk's own check into "a cyclic reference".
     const changed = repeat
@@ -692,6 +808,7 @@ export async function loadProjectConfigs(
       cwd = process.cwd()
       umask = currentUmask()
     }
+    if (prepared.length > 1) watch = await watchSharedModules(prepared, reads)
     overlapping = prepared.length > 1
     let next = 0
     const lane = async (): Promise<void> => {
@@ -744,6 +861,16 @@ export async function loadProjectConfigs(
     // that moved it: the worker no longer reads the umask to say so.
     if (changed.length > 0)
       throw builtinsChanged(changed, prepared.length === 1 ? prepared[0]!.configPath : undefined)
+    const shared = watch === undefined ? undefined : sharedModuleChanged(watch)
+    if (shared !== undefined) {
+      for (const { configPath } of prepared) {
+        if (!shared.owners.includes(configPath)) continue
+        const own = await modulesChangedBy(configPath, [shared.file])
+        restoreUmask(umask)
+        if (own.length > 0) throw sharedModuleRefused(shared, configPath)
+      }
+      throw sharedModuleRefused(shared)
+    }
     return results as ProjectConfig[]
   } finally {
     if (invokedIn !== '' && process.cwd() !== invokedIn) process.chdir(invokedIn)

@@ -154,6 +154,7 @@ here, itself or in a brace group.
 | [`migration.md`](./migration.md)           | `src/workspace/migration.ts` — the plan → files seam `@vzn/vx-migrate` and any adoption tool write through.                                                                                                    |
 |                                            | `src/workspace/config-eval.ts` — fresh re-evaluation in a Worker (see project-loader.md).                                                                                                                      |
 |                                            | `src/workspace/config-bytecode.ts` — the workspace config's cached bytecode bundle (see project-loader.md).                                                                                                    |
+|                                            | `src/workspace/module-state.ts` — what a shared module's exports hold, to refuse a config that changes one (see project-loader.md).                                                                            |
 
 ## Graph + scheduler
 
