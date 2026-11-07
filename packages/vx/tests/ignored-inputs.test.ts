@@ -251,8 +251,11 @@ it(
       return r.code === 0 ? null : r.out + r.err
     }
     const refusal = "leave it out of lib#t's inputs.tasks, so its key hashes those bytes instead"
-    expect(await lock({ t: reader("'build'", '') })).toContain(refusal)
-    expect(await lock({ t: reader("'build'", ", tasks: ['build']") })).toContain(refusal)
+    // A direct dependant is told it depends, and only the fix left to it.
+    const direct =
+      "leave lib#build out of lib#t's inputs.tasks, so its key hashes those bytes instead"
+    expect(await lock({ t: reader("'build'", '') })).toContain(direct)
+    expect(await lock({ t: reader("'build'", ", tasks: ['build']") })).toContain(direct)
     // `mid` folds `build`, and `t` folds `mid`: `build`'s key reaches `t`'s.
     const mid = `{ exec: { command: 'true' }, dependsOn: ['build'], inputs: { files: [] }, outputs: { files: [] }, cache: true }`
     expect(await lock({ mid, t: reader("'mid'", ", tasks: ['mid']") })).toContain(refusal)

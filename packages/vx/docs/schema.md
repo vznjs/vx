@@ -2260,7 +2260,9 @@ own output path, or set run.rules.exclusiveOutputs: false in
   the exceptions below applies: `<reader> reads "<glob>" in inputs.<field>,
 which matches <writer>'s output "<glob>" … Exclude it: add "!<glob>"
 to <reader>'s inputs.<field>, or depend on <writer> and leave it out of
-<reader>'s inputs.tasks, so its key hashes those bytes instead.` Such a key
+<reader>'s inputs.tasks, so its key hashes those bytes instead.` (A reader
+  that already depends on the writer is told so, and only to leave it out of
+  `inputs.tasks`.) Such a key
   reads what the producer writes this run, so vx cannot know it before
   the producer ran: it is not probed, prefetched or restored ahead of
   the schedule (`caching.md` § Local restore tier). The upstream's key
