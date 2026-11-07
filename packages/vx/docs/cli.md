@@ -1749,8 +1749,9 @@ artifact (a `<hash>.tree` directory, or a `<hash>.tar.zst`) the index
 has no row for (a `SCHEMA_VERSION` bump drops every table and leaves
 the artifacts behind, as a deleted `cache.db` does) and a
 `<hash>.tree.tmp-*` or `<hash>.tar.zst.tmp-*` a save that crashed never
-renamed. A run that asks for an orphan's key indexes it again from its
-bytes and hits; one no task asks for again is only reclaimed here. The
+renamed. A run that asks for a row-less `<hash>.tar.zst`'s key indexes
+it again from its bytes and hits; a row-less tree (its stdout lived in
+its row) and an archive no task asks for again are only reclaimed here. The
 policy judges a row-less artifact as it judges an entry, by its file
 time plus an hour (a hit renews a file time over an hour old): another
 vx version sharing the store may still use it. A temp goes once it is an
@@ -1819,7 +1820,7 @@ and `vx why` start over), the store a run opens and the one its index
 last named, if another (a changed HOME, an origin added), where the
 entries live (`~/.vx/<id>/cache`, shared by this workspace's
 checkouts, so their entries go too). `--global` also clears every other
-workspace's store under `~/.vx` (`~/.vx/*/cache`); it takes no bound
+workspace's store under `~/.vx` (each `~/.vx/*/cache` holding a `store.db`; any other directory there stays); it takes no bound
 and no `--cache-dir`. `.vx/workspace.ts`, the lock and `.vx/.gitignore`
 sit outside them and stay; a `cache.dir` that holds them (`.vx`, the
 workspace root) is refused. A `cache.dir` you named may be shared
@@ -3001,8 +3002,9 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   is on disk. `cache store` is where the entries and their artifacts
   live: the store shared by this workspace's checkouts (`docs/caching.md`),
   with its size on disk, or `none: the cache dir holds the entries` when
-  the workspace names its cache dir. Before a first run it is the store a
-  run would open. A bare `vx cache clean` frees both sizes.
+  the workspace names its cache dir. It is the store the next run opens,
+  before a first run too, not one the index recorded under a home since
+  moved. A bare `vx cache clean` frees both sizes.
 - `cache entries` counts the entries and their size. An index SQLite
   cannot read reads `unreadable: <why and the fix>` there, and the
   history rows read 0: the report still prints, exit 0.

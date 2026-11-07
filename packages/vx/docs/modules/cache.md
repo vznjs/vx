@@ -854,10 +854,9 @@ pass, stats read, run record and config-evaluation read or write passes
 through `guard` (A-8). Before, every task of a run failed on it as an
 "internal error" and `vx cache clean` printed a stack. The open that drops them records it:
 `Cache.schemaReset` carries a `SchemaReset`, `{ from, to }`, on that one open (null on
-every later one). A `CACHE_VERSION` bump alone keeps the index, so
-`Cache.formatChange` carries `{ from, to }` on the open that first sees
-the new version (from `schema_meta.cache_version`; a store with entries
-and no record reads `an earlier format`). Neither is printed, nor is a
+every later one). A `CACHE_VERSION` bump alone keeps the index and
+records the new version in `schema_meta.cache_version`; every key moves,
+so each cached task misses once. Neither is printed, nor is a
 shared store moved to or fallen back from: the cache is vx's to keep
 (2026-10-06; `tests/schema-reset-notice.test.ts`). A new
 `CacheKeyInput` field that is **NOT folded** (a pure side-channel like

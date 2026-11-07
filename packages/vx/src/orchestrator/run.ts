@@ -957,10 +957,18 @@ async function runOnBus(
     const outputDirSnapshots: OutputDirSnapshot[] = []
     // Saves run off the execution slot, twice the cap at once (memory:
     // each pack holds an artifact's bytes); a failed save is a miss next
-    // time, said once — the task's work ran.
-    const saveLane = createSaveLane(2 * concurrency, (err) =>
-      warnOf(log)(`[vx] cache save failed: ${err instanceof Error ? err.message : String(err)}`),
-    )
+    // time, said once — the task's work ran. A full disk fails every save
+    // after the first the same way: the first is said with its task, the
+    // rest named once the graph ends.
+    const unsaved: string[] = []
+    const saveLane = createSaveLane(2 * concurrency, (err, taskId) => {
+      if (unsaved.push(taskId) > 1) return
+      const msg = err instanceof Error ? err.message : String(err)
+      // The artifact ceiling's refusal names its task itself.
+      warnOf(log)(
+        `[vx] cache save failed: ${msg.startsWith(`${taskId} `) ? msg : `${taskId}: ${msg}`}`,
+      )
+    })
     const deferredSaves = new Map<string, Promise<SaveFacts>>()
     const windows = commandWindows()
     // A server held from an earlier run (`vx watch`) runs through this one
@@ -1518,6 +1526,14 @@ async function runOnBus(
     stop.graphDone()
     reprioritize = undefined
     graphOver = true
+    // Each task finishes once its save settles (`settledOf`): the list is whole.
+    if (unsaved.length > 1) {
+      const more = unsaved.slice(1)
+      const named = more.slice(0, 5).join(', ') + (more.length > 5 ? ', …' : '')
+      warnOf(log)(
+        `[vx] cache save failed for ${more.length} more task${more.length === 1 ? '' : 's'}: ${named}`,
+      )
+    }
 
     // Which persistent children outlive the graph, and the bounded SIGTERM
     // of the rest, before the summary prints. Scoped to the real CLI

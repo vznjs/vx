@@ -261,7 +261,7 @@ export interface ExecuteArgs {
    */
   outputDirSnapshots?: OutputDirSnapshot[]
   /** The run's save lane: a miss's cache save runs off the execution slot (save-lane.ts). */
-  deferSave?: (save: () => Promise<void>) => Promise<boolean>
+  deferSave?: (save: () => Promise<void>, taskId: string) => Promise<boolean>
   /**
    * Where a deferred save's `landed` promise is parked by task id, for the
    * in-flight join (admission.ts): a duplicate of this task in another run

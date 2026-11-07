@@ -1057,13 +1057,6 @@ export class Cache implements CacheLayer {
   readonly schemaReset: SchemaReset | null = null
 
   /**
-   * Set when THIS open found entries written under another
-   * `CACHE_VERSION`: the index survives, but no old key is derived again,
-   * so every cached task misses once. Not printed, like `schemaReset`.
-   */
-  readonly formatChange: SchemaReset | null = null
-
-  /**
    * Set when THIS open found the shared store written under another
    * `SCHEMA_VERSION` and dropped its inventory; the artifacts stay and are
    * indexed again as they hit. Never printed: the cache is vx's to keep.
@@ -1102,8 +1095,7 @@ export class Cache implements CacheLayer {
      * and the store's own schema is `store_meta.schema` (`matchStoreSchema`). Or
      * `null` for an index that holds its entries itself (a `cacheDir`).
      * Undefined follows the layout the index records: a reading verb, a
-     * plugin's handle. A reading open reads it only where the index
-     * records none (deleted, or never written beside a run's store).
+     * plugin's handle.
      */
     storeRoot?: string | null,
     private readonly store: StoreOptions = DEFAULT_STORE,
@@ -1288,16 +1280,10 @@ export class Cache implements CacheLayer {
           } | null
         )?.value,
     )
-    // A dry prune names what the real one takes, so it reads the store a
-    // run opens (today's), not the one the index last recorded.
-    let storeDir =
-      mode === 'inspect'
-        ? (recorded ?? (typeof storeRoot === 'string' ? storeRoot : undefined))
-        : storeRoot === undefined
-          ? recorded
-          : storeRoot === null
-            ? undefined
-            : storeRoot
+    // A store named by the caller is the one a run opens (today's), and
+    // every mode reads it: a dry prune names what the real one takes, and
+    // `vx info` the store the next run fills, not one a moved HOME left.
+    let storeDir = storeRoot === undefined ? recorded : (storeRoot ?? undefined)
     if (storeDir !== undefined && mode === 'open' && this.writeBlocked === null) {
       const blocked = storeBlocked(storeDir, typeof storeRoot === 'string' ? storeRoot : null)
       if (blocked !== null) {
@@ -1407,17 +1393,13 @@ export class Cache implements CacheLayer {
     this.remoteHits = new IndexRemoteHits(this.db, this.writeBlocked === null && !this.inspecting)
 
     // A CACHE_VERSION bump keeps the index but moves every key, so the run
-    // after an upgrade misses everything. Roadmap 3.3: that is announced,
-    // never silent. A store with no recorded version and no entries is
-    // new; one with entries predates the record (item 671).
+    // after an upgrade misses everything, in silence: the cache is vx's to
+    // keep (2026-10-06). The version is recorded for whoever reads the
+    // index by hand; a reading verb writes nothing (item 1080).
     const format = this.db
       .prepare("SELECT value FROM schema_meta WHERE key = 'cache_version'")
       .get() as { value: string } | null
     if (format?.value !== CACHE_VERSION && this.writeBlocked === null && !this.inspecting) {
-      const hasEntries = this.db.prepare('SELECT 1 FROM entries LIMIT 1').get() != null
-      if (this.schemaReset === null && (format !== null || hasEntries)) {
-        this.formatChange = { from: format?.value ?? 'an earlier format', to: CACHE_VERSION }
-      }
       this.db
         .prepare(
           "INSERT INTO schema_meta(key, value) VALUES ('cache_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",

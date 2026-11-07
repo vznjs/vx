@@ -89,18 +89,23 @@ describe('vx cache clean with no bound clears the cache', () => {
   )
 
   it(
-    '--global clears every store under ~/.vx; a bound with it is refused',
+    '--global clears every store under ~/.vx and nothing else there; a bound with it is refused',
     async () => {
       expect((await vx(['run', 'build', '--all'])).code).toBe(0)
+      const st = store()
       const other = path.join(home, '.vx', 'another-repo', 'cache')
-      await Bun.write(path.join(other, 'cache.db'), 'x')
+      await Bun.write(path.join(other, 'store.db'), 'x')
+      // A `cache` directory with no store.db is not a store: --global
+      // deleted it whole, as it deleted any `~/.vx/*/cache`.
+      const notStore = path.join(home, '.vx', 'mine', 'cache')
+      await Bun.write(path.join(notStore, 'keep.txt'), 'mine')
       const bounded = await vx(['cache', 'clean', '--global', '--older-than', '1d'])
       expect([bounded.code, existsSync(other)]).toEqual([1, true])
       const r = await vx(['cache', 'clean', '--global', '--format', 'json'])
       expect(r.code).toBe(0)
       const cleared = (JSON.parse(r.out) as { cleared: string[] }).cleared
-      expect(cleared).toContain(other)
-      expect(cleared).toContain('.vx/cache')
+      expect(cleared.sort()).toEqual(['.vx/cache', other, st].sort())
+      expect(existsSync(path.join(notStore, 'keep.txt'))).toBe(true)
       expect([existsSync(other), existsSync(path.join(root, '.vx', 'cache'))]).toEqual([
         false,
         false,

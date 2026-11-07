@@ -370,7 +370,12 @@ async function clearHeld(
   if (parsed.global === true) {
     const vxHome = path.join(process.env['HOME'] || homedir(), '.vx')
     const ids = existsSync(vxHome) ? readdirSync(vxHome) : []
-    for (const id of ids) targets.push(path.join(vxHome, id, 'cache'))
+    // `~/.vx` is not vx's alone to fill: a `cache` directory with no
+    // store.db is someone else's and stays.
+    for (const id of ids) {
+      const store = path.join(vxHome, id, 'cache')
+      if (isStore(store)) targets.push(store)
+    }
   }
   // `cache.dir: '.vx'` (or the root) would take the workspace config and
   // the lock with it.

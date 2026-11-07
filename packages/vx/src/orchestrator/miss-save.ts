@@ -136,7 +136,7 @@ export interface SaveMissArgs {
    * (a same-project downstream task reads both), and the pack + write +
    * index go to the run's save lane (save-lane.ts).
    */
-  deferSave?: ((save: () => Promise<void>) => Promise<boolean>) | undefined
+  deferSave?: ((save: () => Promise<void>, taskId: string) => Promise<boolean>) | undefined
   /** Time the save and size its artifact, for a telemetry sink: one stat. */
   measure?: boolean | undefined
 }
@@ -294,7 +294,9 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
   // the entry before the outcome.
   if (a.deferSave !== undefined) {
     return {
-      landed: a.deferSave(save).then((stored) => (stored ? { ...facts, saved: true } : facts)),
+      landed: a
+        .deferSave(save, node.id)
+        .then((stored) => (stored ? { ...facts, saved: true } : facts)),
     }
   }
   await save()
