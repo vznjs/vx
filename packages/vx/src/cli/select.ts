@@ -295,6 +295,12 @@ function refusalOf(err: unknown): Refusal {
     : { error: err.message }
 }
 
+/** The filter `--affected` became; `env` is the `VX_AFFECTED_BASE` value that gave its base. */
+export interface AffectedFilter {
+  readonly filter: string
+  readonly env?: string
+}
+
 /**
  * The filter `--affected[=<base>]` stands for: `...[<base>]`, the changed
  * projects and their dependents. An empty base is `VX_AFFECTED_BASE`'s,
@@ -306,9 +312,10 @@ export async function affectedFilterFor(
   affected: string,
   /** What the verb does instead on the base branch (`defaultAffectedBase`). */
   instead?: string,
-): Promise<string | Refusal> {
+): Promise<AffectedFilter | Refusal> {
   const root = await findWorkspaceRoot(cwd)
-  let base = affected || ((settingEnv('affectedBase') as string | undefined) ?? '')
+  const env = affected === '' ? (settingEnv('affectedBase') as string | undefined) : undefined
+  let base = affected || (env ?? '')
   if (base === '') {
     const ws = await loadCliWorkspace(root)
     try {
@@ -320,15 +327,15 @@ export async function affectedFilterFor(
       return refusalOf(err)
     }
   }
-  return `...[${base}]`
+  return env === undefined ? { filter: `...[${base}]` } : { filter: `...[${base}]`, env }
 }
 
 export async function resolveFilters(
   cwd: string,
   raw: string[],
   load: CliLoadOptions = {},
-  /** The raw filter `--affected` became: its diff is kept per path for the run. */
-  affected?: string,
+  /** The filter `--affected` became: its diff is kept per path for the run. */
+  affected?: AffectedFilter,
   /** The verb a warning names: `vx show` and `vx watch` select as a run does. */
   verb: 'run' | 'show' | 'watch' = 'run',
 ): Promise<FilterResolution> {
@@ -427,7 +434,7 @@ export async function resolveFilters(
           : {}),
       }
       let names: Set<string>
-      if (f.raw === affected) {
+      if (f.raw === affected?.filter) {
         changes = await affectedChanges(args)
         names = changes.projects
         // A `graph` plugin may tie any task to a changed path (an edge, an
@@ -444,7 +451,15 @@ export async function resolveFilters(
       }
       affectedByFilter.set(f, names)
     } catch (err) {
-      return refusalOf(err)
+      const refusal = refusalOf(err)
+      // A base the variable gave was reported as if typed.
+      if (
+        affected?.env !== undefined &&
+        f.raw === affected.filter &&
+        refusal.code === 'VX_E_AFFECTED_BASE'
+      )
+        return { ...refusal, error: `VX_AFFECTED_BASE=${affected.env}: ${refusal.error}` }
+      return refusal
     }
   }
 
@@ -543,7 +558,7 @@ export async function resolveFilters(
   // Each include is a union: what `--filter other` selected runs its tasks
   // whether or not the `--affected` diff reaches them, and an exclude
   // still removes it (X-10).
-  const others = parsed.filter((f) => f.negate || f.raw !== affected)
+  const others = parsed.filter((f) => f.negate || f.raw !== affected?.filter)
   const outright =
     changes !== undefined && others.some((f) => !f.negate)
       ? [

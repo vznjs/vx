@@ -206,6 +206,37 @@ describe('a task typed as a verb', () => {
     }
   })
 
+  // `--all` and `--filter` scope the list as they scope the picker: it named
+  // the cwd's tasks, and "not inside a project … with --all" beside --all.
+  it('`vx run` with no task and no terminal names the tasks of the asked scope', async () => {
+    const bare = (cwd: string, ...args: string[]): string =>
+      Bun.spawnSync({
+        cmd: [process.execPath, BIN, 'run', ...args],
+        cwd,
+        stdin: 'ignore',
+      }).stderr.toString()
+    const line = (tasks: string): string =>
+      noticed(
+        `vx run: missing task name (stdin is not a TTY, so no picker; ${tasks}) (see \`vx run --help\`)\n`,
+      )
+    const solo = await addProject(
+      root,
+      'solo',
+      `export default { tasks: { lint: { exec: { command: 'true' } } } }`,
+    )
+    try {
+      expect(bare(root, '--all')).toBe(line("every project's tasks: build, dev, lint"))
+      expect(bare(path.join(root, 'packages', 'lib'), '--filter', 'solo')).toBe(
+        line("the selected projects' tasks: lint"),
+      )
+      expect(bare(root, '--filter', './packages/app')).toBe(
+        line("the selected projects' tasks: build, dev"),
+      )
+    } finally {
+      await rm(solo, { recursive: true, force: true })
+    }
+  })
+
   it('a plugin verb of the same name is the verb', async () => {
     const ws = path.join(root, '.vx/workspace.mjs')
     const before = await Bun.file(ws).text()
