@@ -182,7 +182,10 @@ too: they format one run's result.
    - For each project a cycle can run (`watchedProjects`: the scope
      plus its transitive dependencies through `buildPackageGraph` with
      the cross-project `dependsOn` edges `taskEdges` collects — what
-     `vx run` would run for the same filter), `fs.watch(dir,
+     `vx run` would run for the same filter; every project while the
+     edges cannot be read, as a dependency's directory removed fails
+     their load and the scope alone stopped watching the rest,
+     `tests/watch-dependency-gone.test.ts`), `fs.watch(dir,
 { recursive: true })`. Bun supports recursive watch on every
      platform. A path inside a project nested under the
      watched one is dropped (`makeFence`): its key leaves that file

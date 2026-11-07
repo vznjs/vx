@@ -26,8 +26,10 @@ import { type CliLoadOptions, loadCliProjects } from './workspace-config.js'
  * per-project arm watched the filter's answer only, so
  * `vx watch build --filter app` never re-ran on a `lib` edit that
  * `vx run build --filter app` would have rebuilt. A whole-workspace
- * scope is every project already and walks nothing. A config the loader
- * rejects contributes no edges here; the run that just happened said so.
+ * scope is every project already and walks nothing. When the edges cannot
+ * be read (a config the loader rejects, a dependency's directory removed)
+ * every project is watched: the scope alone dropped the dependencies a
+ * cycle runs, and nothing heard them again until a `vx lock`.
  */
 export async function watchedProjects(
   workspaceRoot: string,
@@ -37,14 +39,14 @@ export async function watchedProjects(
   staged: ReadonlyMap<string, ProjectEntry> | null = null,
 ): Promise<ProjectMeta[]> {
   if (scope.length === allProjects.length) return [...allProjects]
-  let edges: Map<string, string[]> | undefined
+  let edges: Map<string, string[]>
   try {
     edges =
       staged !== null
         ? taskEdgesFrom(staged)
         : (await taskEdges(workspaceRoot, allProjects, load)).edges
   } catch {
-    edges = undefined
+    return [...allProjects]
   }
   const graph = buildPackageGraph([...allProjects], edges)
   const names = new Set(scope.map((p) => p.name))
