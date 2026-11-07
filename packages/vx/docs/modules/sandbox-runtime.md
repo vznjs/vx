@@ -353,6 +353,7 @@ export function refusedWrites(
   writable: readonly string[],
   scratch?: readonly string[], // pending write globs a write may land under
   readable?: readonly string[], // what the sandbox mounts readable: a mkdir there wrote nothing
+  widened?: { entries; granted }, // `widenedEntries` at task start and the write grants: a write there is judged by the grants
 ): SandboxViolation[]
 // the writes refused past the wall, as paths: a failed task's hint
 export function refusedWritesOutside(violations, opts: { within; linked?; config; skip }): string[]
@@ -805,6 +806,33 @@ opens the file argument, since a directory's name may hold a quote
 `openat2` read is still unseen: SRT's write observer takes every
 `openat2` (its flags lie in a struct its filter cannot read), and its
 USER_NOTIF wins over strace's TRACE.
+
+The directory is writable in full too, and a hard link reads without an
+open: `ln -f README.md out.txt` beside `write: ['out.txt']` passed
+unreported and cached README's bytes, replayed after README changed, and
+`echo x > other.txt` wrote the host unreported. SRT's write observer
+records every write-intent call there, a link's or a move's source as
+well as its destination, so `refusedWrites` judges a record under the
+widened directory by the grants themselves, against the listing taken as
+the task started (taken whether or not strace runs). An entry that was
+there and no write grant covers is reported, written, removed, moved or
+linked; a link or move is reported as one (`= a link or move no grant
+covers`), ignorable as a read or a write, and while its path is there
+the fix names it for a read. A granted read as a link's source is the
+read its grant allows. What the task made there is its own unless it
+outlives the task, since an atomic writer stages beside its target and
+renames; a directory it made holds nothing of its own, so only a new
+one left behind is reported. A report, not a refusal: the write has
+landed by then, and the task fails on it. No new traced call: the
+observer already saw each write, so this costs a `lstat` per new path
+left, nothing where no grant was widened.
+
+A `stat` there is not seen: the trace leaves the stat family out (above),
+so a task can learn a sibling's size, times or presence unreported
+(`stat -c %s README.md > out.txt`). An output that depends on such
+metadata is the residual stale-hit risk of a file grant at a project's
+root; grant a directory for outputs and the siblings are not in the
+sandbox at all.
 
 ## A write grant cannot be removed (Linux)
 
