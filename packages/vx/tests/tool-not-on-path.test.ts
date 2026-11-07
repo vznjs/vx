@@ -134,7 +134,7 @@ describe('a tool that is not on the PATH vx built', () => {
     )
     const r = vx(root, bin, ['run', 'dev', '--all'])
     expect(r.code).toBe(1)
-    expect(r.text).toContain('exited before becoming ready (exit 127)')
+    expect(r.text).toContain('not ready: exited (exit 127) before a line matched readyWhen /up/')
     const real = realpathSync(root)
     const app = path.join(real, 'packages', 'app', 'node_modules', '.bin')
     const rootBin = path.join(real, 'node_modules', '.bin')

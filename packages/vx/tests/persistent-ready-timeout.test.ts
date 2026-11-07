@@ -303,8 +303,8 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
       // The reason reaches the TASK's stderr stream — the frame, and an
       // embedder's logger — not the process's stderr, which a custom
       // logger never sees (this pin used to assert the bare write).
-      expect(fixture.err.join('\n')).toContain('not ready within 1000ms')
-      expect(stderrText).not.toContain('not ready within 1000ms')
+      expect(fixture.err.join('\n')).toContain('within 1s; killed')
+      expect(stderrText).not.toContain('within 1s; killed')
       // The child must be dead once the run returns. `exec` in the fixture is
       // what gives this assertion teeth: `$$` is the shell's pid and exec keeps
       // that pid while replacing the image, so pid.txt names the SLEEPER. As a
@@ -457,7 +457,7 @@ it(
         handleSignals: false,
       })
       await Bun.sleep(60)
-      expect(seq.join('')).toStartWith('booting t\n[vx] srv#dev: persistent task failed')
+      expect(seq.join('')).toStartWith('booting t\n[vx] srv#dev: not ready: exited')
     } finally {
       await rm(f.root, { recursive: true, force: true })
     }
