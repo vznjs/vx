@@ -454,7 +454,7 @@ export async function runWorker(opts: {
         command: m.command,
         forwardArgs: [],
         cwd: path.join(opts.root, m.cwd),
-        env: localEnv(m.env, root, opts.root),
+        env: localEnv(m.env, root, opts.root, m.unset),
         envDefine: {},
         // Both streams as one capture, in the order written, as core keeps a
         // run's: kept apart, a hit replayed every stdout line before the
@@ -1063,23 +1063,25 @@ function available(): number {
 
 /**
  * The orchestrator's env for a task, made this machine's: its checkout root
- * swapped for ours, host names from our own env, and PATH our own behind
- * the workspace's bin directories.
+ * swapped for ours, host names from our own env but those its key folds as
+ * `unset`, and PATH our own behind the workspace's bin directories.
  */
 export function localEnv(
   env: Readonly<Record<string, string>>,
   remoteRoot: string,
   root: string,
+  unset: readonly string[] = [],
 ): Record<string, string | undefined> {
   // By path: a plain replace moved `/ws2` and `/private/ws` with `/ws`.
   const out: Record<string, string | undefined> = swapRoots({ ...env }, [[remoteRoot, root]])
-  // Sent only when the task's `env.define` names it: its value, as keyed.
+  // Sent only when the task's `env.define` names it or its `inputs.env`
+  // keys it: its value, as keyed.
   // Else this machine's manager, as core sets it on a local task.
-  if (!('npm_execpath' in out)) {
+  if (!('npm_execpath' in out) && !unset.includes('npm_execpath')) {
     const manager = packageManagerPath(root)
     if (manager !== null) out['npm_execpath'] = manager
   }
-  for (const k of HOST_ENV) if (!(k in out)) out[k] = process.env[k]
+  for (const k of HOST_ENV) if (!(k in out) && !unset.includes(k)) out[k] = process.env[k]
   const bins = (out['PATH'] ?? '').split(':').filter((p) => p === root || p.startsWith(`${root}/`))
   out['PATH'] = [...bins, process.env['PATH'] ?? ''].join(':')
   return out

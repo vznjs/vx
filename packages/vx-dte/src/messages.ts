@@ -54,6 +54,8 @@ export interface RunOrder {
   cwd: string
   project: string
   env: Record<string, string>
+  /** `HOST_ENV` names its key folds as unset: the worker leaves them unset, not its own. */
+  unset?: string[]
   /** Its `exec.env.secret`: the names in `env` whose values its saved output masks. */
   secret?: string[]
   timeoutMs?: number
@@ -222,7 +224,9 @@ export type WiredResult = Omit<ExecuteResult, 'violations' | 'outputs' | 'stdout
 
 /**
  * Names whose value is the worker's own: the orchestrator sends one only
- * when a task's `env.define` sets it, a value its key includes.
+ * when a task's `env.define` sets it or its `inputs.env` keys it, a value
+ * its key includes; a keyed one unset there is unset on the worker too
+ * (`RunOrder.unset`).
  */
 export const HOST_ENV = [
   'HOME',

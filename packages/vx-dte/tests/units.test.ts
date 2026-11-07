@@ -99,6 +99,21 @@ it('a worker clears the files a task’s outputs match, links included, before i
   ).toEqual(['p/out/deep/a.sh', 'p/out/link'])
 })
 
+// Keyed unset on the orchestrator, a host name the worker filled with its
+// own ran on a value the key never folded.
+it('a worker leaves unset a host name the key folds as unset', () => {
+  const saved = process.env['XDG_CONFIG_HOME']
+  process.env['XDG_CONFIG_HOME'] = '/worker/config'
+  try {
+    const env = localEnv({ X: '1' }, '/orc/ws', '/worker/ws', ['XDG_CONFIG_HOME'])
+    expect('XDG_CONFIG_HOME' in env).toBe(false)
+    expect(localEnv({ X: '1' }, '/orc/ws', '/worker/ws')['XDG_CONFIG_HOME']).toBe('/worker/config')
+  } finally {
+    if (saved === undefined) delete process.env['XDG_CONFIG_HOME']
+    else process.env['XDG_CONFIG_HOME'] = saved
+  }
+})
+
 it('a worker runs the orchestrator’s env with its own root, host names and PATH', () => {
   const saved = {
     HOME: process.env['HOME'],
@@ -2385,6 +2400,36 @@ it('sends a host name such as HOME only when the task’s env.define sets it', a
     })
     expect(await a.batches()).toEqual([['t1']])
     expect(a.orders[0]!.env).toEqual({ TMPDIR: '/defined/tmp', X: '1' })
+  } finally {
+    await h.stop()
+  }
+})
+
+// A host name the task keys in inputs.env folded the orchestrator's value,
+// and the worker ran with its own under that key.
+it('sends a host name the task keys in inputs.env, with the value keyed', async () => {
+  const h = await harness(new Map([node('t1')]))
+  try {
+    const a = await h.worker(1)
+    await Bun.sleep(50)
+    void h.o.execute({
+      ...h.req('t1'),
+      env: { XDG_CONFIG_HOME: '/orc/config', HOME: '/orc/home', X: '1' },
+      inputs: {
+        files: [],
+        env: [
+          { name: 'XDG_CONFIG_HOME', value: '/orc/config' },
+          { name: 'TMPDIR', value: undefined },
+        ],
+        runtime: [],
+        workspaceRuntime: [],
+        upstream: [],
+        configDigest: 'c',
+      },
+    } as unknown as ExecuteRequest)
+    expect(await a.batches()).toEqual([['t1']])
+    expect(a.orders[0]!.env).toEqual({ XDG_CONFIG_HOME: '/orc/config', X: '1' })
+    expect(a.orders[0]!.unset).toEqual(['TMPDIR'])
   } finally {
     await h.stop()
   }

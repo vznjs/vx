@@ -996,7 +996,9 @@ export class Orchestrator {
       // A task sent here leaves its outputs here for its dependants.
       a.has.add(req.taskId)
       const node = nodes?.get(req.taskId)
-      const env = defined(req.env, req.envDefine)
+      const keyed = hostKeyed(req)
+      const env = defined(req.env, req.envDefine, keyed)
+      const unset = keyed.filter((k) => req.env[k] === undefined && !(k in req.envDefine))
       const order = {
         task: req.taskId,
         // Unsaved: under the run's own key, as an uncached task's.
@@ -1014,6 +1016,7 @@ export class Orchestrator {
         cwd: path.relative(this.o.root, req.cwd),
         project: node === undefined ? '' : path.relative(this.o.root, node.projectDir),
         env,
+        ...(unset.length === 0 ? {} : { unset }),
         ...(node?.config.exec?.env?.secret === undefined
           ? {}
           : { secret: [...node.config.exec.env.secret] }),
@@ -2651,17 +2654,24 @@ function runtimeOrders(req: ExecuteRequest): { runtime?: RuntimeOrder[] } {
 
 /**
  * `env` as it travels: no unset name, and no name whose value is the
- * worker's (`HOST_ENV`) unless `define` sets it. A defined `HOME` ran
- * with the worker's own, saved under a key that folded the defined one
- * (2026-10-24).
+ * worker's (`HOST_ENV`) unless `define` sets it or the task keys it
+ * (`keyed`). A defined `HOME` ran with the worker's own, saved under a key
+ * that folded the defined one (2026-10-24); a keyed `XDG_CONFIG_HOME` did
+ * the same (2026-11-07).
  */
 function defined(
   env: NodeJS.ProcessEnv,
   define: Readonly<Record<string, string>>,
+  keyed: readonly string[] = [],
 ): Record<string, string> {
   // No prototype: on `{}`, a name `__proto__` hit the setter and was not sent.
   const out: Record<string, string> = Object.create(null)
   for (const [k, v] of Object.entries(env))
-    if (v !== undefined && (!HOST_ENV.includes(k) || k in define)) out[k] = v
+    if (v !== undefined && (!HOST_ENV.includes(k) || k in define || keyed.includes(k))) out[k] = v
   return out
+}
+
+/** The `HOST_ENV` names the task's `inputs.env` keys: their value is this machine's, as keyed. */
+function hostKeyed(req: ExecuteRequest): string[] {
+  return (req.inputs?.env ?? []).map((e) => e.name).filter((k) => HOST_ENV.includes(k))
 }
