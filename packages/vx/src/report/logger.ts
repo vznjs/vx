@@ -36,7 +36,9 @@ import {
   appendTail,
   createTail,
   formatElapsed,
+  maskStreams,
   resetTail,
+  secretMask,
   tailText,
   type Tail,
   envFlagOn,
@@ -203,7 +205,13 @@ function ghaProperty(value: string): string {
  * one could simply be printed by the task — so it is a per-run UUID.
  */
 function ghaFence(body: string, token: string): string {
-  return `::stop-commands::${token}\n${body}::${token}::\n`
+  const [open, close] = ghaFenceEnds(token)
+  return `${open}${body}${close}`
+}
+
+/** The lines `ghaFence` puts before and after the text. */
+function ghaFenceEnds(token: string): [open: string, close: string] {
+  return [`::stop-commands::${token}\n`, `::${token}::\n`]
 }
 
 const cacheWordOf = (o: TaskOutcome): 'miss' | 'no-cache' | '' =>
@@ -238,6 +246,9 @@ const FORECAST_AFTER_MS = 1000
 const NOTIFY_AFTER_MS = 10_000
 // A step of vx's own quicker than this shows nowhere (2026-10-15).
 const STEP_SHOWN_MS = 150
+
+/** A frame this long is written in pieces, never copied into one string. */
+const PIECEWISE_CHARS = 1024 * 1024
 
 export function defaultLogger(
   colors: ColorSupport = detectColors(),
@@ -679,8 +690,11 @@ export function defaultLogger(
     if (chunk.length > 0) endsBlank = chunk.endsWith('\n\n')
     if (!logOpened && chunk.length > 0) {
       logOpened = true
-      writer.write(`\n${chunk}`)
-      return
+      if (chunk.length < PIECEWISE_CHARS) {
+        writer.write(`\n${chunk}`)
+        return
+      }
+      writer.write('\n')
     }
     writer.write(chunk)
   }
@@ -717,11 +731,20 @@ export function defaultLogger(
   }
   // formatTaskBlock returns '' for group tasks (no exec) — skip the
   // write so a stray newline doesn't sneak into the output.
-  const emitBlock = (block: string): void => {
+  // `head` and `tail` wrap the block. A big one is written in pieces:
+  // joined into one string, a frame of a 100 MB log was copied whole again
+  // (200 MB, two bytes a character once the frame's corners are in it).
+  const emitBlock = (block: string, head = '', tail = ''): void => {
     if (block.length === 0) return
     endStreamLine()
     const lead = lineEmitted || streamedSinceBlock ? '\n' : ''
-    taskWrite(`${lead}${block}\n`)
+    if (block.length < PIECEWISE_CHARS) taskWrite(`${lead}${head}${block}${tail}\n`)
+    else {
+      logWrite(lead + head)
+      logWrite(block)
+      logWrite(`${tail}\n`)
+      endsBlank = (tail || block).endsWith('\n')
+    }
     lineEmitted = false
     streamedSinceBlock = false
   }
@@ -1017,12 +1040,23 @@ export function defaultLogger(
       const preReady = persistentTails.get(node.id)
       // In the order the task wrote it; a bounded tail kept its streams
       // apart, so its stdout reads first.
-      const output: OutputChunk[] = preReady
+      let output: OutputChunk[] = preReady
         ? [
             { text: tailText(preReady.out), err: false },
             { text: tailText(preReady.err), err: true },
           ]
         : takeChunks(node.id)
+      // The live mask lets a held piece go after a pause, so a value the
+      // task wrote in two pieces arrived as two clean chunks. The frame
+      // prints now with the whole text in hand: each stream is masked as
+      // a whole, as the stored log is. A hit's replay already was.
+      if (!isCacheHit(outcome.status) && output.some((c) => c.text.length > 0)) {
+        const mask = secretMask(
+          [process.env, node.config.exec?.env?.define],
+          node.config.exec?.env?.secret,
+        )
+        if (mask !== null) output = maskStreams(output, mask)
+      }
       const dropped =
         preReady && (preReady.out.dropped > 0 || preReady.err.dropped > 0)
           ? { droppedStdout: preReady.out.dropped, droppedStderr: preReady.err.dropped }
@@ -1343,18 +1377,24 @@ export function defaultLogger(
             // The block is the task's own output — fenced, so a task that
             // prints `::endgroup::` can't close vx's group early and an
             // `::error` line in its output can't become a real annotation.
-            const body = ghaFence(block, ghaToken)
+            const [open, close] = ghaFenceEnds(ghaToken)
             // Failed tasks stay pre-expanded in the Actions viewer:
             // an ::error annotation instead of a collapsed group.
             if (outcome.status === 'failed') {
               // The message is ours (a literal, an integer and a signal
               // name); only the title carries user input.
-              emitBlock(`::error title=${ghaProperty(node.id)}::${outcomeLabel(outcome)}\n${body}`)
+              emitBlock(
+                block,
+                `::error title=${ghaProperty(node.id)}::${outcomeLabel(outcome)}\n${open}`,
+                close,
+              )
             } else {
               emitBlock(
+                block,
                 `::group::${ghaData(
                   `${node.id} (${outcomeWord(outcome)} ${formatElapsed(outcome.durationMs)})`,
-                )}\n${body}::endgroup::\n`,
+                )}\n${open}`,
+                `${close}::endgroup::\n`,
               )
             }
             return

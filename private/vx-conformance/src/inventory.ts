@@ -922,6 +922,8 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'fold-memo',
     'footer-run-id',
     'forward-args-frame',
+    'frame-big-output',
+    'frame-secret-mask',
     'framed-output',
     'free-port',
     'gates',

@@ -264,6 +264,59 @@ export interface TaskEnvSecrets {
 }
 
 /**
+ * Each stream's run of adjacent non-empty chunks joined, with `mask`
+ * applied to each stream's text as a whole: a value is masked where it
+ * starts and its rest dropped from the runs it reaches. The live stream
+ * masks chunk by chunk and lets a held piece go after a pause, so a value
+ * written in two pieces reached the capture in two chunks, and a write to
+ * the other stream between them made them two runs. A hit replays each
+ * stream to its own descriptor, so `vx run > log` joined them again.
+ */
+export function maskStreams(
+  chunks: ReadonlyArray<{ text: string; err: boolean }>,
+  mask: SecretMask | undefined,
+): Array<{ text: string; err: boolean }> {
+  if (mask === undefined) return chunks.filter((c) => c.text.length > 0)
+  const runs: Array<{ text: string; err: boolean }> = []
+  for (const c of chunks) {
+    if (c.text.length === 0) continue
+    const last = runs.at(-1)
+    if (last !== undefined && last.err === c.err) last.text += c.text
+    else runs.push({ text: c.text, err: c.err })
+  }
+  for (const err of [false, true]) {
+    const own = runs.filter((r) => r.err === err)
+    const spans = mask.spans(own.map((r) => r.text).join(''))
+    if (spans.length === 0) continue
+    let at = 0
+    let i = 0
+    for (const r of own) {
+      const end = at + r.text.length
+      let text = ''
+      let from = at
+      for (; i < spans.length && spans[i]![0] < end; i++) {
+        const [s, e] = spans[i]!
+        if (s >= from) text += r.text.slice(from - at, s - at) + MASKED
+        from = Math.max(from, Math.min(e, end))
+        // A value that runs past this run is cut from the next one too.
+        if (e > end) break
+      }
+      r.text = text + r.text.slice(from - at)
+      at = end
+    }
+  }
+  // A run emptied whole leaves its neighbours, the other stream, adjacent.
+  const kept: typeof runs = []
+  for (const r of runs) {
+    if (r.text.length === 0) continue
+    const last = kept.at(-1)
+    if (last !== undefined && last.err === r.err) last.text += r.text
+    else kept.push(r)
+  }
+  return kept
+}
+
+/**
  * `mask.stream()` driving `emit`: what it holds back (a tail that could
  * begin a value) is emitted `idleMs` after the last chunk when none
  * follows, so a long task's last characters do not wait for its exit. A

@@ -58,7 +58,11 @@ turn's end held every hit's log), and at most once per `coalesceMs`
 it on a timer. A restore settles its hits over hundreds of turns, and a
 write per turn cost the 9,603-task restore ~100 ms of its main thread on
 ext4 (2026-11-07). `settle()` hands over what is held at once, clears
-the timer, and writes straight through from then on. A
+the timer, and writes straight through from then on. A write of 64 KiB
+or more goes as it is, after what is held, and anything handed to the
+stream goes in slices of at most 1 Mi characters: a stream encodes a
+string whole, and joined with what was held, or encoded at once, a
+100 MB frame was copied twice more. A
 warm 476-package run wrote each of its 952 task lines as its own
 syscall; coalesced, the warm run's wall went 184.0 → 167.8 ms (min of
 15, interleaved compiled binaries, item 753). Only `run()`'s own

@@ -471,8 +471,9 @@ On a hit:
    or the reverse) goes before. Turbo also restores in place; Nx deletes
    and copies each file, and a reader meets a missing or short file.
 4. The captured output is replayed to the live terminal via the
-   logger — stdout and stderr, each on its own stream, in the order the
-   task wrote them — so the framed block looks like a fresh run.
+   logger — stdout and stderr in the order the task wrote them, both in
+   the frame on vx's stdout (cli.md § Output format) — so the framed
+   block looks like a fresh run.
 5. The task is marked `cache-hit` (or `cache-hit-remote` when the
    `LayeredCache` hydrated from the remote layer this run);
    `durationMs` is the wallclock for the restore op, not the original

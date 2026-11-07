@@ -3805,7 +3805,7 @@ a nested run is invisible to the outer graph and a loop back to its own
 task forks without bound (`docs/schema.md` § `env`).
 
 Colors are the two conventions in § Output format › Colors (`NO_COLOR`,
-`FORCE_COLOR`). A truthy `CI` picks the CI output flow and
+`FORCE_COLOR`), and a CI turns them on. A truthy `CI` picks the CI output flow and
 `GITHUB_ACTIONS` its `::group::` framing (§ Output); the run's
 `invocations` row records the provider, the first truthy of
 `GITHUB_ACTIONS`, `GITLAB_CI`, `BUILDKITE`, `CIRCLECI`, then `CI`. Core never reads `GITHUB_STEP_SUMMARY`; the job summary is
@@ -4026,13 +4026,19 @@ for a green miss; `vx info` keeps the standing list.
 
 ANSI truecolor (`ansi-16m`) sequences, gated by env:
 
-| Var                         | Effect                                                   |
-| --------------------------- | -------------------------------------------------------- |
-| `NO_COLOR=…` (non-empty)    | Force off. Overrides `FORCE_COLOR`.                      |
-| `FORCE_COLOR=0` / `=false`  | Force off, on a TTY too.                                 |
-| `FORCE_COLOR=…` (any other) | Force on — `1`, `true`, `2`, `3`, the empty string, etc. |
-| (neither)                   | On iff `stdout.isTTY`.                                   |
-| `TERM=dumb`                 | Off unless `FORCE_COLOR` forces it, and no live region.  |
+| Var                         | Effect                                                    |
+| --------------------------- | --------------------------------------------------------- |
+| `NO_COLOR=…` (non-empty)    | Force off. Overrides `FORCE_COLOR`.                       |
+| `FORCE_COLOR=0` / `=false`  | Force off, on a TTY too.                                  |
+| `FORCE_COLOR=…` (any other) | Force on — `1`, `true`, `2`, `3`, the empty string, etc.  |
+| a CI (neither of the above) | On, though the output is a pipe; beats `TERM=dumb`.       |
+| (none of these)             | On iff `stdout.isTTY` and not `TERM=dumb`.                |
+| `TERM=dumb`                 | No live region; plain unless a row above turns colour on. |
+
+A CI is `CI`, `GITHUB_ACTIONS`, `GITLAB_CI`, `BUILDKITE`, `CIRCLECI`,
+`TF_BUILD`, `JENKINS_URL` or `TEAMCITY_VERSION` set to anything but
+empty, `0` or `false`: a CI log gets the terminal's colours. A viewer
+that shows raw escapes turns them off with `NO_COLOR`.
 
 `0` and `false` are `FORCE_COLOR`'s "off" by the convention
 supports-color, chalk and Node follow; until 2026-09-24 vx read every
@@ -4044,7 +4050,7 @@ A task's output is a pipe, so a tool would print plain; vx sets
 `FORCE_COLOR=1` on every task, as Nx and Turbo do, unless the task
 already sees a `FORCE_COLOR` (any value, `0` included) or a non-empty
 `NO_COLOR`. The cache stores the coloured bytes, and wherever vx's own
-output is plain (a pipe, CI without `FORCE_COLOR`, `NO_COLOR`) it
+output is plain (a pipe off CI, `NO_COLOR`, `FORCE_COLOR=0`) it
 strips the escapes from task output, live and replayed alike, an
 escape cut across two chunks included; an unterminated string escape
 (a stray `\e]0;title` with no terminator) ends at its line, so it never

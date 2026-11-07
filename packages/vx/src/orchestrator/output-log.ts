@@ -5,7 +5,7 @@
 // a literal RS doubled. Output that never touched stderr is its own text.
 
 import { type BoundedCapture, type CapturedChunk, isDroppedOutputChunk } from '../exec/index.js'
-import { MASKED, type SecretMask } from '../util/index.js'
+import { maskStreams, type SecretMask } from '../util/index.js'
 
 const RS = '\x1e'
 
@@ -41,59 +41,6 @@ export function maskedOutputLog(chunks: readonly CapturedChunk[], mask: SecretMa
   const [h, t] = mask.maskCut(encodeOutputLog(before), tail.slice(lead.length))
   const back = before.findLast((c) => c.text.length > 0)?.err === true ? RS + 'o' : ''
   return h + back + chunks[at]!.text + lead + t
-}
-
-/**
- * Each stream's run of adjacent non-empty chunks joined, with `mask`
- * applied to each stream's text as a whole: a value is masked where it
- * starts and its rest dropped from the runs it reaches. The live stream
- * masks chunk by chunk and lets a held piece go after a pause, so a value
- * written in two pieces reached the capture in two chunks, and a write to
- * the other stream between them made them two runs. A hit replays each
- * stream to its own descriptor, so `vx run > log` joined them again.
- */
-export function maskStreams(
-  chunks: readonly CapturedChunk[],
-  mask: SecretMask | undefined,
-): CapturedChunk[] {
-  if (mask === undefined) return chunks.filter((c) => c.text.length > 0)
-  const runs: CapturedChunk[] = []
-  for (const c of chunks) {
-    if (c.text.length === 0) continue
-    const last = runs.at(-1)
-    if (last !== undefined && last.err === c.err) last.text += c.text
-    else runs.push({ text: c.text, err: c.err })
-  }
-  for (const err of [false, true]) {
-    const own = runs.filter((r) => r.err === err)
-    const spans = mask.spans(own.map((r) => r.text).join(''))
-    if (spans.length === 0) continue
-    let at = 0
-    let i = 0
-    for (const r of own) {
-      const end = at + r.text.length
-      let text = ''
-      let from = at
-      for (; i < spans.length && spans[i]![0] < end; i++) {
-        const [s, e] = spans[i]!
-        if (s >= from) text += r.text.slice(from - at, s - at) + MASKED
-        from = Math.max(from, Math.min(e, end))
-        // A value that runs past this run is cut from the next one too.
-        if (e > end) break
-      }
-      r.text = text + r.text.slice(from - at)
-      at = end
-    }
-  }
-  // A run emptied whole leaves its neighbours, the other stream, adjacent.
-  const kept: CapturedChunk[] = []
-  for (const r of runs) {
-    if (r.text.length === 0) continue
-    const last = kept.at(-1)
-    if (last !== undefined && last.err === r.err) last.text += r.text
-    else kept.push(r)
-  }
-  return kept
 }
 
 /** The chunks `encodeOutputLog` wrote, adjacent same-stream text joined. */

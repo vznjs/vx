@@ -121,6 +121,7 @@ export {
   maskedStreams,
   maskedLine,
   MASKED,
+  maskStreams,
   secretMask,
   secretNamed,
   type SecretMask,
