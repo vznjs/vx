@@ -3930,7 +3930,8 @@ export function closeDb(db: Database): void {
  * then hold it alone until the release. Every checkout of a repository
  * shares its store and each has a run lock of its own, so a clean in one
  * deleted store.db under a run in another. A run holds the store open from
- * its start to its end, and in WAL mode every open connection keeps a
+ * its run lock to its end (never while it waits for that lock, which a
+ * clean holds while it waits here), and in WAL mode every open connection keeps a
  * shared lock on the file: SQLite grants an exclusive one only to a sole
  * holder, and a holder's lock dies with its process. The run path pays
  * nothing. Holds nothing where the store has no readable file.

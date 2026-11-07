@@ -1269,7 +1269,7 @@ same reason `lock --check` ignores `inputs.env` value changes.
 
 Two vx processes on one workspace (a `vx watch` beside a `vx run`, two
 CI jobs on one checkout) take turns: a run takes the workspace's run
-lock before it schedules and releases it with its cache handle — before
+lock before it opens the cache and releases it with its cache handle — before
 a persistent task's wait, so a dev server never holds it — and the
 second run waits, saying after a second whom it waits for:
 
@@ -1305,9 +1305,10 @@ has staged). Machines sharing a workspace over a network file system
 do not share a temp directory, so they do not share the lock.
 
 A `vx cache clean` in any checkout of the repository waits for every
-vx process holding the shared store open (a run holds it from start to
-end), so it never deletes the store under a run in a sibling checkout,
-whose own lock it never took. An eviction can still land between a
+vx process holding the shared store open (a run holds it from its lock
+to its end), so it never deletes the store under a run in a sibling checkout,
+whose own lock it never took. A run waiting for the lock holds no cache
+open, so a clean holding the lock never waits on it. An eviction can still land between a
 hit's probe and its restore: a clean or a run for another workspace
 that shares the `--cache-dir` (a different workspace, so a
 different lock), which cannot see this run's pending `accessed_at`
