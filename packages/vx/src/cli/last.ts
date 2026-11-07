@@ -74,13 +74,13 @@ interface LastArgs {
   error?: string
 }
 
+/** The run grid's mark for a number history does not hold. */
+const UNKNOWN = '\u2014'
+
 /**
  * A run id as typed beside `--list`: a UUIDv7's first group (8 hex digits)
  * at least, whole or cut as `--list` prints it.
  */
-/** The run grid's mark for a number history does not hold. */
-const UNKNOWN = '\u2014'
-
 const RUN_ID_SHAPE = /^[0-9a-f]{8}(?:-|$)/i
 
 export function parseLastArgs(args: readonly string[]): LastArgs {
