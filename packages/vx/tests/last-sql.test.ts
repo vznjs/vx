@@ -99,6 +99,7 @@ it('a query that writes is refused and the history is left as it was', () => {
   for (const sql of [
     'DELETE FROM runs',
     'WITH x AS (SELECT 1) DELETE FROM runs',
+    'DELETE FROM main.runs',
     "ATTACH 'x.db' AS x",
     'PRAGMA user_version = 3',
   ]) {

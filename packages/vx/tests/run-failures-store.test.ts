@@ -44,11 +44,17 @@ const failed = (runId: string): void => {
      VALUES (?, 'vx run b', '[]', 'full', 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 'test')`,
     [runId],
   )
-  db.run(
-    `INSERT INTO runs (hash, run_id, project, task, status, exit_code, duration_ms, started_at, ended_at)
-     VALUES ('', ?, 'a', 'b', 'failed', 1, 0, 0, 0)`,
-    [runId],
-  )
+  cache.recordRun({
+    hash: '',
+    runId,
+    project: 'a',
+    task: 'b',
+    status: 'failed',
+    exitCode: 1,
+    durationMs: 0,
+    startedAt: 0,
+    endedAt: 0,
+  })
   writeRunFailures(cache, runId, [outcome()], (m) => {
     throw new Error(m)
   })

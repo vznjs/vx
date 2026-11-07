@@ -75,7 +75,7 @@ export function mixedOutcomeKeysSql(source: string, where = ''): string {
 export function mixedOutcomeKeyCount(db: Database, project: string, task: string): number {
   const row = db
     .query(
-      `SELECT COUNT(*) AS n FROM (${mixedOutcomeKeysSql('runs', ' AND project = ? AND task = ?')})`,
+      `SELECT COUNT(*) AS n FROM (${mixedOutcomeKeysSql('main.runs', ' AND project = ? AND task = ?')})`,
     )
     .get(project, task) as { n: number }
   return row.n

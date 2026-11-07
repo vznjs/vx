@@ -445,7 +445,7 @@ export class HistoryStream<T> {
   add(item: T, record: RunRecord): void
   finish(): Promise<{ landed: Streamed<T>[]; unlanded: Streamed<T>[] }>
 }
-export const SCHEMA_VERSION = 'v52'
+export const SCHEMA_VERSION = 'v53'
 // An entry_stdout row's log, its zstd frame decoded (v52); null reads as ''.
 // `vx last --log` reads the row itself.
 export function storedLog(blob: Uint8Array | null): string
@@ -631,7 +631,15 @@ SQLite stores metadata, and the small artifacts above:
   so the `accessed_at` bump does not rewrite it (v29); a zstd frame of its
   UTF-8 (v52), as text the logs outweighed every inline artifact.
 - **`runs`** — one row per task execution (hit or miss):
-  `(id, hash, project, task, status, exit_code, duration_ms, forward_args, started_at, ended_at)`.
+  `(id, hash, project, task, status, exit_code, duration_ms, forward_args, started_at, ended_at, run, …)`.
+  `run` is the run's row in **`run_ids`** `(id, run_id)` (v53): the
+  36-char id and its index were a third of what an all-hit run added.
+  Each connection's TEMP view `runs` shadows the table and shows `run_id`
+  in its place, so readers and `vx last --sql` read the old columns; a
+  reader that needs no `run_id` names `main.runs` (the view's join is
+  not dropped from an aggregate), and writers always do. TEMP, so an
+  older vx resetting the index never meets a view its `DROP TABLE runs`
+  refuses.
 - **`store_meta`** — the shared store's `SCHEMA_VERSION`. Another
   version drops the store's tables, prints nothing, and keeps every
   artifact, indexed again from its own bytes when its task next hits.
@@ -830,7 +838,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
 `CACHE_VERSION` is currently `'vx-cache-v51'`; `SCHEMA_VERSION` is
-`'v52'`. Bump `CACHE_VERSION` when:
+`'v53'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside
   `key()`).

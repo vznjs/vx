@@ -1,6 +1,6 @@
 {
   "index": {
-    "version": "v52",
+    "version": "v53",
     "layout": [
       "CREATE INDEX invocations_branch  ON invocations(branch)",
       "",
@@ -8,7 +8,7 @@
       "",
       "CREATE INDEX invocations_started ON invocations(started_at)",
       "",
-      "CREATE INDEX runs_run_id     ON runs(run_id)",
+      "CREATE INDEX runs_run        ON runs(run)",
       "",
       "CREATE INDEX runs_started_at ON runs(started_at)",
       "",
@@ -176,6 +176,11 @@
       "seen_at     INTEGER NOT NULL",
       ")",
       "",
+      "CREATE TABLE run_ids (",
+      "id     INTEGER PRIMARY KEY,",
+      "run_id TEXT NOT NULL UNIQUE",
+      ")",
+      "",
       "CREATE TABLE runs (",
       "id                  INTEGER PRIMARY KEY AUTOINCREMENT,",
       "hash                TEXT NOT NULL,",
@@ -187,7 +192,7 @@
       "forward_args        TEXT,",
       "started_at          INTEGER NOT NULL,",
       "ended_at            INTEGER NOT NULL,",
-      "run_id              TEXT,",
+      "run                 INTEGER,",
       "cpu_ms              INTEGER,",
       "peak_rss_bytes      INTEGER,",
       "wallclock_start_ns  INTEGER,",

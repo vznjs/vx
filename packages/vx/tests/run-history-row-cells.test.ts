@@ -40,7 +40,7 @@ function rows(): Row[][] {
       ({ run_id }) =>
         db
           .query(
-            'SELECT task, status, queued_ms, output_bytes, blocks FROM runs WHERE run_id = ? ORDER BY task',
+            'SELECT task, status, queued_ms, output_bytes, blocks FROM runs WHERE run = (SELECT id FROM run_ids WHERE run_id = ?) ORDER BY task',
           )
           .all(run_id) as Row[],
     )

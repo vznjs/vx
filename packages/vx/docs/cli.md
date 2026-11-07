@@ -2985,7 +2985,7 @@ $ vx info
   memory            13 GB usable — cgroup limit; the machine has 16 GB
   cache dir         /work/repo/.vx/cache (8.2 MB, this workspace's run history)
   cache store       /home/me/.vx/3f2a9c1e7b4d5a60/cache (1.3 GB, shared by this workspace's checkouts)
-  cache versions    keys vx-cache-v51 · index schema v52
+  cache versions    keys vx-cache-v51 · index schema v53
   cache entries     42 (1.3 GB)
   orphans           3 artifacts (12 MB) the index does not know — `vx cache clean` reaps them
   task runs (24h)   7 (5 cache hits)
@@ -3560,7 +3560,9 @@ did not wait on), `warnings` (`run_id`, `seq`, `text`), `failures`
 (the cached keys), `entry_inputs` (each key's input components),
 `task_durations` and `task_outcomes` (what forecasts and flakiness
 read), `lockfile_memos` (a lockfile plugin's parse, by file and
-claimant). `SELECT name, sql FROM sqlite_schema` lists them all. Times
+claimant). `SELECT name, sql FROM sqlite_schema` lists them all; `runs`
+is a view (in `sqlite_temp_schema`) over the stored rows, which name
+their run by its `run_ids` row. Times
 are epoch milliseconds. The history keeps 30 days; `steps`, `warnings`
 and `failures` the newest 50 runs that had any.
 

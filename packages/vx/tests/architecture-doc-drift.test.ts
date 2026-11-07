@@ -53,15 +53,15 @@ describe('architecture.md follows the source it describes', () => {
     expect([...named].sort()).toEqual([...cases].sort())
   })
 
-  it('the runs-column table lists every column of the runs table (rowid aside)', () => {
+  it('the runs-column table lists every column of the runs view (rowid aside)', () => {
     const src = readFileSync(path.join(pkg, 'src', 'cache', 'schema.ts'), 'utf8')
-    const block = /CREATE TABLE IF NOT EXISTS (?:main\.)?runs \(([\s\S]*?)\n\s*\)/.exec(src)
+    // Readers and `vx last --sql` see `runs` as the view; its select list
+    // is the documented shape (the stored table names its run by integer).
+    const block = /CREATE TEMP VIEW IF NOT EXISTS runs AS\s+SELECT ([\s\S]*?)\s+FROM /.exec(src)
     expect(block).not.toBeNull()
     const columns = block![1]!
-      .split('\n')
-      .map((l) => l.trim())
-      .filter((l) => /^[a-z_]+\s/.test(l))
-      .map((l) => l.split(/\s+/)[0]!)
+      .split(',')
+      .map((c) => c.trim().replace(/^[a-z]\./, ''))
       .filter((c) => c !== 'id')
     const table = section('## Run-history analytics').split('The `invocations` header row')[0]!
     const documented = new Set<string>()
