@@ -219,11 +219,14 @@ readers that reach it here.
   config resolves to its object on the first load and in the Worker
   alike (D-5). The awaited value is checked again, a workspace
   config's too (D-6).
-- Validation runs on whichever object the two paths produced, so a
-  malformed config reports the identical `UserError` either way.
+- Validation runs on the JSON copy both paths produce, so a malformed
+  config reports the identical `UserError` either way. On the live
+  object, a getter in an array or a Proxy answered the check with one
+  value and the copy, which the lock stores, with another
+  (`outputs.files: ['../victim/**']` reached the lock unchecked).
 - A value JSON cannot carry (a function, `NaN`, a `Map`, …) is refused
   by both paths with one message (item 701, config-schema.md): the first
-  load's `validateProjectConfig` sees the live object, and the Worker
+  load runs `nonJsonPaths` on the live object before its copy, and the Worker
   runs the same `nonJsonPaths`, embedded in its inline source by
   `toString()`, BEFORE its `JSON.stringify` would drop the evidence. It
   replies with the paths instead of the JSON, and `evaluateConfigFresh`

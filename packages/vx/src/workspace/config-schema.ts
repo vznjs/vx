@@ -514,12 +514,14 @@ export function validateProjectConfig(
   config: ProjectConfig,
   configPath: string,
   ownConfig: string | null = configPath,
+  /** The caller refused non-JSON values already and passes a JSON copy (project-loader.ts). */
+  jsonCopy = false,
 ): void {
   // Before the schema, on the object as it stands: the key folds its JSON,
   // so a value JSON cannot carry is refused here and in the config worker
   // alike (json-data.ts). A plugin's `project` edit and a lock entry cross
   // this line too.
-  const [nonJson] = nonJsonPaths(config)
+  const [nonJson] = jsonCopy ? [] : nonJsonPaths(config)
   if (nonJson !== undefined) throw new UserError(nonJsonMessage(configPath, nonJson))
   // The top level too: `task:` (singular) loaded as a project with no
   // tasks and every request against it said "no projects declare".
