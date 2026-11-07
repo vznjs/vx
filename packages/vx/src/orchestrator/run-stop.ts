@@ -18,6 +18,7 @@ import { hasEnded } from './persistent.js'
 import {
   forwardedSignal,
   forwardSignals,
+  type HeldSignals,
   SIGNAL_SHUTDOWN_GRACE_MS,
   type StopSignal,
   terminateChildren,
@@ -78,6 +79,8 @@ export function runStop(args: {
   /** `RunOptions.handleSignals`. */
   handleSignals: boolean
   handsTerminal: boolean
+  /** What the run heard since it went for its lock (`holdSignals`). */
+  held: HeldSignals | undefined
   /** How many plugins have a teardown: each gets its own bound before a signal exits. */
   teardowns: number
   /** Called first when the run is stopped. */
@@ -125,6 +128,7 @@ export function runStop(args: {
     },
     done: runLeft,
     handsTerminal: args.handsTerminal,
+    held: args.held,
     // The grace, then one flush and each teardown at their own bound, and
     // slack for the summary and the cache close.
     boundMs:

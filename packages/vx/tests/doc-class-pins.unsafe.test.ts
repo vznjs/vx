@@ -805,7 +805,11 @@ describe('every page enumerating the run signal handlers names all three', () =>
       path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'signals.ts'),
       'utf8',
     )
-    const registered = [...src.matchAll(/process\.on\('(SIG[A-Z]+)'/g)].map((m) => m[1]!)
+    // A set: the held listeners (`holdSignals`, from the run lock on) and
+    // `forwardSignals` register the same stop signals.
+    const registered = [
+      ...new Set([...src.matchAll(/process\.on\('(SIG[A-Z]+)'/g)].map((m) => m[1]!)),
+    ]
     // SIGTSTP and SIGCONT pause and continue the tasks (Ctrl-Z, fg); they
     // end nothing, so no exit code and no page's stop set names them.
     expect(registered.sort()).toEqual(['SIGCONT', 'SIGHUP', 'SIGINT', 'SIGTERM', 'SIGTSTP'])

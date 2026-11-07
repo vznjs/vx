@@ -99,6 +99,87 @@ export async function terminateChildren(
   }
 }
 
+/**
+ * The signals a run hears from the moment it goes for its run lock until
+ * `forwardSignals` takes over. A plugin's setup runs in between, so a
+ * slow one held that window open for seconds, and a Ctrl-C in it killed
+ * vx by the default action: no plugin's teardown, no sink's flush, the
+ * lock's entry left in the temp dir. The first signal is noted and aborts
+ * `signal` (the lock's wait reads it); `forwardSignals` replays it once
+ * installed, or `run()` exits of it on a way out before that. A second
+ * exits at once, as a second does later.
+ */
+export interface HeldSignals {
+  readonly signal: AbortSignal
+  /** Removes the listeners, once; the signal heard so far, if any. */
+  takeOver(): StopSignal | undefined
+  /**
+   * From here a stop is held for the run's own end (plugin setup has
+   * begun, so teardown is owed); before it, a stop leaves at once, its
+   * exit hooks releasing the run lock: nothing earlier (a git listing, a
+   * remote's open) waits on the stop, so holding it held the run.
+   */
+  arm(): void
+}
+
+export function holdSignals(): HeldSignals {
+  const controller = new AbortController()
+  let heard: StopSignal | undefined
+  let armed = false
+  const onSignal = (signal: StopSignal): void => {
+    if (heard !== undefined) exitOf(heard, false)
+    if (!armed) {
+      claimExitForSignal()
+      exitOf(signal, false)
+    }
+    heard = signal
+    claimExitForSignal()
+    controller.abort(signal)
+  }
+  const onSigint = (): void => onSignal('SIGINT')
+  const onSigterm = (): void => onSignal('SIGTERM')
+  const onSighup = (): void => onSignal('SIGHUP')
+  process.on('SIGINT', onSigint)
+  process.on('SIGTERM', onSigterm)
+  if (!hangupIgnored()) process.on('SIGHUP', onSighup)
+  let taken = false
+  return {
+    signal: controller.signal,
+    arm: () => {
+      armed = true
+    },
+    takeOver: () => {
+      if (taken) return undefined
+      taken = true
+      process.off('SIGINT', onSigint)
+      process.off('SIGTERM', onSigterm)
+      process.off('SIGHUP', onSighup)
+      return heard
+    },
+  }
+}
+
+/**
+ * A held signal no `forwardSignals` took over (the run returned or threw
+ * before its tasks) leaves here, once the run's own end is done: stdout
+ * drained, bounded, then `exitOf`.
+ */
+export async function exitOfSignal(signal: StopSignal): Promise<never> {
+  await settleWithin(new Promise<void>((r) => process.stdout.end(() => r())), 2_000)
+  return exitOf(signal, false)
+}
+
+/**
+ * Die of the signal once the exit hooks have run: a shell running vx in
+ * a script stops it on Ctrl-C only when its child died of SIGINT, and a
+ * 130 exit ran the script's next line. The code stays the fallback
+ * should the signal not land.
+ */
+function exitOf(signal: StopSignal, handsTerminal: boolean): never {
+  if (!handsTerminal) process.once('exit', () => dieOf(signal))
+  process.exit(signalExitCode(signal))
+}
+
 export interface SignalForwarding {
   /** Detach the handlers — in `run()`'s finally, so repeated runs never stack listeners. */
   remove(): void
@@ -130,6 +211,8 @@ export function forwardSignals(args: {
    * the signal's code rather than dying of the signal.
    */
   handsTerminal?: boolean
+  /** The run's held signals: taken over here, and one already heard replayed. */
+  held?: HeldSignals | undefined
   /** In-flight children; the runner adds and removes each around its spawn. */
   liveChildren: ReadonlySet<Child>
   /** Ready persistent tasks the orchestrator owns until the graph finishes. */
@@ -155,14 +238,7 @@ export function forwardSignals(args: {
     } catch {
       // double-close race with the normal path; we're exiting anyway
     }
-    // Die of the signal once the exit hooks have run: a shell running vx
-    // in a script stops it on Ctrl-C only when its child died of SIGINT,
-    // and a 130 exit ran the script's next line. The code stays the
-    // fallback should the signal not land.
-    if (args.handsTerminal !== true) {
-      process.once('exit', () => dieOf(signal))
-    }
-    process.exit(signalExitCode(signal))
+    return exitOf(signal, args.handsTerminal === true)
   }
   let stopping: StopSignal | undefined
   const onSignal = (signal: StopSignal): void => {
@@ -209,6 +285,9 @@ export function forwardSignals(args: {
     process.on('SIGTSTP', onSigtstp)
     process.on('SIGCONT', onSigcont)
   }
+  // After this module's own listeners are on, so no signal finds none.
+  const heard = args.held?.takeOver()
+  if (heard !== undefined) onSignal(heard)
   return {
     remove: () => {
       process.off('SIGINT', onSigint)
