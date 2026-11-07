@@ -3193,7 +3193,9 @@ moves it and how to stop a move the task does not need. An upstream
 row is only the carrier, so `vx why` follows each dependency that moved
 in the same run down to the tasks whose OWN inputs moved and prints
 them under `root cause`, one chain per root (five at most, then a
-count), and `what to do` speaks to those kinds instead:
+count), and `what to do` speaks to those kinds instead. Each upstream is
+compared between the two keys the dependant folded, so a run of the
+upstream alone in between changes nothing it names:
 
 ```
   root cause:

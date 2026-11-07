@@ -936,10 +936,13 @@ export interface RootCause {
 
 /**
  * The tasks under `taskId`'s moved upstreams whose OWN key components
- * moved in the same run, each with the chain that carried it up. A task
- * visited once is not walked again (a diamond names its root once). A
- * group records no run, so `groups` (group id → the tasks it gathers)
- * carries the walk through it.
+ * moved, each with the chain that carried it up. An upstream is diffed
+ * between the two keys its dependant folded (the upstream row's before
+ * and after hashes), not against its own previous run, which names what
+ * moved since a run of it alone in between. A task visited once is not
+ * walked again (a diamond names its root once). A group records no run,
+ * so `groups` (group id → the tasks it gathers) carries the walk through
+ * it.
  */
 export function rootCauses(
   db: Database,
@@ -948,6 +951,7 @@ export function rootCauses(
   entries: CacheKeyDiff['entries'],
   groups: ReadonlyMap<string, readonly string[]> = new Map(),
 ): RootCause[] {
+  const recorded = db.query('SELECT 1 FROM runs WHERE run_id = ? AND project = ? AND task = ?')
   const roots: RootCause[] = []
   const seen = new Set([taskId])
   const walk = (chain: string[], moved: CacheKeyDiff['entries']): void => {
@@ -957,20 +961,31 @@ export function rootCauses(
       if (seen.has(task)) continue
       seen.add(task)
       const next = [...chain, ...e.name.split(GROUP_VIA)]
-      const d = cacheKeyDiff(db, runId, task)
-      // A group: its members carry the walk, named in the key through it
-      // (`group ← task`) or, in a row that names the group alone, by the graph.
-      if (!d.found) {
+      if (recorded.get(runId, ...splitTaskId(task)) === null) {
+        // A group: its members carry the walk, by their own rows named
+        // through it (`group ← task`) when the key has them, else by the
+        // graph, whose members carry none of the dependant's keys.
+        const via = `${e.name}${GROUP_VIA}`
+        if (moved.some((x) => x.kind === 'upstream' && x.name.startsWith(via))) continue
         const members = groups.get(task) ?? []
         walk(
           next,
-          members.map((name) => ({ ...e, name })),
+          members.map((name) => ({ ...e, name, before: null, after: null })),
         )
         continue
       }
-      const own = d.entries.filter((x) => x.kind !== 'upstream')
+      let d: CacheKeyDiff['entries']
+      if (e.before !== null && e.after !== null) {
+        const before = loadEntryInputs(db, e.before)
+        const after = loadEntryInputs(db, e.after)
+        // A pruned or unsaved side kept no fingerprints: nothing to name.
+        d = before.length > 0 && after.length > 0 ? diffKeyComponents(before, after).entries : []
+      } else {
+        d = cacheKeyDiff(db, runId, task).entries
+      }
+      const own = d.filter((x) => x.kind !== 'upstream')
       if (own.length > 0) roots.push({ chain: next, entries: own })
-      walk(next, d.entries)
+      walk(next, d)
     }
   }
   walk([taskId], entries)
