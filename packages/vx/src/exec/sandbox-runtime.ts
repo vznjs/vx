@@ -2574,7 +2574,7 @@ async function runSandboxedOnce(
       rmSync(straceLog, { force: true })
       liveTempFiles.delete(straceLog)
     }
-    const stderr = spawnFailureText(err, args.cwd, SANDBOXED_TASK, wrapped)
+    const stderr = spawnFailureText(err, args.cwd, SANDBOXED_TASK, wrapped, args.env)
     args.onStderr?.(stderr)
     releaseBridges(tag)
     void takeRecords(false)
