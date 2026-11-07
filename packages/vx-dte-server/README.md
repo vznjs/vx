@@ -163,4 +163,5 @@ The same relay as a `fetch` handler, to mount in a server of your own
   repository: `repository` for GitHub Actions, `project_path` otherwise.
 - `workflowClaimOf(iss)` names the claim that names the workflow a
   token's job is defined in: `job_workflow_ref` for GitHub Actions,
-  `ci_config_ref_uri` otherwise.
+  `ci_config_ref_uri` otherwise. The relay matches it up to its last `@`,
+  before the ref or SHA.

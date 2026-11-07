@@ -127,7 +127,7 @@ export function parseAllow(list: string): Allowed[] {
     })
 }
 
-/** What `workflowClaimOf(iss)` says, up to its `@`, for a job of `workflow` in `repository`. */
+/** What `workflowClaimOf(iss)` says, up to its last `@`, for a job of `workflow` in `repository`. */
 function workflowPath(iss: string, repository: string, workflow: string): string {
   return iss === GITHUB
     ? `${repository}/.github/workflows/${workflow}`
@@ -232,17 +232,15 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
       const ref = claims[claim]
       if (typeof ref !== 'string') throw new TokenError(`no ${claim} claim`, 403)
       const repo = String(claims[repositoryClaimOf(iss)])
-      // The path is the claim up to an `@` that a ref follows: a file name may hold `@` too.
-      const named = ofRepo.some((a) => {
-        const p = `${workflowPath(iss, a.repository ?? repo, a.workflow!)}@`
-        return same(ref.slice(0, p.length), p)
-      })
-      if (!named) {
-        throw new TokenError(
-          `workflow ${ref.replace(/@.*$/, '')} is not in this relay's ALLOW`,
-          403,
-        )
-      }
+      // Cut at the last `@`, as vx-devtools does: the ref after it is
+      // `refs/…` or a SHA (a reusable workflow pinned by one), and GitLab's
+      // CI file may itself hold one (`.gitlab-ci.yml@group/project`, a file
+      // kept in another project, which a match by the prefix `<path>@` took
+      // as this project's own). A ref holding an `@` is refused, never widened.
+      const at = ref.lastIndexOf('@')
+      const workflow = at < 0 ? ref : ref.slice(0, at)
+      if (!ofRepo.some((a) => same(workflow, workflowPath(iss, a.repository ?? repo, a.workflow!))))
+        throw new TokenError(`workflow ${workflow} is not in this relay's ALLOW`, 403)
     }
     const run = (opts.runClaims?.[iss] ?? runClaimsOf(iss)).map((c) => {
       const v = claims[c]

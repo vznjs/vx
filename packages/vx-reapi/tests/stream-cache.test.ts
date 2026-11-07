@@ -359,7 +359,7 @@ describe('the REAPI cache layer, exactly', () => {
 
   it('the execution record has its own address, apart from the artifact’s', () => {
     const sha = (s: string) => createHash('sha256').update(s).digest('hex')
-    expect(execDigestFor('k')).toEqual({ hash: sha('vx-reapi-exec-v1\0k'), size_bytes: 18 })
+    expect(execDigestFor('k')).toEqual({ hash: sha('vx-reapi-exec-v2\0k'), size_bytes: 18 })
     expect(actionDigestFor('k')).toEqual({ hash: sha('vx-reapi-v1\0k'), size_bytes: 13 })
   })
 

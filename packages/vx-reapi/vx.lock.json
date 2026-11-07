@@ -26,12 +26,97 @@
       ]
     },
     "test": {
-      "description": "bun test, one process per file (live suites need VX_REAPI_*_ENDPOINT)",
+      "dependsOn": [
+        "test.shard-*"
+      ]
+    },
+    "test.shard-1": {
+      "description": "bun test, shard 1 of 3, one process per file (live suites need VX_REAPI_*_ENDPOINT)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "for f in tests/*.test.ts; do echo \"== $f\"; bun test --only-failures \"$f\" --timeout 90000 || exit 1; done",
+        "command": "for f in tests/cache-ac-refused.test.ts tests/cancel-operation.test.ts tests/exec-e2e.test.ts tests/executor-auth.test.ts tests/executor-sweep.test.ts tests/executor.test.ts tests/fake-reapi.test.ts tests/materialise-fence.test.ts tests/merkle-sweep.test.ts tests/reapi-e2e.test.ts tests/string-map-options.test.ts tests/wedged.test.ts tests/wire-exec-unavailable.test.ts; do echo \"== $f\"; bun test --only-failures \"$f\" --timeout 90000 || exit 1; done",
+        "env": {
+          "passThrough": [
+            "VX_REAPI_TEST_ENDPOINT",
+            "VX_REQUIRE_REAPI",
+            "VX_REAPI_EXEC_ENDPOINT",
+            "VX_REQUIRE_REAPI_EXEC"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "src/**",
+          "tests/**",
+          "package.json",
+          "tsconfig.json"
+        ],
+        "env": [
+          "VX_REAPI_TEST_ENDPOINT",
+          "VX_REQUIRE_REAPI",
+          "VX_REAPI_EXEC_ENDPOINT",
+          "VX_REQUIRE_REAPI_EXEC"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.shard-2": {
+      "description": "bun test, shard 2 of 3, one process per file (live suites need VX_REAPI_*_ENDPOINT)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "for f in tests/encoding.test.ts tests/executor-no-stale-replay.test.ts tests/factory-capabilities.test.ts tests/merkle.test.ts tests/no-stale-hit.test.ts tests/option-kinds.test.ts tests/plugin-sweep.test.ts tests/queue-timeout.test.ts tests/read-bounds.test.ts tests/request-metadata-action.test.ts tests/timeout-options.test.ts tests/tls.test.ts tests/unknown-options.test.ts tests/wire-exec-sweep.test.ts; do echo \"== $f\"; bun test --only-failures \"$f\" --timeout 90000 || exit 1; done",
+        "env": {
+          "passThrough": [
+            "VX_REAPI_TEST_ENDPOINT",
+            "VX_REQUIRE_REAPI",
+            "VX_REAPI_EXEC_ENDPOINT",
+            "VX_REQUIRE_REAPI_EXEC"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "src/**",
+          "tests/**",
+          "package.json",
+          "tsconfig.json"
+        ],
+        "env": [
+          "VX_REAPI_TEST_ENDPOINT",
+          "VX_REQUIRE_REAPI",
+          "VX_REAPI_EXEC_ENDPOINT",
+          "VX_REQUIRE_REAPI_EXEC"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.shard-3": {
+      "description": "bun test, shard 3 of 3, one process per file (live suites need VX_REAPI_*_ENDPOINT)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "for f in tests/boolean-options.test.ts tests/cache-sweep.test.ts tests/capabilities-retry.test.ts tests/decode-sweep.test.ts tests/executor-helpers-sweep.test.ts tests/integrity.test.ts tests/materialise-concurrency.test.ts tests/no-env.test.ts tests/plugin.test.ts tests/record-digest-sizes.test.ts tests/stream-cache.test.ts tests/vx-run-e2e.test.ts tests/wire-only-options.test.ts tests/wire-sweep.test.ts tests/wire.test.ts; do echo \"== $f\"; bun test --only-failures \"$f\" --timeout 90000 || exit 1; done",
         "env": {
           "passThrough": [
             "VX_REAPI_TEST_ENDPOINT",

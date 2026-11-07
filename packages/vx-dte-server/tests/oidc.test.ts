@@ -177,6 +177,47 @@ describe('a CI OIDC token', () => {
     ]).toEqual(['ok', 'ok'])
   })
 
+  // The workflow is matched up to the last `@`, as vx-devtools matches it: a
+  // match by the prefix `<path>@` took a CI file kept in another project
+  // (`.gitlab-ci.yml@group/shared`, or one named `refs/…`) as this one's.
+  it('cuts the workflow at the last @, a SHA pin or a ref', async () => {
+    const GH = 'https://token.actions.githubusercontent.com'
+    const sha = '0123456789abcdef0123456789abcdef01234567'
+    const verify = createVerifier({
+      allow: parseAllow(`${GH}:org/app:ci.yml ${ISS}:group/app:.gitlab-ci.yml`),
+      audience: AUD,
+      now: () => now,
+      fetchJson: async (url) =>
+        url.endsWith('/.well-known/openid-configuration')
+          ? { jwks_uri: url.replace('/.well-known/openid-configuration', '/jwks') }
+          : { keys: [{ ...jwk, kid: 'k1' }] },
+    })
+    const asked = async (claims: Record<string, unknown>) =>
+      verify(await sign(claims)).then(
+        () => 'ok',
+        (e: TokenError) => e.message,
+      )
+    const ci = 'gitlab.example/group/app//.gitlab-ci.yml'
+    expect([
+      await asked({
+        iss: GH,
+        aud: AUD,
+        exp: now + 300,
+        repository_id: '5',
+        repository: 'org/app',
+        job_workflow_ref: `org/app/.github/workflows/ci.yml@${sha}`,
+      }),
+      await asked({ ...good, ci_config_ref_uri: `${ci}@refs/heads/main` }),
+      await asked({ ...good, ci_config_ref_uri: `${ci}@refs/other@refs/heads/main` }),
+      await asked({ ...good, ci_config_ref_uri: `${ci}@group/shared@refs/heads/main` }),
+    ]).toEqual([
+      'ok',
+      'ok',
+      `workflow ${ci}@refs/other is not in this relay's ALLOW`,
+      `workflow ${ci}@group/shared is not in this relay's ALLOW`,
+    ])
+  })
+
   it('reads ALLOW’s entries from the right, since an issuer holds colons', () => {
     expect(
       parseAllow(

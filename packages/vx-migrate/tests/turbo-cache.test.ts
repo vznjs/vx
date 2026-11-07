@@ -11,6 +11,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { type RemoteCacheLayer } from '@vzn/vx'
 import type { WorkspaceConfig } from '@vzn/vx/config'
+import { Cache, indexDb } from '../../vx/src/cache/index.js'
 import { run } from '../../vx/tests/helpers/orchestrator.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import {
@@ -619,7 +620,8 @@ describe('TurboRemoteCache against the spec server', () => {
     const miss: Record<string, unknown> = {
       'has-a': null,
       'has-b': null,
-      get: null,
+      // No answer, not "none held": a null forgot the hits the index kept.
+      get: undefined,
       // No answer: an empty map rewrote every key it asked as a miss.
       hasMany: null,
       put: false,
@@ -650,7 +652,8 @@ describe('TurboRemoteCache against the spec server', () => {
     await expect(c.has('aa11')).rejects.toThrow(/401.*token was refused/)
     const n = srv.seen.length
     expect(await c.has('aa11')).toBeNull()
-    expect(await c.get('aa11')).toBeNull()
+    // No answer: a null said the remote holds none, and core forgot the hit.
+    expect(await c.get('aa11')).toBeUndefined()
     // Not sent, so core counts no upload.
     expect(await c.put('ee55', new Blob(['x']), { durationMs: 1 })).toBe(false)
     // No answer, not "none held": core rewrites the keys a has-many
@@ -738,6 +741,41 @@ describe('vx run with turboCache() layered over the local cache', () => {
     } finally {
       srv.store.set(hash, stored)
     }
+  })
+
+  // A refused token answered nothing: its download's null forgot the hits
+  // the index kept, and the next run with a good token fetched none.
+  it('a run whose token is refused keeps the hits the index holds', async () => {
+    const cacheDir = path.join(root, '.vx', 'cache')
+    const workspace = path.join(root, '.vx/workspace.mjs')
+    await rm(cacheDir, { recursive: true, force: true })
+    const r = await run({ cwd: root, tasks: ['build'], handleSignals: false })
+    expect(r.outcomes.map((o) => o.status)).toEqual(['cache-hit-remote'])
+    const hits = (): number => {
+      const local = new Cache(cacheDir)
+      try {
+        return (
+          indexDb(local).query('SELECT count(*) AS n FROM remote_hits').get() as { n: number }
+        ).n
+      } finally {
+        local.close()
+      }
+    }
+    expect(hits()).toBe(1)
+    const good = await Bun.file(workspace).text()
+    await Bun.write(workspace, good.replace(JSON.stringify(TOKEN), JSON.stringify('nope')))
+    try {
+      const refused = await run({
+        cwd: root,
+        tasks: ['build'],
+        handleSignals: false,
+        cache: { localRead: false, localWrite: false, remoteRead: true, remoteWrite: false },
+      })
+      expect(refused.outcomes.map((o) => o.status)).toEqual(['success'])
+    } finally {
+      await Bun.write(workspace, good)
+    }
+    expect(hits()).toBe(1)
   })
 
   it('the plugin reads the workspace’s turbo.json remoteCache', async () => {
