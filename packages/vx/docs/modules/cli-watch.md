@@ -58,6 +58,7 @@ export class ChangeJudge {
   lastCycle: { start: number; end: number } | undefined // start on the mtime clock (fsClockNow), as armedAt
   constructor(ctx: JudgeContext)
   seed(abs: string): void // record a path's state now, if unjudged: a link armed for its target
+  unseen(moved: readonly (string | null)[]): void // inputs a run read in a state no judgement saw (TaskOutcome.driftedInput): each is a change next time; null marks every pending path
   judge(): string | undefined // the first changed path's label, or none
 }
 

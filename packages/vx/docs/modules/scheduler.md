@@ -49,6 +49,7 @@ export interface TaskOutcome {
   avgRssBytes?: number // sampled: mean resident memory
   groupUpstream?: readonly TaskOutcome[] // a group's own dependency outcomes; never folded
   unkeyed?: true // ran over inputs its key no longer describes: no save, nor by a dependant (A-12)
+  driftedInput?: string | null // its own re-check found this input (absolute) moved while it ran, null unnamed: vx watch judges it changed next
   keylessBy?: string // the task with no `inputs` its key includes (or itself): no read, no save
   cacheOff?: true // the run's policy read and wrote nothing: a run of it is no-cache, not a miss
   blockedBy?: string // skipped: the failed or aborted task at the root of the block

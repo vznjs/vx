@@ -129,6 +129,13 @@ export interface TaskOutcome {
    */
   unkeyed?: true
   /**
+   * The input this task's own re-check found moved while it ran (absolute),
+   * or null when the key re-derived before the command already differed.
+   * The command read a state of it no `vx watch` judgement saw, so the
+   * loop counts its next settled state as a change.
+   */
+  driftedInput?: string | null
+  /**
    * The task with no `inputs` this task's key folds (this task, or one
    * upstream): no run can derive that key again, so it neither read nor
    * saved an entry, and a dependant that folds `hash` does neither.

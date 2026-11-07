@@ -815,6 +815,78 @@ describe.if(CHUNKING_SUPPORTED)('upstream outputs', () => {
     walk(action.inputRootDigest.hash, '')
     expect(missing).toEqual([])
   })
+
+  // A deferred upstream core will not save (--no-cache, a read-only policy
+  // with --cache-download=none) left no record under its key and no files
+  // here, so its dependant shipped without its outputs and exited 0.
+  const deferredUnsaved = async (
+    run: (req: ExecuteRequest) => ReturnType<ReturnType<typeof reapiExecutor>['execute']>,
+    key: string,
+    unsaved = true,
+  ) => {
+    const built = put('upstream bytes')
+    fake.onExecute = () => ({
+      response: {
+        result: { exit_code: 0, output_files: [{ path: 'out.txt', digest: D(built) }] },
+      },
+    })
+    await run(request({ cacheKey: key, unsaved, download: 'deferred' }))
+    fake.onExecute = () => ({ response: { result: { exit_code: 0 } } })
+    const base = request()
+    return run(
+      request({
+        taskId: 'pkg#use',
+        cacheKey: 'k-down',
+        unsaved: true,
+        outputs: { files: [], workspaceFiles: [] },
+        inputs: {
+          ...base.inputs!,
+          upstream: [{ taskId: 'pkg#gen', hash: key, outputs: [] }],
+        },
+      }),
+    )
+  }
+
+  it('a deferred upstream core will not save grafts from this run, never under its key', async () => {
+    await withExecutor(async (run) => {
+      expect((await deferredUnsaved(run, 'k-up-unsaved')).exitCode).toBe(0)
+    })
+    expect(await exists('pkg/out.txt')).toBe(false)
+    expect(inputRoot().has('pkg/out.txt')).toBe(true)
+    expect(fake.actions.has(execDigestFor('k-up-unsaved').hash)).toBe(false)
+    // A later run's executor knows nothing of it: the key still executes.
+    const before = executes()
+    await withExecutor((run) => run(request({ cacheKey: 'k-up-unsaved' })))
+    expect(executes() - before).toBe(1)
+  })
+
+  it('a deferred upstream core saves grafts from its key', async () => {
+    await withExecutor(async (run) => {
+      expect((await deferredUnsaved(run, 'k-up-saved', false)).exitCode).toBe(0)
+    })
+    expect(inputRoot().has('pkg/out.txt')).toBe(true)
+    expect(fake.actions.has(execDigestFor('k-up-saved').hash)).toBe(true)
+  })
+
+  it('an upstream run here with no record to graft and no files refuses', async () => {
+    fake.fail('UpdateActionResult', grpc.status.PERMISSION_DENIED, 1)
+    await withExecutor(async (run) => {
+      expect(await refusal(deferredUnsaved(run, 'k-up-unrecorded'))).toContain(
+        'upstream pkg#gen outputs are neither on this machine nor in the remote store',
+      )
+    })
+  })
+
+  it('an upstream whose recorded outputs are gone, with no record, refuses', async () => {
+    await withExecutor(async (run) => {
+      const base = request()
+      expect(
+        await refusal(
+          run(request({ inputs: { ...base.inputs!, upstream: [upstream({ hash: 'up-none' })] } })),
+        ),
+      ).toContain('upstream lib#build outputs are neither on this machine nor in the remote store')
+    })
+  })
 })
 
 describe.if(CHUNKING_SUPPORTED)('materialising an output directory', () => {

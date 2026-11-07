@@ -3057,6 +3057,7 @@ export interface TaskOutcome {
   avgRssBytes?: number
   groupUpstream?: readonly TaskOutcome[]
   unkeyed?: true
+  driftedInput?: string | null
   keylessBy?: string
   cacheOff?: true
   blockedBy?: string

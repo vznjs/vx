@@ -11,6 +11,8 @@ import { gitIgnored, gitSpeller } from './watch-filter.js'
 import { modifiedBefore } from './watch-fs.js'
 
 const ABSENT = -1n
+/** A state no judgement saw (`unseen`): equal to none, since a digest is never negative. */
+const UNSEEN = -2n
 /** `settledState` of a directory with no entries. */
 const EMPTY_DIR = xxh3(Buffer.from(''))
 
@@ -167,6 +169,18 @@ export class ChangeJudge {
    */
   seed(abs: string): void {
     if (!this.lastState.has(abs)) this.lastState.set(abs, settledState(abs))
+  }
+
+  /**
+   * The inputs a run read in a state no judgement saw (`TaskOutcome.driftedInput`):
+   * edited and put back while the task ran, a file settles to the state this
+   * loop last saw, and judged against it, the output built from the other
+   * state stood with no cycle after it. Each is a change at its next
+   * judgement; null (the input unnamed) makes every pending path one.
+   */
+  unseen(moved: readonly (string | null)[]): void {
+    for (const abs of moved)
+      for (const p of abs === null ? [...this.pending.keys()] : [abs]) this.lastState.set(p, UNSEEN)
   }
 
   // A path this loop has never judged is a change only if it moved since

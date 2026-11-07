@@ -133,13 +133,16 @@ bazel-remote sends when the call's `grpc-timeout` runs out first (a
 
 ## Repeat runs skip the worker
 
-Every successful remote execution writes an execution record under the
-task's vx key (`vx-reapi-exec-v2`), listing its outputs by digest plus
+Every successful remote execution writes an execution
+record under the task's vx key (`vx-reapi-exec-v2`), listing its outputs by digest plus
 its stdout and stderr (each inline up to 64 KiB, a CAS blob past it), written
 while the outputs come down. A later run whose vx cache missed but whose key
 already has a record skips the Merkle build, the upload pass and `Execute`
 entirely: the outputs are already in the CAS, and both streams replay from
-the record, as a vx hit replays them. A `v1` record kept no stderr and is
+the record, as a vx hit replays them. A run core does not save
+(`--no-cache`, a read-only policy, a tainted upstream) records under a key
+only this run's executor knows instead: its dependants in this run graft
+from it, and no later run replays it as the task's hit. A `v1` record kept no stderr and is
 never read: its key executes once more and writes a `v2` one. `--force`
 bypasses it.
 
@@ -180,7 +183,10 @@ under a key asserting those bytes were present. Which upstream bytes a
 command actually reads is unknowable — that is what `dependsOn`
 declares — so the refusal is the only sound reading, and it matches
 what core does when a deferred producer cannot be materialised.
-Re-run the upstream (`--force`) to repopulate the store.
+Re-run the upstream (`--force`) to repopulate the store. An upstream with
+no record at all and its outputs nowhere on this machine (its outputs
+listed in the local index but gone, or a deferred result no record could
+hold) is refused the same way.
 
 Bringing a task's OWN outputs back gets the same treatment. Core's
 contract is that once an executor returns, the declared outputs are on

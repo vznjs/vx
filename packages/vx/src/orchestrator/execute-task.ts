@@ -589,6 +589,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // task's unfinished deps).
   const unkeyedUpstream = foldedTasks.find((u) => u.unkeyed === true)
   let unkeyed = unkeyedUpstream !== undefined
+  /** The input `keyStillTrue` found moved under the command (`TaskOutcome.driftedInput`). */
+  let driftedInput: string | null | undefined
   const willSave = willWrite && args.taintedUpstream !== true && !unkeyed && !keyless
 
   // The executor retains nothing: the entry's output is the attempt's
@@ -1750,6 +1752,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
     forgetUndeclaredWrites(args, wsOutputs.length > 0 ? 'workspace' : 'project')
     unkeyed = true
+    driftedInput = moved
     return false
   }
 
@@ -1778,6 +1781,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       : {}),
     ...(inputChanges !== undefined ? { inputChanges } : {}),
     ...(unkeyed ? { unkeyed: true as const } : {}),
+    ...(driftedInput !== undefined ? { driftedInput } : {}),
     ...(keylessBy !== undefined ? { keylessBy } : {}),
     ...(saved ? { saved: true as const } : {}),
     ...(unsavedBytes !== undefined ? { outputBytes: unsavedBytes } : {}),
