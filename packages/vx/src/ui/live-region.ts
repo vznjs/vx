@@ -80,6 +80,8 @@ export interface OutputWriterOptions {
    * caller reading its stream right after a write sees it.
    */
   coalesce?: boolean
+  /** Floor between two coalesced writes; 0 writes once per turn. */
+  coalesceMs?: number
 }
 
 export function createOutputWriter(
@@ -90,15 +92,23 @@ export function createOutputWriter(
   const minRedrawMs = opts.minRedrawMs ?? 100
   const forceFloorMs = opts.forceFloorMs ?? 30
   const now = opts.now ?? Date.now
+  const coalesceMs = opts.coalesceMs ?? 25
   // The coalesced writes not yet handed over; null once settled or when
   // not coalescing.
   let held: string[] | null = !enabled && opts.coalesce === true ? [] : null
   let flushQueued = false
+  let flushTimer: ReturnType<typeof setTimeout> | null = null
+  let lastFlush = -Infinity
   const flushHeld = (): void => {
     flushQueued = false
+    if (flushTimer !== null) {
+      clearTimeout(flushTimer)
+      flushTimer = null
+    }
     if (held === null || held.length === 0) return
     const text = held.join('')
     held.length = 0
+    lastFlush = now()
     stream.write(text)
   }
 
@@ -282,7 +292,12 @@ export function createOutputWriter(
         held.push(chunk)
         if (!flushQueued) {
           flushQueued = true
-          setImmediate(flushHeld)
+          // At most one write per floor: a restore settles its hits over
+          // hundreds of turns, and a write per turn cost the 9,603-task
+          // restore ~100 ms of its main thread (2026-11-07).
+          const wait = lastFlush + coalesceMs - now()
+          if (wait > 0) flushTimer = setTimeout(flushHeld, wait)
+          else setImmediate(flushHeld)
         }
         return
       }
