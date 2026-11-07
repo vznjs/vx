@@ -169,20 +169,35 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
       Array.isArray(entry) ||
       typeof file !== 'string' ||
       !PROJECT_CONFIG_FILENAMES.includes(file) ||
-      typeof config !== 'object' ||
-      config === null ||
-      Array.isArray(config)
+      !isObj(config) ||
+      // A run trusts these shapes: a string `name`, a `tags` list, a `tasks` object.
+      (config['name'] !== undefined && typeof config['name'] !== 'string') ||
+      (config['tags'] !== undefined && !Array.isArray(config['tags'])) ||
+      (config['tasks'] !== undefined && !isObj(config['tasks']))
     ) {
-      throw new UserError(
-        `${LOCKFILE_NAME}: entry for "${dir}" is malformed — re-run \`vx lock\``,
-        'VX_E_LOCK',
-      )
+      throw malformed(dir)
     }
   }
   pooledIn(parsed as Pooled)
+  // After the pool is put back, as a task may be an index into it. A
+  // string `dependsOn` was walked per character: "dependsOn b#a".
+  for (const [dir, entry] of Object.entries(lock.projects as Record<string, LockedProject>)) {
+    const tasks = entry.config.tasks as Obj | undefined
+    for (const name in tasks) {
+      const t = tasks[name]
+      if (!isObj(t) || (t['dependsOn'] !== undefined && !Array.isArray(t['dependsOn'])))
+        throw malformed(dir)
+    }
+  }
   digests.set(parsed as Lockfile, xxh3hex(text))
   return parsed as Lockfile
 }
+
+const malformed = (dir: string): UserError =>
+  new UserError(
+    `${LOCKFILE_NAME}: entry for "${dir}" is malformed — re-run \`vx lock\``,
+    'VX_E_LOCK',
+  )
 
 /**
  * The project entries of a lock's bytes with its pool put back, or null
