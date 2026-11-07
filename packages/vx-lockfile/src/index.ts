@@ -58,7 +58,7 @@ export interface LockfileOptions {
 }
 
 /** Bumps when a digest folds differently or the memo holds more (its identity). */
-const DIGEST_VERSION = 23
+const DIGEST_VERSION = 24
 
 let memoVersion: number | undefined
 /**
@@ -878,10 +878,11 @@ async function withManifestLinks(
  * (D-39). Its name is the
  * manifest's `name` when no other importer shares it (core refuses two
  * projects of one name, so a shared one names neither); its `deps` the
- * importers it installs, its peers on importers, and the importers the root
- * installs. A peer or root-installed importer orders a build unless it
- * would close a cycle through the order edges, then it is `reach` only, in
- * name order so the edge kept is stable.
+ * importers it installs, its peers on importers, the importers its packages
+ * install, and the importers the root installs. A peer, package-installed
+ * or root-installed importer orders a build unless it would close a cycle
+ * through the order edges, then it is `reach` only, in name order so the
+ * edge kept is stable.
  */
 async function discovered(
   root: string,
@@ -929,6 +930,10 @@ async function discovered(
       if (manifests.has(target)) (manifestPeers?.has(name) === true ? peer : own).add(target)
     }
     for (const target of Object.values(links.peers)) if (manifests.has(target)) peer.add(target)
+    // Installed only through a package (a registry package's dependency on
+    // a workspace): it orders like a peer, as nothing the importer's own
+    // manifest declares puts the edge there.
+    for (const target of links.transitive ?? []) if (manifests.has(target)) peer.add(target)
     order.set(i, own)
     peers.set(i, peer)
   }
