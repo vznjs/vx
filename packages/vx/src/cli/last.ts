@@ -1048,7 +1048,17 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
     const ranIds = (detail?.tasks ?? [])
       .filter((t) => t.status === 'success' || t.status === 'failed')
       .map((t) => `${t.project}#${t.task}`)
-    const usual = new LocalHistoryProvider(db, undefined, currentBranch(root)).p50sNow(ranIds)
+    const usual = new Map(
+      new LocalHistoryProvider(db, undefined, currentBranch(root)).p50sNow(ranIds),
+    )
+    // A task whose one timing is this run's own has no usual to compare
+    // with: `+0ms` claimed a baseline the live row rightly showed as `—`.
+    const alone = db
+      .query(
+        'SELECT project, task FROM task_durations GROUP BY project, task HAVING COUNT(*) = 1 AND MIN(recorded_at) >= ?',
+      )
+      .all(inv.startedAt) as { project: string; task: string }[]
+    for (const r of alone) usual.delete(`${r.project}#${r.task}`)
     const taskRows = formatTaskRows(detail?.tasks ?? [], moved, usual)
     if (taskRows.length > 0)
       blocks.push(ui.section('Tasks', String(detail?.tasks.length ?? 0), ...taskRows))

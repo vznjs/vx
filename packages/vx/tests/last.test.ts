@@ -136,8 +136,8 @@ describe('vx last (e2e)', () => {
       const list = await vx(root, ['last', '--list', '--format', 'json'])
       const first = (JSON.parse(list.out) as Array<{ runId: string }>).at(-1)!.runId
       const r = await vx(root, ['last', first])
-      // One timed run: its usual is its own time, so the cell is a zero delta.
-      expect(r.out).toMatch(/ \S+ +[+−]\d\S* success miss .* app#build$/m)
+      // One timed run, this one: no usual to compare with, as its live row said.
+      expect(r.out).toMatch(/ \S+ +— success miss .* app#build$/m)
     },
     TIMEOUT,
   )
