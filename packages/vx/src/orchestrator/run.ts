@@ -476,7 +476,7 @@ async function runOnBus(
   }
   let prepared: PreparedRun
   try {
-    prepared = await step('vx:load', () => prepareRunLocked(options, log, takeRunLock))
+    prepared = await step('vx:load', () => prepareRunLocked(options, log, takeRunLock, true))
   } catch (err) {
     await heldLock?.()
     throw err
@@ -977,9 +977,9 @@ async function runOnBus(
     const footers = executors.filter((e) => e.footer !== undefined)
     const placers = executors.filter((e) => e.running !== undefined)
     // The scheduler's dependents count, and every row's `blocks` (the live
-    // list's and the results'): one closure over the graph, built on the
-    // first that asks.
-    let counted: ReadonlyMap<string, number> | undefined
+    // list's and the results'): one closure over the graph, counted by
+    // `prepareRun` beside git when it could, else on the first that asks.
+    let counted: ReadonlyMap<string, number> | undefined = prepared.dependents
     const blocksNow = (): ReadonlyMap<string, number> =>
       (counted ??= graphCounts(nodes, hashCache.folds, hashCache.graph))
     // Every row's `usual` and the forecast's timings: history read once, on

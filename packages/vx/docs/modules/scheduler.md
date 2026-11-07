@@ -195,7 +195,9 @@ A run counts dependents once: the `most-work` baseline is also every
 row's `blocks`, groups counted as the scheduler counts them, and the
 orchestrator remembers it with the graph (`graphCounts`, keyed by the graph
 token and the node ids). A second count for the rows alone was a pass of
-its own (2026-10-29).
+its own (2026-10-29). `prepareRun` takes it while git's blob-size check
+runs, when nothing after the graph can edit the nodes
+(`PreparedRun.dependents`, `prepare.md`).
 
 The ranking lives in `src/graph/priorities.ts`, a file with no runtime
 import at all. The Learn page's scheduler simulator bundles it for the

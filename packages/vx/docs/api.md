@@ -2018,6 +2018,7 @@ export interface PreparedRun {
   gitFilesCache: GitFilesCache
   workspaceProjectCount: number
   hashCache: HashCache
+  dependents?: ReadonlyMap<string, number>
   empty: null | 'no-tasks-declared' | 'none-affected' | 'empty-graph'
 }
 ```
