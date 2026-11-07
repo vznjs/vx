@@ -516,10 +516,14 @@ export async function resolveFilters(
         // the branch under test) can never mark anything affected, and this
         // exit-0 note was the only sign (CI persona, 2026-09-16). Say so.
         const self = includes.map((f) => headBase(root, f.gitSince!)).find((b) => b !== undefined)
+        // `HEAD` asked by name checks uncommitted work: "HEAD is HEAD itself"
+        // read as nonsense for a valid question.
         const hint =
           self === undefined
             ? ''
-            : ` — ${self} is HEAD itself: compare with the branch you merge into (--affected=origin/main) or the previous commit (--affected=HEAD~1)`
+            : self === 'HEAD'
+              ? ' — the working tree has no change against HEAD; to compare commits, use the branch you merge into (--affected=origin/main) or the previous commit (--affected=HEAD~1)'
+              : ` — ${self} is HEAD itself: compare with the branch you merge into (--affected=origin/main) or the previous commit (--affected=HEAD~1)`
         return { empty: `nothing affected since ${refs}${hint}` }
       }
       // The diff matched and a walk or an exclusion left nothing: still the

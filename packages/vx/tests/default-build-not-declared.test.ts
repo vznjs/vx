@@ -110,6 +110,36 @@ describe('a workspace that declares no task yet', () => {
     ])
   })
 
+  // A `vx lock` that failed left a lock holding none of the configs that
+  // declare tasks: "no project declares a task yet" sent the user to add
+  // one, beside the config that declares it.
+  it('names a config the lock does not hold, not "declares a task yet"', async () => {
+    const ws = await makeWorkspace({ prefix: 'vx-unlocked-task-' })
+    try {
+      await addProject(ws, 'x', 'export default { tasks: {} }')
+      const plain = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+      expect(Bun.spawnSync([process.execPath, plain, 'lock'], { cwd: ws }).exitCode).toBe(0)
+      await addProject(
+        ws,
+        'z',
+        "export default { tasks: { build: { exec: { command: 'true' } } } }",
+      )
+      const p = Bun.spawnSync({
+        cmd: [process.execPath, plain, 'run', 'build', '--all'],
+        cwd: ws,
+        stdin: 'ignore',
+      })
+      expect([p.exitCode, p.stderr.toString()]).toEqual([
+        1,
+        noticed(
+          'vx run: no projects declare task(s): build. The lock holds no project for packages/z/vx.config.mjs: run `vx lock` (did it fail?).\n',
+        ),
+      ])
+    } finally {
+      await rm(ws, { recursive: true, force: true })
+    }
+  })
+
   // From the root, the run selects the root project alone, which declares
   // nothing: that is no sign the workspace declares nothing.
   it('a run from a root that declares nothing still lists the tasks elsewhere', async () => {
