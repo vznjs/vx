@@ -168,8 +168,9 @@ restore slot would build from outputs they have not written.
 `settleNow` is asked of a task once it is due (a restore-tier one when
 its lane has room), after the skip check. A thunk settles it in the
 same tick: `onStart` hears it, the thunk runs (a hit replays its output
-there), and `onFinish` hears the outcome; no slot, no admission ask, no
-`execute` promise. A throw from either dispatches it instead, started
+there), and `onFinish` hears the outcome the thunk returned, its queue
+time set on it, not on a copy; no slot, no admission ask, no `execute`
+promise. A throw from either dispatches it instead, started
 once. The run passes it for unkeyed groups (they run nothing, X-192)
 and for restore-tier hits whose tree is current (`currentHit`), unless a
 taint or `--continue=always` needs the full path.
