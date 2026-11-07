@@ -258,7 +258,7 @@ function paintTaskId(node: TaskNode, colors: ColorSupport, opts: { bold?: boolea
 // its own color. Time is right-aligned in a
 // fixed cell so durations line up and a ticking elapsed never shifts
 // the row. All detail (exit code, output) lives in the framed block.
-export const TIME_COL = 7 // "0ms" … "999.99s", then "16m 40s" … "99m 59s"
+const TIME_COL = 7 // "0ms" … "999.99s", then "16m 40s" … "99m 59s"
 const STATUS_COL = 7 // "success" / "running" / "skipped" / "aborted" / "not run"
 const CACHE_COL = 8 // "no-cache" / "remote" / "local" / "fresh" / "miss"
 const BLOCKED_COL = 7 // `blocks`: how many tasks are downstream of the row's

@@ -3354,6 +3354,7 @@ export const tone = (t: Style, text: string, bold = false): Inline =>
 export function why(line: Inline): Block
 export interface Block {
   readonly lines: (colors: ColorSupport) => string[]
+  readonly head?: (colors: ColorSupport) => string
 }
 export type Column = string | { readonly title: string; readonly align: 'right' }
 export type FieldRow = readonly [label: string, ...values: Inline[]] | null
