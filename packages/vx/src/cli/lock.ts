@@ -545,6 +545,27 @@ function warnShadowed(root: string, check: GraphCheck, verb: string): void {
  * edit to the config, to a file it imports, and to the environment it
  * reads alike, and a config added or removed since.
  */
+/**
+ * `read` with each file's record taken from `fresh` where only the files
+ * its digests read moved (same bytes, same extra files): a run digests
+ * anew on such an edit (`lockfileClaim`'s `lockedOnce`), and cli.md says
+ * it needs no `vx lock`, yet `--check` failed every edit in a `file:`
+ * directory or a patch.
+ */
+function liveExtras(read: DependenciesLock, fresh: DependenciesLock): DependenciesLock {
+  const files = { ...read.files }
+  for (const [name, now] of Object.entries(fresh.files)) {
+    const was = files[name]
+    if (
+      was !== undefined &&
+      was.hash === now.hash &&
+      Bun.deepEquals(Object.keys(was.extras ?? {}), Object.keys(now.extras ?? {}))
+    )
+      files[name] = now
+  }
+  return { ...read, files }
+}
+
 async function checkLock(root: string, json: boolean): Promise<number> {
   const check = await audit(root, warnToStderr)
   // A warning, as `vx lock` says it: the CI gate passed beside a hidden
@@ -651,7 +672,10 @@ async function checkLock(root: string, json: boolean): Promise<number> {
       .catch(() => null)
     // Compared as JSON: a formatter may lay the file out its own way.
     const read = parseDependenciesLock(text)
-    if (read === null || !Bun.deepEquals(read, check.dependencies, true))
+    if (
+      read === null ||
+      !Bun.deepEquals(liveExtras(read, check.dependencies), check.dependencies, true)
+    )
       failures.push(
         `${DEPENDENCIES_LOCK_NAME} ${text === null ? 'is missing' : 'is not what the dependencies resolve to here'} — run 'vx lock'`,
       )
