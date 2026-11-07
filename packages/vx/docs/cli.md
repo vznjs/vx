@@ -1935,7 +1935,13 @@ After an edit the lock has not seen:
 ```
 $ vx lock --check
 ✗ vx lock --check  packages/lib/vx.config.ts evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'
+
+  tasks.build.exec.command: "tsc -b" → "tsc -b --force"
 ```
+
+Under the line, up to three places where the evaluated config
+differs from the locked one: a config that reads the environment
+shows no file diff to find them by.
 
 ### When to run it
 
@@ -2853,7 +2859,9 @@ default build (no vx config)`: a run loads it for that dependant's
 `^build` (X-48). A configured project that declares no `build` reads
 `N tasks, default build`, and `vx show <project>` marks that task
 `<project>#build  default`. One nothing configured reaches has no task in any
-view: `vx show bare` lists none, and `vx run bare#build` refuses it. A `tags` column appears when any project has tags. With `--format json`
+view: `vx show bare` lists none, and `vx run bare#build` refuses it. A
+config written after the lock reads `vx.config.ts not locked — run vx
+lock`, in the list and in `vx show <project>`'s `config` row. A `tags` column appears when any project has tags. With `--format json`
 it's an array of `{ name, dir, tags: string[], tasks: string[] }`.
 
 **A project or task.** A report naming the project opens it: its `dir`, its `tags`, and
@@ -3122,10 +3130,10 @@ app#build — run 01a1193a-7b39-75a9-870b-5c03e26d7104
 
 ### Arguments
 
-| Argument   | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PKG#TASK` | one project's task                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `TASK`     | a bare task name: inside a project that declares it, that project's (`no runs of <project>#<task> yet` when it never ran), as `vx run` picks; elsewhere it resolves when exactly one project ran it (several → an error listing the candidates; unknown → include-match suggestions, or, with none near, a pointer to `vx last --list`, or word that nothing has run yet; after runs of only groups, which record no task row, that no run executed a task and to ask about one the group depends on, X-50) |
+| Argument   | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PKG#TASK` | one project's task                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `TASK`     | a bare task name: inside a project that declares it, that project's (`no runs of <project>#<task> yet` when it never ran), as `vx run` picks; elsewhere it resolves when exactly one project ran it (several → an error listing the candidates; unknown → include-match suggestions, or, with none near, a pointer to `vx last --list`, or word that nothing has run yet, whose fix is `vx run <task> --all` where the cwd's project does not declare it; after runs of only groups, which record no task row, that no run executed a task and to ask about one the group depends on, X-50) |
 
 ### Options
 

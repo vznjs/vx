@@ -987,6 +987,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   // fires so a healthy server is never killed by a stale timer.
   let readyTimer: ReturnType<typeof setTimeout> | undefined
   if (readyRe && opts.timeoutMs !== undefined) {
+    const limit = opts.timeoutMs
     const giveUp = async (): Promise<void> => {
       if (readyAt !== undefined) return
       gaveUpAt = Date.now()
@@ -1007,8 +1008,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
       }
       rejectReady(
         new PersistentReadyError(
-          `persistent task not ready within ${opts.timeoutMs}ms — ` +
-            `readyWhen pattern never matched; child killed`,
+          `no line matched readyWhen /${readyRe.source}/ within ${asWritten(limit)}; killed`,
           'timeout',
         ),
       )
@@ -1040,8 +1040,8 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     if (readyAt === undefined && gaveUpAt === undefined) {
       rejectReady(
         new PersistentReadyError(
-          `persistent task exited before becoming ready (exit ${code ?? '?'})` +
-            (readyRe ? ` — readyWhen pattern never matched` : ''),
+          `exited (exit ${code ?? '?'})` +
+            (readyRe ? ` before a line matched readyWhen /${readyRe.source}/` : ''),
           'exited',
           code ?? undefined,
         ),
@@ -1618,4 +1618,9 @@ export function resourceUsageToCpuRss(
   const peak = peakRssBytes(usage.maxRSS)
   const floor = typeof floorBytes === 'number' ? floorBytes : floorBytes(peak)
   return peak > floor + RSS_FLOOR_SLACK_BYTES ? { cpuMs, peakRssBytes: peak } : { cpuMs }
+}
+
+/** A limit as a config writes it: `'2s'` reads back `2s`, not `2000ms`. */
+function asWritten(ms: number): string {
+  return ms % 1000 === 0 ? `${ms / 1000}s` : `${ms}ms`
 }

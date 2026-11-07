@@ -327,7 +327,9 @@ export function parseSettingValue(kind: SettingKind, raw: unknown): unknown {
     }
     case 'size':
       if (kind.off === true && (raw === false || raw === 'false')) return 0
-      return typeof raw === 'string' ? parseSize(raw) : null
+      // A size carries its unit, as a duration does: a bare `32` read as
+      // bytes turns the store off without a word.
+      return typeof raw === 'string' && !/^\d+$/.test(raw) ? parseSize(raw) : null
     case 'bool':
       if (typeof raw === 'boolean') return raw
       return raw === 'true' || raw === '1' ? true : raw === 'false' || raw === '0' ? false : null
@@ -380,6 +382,18 @@ export function settingRefusal(
         (path === 'run.timeout' ? ' — omit it for no limit' : '')
       )
     }
+  }
+  const bytes =
+    typeof raw === 'number'
+      ? raw
+      : typeof raw === 'string' && /^\d+$/.test(raw)
+        ? Number(raw)
+        : null
+  if (kind.type === 'size' && bytes !== null && Number.isSafeInteger(bytes) && bytes >= 0) {
+    if (bytes === 0 && kind.off === true) return `${where} is false to keep none (got ${got})`
+    // A small number most likely meant KiB (`32`): that reading leads.
+    const like = bytes < 1024 ? `'${bytes}KiB' or '${bytes}B'` : `'${bytes}B'`
+    return `${where} takes a size with its unit, like ${like} (got ${got})`
   }
   return `${where} must be ${kindHint(kind)} (got ${got})`
 }

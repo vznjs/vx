@@ -992,7 +992,7 @@ it(
         taskComplete() {},
       }
       await run({ cwd: fixture.root, tasks: ['dev'], log }).catch(() => {})
-      expect(text).toStartWith('starting\n[vx] app#dev: persistent task failed to become ready')
+      expect(text).toStartWith('starting\n[vx] app#dev: not ready: ')
     } finally {
       await rm(fixture.root, { recursive: true, force: true })
     }

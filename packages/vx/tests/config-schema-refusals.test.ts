@@ -242,7 +242,7 @@ describe('setting refusals the sweep found unheld (item 653)', () => {
   it('a NUMBER size is refused by name, not by a TypeError from parseSize', () => {
     // `parseSize` takes a string; the type arm is what keeps a number from it.
     expect(refusal({ cache: { store: { embeddings: 1048576 } } })).toBe(
-      `${WS}: \`cache.store.embeddings\` must be false, or a size like '32KiB' (got 1048576)`,
+      `${WS}: \`cache.store.embeddings\` takes a size with its unit, like '1048576B' (got 1048576)`,
     )
     expect(refusal({ cache: { store: { embeddings: '1048576B' } } })).toBeNull()
   })
@@ -1358,7 +1358,17 @@ describe('cache.store.embeddings', () => {
     )
     // Control: the boolean is off, and a size is a size.
     expect(refusal({ cache: { store: { embeddings: false } } })).toBeNull()
-    expect(refusal({ cache: { store: { embeddings: '0' } } })).toBeNull()
+  })
+
+  // A bare `32` was 32 bytes, which keeps nothing inline without a word.
+  it('refuses a bare number, naming the units', () => {
+    expect(refusal({ cache: { store: { embeddings: '32' } } })).toBe(
+      `${WS}: \`cache.store.embeddings\` takes a size with its unit, like '32KiB' or '32B' (got "32")`,
+    )
+    expect(refusal({ cache: { store: { embeddings: '0' } } })).toBe(
+      `${WS}: \`cache.store.embeddings\` is false to keep none (got "0")`,
+    )
+    expect(refusal({ cache: { store: { embeddings: '32B' } } })).toBeNull()
   })
 })
 

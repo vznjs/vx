@@ -716,7 +716,7 @@ describe('runPersistent', () => {
       env: { PATH: process.env.PATH ?? '' },
       readyWhen: 'Listening',
     })
-    await expect(spawn.ready).rejects.toThrow(/exited before becoming ready/)
+    await expect(spawn.ready).rejects.toThrow(/exited \(exit/)
   })
 
   // The exit can land before the readers take the marker the task printed:
@@ -746,7 +746,7 @@ describe('runPersistent', () => {
     })
     try {
       await expect(spawn.ready).rejects.toThrow(
-        'persistent task exited before becoming ready (exit 3) — readyWhen pattern never matched',
+        'exited (exit 3) before a line matched readyWhen /READY/',
       )
     } finally {
       killTree(spawn.child!, 'SIGKILL')
@@ -907,7 +907,7 @@ describe('runPersistent — what its exit bookkeeping keeps', () => {
       readyWhen: 'Listening',
       liveChildren,
     })
-    await expect(spawn.ready).rejects.toThrow(/exited before becoming ready/)
+    await expect(spawn.ready).rejects.toThrow(/exited \(exit/)
     // The exit handler is what removes it; the rejection is its second half.
     expect(liveChildren.size).toBe(0)
   })
@@ -1635,9 +1635,7 @@ describe('runPersistent — the rows its sweep asked for', () => {
         (e: Error) => e.message,
       )
     }
-    expect(await why('up')).toBe(
-      'persistent task exited before becoming ready (exit 3) — readyWhen pattern never matched',
-    )
+    expect(await why('up')).toBe('exited (exit 3) before a line matched readyWhen /up/')
   })
 
   it('keeps a ready server alive past its readyWhen timeout', async () => {

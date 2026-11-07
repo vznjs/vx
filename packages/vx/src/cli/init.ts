@@ -136,7 +136,10 @@ export async function initCmd(args: readonly string[]): Promise<number> {
     return migrate(dirs, parsed)
   }
   const pkgRoot = packageRoot(dirs, top !== null)
-  return starter(marked ?? pkgRoot ?? cwd, pkgRoot, top === null, parsed)
+  // Asked of git itself: a kept workspace file is `top` too, and the
+  // `git init` hint went missing where the next run would refuse.
+  const noGit = marked === undefined ? top === null : (await gitTop(cwd)) === null
+  return starter(marked ?? pkgRoot ?? cwd, pkgRoot, noGit, parsed)
 }
 
 /**

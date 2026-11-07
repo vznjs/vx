@@ -309,6 +309,24 @@ describe('vx init in a repo with a package.json and no Turbo or Nx', () => {
     ])
   })
 
+  // A kept workspace file stood in for the git top-level, so the hint went
+  // missing and the next `vx run` refused with "vx requires git".
+  it('outside git, next says git init when the workspace file is kept', async () => {
+    const outer = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-init-nogit-kept-')))
+    roots.push(outer)
+    await mkdir(path.join(outer, '.vx'))
+    await writeFile(path.join(outer, '.vx', 'workspace.ts'), 'export default {}\n')
+    const r = await vx(outer, ['init', '--dry', '--format', 'json'], {
+      GIT_CEILING_DIRECTORIES: path.dirname(outer),
+    })
+    expect([r.code, r.err]).toEqual([0, ''])
+    const plan = JSON.parse(r.out) as { kept: string[]; next: string }
+    expect([plan.kept, plan.next]).toEqual([
+      ['.vx/workspace.ts'],
+      'git init, declare a task in vx.config.ts, then vx lock && vx run <task>',
+    ])
+  })
+
   // npm strips a byte-order mark, and so does every other package.json
   // read here; the workspace check did not, so a BOM'd root lost to the
   // nearest package.json below it.

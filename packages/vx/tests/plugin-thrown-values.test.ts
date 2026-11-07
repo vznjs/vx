@@ -52,6 +52,24 @@ it('a stage names the plugin, the hook and what it threw', async () => {
   expect(said).toEqual(SAID.map((m) => `plugin 'org/odd' failed in config: ${m}`))
 })
 
+// A bug in a hook printed its message alone: the plugin's author had no
+// file or line. A message the plugin chose to throw stays as it wrote it.
+it("a hook's TypeError names where it threw", async () => {
+  const plugin = testPlugin('org/bug', {
+    config: () => {
+      const o = undefined as unknown as { foo: { bar: number } }
+      return void o.foo.bar
+    },
+  })
+  const said = await applyConfigHooks([plugin], {} as WorkspaceConfig, {} as never).then(
+    () => 'ran',
+    (err: Error) => err.message,
+  )
+  expect(said).toMatch(
+    /^plugin 'org\/bug' failed in config: .+ \(at tests\/plugin-thrown-values\.test\.ts:\d+:\d+\)$/,
+  )
+})
+
 it('admit and teardown name what was thrown', async () => {
   const said: string[] = []
   const admit = buildAdmission(

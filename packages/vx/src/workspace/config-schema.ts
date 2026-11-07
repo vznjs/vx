@@ -179,15 +179,17 @@ function validateSettingsAt(value: unknown, at: string, configPath: string): voi
     }
     return
   }
-  if (at === 'run.rules.dependencies') validateDependencyRules(value, where)
+  if (at === 'run.rules.dependencies') validateDependencyRules(value, where, configPath)
   else validateSettingValue(value, at, where)
 }
 
 const RULE_FIELDS = new Set(['from', 'allow', 'deny'])
 
-function validateDependencyRules(value: unknown, where: string): void {
+function validateDependencyRules(value: unknown, where: string, configPath: string): void {
   const shape = `an array of { from, allow?, deny? }, each a selector like 'tag:app' or '@acme/*'`
   if (!Array.isArray(value)) throw new UserError(`${where} must be ${shape}`)
+  // The whole path inside one code span, as the frame reads a setting.
+  const at = (i: number, rest = '') => `${configPath}: \`run.rules.dependencies[${i}]${rest}\``
   const selector = (v: unknown) => typeof v === 'string' && v.trim() !== '' && v !== 'tag:'
   const matchable = (v: string, field: string) => {
     const why = ruleSelectorProblem(v)
@@ -198,24 +200,24 @@ function validateDependencyRules(value: unknown, where: string): void {
       )
   }
   for (const [i, rule] of (value as unknown[]).entries()) {
-    const at = `${where}[${i}]`
     if (typeof rule !== 'object' || rule === null || Array.isArray(rule))
-      throw new UserError(`${at} must be { from, allow?, deny? }`)
-    assertKnownFields(rule, RULE_FIELDS, at)
+      throw new UserError(`${at(i)} must be { from, allow?, deny? }`)
+    assertKnownFields(rule, RULE_FIELDS, at(i))
     const { from, allow, deny } = rule as Record<string, unknown>
-    if (!selector(from)) throw new UserError(`${at}.from must be a selector like 'tag:app'`)
-    matchable(from as string, `${at}.from`)
+    if (!selector(from)) throw new UserError(`${at(i, '.from')} must be a selector like 'tag:app'`)
+    matchable(from as string, at(i, '.from'))
     for (const [k, list] of [
       ['allow', allow],
       ['deny', deny],
     ] as const) {
+      const field = at(i, `.${k}`)
       if (list !== undefined && (!Array.isArray(list) || !list.every(selector)))
-        throw new UserError(`${at}.${k} must be an array of selectors like 'tag:lib'`)
-      for (const [j, v] of ((list ?? []) as string[]).entries()) matchable(v, `${at}.${k}[${j}]`)
+        throw new UserError(`${field} must be an array of selectors like 'tag:lib'`)
+      for (const [j, v] of ((list ?? []) as string[]).entries()) matchable(v, at(i, `.${k}[${j}]`))
     }
     // A rule that says nothing reads as a constraint and checks nothing.
     if (allow === undefined && deny === undefined)
-      throw new UserError(`${at} names neither \`allow\` nor \`deny\``)
+      throw new UserError(`${at(i)} names neither \`allow\` nor \`deny\``)
   }
 }
 

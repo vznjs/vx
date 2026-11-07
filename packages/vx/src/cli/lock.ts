@@ -18,6 +18,7 @@ import {
 } from '../orchestrator/index.js'
 import { resolveSetting, runRules } from '../settings.js'
 import {
+  configErrorFrame,
   DOT_VX_GITATTRIBUTES,
   fsRefusalHint,
   isFsRefusal,
@@ -85,6 +86,29 @@ export function parseLockArgs(args: readonly string[]): LockArgs {
 }
 
 type ConfiguredMeta = ProjectMeta & { configPath: string }
+
+/**
+ * A `dependsOn` the graph refused (`a#dep: dependsOn a#nope …`), said as
+ * a schema refusal of that field, so it prints at the config's line with
+ * its frame as every other config error does. Undefined when the task's
+ * `dependsOn` is not in its file (a plugin's task, the default build).
+ */
+function placedDependsOn(
+  err: UserError,
+  all: readonly ProjectMeta[],
+  root: string,
+): string | undefined {
+  if (err.code !== 'VX_E_DEPENDS_ON') return undefined
+  const m = /^(.+)#([^#\s]+): dependsOn (.+)$/s.exec(err.message)
+  if (m === null) return undefined
+  const configPath = all.find((p) => p.name === m[1])?.configPath
+  if (configPath === undefined || configPath === null) return undefined
+  // `does not accept …` reads on from the field; a named dep takes `names`.
+  // The frame turns a trailing ` — did you mean X?` into its fix line.
+  const said = /^(?:does not|patterns are)\b/.test(m[3]!) ? m[3] : `names ${m[3]}`
+  const placed = `${configPath}: tasks.${m[2]}.dependsOn ${said!.replace(/\. Did you mean (.+)\?$/s, ' — did you mean $1?')}`
+  return configErrorFrame(placed, root) === undefined ? undefined : placed
+}
 
 export async function lockCmd(args: readonly string[]): Promise<number> {
   const parsed = parseLockArgs(args)
@@ -240,7 +264,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     if (isUserError(err))
       return {
         ...out,
-        broken: err.message,
+        broken: placedDependsOn(err, out.all, root) ?? err.message,
         ...(err.parts ? { brokenParts: err.parts } : {}),
         ...(err instanceof ConfigsRefused ? { alsoBroken: err.all.slice(1) } : {}),
       }
@@ -470,6 +494,27 @@ async function writeLock(
   return 0
 }
 
+/** The first places (three at most) two evaluated configs differ: `path: locked → now`. */
+function configDiff(locked: unknown, now: unknown, at = '', out: string[] = []): string[] {
+  if (out.length >= 3 || Bun.deepEquals(locked, now, true)) return out
+  const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object'
+  if (isObj(locked) && isObj(now) && Array.isArray(locked) === Array.isArray(now)) {
+    for (const k of new Set([...Object.keys(locked), ...Object.keys(now)])) {
+      const next = Array.isArray(now) ? `${at}[${k}]` : at === '' ? k : `${at}.${k}`
+      configDiff(locked[k], now[k], next, out)
+    }
+    return out
+  }
+  out.push(`${at}: ${diffValue(locked)} → ${diffValue(now)}`)
+  return out
+}
+
+function diffValue(v: unknown): string {
+  if (v === undefined) return '(none)'
+  const s = JSON.stringify(v)
+  return s.length > 60 ? `${s.slice(0, 59)}…` : s
+}
+
 /**
  * Review copies with no config beside them, sorted. One left beside a
  * config since deleted shows reviewers tasks nothing runs, and keys the
@@ -613,7 +658,11 @@ async function checkLock(root: string, json: boolean): Promise<number> {
           ? `${rel} is not the ${locked.file} the lock holds for ${dir === '.' ? 'the workspace root project' : dir} — run 'vx lock'`
           : !Bun.deepEquals(fresh.config, locked.config, true)
             ? `${rel} evaluates differently from the lock here — its config, a file ` +
-              `it imports, or the environment it reads changed; run 'vx lock'`
+              `it imports, or the environment it reads changed; run 'vx lock'` +
+              // What changed: a config that reads the environment shows no file diff.
+              configDiff(locked.config, fresh.config)
+                .map((d) => `\n  ${maskedLine(d)}`)
+                .join('')
             : null
     if (problem === null) continue
     failures.push(problem)

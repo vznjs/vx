@@ -104,11 +104,34 @@ async function safe<T>(plugin: VxPlugin, hook: string, fn: () => T | Promise<T>)
     // plugin was told (a remote's reply, a header) (L-11).
     // A plugin's own code survives (cli.md § Error codes): an agent
     // branches on it.
+    // A plugin's bug (a TypeError, not a message it chose to throw) names
+    // where it threw: the message alone left its author no file or line.
+    const at = isBug(err) ? pluginThrowSite(err) : undefined
     throw new UserError(
-      maskedLine(`plugin '${plugin.name}' failed in ${hook}: ${thrownMessage(err)}`),
+      maskedLine(
+        `plugin '${plugin.name}' failed in ${hook}: ${thrownMessage(err)}${at === undefined ? '' : ` (at ${at})`}`,
+      ),
       errorCode(err) === 'VX_E_INTERNAL' ? 'VX_E_REFUSED' : errorCode(err),
     )
   }
+}
+
+const VX_SRC = `${path.resolve(import.meta.dir, '..')}${path.sep}`
+
+const isBug = (err: unknown): err is Error =>
+  err instanceof TypeError ||
+  err instanceof ReferenceError ||
+  err instanceof RangeError ||
+  err instanceof SyntaxError
+
+/** The first stack frame outside vx's own source, relative to the cwd when under it. */
+function pluginThrowSite(err: Error): string | undefined {
+  const site = [...String(err.stack ?? '').matchAll(/^\s+at (?:.*\()?(\/[^()\n]+:\d+:\d+)\)?$/gm)]
+    .map((m) => m[1]!)
+    .find((s) => !s.startsWith(VX_SRC))
+  if (site === undefined) return undefined
+  const rel = path.relative(process.cwd(), site)
+  return rel.startsWith('..') ? site : rel
 }
 
 // --- Pipeline stages ---------------------------------------------------------

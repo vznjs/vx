@@ -29,6 +29,8 @@ $ vx lock --check
 
 $ MINIFY=true vx lock --check
 ✗ vx lock --check  packages/d/vx.config.ts evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'
+
+  tasks.build.exec.command: "bun build src/index.ts --outdir dist --minify=false" → "bun build src/index.ts --outdir dist --minify=true"
 $ echo $?
 1
 ```
@@ -85,7 +87,7 @@ the first command.
 `vx lock --check --format json` gives the same exit code:
 
 ```json
-{"upToDate":false,"audited":4,"notAudited":0,"problems":["packages/d/vx.config.ts evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'"]}
+{"upToDate":false,"audited":4,"notAudited":0,"problems":["packages/d/vx.config.ts evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'\n  tasks.build.exec.command: \"bun build src/index.ts --outdir dist --minify=false\" → \"bun build src/index.ts --outdir dist --minify=true\""]}
 ```
 
 Same idea as `--frozen-lockfile` in package managers. Reference: [`vx lock`](../../cli/lock/). More at
