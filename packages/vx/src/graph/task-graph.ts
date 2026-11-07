@@ -2159,11 +2159,17 @@ function readsOutputs(
         refuse: () =>
           new UserError(
             `${reader.node.id} reads ${JSON.stringify(gi.slice(at.length))} in inputs.${field}, which matches ` +
-              `${writer.node.id}'s output ${JSON.stringify(shown)} — a task's key must not read ` +
-              `the outputs of a task it does not depend on, or whose key it already includes. ` +
-              `Exclude it: add ${JSON.stringify(`!${out}`)} to ${reader.node.id}'s ` +
-              `inputs.${field}, or depend on ${writer.node.id} and leave it out of ` +
-              `${reader.node.id}'s inputs.tasks, so its key hashes those bytes instead.`,
+              `${writer.node.id}'s output ${JSON.stringify(shown)} — ` +
+              // "or depend on it" told a task that already did to do it.
+              (reader.node.deps.includes(writer.node.id)
+                ? `it depends on ${writer.node.id}, whose key its own already includes. ` +
+                  `Exclude it: add ${JSON.stringify(`!${out}`)} to ` +
+                  `${reader.node.id}'s inputs.${field}, or leave ${writer.node.id} out of ` +
+                  `${reader.node.id}'s inputs.tasks, so its key hashes those bytes instead.`
+                : `a task's key must not read the outputs of a task it does not depend on, or whose key it already includes. ` +
+                  `Exclude it: add ${JSON.stringify(`!${out}`)} to ${reader.node.id}'s ` +
+                  `inputs.${field}, or depend on ${writer.node.id} and leave it out of ` +
+                  `${reader.node.id}'s inputs.tasks, so its key hashes those bytes instead.`),
             'VX_E_INPUT_IS_OUTPUT',
           ),
       })
