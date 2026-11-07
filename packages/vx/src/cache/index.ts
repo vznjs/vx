@@ -82,6 +82,7 @@ export {
 export {
   GitFilesCache,
   gitRefusal,
+  repoFacts,
   applyGitEnumeration,
   gitPathspecs,
   MAX_SCOPED_PATHSPECS,

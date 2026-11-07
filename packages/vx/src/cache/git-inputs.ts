@@ -54,7 +54,7 @@ export function newFilesIgnoredIn(root: string, dirs: readonly string[]): Set<st
   return new Set(dirs.filter((_, i) => hit?.has(probes[i]!) === true))
 }
 
-/** Three facts of the repository a directory is in: read off the disk, or one `git rev-parse`. */
+/** The facts of the repository a directory is in: read off the disk, or one `git rev-parse`. */
 export interface RepoFacts {
   /** `--show-prefix`: the directory's path below the worktree root, `''` at the root. */
   prefix: string
@@ -64,6 +64,8 @@ export interface RepoFacts {
   objectFormat: 'sha1' | 'sha256'
   /** `--git-path index` (it honours `GIT_INDEX_FILE`), relative to the directory asked. */
   indexFile: string
+  /** `--absolute-git-dir`: the per-worktree git dir, which the sandbox walls off when it lies outside. */
+  gitDir: string
 }
 
 const repoFactsMemo = new Map<string, RepoFacts>()
@@ -95,6 +97,7 @@ export function repoFacts(dir: string): RepoFacts | null {
         '--show-object-format',
         '--git-path',
         'index',
+        '--absolute-git-dir',
       ],
       env: gitEnv(),
       cwd: dir,
@@ -108,9 +111,12 @@ export function repoFacts(dir: string): RepoFacts | null {
   // One line per flag, in order. A git that does not know
   // `--show-object-format` echoes it back, as it does any unknown flag,
   // which reads as sha1 — what the flag's own spawn answered there too.
-  const [prefix = '', commonDir = '', format = '', indexFile = ''] = new TextDecoder('utf-8', {
-    ignoreBOM: true,
-  })
+  const [prefix = '', commonDir = '', format = '', indexFile = '', gitDir = ''] = new TextDecoder(
+    'utf-8',
+    {
+      ignoreBOM: true,
+    },
+  )
     .decode(proc.stdout)
     .split('\n')
     .map((l) => l.trim())
@@ -119,6 +125,7 @@ export function repoFacts(dir: string): RepoFacts | null {
     commonDir,
     objectFormat: format === 'sha256' ? 'sha256' : 'sha1',
     indexFile,
+    gitDir,
   }
   repoFactsMemo.set(dir, facts)
   return facts
@@ -185,6 +192,7 @@ function repoFactsFromDisk(dir: string): RepoFacts | undefined {
           commonDir: relPosix(real, dotGit),
           objectFormat,
           indexFile: path.relative(real, path.join(dotGit, 'index')).split(path.sep).join('/'),
+          gitDir: dotGit,
         }
       }
       const parent = path.dirname(at)

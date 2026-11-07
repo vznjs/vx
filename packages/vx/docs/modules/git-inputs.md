@@ -183,13 +183,15 @@ export function runGitLsFiles(cwd: string, env?: Record<string, string>): GitLsR
 
 // Read off a plain `.git` directory (no location variable or
 // `GIT_INDEX_FILE`, no include, no `.git` file), else one `git rev-parse
-// --show-prefix --git-common-dir --show-object-format --git-path index`;
-// per directory per process; null (not remembered) when git fails.
+// --show-prefix --git-common-dir --show-object-format --git-path index
+// --absolute-git-dir`; per directory per process; null (not remembered)
+// when git fails. The sandbox reads the same memo for the git dirs it walls off.
 export interface RepoFacts {
   prefix: string
   commonDir: string
   objectFormat: 'sha1' | 'sha256'
   indexFile: string
+  gitDir: string // absolute
 }
 export function repoFacts(dir: string): RepoFacts | null
 // The refusal the enumeration would throw (no git, not a work tree), asked

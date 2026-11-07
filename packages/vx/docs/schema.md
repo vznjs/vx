@@ -1796,6 +1796,15 @@ vx's own stores are denied the same way: `~/.vx`, where every
 repository's shared store lives, and a cache directory outside the
 workspace (`VX_CACHE_DIR=~/.cache/vx`). Read, they handed a task every
 project's cached outputs, around the cross-project wall and its key.
+So is the repository outside the workspace: a workspace below the git
+top-level, or in a linked worktree (`@vzn/vx-dte`'s `local()` workers),
+keeps its git dir there, and `git --git-dir` read any project's
+committed bytes. The git dir and the common dir are denied and sealed
+like the workspace's own `.git` (a write grant reaching one is refused),
+and the top-level's other contents and a worktree's main checkout are
+denied around the workspace and the task's write grants. A tree that
+holds home (a dotfiles repository at `~`) stays readable; only its git
+dir is denied.
 
 **`hermetic: true`** moves the read wall from the workspace root to `/`.
 Outside the workspace, the task reads only what `allow.read` names.

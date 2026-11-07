@@ -754,7 +754,8 @@ holding it so that the deny wins (B-4), and
 a write grant whose bind, widened or not, would hold one is refused,
 naming the wall. A grant that names a wall or a path inside it is the
 user's on purpose and stays, as does a bind outside the workspace (`/tmp`,
-`~`). A glob's hit that is a wall or lies inside one was matched, not
+`~`) unless it reaches the repository's git dir there (a workspace below
+the top-level, a linked worktree: `sandbox-request.md`). A glob's hit that is a wall or lies inside one was matched, not
 named, and is dropped before the bind (`resolveSandboxConfig` takes the
 walls): `read: ['*']` in a root project binds neither `.git` nor `.vx/cache`,
 `packages/*` no nested project, and `write: ['.*']` is refused for no wall

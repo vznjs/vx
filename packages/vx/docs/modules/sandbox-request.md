@@ -205,6 +205,15 @@ export function mayWriteFingerprint(
   A file where a grant needs a directory (`out.txt/` over a file,
   `a.txt/x/*.js`) refuses the task with the grant and the file named, its
   placeholders taken back; it was an internal error (X-81).
+- **The repository outside the workspace is walled.** A workspace below
+  the git top-level, or in a linked worktree (vx-dte's `local()`), keeps
+  its git dir outside, and `git --git-dir` read any project's committed
+  bytes into an output no key answered for. The git dir and common dir
+  (`repoFacts`, the memo the run's enumeration filled: no spawn of its
+  own) are sealed walls and read denies on both platforms; the top-level
+  and a worktree's main checkout are denied around the workspace and the
+  write grants (`denyAround`), unless the tree holds home
+  (`sandbox-outside-git.unsafe.test.ts`).
 
 ## Tests
 

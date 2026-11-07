@@ -1,6 +1,6 @@
 // `repoFacts` reads the plain repository off the disk and asks git for
 // anything else. Either way it must say what `git rev-parse --show-prefix
-// --git-common-dir --show-object-format --git-path index` says, in each layout a workspace
+// --git-common-dir --show-object-format --git-path index --absolute-git-dir` says, in each layout a workspace
 // sits in.
 
 import { mkdir, mkdtemp, realpath, rm, symlink } from 'node:fs/promises'
@@ -26,7 +26,7 @@ function git(cwd: string, ...args: string[]): string {
 
 /** What git says, in `repoFacts`' shape. */
 function asked(dir: string): unknown {
-  const [prefix = '', commonDir = '', format = '', indexFile = ''] = git(
+  const [prefix = '', commonDir = '', format = '', indexFile = '', gitDir = ''] = git(
     dir,
     'rev-parse',
     '--show-prefix',
@@ -34,10 +34,17 @@ function asked(dir: string): unknown {
     '--show-object-format',
     '--git-path',
     'index',
+    '--absolute-git-dir',
   )
     .split('\n')
     .map((l) => l.trim())
-  return { prefix, commonDir, objectFormat: format === 'sha256' ? 'sha256' : 'sha1', indexFile }
+  return {
+    prefix,
+    commonDir,
+    objectFormat: format === 'sha256' ? 'sha256' : 'sha1',
+    indexFile,
+    gitDir,
+  }
 }
 
 /** `repoFacts` for `dir`, and whether it spawned to answer. */

@@ -7,6 +7,7 @@ import { existsSync, readdirSync } from 'node:fs'
 import { lstat, mkdir, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
+import { repoFacts, repoRootOf } from '../cache/index.js'
 import type { ExecConfig } from '../config.js'
 import {
   bindableWrites,
@@ -256,8 +257,10 @@ export async function sandboxRequestFor(
   // The repository's and vx's own walls are sealed: no write grant may
   // reach inside them either. A nested project is not: a grant into it is
   // as explicit as one into a sibling.
+  const git = outsideGit(workspaceRoot)
   const sealed = [
     path.join(workspaceRoot, '.git'),
+    ...git.dirs,
     path.join(workspaceRoot, '.vx', 'cache'),
     ...(cacheDir !== undefined &&
     toRealPath(cacheDir).startsWith(toRealPath(workspaceRoot) + path.sep)
@@ -296,7 +299,8 @@ export async function sandboxRequestFor(
     // readable (tools need `~/.cache`), but a dependency the task runs
     // could copy a key into an output the cache shares (L-41).
     baseDenyRead: [
-      ...(process.platform === 'darwin' ? [workspaceRoot, ...walls] : [workspaceRoot]),
+      ...(process.platform === 'darwin' ? [workspaceRoot, ...walls] : [workspaceRoot, ...git.dirs]),
+      ...(await gitTrees(workspaceRoot, git.trees, config.allowWrite)),
       ...(await credentialStores(workspaceRoot, config.allowWrite)),
       ...(await vxStores(workspaceRoot, config.allowWrite, cacheDir)),
     ],
@@ -708,9 +712,11 @@ function wallOff(
   const home = toRealPath(workspaceRoot)
   for (const bind of bindableWrites(config.allowWrite)) {
     // A bind outside the workspace is the user's own path (`/tmp/x`,
-    // `~/.cache/y`), spelled there on purpose; only one inside is judged.
-    if (!atOrUnder(bind, home)) continue
-    const wall = walls.find((w) => atOrUnder(w, bind)) ?? sealed.find((w) => atOrUnder(bind, w))
+    // `~/.cache/y`), spelled there on purpose; only one inside is judged,
+    // and one reaching the repository's git dir outside it (`outsideGit`).
+    const wall = atOrUnder(bind, home)
+      ? (walls.find((w) => atOrUnder(w, bind)) ?? sealed.find((w) => atOrUnder(bind, w)))
+      : sealed.find((w) => !atOrUnder(w, home) && (atOrUnder(w, bind) || atOrUnder(bind, w)))
     if (wall === undefined) continue
     throw new UserError(
       `exec.sandbox.allow.write: the grant binding ${bind} would make ${wall} writable — another ` +
@@ -909,6 +915,54 @@ async function vxStores(
     .map(toRealPath)
     .filter((p) => !atOrUnder(root, p) && !atOrUnder(p, root))
   return (await Promise.all(stores.map((p) => denyAround(p, writes)))).flat()
+}
+
+/** The repository's git dirs and other work trees outside the workspace (`outsideGit`). */
+interface OutsideGit {
+  /** The git dir and the common dir: denied and sealed, as `<workspaceRoot>/.git` is. */
+  dirs: string[]
+  /** The top-level above the workspace, a linked worktree's main checkout: denied around it. */
+  trees: string[]
+}
+
+/**
+ * What of the repository lies outside the workspace. A workspace below
+ * the git top-level, or in a linked worktree (vx-dte's `local()` workers),
+ * keeps its git dirs there, and only `<workspaceRoot>/.git` was walled: a
+ * task read any project's committed bytes with `git --git-dir`, and a
+ * worktree's main checkout directly, into an output no key answered for.
+ * A tree holding home stays readable: a dotfiles repository at `~` would
+ * deny `~/.cache` with it, and its git dir alone is walled.
+ * Read from `repoFacts`, the memo the run's git enumeration filled.
+ */
+function outsideGit(workspaceRoot: string): OutsideGit {
+  const facts = repoFacts(workspaceRoot)
+  if (facts === null) return { dirs: [], trees: [] }
+  const root = toRealPath(workspaceRoot)
+  const common = toRealPath(path.resolve(root, facts.commonDir))
+  const dirs = [...new Set([toRealPath(facts.gitDir), common])].filter(
+    (d) => !atOrUnder(d, root) && !atOrUnder(root, d),
+  )
+  const home = toRealPath(process.env['HOME'] || homedir())
+  // A common dir named `.git` sits in the main checkout; a bare one has none.
+  const main = path.basename(common) === '.git' ? [path.dirname(common)] : []
+  const trees = [...new Set([repoRootOf(root, facts.prefix), ...main])].filter(
+    (t) => !atOrUnder(t, root) && !atOrUnder(home, t),
+  )
+  return { dirs, trees }
+}
+
+/**
+ * Each tree denied around the workspace and the task's write grants: the
+ * top-level's other contents are another workspace's, not this one's.
+ */
+async function gitTrees(
+  workspaceRoot: string,
+  trees: readonly string[],
+  writes: readonly string[],
+): Promise<string[]> {
+  const keep = [toRealPath(workspaceRoot), ...writes]
+  return (await Promise.all(trees.map((t) => denyAround(t, keep)))).flat()
 }
 
 /** `dir` denied, or its entries no write grant lies under or at when one is inside it. */

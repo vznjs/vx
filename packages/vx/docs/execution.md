@@ -85,9 +85,9 @@ terminal and a task succeeding or failing. Read it alongside
  │       the dirty AND untracked sets, the one worktree walk; `var -l`
  │       for core.autocrlf and the attributes files git reads outside
  │       the tree; the facts — prefix, common dir, object format, index
- │       file — read off a plain `.git` directory, else one
+ │       file, git dir — read off a plain `.git` directory, else one
  │       `rev-parse --show-prefix --git-common-dir --show-object-format
- │       --git-path index`,
+ │       --git-path index --absolute-git-dir`,
  │       memoized per process and shared with the file hasher)
  │       fill the per-project GitFilesCache with file lists + index
  │       OIDs. `ls-files --others` is NOT among them — status's
