@@ -19,3 +19,20 @@ it('sends a worker each dependency whole once', async () => {
   const run = await liveRun(graph, { workers: 4, cores: 4, taskMs: 2 })
   expect([run.whole > 0, run.again]).toEqual([true, 0])
 })
+
+// 2026-11-07: a server's base is booked once on the worker that starts it,
+// beside each dependant's own cores: on 4 cores, a base of 2 leaves room
+// for two 1-core dependants at once, not four.
+it('books a server’s base once on the worker beside its dependants', async () => {
+  const graph = ['a', 'b', 'c', 'd'].map((t) => ({ id: `s#${t}`, deps: [] }))
+  const need = (cores: number) => () => ({
+    cores: 1,
+    memory: 0,
+    servers: [{ id: 's#db', cores }],
+  })
+  const based = await liveRun(graph, { workers: 1, cores: 4, taskMs: 20, need: need(2) })
+  expect(based.peak).toBe(2)
+  // CONTROL: a base of 0 books nothing.
+  const free = await liveRun(graph, { workers: 1, cores: 4, taskMs: 20, need: need(0) })
+  expect(free.peak).toBe(4)
+})

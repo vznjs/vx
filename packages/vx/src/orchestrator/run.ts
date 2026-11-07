@@ -178,7 +178,9 @@ import {
   failServer,
   holdServers,
   sessionEnd,
+  stopServer,
   takeHeldServers,
+  unneededServers,
 } from './persistent.js'
 import { serverKey } from './persistent-task.js'
 import { writeRunProfile } from './run-artifacts.js'
@@ -1451,6 +1453,36 @@ async function runOnBus(
         }),
       )
     }
+    // A dependency-only server stops once no task left uses it, not at the
+    // end of the graph: it held a worker's cores for nothing. Not under a
+    // hold, whose next cycle may reuse it.
+    const unneeded =
+      options.holdPersistent === true
+        ? undefined
+        : unneededServers(nodes, options.log === undefined && (options.handleSignals ?? true))
+    const serving = executors.filter((e) => e.servers === true && e.unneeded !== undefined)
+    const released = new Set<string>()
+    const stopping: Promise<void>[] = []
+    const release = (id: string): void => {
+      // A stop signals every server once and waits out its grace: a second
+      // signal here cut a server's cleanup short.
+      if (stop.signal.aborted) return
+      for (const s of unneeded?.(id) ?? []) {
+        // Copies an executor started beside the dependants it ran.
+        for (const e of serving)
+          try {
+            e.unneeded!(s)
+          } catch {
+            // Its copies stop at its teardown, as before.
+          }
+        const child = persistentRegistry.get(s)
+        // One that died on its own stays: the end of the graph reports it.
+        if (child === undefined || hasEnded(child)) continue
+        released.add(s)
+        persistentRegistry.delete(s)
+        stopping.push(stopServer(child))
+      }
+    }
     const outcomes = await runGraph({
       nodes,
       concurrency,
@@ -1481,12 +1513,14 @@ async function runOnBus(
         if (sinceReady.size > 0) releaseSinceReady(o.node.id)
         streamHit(o)
         demand.finished(o.node.id)
+        release(o.node.id)
         // A server that dies while the graph runs is no longer running:
         // its pin stayed `running` under the line naming its exit.
         const server = o.status === 'success' ? persistentRegistry.get(o.node.id) : undefined
         if (server !== undefined && o.serverExit === undefined)
           void server.exited.then((code) => {
-            if (code !== 0 && !graphOver && !stop.signal.aborted) o.serverExit = code
+            if (code !== 0 && !graphOver && !stop.signal.aborted && !released.has(o.node.id))
+              o.serverExit = code
           })
       },
       // A crash a hand-broken lock entry caused is named as that; asked
@@ -1582,6 +1616,7 @@ async function runOnBus(
     // A stop already signalled every server once and waits out its grace:
     // a SIGTERM here, while a server ran its cleanup, cut it short.
     if (stop.signal.aborted) await stop.aborting?.catch(() => {})
+    await Promise.all(stopping)
     const { keepAlive, crashed: crashedPersistent } = await disposeServers({
       registry: persistentRegistry,
       nodes,

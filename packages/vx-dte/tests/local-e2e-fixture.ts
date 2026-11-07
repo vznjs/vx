@@ -104,9 +104,19 @@ export default { name: 'b', tasks: {
 const t = (n) => ({ dependsOn: ['srv'], exec: { command: 'test -e up && echo saw' + n } })
 // Two shards long enough to run at once, so on two machines.
 const shard = (n) => ({ dependsOn: ['srv'], exec: { command: 'test -e up && sleep 3 && echo shard' + n } })
+// A server one task uses, and a task after it that waits to see it gone.
+const pid = ${JSON.stringify(path.join(root, 'used.pid'))}
+const gone = 'p=$(cat ' + pid + '); for i in $(seq 50); do kill -0 $p 2>/dev/null || { echo server-gone; exit 0; }; sleep 0.1; done; echo server-alive'
 export default { name: 's', tasks: {
   srv: { exec: { command: 'echo "$PWD" >> ' + log + ' && touch up && echo up && exec sleep 60', persistent: { readyWhen: 'up' } } },
   t1: t(1), t2: t(2), t3: t(3), shard1: shard(1), shard2: shard(2),
+  used: { exec: { command: 'echo $$ > ' + pid + ' && echo up && exec sleep 60', persistent: { readyWhen: 'up' } } },
+  user: { dependsOn: ['used'], exec: { command: 'true' } },
+  after: { dependsOn: ['user'], exec: { command: gone } },
+  // A server that keeps a core busy only while a dependant asks it (the
+  // file busy), and a dependant that uses none of its own.
+  hot: { exec: { command: 'echo up && exec sh -c "while :; do [ -e busy ] || sleep 0.05; done"', persistent: { readyWhen: 'up' } } },
+  calm: { dependsOn: ['hot'], exec: { command: 'touch busy && sleep 4 && rm busy' } },
 } }
 `,
     // Keys that fold a runtime probe: one every machine answers alike, one

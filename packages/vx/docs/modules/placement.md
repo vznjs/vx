@@ -63,9 +63,13 @@ export const UNPLACED_EXECUTOR: TaskExecutor
 // core's local executor for a plugin that runs tasks itself; arms the sandbox outside a run
 export interface LocalFloor {
   execute(req: ExecuteRequest): Promise<ExecuteResult>
+  stop(taskId: string): Promise<void>
   close(): Promise<void>
 }
-export function localFloor(sandboxes?: readonly SandboxConfig[]): LocalFloor
+export function localFloor(
+  sandboxes?: readonly SandboxConfig[],
+  onServer?: (taskId: string, pid: number | undefined) => void,
+): LocalFloor
 ```
 
 ## Rules

@@ -352,6 +352,7 @@ export async function loadResolvedProjects(
 == function localFloor (src/orchestrator/local-floor.ts)
 export function localFloor(
   sandboxes: readonly NonNullable<ExecConfig['sandbox']>[] = [],
+  onServer?: (taskId: string, pid: number | undefined) => void,
 ): LocalFloor
 == function localHistory (src/history/history.ts)
 export function localHistory(cache: Cache, options: LocalHistoryOptions = {}): LocalHistory
@@ -1105,6 +1106,7 @@ export interface LentAccess {
 export interface LocalFloor {
   execute(req: ExecuteRequest): Promise<ExecuteResult>
   rearm(sandboxes: readonly NonNullable<ExecConfig['sandbox']>[]): Promise<void>
+  stop(taskId: string): Promise<void>
   close(): Promise<void>
 }
 == type LocalHistory (src/history/history.ts)
@@ -2000,6 +2002,7 @@ export interface TaskExecutor {
   advice?(): readonly WorkerAdvice[]
   profile?(): readonly Record<string, unknown>[]
   running?(taskId: string): string | null | undefined
+  unneeded?(taskId: string): void
   execute(req: ExecuteRequest): Promise<ExecuteResult>
 }
 == type TaskHistory (src/history/history.ts)

@@ -26,7 +26,7 @@ import {
 } from '../src/worker.js'
 import { docker, dte, local } from '../src/index.js'
 import { errorLine } from '../src/local.js'
-import { bytes, changedSinceParent, homeOf, needOf, pace } from '../src/plugin.js'
+import { bytes, changedSinceParent, homeOf, needOf, pace, serversOf } from '../src/plugin.js'
 import { hostPlatform, isUserError, type Platform, UserError } from '@vzn/vx'
 import {
   type CacheFacts,
@@ -5894,4 +5894,19 @@ it('makes no ask of a platform task no worker of its platform can take', () => {
     deps: () => [],
   })
   expect(one.to.get('x')?.id).toBe('l')
+})
+
+it('serversOf names a task’s servers through groups, and the servers they need', () => {
+  const node = (id: string, deps: string[], exec?: Record<string, unknown>) =>
+    [id, { id, deps, config: exec === undefined ? {} : { exec } } as unknown as TaskNode] as const
+  const nodes = new Map([
+    node('s#db', [], { command: 'db', persistent: {} }),
+    node('s#api', ['s#db'], { command: 'api', persistent: {} }),
+    node('s#env', ['s#api']),
+    node('s#build', [], { command: 'build' }),
+    node('s#e2e', ['s#env', 's#build'], { command: 'e2e' }),
+  ])
+  expect(serversOf(nodes, 's#e2e').sort((x, y) => x.localeCompare(y))).toEqual(['s#api', 's#db'])
+  expect(serversOf(nodes, 's#build')).toEqual([])
+  expect(serversOf(undefined, 's#e2e')).toEqual([])
 })

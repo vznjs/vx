@@ -66,8 +66,8 @@ server and fails the task. No polling, no `wait-on`, no guessed seconds.
 
 ## The end is guaranteed
 
-When the run ends, each server gets `SIGTERM`, a grace period, then
-`SIGKILL`. Nothing keeps a port after `vx run e2e`, whether tests
+When the last task using a server finishes, the server gets `SIGTERM`,
+a grace period, then `SIGKILL`, even while other tasks still run. Nothing keeps a port after `vx run e2e`, whether tests
 passed, failed, timed out, or you pressed [Ctrl-C](../ctrl-c/).
 
 ## In the foreground

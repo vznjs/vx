@@ -520,9 +520,16 @@ use your own instead.
   A sandbox the worker cannot host (no `bwrap` in its image) fails the
   task there, as it fails here; the worker stays in the run.
 - A persistent task a task depends on starts on the worker that runs the
-  task, once per worker, ready before it, and stops when the worker leaves;
+  task, once per worker, ready before it, and stops there once no task left
+  in the run uses it (the run's `unneeded`), or when the worker leaves;
   the orchestrator never starts it, and a worker no dependant reaches
-  never does (2026-10-22).
+  never does (2026-10-22). Its CPU is learned on the worker each second
+  as `cores = base + each running dependant's cost`: the base from looks
+  with no dependant running, each cost from looks with it (a look on a
+  full machine only raises them). Each dependant's cost is added to its
+  CPU, so its history books it; the base is booked once on each worker
+  that starts the server, in placement and in the plan, and kept for the
+  next run under the commit, as warm-ups are.
 - A task whose key hashes a runtime probe (`inputs.runtime`, such as
   `bun --version`) runs on a worker, which answers the probe first and
   fails the task when it answers otherwise than this machine did. A path

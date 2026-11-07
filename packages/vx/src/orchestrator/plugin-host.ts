@@ -992,6 +992,7 @@ const EXECUTOR_HOOKS = [
   'advice',
   'profile',
   'running',
+  'unneeded',
 ] as const
 
 /**
