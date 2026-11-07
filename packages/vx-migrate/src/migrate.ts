@@ -36,6 +36,7 @@ import {
   type PackageMeta,
   type PackageWorkspace,
   reachesManifest,
+  undecodableMembers,
   unreachedHint,
   unreachedPackages,
 } from './packages.js'
@@ -765,12 +766,21 @@ async function scripts(
   // to fix (M-42). Asked of the globs, not of `metas`: a nameless or
   // shared-name member is matched yet absent from `metas` (M-46).
   const globs = workspace.packageGlobs.filter((g) => g !== '.')
-  const noMembers =
+  const unread =
     empty && globs.length > 0 && !(await reachesManifest(workspace))
-      ? [
-          `the workspace globs (${globs.map((g) => `"${g}"`).join(', ')}) match no package.json: add a package under one, or fix the glob`,
-        ]
-      : []
+      ? await undecodableMembers(workspace)
+      : undefined
+  const noMembers =
+    unread === undefined
+      ? []
+      : unread.length > 0
+        ? unread.map(
+            (d) =>
+              `${d}: the directory's name is not valid UTF-8, so its package.json cannot be read — rename it`,
+          )
+        : [
+            `the workspace globs (${globs.map((g) => `"${g}"`).join(', ')}) match no package.json: add a package under one, or fix the glob`,
+          ]
   const installed = await prepareRepo(root, [...new Set(plugins.map((p) => p.pkg))], args)
   const code = await applyMigration({
     root,

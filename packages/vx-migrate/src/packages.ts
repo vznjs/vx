@@ -3,7 +3,8 @@
 // `.vx/workspace.ts` at. Core reads neither (2026-10-14): a project is a
 // directory holding a vx.config.
 import { constants, existsSync, type Dirent } from 'node:fs'
-import { access, readdir, realpath, stat } from 'node:fs/promises'
+import { access, lstat, readdir, realpath, stat } from 'node:fs/promises'
+import { isUtf8 } from 'node:buffer'
 import path from 'node:path'
 import { PROJECT_CONFIG_FILENAMES, ui, UserError } from '@vzn/vx'
 import {
@@ -481,6 +482,55 @@ export async function reachesManifest(workspace: PackageWorkspace): Promise<bool
     }
   }
   return false
+}
+
+/**
+ * The member directories the globs reach whose names are not valid UTF-8,
+ * root-relative, each such byte shown as `\xNN`: a name decodes lossily to
+ * one no directory has, so its package.json reads as absent. Asked only
+ * when the globs reach none, to say why.
+ */
+export async function undecodableMembers(workspace: PackageWorkspace): Promise<string[]> {
+  const { positive } = splitPackageGlobs(workspace.packageGlobs)
+  const parents = new Set<string>()
+  for (const pattern of positive) {
+    for (const dir of await memberDirs(workspace.root, pattern)) {
+      // A valid name may hold U+FFFD itself; a lossy one names nothing.
+      if (!relPosix(workspace.root, dir).includes('\uFFFD')) continue
+      let at = dir
+      while ((await lstat(at).catch((err: unknown) => absent(err, null))) === null)
+        at = path.dirname(at)
+      parents.add(at)
+    }
+  }
+  const out: string[] = []
+  for (const parent of parents) {
+    for (const name of await readdir(Buffer.from(parent), { encoding: 'buffer' })) {
+      if (isUtf8(name)) continue
+      const rel = relPosix(workspace.root, parent)
+      out.push(`${rel === '' ? '' : `${rel}/`}${escapeNotUtf8(name)}`)
+    }
+  }
+  return out.sort()
+}
+
+/** `name` with each byte that is not part of a valid UTF-8 sequence shown as `\xNN`. */
+function escapeNotUtf8(name: Uint8Array): string {
+  let shown = ''
+  for (let i = 0; i < name.length;) {
+    const lead = name[i]!
+    const n =
+      lead < 0x80 ? 1 : lead < 0xc2 ? 0 : lead < 0xe0 ? 2 : lead < 0xf0 ? 3 : lead < 0xf5 ? 4 : 0
+    const seq = name.subarray(i, i + n)
+    if (n > 0 && seq.length === n && isUtf8(seq)) {
+      shown += Buffer.from(seq).toString()
+      i += n
+    } else {
+      shown += `\\x${lead.toString(16).padStart(2, '0')}`
+      i++
+    }
+  }
+  return shown
 }
 
 /**

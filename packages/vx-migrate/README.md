@@ -309,7 +309,10 @@ declares no workspaces … Add "workspaces": ["packages/*"] to
 package.json and re-run") rather than "no scripts" or "run vx init". A
 workspace whose globs match no `package.json` gets a note naming them
 (M-42); a nameless member, or two sharing a name, is matched and
-named on its own line instead (M-46). When such skipped scripts are all there
+named on its own line instead (M-46), and so is a member directory whose
+name is not valid UTF-8, its bytes escaped (`packages/x\xff: the
+directory's name is not valid UTF-8, so its package.json cannot be read —
+rename it`): no path names it. When such skipped scripts are all there
 is, the report's `tasks` row reads `none: no package.json script became a task` rather than
 saying there are none (M-59). When `pnpm-workspace.yaml` lists the
 members and the root `package.json`'s `workspaces` lists other globs,

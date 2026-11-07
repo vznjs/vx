@@ -638,6 +638,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-migrate/migrate-turbo-preset-takeback',
     'vx-migrate/migrate-turbo-sealed-tsconfig',
     'vx-migrate/migrate-turbo-tracked-outputs',
+    'vx-migrate/migrate-undecodable-member',
     'vx-migrate/migrate-vite-task',
     'vx-migrate/migration-member-link',
     'vx-migrate/no-conflict-markers',

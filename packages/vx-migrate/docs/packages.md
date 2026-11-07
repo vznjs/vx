@@ -95,6 +95,9 @@ export function unreachedHint(unreached: readonly string[], root: string): strin
 // Whether a member glob reaches any package.json but the root's,
 // addressable or not; the scripts mapper names globs that reach none (M-46).
 export function reachesManifest(workspace: PackageWorkspace): Promise<boolean>
+// When they reach none: the member directories whose names are not valid
+// UTF-8, root-relative, each such byte shown as `\xNN` — the note names them.
+export function undecodableMembers(workspace: PackageWorkspace): Promise<string[]>
 ```
 
 ## Rules
