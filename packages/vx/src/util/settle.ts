@@ -28,6 +28,22 @@ export function teardownTimeoutMs(): number {
 }
 
 /**
+ * Grace after the direct child exits before we abort the stdout/stderr readers.
+ * The pipe reaches EOF only when EVERY write-end fd is closed, so a task that
+ * backgrounds a process inheriting fd 1/2 (`server & echo up` — `execWrap`
+ * leaves compound commands as `sh -c`, so `sh` exits while the grandchild holds
+ * the pipe) never EOFs. On a clean exit with no lingering writer the pipe EOFs
+ * at once, so the readers win this race immediately and normal tasks pay
+ * nothing; only a stuck reader waits out the grace. Residual buffered output is
+ * bounded by the OS pipe buffer (streamToString drains continuously DURING the
+ * run), so this is far longer than any real drain needs. What the leftover
+ * process writes after the bound is lost, and `POST_EXIT_CUT_LINE`
+ * (exec/runner.ts) says so.
+ * A runtime probe's drain is bounded the same (cache/inputs.ts).
+ */
+export const POST_EXIT_DRAIN_MS = 250
+
+/**
  * The SIGTERM→SIGKILL grace a run grants a child that ignores SIGTERM:
  * the one-shot timeout escalation (`exec/runner.ts`),
  * the signal teardown (`orchestrator/signals.ts`) and the end-of-run

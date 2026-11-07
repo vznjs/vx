@@ -75,6 +75,7 @@ export {
   dieOf,
   exitClaimedBySignal,
   killGraceMs,
+  POST_EXIT_DRAIN_MS,
   settleWithin,
   teardownTimeoutMs,
   testTimerMs,

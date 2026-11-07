@@ -848,6 +848,15 @@ export function validateProjectConfig(
                 `(got "${name}") — list explicit env var names instead`,
             )
           }
+          // A name taking a newline loaded, and broke every line that names
+          // it (`vx why`'s key diff); no shell exports such a name.
+          // eslint-disable-next-line no-control-regex -- control characters are the point
+          if (/[\x00-\x1f\x7f]/.test(name)) {
+            throw new UserError(
+              `${where}.inputs.env: ${JSON.stringify(name)} holds a control character, ` +
+                `which no env var name a shell sets does`,
+            )
+          }
         }
       }
       // Same for inputs.files.

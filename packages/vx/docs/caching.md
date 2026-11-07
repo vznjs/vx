@@ -83,8 +83,10 @@ over (in order):
    so boundaries are unambiguous). Listed names get their current
    values; an unset name folds its bare name, with no `\0`, so unset
    and set-to-empty are two keys (the child tells them apart:
-   `passThrough` leaves an unset name out). A name holding a NUL is
-   refused at load.
+   `passThrough` leaves an unset name out). A name holding a NUL or
+   another control character is refused at load, and a value holding
+   U+FFFD at hash time (a value that is not UTF-8 reads as it, so two
+   such values would key alike).
 6. **`inputs.runtime` resolved output** — `[command, output]`
    pairs, where `output` is the trimmed stdout of each command run via
    `sh -c` in the **project dir** at hash time; a command with stderr
