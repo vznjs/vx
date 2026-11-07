@@ -147,9 +147,30 @@ const isAcked = (b: unknown): b is Acked =>
   typeof (b as Acked).a === 'number' &&
   Object.keys(b).length === 1
 
+/** The last of `paced`'s tries failed: `cause` is that try's error. */
+class Exhausted extends Error {
+  constructor(
+    override readonly cause: unknown,
+    readonly tries: number,
+    readonly ms: number,
+  ) {
+    super(cause instanceof Error ? cause.message : String(cause))
+  }
+}
+
+/**
+ * The wait before try `tries + 2`: doubling from an eighth of `REPLY_MS`,
+ * jittered down to half, so `RETRIES` waits span 4.4 to 8.75 s of it. A
+ * fault that fails at once (a refused or unresolved host) spent four tries
+ * in about 2 s under a 250 ms start (PR #5082's CI, 2026-11-07).
+ */
+const pause = (tries: number): number =>
+  ((REPLY_MS / 2 ** RETRIES) * 2 ** tries * (1 + Math.random())) / 2
+
 /** Runs `f` again after a fault, at most `RETRIES` times and within `REPLY_MS`. */
 async function paced<T>(f: () => Promise<T>): Promise<T> {
-  const by = performance.now() + REPLY_MS
+  const at = performance.now()
+  const by = at + REPLY_MS
   for (let tries = 0; ; tries++) {
     try {
       return await f()
@@ -157,9 +178,10 @@ async function paced<T>(f: () => Promise<T>): Promise<T> {
       // A request the relay held past its deadline already took the whole wait.
       const fault =
         err instanceof RelayError ? err.status >= 500 : (err as Error).name !== 'TimeoutError'
-      const wait = Math.random() * FIRST_REDIAL_MS * 2 ** tries
-      if (!fault || tries >= RETRIES) throw err
-      if (performance.now() + wait >= by) throw err
+      if (!fault) throw err
+      const wait = pause(tries)
+      if (tries >= RETRIES || performance.now() + wait >= by)
+        throw new Exhausted(err, tries + 1, performance.now() - at)
       await Bun.sleep(wait)
     }
   }
@@ -495,16 +517,19 @@ export async function join(
         return { tokenless }
       }
       const s = await connect(base, query, h)
-      // A fault: dialed again within `REPLY_MS`.
       if (s === undefined) throw new Error('no socket')
       return { s }
     })
   } catch (err) {
     if (err instanceof RelayError) throw err
-    throw new RelayError(
-      504,
-      `cannot connect to the relay ${new URL(base).origin}: no answer in ${REPLY_MS / 1000} s`,
-    )
+    const cause = err instanceof Exhausted ? err.cause : err
+    if (cause instanceof RelayError) throw cause
+    // Said as it was: a wait only when one was waited out.
+    const why =
+      err instanceof Exhausted && (cause as Error).name !== 'TimeoutError'
+        ? `${err.message}, ${err.tries} dials in ${(err.ms / 1000).toFixed(1)} s`
+        : `no answer in ${REPLY_MS / 1000} s`
+    throw new RelayError(504, `cannot connect to the relay ${new URL(base).origin}: ${why}`)
   }
   // A token it cannot get is said as itself, not as a relay that never
   // answered: the relay was not asked.
@@ -868,8 +893,14 @@ async function connect(
   // Its handlers are set before it opens: a relay that refuses closes at
   // once, and Bun may report that close, or its frame, with the open.
   let opening: (ok: boolean) => void = () => {}
+  /** Why the dial failed, as the platform said it (`ECONNREFUSED`, `ENOTFOUND`). */
+  let failure = ''
+  let waited = false
   const opened = new Promise<boolean>((resolve) => {
-    const timer = setTimeout(() => resolve(false), wait)
+    const timer = setTimeout(() => {
+      waited = true
+      resolve(false)
+    }, wait)
     opening = (ok) => {
       clearTimeout(timer)
       resolve(ok)
@@ -992,7 +1023,9 @@ async function connect(
     shut()
     opening(false)
   }
-  ws.onerror = () => {
+  ws.onerror = (e) => {
+    const err = (e as ErrorEvent).error as { code?: unknown } | undefined
+    failure ||= typeof err?.code === 'string' ? err.code : ((e as ErrorEvent).message ?? '')
     closed()
     opening(false)
   }
@@ -1080,13 +1113,21 @@ async function connect(
     if (heartbeatMs !== undefined) return undefined
   }
   if (heartbeatMs === undefined) {
-    const timer = setTimeout(() => said(undefined), wait)
+    const timer = setTimeout(() => {
+      waited = true
+      said(undefined)
+    }, wait)
     const j = await joined
     clearTimeout(timer)
     if (j === undefined) {
       await me.close()
       const status = refusal(code)
-      if (status === undefined) return undefined
+      if (status === undefined) {
+        // A fault, dialed again: its words say why, or that it was waited out.
+        const err = new Error(printable(failure || reason || 'socket closed'))
+        if (waited) err.name = 'TimeoutError'
+        throw err
+      }
       // A GitLab job with no `id_tokens` entry was told only `401 no bearer
       // token`, not what gives it one (2026-10-26).
       const hint =

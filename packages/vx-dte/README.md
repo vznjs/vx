@@ -617,10 +617,12 @@ use your own instead.
   keeps what it runs, and one sent a task it runs already
   does not run it again, so no work repeats. One not back by then
   ends: a worker's tasks run elsewhere, an orchestrator's run fails.
-  Joining has the same 10 s in all, its socket and request together, and
-  the same 3 retries: a relay silent that long, or refusing all four
-  tries, fails the run with
-  `cannot connect to the relay <origin>: no answer in 10 s`.
+  Joining has the same 10 s in all and the same 3 retries, its waits
+  spread over the 10 s (1.25 s doubling, jittered to half: 4.4 to 8.75 s
+  in all), so a relay or network down a few seconds is still joined. A
+  relay silent that long fails the run with `cannot connect to the relay
+<origin>: no answer in 10 s`; four failed tries say why and how long,
+  as `cannot connect to the relay <origin>: ENOTFOUND, 4 dials in 9.1 s`.
 - A worker that never joins says why on its row (`failed  exited 1:
 …`); its job ending, a success too, is what says so. Once the first
   worker of a size joins, each other of that size not joined within twice
