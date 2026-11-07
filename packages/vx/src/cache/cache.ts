@@ -461,15 +461,24 @@ function indexOfAnotherSchema(dbFile: string): boolean {
   return found !== undefined && found !== SCHEMA_VERSION
 }
 
+/** The largest compressed log a probe loads with its entry. */
+const LOG_INLINE_BYTES = 4096
+
 /**
- * Each asked key's entry row with its stored stdout, which lives apart
- * (v29), null when none was stored, and its inline artifact's last use, null when the
- * artifact is a file. Driven by the keys, so a key with an inline artifact
- * and no row (a reset kept it) answers too, `hash` null: the miss learns
- * there is something to adopt in the statement that found no entry.
+ * Each asked key's entry row, its stored log while that is small, and its
+ * inline artifact's last use, null when the artifact is a file. A larger
+ * log is only flagged (`stdout_apart`), and read when its hit replays: a
+ * warm run probes every key in one batch and replays the hits as the
+ * scheduler reaches them, so every log joined here was held until its
+ * replay (500 hits printing 1 MiB each held 3.4 GB). A small one rides
+ * along, still compressed: a read apart per hit cost a warm run of 300
+ * short logs ~1 ms of 44. `length` reads a blob's size, not its pages.
+ * Driven by the keys, so a key with an inline artifact and no row (a reset
+ * kept it) answers too, `hash` null: the miss learns there is something to
+ * adopt in the statement that found no entry.
  */
 const selectEntries = (keys: string): string =>
-  `SELECT q.value AS key, e.*, s.stdout AS stdout, a.at AS inline_at FROM ${keys} q LEFT JOIN entries e ON e.hash = q.value LEFT JOIN entry_stdout s ON s.hash = e.hash LEFT JOIN artifacts a ON a.hash = q.value WHERE e.hash IS NOT NULL OR a.at IS NOT NULL`
+  `SELECT q.value AS key, e.*, CASE WHEN length(s.stdout) <= ${LOG_INLINE_BYTES} THEN s.stdout END AS stdout, length(s.stdout) > ${LOG_INLINE_BYTES} AS stdout_apart, a.at AS inline_at FROM ${keys} q LEFT JOIN entries e ON e.hash = q.value LEFT JOIN entry_stdout s ON s.hash = e.hash LEFT JOIN artifacts a ON a.hash = q.value WHERE e.hash IS NOT NULL OR a.at IS NOT NULL`
 const SELECT_ENTRY = selectEntries('(SELECT ? AS value)')
 const SELECT_ENTRIES = selectEntries('json_each(?)')
 
@@ -635,7 +644,10 @@ interface EntryRow {
   exit_code: number
   duration_ms: number
   size_bytes: number
+  /** The compressed log when no more than `LOG_INLINE_BYTES`, else null. */
   stdout: Uint8Array | null
+  /** 1 when the log is larger, and read apart; null when none was stored. */
+  stdout_apart: number | null
   created_at: number
   accessed_at: number
   cpu_ms: number | null
@@ -643,7 +655,17 @@ interface EntryRow {
   inline_at: number | null
 }
 
-function entryOf(row: LiveRow, fileRows: OutputFileRow[]): CacheEntry {
+/**
+ * The entry a row answers. Its log is a getter, decompressed on each access
+ * and, past `LOG_INLINE_BYTES`, read from the index then (`log`), so an
+ * entry held from the probe to its replay holds no log text and the replay
+ * drops it once printed. A reader takes it once.
+ */
+function entryOf(
+  row: LiveRow,
+  fileRows: OutputFileRow[],
+  log: (hash: string) => string,
+): CacheEntry {
   return {
     hash: row.hash,
     taskId: `${row.project}#${row.task}`,
@@ -655,7 +677,9 @@ function entryOf(row: LiveRow, fileRows: OutputFileRow[]): CacheEntry {
     ...(row.peak_rss_bytes !== null ? { peakRssBytes: row.peak_rss_bytes } : {}),
     outputFiles: fileRows.map((r) => r.path),
     outputRows: fileRows,
-    stdout: storedLog(row.stdout),
+    get stdout() {
+      return row.stdout_apart === 1 ? log(row.hash) : storedLog(row.stdout)
+    },
     storedAt: new Date(row.created_at).toISOString(),
     source: 'local',
   }
@@ -953,6 +977,8 @@ export class Cache implements CacheLayer {
   private readonly selectEntry: ReturnType<Database['prepare']>
   private readonly upsertStdout: ReturnType<Database['prepare']>
   private readonly deleteStdout: ReturnType<Database['prepare']>
+  private readonly selectStdout: ReturnType<Database['prepare']>
+  private readonly logOf = (hash: string): string => this.guard(() => this.stdoutText(hash))
   private readonly entryExists: ReturnType<Database['prepare']>
   private readonly selectBlob: ReturnType<Database['prepare']>
   private readonly upsertBlob: ReturnType<Database['prepare']>
@@ -1344,6 +1370,7 @@ export class Cache implements CacheLayer {
       'INSERT INTO entry_stdout(hash, stdout) VALUES (?, ?) ON CONFLICT(hash) DO UPDATE SET stdout = excluded.stdout',
     )
     this.deleteStdout = lazyStatement(this.db, 'DELETE FROM entry_stdout WHERE hash = ?')
+    this.selectStdout = lazyStatement(this.db, 'SELECT stdout FROM entry_stdout WHERE hash = ?')
     this.selectEntry = lazyStatement(this.db, SELECT_ENTRY)
     // `has` asks only whether the row is there and where its artifact is,
     // with no stdout joined. A column off the index, so the table row is
@@ -1970,7 +1997,7 @@ export class Cache implements CacheLayer {
     // for four up-to-date hits on ~70 MB binaries). restoreOutputs
     // reads the artifact itself, only when extraction actually runs.
     const fileRows = this.loadOutputFilesBatch([hash]).get(hash) ?? []
-    const entry = entryOf(row as LiveRow, fileRows)
+    const entry = entryOf(row as LiveRow, fileRows, this.logOf)
     entry.outputDirRows = this.loadOutputDirsBatch([hash]).get(hash) ?? []
     return entry
   }
@@ -2054,7 +2081,7 @@ export class Cache implements CacheLayer {
     const dirRows = this.loadOutputDirsBatch(liveHashes)
     for (const row of live) {
       if (row.accessed_at < refreshStart) this.touched.add(row.hash)
-      const entry = entryOf(row, fileRows.get(row.hash) ?? [])
+      const entry = entryOf(row, fileRows.get(row.hash) ?? [], this.logOf)
       entry.outputDirRows = dirRows.get(row.hash) ?? []
       out.set(row.hash, entry)
     }
@@ -2408,9 +2435,7 @@ export class Cache implements CacheLayer {
   }
 
   private stdoutText(hash: string): string {
-    const row = this.db.query('SELECT stdout FROM entry_stdout WHERE hash = ?').get(hash) as {
-      stdout: Uint8Array
-    } | null
+    const row = this.selectStdout.get(hash) as { stdout: Uint8Array } | null
     return storedLog(row?.stdout ?? null)
   }
 
