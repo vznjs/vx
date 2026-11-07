@@ -7,6 +7,19 @@ let settled = false
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2)
+  // A rejection nothing awaited (a plugin verb's floating promise) is a
+  // failure: the exit after the streams end came before Bun reported it,
+  // and the run said nothing and exited 0.
+  process.on('unhandledRejection', (reason) => {
+    process.exitCode = 1
+    void import('./util/index.js').then(({ maskedLine }) =>
+      process.stderr.write(
+        maskedLine(
+          `vx: unhandled rejection: ${reason instanceof Error ? reason.message : String(reason)}`,
+        ) + '\n',
+      ),
+    )
+  })
   try {
     // Inside the try: `process.cwd()` throws EMFILE when out of descriptors,
     // and that is a one-line UserError below, not a stack.
@@ -74,8 +87,9 @@ async function main(): Promise<void> {
       // A message that names its verb (`vx why: …`, a plugin's `vx dte
       // worker: …`) is that verb's; any other is the verb typed. A config
       // refusal shows its line.
-      const named = /^(vx [a-z][\w-]*(?: [a-z][\w-]*)?): /.exec(err.message)
-      const typed = /^[a-z][\w-]*$/.test(argv[0] ?? '') ? `vx ${argv[0]}` : 'vx'
+      // A plugin verb may hold a capital, `.` or `:` (`my.verb`).
+      const named = /^(vx [A-Za-z0-9][\w:.-]*(?: [a-z][\w-]*)?): /.exec(err.message)
+      const typed = /^[A-Za-z0-9][\w:.-]*$/.test(argv[0] ?? '') ? `vx ${argv[0]}` : 'vx'
       const block = refusalNotice(
         named?.[1] ?? typed,
         named === null ? err.message : err.message.slice(named[0].length),
@@ -123,6 +137,9 @@ async function main(): Promise<void> {
  */
 async function exitOnceFlushed(): Promise<void> {
   if ((await import('./util/index.js')).exitClaimedBySignal()) return
+  // One macrotask: a floating rejection is reported after the microtasks
+  // drain, and its handler above sets the code and writes its line.
+  await new Promise((resolve) => setImmediate(resolve))
   let open = 2
   const ended = (): void => {
     if (--open === 0) process.exit()

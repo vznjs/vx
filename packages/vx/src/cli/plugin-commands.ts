@@ -337,7 +337,12 @@ export async function pluginCommandHelp(cwd = process.cwd()): Promise<string[]> 
       if (seen.has(verb)) continue
       seen.add(verb)
       lines.push(
-        ...helpLines(`  vx ${verb.padEnd(17)} `, `${command.description} (${plugin.name})`),
+        ...helpLines(
+          // Two spaces at least: one ran a long verb into its description,
+          // and the help painter reads a description after two.
+          `  vx ${verb.length < 17 ? `${verb.padEnd(17)} ` : `${verb}  `}`,
+          `${command.description} (${plugin.name})`,
+        ),
       )
     }
   }

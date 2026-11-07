@@ -541,6 +541,20 @@ describe('plugin commands', () => {
     expect(out.join('').split('\n')).toContain(`  vx ${'hello'.padEnd(17)} says hi (org/hello)`)
   })
 
+  it('keeps two spaces after a verb longer than the column', async () => {
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      localWorkspaceSource([
+        pluginSource(
+          'org/long',
+          `{ commands: { 'a-really-long-verb': { description: 'desc', run() { return 0 } } } }`,
+        ),
+      ]),
+    )
+    expect(await cli(['help'])).toBe(0)
+    expect(out.join('').split('\n')).toContain('  vx a-really-long-verb  desc (org/long)')
+  })
+
   it('outside a workspace the verb is unknown, not an error about workspaces', async () => {
     const bare = await mkdtemp(path.join(os.tmpdir(), 'vx-bare-'))
     try {
@@ -592,6 +606,18 @@ describe('a broken workspace file', () => {
     // Nothing to offer: a broken file declares no verbs to hint at.
     expect(await pluginVerbs(root)).toEqual([])
   })
+
+  // `vx help <verb>` printed the whole reference and exited 0, hiding it.
+  it('refuses `vx help <verb>` the same way', async () => {
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      'export default { plugins: [ this is not javascript\n',
+    )
+    expect(await cli(['help', 'nope'])).toBe(1)
+    const text = err.join('')
+    expect(text).toContain('unknown command: nope')
+    expect(text).toContain('plugin verbs could not be looked up')
+  })
 })
 
 // bin.ts is the one consumer of `isUserError` no in-process test reaches: it
@@ -619,9 +645,30 @@ describe('bin.ts prints a foreign-copy UserError as one line', () => {
         throw new ForeignUserError('bad flag --x')
       } },
       crash: { description: 'throws a plain Error', run() { throw new Error('kaboom') } },
+      floats: { description: 'leaves a rejection unawaited', run() { Promise.reject(new Error('floating')); return 0 } },
+      'My.verb': { description: 'a capital and a dot', run() { throw new Error('dotted') } },
+      big: { description: 'resolves a bigint', run() { return 0n } },
     },
   }`,
   )
+
+  // process.exit in the streams' end callback ran before Bun reported the
+  // rejection: exit 0 and no word of it.
+  it('a rejection the verb left unawaited fails the run, saying so', async () => {
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([PLUGIN]))
+    const r = spawn('floats')
+    expect([r.code, r.err.includes('floating')]).toEqual([1, true])
+  })
+
+  it('names a verb with a capital or a dot in the heading', async () => {
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([PLUGIN]))
+    expect(spawn('My.verb').err).toStartWith('✗ vx My.verb  ')
+  })
+
+  it('shows a bigint as one', async () => {
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([PLUGIN]))
+    expect(spawn('big').err).toContain('resolved 0n instead of an exit code')
+  })
 
   it('a class named UserError from another copy prints the message only, exit 1', async () => {
     await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([PLUGIN]))
