@@ -1897,7 +1897,7 @@ parses the lockfile, so after an install, run `vx lock`; a run whose
 lockfile changed since refuses (`VX_E_LOCK`), and so does one with no
 dependencies lock while a plugin claims a lockfile that is there. An
 edit in a `link:` or `file:` directory the lockfile names needs no
-`vx lock`: the plugin digests anew. `--affected` reads the base commit's copy to find a deleted
+`vx lock`: the plugin digests anew, and `vx lock --check` accepts it. `--affected` reads the base commit's copy to find a deleted
 project's dependants and a changed lockfile's base digests, and `vx
 lock --check` fails when it is missing or stale.
 
