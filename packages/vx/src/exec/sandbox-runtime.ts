@@ -70,6 +70,7 @@ import {
   ESSENTIAL_ENV,
   executablePath,
   helperEnv,
+  holdSecret,
   taskShell,
   grantPrefix,
   isTmpdirRefusal,
@@ -1011,6 +1012,11 @@ export async function initSandbox(opts?: {
   // reload of exactly these fields; the proxy and the wrapper read them
   // through getters, so the run's config is what every task sees.
   SandboxManager.updateConfig(config)
+  // The proxy's session token rides into a networked task's env
+  // (CLOUDSDK_PROXY_PASSWORD, the proxy URLs' password): a task printing
+  // its env put it in the terminal, the cached log and `vx last --log`.
+  const token = SandboxManager.getProxyAuthToken()
+  if (token !== undefined) holdSecret(token)
 }
 
 /**

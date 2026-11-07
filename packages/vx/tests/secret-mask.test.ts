@@ -51,6 +51,18 @@ describe('secretMask', () => {
       `connect postgres://app:${MASKED}@db:5432/app`,
     )
     expect(m.mask('mirror-l11-sekret second-l11-sekret')).toBe(`${MASKED} ${MASKED}`)
+    // A URL splits its userinfo at the LAST `@` before the host (WHATWG):
+    // a password holding `@`, or a user name holding one, printed whole.
+    const at = secretMask([
+      {
+        DATABASE_URL: 'postgres://app:p@ssw0rd99@db:5432/app',
+        CACHE_URL: 'redis://me@corp:cache-pw-77@cache:6379/0?x=a@b#y@z',
+      },
+    ])!
+    expect(at.mask('postgres://app:p@ssw0rd99@db:5432/app redis://me@corp:cache-pw-77@cache')).toBe(
+      `postgres://app:${MASKED}@db:5432/app redis://me@corp:${MASKED}@cache`,
+    )
+    expect(at.mask('p@ssw0rd99 cache-pw-77 a@b')).toBe(`${MASKED} ${MASKED} a@b`)
     // CONTROL: a URL with no password, an email, and a short password mask nothing.
     expect(
       secretMask([

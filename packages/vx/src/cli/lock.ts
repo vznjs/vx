@@ -29,6 +29,7 @@ import {
   type RefusalParts,
   type UserError,
   secretMask,
+  secretNamed,
   type SecretMask,
   refuseSymlink,
   writeNoFollow,
@@ -540,15 +541,21 @@ const strayLine = (root: string, file: string): string =>
 /**
  * Each place an evaluated config holds the value of a secret in this
  * environment, by the rule output masking uses (a secret-named variable,
- * or one a task lists in `exec.env.secret`). The lock is committed, so
- * such a value would be published, and masking it would freeze a `***`
- * that every run runs (L-42).
+ * one a task lists in `exec.env.secret`, or a define of such a name whose
+ * value this environment holds). The lock is committed, so such a value
+ * would be published, and masking it would freeze a `***` that every run
+ * runs (L-42).
  */
 function secretsIn(projects: Record<string, ProjectConfig>): Array<{ at: string; name: string }> {
   const named = new Set<string>()
+  const defines: Array<[name: string, value: string]> = []
   for (const config of Object.values(projects)) {
-    for (const task of Object.values(config.tasks ?? {}))
-      for (const n of task?.exec?.env?.secret ?? []) named.add(n)
+    for (const task of Object.values(config.tasks ?? {})) {
+      const secret = task?.exec?.env?.secret ?? []
+      for (const n of secret) named.add(n)
+      for (const [n, v] of Object.entries(task?.exec?.env?.define ?? {}))
+        if (secretNamed(n) || secret.includes(n)) defines.push([n, v])
+    }
   }
   // Each variable's own mask: what the output masks of it, a URL's
   // password and a key's lines too, not only the whole value.
@@ -558,12 +565,26 @@ function secretsIn(projects: Record<string, ProjectConfig>): Array<{ at: string;
       value === undefined ? null : secretMask([{ [name]: value }], named.has(name) ? [name] : [])
     if (mask !== null) secrets.push([mask, name])
   }
+  // The output masks a secret define's value by the define's name, so
+  // `API_TOKEN: process.env.MY_CREDS` printed masked and locked in clear.
+  // Only a value this environment holds counts: a literal define is the
+  // config's own committed text, and npm's `'${NPM_TOKEN}'` is no secret.
+  for (const [n, v] of defines) {
+    const mask = secretMask([{ [n]: v }], [n])
+    if (mask === null) continue
+    for (const [name, value] of Object.entries(process.env))
+      if (value !== undefined && mask.spans(value).length > 0) secrets.push([mask, name])
+  }
   if (secrets.length === 0) return []
   const found: Array<{ at: string; name: string }> = []
   const walk = (project: string, at: string, v: unknown): void => {
     if (typeof v === 'string') {
-      for (const [mask, name] of secrets)
-        if (mask.spans(v).length > 0) found.push({ at: `${project}: ${at} holds $${name}`, name })
+      for (const [mask, name] of secrets) {
+        const place = `${project}: ${at} holds $${name}`
+        // A define's mask and its variable's own both find one value.
+        if (mask.spans(v).length > 0 && !found.some((f) => f.at === place))
+          found.push({ at: place, name })
+      }
     } else if (Array.isArray(v)) {
       v.forEach((x, i) => walk(project, `${at}[${i}]`, x))
     } else if (v !== null && typeof v === 'object') {

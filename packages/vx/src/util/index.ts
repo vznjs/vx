@@ -116,6 +116,7 @@ export {
 } from './write-file.js'
 export {
   heldSecrets,
+  holdSecret,
   maskedCommand,
   maskedStreams,
   maskedLine,

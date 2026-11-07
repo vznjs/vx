@@ -27,7 +27,7 @@ export interface TaskEnvSecrets {
 export function maskedCommand(command: string, env?: TaskEnvSecrets): string
 export function maskedLine(line: string): string // this process's secrets only
 export function secretNamed(name: string): boolean // the name rule alone; `vx why` hides such an env input's hashes
-export function holdSecret(value: string): void // a keychain answer: masked with this process's secrets
+export function holdSecret(value: string): void // a keychain answer, the sandbox proxy's token: masked with this process's secrets
 export function heldSecrets(): number // how many are held: a mask built with fewer is stale
 export function maskedStreams(
   mask: SecretMask,
@@ -41,13 +41,18 @@ A variable is masked when its name holds `TOKEN`, `SECRET`, `KEY`,
 `PASSWORD`, `PASSWD` or `CREDENTIAL`, it does not end `_FILE`, `_PATH`
 or `_DIR` and is not git's `GIT_CONFIG_KEY_<n>`, or the task names it in
 `exec.env.secret` (L-14), and its value has six characters or more. No such variable: `secretMask` is null and nothing is
-paid per byte.
+paid per byte. Any variable's value also masks a URL's password, split
+as WHATWG splits it: the userinfo ends at the last `@` before the path,
+query or fragment, so `app:p@ss@db` masks `p@ss`.
 
 A mask whose sources include `process.env` also masks every value
 `holdSecret` holds: what a plugin's keychain (`ctx.secret`) answered,
-which no environment names. A server's reply that echoed that token
-printed it whole in the warning. `events.ts` builds its status-line mask
-again when `heldSecrets()` grows.
+which no environment names, and the sandbox proxy's session token
+(`initSandbox`), which the runtime puts in a networked task's env
+(`CLOUDSDK_PROXY_PASSWORD`, the proxy URLs' password). A server's reply
+that echoed that token printed it whole in the warning. `events.ts`
+builds its status-line mask again when `heldSecrets()` grows, and
+`execute-task.ts` its task's once the sandbox is armed.
 
 `stream()` holds back only a tail that could begin a value, so a value
 split across two chunks is caught and output that cannot be one (a

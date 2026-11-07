@@ -36,8 +36,11 @@ export function secretNamed(name: string): boolean {
 /**
  * A URL's password (`postgres://app:<pw>@db/app`): a credential whatever
  * the variable is named, so `DATABASE_URL` and `REDIS_URL` printed it.
+ * Split as WHATWG splits it: the userinfo ends at the LAST `@` before the
+ * path, query or fragment, and the user name at its first `:`, so either
+ * may hold an `@` (`app:p@ss@db` printed `p@ss` whole).
  */
-const URL_PASSWORD = /[a-z][a-z0-9+.-]*:\/\/[^\s:/@]*:([^\s/@]+)@/gi
+const URL_PASSWORD = /[a-z][a-z0-9+.-]*:\/\/[^\s:/?#]*:([^\s/?#]+)@/gi
 
 /**
  * Values shorter than this are not masked: `KEY=1` would mask every `1`

@@ -2030,7 +2030,9 @@ One with no task (core's default `build` aside) is not named.
 The lock is committed, so `vx lock` refuses to write one that holds a
 secret: a config that evaluated to the value of a secret-named variable
 (or one a task lists in `exec.env.secret`), say
-`` `--token ${process.env.API_TOKEN}` ``. It names each place
+`` `--token ${process.env.API_TOKEN}` ``, or a secret-named `define`
+read from a variable of any name (`API_TOKEN: process.env.MY_CREDS`,
+named as `$MY_CREDS`). It names each place
 (`a: tasks.deploy.exec.command holds $API_TOKEN`) and writes nothing.
 Masking it instead would freeze a `***` that every run runs. Let the
 shell expand it: `$API_TOKEN` in the command, the name in

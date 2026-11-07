@@ -93,10 +93,32 @@ const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
 const quote = (v: string): string => `'${v.replaceAll("'", "'\\''")}'`
 
 /**
- * The script a spare runs as the task: its directory (127 when it is gone,
- * as a spawn into it fails; the OLDPWD `cd` sets is not the task's), its
- * env, then `command`. Undefined when an env
- * name is one sh cannot export: that task spawns fresh.
+ * Names sh sets itself at start, whatever its env holds: dash resets IFS
+ * and OPTIND, sets PPID and keeps PWD only when it names the directory;
+ * bash, a distro's sh, also counts SHLVL up and refuses to assign its
+ * read-only names. Exported into a shell already started, they kept the
+ * value given (`IFS=:` split the command's words) or ended the shell.
+ */
+const SHELL_SET = new Set([
+  'IFS',
+  'OPTIND',
+  'PPID',
+  'PWD',
+  'SHLVL',
+  'SHELLOPTS',
+  'BASHOPTS',
+  'UID',
+  'EUID',
+])
+
+/**
+ * The script a spare runs as the task: its directory by its physical path,
+ * as a fresh shell's PWD names it (127 when it is gone, as a spawn into it
+ * fails; the OLDPWD `cd` sets is not the task's), its env, then `command`
+ * through `eval`, which numbers the command's lines from 1 as `sh -c` does
+ * (sourced after the script's own lines, sh's "not found" named line 3 +
+ * the env's size). Undefined when an env name is one sh cannot export or
+ * sets itself: that task spawns fresh.
  */
 export function spareScript(
   cwd: string,
@@ -105,15 +127,15 @@ export function spareScript(
 ): string | undefined {
   // A script past what one pipe write lands whole would hold vx's thread.
   if (command.length > SCRIPT_BYTES) return undefined
-  let out = `exec 3<&-\ncd -- ${quote(cwd)} 2>/dev/null || exit 127\nunset OLDPWD\n`
+  let out = `exec 3<&-\ncd -P -- ${quote(cwd)} 2>/dev/null || exit 127\nunset OLDPWD\n`
   for (const k in env) {
     const v = env[k]
     // Undefined unsets the name: a spawn drops it.
     if (v === undefined) continue
-    if (!NAME.test(k)) return undefined
+    if (!NAME.test(k) || SHELL_SET.has(k)) return undefined
     out += `export ${k}=${quote(v)}\n`
   }
-  out += `${command}\n`
+  out += `eval ${quote(command)}\n`
   return Buffer.byteLength(out) > SCRIPT_BYTES ? undefined : out
 }
 
