@@ -205,7 +205,7 @@ export function kindOf(need: Need): string {
 }
 
 /** The cores `need` books on `bin`: its own, and the base of each server `bin` does not run yet. */
-export function coresOn(bin: Bin, need: Need): number {
+function coresOn(bin: Bin, need: Need): number {
   let cores = need.cores
   for (const s of need.servers ?? []) if (bin.serving?.has(s.id) !== true) cores += s.cores
   return cores
