@@ -32,6 +32,7 @@ import {
   secretNamed,
   type SecretMask,
   refuseSymlink,
+  writeAllOrNone,
   writeNoFollow,
 } from '../util/index.js'
 import * as ui from '../ui/index.js'
@@ -50,11 +51,11 @@ import {
   checkBracketLiterals,
   checkDependencyRules,
   computeNestedProjectDirs,
-  writeLockfile,
+  lockfileWrite,
   DEPENDENCIES_LOCK_NAME,
   dependenciesLock,
   parseDependenciesLock,
-  writeDependenciesLock,
+  dependenciesLockWrite,
   type DependenciesLock,
   type Lockfile,
   type ProjectMeta,
@@ -482,8 +483,10 @@ async function writeLock(
     })
     return 1
   }
-  await writeLockfile(root, check.fresh)
-  if (check.dependencies !== null) await writeDependenciesLock(root, check.dependencies)
+  await writeAllOrNone([
+    lockfileWrite(root, check.fresh),
+    ...(check.dependencies === null ? [] : [dependenciesLockWrite(root, check.dependencies)]),
+  ])
   await writeIfMissing(path.join(root, '.vx', '.gitattributes'), DOT_VX_GITATTRIBUTES)
   const n = metas.length
   say(`${n} project config${n === 1 ? '' : 's'} → ${LOCKFILE_NAME}${bareNote(bare)}`)

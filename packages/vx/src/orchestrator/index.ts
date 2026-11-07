@@ -7,6 +7,7 @@ export {
   namesRemote,
   openRemotes,
   prepareRun,
+  unlockedDir,
   workspaceCachePolicy,
   type PreparedRun,
 } from './prepare.js'

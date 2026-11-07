@@ -116,13 +116,18 @@ const ALWAYS_IGNORE = [
   '.vx/dependencies.lock.json',
   // Where restores stage (archive.ts): vx's own, never an input.
   '.vx/tmp/**',
+  // The temps the locks and review copies are written to and renamed from
+  // (`writeAllOrNone`, `writeNoFollow`): a killed write leaves one.
+  '.vx/projects.lock.json.tmp-*',
+  '.vx/dependencies.lock.json.tmp-*',
+  'vx.lock.json.tmp-*',
 ]
 
 /**
  * `ALWAYS_IGNORE` relative to the workspace root, for `inputs.workspaceFiles`:
  * those globs cross into other projects, and each one's `vx.lock.json` is vx's.
  */
-const WORKSPACE_ALWAYS_IGNORE = [...ALWAYS_IGNORE, '**/vx.lock.json']
+const WORKSPACE_ALWAYS_IGNORE = [...ALWAYS_IGNORE, '**/vx.lock.json', '**/vx.lock.json.tmp-*']
 
 const DEFAULT_FILE_GLOBS: readonly string[] = ['**/*']
 

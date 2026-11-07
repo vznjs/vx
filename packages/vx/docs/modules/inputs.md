@@ -310,7 +310,9 @@ other walker: a project outside a git work tree is a `UserError`
 4. **Always-ignored** — hard-coded
    (`.git/**`, `.vx/cache/**`,
    `.vx/projects.lock.json`, `vx.lock.json`, `.vx/.gitattributes`,
-   `.vx/.gitignore`, `.vx/dependencies.lock.json`, `.vx/tmp/**`, relative to the project)
+   `.vx/.gitignore`, `.vx/dependencies.lock.json`, `.vx/tmp/**`,
+   `.vx/projects.lock.json.tmp-*`, `.vx/dependencies.lock.json.tmp-*`,
+   `vx.lock.json.tmp-*`, relative to the project)
    — applied as a defense-in-depth even if git happens to track
    something there. `workspaceFiles` adds every project's review copy,
    `**/vx.lock.json`. They are reserved only where vx writes them: at any

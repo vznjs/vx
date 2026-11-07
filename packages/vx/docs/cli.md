@@ -438,8 +438,10 @@ What counts as a change:
   selects it, as in Nx. The key still hashes it, so the task misses when
   it changed.
 - What `vx lock` writes is left out (`.vx/projects.lock.json`,
-  `.vx/dependencies.lock.json`, `.vx/.gitattributes`, `.vx/.gitignore`, each project's `vx.lock.json`
-  review copy), so `vx lock` never marks a project affected by itself.
+  `.vx/dependencies.lock.json`, `.vx/.gitattributes`, each project's `vx.lock.json`
+  review copy, and the `<name>.tmp-<pid>-<x>` temp a killed write left
+  beside one), so `vx lock` never marks a project affected by itself. So
+  is the `.vx/.gitignore` `vx init` writes.
   `.vx/projects.lock.json` counts entry by entry when the base has
   one: a project whose locked config changed is selected whole (a run
   reads its config from there), and `vx lock` rewriting the same
@@ -2067,7 +2069,7 @@ may not search (EACCES, named as such), or a missing lock, is a hard error; a co
 `vx lock`, and naming its task, `c#build`, says so: "c#build: c/vx.config.ts
 is not in the lock yet — run `vx lock`", as a run from its directory says
 `c/vx.config.ts is not in the lock yet`, where it ran the locked project
-around it, and so does `--filter ./c`; so does a bare `build` that the
+around it, and so do `--filter ./c`, `vx show c` and `vx show c#build`; so does a bare `build` that the
 cwd's project or a `--filter` leaves unresolved while one of the
 selected projects holds such a config). An entry edited by
 hand into a shape `vx lock` could not write fails the run with

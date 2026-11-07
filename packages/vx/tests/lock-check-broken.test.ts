@@ -2,7 +2,7 @@
 // locked project as having "no vx.config now", the healthy ones too, since
 // the broken audit evaluated none. A graph rule's refusal evaluated them
 // all, so it hides no other problem.
-import { mkdir, writeFile, rm } from 'node:fs/promises'
+import { mkdir, readdir, writeFile, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -93,6 +93,30 @@ it('a directory where the lock goes is one line from lock and --check', async ()
     1,
     '✗ vx lock --check  .vx/projects.lock.json is a directory — remove it and run `vx lock`\n',
   ])
+})
+
+// The config lock was renamed into place before the dependencies lock was
+// tried: `vx lock` said it wrote nothing while the config lock held the edit.
+it('a directory where the dependencies lock goes leaves the config lock as it was', async () => {
+  const ws = await makeWorkspace({ prefix: 'vx-lock-deps-dir-' })
+  const a = await addProject(ws, 'a', CONFIG)
+  expect(Bun.spawnSync({ cmd: [process.execPath, BIN, 'lock'], cwd: ws }).exitCode).toBe(0)
+  const lockFile = path.join(ws, '.vx', 'projects.lock.json')
+  const before = await Bun.file(lockFile).text()
+  await writeFile(path.join(a, 'vx.config.mjs'), CONFIG.replace("'true'", "'echo 2'"))
+  const deps = path.join(ws, '.vx', 'dependencies.lock.json')
+  await rm(deps)
+  await mkdir(deps)
+  const lock = Bun.spawnSync({ cmd: [process.execPath, BIN, 'lock'], cwd: ws })
+  const after = await Bun.file(lockFile).text()
+  const left = (await readdir(path.join(ws, '.vx'))).filter((f) => f.includes('.tmp-'))
+  await rm(ws, { recursive: true, force: true })
+  expect([lock.exitCode, lock.stderr.toString()]).toEqual([
+    1,
+    '✗ vx lock  cannot write .vx/dependencies.lock.json: a directory stands there; remove it and run again\n',
+  ])
+  expect(after).toBe(before)
+  expect(left).toEqual([])
 })
 
 it('every config that does not load is named, root-relative, with its frame', async () => {

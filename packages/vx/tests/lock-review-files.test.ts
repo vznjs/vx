@@ -259,3 +259,23 @@ it('vx-written files under .vx select no root project under --affected', async (
   await Bun.write(path.join(r, '.vx', '.gitignore'), '/cache\n')
   expect(vx(r, 'show', '--affected=HEAD').err).toContain('nothing affected since HEAD')
 })
+
+// A killed `vx lock` leaves its temps (`<name>.tmp-<pid>-<x>`) beside the
+// files it writes: under a root project's `**`, one selected that project.
+it('temps a killed vx lock left select no project under --affected', async () => {
+  const r = (root = await makeWorkspace({ prefix: 'vx-lock-review-tmp-', edges: {} }))
+  const cfg = `export default { tasks: { check: { exec: { command: 'true' }, inputs: { files: ['**'] } } } }\n`
+  await Bun.write(path.join(r, 'vx.config.mjs'), cfg)
+  const dir = await addProject(r, 'a', { config: cfg })
+  expect(vx(r, 'lock').code).toBe(0)
+  gitIn(r)('add', '-A')
+  gitIn(r)('commit', '-q', '-m', 'init')
+  for (const f of [
+    '.vx/projects.lock.json.tmp-123-abc',
+    '.vx/dependencies.lock.json.tmp-123-abc',
+    'vx.lock.json.tmp-123-abc',
+  ])
+    await Bun.write(path.join(r, f), '{}\n')
+  await Bun.write(path.join(dir, 'vx.lock.json.tmp-123-abc'), '{}\n')
+  expect(vx(r, 'show', '--affected=HEAD').err).toContain('nothing affected since HEAD')
+})

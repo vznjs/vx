@@ -1088,7 +1088,8 @@ backslash separator (`src\**`, `src\*.ts`) or a drive (`C:\src\**`,
 backslash stays an escape.
 
 Still applied: the always-ignored set (`.git/**`, `.vx/cache/**`,
-`.vx/projects.lock.json`, `vx.lock.json`, `.vx/tmp/**`),
+`.vx/projects.lock.json`, `vx.lock.json`, `.vx/tmp/**`, and the
+`.tmp-*` temps a killed write of a lock leaves),
 untracked files under `node_modules/`, and the task's own declared
 outputs, `outputs.workspaceFiles` and the `outputs.files` its globs reach
 in its own project (a task never invalidates itself).
