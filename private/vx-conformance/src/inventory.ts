@@ -436,6 +436,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'sandbox-noscan-gone.unsafe',
     'sandbox-observer-drain.unsafe',
     'sandbox-open-flags',
+    'sandbox-openat2.unsafe',
     'sandbox-outside-git.unsafe',
     'sandbox-output-link.unsafe',
     'sandbox-parent-env.unsafe',

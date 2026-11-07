@@ -1486,7 +1486,10 @@ export interface SandboxViolation {
    * leaves it hidden.
    */
   via?: string
-  /** Linux: what a refused `openat`'s flags asked for. */
+  /**
+   * Linux: what a refused `openat`'s flags asked for; for an `openat2`,
+   * whose flags no record names, a read.
+   */
   opened?: 'read' | 'write'
   ignorable?: readonly ('read' | 'write' | 'network' | 'systemInfo')[]
 }
@@ -1862,8 +1865,8 @@ function ownGroupCommand(
  * What strace stops on: the reads (`openat`, and `open`, musl's open():
  * traced as openat alone, a sibling under a widened write grant was read
  * unreported and cached; arm64 has no `open`; an `openat2` never reaches
- * strace, SRT's write observer takes each one first), the execs and
- * access probes (a refused
+ * strace, SRT's write observer takes each one first: `refusedWrites`),
+ * the execs and access probes (a refused
  * `./gen.sh || fallback` passed unreported), and what moves or makes a
  * process's cwd. Not the stat family: a stop per stat cost oxlint 19% and
  * `git status` 30%, where the execs and probes cost nothing measurable, and

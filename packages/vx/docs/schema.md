@@ -1900,9 +1900,12 @@ writable, and a write there succeeded and left nothing on disk. The
 runtime's write observer saw the attempt, and a write no grant binds is
 reported and fails the task, even when the command swallowed the error
 and exited 0 (B-5; before it, both Linux shapes passed with nothing
-reported, items 444 and 1011). A write outside the project is refused
-the same way and named on a failed task, never counted. The remedy is to
-declare it: `allow: { write: [...] }`.
+reported, items 444 and 1011). One exception: the observer cannot see an
+`openat2`'s flags, so one the task may read is taken as a read, and a
+swallowed `openat2` write there passes, having written nothing; one it
+may not read is reported as an open, its fix a read grant. A write
+outside the project is refused the same way and named on a failed
+task, never counted. The remedy is to declare it: `allow: { write: [...] }`.
 
 **A write grant cannot be removed on Linux.** A directory grant is
 mounted in place, so `rm -rf dist && tsc` under `write: ['dist/']`

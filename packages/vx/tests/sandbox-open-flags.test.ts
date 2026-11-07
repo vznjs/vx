@@ -7,7 +7,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { resolveSandboxConfig } from '../src/exec/index.js'
-import { parseStraceViolations } from '../src/exec/sandbox-violations.js'
+import { parseStraceViolations, refusedWrites } from '../src/exec/sandbox-violations.js'
 import { sandboxFix } from '../src/orchestrator/sandbox-fix.js'
 
 let dir: string
@@ -43,3 +43,28 @@ it('grants by the flags a refused open asked for, not by whether the host has th
     ]),
   ).toEqual({ read: ['opt/b.cfg', 'optional.cfg'], write: ['out/', 'src/'] })
 })
+
+// strace never sees an `openat2`: SRT's write observer takes each one, read
+// or write, since its flags lie in a struct the seccomp filter cannot read,
+// and its record carries no flags. Every one was judged a write: a granted
+// `openat2(O_RDONLY)` read failed a clean task as `a write no grant covers`
+// with `write: ['deep/']` as the fix (2026-11-07).
+it.skipIf(process.platform !== 'linux')(
+  'an openat2 record is a read or a write: skipped where the sandbox can read, else named for a read',
+  () => {
+    const file = path.join(dir, 'src', 'i.js')
+    expect(refusedWrites([`deny openat2 ${file}`], [], [], [path.join(dir, 'src')])).toEqual([])
+    const v = refusedWrites([`deny openat2 ${file}`], [])
+    expect(v.map((x) => [x.line, x.ignorable])).toEqual([
+      [`openat2(${file}) = an open no grant covers  [${file}]`, ['read', 'write']],
+    ])
+    expect(sandboxFix(v, dir)).toEqual({ read: ['src/i.js'] })
+    // Under a directory a file grant widened: a granted read there too.
+    const widened = {
+      entries: new Map([[dir, new Set([path.join(dir, 'src')])]]),
+      granted: [path.join(dir, 'out.txt')],
+    }
+    expect(refusedWrites([`deny openat2 ${file}`], [dir], [], [dir], widened)).toEqual([])
+    expect(refusedWrites([`deny openat2 ${file}`], [dir], [], [], widened)).toHaveLength(1)
+  },
+)

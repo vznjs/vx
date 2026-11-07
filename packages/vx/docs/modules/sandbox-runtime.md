@@ -352,7 +352,7 @@ export function refusedWrites(
   records: readonly string[],
   writable: readonly string[],
   scratch?: readonly string[], // pending write globs a write may land under
-  readable?: readonly string[], // what the sandbox mounts readable: a mkdir there wrote nothing
+  readable?: readonly string[], // what the sandbox mounts readable: a mkdir or openat2 there wrote nothing
   widened?: { entries; granted }, // `widenedEntries` at task start and the write grants: a write there is judged by the grants
 ): SandboxViolation[]
 // the writes refused past the wall, as paths: a failed task's hint
@@ -803,10 +803,18 @@ trace names only by number, so such a task's strace runs with `-y`,
 which prints the path each descriptor opened (40% slower on 2,000
 opens). The parse takes a descriptor's printed path up to the `, "` that
 opens the file argument, since a directory's name may hold a quote
-(`4</ws/q"d>`). No widened grant, no `-y` and no extra parse. An
-`openat2` read is still unseen: SRT's write observer takes every
-`openat2` (its flags lie in a struct its filter cannot read), and its
-USER_NOTIF wins over strace's TRACE.
+(`4</ws/q"d>`). No widened grant, no `-y` and no extra parse. strace
+never sees an `openat2`: SRT's write observer takes every one, read or
+write (its flags lie in a struct its filter cannot read), its
+USER_NOTIF wins over strace's TRACE, and its record names no flags. So
+`refusedWrites` takes an `openat2` record as either: where the sandbox
+can read the path (`inSandbox`), or a read grant covers it under a
+widened directory, it says nothing, since a write there met the
+read-only bind and landed nothing; elsewhere it reports `= an open no
+grant covers`, ignorable as a read or a write, and the fix names a read
+grant, the cheaper one (a granted `openat2(O_RDONLY)` read failed a
+clean task as a write until 2026-11-07,
+`sandbox-openat2.unsafe.test.ts`).
 
 The directory is writable in full too, and a hard link reads without an
 open: `ln -f README.md out.txt` beside `write: ['out.txt']` passed
