@@ -4366,7 +4366,13 @@ it('reads how crowded the CPU is from the run queue', async () => {
   let running = 3
   const os = await import('node:os')
   const cores = os.cpus().length
-  const meter = loadMeter(() => stat(running))
+  let ticks = 0
+  const full = (): [number, number] => [(ticks += 100), ticks]
+  const meter = loadMeter(
+    () => stat(running),
+    () => 0,
+    full,
+  )
   try {
     const from = meter.mark()
     await Bun.sleep(450)
@@ -4382,9 +4388,23 @@ it('reads how crowded the CPU is from the run queue', async () => {
   } finally {
     meter.stop()
   }
+  // 2026-11-07: a run queue longer than the cores while they were 83%
+  // busy booked tasks 1.5 times what they used. Not crowded.
+  let lent = 0
+  const spareLinux = (): [number, number] => [(lent += 80), (lent / 80) * 100]
+  const linux = loadMeter(
+    () => stat(cores * 3 + 1),
+    () => 0,
+    spareLinux,
+  )
+  try {
+    const from = linux.mark()
+    await Bun.sleep(450)
+    expect(linux.shareSince(from)).toBe(1)
+  } finally {
+    linux.stop()
+  }
   // No /proc/stat (macOS): the load average says it, while every core is busy.
-  let ticks = 0
-  const full = (): [number, number] => [(ticks += 100), ticks]
   const mac = loadMeter(
     () => undefined,
     () => cores * 2,

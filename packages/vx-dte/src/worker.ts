@@ -748,7 +748,9 @@ export function crowdShare(stat: string, cores: number): number | undefined {
  * more than the threads that wait for a core: a GitHub macOS runner
  * read 49 with two test shards on 3 cores and a core idle, and the run
  * learned each shard needed the whole machine (main 8fa3c98). So a
- * Mac whose cores were not all busy since the last look is not crowded.
+ * machine whose cores were not all busy since the last look is not
+ * crowded: Linux's run queue read a share of 0.67 on machines 83% busy,
+ * and the run booked tasks 1.5 times the CPU they used (2026-11-07).
  */
 export function loadMeter(
   read: () => string | undefined = procStat,
@@ -780,14 +782,16 @@ export function loadMeter(
     const stat = read()
     const avg = stat === undefined ? average() : 0
     let full = true
-    if (stat === undefined && avg > 0) {
+    if (stat !== undefined || avg > 0) {
       const now = times()
       full = now[1] <= looked[1] || (now[0] - looked[0]) / (now[1] - looked[1]) >= FULL
       looked = now
     }
     const share =
       stat !== undefined
-        ? crowdShare(stat, cores)
+        ? full
+          ? crowdShare(stat, cores)
+          : 1
         : avg > 0
           ? full
             ? Math.min(1, cores / avg)
