@@ -2859,7 +2859,9 @@ default build (no vx config)`: a run loads it for that dependant's
 `^build` (X-48). A configured project that declares no `build` reads
 `N tasks, default build`, and `vx show <project>` marks that task
 `<project>#build  default`. One nothing configured reaches has no task in any
-view: `vx show bare` lists none, and `vx run bare#build` refuses it. A `tags` column appears when any project has tags. With `--format json`
+view: `vx show bare` lists none, and `vx run bare#build` refuses it. A
+config written after the lock reads `vx.config.ts not locked — run vx
+lock`, in the list and in `vx show <project>`'s `config` row. A `tags` column appears when any project has tags. With `--format json`
 it's an array of `{ name, dir, tags: string[], tasks: string[] }`.
 
 **A project or task.** A report naming the project opens it: its `dir`, its `tags`, and
