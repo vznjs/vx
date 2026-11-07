@@ -130,14 +130,20 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
         .filter((e) => e.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
         .map((e) => ({ ...e, path: e.path.slice(WORKSPACE_OUTPUT_PREFIX.length) }))
       const endGlob = span('output glob')
+      // The FIFOs, sockets and devices listed only if the tree is stale: a
+      // listing reads every directory again, ~17% of a walk.
       const projTree = await resolveOutputTree({
         projectDir: node.projectDir,
         outputs,
         nestedProjectDirs: args.nestedProjectDirs,
+        special: 'later',
+        clearing: true,
       })
       const wsTree = await resolveWorkspaceOutputTree({
         workspaceRoot: args.workspaceRoot,
         outputs: wsOutputs,
+        special: 'later',
+        clearing: true,
       })
       endGlob()
       const actualAbs = projTree.files
@@ -232,10 +238,14 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
         projectDir: node.projectDir,
         outputs,
         nestedProjectDirs: args.nestedProjectDirs,
+        special: 'later',
+        clearing: true,
       })
       const actualWs = await resolveWorkspaceOutputTree({
         workspaceRoot: args.workspaceRoot,
         outputs: wsOutputs,
+        special: 'later',
+        clearing: true,
       })
       endGlob()
       skipRestore =
@@ -268,6 +278,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
     // to run first: a reader polling a 64 MB output while ten hits restored
     // met ENOENT on 153,336 of 204,411 reads (2026-10-16). An ADDITIVE task
     // owns only its rows (item 588), and the restore rewrites exactly those.
+    const walkArgs = { special: 'later', clearing: true } as const
     let foundRels: string[] = []
     let foundWsRels: string[] = []
     let staleRels: string[] = []
@@ -278,8 +289,12 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
       sweepRestoreTemps(node.projectDir, outputs, cleanArgs.committed)
       sweepRestoreTemps(args.workspaceRoot, wsOutputs, wsCleanArgs.committed)
       if (outputs.length > 0) {
-        const tree = walked?.proj ?? (await resolveOutputTree(cleanArgs))
-        foundRels = tree.files.map((f) => relPosix(node.projectDir, f))
+        const tree = walked?.proj ?? (await resolveOutputTree({ ...walkArgs, ...cleanArgs }))
+        // A FIFO, socket or device is found too: one the entry does not hold
+        // is a stray like any file, and one in a held path's way goes first.
+        foundRels = [...tree.files, ...(tree.findSpecial?.() ?? [])].map((f) =>
+          relPosix(node.projectDir, f),
+        )
         const blocking = inTheWay(foundRels, heldRels)
         staleRels = notHeld(foundRels, heldRels).filter((f) => !blocking.has(f))
         const dirs = splitDirs(node.projectDir, tree.emptyDirs, heldRels)
@@ -295,8 +310,11 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
         }
       }
       if (wsOutputs.length > 0) {
-        const tree = walked?.ws ?? (await resolveWorkspaceOutputTree(wsCleanArgs))
-        foundWsRels = tree.files.map((f) => relPosix(args.workspaceRoot, f))
+        const tree =
+          walked?.ws ?? (await resolveWorkspaceOutputTree({ ...walkArgs, ...wsCleanArgs }))
+        foundWsRels = [...tree.files, ...(tree.findSpecial?.() ?? [])].map((f) =>
+          relPosix(args.workspaceRoot, f),
+        )
         const blocking = inTheWay(foundWsRels, heldWsRels)
         staleWsRels = notHeld(foundWsRels, heldWsRels).filter((f) => !blocking.has(f))
         const dirs = splitDirs(args.workspaceRoot, tree.emptyDirs, heldWsRels)
@@ -528,7 +546,7 @@ function inTheWay(found: readonly string[], held: readonly string[]): Set<string
 }
 
 /** The found outputs the entry does not hold: the stale ones, once it has restored. */
-type Tree = { files: string[]; emptyDirs: string[] }
+type Tree = { files: string[]; emptyDirs: string[]; findSpecial?: () => string[] }
 
 /**
  * The empty directories found under the outputs (absolute) that the entry

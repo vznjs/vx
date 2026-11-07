@@ -1255,6 +1255,28 @@ describe.skipIf(process.platform === 'darwin')('a name that is not UTF-8', () =>
     },
     TIMEOUT,
   )
+
+  // A hit saves nothing: one left by hand among the outputs is refused for
+  // the clean, not as a file vx "cannot save".
+  it(
+    'one left among the outputs before a hit is refused for the clean',
+    async () => {
+      await project('mkdir -p dist && printf a > dist/ok')
+      git(root, 'init', '-q')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'init')
+      expect(vxExit(root, 'run', 'build').code).toBe(0)
+      await writeFile(badIn(path.join(root, 'dist')), 'stray')
+      const second = vxExit(root, 'run', 'build')
+      expect(second.out).toContain('dist/x�y')
+      expect(second.out).toContain('not valid UTF-8')
+      expect(second.out).toContain(
+        'vx cannot clear a file by it before the task runs or a hit restores',
+      )
+      expect(second.out).not.toContain('cannot save')
+    },
+    TIMEOUT,
+  )
 })
 
 describe('parseCheckAttrOutput', () => {

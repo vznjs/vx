@@ -903,23 +903,57 @@ export async function resolveOutputTree(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
-  /** Also list the FIFOs, sockets and devices the globs name (a save refuses them). */
-  special?: boolean
-}): Promise<{ files: string[]; emptyDirs: string[]; special: string[] }> {
+  /**
+   * Also list the FIFOs, sockets and devices the globs name: a save refuses
+   * them, a clean removes them. `'later'` leaves `special` empty and hands
+   * `findSpecial` instead, for a walk that needs them only if it restores.
+   */
+  special?: boolean | 'later'
+  /** The walk feeds a clean or a restore (`refuseUndecodableOutput`). */
+  clearing?: boolean
+}): Promise<OutputTree> {
   const emptyDirs = new Set<string>()
-  const special = args.special === true ? new Set<string>() : undefined
-  const { files } = await scanOutputs(args, emptyDirs, special)
-  return {
+  const probe: SpecialProbe | undefined =
+    args.special === undefined || args.special === false ? undefined : {}
+  const { files } = await scanOutputs(args, emptyDirs, probe)
+  return treeOf(args.projectDir, files, emptyDirs, args.special, probe)
+}
+
+/** What `resolveOutputTree` and its workspace twin return. */
+type OutputTree = {
+  files: string[]
+  emptyDirs: string[]
+  special: string[]
+  findSpecial?: () => string[]
+}
+
+function treeOf(
+  root: string,
+  files: string[],
+  emptyDirs: Set<string>,
+  asked: boolean | 'later' | undefined,
+  probe: SpecialProbe | undefined,
+): OutputTree {
+  const findSpecial = (): string[] =>
+    probe?.find === undefined ? [] : containedIn(root, probe.find()).sort()
+  const tree: OutputTree = {
     files,
-    emptyDirs: containedIn(args.projectDir, [...emptyDirs]).sort(),
-    special: special === undefined ? [] : containedIn(args.projectDir, [...special]).sort(),
+    emptyDirs: containedIn(root, [...emptyDirs]).sort(),
+    special: asked === true ? findSpecial() : [],
   }
+  if (asked === 'later') tree.findSpecial = findSpecial
+  return tree
 }
 
 async function scanOutputs(
-  args: { projectDir: string; outputs: readonly string[]; nestedProjectDirs: string[] },
+  args: {
+    projectDir: string
+    outputs: readonly string[]
+    nestedProjectDirs: string[]
+    clearing?: boolean
+  },
   emptyDirs?: Set<string>,
-  special?: Set<string>,
+  special?: SpecialProbe,
 ): Promise<{ files: string[] }> {
   const { positive, negative } = splitNegations(args.outputs)
   if (positive.length === 0) return { files: [] }
@@ -935,6 +969,7 @@ async function scanOutputs(
       emptyDirs,
       special,
       absent,
+      args.clearing,
     )),
   ]
   // Containment, enforced HERE and not only at the loader. `cleanOutputs`
@@ -1186,17 +1221,18 @@ export async function cleanOutputs(args: {
   )
   sweepRestoreTemps(args.projectDir, args.outputs, committed)
   // An empty directory under the outputs is one too (a save keeps it): one
-  // an older build left would otherwise be saved by this run.
+  // an older build left would otherwise be saved by this run. So is a FIFO,
+  // socket or device: a task writing a FIFO's path blocks on it forever.
   const tree =
     args.resolved === undefined
-      ? await resolveOutputTree(args)
-      : { files: args.resolved, emptyDirs: [] }
+      ? await resolveOutputTree({ ...args, special: true, clearing: true })
+      : { files: args.resolved, emptyDirs: [], special: [] }
   const matched = tree.files
   // `force: true` makes rm tolerate ENOENT (e.g. when two output
   // globs overlap and a sibling already deleted a path mid-iteration).
   // A symlink is unlinked, never followed.
   const removed = await removeAll(
-    matched.filter((f) => !committed(f)),
+    [...matched, ...tree.special].filter((f) => !committed(f)),
     args.projectDir,
   )
   await pruneEmptiedDirs(
@@ -1677,9 +1713,10 @@ export async function resolveWorkspaceOutputs(
   args: {
     workspaceRoot: string
     outputs: readonly string[]
+    clearing?: boolean
   },
   emptyDirs?: Set<string>,
-  special?: Set<string>,
+  special?: SpecialProbe,
 ): Promise<string[]> {
   const { positive, negative } = splitNegations(args.outputs)
   if (positive.length === 0) return []
@@ -1695,6 +1732,7 @@ export async function resolveWorkspaceOutputs(
       emptyDirs,
       special,
       absent,
+      args.clearing,
     )),
   ]
   // Same containment as the project twin, anchored one level out. These globs
@@ -1709,16 +1747,14 @@ export async function resolveWorkspaceOutputTree(args: {
   workspaceRoot: string
   outputs: readonly string[]
   /** As `resolveOutputTree`'s. */
-  special?: boolean
-}): Promise<{ files: string[]; emptyDirs: string[]; special: string[] }> {
+  special?: boolean | 'later'
+  clearing?: boolean
+}): Promise<OutputTree> {
   const emptyDirs = new Set<string>()
-  const special = args.special === true ? new Set<string>() : undefined
-  const files = await resolveWorkspaceOutputs(args, emptyDirs, special)
-  return {
-    files,
-    emptyDirs: containedIn(args.workspaceRoot, [...emptyDirs]).sort(),
-    special: special === undefined ? [] : containedIn(args.workspaceRoot, [...special]).sort(),
-  }
+  const probe: SpecialProbe | undefined =
+    args.special === undefined || args.special === false ? undefined : {}
+  const files = await resolveWorkspaceOutputs(args, emptyDirs, probe)
+  return treeOf(args.workspaceRoot, files, emptyDirs, args.special, probe)
 }
 
 /**
@@ -1743,13 +1779,13 @@ export async function cleanWorkspaceOutputs(args: {
   sweepRestoreTemps(args.workspaceRoot, args.outputs, committed)
   const tree =
     args.resolved === undefined
-      ? await resolveWorkspaceOutputTree(args)
-      : { files: args.resolved, emptyDirs: [] }
+      ? await resolveWorkspaceOutputTree({ ...args, special: true, clearing: true })
+      : { files: args.resolved, emptyDirs: [], special: [] }
   const matched = tree.files
   await pruneEmptiedDirs(
     args.workspaceRoot,
     await removeAll(
-      matched.filter((f) => !committed(f)),
+      [...matched, ...tree.special].filter((f) => !committed(f)),
       args.workspaceRoot,
     ),
     pruneScope(args.workspaceRoot, args.outputs),
@@ -2470,13 +2506,17 @@ function listingFor(
  * yields names no file and the output dropped out of the artifact without
  * a word: a hit then restored a tree without it (turborepo#9345's output
  * half). A `\ufffd` that does not stat is that case or a file that left
- * mid-scan; `undecodableOnDisk` tells them apart.
+ * mid-scan; `undecodableOnDisk` tells them apart. `clearing`: the walk
+ * feeds a clean or a restore, which nothing saves.
  */
-function refuseUndecodableOutput(abs: string): void {
+function refuseUndecodableOutput(abs: string, clearing: boolean): void {
   if (!undecodableOnDisk(abs)) return
+  const why = clearing
+    ? 'vx cannot clear a file by it before the task runs or a hit restores'
+    : 'vx cannot save a file by it'
   throw new UserError(
     `outputs matched ${JSON.stringify(abs)}: the name is not valid UTF-8 (shown with ` +
-      `\ufffd), and vx cannot save a file by it. Rename it, or keep it out of the outputs.`,
+      `\ufffd), and ${why}. Rename it, or keep it out of the outputs.`,
   )
 }
 
@@ -2689,32 +2729,45 @@ async function scanUnion(
   cwd: string,
   nested: (rel: string) => boolean = () => false,
   emptyDirs?: Set<string>,
-  special?: Set<string>,
+  special?: SpecialProbe,
   absent?: ReadonlySet<string>,
+  clearing = false,
 ): Promise<Set<string>> {
   const matches = new Set<string>()
   const links: string[] = []
-  // Directories the walk entered: Bun's scan skips a FIFO, socket or
-  // device outright, so `special` is found by listing them.
-  const walked = special === undefined ? undefined : new Set<string>()
+  // Bun's scan skips a FIFO, socket or device outright, so `special` is
+  // found by listing the directories the walk entered: its roots, the
+  // directories it took and the parents of what it took. Derived only when
+  // asked, so a walk that may never need them pays a set add per directory.
+  const roots = special === undefined ? undefined : new Set<string>()
+  const dirs = special === undefined ? undefined : new Set<string>()
   const take = (rel: string): void => {
     if (nested(rel) || excludeGlobs.some((g) => g.match(rel))) return
     const abs = path.resolve(cwd, rel)
-    walked?.add(path.dirname(abs))
     const st = lstatSync(abs, { throwIfNoEntry: false })
-    if (walked !== undefined && st?.isDirectory() === true) walked.add(abs)
     if (st !== undefined && (st.isFile() || st.isSymbolicLink())) {
       matches.add(abs)
       if (st.isSymbolicLink()) links.push(abs)
-    } else if (emptyDirs !== undefined && st?.isDirectory() === true) {
-      if (readdirSync(abs).length === 0) emptyDirs.add(abs)
-    } else if (st === undefined && rel.includes('\ufffd')) refuseUndecodableOutput(abs)
+    } else if (st?.isDirectory() === true) {
+      dirs?.add(abs)
+      if (emptyDirs !== undefined && readdirSync(abs).length === 0) emptyDirs.add(abs)
+    } else if (st === undefined && rel.includes('\ufffd')) refuseUndecodableOutput(abs, clearing)
   }
   const opts = { cwd, onlyFiles: false, followSymlinks: false, dot: true }
   // `Bun.Glob`'s scan finds nothing for a brace whose alternatives hold a
   // `/`: `{dist,lib/esm}/**` saved an empty artifact, and a hit restored
   // nothing over a cleaned tree (A-10). Expanded here, as discovery does.
   const patterns = positive.flatMap(slashBraceExpansions)
+  if (special !== undefined) {
+    special.find = () => {
+      const walked = new Set(roots)
+      for (const f of [...matches, ...links]) walked.add(path.dirname(f))
+      for (const d of dirs!) walked.add(d).add(path.dirname(d))
+      const into = new Set<string>()
+      findSpecial(walked, cwd, anyTaskGlob(patterns), excludeGlobs, nested, into)
+      return [...into]
+    }
+  }
   // A leading `**` walks the whole project whatever else is listed, so the
   // list is one walk: Turbo's `dist/**`, `**/dist/**`, `**/dist` was three,
   // ~2 ms of a warm hit on solid.
@@ -2727,21 +2780,17 @@ async function scanUnion(
   ) {
     const any = anyTaskGlob(patterns)
     for (const rel of WHOLE_TREE.scanSync(opts)) if (any(rel)) take(rel)
-    if (special !== undefined) findSpecial(walked!, cwd, any, excludeGlobs, nested, special)
     return matches
   }
   for (const pattern of patterns) {
     if (absentPrefix(cwd, pattern, absent)) continue
     const from = scanRoot(cwd, pattern)
     if (from === null) continue
-    walked?.add(from === undefined ? cwd : from.dir)
+    roots?.add(from === undefined ? cwd : from.dir)
     if (from === undefined) for (const rel of globFor(pattern).scanSync(opts)) take(rel)
     else
       for (const rel of globFor(from.rest).scanSync({ ...opts, cwd: from.dir }))
         take(`${from.prefix}/${rel}`)
-  }
-  if (special !== undefined) {
-    findSpecial(walked!, cwd, anyTaskGlob(patterns), excludeGlobs, nested, special)
   }
   // A literal names the path and its tree (`dist`, `dist/**`), and a tree
   // whose head is a directory link is walked through it: the link and the
@@ -2756,6 +2805,11 @@ async function scanUnion(
     }
   }
   return matches
+}
+
+/** Filled by a walk asked for it: what lists the FIFOs, sockets and devices its globs name. */
+interface SpecialProbe {
+  find?: () => string[]
 }
 
 /** The FIFOs, sockets and devices in `dirs` that the output globs name. */

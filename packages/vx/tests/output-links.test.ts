@@ -32,13 +32,17 @@ afterEach(() => {
   for (const d of made.splice(0)) rmSync(d, { recursive: true, force: true })
 })
 
-async function workspace(command: string): Promise<{ root: string; dir: string }> {
+async function workspace(
+  command: string,
+  outputs = "{ files: ['dist/**'] }",
+): Promise<{ root: string; dir: string }> {
   const root = await makeWorkspace({ prefix: 'vx-links-' })
   made.push(root)
+  writeFileSync(path.join(root, '.gitignore'), 'out/\n')
   const dir = await addProject(root, 'app', {
     config: `export default { tasks: { build: {
-      exec: { command: ${JSON.stringify(command)} },
-      inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+      exec: { command: ${JSON.stringify(command)}, timeout: '20s' },
+      inputs: { files: ['src/**'] }, outputs: ${outputs}, cache: true,
     } } }`,
     files: { 'src/in.txt': 'v1\n', '.gitignore': 'dist/\n' },
   })
@@ -172,6 +176,100 @@ it.skipIf(process.platform === 'win32')(
     expect(out).toContain('local 1↑')
   },
   TIMEOUT,
+)
+
+// The clean before a run or a restore skipped what is not a file or a link:
+// a FIFO left at a declared output path hung the task that wrote there,
+// and a stray one survived a hit, so the tree was not the entry's.
+it.skipIf(process.platform === 'win32')(
+  'a FIFO left at a declared output path is cleaned before the task runs',
+  async () => {
+    const { root, dir } = await workspace('mkdir -p dist && cat src/in.txt > dist/out')
+    mkdirSync(path.join(dir, 'dist'))
+    expect(Bun.spawnSync(['mkfifo', path.join(dir, 'dist/out')]).exitCode).toBe(0)
+    const out = await ok(root)
+    expect(out).not.toContain('not a regular file')
+    expect(lstatSync(path.join(dir, 'dist/out')).isFile()).toBe(true)
+    expect(await Bun.file(path.join(dir, 'dist/out')).text()).toBe('v1\n')
+  },
+  TIMEOUT,
+)
+
+it.skipIf(process.platform === 'win32')(
+  'a FIFO left at a workspaceFiles output path is cleaned before the task runs',
+  async () => {
+    const { root } = await workspace(
+      'mkdir -p ../../out && cat src/in.txt > ../../out/x',
+      "{ files: [], workspaceFiles: ['out/**'] }",
+    )
+    mkdirSync(path.join(root, 'out'))
+    expect(Bun.spawnSync(['mkfifo', path.join(root, 'out/x')]).exitCode).toBe(0)
+    const out = await ok(root)
+    expect(out).not.toContain('not a regular file')
+    expect(await Bun.file(path.join(root, 'out/x')).text()).toBe('v1\n')
+  },
+  TIMEOUT,
+)
+
+it.skipIf(process.platform === 'win32')(
+  'a stray FIFO under the outputs is gone after a hit restores',
+  async () => {
+    const { root, dir } = await workspace('mkdir -p dist && echo a > dist/a.txt')
+    expect(await ok(root)).toContain('local 1↑')
+    writeFileSync(path.join(dir, 'dist/a.txt'), 'z\n')
+    expect(Bun.spawnSync(['mkfifo', path.join(dir, 'dist/stray')]).exitCode).toBe(0)
+    expect(await ok(root)).toContain('1↓')
+    expect(await Bun.file(path.join(dir, 'dist/a.txt')).text()).toBe('a\n')
+    expect(lstatSync(path.join(dir, 'dist/stray'), { throwIfNoEntry: false })).toBeUndefined()
+  },
+  TIMEOUT,
+)
+
+// Both link checks read the target as text against the root's absolute
+// path: `../../../../<root's name>/packages/app/src/in.txt` leaves the workspace and
+// comes back, so it saved here and every checkout under another name
+// refused it as a corrupt artifact. A link that passes above the root at
+// any step is out, on save and on restore alike.
+it.skipIf(process.platform === 'win32')(
+  'a link that leaves the workspace and comes back fails the save',
+  async () => {
+    const { root } = await workspace(
+      'mkdir -p dist && echo a > dist/a.txt && ln -s "../../../../$(basename "$(dirname "$(dirname "$PWD")")")/packages/app/src/in.txt" dist/l',
+    )
+    const r = await build(root)
+    expect(r.out + r.err).toContain(
+      `output dist/l is a symlink to ../../../../${path.basename(root)}/packages/app/src/in.txt, outside the workspace`,
+    )
+    expect(r.out + r.err).not.toContain('↑')
+  },
+  TIMEOUT,
+)
+
+it.skipIf(process.platform === 'win32')(
+  'an artifact whose link leaves the workspace and comes back restores nothing',
+  async () => {
+    const ws = mkdtempSync(path.join(os.tmpdir(), 'vx-links-back-'))
+    made.push(ws)
+    const dest = path.join(ws, 'app')
+    mkdirSync(dest)
+    const err = await extractArtifactStream(
+      streamOf(
+        await artifact({ links: { 'outputs/dist/l': `../../../${path.basename(ws)}/app/x` } }),
+      ),
+      dest,
+      ws,
+      undefined,
+      undefined,
+      ws,
+    ).then(
+      () => null,
+      (e: unknown) => e,
+    )
+    expect(String(err)).toContain(
+      'ArchiveSecurityError: archive link outputs/dist/l points out of the workspace',
+    )
+    expect(lstatSync(path.join(dest, 'dist/l'), { throwIfNoEntry: false })).toBeUndefined()
+  },
 )
 
 async function artifact(meta: object): Promise<Uint8Array> {
