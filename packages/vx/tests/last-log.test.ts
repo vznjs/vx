@@ -197,7 +197,7 @@ it('a cached task whose run saved no entry says so, not that it is uncached', ()
     code: 0,
     out: '',
     err: noticed(
-      'vx last: a#unsaved ended success, and its entry is not in the cache: the run did not save it, or it was pruned since\n',
+      'vx last: a#unsaved ended success, and the cache does not hold its output: the run did not save it, or it was pruned or saved over since\n',
       'info',
     ),
   })
@@ -243,4 +243,52 @@ it("a skipped task's log points at what blocked it", () => {
       'info',
     ),
   })
+})
+
+// The entry is the key's, not the run's: a `--force` run keeps the entry it
+// finds, and an evicted key saved again holds the later run's output. Each
+// run's log is its own, or says it was not kept, never another run's.
+it("a run's log is its own output, never another run's saved under its key", async () => {
+  await addProject(
+    root,
+    'd',
+    `export default { tasks: { v: { exec: { command: 'echo out-$(date +%s%N)' }, inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true } } }\n`,
+  )
+  const logOf = (runId: string) =>
+    JSON.parse(vx('last', runId, '--log', 'd#v', '--format', 'json').out) as {
+      source: string | null
+      output: string
+    }
+  const notKeptAs = (status: string) => ({
+    code: 0,
+    out: '',
+    err: noticed(
+      `vx last: d#v ended ${status}, and the cache does not hold its output: the run did not save it, or it was pruned or saved over since\n`,
+      'info',
+    ),
+  })
+  const notKept = notKeptAs('success')
+  expect(vx('run', 'd#v').code).toBe(0)
+  const first = lastRunId()
+  const firstLog = logOf(first)
+  expect(firstLog).toMatchObject({ source: 'cache', output: expect.stringMatching(/^out-\d+\n$/) })
+  // --force: the kept entry is the first run's, and the summary saves none.
+  const forced = vx('run', 'd#v', '--force')
+  expect(forced.code).toBe(0)
+  expect(forced.out + forced.err).not.toContain('1↑')
+  const force = lastRunId()
+  expect(vx('last', force, '--log', 'd#v')).toEqual(notKept)
+  expect(logOf(first)).toEqual(firstLog)
+  // A hit replays the first run's entry: its log.
+  expect(vx('run', 'd#v').code).toBe(0)
+  const hit = lastRunId()
+  expect(logOf(hit)).toMatchObject({ source: 'cache', output: firstLog.output })
+  // Evicted, then saved by a later run: that output is the later run's alone.
+  expect(vx('cache', 'clean', '--max-size', '1B').code).toBe(0)
+  expect(vx('run', 'd#v').code).toBe(0)
+  const later = logOf(lastRunId())
+  expect(later.source).toBe('cache')
+  expect(later.output).not.toBe(firstLog.output)
+  expect(vx('last', first, '--log', 'd#v')).toEqual(notKept)
+  expect(vx('last', hit, '--log', 'd#v')).toEqual(notKeptAs('cache-hit'))
 })

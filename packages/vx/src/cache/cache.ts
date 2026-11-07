@@ -190,6 +190,7 @@ const VX_CACHE_NAMES = new Set([
   'cache.db-wal',
   'cache.db-shm',
   'cache.db-journal',
+  'cache.lock',
   // Every record vx keeps lives in cache.db, and the config bundle always
   // in `.vx/cache/compiled`, so any directory here is the user's.
 ])
@@ -391,7 +392,10 @@ function cantOpenIndex(dbFile: string, err: unknown): UserError | undefined {
 //        36-char text; a TEMP view `runs` shows run_id as before. An
 //        all-hit run of 500 tasks added 115 KB to the index. The cache
 //        KEY is unchanged.
-export const SCHEMA_VERSION = 'v53'
+//   v54: entries.run_id — the run that wrote the entry, so `vx last
+//        --log` tells a run's own output from another run's under the same
+//        key. The cache KEY is unchanged.
+export const SCHEMA_VERSION = 'v54'
 
 /**
  * An entry's key components as its one `entry_inputs` row (v34): JSON
@@ -1032,6 +1036,10 @@ export class Cache implements CacheLayer {
    * principle 9). Taken once, by `outputBytes`.
    */
   private readonly savedBytes = new Map<string, number>()
+  /** Each key a `--force` save found stored and kept: no save of this run's. Taken once, by `kept`. */
+  private readonly keptHashes = new Set<string>()
+  /** The run this cache saves for: each entry it writes records it (`entries.run_id`). */
+  runId: string | undefined
   private readonly folds: IndexFoldMemo
   private readonly history: RunHistory
   /** What the remotes said they hold, across runs (remote-hits.ts). */
@@ -1350,8 +1358,8 @@ export class Cache implements CacheLayer {
     this.insertEntry = lazyStatement(
       this.db,
       `
-      INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at, cpu_ms, peak_rss_bytes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at, cpu_ms, peak_rss_bytes, run_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(hash) DO UPDATE SET
         project        = excluded.project,
         task           = excluded.task,
@@ -1361,7 +1369,9 @@ export class Cache implements CacheLayer {
         size_bytes     = excluded.size_bytes,
         accessed_at    = excluded.accessed_at,
         cpu_ms         = excluded.cpu_ms,
-        peak_rss_bytes = excluded.peak_rss_bytes
+        peak_rss_bytes = excluded.peak_rss_bytes,
+        created_at     = excluded.created_at,
+        run_id         = excluded.run_id
     `,
     )
     this.upsertStdout = lazyStatement(
@@ -2147,6 +2157,9 @@ export class Cache implements CacheLayer {
     this.savedBytes.delete(hash)
     return bytes
   }
+  kept(hash: string): boolean {
+    return this.keptHashes.delete(hash)
+  }
   artifactSize(hash: string): number | undefined {
     return this.guard(
       () =>
@@ -2861,6 +2874,7 @@ export class Cache implements CacheLayer {
         args.hash,
         rows.reduce((n, r) => n + r.size, 0),
       )
+      this.keptHashes.add(args.hash)
       return
     }
     // The cache directory is the constructor's (`mkdirSync`, with a
@@ -3510,6 +3524,7 @@ export class Cache implements CacheLayer {
         // packed, an ingest what the producing machine packed.
         scanned.exec?.cpuMs ?? null,
         scanned.exec?.peakRssBytes ?? null,
+        this.runId ?? null,
       )
       if (stdoutBlob === null) deleteStdout.run(hash)
       else upsertStdout.run(hash, stdoutBlob)
@@ -4108,6 +4123,84 @@ export async function holdStore(
     await Bun.sleep(50)
   }
   return () => closeDb(db)
+}
+
+/** The file in a cache directory with no store that its runs hold shared and a clean alone (`holdCacheDir`). */
+const DIR_LOCK = 'cache.lock'
+
+/**
+ * Hold a cache directory with no store — `--cache-dir`, `cache.dir`,
+ * `VX_CACHE_DIR`, which workspaces may share — `shared` for a run, from
+ * before its cache opens to its close, or `exclusive` for `vx cache clean`,
+ * waiting for the other side. Each workspace's run lock is its own, and
+ * `holdStore` waits only on a store.db, so a clean in one workspace deleted
+ * the directory under a run of another opening it (ENOENT on its
+ * `.gitignore`, SQLite's disk I/O error). The lock is SQLite's on
+ * `cache.lock` in the directory: shared and exclusive, any spelling of the
+ * directory meets it, and a holder's lock dies with its process. A clean
+ * deletes the file with the rest while it holds it, so a taker checks the
+ * name still is the file it locked. A directory with no index yet, or one
+ * this user cannot write, holds nothing: there is nothing a clean deletes.
+ * A default directory beside its store pays nothing.
+ */
+export async function holdCacheDir(
+  dir: string,
+  mode: 'shared' | 'exclusive',
+  log: (line: string) => void,
+  signal?: AbortSignal,
+): Promise<() => void> {
+  const file = path.join(dir, DIR_LOCK)
+  const started = Date.now()
+  let said = false
+  for (;;) {
+    if (signal?.aborted === true) return () => {}
+    let db: Database
+    let before: Stats
+    try {
+      let seen = statSync(file, { throwIfNoEntry: false })
+      if (seen === undefined) {
+        // A directory with no index has nothing a clean deletes, and may be
+        // one a first index is refused in (a project's own): nothing is
+        // written there.
+        if (!existsSync(path.join(dir, 'cache.db'))) return () => {}
+        // Made before it is stat'ed: a file Database creates is not the one
+        // a stat before it saw.
+        writeFileSync(file, '', { flag: 'a' })
+        seen = statSync(file)
+      }
+      before = seen
+      db = new Database(file)
+      db.exec('PRAGMA busy_timeout = 0')
+    } catch {
+      return () => {}
+    }
+    try {
+      if (mode === 'exclusive') db.exec('BEGIN EXCLUSIVE')
+      else {
+        db.exec('BEGIN')
+        db.query('SELECT count(*) FROM sqlite_master').get()
+      }
+      const now = statSync(file, { throwIfNoEntry: false })
+      if (now !== undefined && now.ino === before.ino && now.dev === before.dev) {
+        return () => closeDb(db)
+      }
+      // A clean deleted it while this waited: take the one there now.
+      closeDb(db)
+      continue
+    } catch (err) {
+      closeDb(db)
+      if ((err as { code?: string }).code !== 'SQLITE_BUSY') return () => {}
+    }
+    if (!said && Date.now() - started >= 1_000) {
+      said = true
+      log(
+        mode === 'exclusive'
+          ? `[vx] waiting for another vx process using the cache directory ${dir} to finish…`
+          : `[vx] waiting for a vx cache clean of ${dir} to finish…`,
+      )
+    }
+    await Bun.sleep(50)
+  }
 }
 
 /**

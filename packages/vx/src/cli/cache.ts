@@ -1,7 +1,7 @@
 import { existsSync, lstatSync, readdirSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
-import { Cache, holdStore, vxCacheEntries } from '../cache/index.js'
+import { Cache, holdCacheDir, holdStore, vxCacheEntries } from '../cache/index.js'
 import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
 import {
   errorCode,
@@ -243,8 +243,14 @@ async function cleanCmd(args: readonly string[]): Promise<number> {
   try {
     // A run in another checkout of the repository holds no lock of this
     // one's, and shares the store: the prune waits for every process that
-    // has the store open, then opens its own handle on it.
+    // has the store open, then opens its own handle on it. A cache
+    // directory with no store may be another workspace's: the prune holds
+    // it until done, as its runs do.
     if (!parsed.dry && storeRoot !== null) (await holdStore(storeRoot, warnToStderr))()
+    const releaseDir =
+      !parsed.dry && storeRoot === null
+        ? await holdCacheDir(dir, 'exclusive', warnToStderr)
+        : () => {}
     const cache =
       parsed.dry === true
         ? new Cache(dir, undefined, undefined, undefined, 'preview', storeRoot)
@@ -263,6 +269,7 @@ async function cleanCmd(args: readonly string[]): Promise<number> {
       printPruned(await cache.prune(opts), dry, json)
     } finally {
       cache.close()
+      releaseDir()
     }
   } finally {
     await releaseRunLock()
@@ -410,10 +417,16 @@ async function clearHeld(
   if (!dry) {
     // A run in another checkout of the repository holds no lock of this
     // one's: each store is deleted once no process has it open, and held
-    // until then. In path order, so two clears never wait on each other.
+    // until then; so is a cache directory with no store, which another
+    // workspace's runs may share. In path order, so two clears never wait
+    // on each other.
+    const shared = storeRoot === null ? path.resolve(dir) : undefined
     const holds: (() => void)[] = []
     try {
-      for (const t of [...doomed].sort()) holds.push(await holdStore(t, warnToStderr))
+      for (const t of [...doomed].sort()) {
+        holds.push(await holdStore(t, warnToStderr))
+        if (t === shared) holds.push(await holdCacheDir(t, 'exclusive', warnToStderr))
+      }
       for (const t of doomed) {
         for (const e of entries(t)) rmSync(e, { recursive: true, force: true })
         if (t === named && readdirSync(t).length === 0) rmSync(t, { recursive: true })

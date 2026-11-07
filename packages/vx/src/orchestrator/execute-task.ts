@@ -1566,9 +1566,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       measure: args.explainMiss !== undefined,
     })
     // A run that settles the outcome on `landed` learns there whether the
-    // entry is in; without one, the save is taken as done.
+    // entry is in; without one, the save is done (a `--force` save may have kept the entry it found).
     if (args.deferredSaves !== undefined) args.deferredSaves.set(node.id, landed)
-    else saved = true
+    else saved = (await landed).saved === true
   } else if (cfgCacheable && !remoteOnly && !deferralRequested && args.noDependants === true) {
     // Nothing reads after it, so nothing to mark: only its row's `outputs`.
     if (effectiveExitCode === 0)

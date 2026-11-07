@@ -22,6 +22,7 @@ import {
   type CachePolicy,
   cachesNothing,
   formatCachePolicy,
+  holdCacheDir,
   HistoryStream,
   networkConcurrency,
   keepRunNotes,
@@ -491,7 +492,7 @@ async function runOnBus(
   // it waits for every process with the store open, waited on each other
   // for ever; and a clear deleted the store under a run opening it.
   let heldLock: RunLockRelease | undefined
-  const takeRunLock = async (root: string): Promise<void> => {
+  const takeRunLock = async (root: string, sharedCacheDir: string | undefined): Promise<void> => {
     // A nested run is refused below with its own reason, holding nothing.
     const outer = process.env[VX_RUN_WORKSPACE_ENV] || undefined
     if (outer !== undefined && canonical(outer) === canonical(root)) return
@@ -503,7 +504,21 @@ async function runOnBus(
       held !== undefined && options.signal !== undefined
         ? AbortSignal.any([options.signal, held])
         : (held ?? options.signal)
-    heldLock = await step('vx:run-lock', () => acquireRunLock(root, { log: warnOf(log), signal }))
+    const lock = await step('vx:run-lock', () => acquireRunLock(root, { log: warnOf(log), signal }))
+    heldLock = lock
+    // Another workspace's clean of a shared cache directory takes no lock of
+    // this one's: it waits for this hold, and this for it. Released with the
+    // run lock.
+    if (sharedCacheDir !== undefined) {
+      const dir = await holdCacheDir(sharedCacheDir, 'shared', warnOf(log), signal)
+      heldLock = Object.assign(
+        async (): Promise<void> => {
+          dir()
+          await lock()
+        },
+        { path: lock.path },
+      )
+    }
     // A wait the signal ended holds no lock: opening the store now could
     // meet a `vx cache clean` deleting it. run() exits of the signal.
     if (held?.aborted === true) throw new Error(`stopped by ${String(held.reason)}`)
@@ -618,6 +633,7 @@ async function runOnBus(
   // carries it so analytics queries can group by invocation; plugins get it
   // in their teardown's `RunReport`.
   const runId = ulid()
+  prepared.localCache.runId = runId
   // A killed run's restore staging (`.vx/tmp/<pid>-0`), once per run.
   sweepStaging(prepared.workspaceRoot)
   const head = captureGitContext(prepared.workspaceRoot)

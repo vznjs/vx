@@ -5,7 +5,8 @@
 // run's restore is staging takes its files out from under it (item 215).
 // The cache itself is safe (SQLite waits, and an artifact lands by rename
 // inside its rows' transaction, A-3), across workspaces sharing one
-// `--cache-dir` too; the tree is not, and a run that finished "green" can
+// `--cache-dir` too (a clean of it waits for their runs, `holdCacheDir`);
+// the tree is not, and a run that finished "green" can
 // have had its restored outputs deleted by the other run's clean a moment
 // later. So a run takes this lock before it schedules and releases it with
 // its cache handle — before a persistent task's wait, so a dev server never

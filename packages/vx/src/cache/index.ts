@@ -20,6 +20,7 @@ export {
   cachesNothing,
   EXECUTED_RUNS_SQL,
   historyFiles,
+  holdCacheDir,
   holdStore,
   indexDb,
   formatCachePolicy,

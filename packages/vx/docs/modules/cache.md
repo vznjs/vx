@@ -147,6 +147,7 @@ export interface CacheLayer {
   outputsPath(hash: string): string // a file-backed artifact's path; a small one lives in the index
   artifactSize?(hash: string): number | undefined // the stored artifact's compressed size, wherever it lives
   outputBytes?(hash: string): number | undefined // the entry this process just saved: its files' bytes, uncompressed; asked once
+  kept?(hash: string): boolean // the last save found the key stored and kept it (--force): no save; asked once
   prune(options: PruneOptions): Promise<PruneResult>
   close(): void
 }
@@ -435,6 +436,18 @@ export function indexDb(cache: Cache): Database
 // any checkout holds it from its run lock to its end; WAL connections keep a shared lock),
 // then hold it alone until the release. Nothing to hold without the file.
 export function holdStore(storeDir: string, log: (line: string) => void): Promise<() => void>
+// A cache directory with no store (`--cache-dir`, `cache.dir`, `VX_CACHE_DIR`),
+// which workspaces may share: a run holds `<dir>/cache.lock` shared from
+// before its cache opens to its end, `vx cache clean` exclusive; each waits
+// for the other, saying so after a second. A clean deletes the file it
+// holds, so a taker checks the name still is that file. A directory with
+// no index yet, or an unwritable one, holds nothing.
+export function holdCacheDir(
+  dir: string,
+  mode: 'shared' | 'exclusive',
+  log: (line: string) => void,
+  signal?: AbortSignal,
+): Promise<() => void>
 // The files a second connection writes a run's hits through; undefined
 // when the store keeps no history on disk.
 export function historyFiles(cache: Cache): { index: string; store?: string } | undefined
@@ -445,7 +458,7 @@ export class HistoryStream<T> {
   add(item: T, record: RunRecord): void
   finish(): Promise<{ landed: Streamed<T>[]; unlanded: Streamed<T>[] }>
 }
-export const SCHEMA_VERSION = 'v53'
+export const SCHEMA_VERSION = 'v54'
 // An entry_stdout row's log, its zstd frame decoded (v52); null reads as ''.
 // `vx last --log` reads the row itself.
 export function storedLog(blob: Uint8Array | null): string
@@ -626,7 +639,8 @@ find first.
 SQLite stores metadata, and the small artifacts above:
 
 - **`entries`** — one row per cached output:
-  `(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at, cpu_ms, peak_rss_bytes)`.
+  `(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at, cpu_ms, peak_rss_bytes, run_id)`;
+  `run_id` and `created_at` name the run that wrote the entry as it stands and when (v54).
 - **`entry_stdout`** — an entry's captured stdout, `(hash, stdout)`, apart
   so the `accessed_at` bump does not rewrite it (v29); a zstd frame of its
   UTF-8 (v52), as text the logs outweighed every inline artifact.
@@ -838,7 +852,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
 `CACHE_VERSION` is currently `'vx-cache-v51'`; `SCHEMA_VERSION` is
-`'v53'`. Bump `CACHE_VERSION` when:
+`'v54'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside
   `key()`).

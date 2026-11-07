@@ -1320,12 +1320,15 @@ do not share a temp directory, so they do not share the lock.
 A `vx cache clean` in any checkout of the repository waits for every
 vx process holding the shared store open (a run holds it from its lock
 to its end), so it never deletes the store under a run in a sibling checkout,
-whose own lock it never took. A run waiting for the lock holds no cache
+whose own lock it never took. So does a clean of a cache directory with
+no store (`--cache-dir`, `cache.dir`, `VX_CACHE_DIR`), which another
+workspace's runs may share: each run holds it shared (`cache.lock` in
+it) from before its cache opens to its end, the clean holds it alone,
+and a run arriving meanwhile waits for the clean. A run waiting for the lock holds no cache
 open, so a clean holding the lock never waits on it. An eviction can still land between a
-hit's probe and its restore: a clean or a run for another workspace
-that shares the `--cache-dir` (a different workspace, so a
-different lock), which cannot see this run's pending `accessed_at`
-bumps and reads its fresh hits as old. The restore then finds no
+hit's probe and its restore where vx holds no lock: a clean on another
+machine sharing the directory over a network file system, or a file
+removed by hand. The restore then finds no
 artifact, and that entry is a **miss**: the run says `[vx] <id>: its
 cache artifact <hash> vanished before the restore … — running it`,
 runs the task, and saves it again. It failed every such task as an
@@ -1771,7 +1774,7 @@ keep). The artifacts stay: each is indexed again from its own bytes
 when its task next asks for its key (below).
 
 ```sql
--- src/cache/schema.ts (SCHEMA_VERSION = 'v53', in cache.ts)
+-- src/cache/schema.ts (SCHEMA_VERSION = 'v54', in cache.ts)
 -- With a shared store, entries, entry_stdout, output_files, entry_inputs,
 -- store_meta, task_durations, task_outcomes, blob_sizes, plugin_blobs and remote_hits live in its store.db, attached as `store`; the rest is
 -- the workspace's cache.db. A named cache dir holds all of them.
@@ -1789,10 +1792,11 @@ CREATE TABLE entries (
   exit_code    INTEGER NOT NULL,
   duration_ms  INTEGER NOT NULL,
   size_bytes   INTEGER NOT NULL,  -- artifact size
-  created_at   INTEGER NOT NULL,  -- ms-epoch
+  created_at   INTEGER NOT NULL,  -- ms-epoch; when the entry as it stands was written
   accessed_at  INTEGER NOT NULL,  -- ms-epoch; a hit renews it once over an hour old (LRU)
   cpu_ms         INTEGER,         -- v26: the producing execution's usage, from
-  peak_rss_bytes INTEGER          --      the artifact's sidecar (save + ingest)
+  peak_rss_bytes INTEGER,         --      the artifact's sidecar (save + ingest)
+  run_id       TEXT               -- v54: the run that wrote it, so `vx last --log` shows a run's own output
 );
 
 -- v29: stdout apart from its entry. An UPDATE rewrites a whole record, so
