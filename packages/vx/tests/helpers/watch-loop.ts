@@ -68,6 +68,9 @@ export async function until(
     if (await cond()) return
     await Bun.sleep(25)
   }
+  // A stalled event loop (5.8 s on CI, 2026-11-07) can spend the deadline
+  // inside one sleep: the condition gets one look on the far side of it.
+  if (await cond()) return
   // A CI flake that said only "timed out waiting for the watching marker"
   // could not be told from a slow runner or a stuck cycle.
   const said = [...live]
