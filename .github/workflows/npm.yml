@@ -171,3 +171,36 @@ jobs:
       - name: Wait until npm serves every tarball
         if: ${{ github.event.inputs.dry_run != 'true' }}
         run: bun packages/vx/src/bin.ts run release.served --filter @vzn/vx
+
+  # The servers' images, which their docs tell users to `docker run`:
+  # ghcr.io/vznjs/<server> at this version, `latest` following npm's.
+  # After @vzn/vx is published, so `latest` there is this release.
+  images:
+    name: push the server images to ghcr
+    needs: publish
+    if: ${{ github.event.inputs.dry_run != 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: write
+    env:
+      VX_RELEASE_VERSION: ${{ github.event.inputs.version || github.event.release.tag_name }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # A tag only: any token with actions: write can dispatch this.
+          ref: ${{ github.event.inputs.ref && format('refs/tags/{0}', github.event.inputs.ref) || '' }}
+          persist-credentials: false
+      - if: inputs.scripts
+        run: git fetch --depth=1 origin "$GITHUB_SHA" && git checkout FETCH_HEAD -- packages/vx/scripts
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      # arm64 is built under emulation, by a builder that can push both
+      # platforms as one image.
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - run: bun install --frozen-lockfile
+      - run: bun packages/vx/src/bin.ts setup github
+      - name: Push the images
+        run: bun packages/vx/src/bin.ts run release.images --filter @vzn/vx
