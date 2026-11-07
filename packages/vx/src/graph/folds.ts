@@ -62,7 +62,10 @@ export function refuseFiltersThroughGroups(nodes: ReadonlyMap<string, TaskNode>)
           `${node.id}: inputs.tasks: '${raw}' matches ${member.id} only through the group ${group.id}, so it selects nothing; name '${group.taskName}' or depend on ${member.id} directly`,
         )
       }
-      if (namesNoDependency(spec, node.config.dependsOn ?? [])) {
+      if (
+        namesNoDependency(spec, node.config.dependsOn ?? []) ||
+        namesTransitiveDependency(spec, node, nodes, hit)
+      ) {
         const named = deps.map((d) => d.id).join(', ') || 'none'
         throw new UserError(
           `${node.id}: inputs.tasks: '${raw}' names none of its dependencies (${named}), so it selects nothing and the key would not move with them; fix the name, or use [] to decouple on purpose`,
@@ -98,6 +101,34 @@ function namesNoDependency(spec: DependencySpec, dependsOn: readonly string[]): 
     if (d.kind !== 'self' && d.kind !== 'deps' && d.kind !== 'cross') return false
     return (d.kind === 'deps' || isTaskPattern(d.task)) && nameMatcher(d.task)(spec.task)
   })
+}
+
+/**
+ * An exact `pkg#task` filter that matched no dependency but names a task the
+ * key reaches only through one. `namesNoDependency` lets it through when a
+ * `^` entry names the task (the preset whose project lacks that dependency),
+ * but `a → b → c` with `dependsOn: ['^build']` and `['c#build']` selected
+ * none of a's direct dependencies, and an edit to c replayed a's hit.
+ */
+function namesTransitiveDependency(
+  spec: DependencySpec,
+  node: TaskNode,
+  nodes: ReadonlyMap<string, TaskNode>,
+  hit: (n: TaskNode) => boolean,
+): boolean {
+  if (spec.kind !== 'cross' || isTaskPattern(spec.project) || isTaskPattern(spec.task)) return false
+  const seen = new Set<string>([node.id])
+  const stack = [...keyedDeps(node)]
+  while (stack.length > 0) {
+    const id = stack.pop()!
+    if (seen.has(id)) continue
+    seen.add(id)
+    const n = nodes.get(id)
+    if (n === undefined) continue
+    if (hit(n)) return true
+    stack.push(...keyedDeps(n))
+  }
+  return false
 }
 
 function parseSpec(raw: string, selfTaskId: string): DependencySpec {
