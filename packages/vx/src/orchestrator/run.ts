@@ -4,7 +4,15 @@
 
 import type { InputStability } from '../config.js'
 import type { ProjectEntry } from '../workspace/index.js'
-import { EMPTY_LOCK, inputStabilityEnv, LOCK_INVALID, lockEntryBroken } from '../workspace/index.js'
+import {
+  EMPTY_LOCK,
+  findProjectConfigs,
+  inputStabilityEnv,
+  LOCK_INVALID,
+  lockEntryBroken,
+  lockKey,
+  readLockfile,
+} from '../workspace/index.js'
 import { realpathSync } from 'node:fs'
 import path from 'node:path'
 import {
@@ -59,6 +67,7 @@ import {
   isUserError,
   SecretBroker,
   thrownMessage,
+  relPosix,
 } from '../util/index.js'
 import * as ui from '../ui/index.js'
 
@@ -2139,6 +2148,13 @@ async function unresolvedHint(prepared: {
     prepared.workspaceRoot,
   )
   const init = await initHint(prepared)
+  // "No project declares a task yet" beside configs that declare one: the
+  // lock holds none of them (a `vx lock` that failed), so say that.
+  if (near.includes(NO_TASK)) {
+    const unlocked = await unlockedAnywhere(prepared.workspaceRoot)
+    if (unlocked !== undefined)
+      return `${elsewhere}${near.replace(NO_TASK, `The lock holds no project for ${unlocked}: run \`vx lock\` (did it fail?).`)}${init}`
+  }
   const lock =
     init === '' && elsewhere === '' && !near.startsWith(' Did you mean') && !near.includes(NO_TASK)
       ? ' A run reads the lock: after editing a vx.config, run `vx lock`.'
@@ -2161,6 +2177,14 @@ async function initHint(prepared: {
   const unlocked = prepared.unlockedConfig()
   if (unlocked !== undefined) return ` ${unlocked} is not in the lock yet — run \`vx lock\`.`
   return ` ${EMPTY_LOCK}.`
+}
+
+/** A project config the lock holds no project for, found by the walk `vx lock` makes. */
+async function unlockedAnywhere(root: string): Promise<string | undefined> {
+  const [{ configs }, lock] = await Promise.all([findProjectConfigs(root), readLockfile(root)])
+  const held = new Set(Object.keys(lock?.projects ?? {}))
+  const c = configs.find((x) => !held.has(lockKey(root, x.dir)))
+  return c === undefined ? undefined : relPosix(root, c.configPath)
 }
 
 // The state right after `vx init`: the lock is current, so the lock hint
