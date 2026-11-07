@@ -39,7 +39,11 @@ and key derivation logic live here.
 - `fs-clock.ts` — how far the workspace's file system clock runs behind
   this process's, measured once a run; `racyWindowMs` adds it.
 - `output-index.ts` — `OutputIndex`: `output_files` / `output_dirs` rows
-  and the two proofs a hit runs before skipping a restore.
+  and the two proofs a hit runs before skipping a restore. The batched
+  `getMany` hands both batch reads its live hashes as one JSON array,
+  each hash once, and the rows are joined from it: an `IN (SELECT …
+json_each(?))` builds a lookup of every hash first (~3 ms of 8,002
+  hits, 2026-11-07).
 - `run-history.ts` — `RunHistory`: `runs` + `invocations` writes (one
   transaction per run, plus one per streamed batch of hits), the SQL
   binders, and the 30-day retention (run by a prune only, never a run's

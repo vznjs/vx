@@ -283,6 +283,8 @@ class OidSlot {
 
 interface IgnoredListing {
   root: string
+  /** `root/` when `root` is absolute and normalized: a normalized path under it is relative as its rest. */
+  base: string | undefined
   paths: readonly string[]
   asked: Map<string, boolean>
 }
@@ -416,7 +418,13 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   private ignored: IgnoredListing | null = null
 
   setIgnored(root: string, paths: readonly string[]): void {
-    this.ignored = { root, paths, asked: new Map() }
+    const base =
+      path.sep === '/' && path.isAbsolute(root) && path.normalize(root) === root
+        ? root.endsWith('/')
+          ? root
+          : `${root}/`
+        : undefined
+    this.ignored = { root, base, paths, asked: new Map() }
   }
 
   /**
@@ -431,7 +439,17 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   newFilesIgnored(dir: string): boolean {
     const ig = this.ignored
     if (ig === null || ig.paths.length === 0) return false
-    const rel = relPosix(ig.root, dir)
+    // Asked once per project a run keys: `path.relative` was ~2 ms of
+    // 1,601 (2026-11-07). Below a normalized root, a path with no `.`
+    // segment and no doubled or trailing slash is its rest.
+    const rel =
+      ig.base !== undefined &&
+      dir.startsWith(ig.base) &&
+      !dir.includes('/.') &&
+      !dir.includes('//') &&
+      !dir.endsWith('/')
+        ? dir.slice(ig.base.length)
+        : relPosix(ig.root, dir)
     if (rel === '' || rel.startsWith('../')) return false
     let known = ig.asked.get(rel)
     if (known !== undefined) return known

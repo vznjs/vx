@@ -224,7 +224,18 @@ export type ProjectFilesCache = Map<
  * relative to it) and everything `resolveFiles` keys its memo on.
  * Undefined when only resolving the files can say.
  */
-export function filesToken(args: ResolveInputsArgs): string | undefined {
+export function filesToken(
+  args: Pick<
+    ResolveInputsArgs,
+    | 'projectDir'
+    | 'workspaceRoot'
+    | 'inputs'
+    | 'ownOutputs'
+    | 'ownWorkspaceOutputs'
+    | 'nestedProjectDirs'
+    | 'gitFilesCache'
+  >,
+): string | undefined {
   if ((args.inputs?.workspaceFiles?.length ?? 0) > 0) return undefined
   const plan = filesPlan(args.inputs?.files, args.ownOutputs)
   const cache = args.gitFilesCache

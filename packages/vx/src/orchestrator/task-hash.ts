@@ -340,14 +340,27 @@ export async function movedInput(
   return undefined
 }
 
-/** A task's `filesToken`, as its key's fold memo probe takes it. */
+/**
+ * A task's `filesToken`, as its key's fold memo probe takes it: the fields
+ * of `inputsArgs` the token reads, and no more. Built through `inputsArgs`,
+ * two spread objects per call were ~3 ms of 3,202 (2026-11-07).
+ */
 export function taskFilesToken(
-  args: Pick<
-    ComputeHashArgs,
-    'node' | 'workspaceRoot' | 'nestedProjectDirs' | 'gitFilesCache' | 'hashCache'
-  >,
+  args: Pick<ComputeHashArgs, 'node' | 'workspaceRoot' | 'nestedProjectDirs'> & {
+    gitFilesCache: GitFilesCache
+  },
 ): string | undefined {
-  return filesToken(inputsArgs({ ...args, upstream: [], cache: undefined as never }))
+  const node = args.node
+  const out = node.config.outputs
+  return filesToken({
+    projectDir: node.projectDir,
+    workspaceRoot: args.workspaceRoot,
+    inputs: node.config.inputs,
+    ownOutputs: out?.files ?? [],
+    ownWorkspaceOutputs: out?.workspaceFiles ?? [],
+    nestedProjectDirs: args.nestedProjectDirs,
+    gitFilesCache: args.gitFilesCache,
+  })
 }
 
 /** What `resolveInputs` is asked for a task's key. */

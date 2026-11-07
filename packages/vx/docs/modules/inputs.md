@@ -124,7 +124,18 @@ export function addedInput(
 export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedInputs>
 
 // What a task's files fold to is a function of this token, or undefined (only resolving says).
-export function filesToken(args: ResolveInputsArgs): string | undefined
+export function filesToken(
+  args: Pick<
+    ResolveInputsArgs,
+    | 'projectDir'
+    | 'workspaceRoot'
+    | 'inputs'
+    | 'ownOutputs'
+    | 'ownWorkspaceOutputs'
+    | 'nestedProjectDirs'
+    | 'gitFilesCache'
+  >,
+): string | undefined
 
 export async function resolveOutputs(args: {
   projectDir: string

@@ -18,7 +18,7 @@ import type { StableKey } from './stable-keys.js'
 import { hashTaskConfig, isKeyless, taskFilesToken, type HashCache } from './task-hash.js'
 
 /** Moves every remembered run: bump it when what a token stands for changes. */
-const RUN_MEMO_VERSION = 'run-memo-v1'
+const RUN_MEMO_VERSION = 'run-memo-v2'
 
 export interface RunKeysArgs {
   nodes: Map<string, TaskNode>
@@ -97,6 +97,10 @@ export function runKeysToken(args: RunKeysArgs): RunKeysAt | undefined {
     if ((inputs?.runtime?.length ?? 0) > 0 || (inputs?.workspaceRuntime?.length ?? 0) > 0) {
       return undefined
     }
+    // A files token in full is a root, a declaration and a digest, ~200
+    // characters per node, joined and hashed again: 2 MB of token at 8,002
+    // tasks (2026-11-07). Each distinct one is hashed once instead, and the
+    // node names that hash, which is also what the delta compares.
     let files = ''
     if (inputs !== undefined) {
       if ((inputs.workspaceFiles?.length ?? 0) > 0) return undefined
@@ -107,14 +111,14 @@ export function runKeysToken(args: RunKeysArgs): RunKeysAt | undefined {
         if (byDeclared === undefined) tokens.set(node.projectName, (byDeclared = new Map()))
         let token = byDeclared.get(declared)
         if (token === undefined) {
-          token = taskFilesToken({
+          const full = taskFilesToken({
             node,
             workspaceRoot: args.workspaceRoot,
             nestedProjectDirs: args.nestedDirsByProject.get(node.projectName) ?? [],
             gitFilesCache: args.gitFilesCache,
-            hashCache: args.hashCache,
           })
-          if (token === undefined) return undefined
+          if (full === undefined) return undefined
+          token = xxh3hex(full)
           byDeclared.set(declared, token)
         }
         files = token
@@ -153,19 +157,30 @@ export function runKeysToken(args: RunKeysArgs): RunKeysAt | undefined {
     at.delta = () => {
       if (delta !== undefined) return delta
       const files = new Map<string, string>()
-      const hashed = new Map<string, string>()
       const rest = [...parts]
       filesAt.forEach((i, n) => {
-        const token = parts[i]!
-        let h = hashed.get(token)
-        if (h === undefined) hashed.set(token, (h = xxh3hex(token)))
-        files.set(ids[n]!, h)
+        files.set(ids[n]!, parts[i]!)
         rest[i] = ''
       })
       return (delta = { global: `${selection}\0${xxh3hex(rest.join('\0'))}`, files })
     }
   }
   return at
+}
+
+/**
+ * A memo row: each stable and uncached key with its node's place in the
+ * run's node order. The token names every node id in that order, so a row
+ * read under it means the same nodes; by id, the row's JSON and a lookup
+ * per node were ~5 ms of 8,002 (2026-11-07).
+ */
+interface KeysRow {
+  /** Stable keys: node places, and their keys alike. */
+  s: number[]
+  h: string[]
+  /** Uncached keys: node places, and their keys alike. */
+  u: number[]
+  k: string[]
 }
 
 /** The keys remembered under `token`, mapped back onto this run's nodes. */
@@ -175,19 +190,28 @@ export function readRunKeys(
 ): RunKeys | undefined {
   const row = args.hashCache.folds?.get(at.id, at.token)
   if (row === undefined) return undefined
-  let parsed: { s: [string, string][]; u: [string, string][] }
+  let parsed: KeysRow
   try {
     parsed = JSON.parse(row)
   } catch {
     return undefined
   }
+  const { s, h, u, k } = parsed
+  if (s?.length !== h?.length || u?.length !== k?.length) return undefined
+  const nodes = [...args.nodes.values()]
   const stableKeys: StableKey[] = []
-  for (const [id, hash] of parsed.s) {
-    const node = args.nodes.get(id)
+  for (let i = 0; i < s.length; i++) {
+    const node = nodes[s[i]!]
     if (node === undefined) return undefined
-    stableKeys.push({ hash, node })
+    stableKeys.push({ hash: h[i]!, node })
   }
-  return { stableKeys, uncachedKeys: new Map(parsed.u) }
+  const uncachedKeys = new Map<string, string>()
+  for (let i = 0; i < u.length; i++) {
+    const node = nodes[u[i]!]
+    if (node === undefined) return undefined
+    uncachedKeys.set(node.id, k[i]!)
+  }
+  return { stableKeys, uncachedKeys }
 }
 
 /**
@@ -273,14 +297,23 @@ export function writeRunKeys(
   at: { id: string; token: string },
   keys: RunKeys,
 ): void {
-  args.hashCache.folds?.set(
-    at.id,
-    at.token,
-    JSON.stringify({
-      s: keys.stableKeys.map((k) => [k.node.id, k.hash]),
-      u: [...keys.uncachedKeys],
-    }),
-  )
+  if (args.hashCache.folds === undefined) return
+  const place = new Map<string, number>()
+  for (const id of args.nodes.keys()) place.set(id, place.size)
+  const row: KeysRow = { s: [], h: [], u: [], k: [] }
+  for (const key of keys.stableKeys) {
+    const n = place.get(key.node.id)
+    if (n === undefined) return
+    row.s.push(n)
+    row.h.push(key.hash)
+  }
+  for (const [id, key] of keys.uncachedKeys) {
+    const n = place.get(id)
+    if (n === undefined) return
+    row.u.push(n)
+    row.k.push(key)
+  }
+  args.hashCache.folds.set(at.id, at.token, JSON.stringify(row))
 }
 
 let identity: string | undefined

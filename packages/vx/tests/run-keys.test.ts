@@ -75,8 +75,8 @@ it('a warm run takes every key from the run memo', async () => {
   expect(row).toBeDefined()
   // Keys no entry holds, under the token the next run computes: read back,
   // both tasks miss and run; derived afresh, they would hit.
-  const keys = JSON.parse(row!.key) as { s: [string, string][]; u: [string, string][] }
-  keys.s = keys.s.map(([id]) => [id, '0123456789abcdef'])
+  const keys = JSON.parse(row!.key) as { h: string[] }
+  keys.h = keys.h.map(() => '0123456789abcdef')
   const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
   db.query('UPDATE fold_memo SET key = ? WHERE task_id = ?').run(JSON.stringify(keys), row!.task_id)
   db.close()

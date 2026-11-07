@@ -50,6 +50,13 @@ function linkCurrent(abs: string, e: { size: number; mtimeMs: number }): boolean
   return to.byteLength === e.size && Bun.hash.crc32(to) === e.mtimeMs
 }
 
+const FILES_SELECT =
+  'SELECT f.entry_hash, f.path, f.size_bytes, f.mode, f.mtime_ms, s.ino, s.ctime_ms'
+const FILES_STAMPS = 'LEFT JOIN output_stamps s ON s.entry_hash = f.entry_hash AND s.path = f.path'
+const FILES_JOINED = `${FILES_SELECT} FROM json_each(?) q JOIN output_files f ON f.entry_hash = q.value ${FILES_STAMPS}`
+const DIRS_JOINED =
+  'SELECT d.entry_hash, d.path, d.mtime_ms FROM json_each(?) q JOIN output_dirs d ON d.entry_hash = q.value'
+
 export class OutputIndex {
   private readonly insertOutputFile: ReturnType<Database['prepare']>
   private readonly deleteOutputFiles: ReturnType<Database['prepare']>
@@ -179,7 +186,14 @@ export class OutputIndex {
     return this.held.get(hash) ?? this.loadOutputFilesBatch([hash]).get(hash) ?? []
   }
 
-  loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]> {
+  /**
+   * `distinct`: `hashes` as a JSON array with no hash twice, which the probe
+   * has to hand. The rows are then joined from it, not filtered by an `IN`
+   * that builds a lookup of every hash first: ~1.5 ms of 8,002 hits, and as
+   * much again for `loadOutputDirsBatch` (2026-11-07). A repeated hash
+   * would repeat its rows, hence the caller's promise.
+   */
+  loadOutputFilesBatch(hashes: readonly string[], distinct?: string): Map<string, OutputFileRow[]> {
     const out = new Map<string, OutputFileRow[]>()
     if (hashes.length === 0) return out
     // `db.query` (not `db.prepare`) caches the compiled statement keyed by
@@ -189,11 +203,14 @@ export class OutputIndex {
     // the stamps taken, not only the ones flushed: overlaid below from
     // memory. A flush here committed a transaction per read, and a restore
     // reads its rows twice.
-    const { test, params } = inHashes(hashes)
-    const stmt = this.db.query(
-      `SELECT f.entry_hash, f.path, f.size_bytes, f.mode, f.mtime_ms, s.ino, s.ctime_ms FROM output_files f LEFT JOIN output_stamps s ON s.entry_hash = f.entry_hash AND s.path = f.path WHERE f.entry_hash ${test}`,
-    )
-    const rows = stmt.all(...params) as Array<{
+    let sql = FILES_JOINED
+    let params = [distinct!]
+    if (distinct === undefined || hashes.length === 1) {
+      const where = inHashes(hashes)
+      sql = `${FILES_SELECT} FROM output_files f ${FILES_STAMPS} WHERE f.entry_hash ${where.test}`
+      params = where.params
+    }
+    const rows = this.db.query(sql).all(...params) as Array<{
       entry_hash: string
       path: string
       size_bytes: number
@@ -442,16 +459,21 @@ export class OutputIndex {
     })()
   }
 
-  loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]> {
+  /** `distinct` as `loadOutputFilesBatch` takes it. */
+  loadOutputDirsBatch(hashes: readonly string[], distinct?: string): Map<string, OutputDirRow[]> {
     const out = new Map<string, OutputDirRow[]>()
     if (hashes.length === 0) return out
     // A reader in the same process (`vx watch`'s next cycle, a test) sees
     // what was snapshotted, not what was flushed.
     this.flushOutputDirs()
-    const { test, params } = inHashes(hashes)
-    const rows = this.db
-      .query(`SELECT entry_hash, path, mtime_ms FROM output_dirs WHERE entry_hash ${test}`)
-      .all(...params) as Array<{
+    let sql = DIRS_JOINED
+    let params = [distinct!]
+    if (distinct === undefined || hashes.length === 1) {
+      const where = inHashes(hashes)
+      sql = `SELECT entry_hash, path, mtime_ms FROM output_dirs WHERE entry_hash ${where.test}`
+      params = where.params
+    }
+    const rows = this.db.query(sql).all(...params) as Array<{
       entry_hash: string
       path: string
       mtime_ms: number
