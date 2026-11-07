@@ -307,10 +307,33 @@ function compileAnyTaskGlob(rawPatterns: readonly string[]): (rel: string) => bo
   const sources = patterns.map(regExpSource)
   const globs = patterns.map(taskGlob)
   if (sources.every((r) => r !== null)) {
-    const re = new RegExp(`^(?:${sources.join('|')})$`, 'u')
-    return (rel) => (rel.endsWith('/') ? globs.some((g) => g.match(rel)) : re.test(rel))
+    const res = alternations(sources as string[])
+    if (res.length === 1) {
+      const re = res[0]!
+      return (rel) => (rel.endsWith('/') ? globs.some((g) => g.match(rel)) : re.test(rel))
+    }
+    return (rel) =>
+      rel.endsWith('/') ? globs.some((g) => g.match(rel)) : res.some((re) => re.test(rel))
   }
   return (rel) => globs.some((g) => g.match(rel))
+}
+
+/**
+ * Alternatives per compiled RegExp. Bun's engine falls off a cliff past a
+ * few thousand: over 200k paths, 2000 literal-file alternatives took 32 ms,
+ * 4000 took 482 ms and 8000 took 15 s, so a project listing 4000 files in
+ * `inputs.files` paid that on every key. Below the cliff, the cost of
+ * splitting is flat.
+ */
+const ALTERNATIVES_PER_REGEXP = 1000
+
+function alternations(sources: readonly string[]): RegExp[] {
+  const out: RegExp[] = []
+  for (let i = 0; i < sources.length; i += ALTERNATIVES_PER_REGEXP) {
+    const part = sources.slice(i, i + ALTERNATIVES_PER_REGEXP)
+    out.push(new RegExp(`^(?:${part.join('|')})$`, 'u'))
+  }
+  return out
 }
 
 const REGEXP_SYNTAX = /[\\^$.*+?()[\]{}|]/g
