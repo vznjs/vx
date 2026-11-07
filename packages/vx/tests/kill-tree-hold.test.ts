@@ -1,12 +1,14 @@
 // `holdGroups` driven directly: a child process spawns a guarded task,
 // holds and releases its group by hand, then SIGKILLs itself; the group
 // guard's EOF kill (kill-tree.ts) says whether the group was still listed.
-// The task's grandchild writes `late.txt` a second after it starts, so
-// the file answers "was the group killed" without reading liveness. The
-// two rows item 866 left unheld: a deferred release that is never
-// written, and a hold count that lets go at the first of two holds.
+// The task's grandchild writes `late.txt` once the test opens its gate,
+// which it does only after the guard has exited, its kill sent: a writer
+// on a one-second clock lost to a Mac scheduler that held the child
+// longer than that before its own kill. The two rows item 866 left
+// unheld: a deferred release that is never written, and a hold count
+// that lets go at the first of two holds.
 
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
@@ -15,14 +17,58 @@ import { isAlive, killIfAlive, waitForDead } from './helpers/alive.js'
 
 const KILL_TREE = path.resolve(import.meta.dir, '..', 'src', 'exec', 'kill-tree.ts')
 
+/** The holder's prelude: the guard's pid goes to `guard.pid` as it is spawned. */
+function recordGuard(dir: string): string {
+  return `
+    const spawnOrig = Bun.spawn
+    Bun.spawn = (cmd, opts) => {
+      const child = spawnOrig(cmd, opts)
+      if (opts?.argv0 === 'vx-group-guard')
+        require('node:fs').writeFileSync(${JSON.stringify(path.join(dir, 'guard.pid'))}, String(child.pid))
+      return child
+    }
+  `
+}
+
+/** The grandchild: waits on the gate, then writes `late.txt`; its pid goes to `late.pid`. */
+const LATE_WRITER =
+  '(until [ -e go ]; do sleep 0.05; done; echo late > late.txt) >/dev/null 2>&1 & echo $! > late.pid; '
+
+/**
+ * After the holder's `kill -9`: wait for the guard to exit, so its EOF kill
+ * has been sent, then open the writer's gate. Resolves with whether the
+ * writer wrote `late.txt` rather than died.
+ */
+async function writerOutlivedGuard(dir: string): Promise<boolean> {
+  const guard = Number(readFileSync(path.join(dir, 'guard.pid'), 'utf8'))
+  const writer = Number(readFileSync(path.join(dir, 'late.pid'), 'utf8'))
+  try {
+    expect(await waitForDead(guard, 10_000)).toBe(true)
+    writeFileSync(path.join(dir, 'go'), '')
+    const late = path.join(dir, 'late.txt')
+    const until = Date.now() + 10_000
+    while (Date.now() < until) {
+      // `late.txt` is written before the writer exits, so a dead writer
+      // with no file was killed.
+      if (!isAlive(writer)) return existsSync(late)
+      if (existsSync(late)) return true
+      await Bun.sleep(20)
+    }
+    throw new Error(`writer ${writer} neither wrote nor died`)
+  } finally {
+    killIfAlive(writer)
+  }
+}
+
 /** Run the scenario in a child; resolve with whether the grandchild outlived the child. */
 async function outlivesHolder(steps: string): Promise<boolean> {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-hold-'))
   try {
     const script = `
       import { guardLine, holdGroups, releaseGroup, spawnGuarded } from ${JSON.stringify(KILL_TREE)}
+      ${recordGuard(dir)}
       const child = spawnGuarded((guard) =>
-        Bun.spawn(['sh', '-c', guardLine(3) + '(sleep 1; echo late > late.txt) >/dev/null 2>&1 & echo up > up.txt; wait'], {
+        Bun.spawn(['sh', '-c', guardLine(3) + ${JSON.stringify(LATE_WRITER)} + 'echo up > up.txt; wait'], {
           cwd: ${JSON.stringify(dir)},
           stdio: ['ignore', 'ignore', 'ignore', guard],
           detached: true,
@@ -35,8 +81,7 @@ async function outlivesHolder(steps: string): Promise<boolean> {
     const proc = Bun.spawn([process.execPath, '-e', script], { stdout: 'ignore', stderr: 'pipe' })
     expect(await proc.exited).toBe(137)
     expect(existsSync(path.join(dir, 'up.txt'))).toBe(true)
-    await Bun.sleep(2_000)
-    return existsSync(path.join(dir, 'late.txt'))
+    return await writerOutlivedGuard(dir)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -208,8 +253,9 @@ async function serverOutlivesHolder(steps: string): Promise<boolean> {
     const script = `
       import { holdGroups } from ${JSON.stringify(KILL_TREE)}
       import { runPersistent } from ${JSON.stringify(RUNNER)}
+      ${recordGuard(dir)}
       const { child, ready } = runPersistent({
-        command: '(sleep 1; echo late > late.txt) >/dev/null 2>&1 & echo up > up.txt',
+        command: ${JSON.stringify(LATE_WRITER)} + 'echo up > up.txt',
         cwd: ${JSON.stringify(dir)},
         env: process.env,
       })
@@ -221,8 +267,7 @@ async function serverOutlivesHolder(steps: string): Promise<boolean> {
     const proc = Bun.spawn([process.execPath, '-e', script], { stdout: 'ignore', stderr: 'pipe' })
     expect(await proc.exited).toBe(137)
     expect(existsSync(path.join(dir, 'up.txt'))).toBe(true)
-    await Bun.sleep(2_000)
-    return existsSync(path.join(dir, 'late.txt'))
+    return await writerOutlivedGuard(dir)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
