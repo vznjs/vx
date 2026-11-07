@@ -1155,8 +1155,8 @@ typical executed duration under `usual` (`~p50` over its recent non-hit
 runs in the local `cache.db`). The `predicted` field forecasts the run: `wall` is the longest dependency
 chain of would-run cost (cache hits restore near-instantly and count
 as 0), `total execution` is the sum across would-run tasks. Tasks with
-no history count as 0 and are called out (`N tasks without history
-(+?)`) — the totals are honest lower bounds. The field is omitted
+no timing (no executed success yet) count as 0 and are called out (`N tasks
+never timed (+?)`) — the totals are honest lower bounds. The field is omitted
 when nothing would run or when no would-run task has history.
 
 **Placement.** Each row's `worker` is where the task would land: the

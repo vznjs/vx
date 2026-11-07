@@ -114,7 +114,7 @@ export function planReport(plan: RunPlan): ui.Block {
     const parts = [`~${formatElapsed(p.wallMs)} wall`]
     parts.push(`~${formatElapsed(p.workMs)} total execution`)
     if (p.unknownCount > 0) {
-      parts.push(`${p.unknownCount} task${p.unknownCount === 1 ? '' : 's'} without history (+?)`)
+      parts.push(`${p.unknownCount} task${p.unknownCount === 1 ? '' : 's'} never timed (+?)`)
     }
     facts.push(['predicted', parts.join(' · ')])
   }
