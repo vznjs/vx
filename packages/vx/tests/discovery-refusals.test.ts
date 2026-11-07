@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { relPosix } from '../src/util/index.js'
 import {
   checkProjectNames,
   discoveredProject,
@@ -190,7 +191,7 @@ describe('`vx lock` finding the configs', () => {
           await Bun.write(path.join(repo, d, 'vx.config.mjs'), 'export default {}\n')
         }
         const rels = async () =>
-          (await findProjectConfigs(repo)).configs.map((c) => path.relative(repo, c.dir))
+          (await findProjectConfigs(repo)).configs.map((c) => relPosix(repo, c.dir))
         expect(await rels()).toEqual(['a', 'pkgs/y\uFFFD'])
         // No string path names it: `x` + byte 0xff.
         const bad = Buffer.concat([Buffer.from(`${repo}/pkgs/x`), Buffer.from([0xff])])
