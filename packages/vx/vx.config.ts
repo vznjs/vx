@@ -371,6 +371,18 @@ const releaseTasks = {
       ],
     ]),
   ),
+  // No sandbox: it drives the Docker daemon, as the servers' test.live do.
+  'release.images': {
+    description:
+      'push the server images to ghcr.io/vznjs at VX_RELEASE_VERSION (scripts/release-images.ts)',
+    exec: {
+      command: 'bun scripts/release-images.ts',
+      env: {
+        passThrough: ['VX_RELEASE_VERSION', 'GITHUB_ACTOR', 'GITHUB_TOKEN'],
+        secret: ['GITHUB_TOKEN'],
+      },
+    },
+  },
   'release.served': {
     description: 'wait until npm serves every published tarball (HTTP 200), up to 10 min',
     exec: {

@@ -160,7 +160,8 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   (builds and runs the relay's image), `@vzn/vx-cache-server#test.live` and
   `@vzn/vx-history-server#test.live` (each builds and runs its image),
   `@vzn/vx-servers#test.live` (brings up the compose file of all three), `@vzn/vx-migrate#nx.install`
-  (the npm registry), `check.sandbox-canary` and
+  (the npm registry), `release.images` (pushes the server images through Docker),
+  `check.sandbox-canary` and
   `check.build-cold` (each drives the sandbox itself, on a Mac worker) and
   `@vzn/vx-bench#bench.{vx,turbo,nx,vite-task}` and `#check.perf` (the tracer would be timed), and
   `@vzn/vx-conformance#test` and `#conformance` (each drives bubblewrap itself) are

@@ -2157,6 +2157,7 @@ holds it. The tasks are `@vzn/vx`'s `release.*`, all uncached and in no
 | `release.assemble.<os>` | emits the platform packages under `dist/npm` (linux: also `@vzn/vx` and the plugins)                                                     |
 | `release.publish.<os>`  | `npm publish --provenance` each in order, skipping one the registry holds                                                                |
 | `release.served`        | waits (up to 10 min) until npm's CDN answers 200 for every published tarball: it 404ed v0.0.646's for minutes, failing installs          |
+| `release.images`        | pushes the three server images to `ghcr.io/vznjs/<server>` at the version (amd64 + arm64); `latest` follows npm's                        |
 | `release.upload.<os>`   | attaches `dist/vx-<os>-*` the draft release lacks; darwin's then publishes it                                                            |
 | `release.auto`          | decides the version, creates the draft release with its notes, dispatches the two workflows                                              |
 

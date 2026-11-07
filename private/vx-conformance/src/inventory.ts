@@ -1192,6 +1192,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'readme-words.unsafe',
     'check-binary-path',
     'release',
+    'release-images.unsafe',
     'release-notes',
     'release-provenance.unsafe',
     'schema-doc-drift',
