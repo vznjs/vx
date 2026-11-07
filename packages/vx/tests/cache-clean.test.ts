@@ -237,20 +237,35 @@ describe('vx cache clean with no bound clears the cache', () => {
       const st = store()
       const held = new Database(path.join(st, 'store.db'))
       held.query('SELECT count(*) FROM entries').get()
-      let done = false
-      const clean = vx(args).finally(() => {
-        done = true
+      const proc = Bun.spawn([process.execPath, BIN, ...args], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, NO_COLOR: '1', HOME: home, VX_CACHE_DIR: '' },
       })
+      const out = new Response(proc.stdout).text()
+      // Released once the clean says it waits, not after a fixed sleep: a
+      // CI runner's stall outlasted 1.5 s before the clean reached the
+      // store, so it never waited and never said so (2026-11-07).
+      let err = ''
+      const reader = proc.stderr.getReader()
+      const decoder = new TextDecoder()
       try {
-        await Bun.sleep(1500)
-        expect([done, existsSync(path.join(st, 'store.db'))]).toEqual([false, true])
+        while (!err.includes('waiting for another vx process')) {
+          const { done, value } = await reader.read()
+          if (done) break
+          err += decoder.decode(value, { stream: true })
+        }
+        expect(err).toContain(`waiting for another vx process using the cache store ${st}`)
+        expect([proc.exitCode, existsSync(path.join(st, 'store.db'))]).toEqual([null, true])
         expect((held.query('SELECT count(*) AS n FROM entries').get() as { n: number }).n).toBe(1)
       } finally {
         held.close()
       }
-      const r = await clean
+      // Drained to the end, so the clean never writes into a closed pipe.
+      for (let c = await reader.read(); !c.done; c = await reader.read()) decoder.decode(c.value)
+      const r = { code: await proc.exited, out: await out }
       expect(r.code).toBe(0)
-      expect(r.err).toContain(`waiting for another vx process using the cache store ${st}`)
       if (args.length === 2) expect(existsSync(st)).toBe(false)
       else expect(r.out).toContain('1 entry')
     },
