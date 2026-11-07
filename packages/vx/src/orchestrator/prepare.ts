@@ -1170,10 +1170,10 @@ function unlockedConfig(
  * The config `vx lock` would find in the directory a name no project has
  * reads as (`packages/d`, `c`): with no discover plugin a config written
  * after the lock makes no project, so `unlockedConfig` never sees it.
- * Asked only for a name that matches nothing, a run about to be refused;
- * the listing is paid only when the directory holds a config.
+ * Asked only for a name that matches nothing, a run or `vx show` about to
+ * be refused; the listing is paid only when the directory holds a config.
  */
-async function unlockedDir(
+export async function unlockedDir(
   name: string,
   metas: ReadonlyArray<{ dir: string }>,
   workspaceRoot: string,

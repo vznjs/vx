@@ -12,10 +12,17 @@
 //   - `vx lock --check` AUDITS it: full re-evaluation + deep equality.
 
 import { readFileSync, statSync } from 'node:fs'
-import { rename, rm } from 'node:fs/promises'
 import path from 'node:path'
 import type { ProjectConfig } from '../config.js'
-import { directoryInTheWay, keysSorted, relPosix, UserError, xxh3, xxh3hex } from '../util/index.js'
+import {
+  keysSorted,
+  type PendingWrite,
+  relPosix,
+  UserError,
+  writeAllOrNone,
+  xxh3,
+  xxh3hex,
+} from '../util/index.js'
 import { VERSION } from '../version.js'
 import { validateProjectConfig } from './config-schema.js'
 import { PROJECT_CONFIG_FILENAMES } from './workspace.js'
@@ -344,31 +351,27 @@ function taskKeysSorted(key: string, value: unknown): unknown {
   return Object.fromEntries(Object.entries(value).map(([name, task]) => [name, keysSorted(task)]))
 }
 
-export async function writeLockfile(root: string, lock: Lockfile): Promise<void> {
-  // Written beside its name and renamed over it: `Bun.write` truncates in
-  // place, so a run, or `vx watch` woken by the write
-  // itself (item 971), could read an empty or half-written lock and fail
-  // on "not valid JSON" (item 972).
-  const file = lockfilePath(root)
-  const tmp = `${file}.tmp-${process.pid}-${Math.random().toString(36).slice(2)}`
-  try {
-    // Minified: the file only vx reads, and it loads faster than pretty
-    // JSON (measured, 10k projects: 15.6 ms against 22.5 ms). `vx.lock.json`
-    // beside each config is the copy for people.
-    const sorted = JSON.parse(JSON.stringify(lock.projects, taskKeysSorted)) as Lockfile['projects']
-    const body = JSON.stringify({ version: lock.version, ...pooledOut(sorted) })
-    await Bun.write(tmp, `${body.slice(0, -1)},"validated":"${validatedDigest(body)}"}\n`)
-    await rename(tmp, file)
-  } catch (err) {
-    // Best effort: where the write was refused the temp cannot be named
-    // either (ENOTDIR), and that must not replace the refusal itself.
-    await rm(tmp, { force: true }).catch(() => {})
-    // The refusal names the file the user knows: a read-only checkout read
-    // `open '…/.vx/projects.lock.json.tmp-…'` where it had read the lock's own name.
-    const e = err as NodeJS.ErrnoException
-    if (typeof e.message === 'string') e.message = e.message.split(tmp).join(file)
-    if (e.path === tmp) e.path = file
-    throw directoryInTheWay(err, LOCKFILE_NAME)
+/**
+ * Written beside its name and renamed over it: `Bun.write` truncates in
+ * place, so a run, or `vx watch` woken by the write itself (item 971),
+ * could read an empty or half-written lock and fail on "not valid JSON"
+ * (item 972).
+ */
+export function writeLockfile(root: string, lock: Lockfile): Promise<void> {
+  return writeAllOrNone([lockfileWrite(root, lock)])
+}
+
+/** The lock's file and bytes, for `writeAllOrNone`. */
+export function lockfileWrite(root: string, lock: Lockfile): PendingWrite {
+  // Minified: the file only vx reads, and it loads faster than pretty
+  // JSON (measured, 10k projects: 15.6 ms against 22.5 ms). `vx.lock.json`
+  // beside each config is the copy for people.
+  const sorted = JSON.parse(JSON.stringify(lock.projects, taskKeysSorted)) as Lockfile['projects']
+  const body = JSON.stringify({ version: lock.version, ...pooledOut(sorted) })
+  return {
+    file: lockfilePath(root),
+    text: `${body.slice(0, -1)},"validated":"${validatedDigest(body)}"}\n`,
+    shown: LOCKFILE_NAME,
   }
 }
 

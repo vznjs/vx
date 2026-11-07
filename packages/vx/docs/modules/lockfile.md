@@ -44,6 +44,8 @@ export async function readLockfile(root: string): Promise<Lockfile | null>
 // The digest of the bytes a read lock came from: what its configs are a function of.
 export function lockDigest(lock: Lockfile): string | undefined
 export async function writeLockfile(root: string, lock: Lockfile): Promise<void>
+// The lock's file and bytes, for `writeAllOrNone` (util): `vx lock` writes it with the dependency lock.
+export function lockfileWrite(root: string, lock: Lockfile): PendingWrite
 // A lock's entries from its bytes, pool put back; null when they do not parse
 export function lockEntries(bytes: Uint8Array | null): Record<string, unknown> | null
 export function frozenProjectConfigs(
@@ -124,7 +126,7 @@ export function recordedDigests(
       of: (dir: string) => string | undefined
     }
   | undefined
-export async function writeDependenciesLock(root: string, lock: DependenciesLock): Promise<void>
+export function dependenciesLockWrite(root: string, lock: DependenciesLock): PendingWrite
 ```
 
 `vx lock` writes it beside the lock, minified (only vx reads it) and committed:
@@ -201,7 +203,10 @@ re-hashes them, as its memo did on every run before, and digests anew
   the lock, so a reader sees the old lock or the new one, never a
   truncated one. A write in place truncated first, and a run or a
   `vx watch` cycle woken by the write could read the lock empty
-  (item 972).
+  (item 972). `vx lock` writes the lock and the dependency lock that
+  way together (`writeAllOrNone`): both temps first, then both renames,
+  after checking no directory stands at either name, so a refusal
+  leaves both as they were.
 - `--check` refuses at least what a run refuses: a config with no
   entry, and it also names a locked directory with no config in the
   workspace and an entry whose config file was renamed. It compares a fresh evaluation in the

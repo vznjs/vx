@@ -180,6 +180,15 @@ it(
       const e = await vx(root, ['run', 'e#build'])
       expect(e.text).not.toContain('not in the lock yet')
       expect(e.code).toBe(1)
+      // `vx show` said "unknown project" and guessed another.
+      for (const target of ['c', 'c#build']) {
+        const s = await vx(root, ['show', target])
+        expect(s.text).toContain(
+          `${target}: c/vx.config.mjs is not in the lock yet — run \`vx lock\``,
+        )
+        expect(s.text).not.toContain('unknown project')
+        expect(s.code).toBe(1)
+      }
     } finally {
       await rm(root, { recursive: true, force: true })
     }

@@ -340,16 +340,19 @@ export async function affectedChanges(
   // enumeration drops too (`isInstalledPath`); a tracked one is a source.
   // So is each project's `vx.lock.json`, the review copy `vx lock` writes
   // beside its config and nothing reads: a re-lock rewriting them all
-  // selected every project while no key moved.
+  // selected every project while no key moved. The temp a killed write of
+  // any of these left beside it is vx's too.
   const reviewCopies = new Set(projects.map((p) => path.join(p.dir, REVIEW_FILE)))
   const rootDir = path.resolve(args.workspaceRoot)
-  const changed = [...diffed.paths, ...untracked.filter((s) => !isInstalledPath(s))].filter(
-    (s) =>
-      !VX_OWN.has(s) &&
+  const changed = [...diffed.paths, ...untracked.filter((s) => !isInstalledPath(s))].filter((s) => {
+    const own = s.replace(WRITE_TEMP, '')
+    return (
+      !VX_OWN.has(own) &&
       !s.startsWith('.vx/cache/') &&
       !s.startsWith('.vx/tmp/') &&
-      (path.posix.basename(s) !== REVIEW_FILE || !reviewCopies.has(path.join(rootDir, s))),
-  )
+      (path.posix.basename(own) !== REVIEW_FILE || !reviewCopies.has(path.join(rootDir, own)))
+    )
+  })
   // A symlinked input keys the content behind it (cache/linked-inputs.ts),
   // and the diff names that content's path, never the link's: a link whose
   // target changed is a changed path itself.
@@ -663,6 +666,9 @@ const VX_OWN: ReadonlySet<string> = new Set([
   '.vx/.gitattributes',
   '.vx/.gitignore',
 ])
+
+/** The suffix of the temp a write renames into place (util/write-file.ts). */
+const WRITE_TEMP = /\.tmp-\d+-[0-9a-z]*$/
 
 const CONFIG_NAMES: ReadonlySet<string> = new Set(PROJECT_CONFIG_FILENAMES)
 /**

@@ -11,7 +11,7 @@ import path from 'node:path'
 import type { ProjectConfig, TaskConfig } from '../config.js'
 import { declaredTask } from '../graph/index.js'
 import { isDefaultBuild } from '../graph/index.js'
-import { affectedTaskProjects, projectAtDir } from '../orchestrator/index.js'
+import { affectedTaskProjects, projectAtDir, unlockedDir } from '../orchestrator/index.js'
 import { flagHint, formatValue, refuse, seeHelp } from './help.js'
 import {
   listed,
@@ -121,6 +121,16 @@ export async function showCmd(args: readonly string[]): Promise<number> {
     const name = projectAtDir(typed, root, metas)
     return name === undefined ? undefined : ` — did you mean ${name}${suffix}?`
   }
+  // A directory whose config came after the lock: the line `vx run` gives,
+  // not "unknown project" and a guess.
+  const refuseUnlocked = async (typed: string): Promise<void> => {
+    const config = await unlockedDir(typed, metas, root)
+    if (config === undefined) return
+    throw new UserError(
+      `${parsed.target}: ${relPosix(root, config)} is not in the lock yet — run \`vx lock\``,
+      'VX_E_LOCK',
+    )
+  }
   const hashAt = parsed.target?.indexOf('#') ?? -1
   const projectName =
     parsed.target === undefined
@@ -144,6 +154,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
   }
   if (projectName !== undefined && (taskName !== undefined || byName.has(projectName))) {
     if (!byName.has(projectName)) {
+      await refuseUnlocked(projectName)
       throw new UserError(
         `vx show: unknown project: "${projectName}"${atDir(projectName, `#${taskName}`) ?? suggest(projectName, [...byName.keys()], '', 'projects')}`,
         'VX_E_UNKNOWN_PROJECT',
@@ -211,6 +222,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
       declares(declaredTask(p.config, projectName!)),
     )
     if (declaring.length === 0) {
+      await refuseUnlocked(projectName!)
       const names = new Set<string>()
       for (const p of projects.values())
         for (const [t, task] of Object.entries(p.config.tasks ?? {}))

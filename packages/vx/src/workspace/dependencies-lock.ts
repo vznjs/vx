@@ -11,9 +11,8 @@
 // changed lockfile's base digests are there, so the base side is never
 // parsed. `vx lock --check` holds it to a fresh derivation.
 
-import { rename, rm } from 'node:fs/promises'
 import path from 'node:path'
-import { directoryInTheWay } from '../util/index.js'
+import type { PendingWrite } from '../util/index.js'
 import type { ProjectMeta } from './workspace.js'
 import { lockKey } from './lockfile.js'
 import { type LoadReads, readOnce } from './load-reads.js'
@@ -91,19 +90,12 @@ function dependenciesLockText(lock: DependenciesLock): string {
   return `${JSON.stringify(lock)}\n`
 }
 
-/** Written beside its name and renamed over it, as `writeLockfile`: a reader never sees half a file. */
-export async function writeDependenciesLock(root: string, lock: DependenciesLock): Promise<void> {
-  const file = path.join(root, DEPENDENCIES_LOCK_NAME)
-  const tmp = `${file}.tmp-${process.pid}-${Math.random().toString(36).slice(2)}`
-  try {
-    await Bun.write(tmp, dependenciesLockText(lock))
-    await rename(tmp, file)
-  } catch (err) {
-    await rm(tmp, { force: true }).catch(() => {})
-    const e = err as NodeJS.ErrnoException
-    if (typeof e.message === 'string') e.message = e.message.split(tmp).join(file)
-    if (e.path === tmp) e.path = file
-    throw directoryInTheWay(err, DEPENDENCIES_LOCK_NAME)
+/** The dependency lock's file and bytes, for `writeAllOrNone`. */
+export function dependenciesLockWrite(root: string, lock: DependenciesLock): PendingWrite {
+  return {
+    file: path.join(root, DEPENDENCIES_LOCK_NAME),
+    text: dependenciesLockText(lock),
+    shown: DEPENDENCIES_LOCK_NAME,
   }
 }
 

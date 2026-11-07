@@ -108,10 +108,11 @@ export {
 } from './git-ignored.js'
 export { realPath, realpathOf } from './real-path.js'
 export {
-  directoryInTheWay,
   IGNORE_ALL,
   ignoreDir,
+  type PendingWrite,
   refuseSymlink,
+  writeAllOrNone,
   writeNoFollow,
 } from './write-file.js'
 export {

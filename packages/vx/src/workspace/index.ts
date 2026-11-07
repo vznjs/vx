@@ -28,6 +28,7 @@ export {
   lockKey,
   NO_LOCK,
   readLockfile,
+  lockfileWrite,
   writeLockfile,
   type Lockfile,
   type LockedProject,
@@ -38,7 +39,7 @@ export {
   parseDependenciesLock,
   readDependenciesLock,
   recordedDigests,
-  writeDependenciesLock,
+  dependenciesLockWrite,
   type DependenciesLock,
 } from './dependencies-lock.js'
 export {
