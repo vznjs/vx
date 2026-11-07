@@ -353,7 +353,9 @@ async function clearHeld(
     // clear: today's store stands in for the one it recorded.
     let store: string | undefined = storeRoot ?? undefined
     try {
-      const cache = new Cache(dir, undefined, undefined, undefined, 'preview', storeRoot)
+      // No store root: given today's, the index answers with it, never
+      // the store it recorded.
+      const cache = new Cache(dir, undefined, undefined, undefined, 'preview')
       store = cache.storeDir
       cache.close()
     } catch (err) {
