@@ -2981,6 +2981,109 @@ it('a worker uploads a key the run found missing, and its run key, asking the re
   }
 })
 
+// A worker whose checkout held an untracked file under a task's inputs
+// built with it, and saved the entry under the run's clean key: every later
+// run restored it (2026-11-07). The orchestrator refuses one its key reads.
+it('a worker saves under the run key a task whose project holds an untracked file', async () => {
+  const root = await checkout()
+  await mkdir(path.join(root, 'c'))
+  for (const f of ['a/src/zz.txt', 'b/out/old.txt', 'd/x.log', 'e/inner/n.txt'])
+    await mkdir(path.dirname(path.join(root, f)), { recursive: true }).then(() =>
+      writeFile(path.join(root, f), 'STALE\n'),
+    )
+  await writeFile(path.join(root, '.gitignore'), '*.log\n')
+  const served = servedRelay()
+  try {
+    const o = sealOrchestrator(
+      await join(served.url, R, 'orchestrator', null, undefined),
+      R,
+      secretProof('s'),
+    )
+    const saved: string[] = []
+    const artifacts: TaskArtifacts = {
+      async save(key) {
+        saved.push(key)
+      },
+      async output() {
+        return null
+      },
+      async share() {
+        return false
+      },
+      async resend() {
+        return false
+      },
+      async restore() {
+        return null
+      },
+    }
+    const code = runWorker({
+      relay: served.url,
+      run: R,
+      root,
+      token: async () => undefined,
+      proof: secretProof('s'),
+      artifacts: () => artifacts,
+    })
+    const order = (
+      task: string,
+      project: string,
+      command = 'true',
+      nested: string[] = [],
+    ): RunOrder => ({
+      task,
+      key: `k-${task}`,
+      runKey: runKey(R, task),
+      deps: [],
+      nested,
+      command,
+      cwd: project,
+      project,
+      env: {},
+      outputs: { files: ['out/**'], workspaceFiles: [] },
+      cores: 1,
+      memory: 0,
+    })
+    // b's stray is its own output; c writes its own; d's is ignored; e's
+    // is a nested project's.
+    const tasks = [
+      order('a', 'a'),
+      order('b', 'b'),
+      order('c', 'c', 'echo new > new.txt'),
+      order('d', 'd'),
+      order('e', 'e', 'true', ['e/inner']),
+    ]
+    const ends = new Map<string, unknown>()
+    for (let i = 0; i < 100 && ends.size < tasks.length; i++)
+      for (const { from, body } of flat(await o.poll())) {
+        const m = body as {
+          type: string
+          id?: string
+          task?: string
+          result?: { changed?: string[] }
+        }
+        if (from === 'relay' && m.type === 'joined') {
+          await o.send(m.id!, {
+            type: 'welcome',
+            name: 'a',
+            cache: { refs: [], lent: {} },
+            cores: 5,
+            memory: 1e9,
+          })
+          await o.send(m.id!, { type: 'batch', n: 1, root, realRoot: root, tasks })
+        } else if (m.type === 'end') {
+          ends.set(m.task!, m.result?.changed)
+          if (ends.size === tasks.length) await o.send(from, { type: 'exit' })
+        }
+      }
+    expect(await code).toBe(0)
+    expect(saved.sort()).toEqual([runKey(R, 'a'), 'k-b', 'k-c', 'k-d', 'k-e'].sort())
+    expect(ends.get('a')).toEqual(['a/src/zz.txt'])
+  } finally {
+    await served.stop()
+  }
+})
+
 // A failed upload was quiet: the task's files stayed on its worker and its
 // log rode the socket. Its dependants then waited on that worker alone.
 it('a worker faults a task no remote took the upload of, and ends the rest', async () => {

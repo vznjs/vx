@@ -488,6 +488,12 @@ export async function runWorker(opts: {
               })),
             }),
       }
+      // An untracked file under its project is one the orchestrator's key
+      // never read (it refuses one it keys), yet the command may: one a
+      // checkout left built into the output saved under the clean key, and
+      // every later run restored it (2026-11-07). Listed before the command,
+      // so a file the task writes is not taken for one it read.
+      const strays = await untrackedUnder(opts.root, m, [names(m.project, m.outputs), ...upstream])
       floor ??= localFloor()
       ui.print('out', ui.status('info', m.task, ui.dim('running')))
       const crowd = load.mark()
@@ -540,7 +546,10 @@ export async function runWorker(opts: {
       // it; this entry is withheld for any. Nor for an additive task that
       // removed an upstream's file: a hit left the file in place, and core
       // saves none once this machine removes it too (2026-10-24).
-      const changed = await changedTracked(opts.root, base.commit, m, names(m.project, m.outputs))
+      const changed = [
+        ...(await changedTracked(opts.root, base.commit, m, names(m.project, m.outputs))),
+        ...strays,
+      ]
       const now = await stamps([...found.keys()])
       const others = unchanged(found, now)
       const removed = [...found.keys()]
@@ -991,6 +1000,38 @@ export async function changedTracked(
   return out
     .split('\0')
     .filter((f) => f !== '' && !output(f) && !m.nested.some((n) => f.startsWith(`${n}/`)))
+}
+
+/**
+ * Untracked files git does not ignore under the task's project,
+ * workspace-relative, those `held` matches (its outputs, its dependencies')
+ * and nested projects' aside.
+ */
+async function untrackedUnder(
+  root: string,
+  m: RunOrder,
+  held: readonly ((file: string) => boolean)[],
+): Promise<string[]> {
+  const p = Bun.spawn(
+    [
+      'git',
+      'ls-files',
+      '--others',
+      '--exclude-standard',
+      '-z',
+      '--',
+      m.project === '' ? '.' : `:(literal)${m.project}`,
+    ],
+    { cwd: root, stdin: 'ignore', stdout: 'pipe', stderr: 'ignore' },
+  )
+  const [out, exit] = await Promise.all([new Response(p.stdout).text(), p.exited])
+  // A git that could not say is no proof there are none.
+  if (exit !== 0) return [m.project === '' ? '.' : m.project]
+  return out
+    .split('\0')
+    .filter(
+      (f) => f !== '' && !held.some((h) => h(f)) && !m.nested.some((n) => f.startsWith(`${n}/`)),
+    )
 }
 
 /** The checkout's tracked files, relative to `root`; none outside git. */

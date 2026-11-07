@@ -581,8 +581,10 @@ use your own instead.
   `--no-cache` or read-only run, a dependant of a failure under
   `--continue=always`, one that left a process running that may still
   write its outputs, one a stopped run cancelled), and one that left a tracked file under its project
-  changed on its worker (a formatter's input), which this machine never
-  sees: core withholds its own save when the key read that file, and says so.
+  changed on its worker (a formatter's input), or that found an untracked,
+  unignored file under its project there (its outputs and its dependencies'
+  aside), which this machine never sees: core withholds its own save when
+  the key read that file or its inputs declare it, and says so.
 - Under `--force`, a success is saved under its key (which keeps an entry
   it already holds, as core does) and under the run's key, which this
   machine and the dependants' workers restore: the bytes this run built,

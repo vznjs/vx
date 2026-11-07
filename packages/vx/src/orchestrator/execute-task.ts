@@ -22,6 +22,7 @@ import {
   type GitFilesCache,
   racyWindowMs,
   type TaskInputComponent,
+  declaresInput,
 } from '../cache/index.js'
 import {
   signalExitCode,
@@ -1699,6 +1700,16 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       const changed = new Set(result.changed.map((f) => path.join(args.workspaceRoot, f)))
       const there = keyedInputs(described!.facts).find((f) => changed.has(f.path))
       if (there !== undefined) return there.path
+      // One the key never folded, as this disk lacks it (untracked there),
+      // that the declaration matches: the command read it, and its entry
+      // here was every later run's hit (2026-11-07).
+      const dir = relPosix(args.workspaceRoot, node.projectDir)
+      for (const f of result.changed) {
+        const own = relPosix(node.projectDir, path.join(args.workspaceRoot, f))
+        const projectRel = own.startsWith('../') ? null : own
+        if (declaresInput(cfg, projectRel, f, false, true, dir))
+          return path.join(args.workspaceRoot, f)
+      }
     }
     return (
       (await movedInput(
@@ -1744,7 +1755,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // A file the key read may instead be one the task rewrites in place (a
     // formatter's temp + rename), whose sources cannot be its outputs: vx
     // deletes outputs before the command. Its way out is judging the write
-    // by its bytes. Neither is said of a file the task deleted.
+    // by its bytes. Neither is said of a file this disk lacks: one the task
+    // deleted, or one only where an executor ran it.
     const read =
       moved !== null &&
       keyedInputs(described!.facts).some((f) => f.path === moved && f.digest !== ABSENT_INPUT)
@@ -1752,7 +1764,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // first, or the way out read as the fix for the user's own edit.
     const hint =
       (args.watch === true && rewroteBy === undefined ? '; the next cycle runs on it' : '') +
-      (moved === null || rewroteBy !== undefined || (read && !existsSync(moved))
+      (moved === null || rewroteBy !== undefined || !existsSync(moved)
         ? ''
         : '; if the task generates it, declare it in outputs' +
           (read && stability.strategy !== 'mutable'
