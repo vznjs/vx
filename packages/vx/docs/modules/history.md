@@ -81,13 +81,15 @@ export interface LocalHistoryOptions {
   branch?: string | null // undefined: a forecast reads every branch
   defs?: ReadonlyMap<string, string> // `taskDefinitions`: rows of each task as it is now
 }
-// LocalHistory: HistoryProvider + resourcesFor, hasImported, importTimings.
+// LocalHistory: HistoryProvider + resourcesFor, durationsFor, hasImported, importTimings.
 // Core's own readers (`vx last`, `--dry`) build the provider on the handle.
 export class LocalHistoryProvider implements HistoryProvider {
   // without branch a forecast reads every branch
   constructor(db: Database, recent?: number, branch?: string | null) // the window; defaults to 50 invocations
   /** `loadFor`'s p50 and resource maxima, without its rates. */
   resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>>
+  /** Only `resourcesFor`'s p50s: the forecast, else a restored task's producer time. */
+  durationsFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>>
   /** The last forecast read found a task with no timing on this branch. */
   lackedBranchHistory: boolean
   hasImported(sha: string): boolean // rows of default-branch commit `sha` exist
@@ -158,7 +160,10 @@ first run would have read every task unmeasured. `tests/history-definition.test.
   through `resourcesFor`: the executed successes grouped alone and the
   hits as distinct keys, each joined to its entry once. 148 ms against
   `loadFor`'s 407 at 168,000 rows (8,002 tasks), the same numbers
-  (`tests/history-p50s.test.ts`). `vx history` reads `loadFor` (it shows
+  (`tests/history-p50s.test.ts`). Its timings file, written at the run's
+  end, takes `durationsFor`: the same p50s without the window's grouped
+  reads, the hits read only for a task with no forecast (23-27 ms
+  against 40 at 8,002 tasks). `vx history` reads `loadFor` (it shows
   runs).
 - Nothing on the default `vx run` path.
 

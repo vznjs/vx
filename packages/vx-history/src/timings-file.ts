@@ -4,7 +4,6 @@
 
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import type { TaskResources } from '@vzn/vx'
 
 const VERSION = 1
 
@@ -54,20 +53,18 @@ export function readTimings(
 }
 
 /**
- * The carried durations with this machine's p50s over them, written whole:
- * a task this run did not see keeps its carried time. Through a temp and a
- * rename, so a reader never sees half a file. Its directory is made: a CI
- * cache that missed restores none.
+ * The carried durations with this machine's p50s (`durationsFor`) over
+ * them, written whole: a task this run did not see keeps its carried time.
+ * Through a temp and a rename, so a reader never sees half a file. Its
+ * directory is made: a CI cache that missed restores none.
  */
 export function writeTimings(
   file: string,
   carried: Readonly<Record<string, number>>,
-  table: ReadonlyMap<string, TaskResources>,
+  p50s: ReadonlyMap<string, number>,
 ): void {
   const merged: Record<string, number> = { ...carried }
-  for (const [id, h] of table) {
-    if (h.p50DurationMs !== undefined) merged[id] = Math.round(h.p50DurationMs)
-  }
+  for (const [id, ms] of p50s) merged[id] = Math.round(ms)
   const tasks: Record<string, number> = {}
   for (const id of Object.keys(merged).sort()) tasks[id] = merged[id]!
   const tmp = `${file}.${process.pid}.tmp`

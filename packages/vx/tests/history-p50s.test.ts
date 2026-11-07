@@ -156,6 +156,29 @@ it('answers the p50 and resource maxima loadFor answers for each task', async ()
   }
 })
 
+// vx-history's timings file reads p50s alone (`durationsFor`): what
+// `resourcesFor` answers, a hit-only task's producer time included.
+it('answers the p50 resourcesFor answers for each task, a restored one by its producer', async () => {
+  const ids = TASKS.map((t) => `p#${t}`)
+  for (const recent of [1, 7, 30, 50]) {
+    const history = new LocalHistoryProvider(indexDb(cache), recent)
+    const full = await history.resourcesFor(ids)
+    const expected = ids.flatMap((id): Array<[string, number]> => {
+      const p50 = full.get(id)?.p50DurationMs
+      return p50 === undefined ? [] : [[id, p50]]
+    })
+    const got = await history.durationsFor(ids)
+    expect([recent, Object.fromEntries(got)]).toEqual([recent, Object.fromEntries(expected)])
+    // CONTROL: the restored task has no forecast, only its producer's time.
+    if (recent >= 7) {
+      expect((await history.p50sFor(ids)).has('p#only-hits')).toBe(false)
+      expect(got.get('p#only-hits')).toBeGreaterThan(0)
+    }
+  }
+  // Only what was asked for.
+  expect([...(await new LocalHistoryProvider(indexDb(cache)).durationsFor(['p#a']))].length).toBe(1)
+})
+
 it('names the biggest machine a task filled, by its cores or its memory', async () => {
   const base = (task: string, over: Partial<RunRecord>): RunRecord => ({
     ...run(0, 'sat', task),
