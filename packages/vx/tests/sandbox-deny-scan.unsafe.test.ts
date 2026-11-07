@@ -148,6 +148,7 @@ describe.skipIf(!available || process.platform !== 'linux')('the scoped deny sca
       const denyWrite = spy.mock.calls[0]![2]!.filesystem!.denyWrite! as string[]
       expect([...denyWrite].sort()).toEqual(
         [
+          path.join(root, 'a/.idea'),
           path.join(root, 'a/.mcp.json'),
           path.join(root, 'a/.vscode'),
           path.join(root, 'a/b/.BashRc'),

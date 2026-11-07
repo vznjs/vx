@@ -56,6 +56,7 @@ import {
   signalExitCode,
   stopSignal,
   SANDBOXED_TASK,
+  sandboxArgTooLongText,
   spawnFailureText,
   streamToString,
   resourceUsageToCpuRss,
@@ -87,6 +88,7 @@ import {
   type TaskSandboxConfig,
   linkedWriteBinds,
   readOnlyMasks,
+  withCwd,
   scratchWrites,
   widenedEntries,
   withLinkedWrites,
@@ -546,37 +548,6 @@ async function unlinkStaleMuxSockets(): Promise<void> {
   }
 }
 
-/**
- * The sandbox's own tools, by the paths vx resolves on its own PATH. SRT
- * writes a bare `bwrap` (and, in the network bridge, a bare `socat`) into
- * the command the task's shell runs, with the TASK's environment: a
- * dependency's `node_modules/.bin/bwrap`, first on that PATH, ran in
- * bwrap's place and the task ran unsandboxed with exit 0 (J-33's lead,
- * B-19). A tool vx cannot find is left to SRT's own dependency check,
- * whose refusal names it.
- */
-let javaAgent: { javaAgentJarPath?: string } | undefined
-
-/**
- * The JVM proxy agent SRT ships, named so SRT need not look for it. SRT's
- * search lists `npm root -g` among its candidates before trying any, so it
- * spawned npm on every init (~110 ms, the bulk of `vx info`'s sandbox
- * probe) even though the jar sits beside it. Absent (a compiled vx), SRT
- * searches as before.
- */
-function bundledJavaAgent(): { javaAgentJarPath?: string } {
-  if (javaAgent) return javaAgent
-  javaAgent = {}
-  try {
-    const dist = path.dirname(require.resolve('@anthropic-ai/sandbox-runtime'))
-    const jar = path.join(dist, '..', 'vendor', 'java-proxy-agent', 'srt-proxy-agent.jar')
-    if (existsSync(jar)) javaAgent = { javaAgentJarPath: jar }
-  } catch {
-    // unresolvable: SRT searches
-  }
-  return javaAgent
-}
-
 /** Whether this run's SRT scans at depth 1 and vx supplies the task-scoped denies (B-40). */
 let scopedDenyScan = false
 
@@ -789,6 +760,15 @@ function runtimeBinds(wrapped: string): string[] {
   return out
 }
 
+/**
+ * The sandbox's own tools, by the paths vx resolves on its own PATH. SRT
+ * writes a bare `bwrap` (and, in the network bridge, a bare `socat`) into
+ * the command the task's shell runs, with the TASK's environment: a
+ * dependency's `node_modules/.bin/bwrap`, first on that PATH, ran in
+ * bwrap's place and the task ran unsandboxed with exit 0 (J-33's lead,
+ * B-19). A tool vx cannot find is left to SRT's own dependency check,
+ * whose refusal names it.
+ */
 function linuxToolPaths(): { bwrapPath?: string; socatPath?: string } {
   if (process.platform !== 'linux') return {}
   const paths: { bwrapPath?: string; socatPath?: string } = {}
@@ -985,7 +965,6 @@ export async function initSandbox(opts?: {
     ignoreViolations: DEFAULT_IGNORE_VIOLATIONS,
     ...linuxToolPaths(),
     ...(scopedDenyScan ? scopedScanConfig() : {}),
-    ...bundledJavaAgent(),
   }
   runAllowed = config.network.allowedDomains
   runAllowsHosts = runAllowed.length > 0
@@ -1611,9 +1590,9 @@ async function wrapIn(
   const helpers = hostHelpers()
   customConfig!.filesystem!.denyRead!.push(...helpers.dirs)
   customConfig!.filesystem!.allowRead!.push(...helpers.files)
-  if (process.platform === 'linux' && !cwdMounted(baselines.cwd, customConfig!.filesystem!)) {
-    customConfig!.filesystem!.denyRead!.push(baselines.cwd)
-  }
+  const cwdDenied =
+    process.platform === 'linux' && !cwdMounted(baselines.cwd, customConfig!.filesystem!)
+  if (cwdDenied) customConfig!.filesystem!.denyRead!.push(baselines.cwd)
   customConfig!.filesystem!.allowWrite!.push(toRealPath(tmp))
   // Seatbelt judges `/dev/stdout` by the path the kernel resolves it to,
   // `/dev/fd/1`, which SRT's default `/dev/stdout` grant does not name, so
@@ -1733,7 +1712,7 @@ async function wrapIn(
     )
     wrapped =
       (gitGranted ? 'GIT_DISCOVERY_ACROSS_FILESYSTEM=${GIT_DISCOVERY_ACROSS_FILESYSTEM-1} ' : '') +
-      `exec ${readOnlyMasks(withLinkedWrites(wrapped, linkedWriteBinds(args.config.linkedWrites)), scratch)}`
+      `exec ${readOnlyMasks(withCwd(withLinkedWrites(wrapped, linkedWriteBinds(args.config.linkedWrites)), cwdDenied ? baselines.cwd : undefined), scratch)}`
   }
   if (process.platform === 'linux' && !hostHasIpv6())
     wrapped = `SOCAT_DEFAULT_LISTEN_IP=4 ${wrapped}`
@@ -1939,7 +1918,7 @@ export function seatbeltBrackets(
   const read = (p: string): string[] => {
     if (!seatbeltSpells(p, 'read', baseline.has(p))) return []
     const name = bracketed.has(p) ? p : /\\[[\]]/.test(p) ? namedPath(p) : undefined
-    if (name === undefined) return [literal(p)]
+    if (name === undefined) return [patternOnly(literal(p))]
     const at = name.replaceAll('[', '[[]')
     return [at, `${at}/**/*`]
   }
@@ -1948,12 +1927,45 @@ export function seatbeltBrackets(
     filesystem: {
       ...fs,
       denyRead: fs.denyRead.map((p) => p.replaceAll('[', '[[]')),
-      allowWrite: fs.allowWrite.filter((p) => seatbeltSpells(p, 'write', false)).map(literal),
+      allowWrite: fs.allowWrite
+        .filter((p) => seatbeltSpells(p, 'write', false))
+        .map((p) => patternOnly(literal(p))),
       ...(fs.allowRead !== undefined
         ? { allowRead: [...new Set(fs.allowRead.flatMap(read))] }
         : {}),
     },
   }
+}
+
+/**
+ * A grant's pattern and nothing else. SRT (0.0.81) also reads an allow
+ * entry holding a bracket as the name it spells wherever that is on disk,
+ * so the class `pages/[id].tsx` (`i` or `d`) granted a file named
+ * `[id].tsx` too. Each class takes its last member again, the same class,
+ * until the name the spelling makes is not on disk.
+ */
+function patternOnly(grant: string): string {
+  if (!grant.includes('[')) return grant
+  let out = grant
+  for (let n = 1; n <= 8 && namedOnDisk(out); n++) {
+    out = grant.replace(/\[([^\]]+)\]/g, (_, c: string) => `[${c}${c.at(-1)!.repeat(n)}]`)
+  }
+  return out
+}
+
+/** Whether a component holding a bracket names something on disk, as SRT probes it. */
+function namedOnDisk(spelling: string): boolean {
+  const parts = spelling.split('/')
+  for (let i = 1; i <= parts.length; i++) {
+    if (!/[[\]]/.test(parts[i - 1]!)) continue
+    try {
+      lstatSync(parts.slice(0, i).join('/') || '/')
+      return true
+    } catch {
+      // not there: this component is only a pattern
+    }
+  }
+  return false
 }
 
 /** A `*` or `?` behind an odd run of backslashes: the grant means the character. */
@@ -2505,12 +2517,34 @@ async function runSandboxedOnce(
   const useStrace = await wantsStraceDetection()
   // Before the spawn: what the task creates under a widened grant is its own.
   const widened = widenedEntries(args.config.allowWrite)
-  const { wrapped, tag, srtCommand, baselines, scratch, forwardsSignals, traced } =
-    await wrapSandboxedCommand({
+  let wrap: Awaited<ReturnType<typeof wrapSandboxedCommand>>
+  try {
+    wrap = await wrapSandboxedCommand({
       ...args,
       ...(useStrace ? { trace: useStrace } : {}),
       ...(useStrace && widened.size > 0 ? { tracePaths: true } : {}),
     })
+  } catch (err) {
+    if ((err as { code?: unknown } | undefined)?.code !== 'command_too_long') throw err
+    const bytes = /\((\d+) bytes/.exec((err as Error).message)?.[1]
+    const stderr = sandboxArgTooLongText(
+      bytes !== undefined ? Number(bytes) : Buffer.byteLength(args.command),
+    )
+    args.onStderr?.(stderr)
+    afterCommand(SandboxManager)
+    return {
+      exitCode: 127,
+      durationMs: Date.now() - start,
+      stdout: '',
+      stderr,
+      spawnFailed: true,
+      violations: [],
+      tracerFailed: false,
+      mountGone: false,
+      ranMs: 0,
+    }
+  }
+  const { wrapped, tag, srtCommand, baselines, scratch, forwardsSignals, traced } = wrap
   const takeRecords = collectRecords(
     SandboxManager.getSandboxViolationStore(),
     srtCommand,

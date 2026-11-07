@@ -98,6 +98,23 @@ export function withLinkedWrites(
   return wrapped
 }
 
+/**
+ * Linux: the denied cwd made inside the tmpfs that hides it. bwrap enters
+ * the old cwd only if it exists in the new root, else `$HOME`, with no
+ * word; SRT (0.0.81) lays no mount at a deny an ancestor's tmpfs already
+ * hides, so the cwd vx denies under the workspace root's mask was gone and
+ * `pwd` read `$HOME`. `--dir` comes after the masks and before their
+ * read-only remount, so the task enters an empty, read-only directory.
+ */
+export function withCwd(wrapped: string, cwd: string | undefined): string {
+  if (cwd === undefined) return wrapped
+  for (const m of wrapped.matchAll(/(?:'[^']*'|"[^"]*"|[^\s'"])+/g)) {
+    if (m[0] !== '--') continue
+    return `${wrapped.slice(0, m.index)}--dir ${shellQuote(cwd)} ${wrapped.slice(m.index)}`
+  }
+  return wrapped
+}
+
 function bindOf(p: string): string {
   if (!isMountableLiteral(p)) return p
   try {

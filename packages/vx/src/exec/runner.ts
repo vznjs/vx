@@ -1094,7 +1094,7 @@ function spawnErrorReason(err: unknown, what: string, command: string | undefine
   const hint = isOutOfFds(err)
     ? ` — ${OUT_OF_FDS_HINT}`
     : command !== undefined && (err as NodeJS.ErrnoException | undefined)?.code === 'E2BIG'
-      ? ` — ${argTooLongHint(command, what === SANDBOXED_TASK)}`
+      ? ` — ${argTooLongHint(Buffer.byteLength(command), what === SANDBOXED_TASK)}`
       : ''
   return `${message}${hint}`
 }
@@ -1105,13 +1105,22 @@ function spawnErrorReason(err: unknown, what: string, command: string | undefine
  * below the argv total: a file list forwarded to a linter failed with a
  * bare E2BIG, which reads as "too many files" and names no way out.
  */
-function argTooLongHint(command: string, wrapped: boolean): string {
-  const kib = Math.ceil(Buffer.byteLength(command) / 1024)
+function argTooLongHint(bytes: number, wrapped: boolean): string {
+  const kib = Math.ceil(bytes / 1024)
   const what = wrapped ? "with the args after -- and the sandbox's wrap" : 'with the args after --'
   return (
     `the command, ${what}, is ${kib} KiB, and one argument to sh -c may hold at ` +
     `most 128 KiB on Linux: pass a long list through a file the tool reads (xargs, a response file)`
   )
+}
+
+/**
+ * SRT (0.0.81) measures the wrap itself and refuses one over the limit
+ * before any spawn, so the E2BIG never comes: the same failure, said the
+ * same way, for `bytes` of wrapped command.
+ */
+export function sandboxArgTooLongText(bytes: number): string {
+  return `[vx] failed to spawn ${SANDBOXED_TASK}: argument list too long (E2BIG) — ${argTooLongHint(bytes, true)}\n`
 }
 
 /** A stop's own sweep, for a child it missed: the polite signal, then SIGKILL past the grace. */
