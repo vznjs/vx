@@ -45,13 +45,13 @@ import {
   readdirSync,
   readFileSync,
   renameSync,
+  type Stats,
   statSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs'
 import {
   chmod,
-  lstat,
   mkdir,
   readdir,
   rename,
@@ -2176,6 +2176,7 @@ export class Cache implements CacheLayer {
   private async restoreTree(
     hash: string,
     tree: string,
+    treeIno: number,
     rows: readonly OutputFileRow[],
     projectDir: string,
     workspaceRoot: string | undefined,
@@ -2191,7 +2192,8 @@ export class Cache implements CacheLayer {
         `its outputs hold ${formatBytes(bytes)}, past the ${formatBytes(this.artifactCeiling)} artifact ceiling`,
       )
     }
-    if (await this.copyTree(hash, tree, rows, files, projectDir, workspaceRoot, accept)) return
+    if (await this.copyTree(hash, tree, treeIno, rows, files, projectDir, workspaceRoot, accept))
+      return
     await extractArtifactStream(
       packArtifactStream(this.treePlan(hash, tree, rows)),
       projectDir,
@@ -2243,6 +2245,7 @@ export class Cache implements CacheLayer {
   private async copyTree(
     hash: string,
     tree: string,
+    ino: number,
     rows: readonly OutputFileRow[],
     files: readonly OutputFileRow[],
     projectDir: string,
@@ -2256,14 +2259,19 @@ export class Cache implements CacheLayer {
     }
     // What stands at each path, asked once: a real directory, nothing, or
     // anything else (a file, a link), which the extractor's rules decide.
-    const standing = new Map<string, Promise<'dir' | 'absent' | 'other'>>()
-    const at = (rel: string): Promise<'dir' | 'absent' | 'other'> => {
+    // Synchronous: the walk before this one looked these paths up, so each
+    // answer is a cached dentry, and the async form cost a 1,600-restore run
+    // ~40 ms of its main thread in promises (2026-11-07).
+    const standing = new Map<string, 'dir' | 'absent' | 'other'>()
+    const at = (rel: string): 'dir' | 'absent' | 'other' => {
       let known = standing.get(rel)
       if (known === undefined) {
-        known = lstat(path.join(projectDir, rel)).then(
-          (st) => (st.isDirectory() ? 'dir' : 'other'),
-          (err: NodeJS.ErrnoException) => (err.code === 'ENOENT' ? 'absent' : 'other'),
-        )
+        try {
+          const st = lstatSync(path.join(projectDir, rel), { throwIfNoEntry: false })
+          known = st === undefined ? 'absent' : st.isDirectory() ? 'dir' : 'other'
+        } catch {
+          known = 'other'
+        }
         standing.set(rel, known)
       }
       return known
@@ -2272,24 +2280,22 @@ export class Cache implements CacheLayer {
     // writes into a directory that stood: what a failure removes, and only that.
     const made = new Set<string>()
     const placed: string[] = []
-    const fits = await Promise.all(
-      rows.map(async (r) => {
-        const segs = r.path.replace(/\/$/, '').split('/')
-        for (let i = 1; i <= segs.length; i++) {
-          const rel = segs.slice(0, i).join('/')
-          const isLeaf = i === segs.length
-          const state = await at(rel)
-          if (state === 'absent') {
-            if (!isLeaf || r.path.endsWith('/')) made.add(rel)
-            else placed.push(rel)
-            return true
-          }
-          if (state === 'other' || (isLeaf && !r.path.endsWith('/'))) return false
+    const fits = rows.every((r) => {
+      const segs = r.path.replace(/\/$/, '').split('/')
+      for (let i = 1; i <= segs.length; i++) {
+        const rel = segs.slice(0, i).join('/')
+        const isLeaf = i === segs.length
+        const state = at(rel)
+        if (state === 'absent') {
+          if (!isLeaf || r.path.endsWith('/')) made.add(rel)
+          else placed.push(rel)
+          return true
         }
-        return true
-      }),
-    )
-    if (fits.includes(false)) return false
+        if (state === 'other' || (isLeaf && !r.path.endsWith('/'))) return false
+      }
+      return true
+    })
+    if (!fits) return false
     // A directory made under another one made here is the outer one's.
     const roots = [...made].filter((d) => ![...made].some((o) => d.startsWith(`${o}/`)))
     readUmask()
@@ -2297,8 +2303,8 @@ export class Cache implements CacheLayer {
     // Another process's re-save of this key renames the tree aside and a
     // new one in mid-copy: the files copied after came from another build.
     // A changed inode is that race, a miss (the task runs), and the entry
-    // the other process saved is kept.
-    const ino = lstatSync(tree).ino
+    // the other process saved is kept. `ino` is the tree's as the restore
+    // found it, before this walk: a swap since is caught all the same.
     const swapped = (): boolean => lstatSync(tree, { throwIfNoEntry: false })?.ino !== ino
     // A standing directory of this user's that withholds its own write (a
     // task's `chmod 555 dist/ro`) gets owner write and search for the copy
@@ -2322,7 +2328,14 @@ export class Cache implements CacheLayer {
     if (roots.length === 0 && placed.length === 0) return true
     // A restore into a project directory not there yet makes it, as the
     // copy in place did.
-    if (!existsSync(projectDir)) await mkdir(projectDir, { recursive: true })
+    // Its stat also answers, below, what a rename into it keeps.
+    let projectStat: Stats | undefined
+    try {
+      projectStat = statSync(projectDir, { throwIfNoEntry: false })
+    } catch {
+      projectStat = undefined
+    }
+    if (projectStat === undefined) await mkdir(projectDir, { recursive: true })
     const staging = roots.length > 0 ? await copyStaging(workspaceRoot) : undefined
     if (staging?.stats !== undefined) {
       const fits = new Map<string, boolean>()
@@ -2330,7 +2343,11 @@ export class Cache implements CacheLayer {
         const dir = path.dirname(path.join(projectDir, rel))
         let fit = fits.get(dir)
         if (fit === undefined) {
-          fit = stagesInto(staging.stats, statSync(dir, { throwIfNoEntry: false }))
+          const top = !rel.includes('/') && projectStat !== undefined
+          fit = stagesInto(
+            staging.stats,
+            top ? projectStat : statSync(dir, { throwIfNoEntry: false }),
+          )
           fits.set(dir, fit)
         }
         if (!fit) return false
@@ -2556,7 +2573,16 @@ export class Cache implements CacheLayer {
       // the other three (1,000-project restore row 1.1–1.2 s → 1.5 s).
       const accept = outputs === undefined ? undefined : declaredName(outputs)
       if (tree !== undefined) {
-        await this.restoreTree(hash, tree, rows, projectDir, workspaceRoot, verify, accept)
+        await this.restoreTree(
+          hash,
+          tree,
+          treeIno!,
+          rows,
+          projectDir,
+          workspaceRoot,
+          verify,
+          accept,
+        )
       } else {
         const tar = await decodedTar(inline ?? Bun.file(src), hash, this.artifactCeiling)
         await extractArtifactStream(tar, projectDir, workspaceRoot, verify, accept, workspaceRoot)

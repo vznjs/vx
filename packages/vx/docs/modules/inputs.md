@@ -414,7 +414,9 @@ is a `UserError` naming the path, not an internal error.
   link, unlinked on clean) and never descends through one below
   a glob's literal head. A link IN that head (`dist -> real-out` for
   `dist/**`) is followed by the scan and the clean alike; one resolving
-  outside the project is a `UserError` naming it (X-88).
+  outside the project is a `UserError` naming it (X-88). The heads that
+  check finds absent the scan skips without asking again: a restore
+  after a clean asked twice about each missing `dist` (2026-11-07).
 
 ## Tests
 
