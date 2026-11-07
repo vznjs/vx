@@ -2591,17 +2591,18 @@ plugins `workspace-plugins`, or `definePlugin` would refuse them. It prints the 
 declares it in the workspace file a run reads (`.vx/workspace.ts` when
 there is none). The templates are TypeScript, so `--mjs` with
 `--plugin` is refused, and so is a second seam. An existing file is refused without
-`--force`; `--dry` names the files and writes nothing. The two files are
+`--force`, a dangling symlink included; a symlink is refused with it too, since vx never
+writes through one. `--dry` names the files and writes nothing. The two files are
 `private/vx-plugin-examples/plugins`, which the gate runs, copied into
 core (`src/cli/plugin-templates.ts`) and held equal by
 `tests/plugin-templates.unsafe.test.ts` (H-21).
 
 ### Exit codes
 
-| Code | When                                                                                                                                                                                                                          |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `0`  | the files written (or, with `--dry`, printed)                                                                                                                                                                                 |
-| `1`  | a refused flag, a parse error (`--mjs` with `--plugin` among them), a plugin file already there without `--force`, or the lock not written (the files stay). Handed to `@vzn/vx-migrate`, the exit is its own, by these rules |
+| Code | When                                                                                                                                                                                                                                              |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0`  | the files written (or, with `--dry`, printed)                                                                                                                                                                                                     |
+| `1`  | a refused flag, a parse error (`--mjs` with `--plugin` among them), a plugin file already there without `--force` (a symlink with it), or the lock not written (the files stay). Handed to `@vzn/vx-migrate`, the exit is its own, by these rules |
 
 ## `bunx @vzn/vx-migrate`
 

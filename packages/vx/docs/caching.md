@@ -1442,9 +1442,9 @@ in `<workspaceRoot>/.vx/cache/` instead, silently, and so does a store
 another user owns (one `sudo vx run`). `vx info` and `vx cache clean`
 decide it the same way, the reading ones without making or changing
 anything, so they read the entries runs use. Name a
-cache directory (`cache.dir` in .vx/workspace.ts, `--cache-dir`, or
-`VX_CACHE_DIR`, in that order of precedence, relative to the workspace
-root) and it holds everything, shared with no other workspace:
+cache directory (`--cache-dir`, relative to the working directory; else
+`VX_CACHE_DIR`, else `cache.dir` in .vx/workspace.ts, each relative to the
+workspace root) and it holds everything, shared with no other workspace:
 
 ```
 <cacheDir>/                                 (default .vx/cache when one is named)

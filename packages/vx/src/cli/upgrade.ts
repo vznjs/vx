@@ -333,6 +333,37 @@ export function binaryFromTarball(tgz: Uint8Array): Uint8Array {
 }
 
 /**
+ * The release of `pkg@spec`, its registry document verified, nothing
+ * downloaded yet: `download` fetches the tarball, checks its integrity and
+ * extracts the binary. A signed version other than the one asked, or as
+ * `latest` one below `current`, is refused. Null when the release is
+ * `current`, the version of the vx being replaced.
+ */
+async function signedRelease(
+  pkg: string,
+  spec: string,
+  key: SigningKey,
+  current: string,
+): Promise<{ version: string; download: () => Promise<Uint8Array> } | null> {
+  const registry = resolveRegistry(pkg.split('/')[0]!)
+  const release = verifiedRelease(await fetchManifest(pkg, spec, undefined, registry), pkg, key)
+  // npm signs every version it published: the signature proves the bytes,
+  // not that they are the version asked for, so a mirror could hand back an
+  // older one.
+  if (spec !== 'latest' && release.version !== spec) {
+    throw new UserError(
+      `vx upgrade: the npm registry answered ${pkg}@${spec} with version ${release.version} — refusing to install; nothing replaced`,
+    )
+  }
+  if (release.version === current) return null
+  if (spec === 'latest') refuseOlderLatest(release.version, current, pkg)
+  return {
+    version: release.version,
+    download: async () => binaryFromTarball(await downloadVerified(release, registry)),
+  }
+}
+
+/**
  * The binary of `pkg@spec`, verified: the registry document's signature,
  * then the tarball's integrity, then the extraction, each refusing before
  * the next step runs. A signed version other than the one asked, or as
@@ -347,20 +378,10 @@ export async function releaseBinary(
   key: SigningKey = NPM_SIGNING_KEY,
   current = VERSION,
 ): Promise<Uint8Array | null> {
-  const registry = resolveRegistry(pkg.split('/')[0]!)
-  const release = verifiedRelease(await fetchManifest(pkg, spec, undefined, registry), pkg, key)
-  // npm signs every version it published: the signature proves the bytes,
-  // not that they are the version asked for, so a mirror could hand back an
-  // older one.
-  if (spec !== 'latest' && release.version !== spec) {
-    throw new UserError(
-      `vx upgrade: the npm registry answered ${pkg}@${spec} with version ${release.version} — refusing to install; nothing replaced`,
-    )
-  }
-  if (release.version === current) return null
-  if (spec === 'latest') refuseOlderLatest(release.version, current, pkg)
+  const release = await signedRelease(pkg, spec, key, current)
+  if (release === null) return null
   announce(release.version)
-  return binaryFromTarball(await downloadVerified(release, registry))
+  return await release.download()
 }
 
 /**
@@ -749,23 +770,24 @@ export async function upgradeBinary(
     return false
   }
   if (latest) refuseOlderLatest(spec, current)
-  const pkg = platformPackage()
+  // The registry document first, read-only: a binary already at `latest`
+  // in a directory this user cannot write was told to sudo, exit 1.
+  const release = await signedRelease(platformPackage(), spec, key, current)
+  if (release === null) {
+    ui.print('out', ui.status('info', 'vx upgrade', `${step}already at ${current}`))
+    return false
+  }
   let installed: string | undefined
-  const replaced = await replaceBinary(
+  await replaceBinary(
     dest,
-    () =>
-      releaseBinary(
-        pkg,
-        spec,
-        (version) =>
-          ui.print(
-            'out',
-            ui.status('info', 'vx upgrade', `${step}${current} → ${version}`),
-            ui.text(ui.dim(dest)),
-          ),
-        key,
-        current,
-      ),
+    () => {
+      ui.print(
+        'out',
+        ui.status('info', 'vx upgrade', `${step}${current} → ${release.version}`),
+        ui.text(ui.dim(dest)),
+      )
+      return release.download()
+    },
     // The replaced binary's own version: the new build speaks for itself
     // rather than this process guessing, and one that cannot is rolled back.
     (bin) => {
@@ -773,13 +795,8 @@ export async function upgradeBinary(
       return installed !== undefined
     },
   )
-  ui.print(
-    'out',
-    replaced
-      ? ui.status('ok', 'vx upgrade', `${step}installed ${installed}`)
-      : ui.status('info', 'vx upgrade', `${step}already at ${current}`),
-  )
-  return replaced
+  ui.print('out', ui.status('ok', 'vx upgrade', `${step}installed ${installed}`))
+  return true
 }
 
 /** The version `bin --version` answers, without the hand-off note a handed-off run adds. */
