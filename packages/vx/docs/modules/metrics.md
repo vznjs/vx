@@ -22,7 +22,7 @@ cacheKeyDiff(db, runId, taskId): CacheKeyDiff       // which key components move
 rootCauses(db, runId, taskId, entries, groups?): RootCause[] // under moved upstreams (through groups), the tasks whose own inputs moved between the keys the dependant folded; on its own stack, each visit linked to the one that reached it, so no chain is copied per level
 recordedTasks(db, runId): Set<string>               // the run's rows as project#task, read once
 upstreamTask(name): string                           // the task an upstream row names, past a group (GROUP_VIA)
-inputWriters(db, root, taskId, entries, roots): InputWriter[] // tasks running when a moved input file last changed (stats and asks once per file)
+inputWriters(db, runId, root, taskId, entries, roots): InputWriter[] // tasks running when a moved input file last changed, if not after run runId ended (stats and asks once per file)
 loadEntryInputs(db, entryHash): TaskInputComponent[] // one entry's key components, [] when none
 diffKeyComponents(before, after): { entries, unchangedCount } // the join, no store
 

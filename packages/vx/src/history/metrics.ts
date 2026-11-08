@@ -1092,10 +1092,11 @@ const WRITE_SLACK_MS = 5
  * that writes a file another key reads re-keys that task on every run.
  * The file's mtime against the recorded windows, so
  * a writer that runs each time is named from its latest run, and an
- * edit made outside a run names none.
+ * edit made outside a run, or after run `runId` ended, names none.
  */
 export function inputWriters(
   db: Database,
+  runId: string,
   workspaceRoot: string,
   taskId: string,
   entries: CacheKeyDiff['entries'],
@@ -1109,7 +1110,7 @@ export function inputWriters(
         AND ended_at >= ?1 - ${WRITE_SLACK_MS} AND status != 'skipped'
       GROUP BY project, task ORDER BY MIN(started_at) LIMIT 3`,
   )
-  let longest: number | undefined
+  let bounds: { longest: number; runEnd: number } | undefined
   // A deep graph has as many roots as tasks, most reading the same files:
   // each file is stat'd and asked about once.
   const byFile = new Map<string, string[] | null>()
@@ -1121,16 +1122,20 @@ export function inputWriters(
     try {
       mtime = statSync(path.join(workspaceRoot, file)).mtimeMs
     } catch {}
-    if (mtime !== undefined) {
-      longest ??=
-        (
-          db
-            .query(
-              `SELECT MAX(ended_at - started_at) AS ms FROM main.runs WHERE status != 'skipped'`,
-            )
-            .get() as { ms: number | null }
-        ).ms ?? 0
-      const rows = during.all(mtime, longest) as { project: string; task: string }[]
+    if (mtime !== undefined && bounds === undefined) {
+      const b = db
+        .query(
+          `SELECT (SELECT MAX(ended_at - started_at) FROM main.runs WHERE status != 'skipped') AS ms,
+                  (SELECT MAX(r.ended_at) FROM main.runs r JOIN main.run_ids k ON k.id = r.run
+                    WHERE k.run_id = ?1) AS runEnd`,
+        )
+        .get(runId) as { ms: number | null; runEnd: number | null }
+      bounds = { longest: b.ms ?? 0, runEnd: b.runEnd ?? 0 }
+    }
+    // A change after the asked run ended came after its tasks read the
+    // file: it says nothing about who wrote what they saw.
+    if (mtime !== undefined && mtime <= bounds!.runEnd + WRITE_SLACK_MS) {
+      const rows = during.all(mtime, bounds!.longest) as { project: string; task: string }[]
       if (rows.length > 0) w = rows.map((r) => `${r.project}#${r.task}`)
     }
     byFile.set(file, w)

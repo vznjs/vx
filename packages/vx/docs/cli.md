@@ -3392,7 +3392,9 @@ that prints the task's config now.
 window names that task: a task that writes a file another key reads (a
 build rewriting a translation file in another package) re-keys that key
 on every run, so the miss is right and only moving the write ends it.
-An edit made outside a run names none.
+An edit made outside a run, or after the asked run ended, names none.
+The history holds when tasks ran, not what they wrote: a hand edit made
+while another task ran names that task.
 
 ```
   changed during a run:

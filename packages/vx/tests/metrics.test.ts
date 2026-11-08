@@ -1039,12 +1039,73 @@ describe('vx why at scale', () => {
     utimesSync(path.join(ws, FILE), 1.52, 1.52)
     const roots = rootCauses(indexDb(cache), 'r-2', `p#t${N - 1}`, entries)
     const { db, ran } = counting(indexDb(cache))
-    const writers = inputWriters(db, ws, `p#t${N - 1}`, entries, roots)
+    const writers = inputWriters(db, 'r-2', ws, `p#t${N - 1}`, entries, roots)
     expect(writers.length).toBe(N)
     expect(writers.every((w) => w.file === FILE && w.writers.join() === 'p#t5')).toBe(true)
     expect(writers.at(-1)!.taskId).toBe('p#t0')
     expect(ran.length).toBeLessThanOrEqual(2)
   }, 60_000)
+})
+
+describe('inputWriters', () => {
+  // `vx why --run` on a past run named the task of a LATER run whose
+  // window held the file's current mtime: that change came after the run
+  // read the file, so it says nothing about who wrote what the run saw.
+  it('names no writer for a change made after the asked run ended', () => {
+    withCache((cache) => {
+      const ws = mkdtempSync(path.join(tmpdir(), 'vx-writers-'))
+      try {
+        mkdirSync(path.join(ws, 'a'))
+        writeFileSync(path.join(ws, 'a/x.txt'), 'x')
+        cache.recordRuns([
+          mkRun({
+            hash: 'h1',
+            project: 'a',
+            task: 'build',
+            runId: 'r-1',
+            startedAt: 1000,
+            endedAt: 1100,
+          }),
+          mkRun({
+            hash: 'g2',
+            project: 'b',
+            task: 'gen',
+            runId: 'r-2',
+            startedAt: 1900,
+            endedAt: 2000,
+          }),
+          mkRun({
+            hash: 'h2',
+            project: 'a',
+            task: 'build',
+            runId: 'r-2',
+            startedAt: 2000,
+            endedAt: 2100,
+          }),
+          mkRun({
+            hash: '',
+            project: 'b',
+            task: 'slow',
+            runId: 'r-3',
+            startedAt: 3000,
+            endedAt: 6000,
+          }),
+        ])
+        const entries: CacheKeyDiff['entries'] = [
+          { kind: 'file', name: 'a/x.txt', change: 'changed', before: 'o', after: 'n' },
+        ]
+        const ask = (): string[][] =>
+          inputWriters(indexDb(cache), 'r-2', ws, 'a#build', entries, []).map((w) => w.writers)
+        // CONTROL: last changed while r-2's b#gen ran.
+        utimesSync(path.join(ws, 'a/x.txt'), 1.95, 1.95)
+        expect(ask()).toEqual([['b#gen']])
+        utimesSync(path.join(ws, 'a/x.txt'), 4, 4)
+        expect(ask()).toEqual([])
+      } finally {
+        rmSync(ws, { recursive: true, force: true })
+      }
+    })
+  })
 })
 
 describe('whyDidThisRerunQuery', () => {

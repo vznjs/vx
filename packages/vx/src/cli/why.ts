@@ -354,7 +354,7 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
     )
     const groups = unrecorded.length > 0 ? await groupMembers(root, taskId) : new Map()
     const roots = rootCauses(db, runId, taskId, diff.entries, groups)
-    const writers = inputWriters(db, root, taskId, diff.entries, roots)
+    const writers = inputWriters(db, runId, root, taskId, diff.entries, roots)
 
     if (parsed.format === 'json') {
       await ui.dataPieces('out', jsonPieces({ taskId, runId, why, diff }, roots, writers))
