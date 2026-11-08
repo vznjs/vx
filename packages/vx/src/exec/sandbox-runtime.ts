@@ -1867,15 +1867,18 @@ function ownGroupCommand(
  * unreported and cached; arm64 has no `open`; an `openat2` never reaches
  * strace, SRT's write observer takes each one first: `refusedWrites`),
  * the execs and access probes (a refused
- * `./gen.sh || fallback` passed unreported), and what moves or makes a
- * process's cwd. Not the stat family: a stop per stat cost oxlint 19% and
- * `git status` 30%, where the execs and probes cost nothing measurable, and
+ * `./gen.sh || fallback` passed unreported), `readlink` (git hashes a link
+ * by its target string: `readlink cfg > out.txt` under a widened grant
+ * cached `v1` and replayed it after `cfg` pointed at `v2`; a stop costs
+ * ~9 µs, 37 ms on 2,000 links, below the A/A noise on oxlint and vx), and
+ * what moves or makes a process's cwd. Not the stat family: a stop per
+ * stat cost oxlint 19% and `git status` 30%, where the execs and probes cost nothing measurable, and
  * vx's own no-op run 69% (pr-bench, 495 → 835 ms, 2026-10-23). So a tool
  * that stats before it opens, as Ubuntu 26's cat (uutils) does, refused
  * nothing the trace sees.
  */
 const TRACED_CALLS =
-  'trace=openat,?open,execve,?access,faccessat,?faccessat2,chdir,fchdir,clone,?clone3,?fork,?vfork'
+  'trace=openat,?open,execve,?access,faccessat,?faccessat2,?readlink,?readlinkat,chdir,fchdir,clone,?clone3,?fork,?vfork'
 
 /** The descriptor an in-sandbox strace writes its trace to (`ownGroupCommand`). */
 const TRACE_FD = 5

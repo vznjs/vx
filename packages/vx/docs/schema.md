@@ -1752,7 +1752,8 @@ directory is then readable AND writable in full: with
 can be read, and written. Such a read or write succeeds, so there is no
 denial; vx reports it instead, as a violation: an open, hard link or move
 of anything that was in that directory when the task started and that no
-grant covers, the directory's listing included, and a write, removal or
+grant covers, a `readlink` of a link there (git hashes a link by its
+target string), the directory's listing included, and a write, removal or
 move of it, or a new file or directory the task leaves there. The
 declared file and what the task made and then moved or removed stay its
 own. A `stat` of a sibling (its size, times or presence) is not seen.

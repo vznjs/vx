@@ -26,6 +26,7 @@ import type {
  *   <pid> access("<path>", <mode>) = -1 EACCES (...)
  *   <pid> statx(AT_FDCWD, "<path>", <flags>, <mask>, ...) = -1 ENOENT (...)
  *   <pid> execve("<path>", ["<argv0>", ...], <envp>) = -1 ENOENT (...)
+ *   <pid> readlinkat(AT_FDCWD, "<path>", 0x..., <size>) = -1 ENOENT (...)
  *
  * …but ONLY when the syscall completes without another traced process
  * interleaving. Under `-f` strace splits an interrupted call across two
@@ -42,7 +43,8 @@ import type {
  * (`cStringPath` decodes it). Paths that are relative resolve against the
  * task's cwd (set by Bun.spawn).
  */
-const SYSCALLS = 'openat|open|execve|faccessat2|faccessat|access|statx|newfstatat'
+const SYSCALLS =
+  'openat|open|execve|faccessat2|faccessat|access|statx|newfstatat|readlinkat|readlink'
 const QUOTED = '"((?:[^"\\\\]|\\\\.)+)"'
 // The directory descriptor a call names, `-y`'s path included: taken up to
 // the `, "` that opens the path argument, since a directory's name may hold
@@ -75,7 +77,18 @@ const PROBES = new Set([
   'statx',
   'newfstatat',
   'chdir',
+  'readlinkat',
+  'readlink',
 ])
+/**
+ * The calls that read a link itself, never its target: git hashes a link
+ * by its target string, so `readlink cfg` read an input no open showed.
+ */
+const READLINKS = new Set(['readlinkat', 'readlink'])
+const READLINK_RE = new RegExp(
+  `^(\\d+)\\s+(readlinkat|readlink)\\((?:${DIRFD})?${QUOTED}, .*\\)\\s*=\\s*\\d+$`,
+)
+const READLINK_UNFINISHED_RE = /^\d+\s+readlink(?:at)?\(.*<unfinished/
 /** A resumed call that SUCCEEDED — clears the pending entry, emits nothing. */
 const STRACE_RESUMED_OK_RE = new RegExp(`^(\\d+)\\s+<\\.\\.\\. (${SYSCALLS}) resumed>`)
 /**
@@ -265,6 +278,18 @@ export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCa
         const m = OPENED_RE.exec(line)
         if (m !== null) opened(m[1]!, m[2] ?? 'AT_FDCWD', cStringPath(m[3]!), m[4]!)
       }
+      if (reads && line.includes('readlink')) {
+        const m = READLINK_RE.exec(line)
+        if (m !== null) {
+          const rawPath = cStringPath(m[5]!)
+          denied(
+            m[1]!,
+            { syscall: m[2]!, rawPath, errno: '', read: true, ...within(m[4], rawPath) },
+            m[3],
+          )
+          continue
+        }
+      }
       if (reads && line.includes('open')) {
         const m = OPEN_READ_RE.exec(line)
         if (m !== null) {
@@ -309,7 +334,9 @@ export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCa
         rawPath,
         ...within(unfinished[4], rawPath),
         ...writeFlags(line),
-        ...(reads && OPEN_READ_UNFINISHED_RE.test(line) ? { read: true as const } : {}),
+        ...(reads && (OPEN_READ_UNFINISHED_RE.test(line) || READLINK_UNFINISHED_RE.test(line))
+          ? { read: true as const }
+          : {}),
         ...(unfinished[3] !== undefined ? { dirfd: unfinished[3] } : {}),
       })
       continue
@@ -343,7 +370,14 @@ export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCa
       if (numbered && (held?.syscall === 'openat' || held?.syscall === 'open') && fd !== null) {
         opened(resumedOk[1], held.dirfd ?? 'AT_FDCWD', held.rawPath, fd[1]!)
       }
-      if (held?.read === true && fd !== null) {
+      if (held?.read === true && fd !== null && READLINKS.has(held.syscall)) {
+        const { syscall, rawPath, dir, dirfd } = held
+        denied(
+          resumedOk[1],
+          { syscall, rawPath, errno: '', read: true, ...(dir !== undefined ? { dir } : {}) },
+          dirfd,
+        )
+      } else if (held?.read === true && fd !== null) {
         const at = readPath(held.dirfd ?? 'AT_FDCWD', held.rawPath, fd[2])
         if (at !== undefined) {
           denied(resumedOk[1], { syscall: held.syscall, rawPath: at, errno: '', read: true })
@@ -515,7 +549,9 @@ export async function parseStraceViolations(
     judged.add(call)
     if (judged.size % JUDGED_PER_TURN === 0) await new Promise((r) => setImmediate(r))
     const lexical = absolutize(rawPath, dir ?? baselines.cwd)
-    const abs = toRealPath(lexical)
+    const abs = READLINKS.has(syscall)
+      ? path.join(toRealPath(path.dirname(lexical)), path.basename(lexical))
+      : toRealPath(lexical)
     // Only report paths under the workspace-root deny anchor — system
     // libs / /proc / /sys / etc. probes are not interesting violations.
     if (!denyAnchors.some((root) => atOrUnder(abs, root))) continue
@@ -551,8 +587,8 @@ export async function parseStraceViolations(
             path: abs,
             // An open is a read or a write depending on flags the parse
             // does not keep, and `access` may ask either — so either list
-            // can silence it.
-            ignorable: ['read', 'write'],
+            // can silence it. A readlink only reads.
+            ignorable: READLINKS.has(syscall) ? ['read'] : ['read', 'write'],
             ...(syscall === 'openat' ? { opened: writes === true ? 'write' : 'read' } : {}),
             ...(via === undefined ? {} : { via }),
           },
