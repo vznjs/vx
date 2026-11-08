@@ -674,8 +674,9 @@ highest priority:
    **`NODE_OPTIONS`** (`--require` / `--import` / `--loader` /
    `--conditions` inject code or switch package-export resolution),
    **`LC_ALL` / `LANG`** (collation — anything shelling out to `sort`
-   orders differently), and **`CI` / `FORCE_COLOR` / `TERM`** (output
-   bytes, and vx caches and replays output).
+   orders differently), and **`CI` / `FORCE_COLOR` / `NO_COLOR` /
+   `COLORTERM` / `TERM`** (output bytes, and vx caches and replays
+   output; a host `NO_COLOR` also stops vx setting `FORCE_COLOR=1`).
 
    They are not hashed because hashing them would mean a laptop and a
    CI runner could **never share a remote cache entry** — `PATH`,
