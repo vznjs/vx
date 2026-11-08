@@ -1438,6 +1438,12 @@ Outputs are **NOT** filtered through gitignore — typical artifact
 dirs like `dist/`, `coverage/`, `.next/`, `pkg/` are captured normally
 even when gitignored (they usually are).
 
+Like inputs, outputs stop at a project boundary: an entry rooted inside
+a nested project (`sub/dist/**` when `sub/` holds its own config) would
+save nothing, so `vx lock` refuses it (`VX_E_NESTED_OUTPUT`): let that
+project's task write the files, or name them in
+`outputs.workspaceFiles`. `**`, a sibling and a `!` entry are fine.
+
 A **symlink** the globs match is an output: it is cached and restored
 as the link, its target as written (a link to a file, to a directory,
 or to nothing yet), and the clean unlinks it (never following it). No

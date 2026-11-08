@@ -252,13 +252,14 @@ found one task at a time as they are compared: 20,000 tasks sharing
 `dist/**` held all 200 million pairs before the first refused, and died
 `RangeError: Out of memory`; now the first pair refuses at once.
 
-## Inputs inside a nested project
+## Inputs and outputs inside a nested project
 
 Given `nestedProjects` (only `vx lock` passes it) and unlocked,
-`refuseNestedInputs` refuses an `inputs.files` entry whose brace
-alternative's fixed prefix lies inside a project nested in the task's
-own (`VX_E_NESTED_INPUT`): the boundary drops every file it can match,
-so it keys nothing (`tests/nested-input.test.ts`).
+`refuseNestedGlobs` refuses an `inputs.files` or `outputs.files` entry
+whose brace alternative's fixed prefix lies inside a project nested in
+the task's own (`VX_E_NESTED_INPUT`, `VX_E_NESTED_OUTPUT`): the boundary
+drops every file it can match, so an input keys nothing and an output
+saves nothing (`tests/nested-input.test.ts`).
 
 ## Inputs that read outputs
 

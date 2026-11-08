@@ -2860,6 +2860,15 @@ task of the nested project, or name the files in
 `inputs.workspaceFiles`, as the message shows.
 `vx lock` refuses it, not a run: a run trusts the graph the lock holds.
 
+#### `VX_E_NESTED_OUTPUT`
+
+A task's `outputs.files` entry is rooted inside a project nested in its
+own (`sub/dist/**` where `sub/` holds a config): a project's globs never
+reach another project's files, so it would save nothing. Let a task of
+the nested project write the files, or name them in
+`outputs.workspaceFiles`, as the message shows.
+`vx lock` refuses it, not a run: a run trusts the graph the lock holds.
+
 #### `VX_E_DEPENDENCY_RULE`
 
 `vx lock` found a project depending on one a `run.rules.dependencies`
