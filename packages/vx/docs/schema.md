@@ -1058,7 +1058,10 @@ watch` re-runs it on an edit there.
   so a formatter declaring `src/**` as both would delete its sources. A
   task that rewrites files in place declares no outputs. The two fields
   are compared across too, read from the root: `inputs.files: ['src/**']`
-  beside `outputs.workspaceFiles: ['app/src/**']` is the same refusal.
+  beside `outputs.workspaceFiles: ['app/src/**']` is the same refusal,
+  and so is an output directory that is a symbolic link into an input
+  entry (`dist -> src` under `src/**`), refused when a run finds it,
+  committed or not.
 - **Nested-project subtree** — files belonging to a project rooted
   inside this one's dir are excluded. No cross-project leakage via
   globs; the only cross-project relationship is `dependsOn` +

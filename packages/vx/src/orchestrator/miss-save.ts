@@ -166,6 +166,7 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
           projectDir: node.projectDir,
           outputs: a.outputs,
           nestedProjectDirs: a.nestedProjectDirs,
+          inputs: node.config.inputs?.files,
           special: true,
         })
   const outputFiles = tree.files
@@ -342,6 +343,7 @@ async function resolveUnsaved(
     projectDir: a.node.projectDir,
     outputs: a.outputs,
     nestedProjectDirs: a.nestedProjectDirs,
+    inputs: a.node.config.inputs?.files,
   })
   const wsOutputFiles = await resolveWorkspaceOutputs({
     workspaceRoot: a.workspaceRoot,

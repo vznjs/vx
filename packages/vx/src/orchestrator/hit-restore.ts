@@ -137,6 +137,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
         projectDir: node.projectDir,
         outputs,
         nestedProjectDirs: args.nestedProjectDirs,
+        inputs: node.config.inputs?.files,
         special: 'later',
         clearing: true,
       })
@@ -239,6 +240,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
         projectDir: node.projectDir,
         outputs,
         nestedProjectDirs: args.nestedProjectDirs,
+        inputs: node.config.inputs?.files,
         special: 'later',
         clearing: true,
       })
@@ -260,6 +262,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
       projectDir: node.projectDir,
       outputs,
       nestedProjectDirs: args.nestedProjectDirs,
+      inputs: node.config.inputs?.files,
       committed: committedFiles(args.gitFilesCache, node.projectDir),
     }
     const wsCleanArgs = {

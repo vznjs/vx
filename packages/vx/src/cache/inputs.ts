@@ -891,6 +891,7 @@ export async function resolveOutputs(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
+  inputs?: readonly string[] | undefined
 }): Promise<string[]> {
   return (await scanOutputs(args)).files
 }
@@ -919,6 +920,8 @@ export async function resolveOutputTree(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
+  /** The task's `inputs.files`: an output directory linked into them is refused. */
+  inputs?: readonly string[] | undefined
   /**
    * Also list the FIFOs, sockets and devices the globs name: a save refuses
    * them, a clean removes them. `'later'` leaves `special` empty and hands
@@ -966,6 +969,7 @@ async function scanOutputs(
     projectDir: string
     outputs: readonly string[]
     nestedProjectDirs: string[]
+    inputs?: readonly string[] | undefined
     clearing?: boolean
   },
   emptyDirs?: Set<string>,
@@ -975,7 +979,7 @@ async function scanOutputs(
   if (positive.length === 0) return { files: [] }
   const excludeGlobs = [...outputExcludes(positive, 'project'), ...asTrees(negative).map(globFor)]
   const trees = asTrees(positive)
-  const absent = refuseDirLinkedOut(args.projectDir, trees, 'project')
+  const absent = refuseDirLinkedOut(args.projectDir, trees, 'project', args.inputs)
   const scanned = [
     ...(await scanUnion(
       trees,
@@ -1022,11 +1026,15 @@ export function committedFiles(
  * repository through `dist -> .git`. One out of the root is refused in
  * either scope too: a workspace output's every file was dropped as outside
  * and an empty entry saved, while the project twin refused the task (M-65).
+ * So is one holding an entry of `inputs`, the task's own input globs
+ * relative to `root`: X-55 read through the link, as `dist -> src` under
+ * `src/**` had the clean delete every untracked source.
  */
 function refuseDirLinkedOut(
   root: string,
   trees: readonly string[],
   scope: 'project' | 'workspace',
+  inputs?: readonly string[],
 ): Set<string> {
   // The heads found absent: the scan that follows skips them without
   // asking again (a restore after a clean asks of every one).
@@ -1071,9 +1079,30 @@ function refuseDirLinkedOut(
             'link and re-run, or stop declaring outputs under it.',
         )
       }
+      if (inputs !== undefined && inputs.length > 0)
+        refuseLinkedIntoInputs(at, real, realRoot, inputs)
     }
   }
   return absent
+}
+
+/** Throws when the real directory `real`, under `realRoot`, holds an entry of `inputs` whole. */
+function refuseLinkedIntoInputs(
+  at: string,
+  real: string,
+  realRoot: string,
+  inputs: readonly string[],
+): void {
+  const rel = relPosix(realRoot, real)
+  const under = rel === '' ? '' : `${rel}/`
+  const { positive } = splitNegations(inputs)
+  if (!holdReach(positive).some((r) => r.prefix.startsWith(under))) return
+  throw new UserError(
+    `${at} is a symbolic link into ${real}, which the task's own inputs read — vx removes a ` +
+      `task's outputs before it runs, so the task would delete its own sources. Remove the ` +
+      'link and re-run, or stop declaring outputs under it.',
+    'VX_E_INPUT_IS_OUTPUT',
+  )
 }
 
 /**
@@ -1222,6 +1251,7 @@ export async function cleanOutputs(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
+  inputs?: readonly string[] | undefined
   committed?: (abs: string) => boolean
   /**
    * What `resolveOutputs` returned for these same arguments, when the
@@ -1389,6 +1419,7 @@ export async function stampOutputs(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
+  inputs?: readonly string[] | undefined
 }): Promise<Map<string, OutputStamp>> {
   return stampFiles(await resolveOutputs(args))
 }
@@ -1427,7 +1458,12 @@ function stampFiles(files: readonly string[]): Map<string, OutputStamp> {
  * file back, so no entry reproduces that run and none is saved.
  */
 export async function ownOutputsSince(
-  args: { projectDir: string; outputs: readonly string[]; nestedProjectDirs: string[] },
+  args: {
+    projectDir: string
+    outputs: readonly string[]
+    nestedProjectDirs: string[]
+    inputs?: readonly string[] | undefined
+  },
   before: ReadonlyMap<string, OutputStamp>,
 ): Promise<string[] | undefined> {
   return changedSince(await resolveOutputs(args), before)

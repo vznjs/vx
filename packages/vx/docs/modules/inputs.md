@@ -137,10 +137,13 @@ export function filesToken(
   >,
 ): string | undefined
 
+// `inputs`, the task's `inputs.files`: an output directory linked into
+// them refuses the task, here and in every walk below (X-55 through a link).
 export async function resolveOutputs(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
+  inputs?: readonly string[] | undefined
 }): Promise<string[]>
 
 // Whether resolveOutputs takes `rel`, without the walk: a directory
@@ -160,6 +163,7 @@ export async function resolveOutputTree(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
+  inputs?: readonly string[] | undefined
   special?: boolean | 'later'
   clearing?: boolean
 }): Promise<OutputTree> // { files, emptyDirs, special: string[], findSpecial?: () => string[] }
@@ -175,6 +179,7 @@ export async function cleanOutputs(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
+  inputs?: readonly string[] | undefined
   committed?: (abs: string) => boolean // git tracks it: never removed (default: asks git)
 }): Promise<string[]>
 
@@ -224,9 +229,15 @@ export async function stampOutputs(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
+  inputs?: readonly string[] | undefined
 }): Promise<Map<string, OutputStamp>>
 export async function ownOutputsSince(
-  args: { projectDir: string; outputs: readonly string[]; nestedProjectDirs: string[] },
+  args: {
+    projectDir: string
+    outputs: readonly string[]
+    nestedProjectDirs: string[]
+    inputs?: readonly string[] | undefined
+  },
   before: ReadonlyMap<string, OutputStamp>,
 ): Promise<string[] | undefined>
 // The same two for root-anchored `outputs.workspaceFiles` (A-43).

@@ -2850,6 +2850,9 @@ not read them; `dependsOn` already cascades). Exclude the outputs from
 the inputs with a `!` glob, as the message shows, or declare no outputs
 for a task that rewrites files in place.
 `vx lock` refuses it, not a run: a run trusts the graph the lock holds.
+A run refuses the one shape the lock cannot see: an output directory
+that is a symbolic link into the task's own inputs (`dist -> src` under
+`src/**`). Remove the link.
 
 #### `VX_E_NESTED_INPUT`
 

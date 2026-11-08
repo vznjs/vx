@@ -124,6 +124,7 @@ export class DeferredOutputs {
       projectDir: producer.projectDir,
       outputs,
       nestedProjectDirs,
+      inputs: producer.config.inputs?.files,
       committed: committedFiles(this.args.gitFilesCache, producer.projectDir),
     }
 
