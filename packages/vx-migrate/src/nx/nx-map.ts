@@ -655,7 +655,14 @@ export async function mapNxWorkspace(
       }
       dropUnheldDeps(t, meta.name, emitted, emittedIds)
       const reader = dependentReaders.get(t)
-      if (reader !== undefined && !reachesProducer(t, meta.name, emittedIds, reached)) {
+      if (
+        reader !== undefined &&
+        !reachesProducer(t, meta.name, emittedIds, reached, (target) =>
+          nodeName === undefined
+            ? undefined
+            : nxEdges(nodeName, target).map((n) => metaByNode.get(n)?.name),
+        )
+      ) {
         uncache(t.task!)
         t.todos.push(orphanReaderTodo(reader.globs, reader.dependsOn))
       }
@@ -1231,13 +1238,6 @@ function keyUncachedProducerOutputs(
   }
 }
 
-/**
- * The cached readers of `dependentTasksOutputFiles`, judged again once the
- * graph has its final edges: a `^build` kept because another project builds
- * reached no producer of this one (nx-examples' codegen, its .NET
- * ProductsApi no node once @nx/dotnet failed to load), and the key saw
- * nothing the task reads (Growth, nx-codegen-dropped-producer.sh).
- */
 function globHead(glob: string): string {
   const segs = glob.split('/')
   const i = segs.findIndex((s) => /[*?[{]/.test(s))
@@ -1253,20 +1253,34 @@ function orphanReaderTodo(globs: readonly string[], dependsOn: unknown): string 
   return `reads ${globs.map((g) => `\`${g}\``).join(', ')} from the outputs of the tasks it depends on, and no task it depends on is migrated (dependsOn ${JSON.stringify(dependsOn ?? [])}) — uncached here, so it never replays output generated from an older input; migrate the producer and depend on it to cache this task`
 }
 
-/** Whether one of `t`'s final edges reaches a task vx runs. */
+/**
+ * Whether a cached reader of `dependentTasksOutputFiles` still reaches a
+ * producer once the graph has its final edges: one of them reaches a task
+ * vx runs, or is a `^` edge every project Nx links (`nxLinked`: their vx
+ * names) runs it on. A `^build` kept because another project builds, while
+ * Nx links a producer vx carries no task for, keyed nothing the task reads
+ * (Growth, nx-codegen-dropped-producer.sh). With none linked, Nx hashes
+ * nothing there either: a leaf library's inferred `build` (`^build`,
+ * @nx/js/typescript) ran uncached every time where Nx caches it (hunt,
+ * 2026-11-08).
+ */
 function reachesProducer(
   t: GeneratedTask,
   project: string,
   emittedIds: ReadonlySet<string>,
   reached: (name: string) => ReadonlySet<string>,
+  nxLinked: (target: string) => ReadonlyArray<string | undefined> | undefined,
 ): boolean {
   const deps = t.task?.['dependsOn']
   if (!Array.isArray(deps)) return false
   return deps.some((d) => {
     if (typeof d !== 'string' || d.includes('*')) return true
     if (d.includes('#inputs:')) return false
-    if (d.startsWith('^'))
-      return [...reached(project)].some((p) => emittedIds.has(`${p}#${d.slice(1)}`))
+    if (d.startsWith('^')) {
+      const target = d.slice(1)
+      if ([...reached(project)].some((p) => emittedIds.has(`${p}#${target}`))) return true
+      return nxLinked(target)?.every((p) => emittedIds.has(`${p}#${target}`)) === true
+    }
     return d.includes('#') || emittedIds.has(`${project}#${d}`)
   })
 }
