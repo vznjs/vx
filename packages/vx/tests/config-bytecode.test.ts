@@ -57,9 +57,10 @@ interface Probe {
   bundled: boolean
 }
 
-function probe(): Probe {
+function probe(env: Record<string, string | undefined> = process.env): Probe {
   const p = Bun.spawnSync([process.execPath, BIN, 'probe'], {
     cwd: root,
+    env,
     stdout: 'pipe',
     stderr: 'pipe',
   })
@@ -159,6 +160,26 @@ describe('workspace config bytecode', () => {
       TIMEOUT,
     )
   }
+
+  // Bun.build inlines `process.env.NODE_ENV` by default, and the bundle's
+  // name folds no env: it froze the building run's value.
+  it(
+    'the bundle reads NODE_ENV at run time, as the source does',
+    async () => {
+      await writeFile(
+        path.join(root, '.vx', 'workspace.ts'),
+        "import probe from 'vx-probe'\nexport default { plugins: [probe(String(process.env.NODE_ENV))] }\n",
+      )
+      const { NODE_ENV: _, ...unset } = process.env
+      expect(probe(unset)).toMatchObject({ value: 'undefined', bundled: false })
+      expect(probe(unset)).toMatchObject({ value: 'undefined', bundled: true })
+      expect(probe({ ...unset, NODE_ENV: 'production' })).toMatchObject({
+        value: 'production',
+        bundled: true,
+      })
+    },
+    TIMEOUT,
+  )
 
   it(
     'a fresh workspace with no cache yet gets no bundle',

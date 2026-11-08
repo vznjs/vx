@@ -316,7 +316,8 @@ source and builds again. Any plugin gets this; none is named.
 
 The bundle is built from the bytes the manifest records, transpiled
 with `import.meta`, `__dirname` and `__filename` replaced by the
-source file's own location. A graph the bundle could run differently
+source file's own location, and `process.env.NODE_ENV` left to read at
+run time (Bun inlines it by default, and the name folds no env). A graph the bundle could run differently
 gets a `skip` manifest and loads from source while its inputs stay the
 same: an `import.meta` field other than `dir dirname path filename file
 url main`, a computed `require`/`import()` or `require.resolve`, a

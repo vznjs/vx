@@ -37,13 +37,17 @@ import path from 'node:path'
 import { refuseForeignCacheDir, xxh3hex } from '../util/index.js'
 
 /** Bumped when what a bundle holds, or how it is checked, changes. */
-const COMPILED_VERSION = 2
+const COMPILED_VERSION = 3
 
 /** What `import.meta` becomes in a bundled file: an identifier no source spells. */
 const META = '__vxImportMeta'
 const META_FIELDS = new Set(['dir', 'dirname', 'path', 'filename', 'file', 'url', 'main'])
 const META_USE = new RegExp(`\\b${META}\\b(\\.[\\w$]+)?`, 'g')
 const COMPUTED_LOAD = /\b(?:require|import)\(\s*(?![\s'"])|\brequire\.resolve\b/
+// Bun's build and transpiler inline `process.env.NODE_ENV` by default, and a
+// bundle's name folds no env: it froze the building run's value. Defined as
+// itself, it is read at run time, as the source reads it.
+const LIVE_NODE_ENV = { 'process.env.NODE_ENV': 'process.env.NODE_ENV' }
 
 interface Manifest {
   version: number
@@ -181,6 +185,7 @@ export async function buildCompiled(
       format: 'cjs',
       bytecode: true,
       external: ['@vzn/vx'],
+      define: LIVE_NODE_ENV,
       outdir: tmp,
       naming: `${name}.js`,
       metafile: true,
@@ -209,6 +214,7 @@ export async function buildCompiled(
                 t = new Bun.Transpiler({
                   loader,
                   define: {
+                    ...LIVE_NODE_ENV,
                     'import.meta': META,
                     __dirname: JSON.stringify(fileDir),
                     __filename: JSON.stringify(file),
