@@ -79,6 +79,8 @@ import {
   isFsRefusal,
   isOutOfFds,
   OUT_OF_FDS_HINT,
+  OWN_DIR_HINT,
+  refuseForeignCacheDir,
   restorableOutput,
   relPosix,
   span,
@@ -101,7 +103,7 @@ import {
   stagesInto,
   writeTree,
 } from './archive.js'
-import { readUmask, restoredMode } from './umask.js'
+import { modeMatches, readUmask, restoredMode } from './umask.js'
 import {
   ArtifactVanishedError,
   type CacheEntry,
@@ -721,7 +723,8 @@ function usageOfEntry(entry: { cpuMs?: number; peakRssBytes?: number }): ExecUsa
  * failure is another question's answer: `access` on the directory is also
  * "does it exist" (made only on ENOENT), `access` on the database also "is
  * it there", and the ignore file is created exclusively instead of probed
- * first. An existing cache costs three calls; it cost six.
+ * first. An existing cache costs three calls, it cost six, and two more
+ * resolve it (`refuseForeignCacheDir`).
  */
 function openCacheDir(cacheDir: string, workspaceRoot?: string, index = 'cache.db'): string | null {
   const [ignore, ignoreText] = ignoreFileFor(cacheDir)
@@ -742,12 +745,17 @@ function openCacheDir(cacheDir: string, workspaceRoot?: string, index = 'cache.d
     if (code !== 'ENOENT') return errorText(err)
     refuseManifestDir(cacheDir, workspaceRoot)
   }
+  if (index === 'cache.db') refuseForeignCacheDir(cacheDir, workspaceRoot)
   writeIgnore(ignore, ignoreText)
   return null
 }
 
-/** `openCacheDir` for the shared store: why it cannot be used, or null. Never throws. */
-function storeBlocked(storeDir: string, storeRoot: string | null): string | null {
+/**
+ * `openCacheDir` for the shared store: why it cannot be used, or null. Never
+ * throws. `make` false asks the same question and makes or changes
+ * nothing, so a reading verb settles where the entries are as a run does.
+ */
+function storeBlocked(storeDir: string, storeRoot: string | null, make: boolean): string | null {
   try {
     if (storeRoot !== null) {
       // `~/.vx`, `~/.vx/<id>`, `~/.vx/<id>/cache`: owner-only, each level
@@ -755,21 +763,53 @@ function storeBlocked(storeDir: string, storeRoot: string | null): string | null
       // replayed into the workspace, so nobody else may write them.
       const vxHome = path.dirname(path.dirname(storeRoot))
       for (const dir of [vxHome, path.dirname(storeRoot), storeRoot]) {
-        const refused = ensurePrivateDir(dir)
+        // The levels below one not made yet are made by this user, 0700.
+        if (!make && lstatSync(dir, { throwIfNoEntry: false }) === undefined)
+          return mkdirBlocked(dir, false)
+        const refused = ensurePrivateDir(dir, make)
         if (refused !== null) return refused
       }
     }
-    return openCacheDir(storeDir, undefined, 'store.db')
+    if (make) return openCacheDir(storeDir, undefined, 'store.db')
+    try {
+      accessSync(storeDir, constants.W_OK)
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') return errorText(err)
+      return mkdirBlocked(storeDir, true)
+    }
+    try {
+      accessSync(path.join(storeDir, 'store.db'), constants.W_OK)
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') return errorText(err)
+      refuseManifestDir(storeDir, undefined)
+    }
+    return null
   } catch (err) {
     return errorText(err)
   }
 }
 
-function ensurePrivateDir(dir: string): string | null {
+/** Why `mkdir` (`-p` with `recursive`) of `dir` would fail, asked without making it. */
+function mkdirBlocked(dir: string, recursive: boolean): string | null {
+  let up = path.dirname(dir)
+  if (recursive)
+    while (lstatSync(up, { throwIfNoEntry: false }) === undefined) up = path.dirname(up)
   try {
-    mkdirSync(dir, { mode: 0o700 })
+    if (!statSync(up).isDirectory()) return `${up} is not a directory`
+    accessSync(up, constants.W_OK)
+    return null
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') return errorText(err)
+    return errorText(err)
+  }
+}
+
+function ensurePrivateDir(dir: string, make: boolean): string | null {
+  if (make) {
+    try {
+      mkdirSync(dir, { mode: 0o700 })
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') return errorText(err)
+    }
   }
   const st = lstatSync(dir)
   if (!st.isDirectory()) return `${dir} is not a directory`
@@ -781,7 +821,7 @@ function ensurePrivateDir(dir: string): string | null {
   // The user's own directory open to others (a `~/.vx` made at the
   // default umask, 0755) is vx's to close: refusing it left the store
   // unused on a stock macOS home (2026-10-06: "you should own it").
-  if ((st.mode & 0o077) !== 0) {
+  if (make && (st.mode & 0o077) !== 0) {
     try {
       chmodSync(dir, 0o700)
     } catch (err) {
@@ -877,8 +917,6 @@ const MANIFESTS = [
   ...['ts', 'mts', 'js', 'mjs', 'cts', 'cjs'].map((ext) => `vx.config.${ext}`),
   ...['ts', 'mts', 'js', 'mjs', 'cts', 'cjs'].map((ext) => `.vx/workspace.${ext}`),
 ]
-const OWN_DIR_HINT =
-  'Point `cache.dir` in .vx/workspace.ts (or --cache-dir) at a directory of its own, such as .vx/cache.'
 
 function makeCacheDir(cacheDir: string): void {
   try {
@@ -1303,15 +1341,18 @@ export class Cache implements CacheLayer {
     // every mode reads it: a dry prune names what the real one takes, and
     // `vx info` the store the next run fills, not one a moved HOME left.
     let storeDir = storeRoot === undefined ? recorded : (storeRoot ?? undefined)
-    if (storeDir !== undefined && mode === 'open' && this.writeBlocked === null) {
-      const blocked = storeBlocked(storeDir, typeof storeRoot === 'string' ? storeRoot : null)
-      if (blocked !== null) {
+    // Every mode settles the store as a run does, the reading ones without
+    // touching it: `vx info` and a dry prune read the entries runs use, not
+    // a store another user owns (one `sudo vx run`).
+    if (storeDir !== undefined && (this.writeBlocked === null || absent)) {
+      const root = typeof storeRoot === 'string' ? storeRoot : null
+      if (storeBlocked(storeDir, root, mode === 'open') !== null) {
         // A home this user cannot write (a container, a read-only mount):
         // the entries stay in this workspace rather than fail the run.
         const fallback = cacheDir
         if (fallback !== storeDir) {
           storeDir = fallback
-          openCacheDir(fallback)
+          if (mode === 'open') openCacheDir(fallback)
         }
       }
     }
@@ -2638,7 +2679,7 @@ export class Cache implements CacheLayer {
       .filter((r) => workspaceRoot !== undefined || !r.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
       .map((r) => (r.path.startsWith(WORKSPACE_OUTPUT_PREFIX) ? r.path : `outputs/${r.path}`))
     endRows()
-    const moded = absentModedDirs(rows, projectDir, workspaceRoot)
+    const moded = modedDirs(rows, projectDir, workspaceRoot)
     const verify = (provided: ReadonlySet<string>): void => {
       const missing = expected.filter((name) => !provided.has(name))
       if (missing.length > 0) {
@@ -4103,7 +4144,7 @@ export async function holdStore(
   } catch {
     return () => {}
   }
-  const started = Date.now()
+  const started = performance.now()
   let said = false
   for (;;) {
     try {
@@ -4116,7 +4157,7 @@ export async function holdStore(
         return () => {}
       }
     }
-    if (!said && Date.now() - started >= 1_000) {
+    if (!said && performance.now() - started >= 1_000) {
       said = true
       log(`[vx] waiting for another vx process using the cache store ${storeDir} to finish…`)
     }
@@ -4150,7 +4191,7 @@ export async function holdCacheDir(
   signal?: AbortSignal,
 ): Promise<() => void> {
   const file = path.join(dir, DIR_LOCK)
-  const started = Date.now()
+  const started = performance.now()
   let said = false
   for (;;) {
     if (signal?.aborted === true) return () => {}
@@ -4191,7 +4232,7 @@ export async function holdCacheDir(
       closeDb(db)
       if ((err as { code?: string }).code !== 'SQLITE_BUSY') return () => {}
     }
-    if (!said && Date.now() - started >= 1_000) {
+    if (!said && performance.now() - started >= 1_000) {
       said = true
       log(
         mode === 'exclusive'
@@ -4249,12 +4290,14 @@ function assertArtifactNames(
 
 /**
  * The directories with a mode to restore (`DIR_MODE` rows) that are absent
- * before the restore, deepest first: the restore makes them with mkdir's
- * default, and each is then given the mode the miss left, minus the umask
- * as a file's is. One that stands is the tree's, left as it is. A mode
- * only ever narrows mkdir's default, whatever an artifact says.
+ * before the restore, or stand with another mode, deepest first: the
+ * restore makes a missing one with mkdir's default, and each is then given
+ * the mode the miss left, minus the umask as a file's is. A standing one
+ * kept its own mode once, so a branch switch A → B → A left B's 0755 on
+ * A's `chmod 700 dist/keys`. A symlink is never followed. A mode only ever
+ * narrows mkdir's default, whatever an artifact says.
  */
-function absentModedDirs(
+function modedDirs(
   rows: readonly OutputFileRow[],
   projectDir: string,
   workspaceRoot: string | undefined,
@@ -4268,7 +4311,9 @@ function absentModedDirs(
     const dir = ws
       ? path.join(workspaceRoot!, rel.slice(WORKSPACE_OUTPUT_PREFIX.length))
       : path.join(projectDir, rel)
-    if (lstatSync(dir, { throwIfNoEntry: false }) === undefined) out.push([dir, r.mode & 0o777])
+    const st = lstatSync(dir, { throwIfNoEntry: false })
+    if (st === undefined || (st.isDirectory() && !modeMatches(st.mode, r.mode)))
+      out.push([dir, r.mode & 0o777])
   }
   return out.sort((a, b) => b[0].length - a[0].length)
 }

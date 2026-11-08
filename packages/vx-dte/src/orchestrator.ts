@@ -343,6 +343,8 @@ export class Orchestrator {
   private readonly unstarted = new Map<string, string>()
   /** A task waited here on a worker: one ended with none joined needed one. */
   private waited = false
+  /** Why each worker this run refused was refused, in order. */
+  private readonly refused: string[] = []
   /** Started, then not needed before they joined (`release`), or given up as late. */
   private readonly cancelled = new Set<string>()
   /** Of `cancelled`, those given up past their join limit, not let go: taken if they join. */
@@ -1028,7 +1030,9 @@ export class Orchestrator {
       // A task sent here leaves its outputs here for its dependants.
       a.has.add(req.taskId)
       const node = nodes?.get(req.taskId)
-      const env = defined(req.env, req.envDefine)
+      const keyed = hostKeyed(req)
+      const env = defined(req.env, req.envDefine, keyed)
+      const unset = keyed.filter((k) => req.env[k] === undefined && !(k in req.envDefine))
       const order = {
         task: req.taskId,
         // Unsaved: under the run's own key, as an uncached task's.
@@ -1046,6 +1050,7 @@ export class Orchestrator {
         cwd: path.relative(this.o.root, req.cwd),
         project: node === undefined ? '' : path.relative(this.o.root, node.projectDir),
         env,
+        ...(unset.length === 0 ? {} : { unset }),
         ...(node?.config.exec?.env?.secret === undefined
           ? {}
           : { secret: [...node.config.exec.env.secret] }),
@@ -1499,7 +1504,11 @@ export class Orchestrator {
     if (body.type === 'joined') {
       const info = body.info as Partial<WorkerInfo> | null
       const id = body.id!
+      // Only the worker heard why: the run sat silent and its footer said
+      // none joined (2026-11-07).
       const refuse = (reason: string): void => {
+        this.refused.push(reason)
+        this.warn(`dte: refused worker ${typeof info?.id === 'string' ? info.id : id}: ${reason}`)
         void this.o.me
           .send(id, { type: 'refused', reason } satisfies ToWorker)
           .catch(this.unsent('refused', id))
@@ -2290,15 +2299,21 @@ export class Orchestrator {
   ): [string, ui.Inline][] {
     // Over with none, it says so: core's own `N workers` (this machine's
     // pool) read as the run's when no task needed one (2026-10-25), and
-    // says when one did and none joined (2026-11-06).
+    // says when one did and none joined (2026-11-06), and why any it
+    // refused was (2026-11-07).
     if (this.spawnedAt.size === 0 && this.workers.size === 0 && this.gone.length === 0)
       return this.ended
         ? [
             [
               'workers',
-              this.waited
-                ? ui.tone('warn', 'none joined: a task waited on one')
-                : ui.dim('none started: no task needed one'),
+              this.refused.length > 0
+                ? ui.tone(
+                    'warn',
+                    `none joined: ${this.refused.length} refused (${this.refused[0]})`,
+                  )
+                : this.waited
+                  ? ui.tone('warn', 'none joined: a task waited on one')
+                  : ui.dim('none started: no task needed one'),
             ],
           ]
         : []
@@ -2688,17 +2703,24 @@ function runtimeOrders(req: ExecuteRequest): { runtime?: RuntimeOrder[] } {
 
 /**
  * `env` as it travels: no unset name, and no name whose value is the
- * worker's (`HOST_ENV`) unless `define` sets it. A defined `HOME` ran
- * with the worker's own, saved under a key that folded the defined one
- * (2026-10-24).
+ * worker's (`HOST_ENV`) unless `define` sets it or the task keys it
+ * (`keyed`). A defined `HOME` ran with the worker's own, saved under a key
+ * that folded the defined one (2026-10-24); a keyed `XDG_CONFIG_HOME` did
+ * the same (2026-11-07).
  */
 function defined(
   env: NodeJS.ProcessEnv,
   define: Readonly<Record<string, string>>,
+  keyed: readonly string[] = [],
 ): Record<string, string> {
   // No prototype: on `{}`, a name `__proto__` hit the setter and was not sent.
   const out: Record<string, string> = Object.create(null)
   for (const [k, v] of Object.entries(env))
-    if (v !== undefined && (!HOST_ENV.includes(k) || k in define)) out[k] = v
+    if (v !== undefined && (!HOST_ENV.includes(k) || k in define || keyed.includes(k))) out[k] = v
   return out
+}
+
+/** The `HOST_ENV` names the task's `inputs.env` keys: their value is this machine's, as keyed. */
+function hostKeyed(req: ExecuteRequest): string[] {
+  return (req.inputs?.env ?? []).map((e) => e.name).filter((k) => HOST_ENV.includes(k))
 }

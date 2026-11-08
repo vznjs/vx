@@ -95,6 +95,19 @@ describe.if(CHUNKING_SUPPORTED)('a record replay', () => {
     expect(await run('k-honest-replay')).toEqual({ exitCode: 0, executed: 0 })
     expect(await out()).toBe('good output')
   })
+
+  // The action cache is the server's too: a record of a FAILED run (a worker
+  // that caches one, or one written by another client) replayed as exit 0,
+  // its outputs written and saved under the key.
+  it('of a failed run executes instead of replaying it as a success', async () => {
+    const digest = fake.put(bytes('output of a failed run'))
+    fake.actions.set(execDigestFor('k-failed-replay').hash, {
+      exit_code: 7,
+      output_files: [{ path: 'pkg/out.txt', digest, is_executable: false }],
+    })
+    expect(await run('k-failed-replay')).toEqual({ exitCode: 0, executed: 1 })
+    expect(await out()).toBe('absent')
+  })
 })
 
 // Core marks a run it will not save under the key `unsaved` (--no-cache, a

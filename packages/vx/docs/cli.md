@@ -356,7 +356,9 @@ git: <root> is not inside a git work tree`. A repository with no commit
 - A ref that does not exist is `git ref "<ref>" did not resolve`, with
   git's reason when it gives one (`main@{9}`: `log for 'main' only has 2
 entries`). In a
-  shallow clone it adds how to fetch it (`git fetch --depth=1 origin <base>`).
+  shallow clone it adds how to fetch it (`git fetch --depth=1 origin <base>`;
+  with no origin remote, `git fetch --depth=1 <url> <base>` or
+  `git remote add origin <url>`).
 - A project whose directory is a symlink inside the workspace
   (`packages/b -> ../ext/b`) is selected by a change at the real place
   too. A link to outside the workspace is outside git's view.
@@ -564,7 +566,9 @@ them too, with or without a `readyWhen`.
 The command, with its forwarded args, is one argument to `sh -c`, and
 Linux caps one argument at 128 KiB. Past that the task fails to spawn
 (`E2BIG`), and the frame says how long the command was: pass a long
-file list through a file the tool reads instead.
+file list through a file the tool reads instead. The same limit counts
+the task's environment; when that is the cause, the frame names its size
+and its largest variable.
 
 Forwarded args are folded into the cache key — different args produce
 different cache entries. They scope to user-requested tasks only;
@@ -1074,7 +1078,8 @@ down with it:
 - **`deps-ok`** (default): the failure's transitive dependents are
   skipped; independent siblings keep running. A server that dies after
   it became ready is a failure to its dependents not yet started,
-  including those that reach it through a group.
+  including those that reach it through a group; a dependent running
+  when it died finishes but is not saved, nor is what is built on it.
 - **`never`**: fail fast — the first failure stops dispatch. In-flight
   tasks finish their attempt and start no retry; everything not yet started (cache restores
   included) completes as skipped. A server that dies after it became
@@ -1520,7 +1525,9 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    meanwhile included (a task's input edited while it ran is not saved,
    and its line says the next cycle runs on it: it does, even when the
    file was put back to the state the last judgement saw, since the
-   task read the other one). A task that writes into its own project,
+   task read the other one; so does a file written during the cycle
+   where no command of it may write, an edit landing before the keys
+   and put back while the cycle runs included). A task that writes into its own project,
    `rm -rf dist && tsc` included, costs one extra cycle instead of
    re-running forever — when the bytes it leaves are the same. A file
    it rewrites with DIFFERENT bytes every run (a pid file, a
@@ -1820,7 +1827,8 @@ either flag, and reports separately from the policy's evictions.
 `--dry` picks the victims under the same policy and counts the
 orphans the sweep would take, then returns without touching the index
 or the directory; the real prune with the same flags reaps exactly what
-it named (an in-flight save aside). On an index an earlier vx wrote,
+it named (an in-flight save aside), from the same store: one a run
+would not use is passed over by both. On an index an earlier vx wrote,
 which the real prune resets first, it reads the index as that reset
 leaves it: the shared store's entries still face the policy, and every
 artifact in the workspace's own directory is row-less, judged by the
@@ -1879,15 +1887,26 @@ workspace root) is refused. A `cache.dir` you named may be shared
 its artifacts, run history, its `*` `.gitignore`); your own files stay,
 and the directory goes only if that empties it. A directory with no
 `cache.db` is not a vx cache and is left alone, and the store an index
-names goes only if it is one (`.vx/<id>/cache` holding a `store.db`): the
-index is a file in the checkout, which a commit or a restored CI cache
-could point at any directory. A workspace that never ran says
+names goes only if it is one (`.vx/<id>/cache` holding a `store.db`)
+and this workspace's (its `<id>` is the workspace's, or the one it had
+before an origin was added): the index is a file in the checkout, which
+a commit, a copy or a restored CI cache could point at any directory or
+another workspace's store. Every target is checked before the
+first delete: a store this user cannot remove (another user's, after one
+`sudo vx run`) stays, as runs leave it for `.vx/cache`, and stderr says
+`cache store <dir> left as is: this user cannot remove it (EACCES)`; a
+cache directory it cannot remove refuses the clear, exit 1, with nothing
+deleted. A workspace that never ran says
 `› vx cache clean  nothing to free`. The next run misses every task once
 and saves again.
 
 A `.vx/cache` linked to another directory (a CI cache volume) is
-emptied through the link, and the link stays. An index SQLite cannot
-read is cleared like any other.
+cleared through the link of what vx wrote there (the files above and
+`compiled/`), and the link stays. A cache directory that resolves,
+through links, to the home directory, `/`, or a directory holding the
+workspace or a `.git` is refused, by the clear and by every run, with
+the resolved path named. An index SQLite cannot read is cleared like
+any other.
 
 ```
 $ vx cache clean
@@ -1949,7 +1968,9 @@ parses the lockfile, so after an install, run `vx lock`; a run whose
 lockfile changed since refuses (`VX_E_LOCK`), and so does one with no
 dependencies lock while a plugin claims a lockfile that is there. An
 edit in a `link:` or `file:` directory the lockfile names needs no
-`vx lock`: the plugin digests anew, and `vx lock --check` accepts it. `--affected` reads the base commit's copy to find a deleted
+`vx lock`: the plugin digests anew, and `vx lock --check` accepts it.
+A digest that moved while the lockfile and those files did not (a
+plugin upgrade) fails `vx lock --check`: a run keys from the record. `--affected` reads the base commit's copy to find a deleted
 project's dependants and a changed lockfile's base digests, and `vx
 lock --check` fails when it is missing or stale.
 
@@ -2008,7 +2029,8 @@ holding a `vx.config.*`, in any language: `vx lock` lists them with git
 nested repository's own configs too), or walks the tree outside git
 (every directory but `.git` and `.vx`), and leaves out any under a
 nested `.vx/workspace.*`, even one the ignore rules hide, or under a
-`node_modules` (an installed package is no project, ignored or not). Configs are
+`node_modules` (an installed package is no project, ignored or not) or
+a `.vx` (vx's own state, in git as outside it). Configs are
 programs; `vx lock` evaluates them in the current environment and
 stores the post-evaluation objects, by directory (version 5; a lock an
 earlier vx wrote is refused, "re-run `vx lock`"). A project is named by
@@ -2078,7 +2100,10 @@ cwd's project or a `--filter` leaves unresolved while one of the
 selected projects holds such a config). An entry edited by
 hand into a shape `vx lock` could not write fails the run with
 `.vx/projects.lock.json is invalid, run \`vx lock\``, checked only once
-something has crashed, so a normal run pays nothing for it.
+something has crashed, so a normal run pays nothing for it. The shapes a
+run walks are checked as it reads the lock: a `name`that is no string,`tags`no list,`tasks`no object, a task no object or its`dependsOn` no
+list is refused there (`entry for "b" is malformed — re-run \`vx lock\``),
+where a string `dependsOn` was walked per character.
 
 ### `--check`
 
@@ -2577,17 +2602,18 @@ plugins `workspace-plugins`, or `definePlugin` would refuse them. It prints the 
 declares it in the workspace file a run reads (`.vx/workspace.ts` when
 there is none). The templates are TypeScript, so `--mjs` with
 `--plugin` is refused, and so is a second seam. An existing file is refused without
-`--force`; `--dry` names the files and writes nothing. The two files are
+`--force`, a dangling symlink included; a symlink is refused with it too, since vx never
+writes through one. `--dry` names the files and writes nothing. The two files are
 `private/vx-plugin-examples/plugins`, which the gate runs, copied into
 core (`src/cli/plugin-templates.ts`) and held equal by
 `tests/plugin-templates.unsafe.test.ts` (H-21).
 
 ### Exit codes
 
-| Code | When                                                                                                                                                                                                                          |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `0`  | the files written (or, with `--dry`, printed)                                                                                                                                                                                 |
-| `1`  | a refused flag, a parse error (`--mjs` with `--plugin` among them), a plugin file already there without `--force`, or the lock not written (the files stay). Handed to `@vzn/vx-migrate`, the exit is its own, by these rules |
+| Code | When                                                                                                                                                                                                                                              |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0`  | the files written (or, with `--dry`, printed)                                                                                                                                                                                                     |
+| `1`  | a refused flag, a parse error (`--mjs` with `--plugin` among them), a plugin file already there without `--force` (a symlink with it), or the lock not written (the files stay). Handed to `@vzn/vx-migrate`, the exit is its own, by these rules |
 
 ## `bunx @vzn/vx-migrate`
 
@@ -2757,7 +2783,9 @@ ref does not resolve, is a range (`A..B`) or an exclusion (`^A`), names
 a path inside a commit, or the repository has no history to compare
 with. Pass a branch or commit you have locally, alone:
 `--affected=origin/main`. A shallow clone fetches its base from origin
-itself; with no origin, fetch it (`git fetch --depth=1 origin <base>`).
+itself; when origin cannot give it, fetch it (`git fetch --depth=1 origin <base>`),
+and with no origin remote, from its URL (`git fetch --depth=1 <url> <base>`) or
+add one (`git remote add origin <url>`).
 
 #### `VX_E_NO_GIT`
 
@@ -3013,7 +3041,7 @@ $ vx info
   memory            13 GB usable — cgroup limit; the machine has 16 GB
   cache dir         /work/repo/.vx/cache (8.2 MB, this workspace's run history)
   cache store       /home/me/.vx/3f2a9c1e7b4d5a60/cache (1.3 GB, shared by this workspace's checkouts)
-  cache versions    keys vx-cache-v51 · index schema v54
+  cache versions    keys vx-cache-v52 · index schema v54
   cache entries     42 (1.3 GB)
   orphans           3 artifacts (12 MB) the index does not know — `vx cache clean` reaps them
   task runs (24h)   7 (5 cache hits)
@@ -3038,6 +3066,8 @@ $ vx info
   worktree, or a hook it names) and `core.untrackedCache` make it
   near-free after the first run; both are off by default, so `vx info`
   says when they are, reading each as git does (the last value set wins).
+  vx trusts the files that walk calls clean, so an fsmonitor that misses
+  an event gives a stale hit; leave it off where events can be lost.
 - `sandbox` is the runtime probe's verdict for THIS host — one sandboxed
   `true`, memoized — and how many loaded tasks declare `exec.sandbox`. A
   declared sandbox whose runtime cannot start fails the task at run
@@ -3066,7 +3096,8 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   cgroup limit — inside a container the raw numbers are the host's,
   and the doctor is where to see which one a run reads.
 - `flaky tasks` is the standing list a run's flaky notes add to:
-  every task whose history (30 days, what the cache keeps) holds a
+  every task whose history (all of it: a run never prunes it, a bounded
+  `vx cache clean` drops what is over 30 days old) holds a
   cache key that failed after it had passed, most failures first, with
   the outcomes over those keys. A cache hit counts as a pass (it
   replayed one), and a pass that took a retry counts too, its failed
@@ -3085,7 +3116,9 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   with its size on disk, or `none: the cache dir holds the entries` when
   the workspace names its cache dir. It is the store the next run opens,
   before a first run too, not one the index recorded under a home since
-  moved. A bare `vx cache clean` frees both sizes.
+  moved. A store a run would not use (another user's, after one `sudo vx
+run`) reads as the cache dir, where runs keep the entries then. A bare
+  `vx cache clean` frees both sizes.
 - `cache entries` counts the entries and their size. An index SQLite
   cannot read reads `unreadable: <why and the fix>` there, and the
   history rows read 0: the report still prints, exit 0.
@@ -3243,7 +3276,8 @@ moves it and how to stop a move the task does not need. An upstream
 row is only the carrier, so `vx why` follows each dependency that moved
 in the same run down to the tasks whose OWN inputs moved and prints
 them under `root cause`, one chain per root (five at most, then a
-count), and `what to do` speaks to those kinds instead. Each upstream is
+count; a chain of more than six tasks prints its first two and last
+three around `N more`), and `what to do` speaks to those kinds instead. Each upstream is
 compared between the two keys the dependant folded, so a run of the
 upstream alone in between changes nothing it names:
 
@@ -3312,7 +3346,8 @@ the key change and says so.
 why, diff, roots, writers }`); when the task's recorded runs predate run ids, `{ taskId,
 why, diff, explanation }`, `why` and `diff` null and `explanation` the
 latest cache entry's key. `roots` is the root-cause walk (`chain`,
-`entries`); `writers` the changed-during-a-run files (`taskId`, `file`,
+`entries`), every root with its whole chain, written as it goes: a
+20,000-task chain where every task moved is 2 GB of JSON; `writers` the changed-during-a-run files (`taskId`, `file`,
 `writers`).
 
 ### Exit codes
@@ -3401,8 +3436,9 @@ when, duration, branch @ sha, CI, task/hit/failure counts) and its
 tasks on the run's own grid (time, ±usual, status, cache, cpu, mem,
 outputs, blocks, worker, task), drawn by the same component: a replay
 reads as the run did. `±usual` measures an executed task against its
-usual time now, as a run on this branch reads history (`—`: never timed, or
-timed only by this run). A hit's cpu and mem are
+usual time now, as a run on this branch reads history, over the timings
+of the definition (command and `env.define`) it ran under (`—`: never
+timed, or timed only by this run). A hit's cpu and mem are
 blank (it spent nothing); `—` is a value the run could not read. The
 cache key is in `--format json`. Failures come first, each with its
 exit after the id, `exit 137`, and the signal an exit above 128 stands
@@ -3507,7 +3543,9 @@ project; one the window has no run of is refused, exit 1. The branch is
 a run's. With `--format json` it is `{ window, branch, stats }`, each row `{ taskId, runs,
 p50DurationMs, p99DurationMs, successRate, hitRate, failureMode,
 maxPeakRssBytes, maxCpuParallelism }`, `null` where nothing was
-measured.
+measured. A task whose command or `env.define` changed counts only its
+runs since, as the scheduler and `--dry` do: its definition is read
+from the lock.
 
 ### `--live`
 
@@ -3597,8 +3635,9 @@ read), `lockfile_memos` (a lockfile plugin's parse, by file and
 claimant). `SELECT name, sql FROM sqlite_schema` lists them all; `runs`
 is a view (in `sqlite_temp_schema`) over the stored rows, which name
 their run by its `run_ids` row. Times
-are epoch milliseconds. The history keeps 30 days; `steps`, `warnings`
-and `failures` the newest 50 runs that had any.
+are epoch milliseconds. The history keeps every run until a bounded
+`vx cache clean` drops what is over 30 days old; `steps`, `warnings`
+and `failures` keep the newest 50 runs that had any.
 
 A write is refused (`--sql reads only`, exit 1), and the query runs
 with SQLite's `query_only` on, so a `WITH` that hides one fails too;

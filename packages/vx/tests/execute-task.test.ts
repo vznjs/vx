@@ -416,6 +416,46 @@ describe('execute-task — what the outcome and the request carry', () => {
     }
   })
 
+  it('saves nothing under the key when the executor found a declared input this disk lacks', async () => {
+    // A distributed run's worker held an untracked file under the task's
+    // input glob: the key never folded it, the command read it, and the
+    // entry was every later run's hit (2026-11-07).
+    const b = await bench()
+    try {
+      const f = { root: '', out: [] as string[], err: [] as string[] }
+      const log: Logger = { ...capturingLogger(f), warn: (line) => f.err.push(line) }
+      const elsewhere = (changed: string[]) =>
+        ({
+          name: 'org/elsewhere',
+          remote: true,
+          execute: async () => ({
+            exitCode: 0,
+            durationMs: 1,
+            stdout: '',
+            stderr: '',
+            violations: [],
+            changed,
+          }),
+        }) as never
+      const cached = node(b, {
+        exec: { command: 'true' },
+        inputs: { files: ['src/**'] },
+        outputs: { files: ['out/**'] },
+        cache: true,
+      })
+      const run = (changed: string[]) =>
+        executeTask({ ...baseArgs(b, cached, log), executor: elsewhere(changed) })
+      const stray = await run(['proj/src/zz.txt'])
+      expect([stray.status, stray.saved]).toEqual(['success', undefined])
+      expect(f.err.join('')).toContain('`proj/src/zz.txt` changed after its key was taken')
+      expect(f.err.join('')).not.toContain('declare it in outputs')
+      // Under its own outputs it is none of the key's.
+      expect((await run(['proj/out/r.txt'])).saved).toBe(true)
+    } finally {
+      await closeBench(b)
+    }
+  })
+
   it('reports the sandbox violation COUNT and lines on the outcome', async () => {
     // The rewrite of a zero exit to 1 is pinned next door, but what the
     // outcome then TELLS the reader was not: the count feeds the

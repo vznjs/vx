@@ -165,7 +165,7 @@ it(
 )
 
 it(
-  '`vx lock --check` passes after an edit to a file the digests read: runs digest anew',
+  '`vx lock --check` passes after an edit to a file the digests read, fails a digest that moved alone',
   async () => {
     const check = (...args: string[]): [number, string] => {
       const p = Bun.spawnSync({
@@ -187,6 +187,15 @@ it(
     // CONTROL: the claimed file itself moved still fails.
     await claimed('packages/a=a2\nextra:patches/p.patch\n')
     expect(check('--check')[0]).toBe(1)
+    // A digest that moved under unchanged file and extras hashes (a plugin
+    // upgrade, a hand edit) fails: a run keys from the record, not afresh.
+    await claimed('packages/a=a1\nextra:patches/p.patch\n')
+    expect(check()).toEqual([0, ''])
+    const text = (await readFile(path.join(root, LOCK), 'utf8')).replace('"a1"', '"planted"')
+    await writeFile(path.join(root, LOCK), text)
+    const [code, err] = check('--check')
+    expect(code).toBe(1)
+    expect(err).toContain(`${LOCK} is not what the dependencies resolve to here — run 'vx lock'`)
   },
   TIMEOUT,
 )

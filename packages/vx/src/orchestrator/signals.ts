@@ -160,6 +160,22 @@ export function holdSignals(): HeldSignals {
 }
 
 /**
+ * `work`, or a rejection once `signal` aborts. A plugin's setup or
+ * executor factory that never settles held a held signal with it: the
+ * first was noted and waited, and only a second, which tears nothing
+ * down, ended vx.
+ */
+export function unlessStopped<T>(work: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (signal === undefined) return work
+  if (signal.aborted) return Promise.reject(new Error(`stopped by ${String(signal.reason)}`))
+  const { promise, resolve, reject } = Promise.withResolvers<T>()
+  const onAbort = (): void => reject(new Error(`stopped by ${String(signal.reason)}`))
+  signal.addEventListener('abort', onAbort, { once: true })
+  work.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort))
+  return promise
+}
+
+/**
  * A held signal no `forwardSignals` took over (the run returned or threw
  * before its tasks) leaves here, once the run's own end is done: stdout
  * drained, bounded, then `exitOf`.

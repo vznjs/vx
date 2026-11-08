@@ -117,6 +117,7 @@ describe('commandEnvironment', () => {
   it('carries exec.env.define across to the worker', () => {
     expect(commandEnvironment(inputs([]), { NODE_ENV: 'production' }, {})).toEqual([
       { name: 'NODE_ENV', value: 'production' },
+      { name: 'FORCE_COLOR', value: '1' },
     ])
   })
 
@@ -127,16 +128,21 @@ describe('commandEnvironment', () => {
         {},
         { API_URL: 'https://x' },
       ),
-    ).toEqual([{ name: 'API_URL', value: 'https://x' }])
+    ).toEqual([
+      { name: 'API_URL', value: 'https://x' },
+      { name: 'FORCE_COLOR', value: '1' },
+    ])
   })
 
   // Item 1092: a name the config only tracks is keyed but never reaches the
   // local child, and the worker ran on it under the same key.
   it('leaves out a inputs.env name the local child does not get', () => {
-    expect(commandEnvironment(inputs([{ name: 'TRACKED', value: 'prod' }]), {}, {})).toEqual([])
+    expect(commandEnvironment(inputs([{ name: 'TRACKED', value: 'prod' }]), {}, {})).toEqual([
+      { name: 'FORCE_COLOR', value: '1' },
+    ])
     expect(
       commandEnvironment(inputs([{ name: 'TRACKED', value: 'prod' }]), {}, { TRACKED: 'other' }),
-    ).toEqual([])
+    ).toEqual([{ name: 'FORCE_COLOR', value: '1' }])
   })
 
   // The worker runs what the key describes: an unset name is absent there, as
@@ -151,7 +157,10 @@ describe('commandEnvironment', () => {
         {},
         { EMPTY: '' },
       ),
-    ).toEqual([{ name: 'EMPTY', value: '' }])
+    ).toEqual([
+      { name: 'EMPTY', value: '' },
+      { name: 'FORCE_COLOR', value: '1' },
+    ])
   })
 
   // ORDER is NOT pinned here on purpose. The proto requires
@@ -170,8 +179,8 @@ describe('commandEnvironment', () => {
       { ALPHA: 'a', ZED: 'z' },
       { MID: '1' },
     )
-    expect([...a].map((e) => e.name).sort()).toEqual(['ALPHA', 'MID', 'ZED'])
-    expect([...b].map((e) => e.name).sort()).toEqual(['ALPHA', 'MID', 'ZED'])
+    expect([...a].map((e) => e.name).sort()).toEqual(['ALPHA', 'FORCE_COLOR', 'MID', 'ZED'])
+    expect([...b].map((e) => e.name).sort()).toEqual(['ALPHA', 'FORCE_COLOR', 'MID', 'ZED'])
   })
 
   it('a define wins over a same-named inputs.env value, once', () => {
@@ -181,7 +190,10 @@ describe('commandEnvironment', () => {
         { MODE: 'declared' },
         { MODE: 'ambient' },
       ),
-    ).toEqual([{ name: 'MODE', value: 'declared' }])
+    ).toEqual([
+      { name: 'MODE', value: 'declared' },
+      { name: 'FORCE_COLOR', value: '1' },
+    ])
   })
 
   // CONTROL: nothing is injected implicitly. `ExecuteRequest.env` — the
@@ -192,8 +204,31 @@ describe('commandEnvironment', () => {
   // Command blob lives in a shared CAS, which is the wrong home for a
   // passed-through secret. A worker's PATH is the worker image's business;
   // the executor extends it in the command string, not here.
-  it('declares nothing on its own: empty lists produce an empty environment', () => {
-    expect(commandEnvironment(inputs([]), {}, { PATH: '/usr/bin', HOME: '/root' })).toEqual([])
+  it("declares nothing from the host: empty lists produce only vx's own FORCE_COLOR", () => {
+    expect(commandEnvironment(inputs([]), {}, { PATH: '/usr/bin', HOME: '/root' })).toEqual([
+      { name: 'FORCE_COLOR', value: '1' },
+    ])
+  })
+
+  // The local child gets FORCE_COLOR=1 (core's exec/env.ts) under the same
+  // key, so an action without it stored plain bytes where a local run
+  // stored coloured ones. A FORCE_COLOR or a non-empty NO_COLOR the task
+  // declares wins, as it does locally.
+  it('sets FORCE_COLOR=1 as the local child gets it, unless the task says otherwise', () => {
+    expect(commandEnvironment(inputs([]), {}, {})).toEqual([{ name: 'FORCE_COLOR', value: '1' }])
+    expect(commandEnvironment(inputs([]), { FORCE_COLOR: '0' }, {})).toEqual([
+      { name: 'FORCE_COLOR', value: '0' },
+    ])
+    expect(commandEnvironment(inputs([]), { NO_COLOR: '1' }, {})).toEqual([
+      { name: 'NO_COLOR', value: '1' },
+    ])
+    expect(commandEnvironment(inputs([]), { NO_COLOR: '' }, {})).toEqual([
+      { name: 'NO_COLOR', value: '' },
+      { name: 'FORCE_COLOR', value: '1' },
+    ])
+    expect(
+      commandEnvironment(inputs([{ name: 'NO_COLOR', value: '1' }]), {}, { NO_COLOR: '1' }),
+    ).toEqual([{ name: 'NO_COLOR', value: '1' }])
   })
 })
 

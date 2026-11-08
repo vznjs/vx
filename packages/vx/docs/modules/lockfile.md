@@ -61,11 +61,13 @@ export function lockKey(root: string, dir: string): string
 `LOCKFILE_VERSION`, `projects` an object of `{ file, config }` entries,
 each keyed by a directory under the root as `lockKey` spells it (`.`, or
 a relative POSIX path with no empty, `.` or `..` segment: a run joins it
-onto the root, and `../x` ran a project outside the workspace).
+onto the root, and `../x` ran a project outside the workspace), and the
+shapes a run walks: `name` a string, `tags` a list, `tasks` an object of
+objects, each `dependsOn` a list (a string one was walked per character).
 Anything else, including a lock an earlier vx wrote (version 2 keyed
 by name), is a `UserError` asking to re-run `vx lock`. `frozenProjectConfigs` is what a run's load serves instead
 of an evaluation: an entry missing for the project is a
-`UserError` naming the project and the remedy. No entry is validated:
+`UserError` naming the project and the remedy. No entry is otherwise validated:
 `vx lock` validated what it wrote, and `--check` re-evaluates
 (2026-10-14). A hand-broken entry that then crashes a run is
 named, not shown as a raw TypeError: on that crash's path only, a task

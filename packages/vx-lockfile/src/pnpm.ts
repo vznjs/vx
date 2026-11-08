@@ -396,7 +396,7 @@ function buildGraph(lock: Lockfile, files: ReadonlyMap<string, string>): Graph {
   // and swapping which reaches which version gave the same lines, so a
   // lockfile that moved both installs keyed neither (item 1073).
   for (const dir of lock.importers.keys()) node(importerNode(dir), importerNode(dir))
-  const link = (from: number, dir: string, name: string, version: string): void => {
+  const link = (from: number, by: string, dir: string, name: string, version: string): void => {
     if (version.startsWith('link:')) {
       const target = linkTarget(lock, dir, version)
       if (target !== undefined && lock.importers.has(target))
@@ -408,9 +408,12 @@ function buildGraph(lock: Lockfile, files: ReadonlyMap<string, string>): Graph {
       return
     }
     const key = snapshotKey(lock, name, version)
-    // A dependency with no snapshot (a leaf the file lists only by version)
-    // is a node of its own, so its version still counts.
-    edges[from]!.push(node(key, `${key}\0${lock.resolutions.get(packageKey(key)) ?? ''}\0`))
+    // pnpm refuses a dependency with no entry ("Broken lockfile",
+    // ERR_PNPM_LOCKFILE_MISSING_DEPENDENCY); made a leaf, a file cut after
+    // `snapshots:` keyed every project on versions alone.
+    const i = index.get(key)
+    if (i === undefined) throw new Error(`pnpm-lock.yaml: no entry for ${key}, which ${by} names`)
+    edges[from]!.push(i)
   }
   // A node folds the names it asks for as well as where they land: by
   // its edges alone, two aliases swapping targets (`foo: npm:x`, `bar:
@@ -425,12 +428,12 @@ function buildGraph(lock: Lockfile, files: ReadonlyMap<string, string>): Graph {
   for (const [dir, deps] of lock.importers) {
     const from = index.get(importerNode(dir))!
     named(from, deps)
-    for (const [name, version] of deps) link(from, dir, name, version)
+    for (const [name, version] of deps) link(from, `importer ${dir}`, dir, name, version)
   }
   for (const [key, deps] of lock.snapshots) {
     const from = index.get(key)!
     named(from, deps)
-    for (const [name, version] of deps) link(from, '.', name, version)
+    for (const [name, version] of deps) link(from, key, '.', name, version)
   }
   return { index, material, edges }
 }

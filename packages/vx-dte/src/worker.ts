@@ -488,7 +488,7 @@ export async function runWorker(opts: {
         command: m.command,
         forwardArgs: [],
         cwd: path.join(opts.root, m.cwd),
-        env: localEnv(m.env, root, opts.root),
+        env: localEnv(m.env, root, opts.root, m.unset),
         envDefine: {},
         // Both streams as one capture, in the order written, as core keeps a
         // run's: kept apart, a hit replayed every stdout line before the
@@ -522,6 +522,12 @@ export async function runWorker(opts: {
               })),
             }),
       }
+      // An untracked file under its project is one the orchestrator's key
+      // never read (it refuses one it keys), yet the command may: one a
+      // checkout left built into the output saved under the clean key, and
+      // every later run restored it (2026-11-07). Listed before the command,
+      // so a file the task writes is not taken for one it read.
+      const strays = await untrackedUnder(opts.root, m, [names(m.project, m.outputs), ...upstream])
       floor ??= newFloor()
       ui.print('out', ui.status('info', m.task, ui.dim('running')))
       const crowd = load.mark()
@@ -592,7 +598,10 @@ export async function runWorker(opts: {
       // it; this entry is withheld for any. Nor for an additive task that
       // removed an upstream's file: a hit left the file in place, and core
       // saves none once this machine removes it too (2026-10-24).
-      const changed = await changedTracked(opts.root, base.commit, m, names(m.project, m.outputs))
+      const changed = [
+        ...(await changedTracked(opts.root, base.commit, m, names(m.project, m.outputs))),
+        ...strays,
+      ]
       const now = await stamps([...found.keys()])
       const others = unchanged(found, now)
       const removed = [...found.keys()]
@@ -1066,6 +1075,38 @@ export async function changedTracked(
     .filter((f) => f !== '' && !output(f) && !m.nested.some((n) => f.startsWith(`${n}/`)))
 }
 
+/**
+ * Untracked files git does not ignore under the task's project,
+ * workspace-relative, those `held` matches (its outputs, its dependencies')
+ * and nested projects' aside.
+ */
+async function untrackedUnder(
+  root: string,
+  m: RunOrder,
+  held: readonly ((file: string) => boolean)[],
+): Promise<string[]> {
+  const p = Bun.spawn(
+    [
+      'git',
+      'ls-files',
+      '--others',
+      '--exclude-standard',
+      '-z',
+      '--',
+      m.project === '' ? '.' : `:(literal)${m.project}`,
+    ],
+    { cwd: root, stdin: 'ignore', stdout: 'pipe', stderr: 'ignore' },
+  )
+  const [out, exit] = await Promise.all([new Response(p.stdout).text(), p.exited])
+  // A git that could not say is no proof there are none.
+  if (exit !== 0) return [m.project === '' ? '.' : m.project]
+  return out
+    .split('\0')
+    .filter(
+      (f) => f !== '' && !held.some((h) => h(f)) && !m.nested.some((n) => f.startsWith(`${n}/`)),
+    )
+}
+
 /** The checkout's tracked files, relative to `root`; none outside git. */
 export function trackedFiles(root: string): Set<string> {
   const r = Bun.spawnSync(['git', 'ls-files', '-z'], { cwd: root, stderr: 'pipe' })
@@ -1095,23 +1136,25 @@ function available(): number {
 
 /**
  * The orchestrator's env for a task, made this machine's: its checkout root
- * swapped for ours, host names from our own env, and PATH our own behind
- * the workspace's bin directories.
+ * swapped for ours, host names from our own env but those its key folds as
+ * `unset`, and PATH our own behind the workspace's bin directories.
  */
 export function localEnv(
   env: Readonly<Record<string, string>>,
   remoteRoot: string,
   root: string,
+  unset: readonly string[] = [],
 ): Record<string, string | undefined> {
   // By path: a plain replace moved `/ws2` and `/private/ws` with `/ws`.
   const out: Record<string, string | undefined> = swapRoots({ ...env }, [[remoteRoot, root]])
-  // Sent only when the task's `env.define` names it: its value, as keyed.
+  // Sent only when the task's `env.define` names it or its `inputs.env`
+  // keys it: its value, as keyed.
   // Else this machine's manager, as core sets it on a local task.
-  if (!('npm_execpath' in out)) {
+  if (!('npm_execpath' in out) && !unset.includes('npm_execpath')) {
     const manager = packageManagerPath(root)
     if (manager !== null) out['npm_execpath'] = manager
   }
-  for (const k of HOST_ENV) if (!(k in out)) out[k] = process.env[k]
+  for (const k of HOST_ENV) if (!(k in out) && !unset.includes(k)) out[k] = process.env[k]
   const bins = (out['PATH'] ?? '').split(':').filter((p) => p === root || p.startsWith(`${root}/`))
   out['PATH'] = [...bins, process.env['PATH'] ?? ''].join(':')
   return out

@@ -52,11 +52,16 @@ From setup on, the held listener notes the first signal. `forwardSignals` takes 
 and replays a signal already heard, so the stop is the one above; a run
 that leaves before it (a refusal, a setup that threw) exits of the
 signal from `run()`'s finally (`exitOfSignal`), its plugins torn down
-and its lock released. A second signal in the window exits at once
+and its lock released. A setup or executor factory that never settles
+does not hold the first signal: `unlessStopped` ends its wait, and the
+run tears every plugin down and exits of the signal. It held it, so only
+a second signal (a CI's KILL after its TERM) ended vx, with no teardown
+(2026-11-07). A second signal in the window exits at once
 (`tests/plugin-teardown.test.ts` › "a signal during a plugin setup
-tears it down, leaves no lock, and exits 130", "a signal heard before a
-setup throws still exits 130", "a signal while waiting for the run lock
-leaves before any plugin setup").
+tears it down, leaves no lock, and exits 130", "one SIGTERM during a
+setup that hangs tears every plugin down and exits 143", "a signal heard
+before a setup throws still exits 130", "a signal while waiting for the
+run lock leaves before any plugin setup").
 
 The group, not the pid (`exec/kill-tree.ts`, item 236): a task is
 spawned into its own session, so what it forked dies with it — and so
@@ -129,6 +134,7 @@ export interface HeldSignals {
 }
 export function holdSignals(): HeldSignals // from the run lock on; a second signal exits at once
 export async function exitOfSignal(signal: StopSignal): Promise<never> // stdout drained, then die of it
+export function unlessStopped<T>(work: Promise<T>, signal: AbortSignal | undefined): Promise<T> // rejects once signal aborts
 ```
 
 A vx started with SIGHUP ignored (`nohup`, a supervisor) installs no

@@ -140,8 +140,22 @@ const SMALL_ANSWER_BYTES = 64 * 1024
  */
 const QUERY_BYTES_PER_HASH = 2048
 
-/** A refusal, named by its status and the server's own `message`. */
-async function refusal(res: Response): Promise<Error> {
+/** Shorter values are not hidden, as core masks none under 6 characters: each would blank common words. */
+const MIN_TOKEN_CHARS = 6
+
+/** `text` with each of `tokens` written `***`. */
+function hideTokens(text: string, tokens: Iterable<string>): string {
+  let out = text
+  for (const token of tokens)
+    if (token.length >= MIN_TOKEN_CHARS) out = out.replaceAll(token, '***')
+  return out
+}
+
+/**
+ * A refusal, named by its status and the server's own `message`, each
+ * token `hide` knows written `***` before the cut, so none is left in part.
+ */
+async function refusal(res: Response, hide: (text: string) => string): Promise<Error> {
   // quiet: with the body unread, the status alone names the refusal
   const { text } = await upTo(res, 2048).catch(() => ({ text: '' }))
   let said = text
@@ -151,7 +165,7 @@ async function refusal(res: Response): Promise<Error> {
   } catch {
     // quiet: not JSON, so the text is what it said
   }
-  said = printable(said.replace(/\s+/g, ' ').trim().slice(0, 200))
+  said = printable(hide(said).replace(/\s+/g, ' ').trim().slice(0, 200))
   return new Error(`HTTP ${res.status}${said === '' ? '' : `: ${said}`}`)
 }
 
@@ -175,9 +189,15 @@ async function jsonOf(res: Response, path: string, max: number): Promise<unknown
  */
 async function redirected(res: Response, from: string): Promise<Error> {
   await res.body?.cancel()
-  const to = res.headers.get('location')
+  const location = res.headers.get('location')
+  const to = location === null ? null : new URL(location, from)
+  // A relative Location keeps the url's `user:pass@`, and the error reaches the CI log.
+  if (to !== null && to.username + to.password !== '') {
+    to.username = '***'
+    to.password = ''
+  }
   return new Error(
-    `HTTP ${res.status}${to === null ? '' : ` to ${new URL(to, from).href}`}: not followed, as it would carry the server's headers; name the server's own URL`,
+    `HTTP ${res.status}${to === null ? '' : ` to ${to.href}`}: not followed, as it would carry the server's headers; name the server's own URL`,
   )
 }
 
@@ -221,6 +241,25 @@ export class HistoryServer {
   private held: { jwt: string; exp: number } | undefined
   // A refused token is refused again: the run's later calls stay unasked and unsaid.
   private refused = false
+  /**
+   * Every token this client sent: a server that quoted a request's
+   * Authorization header in its refusal printed it to the CI log, as core
+   * masks only secret-named variables.
+   */
+  private readonly sent = new Set<string>()
+  private readonly hidden = (text: string): string => hideTokens(text, this.sent)
+
+  /** `work`, each error it throws with every token sent hidden: the one way an error leaves the client. */
+  private async guard<T>(work: Promise<T>): Promise<T> {
+    try {
+      return await work
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      const hidden = this.hidden(message)
+      if (hidden === message) throw err
+      throw new Error(hidden)
+    }
+  }
 
   constructor(
     readonly url: string,
@@ -252,7 +291,8 @@ export class HistoryServer {
       const u = new URL(ask)
       u.searchParams.set('audience', new URL(this.url).origin)
       const res = await this.askGithub(u, signal)
-      if (!res.ok) throw new Error(`GitHub's OIDC endpoint: ${(await refusal(res)).message}`)
+      if (!res.ok)
+        throw new Error(`GitHub's OIDC endpoint: ${(await refusal(res, this.hidden)).message}`)
       const { text, over } = await upTo(res, SMALL_ANSWER_BYTES)
       if (over) throw new Error(`GitHub's OIDC endpoint: answered over ${SMALL_ANSWER_BYTES} bytes`)
       let jwt: unknown
@@ -302,6 +342,7 @@ export class HistoryServer {
 
   /** GitHub's OIDC endpoint: a 4xx is final. */
   private askGithub(ask: URL, signal?: AbortSignal): Promise<Response> {
+    this.sent.add(this.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN ?? '')
     return this.tried(
       () =>
         this.fetchImpl(ask, {
@@ -322,8 +363,10 @@ export class HistoryServer {
     body?: unknown,
     signal?: AbortSignal,
     sized?: { count: number; header: string },
+    answered?: (status: number | undefined) => void,
   ): Promise<Response> {
     const bearer = this.writes ? await this.bearer(signal) : ''
+    if (bearer !== '') this.sent.add(bearer)
     const json = body === undefined ? undefined : JSON.stringify(body)
     // A 500 is the server's own failure, maybe after the fold: sent again, a
     // run would count twice. The edge's 502, 503 and 504 and a 429 come
@@ -331,8 +374,9 @@ export class HistoryServer {
     // would add seconds to every run's end.
     const url = `${this.url}${path}`
     const res = await this.tried(
-      () =>
-        this.fetchImpl(url, {
+      () => {
+        answered?.(undefined)
+        return this.fetchImpl(url, {
           method: json === undefined ? 'GET' : 'POST',
           headers: {
             ...this.headers,
@@ -342,13 +386,17 @@ export class HistoryServer {
           ...(json === undefined ? {} : { body: json }),
           signal: deadline(signal),
           redirect: 'manual',
-        }),
+        }).then((r) => {
+          answered?.(r.status)
+          return r
+        })
+      },
       (status) => status !== undefined && (status === 429 || (status >= 502 && status <= 504)),
     )
     if (res.status >= 300 && res.status < 400) throw await redirected(res, url)
     if (res.status === 401 && bearer === '') {
       // Off CI: the bare 401 said nothing of why or what to do (2026-10-26).
-      const err = await refusal(res)
+      const err = await refusal(res, this.hidden)
       const fix =
         this.env.GITHUB_ACTIONS === 'true'
           ? 'give the job `permissions: id-token: write`'
@@ -360,7 +408,7 @@ export class HistoryServer {
     if (res.status === 401) {
       // The bare "HTTP 401: wrong audience" named neither what was sent nor what to check.
       this.refused = true
-      const err = await refusal(res)
+      const err = await refusal(res, this.hidden)
       throw new Error(
         `${err.message}: the token was refused (this workspace names ${this.named.repository} at ${this.named.issuer}; the server's ALLOW must name it, and the token's audience be ${new URL(this.url).origin}); the history server is off for this run`,
       )
@@ -371,7 +419,7 @@ export class HistoryServer {
         await res.body?.cancel()
         throw new TooMany(max)
       }
-      throw await refusal(res)
+      throw await refusal(res, this.hidden)
     }
     return res
   }
@@ -429,7 +477,7 @@ export class HistoryServer {
   /** Each held hash's numbers under the first of `refs` that holds them, and the flaky ones: one request a run. */
   async query(refs: readonly string[], hashes: readonly string[]): Promise<Answer> {
     if (hashes.length === 0 || this.refused) return { timings: new Map(), flaky: new Set() }
-    const parts = await this.parts(hashes, 'vx-max-query-hashes', true, async (part, sized) => {
+    const asked = this.parts(hashes, 'vx-max-query-hashes', true, async (part, sized) => {
       const res = await this.call(
         '/v1/timings/query',
         { ...this.named, refs, hashes: part },
@@ -453,6 +501,7 @@ export class HistoryServer {
         flaky,
       }
     })
+    const parts = await this.guard(asked)
     // Only numbers a server folds (PROTOCOL.md): `1e309` parses to Infinity,
     // and kept as a forecast it made a NaN weight that failed every later
     // run of the cache in `schedule`.
@@ -472,27 +521,32 @@ export class HistoryServer {
 
   /**
    * The run's timings, by task definition hash, and its outcomes, in
-   * uploads the server takes; `stop` abandons them.
+   * uploads the server takes; `stop` abandons them. `answered` hears each
+   * try's status, undefined as it is sent.
    */
   async upload(
     timings: ReadonlyMap<string, ServerTiming>,
     stop?: AbortSignal,
     outcomes: readonly ServerOutcome[] = [],
+    answered?: (status: number | undefined) => void,
   ): Promise<void> {
     if ((timings.size === 0 && outcomes.length === 0) || this.refused) return
     const all = [...timings].map(([hash, t]) => ({ hash, ...t }))
     const at = Array.from({ length: Math.max(all.length, outcomes.length) }, (_, i) => i)
     // A refused upload folded nothing: sent again in parts, none counts twice.
-    await this.parts(at, 'vx-max-upload-timings', false, (part, sized) => {
-      const from = part[0] ?? 0
-      const to = from + part.length
-      const some = outcomes.slice(from, to)
-      return this.call(
-        '/v1/timings/upload',
-        { timings: all.slice(from, to), ...(some.length > 0 ? { outcomes: some } : {}) },
-        stop,
-        sized,
-      )
-    })
+    await this.guard(
+      this.parts(at, 'vx-max-upload-timings', false, (part, sized) => {
+        const from = part[0] ?? 0
+        const to = from + part.length
+        const some = outcomes.slice(from, to)
+        return this.call(
+          '/v1/timings/upload',
+          { timings: all.slice(from, to), ...(some.length > 0 ? { outcomes: some } : {}) },
+          stop,
+          sized,
+          answered,
+        )
+      }),
+    )
   }
 }

@@ -43,11 +43,13 @@ export function configImportOwners(a: ConfigImportOwnersArgs): Promise<ConfigImp
 
 /** Every file a config imports by local specifier, transitively, outside
  *  `node_modules`, the config excluded; an unresolved one by the names it would have.
- *  `configSource` spares the config's read; `read` reads the rest. */
+ *  `configSource` spares the config's read; `read` reads the rest; `statics` gets
+ *  the files reached through static imports alone (the loader's `ModuleWatch`). */
 export async function configImports(
   configPath: string,
   configSource?: string,
   read?: (file: string) => Promise<string>,
+  statics?: Set<string>,
 ): Promise<string[]>
 ```
 

@@ -29,7 +29,7 @@ import {
 } from '@vzn/vx'
 import { deadline, MAX_TIMER_MS } from '../remote-deadline.js'
 import { checkRemoteUrl } from '../remote-url.js'
-import { refusal } from '../remote-refusal.js'
+import { hideTokens, hidingErrors, refusal } from '../remote-refusal.js'
 import { keyedByRef, readScopes, remoteScope, type RemoteScope } from './scope.js'
 import { OutageBreaker } from '../remote-breaker.js'
 import { Cooldown, withRetry } from '../remote-retry.js'
@@ -588,8 +588,14 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     }
   }
 
+  /** Every bearer a request carried: a refusal that quotes one says `***`. */
+  private readonly sent = new Set<string>()
+  private readonly hidden = (text: string): string => hideTokens(text, this.sent)
+
   private bearer(): string | undefined {
-    return this.borrowed?.() ?? this.token
+    const token = this.borrowed?.() ?? this.token
+    if (token !== undefined) this.sent.add(token)
+    return token
   }
 
   private url(pathname: string): string {
@@ -619,7 +625,9 @@ export class TurboRemoteCache implements RemoteCacheLayer {
    * never reaches a third-party store. The answer's status is not read, as
    * in Turbo. A redirect is not followed: its `Location` is the answer, and
    * the token's verdict stays the API's. Following one let the redirected
-   * host's `Access-Control-Allow-Headers` admit the token to itself.
+   * host's `Access-Control-Allow-Headers` admit the token to itself. A
+   * `Location` that is not http(s), or plain http the token would go to
+   * from an https API, is a request error.
    */
   private async preflight(
     url: string,
@@ -641,12 +649,21 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     await res.body?.cancel()
     const location = res.headers.get('location')
     const allowed = res.headers.get('access-control-allow-headers') ?? ''
-    return {
-      url: location === null ? url : new URL(location, this.config.url).toString(),
-      auth:
-        allowed.trim() === '*' ||
-        allowed.split(',').some((h) => h.trim().toLowerCase() === 'authorization'),
-    }
+    const auth =
+      allowed.trim() === '*' ||
+      allowed.split(',').some((h) => h.trim().toLowerCase() === 'authorization')
+    if (location === null) return { url, auth }
+    const to = new URL(location, this.config.url)
+    // `checkRemoteUrl` saw only the configured URL. A `file:` Location read
+    // a local file as the artifact, and a PUT to it "succeeded" storing
+    // nothing.
+    if (to.protocol !== 'http:' && to.protocol !== 'https:')
+      throw new Error(`the preflight pointed at ${to.protocol}, not an http(s) URL`)
+    if (auth && to.protocol === 'http:' && new URL(this.config.url).protocol === 'https:')
+      throw new Error(
+        `the preflight pointed an https API at ${to.origin}, which would send the token in the clear`,
+      )
+    return { url: to.toString(), auth }
   }
 
   /**
@@ -666,27 +683,30 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     const signal = () => (timeoutMs === 0 ? undefined : deadline(timeoutMs))
     // The batch query is never preflighted, as in Turbo.
     const preflight = this.config.preflight && method !== 'POST'
-    const res = await this.breaker.send(
-      () =>
-        withRetry(
-          async () => {
-            const extra = init.headers ?? {}
-            const to = preflight
-              ? await this.preflight(this.url(pathname), method, extra, signal)
-              : { url: this.url(pathname), auth: true }
-            const s = signal()
-            return this.fetchImpl(to.url, {
-              method,
-              headers: this.headers(extra, to.auth),
-              ...(init.body === undefined ? {} : { body: init.body }),
-              ...(s === undefined ? {} : { signal: s }),
-            })
-          },
-          this.config.retries,
-          this.wait,
-          this.cooldown,
-        ),
-      method === 'GET',
+    const res = await hidingErrors(
+      this.breaker.send(
+        () =>
+          withRetry(
+            async () => {
+              const extra = init.headers ?? {}
+              const to = preflight
+                ? await this.preflight(this.url(pathname), method, extra, signal)
+                : { url: this.url(pathname), auth: true }
+              const s = signal()
+              return this.fetchImpl(to.url, {
+                method,
+                headers: this.headers(extra, to.auth),
+                ...(init.body === undefined ? {} : { body: init.body }),
+                ...(s === undefined ? {} : { signal: s }),
+              })
+            },
+            this.config.retries,
+            this.wait,
+            this.cooldown,
+          ),
+        method === 'GET',
+      ),
+      this.hidden,
     )
     if (method === 'PUT' && res.status === 403) {
       const first = !this.writesRefused
@@ -695,14 +715,14 @@ export class TurboRemoteCache implements RemoteCacheLayer {
       // The status and the server's own words (`refusal`): a scope it
       // refuses and a token it no longer takes read alike.
       throw new Error(
-        `${(await refusal(res)).message}: the upload was refused (a read-only token or server); uploads off for this run, reads go on`,
+        `${(await refusal(res, this.hidden)).message}: the upload was refused (a read-only token or server); uploads off for this run, reads go on`,
       )
     }
     if (res.status === 401 || res.status === 403) {
       const first = !this.disabled
       this.disabled = true
       if (!first) return undefined
-      const said = (await refusal(res)).message
+      const said = (await refusal(res, this.hidden)).message
       if (this.forget === undefined)
         throw new Error(`${said}: the token was refused; remote cache off for this run`)
       await this.forget()
@@ -764,7 +784,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
         await res.body?.cancel()
         return null
       }
-      throw await refusal(res, 'batch query answered ')
+      throw await refusal(res, this.hidden, 'batch query answered ')
     }
     // An answer per hash is a few hundred bytes of ArtifactInfo; a reply
     // past this bound is no answer, read no further than the bound (L-9).
@@ -820,7 +840,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
         this.absent.add(hash)
         return null
       }
-      throw await refusal(res)
+      throw await refusal(res, this.hidden)
     }
     this.served.add(hash)
     const duration = Number(res.headers.get('x-artifact-duration'))
@@ -912,7 +932,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     if (res === undefined) return false
     // Turbo's client takes any 2xx (`error_for_status`); a server's 201 or
     // 204 stored the artifact and was counted a failed upload.
-    if (!res.ok) throw await refusal(res)
+    if (!res.ok) throw await refusal(res, this.hidden)
     this.absent.delete(hash)
     this.served.delete(hash)
   }

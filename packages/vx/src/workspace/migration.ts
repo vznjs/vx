@@ -5,7 +5,7 @@
 // whichever tool wrote it. Core knows no source format here: a mapper returns a
 // `MigrationPlan` and this file does the rest.
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { workspaceFileWritten } from '../handoff.js'
@@ -22,6 +22,31 @@ import {
 import * as ui from '../ui/index.js'
 import { VERSION } from '../version.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
+
+/**
+ * The nearest existing directory at or above `dir` (under `root`) and its
+ * real path when that path is outside `realRoot`; none when it is inside.
+ */
+function linkOut(
+  root: string,
+  realRoot: string,
+  dir: string,
+): [link: string | undefined, real: string] {
+  for (let at = dir; ; at = path.dirname(at)) {
+    let real: string
+    try {
+      real = realpathSync(at)
+    } catch {
+      // quiet: not made yet; mkdir makes it a real directory under its parent
+      if (at === root) return [undefined, realRoot]
+      continue
+    }
+    const rel = path.relative(realRoot, real)
+    return rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)
+      ? [at, real]
+      : [undefined, real]
+  }
+}
 
 /** The root config `vx init` writes outside a Turbo or Nx repo: no task yet. */
 export function starterProject(format: MigrationFormat): string {
@@ -354,10 +379,21 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
 
   // A plan is a mapper's reading of the repo's own files (an Nx node's
   // `root`, a workspace glob): one that names `../x` wrote outside it.
+  // A member directory linked out of the root is spelled inside it, so the
+  // real directory is asked too: core's discovery never loads a config
+  // there. `.vx` itself may be a link.
+  const realRoot = realpathSync(root)
   for (const f of files) {
     const rel = relPosix(root, f.abs)
     if (rel === '..' || rel.startsWith('../') || path.isAbsolute(rel)) {
       throw new UserError(`${f.relPath}: outside the workspace root`)
+    }
+    if (rel.startsWith('.vx/')) continue
+    const [link, real] = linkOut(root, realRoot, path.dirname(f.abs))
+    if (link !== undefined) {
+      throw new UserError(
+        `${f.relPath}: outside the workspace root (${relPosix(root, link)} resolves to ${real}); vx loads no project there`,
+      )
     }
   }
 

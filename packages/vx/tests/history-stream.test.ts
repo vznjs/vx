@@ -13,6 +13,8 @@ import { addProject, makeWorkspace } from './helpers/workspace.js'
 import type { Logger } from '../src/report/index.js'
 
 const T = Date.now()
+// Tasks in a run test: enough confirmed hits that the run starts a thread.
+const N = 2_100
 
 const quiet: Logger = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
 
@@ -44,7 +46,7 @@ afterEach(async () => {
 
 it('writes full batches on its thread and hands back the rest', async () => {
   const cache = new Cache(path.join(dir, 'cache'))
-  const stream = new HistoryStream<number>(historyFiles(cache)!)
+  const stream = new HistoryStream<number>(historyFiles(cache)!, 2_048)
   for (let i = 0; i < 1_100; i++) stream.add(i, hit(i))
   const { landed, unlanded } = await stream.finish()
   const db = indexDb(cache)
@@ -75,14 +77,14 @@ it('writes full batches on its thread and hands back the rest', async () => {
 it('a restoring CLI run waits for its thread', async () => {
   const root = await makeWorkspace({ dir })
   const tasks = Array.from(
-    { length: 600 },
+    { length: N },
     (_, i) =>
       `t${i}: { exec: { command: 'mkdir -p o${i} && echo ${i} > o${i}/f' }, inputs: { files: ['package.json'] }, outputs: { files: ['o${i}/**'] }, cache: true }`,
   )
   const proj = await addProject(root, 'p', `export default { tasks: { ${tasks.join(', ')} } }`)
-  const names = Array.from({ length: 600 }, (_, i) => `t${i}`)
+  const names = Array.from({ length: N }, (_, i) => `t${i}`)
   expect((await run({ cwd: root, tasks: names, log: quiet })).ok).toBe(true)
-  for (let i = 0; i < 600; i++) await rm(path.join(proj, `o${i}`), { recursive: true })
+  for (let i = 0; i < N; i++) await rm(path.join(proj, `o${i}`), { recursive: true })
   const bin = path.join(import.meta.dir, '..', 'src', 'bin.ts')
   const p = Bun.spawnSync(['bun', bin, 'run', ...names, '--all'], {
     cwd: root,
@@ -94,17 +96,33 @@ it('a restoring CLI run waits for its thread', async () => {
   expect([p.exitCode, out.includes('never settle')]).toEqual([0, false])
 }, 60_000)
 
-it('leaves a run with fewer hits than a batch to its bundle', async () => {
+// A thread's start cost more than it saved below ~2,000 hits: 1,000
+// warm projects, median 170 ms with it, 150 without (2026-11-07).
+it('leaves a run expecting fewer hits than a thread is worth to its bundle', async () => {
   const cache = new Cache(path.join(dir, 'cache'))
-  const stream = new HistoryStream<number>(historyFiles(cache)!)
-  for (let i = 0; i < 10; i++) stream.add(i, hit(i))
+  const stream = new HistoryStream<number>(historyFiles(cache)!, 2_047)
+  for (let i = 0; i < 1_100; i++) stream.add(i, hit(i))
+  const { landed, unlanded } = await stream.finish()
+  const rows = (indexDb(cache).query('SELECT COUNT(*) AS n FROM runs').get() as { n: number }).n
+  cache.close()
+  expect([landed.length, unlanded.length, rows]).toEqual([0, 1_100, 0])
+})
+
+// Hits the run did not expect (a remote's) count too, once they reach it.
+it('starts its thread at the hit that reaches the threshold', async () => {
+  const cache = new Cache(path.join(dir, 'cache'))
+  const stream = new HistoryStream<number>(historyFiles(cache)!, 0)
+  for (let i = 0; i < 2_100; i++) stream.add(i, hit(i))
   const { landed, unlanded } = await stream.finish()
   cache.close()
-  expect([landed.length, unlanded.length]).toEqual([0, 10])
+  expect([landed.length, unlanded.length]).toEqual([2_048, 52])
 })
 
 it('hands back every row when its thread cannot write', async () => {
-  const stream = new HistoryStream<number>({ index: path.join(dir, 'no', 'such', 'cache.db') })
+  const stream = new HistoryStream<number>(
+    { index: path.join(dir, 'no', 'such', 'cache.db') },
+    2_048,
+  )
   for (let i = 0; i < 1_100; i++) stream.add(i, hit(i))
   const { landed, unlanded } = await stream.finish()
   expect([landed.length, unlanded.length]).toEqual([0, 1_100])
@@ -119,14 +137,14 @@ it('keeps no history files for a store that writes none', () => {
 
 it('records each task of a warm run once, the streamed hits beside the bundle', async () => {
   const root = await makeWorkspace({ dir })
-  // More hits than a batch, so the run streams one and bundles the rest.
+  // Enough hits for a thread: it streams whole batches, the bundle the rest.
   const tasks = Array.from(
-    { length: 600 },
+    { length: N },
     (_, i) =>
       `t${i}: { exec: { command: 'true' }, inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true }`,
   )
   await addProject(root, 'p', `export default { tasks: { ${tasks.join(', ')} } }`)
-  const names = Array.from({ length: 600 }, (_, i) => `t${i}`)
+  const names = Array.from({ length: N }, (_, i) => `t${i}`)
   expect((await run({ cwd: root, tasks: names, log: quiet })).ok).toBe(true)
   const warm = await run({ cwd: root, tasks: names, log: quiet })
   expect(warm.outcomes.every((o) => o.status === 'cache-hit')).toBe(true)
@@ -145,7 +163,7 @@ it('records each task of a warm run once, the streamed hits beside the bundle', 
     .query('SELECT COUNT(*) AS n, COUNT(DISTINCT task) AS tasks FROM runs WHERE run_id = ?')
     .get(last.run_id)
   cache.close()
-  expect([last.task_count, last.hit_count, rows]).toEqual([600, 600, { n: 600, tasks: 600 }])
+  expect([last.task_count, last.hit_count, rows]).toEqual([N, N, { n: N, tasks: N }])
 }, 60_000)
 
 // A compiled vx carries only the entry points its build names: a thread's

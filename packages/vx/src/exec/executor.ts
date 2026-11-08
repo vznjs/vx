@@ -254,10 +254,11 @@ export interface ExecuteResult extends RunResult {
    */
   readonly outputs?: { kind: 'disk' } | { kind: 'deferred'; materialize: () => Promise<void> }
   /**
-   * Tracked files the command changed where it ran, workspace-relative
-   * POSIX: an executor that runs it elsewhere says so, as this disk shows
-   * none of it. One the key read withholds the save under the key, as an
-   * input changed here does.
+   * Tracked files the command changed where it ran, and untracked ones it
+   * found there, workspace-relative POSIX: an executor that runs it
+   * elsewhere says so, as this disk shows none of it. One the key read, or
+   * one its inputs declare, withholds the save under the key, as an input
+   * changed here does.
    */
   readonly changed?: readonly string[]
   /**

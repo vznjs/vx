@@ -29,9 +29,11 @@ import {
 import {
   checkIgnoreSync,
   executablePath,
+  gitCaseArgs,
   gitEnv,
   gitFailure,
   gitSpawnRefusal,
+  ignoreCaseLies,
   isInstalledPath,
   notAWorkTree,
   relPosix,
@@ -54,7 +56,7 @@ export function newFilesIgnoredIn(root: string, dirs: readonly string[]): Set<st
   return new Set(dirs.filter((_, i) => hit?.has(probes[i]!) === true))
 }
 
-/** Three facts of the repository a directory is in: read off the disk, or one `git rev-parse`. */
+/** The facts of the repository a directory is in: read off the disk, or one `git rev-parse`. */
 export interface RepoFacts {
   /** `--show-prefix`: the directory's path below the worktree root, `''` at the root. */
   prefix: string
@@ -64,6 +66,8 @@ export interface RepoFacts {
   objectFormat: 'sha1' | 'sha256'
   /** `--git-path index` (it honours `GIT_INDEX_FILE`), relative to the directory asked. */
   indexFile: string
+  /** `--absolute-git-dir`: the per-worktree git dir, which the sandbox walls off when it lies outside. */
+  gitDir: string
 }
 
 const repoFactsMemo = new Map<string, RepoFacts>()
@@ -95,6 +99,7 @@ export function repoFacts(dir: string): RepoFacts | null {
         '--show-object-format',
         '--git-path',
         'index',
+        '--absolute-git-dir',
       ],
       env: gitEnv(),
       cwd: dir,
@@ -108,9 +113,12 @@ export function repoFacts(dir: string): RepoFacts | null {
   // One line per flag, in order. A git that does not know
   // `--show-object-format` echoes it back, as it does any unknown flag,
   // which reads as sha1 — what the flag's own spawn answered there too.
-  const [prefix = '', commonDir = '', format = '', indexFile = ''] = new TextDecoder('utf-8', {
-    ignoreBOM: true,
-  })
+  const [prefix = '', commonDir = '', format = '', indexFile = '', gitDir = ''] = new TextDecoder(
+    'utf-8',
+    {
+      ignoreBOM: true,
+    },
+  )
     .decode(proc.stdout)
     .split('\n')
     .map((l) => l.trim())
@@ -119,6 +127,7 @@ export function repoFacts(dir: string): RepoFacts | null {
     commonDir,
     objectFormat: format === 'sha256' ? 'sha256' : 'sha1',
     indexFile,
+    gitDir,
   }
   repoFactsMemo.set(dir, facts)
   return facts
@@ -185,6 +194,7 @@ function repoFactsFromDisk(dir: string): RepoFacts | undefined {
           commonDir: relPosix(real, dotGit),
           objectFormat,
           indexFile: path.relative(real, path.join(dotGit, 'index')).split(path.sep).join('/'),
+          gitDir: dotGit,
         }
       }
       const parent = path.dirname(at)
@@ -347,7 +357,8 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   /**
    * Under `core.ignorecase` (macOS's default volume) git's `Foo.txt` is the
    * disk's `foo.txt` after a rename git never saw, so paths are compared
-   * case-folded. Decided at the first note: the run's `git var -l`, else
+   * case-folded. Decided at the first note: the run's `git var -l` (false
+   * there when the disk does not fold case, `ignoreCaseLies`), else
    * the platform.
    */
   private foldCase: boolean | undefined
@@ -813,7 +824,16 @@ export function runGitLsFiles(cwd: string, env = gitEnv()): GitLsResult {
   let proc
   try {
     proc = Bun.spawnSync({
-      cmd: [executablePath('git'), 'ls-files', '-s', '--others', '--exclude-standard', '-z', '.'],
+      cmd: [
+        executablePath('git'),
+        ...gitCaseArgs(cwd),
+        'ls-files',
+        '-s',
+        '--others',
+        '--exclude-standard',
+        '-z',
+        '.',
+      ],
       env,
       cwd,
       stdout: 'pipe',
@@ -2069,9 +2089,10 @@ export async function startGitEnumeration(
   // any other, and the filter gate below must see it (A-19).
   // `--no-renames`: a deletion paired as an unmerged path's rename source
   // prints only as `UU <path>`, and the deleted file stayed trusted (A-59).
-  const spawnStatus = (index: string | undefined) =>
+  const spawnStatus = (index: string | undefined, args: readonly string[] = []) =>
     spawnGit(
       [
+        ...args,
         'status',
         '--porcelain',
         '-z',
@@ -2109,7 +2130,23 @@ export async function startGitEnumeration(
     attributesInIndex({ tracked: parsedLs.files, workspaceRoot, gitDir, gitPrefix, pathspecs })
       ? spawnGit(CHECK_ATTR, [...parsedLs.oids.keys()].join('\0'))
       : undefined
-  const [, status, vars] = await running
+  const [, firstStatus, gitVars] = await running
+  // `core.ignorecase` is known only once `var` answers, so a status run
+  // under a setting the disk does not hold is run again without it: a
+  // cost only that misconfigured repository pays.
+  const caseBlind =
+    facts !== null &&
+    gitVars !== null &&
+    gitVars.exitCode === 0 &&
+    gitVars.stdout.includes('core.ignorecase') &&
+    gitBool(gitVarList(gitVars.stdout).get('core.ignorecase')) === true &&
+    ignoreCaseLies(workspaceRoot, path.resolve(workspaceRoot, gitDir, 'HEAD'))
+  const status = caseBlind ? await spawnStatus(statusCopy, gitCaseArgs(workspaceRoot)) : firstStatus
+  // The listing as git reads it with the override, which `trackedKey` reads too.
+  const vars =
+    caseBlind && gitVars !== null
+      ? { ...gitVars, stdout: `${gitVars.stdout}core.ignorecase=false\n` }
+      : gitVars
   const indexMoved = indexStamp() !== stampBefore
   // The key stands for the index `ls-files` listed only when that index
   // was written before the enumeration began (git writes it by rename, so

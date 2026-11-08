@@ -51,6 +51,7 @@ export async function sandboxRequestFor(
   cacheDir?: string, // the run's cache dir, walled wherever it is
   dependencyOutputs?: readonly string[], // dependencyReads().reads: the dependencies' outputs it may read
   dependencyReported?: readonly string[], // dependencyReads().reported: heads whose refused reads are reported
+  nestedOf?: (projectDir: string) => readonly string[], // keyed-projects.ts nestedDirsOf: a granted package's nested projects
 ): Promise<SandboxRequest>
 export interface DependencyReads {
   readonly reads: readonly string[] // the paths to bind: output files, or directories wholly outputs
@@ -169,7 +170,11 @@ export function mayWriteFingerprint(
   the workspace root's, plus the real path of every workspace link in
   them (one level, and one level inside `@scope/`): a dependency is
   not a reach-out. Never a link to the task's own project or a
-  directory holding it. Each granted target's own `node_modules` is
+  directory holding it, nor to `.git`, a directory holding it or one
+  inside it. A `node_modules` that is itself a link (`ln -s ..
+node_modules`, `-> ../b`) is judged by its target the same way: bound
+  as given, it granted the workspace root, `.git` or an unkeyed sibling,
+  and an edit there was a stale hit. Each granted target's own `node_modules` is
   scanned the same way: pnpm and Bun link ui's workspace dependency
   core only under ui's, so `app -> ui -> core` hid core and app's import
   of ui failed with ENOENT and no violation (2026-10-08). A withheld
@@ -178,15 +183,20 @@ export function mayWriteFingerprint(
   (2026-09-24). For a task with `cache`, a link target inside the
   workspace root is granted only when it IS the directory of a project
   in `keyed` (keyed-projects.ts: the projects whose tasks the key folds);
-  every other one is withheld. A target outside the root is outside the
+  every other one is withheld. A granted one's nested projects
+  (`nestedOf`) are walled unless keyed too: its key stops at them, so a
+  read of `node_modules/b/c/x` and an edit there was a stale hit. On
+  Linux the grant is punched around them (`punchWalls`); on macOS they
+  are denied. A target outside the root is outside the
   deny anchor, so granting it is a no-op. Both sides of every comparison
   are canonical (a root reached through a link, macOS's `/var`). A task
   with no `cache`, and every persistent task, keeps the whole grant.
 - **Enforcement anchors at the workspace root, reporting at the
   project and the withheld packages.** Every sibling and root file is
-  denied; only denials inside the project's own directory, or under a
-  withheld package (`reportLinked`), are reported, because those are
-  the reads the cache key never folded.
+  denied; only denials inside the project's own directory, under a
+  withheld package, or under a granted package's walled nested project
+  (`reportLinked`), are reported, because those are the reads the cache
+  key never folded.
 - **Binds need paths.** bwrap silently no-ops a bind on a missing path,
   so declared write paths are pre-created: a glob's static prefix or a
   literal ending in `/` as a directory, any other literal as an empty
@@ -205,6 +215,15 @@ export function mayWriteFingerprint(
   A file where a grant needs a directory (`out.txt/` over a file,
   `a.txt/x/*.js`) refuses the task with the grant and the file named, its
   placeholders taken back; it was an internal error (X-81).
+- **The repository outside the workspace is walled.** A workspace below
+  the git top-level, or in a linked worktree (vx-dte's `local()`), keeps
+  its git dir outside, and `git --git-dir` read any project's committed
+  bytes into an output no key answered for. The git dir and common dir
+  (`repoFacts`, the memo the run's enumeration filled: no spawn of its
+  own) are sealed walls and read denies on both platforms; the top-level
+  and a worktree's main checkout are denied around the workspace and the
+  write grants (`denyAround`), unless the tree holds home
+  (`sandbox-outside-git.unsafe.test.ts`).
 
 ## Tests
 
@@ -212,7 +231,8 @@ export function mayWriteFingerprint(
 job runs them with `VX_REQUIRE_SANDBOX=1`); `tests/sandbox-request.test.ts`
 for the pre-created paths, the sweep and the exact link grant (uncached,
 keyed, keyed on nothing, each through a symlinked root; a transitive
-link under a dependency's own `node_modules`);
+link under a dependency's own `node_modules`; a `node_modules` that is a link;
+a linked package's nested projects);
 `tests/execute-task*.test.ts` for the request shape;
 `tests/undeclared-writes.test.ts` for `undeclaredWriteReach`, each
 grant shape.

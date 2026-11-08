@@ -2409,6 +2409,7 @@ export interface RunOptions {
   holdPersistent?: boolean
   watch?: boolean
   keep?: HeldPersistent
+  commandWindows?: CommandWindows
   summaryTable?: boolean
   tty?: boolean
   log?: Logger
@@ -2752,6 +2753,7 @@ export async function sandboxRequestFor(
   cacheDir?: string,
   dependencyOutputs: readonly string[] = [],
   dependencyReported: readonly string[] = [],
+  nestedOf: (projectDir: string) => readonly string[] = () => [],
 ): Promise<SandboxRequest>
 ```
 

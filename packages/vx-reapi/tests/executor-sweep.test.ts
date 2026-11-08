@@ -1150,6 +1150,25 @@ describe.if(CHUNKING_SUPPORTED)('the Action it builds, beyond the Action', () =>
     }
   })
 
+  it('a server that answers EXECUTING and hangs up on every attach is ended by the stall bound', async () => {
+    // Such an attach delivered an operation, so it spends no retry budget;
+    // only the task's stall bound ends the loop.
+    fake.onExecute = () => ({ stages: ['EXECUTING'], endEarly: true })
+    const refused = await withExecutor(
+      (run) =>
+        refusal(
+          Promise.race([
+            run(request()),
+            Bun.sleep(5000).then(() => {
+              throw new Error('the loop outlived the stall')
+            }),
+          ]),
+        ),
+      { executeTimeoutMs: 700 },
+    )
+    expect(refused).toContain('was still executing 700ms after the worker started it')
+  })
+
   it('the run stopping or its timeout cancels the operation and ends as a kill; stopped before, nothing is sent', async () => {
     // Before, the stop was unheard: vx waited on the remote as long as the
     // action ran, here forever. Then it was a refusal (exit 1, no key, never

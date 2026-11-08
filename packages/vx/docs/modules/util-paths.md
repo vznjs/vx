@@ -133,8 +133,11 @@ that expands the grant sees a wildcard.
   class, escape, leading `!`, empty
   or dot segment: a JS test, not a native call.
 - `anyTaskGlob(ps)` — whether a path matches any of the task globs: one
-  RegExp for the lot when each has one. An input file is tested once per
-  side (positives, excludes), not once per glob.
+  RegExp per 1000 alternatives when each has one (Bun's RegExp slows
+  sharply past about 2000). An input file is tested once per side
+  (positives, excludes), not once per glob. The `**/` globs share one
+  leading `(?:.*/)?`: each with its own was retried at every slash, and
+  1000 of them took 24 s over 200,000 paths.
 
 ## Why
 

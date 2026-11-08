@@ -4,7 +4,8 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { filesBehind } from '../cache/index.js'
+import { FILE_HASH_RACY_MS, filesBehind, racyWindowMs } from '../cache/index.js'
+import { commandWindows, type CommandWindows } from '../orchestrator/index.js'
 import { printable, xxh3 } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import { gitIgnored, gitSpeller } from './watch-filter.js'
@@ -110,6 +111,8 @@ export interface JudgeContext {
   awaited?(abs: string): boolean
   /** The files git listed at the arm; absent when git could not answer. */
   existedAtArm?: ReadonlySet<string>
+  /** "Now" on the mtime clock (`fsClockNow`); `Date.now()` when absent. */
+  clock?(): number
   /** The files git tracked at the arm; absent when git could not answer. */
   trackedAtArm?: ReadonlySet<string>
 }
@@ -130,6 +133,12 @@ export class ChangeJudge {
   changed: readonly string[] = []
   /** The last cycle's window, its start on the mtime clock (`fsClockNow`); a write inside it is the run's own. */
   lastCycle: { start: number; end: number } | undefined
+  /**
+   * The cycle the last change-finding judgement started: from that
+   * judgement on the mtime clock, until the loop sets `to` when its run
+   * ends, with the run's command windows (`RunOptions.commandWindows`).
+   */
+  cycle: { from: number; to: number; windows: CommandWindows } | undefined
   // Declared outputs are ignored by PATH above. A task with no `cache`
   // block declares none and still writes into its project, and the
   // watcher sees the write: run 1 writes dist/x, the event re-runs, run 2
@@ -172,6 +181,40 @@ export class ChangeJudge {
   }
 
   /**
+   * An event on `abs`. A write that lands after the judgement that started
+   * a cycle and before its run ends, where no command of the run may write
+   * (`CommandWindows.writerDuring`) and no server the loop holds may have,
+   * is the user's: the run may have keyed its bytes, so the path is a
+   * change at its next judgement whatever it settles to. Judged against
+   * the state that judgement recorded, an edit landing before the keys and
+   * put back while the cycle ran settled to "the same", and the outputs
+   * stood built from bytes the tree no longer held. A write inside a
+   * command's window is judged by state as before: a task rewriting a file
+   * with the same bytes every run is no change, and so is a user's write
+   * there, which the run cannot tell from its own. Read when the event
+   * comes, not at the judgement: the edit's own time, before a revert
+   * stamps over it. The stamp runs up to a tick behind `Date.now()`, which
+   * dates the windows: a task's write was dated before its window opened,
+   * and every such write re-ran the loop, so the window widens by the racy
+   * window, as the hash memo judges a stamp.
+   */
+  sawEvent(abs: string): void {
+    const c = this.cycle
+    if (c === undefined) return
+    let t: number
+    try {
+      t = fs.lstatSync(abs).ctimeMs
+    } catch {
+      return
+    }
+    if (t < c.from || t > c.to) return
+    if (c.windows.writerDuring('', abs, t, t + racyWindowMs(t, FILE_HASH_RACY_MS)) !== undefined)
+      return
+    if (this.ctx.held() && !this.trackedAtArm(abs)) return
+    this.lastState.set(abs, UNSEEN)
+  }
+
+  /**
    * The inputs a run read in a state no judgement saw (`TaskOutcome.driftedInput`):
    * edited and put back while the task ran, a file settles to the state this
    * loop last saw, and judged against it, the output built from the other
@@ -192,10 +235,11 @@ export class ChangeJudge {
   // change: a deletion has no date to read.
   // One exception: a path git did not list at the arm, and gone now, was
   // born and removed since (vim's `4913` write probe, a tool's lock file),
-  // unless a nested repository holds it (`inNestedRepo`); it started a cycle with nothing changed. The blind spot: one born in
-  // the moment between a judgement and that cycle's keys, and gone by the
-  // next judgement, was read and its deletion re-runs nothing. Git lists
-  // no ignored path, so one of those is a deletion as before.
+  // unless a nested repository holds it (`inNestedRepo`); it started a cycle with nothing changed. One born
+  // during a cycle where no command of it may write is a change all the
+  // same (`sawEvent`): the run may have read it. The blind spot left: one
+  // gone again before its event is read, which has no time to judge by.
+  // Git lists no ignored path, so one of those is a deletion as before.
   private sameState(abs: string, ignored: boolean, spell: (p: string) => string): boolean {
     const state = settledState(abs)
     const prev = this.lastState.get(abs)
@@ -255,6 +299,8 @@ export class ChangeJudge {
   }
 
   judge(): string | undefined {
+    // Before any state is read: a write after this is one the judgement may not have seen.
+    const at = this.ctx.clock?.() ?? Date.now()
     const ignored = gitIgnored(this.ctx.workspaceRoot, [...this.pending.keys()])
     const spell = gitSpeller(this.ctx.workspaceRoot)
     let first: string | undefined
@@ -320,6 +366,7 @@ export class ChangeJudge {
     // read its write; resetting on either, the storm ran on unnamed (macOS
     // CI, 2026-10-29).
     if (firstAbs === undefined) return named
+    this.cycle = { from: at, to: Infinity, windows: commandWindows() }
     const byServer = this.ctx.held()
     if (!this.writtenDuringLastCycle(firstAbs, spell)) {
       this.streak.n = 0

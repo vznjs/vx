@@ -55,7 +55,7 @@ names until 0.0.397; it is the kinds record since.
 
 ```ts
 installPlugins(args: InstallPluginsArgs): Promise<() => void> // runs each setup; resolves to the uninstall
-interface InstallPluginsArgs { plugins; workspaceRoot; cacheDir; bus: EventBus; warn?; cache?(plugin): PluginCache; ci?; branch? }
+interface InstallPluginsArgs { plugins; workspaceRoot; cacheDir; bus: EventBus; warn?; cache?(plugin): PluginCache; ci?; branch?; secrets?; step?; signal? }
 // What setup(ctx) receives: on(hook, handler) subscribes a lifecycle hook.
 interface PluginContext { workspaceRoot; cacheDir; warn(message); bus; cache: PluginCache; ci: boolean; branch: string | null; on<K extends PluginHookName>(hook: K, handler: PluginHookHandlers[K]) }
 type PluginHookName = keyof PluginHookHandlers
@@ -176,8 +176,10 @@ a run explorer's record on this API and reads it back through a verb.
   on them to drain buffers. A run a SIGINT/SIGTERM/SIGHUP stops is no
   exception (item 849), nor is one that never started its schedule (a
   refused setup, a factory that threw, an unresolved name) or a plan
-  (item 1021); a second signal, or a `kill -9`, is. A plugin whose own
-  `setup` threw is not torn down. Its `ctx.on` handlers and telemetry
+  (item 1021); a second signal, or a `kill -9`, is. A signal during a
+  setup or executor factory that never settles tears every plugin down,
+  that one included, and exits. A plugin whose own `setup` threw is not
+  torn down. Its `ctx.on` handlers and telemetry
   sinks are released just before `teardown()`, so it hears nothing after
   it, a server vx keeps in the foreground included (C-66). (The older `eventSink` seam is gone since
   pipeline v2; `setup(ctx)` on the bus and `telemetry` are the two

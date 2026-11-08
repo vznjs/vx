@@ -127,7 +127,8 @@ release binary needs neither Node nor Bun.
 
 - On macOS the sandbox's report can miss records under load. Enforcement
   holds.
-- A cache hit replays the first and last 8 MiB of a task's output.
+- A cache hit replays the first and last 8 Mi characters (8 MiB of ASCII) of
+  a task's output.
 - A `kill -9` of vx leaves its persistent tasks running, except a server
   that exits when its stdin closes (esbuild `--watch`).
 - A process a task detaches into its own session (`setsid … &`) outlives

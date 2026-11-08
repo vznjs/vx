@@ -33,6 +33,7 @@ import * as ui from '../ui/index.js'
 import type { ProjectMeta } from '../workspace/index.js'
 import type { EventBus, Logger, RunEvent, RunStartInfo } from '../report/index.js'
 import { readOnlyEvents } from './read-only.js'
+import { unlessStopped } from './signals.js'
 import type { CiContext } from './run-context.js'
 import type { CacheFacts, TaskArtifacts } from './task-artifacts.js'
 import type { TelemetryContext, TelemetrySink } from './telemetry.js'
@@ -911,6 +912,8 @@ export interface InstallPluginsArgs {
   secrets?: SecretBroker
   /** Each setup as the step `<plugin>:setup`; default: untimed. */
   step?: <T>(id: string, work: () => Promise<T>) => Promise<T>
+  /** The run's held signals: a stop ends a setup's wait, which then throws. */
+  signal?: AbortSignal | undefined
 }
 
 /**
@@ -1065,12 +1068,18 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
     }
 
     try {
-      if (args.step === undefined) await plugin.setup(ctx)
-      else await args.step(`${plugin.name}:setup`, async () => plugin.setup?.(ctx))
+      const setup = async (): Promise<void> => plugin.setup?.(ctx)
+      await unlessStopped(
+        args.step === undefined ? setup() : args.step(`${plugin.name}:setup`, setup),
+        args.signal,
+      )
     } catch (err) {
       // Earlier plugins' subscriptions too: the caller never gets the
       // disposer, and a bus that outlives the run would keep them.
       for (const d of disposers) d()
+      // A stop is no refusal of this plugin's: its setup may hold what
+      // its teardown releases, so it is torn down with every other.
+      if (args.signal?.aborted === true) throw err
       throw new PluginSetupError(
         plugin,
         // Masked at the source, as plugin-host.ts's `safe()` does (L-11).

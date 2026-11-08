@@ -52,7 +52,8 @@ const UNTAINTED: TaintTracker = {
  * Records which tasks ran behind a failure, or on the key of a dependency
  * that did not run (`seeds`), and answers, per task, whether this one does.
  * Disabled (always `false`, nothing recorded) unless the run's
- * `continueMode` is `'always'` or there is a seed.
+ * `continueMode` is `'always'`, there is a seed, or one may be added while
+ * the run goes on (`seedsLater`: a server that dies under a running task).
  *
  * A task's taint is read from its deps' SETTLED outcomes, not from what it
  * saw at dispatch: a restore-tier hit dispatches before its deps settle,
@@ -67,8 +68,9 @@ export function taintTracker(
   continueAlways: boolean,
   seeds: ReadonlySet<string>,
   nodes: ReadonlyMap<string, TaskNode>,
+  seedsLater = false,
 ): TaintTracker {
-  if (!continueAlways && seeds.size === 0) return UNTAINTED
+  if (!continueAlways && seeds.size === 0 && !seedsLater) return UNTAINTED
   const outcomes = new Map<string, TaskOutcome>()
   const memo = new Map<string, boolean>()
   const causes = new Map<string, string>()

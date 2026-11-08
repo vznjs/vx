@@ -4,6 +4,8 @@
 // knows every rule source (nested files, `info/exclude`, `core.excludesFile`)
 // and that a directory holding a tracked file is not ignored.
 
+import { existsSync } from 'node:fs'
+import path from 'node:path'
 import { gitEnv } from './hide-env.js'
 import { isLiteralPattern, normalizeGlob } from './paths.js'
 import { executablePath } from './which.js'
@@ -37,6 +39,50 @@ export function ignoreProbes(glob: string): { paths: string[]; deep: boolean; di
 
 const CHECK_IGNORE = ['check-ignore', '--stdin', '-z']
 
+/**
+ * Per directory git runs in, whether its `core.ignorecase=true` is false on
+ * disk: a `.git` copied from macOS to Linux keeps the setting, and git then
+ * takes a new `a.txt` beside the tracked `A.txt` for the tracked file and
+ * lists it nowhere. Asked only where git's config was read anyway.
+ */
+const caseLies = new Map<string, boolean>()
+
+/**
+ * Whether `core.ignorecase=true`, which git in `dir` reported, is false on
+ * disk: one stat of `probe` (an existing path) with its name's case
+ * swapped, once per `dir`. A name with no cased letter cannot tell, so git
+ * is trusted.
+ */
+export function ignoreCaseLies(dir: string, probe: string): boolean {
+  const at = path.resolve(dir)
+  let lies = caseLies.get(at)
+  if (lies === undefined) {
+    const name = path.basename(probe)
+    const lower = name.toLowerCase()
+    const twin = lower === name ? name.toUpperCase() : lower
+    lies = twin !== name && !existsSync(path.join(path.dirname(probe), twin))
+    caseLies.set(at, lies)
+  }
+  return lies
+}
+
+/**
+ * What a git spawn in `cwd` prepends so a wrong `core.ignorecase` hides no
+ * file: `-c core.ignorecase=false` at or under a directory `ignoreCaseLies`
+ * found lying (the disk there tells case apart, so the override is git's
+ * own answer for any repository on it), else nothing.
+ */
+export function gitCaseArgs(cwd: string): readonly string[] {
+  if (caseLies.size === 0) return []
+  const at = path.resolve(cwd)
+  for (const [dir, lies] of caseLies)
+    if (lies && (at === dir || at.startsWith(dir.endsWith(path.sep) ? dir : dir + path.sep)))
+      return CASE_SENSITIVE
+  return []
+}
+
+const CASE_SENSITIVE = ['-c', 'core.ignorecase=false']
+
 // git reads each line as a pathspec, so `:top/dist/` was asked as
 // `top/dist/`. `./` keeps it the path it is (this command refuses
 // `:(literal)`), and git echoes each path back as given.
@@ -64,7 +110,7 @@ export async function checkIgnore(
   if (paths.length === 0) return new Set()
   try {
     const proc = Bun.spawn({
-      cmd: [executablePath('git'), ...CHECK_IGNORE],
+      cmd: [executablePath('git'), ...gitCaseArgs(cwd), ...CHECK_IGNORE],
       env: gitEnv(),
       cwd,
       stdin: stdinOf(paths),
@@ -83,7 +129,7 @@ export function checkIgnoreSync(cwd: string, paths: readonly string[]): Set<stri
   if (paths.length === 0) return new Set()
   try {
     const r = Bun.spawnSync({
-      cmd: [executablePath('git'), ...CHECK_IGNORE],
+      cmd: [executablePath('git'), ...gitCaseArgs(cwd), ...CHECK_IGNORE],
       env: gitEnv(),
       cwd,
       stdin: stdinOf(paths),
@@ -106,6 +152,7 @@ export function listedSync(cwd: string, dirs: readonly string[]): string[] | nul
     const r = Bun.spawnSync({
       cmd: [
         executablePath('git'),
+        ...gitCaseArgs(cwd),
         'ls-files',
         '-z',
         '--cached',

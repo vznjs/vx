@@ -22,6 +22,7 @@ import {
   type GitFilesCache,
   racyWindowMs,
   type TaskInputComponent,
+  declaresInput,
 } from '../cache/index.js'
 import {
   signalExitCode,
@@ -264,6 +265,12 @@ export interface ExecuteArgs {
    */
   readableDeps?: (node: TaskNode) => readonly TaskNode[]
   /**
+   * The projects nested in a keyed one, by its dir (keyed-projects.ts
+   * `nestedDirsOf`): walled from a task granted that linked package.
+   * Absent: none.
+   */
+  nestedDirsOf?: (projectDir: string) => readonly string[]
+  /**
    * Run-scoped list the miss path appends its output-directory snapshot
    * request to, taken at run end (run.ts) instead of right after the save:
    * a directory written milliseconds ago is inside the snapshot's racy
@@ -323,6 +330,12 @@ export interface ExecuteArgs {
    * the task's outcome has been logged).
    */
   serverReady?: (id: string) => void
+  /**
+   * Asked just before a miss is saved: whether a server it depends on
+   * (through groups too) died while it ran, which then holds the save. Its
+   * key is a healthy run's; its bytes were built against a dead server.
+   */
+  serverDiedUnder?: (node: TaskNode) => Promise<boolean>
   /** A `vx watch` cycle (`RunOptions.watch`): an input edited mid-run is the next cycle's. */
   watch?: true
 }
@@ -685,7 +698,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     signal: AbortSignal | undefined,
   ): Promise<unknown> {
     if (signal === undefined || isLocalExecutor(args.executor)) return running
-    const started = Date.now()
+    const started = performance.now()
     let graceTimer: ReturnType<typeof setTimeout> | undefined
     let onAbort: (() => void) | undefined
     const abandoned = new Promise<ExecuteResult>((resolve) => {
@@ -700,7 +713,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
           const reason: unknown = signal.reason
           resolve({
             exitCode: signalExitCode(reason === 'SIGINT' ? 'SIGINT' : 'SIGTERM'),
-            durationMs: Date.now() - started,
+            durationMs: Math.round(performance.now() - started),
             stdout: '',
             stderr: '',
             violations: [],
@@ -1516,6 +1529,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       args.cacheDir,
       deps.reads,
       deps.reported,
+      args.nestedDirsOf,
     )
     placeholders = sb.placeholders
     withheld = sb.withheld
@@ -1544,7 +1558,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // edit's bytes under the old key (X-123).
     const materialize = result.outputs?.kind === 'deferred' ? result.outputs.materialize : undefined
     if (materialize !== undefined) {
-      const keyed = await keyStillTrue()
+      const keyed = (await keyStillTrue()) && (await args.serverDiedUnder?.(node)) !== true
       args.deferred?.register(node.id, {
         materialize,
         ...(keyed ? { hash } : {}),
@@ -1563,6 +1577,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     willSave &&
     nothingLeftRunning() &&
     (await keyStillTrue()) &&
+    (await args.serverDiedUnder?.(node)) !== true &&
     (own = await ownOutputs()) !== undefined
   ) {
     const { landed } = await saveMiss({
@@ -1603,10 +1618,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       })
   } else if (cfgCacheable && !remoteOnly && !deferralRequested) {
     // Ran here and saves nothing — failed, a read-only policy, a tainted
-    // upstream, a key that no longer held — yet it wrote what a save would
-    // have marked, and may have rewritten an input the re-check before a
-    // save catches. A same-run reader keyed from the snapshot's OIDs for
-    // either replayed the bytes from before the command (item 750). A
+    // upstream, a server that died under it, a key that no longer held —
+    // yet it wrote what a save would have marked, and may have rewritten an
+    // input the re-check before a save catches. A same-run reader keyed
+    // from the snapshot's OIDs for either replayed the bytes from before the command (item 750). A
     // withheld save already dropped the project; this finds the same move
     // again and drops it again.
     const endCheck = span('miss: recheck inputs')
@@ -1699,6 +1714,16 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       const changed = new Set(result.changed.map((f) => path.join(args.workspaceRoot, f)))
       const there = keyedInputs(described!.facts).find((f) => changed.has(f.path))
       if (there !== undefined) return there.path
+      // One the key never folded, as this disk lacks it (untracked there),
+      // that the declaration matches: the command read it, and its entry
+      // here was every later run's hit (2026-11-07).
+      const dir = relPosix(args.workspaceRoot, node.projectDir)
+      for (const f of result.changed) {
+        const own = relPosix(node.projectDir, path.join(args.workspaceRoot, f))
+        const projectRel = own.startsWith('../') ? null : own
+        if (declaresInput(cfg, projectRel, f, false, true, dir))
+          return path.join(args.workspaceRoot, f)
+      }
     }
     return (
       (await movedInput(
@@ -1744,7 +1769,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // A file the key read may instead be one the task rewrites in place (a
     // formatter's temp + rename), whose sources cannot be its outputs: vx
     // deletes outputs before the command. Its way out is judging the write
-    // by its bytes. Neither is said of a file the task deleted.
+    // by its bytes. Neither is said of a file this disk lacks: one the task
+    // deleted, or one only where an executor ran it.
     const read =
       moved !== null &&
       keyedInputs(described!.facts).some((f) => f.path === moved && f.digest !== ABSENT_INPUT)
@@ -1752,7 +1778,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // first, or the way out read as the fix for the user's own edit.
     const hint =
       (args.watch === true && rewroteBy === undefined ? '; the next cycle runs on it' : '') +
-      (moved === null || rewroteBy !== undefined || (read && !existsSync(moved))
+      (moved === null || rewroteBy !== undefined || !existsSync(moved)
         ? ''
         : '; if the task generates it, declare it in outputs' +
           (read && stability.strategy !== 'mutable'

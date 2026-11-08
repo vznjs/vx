@@ -143,8 +143,9 @@ the record, as a vx hit replays them. A run core does not save
 (`--no-cache`, a read-only policy, a tainted upstream) records under a key
 only this run's executor knows instead: its dependants in this run graft
 from it, and no later run replays it as the task's hit. A `v1` record kept no stderr and is
-never read: its key executes once more and writes a `v2` one. `--force`
-bypasses it.
+never read: its key executes once more and writes a `v2` one. A record
+with a non-zero exit code (vx writes none, but the action cache is the
+server's) is no record either: the task executes. `--force` bypasses it.
 
 The input tree is read after the key was taken, so each file's bytes are
 held to the git blob id the key hashed for it. A file edited, removed or
@@ -250,8 +251,12 @@ directory that resolves out through a link, and a file or link that
 lands, through one, where no declared glob names are refused before anything
 is written through them; a link standing at an output file is replaced, never written
 through; a Tree file's setuid and setgid bits are dropped. A Tree may name
-one subtree many times; one that expands to more paths than the file
-system has free inodes is refused before anything is written.
+one subtree many times; a result whose Trees together expand to more paths
+than the file system has free inodes is refused before anything is written,
+as is a Tree holding a path past `PATH_MAX` (4096 bytes; 1024 on macOS).
+A glob's matches are recorded each as a Tree of its own, a subtree named
+under many names encoded once; a capture past the free inodes or
+`PATH_MAX` is recorded whole, unsplit.
 
 ## Artifacts stream
 
@@ -318,16 +323,29 @@ A task placed `exec.remote: 'only'` fails with that reason instead. Unset,
 the task's own `exec.timeout` bounds the queue as it bounds the run (the
 task fails as timed out); with neither, the wait is unbounded.
 A stream that drops with a transient status, or ends cleanly before its
-operation is done, re-attaches with `WaitExecution` (three times, backing
-off 100, 400 and 1600 ms) rather than running the action again. If
+operation is done, re-attaches with `WaitExecution` rather than running the
+action again. Only attaches that deliver no operation spend the budget:
+the fourth such in a row fails the task. A stream that delivered one (a
+proxy cutting a long, progressing action) starts the count over, so a
+long action survives any number of cuts. The wait before each re-attach
+grows per cut in a row (100, 400, 1600, then 5000 ms) and starts over once
+a stream advances the stage or stays open 10 s. If
 `WaitExecution` answers NOT_FOUND — the server lost the operation, as a
 restart does — nothing is left running to re-attach to, and the action is
-executed again on the same budget.
+executed again on the same budget. Past the budget the task fails and the
+operation is cancelled, so the action does not run on unwatched.
+An Execute answered FAILED_PRECONDITION (inputs the server lacks, evicted
+after `FindMissingBlobs` or never stored) uploads them again — the blobs its
+`PreconditionFailure` names MISSING, else every input, without asking
+`FindMissingBlobs` — and executes once more; a second FAILED_PRECONDITION
+fails the task.
 Once a worker reports EXECUTING, the task's `exec.timeout` (or
-`executeTimeoutMs`) bounds the wait, and the bound holds across a
-re-attach: firing during the backoff between a dropped stream and its
-`WaitExecution`, it ends the task there rather than being lost. Past it
-the operation is cancelled too (a refused cancel is a warning).
+`executeTimeoutMs`, 10 minutes when neither is set) bounds the wait, and
+the bound holds across a re-attach: firing during the backoff between a
+dropped stream and its `WaitExecution`, it ends the task there rather than
+being lost. It is also what ends a server that answers EXECUTING and hangs
+up on every attach. Past it the operation is cancelled too (a refused
+cancel is a warning).
 The run stopping (Ctrl-C, an embedder's abort) or the task's `exec.timeout`
 closes the stream and cancels the operation with `CancelOperation`, and an
 action not yet submitted is not sent. A record replay, an upstream record
@@ -520,6 +538,10 @@ sorted by name — the proto requires that, so equivalent Commands hash alike:
 
 A `define` wins over an `inputs.env` entry of the same name: it is the more
 explicit statement of intent.
+
+One constant is vx's own: `FORCE_COLOR=1`, which every local child gets
+too (unless the task sees a `FORCE_COLOR` or a non-empty `NO_COLOR`), so a
+remote entry holds the same coloured bytes a local one does.
 
 Nothing else crosses. In particular **`exec.env.passThrough` does not reach a
 remote worker**, and neither does the essential allowlist (`PATH`, `HOME`,

@@ -1486,7 +1486,10 @@ export interface SandboxViolation {
    * leaves it hidden.
    */
   via?: string
-  /** Linux: what a refused `openat`'s flags asked for. */
+  /**
+   * Linux: what a refused `openat`'s flags asked for; for an `openat2`,
+   * whose flags no record names, a read.
+   */
   opened?: 'read' | 'write'
   ignorable?: readonly ('read' | 'write' | 'network' | 'systemInfo')[]
 }
@@ -1862,8 +1865,8 @@ function ownGroupCommand(
  * What strace stops on: the reads (`openat`, and `open`, musl's open():
  * traced as openat alone, a sibling under a widened write grant was read
  * unreported and cached; arm64 has no `open`; an `openat2` never reaches
- * strace, SRT's write observer takes each one first), the execs and
- * access probes (a refused
+ * strace, SRT's write observer takes each one first: `refusedWrites`),
+ * the execs and access probes (a refused
  * `./gen.sh || fallback` passed unreported), and what moves or makes a
  * process's cwd. Not the stat family: a stop per stat cost oxlint 19% and
  * `git status` 30%, where the execs and probes cost nothing measurable, and
@@ -2214,8 +2217,8 @@ async function hostBridgesListen(ports: readonly number[], tag: string): Promise
   if (!procfsIsOwn()) return
   const want = ports.map((p) => `0100007F:${p.toString(16).toUpperCase().padStart(4, '0')}`)
   const procs = hostBridges.get(tag)?.procs ?? []
-  const until = Date.now() + 5_000
-  while (Date.now() < until && procs.every((p) => p.exitCode === null)) {
+  const until = performance.now() + 5_000
+  while (performance.now() < until && procs.every((p) => p.exitCode === null)) {
     let table: string
     try {
       table = readFileSync('/proc/net/tcp', 'utf8')
@@ -2479,7 +2482,8 @@ const STRACE_OWN_ERROR = /^(?:[^\s:]*\/)?strace: /
 async function runSandboxedOnce(
   args: SandboxedRunArgs,
 ): Promise<SandboxedRunResult & { tracerFailed: boolean; mountGone: boolean; ranMs: number }> {
-  const start = Date.now()
+  // Elapsed time, not wall time: see runCommand.
+  const start = performance.now()
   const { SandboxManager } = await loadSrt()
   // Linux: SRT's store sees only writes (below), so read denials need
   // the command traced and the trace parsed for denied syscalls. The trace
@@ -2526,7 +2530,7 @@ async function runSandboxedOnce(
     const signal = stopSignal(args.signal.reason)
     return {
       exitCode: signalExitCode(signal),
-      durationMs: Date.now() - start,
+      durationMs: Math.round(performance.now() - start),
       stdout: '',
       stderr: '',
       signal,
@@ -2574,14 +2578,14 @@ async function runSandboxedOnce(
       rmSync(straceLog, { force: true })
       liveTempFiles.delete(straceLog)
     }
-    const stderr = spawnFailureText(err, args.cwd, SANDBOXED_TASK, wrapped)
+    const stderr = spawnFailureText(err, args.cwd, SANDBOXED_TASK, wrapped, args.env)
     args.onStderr?.(stderr)
     releaseBridges(tag)
     void takeRecords(false)
     afterCommand(SandboxManager)
     return {
       exitCode: 127,
-      durationMs: Date.now() - start,
+      durationMs: Math.round(performance.now() - start),
       stdout: '',
       stderr,
       spawnFailed: true,
@@ -2600,7 +2604,7 @@ async function runSandboxedOnce(
   args.onSpawn?.(proc.pid)
   const watch = process.platform === 'linux' ? watchTree(proc.pid) : undefined
   const timeout = armTimeout(proc, args.timeoutMs)
-  const armedAt = Date.now()
+  const armedAt = performance.now()
   const ac = new AbortController()
   // The unfinished last line of stderr, and whether a line was strace's.
   let partial = ''
@@ -2629,7 +2633,7 @@ async function runSandboxedOnce(
   // OR a clean exit that backgrounds a process) can't hang the run — timeout
   // aborts at once, otherwise drainOrAbort bounds the post-exit drain.
   await proc.exited
-  const ranMs = Date.now() - armedAt
+  const ranMs = Math.round(performance.now() - armedAt)
   const looked = watch?.stop()
   await timeout.settle()
   let cut = false
@@ -2804,7 +2808,7 @@ async function runSandboxedOnce(
 
   return {
     exitCode,
-    durationMs: Date.now() - start,
+    durationMs: Math.round(performance.now() - start),
     stdout,
     stderr,
     violations,

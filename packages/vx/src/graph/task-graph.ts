@@ -1392,10 +1392,14 @@ function detectOutputCollisions(
       entries.push({ node, globs, rel })
     }
   }
-  for (const [i, j] of overlapCandidates(entries, (e) => e.globs)) {
+  for (const [i, j] of overlapCandidates(
+    entries,
+    (e) => e.globs,
+    (e) => e.rel !== undefined,
+  )) {
     const x = entries[i]!
     const y = entries[j]!
-    if ((x.rel === undefined) === (y.rel === undefined) || x.node === y.node) continue
+    if (x.node === y.node) continue
     const [ws, files] = x.rel === undefined ? [x, y] : [y, x]
     collideAcross(ws.node, ws.globs, files.node, files.globs, files.rel!, reaches, exclusive)
   }
@@ -1546,21 +1550,20 @@ function mayOverlap<T>(
 
 /**
  * The pairs `[i, j]`, `i < j`, of `tasks` whose declared outputs CAN
- * overlap, ascending by `i` then `j`: a superset of the pairs
+ * overlap, yielded ascending by `i` then `j`: a superset of the pairs
  * `outputsOverlap` accepts, so `collide` over them decides exactly what it
  * decided over all pairs, and in the same order (the first refusal named,
  * and the addition marks pushed, are all-pairs' own).
  *
- * `outputsOverlap` compares the `asTrees` forms three ways. Two equal
- * globs are one lookup. Two equal literals are too, since each literal
- * carries its `/**` twin. And a glob matches a literal only when the
+ * `outputsOverlap` compares the `asTrees` forms three ways. Two globs,
+ * equal or not, meet only when one's literal prefix lies at or under the
+ * other's. Two equal literals do too, since each literal carries its `/**`
+ * twin. And a glob matches a literal only when the
  * literal lies under the directory the glob's literal head names
  * (`dist/sub/**` → `dist/sub`; `*.js` → the root, so a wildcard in the
  * first segment meets every literal): a literal meets the globs filed at
  * each of its ancestors. The fuzz above found no glob matching the
- * directory its own head names. A whole subtree meets the globs whose
- * literal prefix lies at or under it, found the same way from the glob's
- * side (item 941).
+ * directory its own head names.
  *
  * Given `sideOf`, only the pairs whose members sit on different sides are
  * wanted (a reader and a writer, `detectInputOverlaps`), and each index is
@@ -1572,85 +1575,120 @@ function overlapCandidates<T>(
   tasks: readonly T[],
   globsOf: (n: T) => readonly string[] | undefined,
   sideOf?: (n: T) => boolean,
-): Array<[number, number]> {
-  if (!mayOverlap(tasks, globsOf, sideOf)) return []
+): Iterable<[number, number]> {
+  // Nearly every bucket stops here, so it starts no generator.
+  return mayOverlap(tasks, globsOf, sideOf) ? indexedCandidates(tasks, globsOf, sideOf) : []
+}
+
+/** `overlapCandidates` past `mayOverlap`. */
+function* indexedCandidates<T>(
+  tasks: readonly T[],
+  globsOf: (n: T) => readonly string[] | undefined,
+  sideOf?: (n: T) => boolean,
+): Generator<[number, number]> {
   const sides = sideOf === undefined ? 1 : 2
   // The index a member of side `s` looks up: its own side's, or the other's.
   const across = (s: number): number => (sides === 1 ? s : 1 - s)
   const perSide = (): Array<Map<string, number[]>> =>
     Array.from({ length: sides }, () => new Map<string, number[]>())
-  const globs = perSide()
-  const globsUnder = perSide()
-  const literals: Array<[task: number, path: string]> = []
-  // `covers` (item 941): a whole subtree `P/**` meets every glob whose
-  // literal prefix is P or under it, so each glob looks up the subtrees
-  // filed at its prefix and at each of that prefix's ancestors.
-  const subtrees = perSide()
-  const prefixes: Array<[task: number, prefix: string]> = []
   const file = (index: Map<string, number[]>, key: string, i: number): void => {
     const list = index.get(key)
     if (list === undefined) index.set(key, [i])
     else list.push(i)
   }
+  const fileAncestors = (index: Map<string, number[]>, key: string, i: number): void => {
+    for (let sep = key.indexOf('/'); sep !== -1; sep = key.indexOf('/', sep + 1)) {
+      file(index, key.slice(0, sep), i)
+    }
+  }
+  // Each relation below is filed from both of its ends, so a member finds
+  // every partner by its own lookups and the pairs are yielded one `i` at a
+  // time. 20,000 tasks sharing `dist/**` are 200 million pairs, and holding
+  // them all before the first was compared ran out of memory (hunt); the
+  // caller refuses at the first, so only that `i`'s partners are built.
+  //
+  // Two globs meet only when one's literal prefix is the other's or under
+  // it: the rule of `witnessed`, and of `covers` (item 941: a whole subtree
+  // `P/**` has the prefix P), and two equal globs share one. Each glob is
+  // filed at its prefix (found from it and from under it), and at the
+  // prefix, the root and each ancestor (found from above).
+  const byPrefix = perSide()
+  const overPrefix = perSide()
+  // A literal meets the globs filed at each of its ancestors.
+  const globsUnder = perSide()
+  const literals = perSide()
+  interface Tree {
+    /** Its literal prefix, `''` at the root. */
+    prefix: string
+    /** The directory its literal head names. */
+    head: string
+  }
+  const trees: Tree[][] = []
+  const paths: string[][] = []
   const side: number[] = []
   for (let i = 0; i < tasks.length; i++) {
     const s = sideOf?.(tasks[i]!) === true ? 1 : 0
     side.push(s)
+    const own: Tree[] = []
+    const lits: string[] = []
     // Each brace alternative, as `outputsOverlap` reads them.
     for (const tree of asTrees((globsOf(tasks[i]!) ?? []).flatMap(braceAlternatives))) {
       const lit = literalPath(tree)
       if (lit !== null) {
-        literals.push([i, lit])
+        lits.push(lit)
+        file(literals[s]!, '', i)
+        fileAncestors(literals[s]!, lit, i)
         continue
       }
-      file(globs[s]!, tree, i)
-      const dir = wholeSubtreePrefixes([tree])?.[0]
-      if (dir !== undefined) file(subtrees[s]!, dir, i)
-      prefixes.push([i, staticPrefix(tree)])
-      const head = tree.slice(0, tree.search(GLOB_HEAD_END))
-      file(globsUnder[s]!, head.slice(0, Math.max(0, head.lastIndexOf('/'))), i)
+      const prefix = rootless(staticPrefix(tree))
+      file(byPrefix[s]!, prefix, i)
+      file(overPrefix[s]!, prefix, i)
+      if (prefix !== '') file(overPrefix[s]!, '', i)
+      fileAncestors(overPrefix[s]!, prefix, i)
+      const lead = tree.slice(0, tree.search(GLOB_HEAD_END))
+      const head = lead.slice(0, Math.max(0, lead.lastIndexOf('/')))
+      file(globsUnder[s]!, head, i)
+      own.push({ prefix, head })
     }
+    trees.push(own)
+    paths.push(lits)
   }
   const n = tasks.length
-  const pairs = new Set<number>()
-  const pair = (x: number, y: number): void => {
-    if (x !== y) pairs.add(x < y ? x * n + y : y * n + x)
-  }
-  for (const [tree, list] of globs[0]!) {
-    const other = sides === 1 ? list : (globs[1]!.get(tree) ?? [])
-    for (let x = 0; x < list.length; x++) {
-      for (let y = sides === 1 ? x + 1 : 0; y < other.length; y++) pair(list[x]!, other[y]!)
+  // The `i` each partner was last taken for, so one found twice is kept once.
+  const takenFor = new Int32Array(n).fill(-1)
+  let found: number[] = []
+  const take = (i: number, list: readonly number[] | undefined): void => {
+    if (list === undefined) return
+    for (const j of list) {
+      if (j > i && takenFor[j] !== i) {
+        takenFor[j] = i
+        found.push(j)
+      }
     }
   }
-  // `witnessed`: two globs meet only when one's literal prefix is the
-  // other's or under it, so each looks up the globs filed at its prefix
-  // and at each ancestor.
-  const byPrefix = perSide()
-  for (const [i, prefix] of prefixes) file(byPrefix[side[i]!]!, rootless(prefix), i)
-  for (const [i, raw] of prefixes) {
-    const index = byPrefix[across(side[i]!)]!
-    const prefix = rootless(raw)
-    for (const j of index.get(prefix) ?? []) pair(i, j)
-    if (prefix !== '') for (const j of index.get('') ?? []) pair(i, j)
-    for (let sep = prefix.indexOf('/'); sep !== -1; sep = prefix.indexOf('/', sep + 1)) {
-      for (const j of index.get(prefix.slice(0, sep)) ?? []) pair(i, j)
+  const takeAncestors = (i: number, index: Map<string, number[]>, key: string): void => {
+    for (let sep = key.indexOf('/'); sep !== -1; sep = key.indexOf('/', sep + 1)) {
+      take(i, index.get(key.slice(0, sep)))
     }
   }
-  for (const [i, prefix] of prefixes) {
-    const index = subtrees[across(side[i]!)]!
-    for (const j of index.get(prefix) ?? []) pair(i, j)
-    for (let sep = prefix.indexOf('/'); sep !== -1; sep = prefix.indexOf('/', sep + 1)) {
-      for (const j of index.get(prefix.slice(0, sep)) ?? []) pair(i, j)
+  for (let i = 0; i < n; i++) {
+    const o = across(side[i]!)
+    for (const { prefix, head } of trees[i]!) {
+      take(i, byPrefix[o]!.get(prefix))
+      if (prefix !== '') take(i, byPrefix[o]!.get(''))
+      takeAncestors(i, byPrefix[o]!, prefix)
+      take(i, overPrefix[o]!.get(prefix))
+      take(i, literals[o]!.get(head))
     }
-  }
-  for (const [i, path] of literals) {
-    const index = globsUnder[across(side[i]!)]!
-    for (const j of index.get('') ?? []) pair(i, j)
-    for (let sep = path.indexOf('/'); sep !== -1; sep = path.indexOf('/', sep + 1)) {
-      for (const j of index.get(path.slice(0, sep)) ?? []) pair(i, j)
+    for (const path of paths[i]!) {
+      take(i, globsUnder[o]!.get(''))
+      takeAncestors(i, globsUnder[o]!, path)
     }
+    if (found.length === 0) continue
+    const partners = found.sort((x, y) => x - y)
+    found = []
+    for (const j of partners) yield [i, j]
   }
-  return [...pairs].sort((x, y) => x - y).map((p) => [Math.floor(p / n), p % n])
 }
 
 /**

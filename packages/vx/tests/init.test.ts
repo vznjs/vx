@@ -293,6 +293,48 @@ describe('vx init --plugin <hook>', () => {
   )
 
   it(
+    'never writes through a symlink, dangling or not',
+    async () => {
+      // Bun.write followed the link: a dangling one passed the exists
+      // check and vx created its target outside the workspace, and
+      // --force overwrote a live one's target.
+      const root = await mkdtemp(path.join(os.tmpdir(), 'vx-init-plugin-link-'))
+      try {
+        await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws' }))
+        await mkdir(path.join(root, 'plugins'))
+        const target = path.join(root, 'outside.txt')
+        const link = path.join(root, 'plugins', 'executor.ts')
+        await symlink(target, link)
+        const dangling = await vx(root, ['init', '--plugin', 'executor'])
+        expect([dangling.code, dangling.err, existsSync(target)]).toEqual([
+          1,
+          noticed('vx init: plugins/executor.ts exists. --force overwrites it\n'),
+          false,
+        ])
+        await writeFile(target, 'precious\n')
+        const forced = await vx(root, ['init', '--plugin', 'executor', '--force'])
+        expect([forced.code, forced.err, await Bun.file(target).text()]).toEqual([
+          1,
+          noticed(
+            `vx init: refusing to write ${link}: it is a symlink to ${target}; remove the link and run again\n`,
+          ),
+          'precious\n',
+        ])
+        // Refused before any write: the test file beside it is not written either.
+        expect(existsSync(path.join(root, 'plugins', 'executor.test.ts'))).toBe(false)
+        // CONTROL: a plain file is overwritten under --force.
+        await rm(link)
+        await writeFile(link, 'old\n')
+        expect((await vx(root, ['init', '--plugin', 'executor', '--force'])).code).toBe(0)
+        expect(await Bun.file(link).text()).toBe(PLUGIN_TEMPLATES['executor']!.plugin)
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a plugin scaffolded under a root package.json with no name loads',
     async () => {
       // A monorepo root often has no name. The plugin took the root's

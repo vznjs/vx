@@ -105,6 +105,16 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   planRun bound redded at 6.6 s of wall on a CI worker booked 3.7 of 4
   cores, and took 1.6-1.9 s of CPU idle or beside 24 busy loops
   (2026-10-23). A deadline the code itself enforces stays on the wall.
+- Elapsed time is `performance.now()`, never a difference of `Date.now()`:
+  an NTP step back mid-task gave `durationMs` -3599787, the executor check
+  refused it and a task that exited 0 failed the run; a step forward put an
+  hour into the timings history (2026-11-07, `tests/wall-clock-step.test.ts`).
+  `Date.now()` is for timestamps only.
+- `Date.now()` floors to the millisecond; a ctime does not. A window
+  closed at `Date.now()` missed its own command's last write stamped
+  0.16 ms later, and watch re-ran an uncached task on its own output
+  (2026-11-08, `command-windows.ts`). Compare a stamp with a window's
+  end plus one.
 - Bun's per-test timeout is a wall budget too. A test that spawns vx and
   git (457 ms idle, 1.3 s under strace) passed 5 s on a packed DTE worker
   (#4198), so every task that launches `bun test` passes `--timeout=30000`
@@ -207,7 +217,11 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   against 0.3, 2026-10-17). Run `git update-index -q --refresh` in each
   arm's copy before its first timed rep. And give each arm its own
   `HOME`: the shared store lives in `~/.vx/<repo id>/`, so two copies of
-  one repo share it, and arms on different schemas reset it.
+  one repo share it, and arms on different schemas reset it. Refresh
+  under that `HOME`: a global `core.trustctime=false` let a refresh
+  without it keep the old ctimes, so vx's git saw all 4,000 files of a
+  1,000-project copy stat-dirty and `--affected` hashed each (+50 ms,
+  2026-11-07).
 - A sandboxed shard has no git: a pin that asks `git ls-files` there
   reads an empty set and its floor fails on darwin CI (item 615). A
   law that reads the tree walks it; git is for the unsafe suite.

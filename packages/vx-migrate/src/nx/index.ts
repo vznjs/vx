@@ -374,7 +374,7 @@ const textOf = (file: string): Promise<string> =>
  * and the package.json of each graph node no package matches (its
  * synthetic project's name), the `.env` names in every project dir,
  * NX_LOAD_DOT_ENV_FILES, whether the bins the tasks run are installed,
- * and the graph load's own notes.
+ * which root tsconfig exists, and the graph load's own notes.
  */
 async function nxReads(
   root: string,
@@ -418,6 +418,13 @@ async function nxReads(
     ...(await Promise.all(
       ['package.json', '.npmrc', 'pnpm-workspace.yaml'].map((f) => textOf(path.join(root, f))),
     )),
+    // Which root tsconfig every task keys (`rootTsConfig`), decided by
+    // existence: an untracked new one changes no git index.
+    JSON.stringify(
+      await Promise.all(
+        ['tsconfig.base.json', 'tsconfig.json'].map((f) => Bun.file(path.join(root, f)).exists()),
+      ),
+    ),
     ...notes,
   ]
 }

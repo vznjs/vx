@@ -119,6 +119,39 @@ describe('HistoryServer', () => {
     expect(sent).toBe(1)
   })
 
+  // Core masks only secret-named variables: the job's OIDC token a server
+  // quoted from the Authorization header reached the CI log whole.
+  it('says *** for a token a refusal quotes, none of it left past the cut', async () => {
+    const jwt = 'eyJhbGciOiJub25lIn0.eyJleHAiOjk5OTk5OTk5OTl9.SIGNATUREJWTSECRETPART'
+    const echoing = (async (u: string | URL, init?: RequestInit) => {
+      if (String(u).startsWith('https://oidc.example')) return Response.json({ value: jwt })
+      const auth = new Headers(init?.headers).get('authorization')
+      return Response.json({ message: `${'x'.repeat(170)} ${auth}` }, { status: 500 })
+    }) as unknown as typeof fetch
+    const env = {
+      ACTIONS_ID_TOKEN_REQUEST_URL: 'https://oidc.example/t',
+      ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'actions-request-token-0123456789',
+    }
+    const client = new HistoryServer('https://h.example', NAMED, env, echoing)
+    const said = await client.query(['refs/heads/main'], ['a']).then(
+      () => 'no refusal',
+      (err: Error) => err.message,
+    )
+    expect(said).toContain('Bearer ***')
+    for (let i = 0; i + 8 <= jwt.length; i++) expect(said).not.toContain(jwt.slice(i, i + 8))
+    const short = (async (u: string | URL, init?: RequestInit) =>
+      String(u).startsWith('https://oidc.example')
+        ? Response.json({ value: jwt })
+        : Response.json(
+            { message: `bad: ${new Headers(init?.headers).get('authorization')}` },
+            { status: 400 },
+          )) as unknown as typeof fetch
+    const writer = new HistoryServer('https://h.example', NAMED, env, short)
+    await expect(writer.upload(new Map([['a', { durationMs: 1 }]]))).rejects.toThrow(
+      'HTTP 400: bad: Bearer ***',
+    )
+  })
+
   // A run of groups alone has no hash to ask for: it still asked the
   // server's limits, and warned when the server was down.
   it('asks nothing for no hashes, as it sends nothing for no timings', async () => {

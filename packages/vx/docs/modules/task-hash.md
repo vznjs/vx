@@ -68,6 +68,12 @@ export async function movedInput(
   commandFrom?: number, // the describe's start, just before the command
   byBytes?: (file: string, ctimeMs: number) => boolean, // `'mutable'`: true judges that write by bytes
 ): Promise<string | undefined>
+// command-windows.ts: when each command of the run ran and where it may write.
+export interface CommandWindows {
+  open(id: string, projectDir: string, reach: WriteReach): () => void // a command starts; the function marks its end
+  writerDuring(self: string, file: string, from: number, to: number): string | undefined // another command that may write `file` and ran within [from, to]
+}
+export function commandWindows(): CommandWindows
 export function computeGroupKey(args: ComputeHashArgs): Promise<string>
 // The fold memo's files token for one task, or undefined (run-keys.md).
 export function taskFilesToken(
@@ -120,7 +126,8 @@ export interface UpfrontGroupKey {
   passes it for `inputs.stability.strategy: 'mutable'` or
   `VX_INPUTS_STABILITY_STRATEGY=mutable`, true when no other command
   that may write the file ran between the describe and that write,
-  `command-windows.ts`) such a write is hashed and compared instead. Returns the
+  `command-windows.ts`; `vx watch` reads the same windows to tell a
+  user's write during a cycle from the run's own, `RunOptions.commandWindows`) such a write is hashed and compared instead. Returns the
   first moved path; execute-task then withholds the save.
 - `computeGroupKey` — for group tasks (no `exec`): rolls up upstream
   hashes only, so downstream keys still cascade through the group. The

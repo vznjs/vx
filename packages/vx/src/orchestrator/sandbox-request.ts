@@ -7,6 +7,7 @@ import { existsSync, readdirSync } from 'node:fs'
 import { lstat, mkdir, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
+import { repoFacts, repoRootOf } from '../cache/index.js'
 import type { ExecConfig } from '../config.js'
 import {
   bindableWrites,
@@ -206,6 +207,8 @@ export async function sandboxRequestFor(
   dependencyOutputs: readonly string[] = [],
   /** The heads walked for them (`dependencyReads`): a refused read under one is reported. */
   dependencyReported: readonly string[] = [],
+  /** The projects nested in a keyed one, by its dir (keyed-projects.ts `nestedDirsOf`). */
+  nestedOf: (projectDir: string) => readonly string[] = () => [],
 ): Promise<SandboxRequest> {
   // The runtime reads a path holding a bracket as a pattern: on Linux it
   // mounts no such write path (B-60); seatbelt's rules compile it as a
@@ -236,18 +239,28 @@ export async function sandboxRequestFor(
         `it mounts none of the project — rename the directory, or run the task without exec.sandbox`,
     )
   }
-  const depDirs = [
-    path.join(node.projectDir, 'node_modules'),
-    path.join(workspaceRoot, 'node_modules'),
-  ]
   // A workspace dependency is a SYMLINK in `node_modules` pointing at a
   // sibling project, so granting `node_modules` grants a link whose
   // target is outside it. That target is a dependency, not a reach-out:
   // no project config should have to name a sibling to import what its
   // own `package.json` depends on (2026-09-05) — when the key
   // moves with it.
-  const links = await linkedDeps(depDirs, node.projectDir, workspaceRoot, keyed)
-  depDirs.push(...links.granted, ...dependencyOutputs)
+  const links = await linkedDeps(node.projectDir, workspaceRoot, keyed)
+  // A granted package is bound whole, and its nested projects with it,
+  // whose files its key never folds (a glob stops at a nested project):
+  // an edit there was a stale hit. Walled unless the key answers for them
+  // too; reported, as a withheld package is.
+  const linkedWalls =
+    keyed === undefined
+      ? []
+      : links.keyedGranted
+          .flatMap(nestedOf)
+          .filter((d) => !keyed.has(d))
+          .map(toRealPath)
+  const depDirs = [
+    ...links.granted.flatMap((g) => punchWalls(g, linkedWalls)),
+    ...dependencyOutputs,
+  ]
   // bwrap cannot --bind a path that does not exist: the bind silently
   // becomes a no-op and writes to it appear to succeed but never land.
   // Pre-create what the task said it will write — after the grants are
@@ -256,8 +269,10 @@ export async function sandboxRequestFor(
   // The repository's and vx's own walls are sealed: no write grant may
   // reach inside them either. A nested project is not: a grant into it is
   // as explicit as one into a sibling.
+  const git = outsideGit(workspaceRoot)
   const sealed = [
     path.join(workspaceRoot, '.git'),
+    ...git.dirs,
     path.join(workspaceRoot, '.vx', 'cache'),
     ...(cacheDir !== undefined &&
     toRealPath(cacheDir).startsWith(toRealPath(workspaceRoot) + path.sep)
@@ -296,7 +311,10 @@ export async function sandboxRequestFor(
     // readable (tools need `~/.cache`), but a dependency the task runs
     // could copy a key into an output the cache shares (L-41).
     baseDenyRead: [
-      ...(process.platform === 'darwin' ? [workspaceRoot, ...walls] : [workspaceRoot]),
+      ...(process.platform === 'darwin'
+        ? [workspaceRoot, ...walls, ...linkedWalls]
+        : [workspaceRoot, ...git.dirs]),
+      ...(await gitTrees(workspaceRoot, git.trees, config.allowWrite)),
       ...(await credentialStores(workspaceRoot, config.allowWrite)),
       ...(await vxStores(workspaceRoot, config.allowWrite, cacheDir)),
     ],
@@ -310,10 +328,15 @@ export async function sandboxRequestFor(
     reportWithin: node.projectDir,
     // …and of a dependency withheld above: the task reached for it
     // through its own `node_modules`, and that read is the stale hit the
-    // withholding exists to stop, not the wall.
+    // withholding exists to stop, not the wall. So is one of a granted
+    // package's nested project walled above.
     // So is a read beside a dependency's outputs, under the head its glob
     // walked: a file no key answers for (`dependencyReads`).
-    reportLinked: [...links.withheld.map((w) => w.dir), ...dependencyReported.map(toRealPath)],
+    reportLinked: [
+      ...links.withheld.map((w) => w.dir),
+      ...linkedWalls,
+      ...dependencyReported.map(toRealPath),
+    ],
     config,
     ...(keyed === undefined ? {} : { keyed: [...keyed] }),
     ...(dependencyOutputs.length === 0 ? {} : { dependencyReads: [...dependencyOutputs] }),
@@ -481,8 +504,10 @@ export interface WithheldLink {
 }
 
 /**
- * Where the workspace links in `dirs` actually point, split into what the
- * task is granted and what it is not.
+ * The project's and the workspace root's `node_modules`, and where the
+ * workspace links in them actually point, split into what the task is
+ * granted and what it is not. A `node_modules` that is itself a link is
+ * judged by its target, as a link inside one is.
  *
  * One level deep, plus one level inside a `@scope/` directory — the shape
  * a package manager writes — and then the same in the `node_modules` of
@@ -503,16 +528,43 @@ export interface WithheldLink {
  * outside the root lies outside the deny anchor, so granting it is a no-op
  * either way. Every side of every comparison is canonical: a target always
  * is, and a directory under a root reached through a link (macOS's `/var`)
- * is not.
+ * is not. `keyedGranted` names each granted keyed project as `keyed` does.
  */
 async function linkedDeps(
-  dirs: readonly string[],
   projectDir: string,
   workspaceRoot: string,
   keyed: ReadonlySet<string> | undefined,
-): Promise<{ granted: string[]; withheld: WithheldLink[] }> {
+): Promise<{ granted: string[]; withheld: WithheldLink[]; keyedGranted: string[] }> {
   const [self, root] = await Promise.all([realpath(projectDir), realpath(workspaceRoot)])
-  const realDirs = dirs.map(toRealPath)
+  const git = path.join(root, '.git')
+  // A target holding the project hands it back whole; one holding or
+  // inside `.git` hands over the repository, which no key folds.
+  const walled = (target: string): boolean =>
+    atOrUnder(self, target) || atOrUnder(git, target) || atOrUnder(target, git)
+  // Canonical keyed dir -> the dir as vx holds it.
+  const keyedDirs =
+    keyed === undefined
+      ? undefined
+      : new Map(await Promise.all([...keyed].map(async (d) => [await realpath(d), d] as const)))
+  const grants = (target: string): boolean =>
+    keyedDirs === undefined || !atOrUnder(target, root) || keyedDirs.has(target)
+  // The two implicit `node_modules`, each granted as itself only where it
+  // really is. One that is itself a link (`ln -s .. node_modules`) bound
+  // its target whole: the workspace root, a sibling or `.git`, and an edit
+  // there was a stale hit. Its target is judged as a workspace link's is.
+  const granted: string[] = []
+  const realDirs: string[] = []
+  const outward: Array<[target: string, link: string]> = []
+  for (const [dir, own] of [
+    [path.join(projectDir, 'node_modules'), path.join(self, 'node_modules')],
+    [path.join(workspaceRoot, 'node_modules'), path.join(root, 'node_modules')],
+  ] as const) {
+    const target = await realpath(dir).catch(() => own)
+    if (target === own) {
+      granted.push(dir)
+      realDirs.push(own)
+    } else outward.push([target, dir])
+  }
   const scan = async (dir: string, scope: string): Promise<Array<[string, string, string]>> => {
     const found: Array<[target: string, link: string, name: string]> = []
     const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
@@ -523,7 +575,7 @@ async function linkedDeps(
         if (
           target !== undefined &&
           !realDirs.some((d) => atOrUnder(target, d)) &&
-          !atOrUnder(self, target)
+          !walled(target)
         ) {
           found.push([target, full, scope + e.name])
         }
@@ -533,20 +585,26 @@ async function linkedDeps(
     }
     return found
   }
-  const keyedDirs =
-    keyed === undefined ? undefined : new Set(await Promise.all([...keyed].map((d) => realpath(d))))
-  const grants = (target: string): boolean =>
-    keyedDirs === undefined || !atOrUnder(target, root) || keyedDirs.has(target)
-  // Merged in `dirs` order, so the link a hint names is the project's own
-  // when both have one. A granted package is scanned in turn: pnpm and
-  // Bun link a dependency's own workspace dependencies only under ITS
-  // `node_modules`, so `app -> ui -> core` left core hidden and the import
-  // of ui failed with ENOENT, unreported.
+  // Merged in order, the project's `node_modules` first, so the link a hint
+  // names is the project's own when both have one. A granted package is
+  // scanned in turn: pnpm and Bun link a dependency's own workspace
+  // dependencies only under ITS `node_modules`, so `app -> ui -> core` left
+  // core hidden and the import of ui failed with ENOENT, unreported.
   const targets = new Map<string, { link: string; name: string }>()
-  let frontier: Array<[nodeModules: string, owner: string | undefined]> = dirs.map((d) => [
+  let frontier: Array<[nodeModules: string, owner: string | undefined]> = granted.map((d) => [
     d,
     undefined,
   ])
+  for (const [target, link] of outward) {
+    if (realDirs.some((d) => atOrUnder(target, d))) granted.push(link)
+    else if (!walled(target) && !targets.has(target)) {
+      targets.set(target, { link, name: relPosix(root, target) })
+      if (grants(target)) {
+        realDirs.push(target)
+        frontier.push([target, undefined])
+      }
+    }
+  }
   while (frontier.length > 0) {
     const next: typeof frontier = []
     const scans = await Promise.all(frontier.map(([d]) => scan(d, '')))
@@ -562,11 +620,14 @@ async function linkedDeps(
     }
     frontier = next
   }
-  const granted: string[] = []
   const withheld: WithheldLink[] = []
+  const keyedGranted: string[] = []
   for (const [target, { link, name }] of targets) {
-    if (grants(target)) granted.push(target)
-    else
+    if (grants(target)) {
+      granted.push(target)
+      const dir = keyedDirs?.get(target)
+      if (dir !== undefined) keyedGranted.push(dir)
+    } else
       withheld.push({
         dir: target,
         name,
@@ -574,7 +635,7 @@ async function linkedDeps(
         link: relPosix(workspaceRoot, link),
       })
   }
-  return { granted, withheld }
+  return { granted, withheld, keyedGranted }
 }
 
 /**
@@ -708,9 +769,11 @@ function wallOff(
   const home = toRealPath(workspaceRoot)
   for (const bind of bindableWrites(config.allowWrite)) {
     // A bind outside the workspace is the user's own path (`/tmp/x`,
-    // `~/.cache/y`), spelled there on purpose; only one inside is judged.
-    if (!atOrUnder(bind, home)) continue
-    const wall = walls.find((w) => atOrUnder(w, bind)) ?? sealed.find((w) => atOrUnder(bind, w))
+    // `~/.cache/y`), spelled there on purpose; only one inside is judged,
+    // and one reaching the repository's git dir outside it (`outsideGit`).
+    const wall = atOrUnder(bind, home)
+      ? (walls.find((w) => atOrUnder(w, bind)) ?? sealed.find((w) => atOrUnder(bind, w)))
+      : sealed.find((w) => !atOrUnder(w, home) && (atOrUnder(w, bind) || atOrUnder(bind, w)))
     if (wall === undefined) continue
     throw new UserError(
       `exec.sandbox.allow.write: the grant binding ${bind} would make ${wall} writable — another ` +
@@ -909,6 +972,54 @@ async function vxStores(
     .map(toRealPath)
     .filter((p) => !atOrUnder(root, p) && !atOrUnder(p, root))
   return (await Promise.all(stores.map((p) => denyAround(p, writes)))).flat()
+}
+
+/** The repository's git dirs and other work trees outside the workspace (`outsideGit`). */
+interface OutsideGit {
+  /** The git dir and the common dir: denied and sealed, as `<workspaceRoot>/.git` is. */
+  dirs: string[]
+  /** The top-level above the workspace, a linked worktree's main checkout: denied around it. */
+  trees: string[]
+}
+
+/**
+ * What of the repository lies outside the workspace. A workspace below
+ * the git top-level, or in a linked worktree (vx-dte's `local()` workers),
+ * keeps its git dirs there, and only `<workspaceRoot>/.git` was walled: a
+ * task read any project's committed bytes with `git --git-dir`, and a
+ * worktree's main checkout directly, into an output no key answered for.
+ * A tree holding home stays readable: a dotfiles repository at `~` would
+ * deny `~/.cache` with it, and its git dir alone is walled.
+ * Read from `repoFacts`, the memo the run's git enumeration filled.
+ */
+function outsideGit(workspaceRoot: string): OutsideGit {
+  const facts = repoFacts(workspaceRoot)
+  if (facts === null) return { dirs: [], trees: [] }
+  const root = toRealPath(workspaceRoot)
+  const common = toRealPath(path.resolve(root, facts.commonDir))
+  const dirs = [...new Set([toRealPath(facts.gitDir), common])].filter(
+    (d) => !atOrUnder(d, root) && !atOrUnder(root, d),
+  )
+  const home = toRealPath(process.env['HOME'] || homedir())
+  // A common dir named `.git` sits in the main checkout; a bare one has none.
+  const main = path.basename(common) === '.git' ? [path.dirname(common)] : []
+  const trees = [...new Set([repoRootOf(root, facts.prefix), ...main])].filter(
+    (t) => !atOrUnder(t, root) && !atOrUnder(home, t),
+  )
+  return { dirs, trees }
+}
+
+/**
+ * Each tree denied around the workspace and the task's write grants: the
+ * top-level's other contents are another workspace's, not this one's.
+ */
+async function gitTrees(
+  workspaceRoot: string,
+  trees: readonly string[],
+  writes: readonly string[],
+): Promise<string[]> {
+  const keep = [toRealPath(workspaceRoot), ...writes]
+  return (await Promise.all(trees.map((t) => denyAround(t, keep)))).flat()
 }
 
 /** `dir` denied, or its entries no write grant lies under or at when one is inside it. */

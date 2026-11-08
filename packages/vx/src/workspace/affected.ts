@@ -11,8 +11,10 @@ import { lstat, readlink, realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
   executablePath,
+  gitCaseArgs,
   gitEnv,
   gitSpawnRefusal,
+  ignoreCaseLies,
   isExecutableMissing,
   isInstalledPath,
   notAWorkTree,
@@ -31,7 +33,7 @@ import {
 import { configImportOwners, realpathOr } from './config-imports.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 import { bunPatchFiles } from './fingerprint.js'
-import { PROJECT_CONFIG_FILENAMES, REVIEW_FILE, type ProjectMeta } from './workspace.js'
+import { inVxDir, PROJECT_CONFIG_FILENAMES, REVIEW_FILE, type ProjectMeta } from './workspace.js'
 
 /**
  * Every git call here goes through these two: a git that is not on PATH
@@ -287,7 +289,17 @@ export async function affectedChanges(
   // itself is the base, as before. Turbo's two-dot range `A..HEAD` is the
   // one form that diffs from A itself.
   // Asked beside the base, not after it: the diff's shape waits on it.
-  const partial = isPartialClone(args.workspaceRoot).catch(() => false)
+  const config = gitConfigFacts(args.workspaceRoot).catch(() => ({
+    partial: false,
+    ignoreCase: false,
+  }))
+  const partial = config.then((c) => c.partial)
+  // `core.ignorecase=true` on a disk that tells case apart hid a new
+  // `a.txt` beside the tracked `A.txt` from the untracked listings.
+  const caseArgs = config.then((c) => {
+    if (c.ignoreCase) ignoreCaseLies(args.workspaceRoot, args.workspaceRoot)
+    return gitCaseArgs(args.workspaceRoot)
+  })
   const base = fromMergeBase
     ? await mergeBase(args.workspaceRoot, since)
     : await rangeBase(args.workspaceRoot, since)
@@ -327,7 +339,13 @@ export async function affectedChanges(
     // `--affected` skips a package that genuinely has new work.
     (async () =>
       (await args.untracked?.().catch(() => null)) ??
-      gitPaths(args.workspaceRoot, ['ls-files', '--others', '--exclude-standard', '-z']))(),
+      gitPaths(args.workspaceRoot, [
+        ...(await caseArgs),
+        'ls-files',
+        '--others',
+        '--exclude-standard',
+        '-z',
+      ]))(),
   ])
 
   const projects = await args.projects
@@ -368,7 +386,9 @@ export async function affectedChanges(
       (await listIndex()).filter((e) => e.flagged).map((e) => e.path))(),
   ])
   const dirLinkSet = new Set<string>()
-  changed.push(...(await linkedChanges(args.workspaceRoot, links, changed, dirLinkSet)))
+  changed.push(
+    ...(await linkedChanges(args.workspaceRoot, links, changed, dirLinkSet, await caseArgs)),
+  )
   // A path git was told not to look at (`update-index --assume-unchanged`,
   // `--skip-worktree`): `git diff` reports no edit to it, and the key
   // hashes it from disk, so the task missed and selection left it out.
@@ -725,6 +745,8 @@ async function removedProjectConfigs(
   for (const [rel, bytes] of atBase) {
     // A manifest's directory may never have been a project; a config's was.
     if (bytes === null || !CONFIG_NAMES.has(path.posix.basename(rel))) continue
+    // Under `.vx` no config made a project, at the base either.
+    if (inVxDir(rel)) continue
     const dir = path.resolve(workspaceRoot, path.posix.dirname(rel)).normalize('NFC')
     if (dirs.has(dir)) continue
     if (await Bun.file(path.join(workspaceRoot, rel)).exists()) continue
@@ -914,6 +936,8 @@ async function linkedChanges(
   changed: readonly string[],
   /** Given each link to a directory. */
   dirs: Set<string>,
+  /** `gitCaseArgs`, for the ignored listing. */
+  caseArgs: readonly string[],
 ): Promise<string[]> {
   if (links.length === 0) return []
   const realRoot = await realpath(workspaceRoot).catch(() => workspaceRoot)
@@ -936,6 +960,7 @@ async function linkedChanges(
   if (inside.length === 0) return out
   const named = inside.map((l) => l.target).filter((t) => t !== '')
   const ignored = await gitPaths(workspaceRoot, [
+    ...caseArgs,
     'ls-files',
     '--others',
     '--ignored',
@@ -1125,14 +1150,32 @@ async function statOnly(
   return same
 }
 
-/** A remote that serves missing objects on demand: `--filter` on a clone or a fetch. */
-async function isPartialClone(workspaceRoot: string): Promise<boolean> {
+/**
+ * Two config facts in one `git config`: `partial`, a remote that serves
+ * missing objects on demand (`--filter` on a clone or a fetch), and
+ * `ignoreCase`, `core.ignorecase` set true.
+ */
+async function gitConfigFacts(
+  workspaceRoot: string,
+): Promise<{ partial: boolean; ignoreCase: boolean }> {
   const proc = spawnGit(
-    ['config', '--get-regexp', String.raw`^(remote\..*\.promisor|extensions\.partialclone)$`],
+    [
+      'config',
+      '--get-regexp',
+      String.raw`^(remote\..*\.promisor|extensions\.partialclone|core\.ignorecase)$`,
+    ],
     workspaceRoot,
   )
   const [out] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
-  return out.split('\n').some((l) => l.startsWith('extensions.') || l.endsWith(' true'))
+  let partial = false
+  let ignoreCase = false
+  for (const l of out.split('\n')) {
+    // A bare key (`[core] ignorecase`) is true, as git reads it.
+    if (l.startsWith('core.ignorecase'))
+      ignoreCase = /^core\.ignorecase( (true|yes|on|[-+]?0*[1-9]\d*[kmg]?))?$/i.test(l)
+    else if (l.startsWith('extensions.') || l.endsWith(' true')) partial = true
+  }
+  return { partial, ignoreCase }
 }
 
 /**
@@ -1303,8 +1346,10 @@ async function mergeBase(workspaceRoot: string, ref: string): Promise<string> {
     isShallow(workspaceRoot)
   ) {
     throw new UserError(
-      `git ref "${ref}" has no merge base with HEAD in this shallow clone, and origin did not ` +
-        'give the history between them: fetch it (`git fetch --unshallow origin`).',
+      `git ref "${ref}" has no merge base with HEAD in this shallow clone, ` +
+        (hasOrigin(workspaceRoot)
+          ? 'and origin did not give the history between them: fetch it (`git fetch --unshallow origin`).'
+          : 'which has no origin remote: fetch the history between them (`git fetch --unshallow <url>`).'),
       'VX_E_AFFECTED_BASE',
     )
   }
@@ -1419,7 +1464,7 @@ async function rangeBase(workspaceRoot: string, ref: string): Promise<string> {
   return ref
 }
 
-/** The clones `fetchOrigin` fetched into, so made partial: `isPartialClone` may have answered first. */
+/** The clones `fetchOrigin` fetched into, so made partial: `gitConfigFacts` may have answered first. */
 const fetchedInto = new Set<string>()
 
 /** Deepening stops here (2,047 commits on each side): past it, the base is the user's to fetch. */
@@ -1428,6 +1473,18 @@ const MAX_DEEPEN = 1024
 function isShallow(workspaceRoot: string): boolean {
   const proc = spawnGitSync(['rev-parse', '--is-shallow-repository'], workspaceRoot, 'ignore')
   return new TextDecoder().decode(proc.stdout).trim() === 'true'
+}
+
+/**
+ * Whether origin has a URL. Asked only in a shallow clone, before a fetch
+ * or on a refusal. Not `git remote get-url`: a `[remote "origin"]` of
+ * promisor keys alone (git's filtered fetch from no origin writes one) it
+ * names as a URL.
+ */
+function hasOrigin(workspaceRoot: string): boolean {
+  return (
+    spawnGitSync(['config', '--get', 'remote.origin.url'], workspaceRoot, 'ignore').exitCode === 0
+  )
 }
 
 /** The parents a commit names, even where a shallow clone cut them off. */
@@ -1496,6 +1553,9 @@ async function originDefaultBranch(workspaceRoot: string): Promise<string | unde
  * demand. Never prompts for credentials; false when it failed.
  */
 async function fetchOrigin(workspaceRoot: string, args: string[]): Promise<boolean> {
+  // With no origin the fetch fails, yet first writes a promisor
+  // `[remote "origin"]` into the user's config.
+  if (!hasOrigin(workspaceRoot)) return false
   try {
     const proc = Bun.spawn({
       cmd: [
@@ -1568,9 +1628,12 @@ async function verifyRef(workspaceRoot: string, ref: string): Promise<void> {
   // no origin, no network, a name only another clone has.
   throw new UserError(
     `git ref "${ref}" did not resolve. Pass a branch or commit you have locally.` +
-      (isShallow(workspaceRoot)
-        ? ' This clone is shallow and origin did not give it: fetch the base (`git fetch --depth=1 origin <base>`).'
-        : ''),
+      (!isShallow(workspaceRoot)
+        ? ''
+        : hasOrigin(workspaceRoot)
+          ? ' This clone is shallow and origin did not give it: fetch the base (`git fetch --depth=1 origin <base>`).'
+          : ' This clone is shallow and has no origin remote: fetch the base from where it lives ' +
+            '(`git fetch --depth=1 <url> <base>`), or add one (`git remote add origin <url>`).'),
     'VX_E_AFFECTED_BASE',
   )
 }

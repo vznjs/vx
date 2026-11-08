@@ -879,6 +879,13 @@ export function refusedConnections(records: readonly string[]): SandboxViolation
 const NAME_SYSCALL = /^(?:symlink|unlink|rename|rmdir|mknod|link)/
 /** The calls the observer records twice, source and destination, in that order. */
 const MOVES = /^(?:rename|link)/
+/**
+ * The observer's opens that may be reads: an `openat2`'s flags lie in a
+ * struct its seccomp filter cannot read, so it takes every one, and its
+ * record names no flags. strace never sees one (USER_NOTIF wins over
+ * TRACE), so this record is the only trace of an `openat2` read.
+ */
+const OPEN_EITHER = /^openat2$/
 
 /**
  * The writes SRT's Linux observer saw that this task's binds do not cover.
@@ -898,7 +905,9 @@ const MOVES = /^(?:rename|link)/
  * when the task started is reported; one the task made is its own unless
  * it outlives the task, since an atomic writer stages beside its target
  * (the reason for the widening) and renames. A made directory holds
- * nothing of its own: only a new one left behind is reported.
+ * nothing of its own: only a new one left behind is reported. An
+ * `openat2` may be a read (`OPEN_EITHER`): where the task may read its
+ * path it is nothing, elsewhere an open named for a read.
  */
 export function refusedWrites(
   records: readonly string[],
@@ -928,8 +937,10 @@ export function refusedWrites(
       const top = path.join(dir, path.relative(dir, abs).split(path.sep)[0]!)
       if (!entries.has(top)) return exists(abs) && !(syscall.startsWith('mkdir') && abs !== top)
       if (syscall.startsWith('mkdir')) return false
-      // A granted read as a link's source: the read the grant allows.
-      return !(syscall.startsWith('link') && readable.some((r) => atOrUnder(abs, r)))
+      // A granted read as a link's source, or as an `openat2` (read or
+      // write, `OPEN_EITHER`): the read the grant allows.
+      const reads = syscall.startsWith('link') || OPEN_EITHER.test(syscall)
+      return !(reads && readable.some((r) => atOrUnder(abs, r)))
     }
     return false
   }
@@ -961,6 +972,11 @@ export function refusedWrites(
     // So does one a read grant shows, or holds: `mkdir -p src` under
     // `read: ['src']` failed a clean task the same way (X-82).
     if (!bound && syscall.startsWith('mkdir') && inSandbox(abs, binds, readable)) continue
+    // A write where the sandbox can read met the read-only bind and
+    // landed nothing; a read there was granted. Either way, nothing to say:
+    // judged a write, a granted `openat2(O_RDONLY)` failed a clean task.
+    const either = OPEN_EITHER.test(syscall)
+    if (!bound && either && inSandbox(abs, binds, readable)) continue
     const key = `${syscall}|${abs}`
     if (seen.has(key)) continue
     seen.add(key)
@@ -976,6 +992,14 @@ export function refusedWrites(
         ? {
             line: `${syscall}(${raw}) = a link or move no grant covers  [${abs}]`,
             ignorable: ['read', 'write'] as const,
+          }
+        : {}),
+      // Named for a read, the cheaper grant: a write grant reads too.
+      ...(either
+        ? {
+            line: `${syscall}(${raw}) = an open no grant covers  [${abs}]`,
+            ignorable: ['read', 'write'] as const,
+            opened: 'read' as const,
           }
         : {}),
     })

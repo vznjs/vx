@@ -161,8 +161,10 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   its shell exited (it held the output past the drain bound, or was
   still in the task's process group): core saves no entry for the task.
   `changed` lists the tracked files (workspace-relative) the command
-  changed where an executor ran it elsewhere: one the key read withholds
-  core's save under the key, with the line an input changed here gets.
+  changed where an executor ran it elsewhere, and the untracked ones it
+  found there: one the key read, or one its inputs declare (this disk
+  lacks it, so the key never folded it), withholds core's save under the
+  key, with the line an input changed here gets.
   Checked at the
   seam (`assertExecuteResult`): a plugin that resolves something else is
   refused with one line naming the executor, the task and the field

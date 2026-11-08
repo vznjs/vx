@@ -555,7 +555,9 @@ use your own instead.
   deep graph's orders stay small.
 - A task runs with the orchestrator's environment under the worker's
   root. `HOME`, `TMPDIR`, `USER` and the like are the worker's own, unless
-  the task's `env.define` sets them; `npm_execpath` is the workspace's
+  the task's `env.define` sets them or its `inputs.env` keys them: a keyed
+  one is the orchestrator's value, or unset where it is unset there, so
+  the worker runs on what the key saw; `npm_execpath` is the workspace's
   package manager on the worker, as core sets it on a local task.
 - A worker restores, by key, the declared outputs of every task the one
   it runs depends on, each after its own dependencies (an additive task's
@@ -588,15 +590,18 @@ use your own instead.
   `--no-cache` or read-only run, a dependant of a failure under
   `--continue=always`, one that left a process running that may still
   write its outputs, one a stopped run cancelled), and one that left a tracked file under its project
-  changed on its worker (a formatter's input), which this machine never
-  sees: core withholds its own save when the key read that file, and says so.
+  changed on its worker (a formatter's input), or that found an untracked,
+  unignored file under its project there (its outputs and its dependencies'
+  aside), which this machine never sees: core withholds its own save when
+  the key read that file or its inputs declare it, and says so.
 - Under `--force`, a success is saved under its key (which keeps an entry
   it already holds, as core does) and under the run's key, which this
   machine and the dependants' workers restore: the bytes this run built,
   never the entry it bypassed.
 - A worker whose tracked files differ from the orchestrator's (another
   tree, or the same commit with a tracked file changed, such as by a
-  prepare step) is refused. Both sides read their tracked files as they
+  prepare step) is refused, and the orchestrator says so as it happens:
+  `[vx] dte: refused worker <id>: <reason>`. Both sides read their tracked files as they
   are on disk, a file flagged `assume-unchanged` or `skip-worktree` too
   (one a sparse checkout left off disk is its index's), so the same change
   on both is the same tree.
@@ -760,8 +765,9 @@ not:
 
 A run over that started none (every task a hit) says
 `workers   none started: no task needed one`; one where a task waited
-on a worker and none joined (none started, or each refused) says
-`workers   none joined: a task waited on one`.
+on a worker and none joined says
+`workers   none joined: a task waited on one`, or, when the run refused
+workers, `workers   none joined: 2 refused (<first reason>)`.
 
 Under each worker, and `local`, the footer then spells out what it did:
 its time online, busy and idle; its CPU peak and average in cores and

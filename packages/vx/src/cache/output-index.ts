@@ -261,8 +261,12 @@ export class OutputIndex {
       try {
         if (e.mode === LINK_MODE) return linkCurrent(path.join(projectDir, e.path), e)
         const s = statSync(path.join(projectDir, e.path))
-        // An empty output directory: current while a directory stands there.
-        if (e.path.endsWith('/')) return s.isDirectory()
+        // An empty output directory: current while a directory stands there,
+        // with the mode its row records if it records one.
+        if (e.path.endsWith('/'))
+          return (
+            s.isDirectory() && ((e.mode & 0o170000) !== DIR_MODE || modeMatches(s.mode, e.mode))
+          )
         return (
           s.size === e.size &&
           modeMatches(s.mode, e.mode) &&

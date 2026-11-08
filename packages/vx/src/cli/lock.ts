@@ -630,10 +630,11 @@ function warnShadowed(root: string, check: GraphCheck, verb: string): void {
 
 /**
  * `read` with each file's record taken from `fresh` where only the files
- * its digests read moved (same bytes, same extra files): a run digests
- * anew on such an edit (`lockfileClaim`'s `lockedOnce`), and cli.md says
- * it needs no `vx lock`, yet `--check` failed every edit in a `file:`
- * directory or a patch.
+ * its digests read moved (same bytes, same extra files, an extra's hash
+ * changed): a run digests anew on such an edit (`lockfileClaim`'s
+ * `lockedOnce`), and cli.md says it needs no `vx lock`, yet `--check`
+ * failed every edit in a `file:` directory or a patch. With every hash
+ * unchanged a run keys from the record, so its digests are compared.
  */
 function liveExtras(read: DependenciesLock, fresh: DependenciesLock): DependenciesLock {
   const files = { ...read.files }
@@ -642,7 +643,8 @@ function liveExtras(read: DependenciesLock, fresh: DependenciesLock): Dependenci
     if (
       was !== undefined &&
       was.hash === now.hash &&
-      Bun.deepEquals(Object.keys(was.extras ?? {}), Object.keys(now.extras ?? {}))
+      Bun.deepEquals(Object.keys(was.extras ?? {}), Object.keys(now.extras ?? {})) &&
+      !Bun.deepEquals(was.extras ?? {}, now.extras ?? {})
     )
       files[name] = now
   }

@@ -99,7 +99,8 @@ referenced by `dependsOn`, by `inputs.tasks`, and by the CLI
 (`vx run <taskName>` or `vx run <pkg>#<taskName>`), so a name those
 could not spell is refused at load: an empty one, one with surrounding
 whitespace, one holding `#` (the project separator) or `*` (a pattern),
-and one starting with `^` (dependencies' tasks) or `!` (a negation).
+and one starting with `^` (dependencies' tasks), `!` (a negation) or
+`-` (a CLI flag).
 A task or project name holding a control character (`ESC`, `\r`) is
 refused too: vx prints names raw, and one could retitle the terminal.
 
@@ -107,7 +108,7 @@ refused too: vx prints names raw, and one could retitle the terminal.
 spell it: surrounding whitespace, a `#`, a `*` (a pattern), a leading
 `^` (dependencies' tasks) or `!` (an exclusion), a leading `tag:`, a
 leading or trailing `...` (a dependency walk), a trailing `[<ref>]` (a
-git range), or a directory form (`./x`, `{x}`). A name a plugin gives
+git range), or a directory form (`./x`, `{x}`, `x{dir}`). A name a plugin gives
 and a project's path name are held to the same rule.
 
 `tags` label the project for selection: `--filter tag:<name>` selects
@@ -333,8 +334,8 @@ affects cache keys.
 
 With neither set, a task the run history knows as **flaky** gets one
 more attempt when it fails: its key passed before, or one of its keys
-failed after it passed, or a pass took a retry, within the history's
-30 days. Only a cached task has that record, and a timeout always fails.
+failed after it passed, or a pass took a retry, in the run history
+(kept until a bounded `vx cache clean` drops what is over 30 days old). Only a cached task has that record, and a timeout always fails.
 Under Distributed task execution (`@vzn/vx-dte`) a retry runs on
 another worker than the attempt that failed. A history server
 (`@vzn/vx-history`) shares that record across CI
@@ -404,8 +405,8 @@ daemon, a Docker socket, a device, a VPN-only host.
   ```
 
 - **Never busts a cache:** `remote` is stripped from the cache key —
-  `'only'` included, and it is the only `exec` field that is. The contract of a remote executor
-  is that the same command over the same inputs produces the same outputs,
+  `'only'` included, as is [`worker`](#worker-optional), the other
+  placement field. The contract of a remote executor is that the same command over the same inputs produces the same outputs,
   so a key that moved with placement would split a laptop from a worker pool
   over nothing.
 
@@ -571,14 +572,18 @@ Semantics:
   run, and vx names it: `vx: <id> exited with code <n>` (a signal death
   as its `128 + n` code), at once while the graph still runs (`… while
 the run went on`), so a dependant failing against it reads why. Its own outcome is `failed` with that exit
-  code, and the footer counts it so (item 1071). An exit 0 on its own is
+  code, and the footer counts it so (item 1071). A cached dependant that
+  was running when it died still passes, but is not saved, nor is what
+  is built on it: its key is a healthy run's, its bytes are not. An exit 0 on its own is
   fine (a daemon that forks and returns), and one kept only as a
   dependency does not end the foreground hold (WD-3).
 - **Stopped once nothing needs it.** A persistent task vx does not keep
   gets `SIGTERM` (`SIGKILL` past the kill grace) as soon as every task
   that uses it, directly or through groups, has finished, while the rest
   of the graph still runs: it no longer holds the machine's cores. A
-  server that uses another counts as finished once it is stopped. The
+  server that uses another counts as finished once it is stopped, and
+  the one it uses gets its `SIGTERM` only then, here and at the end of
+  the graph: its shutdown may still talk to it. The
   stop is no crash. `vx watch` holds its servers for the next cycle, and
   a Ctrl-C stops them all as before. In the foreground vx KEEPS the
   persistent tasks you requested, those a requested group stands for,
@@ -673,8 +678,9 @@ highest priority:
    **`NODE_OPTIONS`** (`--require` / `--import` / `--loader` /
    `--conditions` inject code or switch package-export resolution),
    **`LC_ALL` / `LANG`** (collation — anything shelling out to `sort`
-   orders differently), and **`CI` / `FORCE_COLOR` / `TERM`** (output
-   bytes, and vx caches and replays output).
+   orders differently), and **`CI` / `FORCE_COLOR` / `NO_COLOR` /
+   `COLORTERM` / `TERM`** (output bytes, and vx caches and replays
+   output; a host `NO_COLOR` also stops vx setting `FORCE_COLOR=1`).
 
    They are not hashed because hashing them would mean a laptop and a
    CI runner could **never share a remote cache entry** — `PATH`,
@@ -953,7 +959,8 @@ match on their own: `{src/**,lib/**}` is `src/**` plus `lib/**`, and
 spellings fold per alternative (`{./src,lib}/**` is `src/**` plus
 `lib/**`), in inputs and outputs alike. A `,`, `{` or `}` inside a
 class is one of its characters, never a cut: `lib/{a[,]b,x}.ts` is
-`lib/a[,]b.ts` plus `lib/x.ts`. A
+`lib/a[,]b.ts` plus `lib/x.ts`; so is an escaped one (`\,`), and an
+alternative may hold an escape (`{src,app/\[id\]}` is the two trees). A
 backslash escapes: a route directory (Next.js, SvelteKit, Astro) is
 `app/\[id\]/**`; bare, `app/[id]/**` is the class that matches `app/i`
 and `app/d`, never the route. When the path the class spells exists
@@ -971,7 +978,8 @@ Parens with no `|` (`app/(marketing)/**`) are filename characters and
 stay. So is `**` glued to other text in one segment (`src/**.ts`, `a**`):
 the engine reads it as one `*`, a single level, so deeper inputs would
 leave the key and deeper outputs go unsaved; write `src/**/*.ts` for every
-depth or `src/*.ts` for one. A brace range is `Bun.Glob`'s (Bun 1.4.4):
+depth or `src/*.ts` for one; inside a brace too (`src/{a,**}.ts` is
+`src/**.ts`). A brace range is `Bun.Glob`'s (Bun 1.4.4):
 `{1..3}`, `{3..1}`, `{01..03}`, `{a..c}`, `{1..10..3}`; vx expands it as
 a comma brace. A mixed-case range (`{A..c}`) or one of more than 1024
 names is refused wherever it sits in the glob. A leading `!` is still the negation, so `!(group)/**`
@@ -1797,6 +1805,15 @@ vx's own stores are denied the same way: `~/.vx`, where every
 repository's shared store lives, and a cache directory outside the
 workspace (`VX_CACHE_DIR=~/.cache/vx`). Read, they handed a task every
 project's cached outputs, around the cross-project wall and its key.
+So is the repository outside the workspace: a workspace below the git
+top-level, or in a linked worktree (`@vzn/vx-dte`'s `local()` workers),
+keeps its git dir there, and `git --git-dir` read any project's
+committed bytes. The git dir and the common dir are denied and sealed
+like the workspace's own `.git` (a write grant reaching one is refused),
+and the top-level's other contents and a worktree's main checkout are
+denied around the workspace and the task's write grants. A tree that
+holds home (a dotfiles repository at `~`) stays readable; only its git
+dir is denied.
 
 **`hermetic: true`** moves the read wall from the workspace root to `/`.
 Outside the workspace, the task reads only what `allow.read` names.
@@ -1891,9 +1908,12 @@ writable, and a write there succeeded and left nothing on disk. The
 runtime's write observer saw the attempt, and a write no grant binds is
 reported and fails the task, even when the command swallowed the error
 and exited 0 (B-5; before it, both Linux shapes passed with nothing
-reported, items 444 and 1011). A write outside the project is refused
-the same way and named on a failed task, never counted. The remedy is to
-declare it: `allow: { write: [...] }`.
+reported, items 444 and 1011). One exception: the observer cannot see an
+`openat2`'s flags, so one the task may read is taken as a read, and a
+swallowed `openat2` write there passes, having written nothing; one it
+may not read is reported as an open, its fix a read grant. A write
+outside the project is refused the same way and named on a failed
+task, never counted. The remedy is to declare it: `allow: { write: [...] }`.
 
 **A write grant cannot be removed on Linux.** A directory grant is
 mounted in place, so `rm -rf dist && tsc` under `write: ['dist/']`
@@ -2183,7 +2203,10 @@ interface CacheSettings {
   `.vx/workspace.*` (`''` and `'.'` name the
   root), whose subdirectory does (`'packages'`), or that holds the
   workspace (`'..'`, `'/'`) is refused before anything is written, since its `*`
-  `.gitignore` would hide the sources from git and the cache keys. A
+  `.gitignore` would hide the sources from git and the cache keys. One
+  that resolves, through links (a `.vx/cache` linked to `~` or `..`), to
+  the home directory, `/`, or a directory holding the workspace or a
+  `.git` is refused on every open, an index already there or not. A
   directory other than the default `.vx/cache` gets that `*` `.gitignore`;
   the default is ignored by `.vx/.gitignore` (`/cache`, `/tmp`) instead, written
   when missing and never edited.

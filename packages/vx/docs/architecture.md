@@ -411,6 +411,8 @@ restoreTier, … })` runs the DAG two-tier. Each ready node invokes
    7. A dependency-only persistent subprocess is `SIGTERM`ed (SIGKILL
       after the kill grace) once every task using it has finished
       (`unneededServers`); one left when the graph drains goes then.
+      Either way a server is signalled only after the servers using it
+      have exited (`serverUsers`).
       Persistent tasks
       the user REQUESTED, those a requested group stands for, and the
       persistent tasks they depend on, are kept alive (none when

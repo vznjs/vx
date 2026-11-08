@@ -19,6 +19,8 @@ export async function checkIgnore(
 ): Promise<Set<string> | null>
 export function checkIgnoreSync(cwd: string, paths: readonly string[]): Set<string> | null
 export function listedSync(cwd: string, dirs: readonly string[]): string[] | null
+export function ignoreCaseLies(dir: string, probe: string): boolean
+export function gitCaseArgs(cwd: string): readonly string[]
 export function wholeIgnored(
   globs: Iterable<string>,
   ignored: ReadonlySet<string> | null,
@@ -39,6 +41,16 @@ export function wholeIgnored(
   through `checkIgnoreSync` too.
 - `listedSync`: `git ls-files --cached --others --exclude-standard` under
   `dirs`, for `vx lock`; a run reads its own enumeration instead.
+- `ignoreCaseLies`: whether `core.ignorecase=true`, which git in `dir`
+  reported, is false on disk (a `.git` copied from macOS to Linux): one
+  stat of `probe` with its name's case swapped, once per `dir`. Asked
+  only where git's config is read anyway: the enumeration's `git var -l`
+  (probe `HEAD`) and `--affected`'s `git config` (probe the root).
+- `gitCaseArgs`: `-c core.ignorecase=false` for a git spawn at or under a
+  directory found lying, else nothing; free until one is. Every listing
+  git could fold prepends it: these checks and `listedSync`, the
+  enumeration's, `--affected`'s, watch's inventory and `vx lock`'s
+  discovery, so a new `a.txt` beside the tracked `A.txt` is listed.
 - `wholeIgnored`: the globs whose probes git ignores and, when deep, no
   listed file matches. Undecided is not ignored.
 
@@ -53,3 +65,7 @@ a parent, the project's own `.gitignore` and `.git/info/exclude`; with
 the rule off the gate alone; controls: nothing ignored, a rule only one
 nested directory holds, a tracked file at the output and deeper, and a
 directory a `!` rule takes back are all still overlaps.
+
+`tests/git-ignorecase.test.ts`: under a lying `core.ignorecase`, the
+enumeration, `--affected` alone, and after the enumeration watch's
+inventory, `listedSync` and discovery all list the case twin.

@@ -220,7 +220,7 @@ export function armWatcher(
     // measured 2026-09-03, with every delivered event under 60 ms). So it is
     // re-written on a short backoff until its event arrives — the first write
     // after the stream goes live is the one that proves it.
-    const deadline = Date.now() + timeoutMs
+    const deadline = performance.now() + timeoutMs
     let ok = false
     let step = 50
     while (!ok) {
@@ -229,7 +229,7 @@ export function armWatcher(
       } catch {
         break // an unwritable dir gets no proof; the watcher is kept
       }
-      const remaining = deadline - Date.now()
+      const remaining = deadline - performance.now()
       if (remaining <= 0) {
         // The write itself can outlast the budget (a loaded macOS runner:
         // 261 ms against 100, E-87), and the loop has not yielded yet: let

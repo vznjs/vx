@@ -1292,6 +1292,37 @@ describe('upgradeBinary: the version it already is', () => {
     expect(r).toEqual({ moved: false, asked: [] })
     expect(await readFile(dest, 'utf8')).toBe('old')
   })
+
+  it('as latest, says so before refusing a directory it cannot write', async () => {
+    // A root-owned binary already at latest was told to sudo, exit 1: the
+    // write check ran before the registry named latest.
+    const host = `@vzn/vx-${process.platform}-${process.arch}`
+    const latest = `https://registry.npmjs.org/${host}/latest`
+    const integrity = integrityOf(TGZ)
+    const at = (version: string) => ({
+      version,
+      dist: {
+        tarball: TARBALL_URL,
+        integrity,
+        signatures: [{ keyid: TEST_KEY.id, sig: signed(`${host}@${version}:${integrity}`) }],
+      },
+    })
+    const dest = path.join(dir, 'not-there', 'vx')
+    const run = (served: string) =>
+      withFetch({ [latest]: () => Response.json(at(served)) }, async (asked) => ({
+        outcome: await upgradeBinary(dest, 'latest', '9.9.9', '', TEST_KEY).then(
+          (moved) => moved,
+          (err: Error) => err.message,
+        ),
+        asked,
+      }))
+    expect(await run('9.9.9')).toEqual({ outcome: false, asked: [latest] })
+    // CONTROL: a newer latest still refuses before its download.
+    expect(await run('9.9.10')).toEqual({
+      outcome: `vx upgrade: cannot write to ${path.dirname(dest)} (ENOENT), where this vx lives — nothing downloaded; re-run as a user who can (sudo vx upgrade), or install vx somewhere you can write`,
+      asked: [latest],
+    })
+  })
 })
 
 describe('vx upgrade (CLI)', () => {

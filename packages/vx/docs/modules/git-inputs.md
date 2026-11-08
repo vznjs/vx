@@ -183,13 +183,15 @@ export function runGitLsFiles(cwd: string, env?: Record<string, string>): GitLsR
 
 // Read off a plain `.git` directory (no location variable or
 // `GIT_INDEX_FILE`, no include, no `.git` file), else one `git rev-parse
-// --show-prefix --git-common-dir --show-object-format --git-path index`;
-// per directory per process; null (not remembered) when git fails.
+// --show-prefix --git-common-dir --show-object-format --git-path index
+// --absolute-git-dir`; per directory per process; null (not remembered)
+// when git fails. The sandbox reads the same memo for the git dirs it walls off.
 export interface RepoFacts {
   prefix: string
   commonDir: string
   objectFormat: 'sha1' | 'sha256'
   indexFile: string
+  gitDir: string // absolute
 }
 export function repoFacts(dir: string): RepoFacts | null
 // The refusal the enumeration would throw (no git, not a work tree), asked
@@ -243,8 +245,10 @@ disk with no spawn at all (~3 ms a run;
 read stays a spawn of its own: `rev-parse` prints no config value.
 `lazyGitEnumeration` holds a run's whole-tree enumeration: an unscoped
 run starts it at once; a `discover` hook's `worktreeChanges()` starts it
-on a scoped one (and in the CLI's `--filter` pass, whose discovery the
-run takes over: `gitOfDiscovery` finds its enumeration), and the run then reuses it rather than
+on a scoped one; the CLI's `--filter` pass starts it for a `[<since>]`
+filter before the workspace config loads and hands it to its discovery
+(`discoverCliProjects`' `git`), which the run takes over (`gitOfDiscovery`
+finds its enumeration), and the run then reuses it rather than
 spawn a scoped walk too (G-75).
 `applyGitEnumeration` folds the result into the run's `GitFilesCache`, which `inputs.ts`'s `resolveFiles`
 reads: a tracked-clean path carries a trusted OID and skips both the

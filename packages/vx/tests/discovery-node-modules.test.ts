@@ -66,3 +66,27 @@ it('in git, a config under an ignored directory is no project; one under a dot d
     'packages/a/vx.config.mjs',
   ])
 })
+
+// `.vx` holds vx's state, which the walk outside git never enters: in git,
+// a config under `.vx/cache/x` was a project, so the same tree locked a
+// different set by whether it was in git.
+it('in git as outside it, nothing under a .vx directory is a project; a nested workspace file still marks', async () => {
+  const files = {
+    '.vx/workspace.mjs': 'export default {}\n',
+    'packages/a/vx.config.mjs': CONFIG,
+    '.vx/vx.config.mjs': CONFIG,
+    '.vx/cache/x/vx.config.mjs': CONFIG,
+    'packages/a/.vx/state/vx.config.mjs': CONFIG,
+    'packages/b/.vx/workspace.mjs': 'export default {}\n',
+    'packages/b/vx.config.mjs': CONFIG,
+  }
+  const walked = path.join(BASE, 'vx-walk')
+  const listed = path.join(BASE, 'vx-git')
+  write(walked, files)
+  write(listed, files)
+  git(listed, 'init', '-q')
+  for (const root of [walked, listed]) {
+    const { configs } = await findProjectConfigs(root)
+    expect(configs.map((c) => relPosix(root, c.configPath))).toEqual(['packages/a/vx.config.mjs'])
+  }
+})

@@ -162,8 +162,22 @@ const printable = (s: string): string =>
   // oxlint-disable-next-line no-control-regex
   s.replace(/[\x00-\x1f\x7f-\x9f]/g, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`)
 
-/** A refusal, named by its status and the server's own `message`. */
-async function refusal(res: Response): Promise<Error> {
+/** Shorter values are not hidden, as core masks none under 6 characters: each would blank common words. */
+const MIN_TOKEN_CHARS = 6
+
+/** `text` with each of `tokens` written `***`. */
+function hideTokens(text: string, tokens: Iterable<string>): string {
+  let out = text
+  for (const token of tokens)
+    if (token.length >= MIN_TOKEN_CHARS) out = out.replaceAll(token, '***')
+  return out
+}
+
+/**
+ * A refusal, named by its status and the server's own `message`, each
+ * token `hide` knows written `***` before the cut, so none is left in part.
+ */
+async function refusal(res: Response, hide: (text: string) => string): Promise<Error> {
   let said = ''
   try {
     const { text } = await upTo(res, 2048)
@@ -177,7 +191,7 @@ async function refusal(res: Response): Promise<Error> {
   } catch {
     // quiet: the status alone still names the refusal
   }
-  said = printable(said.replace(/\s+/g, ' ').trim().slice(0, 200))
+  said = printable(hide(said).replace(/\s+/g, ' ').trim().slice(0, 200))
   return new Error(`HTTP ${res.status}${said === '' ? '' : `: ${said}`}`)
 }
 
@@ -393,6 +407,26 @@ export class VxCacheLayer implements RemoteCacheLayer {
   }
 
   private idToken: { jwt: string; exp: number } | undefined
+  /**
+   * Every token this layer sent: a server that quoted a request's
+   * Authorization header in its refusal printed it to the CI log and
+   * cache.db, as core masks only secret-named variables.
+   */
+  private readonly sent = new Set<string>()
+  private readonly hidden = (text: string): string => hideTokens(text, this.sent)
+
+  /** `work`, each error it throws with every token sent hidden: the one way an error leaves the layer. */
+  private async guard<T>(work: Promise<T>): Promise<T> {
+    try {
+      return await work
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      const hidden = this.hidden(message)
+      if (hidden === message) throw err
+      const code = (err as { code?: unknown } | null)?.code
+      throw Object.assign(new Error(hidden), code === undefined ? {} : { code })
+    }
+  }
   /** The token a run running its tasks here lent (`CacheContext.lent`). */
   lent: (() => string | undefined) | undefined
 
@@ -432,6 +466,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
    * run on every worker. A refusal (a 4xx) is final.
    */
   private async askOnce(ask: URL): Promise<Response> {
+    this.sent.add(this.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN!)
     for (let attempt = 1; ; attempt++) {
       let res: Response | undefined
       let failure: unknown
@@ -459,7 +494,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
     let jwt: unknown
     try {
       const res = await this.askOnce(ask)
-      if (!res.ok) throw await refusal(res)
+      if (!res.ok) throw await refusal(res, this.hidden)
       jwt = ((await jsonUpTo(res, SMALL_ANSWER_BYTES, 'it')) as { value?: unknown } | null)?.value
       if (typeof jwt !== 'string' || jwt === '') throw new Error('no token in its answer')
     } catch (err) {
@@ -480,7 +515,11 @@ export class VxCacheLayer implements RemoteCacheLayer {
    * lends while its policy reads, and a refused token lent was refused on
    * every worker.
    */
-  async lend(): Promise<LentAccess | undefined> {
+  lend(): Promise<LentAccess | undefined> {
+    return this.guard(this.lending())
+  }
+
+  private async lending(): Promise<LentAccess | undefined> {
     if (this.disabled || this.lent?.() !== undefined) return undefined
     const jwt = await this.bearer(LEND_MARGIN_MS)
     if (jwt === '') return undefined
@@ -514,6 +553,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
       this.tokenFailed = true
       throw err
     }
+    if (bearer !== '') this.sent.add(bearer)
     const ms = init.timeoutMs ?? this.config.timeoutMs
     const controller = new AbortController()
     let answer: ReturnType<typeof setTimeout> | undefined
@@ -565,7 +605,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
         return undefined
       }
       throw new Error(
-        `${(await refusal(res)).message}: the write was refused (this job reads only); writes off for this run, reads go on`,
+        `${(await refusal(res, this.hidden)).message}: the write was refused (this job reads only); writes off for this run, reads go on`,
       )
     }
     if (res.status === 401 || res.status === 403) {
@@ -576,7 +616,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
         return undefined
       }
       throw new Error(
-        `${(await refusal(res)).message}: ${bearer === '' ? 'a read with no token was refused' : `the token was refused (this workspace names ${this.config.repository} at ${this.config.issuer})`}; remote cache off for this run`,
+        `${(await refusal(res, this.hidden)).message}: ${bearer === '' ? 'a read with no token was refused' : `the token was refused (this workspace names ${this.config.repository} at ${this.config.issuer})`}; remote cache off for this run`,
       )
     }
     return res
@@ -627,7 +667,11 @@ export class VxCacheLayer implements RemoteCacheLayer {
    * keeps apart from "none held" (an empty map rewrote every key it asked
    * as a miss in `remote_hits`, and the next run fetched none of them).
    */
-  async hasMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null> {
+  hasMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null> {
+    return this.guard(this.lookup(hashes))
+  }
+
+  private async lookup(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null> {
     const held = new Map<string, ArtifactInfo>()
     this.sayUnsaid()
     if (this.disabled || this.refs.length === 0) return null
@@ -687,7 +731,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
         await res.body?.cancel()
         throw new TooMany(max)
       }
-      throw await refusal(res)
+      throw await refusal(res, this.hidden)
     }
     const body = (await jsonOf(
       res,
@@ -722,7 +766,13 @@ export class VxCacheLayer implements RemoteCacheLayer {
    * main's (2026-11-06). More refs than the server's `maxCheckHashes` go
    * in several, in order.
    */
-  async get(hash: string): Promise<{ body: Response; durationMs: undefined } | null | undefined> {
+  get(hash: string): Promise<{ body: Response; durationMs: undefined } | null | undefined> {
+    return this.guard(this.download(hash))
+  }
+
+  private async download(
+    hash: string,
+  ): Promise<{ body: Response; durationMs: undefined } | null | undefined> {
     this.sayUnsaid()
     const at = this.found.get(hash)
     const scopes = at === undefined ? this.scopes : [at]
@@ -749,7 +799,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
           await res.body?.cancel()
           continue
         }
-        throw await refusal(res)
+        throw await refusal(res, this.hidden)
       }
       return { body: res, durationMs: undefined }
     }
@@ -757,7 +807,15 @@ export class VxCacheLayer implements RemoteCacheLayer {
   }
 
   /** An artifact over the server's upload limit is not sent: it is said. */
-  async put(
+  put(
+    hash: string,
+    body: Blob,
+    meta: { durationMs: number; replace?: true },
+  ): Promise<void | false> {
+    return this.guard(this.store(hash, body, meta))
+  }
+
+  private async store(
     hash: string,
     body: Blob,
     meta: { durationMs: number; replace?: true },
@@ -833,7 +891,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
         return false
       }
       if ((res.status !== 429 && res.status < 500) || attempt === ASK_ATTEMPTS)
-        throw await refusal(res)
+        throw await refusal(res, this.hidden)
       await res.body?.cancel()
       await this.wait(1000 * attempt)
     }

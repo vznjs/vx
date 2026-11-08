@@ -147,7 +147,11 @@ export function taskNameProblem(name: string): string | null
   file and shows a worked example (or `emptyReason`); a migration with
   nothing to convert is an error.
 - A plan that names a file outside the root (a project dir, an
-  `extraFiles` path) is refused before anything is written.
+  `extraFiles` path) is refused before anything is written, by its
+  spelling and by its real directory: a member linked out of the root
+  (`packages/a -> ../../out/a`) is refused too, as core's discovery never
+  loads a config there. One linked to a directory inside the root is
+  written at the real place; `.vx` itself may be a link.
 - `quoteTsLiteral` escapes backslash, quote and raw newlines — a value with
   an embedded newline (legal JSON) must round-trip through the loader.
 

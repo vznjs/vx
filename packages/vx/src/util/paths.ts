@@ -306,12 +306,49 @@ function compileAnyTaskGlob(rawPatterns: readonly string[]): (rel: string) => bo
   if (patterns.length === 0) return () => false
   const sources = patterns.map(regExpSource)
   const globs = patterns.map(taskGlob)
-  if (sources.every((r) => r !== null)) {
-    const re = new RegExp(`^(?:${sources.join('|')})$`, 'u')
+  if (!sources.every((r) => r !== null)) return (rel) => globs.some((g) => g.match(rel))
+  // Each `**/` alternative opened with its own prefix, retried at every
+  // slash of the path: 1000 `**/fileN.ts` globs took 24 s over 200,000
+  // paths. One shared prefix before their alternation takes 50 ms.
+  const deep: string[] = []
+  const rest: string[] = []
+  for (const s of sources as string[]) {
+    if (s.startsWith(LEADING_GLOBSTAR)) deep.push(s.slice(LEADING_GLOBSTAR.length))
+    else rest.push(s)
+  }
+  const res = alternations(rest)
+  for (let i = 0; i < deep.length; i += ALTERNATIVES_PER_REGEXP) {
+    const part = deep.slice(i, i + ALTERNATIVES_PER_REGEXP)
+    res.push(new RegExp(`^${LEADING_GLOBSTAR}(?:${part.join('|')})$`, 'u'))
+  }
+  if (res.length === 1) {
+    const re = res[0]!
     return (rel) => (rel.endsWith('/') ? globs.some((g) => g.match(rel)) : re.test(rel))
   }
-  return (rel) => globs.some((g) => g.match(rel))
+  return (rel) =>
+    rel.endsWith('/') ? globs.some((g) => g.match(rel)) : res.some((re) => re.test(rel))
 }
+
+/**
+ * Alternatives per compiled RegExp. Bun's engine falls off a cliff past a
+ * few thousand: over 200k paths, 2000 literal-file alternatives took 32 ms,
+ * 4000 took 482 ms and 8000 took 15 s, so a project listing 4000 files in
+ * `inputs.files` paid that on every key. Below the cliff, the cost of
+ * splitting is flat.
+ */
+const ALTERNATIVES_PER_REGEXP = 1000
+
+function alternations(sources: readonly string[]): RegExp[] {
+  const out: RegExp[] = []
+  for (let i = 0; i < sources.length; i += ALTERNATIVES_PER_REGEXP) {
+    const part = sources.slice(i, i + ALTERNATIVES_PER_REGEXP)
+    out.push(new RegExp(`^(?:${part.join('|')})$`, 'u'))
+  }
+  return out
+}
+
+/** What {@link regExpSource} writes for a leading `**` segment. */
+const LEADING_GLOBSTAR = '(?:[^]*/)?'
 
 const REGEXP_SYNTAX = /[\\^$.*+?()[\]{}|]/g
 
@@ -336,7 +373,7 @@ function regExpSource(pattern: string): string | null {
       // more names (`src/**` does not match `src`).
       if (segments.length === 1) out += '[^]*'
       else if (last) out += '/[^]+'
-      else out += i === 0 ? '(?:[^]*/)?' : '/(?:[^]*/)?'
+      else out += i === 0 ? LEADING_GLOBSTAR : `/${LEADING_GLOBSTAR}`
       continue
     }
     if (seg === '' || seg === '.' || seg === '..' || seg.includes('**')) return null
@@ -535,9 +572,15 @@ function classEnd(pattern: string, i: number): number {
   return end === -1 ? i : end
 }
 
+// A `\x` is one character to both scans: it opens, closes and cuts nothing,
+// and stays in its alternative for the glob to read. Expansion turned off
+// at any escape, `{src,app/\[id\]}` named neither tree.
 function expandBraces(pattern: string, slashOnly: boolean): string[] {
-  if (pattern.includes('\\')) return [pattern]
   for (let open = 0; open < pattern.length; open++) {
+    if (pattern[open] === '\\') {
+      open++
+      continue
+    }
     if (pattern[open] === '[') {
       open = classEnd(pattern, open)
       continue
@@ -548,7 +591,8 @@ function expandBraces(pattern: string, slashOnly: boolean): string[] {
     let close = -1
     for (let i = open; i < pattern.length && close === -1; i++) {
       const c = pattern[i]
-      if (c === '[') i = classEnd(pattern, i)
+      if (c === '\\') i++
+      else if (c === '[') i = classEnd(pattern, i)
       else if (c === '{') depth++
       else if (c === '}' && --depth === 0) close = i
       else if (c === ',' && depth === 1) cuts.push(i)

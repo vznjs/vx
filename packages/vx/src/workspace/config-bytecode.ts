@@ -34,7 +34,7 @@ import {
 import { writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import path from 'node:path'
-import { xxh3hex } from '../util/index.js'
+import { refuseForeignCacheDir, xxh3hex } from '../util/index.js'
 
 /** Bumped when what a bundle holds, or how it is checked, changes. */
 const COMPILED_VERSION = 2
@@ -158,6 +158,9 @@ export async function buildCompiled(
   answered.set(configPath, { bytes, ns })
   const dir = compiledDir(root)
   if (!existsSync(path.dirname(dir))) return
+  // Before the first write there: the cache's own open, which refuses a
+  // `.vx/cache` linked to the home directory, comes after this load.
+  refuseForeignCacheDir(path.dirname(dir), root)
   const name = nameOf(configPath, bytes)
   const entryFile = realpathSync(configPath)
   const inputs: Record<string, string> = {}

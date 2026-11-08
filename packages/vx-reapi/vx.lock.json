@@ -36,7 +36,7 @@
         "install"
       ],
       "exec": {
-        "command": "for f in tests/cache-ac-refused.test.ts tests/cancel-operation.test.ts tests/exec-e2e.test.ts tests/executor-auth.test.ts tests/executor-sweep.test.ts tests/executor.test.ts tests/fake-reapi.test.ts tests/materialise-fence.test.ts tests/merkle-sweep.test.ts tests/reapi-e2e.test.ts tests/string-map-options.test.ts tests/wedged.test.ts tests/wire-exec-unavailable.test.ts; do echo \"== $f\"; bun test --only-failures \"$f\" --timeout 90000 || exit 1; done",
+        "command": "for f in tests/cache-ac-refused.test.ts tests/cancel-operation.test.ts tests/exec-e2e.test.ts tests/executor-auth.test.ts tests/executor-sweep.test.ts tests/executor.test.ts tests/fake-reapi.test.ts tests/materialise-fence.test.ts tests/merkle-sweep.test.ts tests/reapi-e2e.test.ts tests/shared-subtree.test.ts tests/string-map-options.test.ts tests/wedged.test.ts tests/wire-exec-unavailable.test.ts; do echo \"== $f\"; bun test --only-failures \"$f\" --timeout 90000 || exit 1; done",
         "env": {
           "passThrough": [
             "VX_REAPI_TEST_ENDPOINT",
@@ -116,7 +116,7 @@
         "install"
       ],
       "exec": {
-        "command": "for f in tests/boolean-options.test.ts tests/cache-sweep.test.ts tests/capabilities-retry.test.ts tests/decode-sweep.test.ts tests/executor-helpers-sweep.test.ts tests/integrity.test.ts tests/materialise-concurrency.test.ts tests/no-env.test.ts tests/plugin.test.ts tests/record-digest-sizes.test.ts tests/stream-cache.test.ts tests/vx-run-e2e.test.ts tests/wire-only-options.test.ts tests/wire-sweep.test.ts tests/wire.test.ts; do echo \"== $f\"; bun test --only-failures \"$f\" --timeout 90000 || exit 1; done",
+        "command": "for f in tests/boolean-options.test.ts tests/cache-sweep.test.ts tests/capabilities-retry.test.ts tests/decode-sweep.test.ts tests/execute-retry.test.ts tests/executor-helpers-sweep.test.ts tests/integrity.test.ts tests/materialise-concurrency.test.ts tests/no-env.test.ts tests/plugin.test.ts tests/record-digest-sizes.test.ts tests/stream-cache.test.ts tests/vx-run-e2e.test.ts tests/wire-only-options.test.ts tests/wire-sweep.test.ts tests/wire.test.ts; do echo \"== $f\"; bun test --only-failures \"$f\" --timeout 90000 || exit 1; done",
         "env": {
           "passThrough": [
             "VX_REAPI_TEST_ENDPOINT",

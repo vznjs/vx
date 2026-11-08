@@ -8,6 +8,7 @@ import type { TaskOutcome } from '../graph/index.js'
 import type { AffectedReason } from './affected-tasks.js'
 import type { EventBus, Logger } from '../report/index.js'
 import type { TelemetrySink } from './telemetry.js'
+import type { CommandWindows } from './command-windows.js'
 import type { AffectedChanges, ProjectEntry, ProjectMeta } from '../workspace/index.js'
 import type { RunSettings } from '../config.js'
 
@@ -237,6 +238,13 @@ export interface RunOptions {
    * not take.
    */
   keep?: HeldPersistent
+  /**
+   * Where the run records when each command ran and where it may write
+   * (command-windows.ts). The watch loop passes its own, so a write that
+   * lands during the cycle and no command of it may have made is the
+   * user's edit, whatever the file settles to.
+   */
+  commandWindows?: CommandWindows
   /**
    * Print the per-task table (`--verbosity 1`) just above the footer: the
    * footer is the run's last word, so the caller cannot print it after.

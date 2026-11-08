@@ -108,7 +108,8 @@ a plugin's base commit (`setBranch({ base })`), else
 `origin/<baseBranch>`, refused on that branch (`affected.md`); an explicit
 base that is HEAD itself (a single-branch clone) is named, with the
 two bases that would compare something; `HEAD` by name is told its
-working tree has no change.
+working tree has no change when the diff named none (an edit to a root
+file no task declares gets the bare note).
 
 ## Interactive picker
 

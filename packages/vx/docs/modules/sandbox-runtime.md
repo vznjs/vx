@@ -318,7 +318,11 @@ export function localBindingOn(c: { localBinding?: boolean | readonly number[] }
 // that would hold a wall and punches the read grants.
 export function bindableWrites(paths: readonly string[]): string[]
 export function punchWalls(readPath: string, walls: readonly string[]): string[]
-export function punchWritePaths(readPath: string, writePaths: readonly string[]): string[]
+export function punchWritePaths(
+  readPath: string,
+  writePaths: readonly string[],
+  reachable?: (real: string) => boolean, // may a linked child's real path be bound
+): string[]
 // The write globs that matched nothing at the start, split by whether a
 // bind holds their directory (below, "A write grant that mounts nothing")
 export function scratchWrites(pending, fs, anchors): { scratch: string[]; mountless: string[] }
@@ -352,7 +356,7 @@ export function refusedWrites(
   records: readonly string[],
   writable: readonly string[],
   scratch?: readonly string[], // pending write globs a write may land under
-  readable?: readonly string[], // what the sandbox mounts readable: a mkdir there wrote nothing
+  readable?: readonly string[], // what the sandbox mounts readable: a mkdir or openat2 there wrote nothing
   widened?: { entries; granted }, // `widenedEntries` at task start and the write grants: a write there is judged by the grants
 ): SandboxViolation[]
 // the writes refused past the wall, as paths: a failed task's hint
@@ -476,7 +480,7 @@ On Linux the command runs in a session, and so a process group, of its own insid
 
 On Linux the wrapped command is `exec /abs/bwrap …`, behind `GIT_DISCOVERY_ACROSS_FILESYSTEM=${…-1}` for a task whose grants name a `.git`: every mask and bind is a mount point, and git's discovery stops at one, so such a task read "Stopping at filesystem boundary" (2026-10-03, `sandbox-git-discovery.unsafe.test.ts`). Only such a task: git-aware tools read the variable, vx's own repo probe among them. The bwrap: SRT wrote a bare `bwrap` into a command the task's shell runs with the TASK's environment, so a dependency's `node_modules/.bin/bwrap` ran in its place and the task ran unsandboxed, exit 0; `initSandbox` now hands SRT vx's own paths for `bwrap` and `socat` (B-19). the spawn's shell execs bwrap, so bwrap is vx's own child and its `--die-with-parent` fires when vx dies, a `kill -9` included. The pid namespace then takes every descendant, one that called `setsid` too. Behind a shell that waited on it, bwrap's parent was that shell, which outlived vx, and a sandboxed server's whole tree ran on under init (turborepo#9666; item 801, `sandbox-runtime.unsafe.test.ts` › "a sandboxed server’s backgrounded and setsid children die with vx"). A one-shot task traced for violations is the same `exec bwrap …`: its strace runs inside (B-11). A persistent task is never traced. strace failing on its own (a stderr line of its own, `strace: …`) ends only the attempt: the task runs once more, with a line saying why, and the second attempt is its verdict — unless the run is stopping (`ExecuteRequest.signal` aborted): its kill already took the children it held, and a retry would be spawned after it (B-36). The second attempt runs in what the first left of `timeoutMs`, not a fresh window: `timeout` bounds the task's whole run (`schema.md`), and a fresh one let a task run near twice its timeout. Its exit is no longer the task's — a tracer that dies leaves the command running untraced — so the line, not the exit, is the sign: the trace stopped short, and a denial after it would go unreported. Inside, the tracer shares the task's pid namespace and uid, so a task can end it or reach its log through `/proc`: the violation REPORT is at the task's mercy, as it never is for enforcement, which is bwrap's mounts. The sandbox kept the first attempt's writes to what it declared, so the second redoes rather than doubles them (STATUS Next 24, `sandbox-tracer-retry.unsafe.test.ts`). A mount gone as bwrap set the sandbox up (`bwrap: Can't …: No such file or directory`: a `docker build` beside the task left a transient mount under /tmp, read from the mount table and gone by its remount) is retried the same way, once: the command never started (`sandbox-mount-race.unsafe.test.ts`). The trace log is the task's own file beside the task directories (L-25), removed once it is read; a second signal's exit (`process.exit`) never reaches that read, so the process's `exit` event removes every log still listed (item 848, `sandbox-runtime.unsafe.test.ts` › "a second signal exit leaves no strace log behind"). A first signal lets the run end and read the log itself (item 849).
 
-A write grant under a directory with SYMLINKED entries (Bun's isolated `node_modules` layout: every package is a link into `.bun/`) punches the read grant into that directory's children, and bwrap mounts a linked child as the directory it points at — inside the sandbox the link is gone and a package resolved through it cannot see the `.bun/` siblings its own dependencies live in (`Cannot find package 'yargs-parser'`, the docs build, 2026-09-05 → 09-09). `punchWritePaths` warns naming the grant; the fix is to keep writable caches out of `node_modules` (astro's `cache.dir`, vite's `cache.dir`), since SRT's config has no `--symlink`. A linked child that points INTO a write grant is that grant under a second name, mounted read-only: the warning names the link and says to grant it. A write grant spelled through a link in the project (`gen/` over `gen -> real`) resolves to `real`, and SRT skips a sibling link as a write path, so `resolveSandboxConfig` records it (`linkedWrites`) and vx binds the target at the link's spelling itself, last before bwrap's `--` (`linkedWriteBinds`, `withLinkedWrites`); the read punch goes around that bind too.
+A write grant under a directory with SYMLINKED entries (Bun's isolated `node_modules` layout: every package is a link into `.bun/`) punches the read grant into that directory's children, and bwrap mounts a linked child as the directory it points at — inside the sandbox the link is gone and a package resolved through it cannot see the `.bun/` siblings its own dependencies live in (`Cannot find package 'yargs-parser'`, the docs build, 2026-09-05 → 09-09). `punchWritePaths` warns naming the grant; the fix is to keep writable caches out of `node_modules` (astro's `cache.dir`, vite's `cache.dir`), since SRT's config has no `--symlink`. A linked child that points INTO a write grant is that grant under a second name, mounted read-only: the warning names the link and says to grant it. A write grant spelled through a link in the project (`gen/` over `gen -> real`) resolves to `real`, and SRT skips a sibling link as a write path, so `resolveSandboxConfig` records it (`linkedWrites`) and vx binds the target at the link's spelling itself, last before bwrap's `--` (`linkedWriteBinds`, `withLinkedWrites`); the read punch goes around that bind too. A linked child whose target lies under the deny anchor (the workspace root) and inside no read grant is dropped, not bound: `node_modules -> ..` or `shared -> ../b` under a `read: ['.']` punched around `dist/` bound the root or a sibling no key answers for, where the grant bound whole keeps the link a link into the deny (item 1006's glob hit, through the punch).
 
 The strace pass closes the silent-swallow gap on Linux (tools that read
 an undeclared path, catch the `ENOENT`, and keep running): the denial is
@@ -754,7 +758,8 @@ holding it so that the deny wins (B-4), and
 a write grant whose bind, widened or not, would hold one is refused,
 naming the wall. A grant that names a wall or a path inside it is the
 user's on purpose and stays, as does a bind outside the workspace (`/tmp`,
-`~`). A glob's hit that is a wall or lies inside one was matched, not
+`~`) unless it reaches the repository's git dir there (a workspace below
+the top-level, a linked worktree: `sandbox-request.md`). A glob's hit that is a wall or lies inside one was matched, not
 named, and is dropped before the bind (`resolveSandboxConfig` takes the
 walls): `read: ['*']` in a root project binds neither `.git` nor `.vx/cache`,
 `packages/*` no nested project, and `write: ['.*']` is refused for no wall
@@ -802,10 +807,18 @@ trace names only by number, so such a task's strace runs with `-y`,
 which prints the path each descriptor opened (40% slower on 2,000
 opens). The parse takes a descriptor's printed path up to the `, "` that
 opens the file argument, since a directory's name may hold a quote
-(`4</ws/q"d>`). No widened grant, no `-y` and no extra parse. An
-`openat2` read is still unseen: SRT's write observer takes every
-`openat2` (its flags lie in a struct its filter cannot read), and its
-USER_NOTIF wins over strace's TRACE.
+(`4</ws/q"d>`). No widened grant, no `-y` and no extra parse. strace
+never sees an `openat2`: SRT's write observer takes every one, read or
+write (its flags lie in a struct its filter cannot read), its
+USER_NOTIF wins over strace's TRACE, and its record names no flags. So
+`refusedWrites` takes an `openat2` record as either: where the sandbox
+can read the path (`inSandbox`), or a read grant covers it under a
+widened directory, it says nothing, since a write there met the
+read-only bind and landed nothing; elsewhere it reports `= an open no
+grant covers`, ignorable as a read or a write, and the fix names a read
+grant, the cheaper one (a granted `openat2(O_RDONLY)` read failed a
+clean task as a write until 2026-11-07,
+`sandbox-openat2.unsafe.test.ts`).
 
 The directory is writable in full too, and a hard link reads without an
 open: `ln -f README.md out.txt` beside `write: ['out.txt']` passed

@@ -393,7 +393,7 @@ describe('DECODER round-trip — protobufjs encodes, we decode', () => {
       server_logs: { 'worker.log': { digest: logDigest, human_readable: true } },
     })
     const d = decodeExecuteResponseBytes(new Uint8Array(encoded))
-    expect(d.status).toEqual({ code: 8, message: 'worker exploded' })
+    expect(d.status).toEqual({ code: 8, message: 'worker exploded', missing: [] })
     expect(d.serverLogs).toEqual([{ name: 'worker.log', digest: logDigest, humanReadable: true }])
   })
 

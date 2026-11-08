@@ -51,7 +51,9 @@ json_each(?))` builds a lookup of every hash first (~3 ms of 8,002
 - `history-stream.ts` / `history-writer.ts` — `HistoryStream`: a run's
   hits written on a thread of their own while the graph runs, 512 to a
   transaction, through a second connection on the same files
-  (`historyFiles(cache)`). A run with fewer hits writes none there; a
+  (`historyFiles(cache)`). The thread starts only for a run of 2,048
+  hits or more (its confirmed local hits after the classify, or the hit
+  that reaches it): below that its start cost more than it saved. A
   batch the thread does not land comes back and goes in the bundle. The
   writer is a second `bun build --compile` entry point.
 - `checkpointer.ts` — `WalCheckpointer`: once a run's first save commits
@@ -452,9 +454,10 @@ export function holdCacheDir(
 // when the store keeps no history on disk.
 export function historyFiles(cache: Cache): { index: string; store?: string } | undefined
 // A run's hits written on a thread while the graph runs, 512 to a
-// transaction; `finish` hands back what did not land, for the bundle.
+// transaction, once `expected` (its confirmed local hits) or the hits
+// added reach 2,048; `finish` hands back what did not land, for the bundle.
 export class HistoryStream<T> {
-  constructor(files: { index: string; store?: string })
+  constructor(files: { index: string; store?: string }, expected: number)
   add(item: T, record: RunRecord): void
   finish(): Promise<{ landed: Streamed<T>[]; unlanded: Streamed<T>[] }>
 }
@@ -807,8 +810,8 @@ row for every task — cache hits and misses, successes and failures — and
 one `invocations` header row (command, git/CI/host context, run-level
 counts) **atomically in one transaction**, less the hits a
 `HistoryStream` already wrote while the graph ran (a warm run's 8,002
-rows were the main thread's last ~65 ms; their batches land beside the
-graph instead, and the header still comes last, so `vx last` lists a
+rows were the main thread's last ~65 ms; from 2,048 hits their batches
+land beside the graph instead, and the header still comes last, so `vx last` lists a
 run only once all its rows are in), with one shared-store
 `task_durations` row per executed success, tagged `branchSource(branch)`
 (`'branch:<name>'`, `'branch:'` with none) and the commit: what a
@@ -854,7 +857,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
-`CACHE_VERSION` is currently `'vx-cache-v51'`; `SCHEMA_VERSION` is
+`CACHE_VERSION` is currently `'vx-cache-v52'`; `SCHEMA_VERSION` is
 `'v54'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside

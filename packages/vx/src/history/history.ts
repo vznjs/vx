@@ -672,6 +672,38 @@ export class LocalHistoryProvider implements LocalHistory {
     }
   }
 
+  /**
+   * Of `taskIds`, each whose one timing (of its definition, given `defs`)
+   * was recorded at or after `since`: a run's own, with no usual to compare
+   * it with. At most two rows per task off `task_durations_task`, where
+   * grouping every task's rows cost `vx last` 1.5 s at 2M rows.
+   */
+  timedOnlySince(taskIds: readonly string[], since: number): string[] {
+    if (taskIds.length === 0) return []
+    const rows = this.db
+      .query(
+        `SELECT j.key AS i FROM json_each(?) AS j
+         WHERE (SELECT MIN(recorded_at) FROM (
+             SELECT recorded_at FROM task_durations
+             WHERE project = j.value ->> 0 AND task = j.value ->> 1 ${this.durationDef}
+             LIMIT 2) HAVING COUNT(*) = 1) >= ?`,
+      )
+      .all(JSON.stringify(taskIds.map((id) => this.keyOf(id))), since) as { i: number }[]
+    return rows.map((r) => taskIds[r.i]!)
+  }
+
+  /**
+   * Each task id the window's rows name, sorted: what a mistyped id is
+   * matched against. Every pair of the whole table was a scan of it, 270 ms
+   * at 2M rows, on an error's path.
+   */
+  recentTaskIds(): string[] {
+    const rows = this.db
+      .query('SELECT DISTINCT project, task FROM main.runs WHERE id >= ? ORDER BY project, task')
+      .all(this.floor()) as { project: string; task: string }[]
+    return rows.map((r) => `${r.project}#${r.task}`)
+  }
+
   /** The first `runs` id of the newest `recent` invocations (see `loadFor`). */
   private floor(): number {
     // The first row of each invocation in the window, an index probe each:

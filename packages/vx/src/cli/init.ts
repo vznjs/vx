@@ -6,7 +6,7 @@
 // `vx init --plugin <hook>` writes a runnable plugin for one hook and its
 // test instead (plugin-templates.ts, the examples the gate runs).
 
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, lstatSync, readFileSync, statSync } from 'node:fs'
 import { mkdir, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { gitTop, workspaceFileWritten } from '../handoff.js'
@@ -320,6 +320,20 @@ function ownerNamed(dir: string): boolean {
   }
 }
 
+/**
+ * Whether anything stands at `file`, a dangling symlink included: writing
+ * through one created its target outside the workspace.
+ */
+function occupied(file: string): boolean {
+  try {
+    lstatSync(file)
+    return true
+  } catch {
+    // quiet: nothing there (a parent that is a file is refused at the write)
+    return false
+  }
+}
+
 /** Write `plugins/<seam>.ts` and its test under `root`: the workspace root, else the cwd. */
 async function scaffoldPlugin(seam: string, root: string, args: InitArgs): Promise<number> {
   const template = PLUGIN_TEMPLATES[seam]!
@@ -335,13 +349,14 @@ async function scaffoldPlugin(seam: string, root: string, args: InitArgs): Promi
   ] as const
   if (!args.force) {
     for (const [rel] of files) {
-      if (await Bun.file(path.join(root, rel)).exists()) {
+      if (occupied(path.join(root, rel))) {
         sayNotice('error', 'vx init', `${rel} exists. --force overwrites it`)
         return 1
       }
     }
   }
   if (!args.dry) {
+    for (const [rel] of files) refuseSymlink(path.join(root, rel))
     await mkdir(path.join(root, 'plugins'), { recursive: true }).catch(
       (err: NodeJS.ErrnoException) => {
         if (err.code !== 'EEXIST' && err.code !== 'ENOTDIR') throw err
@@ -350,7 +365,7 @@ async function scaffoldPlugin(seam: string, root: string, args: InitArgs): Promi
         )
       },
     )
-    for (const [rel, text] of files) await Bun.write(path.join(root, rel), text)
+    for (const [rel, text] of files) await writeNoFollow(path.join(root, rel), text)
   }
   const factory = /^export function (\w+)/m.exec(template.plugin)![1]!
   const workspaceFile =

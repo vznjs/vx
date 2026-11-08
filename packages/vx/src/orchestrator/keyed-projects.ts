@@ -91,3 +91,28 @@ export function readableDeps(
     return [...out.values()]
   }
 }
+
+/**
+ * A run's lookup of the projects nested in a keyed one, by its directory.
+ * A sandboxed task granted a linked package is walled from them: that
+ * package's key stops at a nested project (sandbox-request.ts). Built on
+ * the first ask, from every node the walk can reach.
+ */
+export function nestedDirsOf(
+  nodes: ReadonlyMap<string, TaskNode>,
+  keyOnly: ReadonlyMap<string, TaskNode>,
+  nestedDirsByProject: ReadonlyMap<string, readonly string[]>,
+): (projectDir: string) => readonly string[] {
+  let byDir: Map<string, readonly string[]> | undefined
+  return (dir) => {
+    if (byDir === undefined) {
+      byDir = new Map()
+      for (const map of [nodes, keyOnly]) {
+        for (const n of map.values()) {
+          byDir.set(n.projectDir, nestedDirsByProject.get(n.projectName) ?? [])
+        }
+      }
+    }
+    return byDir.get(dir) ?? []
+  }
+}

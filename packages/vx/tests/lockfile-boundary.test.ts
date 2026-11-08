@@ -184,6 +184,17 @@ describe('readLockfile — the boundary rejects malformed input loudly', () => {
     ['a bare config, as version 2 wrote', CONFIG],
     ['a file that is no vx.config', { file: 'package.json', config: {} }],
     ['a config that is no object', { file: 'vx.config.ts', config: [] }],
+    // Hand edits a run read as something else: a string `dependsOn` was
+    // walked per character ("dependsOn b#a"), a string `tasks` counted as
+    // two tasks, and a number `name` ran silently.
+    ['a name that is no string', { file: 'vx.config.ts', config: { name: 5 } }],
+    ['tags that are no list', { file: 'vx.config.ts', config: { tags: 'web' } }],
+    ['tasks that are no object', { file: 'vx.config.ts', config: { tasks: 'x' } }],
+    ['a task that is no object', { file: 'vx.config.ts', config: { tasks: { b: 'echo' } } }],
+    [
+      'a dependsOn that is no list',
+      { file: 'vx.config.ts', config: { tasks: { b: { dependsOn: 'a#build' } } } },
+    ],
   ])('rejects an entry that is %s, naming the project', async (_label, entry) => {
     // Naming the project is the point: a monorepo lock has hundreds of
     // entries, and "something is malformed" without a name is unactionable.
@@ -423,8 +434,9 @@ describe('frozenProjectConfig — the trust model', () => {
   it('DELIBERATE: a run validates no entry, whatever the stamp says', async () => {
     // `vx lock` validated every entry it wrote and `vx lock --check`
     // re-evaluates them; a run only parses the JSON shape (owner,
-    // 2026-10-14). A broken entry an edit left is the audit's to catch.
-    const shape = { tasks: [{ exec: { command: 'x' } }] } as unknown as ProjectConfig
+    // 2026-10-14), down to each task's `dependsOn`. A broken entry an edit
+    // left below that is the audit's to catch.
+    const shape = { tasks: { build: { exec: { command: 5 } } } } as unknown as ProjectConfig
     await writeRaw(JSON.stringify(lock({ projects: { pkg: entry(shape) } })))
     const read = (await readLockfile(root))!
     expect(await frozenProjectConfig(read, metaFor('pkg/vx.config.ts'), root)).toEqual(shape)

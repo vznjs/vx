@@ -432,6 +432,7 @@ export async function sandboxRequestFor(
   cacheDir?: string,
   dependencyOutputs: readonly string[] = [],
   dependencyReported: readonly string[] = [],
+  nestedOf: (projectDir: string) => readonly string[] = () => [],
 ): Promise<SandboxRequest>
 == function say (src/ui/terminal.ts)
 export function say(t: Tone, line: string, stream: StreamName = 'err'): void
@@ -764,6 +765,11 @@ export interface CommandContext extends BaseContext {
   readonly cache: PluginCache
   readonly artifacts: TaskArtifacts
   artifactsFor(facts: () => CacheFacts | undefined): TaskArtifacts
+}
+== type CommandWindows (src/orchestrator/command-windows.ts)
+export interface CommandWindows {
+  open(id: string, projectDir: string, reach: WriteReach): () => void
+  writerDuring(self: string, file: string, from: number, to: number): string | undefined
 }
 == type ConfigContext (src/orchestrator/plugin.ts)
 export interface ConfigContext extends WorkspaceHookContext {
@@ -1686,6 +1692,7 @@ export interface RunOptions {
   holdPersistent?: boolean
   watch?: boolean
   keep?: HeldPersistent
+  commandWindows?: CommandWindows
   summaryTable?: boolean
   tty?: boolean
   log?: Logger
@@ -2387,6 +2394,8 @@ export interface WorkspaceRules {
   exclusiveOutputs?: boolean
   dependencies?: readonly DependencyRule[]
 }
+== type WriteReach (src/orchestrator/sandbox-request.ts)
+export type WriteReach = 'none' | 'project' | 'workspace'
 == runtime values
 LOG_WIRE_VERSION = 1
 PERSISTENT_TODO = "persistent task — set persistent.readyWhen (regex matched against output) so dependents unblock on readiness, and consider exec.timeout to bound the wait"

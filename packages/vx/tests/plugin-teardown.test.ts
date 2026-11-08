@@ -396,6 +396,52 @@ describe('the lifecycle is reached on a run a signal stops', () => {
     }
   }, 30_000)
 
+  // A setup or executor factory that never settles held the run: the
+  // first signal was noted and waited on the hang, and the second (a CI's
+  // KILL after its TERM) ended vx with no plugin torn down. The timer
+  // keeps the loop alive, as a hung socket does.
+  for (const [hook, body, signal, code] of [
+    ['a setup', 'async setup()', 'SIGTERM', 143],
+    ['an executor factory', 'executor()', 'SIGINT', 130],
+  ] as const) {
+    it(`one ${signal} during ${hook} that hangs tears every plugin down and exits ${code}`, async () => {
+      const file = (name: string): string => JSON.stringify(path.join(root, name))
+      const note = (line: string): string =>
+        `appendFileSync(${file('lifecycle.txt')}, '${line}\\n')`
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
+        localWorkspaceSource(
+          [
+            pluginSource('org/first', `{ setup() {}, teardown() { ${note('first teardown')} } }`),
+            pluginSource(
+              'org/hang',
+              `{ ${body} { ${note('hang')}; return new Promise(() => { setInterval(() => {}, 1000) }) },
+                 teardown() { ${note('hang teardown')} },
+               }`,
+            ),
+          ],
+          `import { appendFileSync } from 'node:fs'
+`,
+        ),
+      )
+      const proc = Bun.spawn([process.execPath, BIN, 'run', 'slow', '--all'], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, VX_TEST_TEARDOWN_TIMEOUT: '10000ms' },
+      })
+      const deadline = Date.now() + 10_000
+      while (!(await lifecycle()).includes('hang') && Date.now() < deadline) await Bun.sleep(20)
+      proc.kill(signal)
+      const exited = await Promise.race([proc.exited, Bun.sleep(10_000).then(() => 'hung')])
+      if (exited === 'hung') proc.kill('SIGKILL')
+      expect([exited, await lifecycle()]).toEqual([
+        code,
+        ['hang', 'first teardown', 'hang teardown'],
+      ])
+    }, 30_000)
+  }
+
   // A run that leaves before its stop takes over (here a setup that
   // throws) still owes the signal its exit: it left with the refusal's 1.
   // The setup throws once its own listener heard the signal, which vx's,

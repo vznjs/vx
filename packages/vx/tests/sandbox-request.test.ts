@@ -662,6 +662,99 @@ describe('the request derives nothing from cache', () => {
   })
 })
 
+describe('a node_modules that is itself a link is judged by its target', () => {
+  // `ln -s .. node_modules` bound the workspace root, `.git` included, and
+  // `-> ../b` a sibling no key answers for: the task read b's file through
+  // it and an edit there was an up-to-date stale hit.
+  const link = (to: string) => symlink(to, path.join(dir, 'node_modules'))
+  const b = () => path.join(root, 'b')
+
+  it('one holding the project, or .git, is granted under neither spelling', async () => {
+    await mkdir(path.join(root, '.git'))
+    for (const to of ['..', '../.git', '.']) {
+      await rm(path.join(dir, 'node_modules'), { force: true })
+      await link(to)
+      for (const keyed of [undefined, new Set<string>()]) {
+        const r = await sandboxRequestFor(node(), {}, root, keyed)
+        expect([to, r.sandbox.baseAllowRead, r.sandbox.reportLinked]).toEqual([
+          to,
+          [path.join(root, 'node_modules')],
+          [],
+        ])
+      }
+    }
+  })
+
+  it('one to a sibling: withheld from a cached task its key does not answer for, and reported', async () => {
+    await mkdir(b())
+    await link('../b')
+    const r = await sandboxRequestFor(node(), {}, root, new Set())
+    expect([r.sandbox.baseAllowRead, r.sandbox.reportLinked, r.withheld]).toEqual([
+      [path.join(root, 'node_modules')],
+      [b()],
+      [{ dir: b(), name: 'b', target: 'b', link: 'proj/node_modules' }],
+    ])
+  })
+
+  it('CONTROL: one to a sibling the key answers for, or for an uncached task, is granted', async () => {
+    await mkdir(b())
+    await link('../b')
+    for (const keyed of [undefined, new Set([b()])]) {
+      const r = await sandboxRequestFor(node(), {}, root, keyed)
+      expect([r.sandbox.baseAllowRead, r.sandbox.reportLinked]).toEqual([
+        [path.join(root, 'node_modules'), b()],
+        [],
+      ])
+    }
+  })
+
+  it("CONTROL: one to the workspace root's node_modules is granted as itself", async () => {
+    await mkdir(path.join(root, 'node_modules'))
+    await link('../node_modules')
+    const r = await sandboxRequestFor(node(), {}, root, new Set())
+    expect([r.sandbox.baseAllowRead, r.sandbox.reportLinked]).toEqual([
+      [path.join(root, 'node_modules'), path.join(dir, 'node_modules')],
+      [],
+    ])
+  })
+})
+
+describe("a granted linked package's nested projects are walled", () => {
+  // `node_modules/b -> ../../b`, keyed through `dependsOn: b#build`, was
+  // bound whole, b's nested project `b/c` with it: b's key stops at c, so
+  // a read of `node_modules/b/c/secret.txt` and an edit there was a stale hit.
+  const b = () => path.join(root, 'b')
+  const c = () => path.join(root, 'b', 'c')
+  const layout = async () => {
+    await mkdir(c(), { recursive: true })
+    await mkdir(path.join(b(), 'src'))
+    await mkdir(path.join(dir, 'node_modules'))
+    await symlink('../../b', path.join(dir, 'node_modules', 'b'))
+  }
+  const nestedOf = (d: string) => (d === b() ? [c()] : [])
+  const request = (keyed: Set<string> | undefined) =>
+    sandboxRequestFor(node(), {}, root, keyed, [], undefined, [], [], nestedOf)
+  const nm = () => [path.join(dir, 'node_modules'), path.join(root, 'node_modules')]
+
+  it('a cached task: the nested project is walled and reported', async () => {
+    await layout()
+    const r = await request(new Set([b()]))
+    expect([r.sandbox.baseAllowRead, r.sandbox.reportLinked]).toEqual([
+      process.platform === 'linux' ? [...nm(), path.join(b(), 'src')] : [...nm(), b()],
+      [c()],
+    ])
+    if (process.platform === 'darwin') expect(r.sandbox.baseDenyRead).toContain(c())
+  })
+
+  it('CONTROL: keyed too, or for an uncached task, the package is granted whole', async () => {
+    await layout()
+    for (const keyed of [undefined, new Set([b(), c()])]) {
+      const r = await request(keyed)
+      expect([r.sandbox.baseAllowRead, r.sandbox.reportLinked]).toEqual([[...nm(), b()], []])
+    }
+  })
+})
+
 describe('a workspace link is granted by its real path, not by a string prefix', () => {
   // `node_modules` is granted, and a workspace dependency inside it is a
   // SYMLINK to a sibling project — so its target is granted too, or a task

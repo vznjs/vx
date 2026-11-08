@@ -6,6 +6,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import {
   executablePath,
+  gitCaseArgs,
   gitEnv,
   isLiteralPattern,
   normalizeGlob,
@@ -446,6 +447,7 @@ export function gitFiles(
     proc = Bun.spawnSync({
       cmd: [
         executablePath('git'),
+        ...gitCaseArgs(workspaceRoot),
         'ls-files',
         '-z',
         '-t',

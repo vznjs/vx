@@ -162,7 +162,11 @@ describe('turbo-map: gitignored inputs named by path', () => {
       JSON.stringify({
         globalDependencies: ['certs/*.pem'],
         tasks: {
-          gen: { inputs: ['src/**/*.ts', '!src/skip.ts', '$TURBO_ROOT$/conf/*.json'] },
+          // The edge keeps gen cached: without it, a glob over make's output runs gen uncached.
+          gen: {
+            dependsOn: ['make'],
+            inputs: ['src/**/*.ts', '!src/skip.ts', '$TURBO_ROOT$/conf/*.json'],
+          },
           dflt: { inputs: ['$TURBO_DEFAULT$'] },
           make: { inputs: ['make.txt'], outputs: ['src/made.ts'] },
         },
@@ -200,7 +204,15 @@ describe('turbo-map: gitignored inputs named by path', () => {
       m.projects[0]!.tasks.map((t) => [t.name, (t.task as { inputs: unknown }).inputs]),
     )
     expect({ asked, inputs }).toEqual({
-      asked: [['certs/*.pem', 'conf/*.json', 'packages/a/src/**/*.ts']],
+      // `inner` has no script: the edge makes it a no-op gen, which Turbo hashes.
+      asked: [
+        [
+          'certs/*.pem',
+          'conf/*.json',
+          'packages/a/src/**/*.ts',
+          'packages/a/src/inner/src/**/*.ts',
+        ],
+      ],
       inputs: {
         // A sibling's output, taken back from the glob, is not named back.
         gen: {

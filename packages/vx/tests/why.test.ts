@@ -1237,6 +1237,54 @@ describe('vx why — an upstream that is a group', () => {
   )
 })
 
+describe('vx why — a long root-cause chain', () => {
+  it(
+    'prints the chain’s two ends around a count; JSON keeps it whole',
+    async () => {
+      const root = await makeWorkspaceRoot({ prefix: 'vx-why-long-', git: false })
+      try {
+        const dir = path.join(root, 'packages', 'app')
+        await mkdir(dir, { recursive: true })
+        await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app' }))
+        await writeFile(path.join(dir, 'a.txt'), 'v1')
+        await writeFile(path.join(dir, 'b.txt'), 'b')
+        // t0 reads the file that moves; t1..t7 each depend on the one below.
+        const tasks = Array.from(
+          { length: 8 },
+          (_, i) =>
+            `t${i}: { ${i > 0 ? `dependsOn: ['t${i - 1}'], ` : ''}exec: { command: 'true' }, inputs: { files: ['${i === 0 ? 'a' : 'b'}.txt'] }, outputs: { files: [] }, cache: true },`,
+        )
+        await writeFile(
+          path.join(dir, 'vx.config.mjs'),
+          `export default { tasks: {\n${tasks.join('\n')}\n} }`,
+        )
+        const git = gitIn(root)
+        git('init', '-q')
+        git('add', '-A')
+        expect((await vx(root, ['run', 'app#t7'])).code).toBe(0)
+        await writeFile(path.join(dir, 'a.txt'), 'v2')
+        expect((await vx(root, ['run', 'app#t7'])).code).toBe(0)
+
+        const r = await vx(root, ['why', 'app#t7'])
+        expect(r.out).toContain(
+          'app#t7 ← app#t6 ← 3 more ← app#t2 ← app#t1 ← app#t0 ← file packages/app/a.txt',
+        )
+        const j = JSON.parse((await vx(root, ['why', 'app#t7', '--format', 'json'])).out) as {
+          roots: { chain: string[] }[]
+          writers: unknown[]
+        }
+        expect(j.roots.map((x) => x.chain)).toEqual([
+          ['app#t7', 'app#t6', 'app#t5', 'app#t4', 'app#t3', 'app#t2', 'app#t1', 'app#t0'],
+        ])
+        expect(j.writers).toEqual([])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
 describe('vx why — an upstream that ran alone between the dependant runs', () => {
   const A = `export default { tasks: { build: {
     exec: { command: 'true' }, inputs: { files: ['src/**'], env: ['FOO'] }, outputs: { files: [] }, cache: true,

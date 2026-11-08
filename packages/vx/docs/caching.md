@@ -44,7 +44,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v51'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v52'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -328,7 +328,16 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     rewrite that keeps its mtime (`cp -p`, `tar -x`) reads clean to
     git, and until 2026-09-27 (A-6) kept the old bytes' key. Every file
     is then hashed through the memo below, which keys on ctime and
-    inode.
+    inode. `core.ignorecase=true` on a disk that does not fold case (a
+    `.git` copied from macOS to Linux) made `git status` take a new
+    `a.txt` for the tracked `A.txt`, so it entered no key; under that
+    setting vx looks up `HEAD` as `head` once, and on a disk that tells
+    them apart asks git again with `-c core.ignorecase=false`, as every
+    later listing under the workspace does (`--affected`, watch's
+    inventory, `vx lock`'s discovery and ignore checks). vx
+    trusts what `git status` calls clean, so a `core.fsmonitor` that
+    misses an event (a dead daemon, a network share) keeps an edited
+    file's old key: a stale hit.
 
     Even with ctime trusted, git reads it to the second, and its racy
     rule looks at mtime alone. So a same-size rewrite that keeps an
@@ -981,6 +990,10 @@ Declared `outputs.files` are wiped in two distinct places:
 - **After restore on a cache hit.** The post-restore tree is the
   cached snapshot byte-for-byte: the restore renames the entry's files
   over the ones it finds, then removes what the entry does not hold.
+  Each output directory with a recorded mode (`dirModes`) gets it whether
+  the restore made it or found it standing with another, and a mode that
+  differs makes the tree stale (2026-11-07: a branch switch A → B → A
+  left B's 0755 on A's `chmod 700 dist/keys`).
   Hand-edits to output files don't persist through a cache replay. When
   the hit's own check walked the output globs to find the tree stale,
   the removal uses that walk's list instead of walking again (X-161).
@@ -1010,7 +1023,8 @@ clean deleted a committed file under an output, and a reader with no edge
 to its producer failed naming only the file (A-48, vueuse's
 `metadata/index.json`). Untracked files under the glob are cleaned as
 before. Paths compare as
-git compares them: case-folded under `core.ignorecase` (macOS), and a
+git compares them: case-folded under `core.ignorecase` where the disk
+folds case too (macOS), and a
 file inside a submodule counts as committed.
 Workspace outputs take the same rules, and a path an output `!` entry
 takes back (A-44) is off the wipe, the artifact and the restore alike.
@@ -1155,6 +1169,10 @@ the same selection `inputs.tasks` applies at hash time
 `selectFoldedDeps`); every other link target inside the root is
 withheld, so an import of a sibling the key never sees fails and is
 reported instead of caching a result an edit there would not re-run.
+A `node_modules` that is itself a link (`ln -s ../b node_modules`) is
+judged by its target the same way, and one holding the project or `.git`
+is never granted. A granted package's nested projects are walled unless
+the key folds them too: its own key stops at them.
 Any exec task counts, cached or not: its key includes its project's files
 through its `inputs`, and one with no `inputs` is keyless, so a key that
 folds it is never stored or read. A persistent task counts the same way,
@@ -1438,10 +1456,13 @@ cache is vx's to keep), and keeps every artifact, each indexed again
 when its task next hits. The check, drop, re-create and stamp are one
 write transaction, so another version's open waits rather than landing
 between them. A home this user cannot write keeps the store
-in `<workspaceRoot>/.vx/cache/` instead, silently. Name a
-cache directory (`cache.dir` in .vx/workspace.ts, `--cache-dir`, or
-`VX_CACHE_DIR`, in that order of precedence, relative to the workspace
-root) and it holds everything, shared with no other workspace:
+in `<workspaceRoot>/.vx/cache/` instead, silently, and so does a store
+another user owns (one `sudo vx run`). `vx info` and `vx cache clean`
+decide it the same way, the reading ones without making or changing
+anything, so they read the entries runs use. Name a
+cache directory (`--cache-dir`, relative to the working directory; else
+`VX_CACHE_DIR`, else `cache.dir` in .vx/workspace.ts, each relative to the
+workspace root) and it holds everything, shared with no other workspace:
 
 ```
 <cacheDir>/                                 (default .vx/cache when one is named)
@@ -2330,6 +2351,11 @@ breaking footer).
 
 ### History
 
+- **v51 → v52**: stored bytes wrong under a key the change does not move
+  (2026-11-07). A sandboxed task could read through a `node_modules`
+  that is itself a link (to the workspace root or a sibling project), or
+  into a keyed linked package's nested project, and its key folded
+  neither; a v51 entry may hold those bytes, so it is never read.
 - **v50 → v51**: stored bytes wrong under a key the change does not move
   (2026-10-29). An output ending `/.` stored nothing, and a stored stream
   could keep a secret split across stdout and stderr writes unmasked; a

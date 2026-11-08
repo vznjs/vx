@@ -1525,7 +1525,7 @@ export async function mapTurboWorkspace(
         npmScriptEnv(mapped.task, name, command === script, meta, opts)
       tasks.push(mapped)
     }
-    excludeSiblingOutputs(resolveSharedOutputs(tasks))
+    excludeSiblingOutputs(resolveSharedOutputs(tasks), true)
     const tags = packageTags(meta === rootMeta ? rootCfg : files.get(meta.name))
     projects.push({ name: meta.name, dir: meta.dir, ...(tags.length > 0 ? { tags } : {}), tasks })
   }

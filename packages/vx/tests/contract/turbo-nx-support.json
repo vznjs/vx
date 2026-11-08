@@ -202,7 +202,7 @@
   {
     "key": "turbo.json remoteCache.preflight",
     "status": "supported",
-    "reason": "`true` sends Turbo's `OPTIONS` preflight and follows its `Location`, below `TURBO_PREFLIGHT` (1 or 0) and `turboCache({ preflight })`."
+    "reason": "`true` sends Turbo's `OPTIONS` preflight and follows its `Location` (http(s) only; never plain http with the token from an https URL), below `TURBO_PREFLIGHT` (1 or 0) and `turboCache({ preflight })`."
   },
   {
     "key": "turbo.json remoteCache.signature",

@@ -89,6 +89,7 @@ async function decomposeOutputDir(
   entry: { path: string; tree_digest: Digest },
   globs: readonly string[],
   warn: (m: string) => void,
+  workspaceRoot: string,
 ): Promise<DecomposedOutputs> {
   const whole: DecomposedOutputs = { directories: [entry], files: [], symlinks: [] }
   // Only globs that COLLAPSED to this entry are interesting; a literal glob
@@ -114,8 +115,22 @@ async function decomposeOutputDir(
   if (tree.root === undefined) return whole
   const byDigest = new Map<string, Directory>()
   tree.children.forEach((c, i) => byDigest.set(tree.childDigests[i]!, c))
+  // Every match's Tree is written by a replay, and their sum is at most the
+  // capture's own expansion. One past the free inodes is refused by the
+  // download (materialiseOutputs), so splitting it first is wasted work:
+  // recorded whole, a replay refuses it the same.
+  const room = await freeEntries(path.join(workspaceRoot, entry.path))
+  // A path past PATH_MAX is refused the same, and splitting it walked its
+  // depth by recursion.
+  const shape = treeShape(tree.root, byDigest)
+  const deepest = Buffer.byteLength(path.join(workspaceRoot, entry.path)) + shape.longest
+  if (shape.entries > room || deepest >= PATH_MAX) return whole
 
   const out: Array<{ path: string; tree_digest: Digest }> = []
+  // A match's Tree by its directory's digest: a subtree named under many
+  // names was encoded, held and uploaded once per name, 4000 names over one
+  // 4000-directory subtree 65 s and 3.9 GB.
+  const encoded = new Map<string, Blob>()
   const files: DecomposedOutputs['files'] = []
   const symlinks: DecomposedOutputs['symlinks'] = []
   const seen = new Set<string>()
@@ -142,12 +157,22 @@ async function decomposeOutputDir(
   // under it, and a consumer grafted a directory with an empty name.
   const join = (prefix: string, name: string): string =>
     prefix === '' ? name : `${prefix}/${name}`
-  const walk = (dir: Directory, segments: readonly string[], prefix: string): void => {
+  const walk = (
+    dir: Directory,
+    segments: readonly string[],
+    prefix: string,
+    hash: string,
+  ): void => {
     if (segments.length === 0) {
       if (seen.has(prefix)) return
       seen.add(prefix)
-      const data = encodeTree(dir, descendants(dir))
-      out.push({ path: prefix, tree_digest: sha256(data), __data: data } as never)
+      let blob = encoded.get(hash)
+      if (blob === undefined) {
+        const data = encodeTree(dir, descendants(dir))
+        blob = { digest: sha256(data), data }
+        encoded.set(hash, blob)
+      }
+      out.push({ path: prefix, tree_digest: blob.digest })
       return
     }
     const [head, ...rest] = segments
@@ -170,21 +195,18 @@ async function decomposeOutputDir(
       if (!matches(d.name)) continue
       const child = byDigest.get(d.digest.hash)
       if (child === undefined) continue
-      walk(child, rest, join(prefix, d.name))
+      walk(child, rest, join(prefix, d.name), d.digest.hash)
     }
   }
 
-  for (const rest of wild) walk(tree.root, rest, entry.path)
+  for (const rest of wild) walk(tree.root, rest, entry.path, entry.tree_digest.hash)
   if (out.length + files.length + symlinks.length === 0) return whole
 
   // Upload the Tree blobs the new entries point at: one probe for all, the
   // small ones batched, one past the batch limit streamed. One probe and
   // write per entry cost 100 packages 3.4 s through 15 ms each way (F-31).
   // A failed probe or batch still uploads: each blob is written.
-  const blobs = out.map((e) => ({
-    digest: e.tree_digest,
-    data: (e as unknown as { __data: Uint8Array }).__data,
-  }))
+  const blobs = [...encoded.values()]
   await client.uploadBlobs(blobs).catch(async (err: unknown) => {
     warn(
       `[vx] vx-reapi: uploading ${entry.path}'s Tree blobs together failed (${errText(err)}) — writing each`,
@@ -192,7 +214,7 @@ async function decomposeOutputDir(
     for (const b of blobs) await client.writeBlob(b.digest, b.data)
   })
   return {
-    directories: out.map((e) => ({ path: e.path, tree_digest: e.tree_digest })),
+    directories: out,
     files,
     symlinks,
   }
@@ -209,6 +231,9 @@ interface DecomposedOutputs {
  *  it for one alias is the speculative widening the project rejects. */
 type DescribedInputs = NonNullable<ExecuteRequest['inputs']>
 
+/** `google.rpc.Code.FAILED_PRECONDITION`: the action's inputs are not all in the CAS. */
+const FAILED_PRECONDITION = 9
+
 /** Message text from an unknown throw, for a warning line. */
 function errText(err: unknown): string {
   return err instanceof Error ? err.message.split('\n')[0]! : String(err)
@@ -218,7 +243,7 @@ interface DecodedExecuteResponse {
   result?: ActionResult
   message?: string
   cachedResult?: boolean
-  status?: { code: number; message: string }
+  status?: RpcStatus
   /** name → log blob; fetched and surfaced when the action FAILS. */
   serverLogs: Array<{ name: string; digest: Digest; humanReadable: boolean }>
 }
@@ -265,9 +290,16 @@ export function decodeExecuteResponseBytes(buf: Uint8Array): DecodedExecuteRespo
   return out
 }
 
-/** `google.rpc.Status { code = 1, message = 2 }` */
-function decodeRpcStatus(buf: Uint8Array): { code: number; message: string } {
-  const st = { code: 0, message: '' }
+interface RpcStatus {
+  code: number
+  message: string
+  /** Hashes a `PreconditionFailure` detail names MISSING. */
+  missing: string[]
+}
+
+/** `google.rpc.Status { code = 1, message = 2, details = 3 (repeated Any) }` */
+function decodeRpcStatus(buf: Uint8Array): RpcStatus {
+  const st: RpcStatus = { code: 0, message: '', missing: [] }
   let i = 0
   while (i < buf.length) {
     const [key, k] = readVarintAt(buf, i)
@@ -281,11 +313,61 @@ function decodeRpcStatus(buf: Uint8Array): { code: number; message: string } {
     } else if (wire === 2) {
       const [len, l] = readVarintAt(buf, i)
       i = l
-      if (field === 2) st.message = new TextDecoder().decode(buf.subarray(i, i + len))
+      const slice = buf.subarray(i, i + len)
+      if (field === 2) st.message = new TextDecoder().decode(slice)
+      else if (field === 3) st.missing.push(...decodeMissing(slice))
       i += len
     } else break
   }
   return st
+}
+
+/** Length-delimited fields of a message, as `[field, bytes]`; other wire types skipped. */
+function* bytesFields(buf: Uint8Array): Generator<[number, Uint8Array]> {
+  let i = 0
+  while (i < buf.length) {
+    const [key, k] = readVarintAt(buf, i)
+    i = k
+    const wire = key & 7
+    if (wire === 0) i = readVarintAt(buf, i)[1]
+    else if (wire === 2) {
+      const [len, l] = readVarintAt(buf, i)
+      yield [key >>> 3, buf.subarray(l, l + len)]
+      i = l + len
+    } else if (wire === 5) i += 4
+    else if (wire === 1) i += 8
+    else return
+  }
+}
+
+/**
+ * A detail `Any { type_url = 1, value = 2 }` holding
+ * `PreconditionFailure { violations = 1 (Violation { type = 1, subject = 2 }) }`:
+ * the hash of each MISSING `blobs/{hash}/{size}` subject.
+ */
+function decodeMissing(any: Uint8Array): string[] {
+  const text = new TextDecoder()
+  let typeUrl = ''
+  let value: Uint8Array | undefined
+  for (const [f, b] of bytesFields(any)) {
+    if (f === 1) typeUrl = text.decode(b)
+    else if (f === 2) value = b
+  }
+  if (!typeUrl.endsWith('/google.rpc.PreconditionFailure') || value === undefined) return []
+  const hashes: string[] = []
+  for (const [f, violation] of bytesFields(value)) {
+    if (f !== 1) continue
+    let type = ''
+    let subject = ''
+    for (const [vf, b] of bytesFields(violation)) {
+      if (vf === 1) type = text.decode(b)
+      else if (vf === 2) subject = text.decode(b)
+    }
+    const [kind, hash] = subject.split('/')
+    if (type === 'MISSING' && kind === 'blobs' && hash !== undefined && hash !== '')
+      hashes.push(hash)
+  }
+  return hashes
 }
 
 /** One `server_logs` map entry: `{ key = 1 (string), value = 2 (LogFile{digest=1, human_readable=2}) }` */
@@ -627,7 +709,10 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
           )
           return null
         })
-        if (prior !== null) {
+        // A record of a failed run is no hit: this module records only exit 0,
+        // but the action cache is the server's, and a worker or another client
+        // may cache a failure. Replayed, it was a success with its outputs saved.
+        if (prior !== null && (prior.exit_code ?? 0) === 0) {
           // The stream blobs too: an evicted one fails the replay, and the
           // probe says so before any output is written.
           const streamBlobs = [
@@ -1015,22 +1100,38 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         )
       let op: Operation
       try {
-        if (req.signal?.aborted === true) throw new Error('aborted before Execute')
-        op = await client.execute(
-          actionDigest,
-          {
-            ...(opts.priority === undefined ? {} : { priority: opts.priority }),
-            onOperation: (name) => {
-              operation = name
+        for (let reuploaded = false; ; reuploaded = true) {
+          if (req.signal?.aborted === true) throw new Error('aborted before Execute')
+          op = await client.execute(
+            actionDigest,
+            {
+              ...(opts.priority === undefined ? {} : { priority: opts.priority }),
+              onOperation: (name) => {
+                operation = name
+              },
+              // Stage transitions are consumed, not printed: they arrive many
+              // times per action and said nothing a reader could act on.
+              onStage: (stage) => {
+                if (stage.toUpperCase() === 'EXECUTING') armStall()
+              },
             },
-            // Stage transitions are consumed, not printed: they arrive many
-            // times per action and said nothing a reader could act on.
-            onStage: (stage) => {
-              if (stage.toUpperCase() === 'EXECUTING') armStall()
-            },
-          },
-          stop,
-        )
+            stop,
+          )
+          // FAILED_PRECONDITION: inputs the server lacks, evicted since
+          // FindMissingBlobs answered (or it answered wrong). The spec's
+          // remedy is to upload them and execute again; once, so a server
+          // that keeps refusing still fails the task. Without the named
+          // violations every input is sent, past FindMissingBlobs.
+          const status = op.error === undefined ? decodeExecuteResponse(op).status : undefined
+          if (reuploaded || status?.code !== FAILED_PRECONDITION) break
+          operation = ''
+          const named = new Set(status.missing)
+          const again = upload.filter((b) => named.has(b.digest.hash))
+          await untilAborted(
+            client.uploadBlobs(again.length > 0 ? again : upload, caps.maxBatchBytes, true),
+            stop,
+          )
+        }
       } catch (err) {
         if (req.signal?.aborted === true) {
           // Core aborts on the run's stop and on `exec.timeout`. A refusal
@@ -1059,6 +1160,9 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
               `is legitimately this slow; otherwise the remote is not making progress.`,
           )
         }
+        // The client gave up on the stream (its re-attach budget spent);
+        // the action it named still runs on its worker unless cancelled.
+        if (operation !== '') await client.cancelOperation(operation).catch(cancelFailed)
         throw err
       } finally {
         clearTimeout(queueTimer)
@@ -1255,14 +1359,18 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
                 const rebased = { path: rebase(d.path), tree_digest: d.tree_digest }
                 // The record is best-effort like its write below: a Read that
                 // fails while splitting failed a task whose action had succeeded.
-                const split = await decomposeOutputDir(client, rebased, declaredGlobs, warn).catch(
-                  (err: unknown) => {
-                    warn(
-                      `[vx] vx-reapi: could not read the Tree for ${rebased.path} (${errText(err)}) — recording it whole`,
-                    )
-                    return { directories: [rebased], files: [], symlinks: [] }
-                  },
-                )
+                const split = await decomposeOutputDir(
+                  client,
+                  rebased,
+                  declaredGlobs,
+                  warn,
+                  req.workspaceRoot,
+                ).catch((err: unknown) => {
+                  warn(
+                    `[vx] vx-reapi: could not read the Tree for ${rebased.path} (${errText(err)}) — recording it whole`,
+                  )
+                  return { directories: [rebased], files: [], symlinks: [] }
+                })
                 recorded.directories.push(...split.directories)
                 recorded.files.push(...split.files)
                 recorded.symlinks.push(...split.symlinks)
@@ -1491,7 +1599,8 @@ function literalHead(glob: string): { path: string; rest: string[] } {
 /**
  * The action's environment: `inputs.env` (values read from THIS
  * machine's environment, already folded into the cache key) plus
- * `exec.env.define` (literals from the task config). A define wins on
+ * `exec.env.define` (literals from the task config), plus the
+ * `FORCE_COLOR=1` vx sets on every local child. A define wins on
  * collision — it is the more explicit statement of intent. An `inputs.env`
  * name crosses only when the local child gets the same value (`childEnv`,
  * the request's resolved environment): a name the config only TRACKS is in
@@ -1520,6 +1629,10 @@ export function commandEnvironment(
     if (e.value !== undefined && childEnv[e.name] === e.value) merged.set(e.name, e.value)
   }
   for (const [name, value] of Object.entries(envDefine)) merged.set(name, value)
+  // Core's exec/env.ts gives the local child FORCE_COLOR=1 unless it already
+  // sees FORCE_COLOR or a non-empty NO_COLOR. Without it here a worker
+  // stored plain bytes under the key a local run stores coloured ones.
+  if (!merged.has('FORCE_COLOR') && !merged.get('NO_COLOR')) merged.set('FORCE_COLOR', '1')
   return [...merged].map(([name, value]) => ({ name, value }))
 }
 
@@ -1654,6 +1767,41 @@ export async function materialiseOutputs(
     return false
   }
   const fence = new Fence(req.workspaceRoot, underDeclared, req.stop)
+  // Every Tree is read and counted before anything is written, and the sum
+  // is held to the free inodes: a record split into one entry per glob
+  // match fitted Tree by Tree, and its replay wrote them all. One Tree
+  // named by many entries is read once.
+  const dirs = result.output_directories ?? []
+  const trees = new Map<string, ReadTree | null>()
+  let expands = 0
+  for (const d of dirs) {
+    let read = trees.get(d.tree_digest.hash)
+    if (read === undefined) {
+      read = await readTree(client, d.tree_digest, missing)
+      trees.set(d.tree_digest.hash, read)
+    }
+    if (read === null) continue
+    expands += read.entries
+    // Past PATH_MAX the walk made the directories of a path the file system
+    // then refused with a raw ENAMETOOLONG.
+    const dest = fence.lexical(req.cwd, d.path)
+    const longest = Buffer.byteLength(dest) + read.longest
+    if (longest >= PATH_MAX) {
+      throw new UserError(
+        `the server's Tree for ${dest} holds a path ${longest} bytes long, past PATH_MAX (${PATH_MAX}) — refused`,
+      )
+    }
+  }
+  const room = expands > 0 ? await freeEntries(req.workspaceRoot) : Infinity
+  if (expands > room) {
+    const what =
+      dirs.length === 1
+        ? `Tree for ${fence.lexical(req.cwd, dirs[0]!.path)} expands`
+        : `${dirs.length} output directories expand`
+    throw new UserError(
+      `the server's ${what} to ${expands < 1e6 ? expands : expands.toPrecision(2)} entries, more than the ${room} this file system has free — refused`,
+    )
+  }
   // A file or link no declared glob names is neither fetched nor written:
   // the workspace root was the only fence, so a result (or a record planted
   // in the action cache) could write `.git/hooks/post-checkout` 0755 or
@@ -1711,18 +1859,12 @@ export async function materialiseOutputs(
     await fence.symlink(sl.target, abs, created)
   }
 
-  for (const d of result.output_directories ?? []) {
+  for (const d of dirs) {
+    const read = trees.get(d.tree_digest.hash)
+    if (read === null || read === undefined) continue
     const dest = fence.lexical(req.cwd, d.path)
     const whole = isDeclared(dest)
-    await materialiseTree(
-      client,
-      fence,
-      dest,
-      d.tree_digest,
-      missing,
-      created,
-      whole ? null : isDeclared,
-    )
+    await materialiseTree(client, fence, dest, read, missing, created, whole ? null : isDeclared)
   }
   await fence.verifyLinks()
 }
@@ -1962,6 +2104,12 @@ const INLINE_STREAM_BYTES = 64 * 1024
 /** Small blobs a restore holds in memory at once, fetched batched. */
 const TREE_FETCH_WINDOW_BYTES = 64 * 1024 * 1024
 
+/** A Tree read, its children by digest, and what it writes. */
+interface ReadTree extends TreeShape {
+  root: Directory
+  byDigest: Map<string, Directory>
+}
+
 /**
  * An `OutputDirectory` points at the digest of an encoded **`Tree` proto**
  * (root Directory + every descendant), NOT at a Directory to be walked with
@@ -1969,11 +2117,96 @@ const TREE_FETCH_WINDOW_BYTES = 64 * 1024 * 1024
  * this module's first version — because `GetTree` takes a Directory root and
  * would either error or, worse, traverse something else.
  */
+async function readTree(
+  client: ReapiClient,
+  treeDigest: Digest,
+  missing: (what: string, hash: string, abs?: string) => void,
+): Promise<ReadTree | null> {
+  const blob = await client.readBlob(treeDigest)
+  if (blob === null) {
+    missing('tree', treeDigest.hash)
+    return null
+  }
+  const tree = decodeTreeWithBytes(blob)
+  if (tree.root === undefined) {
+    missing('tree (no root directory)', treeDigest.hash)
+    return null
+  }
+  // Children are addressed by the digest of the bytes the WORKER encoded.
+  // Re-encoding our parse reproduces it only when both encoders agree byte
+  // for byte, and a child that did not was "not present in the Tree blob"
+  // (item 827), the miss decomposeOutputDir's own comment measured.
+  const byDigest = new Map<string, Directory>()
+  tree.children.forEach((child, i) => byDigest.set(tree.childDigests[i]!, child))
+  return { root: tree.root, byDigest, ...treeShape(tree.root, byDigest) }
+}
+
+/** What a Tree writes: its paths, and the bytes of its longest one. */
+interface TreeShape {
+  entries: number
+  longest: number
+}
+
+/** Bytes a path may hold, its terminating NUL included (limits.h). */
+const PATH_MAX = process.platform === 'darwin' ? 1024 : 4096
+
+/**
+ * The paths `root` expands to on disk, itself included, and the bytes of
+ * the longest below it. A Tree may name one subtree under many names, so 41
+ * directories can expand to 2^41 paths, and the walk wrote until the disk
+ * gave out: counted once per distinct directory, a Tree that expands past
+ * what the file system has free is refused unwritten. Walked without
+ * recursion: a Tree 100 000 directories deep overflowed the stack.
+ */
+function treeShape(root: Directory, byDigest: ReadonlyMap<string, Directory>): TreeShape {
+  const shapes = new Map<string, TreeShape>()
+  const shapeOf = (dir: Directory): TreeShape => {
+    let entries = 1 + dir.files.length + dir.symlinks.length
+    let longest = 0
+    for (const f of [...dir.files, ...dir.symlinks]) {
+      longest = Math.max(longest, 1 + Buffer.byteLength(f.name))
+    }
+    for (const d of dir.directories) {
+      const below = shapes.get(d.digest.hash)
+      if (below === undefined) continue
+      entries += below.entries
+      longest = Math.max(longest, 1 + Buffer.byteLength(d.name) + below.longest)
+    }
+    return { entries, longest }
+  }
+  // Each directory after its children: a child under many names is shaped once.
+  const stack: Array<{ dir: Directory; hash: string; open: boolean }> = [
+    { dir: root, hash: '', open: false },
+  ]
+  for (;;) {
+    const top = stack.at(-1)!
+    if (top.hash !== '' && shapes.has(top.hash)) {
+      stack.pop()
+      continue
+    }
+    if (!top.open) {
+      top.open = true
+      for (const d of top.dir.directories) {
+        const node = byDigest.get(d.digest.hash)
+        if (node !== undefined && !shapes.has(d.digest.hash)) {
+          stack.push({ dir: node, hash: d.digest.hash, open: false })
+        }
+      }
+      continue
+    }
+    stack.pop()
+    const shape = shapeOf(top.dir)
+    if (top.hash === '') return shape
+    shapes.set(top.hash, shape)
+  }
+}
+
+/** Writes a Tree `readTree` read and `materialiseOutputs` counted. */
 async function materialiseTree(
   client: ReapiClient,
   fence: Fence,
   destDir: string,
-  treeDigest: Digest,
+  { root, byDigest }: ReadTree,
   // Same policy as the file path: under a literal capture an unmaterialisable
   // entry is a hole in a DECLARED output directory, so it fails the task.
   missing: (what: string, hash: string, abs?: string) => void,
@@ -1982,50 +2215,6 @@ async function materialiseTree(
   // under a directory it names, is written.
   declared: ((abs: string) => boolean) | null,
 ): Promise<void> {
-  const blob = await client.readBlob(treeDigest)
-  if (blob === null) {
-    missing('tree', treeDigest.hash)
-    return
-  }
-  const tree = decodeTreeWithBytes(blob)
-  if (tree.root === undefined) {
-    missing('tree (no root directory)', treeDigest.hash)
-    return
-  }
-  // Children are addressed by the digest of the bytes the WORKER encoded.
-  // Re-encoding our parse reproduces it only when both encoders agree byte
-  // for byte, and a child that did not was "not present in the Tree blob"
-  // (item 827), the miss decomposeOutputDir's own comment measured.
-  const byDigest = new Map<string, Directory>()
-  tree.children.forEach((child, i) => byDigest.set(tree.childDigests[i]!, child))
-
-  // A Tree may name one subtree under many names, so 41 directories can
-  // expand to 2^41 paths, and the walk wrote until the disk gave out. Each
-  // path is an inode on disk: counted once per distinct directory, a Tree
-  // that expands past what the file system has free is refused unwritten.
-  const counted = new Map<string, number>()
-  const entries = (dir: Directory): number => {
-    let n = 1 + dir.files.length + dir.symlinks.length
-    for (const d of dir.directories) {
-      const node = byDigest.get(d.digest.hash)
-      if (node === undefined) continue
-      let below = counted.get(d.digest.hash)
-      if (below === undefined) {
-        below = entries(node)
-        counted.set(d.digest.hash, below)
-      }
-      n += below
-    }
-    return n
-  }
-  const expands = entries(tree.root)
-  const room = await freeEntries(destDir)
-  if (expands > room) {
-    throw new UserError(
-      `the server's Tree for ${destDir} expands to ${expands < 1e6 ? expands : expands.toPrecision(2)} entries, more than the ${room} this file system has free — refused`,
-    )
-  }
-
   // Files are gathered from the whole tree before any is fetched: one
   // BatchReadBlobs per DIRECTORY was a round trip each, so a `dist/` of 200
   // directories restored in 200 sequential calls (F-18). Windows bound what
@@ -2056,7 +2245,7 @@ async function materialiseTree(
       await walk(node, childAt, whole || declared!(childAt))
     }
   }
-  await walk(tree.root, destDir, declared === null)
+  await walk(root, destDir, declared === null)
 
   for (const window of fetchWindows(files, (w) => w.f.digest)) {
     const batched = await client.batchReadBlobs(

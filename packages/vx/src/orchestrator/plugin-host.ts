@@ -100,21 +100,41 @@ async function safe<T>(plugin: VxPlugin, hook: string, fn: () => T | Promise<T>)
   try {
     return await fn()
   } catch (err) {
-    // Masked here, not by whoever prints it: an embedder of `run()` and
-    // a plugin's verb print it as they get it, and the throw quotes what the
-    // plugin was told (a remote's reply, a header) (L-11).
-    // A plugin's own code survives (cli.md § Error codes): an agent
-    // branches on it.
-    // A plugin's bug (a TypeError, not a message it chose to throw) names
-    // where it threw: the message alone left its author no file or line.
-    const at = isBug(err) ? pluginThrowSite(err) : undefined
-    throw new UserError(
-      maskedLine(
-        `plugin '${plugin.name}' failed in ${hook}: ${thrownMessage(err)}${at === undefined ? '' : ` (at ${at})`}`,
-      ),
-      errorCode(err) === 'VX_E_INTERNAL' ? 'VX_E_REFUSED' : errorCode(err),
-    )
+    throw pluginFailure(plugin, hook, err)
   }
+}
+
+/**
+ * Reads and checks what a hook answered, in the plugin's name as `safe`
+ * runs the hook: a getter or Proxy trap in the answer that threw crashed
+ * vx with a raw stack. Core's own refusals pass as they are. What `read`
+ * returns is what the caller uses, so a getter cannot answer the check one
+ * value and the run another.
+ */
+function reading<T>(plugin: VxPlugin, hook: string, read: () => T): T {
+  try {
+    return read()
+  } catch (err) {
+    if (err instanceof UserError) throw err
+    throw pluginFailure(plugin, hook, err)
+  }
+}
+
+function pluginFailure(plugin: VxPlugin, hook: string, err: unknown): UserError {
+  // Masked here, not by whoever prints it: an embedder of `run()` and
+  // a plugin's verb print it as they get it, and the throw quotes what the
+  // plugin was told (a remote's reply, a header) (L-11).
+  // A plugin's own code survives (cli.md § Error codes): an agent
+  // branches on it.
+  // A plugin's bug (a TypeError, not a message it chose to throw) names
+  // where it threw: the message alone left its author no file or line.
+  const at = isBug(err) ? pluginThrowSite(err) : undefined
+  return new UserError(
+    maskedLine(
+      `plugin '${plugin.name}' failed in ${hook}: ${thrownMessage(err)}${at === undefined ? '' : ` (at ${at})`}`,
+    ),
+    errorCode(err) === 'VX_E_INTERNAL' ? 'VX_E_REFUSED' : errorCode(err),
+  )
 }
 
 const VX_SRC = `${path.resolve(import.meta.dir, '..')}${path.sep}`
@@ -180,7 +200,9 @@ export async function applyConfigHooks(
   for (const plugin of plugins) {
     if (plugin.config === undefined) continue
     const returned = await safe(plugin, 'config', () => plugin.config!(workspace, ctx))
-    assertEditedInPlace(plugin, 'config', returned, workspace, 'the workspace config')
+    reading(plugin, 'config', () =>
+      assertEditedInPlace(plugin, 'config', returned, workspace, 'the workspace config'),
+    )
     afterEach?.(plugin)
   }
 }
@@ -204,15 +226,18 @@ export async function applyDiscoverHooks(
   const edges: DiscoveredEdges[] = []
   for (const plugin of plugins) {
     if (plugin.discover === undefined) continue
-    const named = await safe(plugin, 'discover', () =>
+    const answer: unknown = await safe(plugin, 'discover', () =>
       plugin.discover!({ ...ctx, projects: readOnly(projects) }),
     )
-    if (!Array.isArray(named)) {
-      throw new UserError(
-        `plugin '${plugin.name}' failed in discover: expected an array, got ${describeValue(named)}`,
-      )
-    }
-    for (const entry of named as readonly DiscoveredProject[]) {
+    const named = reading(plugin, 'discover', () => {
+      if (!Array.isArray(answer)) {
+        throw new UserError(
+          `plugin '${plugin.name}' failed in discover: expected an array, got ${describeValue(answer)}`,
+        )
+      }
+      return Array.from(answer as unknown[], plainEntry)
+    })
+    for (const entry of named) {
       const { meta, added } = await add(entry, plugin)
       if (added) projects.push(meta)
       if (entry.deps !== undefined || entry.reach !== undefined) {
@@ -221,6 +246,22 @@ export async function applyDiscoverHooks(
     }
   }
   return edges
+}
+
+/**
+ * A `discover` entry's fields, each read once: deps that read as a list
+ * to the check and as 5 after it crashed the edge link. `add` checks the
+ * copy's shape.
+ */
+function plainEntry(entry: unknown): DiscoveredProject {
+  if (typeof entry !== 'object' || entry === null) return entry as DiscoveredProject
+  const { dir, name, deps, reach } = entry as Record<string, unknown>
+  return {
+    dir,
+    name,
+    deps: Array.isArray(deps) ? [...(deps as unknown[])] : deps,
+    reach: Array.isArray(reach) ? [...(reach as unknown[])] : reach,
+  } as DiscoveredProject
 }
 
 export interface DiscoveredEdges {
@@ -242,7 +283,9 @@ export async function applyProjectHooks(
   for (const plugin of plugins) {
     if (plugin.project === undefined) continue
     const returned = await safe(plugin, 'project', () => plugin.project!(config, ctx))
-    assertEditedInPlace(plugin, 'project', returned, config, "the project's config")
+    reading(plugin, 'project', () =>
+      assertEditedInPlace(plugin, 'project', returned, config, "the project's config"),
+    )
     afterEach?.(plugin)
   }
 }
@@ -270,7 +313,9 @@ export async function applyGraphHooks(
   for (const plugin of plugins) {
     if (plugin.graph === undefined) continue
     const returned = await safe(plugin, 'graph', () => plugin.graph!(nodes, ctx))
-    assertEditedInPlace(plugin, 'graph', returned, nodes, 'the task graph')
+    reading(plugin, 'graph', () =>
+      assertEditedInPlace(plugin, 'graph', returned, nodes, 'the task graph'),
+    )
     await safe(plugin, 'graph', () => checkNodeShapes(nodes))
     afterEach?.(plugin)
     last = plugin
@@ -341,17 +386,20 @@ export async function applyKeyHooks(
       if (plugin.key === undefined) continue
       const material = await safe(plugin, 'key', () => plugin.key!(task, ctx))
       if (material === undefined) continue
-      // `Object.entries` over a string yields its characters as string
-      // values, so a plugin returning `'v22'` used to fold parts named
-      // '0', '1', '2' into every key — silently, and permanently. A Map or a
-      // class instance keeps its data off own enumerable keys, so
-      // `Object.entries` read it as no material at all: a silent miskey.
-      if (!isRecord(material)) {
-        throw new UserError(
-          `plugin '${plugin.name}' failed in key: returned ${describeValue(material)}, not a record of string values`,
-        )
-      }
-      for (const [name, value] of Object.entries(material)) {
+      const entries = reading(plugin, 'key', () => {
+        // `Object.entries` over a string yields its characters as string
+        // values, so a plugin returning `'v22'` used to fold parts named
+        // '0', '1', '2' into every key — silently, and permanently. A Map or a
+        // class instance keeps its data off own enumerable keys, so
+        // `Object.entries` read it as no material at all: a silent miskey.
+        if (!isRecord(material)) {
+          throw new UserError(
+            `plugin '${plugin.name}' failed in key: returned ${describeValue(material)}, not a record of string values`,
+          )
+        }
+        return Object.entries(material)
+      })
+      for (const [name, value] of entries) {
         if (typeof value !== 'string') {
           throw new UserError(
             `plugin '${plugin.name}' failed in key: value for '${name}' on ${node.id} is not a string`,
@@ -448,19 +496,30 @@ export async function claimedDigests(
     digests.call(plugin.fingerprint, file, ctx),
   )
   if (answer === undefined) return undefined
-  const { hash, projects, extras } = (answer ?? {}) as Partial<FingerprintDigests>
-  if (
-    typeof hash !== 'string' ||
-    typeof projects !== 'object' ||
-    projects === null ||
-    Object.values(projects).some((d) => typeof d !== 'string') ||
-    (extras !== undefined &&
-      (!Array.isArray(extras) || extras.some((rel) => typeof rel !== 'string')))
-  ) {
-    throw new UserError(
-      `plugin '${plugin.name}' failed in fingerprint: digests returned ${describeValue(answer)}, not { hash, projects: { name: digest }, extras?: [path] }`,
-    )
-  }
+  const { hash, projects, extras } = reading(plugin, 'fingerprint', () => {
+    const read = (answer ?? {}) as Partial<Record<keyof FingerprintDigests, unknown>>
+    const hash = read.hash
+    const projects = read.projects
+    const digests =
+      typeof projects === 'object' && projects !== null ? Object.entries(projects) : undefined
+    const extras = Array.isArray(read.extras) ? [...(read.extras as unknown[])] : read.extras
+    if (
+      typeof hash !== 'string' ||
+      digests === undefined ||
+      digests.some(([, d]) => typeof d !== 'string') ||
+      (extras !== undefined &&
+        (!Array.isArray(extras) || extras.some((rel) => typeof rel !== 'string')))
+    ) {
+      throw new UserError(
+        `plugin '${plugin.name}' failed in fingerprint: digests returned ${describeValue(answer)}, not { hash, projects: { name: digest }, extras?: [path] }`,
+      )
+    }
+    return {
+      hash,
+      projects: Object.fromEntries(digests) as FingerprintDigests['projects'],
+      extras: extras as string[] | undefined,
+    }
+  })
   const known = new Set(ctx.projects.map((p) => p.name))
   const stray = Object.keys(projects).find((n) => !known.has(n))
   if (stray !== undefined) {
@@ -481,24 +540,26 @@ async function projectNames(
   ctx: FingerprintContext,
 ): Promise<Set<string> | undefined> {
   if (answer === undefined) return undefined
-  // A plain object is no list: `for…of` threw "is not iterable", naming
-  // neither the plugin nor the hook.
-  if (
-    typeof answer === 'string' ||
-    typeof answer !== 'object' ||
-    answer === null ||
-    typeof (answer as Partial<Iterable<unknown>>)[Symbol.iterator] !== 'function'
-  ) {
-    throw new UserError(
-      `plugin '${plugin.name}' failed in fingerprint: returned ${describeValue(answer)}, not a list of project names`,
-    )
-  }
+  // A lazy list (a generator) runs the plugin's code as it is read.
+  const read = reading(plugin, 'fingerprint', () => {
+    // A plain object is no list: `for…of` threw "is not iterable", naming
+    // neither the plugin nor the hook.
+    if (
+      typeof answer === 'string' ||
+      typeof answer !== 'object' ||
+      answer === null ||
+      typeof (answer as Partial<Iterable<unknown>>)[Symbol.iterator] !== 'function'
+    ) {
+      throw new UserError(
+        `plugin '${plugin.name}' failed in fingerprint: returned ${describeValue(answer)}, not a list of project names`,
+      )
+    }
+    return [...(answer as Iterable<unknown>)]
+  })
   const names = new Set<string>()
   // A name no project carries selected nothing, and the tasks it meant to
   // select did not run, with no word said.
   const known = new Set(ctx.projects.map((p) => p.name))
-  // A lazy list (a generator) runs the plugin's code as it is read.
-  const read = await safe(plugin, 'fingerprint', () => [...(answer as Iterable<unknown>)])
   for (const name of read) {
     if (typeof name !== 'string') {
       throw new UserError(
@@ -626,7 +687,8 @@ export async function applyScheduleHooks(
       ? call()
       : run.step(`${plugin.name}:schedule`, call))
     // A refine that landed while the call ran is the newer set.
-    if (weights !== undefined) sets[i] ??= scheduleWeights(plugin, weights, nodes)
+    if (weights !== undefined)
+      sets[i] ??= reading(plugin, 'schedule', () => scheduleWeights(plugin, weights, nodes))
   }
   return merged()
 }
@@ -760,18 +822,20 @@ export async function resolveCache(
       lentBy === undefined ? base : { ...base, lent: () => lentBy()?.[plugin.name] }
     const remote = await safe(plugin, 'cache', () => plugin.cache!(ctx))
     if (remote === undefined) continue
-    assertShape(plugin, 'cache', remote, REMOTE_CACHE_METHODS, 'a remote cache layer')
-    // `hasMany: true` failed every batch probe, and `missing: true` every
-    // upload, each said per call as the remote's own fault.
-    const odd = OPTIONAL_REMOTE_METHODS.filter(
-      (m) => remote[m] !== undefined && typeof remote[m] !== 'function',
-    )
-    if (odd.length > 0) {
-      throw new UserError(
-        `plugin '${plugin.name}' returned from cache something that is not a remote cache layer: ` +
-          `${odd.join(', ')} ${odd.length === 1 ? 'not a function' : 'not functions'}`,
+    reading(plugin, 'cache', () => {
+      assertShape(plugin, 'cache', remote, REMOTE_CACHE_METHODS, 'a remote cache layer')
+      // `hasMany: true` failed every batch probe, and `missing: true` every
+      // upload, each said per call as the remote's own fault.
+      const odd = OPTIONAL_REMOTE_METHODS.filter(
+        (m) => remote[m] !== undefined && typeof remote[m] !== 'function',
       )
-    }
+      if (odd.length > 0) {
+        throw new UserError(
+          `plugin '${plugin.name}' returned from cache something that is not a remote cache layer: ` +
+            `${odd.join(', ')} ${odd.length === 1 ? 'not a function' : 'not functions'}`,
+        )
+      }
+    })
     const entry: ResolvedRemote = {
       remote,
       plugin: plugin.name,
@@ -946,69 +1010,71 @@ export async function resolveExecutors(
     if (plugin.executor === undefined) continue
     const executor = await safe(plugin, 'executor', () => plugin.executor!(ctx))
     if (executor === undefined) continue
-    assertShape(plugin, 'executor', executor, ['execute'], 'an executor')
-    if (typeof executor.name !== 'string' || executor.name.length === 0) {
-      throw new UserError(`plugin '${plugin.name}' returned an executor with no name`)
-    }
-    // The pool's room is `active < capacity`: 0 or NaN parks its tasks for good.
-    const capacity: unknown = executor.capacity
-    if (capacity !== undefined && !(Number.isInteger(capacity) && (capacity as number) > 0)) {
-      throw new UserError(
-        `plugin '${plugin.name}' returned executor '${executor.name}' with capacity ${typeof capacity === 'number' ? String(capacity) : JSON.stringify(capacity)}: it must be a positive integer`,
-      )
-    }
-    // Read as `=== true`: `remote: 'yes'` ran a remote executor as a local one.
-    for (const flag of EXECUTOR_FLAGS) {
-      const v: unknown = executor[flag]
-      if (v !== undefined && typeof v !== 'boolean') {
+    reading(plugin, 'executor', () => {
+      assertShape(plugin, 'executor', executor, ['execute'], 'an executor')
+      if (typeof executor.name !== 'string' || executor.name.length === 0) {
+        throw new UserError(`plugin '${plugin.name}' returned an executor with no name`)
+      }
+      // The pool's room is `active < capacity`: 0 or NaN parks its tasks for good.
+      const capacity: unknown = executor.capacity
+      if (capacity !== undefined && !(Number.isInteger(capacity) && (capacity as number) > 0)) {
         throw new UserError(
-          `plugin '${plugin.name}' returned executor '${executor.name}' with ${flag} ${typeof v === 'string' ? JSON.stringify(v) : typeof v === 'object' && v !== null ? describeValue(v) : String(v as number)}: it must be true or false`,
+          `plugin '${plugin.name}' returned executor '${executor.name}' with capacity ${typeof capacity === 'number' ? String(capacity) : JSON.stringify(capacity)}: it must be a positive integer`,
         )
       }
-    }
-    const platforms: unknown = executor.platforms
-    if (
-      platforms !== undefined &&
-      !(
-        Array.isArray(platforms) &&
-        platforms.length > 0 &&
-        platforms.every((p) => (PLATFORMS as readonly unknown[]).includes(p))
-      )
-    ) {
-      throw new UserError(
-        `plugin '${plugin.name}' returned executor '${executor.name}' with platforms ${JSON.stringify(platforms)}: it must be a non-empty array of ${PLATFORMS.join(', ')}`,
-      )
-    }
-    const workers: unknown = executor.workers
-    if (workers !== undefined) {
-      const offered = (platforms ?? []) as readonly unknown[]
-      const names = new Set<unknown>()
-      const ok =
-        Array.isArray(workers) &&
-        workers.length > 0 &&
-        workers.every(
-          (w: unknown) =>
-            Array.isArray(w) &&
-            typeof w[0] === 'string' &&
-            w[0].length > 0 &&
-            !names.has(w[0]) &&
-            names.add(w[0]) !== undefined &&
-            Array.isArray(w[1]) &&
-            w[1].length > 0 &&
-            (w[1] as unknown[]).every((p) => offered.includes(p)),
+      // Read as `=== true`: `remote: 'yes'` ran a remote executor as a local one.
+      for (const flag of EXECUTOR_FLAGS) {
+        const v: unknown = executor[flag]
+        if (v !== undefined && typeof v !== 'boolean') {
+          throw new UserError(
+            `plugin '${plugin.name}' returned executor '${executor.name}' with ${flag} ${typeof v === 'string' ? JSON.stringify(v) : typeof v === 'object' && v !== null ? describeValue(v) : String(v as number)}: it must be true or false`,
+          )
+        }
+      }
+      const platforms: unknown = executor.platforms
+      if (
+        platforms !== undefined &&
+        !(
+          Array.isArray(platforms) &&
+          platforms.length > 0 &&
+          platforms.every((p) => (PLATFORMS as readonly unknown[]).includes(p))
         )
-      if (!ok)
+      ) {
         throw new UserError(
-          `plugin '${plugin.name}' returned executor '${executor.name}' with workers ${JSON.stringify(workers)}: it must be a non-empty array of distinct [name, platforms] pairs, each platform one of its platforms`,
+          `plugin '${plugin.name}' returned executor '${executor.name}' with platforms ${JSON.stringify(platforms)}: it must be a non-empty array of ${PLATFORMS.join(', ')}`,
         )
-    }
-    for (const hook of EXECUTOR_HOOKS) {
-      const v: unknown = executor[hook]
-      if (v !== undefined && typeof v !== 'function')
-        throw new UserError(
-          `plugin '${plugin.name}' returned executor '${executor.name}' with ${hook} that is not a function`,
-        )
-    }
+      }
+      const workers: unknown = executor.workers
+      if (workers !== undefined) {
+        const offered = (platforms ?? []) as readonly unknown[]
+        const names = new Set<unknown>()
+        const ok =
+          Array.isArray(workers) &&
+          workers.length > 0 &&
+          workers.every(
+            (w: unknown) =>
+              Array.isArray(w) &&
+              typeof w[0] === 'string' &&
+              w[0].length > 0 &&
+              !names.has(w[0]) &&
+              names.add(w[0]) !== undefined &&
+              Array.isArray(w[1]) &&
+              w[1].length > 0 &&
+              (w[1] as unknown[]).every((p) => offered.includes(p)),
+          )
+        if (!ok)
+          throw new UserError(
+            `plugin '${plugin.name}' returned executor '${executor.name}' with workers ${JSON.stringify(workers)}: it must be a non-empty array of distinct [name, platforms] pairs, each platform one of its platforms`,
+          )
+      }
+      for (const hook of EXECUTOR_HOOKS) {
+        const v: unknown = executor[hook]
+        if (v !== undefined && typeof v !== 'function')
+          throw new UserError(
+            `plugin '${plugin.name}' returned executor '${executor.name}' with ${hook} that is not a function`,
+          )
+      }
+    })
     executorPlugin.set(executor, plugin.name)
     executors.push(executor)
   }

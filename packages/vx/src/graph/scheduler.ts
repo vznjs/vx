@@ -170,8 +170,8 @@ export interface TaskOutcome {
   blockedBy?: string
   /**
    * On an outcome that ran behind a failed dependency (`continueMode:
-   * 'always'`) or one `--exclude-dependencies` dropped: the task at the root
-   * of it. Its result is not its key's, so no flaky verdict reads it and
+   * 'always'`), one `--exclude-dependencies` dropped, or a server that died
+   * while it ran: the task at the root of it. Its result is not its key's, so no flaky verdict reads it and
    * its run row names the root as a skip's `blockedBy` does. Set by `run()`
    * before any observer (a plugin's `onTaskComplete`) hears the outcome.
    */
@@ -720,7 +720,8 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   // complete.
   // When each queued id became ready; dispatch takes it out.
   const readyAt = new Map<string, number>()
-  const startedAt = Date.now()
+  // Elapsed-time stamps (queue and hold waits), immune to wall clock steps.
+  const startedAt = performance.now()
   for (const node of nodes.values()) {
     if (restoreTier?.has(node.id)) restoreReady.push(node.id)
     else if (node.deps.length === 0) execReady.push(node.id)
@@ -932,7 +933,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         if (heldRelease.delete(d)) enter(d)
         else if (!inRestoreTier(d)) {
           execReady.push(d)
-          readyAt.set(d, Date.now())
+          readyAt.set(d, performance.now())
         }
       }
     }
@@ -1063,7 +1064,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
             if (hasRoom(id)) {
               if (!admitActive || admits(id)) return id
               // A free worker, refused by the policy: the hold starts now.
-              if (!heldSince.has(id)) heldSince.set(id, Date.now())
+              if (!heldSince.has(id)) heldSince.set(id, performance.now())
             }
             parked.push([id, seq])
           }
@@ -1143,7 +1144,8 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
           continue
         }
 
-        const queuedMs = Date.now() - (readyAt.get(id) ?? Date.now())
+        const readySince = readyAt.get(id)
+        const queuedMs = readySince === undefined ? 0 : Math.round(performance.now() - readySince)
         readyAt.delete(id)
         const settle = settleInPlace(node, upstream)
         let now: TaskOutcome | undefined
@@ -1165,7 +1167,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         // tick sees it; the completion callbacks unlist it.
         const untrack = track(id)
         const since = admitActive ? heldSince.get(id) : undefined
-        const heldMs = since === undefined ? 0 : Math.max(1, Date.now() - since)
+        const heldMs = since === undefined ? 0 : Math.max(1, Math.round(performance.now() - since))
         if (since !== undefined) heldSince.delete(id)
         const withHold = (o: TaskOutcome): TaskOutcome =>
           heldMs === 0 && queuedMs === 0
@@ -1223,12 +1225,12 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
                 idle.delete(p)
                 if (dormant.delete(p)) {
                   execReady.push(p)
-                  readyAt.set(p, Date.now())
+                  readyAt.set(p, performance.now())
                 }
               })
               if (pending.get(id) === 0) {
                 execReady.push(id)
-                readyAt.set(id, Date.now())
+                readyAt.set(id, performance.now())
               }
               tick()
               return
@@ -1329,7 +1331,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
           continue
         promoted.add(d)
         restoreReady.push(d)
-        readyAt.set(d, Date.now())
+        readyAt.set(d, performance.now())
       }
       if (dependents.get(id)?.every((d) => inRestoreTier(d)) === true) idle.add(id)
       if (heldReady.delete(id)) execReady.push(id)

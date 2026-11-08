@@ -489,7 +489,7 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
         })().catch((err: unknown) => {
           if (!late) {
             ctx.warn(
-              `[vx] vx-history: the timings of the history server at ${server.url} were not applied: ${err instanceof Error ? err.message : String(err)}`,
+              `[vx] vx-history: the timings of the history server at ${shown(server.url)} were not applied: ${err instanceof Error ? err.message : String(err)}`,
             )
           }
           return undefined
@@ -673,8 +673,9 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
         if (late) {
           u.stop.abort()
           const n = sent.timings.size
+          const status = u.answered()
           sent.warn(
-            `[vx] vx-history: the timings of ${n} task${n === 1 ? '' : 's'} were not sent to the history server at ${server.url}: no answer in the ${UPLOAD_WAIT_MS} ms a teardown waits`,
+            `[vx] vx-history: the timings of ${n} task${n === 1 ? '' : 's'} were not sent to the history server at ${shown(server.url)}: ${status === undefined ? `no answer in the ${UPLOAD_WAIT_MS} ms a teardown waits` : `it answered HTTP ${status}, and the ${UPLOAD_WAIT_MS} ms a teardown waits ran out before it was asked again`}`,
           )
         }
       }
@@ -713,6 +714,8 @@ interface Upload {
   /** Settles when sent, or once a failure is said; never rejects. */
   readonly done: Promise<void>
   readonly stop: AbortController
+  /** The status the upload's latest try answered; undefined while it waits for one. */
+  readonly answered: () => number | undefined
 }
 
 /**
@@ -724,16 +727,17 @@ const UPLOAD_WAIT_MS = 2_000
 
 function sendTimings(server: HistoryServer, sent: Reported): Upload {
   const stop = new AbortController()
+  let answered: number | undefined
   const done = server
-    .upload(sent.timings, stop.signal, [...sent.outcomes.values()])
+    .upload(sent.timings, stop.signal, [...sent.outcomes.values()], (s) => (answered = s))
     .catch((err: unknown) => {
       // Abandoned by teardown, which says so itself.
       if (stop.signal.aborted) return
       sent.warn(
-        `[vx] vx-history: the timings were not sent to the history server at ${server.url}: ${err instanceof Error ? err.message : String(err)}`,
+        `[vx] vx-history: the timings were not sent to the history server at ${shown(server.url)}: ${err instanceof Error ? err.message : String(err)}`,
       )
     })
-  return { done, stop }
+  return { done, stop, answered: () => answered }
 }
 
 /** Resolves true after `ms`, unless cancelled first. */
