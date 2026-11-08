@@ -846,6 +846,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-reapi/record-digest-sizes',
     'vx-reapi/record-streams',
     'vx-reapi/request-metadata-action',
+    'vx-reapi/shared-subtree',
     'vx-reapi/stream-cache',
     'vx-reapi/string-map-options',
     'vx-reapi/timeout-options',

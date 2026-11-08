@@ -251,8 +251,12 @@ directory that resolves out through a link, and a file or link that
 lands, through one, where no declared glob names are refused before anything
 is written through them; a link standing at an output file is replaced, never written
 through; a Tree file's setuid and setgid bits are dropped. A Tree may name
-one subtree many times; one that expands to more paths than the file
-system has free inodes is refused before anything is written.
+one subtree many times; a result whose Trees together expand to more paths
+than the file system has free inodes is refused before anything is written,
+as is a Tree holding a path past `PATH_MAX` (4096 bytes; 1024 on macOS).
+A glob's matches are recorded each as a Tree of its own, a subtree named
+under many names encoded once; a capture past the free inodes or
+`PATH_MAX` is recorded whole, unsplit.
 
 ## Artifacts stream
 
