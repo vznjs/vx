@@ -15,6 +15,17 @@ import { run } from './helpers/orchestrator.js'
 
 process.env['VX_TEST_KILL_GRACE'] = '200ms'
 
+// Interrupts once `id` is ready, not at a set time: a 500 ms timer fired
+// before the server was ready on a loaded CI runner, so nothing was held.
+const interruptOnReady = (interrupt: AbortController, id: string): Logger => ({
+  status() {},
+  taskStdout() {},
+  taskStderr() {},
+  taskComplete: (node) => {
+    if (node.id === id) interrupt.abort(CYCLE_INTERRUPT)
+  },
+})
+
 let root: string
 beforeEach(async () => {
   root = await makeWorkspace({ prefix: 'vx-held-', edges: { app: ['lib'] } })
@@ -228,12 +239,11 @@ it('a cycle interrupted on readiness keeps the servers it was handed', async () 
   const api = first.servers.get('app#api')!.child
   writeFileSync(path.join(app, 'vx.config.mjs'), srv(true))
   const interrupt = new AbortController()
-  setTimeout(() => interrupt.abort(CYCLE_INTERRUPT), 500)
   const second = await run({
     cwd: root,
     tasks: ['api', 'web'],
     projects: ['app'],
-    log: quiet,
+    log: interruptOnReady(interrupt, 'app#api'),
     handleSignals: false,
     holdPersistent: true,
     keep: first,
@@ -306,14 +316,12 @@ it('a run interrupted on readiness keeps the servers it made ready', async () =>
       web: { exec: { command: 'echo booting; exec sleep 30', persistent: { readyWhen: 'READY' } } },
     } }`,
   })
-  const quiet: Logger = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
   const interrupt = new AbortController()
-  setTimeout(() => interrupt.abort(CYCLE_INTERRUPT), 500)
   const r = await run({
     cwd: root,
     tasks: ['api', 'web'],
     projects: ['app'],
-    log: quiet,
+    log: interruptOnReady(interrupt, 'app#api'),
     handleSignals: false,
     holdPersistent: true,
     signal: interrupt.signal,
