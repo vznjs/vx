@@ -1538,8 +1538,9 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    a task's own outputs are no input of it, so a `turbo()` task reading
    `**/*` does not re-run on its own `dist/`; only the tasks the run
    reaches through `dependsOn` are asked, so an unwatched `lint` reading
-   `**/*` beside `vx watch build` asks nothing) — and neither do `node_modules`,
-   `.git` or the cache directory. A write the task did NOT declare (a
+   `**/*` beside `vx watch build` asks nothing) — and neither do `node_modules`
+   (save an input named there or a file git tracks there, see Path
+   filtering), `.git` or the cache directory. A write the task did NOT declare (a
    task with no `cache: true` declares nothing) is caught by state,
    judged once the bytes have settled: a file whose bytes and mode did
    not change since the loop last saw it is not an edit (a `chmod` is one,
@@ -1637,7 +1638,13 @@ watch events within 2000 ms; polling every 250 ms instead`.
 
 Always ignored (no re-trigger):
 
-- `node_modules/`, `.git/`, `.vx/cache/` anywhere in the path.
+- `.git/` and `.vx/cache/` anywhere in the path.
+- `node_modules/` anywhere in the path, save what a task the watch
+  reaches names there through that segment (`node_modules/.prisma/client/**`)
+  and a file git tracks there (a committed fixture under
+  `fixtures/node_modules/`): those are inputs, so both watchers enter
+  only those directories and an edit there is a cycle. A broad glob
+  (`**`, `fixtures/**`) names no `node_modules`.
 - A path git ignores (`git check-ignore`, asked once per debounce
   window, never per event), unless a task's inputs name it outright
   (`.env.local`, `dist/**`) by the rule the key reads them (schema.md §

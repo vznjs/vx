@@ -123,6 +123,7 @@ export function armWatcher(
   recursive: boolean,
   onEvent: (filename: string) => void,
   timeoutMs?: number,
+  skipDir?: (rel: string) => boolean, // on Linux, asked of a directory under node_modules only
 ): ArmedWatcher
 export function modifiedBefore(abs: string, t: number): boolean
 export const CLOSED: WatchHandle // watches nothing: a dropped slot, an arm not made
@@ -145,6 +146,10 @@ recursive arm is one non-recursive watch per directory that never enters
 this repo's root arm went from 4,657 inotify watches to 435 and its arm
 from 75 to 43 ms (min of 6, interleaved); a directory that appears is
 watched and what it already holds reported (`watch-tree-linux.test.ts`).
+It enters a `node_modules` only where the pool's `skip` keeps it: an
+input names a path there through that segment, or git tracks a file
+there; a re-read that changes which inputs name one re-arms the trees
+(`watch-node-modules-input.test.ts`).
 
 ## Flag surface
 
@@ -274,7 +279,8 @@ git checkout packages`) was no event to its own arm, nor to the
      made again, and every edit after it (macOS CI, 2026-11-04). Under
      `VX_DEBUG_WATCH` each arm line says its watch count, and on macOS
      it holds still across a removal and a restore.
-   - Filter out `node_modules` / `.git` / `.vx/cache` path segments,
+   - Filter out `node_modules` (save an input named through it, or a
+     file git tracks under it) / `.git` / `.vx/cache` path segments,
      `.vx/tmp` (restore staging), the `~` suffix (editor swap files), the RESOLVED
      cache directory (a relocated `cache.dir` would otherwise re-trigger
      every cycle; re-read with the watched set, so a `cache.dir` edit
