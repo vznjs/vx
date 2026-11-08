@@ -312,8 +312,8 @@ next first load requires the bundle instead, while its manifest still
 holds: a config reached through a link still links to the file it was
 built from, every input file hashes as it did and every import, bare or
 relative, resolves to the same real path (`./preset` finds a new
-`preset.ts` before the bundled `preset.js`). Anything else loads the
-source and builds again. Any plugin gets this; none is named.
+`preset.ts` before the bundled `preset.js`). Anything else, a bundle
+that throws on require included, loads the source and builds again. Any plugin gets this; none is named.
 
 The bundle is built from the bytes the manifest records, transpiled
 with `import.meta`, `__dirname` and `__filename` replaced by the

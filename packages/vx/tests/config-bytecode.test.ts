@@ -206,6 +206,19 @@ describe('workspace config bytecode', () => {
   )
 
   it(
+    'a bundle that no longer loads is built again',
+    async () => {
+      probe()
+      expect(probe().bundled).toBe(true)
+      const js = (await compiled()).find((f) => f.endsWith('.js'))!
+      await Bun.$`truncate -s 200 ${path.join(root, '.vx', 'cache', 'compiled', js)}`.quiet()
+      expect(probe()).toMatchObject({ value: 'one', bundled: false })
+      expect(probe()).toMatchObject({ value: 'one', bundled: true })
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a fresh workspace with no cache yet gets no bundle',
     async () => {
       await rm(path.join(root, '.vx', 'cache'), { recursive: true })
