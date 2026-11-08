@@ -2804,7 +2804,8 @@ async function runSandboxedOnce(
       config: args.config,
       skip: [taskTmpRoot()],
     })
-    if (hidden.length > 0) violations.push(hiddenReadsHint(hidden, args.reportWithin))
+    if (hidden.length > 0)
+      violations.push(hiddenReadsHint(hidden, baselines.denyRead, args.reportWithin))
   }
 
   afterCommand(SandboxManager)
@@ -2863,15 +2864,7 @@ function outsideWritesHint(
 ): SandboxViolation {
   const shown = paths.slice(0, 5).join(', ')
   const more = paths.length > 5 ? ` and ${paths.length - 5} more` : ''
-  const home = toRealPath(os.homedir())
-  const dir = path.dirname(paths[0]!)
-  // In the workspace, from the project, as a committed config spells it:
-  // the absolute path held only on the machine that printed it.
-  const spelled = walled.some((w) => atOrUnder(dir, toRealPath(w)))
-    ? path.relative(toRealPath(within), dir) || '.'
-    : atOrUnder(dir, home)
-      ? `~${dir.slice(home.length)}`
-      : dir
+  const spelled = grantSpelling(path.dirname(paths[0]!), walled, within)
   const refused =
     `vx: the sandbox refused writes outside the project, which are not reported as ` +
     `violations: ${shown}${more}.`
@@ -2937,17 +2930,50 @@ function hostTempRoots(): string[] {
   return [...new Set(['/tmp', '/var/tmp', os.tmpdir()].map(toRealPath))]
 }
 
-function hiddenReadsHint(paths: readonly string[], within: string): SandboxViolation {
+/**
+ * The hint for reads the wall hid outside the project. A path under a
+ * deny entry other than the ones holding the project (a credential store
+ * or its link's target, vx's own store, the repository's git data outside
+ * the workspace) is walled on purpose and never the suggested grant: an
+ * agent applies a suggestion as given, and `cat ~/.npmrc` was told to
+ * grant `../../home/.npmrc`.
+ */
+function hiddenReadsHint(
+  paths: readonly string[],
+  walled: readonly string[],
+  within: string,
+): SandboxViolation {
   const shown = paths.slice(0, 5).join(', ')
   const more = paths.length > 5 ? ` and ${paths.length - 5} more` : ''
+  const project = toRealPath(within)
+  const deny = walled.map(toRealPath)
+  const grantable = paths.find((p) => !deny.some((w) => atOrUnder(p, w) && !atOrUnder(project, w)))
+  const said =
+    `vx: the sandbox hid paths outside the project that exist on this machine, which are ` +
+    `not reported as violations: ${shown}${more}.`
   return {
     timestamp: new Date(),
     hint: true,
     line:
-      `vx: the sandbox hid paths outside the project that exist on this machine, which are ` +
-      `not reported as violations: ${shown}${more}. If the task reads one, grant it, e.g. ` +
-      `\`allow: { read: [${jsString(path.relative(toRealPath(within), paths[0]!))}] }\`.`,
+      grantable === undefined
+        ? `${said} They are walled on purpose, so vx suggests no grant for them.`
+        : `${said} If the task reads one, grant it, e.g. ` +
+          `\`allow: { read: [${jsString(grantSpelling(grantable, walled, within))}] }\`.`,
   }
+}
+
+/**
+ * A path as a committed config spells its grant: from the project inside
+ * the walls (the absolute path holds only on the machine that printed
+ * it), `~/…` under home, else absolute.
+ */
+function grantSpelling(p: string, walled: readonly string[], within: string): string {
+  const home = toRealPath(os.homedir())
+  return walled.some((w) => atOrUnder(p, toRealPath(w)))
+    ? path.relative(toRealPath(within), p) || '.'
+    : atOrUnder(p, home)
+      ? `~${p.slice(home.length)}`
+      : p
 }
 
 /**

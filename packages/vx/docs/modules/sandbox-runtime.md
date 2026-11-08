@@ -562,6 +562,16 @@ lies inside it: bwrap builds the path to a bind, so the cwd lists, and a
 root's `read: ['.']`, bound as its children around the walls, drew the
 note on every failure (B-20).
 
+A failed task's note also names the paths outside the project the wall
+hid that exist on the host (`hiddenReadsOutside`), with a grant to add,
+spelled as the refused-writes note spells one: from the project inside
+the workspace, `~/…` under home, else absolute. A path under a deny
+entry other than the ones holding the project (a credential store or its
+link's target, `~/.vx` or a cache directory outside the workspace, the
+repository's git data outside it) is named but never the suggested
+grant: an agent applies a suggestion as given, and `cat ~/.npmrc` was
+told to grant `../../home/.npmrc` until 2026-11-08.
+
 bwrap enters the task's cwd only if a mount holds it, and otherwise
 `$HOME`, with no word: a project granted no read (`sandbox: {}`, its own
 `node_modules` absent) ran in the home directory, where `cat x.txt` read
