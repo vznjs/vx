@@ -399,7 +399,13 @@ function cantOpenIndex(dbFile: string, err: unknown): UserError | undefined {
 //   v54: entries.run_id — the run that wrote the entry, so `vx last
 //        --log` tells a run's own output from another run's under the same
 //        key. The cache KEY is unchanged.
-export const SCHEMA_VERSION = 'v54'
+//   v55: output_stamps.mtime_ms — the mtime the file carried when
+//        stamped. A restore dates each file it writes now, as the task's
+//        write would, not with the entry's saved mtime: a make-style
+//        dependant took a restored upstream as older than its own output
+//        and saved bytes built from another upstream. The cache KEY and
+//        the stored artifact are unchanged.
+export const SCHEMA_VERSION = 'v55'
 
 /**
  * An entry's key components as its one `entry_inputs` row (v34): JSON
@@ -1091,6 +1097,12 @@ export class Cache implements CacheLayer {
    * serves those rows only while the blob still carries it.
    */
   private readonly heldInlineAt = new Map<string, number>()
+  /**
+   * The mtime each file the last restore of a key left, by row path
+   * (`extractArtifactStream`'s `dated`): its stamps take that, not the
+   * row's saved one. Taken by `recordOutputStamps`.
+   */
+  private readonly datedMtimes = new Map<string, Map<string, number>>()
   /** Keys the last lookups found an inline artifact for and no row: `adopt`'s to read. */
   private readonly rowless = new Set<string>()
   /** Row-less lookups that stat'ed their artifact path (`artifactFileMayExist`). */
@@ -2317,7 +2329,9 @@ export class Cache implements CacheLayer {
     await this.outputs.recordOutputDirs(hash, projectDir, prefixes, holds)
   }
   recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void {
-    this.outputs.recordOutputStamps(hash, projectDir, workspaceRoot)
+    const dated = this.datedMtimes.get(hash)
+    this.datedMtimes.delete(hash)
+    this.outputs.recordOutputStamps(hash, projectDir, workspaceRoot, dated)
   }
   loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]> {
     return this.guard(() => this.outputs.loadOutputDirsBatch(hashes))
@@ -2392,6 +2406,7 @@ export class Cache implements CacheLayer {
     workspaceRoot: string | undefined,
     verify: (provided: ReadonlySet<string>) => void,
     accept: ((name: string) => boolean) | undefined,
+    dated: Map<string, number>,
   ): Promise<void> {
     const files = rows.filter((r) => !r.path.endsWith('/') && r.mode !== LINK_MODE)
     let bytes = 0
@@ -2402,7 +2417,19 @@ export class Cache implements CacheLayer {
         `its outputs hold ${formatBytes(bytes)}, past the ${formatBytes(this.artifactCeiling)} artifact ceiling`,
       )
     }
-    if (await this.copyTree(hash, tree, treeIno, rows, files, projectDir, workspaceRoot, accept))
+    if (
+      await this.copyTree(
+        hash,
+        tree,
+        treeIno,
+        rows,
+        files,
+        projectDir,
+        workspaceRoot,
+        accept,
+        dated,
+      )
+    )
       return
     await extractArtifactStream(
       packArtifactStream(this.treePlan(hash, tree, rows)),
@@ -2411,6 +2438,8 @@ export class Cache implements CacheLayer {
       verify,
       accept,
       workspaceRoot,
+      undefined,
+      dated,
     )
   }
 
@@ -2461,6 +2490,7 @@ export class Cache implements CacheLayer {
     projectDir: string,
     workspaceRoot: string | undefined,
     accept: ((name: string) => boolean) | undefined,
+    dated: Map<string, number>,
   ): Promise<boolean> {
     for (const r of rows) {
       if (r.path.startsWith(WORKSPACE_OUTPUT_PREFIX) || r.mode === LINK_MODE) return false
@@ -2580,6 +2610,9 @@ export class Cache implements CacheLayer {
     }
     const landed: string[] = []
     let landing = false
+    // Every file here is written, so each is dated now (see `dated`).
+    const now = Date.now()
+    const nowDate = new Date(now)
     try {
       const dirs = new Set<string>()
       for (const r of rows) {
@@ -2596,8 +2629,8 @@ export class Cache implements CacheLayer {
             throw new CorruptArtifactError(hash, `${r.path} holds ${n} bytes, recorded ${r.size}`)
           const mode = restoredMode(r.mode)
           if (mode !== plain) await chmod(to, mode)
-          const at = new Date(r.mtimeMs)
-          await utimes(to, at, at)
+          await utimes(to, nowDate, nowDate)
+          dated.set(`outputs/${r.path}`, now)
         }),
       )
       const failed = copied.find((c) => c.status === 'rejected')
@@ -2796,6 +2829,7 @@ export class Cache implements CacheLayer {
     // per 1 000). The local artifact was validated at ingest, so a missing
     // declared size is allowed; the output ceiling applies to both.
     const tree = treeIno === undefined ? undefined : this.treePath(hash)
+    const written = new Map<string, number>()
     const endExtract = span('restore: extract')
     try {
       // Every step here is an async filesystem call on purpose: a
@@ -2814,11 +2848,29 @@ export class Cache implements CacheLayer {
           workspaceRoot,
           verify,
           accept,
+          written,
         )
       } else {
         const tar = await decodedTar(inline ?? Bun.file(src), hash, this.artifactCeiling)
-        await extractArtifactStream(tar, projectDir, workspaceRoot, verify, accept, workspaceRoot)
+        await extractArtifactStream(
+          tar,
+          projectDir,
+          workspaceRoot,
+          verify,
+          accept,
+          workspaceRoot,
+          undefined,
+          written,
+        )
       }
+      // Keyed by row path: a project output's row drops the `outputs/`.
+      const byRow = new Map<string, number>()
+      for (const [name, t] of written)
+        byRow.set(
+          name.startsWith(WORKSPACE_OUTPUT_PREFIX) ? name : name.slice('outputs/'.length),
+          t,
+        )
+      this.datedMtimes.set(hash, byRow)
       for (const [dir, mode] of moded) await chmod(dir, restoredMode(mode))
     } catch (err) {
       // A UserError here is the extractor naming the tree's fault (an

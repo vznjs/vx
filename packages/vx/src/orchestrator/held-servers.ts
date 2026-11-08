@@ -3,12 +3,19 @@
 // until the remote answers; when every dependant hit, the server never
 // starts (2026-10-22), as it never starts behind local hits.
 
-import type { TaskNode } from '../graph/index.js'
+import { idleServers, type TaskNode } from '../graph/index.js'
 import type { CacheEntry, CacheLayer } from '../cache/index.js'
 import type { ShortCircuit } from './local-shortcircuit.js'
 import { getContext } from './remote-prefetch.js'
 
-/** The persistent tasks nobody asked for whose every dependant is a local hit or a key the remote may hold. */
+/**
+ * The persistent tasks nobody asked for that would be idle if the remote
+ * held every key it may hold, each with the remote keys it waits on: those
+ * above it, through the groups and servers nobody asked for between, as
+ * `idleServers` walks local hits. Held only on its direct dependants, a
+ * server behind `env: { dependsOn: ['dev'] }` or under another held server
+ * booted on a remote-only warm run.
+ */
 export function serversToHold(
   nodes: ReadonlyMap<string, TaskNode>,
   restoreTier: ReadonlySet<string>,
@@ -23,15 +30,28 @@ export function serversToHold(
       if (list === undefined) dependents.set(d, [n.id])
       else list.push(n.id)
     }
-  for (const n of nodes.values()) {
-    if (n.config.exec?.persistent === undefined || n.requested || n.surfaced === true) continue
-    const ds = dependents.get(n.id)
-    if (
-      ds !== undefined &&
-      ds.every((d) => restoreTier.has(d) || remoteAsk.has(d)) &&
-      ds.some((d) => remoteAsk.has(d))
-    )
-      out.set(n.id, ds)
+  const idleNow = idleServers(nodes, dependents, restoreTier)
+  const between = new Set<string>()
+  const hoped = idleServers(
+    nodes,
+    dependents,
+    new Set([...restoreTier, ...remoteAsk.keys()]),
+    between,
+  )
+  for (const id of hoped) {
+    if (idleNow.has(id)) continue
+    const remote = new Set<string>()
+    const seen = new Set<string>()
+    const stack = [id]
+    while (stack.length > 0) {
+      for (const d of dependents.get(stack.pop()!) ?? []) {
+        if (seen.has(d)) continue
+        seen.add(d)
+        if (between.has(d)) stack.push(d)
+        else if (remoteAsk.has(d) && !restoreTier.has(d)) remote.add(d)
+      }
+    }
+    if (remote.size > 0) out.set(id, [...remote])
   }
   return out
 }
@@ -63,7 +83,9 @@ export function askRemote(
   }
   const out = new Map<string, Promise<readonly string[]>>()
   for (const [server, ds] of held) {
-    const remote = ds.filter((d) => shortCircuit.remoteAsk.has(d))
+    // A set: counted against a list naming one twice, the hits never
+    // reached its length and the server waited forever.
+    const remote = new Set(ds.filter((d) => shortCircuit.remoteAsk.has(d)))
     out.set(
       server,
       new Promise((resolve) => {
@@ -72,12 +94,12 @@ export function askRemote(
           void ask(d).then((hit) => {
             if (hit === null) return resolve([])
             hits.set(d, hit)
-            if (hits.size < remote.length) return
+            if (hits.size < remote.size) return
             for (const [id, entry] of hits) {
               shortCircuit.preProbed.set(id, { hash: shortCircuit.remoteAsk.get(id)!, hit: entry })
               shortCircuit.restoreTier.add(id)
             }
-            resolve(remote)
+            resolve([...remote])
           })
       }),
     )

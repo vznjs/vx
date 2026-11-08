@@ -1405,7 +1405,23 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         restoreReady.push(d)
         readyAt.set(d, performance.now())
       }
-      if (dependents.get(id)?.every((d) => inRestoreTier(d)) === true) idle.add(id)
+      // Idle as `idleServers` finds it: through the groups and servers
+      // nobody asked for above it. The servers beneath it are held on the
+      // same keys, so the walk idles them with it; a server already
+      // answered, or never held, keeps its course.
+      if (found.length > 0) {
+        const tier =
+          demoted.size === 0 ? restoreTier : new Set([...restoreTier!].filter(inRestoreTier))
+        const between = new Set<string>()
+        const holdsHere = (s: string): boolean =>
+          s === id || unanswered.has(s) || isGroupTask(nodes.get(s) as TaskNode)
+        for (const s of idleServers(nodes, dependents, tier, between)) if (holdsHere(s)) idle.add(s)
+        for (const g of between)
+          if (holdsHere(g) && !idleGroups.has(g)) {
+            idleGroups.add(g)
+            idle.add(g)
+          }
+      }
       if (heldReady.delete(id)) execReady.push(id)
       tick()
     }

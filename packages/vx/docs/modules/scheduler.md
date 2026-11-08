@@ -223,9 +223,12 @@ server and its hits is idle with it: it waits the same way, settles
 with no outcome once every hit above it has one, and a demotion above
 it wakes it and the server.
 A `heldServers` server does not dispatch until its promise answers: the
-dependants it names join the restore lane, and it is idle when every
-dependant is then in the tier, else it dispatches as usual
-(`orchestrator/held-servers.ts` asks the remote).
+dependants it names join the restore lane, and it is idle when
+`idleServers` then finds it so, with the groups and the held servers
+beneath it that the same walk passes through; else it dispatches as
+usual (`orchestrator/held-servers.ts` holds every server that walk would
+idle were each remote key a hit, and asks the remote for the keys above
+it).
 
 A run counts dependents once: the `most-work` baseline is also every
 row's `blocks`, groups counted as the scheduler counts them, and the

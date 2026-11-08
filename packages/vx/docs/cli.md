@@ -1578,8 +1578,8 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    still does in a project with a task that has a command and no cache,
    which reads what it likes, item 947, outside any project nested
    in it, and to one a task names outright; a write the last cycle made is not, read off the later of
-   its mtime and ctime, so an output a cache hit restores with its
-   saved mtime is the run's, `watch-restored-output.test.ts`, unless
+   its mtime and ctime, so an output a cache hit restores is the run's,
+   `watch-restored-output.test.ts`, unless
    no command of the cycle may have made it: an edit to
    `node_modules/.gen/**` after its task ran, while another task held
    the run, is a cycle, `watch-node-modules-input.test.ts`) — or declared an
@@ -3132,7 +3132,7 @@ $ vx info
   memory            13 GB usable — cgroup limit; the machine has 16 GB
   cache dir         /work/repo/.vx/cache (8.2 MB, this workspace's run history)
   cache store       /home/me/.vx/3f2a9c1e7b4d5a60/cache (1.3 GB, shared by this workspace's checkouts)
-  cache versions    keys vx-cache-v52 · index schema v54
+  cache versions    keys vx-cache-v52 · index schema v55
   cache entries     42 (1.3 GB)
   orphans           3 artifacts (12 MB) the index does not know — `vx cache clean` reaps them
   task runs (24h)   7 (5 cache hits)
@@ -3392,7 +3392,9 @@ that prints the task's config now.
 window names that task: a task that writes a file another key reads (a
 build rewriting a translation file in another package) re-keys that key
 on every run, so the miss is right and only moving the write ends it.
-An edit made outside a run names none.
+An edit made outside a run, or after the asked run ended, names none.
+The history holds when tasks ran, not what they wrote: a hand edit made
+while another task ran names that task.
 
 ```
   changed during a run:

@@ -432,15 +432,16 @@ On a hit:
    (its existence is verified with one stat), so hit cost doesn't
    scale with artifact size.
 2. If the on-disk output tree already matches the cached snapshot
-   (size + mode + **millisecond**-mtime check against `output_files`),
-   extraction is skipped entirely — the outcome reports **up-to-date**
-   (`restored: false`). Mode and millisecond mtime ride the artifact's
-   own `.vx-meta.json` sidecar — recorded from a stat while packing —
-   so the index rows and the restored tree carry the identical values
-   whether the entry was saved locally or ingested from a remote, and
-   the comparison is exact in steady state. The check also requires the
-   file's inode and ctime to equal the ones this machine recorded after
-   the save or restore that last wrote it (`recordOutputStamps`). Size,
+   (size + mode against `output_files`, a **millisecond**-mtime check
+   against this machine's stamp), extraction is skipped entirely — the outcome
+   reports **up-to-date** (`restored: false`). Mode and millisecond
+   mtime ride the artifact's own `.vx-meta.json` sidecar — recorded from
+   a stat while packing — so the index rows carry the identical values
+   whether the entry was saved locally or ingested from a remote. The
+   check also requires the file's inode, ctime and mtime to equal the
+   ones this machine recorded after the save or restore that last wrote
+   it (`recordOutputStamps`, `output_stamps`): a restore dates the files
+   it writes now (step 3), so the stamp, not the row, holds their mtime. Size,
    mode and mtime alone cannot tell two entries apart when their
    outputs carry one fixed mtime (`tar -x`, `cp -p`, `SOURCE_DATE_EPOCH`)
    and one size: a v1 → v2 → v1 round trip reported up-to-date with v2's
@@ -453,7 +454,7 @@ On a hit:
    restores and stamps. The residual: ctime ticks on the kernel's coarse
    clock (4 ms at HZ=250), so a same-size rewrite inside the tick of
    vx's own write, in place or as a new file that took the same inode,
-   with its mtime forged back, still matches.
+   still matches.
 3. Otherwise the `outputs/<rel>` (+ `workspace-outputs/<rel>`) entries
    are extracted from the artifact (its bytes inline in the index, read
    in one snapshot with the entry's rows, or
@@ -465,7 +466,14 @@ On a hit:
    rename per file, each across directories out of one staging
    directory, doubled a 5,000-artifact restore's kernel time. A
    file that already holds the entry's bytes (compared byte for byte, up
-   to 4 MiB) is left in place, only its mode and mtime set. A
+   to 4 MiB) is left in place, only its mode set. Every file the restore
+   writes is dated now, as the task's own write would be, never with its
+   saved mtime, and no file's mtime moves back: a saved mtime predates
+   outputs written since, so a make-style dependant that keeps its
+   outputs (`clean: false`, a `[ out -nt in ]` check) took a restored,
+   changed upstream as older than its own output, skipped the rebuild
+   and saved the other upstream's bytes under the new key (until
+   2026-11-08, `tests/restore-mtime.test.ts`). A
    target on another filesystem is first copied to a temp beside it,
    every such copy before any rename, so a copy that fails (a full disk
    there) changes nothing; a file
@@ -636,8 +644,8 @@ the tree last matched the entry (`output_files`, and since 2026-09-03
    so the hit does not snapshot it again) keeps the walk — and a walk that
    proves the tree current records the directories so the following hit
    can skip it.
-2. **The files.** Every recorded file's `(size, mode, mtime-ms)` must
-   match. This never left: the directory rule only replaces the
+2. **The files.** Every recorded file's `(size, mode)` and the stamped
+   `(mtime-ms, inode, ctime)` must match. This never left: the directory rule only replaces the
    enumeration, not the fingerprint.
 
 The trade is the one every mtime-based skip accepts, already documented
@@ -1512,6 +1520,7 @@ workspace root) and it holds everything, shared with no other workspace:
 └── <hash>.tree/                             one artifact per cache entry, the larger ones (v47):
     ├── outputs/<rel>                       declared output files, project-relative (when any),
     │                                       each with its saved mode and mtime
+    │                                       (a restore dates its copy now)
     ├── workspace-outputs/<rel>             declared outputs.workspaceFiles,
     │                                       WORKSPACE-ROOT-relative (when any)
     ├── .vx-meta.json                       per-output [mode, mtimeMs], the key it was
@@ -1645,11 +1654,13 @@ Tar headers carry mode and second mtimes. vx needs both permission bits (a lost 
 and breaks warm) and millisecond mtimes (the skip-restore probe compares
 them) exactly, so the pack stats each output once and writes
 `.vx-meta.json` — `{ version, key, files: { <entry>: [mode, mtimeMs] }, dirs?, links?, dirModes?, exec? }` —
-into the archive. Restore applies both, the mode minus the process
+into the archive. A restore applies the mode, minus the process
 umask as tar gives a non-root user (under `umask 077` a 0644 output comes
 back 0600; until 2026-10-16 it came back 0644, readable by every user,
 `tests/restore-umask.test.ts`), and a tree a restore left that way still
-reads as current. Both apply at their edges too: a mode of
+reads as current. The mtime is the index rows' and the cache's own
+tree form's; a restore dates a file it writes now (§ Cache lookup → restore).
+Both hold at their edges too: a mode of
 000, an mtime of 0 (`SOURCE_DATE_EPOCH=0`), one before 1970, whose
 tar header carries 0 since ustar's field holds no sign, and one past
 March 2242, whose header carries the field's 11-digit maximum (X-114:
@@ -1834,7 +1845,7 @@ keep). The artifacts stay: each is indexed again from its own bytes
 when its task next asks for its key (below).
 
 ```sql
--- src/cache/schema.ts (SCHEMA_VERSION = 'v54', in cache.ts)
+-- src/cache/schema.ts (SCHEMA_VERSION = 'v55', in cache.ts)
 -- With a shared store, entries, entry_stdout, output_files, entry_inputs,
 -- store_meta, task_durations, task_outcomes, blob_sizes, plugin_blobs and remote_hits live in its store.db, attached as `store`; the rest is
 -- the workspace's cache.db. A named cache dir holds all of them.
@@ -2016,11 +2027,13 @@ CREATE TABLE output_files (
 -- current. Apart from the shared entry: two worktrees overwrote each
 -- other's stamps and every switch restored. No foreign key (the entry
 -- may be the store's); prune and re-save delete what they orphan.
+-- v55: and its mtime, since a restore dates a file it writes now.
 CREATE TABLE output_stamps (
   entry_hash  TEXT NOT NULL,
   path        TEXT NOT NULL,
   ino         INTEGER NOT NULL,
   ctime_ms    INTEGER NOT NULL,
+  mtime_ms    INTEGER NOT NULL,
   PRIMARY KEY (entry_hash, path)
 );
 

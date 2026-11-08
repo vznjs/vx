@@ -943,7 +943,7 @@ function reachingTo(nodes: Map<string, TaskNode>, target: string): Set<string> {
 
 /**
  * What a task graph must hold before it is scheduled: each node under its
- * own id, every dep a node, no cycle, and no two tasks deleting each
+ * own id, every dep a node named once, no cycle, and no two tasks deleting each
  * other's outputs. The builder's output holds the first two by
  * construction; the `graph` stage runs this again after its plugins, which
  * could move a node to another key (the scheduler then died on a raw
@@ -965,6 +965,12 @@ export function checkGraph(
       if (!nodes.has(dep)) {
         throw new Error(`${node.id} depends on '${dep}', which is not a task in this run's graph`)
       }
+    }
+    // A plugin's repeated edge, as the builder's own: folded into the key
+    // twice, and owed twice by a server held on the remote's answer.
+    if (node.deps.length > 1) {
+      const unique = new Set(node.deps)
+      if (unique.size < node.deps.length) node.deps = [...unique]
     }
     delete node.addsToOutputsOf
     delete node.outputsAddedToBy

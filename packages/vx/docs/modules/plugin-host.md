@@ -22,7 +22,9 @@ After the `graph` stage the graph is re-checked the way the builder
 checks its own (`checkGraph`: each node under its own id, every dep a
 node, no cycle, no two tasks deleting each other's outputs, the addition
 marks derived again) and a violation is reported against the last plugin
-that ran. Only the first two were checked until item 981: a plugin that
+that ran. A dep listed twice is dropped to one, as the builder dedupes
+its own: the key folded the upstream twice, and a server held on the
+remote's answer waited on one answer too many, so the run never settled. Only the first two were checked until item 981: a plugin that
 dropped the edge between two overlapping outputs lost one task's files
 under a green run, and one that moved a node to another key crashed
 the scheduler with a raw TypeError. Before that, after EACH plugin,

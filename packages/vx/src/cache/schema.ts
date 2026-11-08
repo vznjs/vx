@@ -245,7 +245,9 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       FOREIGN KEY (entry_hash) REFERENCES entries(hash) ON DELETE CASCADE
     );
     -- v28, its own table since v32: the inode and ctime THIS workspace saw
-    -- after the save or restore that left the file equal to the entry. No
+    -- after the save or restore that left the file equal to the entry, and
+    -- since v55 its mtime: a restore dates a file it writes now, not with
+    -- the entry's saved mtime, so the row's is not the file's. No
     -- row: never current. Apart from output_files because the entry is
     -- shared and the disk is not: two worktrees on one store overwrote each
     -- other's stamps, and every switch between them restored. No foreign
@@ -256,6 +258,7 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       path        TEXT NOT NULL,
       ino         INTEGER NOT NULL,
       ctime_ms    INTEGER NOT NULL,
+      mtime_ms    INTEGER NOT NULL,
       PRIMARY KEY (entry_hash, path)
     );
     -- Every directory under a whole-subtree output glob, with its mtime
