@@ -474,8 +474,15 @@ function scanLocalImports(
   fromDir: string,
   loader: 'ts' | 'js',
   memo: LookupMemo,
+  /** Also follow a bare specifier into a package linked from outside `node_modules` ({@link linkedPackageFile}). */
+  linked = false,
 ): string[] {
-  if (!LOCAL_CANDIDATE.test(source) && !hasAliasCandidate(source, fromDir, memo.tsconfig)) return []
+  if (
+    !LOCAL_CANDIDATE.test(source) &&
+    !hasAliasCandidate(source, fromDir, memo.tsconfig) &&
+    !(linked && hasBareCandidate(source))
+  )
+    return []
   let specifiers: string[]
   try {
     specifiers = scanner(loader)
@@ -488,11 +495,39 @@ function scanLocalImports(
   for (const spec of specifiers) {
     // Selection may widen on a named path; it is never hashed.
     const t = localTarget(spec, fromDir, memo)
-    if (t === undefined) continue
-    if ('file' in t) out.push(t.file)
+    if (t === undefined) {
+      const file = linked ? linkedPackageFile(spec, fromDir) : undefined
+      if (file !== undefined) out.push(file)
+    } else if ('file' in t) out.push(t.file)
     else out.push(...t.named)
   }
   return out
+}
+
+/**
+ * The file a bare `spec` loads when the nearest `node_modules/<package>`
+ * above `fromDir` links to a directory outside any `node_modules`: a
+ * workspace package (`workspace:*`), whose source the lockfile does not
+ * pin. Realpath'd. Undefined for an installed package, or none installed:
+ * resolving then could ask the registry.
+ */
+function linkedPackageFile(spec: string, fromDir: string): string | undefined {
+  if (spec.startsWith('.') || spec.startsWith('/') || !needsLookup(spec)) return undefined
+  const pkg = packageOf(spec)
+  for (let dir = fromDir; ;) {
+    const installed = path.join(dir, 'node_modules', pkg)
+    if (existsSync(installed)) {
+      if (realpathOr(installed).split(path.sep).includes('node_modules')) return undefined
+      try {
+        return realpathOr(Bun.resolveSync(spec, fromDir))
+      } catch {
+        return undefined
+      }
+    }
+    const up = path.dirname(dir)
+    if (up === dir) return undefined
+    dir = up
+  }
 }
 
 export interface ConfigImportOwnersArgs {
@@ -516,6 +551,11 @@ export interface ConfigImportOwners {
   owners: Set<string>
   /** A changed file a workspace config imports, which can re-key any task. */
   workspace?: string
+  /**
+   * The files a workspace config imports above the workspace root,
+   * realpath'd: `changed` cannot name them, so the caller asks git.
+   */
+  outside?: string[]
 }
 
 const TS_EXT = new Set(['.ts', '.mts', '.cts'])
@@ -527,7 +567,7 @@ const RESOLVED_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs
 export async function configImportOwners(a: ConfigImportOwnersArgs): Promise<ConfigImportOwners> {
   const selected = new Set<string>()
   const wsConfigs = a.workspaceConfigs ?? []
-  if (a.changed.length === 0) return { owners: selected }
+  if (a.changed.length === 0 && wsConfigs.length === 0) return { owners: selected }
   if (a.skip.size === a.projects.length && wsConfigs.length === 0) return { owners: selected }
   const workspaceRoot = await realpath(a.workspaceRoot).catch(() => a.workspaceRoot)
 
@@ -549,39 +589,50 @@ export async function configImportOwners(a: ConfigImportOwnersArgs): Promise<Con
   const memo = lookupMemo()
   const importedBy = new Map<string, string[]>()
   const visited = new Set<string>()
-  // A level at a time, its files read together: one awaited read per
-  // config put 5,000 of them 200 ms behind (D-23).
-  let frontier = [...roots.keys(), ...wsRoots]
-  while (frontier.length > 0) {
-    const read = await Promise.all(
-      frontier.map(async (file) => {
-        if (visited.has(file)) return null
-        visited.add(file)
-        try {
-          return { file, source: await Bun.file(file).text() }
-        } catch (err) {
-          // Out of descriptors is this level's width, not the file: read as
-          // no edges, it dropped every project the import selects (D-63).
-          if (isOutOfFds(err)) throw err
-          return null // unreadable: no edges, and not this pass's problem to report
+  // The workspace config is loaded live, not from the lock, so its walk
+  // goes further: into a workspace package it names (linked into
+  // node_modules), and above the root, which `changed` cannot name.
+  const outside = new Set<string>()
+  const walkImports = async (start: string[], ws: boolean): Promise<void> => {
+    // A level at a time, its files read together: one awaited read per
+    // config put 5,000 of them 200 ms behind (D-23).
+    let frontier = start
+    while (frontier.length > 0) {
+      const read = await Promise.all(
+        frontier.map(async (file) => {
+          if (visited.has(file)) return null
+          visited.add(file)
+          try {
+            return { file, source: await Bun.file(file).text() }
+          } catch (err) {
+            // Out of descriptors is this level's width, not the file: read as
+            // no edges, it dropped every project the import selects (D-63).
+            if (isOutOfFds(err)) throw err
+            return null // unreadable: no edges, and not this pass's problem to report
+          }
+        }),
+      )
+      frontier = []
+      for (const entry of read) {
+        if (entry === null) continue
+        const { file, source } = entry
+        const loader = TS_EXT.has(path.extname(file)) ? 'ts' : 'js'
+        for (const target of scanLocalImports(source, path.dirname(file), loader, memo, ws)) {
+          if (target.split(path.sep).includes('node_modules')) continue
+          if (!target.startsWith(workspaceRoot + path.sep)) {
+            if (!ws) continue
+            outside.add(target)
+          }
+          const list = importedBy.get(target)
+          if (list) list.push(file)
+          else importedBy.set(target, [file])
+          frontier.push(target)
         }
-      }),
-    )
-    frontier = []
-    for (const entry of read) {
-      if (entry === null) continue
-      const { file, source } = entry
-      const loader = TS_EXT.has(path.extname(file)) ? 'ts' : 'js'
-      for (const target of scanLocalImports(source, path.dirname(file), loader, memo)) {
-        if (!target.startsWith(workspaceRoot + path.sep)) continue
-        if (target.split(path.sep).includes('node_modules')) continue
-        const list = importedBy.get(target)
-        if (list) list.push(file)
-        else importedBy.set(target, [file])
-        frontier.push(target)
       }
     }
   }
+  await walkImports([...wsRoots], true)
+  await walkImports([...roots.keys()], false)
 
   let workspace: string | undefined
   const seen = new Set<string>()
@@ -597,7 +648,8 @@ export async function configImportOwners(a: ConfigImportOwnersArgs): Promise<Con
     if (wsRoots.has(file)) workspace ??= from
     for (const importer of importedBy.get(file) ?? []) walk.push([importer, from])
   }
-  return workspace === undefined ? { owners: selected } : { owners: selected, workspace }
+  if (workspace !== undefined) return { owners: selected, workspace }
+  return outside.size === 0 ? { owners: selected } : { owners: selected, outside: [...outside] }
 }
 
 /**

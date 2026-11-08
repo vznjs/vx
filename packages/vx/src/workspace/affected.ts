@@ -665,6 +665,10 @@ export async function affectedChanges(
       workspaceConfigs: WORKSPACE_CONFIG_FILENAMES.map((n) => path.join(rootDir, n)),
     })
     if (imports.workspace !== undefined) return everything(imports.workspace)
+    if (imports.outside !== undefined) {
+      const moved = await outsideChanged(args.workspaceRoot, base, imports.outside)
+      if (moved !== undefined) return everything(moved)
+    }
     for (const name of imports.owners) {
       owned.add(name)
       whole.add(name)
@@ -1177,6 +1181,43 @@ async function statOnly(
     if (oids[i] === f.oid) same.add(f.rel)
   })
   return same
+}
+
+/**
+ * The first of `files` (absolute, above the workspace root) that changed
+ * since `base` or is untracked, workspace-relative: `gitDiffPaths` is
+ * `--relative` and never lists one. A file outside the repository is
+ * git's to tell no more than the key's to pin.
+ */
+async function outsideChanged(
+  workspaceRoot: string,
+  base: string,
+  files: readonly string[],
+): Promise<string | undefined> {
+  const realRoot = realpathOr(workspaceRoot)
+  const top = spawnGitSync(['rev-parse', '--show-toplevel'], workspaceRoot)
+  if (top.exitCode !== 0) return undefined
+  const repo = realpathOr(new TextDecoder().decode(top.stdout).replace(/\n$/, ''))
+  const rels = files.filter((f) => f.startsWith(repo + path.sep)).map((f) => relPosix(realRoot, f))
+  if (rels.length === 0) return undefined
+  const specs = rels.map((r) => `:(literal)${r}`)
+  const [diffed, untracked] = await Promise.all([
+    gitPaths(workspaceRoot, [
+      '-c',
+      'diff.autoRefreshIndex=false',
+      'diff',
+      '--no-renames',
+      '--name-only',
+      '-z',
+      '--end-of-options',
+      base,
+      '--',
+      ...specs,
+    ]),
+    gitPaths(workspaceRoot, ['ls-files', '--others', '--exclude-standard', '-z', '--', ...specs]),
+  ])
+  if (diffed.length > 0) return relPosix(realRoot, path.join(repo, diffed[0]!))
+  return untracked[0]
 }
 
 /**

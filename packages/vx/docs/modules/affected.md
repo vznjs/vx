@@ -163,7 +163,10 @@ export function headBase(workspaceRoot: string, ref: string): string | undefined
      imports the changed file — see
      [`config-imports.md`](./config-imports.md). Resolved-config
      hashing folds those values into the key, so selection has to see
-     them too.
+     them too. A changed file the workspace config imports selects
+     every project; one it imports above the workspace root, which the
+     `--relative` diff never lists, is asked of git by path
+     (`outsideChanged`).
    - **Workspace globs.** For every changed path, `workspaceGlobOwners`
      (`cli/select.ts`) asks which projects declare
      a matching `inputs.workspaceFiles` glob — through the run

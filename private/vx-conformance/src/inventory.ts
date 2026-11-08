@@ -39,6 +39,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'affected-tasks',
     'affected-unicode',
     'affected-workspace-files',
+    'affected-workspace-plugin',
     'archive-restore-fuzz',
     'artifact-roundtrip',
     'bare-name-default-build',
