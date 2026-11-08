@@ -170,11 +170,11 @@ VX_DTE_RUN=$(uuidgen) vx run build --all
 
 A worker checks out your files as git has them, uncommitted changes
 included. A file git does not track is not there: a task that reads one
-fails, naming it. A worker builds on the bytes and modes the commit
-holds, which are what the run's key reads, with git's filters on the
-worker undone (line endings, `ident`, LFS). A task whose input is on
-disk other than the commit holds it, such as a CRLF checkout, fails,
-naming it.
+fails, naming it.
+
+A worker builds on the bytes and modes git stores, with its filters
+undone (line endings, `ident`, LFS). A task whose input differs on disk,
+such as a CRLF checkout, fails, naming it.
 
 ---
 
