@@ -192,14 +192,28 @@ function snapshot(dir: string): Map<string, Want> {
   return out
 }
 
-function expectTree(got: Map<string, Want>, want: Map<string, Want>, ctx: string): void {
+/**
+ * `writtenSince`: a cache restore into an empty tree, which dates every
+ * file it writes now (at or after this), not with its saved mtime.
+ */
+function expectTree(
+  got: Map<string, Want>,
+  want: Map<string, Want>,
+  ctx: string,
+  writtenSince?: number,
+): void {
   expect([...got.keys()].sort(), ctx).toEqual([...want.keys()].sort())
   for (const [rel, w] of want) {
     const g = got.get(rel)!
     const at = `${ctx}: ${JSON.stringify(rel)}`
     expect(g.link, at).toBe(w.link)
     expect(same(g.data, w.data), at).toBe(true)
-    expect([g.mode, g.mtimeMs], at).toEqual([w.mode, w.mtimeMs])
+    if (writtenSince === undefined || w.link !== undefined)
+      expect([g.mode, g.mtimeMs], at).toEqual([w.mode, w.mtimeMs])
+    else {
+      expect(g.mode, at).toBe(w.mode)
+      expect(g.mtimeMs, at).toBeGreaterThanOrEqual(writtenSince)
+    }
   }
 }
 
@@ -267,8 +281,9 @@ describe('Cache.save → restoreOutputs, seeded', () => {
         const stored = storedArtifact(cache, hash)!
         expect(same(stored, compressed), `${ctx}: stored`).toBe(true)
         const dest = fresh('d')
+        const since = Date.now()
         await cache.restoreOutputs(hash, dest)
-        expectTree(snapshot(dest), want, ctx)
+        expectTree(snapshot(dest), want, ctx, since)
       }
     } finally {
       cache.close()
@@ -414,8 +429,9 @@ describe('a damaged artifact, seeded', () => {
             outcomes.refused++
           } else {
             const dest = fresh('r')
+            const since = Date.now()
             await cache.restoreOutputs(hash, dest)
-            expectTree(snapshot(dest), want, ctx)
+            expectTree(snapshot(dest), want, ctx, since)
             outcomes.exact++
             cache.close()
             cache = new Cache(
@@ -434,6 +450,7 @@ describe('a damaged artifact, seeded', () => {
           await local.save(args)
           replaceStoredArtifact(local, hash, bad)
           const dest = fresh('l')
+          const since = Date.now()
           const lerr = await local.restoreOutputs(hash, dest).then(
             () => null,
             (e: Error) => e,
@@ -444,7 +461,7 @@ describe('a damaged artifact, seeded', () => {
             expect(snapshot(dest).size, ctx).toBe(0)
             expect(await local.get(hash), ctx).toBeNull()
           } else {
-            expectTree(snapshot(dest), want, ctx)
+            expectTree(snapshot(dest), want, ctx, since)
           }
         }
       }

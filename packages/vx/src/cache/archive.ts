@@ -11,8 +11,10 @@
 // lost executable bit builds cold and breaks warm, and `isOutputsCurrent`
 // skips a restore when size+mode+mtime match at millisecond precision —
 // so the pack side stats each output once and writes both into
-// `.vx-meta.json`, and the restore side applies them. That also makes a
-// REMOTE-ingested entry's index rows millisecond-accurate.
+// `.vx-meta.json`. A restore applies the mode; it dates a file it writes
+// now, as the task's write would be, and leaves the mtime of one whose
+// bytes already stood. The sidecar mtime is the index rows' (a
+// REMOTE-ingested entry's too) and the cache's own tree form's.
 //
 // Both directions stream. `packArtifactStream` reads each output as it is
 // written; `scanArtifact` lists what an artifact holds without
@@ -1047,6 +1049,13 @@ export async function extractArtifactStream(
   stageRoot?: string,
   /** Handed what `scanArtifact` would read of the same bytes, once their sum has checked. */
   onScan?: (scan: ArtifactScan) => void,
+  /**
+   * Given, a restore into a workspace: each file written is dated now, and
+   * one whose bytes already stood keeps its own mtime; either is set here
+   * by entry name. Absent, an unpack into the cache's tree form: the saved
+   * mtimes apply.
+   */
+  dated?: Map<string, number>,
 ): Promise<Set<string>> {
   // No `mkdir -p` of the destination here: `stage` creates each entry's
   // directory chain, the destination included, and the cache restores
@@ -1181,7 +1190,7 @@ export async function extractArtifactStream(
       if (m !== undefined) return [m[0], m[1]]
       const header = headerMtime.get(name)
       return [0o644, header !== undefined && header > 0 ? header : undefined]
-    })
+    }, dated)
   } catch (err) {
     await x.abort()
     throw err
@@ -1223,11 +1232,12 @@ const textOf = async (body: AsyncIterable<Uint8Array>): Promise<string> =>
   utf8.decode(await bytesOf(body))
 
 /**
- * Bring a target that already held the entry's bytes to its mode and
- * mtime, through a descriptor opened without following a link: one
- * planted since the compare is refused, never written through.
+ * Bring a target that already held the entry's bytes to its mode and, when
+ * given, `mtimeMs`, through a descriptor opened without following a link:
+ * one planted since the compare is refused, never written through.
+ * Answers the mtime it leaves, in whole milliseconds.
  */
-function keep(s: Staged, ino: number, mode: number, mtimeMs: number | undefined): void {
+function keep(s: Staged, ino: number, mode: number, mtimeMs: number | undefined): number {
   const fd = openSync(s.target, constants.O_RDONLY | constants.O_NOFOLLOW)
   try {
     const st = fstatSync(fd)
@@ -1239,7 +1249,9 @@ function keep(s: Staged, ino: number, mode: number, mtimeMs: number | undefined)
     if (mtimeMs !== undefined && Math.floor(st.mtimeMs) !== mtimeMs) {
       const t = new Date(mtimeMs)
       futimesSync(fd, t, t)
+      return mtimeMs
     }
+    return Math.floor(st.mtimeMs)
   } finally {
     closeSync(fd)
   }
@@ -1707,9 +1719,10 @@ class Extractor {
    */
   async commit(
     metaFor: (name: string) => [mode: number, mtimeMs: number | undefined],
+    dated?: Map<string, number>,
   ): Promise<void> {
     try {
-      await this.commitAll(metaFor)
+      await this.commitAll(metaFor, dated)
     } finally {
       this.closeReopened()
     }
@@ -1717,8 +1730,15 @@ class Extractor {
 
   private async commitAll(
     metaFor: (name: string) => [mode: number, mtimeMs: number | undefined],
+    dated: Map<string, number> | undefined,
   ): Promise<void> {
     await this.drain()
+    // A restore dates each file it writes now, as the task's own write
+    // would, and moves no file's mtime back: the saved mtime predates
+    // outputs written since, and a make-style dependant took a changed
+    // upstream as older than its own output and kept bytes built from
+    // another one. Read once: one clock for the whole restore.
+    const now = dated === undefined ? undefined : Date.now()
     // One stat per directory, shared by the filesystem check and the group.
     const dirStats = new Map<string, Stats>()
     const statDir = (dir: string): Stats => {
@@ -1742,11 +1762,14 @@ class Extractor {
       for (const s of this.staged) {
         if (s.tree === undefined)
           await this.assertStillContained(s.base, path.dirname(s.target), checked)
-        const [mode, mtimeMs] = metaFor(s.name)
+        const [mode, savedMtimeMs] = metaFor(s.name)
         if (s.same !== undefined) {
-          keep(s, s.same, mode, mtimeMs)
+          const own = keep(s, s.same, mode, now === undefined ? savedMtimeMs : undefined)
+          dated?.set(s.name, own)
           continue
         }
+        const mtimeMs = now ?? savedMtimeMs
+        if (now !== undefined && s.link === undefined) dated!.set(s.name, now)
         if (s.link !== undefined) {
           if (s.tree !== undefined) continue
           renames.push(handled(this.place(s, mode, undefined)))

@@ -18,6 +18,7 @@ const FILE_PREFIX_MTIME = -2
 import type { Database } from 'bun:sqlite'
 import { inHashes, lazyStatement } from './schema.js'
 import { modeMatches } from './umask.js'
+import { stampGrainMs } from './fs-clock.js'
 import { lstatSync, readdirSync, readlinkSync, statSync } from 'node:fs'
 import path from 'node:path'
 import {
@@ -43,6 +44,15 @@ export const LINK_MODE = 0o120000
  */
 export const DIR_MODE = 0o040000
 
+/**
+ * A file system that keeps whole (or FAT's even) seconds stored a restore's
+ * millisecond "now" as the second it falls in: that stamp, not a write.
+ */
+function secondOf(statMs: number, datedMs: number): boolean {
+  const grain = stampGrainMs(statMs)
+  return grain > 0 && datedMs >= statMs && datedMs - statMs < grain
+}
+
 /** A link row is current while a link with that target stands there; never followed. */
 function linkCurrent(abs: string, e: { size: number; mtimeMs: number }): boolean {
   if (!lstatSync(abs).isSymbolicLink()) return false
@@ -51,9 +61,18 @@ function linkCurrent(abs: string, e: { size: number; mtimeMs: number }): boolean
 }
 
 const FILES_SELECT =
-  'SELECT f.entry_hash, f.path, f.size_bytes, f.mode, f.mtime_ms, s.ino, s.ctime_ms'
+  'SELECT f.entry_hash, f.path, f.size_bytes, f.mode, f.mtime_ms, s.ino, s.ctime_ms, s.mtime_ms AS stamp_mtime_ms'
 const FILES_STAMPS = 'LEFT JOIN output_stamps s ON s.entry_hash = f.entry_hash AND s.path = f.path'
 const FILES_JOINED = `${FILES_SELECT} FROM json_each(?) q JOIN output_files f ON f.entry_hash = q.value ${FILES_STAMPS}`
+/**
+ * A row as this index loads it: with its stamp, the mtime the file carried
+ * when stamped, which a restore that wrote the file dated now and so is
+ * not the row's saved one.
+ */
+interface StampedRow extends OutputFileRow {
+  stampMtimeMs?: number
+}
+
 const DIRS_JOINED =
   'SELECT d.entry_hash, d.path, d.mtime_ms FROM json_each(?) q JOIN output_dirs d ON d.entry_hash = q.value'
 
@@ -79,7 +98,7 @@ export class OutputIndex {
    * inode and ctime by path, so a batch read finds a row's stamp without
    * scanning them all (rows × stamps was ~7 s for a 40,000-file output).
    */
-  private readonly pendingStamps = new Map<string, Map<string, [number, number]>>()
+  private readonly pendingStamps = new Map<string, Map<string, [number, number, number]>>()
   /**
    * The rows the last batched probe loaded, by hash: a hit's restore and
    * the stamps after it read their rows here instead of the index, twice
@@ -121,7 +140,7 @@ export class OutputIndex {
     this.entryExists = lazyStatement(this.db, 'SELECT 1 FROM entries WHERE hash = ?')
     this.stampOutputFile = lazyStatement(
       this.db,
-      'INSERT INTO output_stamps(entry_hash, path, ino, ctime_ms) VALUES (?, ?, ?, ?) ON CONFLICT(entry_hash, path) DO UPDATE SET ino = excluded.ino, ctime_ms = excluded.ctime_ms',
+      'INSERT INTO output_stamps(entry_hash, path, ino, ctime_ms, mtime_ms) VALUES (?, ?, ?, ?, ?) ON CONFLICT(entry_hash, path) DO UPDATE SET ino = excluded.ino, ctime_ms = excluded.ctime_ms, mtime_ms = excluded.mtime_ms',
     )
     this.deleteStamps = lazyStatement(this.db, 'DELETE FROM output_stamps WHERE entry_hash = ?')
   }
@@ -218,6 +237,7 @@ export class OutputIndex {
       mtime_ms: number
       ino: number | null
       ctime_ms: number | null
+      stamp_mtime_ms: number | null
     }>
     for (const r of rows) {
       let list = out.get(r.entry_hash)
@@ -225,27 +245,29 @@ export class OutputIndex {
         list = []
         out.set(r.entry_hash, list)
       }
-      const row: OutputFileRow = {
+      const row: StampedRow = {
         path: r.path,
         size: r.size_bytes,
         mode: r.mode,
         mtimeMs: r.mtime_ms,
       }
-      if (r.ino !== null && r.ctime_ms !== null) {
+      if (r.ino !== null && r.ctime_ms !== null && r.stamp_mtime_ms !== null) {
         row.ino = r.ino
         row.ctimeMs = r.ctime_ms
+        row.stampMtimeMs = r.stamp_mtime_ms
       }
       const stamp = this.pendingStamps.get(r.entry_hash)?.get(r.path)
       if (stamp !== undefined) {
         row.ino = stamp[0]
         row.ctimeMs = stamp[1]
+        row.stampMtimeMs = stamp[2]
       }
       list.push(row)
     }
     return out
   }
 
-  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean {
+  isOutputsCurrent(projectDir: string, expected: readonly StampedRow[]): boolean {
     // Empty manifest case (a task produced no outputs) → trivially
     // current; the on-disk tree under projectDir is whatever it was,
     // and nothing was supposed to land there.
@@ -271,11 +293,10 @@ export class OutputIndex {
           s.size === e.size &&
           modeMatches(s.mode, e.mode) &&
           // MILLISECOND comparison (sub-ms tolerance for the float
-          // round-trip through utimes). Save rows carry stat-ms and
-          // restoreOutputs re-syncs restored files to the row value,
-          // so equality holds exactly in steady state; legacy
-          // second-precision rows converge on their first restore.
-          Math.abs(s.mtimeMs - e.mtimeMs) < 1 &&
+          // round-trip through utimes), against the mtime the file carried
+          // when stamped: the row's after a save; after a restore, now for
+          // a file it wrote and the file's own where its bytes stood.
+          Math.abs(s.mtimeMs - (e.stampMtimeMs ?? e.mtimeMs)) < 1 &&
           // And the file is the one THIS machine last saw under this
           // entry: two entries whose outputs carry one fixed mtime (a
           // `tar -x`, `cp -p`, SOURCE_DATE_EPOCH) and one size matched
@@ -286,7 +307,8 @@ export class OutputIndex {
           // (an ingest, a changed file at stamping) is never current. The
           // residual: a same-size rewrite, in place or as a new file on the
           // same inode, inside the coarse clock tick of the stamp, with the
-          // mtime forged back.
+          // mtime forged back or written in that tick (a save's or a
+          // restore's file is dated in it).
           e.ino !== undefined &&
           s.ino === e.ino &&
           Math.floor(s.ctimeMs) === e.ctimeMs
@@ -389,16 +411,23 @@ export class OutputIndex {
   }
 
   /**
-   * Stamp `hash`'s rows with each file's inode and ctime, once a save or
-   * a restore has left the tree equal to the entry. A file whose size,
-   * mode or mtime no longer matches its row is left unstamped, so a
-   * write that landed since is never vouched for; the next hit restores.
-   * Written with the directory snapshots, in one transaction.
+   * Stamp `hash`'s rows with each file's inode, ctime and mtime, once a
+   * save or a restore has left the tree equal to the entry. `dated` holds
+   * the mtime a restore left each file with, by row path (now for one it
+   * wrote); any other file is held to its row's. A file whose size, mode or mtime no
+   * longer matches is left unstamped, so a write that landed since is
+   * never vouched for; the next hit restores. Written with the directory
+   * snapshots, in one transaction.
    */
-  recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void {
+  recordOutputStamps(
+    hash: string,
+    projectDir: string,
+    workspaceRoot: string,
+    dated?: ReadonlyMap<string, number>,
+  ): void {
     if (!this.memo) return
     const rows = this.rowsOf(hash)
-    const stamps = new Map<string, [number, number]>()
+    const stamps = new Map<string, [number, number, number]>()
     for (const e of rows) {
       if (e.path.endsWith('/') || e.mode === LINK_MODE) continue
       const ws = e.path.startsWith(WORKSPACE_OUTPUT_PREFIX)
@@ -407,12 +436,13 @@ export class OutputIndex {
         : path.join(projectDir, e.path)
       try {
         const s = statSync(abs)
+        const at = dated?.get(e.path) ?? e.mtimeMs
         if (
           s.size === e.size &&
           modeMatches(s.mode, e.mode) &&
-          Math.abs(s.mtimeMs - e.mtimeMs) < 1
+          (Math.abs(s.mtimeMs - at) < 1 || secondOf(s.mtimeMs, at))
         ) {
-          stamps.set(e.path, [s.ino, Math.floor(s.ctimeMs)])
+          stamps.set(e.path, [s.ino, Math.floor(s.ctimeMs), Math.floor(s.mtimeMs)])
         }
       } catch {
         // gone: left unstamped
@@ -444,7 +474,8 @@ export class OutputIndex {
           for (const [hash, rows] of stamps) {
             // A stamp outlives nothing: an entry pruned since has no rows to vouch for.
             if (this.entryExists.get(hash) === null) continue
-            for (const [rel, [ino, ctime]] of rows) this.stampOutputFile.run(hash, rel, ino, ctime)
+            for (const [rel, [ino, ctime, mtime]] of rows)
+              this.stampOutputFile.run(hash, rel, ino, ctime, mtime)
           }
         })
         .immediate()

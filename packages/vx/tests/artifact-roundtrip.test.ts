@@ -592,7 +592,7 @@ describe('restoreOutputs decodes a large artifact as a stream', () => {
     cache.close()
   })
 
-  it('restores byte-exact with the sidecar mode and millisecond mtime', async () => {
+  it('restores byte-exact with the sidecar mode, each file dated when written', async () => {
     await mkdir(path.join(projectDir, 'dist'), { recursive: true })
     await Bun.write(path.join(projectDir, 'dist/big.bin'), big)
     await write(path.join(projectDir, 'dist/run.sh'), '#!/bin/sh\n')
@@ -608,13 +608,15 @@ describe('restoreOutputs decodes a large artifact as a stream', () => {
     expect((await stat(cache.outputsPath('large'))).size).toBeGreaterThan(4 * 1024 * 1024)
     await rm(path.join(projectDir, 'dist'), { recursive: true, force: true })
 
+    const since = Date.now()
     await cache.restoreOutputs('large', projectDir)
     expect(Buffer.from(await Bun.file(path.join(projectDir, 'dist/big.bin')).bytes())).toEqual(
       Buffer.from(big),
     )
     const st = await stat(path.join(projectDir, 'dist/run.sh'))
     expect(st.mode & 0o777).toBe(0o755)
-    expect(Math.floor(st.mtimeMs)).toBe(stamp.getTime())
+    // Not the saved 2024 stamp: a restore's write is as new as the task's.
+    expect(Math.floor(st.mtimeMs)).toBeGreaterThanOrEqual(since)
     expect(await readdir(projectDir)).not.toContain(expect.stringMatching(/vx-tmp/))
   })
 
