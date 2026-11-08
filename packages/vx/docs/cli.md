@@ -1490,8 +1490,13 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    shapes a run (plugins, `config` stage, concurrency) without being any
    task's input; the cycle after it re-evaluates the file. With the file
    removed a cycle fails, as `vx run` refuses, until it is back. A `.gitignore`
-   there or in a project's parent directory is a cycle too: inputs are
-   gitignore-aware, so it changes what keys read (X-136). A file a
+   there or in a project's parent directory is a cycle too, and so is the
+   repository's `.git/info/exclude`: inputs are
+   gitignore-aware, so it changes what keys read (X-136). The files a
+   claimed file's digests read besides it, as the lock recorded them in
+   `.vx/dependencies.lock.json` (a `file:` or `link:` dependency's
+   directory, inside the root or not, and a patch file), are watched too,
+   and their edit is a cycle; a re-lock that changes the set re-arms it. A file a
    config imports from disk (relative, `#imports` or a tsconfig alias,
    as `--affected` follows) from outside the watched projects (a
    shared preset) is watched too, and its edit is a cycle that re-reads
@@ -1656,7 +1661,9 @@ cost of a per-event glob match.
 ### How changes are seen
 
 One recursive OS watcher (`fs.watch`) per project directory in scope,
-plus the workspace root for the fingerprint files. Each watcher must
+plus the workspace root for the fingerprint files, `.git/info/` for
+`exclude`, and each file or directory a claimed file's recorded digests
+read besides it. Each watcher must
 prove it delivers: a directory whose watcher reports nothing within
 2 s of the probe is polled every 250 ms instead, with a one-line
 notice on stderr (`no OS watch events within 2000 ms; polling every

@@ -16,7 +16,12 @@ import {
   taskGlob,
 } from '../util/index.js'
 import { asTrees } from '../cache/index.js'
-import { PROJECT_CONFIG_FILENAMES, WORKSPACE_CONFIG_FILENAMES } from '../workspace/index.js'
+import {
+  DEPENDENCIES_LOCK_NAME,
+  parseDependenciesLock,
+  PROJECT_CONFIG_FILENAMES,
+  WORKSPACE_CONFIG_FILENAMES,
+} from '../workspace/index.js'
 import { isIgnoredDir } from './watch-fs.js'
 
 const IGNORED_SUFFIXES = ['~']
@@ -397,6 +402,26 @@ const WORKSPACE_CONFIGS: ReadonlySet<string> = new Set(WORKSPACE_CONFIG_FILENAME
 
 export function isWorkspaceConfigFile(name: string): boolean {
   return WORKSPACE_CONFIGS.has(name)
+}
+
+/**
+ * The files the claimed files' recorded digests read besides them
+ * (`FingerprintDigests.extras`: a `file:` dependency's directory, a patch),
+ * absolute, from `.vx/dependencies.lock.json` as `vx lock` wrote it: a run
+ * keys them from there. Empty when there is no readable lock.
+ */
+export function lockedExtras(workspaceRoot: string): Set<string> {
+  let bytes: Uint8Array | null = null
+  try {
+    bytes = fs.readFileSync(path.join(workspaceRoot, DEPENDENCIES_LOCK_NAME))
+  } catch {
+    // No lock: no record, and a run refuses a claimant that asks for one.
+  }
+  const lock = parseDependenciesLock(bytes)
+  const out = new Set<string>()
+  for (const rec of Object.values(lock?.files ?? {}))
+    for (const rel of Object.keys(rec.extras ?? {})) out.add(path.resolve(workspaceRoot, rel))
+  return out
 }
 
 /**

@@ -16,7 +16,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { parseRunArgs, resolveRunOptions, type RunArgs, spacedHint } from './run.js'
 import { refuse, seeHelp } from './help.js'
-import { fsClockNow, namedIgnoredReach } from '../cache/index.js'
+import { fsClockNow, namedIgnoredReach, repoFacts } from '../cache/index.js'
 import {
   fingerprintClaims,
   forwardedSignal,
@@ -38,6 +38,7 @@ import {
   isProjectConfigFile,
   isWorkspaceConfigFile,
   gitFiles,
+  lockedExtras,
   makeFence,
   makeRootEventFilter,
   makeWatchIgnore,
@@ -69,6 +70,14 @@ function sayAllCached(opts: RunOptions, outcomes: readonly { status: string }[])
   if (mode !== 'broad' && mode !== 'errors-only' && mode !== 'none') return
   const n = outcomes.length
   ui.print('out', ui.line(' ', n === 1 ? '1 task' : `${n} tasks`, ' cached, nothing ran'))
+}
+
+function isDirectory(abs: string): boolean {
+  try {
+    return fs.statSync(abs).isDirectory()
+  } catch {
+    return false
+  }
 }
 
 /** Wait this long after the last filesystem event before re-running. */
@@ -351,6 +360,8 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
           // the cycle that loaded it; read once, its edits started nothing
           // until a restart.
           claimedRootFiles: claimsOf(wsNow.plugins),
+          // A re-lock that records a new `file:` directory or patch.
+          extraFiles: lockedExtras(workspaceRoot),
           // The dir the cycle just wrote its store to: kept from the start,
           // a `cache.dir` edit let those writes start the next cycle.
           cacheDir: opts.cacheDir ?? wsNow.cacheDir,
@@ -369,6 +380,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
       // the one edit that changes what a cycle runs; unheard, the loop ran
       // the old lock until a restart (item 971).
       claimedRootFiles: claimsOf(ws.plugins),
+      extraFiles: lockedExtras(workspaceRoot),
       // The RESOLVED cache dir, not the `.vx` literal — see `makeWatchIgnore`.
       cacheDir: opts.cacheDir ?? ws.cacheDir,
       poll: resolveSetting('watch.poll', ws.workspaceConfig, parsed.poll).value === true,
@@ -424,6 +436,8 @@ interface WatchLoopArgs {
    * loaded once per process, so the set is fixed for the loop.
    */
   claimedRootFiles: ReadonlySet<string>
+  /** The files a claimed file's recorded digests read besides it (`lockedExtras`), absolute. */
+  extraFiles: ReadonlySet<string>
   /** Every project, in scope or not: a project's key leaves out what lies in one nested under it. */
   fenceDirs: readonly string[]
   /** The watched set again, after a cycle that followed an event which can change it. */
@@ -438,6 +452,7 @@ interface Rediscovered {
   projects: readonly ProjectMeta[]
   cacheDir: string
   claimedRootFiles: ReadonlySet<string>
+  extraFiles: ReadonlySet<string>
   workspaceWide: boolean
   workspaceInputs: readonly string[]
   outputs: ReadonlyMap<string, readonly string[]>
@@ -462,6 +477,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   let uncached = args.uncached
   let namedIgnored = args.namedIgnored
   let claimedRootFiles = args.claimedRootFiles
+  let extraFiles = args.extraFiles
   let configImportFiles = args.configImports
   let wsConfigImportFiles = args.workspaceConfigImports
   // A dev server stays up while the loop idles and across cycles; a cycle
@@ -605,7 +621,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
             // as a file born and gone since, and ran nothing.
             if (
               atArm !== undefined &&
-              changes.changed.some((p) => path.basename(p) === '.gitignore')
+              changes.changed.some((p) => path.basename(p) === '.gitignore' || p === excludeFile)
             ) {
               for (const p of gitFiles(workspaceRoot)?.listed ?? []) atArm.listed.add(p)
               reachOf = undefined
@@ -1095,6 +1111,64 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     }
   }
 
+  /**
+   * The files a claimed file's recorded digests read besides it (a `file:`
+   * dependency's directory, a patch; `lockedExtras`): a run keys them, and
+   * no project's arm hears one outside its tree. A directory recursively,
+   * a file (or a path gone for now) from its directory; armed again when a
+   * re-lock changes the set.
+   */
+  const extraArms = new Map<string, { at: string; handle: WatchHandle }>()
+  const armExtras = (): void => {
+    const want = new Map<string, { at: string; dir: boolean }>()
+    for (const abs of extraFiles) {
+      const dir = isDirectory(abs)
+      want.set(abs, { at: dir ? abs : path.dirname(abs), dir })
+    }
+    for (const [abs, armed] of extraArms) {
+      if (want.get(abs)?.at === armed.at && !stale(armed.at)) continue
+      armed.handle.close()
+      extraArms.delete(abs)
+    }
+    for (const [abs, { at, dir }] of want) {
+      if (extraArms.has(abs) || inodeOf(at) === undefined) continue
+      const name = path.basename(abs)
+      try {
+        const handle = arm(at, dir, (filename) => {
+          if (!dir && filename !== name) return
+          const changed = dir ? path.join(abs, filename) : abs
+          // A directory made where a file or nothing was armed: armed again, recursively.
+          if (!dir && isDirectory(abs)) reread = true
+          trigger(`root ${path.relative(workspaceRoot, changed)}`, changed)
+        })
+        extraArms.set(abs, { at, handle })
+        armedAs.set(at, inodeOf(at) ?? '')
+      } catch (err) {
+        sayCannot(`cannot watch ${at}`, err)
+      }
+    }
+  }
+  /**
+   * `info/exclude` ignores as a `.gitignore` does, and keys are
+   * gitignore-aware (X-136), so its edit is a cycle; the ignore filter drops
+   * every path under `.git/`. Armed once, from the common dir the run's own
+   * enumeration asked git for (`repoFacts`, memoised).
+   */
+  const commonDir = repoFacts(workspaceRoot)?.commonDir
+  const excludeFile =
+    commonDir === undefined ? undefined : path.resolve(workspaceRoot, commonDir, 'info', 'exclude')
+  const armExclude = (): void => {
+    if (excludeFile === undefined || inodeOf(path.dirname(excludeFile)) === undefined) return
+    try {
+      arm(path.dirname(excludeFile), false, (filename) => {
+        if (filename === 'exclude')
+          trigger(`root ${path.relative(workspaceRoot, excludeFile)}`, excludeFile)
+      })
+    } catch (err) {
+      sayCannot(`cannot watch ${path.dirname(excludeFile)}`, err)
+    }
+  }
+
   // Said once, when the loop first arms: a re-arm repeated it after every
   // cycle that re-read the watched set, between task rows. `debug.watch`
   // says each arm on stderr, for whoever needs to see the set change.
@@ -1129,6 +1203,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     uncached = next.uncached
     namedIgnored = next.namedIgnored
     claimedRootFiles = next.claimedRootFiles
+    extraFiles = next.extraFiles
     configImportFiles = next.configImports
     wsConfigImportFiles = next.workspaceConfigImports
     armAncestors()
@@ -1165,6 +1240,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     watched = next.projects
     links = gitFiles(workspaceRoot)?.links ?? links
     armLinks()
+    armExtras()
     // A new arm proves delivery like the first ones: an edit in the new
     // project right after this cycle is seen, not lost in the gap.
     await pool.proved()
@@ -1251,6 +1327,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   armAncestors()
   armImports()
   armLinks()
+  armExtras()
+  armExclude()
 
   // The orchestrator's own writes never kick the loop: `makeWatchIgnore`
   // closes over the RESOLVED cache dir (relocated or not) and the tasks'
