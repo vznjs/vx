@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { appendFile, rm, writeFile } from 'node:fs/promises'
+import { appendFile, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { run } from './helpers/orchestrator.js'
 import {
@@ -116,6 +116,25 @@ describe('filterUpstreamHashes', () => {
     // Both tasks share the hash `dup`; only one pair survives, named by
     // the first task encountered (self#x).
     expect(filterUpstreamHashes(up, ['*'], 'self', 'self#build')).toEqual([['self#x', 'dup']])
+  })
+
+  // Two groups over the same members share a hash. Deleting by hash let
+  // `!c#build` drop b#build, which `^*` still selected: the key folded
+  // neither, and a change beneath them replayed the old hit.
+  it('a negation drops only what it names: a shared hash still selected stays folded', () => {
+    const up = [outcome('b#build', 'g'), outcome('c#build', 'g')]
+    expect(filterUpstreamHashes(up, ['^*', '!c#build'], 'app', 'app#build')).toEqual([
+      ['b#build', 'g'],
+    ])
+    expect(filterUpstreamHashes(up, ['^*', '!b#build'], 'app', 'app#build')).toEqual([
+      ['c#build', 'g'],
+    ])
+    // CONTROL: negating both drops the hash.
+    expect(filterUpstreamHashes(up, ['^*', '!b#build', '!c#build'], 'app', 'app#build')).toEqual([])
+    // Order still rules: a later positive entry brings a negated one back.
+    expect(filterUpstreamHashes(up, ['!c#build', 'c#build'], 'app', 'app#build')).toEqual([
+      ['c#build', 'g'],
+    ])
   })
 
   it('wraps an invalid filter spec in a UserError naming the task', () => {
@@ -387,6 +406,60 @@ describe('inputs.tasks through a group', () => {
       expect(await runWith(['build.*'], ['build', 'build.a'])).toBe('ok')
       expect(await runWith(['*', '!build.a'])).toBe('ok')
       expect(await runWith(['lint.*'])).toBe('ok')
+    },
+    TIMEOUT,
+  )
+})
+
+// b and c each have an unkeyed `build` group over lib#build alone, so both
+// groups hash alike. `!c#build` dropped b#build too, and a change to lib's
+// source replayed app's old hit.
+describe('inputs.tasks: negating one of two groups over the same members', () => {
+  it(
+    'keeps the other folded: a change beneath it reruns the reader',
+    async () => {
+      const fixture = await makeWorkspace('vx-filter-shared-unit-', {
+        app: ['b', 'c'],
+        b: ['lib'],
+        c: ['lib'],
+      })
+      try {
+        const cache = `outputs: { files: ['dist/**'] }, cache: true`
+        const lib = await addProject(fixture.root, 'lib', {
+          files: { 'src/x': '1\n' },
+          config: `export default { tasks: { build: {
+            exec: { command: 'mkdir -p dist && cat src/x > dist/o' },
+            inputs: { files: ['src/**'] }, ${cache},
+          } } }`,
+        })
+        for (const name of ['b', 'c']) {
+          await addProject(fixture.root, name, {
+            config: `export default { tasks: { build: { dependsOn: ['^build'] } } }`,
+          })
+        }
+        const app = await addProject(fixture.root, 'app', {
+          files: { 'src/a': '1\n' },
+          config: `export default { tasks: { build: {
+            exec: { command: 'mkdir -p dist && cat ../lib/dist/o > dist/o' },
+            dependsOn: ['^build'],
+            inputs: { files: ['src/**'], tasks: ['^*', '!c#build'] }, ${cache},
+          } } }`,
+        })
+        const build = async () => {
+          const r = await run({
+            cwd: fixture.root,
+            tasks: ['app#build'],
+            log: silentLogger(fixture),
+          })
+          expect(r.ok).toBe(true)
+          return readFile(path.join(app, 'dist', 'o'), 'utf8')
+        }
+        expect(await build()).toBe('1\n')
+        await writeFile(path.join(lib, 'src', 'x'), '3\n')
+        expect(await build()).toBe('3\n')
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
     },
     TIMEOUT,
   )

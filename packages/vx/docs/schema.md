@@ -1279,7 +1279,9 @@ task from its dependencies — a stale-hit trap.)
 
 Patterns are applied in order; **last write wins**. So
 `['*', '^*', '!^noisy']` reads as "all upstream except deps' noisy
-task". Defaults:
+task". A negation drops only what it names: when two upstreams hash
+alike (two groups over the same members), excluding one keeps the other
+folded. Defaults:
 
 - **Omitted** → all upstream contribute (`['*', '^*']`). Most common.
 - **`[]`** → fully decoupled; no upstream contributes.

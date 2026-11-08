@@ -53,8 +53,11 @@ reads it too — one copy of the rule, so what the key folds and what the
 sandbox and the lock believe it folds cannot drift. The hash path passes each upstream with its hash as the
 unit; the graph walk passes a structural stand-in (a task's id, which
 its key includes; a group's sorted member ids as `keyUpstream` reads them,
-since two groups over the same members hash alike and excluding either
-excludes both).
+since two groups over the same members hash alike). A negation drops
+only the upstreams it names, and the dedup runs after the last entry, so
+a unit another selected upstream still carries stays folded:
+`['^*', '!c#build']` dropped b#build's group with c#build's when both
+grouped the same members, and a change beneath them replayed the old hit.
 
 ## Groups are transparent to the input closure
 

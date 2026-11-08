@@ -193,10 +193,13 @@ export interface FoldCandidate {
  *   - `filter === undefined` → every candidate, as given.
  *   - `filter === []`        → none (fully decoupled).
  *
- * Otherwise deduped by `unit`, first candidate kept. The unit is the
- * fold's own identity, not the task's: two groups over the same members
- * share one hash, so excluding either excludes both, and a selection by
- * task id would keep the other while the key folded neither.
+ * Otherwise deduped by `unit`, first selected candidate kept. The unit is
+ * the fold's own identity, not the task's: two groups over the same members
+ * share one hash. A negation drops only the candidates it names, and the
+ * dedup runs after every entry, so a unit still selected through another
+ * candidate stays folded: deleting by unit let `['^*', '!c#build']` drop
+ * b#build's group with c#build's, and a change beneath both replayed the
+ * old hit.
  */
 export function selectFoldedDeps(
   deps: readonly FoldCandidate[],
@@ -211,18 +214,20 @@ export function selectFoldedDeps(
   // Per-spec predicate, compiled once (exact compares + patterns).
   const matchers = specs.map((spec) => specMatcher(spec))
 
-  const selected = new Map<string, FoldCandidate>()
+  const selected = new Set<FoldCandidate>()
   for (let i = 0; i < specs.length; i++) {
     const spec = specs[i]!
     const matches = matchers[i]!
     for (const d of deps) {
       const isSelf = d.node.projectName === selfProjectName
       if (!matches(d.node, isSelf)) continue
-      if (spec.negated) selected.delete(d.unit)
-      else if (!selected.has(d.unit)) selected.set(d.unit, d)
+      if (spec.negated) selected.delete(d)
+      else selected.add(d)
     }
   }
-  return [...selected.values()]
+  const byUnit = new Map<string, FoldCandidate>()
+  for (const d of selected) if (!byUnit.has(d.unit)) byUnit.set(d.unit, d)
+  return [...byUnit.values()]
 }
 
 /** Exact-name compare, or the shared `*`-glob when the name is a pattern. */
