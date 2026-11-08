@@ -143,9 +143,10 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   expectation a worker must reproduce), `upstream` (dependency task ids +
   cache keys + each one's declared `outputs`, workspace-relative — already
   restored on disk before this task runs, so an input-shipping executor can
-  put them in the input root; empty when that dependency has no local cache
-  entry; read from the index up front for a plugin executor, never for
-  the local floor), and `configDigest`.
+  put them in the input root; a non-cacheable dependency's are its declared
+  outputs found on disk, and a cacheable one with no local cache entry has
+  none; read up front for a plugin executor, never for the local floor),
+  and `configDigest`.
   Present on the miss path of a cacheable task only; a task with no
   `cache` ships nothing. Built by `task-hash.describeTaskInputs` from the
   SAME resolution that produced the key, so it cannot drift from what a

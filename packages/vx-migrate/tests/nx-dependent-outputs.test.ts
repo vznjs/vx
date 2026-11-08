@@ -68,21 +68,26 @@ it('a reader whose `^build` reaches no migrated project runs uncached too', asyn
   // on the .NET ProductsApi, which is no node once @nx/dotnet fails to load.
   // Another project's `build` kept the edge through the mapping, and the
   // graph left it reaching nothing (Growth, nx-codegen-dropped-producer.sh).
-  const metas = [await meta('types'), await meta('ui')]
+  // Here Nx links the producer's node, and vx carries no tasks for it.
+  const metas = [await meta('types'), await meta('ui'), await meta('products-api')]
   const nodes: Record<string, unknown> = {
     types: {
       data: { root: 'libs/types', targets: { codegen: { ...codegen, dependsOn: ['^build'] } } },
     },
     ui: { data: { root: 'libs/ui', targets: { build: { command: 'b', cache: true } } } },
-  }
-  const m = await mapNxWorkspace(
-    root,
-    metas,
-    { nodes, dependencies: { types: [], ui: [] } } as NxGraph,
-    {
-      cacheable: new Set(),
+    'products-api': {
+      data: { root: 'libs/products-api', targets: { build: { command: 'b', cache: true } } },
     },
-  )
+  }
+  const dependencies = {
+    types: [{ source: 'types', target: 'products-api', type: 'implicit' }],
+    ui: [],
+    'products-api': [],
+  }
+  const m = await mapNxWorkspace(root, metas, { nodes, dependencies } as NxGraph, {
+    cacheable: new Set(),
+    attached: new Set(['types', 'ui']),
+  })
   const t = m.projects.find((p) => p.name === 'types')!.tasks.find((t) => t.name === 'codegen')!
   expect(t.task!['cache']).toBeUndefined()
   expect(t.todos).toContain(
@@ -108,5 +113,30 @@ it('control: a `^build` that reaches a migrated dependency keeps the reader cach
   const m = await mapNxWorkspace(root, metas, graph as NxGraph, { cacheable: new Set() })
   const t = m.projects.find((p) => p.name === 'types')!.tasks.find((t) => t.name === 'codegen')!
   expect(t.task!['cache']).toBeDefined()
+  expect(t.todos.join('\n')).not.toContain('dependsOn')
+})
+
+it('a leaf’s `^build` reader stays cached: Nx links no dependency, so it reads nothing', async () => {
+  // @nx/js/typescript infers `build` with `dependsOn: ["^build"]` and a
+  // transitive `dependentTasksOutputFiles`; on a leaf library Nx caches it,
+  // and nx() ran it uncached every time (hunt, 2026-11-08).
+  const metas = [await meta('a'), await meta('b')]
+  const build = {
+    command: 'tsc --build',
+    cache: true,
+    dependsOn: ['^build'],
+    inputs: [{ dependentTasksOutputFiles: '**/*.d.ts', transitive: true }],
+    outputs: ['{projectRoot}/dist'],
+  }
+  const nodes: Record<string, unknown> = {
+    a: { data: { root: 'libs/a', targets: { build } } },
+    b: { data: { root: 'libs/b', targets: { build } } },
+  }
+  const dependencies = { a: [], b: [{ source: 'b', target: 'a', type: 'static' }] }
+  const m = await mapNxWorkspace(root, metas, { nodes, dependencies } as NxGraph, {
+    cacheable: new Set(),
+  })
+  const t = m.projects.find((p) => p.name === 'a')!.tasks.find((t) => t.name === 'build')!
+  expect(t.task!['cache']).toBe(true)
   expect(t.todos.join('\n')).not.toContain('dependsOn')
 })

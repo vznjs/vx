@@ -24,6 +24,7 @@ const SHARDS: readonly (readonly string[])[] = [
     'bun-patch-precise',
     'closure-per-project',
     'deleted-project',
+    'dependency-section',
     'lazy-load',
     'lockfile-choice',
     'outside-dir-dep',

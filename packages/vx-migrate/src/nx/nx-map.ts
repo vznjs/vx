@@ -655,7 +655,14 @@ export async function mapNxWorkspace(
       }
       dropUnheldDeps(t, meta.name, emitted, emittedIds)
       const reader = dependentReaders.get(t)
-      if (reader !== undefined && !reachesProducer(t, meta.name, emittedIds, reached)) {
+      if (
+        reader !== undefined &&
+        !reachesProducer(t, meta.name, emittedIds, reached, (target) =>
+          nodeName === undefined
+            ? undefined
+            : nxEdges(nodeName, target).map((n) => metaByNode.get(n)?.name),
+        )
+      ) {
         uncache(t.task!)
         t.todos.push(orphanReaderTodo(reader.globs, reader.dependsOn))
       }
@@ -1126,7 +1133,11 @@ function buildTask(
 
   const generated: GeneratedTask = { name: variant.name, todos, task }
   if (cacheEnabled && inputs.dependentOutputs.length > 0)
-    dependentReaders.set(generated, { globs: inputs.dependentOutputs, dependsOn: target.dependsOn })
+    dependentReaders.set(generated, {
+      globs: inputs.dependentOutputs,
+      transitive: inputs.transitiveOutputs,
+      dependsOn: target.dependsOn,
+    })
   const produced = [
     ...outFiles.filter((o) => !o.startsWith('!')).map((o) => path.posix.join(projectRel, o)),
     ...wsOutFiles.filter((o) => !o.startsWith('!')),
@@ -1152,37 +1163,63 @@ function keyUncachedProducerOutputs(
   projects: readonly GeneratedProject[],
   reached: (name: string) => ReadonlySet<string>,
 ): void {
-  const byId = new Map<string, GeneratedTask>()
-  for (const p of projects) for (const t of p.tasks) byId.set(`${p.name}#${t.name}`, t)
+  const byId = new Map<string, { project: string; task: GeneratedTask }>()
+  for (const p of projects)
+    for (const t of p.tasks) byId.set(`${p.name}#${t.name}`, { project: p.name, task: t })
+  const edgesOf = (project: string, deps: unknown): [id: string, filter: string][] =>
+    (Array.isArray(deps) ? deps : []).flatMap((d): [string, string][] => {
+      if (typeof d !== 'string' || d.includes('*') || d.includes('#inputs:')) return []
+      return d.startsWith('^')
+        ? [...reached(project)].map((q) => [`${q}#${d.slice(1)}`, `${q}#${d.slice(1)}`])
+        : [[d.includes('#') ? d : `${project}#${d}`, d]]
+    })
   for (const p of projects) {
     for (const t of p.tasks) {
       const reader = dependentReaders.get(t)
       if (reader === undefined || t.task?.['cache'] !== true) continue
-      const deps = t.task['dependsOn']
-      if (!Array.isArray(deps)) continue
       const rels: string[] = []
       const unfold: string[] = []
-      for (const d of deps) {
-        if (typeof d !== 'string' || d.includes('*') || d.includes('#inputs:')) continue
-        const edges: [id: string, filter: string][] = d.startsWith('^')
-          ? [...reached(p.name)].map((q) => [`${q}#${d.slice(1)}`, `${q}#${d.slice(1)}`])
-          : [[d.includes('#') ? d : `${p.name}#${d}`, d]]
-        for (const [id, filter] of edges) {
-          const producer = byId.get(id)
-          if (producer?.task?.['exec'] === undefined || producer.task['cache'] === true) continue
-          const outs = producedPaths.get(producer) ?? []
-          if (outs.length === 0) continue
-          unfold.push(`!${filter}`)
-          for (const o of outs)
-            // A glob output (`dist/**/*.{js,d.ts}{,.map}`): every file under
-            // its literal head, which the probe can walk.
-            if (/[*?[{]/.test(o)) rels.push(`${globHead(o)}/**/*`)
-            else
-              for (const g of reader.globs)
-                // `**/<name>` is a find under the output; any other glob (a brace, a
-                // class), every file there.
-                rels.push(/^\*\*\/[^/*?[{]*\*?[^/*?[{]*$/.test(g) ? `${o}/${g}` : `${o}/**/*`)
+      const keyOutputs = (producer: GeneratedTask, globs: readonly string[]): void => {
+        for (const o of producedPaths.get(producer) ?? [])
+          // A glob output (`dist/**/*.{js,d.ts}{,.map}`): every file under
+          // its literal head, which the probe can walk.
+          if (/[*?[{]/.test(o)) rels.push(`${globHead(o)}/**/*`)
+          else
+            for (const g of globs)
+              // `**/<name>` is a find under the output; any other glob (a brace, a
+              // class), every file there.
+              rels.push(/^\*\*\/[^/*?[{]*\*?[^/*?[{]*$/.test(g) ? `${o}/${g}` : `${o}/**/*`)
+      }
+      const uncachedWriter = (producer: GeneratedTask | undefined): producer is GeneratedTask =>
+        producer?.task?.['exec'] !== undefined &&
+        producer.task['cache'] !== true &&
+        (producedPaths.get(producer)?.length ?? 0) > 0
+      for (const [id, filter] of edgesOf(p.name, t.task['dependsOn'])) {
+        const producer = byId.get(id)?.task
+        if (producer === undefined) continue
+        // `transitive: true` reads the outputs of every task below, not
+        // only the direct ones: an uncached `fetch` behind an `nx:noop`
+        // `prep` hid its schema, and the reader replayed the old one (hunt,
+        // 2026-11-08). A key folding the edge answers the probe before the
+        // fetch ran, so the edge is left out and every output below it,
+        // cached or not, is keyed by the probe.
+        const below: GeneratedTask[] = []
+        if (reader.transitive.length > 0) {
+          const seen = new Set<string>([id])
+          const stack = edgesOf(byId.get(id)!.project, producer.task?.['dependsOn'])
+          while (stack.length > 0) {
+            const [next] = stack.pop()!
+            const node = byId.get(next)
+            if (seen.has(next) || node === undefined) continue
+            seen.add(next)
+            below.push(node.task)
+            stack.push(...edgesOf(node.project, node.task.task?.['dependsOn']))
+          }
         }
+        if (!uncachedWriter(producer) && !below.some(uncachedWriter)) continue
+        unfold.push(`!${filter}`)
+        keyOutputs(producer, reader.globs)
+        for (const b of below) keyOutputs(b, reader.transitive)
       }
       if (rels.length === 0) continue
       const probe = dotenvGlobsProbe([...new Set(rels)])
@@ -1201,39 +1238,49 @@ function keyUncachedProducerOutputs(
   }
 }
 
-/**
- * The cached readers of `dependentTasksOutputFiles`, judged again once the
- * graph has its final edges: a `^build` kept because another project builds
- * reached no producer of this one (nx-examples' codegen, its .NET
- * ProductsApi no node once @nx/dotnet failed to load), and the key saw
- * nothing the task reads (Growth, nx-codegen-dropped-producer.sh).
- */
 function globHead(glob: string): string {
   const segs = glob.split('/')
   const i = segs.findIndex((s) => /[*?[{]/.test(s))
   return segs.slice(0, i).join('/')
 }
 
-const dependentReaders = new WeakMap<GeneratedTask, { globs: string[]; dependsOn: unknown }>()
+const dependentReaders = new WeakMap<
+  GeneratedTask,
+  { globs: string[]; transitive: string[]; dependsOn: unknown }
+>()
 
 function orphanReaderTodo(globs: readonly string[], dependsOn: unknown): string {
   return `reads ${globs.map((g) => `\`${g}\``).join(', ')} from the outputs of the tasks it depends on, and no task it depends on is migrated (dependsOn ${JSON.stringify(dependsOn ?? [])}) — uncached here, so it never replays output generated from an older input; migrate the producer and depend on it to cache this task`
 }
 
-/** Whether one of `t`'s final edges reaches a task vx runs. */
+/**
+ * Whether a cached reader of `dependentTasksOutputFiles` still reaches a
+ * producer once the graph has its final edges: one of them reaches a task
+ * vx runs, or is a `^` edge every project Nx links (`nxLinked`: their vx
+ * names) runs it on. A `^build` kept because another project builds, while
+ * Nx links a producer vx carries no task for, keyed nothing the task reads
+ * (Growth, nx-codegen-dropped-producer.sh). With none linked, Nx hashes
+ * nothing there either: a leaf library's inferred `build` (`^build`,
+ * @nx/js/typescript) ran uncached every time where Nx caches it (hunt,
+ * 2026-11-08).
+ */
 function reachesProducer(
   t: GeneratedTask,
   project: string,
   emittedIds: ReadonlySet<string>,
   reached: (name: string) => ReadonlySet<string>,
+  nxLinked: (target: string) => ReadonlyArray<string | undefined> | undefined,
 ): boolean {
   const deps = t.task?.['dependsOn']
   if (!Array.isArray(deps)) return false
   return deps.some((d) => {
     if (typeof d !== 'string' || d.includes('*')) return true
     if (d.includes('#inputs:')) return false
-    if (d.startsWith('^'))
-      return [...reached(project)].some((p) => emittedIds.has(`${p}#${d.slice(1)}`))
+    if (d.startsWith('^')) {
+      const target = d.slice(1)
+      if ([...reached(project)].some((p) => emittedIds.has(`${p}#${target}`))) return true
+      return nxLinked(target)?.every((p) => emittedIds.has(`${p}#${target}`)) === true
+    }
     return d.includes('#') || emittedIds.has(`${project}#${d}`)
   })
 }

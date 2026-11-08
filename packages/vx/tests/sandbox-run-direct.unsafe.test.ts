@@ -681,7 +681,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     expect([exited.exitCode, killed.exitCode]).toEqual([3, 137])
   })
 
-  it('traces the reads, execs and access probes, through the seccomp filter', async () => {
+  it('traces the reads, execs, access probes and readlinks, through the seccomp filter', async () => {
     // The flag is the difference between tracing a few syscalls and stopping
     // on every one: without it the cache perf baselines ran 2.5-7x over.
     const spy = spyOn(SandboxManager, 'wrapWithSandbox')
@@ -697,7 +697,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
         '--seccomp-bpf',
         '-qq',
         '-e',
-        'trace=openat,?open,execve,?access,faccessat,?faccessat2,chdir,fchdir,clone,?clone3,?fork,?vfork',
+        'trace=openat,?open,execve,?access,faccessat,?faccessat2,?readlink,?readlinkat,chdir,fchdir,clone,?clone3,?fork,?vfork',
         '-o',
         '/dev/fd/5',
         '--',

@@ -47,7 +47,7 @@ async function machine(name: string, remote: RemoteCacheLayer) {
   await mkdir(path.join(root, 'app'), { recursive: true })
   const local = new Cache(path.join(root, '.vx', 'cache'), { read: true, write: true }, root)
   caches.push(local)
-  return { root, artifacts: taskArtifacts(layeredOver(local, remote), root) }
+  return { root, local, artifacts: taskArtifacts(layeredOver(local, remote), root) }
 }
 
 const KEY = '0123456789abcdef'
@@ -265,6 +265,68 @@ it('output resolves the output alone and lays no file', async () => {
   const here = await machine('here', remote.layer)
   expect(await here.artifacts.output(KEY)).toEqual([{ text: 'installed\n', err: false }])
   expect(await Bun.file(path.join(here.root, 'app', 'node_modules', 'x.js')).exists()).toBe(false)
+})
+
+it('a restore from a remote keeps the task as the entry and refuses a file it does not declare', async () => {
+  // Restored with no task, the row read `<key>#unknown` with no command,
+  // and the artifact's names went unchecked against the task's outputs.
+  const remote = memoryRemote()
+  const agent = await machine('agent', remote.layer)
+  const task = (root: string, files: string[]) => ({
+    id: 'app#build',
+    projectDir: path.join(root, 'app'),
+    command: 'build',
+    outputs: { files, workspaceFiles: [] },
+  })
+  await mkdir(path.join(agent.root, 'app', 'dist'), { recursive: true })
+  await writeFile(path.join(agent.root, 'app', 'dist', 'out.js'), 'built')
+  await agent.artifacts.save(KEY, task(agent.root, ['dist/**']), { output: [], durationMs: 1 })
+
+  const narrow = await machine('narrow', remote.layer)
+  expect(await narrow.artifacts.restore(KEY, task(narrow.root, ['lib/**']))).toBeNull()
+  expect(await Bun.file(path.join(narrow.root, 'app', 'dist', 'out.js')).exists()).toBe(false)
+
+  // The row's command is masked as a save's is.
+  const here = await machine('here', remote.layer)
+  process.env['VX_RESTORE_TOKEN'] = 'restore-secret-value'
+  try {
+    const named = { ...task(here.root, ['dist/**']), command: 'build restore-secret-value' }
+    expect(await here.artifacts.restore(KEY, named)).toEqual([])
+  } finally {
+    delete process.env['VX_RESTORE_TOKEN']
+  }
+  const row = await here.local.getIngested(KEY)
+  expect([row?.taskId, row?.command]).toEqual(['app#build', 'build ***'])
+})
+
+it('output keeps what it read, so a later restore downloads nothing', async () => {
+  // A deferred task's output is read first and its files laid only when a
+  // task here needs them: that second read must not fetch the entry again.
+  const remote = memoryRemote()
+  const agent = await machine('agent', remote.layer)
+  const task = (root: string) => ({
+    id: 'app#build',
+    projectDir: path.join(root, 'app'),
+    command: 'build',
+    outputs: { files: ['dist/**'], workspaceFiles: [] },
+  })
+  await mkdir(path.join(agent.root, 'app', 'dist'), { recursive: true })
+  await writeFile(path.join(agent.root, 'app', 'dist', 'out.js'), 'built')
+  const output = [{ text: 'done\n', err: false }]
+  await agent.artifacts.save(KEY, task(agent.root), { output, durationMs: 1 })
+  let gets = 0
+  const counted: RemoteCacheLayer = {
+    ...remote.layer,
+    get: (hash) => {
+      gets++
+      return remote.layer.get(hash)
+    },
+  }
+  const here = await machine('here', counted)
+  expect(await here.artifacts.output(KEY)).toEqual(output)
+  expect(await here.artifacts.restore(KEY, task(here.root))).toEqual(output)
+  expect(await readFile(path.join(here.root, 'app', 'dist', 'out.js'), 'utf8')).toBe('built')
+  expect(gets).toBe(1)
 })
 
 it('restores the empty directories under both output namespaces, as a miss save does', async () => {

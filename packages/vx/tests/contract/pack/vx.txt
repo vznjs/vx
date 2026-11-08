@@ -98,6 +98,7 @@ src/graph/folds.ts
 src/graph/index.ts
 src/graph/priorities.ts
 src/graph/scheduler.ts
+src/graph/stand-ins.ts
 src/graph/task-graph.ts
 src/graph/task-status.ts
 src/handoff.ts

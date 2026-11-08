@@ -54,6 +54,7 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
   inputs: TaskInputs
   facts: InputFact[]
   describedAt: number
+  readUpstream: () => Promise<void> // lists `inputs.upstream`, a non-cacheable upstream's outputs from disk
   added: () => string | undefined // an input file the key did not fold that exists now
 }>
 
@@ -117,7 +118,11 @@ export interface UpfrontGroupKey {
   hashed file from the describe's own start (`describedAt`). Its
   `added` runs inputs.md's `addedInput` over the listings the key was
   filtered from, dated from the enumeration's start (the describe's
-  own start with no run cache).
+  own start with no run cache). `inputs.upstream` lists each upstream's
+  outputs from the local index; `readUpstream`, which execute-task awaits
+  for a plugin executor only, lists a non-cacheable upstream's from its
+  declared outputs on disk (it keeps no entry, and a remote executor
+  shipped its dependant without them).
 - `movedInput` — the post-command re-check (item 743): one `lstat` per
   fact; a file whose ctime is not older than its fact by
   `FILE_HASH_RACY_MS` (plus a second for a whole-second stamp, two

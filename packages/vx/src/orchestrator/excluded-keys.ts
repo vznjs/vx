@@ -14,7 +14,13 @@
 // full run looks up.
 
 import type { CacheLayer, GitFilesCache } from '../cache/index.js'
-import { isGroupTask, keyedDeps, type TaskNode, type TaskOutcome } from '../graph/index.js'
+import {
+  isGroupTask,
+  keyedDeps,
+  standInsOf,
+  type TaskNode,
+  type TaskOutcome,
+} from '../graph/index.js'
 import { computeGroupKey, computeTaskHash, type HashCache } from './task-hash.js'
 import { filterUpstreamHashes, keyedOutcome } from './upstream.js'
 
@@ -133,6 +139,12 @@ function foldsExcludedKey(node: TaskNode): boolean {
   if (excluded === undefined) return false
   if (isGroupTask(node)) return true
   return (
-    filterUpstreamHashes(excluded, node.config.inputs?.tasks, node.projectName, node.id).length > 0
+    filterUpstreamHashes(
+      excluded,
+      node.config.inputs?.tasks,
+      node.projectName,
+      node.id,
+      standInsOf(node),
+    ).length > 0
   )
 }

@@ -2305,6 +2305,56 @@ describe('execute-task — the executor input set is ADDRESSED and ORDERED', () 
   )
 
   it(
+    "a non-cacheable upstream's declared outputs on disk reach a plugin executor",
+    async () => {
+      // It keeps no index entry, so its list was empty: a remote executor
+      // shipped the dependant without the files it reads, and saved what
+      // that build printed under the key (a stale hit).
+      const b = await bench()
+      try {
+        const log = capturingLogger({ root: '', out: [], err: [] })
+        const producer = node(
+          b,
+          {
+            exec: { command: 'mkdir -p gen && echo g > gen/out.txt' },
+            inputs: { files: ['package.json'] },
+            outputs: { files: ['gen/**'] },
+          },
+          'proj#gen',
+        )
+        const made = await executeTask(baseArgs(b, producer, log))
+        expect(made.status).toBe('success')
+        let seen: ExecuteRequest | undefined
+        const capturing: TaskExecutor = {
+          name: 'capture',
+          execute: (req) => {
+            seen = req
+            return localExecutor().execute(req)
+          },
+        }
+        const consumer = node(
+          b,
+          {
+            dependsOn: ['gen'],
+            exec: { command: 'true' },
+            inputs: { files: ['package.json'] },
+            outputs: { files: [] },
+            cache: true,
+          },
+          'proj#build',
+        )
+        await executeTask({ ...baseArgs(b, consumer, log), upstream: [made], executor: capturing })
+        expect(seen?.inputs?.upstream.map((u) => [u.taskId, u.outputs])).toEqual([
+          ['proj#gen', ['proj/gen/out.txt']],
+        ])
+      } finally {
+        await closeBench(b)
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
     'the upstream list is ordered by hash, not by declaration order',
     async () => {
       // The docblock says the list — "and any action digest derived from

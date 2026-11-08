@@ -672,7 +672,7 @@
   {
     "key": "inputs: {dependentTasksOutputFiles, transitive}",
     "status": "supported",
-    "reason": "vx folds each dependency's cache key (its inputs, transitively) through `dependsOn`, and a cached task's output follows from its inputs. An uncached producer's matching files are an `inputs.workspaceRuntime` probe, answered after it ran."
+    "reason": "vx folds each dependency's cache key (its inputs, transitively) through `dependsOn`, and a cached task's output follows from its inputs. An uncached producer's matching files are an `inputs.workspaceRuntime` probe, answered after it ran; with `transitive`, one behind an `nx:noop` group or another task too. A `^` edge with no Nx dependency reads nothing and stays cached."
   },
   {
     "key": "inputs: {json, fields, excludeFields}",

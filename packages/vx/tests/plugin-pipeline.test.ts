@@ -23,7 +23,10 @@ import {
   hasHook,
 } from '../src/orchestrator/plugin-host.js'
 import type { VxPlugin } from '../src/orchestrator/index.js'
-import type { TaskNode } from '../src/graph/index.js'
+import { buildTaskGraph, DEFAULT_BUILD, foldedDeps, type TaskNode } from '../src/graph/index.js'
+import type { TaskConfig } from '../src/config.js'
+import { applyGraphStage } from '../src/orchestrator/graph-stage.js'
+import { buildPackageGraph } from '../src/workspace/package-graph.js'
 
 const TIMEOUT = 30_000
 // A graph stage breaks the graph `vx lock` builds too, so the lock refuses first.
@@ -1969,5 +1972,44 @@ describe('plugin-host, called directly', () => {
         ],
       })
     })
+  })
+
+  it('a node a graph hook rebuilds keeps what its edges past a cycle build stand in for', async () => {
+    // a ↔ b on the default build: a#test's edge to b#build stands in for
+    // a#build. A hook that copied the node dropped that, and
+    // `inputs.tasks: ['build']` folded a#build alone.
+    const build = DEFAULT_BUILD
+    const test: TaskConfig = {
+      dependsOn: ['build'],
+      exec: { command: 't' },
+      inputs: { files: [], tasks: ['build'] },
+    }
+    const dir = (n: string): string => path.join(root, 'packages', n)
+    const metas = [
+      { name: 'a', dir: dir('a'), configPath: null, deps: ['b'] },
+      { name: 'b', dir: dir('b'), configPath: null, deps: ['a'] },
+    ]
+    const nodes = buildTaskGraph({
+      projects: new Map([
+        ['a', { name: 'a', dir: dir('a'), config: { tasks: { build, test } } }],
+        ['b', { name: 'b', dir: dir('b'), config: { tasks: { build } } }],
+      ]),
+      packageGraph: buildPackageGraph(metas),
+      requested: [{ project: 'a', task: 'test' }],
+    })
+    const copy = testPlugin('org/copy', {
+      graph: ((g: Map<string, TaskNode>) => {
+        const n = g.get('a#test')!
+        g.set(n.id, structuredClone(n))
+      }) as never,
+    })
+    await applyGraphStage([copy], nodes, {
+      workspaceRoot: root,
+      cacheDir: path.join(root, '.vx', 'cache'),
+      projectMetas: metas,
+      warn: () => {},
+    })
+    const folded = foldedDeps(nodes.get('a#test')!, (id) => nodes.get(id)!)
+    expect(folded.map((f) => f.node.id)).toEqual(['a#build', 'b#build'])
   })
 })

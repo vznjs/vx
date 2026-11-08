@@ -448,6 +448,15 @@ interface WatchLoopArgs {
 
 const fenceDirs = (all: readonly ProjectMeta[]): string[] => all.map((p) => p.dir)
 
+/** The input globs that name a `node_modules` segment, per directory: what the tree watcher enters. */
+const modulesNamed = (inputs: ReadonlyMap<string, ReadonlyArray<readonly string[]>>): string =>
+  JSON.stringify(
+    [...inputs].map(([dir, tasks]) => [
+      dir,
+      tasks.flat().filter((g) => g.split('/').includes('node_modules')),
+    ]),
+  )
+
 interface Rediscovered {
   projects: readonly ProjectMeta[]
   cacheDir: string
@@ -774,6 +783,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   // went live in 8 ms (tests/watch-one-stream.test.ts). Polling keeps its
   // per-project walks, which skip what lies between projects.
   const oneStream = process.platform === 'darwin' && !args.poll
+  const treeArms = process.platform === 'linux' && !args.poll
   /** The projects the one stream hands events to, by their real directory. */
   let streamed: { proj: ProjectMeta; real: string }[] = []
   const realRoot = ((): string => {
@@ -1199,6 +1209,9 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     projectDirs = next.projects.map((p) => p.dir)
     workspaceInputs = next.workspaceInputs
     outputs = next.outputs
+    // Linux's tree watcher picks the `node_modules` it enters when it arms
+    // (watch-fs.ts): an input newly named there needs the trees armed again.
+    const modulesRenamed = treeArms && modulesNamed(next.inputs) !== modulesNamed(inputs)
     inputs = next.inputs
     uncached = next.uncached
     namedIgnored = next.namedIgnored
@@ -1216,7 +1229,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
       claimedRootFiles,
       fenced,
     )
-    if (next.workspaceWide !== workspaceWide) {
+    if (next.workspaceWide !== workspaceWide || modulesRenamed) {
       // A task started or stopped declaring `workspaceFiles`: the other
       // arm's shape. Until item 891 the choice was made once, at start, and
       // a root file a config newly named was never an event.

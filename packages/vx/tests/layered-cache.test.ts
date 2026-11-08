@@ -589,6 +589,41 @@ describe('LayeredCache', () => {
     expect(await local.has('h-nowrite')).toBe('local')
   })
 
+  it('save() under --force that keeps the local entry uploads this run’s outputs, not the kept ones', async () => {
+    // The kept entry went up to a remote that held none: an old build, or a
+    // corrupt one, which a remote that never replaces a key kept for good.
+    await saveSample(local, 'h-kept')
+    local.close()
+    local = new Cache(
+      cacheDir,
+      { read: false, write: true },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
+    const outFile = path.join(projectDir, 'dist', 'out.txt')
+    await writeFile(outFile, 'this run')
+    const forced = layeredOver(local, remote.layer, {
+      policy: { localRead: false, localWrite: true, remoteRead: false, remoteWrite: true },
+    })
+    await forced.save({
+      hash: 'h-kept',
+      projectDir,
+      outputFiles: [outFile],
+      entry: { taskId: 'pkg#build', command: 'echo produced', durationMs: 5, stdout: '' },
+    })
+    await forced.drainUploads()
+    expect(forced.kept('h-kept')).toBe(true)
+    await wipeLocal()
+    await rm(path.join(projectDir, 'dist'), { recursive: true })
+    const layered = makeLayered()
+    expect(await layered.get('h-kept', { taskId: 'pkg#build', command: 'x' })).not.toBeNull()
+    await layered.restoreOutputs('h-kept', projectDir)
+    expect(await Bun.file(outFile).text()).toBe('this run')
+  })
+
   it('save() with local writes off: a pack that throws is reported and skipped, never thrown', async () => {
     // With local writes off the bytes are packed NOW (there is no on-disk
     // artifact to read later); a pack that fails is a remote-side loss,

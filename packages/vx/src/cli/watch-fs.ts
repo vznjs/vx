@@ -102,20 +102,19 @@ export function pollWatcher(
         if (e.name === WATCH_PROBE) continue
         const childRel = rel === '' ? e.name : `${rel}/${e.name}`
         if (e.isDirectory()) {
-          if (recursive) {
-            if (!skipDir(childRel)) walk(path.join(abs, e.name), childRel)
-          } else {
-            // A non-recursive arm is there for a name coming or going (a
-            // project's parent hears the project made again), as the OS
-            // watcher reports it: by the directory's identity, not its
-            // times, which every write inside moves.
-            try {
-              const st = fs.statSync(path.join(abs, e.name))
-              current.set(childRel, `dir:${st.dev}:${st.ino}:${st.birthtimeMs}`)
-            } catch {
-              // raced with a delete; the next scan settles it
-            }
+          if (recursive && skipDir(childRel)) continue
+          // A directory is sampled for a name coming or going (a project's
+          // parent hears the project made again, one moved in names its
+          // files, whose times predate the arm), as the OS watcher reports
+          // it: by its identity, not its times, which every write inside
+          // moves.
+          try {
+            const st = fs.statSync(path.join(abs, e.name))
+            current.set(childRel, `dir:${st.dev}:${st.ino}:${st.birthtimeMs}`)
+          } catch {
+            continue // raced with a delete; the next scan settles it
           }
+          if (recursive) walk(path.join(abs, e.name), childRel)
           continue
         }
         // A link is an input as its target string (watch-judge.ts), so that
@@ -182,6 +181,8 @@ export function armWatcher(
   recursive: boolean,
   onEvent: (filename: string) => void,
   timeoutMs = WATCH_PROBE_TIMEOUT_MS,
+  /** The poller's `skipDir`, asked on Linux of a directory under `node_modules` only. */
+  skipDir: (rel: string) => boolean = (rel) => isIgnoredDir(rel.split('/')),
 ): ArmedWatcher {
   let markReady: (ok: boolean) => void = () => {}
   let arrived = false
@@ -209,7 +210,7 @@ export function armWatcher(
   }
   const watcher: WatchHandle =
     recursive && process.platform === 'linux'
-      ? treeWatcher(dir, listener)
+      ? treeWatcher(dir, listener, skipDir)
       : fs.watch(dir, { recursive, persistent: true }, (_event, filename) => listener(filename))
   const probe = path.join(dir, WATCH_PROBE)
   const ready = (async (): Promise<boolean> => {
@@ -265,8 +266,19 @@ export function armWatcher(
  * inotify watch follows the inode and would report the old name. The
  * arming walk throws at the watch limit, so the pool's fallback still
  * applies; a subdirectory that vanished mid-walk is simply not watched.
+ * A `node_modules` is entered where `skipDir` keeps it: an input names a
+ * path there, or git tracks a file there (watch-filter.ts).
  */
-function treeWatcher(root: string, listener: (filename: string) => void): WatchHandle {
+function treeWatcher(
+  root: string,
+  listener: (filename: string) => void,
+  skipDir: (rel: string) => boolean,
+): WatchHandle {
+  const skips = (rel: string): boolean => {
+    const segments = rel.split('/')
+    if (isIgnoredDir(segments) && segments.at(-1) !== 'node_modules') return true
+    return segments.includes('node_modules') && skipDir(rel)
+  }
   const watchers = new Map<string, fs.FSWatcher>()
   // Which directory each watch holds: inotify follows the inode, so a name
   // removed and made again before its event is handled stats as a
@@ -298,7 +310,7 @@ function treeWatcher(root: string, listener: (filename: string) => void): WatchH
         if (name == null || typeof name !== 'string' || name === '' || name === '.') return
         const child = rel === '' ? name : `${rel}/${name}`
         listener(child)
-        if (isIgnoredDir(child.split('/'))) return
+        if (skips(child)) return
         let st: fs.Stats
         try {
           st = fs.statSync(path.join(abs, name))
@@ -345,7 +357,7 @@ function treeWatcher(root: string, listener: (filename: string) => void): WatchH
     for (const e of entries) {
       const child = rel === '' ? e.name : `${rel}/${e.name}`
       if (e.isDirectory()) {
-        if (!isIgnoredDir(child.split('/'))) watchDir(child, report)
+        if (!skips(child)) watchDir(child, report)
       } else if (report) listener(child)
     }
   }
@@ -433,7 +445,9 @@ export class WatcherPool {
     }
     let armed: ArmedWatcher
     try {
-      armed = armWatcher(dir, recursive, onEvent)
+      armed = armWatcher(dir, recursive, onEvent, WATCH_PROBE_TIMEOUT_MS, (rel) =>
+        this.skip(dir, rel),
+      )
     } catch (err) {
       // The OS's watch limit, not the directory: the loop said "watching"
       // and never fired. The poller needs no watch slot.

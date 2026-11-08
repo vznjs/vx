@@ -325,6 +325,18 @@ function zeroSegments(glob: string): string | null {
   return head === '' || isLiteralPattern(head.replace(/\\./g, '_')) ? null : head
 }
 
+/**
+ * A glob with its `.` and `..` segments collapsed, as Turbo cleans the path
+ * before it walks (turborepo-globwalk's `collapse_path`): `src/../../shared/**`
+ * is `../shared/**`, `./src/**` is `src/**`. A `$TURBO_ROOT$/` prefix is
+ * the root, not a segment.
+ */
+function collapseDots(glob: string): string {
+  if (glob.startsWith('$TURBO_ROOT$/'))
+    return '$TURBO_ROOT$/' + collapseDots(glob.slice('$TURBO_ROOT$/'.length))
+  return path.posix.normalize(glob)
+}
+
 /** A glob, `!` or not, and the X its `X/**` also matches in Turbo (`zeroSegments`). */
 function withZeroSegments(glob: string): string[] {
   const neg = glob.startsWith('!') ? '!' : ''
@@ -1250,6 +1262,8 @@ export async function mapTurboWorkspace(
   // whose own edges lack `^name` (opencode's `build: { dependsOn: [] }`)
   // is key-only too: Turbo's `^build` stops at it, and core's walked past
   // it to the builds below, running and keying ones Turbo never waits on.
+  // `cache: false` does not stop it: a key-only node stores nothing, and
+  // Turbo's no-op hashes the package's files cached or not.
   const keyOnly = new Map<string, Set<string>>()
   for (const meta of metas) {
     const scripts = packageScripts(meta)
@@ -1261,7 +1275,7 @@ export async function mapTurboWorkspace(
       if (!(caretSelf.has(name) || stops) || !withScript.has(name) || transit.has(name)) continue
       if (scripts[name] !== undefined || commandOverride(def) !== undefined) continue
       if (sidecarGroups.has(`${meta.name}#${name}`)) continue
-      if (def?.cache === false || def?.persistent === true) continue
+      if (def?.persistent === true) continue
       emitted.get(meta.name)!.add(name)
       runnable.get(meta.name)!.add(name)
       let set = keyOnly.get(meta.name)
@@ -2174,12 +2188,13 @@ function buildTask(
       // build (item 1031). A positive glob with no safe
       // form widens to every package file; a negation with none is dropped
       // (it would exclude fewer files, never more).
-      const wax = minimatchToVx(neg ? i.slice(1) : i, neg)
-      if (wax === null) {
+      const vx = minimatchToVx(neg ? i.slice(1) : i, neg)
+      if (vx === null) {
         todos.push(`input ${JSON.stringify(i)}: glob syntax vx cannot take — map manually`)
         if (!neg) files.push('**/*')
         continue
       }
+      const wax = collapseDots(vx)
       const translated = (neg ? '!' : '') + wax
       const body = wax
       const up = climbed(translated)
@@ -2300,7 +2315,7 @@ function buildTask(
     // `.next/**` minus `!.next/cache/**` saved the cache and cleaned it
     // before every run while vx outputs could not exclude.
     const neg = mapped.startsWith('!') ? '!' : ''
-    const o = mapped.slice(neg.length)
+    const o = collapseDots(mapped.slice(neg.length))
     const signed = (g: string) => {
       const head = zeroSegments(g)
       const out = head === null ? [neg + g] : [neg + g, neg + head]

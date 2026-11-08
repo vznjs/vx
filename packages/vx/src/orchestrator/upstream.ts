@@ -1,5 +1,6 @@
 import {
   selectFoldedDeps,
+  type StandIns,
   type FoldCandidate,
   type TaskNode,
   type TaskOutcome,
@@ -72,10 +73,11 @@ export function filterUpstreamHashes(
   filter: readonly string[] | undefined,
   selfProjectName: string,
   selfTaskId: string,
+  standIns?: StandIns,
 ): Array<[upstreamTaskId: string, hash: string]> {
   const candidates: FoldCandidate[] = []
   for (const u of upstream) if (u.hash) candidates.push({ node: u.node, unit: u.hash })
-  return selectFoldedDeps(candidates, filter, selfProjectName, selfTaskId).map((c) => [
+  return selectFoldedDeps(candidates, filter, selfProjectName, selfTaskId, standIns).map((c) => [
     c.node.id,
     c.unit,
   ])

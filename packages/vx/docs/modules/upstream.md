@@ -32,6 +32,7 @@ export function filterUpstreamHashes(
   filter: readonly string[] | undefined,
   selfProjectName: string,
   selfTaskId: string,
+  standIns?: StandIns, // the task's standInsOf; see selectFoldedDeps
 ): Array<[upstreamTaskId: string, hash: string]>
 
 export function expandGroupUpstream(upstream: readonly TaskOutcome[]): TaskOutcome[]

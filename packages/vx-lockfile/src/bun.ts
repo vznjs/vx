@@ -12,7 +12,7 @@
 
 import { reachDigests, type LockfileImporter } from '@vzn/vx'
 import { reachedImporters, withTransitive } from './graph.js'
-import { depsOf, peerOnly, record, stable, type Json } from './json.js'
+import { depsOf, peerOnly, record, sectionsOf, stable, type Json } from './json.js'
 import { joinPosix, resolvePosix } from './posix.js'
 
 // The graph the digest built from this parse, for `importerLinks`: `vx
@@ -23,6 +23,8 @@ export interface Lockfile {
   readonly version: string
   /** root-relative dir (`.` for the root) → dependency name → specifier */
   readonly workspaces: ReadonlyMap<string, ReadonlyMap<string, string>>
+  /** root-relative dir → which field each dependency sits in (`sectionsOf`) */
+  readonly workspaceSections: ReadonlyMap<string, string>
   /** workspace package name → its dir */
   readonly workspaceDirs: ReadonlyMap<string, string>
   /** root-relative dir → its installed dependencies (`dependencies` win, as Bun 1.4 installs them) */
@@ -72,6 +74,7 @@ export function parseLockfile(text: string): Lockfile {
     throw new Error('bun.lock: not a Bun text lockfile (no lockfileVersion)')
   }
   const workspaces = new Map<string, ReadonlyMap<string, string>>()
+  const workspaceSections = new Map<string, string>()
   const workspaceDirs = new Map<string, string>()
   const workspaceInstalled = new Map<string, ReadonlyMap<string, string>>()
   const workspacePeers = new Map<string, ReadonlySet<string>>()
@@ -79,6 +82,7 @@ export function parseLockfile(text: string): Lockfile {
     const m = record(manifest) ?? {}
     const key = dir === '' ? '.' : dir
     workspaces.set(key, depsOf(m))
+    workspaceSections.set(key, sectionsOf(m))
     workspaceInstalled.set(
       key,
       depsOf(m, ['devDependencies', 'optionalDependencies', 'dependencies']),
@@ -113,6 +117,7 @@ export function parseLockfile(text: string): Lockfile {
   return {
     version: String(d['lockfileVersion']),
     workspaces,
+    workspaceSections,
     workspaceDirs,
     workspaceInstalled,
     workspacePeers,
@@ -383,7 +388,10 @@ function buildGraph(
   const importers = new Map<string, number>()
   for (const [dir, deps] of lock.workspaces) {
     // Its dir, as pnpm's importers fold theirs (item 1073).
-    const own = node(`workspace\0${dir}`, `workspace\0${dir}`)
+    const own = node(
+      `workspace\0${dir}`,
+      `workspace\0${dir}\nsections\0${lock.workspaceSections.get(dir)}`,
+    )
     importers.set(dir, own)
     const from = importerFrom(lock, dir)
     for (const [name, spec] of deps) {

@@ -245,8 +245,8 @@ export class ChangeJudge {
     const prev = this.lastState.get(abs)
     this.lastState.set(abs, state)
     if (prev !== undefined) return prev === state
-    // A new empty directory holds nothing a key reads, and the poller,
-    // sampling files, never reported one: a file made in it is the edit.
+    // A new empty directory holds nothing a key reads: a file made in it
+    // is the edit.
     // One a watch waits on (a project directory made again) is a change:
     // its cycle re-arms the project.
     if (state === EMPTY_DIR && isDirectory(abs) && this.ctx.awaited?.(abs) !== true) return true
@@ -320,12 +320,15 @@ export class ChangeJudge {
     // task rewrites every run, the loop the filter exists for) stays out,
     // as does one in a project nested under it, which it does not own.
     // So is one a task's inputs name outright (`.env.local`, `dist/**`).
+    // A write `sawEvent` found no command of the cycle could have made is
+    // the user's though it lies in the cycle: taken for the run's own, an
+    // edit to `node_modules/.gen/**` after its task ran never re-ran.
     const editForUncached = (p: string): boolean =>
       ([...this.ctx.uncached()].some(
         (dir) => p.startsWith(dir + path.sep) && this.ctx.fenced?.(dir, p) !== true,
       ) ||
         (this.ctx.namedIgnored?.() ?? []).some((n) => p === n || p.startsWith(n + path.sep))) &&
-      !this.writtenDuringLastCycle(p)
+      (this.lastState.get(p) === UNSEEN || !this.writtenDuringLastCycle(p))
     // A path still there names the cycle before a gone one: an editor or
     // `sed -i` saving through a temporary file fires that file first, and
     // the cycle was announced by a name already renamed away.

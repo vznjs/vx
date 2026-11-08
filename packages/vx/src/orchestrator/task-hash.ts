@@ -23,7 +23,13 @@ import {
   WORKSPACE_OUTPUT_PREFIX,
 } from '../cache/index.js'
 import type { InputFile, TaskInputs } from '../exec/index.js'
-import { isGroupTask, KeyFailed, type TaskNode, type TaskOutcome } from '../graph/index.js'
+import {
+  isGroupTask,
+  KeyFailed,
+  standInsOf,
+  type TaskNode,
+  type TaskOutcome,
+} from '../graph/index.js'
 import { GROUP_VIA } from '../history/index.js'
 import {
   isUserError,
@@ -34,6 +40,7 @@ import {
   UserError,
   xxh3hex,
 } from '../util/index.js'
+import { outputsLeft } from './run-report.js'
 import { expandGroupUpstream, filterUpstreamHashes } from './upstream.js'
 
 /**
@@ -213,6 +220,8 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
   inputs: TaskInputs
   facts: InputFact[]
   describedAt: number
+  /** Lists `inputs.upstream` with a non-cacheable upstream's outputs on disk; before any read of it. */
+  readUpstream: () => Promise<void>
   /** An input file the key did not fold that exists now (see `addedInput`). */
   added: () => string | undefined
 }> {
@@ -265,22 +274,44 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
     a.hash < b.hash ? -1 : a.hash > b.hash ? 1 : 0,
   )
   // Output lists come from the local index — one SELECT for every upstream
-  // entry. An upstream with no entry (non-cacheable) contributes an empty list.
+  // entry. A non-cacheable upstream keeps no entry: its list is its
+  // declared outputs as they are on disk now (`readUpstream`), as it ran
+  // here and a local dependant reads them here. Left empty, a remote
+  // executor shipped the dependant without them and its result was saved
+  // under the key.
   // Read on first access: the local floor never reads it, and its every
   // miss paid a query over the whole closure (execute-task reads it up
   // front for a plugin executor).
-  const listUpstream = (): TaskInputs['upstream'] => {
+  const listUpstream = (onDisk?: ReadonlyMap<string, string[]>): TaskInputs['upstream'] => {
     const rows = args.cache.loadOutputFilesBatch(graft.map((g) => g.hash))
     return graft.map((g) => {
-      const outputs = (rows.get(g.hash) ?? []).map((r) =>
-        r.path.startsWith(WORKSPACE_OUTPUT_PREFIX)
-          ? r.path.slice(WORKSPACE_OUTPUT_PREFIX.length)
-          : relPosix(input.workspaceRoot, path.join(g.projectDir, r.path)),
-      )
+      const outputs =
+        onDisk?.get(g.taskId) ??
+        (rows.get(g.hash) ?? []).map((r) =>
+          r.path.startsWith(WORKSPACE_OUTPUT_PREFIX)
+            ? r.path.slice(WORKSPACE_OUTPUT_PREFIX.length)
+            : relPosix(input.workspaceRoot, path.join(g.projectDir, r.path)),
+        )
       return { taskId: g.taskId, hash: g.hash, outputs }
     })
   }
   let upstream: TaskInputs['upstream'] | undefined
+  const readUpstream = async (): Promise<void> => {
+    if (upstream !== undefined) return
+    const uncached = expandGroupUpstream(args.upstream).filter(
+      (u) => u.hash !== undefined && u.node.config.cache !== true,
+    )
+    // No nested project is cut out: each file found is on this disk, where
+    // a local run of the dependant reads it too.
+    const onDisk = new Map(
+      await Promise.all(
+        uncached.map(
+          async (u) => [u.node.id, await outputsLeft(u.node, input.workspaceRoot, [])] as const,
+        ),
+      ),
+    )
+    upstream ??= listUpstream(onDisk)
+  }
   // A listing from the run's enumeration is as old as it; one listed with
   // no run cache was listed during this describe.
   const listedAt = args.gitFilesCache === undefined ? hashedAt : indexedAt
@@ -288,6 +319,7 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
     hash,
     facts,
     describedAt: hashedAt,
+    readUpstream,
     added: () => addedInput(listings, new Set(input.inputFiles), listedAt),
     inputs: {
       files,
@@ -443,6 +475,7 @@ async function resolveKeyInput(
     cfg.inputs?.tasks,
     args.node.projectName,
     args.node.id,
+    standInsOf(args.node),
   )
   const upstreamHashes = upstreamPairs.map(([, hash]) => hash)
   // hash → upstream task id, for capture-row naming only (not folded).

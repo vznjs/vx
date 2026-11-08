@@ -27,7 +27,7 @@ export function memoGraph(
   root, the rules, whether edges have a source, the requested tasks, each
   discovered project's name, directory, config path and direct deps, and
   the loaded project names. The row holds each node's project, task,
-  `requested`, deps and addition marks; a row naming a task no loaded
+  `requested`, deps, addition marks and stand-ins (`standInsOf`); a row naming a task no loaded
   config declares reads as absent. `token` is undefined, and the graph is
   built as before, with no memo or a scoped load (`undeclaredDeps`).
 
@@ -37,7 +37,7 @@ memo, no staged configs, a lock read, and no `project` plugin. It sets
 plugin or `--exclude-dependencies` edits the nodes.
 
 Tests: `tests/graph-memo.test.ts` (a read-back graph is the built one,
-addition marks included; a hit reads no config; another lock, edge or
+addition marks and stand-ins (`standInsOf`) included; a hit reads no config; another lock, edge or
 project builds afresh; a scoped load is not remembered) and
 `tests/graph-memo-run.test.ts` (a planted wrong graph is read when nothing
 moved, and a task config edit, an env value a config reads, a workspace

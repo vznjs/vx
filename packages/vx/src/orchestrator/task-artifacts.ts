@@ -69,7 +69,10 @@ export interface TaskArtifacts {
   restore(key: string, task: ArtifactTask): Promise<CapturedChunk[] | null>
   /**
    * Entry `key`'s output alone, laying no file; null when no cache holds
-   * it. An `exec.remote: 'only'` task's files stay off this disk.
+   * it. An `exec.remote: 'only'` task's files stay off this disk. An entry
+   * read off a remote is kept in the local store, so a later `restore`
+   * downloads nothing; naming no task, its row reads `<key>#unknown` with
+   * no command, and its file names are not checked against any outputs.
    */
   output(key: string): Promise<CapturedChunk[] | null>
   /**
@@ -129,7 +132,17 @@ export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArt
     },
 
     async restore(key, task) {
-      const entry = await (cache.getSaved ? cache.getSaved(key) : cache.get(key))
+      // The task names the row a remote read writes, and the files its
+      // artifact may carry (`CacheGetContext.outputs`). Its command is
+      // masked as a save's is, read only by that write.
+      const ctx = {
+        taskId: task.id,
+        get command() {
+          return secretMask([process.env])?.mask(task.command) ?? task.command
+        },
+        outputs: task.outputs,
+      }
+      const entry = await (cache.getSaved ? cache.getSaved(key, ctx) : cache.get(key, ctx))
       if (entry === null) return null
       await cache.restoreOutputs(key, task.projectDir, workspaceRoot, task.outputs)
       return decodeOutputLog(entry.stdout)

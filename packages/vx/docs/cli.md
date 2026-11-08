@@ -608,7 +608,7 @@ span lines.
 | `--schedule <rule>`                        | value          | `run.schedule`, else `most-work`                               | Which ready task starts first when more are ready than workers: `most-work`, `critical-path`, `direct-dependents`, `ready-order` (`docs/schema.md` § `run.schedule`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `--branch <name>`                          | value          | `VX_RUN_BRANCH`, else git's branch, then the CI provider's     | The branch the run records in its history and forecasts from. No config key: a committed branch would mislabel every other branch's runs. The space form rejects a value starting with `-`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `--no-cache`                               | boolean        | off                                                            | Disable caching entirely (no reads, no writes); output globs are NOT cleaned.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `--force`                                  | boolean        | off                                                            | Re-execute everything (skip cache reads); writes stay on. A key already stored is kept, and a remote that holds it is not sent it again. Output globs are cleaned (so the saved snapshot is clean).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `--force`                                  | boolean        | off                                                            | Re-execute everything (skip cache reads); writes stay on. A key already stored is kept, a remote that holds it is not sent it again, and one that holds none is sent this run's outputs. Output globs are cleaned (so the saved snapshot is clean).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `--cache-policy <spec>` (`--cache-policy`) | value          | `VX_CACHE_POLICY` / `cache.policy`                             | Per-layer read/write control. See below. An EMPTY spec (`--cache-policy=`) is a parse error — it applied nothing and left every axis on; pass `--no-cache` to disable them all.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `--cache-dir <path>`                       | value          | `VX_CACHE_DIR` / `cache.dir` / `~/.vx/<id>/cache`              | Cache directory override, resolved relative to cwd (absolute paths used as-is). Beats `VX_CACHE_DIR`, the workspace's `cache.dir` and the default; like them, the directory then holds the whole cache, shared through no store, for every cache the run opens, so the workspace's default dir is not created beside it. A per-run knob — never folded into a cache key. `--cache-dir=<path>` form too; the space form rejects a value starting with `-`, and both refuse one of only whitespace. A directory this user cannot write into serves its hits and saves nothing, saying so once; an empty one fails the run before any task with `cache directory <path> is not writable (EACCES: …)`.                                        |
 | `--retries <n>`                            | value          | `run.retries`, else `0`                                        | Re-run a failed task up to `n` more times; never a persistent one. A task's own `exec.retries` wins (even an explicit `0`). Never affects cache keys. `--retries=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
@@ -743,7 +743,9 @@ So `--no-cache` always wins over `--force`. The common cases:
   each remote that can batch (`hasMany`) is asked once, in the
   background, which keys it holds; one that cannot is asked `has` per
   key before its upload. Held keys are not uploaded again (a probe that
-  fails uploads, as before). Output globs ARE cleaned before each task,
+  fails uploads, as before); a remote that holds none is sent this run's
+  outputs, never the kept entry, which may be the bad bytes `--force` was
+  run to replace. Output globs ARE cleaned before each task,
   so the disk holds this run's outputs. The next plain run then restores
   a kept entry once (`↓`, not `✓`): the entry holds the earlier run's
   bytes, and nothing proves this run wrote the same ones.
@@ -1538,8 +1540,9 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    a task's own outputs are no input of it, so a `turbo()` task reading
    `**/*` does not re-run on its own `dist/`; only the tasks the run
    reaches through `dependsOn` are asked, so an unwatched `lint` reading
-   `**/*` beside `vx watch build` asks nothing) — and neither do `node_modules`,
-   `.git` or the cache directory. A write the task did NOT declare (a
+   `**/*` beside `vx watch build` asks nothing) — and neither do `node_modules`
+   (save an input named there or a file git tracks there, see Path
+   filtering), `.git` or the cache directory. A write the task did NOT declare (a
    task with no `cache: true` declares nothing) is caught by state,
    judged once the bytes have settled: a file whose bytes and mode did
    not change since the loop last saw it is not an edit (a `chmod` is one,
@@ -1574,9 +1577,12 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    starts a cycle, since no cache key can see it (a user's edit to one
    still does in a project with a task that has a command and no cache,
    which reads what it likes, item 947, outside any project nested
-   in it; a write the last cycle made is not, read off the later of
+   in it, and to one a task names outright; a write the last cycle made is not, read off the later of
    its mtime and ctime, so an output a cache hit restores with its
-   saved mtime is the run's, `watch-restored-output.test.ts`) — or declared an
+   saved mtime is the run's, `watch-restored-output.test.ts`, unless
+   no command of the cycle may have made it: an edit to
+   `node_modules/.gen/**` after its task ran, while another task held
+   the run, is a cycle, `watch-node-modules-input.test.ts`) — or declared an
    output, or the loop re-runs on it; after three such cycles in a row
    watch names the path and the remedy, once, and keeps going. A dev
    server the last cycle left running counts as that cycle for as long
@@ -1637,7 +1643,13 @@ watch events within 2000 ms; polling every 250 ms instead`.
 
 Always ignored (no re-trigger):
 
-- `node_modules/`, `.git/`, `.vx/cache/` anywhere in the path.
+- `.git/` and `.vx/cache/` anywhere in the path.
+- `node_modules/` anywhere in the path, save what a task the watch
+  reaches names there through that segment (`node_modules/.prisma/client/**`)
+  and a file git tracks there (a committed fixture under
+  `fixtures/node_modules/`): those are inputs, so both watchers enter
+  only those directories and an edit there is a cycle. A broad glob
+  (`**`, `fixtures/**`) names no `node_modules`.
 - A path git ignores (`git check-ignore`, asked once per debounce
   window, never per event), unless a task's inputs name it outright
   (`.env.local`, `dist/**`) by the rule the key reads them (schema.md §
@@ -1655,9 +1667,9 @@ Always ignored (no re-trigger):
   cycle, which writes again — a loop that never settles. A `cache.dir`
   edit mid-watch moves the filter with it, from the cycle that re-reads
   the config.
-- A new empty directory (`mkdir src/new`): it holds nothing a key reads,
-  and the poller, which samples files, never saw one. A file made in it
-  is the change. A project directory made again, which the watch waits
+- A new empty directory (`mkdir src/new`): it holds nothing a key reads.
+  A file made in it is the change, and so is a directory moved in with
+  files (`mv stage src/moved`), whatever their times. A project directory made again, which the watch waits
   on, still is one.
 
 Everything else triggers a cycle. We deliberately don't filter events
@@ -1687,7 +1699,9 @@ unless a task's inputs can lie in one (`src/**/*.ts` beside an output
 `src/**/*.js`) or git tracks a file there.
 It samples each file's later clock of mtime and ctime, so a replacement
 that carries the old file's mtime (`cp -p`, `rsync -a`, a `mv`) is an
-edit to it as it is to the OS watcher.
+edit to it as it is to the OS watcher. It samples each directory by
+its identity, as the OS watcher reports it, so one moved in is a
+change though its files keep times from before the arm.
 
 ### Claimed root file changes
 
@@ -2086,7 +2100,11 @@ its config's `name`, else by a plugin's `discover` stage (vx-lockfile
 gives `package.json`'s `name`), else by its root-relative path (`//` for
 the root); two projects of one name are refused naming both
 directories. The plugin `discover` stage runs here as in a run, and may
-add directories (X-143). Before writing, it
+add directories (X-143); one holding a config git ignores is refused, as
+is `--check`, naming the plugin and the file: "plugin 'vx-gen' adds project
+gen, but git ignores gen/vx.config.ts, so `vx lock` cannot read it —
+unignore it or delete it" (a run naming its task says the same, never
+"run `vx lock`"). Before writing, it
 builds the graph of every task the workspace declares, `graph` stage
 included, and checks the graph rules (`run.rules`), which no run
 checks, `dependencies` (which projects a project may depend on,

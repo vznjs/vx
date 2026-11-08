@@ -28,7 +28,8 @@ finds them (git's tracked and unignored files; a config at or under a
 nested `.vx/workspace.*`, ignored or not, is that workspace's) and records each by
 directory; a run takes its projects from the lock, so a config added since
 runs once `vx lock` records it. A `discover` plugin may add directories
-with no config (`@vzn/vx-lockfile` adds the package manager's members).
+with no config (`@vzn/vx-lockfile` adds the package manager's members);
+one whose config git ignores is refused, naming the plugin and the file.
 
 A project's name is its config's `name`, else the name a `discover` plugin
 gives (`@vzn/vx-lockfile` gives `package.json#name`), else its
@@ -1332,6 +1333,12 @@ matches a direct dependency (`dependsOn: ['build', 'build.a']`): the
 key would not move with the member it leaves out (`build.b`). Name the
 group, or depend on the member directly.
 
+A default `build` on a package cycle folds none of the builds on its
+cycle, so an edge to one also takes edges past it to theirs (`a ↔ b`:
+`dependsOn: ['build']` in a reaches `a#build` and `b#build`). An entry
+that selects `a#build` (`'build'`, `'a#build'`) selects the edges past
+it too: selecting `a#build` alone left the key unmoved by an edit to b.
+
 Examples:
 
 ```ts
@@ -1752,7 +1759,8 @@ directory is then readable AND writable in full: with
 can be read, and written. Such a read or write succeeds, so there is no
 denial; vx reports it instead, as a violation: an open, hard link or move
 of anything that was in that directory when the task started and that no
-grant covers, the directory's listing included, and a write, removal or
+grant covers, a `readlink` of a link there (git hashes a link by its
+target string), the directory's listing included, and a write, removal or
 move of it, or a new file or directory the task leaves there. The
 declared file and what the task made and then moved or removed stay its
 own. A `stat` of a sibling (its size, times or presence) is not seen.
@@ -2843,17 +2851,18 @@ is no object (Turbo's `cache: false`) and a `persistent` that is none
 
 Project-discovery errors (`src/workspace/workspace.ts`, `src/orchestrator/projects.ts`):
 
-| Symptom                                                                                         | Cause                                                                      |
-| ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `two projects are named "<name>": <dir> and <dir> — give one another \`name\` in its vx.config` | Two directories got one name: a config's `name`, a plugin's, or the path.  |
-| `<dir>: a project is named by its path unless named, and this one holds "#" …`                  | A path no task spec can address: set `name` in its config.                 |
-| `<dir>: the directory's name is not valid UTF-8, which no project path may hold — rename it`    | A project directory's name has bytes UTF-8 cannot decode, shown as `\xNN`. |
-| `<dir>: "//" names the workspace root — set another \`name\``                                   | A config away from the root says `name: '//'`.                             |
-| `.vx/projects.lock.json locks <dir>, but its <file> is gone — run \`vx lock\``                  | A locked project's config was deleted or renamed (X-144).                  |
-| `.vx/projects.lock.json locks <dir>, but its <file> is not readable by this user (<code>)`      | This user may not search the project's directory (D-132).                  |
-| `.vx/projects.lock.json has unsupported version <n> (this vx expects 5) — re-run \`vx lock\``   | A lock an earlier vx wrote.                                                |
-| `.vx/projects.lock.json: no <pool> <n> in its pool — re-run \`vx lock\``                        | A hand-edited lock names a pooled value it does not hold.                  |
-| `git ls-files failed (exit <n>): <why>`                                                         | `vx lock` could not list the configs (a torn index).                       |
+| Symptom                                                                                                              | Cause                                                                                                       |
+| -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `two projects are named "<name>": <dir> and <dir> — give one another \`name\` in its vx.config`                      | Two directories got one name: a config's `name`, a plugin's, or the path.                                   |
+| `<dir>: a project is named by its path unless named, and this one holds "#" …`                                       | A path no task spec can address: set `name` in its config.                                                  |
+| `<dir>: the directory's name is not valid UTF-8, which no project path may hold — rename it`                         | A project directory's name has bytes UTF-8 cannot decode, shown as `\xNN`.                                  |
+| `<dir>: "//" names the workspace root — set another \`name\``                                                        | A config away from the root says `name: '//'`.                                                              |
+| `.vx/projects.lock.json locks <dir>, but its <file> is gone — run \`vx lock\``                                       | A locked project's config was deleted or renamed (X-144).                                                   |
+| `.vx/projects.lock.json locks <dir>, but its <file> is not readable by this user (<code>)`                           | This user may not search the project's directory (D-132).                                                   |
+| `.vx/projects.lock.json has unsupported version <n> (this vx expects 5) — re-run \`vx lock\``                        | A lock an earlier vx wrote.                                                                                 |
+| `.vx/projects.lock.json: no <pool> <n> in its pool — re-run \`vx lock\``                                             | A hand-edited lock names a pooled value it does not hold.                                                   |
+| `plugin '<name>' adds project <p>, but git ignores <file>, so \`vx lock\` cannot read it — unignore it or delete it` | A `discover` plugin's directory holds a config git ignores: `vx lock`, `--check` and a run naming its task. |
+| `git ls-files failed (exit <n>): <why>`                                                                              | `vx lock` could not list the configs (a torn index).                                                        |
 
 Core reads no `package.json` or `pnpm-workspace.yaml`; the errors reading them are `@vzn/vx-migrate`'s (its README, "Errors reading the members").
 

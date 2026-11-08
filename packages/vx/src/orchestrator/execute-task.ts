@@ -55,6 +55,7 @@ import {
   OutputsFailed,
   RestoreDemoted,
   RestoreFailed,
+  standInsOf,
   type TaskNode,
   type TaskOutcome,
 } from '../graph/index.js'
@@ -604,7 +605,13 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // nothing to read under it, and nothing a later run could find.
   const present = upstream.filter((u): u is TaskOutcome => u !== undefined)
   const folded = new Set(
-    filterUpstreamHashes(present, cfg.inputs?.tasks, node.projectName, node.id).map(([id]) => id),
+    filterUpstreamHashes(
+      present,
+      cfg.inputs?.tasks,
+      node.projectName,
+      node.id,
+      standInsOf(node),
+    ).map(([id]) => id),
   )
   const foldedTasks = expandGroupUpstream(present.filter((u) => folded.has(u.node.id)))
   const keylessBy = isKeyless(cfg)
@@ -984,7 +991,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const inputChanges = described !== undefined ? args.explainMiss?.(node.id, captured) : undefined
   // A plugin may keep the request past the run (the cache closed): it gets
   // the upstream outputs read now. Only the local floor leaves them unread.
-  if (inputs !== undefined && !isLocalExecutor(args.executor)) void inputs.upstream
+  if (inputs !== undefined && !isLocalExecutor(args.executor)) await described!.readUpstream()
   // A declared input set that resolves to NOTHING is the quiet stale hit:
   // the key stops moving with this project's source and every later run
   // is a hit. Almost always a glob written against the wrong directory

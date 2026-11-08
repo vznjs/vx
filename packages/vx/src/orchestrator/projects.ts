@@ -4,6 +4,7 @@
 // plugin `project` stage, which can give tasks to a package that never
 // wrote a `vx.config.ts`.
 
+import { existsSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { ProjectConfig } from '../config.js'
@@ -14,6 +15,7 @@ import {
   lockedProjects,
   NO_LOCK,
   pathName,
+  PROJECT_CONFIG_FILENAMES,
   readLockfile,
   validateProjectConfig,
   type Lockfile,
@@ -24,7 +26,7 @@ import {
 import type { WorkspaceConfig } from '../config.js'
 import { atPath, SETTINGS } from '../settings.js'
 import { lazyGitEnumeration, type LazyGitEnumeration, parseCachePolicy } from '../cache/index.js'
-import { isUserError, relPosix, UserError } from '../util/index.js'
+import { checkIgnoreSync, isUserError, relPosix, UserError } from '../util/index.js'
 import {
   cacheScopeError,
   isCacheScope,
@@ -169,6 +171,31 @@ export function keepDiscoveryGraph(projects: readonly ProjectMeta[], graph: Pack
   discoveredGraph.set(projects, graph)
 }
 
+/** The plugin whose `discover` entry made each project the lock does not hold. */
+const addedBy = new WeakMap<object, string>()
+
+/**
+ * Why a project a `discover` plugin added holds no config while its
+ * directory has one git ignores, or undefined: `vx lock` reads only the
+ * configs git lists, so "run `vx lock`" could never fix it. `config` is
+ * the file on disk, looked for when not given. One git spawn, asked only
+ * of a directory holding a config.
+ */
+export function ignoredConfigRefusal(
+  root: string,
+  meta: { readonly name: string; readonly dir: string },
+  config?: string,
+): string | undefined {
+  const by = addedBy.get(meta)
+  if (by === undefined) return undefined
+  const file =
+    config ?? PROJECT_CONFIG_FILENAMES.map((n) => path.join(meta.dir, n)).find((f) => existsSync(f))
+  if (file === undefined) return undefined
+  const rel = relPosix(root, file)
+  if (checkIgnoreSync(root, [rel])?.has(rel) !== true) return undefined
+  return `plugin '${by}' adds project ${meta.name}, but git ignores ${rel}, so \`vx lock\` cannot read it — unignore it or delete it`
+}
+
 /**
  * The workspace's projects: the directories the lock records (a run never
  * walks for configs), then the plugin `discover` stage, which may add
@@ -202,7 +229,10 @@ export async function discoverProjects(
     { workspaceRoot, cacheDir, warn, worktreeChanges },
     async (entry, plugin) => {
       const found = await discoveredProject(workspaceRoot, byDir, entry, plugin.name)
-      if (found.added) byDir.set(found.meta.dir, found.meta)
+      if (found.added) {
+        byDir.set(found.meta.dir, found.meta)
+        addedBy.set(found.meta, plugin.name)
+      }
       return found
     },
   )

@@ -17,6 +17,7 @@ export type { AffectedReason } from './affected-tasks.js'
 export {
   discoverProjects,
   gitOfDiscovery,
+  ignoredConfigRefusal,
   keepDiscoveryGraph,
   loadProjects,
   loadResolvedProjects,

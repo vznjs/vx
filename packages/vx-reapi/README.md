@@ -460,7 +460,10 @@ A cache-only server (bazel-remote advertises `exec_enabled: false`) makes the
 plugin **decline the executor with a warning** rather than submit work that
 will never be answered. Only cacheable tasks are eligible — a task with no
 `cache: true` has no described inputs, so a worker would run it against an
-empty input root. A cacheable task's root holds its declared input files.
+empty input root. A cacheable task's root holds its declared input files
+and its upstreams' declared outputs. An upstream with no `cache` runs on
+this machine and leaves no record, so its outputs ship from this disk; a
+file it writes outside its declared `outputs` never reaches the worker.
 
 Verified end-to-end against a live NativeLink scheduler + worker: input tree
 uploaded, QUEUED → EXECUTING → COMPLETED streamed, stdout returned inline,
@@ -512,6 +515,10 @@ worker (`tests/vx-run-e2e.test.ts`):
   miss can leave the artifact store and the execution record holding
   results of different executions under one pure-input key, and a worker
   fed the record would see bytes this machine's own tasks do not.
+- An upstream that writes inside `install`'s directory (a `prisma generate`
+  into `node_modules/.prisma`) is merged into it: the worker sees both. A
+  DECLARED input file under a grafted directory is replaced by the graft,
+  with a warning.
 - With **no remote executor declared**, `install` is a local no-op and
   dependents use whatever the machine has ambient — a laptop run behaves
   exactly as it did before the field existed.

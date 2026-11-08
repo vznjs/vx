@@ -253,7 +253,8 @@ for it (`tests/reading-verbs-git.test.ts`).
 - `tests/project-dirs.test.ts`: a config alone makes a project, named by
   its path; `//` for the root; `name` over a plugin's over the path;
   duplicates refused; an ignored config and a nested workspace's are no
-  project; a config added after `vx lock` waits for it; a version 2 lock
+  project, and one in a directory a plugin discovers is refused, naming
+  the plugin, by `vx lock`, `--check` and a run; a config added after `vx lock` waits for it; a version 2 lock
   is refused; a package-manager member with no config is no project;
   `--affected` without a plugin.
 - `tests/discovery-refusals.test.ts`: each refusal whole.

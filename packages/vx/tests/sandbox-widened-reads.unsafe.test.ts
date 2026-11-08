@@ -3,7 +3,7 @@
 // granted `write: ['out.txt']` read an undeclared `secret.txt` unreported,
 // and a cached run replayed its old bytes. Such a read is now reported
 // from the trace when it succeeds.
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { realpathSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -71,6 +71,28 @@ describe('deniedCalls › reads', () => {
       ['open', '/ws/s.txt', ''],
       ['open', 'gone.txt', 'ENOENT'],
     ])
+  })
+
+  // git hashes a link by its target string, which `readlink` reads with no open.
+  it('are the readlink calls too, read or refused, placed as the opens are', () => {
+    const calls = [
+      '10 readlink("cfg", "v1", 64) = 2',
+      '10 readlinkat(4</ws/p/sub>, "l2", "t", 4095) = 1',
+      '10 readlinkat(AT_FDCWD, "split", <unfinished ...>',
+      '10 <... readlinkat resumed>"t", 4095) = 1',
+      '10 readlink("gone", 0x5592db3d82f0, 64) = -1 ENOENT (No such file or directory)',
+      '10 readlink("plain.txt", 0x5592db3d82f0, 64) = -1 EINVAL (Invalid argument)',
+      '',
+    ].join('\n')
+    const seen = (reads: boolean) =>
+      deniedCalls(calls, '/ws', reads).map((c) => [c.syscall, c.rawPath, c.dir, c.errno])
+    expect(seen(true)).toEqual([
+      ['readlink', 'cfg', undefined, ''],
+      ['readlinkat', 'l2', '/ws/p/sub', ''],
+      ['readlinkat', 'split', undefined, ''],
+      ['readlink', 'gone', undefined, 'ENOENT'],
+    ])
+    expect(seen(false)).toEqual([['readlink', 'gone', undefined, 'ENOENT']])
   })
 
   it('CONTROL: are not asked for, and only the denial comes back', () => {
@@ -204,6 +226,38 @@ describe.skipIf(!available || process.platform !== 'linux')(
         'mkdir -p src dist; ln -f src/a.txt a.tmp; cat a.tmp > s.tmp; rm a.tmp; mv s.tmp out.txt',
         ['out.txt'],
       )
+      expect([r.exitCode, r.violations]).toEqual([0, []])
+    })
+
+    // A link's bytes in git are its target string, and `readlink` reads it
+    // with no open: `readlink cfg > out.txt` cached `v1` and replayed it
+    // after `cfg` pointed at `v2`.
+    it('a readlink of a sibling link no grant covers is reported, and named for a read', async () => {
+      await mkdir(path.join(dir, 'proj'), { recursive: true })
+      await symlink('v1', path.join(dir, 'proj', 'cfg'))
+      const r = await run('readlink cfg > out.txt', ['out.txt'])
+      expect([r.exitCode, targets(r)]).toEqual([0, ['cfg']])
+      expect(sandboxFix(r.violations, path.join(dir, 'proj'), undefined, ['src/**'])).toEqual({
+        read: ['cfg'],
+        inputs: ['cfg'],
+      })
+    })
+
+    it('a readlink of a link the sandbox hides is reported as a refused read', async () => {
+      await mkdir(path.join(dir, 'proj'), { recursive: true })
+      await symlink('v1', path.join(dir, 'proj', 'cfg'))
+      const r = await run('readlink cfg > dist/out.txt || echo none > dist/out.txt', ['dist/'])
+      expect([r.exitCode, targets(r), r.violations.map((v) => v.ignorable)]).toEqual([
+        0,
+        ['cfg'],
+        [['read']],
+      ])
+    })
+
+    it('CONTROL: a readlink of a granted link, or of a missing path, is not reported', async () => {
+      await mkdir(path.join(dir, 'proj', 'src'), { recursive: true })
+      await symlink('v1', path.join(dir, 'proj', 'src', 'cfg'))
+      const r = await run('readlink src/cfg > out.txt; readlink nope; true', ['out.txt'])
       expect([r.exitCode, r.violations]).toEqual([0, []])
     })
   },

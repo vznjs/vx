@@ -164,6 +164,7 @@ here, itself or in a brace group.
 |                                              | `src/graph/definition.ts` — `taskDefinition(s)`, what history keys a task by (see task-graph.md).         |
 |                                              | `src/graph/default-build.ts` — the `build` a project declaring none gets (see task-graph.md).             |
 |                                              | `src/graph/critical-path.ts` — `criticalPath`, the order a `schedule` plugin returns (see task-graph.md). |
+|                                              | `src/graph/stand-ins.ts` — what an edge past a cycle's default build stands in for (see task-graph.md).   |
 | [`scheduler.md`](./scheduler.md)             | `src/graph/scheduler.ts` — parallel topological executor.                                                 |
 |                                              | `src/graph/priorities.ts` — the ready-queue ranking (see scheduler.md).                                   |
 |                                              | `src/graph/task-status.ts` — the status vocabulary (see scheduler.md).                                    |

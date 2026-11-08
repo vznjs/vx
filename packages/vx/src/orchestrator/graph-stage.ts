@@ -3,7 +3,13 @@
 // select over the graph the hooks leave.
 
 import path from 'node:path'
-import type { GraphRules, TaskNode } from '../graph/index.js'
+import {
+  setStandIns,
+  standInsOf,
+  type GraphRules,
+  type StandIns,
+  type TaskNode,
+} from '../graph/index.js'
 import { relPosix, UserError } from '../util/index.js'
 import { type ProjectMeta, validateProjectConfig } from '../workspace/index.js'
 import { applyGraphHooks } from './plugin-host.js'
@@ -31,9 +37,13 @@ export async function applyGraphStage(
   const shown = (dir: string): string => relPosix(args.workspaceRoot, dir) || '.'
   // The lock shares a task config two tasks declare alike: an edit in place
   // works on this node's own copy.
-  if (plugins.some((p) => p.graph !== undefined)) {
-    for (const n of nodes.values())
-      if (!isDefaultBuild(n.config)) n.config = structuredClone(n.config)
+  if (!plugins.some((p) => p.graph !== undefined)) return
+  for (const n of nodes.values())
+    if (!isDefaultBuild(n.config)) n.config = structuredClone(n.config)
+  const standIns = new Map<string, StandIns>()
+  for (const n of nodes.values()) {
+    const s = standInsOf(n)
+    if (s !== undefined) standIns.set(n.id, s)
   }
   await applyGraphHooks(
     plugins,
@@ -68,4 +78,17 @@ export async function applyGraphStage(
     },
     args.rules,
   )
+  // A hook may rebuild a node, which drops what its edges stand in for, or
+  // remove an edge a record names: re-attach each by id, less what is gone.
+  for (const [id, before] of standIns) {
+    const n = nodes.get(id)
+    if (n === undefined) continue
+    const kept: Record<string, string[]> = {}
+    for (const [edge, past] of Object.entries(before)) {
+      if (!n.deps.includes(edge)) continue
+      const still = past.filter((p) => n.deps.includes(p))
+      if (still.length > 0) kept[edge] = still
+    }
+    setStandIns(n, kept)
+  }
 }

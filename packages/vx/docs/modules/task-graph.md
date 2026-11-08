@@ -123,6 +123,14 @@ export function unresolvedRequests(
 // returns how many it flagged. See "transparent folders" in cli.md.
 export function markSurfacedDeps(nodes: Map<string, TaskNode>): number
 
+// stand-ins.ts, internal (not on the façade): what each edge past a default
+// build on a package cycle stands in for, kept off TaskNode's public shape
+// under a symbol key that spread copies carry.
+export type StandIns = Readonly<Record<string, readonly string[]>>
+export function standInsOf(node: TaskNode): StandIns | undefined
+export function setStandIns(node: TaskNode, standIns: StandIns): void
+export function addStandIn(node: TaskNode, id: string, past: readonly string[]): void // the walk's
+
 // True only when two output globs PROVABLY select an overlapping set —
 // the test behind the refusal below, on the façade because
 // `@vzn/vx-migrate` asks the same question at migration time and used to
@@ -166,7 +174,14 @@ pattern (`bui*`, `^bui*`) —
 is added and goes on past it, so the builds it cannot depend on still
 come first (X-120: by name it stopped there, and `a#test` on `build`,
 with `a` and `b` on the default build depending on each other, folded
-nothing of `b`). Off a cycle it is a holder like any other. A config's
+nothing of `b`). Each edge taken past one is recorded in the
+dependant against the edges it went past (`standInsOf`), and
+`inputs.tasks` selecting those selects it (`selectFoldedDeps`): by name
+alone, `tasks: ['build']` or `['a#build']` kept `a#build`, dropped
+`b#build`, and an edit to `b` replayed the hit. The record is not on
+`TaskNode`'s public shape; the graph memo stores it, and
+`applyGraphStage` re-attaches it by id to a node a `graph` hook rebuilt,
+less any edge the hook removed. Off a cycle it is a holder like any other. A config's
 keyed group of the same shape (`inputs`, no `exec`, `dependsOn` exactly
 `['^name']` of its own name; `isChainGroup`) is treated the same; any
 other keyed group on a cycle expands its own `dependsOn` like a task
