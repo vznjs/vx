@@ -8,7 +8,7 @@
 
 import { exitSignal } from '../exec/index.js'
 import type { InputChanges, TaskNode, TaskOutcome } from '../graph/index.js'
-import { isGroupTask } from '../graph/index.js'
+import { isGroupTask, isKeyFailed } from '../graph/index.js'
 import { heldSecrets, maskedCommand, type SecretMask, secretMask } from '../util/index.js'
 import type { Logger } from './logger.js'
 import type { RunContext } from './summary.js'
@@ -349,7 +349,8 @@ export function outcomeWord(o: Pick<OutcomeView, 'status' | 'restored'>): string
 
 /**
  * `outcomeWord` with the exit code a failure carries: `failed (exit 9)`.
- * A hit whose restore failed ran nothing, so it has no exit to name.
+ * A hit whose restore failed ran nothing, so it has no exit to name, nor
+ * does a task whose key could not be derived (`isKeyFailed`).
  */
 export function outcomeLabel(
   o: Pick<
@@ -367,6 +368,7 @@ export function outcomeLabel(
   >,
 ): string {
   if (o.status === 'failed' && o.restoreFailed === true) return 'failed (cache restore failed)'
+  if (o.status === 'failed' && isKeyFailed(o)) return 'failed (cache key not derived)'
   if (o.status === 'failed')
     return failedLabel(o.exitCode, o.timedOut, o.sandboxViolations, o.notReady, o.inputMoved)
   if (o.status === 'skipped') return skippedLabel(o)

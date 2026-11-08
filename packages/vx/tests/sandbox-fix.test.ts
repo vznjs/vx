@@ -207,4 +207,28 @@ describe('sandboxFix', () => {
     )
     expect(fix).toEqual({ read: ['tok-***'] })
   })
+  it('escapes a path the grant would read as a pattern, and names the directory of one no grant spells', () => {
+    // Raw, `pages/[id].tsx` granted the class `pages/i.tsx` and keyed it:
+    // applying the fix failed the run again on the same read, forever.
+    const at = (p: string) => path.join(dir, p)
+    mkdirSync(at('pages'))
+    mkdirSync(at('odd'))
+    for (const f of ['pages/[id].tsx', 'odd/a*b.txt', 'odd/c\\d.txt']) writeFileSync(at(f), '')
+    const read = (p: string) => v(`deny(1) file-read-data ${p}`, ['read'], at(p))
+    const fix = sandboxFix(
+      [read('pages/[id].tsx'), read('odd/a*b.txt'), read('odd/c\\d.txt')],
+      dir,
+      undefined,
+      ['src/**'],
+    )
+    expect(fix).toEqual({
+      // A literal `*` or a backslash: the sandbox grants no such path alone.
+      read: ['odd/', 'pages/\\[id\\].tsx'],
+      inputs: ['odd/a\\*b.txt', 'odd/c\\\\d.txt', 'pages/\\[id\\].tsx'],
+    })
+    expect(new Bun.Glob(fix!.read![1]!).match('pages/[id].tsx')).toBe(true)
+    expect(new Bun.Glob(fix!.read![1]!).match('pages/i.tsx')).toBe(false)
+    expect(new Bun.Glob(fix!.inputs![0]!).match('odd/a*b.txt')).toBe(true)
+    expect(new Bun.Glob(fix!.inputs![1]!).match('odd/c\\d.txt')).toBe(true)
+  })
 })

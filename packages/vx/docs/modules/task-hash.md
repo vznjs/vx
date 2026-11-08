@@ -47,6 +47,8 @@ export interface ComputeHashArgs {
 }
 
 export async function computeTaskHash(args: ComputeHashArgs): Promise<string>
+// A key derivation whose throw is rethrown as the scheduler's `KeyFailed`.
+export async function keyOf(derived: Promise<string>): Promise<string>
 export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
   hash: string
   inputs: TaskInputs
@@ -129,6 +131,10 @@ export interface UpfrontGroupKey {
   `command-windows.ts`; `vx watch` reads the same windows to tell a
   user's write during a cycle from the run's own, `RunOptions.commandWindows`) such a write is hashed and compared instead. Returns the
   first moved path; execute-task then withholds the save.
+- `keyOf` — wraps a key derivation for `executeTask` and `plan()`: a
+  throw (a runtime probe that exits non-zero, a refused `inputs.env`
+  value) becomes `KeyFailed` (scheduler.md), so the run and `--dry` say
+  `cache key not derived: …` alike and the outcome is marked `isKeyFailed`.
 - `computeGroupKey` — for group tasks (no `exec`): rolls up upstream
   hashes only, so downstream keys still cascade through the group. The
   default `build` (projects.ts), the one group with `cache`, is keyed as

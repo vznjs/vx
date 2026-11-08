@@ -336,7 +336,10 @@ function tryCompiled(
   try {
     return loadCompiled(root, configPath, bytes)
   } catch {
-    return null
+    // A bundle that throws (a truncated one too) is built again after the
+    // source load; null left every later run loading the source. The
+    // config's own throw throws from source too and builds nothing.
+    return undefined
   }
 }
 

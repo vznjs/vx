@@ -23,7 +23,7 @@ import type { CachePolicy } from '../cache/index.js'
 import { isGroupTask, RestoreDemoted, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { executeTask, type ExecuteArgs } from './execute-task.js'
 import type { ShortCircuit } from './local-shortcircuit.js'
-import { computeTaskHash, type ComputeHashArgs } from './task-hash.js'
+import { computeTaskHash, type ComputeHashArgs, keyOf } from './task-hash.js'
 
 /** What `taintTracker` answers per dispatch, and what it learns per finish. */
 export interface TaintTracker {
@@ -208,12 +208,14 @@ export function admitTasks(
       return executeTask(buildExecuteArgs(node, upstream)).catch(dropProbe)
     }
     const { nestedDirsByProject, ...rest } = hashArgs
-    const hash = await computeTaskHash({
-      ...rest,
-      node,
-      upstream,
-      nestedProjectDirs: nestedDirsByProject.get(node.projectName) ?? [],
-    })
+    const hash = await keyOf(
+      computeTaskHash({
+        ...rest,
+        node,
+        upstream,
+        nestedProjectDirs: nestedDirsByProject.get(node.projectName) ?? [],
+      }),
+    )
     // Join a sibling already computing this exact task: wait, then
     // executeTask cache-hits on the artifact it just saved. A sibling that
     // saved nothing (it failed) leaves this task to run, so the joiners

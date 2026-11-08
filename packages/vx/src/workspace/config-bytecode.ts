@@ -37,13 +37,17 @@ import path from 'node:path'
 import { refuseForeignCacheDir, xxh3hex } from '../util/index.js'
 
 /** Bumped when what a bundle holds, or how it is checked, changes. */
-const COMPILED_VERSION = 2
+const COMPILED_VERSION = 3
 
 /** What `import.meta` becomes in a bundled file: an identifier no source spells. */
 const META = '__vxImportMeta'
 const META_FIELDS = new Set(['dir', 'dirname', 'path', 'filename', 'file', 'url', 'main'])
 const META_USE = new RegExp(`\\b${META}\\b(\\.[\\w$]+)?`, 'g')
 const COMPUTED_LOAD = /\b(?:require|import)\(\s*(?![\s'"])|\brequire\.resolve\b/
+// Bun's build and transpiler inline `process.env.NODE_ENV` by default, and a
+// bundle's name folds no env: it froze the building run's value. Defined as
+// itself, it is read at run time, as the source reads it.
+const LIVE_NODE_ENV = { 'process.env.NODE_ENV': 'process.env.NODE_ENV' }
 
 interface Manifest {
   version: number
@@ -65,7 +69,17 @@ function nameOf(configPath: string, bytes: Uint8Array): string {
   return `workspace-${xxh3hex(`${COMPILED_VERSION}\0${Bun.revision}\0${configPath}\0${xxh3hex(bytes)}`)}`
 }
 
-function fresh(manifest: Manifest): boolean {
+function fresh(manifest: Manifest, configPath: string): boolean {
+  // Built through a link: retargeted at a file of the same bytes, the config's
+  // relative imports are other files. A config reached by its real path pays
+  // no realpath for this.
+  if (manifest.entry !== configPath) {
+    try {
+      if (realpathSync(configPath) !== manifest.entry) return false
+    } catch {
+      return false
+    }
+  }
   for (const [file, hash] of Object.entries(manifest.inputs)) {
     if (file === manifest.entry) continue
     let bytes: Uint8Array
@@ -109,7 +123,7 @@ export function loadCompiled(
   } catch {
     return undefined
   }
-  if (manifest.version !== COMPILED_VERSION || !fresh(manifest)) return undefined
+  if (manifest.version !== COMPILED_VERSION || !fresh(manifest, configPath)) return undefined
   const ns =
     manifest.skip === true
       ? null
@@ -181,6 +195,7 @@ export async function buildCompiled(
       format: 'cjs',
       bytecode: true,
       external: ['@vzn/vx'],
+      define: LIVE_NODE_ENV,
       outdir: tmp,
       naming: `${name}.js`,
       metafile: true,
@@ -209,6 +224,7 @@ export async function buildCompiled(
                 t = new Bun.Transpiler({
                   loader,
                   define: {
+                    ...LIVE_NODE_ENV,
                     'import.meta': META,
                     __dirname: JSON.stringify(fileDir),
                     __filename: JSON.stringify(file),

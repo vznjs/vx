@@ -125,13 +125,7 @@ import { isPassStatus } from '../graph/index.js'
 import type { RunContextRecord } from './telemetry.js'
 import { plan, type RunPlan } from './plan.js'
 import type { AffectedReason } from './affected-tasks.js'
-import {
-  namesRemote,
-  openRemotes,
-  prepareRun,
-  prepareRunLocked,
-  type PreparedRun,
-} from './prepare.js'
+import { namesRemote, openRemotes, prepareRunLocked, type PreparedRun } from './prepare.js'
 import { acquireRunLock, runLockPath, type RunLockRelease } from './run-lock.js'
 import {
   exitOfSignal,
@@ -2125,10 +2119,12 @@ function warnNoRemote(prepared: PreparedRun, options: RunOptions, log: Logger): 
  * Returns a `RunPlan` predicting the cache hit/miss outcome of every
  * task. Used by `--dry`.
  *
- * Side-effects are limited to opening + closing the local Cache handle
- * (and running `inputs.runtime` probe commands, which key
- * derivation requires). Cache probing is the byte-free `cache.has()`
- * existence check — no artifact download, no ingest, no accessed_at bump.
+ * Side-effects are limited to running `inputs.runtime` probe commands,
+ * which key derivation requires: with no remote the local cache opens to
+ * read only (`prepareRunLocked`'s `planning`); with one, the remote hits
+ * found are kept in the index for the run after. Probing is the
+ * byte-free `cache.has()` existence check — no artifact download, no
+ * ingest, no accessed_at bump.
  */
 export async function planRun(options: RunOptions): Promise<RunPlan> {
   refuseRunOptions(options)
@@ -2136,7 +2132,13 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
   // what a stage says on the way goes to stderr (C-6).
   const log = options.log ?? defaultLogger(undefined, undefined, process.stderr)
   const reasons = new Map<string, AffectedReason>()
-  const prepared = await prepareRun({ ...options, affectedReasons: reasons }, log)
+  const prepared = await prepareRunLocked(
+    { ...options, affectedReasons: reasons },
+    log,
+    undefined,
+    false,
+    true,
+  )
   try {
     options = withRunSettings(options, prepared.workspaceConfig)
     if (prepared.unresolvedTasks.length > 0) {

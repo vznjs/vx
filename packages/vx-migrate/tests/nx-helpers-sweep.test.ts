@@ -527,7 +527,8 @@ describe('a token anywhere in a path interpolates as Nx does', () => {
 
   it('outputs of the root project', () => {
     const got = mapNxOutputs(['{workspaceRoot}/coverage/{projectRoot}x'], {}, '.', 'r', [])
-    expect(got).toEqual({ outFiles: ['coverage/x'], wsOutFiles: [] })
+    // A workspace path, as the root's inputs: it may lie in a nested project.
+    expect(got).toEqual({ outFiles: [], wsOutFiles: ['coverage/x'] })
   })
 
   it('inputs: in and out of the project, negated too', () => {

@@ -875,7 +875,13 @@ one status line names the file (``[vx] app#format: `packages/app/a.ts`
 changed after its key was taken — …``), and the run forgets what it
 knew about the project, as after an uncached task (§ Cache key
 derivation, step 11). This covers a formatter rewriting its own input
-(turborepo#10111) and a user's edit mid-run (turborepo#1146). A task
+(turborepo#10111) and a user's edit mid-run (turborepo#1146). A file
+whose ctime alone moved during the command, its bytes and mtime as the
+key found them (a hard link such as `cp -al src dist`, a chmod, a chown),
+is withheld too, since an edit undone with its mtime put back looks the
+same; its line says so (``… `app/src/a.txt`'s ctime moved while the task
+ran, but not its bytes or mtime …``) and names the ways out: copy instead
+of linking, or `inputs.stability: { strategy: 'mutable' }`. A task
 left remote (`--cache-download=none`) is held to the same checks: a moved
 key still lets a local consumer fetch its outputs, but the fetch saves
 no entry; until X-123 it saved them under the old key. A task
@@ -1339,9 +1345,16 @@ do not share a temp directory, so they do not share the lock.
 A `vx cache clean` in any checkout of the repository waits for every
 vx process holding the shared store open (a run holds it from its lock
 to its end), so it never deletes the store under a run in a sibling checkout,
-whose own lock it never took. So does a clean of a cache directory with
-no store (`--cache-dir`, `cache.dir`, `VX_CACHE_DIR`), which another
-workspace's runs may share: each run holds it shared (`cache.lock` in
+whose own lock it never took. It holds the store alone while it moves it
+aside (`cache.removing` beside it) and deletes it after, so a run
+arriving meanwhile waits (`[vx] waiting for a vx cache clean of <dir>
+to finish…`) and then makes a new store; one arriving after the move
+makes it at once. A run that opened the store as the clean let go
+checks that the file it holds is still the one at its name (one stat)
+and makes a new store if not: it used to die after 5 s on `database is
+locked`, or save into the deleted store and lose that entry. A clean of a cache directory with
+no store (`--cache-dir`, `cache.dir`, `VX_CACHE_DIR`) waits too, as another
+workspace's runs may share it: each run holds it shared (`cache.lock` in
 it) from before its cache opens to its end, the clean holds it alone,
 and a run arriving meanwhile waits for the clean. A run waiting for the lock holds no cache
 open, so a clean holding the lock never waits on it. An eviction can still land between a
@@ -1695,7 +1708,11 @@ followed by the clean as by the save and restore, named by a glob
 (`dist/**`) or a literal (`dist`) alike, so its target is the
 output and an entry holds only what its run wrote (X-88); one that
 resolves outside the project refuses the task, naming the link, and
-nothing is deleted through it (X-5), and so does an
+nothing is deleted through it (X-5); so does one, in either scope, that
+resolves into a directory an entry of the task's own `inputs.files` or
+`inputs.workspaceFiles` can match below (`dist -> src` under `src/**` or
+`**/*.ts`: the clean deleted every untracked source, X-55; `dist ->
+build-out` under `src/**` stays an output), and so does an
 `outputs.workspaceFiles` directory that resolves outside the workspace
 (it saved an empty entry under a warning, M-65). So does one, in either scope, that
 resolves into the root's own `.git` (any case) or its `.vx`: for the root

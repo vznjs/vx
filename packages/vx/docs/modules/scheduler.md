@@ -153,6 +153,19 @@ export class RestoreDemoted extends Error {
 export class RestoreFailed extends Error {
   constructor(readonly error: unknown)
 }
+
+// Thrown by `execute` when deriving the key threw (task-hash.md `keyOf`):
+// reported as `[vx] <id>: cache key not derived: <error>`, the outcome
+// `failed` and marked: `isKeyFailed(outcome)`.
+export class KeyFailed extends Error {
+  constructor(readonly error: unknown)
+}
+
+// A symbol mark, not a field (`TaskOutcome` and `RunPlan` are public types):
+// it rides a spread copy and never reaches JSON. The plan marks itself when
+// any task's key failed, and `--dry` exits 1 on it.
+export function markKeyFailed<T extends object>(o: T): T
+export function isKeyFailed(o: object): boolean
 ```
 
 `task-status.ts` holds `TaskStatus` and what each status means, so no

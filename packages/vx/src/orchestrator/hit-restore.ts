@@ -95,6 +95,11 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
       ? node.outputsAddedToBy.flatMap((g) => asTrees([g])).map((g) => taskGlob(g))
       : []
   const isAddition = (rel: string): boolean => addedGlobs.some((g) => g.match(rel))
+  const ownInputs = {
+    projectDir: node.projectDir,
+    workspaceRoot: args.workspaceRoot,
+    declared: node.config.inputs,
+  }
 
   // "Tree is already current" short-circuit — skip cleanOutputs
   // + restoreOutputs when the on-disk state matches what this
@@ -137,12 +142,14 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
         projectDir: node.projectDir,
         outputs,
         nestedProjectDirs: args.nestedProjectDirs,
+        inputs: ownInputs,
         special: 'later',
         clearing: true,
       })
       const wsTree = await resolveWorkspaceOutputTree({
         workspaceRoot: args.workspaceRoot,
         outputs: wsOutputs,
+        inputs: ownInputs,
         special: 'later',
         clearing: true,
       })
@@ -239,12 +246,14 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
         projectDir: node.projectDir,
         outputs,
         nestedProjectDirs: args.nestedProjectDirs,
+        inputs: ownInputs,
         special: 'later',
         clearing: true,
       })
       const actualWs = await resolveWorkspaceOutputTree({
         workspaceRoot: args.workspaceRoot,
         outputs: wsOutputs,
+        inputs: ownInputs,
         special: 'later',
         clearing: true,
       })
@@ -260,11 +269,13 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
       projectDir: node.projectDir,
       outputs,
       nestedProjectDirs: args.nestedProjectDirs,
+      inputs: ownInputs,
       committed: committedFiles(args.gitFilesCache, node.projectDir),
     }
     const wsCleanArgs = {
       workspaceRoot: args.workspaceRoot,
       outputs: wsOutputs,
+      inputs: ownInputs,
       committed: committedFiles(args.gitFilesCache, args.workspaceRoot),
     }
     const heldRels = hit.outputFiles.filter((p) => !p.startsWith(WORKSPACE_OUTPUT_PREFIX))

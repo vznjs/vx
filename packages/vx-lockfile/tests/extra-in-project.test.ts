@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { type Logger } from '@vzn/vx'
-import { planRun } from '../../vx/tests/helpers/orchestrator.js'
+import { planRun, run } from '../../vx/tests/helpers/orchestrator.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { editMemo, readMemo } from './helpers/memo.js'
 import { affectedIds, commitAll, lockAt, moved } from './helpers/affected.js'
@@ -99,6 +99,12 @@ const hashes = async (): Promise<Record<string, string>> => {
   const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
   return Object.fromEntries(plan.tasks.map((t) => [t.node.id, t.hash]))
 }
+/** A run, which keeps the memo: `--dry` writes nothing (docs/modules/plan.md). */
+const warm = async (): Promise<void> => {
+  expect((await run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })).ok).toBe(
+    true,
+  )
+}
 
 it('an edit to a `file:` directory inside another project selects the project reaching it', async () => {
   commitAll(root)
@@ -116,7 +122,7 @@ it('CONTROL: an edit beside it in that project selects no project the lockfile r
 })
 
 it('with no memo yet (a fresh clone) the edit still selects the project reaching it', async () => {
-  await hashes()
+  await warm()
   commitAll(root)
   await writeFile(path.join(root, 'packages/other/vendor/index.js'), '// dep v2\n')
   lockAt(root)
@@ -127,7 +133,7 @@ it('with no memo yet (a fresh clone) the edit still selects the project reaching
 })
 
 it('the files --affected is told the lockfile names come from the memo once a run wrote it', async () => {
-  await hashes()
+  await warm()
   const cacheDir = path.join(root, '.vx', 'cache')
   expect(Object.keys(readMemo(cacheDir, 'pnpm-lock.yaml').extras)).toEqual([
     'packages/other/vendor',

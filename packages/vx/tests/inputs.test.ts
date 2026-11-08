@@ -1319,7 +1319,7 @@ describe('resolveInputs — runtime values', () => {
   it('throws UserError naming the command on non-zero exit', async () => {
     await expect(
       resolveInputs(args({ runtime: ['sh -c "echo boom 1>&2; exit 3"'] })),
-    ).rejects.toThrow(/runtime command exited 3: sh -c "echo boom 1>&2; exit 3"/)
+    ).rejects.toThrow(/inputs\.runtime probe exited 3: sh -c "echo boom 1>&2; exit 3"/)
   })
 
   it('empty fields produce empty arrays', async () => {

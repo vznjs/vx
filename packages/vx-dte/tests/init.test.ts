@@ -401,6 +401,13 @@ it("gitlab()'s ALLOW names the origin's GitLab, a self-managed one too", async (
       'https://gitlab.example.com:8443:group/app',
     ],
     ['https://gitlab.com/group/app', 'https://gitlab.com:group/app'],
+    // A credential never reaches the written files: the userinfo ends at
+    // its last `@`, and a query is dropped.
+    [
+      'https://ci:p@ss@gitlab.example.com:8443/group/app.git',
+      'https://gitlab.example.com:8443:group/app',
+    ],
+    ['https://gitlab.com/group/app.git?private_token=X#f', 'https://gitlab.com:group/app'],
   ]) {
     Bun.spawnSync(['git', 'remote', 'remove', 'origin'], { cwd: root })
     Bun.spawnSync(['git', 'remote', 'add', 'origin', url!], { cwd: root })

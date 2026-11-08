@@ -1385,7 +1385,7 @@ describe('runtime input memoization is scoped by design', () => {
     // swallowed one arm's rejection would leave the other's tests green.
     await expect(
       resolveInputs(args(projA, { workspaceRuntime: ['sh -c "echo nope 1>&2; exit 7"'] })),
-    ).rejects.toThrow(/runtime command exited 7/)
+    ).rejects.toThrow(/inputs\.workspaceRuntime probe exited 7/)
   })
 })
 

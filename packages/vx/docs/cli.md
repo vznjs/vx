@@ -946,7 +946,10 @@ other persistent task`), and a non-zero exit makes the run exit 1
      `failed` with cache `—`: neither a miss nor a hit. It ran no
      command, so its row has no `±usual`, cpu or mem, its frame no
      command line, and its label is `failed (cache restore failed)`
-     over the restore's error.
+     over the restore's error. A task whose key could not be derived (a
+     runtime probe that exited non-zero, a refused `inputs.env` value)
+     is the same, `failed (cache key not derived)`, under the line
+     `[vx] app#build: cache key not derived: inputs.runtime probe exited 7: …`.
    - **cpu** and **mem**: the task's process tree's average cores since
      it started and its peak memory so far, looked at every 500 ms only
      while this list draws (a pipe or CI reads nothing); on a finished
@@ -1174,7 +1177,13 @@ a stack and exit 1 after its task had succeeded.
 computes each task's cache key as the run would (none, `hash: ""`, for
 a server no task depends on), and probes the cache to predict the
 hit/miss outcome. Against a remote cache the probe is a lightweight
-existence check — planning never downloads or ingests artifacts.
+existence check — planning never downloads or ingests artifacts. With no
+remote it writes nothing: no `.vx/cache`, no index, not the directory a
+mistyped `--cache-dir` names. With one, it keeps the remote hits it found
+in the local index, so the `vx run` after it fetches them at once. Each
+remote that can batch is asked once for every key; one that cannot, or
+whose batch failed, is asked each key at once, so an unreachable remote
+costs the plan its timeout about twice, not once per task.
 
 ```
 $ vx run ci --dry
@@ -1217,6 +1226,14 @@ them: the row says why (`needs darwin-arm64, this is linux-x64`,
 `blocked by mac#build`) and the JSON carries `otherPlatform` or
 `blockedBy`. On CI, or when no executor routes such a task, `--dry`
 refuses as the run does.
+
+**A key that cannot be derived.** A task whose `inputs.runtime` /
+`workspaceRuntime` probe exits non-zero, or whose `inputs.env` value is
+refused, has no key, and the run fails it. `--dry` prints the run's own
+line to stderr (`[vx] app#build: cache key not derived: inputs.runtime
+probe exited 7: …`), still prints the plan, and exits 1. The task's row,
+and its dependants', read `run` `no-cache` with an empty `hash`: the
+closed status set has no word for a failure.
 
 Row legend (the run's own words; the status word's colour carries the outcome):
 
@@ -1390,6 +1407,10 @@ and forced to exit non-zero. No cache is written for a failed task. The
 task's `SANDBOX VIOLATIONS` section ends with a dimmed `fix:` line,
 the grants that would have allowed each denial, project-relative:
 `fix: exec.sandbox.allow: { read: ['tsconfig.json'], write: ['dist/'] }`.
+Each path is a JS string literal, spelled as the glob it must be: a
+bracket escaped (`read: ['pages/\\[id\\].tsx']`, and so in `inputs.files`);
+a path no grant can name alone (a `*`, `?` or backslash, and on Linux a
+write with a bracket; `schema.md`) is granted as the directory above it.
 On Linux a refused open is a read or a write by the flags it asked
 with: a missing file opened to read is a read grant, never a file vx
 would create. A host `deny.network` holds gets no network grant.
@@ -1613,7 +1634,9 @@ Always ignored (no re-trigger):
 - The run's **resolved cache directory**, wherever it is. `.vx/cache/` covers the
   default, but `defineWorkspace({ cache: { dir } })` and `--cache-dir` can put it
   anywhere; watching it would let vx's own cache writes trigger the next
-  cycle, which writes again — a loop that never settles.
+  cycle, which writes again — a loop that never settles. A `cache.dir`
+  edit mid-watch moves the filter with it, from the cycle that re-reads
+  the config.
 - A new empty directory (`mkdir src/new`): it holds nothing a key reads,
   and the poller, which samples files, never saw one. A file made in it
   is the change. A project directory made again, which the watch waits
@@ -1703,7 +1726,9 @@ re-runs itself and what it depends on.
   first — its children, and the dev server held between cycles, get the
   signal watch received (a Ctrl-C as SIGINT; a SIGTERM or SIGHUP as SIGTERM),
   a 2 s grace, then SIGKILL — and the process leaves only
-  once it has returned, so a CI cancellation never orphans a task.
+  once it has returned, so a CI cancellation never orphans a task. A
+  second signal during that teardown changes nothing: still `0`, once
+  the cycle is down.
   Also `0`, with no watch, when `--affected` selects nothing: watch
   prints `vx watch: nothing affected since <ref>` and exits as `vx run`
   does.
@@ -1930,7 +1955,10 @@ $ vx cache clean --global --dry
 It waits for a `vx run` on this workspace to finish first (the run's
 lock), for every vx process holding a store it deletes open (a run
 in another checkout of the workspace), and for every run of another
-workspace on a cache directory with no store it deletes, as a trim does. With `--format json` it prints
+workspace on a cache directory with no store it deletes, as a trim does.
+A run in another checkout that starts meanwhile waits for it (`[vx]
+waiting for a vx cache clean of <dir> to finish…`), then makes a new
+store. With `--format json` it prints
 `{ dry, cleared, bytesFreed }` (`schemas/cache.json`), `cleared`
 listing the directories.
 
@@ -2840,6 +2868,9 @@ not read them; `dependsOn` already cascades). Exclude the outputs from
 the inputs with a `!` glob, as the message shows, or declare no outputs
 for a task that rewrites files in place.
 `vx lock` refuses it, not a run: a run trusts the graph the lock holds.
+A run refuses the one shape the lock cannot see: an output directory
+that is a symbolic link into a directory the task's own inputs can match
+below (`dist -> src` under `src/**` or `**/*.ts`). Remove the link.
 
 #### `VX_E_NESTED_INPUT`
 
@@ -2848,6 +2879,15 @@ own (`dist/**` where `dist/` holds a config): a project's globs never
 reach another project's files, so it would key nothing. Depend on a
 task of the nested project, or name the files in
 `inputs.workspaceFiles`, as the message shows.
+`vx lock` refuses it, not a run: a run trusts the graph the lock holds.
+
+#### `VX_E_NESTED_OUTPUT`
+
+A task's `outputs.files` entry is rooted inside a project nested in its
+own (`sub/dist/**` where `sub/` holds a config): a project's globs never
+reach another project's files, so it would save nothing. Let a task of
+the nested project write the files, or name them in
+`outputs.workspaceFiles`, as the message shows.
 `vx lock` refuses it, not a run: a run trusts the graph the lock holds.
 
 #### `VX_E_DEPENDENCY_RULE`
@@ -3520,7 +3560,8 @@ stdout is empty and stderr says so, exit 0; a skip names what blocked
 it (`c#after did not run: c#gate blocked it (vx last --log c#gate)`). A kept log that is empty
 says the task printed nothing. A task that retried shows every
 attempt, each under a heading (`── attempt 1 of 2 · exit 1 ──`), the
-last `passed` when a retry passed. With
+last `passed` when a retry passed; a retried attempt's sandbox
+violations end its output. With
 `--format json` it is `{ runId, taskId, status, source, output }`,
 `source` `'failure'`, `'cache'` or `null`. A task no run recorded is
 refused, exit 1, naming a recorded task one or two edits away. A bare name (`--log build`) is the one project that ran

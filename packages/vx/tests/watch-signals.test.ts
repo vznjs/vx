@@ -212,6 +212,38 @@ describe('vx watch under a signal (e2e)', () => {
     }).toEqual({ stopped: 1, last: 'vx watch: stopped' })
   }, 30_000)
 
+  // The handler was `process.once`: a second Ctrl-C while the first tore
+  // the cycle down took Bun's default, exit 130, before the grace ended.
+  it('a second SIGINT during the teardown still exits 0, the task dead', async () => {
+    const dir = await addProject(
+      root,
+      'app',
+      `
+        export default {
+          tasks: { deaf: { exec: { command: "trap '' INT; echo $$ > pid.txt; exec sleep 30" } } },
+        }
+      `,
+    )
+    const proc = Bun.spawn([process.execPath, BIN, 'watch', 'deaf', '--all'], {
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: { ...process.env, VX_TEST_KILL_GRACE: '1s', NO_COLOR: '1' },
+    })
+    let out = ''
+    const reader = (async () => {
+      for await (const chunk of proc.stdout) out += new TextDecoder().decode(chunk)
+    })()
+    const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    proc.kill('SIGINT')
+    await Bun.sleep(200)
+    proc.kill('SIGINT')
+    expect(await proc.exited).toBe(0)
+    await reader
+    expect(isAlive(pid), describePid(pid)).toBe(false)
+    expect(out.trimEnd().split('\n').at(-1)).toBe('vx watch: stopped')
+  }, 30_000)
+
   // WD-22: the server's TERM trap writes got.txt, then takes 0.6 s to exit,
   // so the SIGINT lands while the cycle is still stopping it. A server is
   // stopped only when its own locked config changed, so the edit is to

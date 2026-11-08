@@ -24,7 +24,8 @@ export function local(options: LocalOptions = {}): DteAdapter {
   const procs = new Set<Bun.Subprocess>()
   /** A worktree add or a prepare: what close stops at once. */
   const helpers = new Set<Bun.Subprocess>()
-  const trees: Array<{ root: string; dir: string }> = []
+  /** The repositories this run adds worktrees to, whose records close prunes. */
+  const roots = new Set<string>()
   const pending = new Set<Promise<unknown>>()
 
   // Async throughout: a run starts its workers while it shows its first rows.
@@ -90,6 +91,7 @@ export function local(options: LocalOptions = {}): DteAdapter {
           void reclaim(a.workspaceRoot)
           return d
         })()
+        roots.add(a.workspaceRoot)
         const dir = path.join(await base, String(a.index))
         if (closed) return
         // The run's own snapshot: one taken here, after a hit restored a
@@ -101,7 +103,6 @@ export function local(options: LocalOptions = {}): DteAdapter {
           { ...process.env, GIT_INDEX_FILE: undefined },
         )
         if (add.code !== 0) throw new Error(`git worktree add: ${errorLine(add.err)}`)
-        trees.push({ root: a.workspaceRoot, dir })
         // The workspace's own place in the checkout: from the worktree's
         // root, a workspace in a subdirectory of its repository had no
         // `.vx/workspace` above, and every worker exited (2026-10-25).
@@ -143,37 +144,51 @@ export function local(options: LocalOptions = {}): DteAdapter {
       relay?.stop()
       relay = undefined
       for (const p of helpers) group(p, 'SIGTERM')
-      const grace = setTimeout(() => {
-        for (const p of procs) {
-          if (helpers.has(p)) group(p, 'SIGKILL')
-          else p.kill('SIGKILL')
-        }
-      }, 5_000)
-      await Promise.allSettled([...pending])
-      await Promise.all([...procs].map((p) => p.exited))
-      clearTimeout(grace)
-      // A detached shell removes the worktrees after vx exits: removing ones
-      // an install filled took seconds after a Ctrl-C (2026-10-21), and a
-      // 300k-file tree 2.7 s. `prune` then drops git's record of each.
-      const roots = [...new Set(trees.splice(0).map((t) => t.root))]
+      // A detached shell waits for what this run started, kills what is
+      // left after 5 s, then removes the worktrees, after vx exits:
+      // removing ones an install filled took seconds after a Ctrl-C
+      // (2026-10-21), and a 300k-file tree 2.7 s. Spawned first: core stops
+      // waiting on a teardown after 3 s, and a worker slow to leave kept
+      // close from spawning it before vx exited, so every worktree stayed
+      // (2026-11-08). `prune` then drops git's record of each.
       if (base !== undefined) {
         const dir = await base
         base = undefined
-        Bun.spawn(
-          [
-            'sh',
-            '-c',
-            'rm -rf "$1"; shift; for r; do git -C "$r" worktree prune; done',
-            'sh',
-            dir,
-            ...roots,
-          ],
-          { stdio: ['ignore', 'ignore', 'ignore'], detached: true },
-        ).unref()
+        const helping = [...helpers].map((p) => p.pid).join(' ')
+        const working = [...procs]
+          .filter((p) => !helpers.has(p))
+          .map((p) => p.pid)
+          .join(' ')
+        Bun.spawn(['sh', '-c', CLEANUP, 'sh', dir, helping, working, ...roots], {
+          stdio: ['ignore', 'ignore', 'ignore'],
+          detached: true,
+        }).unref()
       }
+      roots.clear()
+      // Bounded under core's deadline: what still runs after it is the shell's.
+      await Promise.race([
+        Promise.allSettled([...pending, ...[...procs].map((p) => p.exited)]),
+        Bun.sleep(2_000),
+      ])
     },
   }
 }
+
+/**
+ * `sh -c CLEANUP sh <base> <helper pids> <worker pids> <roots…>`: waits up
+ * to 5 s for the pids, kills each left (a helper's whole group), removes
+ * the base and prunes each root's worktree records.
+ */
+const CLEANUP = `d=$1 h=$2 w=$3; shift 3
+i=0
+while [ $i -lt 50 ]; do
+  up=; for p in $h $w; do kill -0 $p 2>/dev/null && up=1; done
+  [ -z "$up" ] && break
+  sleep 0.1; i=$((i+1))
+done
+for p in $h; do kill -9 -$p 2>/dev/null; done
+for p in $w; do kill -9 $p 2>/dev/null; done
+rm -rf "$d"; for r; do git -C "$r" worktree prune; done`
 
 const BASE_PREFIX = 'vx-dte-'
 const OWNER = 'owner'

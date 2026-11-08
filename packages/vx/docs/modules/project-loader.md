@@ -309,14 +309,16 @@ bundled with `Bun.build` (CommonJS, `bytecode: true`, `@vzn/vx`
 external) into `.vx/cache/compiled/workspace-<hash>.{js,js.jsc,json}`,
 the name keyed by the config's bytes, its path and `Bun.revision`. The
 next first load requires the bundle instead, while its manifest still
-holds: every input file hashes as it did and every import, bare or
+holds: a config reached through a link still links to the file it was
+built from, every input file hashes as it did and every import, bare or
 relative, resolves to the same real path (`./preset` finds a new
-`preset.ts` before the bundled `preset.js`). Anything else loads the
-source and builds again. Any plugin gets this; none is named.
+`preset.ts` before the bundled `preset.js`). Anything else, a bundle
+that throws on require included, loads the source and builds again. Any plugin gets this; none is named.
 
 The bundle is built from the bytes the manifest records, transpiled
 with `import.meta`, `__dirname` and `__filename` replaced by the
-source file's own location. A graph the bundle could run differently
+source file's own location, and `process.env.NODE_ENV` left to read at
+run time (Bun inlines it by default, and the name folds no env). A graph the bundle could run differently
 gets a `skip` manifest and loads from source while its inputs stay the
 same: an `import.meta` field other than `dir dirname path filename file
 url main`, a computed `require`/`import()` or `require.resolve`, a

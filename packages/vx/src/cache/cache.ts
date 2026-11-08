@@ -157,6 +157,8 @@ import { WalCheckpointer } from './checkpointer.js'
 const HELD_SLICE = 250
 /** SQLite's own default, back on a connection whose checkpoint thread failed. */
 const WAL_AUTOCHECKPOINT = 1000
+/** Asks whether an open database file is still the one at its name (`attachStore`). */
+const SQLITE_FCNTL_HAS_MOVED = 20
 
 const ORPHAN_GRACE_MS = 60 * 60 * 1000
 
@@ -449,27 +451,30 @@ const ARTIFACT_TABLES = ['artifacts', 'artifacts_meta']
 const ARTIFACT_LAYOUT = 'a2'
 
 /**
- * An index that records a schema other than this vx's: the one an opener
- * that writes resets. Reads the recorded version alone and touches
- * nothing; an unreadable file is left to the open to refuse.
+ * A preview's index connection and the schema it records, which the open
+ * keeps and reuses. A version other than this vx's is the index an opener
+ * that writes resets; an unreadable file is left to the open to refuse.
  */
-function indexOfAnotherSchema(dbFile: string): boolean {
-  let found: string | undefined
+function previewIndex(dbFile: string): { db: Database; version: string | undefined } | undefined {
+  let db: Database
   try {
-    const db = new Database(dbFile, { readonly: true })
-    try {
-      found = (
-        db.query("SELECT value FROM schema_meta WHERE key = 'version'").get() as {
-          value: string
-        } | null
-      )?.value
-    } finally {
-      closeDb(db)
-    }
+    db = new Database(dbFile, { create: true })
   } catch {
-    return false
+    // The main open names why.
+    return undefined
   }
-  return found !== undefined && found !== SCHEMA_VERSION
+  try {
+    const version = (
+      db.prepare("SELECT value FROM schema_meta WHERE key = 'version'").get() as {
+        value: string
+      } | null
+    )?.value
+    return { db, version }
+  } catch {
+    // No stamp read (no table yet, busy, not a database): the main open
+    // reads it again and refuses what it must.
+    return { db, version: undefined }
+  }
 }
 
 /** The largest compressed log a probe loads with its entry. */
@@ -701,6 +706,9 @@ function entryOf(
   if (row.peak_rss_bytes !== null) entry.peakRssBytes = row.peak_rss_bytes
   return entry
 }
+
+/** Why a reading handle (`'inspect'`, `'preview'`) writes nothing: no index to read was there. */
+const NO_INDEX = 'no index there yet'
 
 /** The sidecar's `exec` from a save's entry: only the axes the runner reported. */
 function usageOfEntry(entry: { cpuMs?: number; peakRssBytes?: number }): ExecUsage | undefined {
@@ -1141,9 +1149,10 @@ export class Cache implements CacheLayer {
     /**
      * `'inspect'`: a reading verb (`why`, `last`, `info`). It never resets
      * the index: a schema it cannot read is refused, named, and left as it
-     * was. `'preview'`: a dry prune, which reads such an index as the reset
-     * the real prune does first leaves it, empty, with the store still
-     * reached, so it names what that prune takes (item 1083).
+     * was. `'preview'`: a dry prune or a `--dry` plan, which reads such an
+     * index as the reset the real prune or run does first leaves it, empty,
+     * with the store still reached, so it names what that prune takes
+     * (item 1083).
      */
     mode: 'open' | 'inspect' | 'preview' = 'open',
     /**
@@ -1172,10 +1181,20 @@ export class Cache implements CacheLayer {
     // said "no recorded runs yet" (item 900).
     const dbFile = path.join(cacheDir, 'cache.db')
     this.dbFile = dbFile
-    const absent =
-      mode !== 'open' &&
-      (!existsSync(dbFile) || (mode === 'preview' && indexOfAnotherSchema(dbFile)))
-    this.writeBlocked = absent ? 'no index there yet' : openCacheDir(cacheDir, repoDir)
+    let absent = mode !== 'open' && !existsSync(dbFile)
+    // A preview reads an index of another schema as the empty one a reset
+    // leaves. The version is read on the connection the index keeps, once:
+    // a second connection for it cost a plan a statement (perf-guard).
+    let early: { db: Database; version: string | undefined } | undefined
+    if (mode === 'preview' && !absent) {
+      early = previewIndex(dbFile)
+      if (early !== undefined && early.version !== undefined && early.version !== SCHEMA_VERSION) {
+        closeDb(early.db)
+        early = undefined
+        absent = true
+      }
+    }
+    this.writeBlocked = absent ? NO_INDEX : openCacheDir(cacheDir, repoDir)
     this.write = localPolicy.write && this.writeBlocked === null
     // A directory this user cannot write with no index in it yet: SQLite
     // cannot make one, and its `unable to open database file` stack reached
@@ -1185,7 +1204,7 @@ export class Cache implements CacheLayer {
     const memory = absent || (this.writeBlocked !== null && !existsSync(dbFile))
     this.empty = memory
     try {
-      this.db = new Database(memory ? ':memory:' : dbFile, { create: true })
+      this.db = early?.db ?? new Database(memory ? ':memory:' : dbFile, { create: true })
     } catch (err) {
       throw cantOpenIndex(dbFile, err) ?? err
     }
@@ -1280,7 +1299,7 @@ export class Cache implements CacheLayer {
         )
       }
     }
-    const current = readable(readVersion)
+    const current = early?.version ?? readable(readVersion)
     if (current !== SCHEMA_VERSION) {
       try {
         if (current !== undefined) refuseUnreadable(current)
@@ -1344,8 +1363,8 @@ export class Cache implements CacheLayer {
     // Every mode settles the store as a run does, the reading ones without
     // touching it: `vx info` and a dry prune read the entries runs use, not
     // a store another user owns (one `sudo vx run`).
+    const root = typeof storeRoot === 'string' ? storeRoot : null
     if (storeDir !== undefined && (this.writeBlocked === null || absent)) {
-      const root = typeof storeRoot === 'string' ? storeRoot : null
       if (storeBlocked(storeDir, root, mode === 'open') !== null) {
         // A home this user cannot write (a container, a read-only mount):
         // the entries stay in this workspace rather than fail the run.
@@ -1373,7 +1392,9 @@ export class Cache implements CacheLayer {
     this.storeDir = storeDir
     this.artifactDir = storeDir ?? cacheDir
     if (storeDir !== undefined) {
-      this.attachStore(storeDir, mode !== 'open')
+      this.attachStore(storeDir, mode !== 'open', (dir) =>
+        dir === cacheDir ? openCacheDir(dir) : storeBlocked(dir, root, true),
+      )
       this.storeReset = this.matchStoreSchema(mode === 'open' && this.writeBlocked === null)
     } else {
       createTables(this.db, 'main')
@@ -1575,25 +1596,59 @@ export class Cache implements CacheLayer {
    * WAL for both, so a workspace's run and another's share the store as
    * two runs on one `--cache-dir` share an index. A reading verb over a
    * store with no file or no tables yet reads an empty one in memory.
+   *
+   * Every checkout of a repository shares its store, each with a run lock
+   * of its own, and a `vx cache clean` in one holds the store alone
+   * (`holdStore`) until it has deleted it. A writing open meeting that hold
+   * answers SQLITE_BUSY within a second, for its caller to wait and open
+   * again (prepare.ts). One let in once the clean let go opened the
+   * store.db the clean unlinked, and saved its entry into it: it makes the
+   * store again (`remake`, private and ignored) and opens that. Once in,
+   * its lock keeps a clean out until it closes.
    */
-  private attachStore(storeDir: string, inspecting: boolean): void {
+  private attachStore(
+    storeDir: string,
+    inspecting: boolean,
+    remake: (dir: string) => string | null,
+  ): void {
     const storeFile = path.join(storeDir, 'store.db')
     let absent = inspecting && !existsSync(storeFile)
     try {
-      this.db.prepare('ATTACH DATABASE ? AS store').run(absent ? ':memory:' : storeFile)
-      // One with no tables yet is read empty in memory too: the journal
-      // switch and the table creation below are writes, under no write
-      // lock, racing an opener making that store.
-      if (
-        inspecting &&
-        !absent &&
-        this.db.prepare("SELECT 1 FROM store.sqlite_master WHERE name = 'entries'").get() == null
-      ) {
+      for (let retried = false; ;) {
+        // The attach reads the store's schema: its first lock on it.
+        if (!inspecting) this.db.exec('PRAGMA busy_timeout = 1000')
+        try {
+          this.db.prepare('ATTACH DATABASE ? AS store').run(absent ? ':memory:' : storeFile)
+        } catch (err) {
+          // A file whose directory went: SQLite cannot open its -wal there.
+          const busy = (err as { code?: unknown }).code === 'SQLITE_BUSY'
+          if (inspecting || busy || retried || remake(storeDir) !== null) throw err
+          retried = true
+          continue
+        }
+        // One with no tables yet is read empty in memory too: the journal
+        // switch and the table creation below are writes, under no write
+        // lock, racing an opener making that store.
+        if (
+          inspecting &&
+          !absent &&
+          this.db.prepare("SELECT 1 FROM store.sqlite_master WHERE name = 'entries'").get() == null
+        ) {
+          this.db.exec('DETACH DATABASE store')
+          this.db.prepare('ATTACH DATABASE ? AS store').run(':memory:')
+          absent = true
+        }
+        this.db.exec('PRAGMA store.journal_mode = WAL')
+        if (inspecting) break
+        this.db.exec('PRAGMA busy_timeout = 5000')
+        // One stat, SQLite's: is the file open still the one at its name?
+        const moved = new Int32Array(2)
+        this.db.fileControl('store', SQLITE_FCNTL_HAS_MOVED, moved)
+        if (moved[0] === 0) break
         this.db.exec('DETACH DATABASE store')
-        this.db.prepare('ATTACH DATABASE ? AS store').run(':memory:')
-        absent = true
+        const refused = remake(storeDir)
+        if (refused !== null) throw new Error(`${storeFile} was deleted, and ${refused}`)
       }
-      this.db.exec('PRAGMA store.journal_mode = WAL')
       if (!absent) this.db.fileControl('store', SQLITE_FCNTL_PERSIST_WAL, 1)
       this.db.exec('PRAGMA store.journal_size_limit = 67108864')
       this.db.exec('PRAGMA store.synchronous = NORMAL')
@@ -2866,7 +2921,8 @@ export class Cache implements CacheLayer {
    * returns says so; an empty one has nothing to serve and refuses.
    */
   readOnlyNotice(): string | null {
-    if (this.writeBlocked === null) return null
+    // A reading handle over no index: nothing was refused it.
+    if (this.writeBlocked === null || this.writeBlocked === NO_INDEX) return null
     if (this.empty) this.assertWritable()
     return (
       `cache directory ${this.cacheDir} is not writable (${this.writeBlocked}) — serving hits ` +

@@ -103,6 +103,8 @@ export function unlockedDir(
    `resolveCacheDir(root, workspaceConfig)`. One this user cannot write
    serves hits and saves nothing, with one line saying so; an empty one
    is refused up front with the directory named (`readOnlyNotice`).
+   A plan with no remote to probe (`prepareRunLocked`'s `planning`) opens
+   it in `'preview'` mode instead and writes nothing (`plan.md`).
    Then the layer resolution: an injected `RunOptions.remoteCache`
    composed into a `LayeredCache` wins; else `resolveCache` layers
    every plugin's `cache` remote over the local store, in declared

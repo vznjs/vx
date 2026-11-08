@@ -313,7 +313,10 @@ test: { exec: { command: 'bun test', retries: 1 } }
 - Every attempt streams its output live. Between attempts vx emits one
   stderr line into the task's stream, ending in the reason:
   `vx: retrying <id> (attempt <k>/<total>) after exit <code>`, or
-  `after a timeout` when the attempt was killed by `timeout`.
+  `after a timeout` when the attempt was killed by `timeout`, or
+  `after 1 sandbox violation` when the command exited 0 and a refused
+  access failed it. That attempt's violation lines print above the
+  line, under `SANDBOX VIOLATIONS (<n>)`, and stay in its log.
 - The final outcome is the LAST attempt's: the first success wins (and
   is what gets cached — its output only, not a concatenation of failed
   attempts); if every attempt fails, the task is `failed` with the last
@@ -1055,7 +1058,11 @@ watch` re-runs it on an edit there.
   so a formatter declaring `src/**` as both would delete its sources. A
   task that rewrites files in place declares no outputs. The two fields
   are compared across too, read from the root: `inputs.files: ['src/**']`
-  beside `outputs.workspaceFiles: ['app/src/**']` is the same refusal.
+  beside `outputs.workspaceFiles: ['app/src/**']` is the same refusal,
+  and so is an output directory that is a symbolic link into a directory
+  an input entry can match below (`dist -> src` under `src/**` or
+  `**/*.ts`), refused when a run finds it,
+  committed or not.
 - **Nested-project subtree** — files belonging to a project rooted
   inside this one's dir are excluded. No cross-project leakage via
   globs; the only cross-project relationship is `dependsOn` +
@@ -1188,8 +1195,11 @@ Semantics:
   resolved config), not their output, so the field stays correct under
   the lock every run reads — the changed output of a locked command
   still busts the cache.
-- A **non-zero exit fails the run** (a hard `UserError` naming the
-  command and exit code) — fail-loud, like a missing git binary. A
+- A **non-zero exit fails the task** before its command runs, and
+  `--dry` exits 1: `[vx] app#build: cache key not derived:
+inputs.runtime probe exited 7: <command> (cwd: …)`, then the probe's
+  output, its last 64 KiB (`… N earlier characters dropped` above a
+  longer one) — fail-loud, like a missing git binary. A
   flaky probe should not silently degrade to a stale hit.
 - **Output that is not UTF-8 fails the run** too: a lossy decode keyed
   every invalid byte alike. Pipe binary output through a hash or `od`.
@@ -1290,7 +1300,7 @@ either form; two `pkg#task` entries must agree on the project. One that
 is not named (`['buidl']`) is refused at load: it would match nothing at hash time and fold no upstream hash,
 decoupling the task from its dependencies with no diagnostic — a stale
 hit waiting for the next upstream change. An exact entry is held again once the
-graph is built, when the run plans: one that names none of the task's
+graph is built, by `vx lock` (and `--check`) and when the run plans: one that names none of the task's
 dependencies is refused (`['nope#build']`, or `['a#build']` for a
 project named `packages/a`, over `dependsOn: ['build']`; `['build']`
 over another project's `['b#build']`; `['^build']` over this project's
@@ -1307,7 +1317,7 @@ A filter selects among the task's own dependencies, never through a
 group: over `dependsOn: ['build']`, where `build` is a group of
 `build.a` and `build.b`, the filter sees `build`, not its members. A
 pattern that matches no dependency but does match a group's member
-(`'build.*'` there) is refused when the run plans: it would select
+(`'build.*'` there) is refused by `vx lock` and when the run plans: it would select
 nothing and stop the key moving with that member. Name the group, or
 depend on the member directly.
 
@@ -1434,6 +1444,12 @@ outputs: {
 Outputs are **NOT** filtered through gitignore — typical artifact
 dirs like `dist/`, `coverage/`, `.next/`, `pkg/` are captured normally
 even when gitignored (they usually are).
+
+Like inputs, outputs stop at a project boundary: an entry rooted inside
+a nested project (`sub/dist/**` when `sub/` holds its own config) would
+save nothing, so `vx lock` refuses it (`VX_E_NESTED_OUTPUT`): let that
+project's task write the files, or name them in
+`outputs.workspaceFiles`. `**`, a sibling and a `!` entry are fine.
 
 A **symlink** the globs match is an output: it is cached and restored
 as the link, its target as written (a link to a file, to a directory,

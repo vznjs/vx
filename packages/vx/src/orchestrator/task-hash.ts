@@ -21,7 +21,7 @@ import {
   WORKSPACE_OUTPUT_PREFIX,
 } from '../cache/index.js'
 import type { InputFile, TaskInputs } from '../exec/index.js'
-import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
+import { isGroupTask, KeyFailed, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { GROUP_VIA } from '../history/index.js'
 import {
   isUserError,
@@ -97,6 +97,15 @@ export interface ComputeHashArgs {
    * after its upstream ran, never from the run's shared memo.
    */
   probesAfterWrites?: ReadonlySet<string>
+}
+
+/** A key derivation whose throw is the task's `KeyFailed`: its command never ran. */
+export async function keyOf(derived: Promise<string>): Promise<string> {
+  try {
+    return await derived
+  } catch (err) {
+    throw new KeyFailed(err)
+  }
 }
 
 /**

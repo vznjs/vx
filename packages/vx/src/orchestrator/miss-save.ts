@@ -166,6 +166,11 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
           projectDir: node.projectDir,
           outputs: a.outputs,
           nestedProjectDirs: a.nestedProjectDirs,
+          inputs: {
+            projectDir: node.projectDir,
+            workspaceRoot: a.workspaceRoot,
+            declared: node.config.inputs,
+          },
           special: true,
         })
   const outputFiles = tree.files
@@ -175,6 +180,11 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
       : await resolveWorkspaceOutputTree({
           workspaceRoot: a.workspaceRoot,
           outputs: a.wsOutputs,
+          inputs: {
+            projectDir: node.projectDir,
+            workspaceRoot: a.workspaceRoot,
+            declared: node.config.inputs,
+          },
           special: true,
         })
   const wsOutputFiles = wsTree.files
@@ -342,10 +352,20 @@ async function resolveUnsaved(
     projectDir: a.node.projectDir,
     outputs: a.outputs,
     nestedProjectDirs: a.nestedProjectDirs,
+    inputs: {
+      projectDir: a.node.projectDir,
+      workspaceRoot: a.workspaceRoot,
+      declared: a.node.config.inputs,
+    },
   })
   const wsOutputFiles = await resolveWorkspaceOutputs({
     workspaceRoot: a.workspaceRoot,
     outputs: a.wsOutputs,
+    inputs: {
+      projectDir: a.node.projectDir,
+      workspaceRoot: a.workspaceRoot,
+      declared: a.node.config.inputs,
+    },
   })
   endResolve()
   return { outputFiles, wsOutputFiles }

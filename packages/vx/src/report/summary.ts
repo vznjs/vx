@@ -6,7 +6,7 @@
 import type { TaskOutcome } from '../graph/index.js'
 import { tallyOutcomes } from './tally.js'
 import { outcomeLabel, projectOutcome, ranNoCache } from './events.js'
-import { isGroupTask } from '../graph/index.js'
+import { isGroupTask, isKeyFailed, markKeyFailed } from '../graph/index.js'
 import { formatBytes, formatElapsed } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import {
@@ -550,7 +550,9 @@ export function formatOutcomeTable(
     .filter((o) => !isGroupTask(o.node))
     .map((o) => {
       const v = projectOutcome(o)
-      const status = neverStarted(o) ? 'not run' : outcomeLabel(v)
+      const status = neverStarted(o)
+        ? 'not run'
+        : outcomeLabel(isKeyFailed(o) ? markKeyFailed(v) : v)
       return { o, task: v.taskId, status, duration: `${v.durationMs}ms` }
     })
   if (rows.length === 0) return []
@@ -623,13 +625,18 @@ export function formatRunSummary(
   const restoreFailed = outcomes.filter(
     (o) => !isGroupTask(o.node) && o.status === 'failed' && o.restoreFailed === true,
   ).length
+  // A task with no key asked no cache and ran nothing: not a miss.
+  const keyFailed = outcomes.filter(
+    (o) => !isGroupTask(o.node) && o.status === 'failed' && isKeyFailed(o),
+  ).length
   const t = tallyOutcomes(outcomes)
   // Spread over executed tasks only — `success`/`failed` statuses ran
   // a command; cache-hit statuses replayed one, and a failed restore ran none.
   const durations = outcomes
     .filter(
       (o) =>
-        (o.status === 'success' || (o.status === 'failed' && o.restoreFailed !== true)) &&
+        (o.status === 'success' ||
+          (o.status === 'failed' && o.restoreFailed !== true && !isKeyFailed(o))) &&
         !isGroupTask(o.node),
     )
     .map((o) => o.durationMs)
@@ -651,7 +658,13 @@ export function formatRunSummary(
       restoredRemote: t.restoredRemote,
       saved: outcomes.filter((o) => o.saved === true && !isGroupTask(o.node)).length,
       notSaved: outcomes.filter((o) => !isGroupTask(o.node) && ranUnsaved(o)).length,
-      miss: t.total - t.skipped - (t.cachedLocal + t.cachedRemote) - noCache - restoreFailed,
+      miss:
+        t.total -
+        t.skipped -
+        (t.cachedLocal + t.cachedRemote) -
+        noCache -
+        restoreFailed -
+        keyFailed,
       noCache,
       ...(restoreFailed > 0 ? { restoreFailed } : {}),
       spread:

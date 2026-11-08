@@ -46,6 +46,33 @@ export class RestoreFailed extends Error {
   }
 }
 
+/**
+ * Thrown by `execute` when deriving the task's key threw (a runtime probe
+ * that exited non-zero, a refused `inputs.env` value). The command never
+ * ran: the failed outcome is marked (`isKeyFailed`), and the line says so.
+ */
+export class KeyFailed extends Error {
+  constructor(readonly error: unknown) {
+    super(thrownMessage(error))
+    this.name = 'KeyFailed'
+  }
+}
+
+// A mark, not a field: `TaskOutcome` and `RunPlan` are public types. A symbol
+// rides a spread copy and never reaches JSON.
+const KEY_FAILED = Symbol('keyFailed')
+
+/** Mark a failed outcome (or a plan holding one) as having no derivable key. */
+export function markKeyFailed<T extends object>(o: T): T {
+  ;(o as Record<symbol, unknown>)[KEY_FAILED] = true
+  return o
+}
+
+/** Whether `markKeyFailed` marked it: no key, so no command ran and no cache was asked. */
+export function isKeyFailed(o: object): boolean {
+  return (o as Record<symbol, unknown>)[KEY_FAILED] === true
+}
+
 /** What moved in a missed task's key since the last entry saved for it. */
 export interface InputChanges {
   /** How many components changed, appeared or went. 0: the same key, its entry gone. */
@@ -1235,7 +1262,8 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
               tick()
               return
             }
-            const err = thrown instanceof RestoreFailed ? thrown.error : thrown
+            const err =
+              thrown instanceof RestoreFailed || thrown instanceof KeyFailed ? thrown.error : thrown
             const message = thrownMessage(err)
             // After the run's stop a rejection is the stop's doing (a probe
             // it killed, C-65): aborted, as any task it kills, and unsaid.
@@ -1247,6 +1275,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
               durationMs: 0,
               ...(thrown instanceof RestoreFailed && !stopped ? { restoreFailed: true } : {}),
             })
+            if (thrown instanceof KeyFailed && !stopped) markKeyFailed(outcome)
             leave()
             untrack()
             if (stopped) {
@@ -1261,9 +1290,10 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
             // Out of descriptors is the environment's limit too: a stack
             // naming a file that was fine sent the user after the file.
             if (isUserError(err) || isFsRefusal(err) || isOutOfFds(err)) {
-              const text = isUserError(err)
+              const said = isUserError(err)
                 ? message
                 : `${message} — ${isOutOfFds(err) ? OUT_OF_FDS_HINT : fsRefusalHint(err)}`
+              const text = thrown instanceof KeyFailed ? `cache key not derived: ${said}` : said
               // In a task's own output block, in full: that block is read
               // alone, and "as <task> above" named one printed elsewhere or
               // not at all (2026-10-22). On bare stderr the first is above.

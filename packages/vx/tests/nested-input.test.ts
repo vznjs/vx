@@ -3,6 +3,9 @@
 // inputs. A `dist/**` input over a build output that holds its own project
 // config was silently dropped from the key, and edits there hit. `vx lock`
 // refuses it, naming the nested project and the workspaceFiles spelling.
+// An output glob there saves nothing for the same reason: the run warned
+// "outputs matched no files" over a file it had written, and the nested
+// project's artifact could hold the outer task's bytes.
 
 import { rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -15,14 +18,14 @@ afterEach(async () => {
   for (const r of roots.splice(0)) await rm(r, { recursive: true, force: true })
 })
 
-async function workspace(inputs: string[]): Promise<string> {
+async function workspace(inputs: string[], outputs: string[] = []): Promise<string> {
   const root = await makeWorkspace({ prefix: 'vx-nested-input-', workspaceFile: false })
   roots.push(root)
   await addProject(root, 'a', {
     config: `export default { tasks: { build: {
   exec: { command: 'true' },
   inputs: { files: ${JSON.stringify(inputs)} },
-  outputs: { files: [] },
+  outputs: { files: ${JSON.stringify(outputs)} },
   cache: true,
 } } }
 `,
@@ -70,5 +73,26 @@ describe('an input under a nested project', () => {
     expect(await lockError(await workspace(['**']))).toBeNull()
     expect(await lockError(await workspace(['distx/**', 'src/**']))).toBeNull()
     expect(await lockError(await workspace(['**', '!dist/**']))).toBeNull()
+  })
+})
+
+describe('an output under a nested project', () => {
+  it('is refused at lock, naming the project and the workspaceFiles glob', async () => {
+    const msg = await lockError(await workspace(['src/**'], ['out/**', 'dist/o/**']))
+    expect(msg).toContain(
+      'packages/a#build writes "dist/o/**" in outputs.files, which lies inside the project packages/a/dist',
+    )
+    expect(msg).toContain('outputs.workspaceFiles ("packages/a/dist/o/**")')
+  })
+
+  it('is refused in one alternative of a brace', async () => {
+    expect(await lockError(await workspace(['src/**'], ['{out,dist}/**']))).toContain(
+      '"{out,dist}/**" in outputs.files',
+    )
+  })
+
+  it('is no refusal for a sibling or a negation', async () => {
+    expect(await lockError(await workspace(['src/**'], ['distx/**']))).toBeNull()
+    expect(await lockError(await workspace(['src/**'], ['out/**', '!dist/**']))).toBeNull()
   })
 })

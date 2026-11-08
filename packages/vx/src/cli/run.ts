@@ -9,7 +9,7 @@ import {
   shellQuote,
   type RunOptions,
 } from '../orchestrator/index.js'
-import type { ContinueMode } from '../graph/index.js'
+import { type ContinueMode, isKeyFailed } from '../graph/index.js'
 import {
   applyCacheFlags,
   type CacheFlags,
@@ -746,7 +746,8 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     } else {
       ui.print('out', planReport(plan))
     }
-    return 0
+    // The run fails a task whose key cannot be derived; its plan does too.
+    return isKeyFailed(plan) ? 1 : 0
   }
 
   // A run executes in THIS process, always. Where an individual task's
