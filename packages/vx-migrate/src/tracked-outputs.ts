@@ -206,18 +206,20 @@ function literalPrefix(glob: string): string {
   return out.join('/')
 }
 
-/** The tracked `files` (relative to the same base as `globs`) the positive globs cover and no `!` takes back. */
+/**
+ * The tracked `files` (relative to the same base as `globs`) the positive
+ * globs cover, even one the globs' own `!` takes back: a reader's take-back
+ * is of the positives alone (`excludeSiblingOutputs`), so its `!*\/**`
+ * beside a `*\/**` minus `!src/**` output still hid src.
+ */
 function coveredTracked(globs: readonly string[], files: readonly string[]): string[] {
-  const positive = globs.filter((g) => !g.startsWith('!'))
-  const taken = globs.filter((g) => g.startsWith('!')).map((g) => g.slice(1))
   const hit = new Set<string>()
-  for (const g of positive) {
+  for (const g of globs) {
+    if (g.startsWith('!')) continue
     const prefix = literalPrefix(g)
     for (const f of files) {
       if (prefix !== '' && f !== prefix && !f.startsWith(`${prefix}/`)) continue
-      if (!outputsOverlap(g, f)) continue
-      if (taken.some((t) => outputsOverlap(t, f))) continue
-      hit.add(f)
+      if (outputsOverlap(g, f)) hit.add(f)
     }
   }
   return [...hit].sort()

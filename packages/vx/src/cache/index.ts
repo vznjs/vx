@@ -38,6 +38,7 @@ export {
   FILE_HASH_RACY_MS,
   OUTPUT_DIRS_RACY_MS,
   racyWindowMs,
+  hashFileSeen,
   type SchemaReset,
   SCHEMA_VERSION,
   storedLog,
@@ -45,7 +46,7 @@ export {
 } from './cache.js'
 export { ABSENT_INPUT, absentOr, CACHE_VERSION, foldHead } from './key-fold.js'
 export type { FoldMemo } from './fold-memo.js'
-export { measureFsClockLag, setFsClockLag } from './fs-clock.js'
+export { fsClockNow, measureFsClockLag, setFsClockLag, stampGrainMs } from './fs-clock.js'
 export { behindLink, filesBehind } from './linked-inputs.js'
 export {
   addedInput,

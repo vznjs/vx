@@ -11,7 +11,7 @@
 // The consumer decides what a global becomes through `splice`.
 
 import path from 'node:path'
-import { isLiteralPattern, pruneOrphanPersistentNotes, UserError } from '@vzn/vx'
+import { isLiteralPattern, outputsOverlap, pruneOrphanPersistentNotes, UserError } from '@vzn/vx'
 import type { PackageMeta } from '../packages.js'
 import { refuseTaskNames } from '../plugin-gaps.js'
 import { apartTakeBacks, literalGlob, minimatchToVx, withoutTakenBack } from '../glob-grammar.js'
@@ -2359,10 +2359,20 @@ function buildTask(
   task.outputs = outputs
   // A path a `!` output takes back is still written by the task, often
   // not gitignored (`dist/skip`): as its own input it changed after the
-  // key was taken, so no run was saved, and no dependant's either.
+  // key was taken, so no run was saved, and no dependant's either. One
+  // over a committed file is source (`*/**` minus `!src/**`, medusa's):
+  // Turbo keys it, and taken back an edit there replayed the old build.
+  // Without git's list, no `!` is known to hold only what the task writes.
   const subtract = (field: 'files' | 'workspaceFiles', from: readonly string[]) => {
     const list = inputs[field] as unknown[] | undefined
-    const negs = from.filter((g) => ownNegated.has(g) && !list?.includes(g))
+    const tracked = opts.tracked?.(field === 'files' ? pkgDir : '').files
+    if (tracked === undefined) return
+    const negs = from.filter(
+      (g) =>
+        ownNegated.has(g) &&
+        !list?.includes(g) &&
+        !tracked.some((f) => outputsOverlap(g.slice(1), f)),
+    )
     if (list !== undefined && negs.length > 0) inputs[field] = withoutTakenBack([...list, ...negs])
   }
   subtract('files', outputs.files as string[])

@@ -21,8 +21,10 @@ import {
   FULL_CACHE_POLICY,
   type GitFilesCache,
   racyWindowMs,
+  stampGrainMs,
   type TaskInputComponent,
   declaresInput,
+  fsClockNow,
 } from '../cache/index.js'
 import {
   signalExitCode,
@@ -884,6 +886,14 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
           : {}),
       })
     : undefined
+  // The command's start for the re-check (`movedInput`), on the clock that
+  // stamps its writes: off `Date.now()`, a coarse kernel tick dated an edit
+  // in the command's first tick before it, and an edit undone by the end
+  // read as an upstream's write of the key's bytes. After the describe, so
+  // the stats that tell an upstream's write in its tick apart come first.
+  const commandFrom = cfgCacheable
+    ? fsClockNow(args.cacheDir ?? path.join(args.workspaceRoot, '.vx'))
+    : 0
   /** The other command that may have put a moved input back (`ownRewrite`). */
   let rewroteBy: string | undefined
   /**
@@ -1786,7 +1796,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       (await movedInput(
         keyedInputs(described!.facts),
         cache,
-        described!.describedAt,
+        commandFrom,
         stability.strategy === 'mutable' ? ownRewrite : undefined,
       )) ?? described!.added()
     )
@@ -1836,8 +1846,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       moved === null || rewroteBy !== undefined || (result.changed?.length ?? 0) > 0
         ? undefined
         : keyedInputs(described!.facts).find((f) => f.path === moved)
-    const ctimeOnly =
-      fact !== undefined && (await onlyCtimeMoved(fact, described!.describedAt, cache))
+    const ctimeOnly = fact !== undefined && (await onlyCtimeMoved(fact, commandFrom, cache))
     const what = ctimeOnly
       ? `${name}'s ctime moved while the task ran, but not its bytes or mtime (a hard link, chmod or chown)`
       : `${name} changed after its key was taken` +
@@ -2004,7 +2013,7 @@ async function onlyCtimeMoved(fact: InputFact, from: number, cache: CacheLayer):
   } catch {
     return false
   }
-  if (st.ctimeMs < from - racyWindowMs(st.ctimeMs, 0)) return false
-  if (st.mtimeMs >= from - racyWindowMs(st.mtimeMs, 0)) return false
+  if (st.ctimeMs < from - stampGrainMs(st.ctimeMs)) return false
+  if (st.mtimeMs >= from - stampGrainMs(st.mtimeMs)) return false
   return (await cache.hashFile(fact.path).catch(() => undefined)) === fact.digest
 }

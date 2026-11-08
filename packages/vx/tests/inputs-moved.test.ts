@@ -1085,6 +1085,32 @@ describe('movedInput — which files the re-check hashes again', () => {
     expect(calls).toEqual([f])
   })
 
+  it("one stamped in the command start's own tick is the upstream's only if the describe saw that ctime", async () => {
+    // A coarse clock dates a write in the start's tick at the start, an
+    // upstream's just before it and the command's first just after. Read
+    // as the command's, a fast upstream's output withheld its reader's save.
+    const f = path.join(root, 'tick.txt')
+    await writeFile(f, 'x')
+    const ctime = lstatSync(f).ctimeMs
+    const seen = counting('d')
+    expect(
+      await movedInput([{ path: f, digest: 'd', since: ctime, ctimeMs: ctime }], seen.cache, ctime),
+    ).toBeUndefined()
+    expect(seen.calls).toEqual([f])
+    // An index OID's file was not stat'ed at the describe: the tie is the command's.
+    const unseen = counting('d')
+    expect(await movedInput([{ path: f, digest: 'd', since: ctime }], unseen.cache, ctime)).toBe(f)
+    expect(unseen.calls).toEqual([])
+    // Nor is a ctime the describe saw differently.
+    expect(
+      await movedInput(
+        [{ path: f, digest: 'd', since: ctime, ctimeMs: ctime - 1 }],
+        unseen.cache,
+        ctime,
+      ),
+    ).toBe(f)
+  })
+
   it('a file that is gone has moved, and nothing is read', async () => {
     const { cache, calls } = counting('d')
     const gone = path.join(root, 'gone.txt')

@@ -866,12 +866,21 @@ executor seam needs anyway) must equal it. Then each input file is
 after, or within `FILE_HASH_RACY_MS` before, the moment its digest was
 learned — the enumeration's start for an index OID, the describe for a
 hashed file — is hashed again and compared, and a file that is gone has
-moved. A file written at or after the describe (just before the command)
+moved. A file written after the describe (just before the command)
 has moved whatever it holds (a whole-second stamp counts as any moment
 of its second, an even one of two, in both checks): an input changed and changed BACK while the
 command ran matched its digest again, and its output, built from the
 edit, was filed under the key and restored over the original (item
-1015). A symlinked input is also followed again: the key folds the
+1015). That moment is read off the file system's clock (a file written
+and removed in the cache dir, `fsClockNow`), not `Date.now()`: Linux
+before 6.13 stamps from its coarse clock, a tick behind, which dated an
+edit in the command's first tick before it. A coarse clock gives a write
+in that moment's own tick the moment itself, whether an upstream's just
+before or the command's just after: it is the upstream's when the
+describe's stat of the file saw that ctime already, else the command's
+(a tracked clean file, keyed by its index OID, is not stat'ed there).
+The residual: an upstream's write, the describe and an edit by the
+command all inside one tick, which a kernel since 6.13 stamps apart. A symlinked input is also followed again: the key folds the
 content behind it, which an edit changes without touching the link, and
 a different digest there has moved. When one moved, the task's result stands but no entry is saved,
 one status line names the file (``[vx] app#format: `packages/app/a.ts`

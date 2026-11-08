@@ -35,6 +35,7 @@ import type {
   SaveArgs,
 } from './cache.js'
 import type { OutputDirRow } from './cache.js'
+import { shareSeenHasher } from './cache.js'
 import { isCorruptArtifact } from './layer.js'
 import { RemoteLane, type ResolvedRemote } from './remote-lane.js'
 import type { PluginSecrets } from '../util/index.js'
@@ -259,6 +260,7 @@ export class LayeredCache implements CacheLayer {
     uploadConcurrency?: number,
   ) {
     this.lanes = remotes.map((r) => new RemoteLane(r, local.traffic, uploadConcurrency))
+    shareSeenHasher(local, this)
   }
 
   // Asked, not kept: a remote whose `open` failed leaves the run after this is built.

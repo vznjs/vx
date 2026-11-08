@@ -16,7 +16,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { parseRunArgs, resolveRunOptions, type RunArgs, spacedHint } from './run.js'
 import { refuse, seeHelp } from './help.js'
-import { namedIgnoredReach } from '../cache/index.js'
+import { fsClockNow, namedIgnoredReach } from '../cache/index.js'
 import {
   fingerprintClaims,
   forwardedSignal,
@@ -43,7 +43,7 @@ import {
   makeWatchIgnore,
   shapesWatchedSet,
 } from './watch-filter.js'
-import { CLOSED, fsClockNow, type WatchHandle, WatcherPool } from './watch-fs.js'
+import { CLOSED, type WatchHandle, WatcherPool } from './watch-fs.js'
 import { ChangeJudge } from './watch-judge.js'
 import { type WatchCycle, watchCycle } from './watch-cycle.js'
 import { hangupIgnored, maskedLine, printable, restartTimings } from '../util/index.js'
