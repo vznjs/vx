@@ -588,8 +588,11 @@ export function probesAfterWrites(
 
 /**
  * Does this task's key fold the dependency's? What `computeTaskHash` folds
- * (`filterUpstreamHashes` over the same synthetic outcomes); a group folds
- * every keyed member.
+ * (`filterUpstreamHashes` over the same synthetic outcomes); an unkeyed
+ * group, which has no filter, folds every keyed member. A keyed group is
+ * keyed by `computeTaskHash`, filter and all: read as folding everything, its
+ * `tasks: []` hid a cached rewriter below it, and its reader was restored
+ * under the key taken before the rewrite.
  */
 function foldedBy(
   node: TaskNode,
@@ -597,7 +600,7 @@ function foldedBy(
   keyById: Map<string, string>,
 ): (dep: string) => boolean {
   const filter = node.config.inputs?.tasks
-  if (isGroupTask(node) || filter === undefined) return (dep) => keyById.has(dep)
+  if (filter === undefined) return (dep) => keyById.has(dep)
   const hashes = new Set(
     filterUpstreamHashes(upstream, filter, node.projectName, node.id).map(([, h]) => h),
   )

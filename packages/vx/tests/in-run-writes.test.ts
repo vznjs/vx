@@ -119,6 +119,40 @@ describe('a cached task that rewrites its own input', () => {
   )
 
   it(
+    'the same through a keyed group that folds no key of the rewriter',
+    async () => {
+      // `build` folds the group's key, and the group's `tasks: []` folds no
+      // key of `fmt`. The gate read a keyed group as folding every
+      // dependency, keyed `build` up front, and the fourth run restored B.
+      const app = await fixture(`
+        export default {
+          tasks: {
+            fmt: {
+              exec: { command: 'cp seed.txt a.ts' },
+              inputs: { files: ['seed.txt', 'a.ts'], stability: { strategy: 'mutable' } },
+              outputs: { files: [] }, cache: true,
+            },
+            g: { dependsOn: ['fmt'], inputs: { files: ['a.ts'], tasks: [] } },
+            build: {
+              dependsOn: ['g'],
+              exec: { command: 'mkdir -p dist && cat a.ts > dist/out.txt' },
+              inputs: { files: [] }, outputs: { files: ['dist/**'] }, cache: true,
+            },
+          },
+        }
+      `)
+      const outs: string[] = []
+      for (const seed of ['A', 'B', 'B', 'A']) {
+        await writeFile(path.join(app, 'seed.txt'), seed)
+        await runTask('build')
+        outs.push(await readFile(path.join(app, 'dist', 'out.txt'), 'utf8'))
+      }
+      expect(outs).toEqual(['A', 'B', 'B', 'A'])
+    },
+    TIMEOUT,
+  )
+
+  it(
     'under a read-only cache policy the rewrite still drops what the run knew of the project',
     async () => {
       // The first run formats nothing (seed = the committed `X`) and saves
@@ -442,6 +476,18 @@ describe('the stability gate: which readers are keyed before a rewriter ran', ()
       expect(await sameProject(group, '[]')).toBe(false)
       await fresh()
       expect(await sameProject(group, "['pre']")).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "through a keyed group: the group's own inputs.tasks decides what folding it covers",
+    async () => {
+      const keyed = (tasks: string) =>
+        `{ dependsOn: ['fmt'], inputs: { files: ['a.ts'], tasks: ${tasks} } }`
+      expect(await sameProject(keyed('[]'))).toBe(false)
+      await fresh()
+      expect(await sameProject(keyed("['fmt']"))).toBe(true)
     },
     TIMEOUT,
   )
