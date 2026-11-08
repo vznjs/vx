@@ -96,11 +96,12 @@ check-ignore` over their directories (`util/git-ignored.ts`) that
   previous run's bytes. A writer is an upstream whose command may write
   (`commandWriteReach`) or that declares outputs; "does not fold" is
   `graph/folds.ts`' `foldedDeps`, transitively (a writer behind a
-  folded dependency that leaves it out counts). `deriveStableKeys`
+  folded dependency that leaves it out counts; so does a folded writer
+  that is not cached, whose writes its key does not follow). `deriveStableKeys`
   takes no key for such a task (unstable, so never probed or restored
   ahead of its writer, and its probe is not spawned up front), and
   `ComputeHashArgs.probesAfterWrites` answers its probes for it alone.
-  A key that folds the writer's keeps the run's shared answer: an early
+  A key that folds a cached writer's keeps the run's shared answer: an early
   answer then costs a spurious miss on the run after the bytes change,
   never a stale hit. Memoised per graph; a graph with no probe walks
   nothing.

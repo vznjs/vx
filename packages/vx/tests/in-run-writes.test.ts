@@ -1032,6 +1032,31 @@ describe('a runtime probe that reads an upstream output', () => {
   )
 
   it.each([
+    ['project', "runtime: ['cat ../lib/out.txt 2>/dev/null || true']"],
+    ['workspace', "workspaceRuntime: ['cat packages/lib/out.txt 2>/dev/null || true']"],
+  ])(
+    'a folded writer that is not cached does not cover its writes: the %s probe waits',
+    async (_kind, probe) => {
+      // An uncached task's key is not a function of what it writes: here it
+      // reads no file. Before the fix the probe read `out.txt` before `gen`
+      // rewrote it, and the third run restored the first run's A.
+      const libDir = await addProject(root, 'lib', {
+        config: lib
+          .replace("inputs: { files: ['seed.txt'] }", 'inputs: { files: [] }')
+          .replace('cache: true', 'cache: false'),
+        files: { 'seed.txt': 'X' },
+      })
+      const appDir = await addProject(root, 'app', {
+        config: app(probe).replace('tasks: [], ', ''),
+      })
+      await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\nout.txt\n')
+      commit()
+      expect(await seeds(libDir, appDir)).toEqual(['A', 'B', 'B', 'A'])
+    },
+    TIMEOUT,
+  )
+
+  it.each([
     ['outputs.files', "outputs: { files: ['out.txt'] }"],
     ['outputs.workspaceFiles', "outputs: { files: [], workspaceFiles: ['packages/lib/out.txt'] }"],
   ])(

@@ -1288,10 +1288,11 @@ config), not a per-task probe: it is not asked again before a save, as
 input files are, because that would be one spawn per command per miss
 where a file costs one `lstat`. A command that reads another task's
 OUTPUT reads whatever is on disk when it is asked. When the reader's key
-folds that task's key, the upstream key covers it: an answer taken before
-the upstream ran costs a spurious miss on the run after the output
-changes, never a stale hit, and the answer stays shared. When it does
-not (`tasks: []`, a filter that leaves it out, transitively), nothing
+folds that task's key and that task is cached, the upstream key covers
+it: an answer taken before the upstream ran costs a spurious miss on the
+run after the output changes, never a stale hit, and the answer stays
+shared. When it does not (`tasks: []`, a filter that leaves it out, an
+uncached writer, whose writes its key does not follow, transitively), nothing
 covered it until X-34: the save filed bytes built from the new state
 under the old answer, and a later run that started from the old state
 hit them. Now such a task (`probesAfterWrites`, stable-keys.ts) takes no

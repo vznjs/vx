@@ -518,13 +518,13 @@ const probesAfterWritesOf = new WeakMap<ReadonlyMap<string, TaskNode>, ReadonlyS
  * its upstream ran (`ComputeHashArgs.probesAfterWrites`).
  *
  * A writer is any upstream whose command may write (`commandWriteReach`)
- * or that declares outputs. A key that folds the writer's covers what it
- * writes, as for a rewriter in `deriveStableKeys`: an early answer then
+ * or that declares outputs. A key that folds a cached writer's covers what
+ * it writes, as for a rewriter in `deriveStableKeys`: an early answer then
  * costs a spurious miss on the run after the bytes change, never a stale
  * hit, and such a probe keeps the run's shared answer — one spawn per run,
  * not per task. So only a writer the key does not fold, transitively
- * (`tasks: []`, a filter that leaves it out, an order-only edge), makes
- * the probe wait.
+ * (`tasks: []`, a filter that leaves it out, an order-only edge), or an
+ * uncached one, makes the probe wait.
  *
  * Once per graph: run, admission and both up-front passes ask the same map.
  */
@@ -577,7 +577,9 @@ export function probesAfterWrites(
       if (unfolded || !depWrites) continue
       const folded =
         foldsAll || (folds ??= new Set(foldedDeps(node, nodeOf).map((c) => c.node.id))).has(dep)
-      unfolded = folded ? unfoldedBelow.has(dep) : true
+      // An uncached writer's writes are not a function of its key.
+      const covers = folded && (!writers.has(dep) || nodeOf(dep).config.cache === true)
+      unfolded = covers ? unfoldedBelow.has(dep) : true
     }
     if (writer) writerBelow.add(id)
     if (unfolded) unfoldedBelow.add(id)
