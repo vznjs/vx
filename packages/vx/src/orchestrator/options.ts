@@ -239,10 +239,10 @@ export interface RunOptions {
    */
   keep?: HeldPersistent
   /**
-   * Where the run records when each command ran and where it may write
-   * (command-windows.ts). The watch loop passes its own, so a write that
-   * lands during the cycle and no command of it may have made is the
-   * user's edit, whatever the file settles to.
+   * Where the run records when each command ran (and each hit's restore)
+   * and where it may write (command-windows.ts). The watch loop passes its
+   * own, so a write that lands during the cycle and no command of it may
+   * have made is the user's edit, whatever the file settles to.
    */
   commandWindows?: CommandWindows
   /**

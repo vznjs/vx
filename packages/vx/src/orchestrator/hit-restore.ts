@@ -295,84 +295,98 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
     let staleWsRels: string[] = []
     let staleDirs: string[] = []
     let staleWsDirs: string[] = []
-    if (!additive) {
-      sweepRestoreTemps(node.projectDir, outputs, cleanArgs.committed)
-      sweepRestoreTemps(args.workspaceRoot, wsOutputs, wsCleanArgs.committed)
-      if (outputs.length > 0) {
-        const tree = walked?.proj ?? (await resolveOutputTree({ ...walkArgs, ...cleanArgs }))
-        // A FIFO, socket or device is found too: one the entry does not hold
-        // is a stray like any file, and one in a held path's way goes first.
-        foundRels = [...tree.files, ...(tree.findSpecial?.() ?? [])].map((f) =>
-          relPosix(node.projectDir, f),
-        )
-        const blocking = inTheWay(foundRels, heldRels)
-        staleRels = notHeld(foundRels, heldRels).filter((f) => !blocking.has(f))
-        const dirs = splitDirs(node.projectDir, tree.emptyDirs, heldRels)
-        staleDirs = dirs.stale
-        if (blocking.size > 0 || dirs.blocking.length > 0) {
-          await cleanOutputPaths({
-            projectDir: node.projectDir,
-            rels: [...blocking],
-            outputs,
-            committed: cleanArgs.committed,
-            emptyDirs: dirs.blocking,
-          })
+    // The restore writes into the tree as a command would, and a write in a
+    // cycle no window covers is the user's to `vx watch` (`sawEvent`): with
+    // none, a hit's restore started one more cycle whenever the next
+    // command opened its window more than a racy window later (CI stalls).
+    const closeWindow =
+      args.commandWindows?.open(
+        node.id,
+        node.projectDir,
+        wsOutputs.length > 0 ? 'workspace' : 'project',
+      ) ?? (() => {})
+    try {
+      if (!additive) {
+        sweepRestoreTemps(node.projectDir, outputs, cleanArgs.committed)
+        sweepRestoreTemps(args.workspaceRoot, wsOutputs, wsCleanArgs.committed)
+        if (outputs.length > 0) {
+          const tree = walked?.proj ?? (await resolveOutputTree({ ...walkArgs, ...cleanArgs }))
+          // A FIFO, socket or device is found too: one the entry does not hold
+          // is a stray like any file, and one in a held path's way goes first.
+          foundRels = [...tree.files, ...(tree.findSpecial?.() ?? [])].map((f) =>
+            relPosix(node.projectDir, f),
+          )
+          const blocking = inTheWay(foundRels, heldRels)
+          staleRels = notHeld(foundRels, heldRels).filter((f) => !blocking.has(f))
+          const dirs = splitDirs(node.projectDir, tree.emptyDirs, heldRels)
+          staleDirs = dirs.stale
+          if (blocking.size > 0 || dirs.blocking.length > 0) {
+            await cleanOutputPaths({
+              projectDir: node.projectDir,
+              rels: [...blocking],
+              outputs,
+              committed: cleanArgs.committed,
+              emptyDirs: dirs.blocking,
+            })
+          }
+        }
+        if (wsOutputs.length > 0) {
+          const tree =
+            walked?.ws ?? (await resolveWorkspaceOutputTree({ ...walkArgs, ...wsCleanArgs }))
+          foundWsRels = [...tree.files, ...(tree.findSpecial?.() ?? [])].map((f) =>
+            relPosix(args.workspaceRoot, f),
+          )
+          const blocking = inTheWay(foundWsRels, heldWsRels)
+          staleWsRels = notHeld(foundWsRels, heldWsRels).filter((f) => !blocking.has(f))
+          const dirs = splitDirs(args.workspaceRoot, tree.emptyDirs, heldWsRels)
+          staleWsDirs = dirs.stale
+          if (blocking.size > 0 || dirs.blocking.length > 0) {
+            await cleanOutputPaths({
+              projectDir: args.workspaceRoot,
+              rels: [...blocking],
+              outputs: wsOutputs,
+              committed: wsCleanArgs.committed,
+              emptyDirs: dirs.blocking,
+            })
+          }
         }
       }
-      if (wsOutputs.length > 0) {
-        const tree =
-          walked?.ws ?? (await resolveWorkspaceOutputTree({ ...walkArgs, ...wsCleanArgs }))
-        foundWsRels = [...tree.files, ...(tree.findSpecial?.() ?? [])].map((f) =>
-          relPosix(args.workspaceRoot, f),
-        )
-        const blocking = inTheWay(foundWsRels, heldWsRels)
-        staleWsRels = notHeld(foundWsRels, heldWsRels).filter((f) => !blocking.has(f))
-        const dirs = splitDirs(args.workspaceRoot, tree.emptyDirs, heldWsRels)
-        staleWsDirs = dirs.stale
-        if (blocking.size > 0 || dirs.blocking.length > 0) {
-          await cleanOutputPaths({
-            projectDir: args.workspaceRoot,
-            rels: [...blocking],
-            outputs: wsOutputs,
-            committed: wsCleanArgs.committed,
-            emptyDirs: dirs.blocking,
-          })
-        }
+      await args.cache.restoreOutputs(hash, node.projectDir, args.workspaceRoot, {
+        files: outputs,
+        workspaceFiles: wsOutputs,
+      })
+      if (staleRels.length > 0 || staleDirs.length > 0) {
+        await cleanOutputPaths({
+          projectDir: node.projectDir,
+          rels: staleRels,
+          emptyDirs: staleDirs,
+          outputs,
+          committed: cleanArgs.committed,
+          // A stale file in an output directory the entry holds empty takes
+          // only itself: the directory stays, as the miss left it.
+          keep: new Set(
+            heldRels
+              .filter((r) => r.endsWith('/'))
+              .map((r) => path.join(node.projectDir, r.slice(0, -1))),
+          ),
+        })
       }
-    }
-    await args.cache.restoreOutputs(hash, node.projectDir, args.workspaceRoot, {
-      files: outputs,
-      workspaceFiles: wsOutputs,
-    })
-    if (staleRels.length > 0 || staleDirs.length > 0) {
-      await cleanOutputPaths({
-        projectDir: node.projectDir,
-        rels: staleRels,
-        emptyDirs: staleDirs,
-        outputs,
-        committed: cleanArgs.committed,
-        // A stale file in an output directory the entry holds empty takes
-        // only itself: the directory stays, as the miss left it.
-        keep: new Set(
-          heldRels
-            .filter((r) => r.endsWith('/'))
-            .map((r) => path.join(node.projectDir, r.slice(0, -1))),
-        ),
-      })
-    }
-    if (staleWsRels.length > 0 || staleWsDirs.length > 0) {
-      await cleanOutputPaths({
-        projectDir: args.workspaceRoot,
-        rels: staleWsRels,
-        emptyDirs: staleWsDirs,
-        outputs: wsOutputs,
-        committed: wsCleanArgs.committed,
-        keep: new Set(
-          heldWsRels
-            .filter((r) => r.endsWith('/'))
-            .map((r) => path.join(args.workspaceRoot, r.slice(0, -1))),
-        ),
-      })
+      if (staleWsRels.length > 0 || staleWsDirs.length > 0) {
+        await cleanOutputPaths({
+          projectDir: args.workspaceRoot,
+          rels: staleWsRels,
+          emptyDirs: staleWsDirs,
+          outputs: wsOutputs,
+          committed: wsCleanArgs.committed,
+          keep: new Set(
+            heldWsRels
+              .filter((r) => r.endsWith('/'))
+              .map((r) => path.join(args.workspaceRoot, r.slice(0, -1))),
+          ),
+        })
+      }
+    } finally {
+      closeWindow()
     }
     // The tree now holds this entry's bytes: stamp them for the next hit
     // (item 886).
