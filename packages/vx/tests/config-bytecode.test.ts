@@ -182,6 +182,30 @@ describe('workspace config bytecode', () => {
   )
 
   it(
+    'a linked config retargeted at the same bytes loads the new target, not the old bundle',
+    async () => {
+      for (const v of ['A', 'B']) {
+        await mkdir(path.join(root, `cfg${v}`))
+        await writeFile(
+          path.join(root, `cfg${v}`, 'workspace.ts'),
+          "import probe from 'vx-probe'\nimport v from './helper'\nexport default { plugins: [probe(v)] }\n",
+        )
+        await writeFile(path.join(root, `cfg${v}`, 'helper.ts'), `export default '${v}'\n`)
+      }
+      const link = path.join(root, '.vx', 'workspace.ts')
+      await rm(link)
+      await symlink('../cfgA/workspace.ts', link)
+      probe()
+      expect(probe()).toMatchObject({ value: 'A', bundled: true })
+      await rm(link)
+      await symlink('../cfgB/workspace.ts', link)
+      expect(probe()).toMatchObject({ value: 'B', bundled: false })
+      expect(probe()).toMatchObject({ value: 'B', bundled: true })
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a fresh workspace with no cache yet gets no bundle',
     async () => {
       await rm(path.join(root, '.vx', 'cache'), { recursive: true })

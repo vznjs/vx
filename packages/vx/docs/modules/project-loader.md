@@ -309,7 +309,8 @@ bundled with `Bun.build` (CommonJS, `bytecode: true`, `@vzn/vx`
 external) into `.vx/cache/compiled/workspace-<hash>.{js,js.jsc,json}`,
 the name keyed by the config's bytes, its path and `Bun.revision`. The
 next first load requires the bundle instead, while its manifest still
-holds: every input file hashes as it did and every import, bare or
+holds: a config reached through a link still links to the file it was
+built from, every input file hashes as it did and every import, bare or
 relative, resolves to the same real path (`./preset` finds a new
 `preset.ts` before the bundled `preset.js`). Anything else loads the
 source and builds again. Any plugin gets this; none is named.

@@ -69,7 +69,17 @@ function nameOf(configPath: string, bytes: Uint8Array): string {
   return `workspace-${xxh3hex(`${COMPILED_VERSION}\0${Bun.revision}\0${configPath}\0${xxh3hex(bytes)}`)}`
 }
 
-function fresh(manifest: Manifest): boolean {
+function fresh(manifest: Manifest, configPath: string): boolean {
+  // Built through a link: retargeted at a file of the same bytes, the config's
+  // relative imports are other files. A config reached by its real path pays
+  // no realpath for this.
+  if (manifest.entry !== configPath) {
+    try {
+      if (realpathSync(configPath) !== manifest.entry) return false
+    } catch {
+      return false
+    }
+  }
   for (const [file, hash] of Object.entries(manifest.inputs)) {
     if (file === manifest.entry) continue
     let bytes: Uint8Array
@@ -113,7 +123,7 @@ export function loadCompiled(
   } catch {
     return undefined
   }
-  if (manifest.version !== COMPILED_VERSION || !fresh(manifest)) return undefined
+  if (manifest.version !== COMPILED_VERSION || !fresh(manifest, configPath)) return undefined
   const ns =
     manifest.skip === true
       ? null
