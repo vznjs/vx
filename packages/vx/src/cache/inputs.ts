@@ -1109,9 +1109,11 @@ function refuseDirLinkedOut(
 }
 
 /**
- * Throws when the real directory `real` holds an entry of `inputs` whole:
- * `files` under the project, `workspaceFiles` under the workspace root.
- * A link to an ancestor of the anchor holds every entry.
+ * Throws when an entry of `inputs` can match a path under the real
+ * directory `real`: `files` under the project, `workspaceFiles` under the
+ * workspace root. A link to an ancestor of the anchor holds every entry.
+ * Negations are not subtracted: a link onto files the task reads is wrong
+ * even where one excludes them.
  */
 function refuseLinkedIntoInputs(at: string, real: string, inputs: OwnInputs): void {
   const holds = (anchor: string, globs: readonly string[] | undefined): boolean => {
@@ -1120,8 +1122,8 @@ function refuseLinkedIntoInputs(at: string, real: string, inputs: OwnInputs): vo
     const realAnchor = realOr(anchor)
     const rel = relPosix(realAnchor, real)
     if (rel === '..' || rel.startsWith('../')) return isInside(real, realAnchor)
-    const under = rel === '' ? '' : `${rel}/`
-    return holdReach(positive).some((r) => r.prefix.startsWith(under))
+    const dir = rel === '' ? [] : rel.split('/')
+    return asTrees(positive).some((g) => reachesBelow(g.split('/'), dir))
   }
   if (
     !holds(inputs.projectDir, inputs.declared?.files) &&
@@ -1134,6 +1136,23 @@ function refuseLinkedIntoInputs(at: string, real: string, inputs: OwnInputs): vo
       'link and re-run, or stop declaring outputs under it.',
     'VX_E_INPUT_IS_OUTPUT',
   )
+}
+
+/**
+ * Whether the glob split into `segments` can match a path below the
+ * directory `dir` (split too): each of `dir`'s names matches its segment
+ * and the glob goes on past them, or a `**` comes first. `**\/*.ts` and
+ * `src/**` reach below `src/lib`; `src/**` and `*.json` do not reach below
+ * `build-out`.
+ */
+function reachesBelow(segments: readonly string[], dir: readonly string[]): boolean {
+  for (let i = 0; i < dir.length; i++) {
+    const seg = segments[i]
+    if (seg === undefined) return false
+    if (seg === '**') return true
+    if (!globFor(seg).match(dir[i]!)) return false
+  }
+  return segments.length > dir.length
 }
 
 /**

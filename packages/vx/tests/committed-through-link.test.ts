@@ -193,3 +193,64 @@ it(
   },
   TIMEOUT,
 )
+
+// A glob with no fixed prefix, or one rooted above the link's target,
+// reaches below it too: `**/*.txt` read `src/new.txt`, yet only a glob
+// whose prefix sat inside the target was asked, so the clean deleted it.
+it.each([
+  ["'**/*.txt'", 'src'],
+  ["'**'", 'src'],
+  ["'*/new.txt'", 'src'],
+  ["'src/**'", 'src/lib'],
+  ["'src/*/new.txt'", 'src/lib'],
+])(
+  'an output dir linked under what %s reads (dist -> %s) is refused, deleting nothing',
+  async (glob, target) => {
+    const dir = await addProject(f.root, 'app', {
+      files: { 'src/lib/a.txt': 'v1', '.gitignore': 'dist\n' },
+      config: `export default { tasks: { build: {
+        exec: { command: 'cp src/lib/a.txt dist/a.out' },
+        inputs: { files: [${glob}] }, outputs: { files: ['dist/**'] }, cache: true,
+      } } }`,
+    })
+    symlinkSync(target, path.join(dir, 'dist'))
+    const git = gitIn(f.root)
+    git('add', '-A')
+    git('commit', '-q', '-m', 'init')
+    await writeFile(path.join(dir, target, 'new.txt'), 'new work')
+    const r = await run({ cwd: f.root, tasks: ['build'], log: silentLogger(f) })
+    expect(existsSync(path.join(dir, target, 'new.txt'))).toBe(true)
+    expect(r.outcomes[0]?.status).toBe('failed')
+    expect(f.err.join('\n')).toContain(`${path.join(dir, 'dist')} is a symbolic link into`)
+  },
+  TIMEOUT,
+)
+
+// A link to a sibling no input glob reaches stays an output directory
+// (X-88): the target is cleaned and holds the run's files.
+it.each(["'src/**'", "'*.json'", "'src/*/a.txt'", "'{src,lib}/**'"])(
+  'an output dir linked to a sibling %s cannot reach is still an output',
+  async (glob) => {
+    const dir = await addProject(f.root, 'app', {
+      files: {
+        'src/a.txt': 'v1',
+        'build-out/stale.out': 'old',
+        'a.json': '{}',
+        '.gitignore': 'dist\nbuild-out\n',
+      },
+      config: `export default { tasks: { build: {
+        exec: { command: 'cp src/a.txt dist/a.out' },
+        inputs: { files: [${glob}] }, outputs: { files: ['dist/**'] }, cache: true,
+      } } }`,
+    })
+    symlinkSync('build-out', path.join(dir, 'dist'))
+    const git = gitIn(f.root)
+    git('add', '-A')
+    git('commit', '-q', '-m', 'init')
+    const r = await run({ cwd: f.root, tasks: ['build'], log: silentLogger(f) })
+    expect(r.outcomes[0]?.status).toBe('success')
+    expect(existsSync(path.join(dir, 'build-out/a.out'))).toBe(true)
+    expect(existsSync(path.join(dir, 'build-out/stale.out'))).toBe(false)
+  },
+  TIMEOUT,
+)

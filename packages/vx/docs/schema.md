@@ -1059,8 +1059,9 @@ watch` re-runs it on an edit there.
   task that rewrites files in place declares no outputs. The two fields
   are compared across too, read from the root: `inputs.files: ['src/**']`
   beside `outputs.workspaceFiles: ['app/src/**']` is the same refusal,
-  and so is an output directory that is a symbolic link into an input
-  entry (`dist -> src` under `src/**`), refused when a run finds it,
+  and so is an output directory that is a symbolic link into a directory
+  an input entry can match below (`dist -> src` under `src/**` or
+  `**/*.ts`), refused when a run finds it,
   committed or not.
 - **Nested-project subtree** — files belonging to a project rooted
   inside this one's dir are excluded. No cross-project leakage via

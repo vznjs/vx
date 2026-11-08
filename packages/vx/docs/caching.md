@@ -1709,9 +1709,10 @@ followed by the clean as by the save and restore, named by a glob
 output and an entry holds only what its run wrote (X-88); one that
 resolves outside the project refuses the task, naming the link, and
 nothing is deleted through it (X-5); so does one, in either scope, that
-resolves into a directory holding an entry of the task's own `inputs.files`
-or `inputs.workspaceFiles` (`dist -> src` under `src/**`: the clean deleted
-every untracked source, X-55), and so does an
+resolves into a directory an entry of the task's own `inputs.files` or
+`inputs.workspaceFiles` can match below (`dist -> src` under `src/**` or
+`**/*.ts`: the clean deleted every untracked source, X-55; `dist ->
+build-out` under `src/**` stays an output), and so does an
 `outputs.workspaceFiles` directory that resolves outside the workspace
 (it saved an empty entry under a warning, M-65). So does one, in either scope, that
 resolves into the root's own `.git` (any case) or its `.vx`: for the root

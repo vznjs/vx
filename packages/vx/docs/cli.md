@@ -2869,8 +2869,8 @@ the inputs with a `!` glob, as the message shows, or declare no outputs
 for a task that rewrites files in place.
 `vx lock` refuses it, not a run: a run trusts the graph the lock holds.
 A run refuses the one shape the lock cannot see: an output directory
-that is a symbolic link into the task's own inputs (`dist -> src` under
-`src/**`). Remove the link.
+that is a symbolic link into a directory the task's own inputs can match
+below (`dist -> src` under `src/**` or `**/*.ts`). Remove the link.
 
 #### `VX_E_NESTED_INPUT`
 
