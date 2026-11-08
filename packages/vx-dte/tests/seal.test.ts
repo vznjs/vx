@@ -157,6 +157,58 @@ it('pads each body to its size class, so the relay learns no size within one', a
   expect(sealOf(r.bodies.at(-1)!)).toHaveLength(2)
 })
 
+// A task's order of 13 env vars of 100 KB each sealed past the relay's
+// 1 MiB frame: refused, 413, the task failed under dte and ran here (2026-11-08).
+it('sends a body sealed past the relay’s frame limit over several sends, opened whole', async () => {
+  const { r, o, a } = await pair()
+  await until(o)
+  await o.send(a.id, { type: 'welcome' })
+  await until(a)
+  const sent = r.bodies.length
+  const env = Object.fromEntries(Array.from({ length: 13 }, (_, i) => [`BIG${i}`, noise(100_000)]))
+  await o.send(a.id, { type: 'batch', tasks: [{ task: 'a#big', env }] })
+  expect((await until(a)).map((m) => m.body)).toEqual([
+    { type: 'batch', tasks: [{ task: 'a#big', env }] },
+  ])
+  expect(r.bodies.length - sent).toBeGreaterThan(2)
+  for (const b of r.bodies.slice(sent)) expect(b.length).toBeLessThan(512 * 1024)
+  // The next body opens after it, in order.
+  await o.send(a.id, { type: 'cancel' })
+  expect((await until(a)).map((m) => m.body)).toEqual([{ type: 'cancel' }])
+})
+
+it('loses a worker whose body the relay cut short, its parts over several sends', async () => {
+  const { r, o, a } = await pair()
+  await until(o)
+  await o.send(a.id, { type: 'welcome', name: 'worker#1' })
+  await until(a)
+  // Its first send's last part dropped: the next send's first does not follow.
+  r.tamperNext((b) => {
+    const send = JSON.parse(b) as Envelope
+    expect(send.body.b[0]).toBe('+')
+    send.body.b = send.body.b.slice(0, -1)
+    return JSON.stringify(send)
+  })
+  await a.send('orchestrator', noise(1_500_000))
+  expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'lost', id: a.id }])
+})
+
+it('loses a worker whose whole body the relay marked as more to come', async () => {
+  const { r, o, a } = await pair()
+  await until(o)
+  await o.send(a.id, { type: 'welcome', name: 'worker#1' })
+  await until(a)
+  // Held, then joined to the next body, sealed to its own first nonce and count.
+  r.tamperNext((b) => {
+    const send = JSON.parse(b) as Envelope
+    send.body.b = ['+', ...send.body.b]
+    return JSON.stringify(send)
+  })
+  await a.send('orchestrator', { type: 'ran', task: 't' })
+  await a.send('orchestrator', { type: 'end', task: 't' })
+  expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'lost', id: a.id }])
+})
+
 it('compresses a body before it seals it, which no relay can after', async () => {
   const { r, o, a } = await pair()
   await until(o)
