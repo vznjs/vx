@@ -30,9 +30,11 @@ export interface HashCache {
   projectFiles: ProjectFilesCache // `inputs.files` resolution, by projectDir + declaration
   folds?: FoldMemo | undefined // each task's last key by its probe, across runs (cache.md, fold-memo.ts)
   graph?: string | undefined // the remembered graph's token while nothing edited the nodes (graph-memo.md)
-  cleanOutputs?: boolean | undefined // the workspace's `outputs.clean`; `false` keys a task without its own as if it declared it
 }
+// cleanOutputs: the workspace's `outputs.clean`, kept beside the HashCache (not on it, the package's surface);
+// `false` keys a task without its own as if it declared it
 export function createHashCache(folds?: FoldMemo, cleanOutputs?: boolean): HashCache
+export function workspaceCleanOf(hashCache: HashCache): boolean | undefined
 
 export interface ComputeHashArgs {
   node: TaskNode

@@ -38,6 +38,7 @@ import {
   VX_RUN_WORKSPACE_ENV,
 } from '../exec/index.js'
 import { DeferredOutputs } from './deferred-outputs.js'
+import { workspaceCleanOf } from './task-hash.js'
 import { resolveDownloadModes } from './download-policy.js'
 import type { MachineReport, TaskExecutor, WorkerAdvice } from '../exec/index.js'
 import {
@@ -569,7 +570,7 @@ async function runOnBus(
         : {}),
     }
     // Resolved once, beside the keys that fold it (prepare.ts).
-    cleanOutputs = prepared.hashCache.cleanOutputs
+    cleanOutputs = workspaceCleanOf(prepared.hashCache)
   } catch (err) {
     await teardown()
     await closeUnrun()

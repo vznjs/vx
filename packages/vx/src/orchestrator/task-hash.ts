@@ -70,23 +70,32 @@ export interface HashCache {
    * while no plugin or flag has edited them since.
    */
   graph?: string | undefined
-  /**
-   * `.vx/workspace`'s `outputs.clean`, after the config stage: a task
-   * without its own runs under it, so its key folds it (`hashableConfig`).
-   */
-  cleanOutputs?: boolean | undefined
+}
+
+/**
+ * `.vx/workspace`'s `outputs.clean`, after the config stage, by the run's
+ * hash cache: a task without its own runs under it, so its key folds it
+ * (`hashableConfig`). Beside `HashCache`, not on it: that type is the
+ * package's surface.
+ */
+const workspaceClean = new WeakMap<HashCache, boolean>()
+
+/** The workspace's `outputs.clean` the run's keys were derived under. */
+export function workspaceCleanOf(hashCache: HashCache): boolean | undefined {
+  return workspaceClean.get(hashCache)
 }
 
 export function createHashCache(folds?: FoldMemo, cleanOutputs?: boolean): HashCache {
-  return {
+  const hashCache: HashCache = {
     taskConfig: new WeakMap(),
     runtime: new Map(),
     workspaceRuntime: new Map(),
     workspaceFiles: new Map(),
     projectFiles: new Map(),
     folds,
-    cleanOutputs,
   }
+  if (cleanOutputs !== undefined) workspaceClean.set(hashCache, cleanOutputs)
+  return hashCache
 }
 
 export interface ComputeHashArgs {
@@ -587,7 +596,7 @@ export function hashTaskConfig(cfg: TaskConfig, hashCache?: HashCache): string {
  * every key that never ran unclean stays.
  */
 function withInheritedClean(cfg: TaskConfig, hashCache: HashCache): TaskConfig {
-  if (hashCache.cleanOutputs !== false || cfg.outputs === undefined) return cfg
+  if (workspaceClean.get(hashCache) !== false || cfg.outputs === undefined) return cfg
   if (cfg.outputs.clean !== undefined) return cfg
   return { ...cfg, outputs: { ...cfg.outputs, clean: false } }
 }
