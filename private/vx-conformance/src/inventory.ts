@@ -284,6 +284,8 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'discovery-refusals',
     'download-policy',
     'dry-json-stdout',
+    'dry-no-writes',
+    'dry-remote-failfast',
     'dte-sandbox.unsafe',
     'executor',
     'executor-demand',

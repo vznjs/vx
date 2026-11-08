@@ -1174,7 +1174,13 @@ a stack and exit 1 after its task had succeeded.
 computes each task's cache key as the run would (none, `hash: ""`, for
 a server no task depends on), and probes the cache to predict the
 hit/miss outcome. Against a remote cache the probe is a lightweight
-existence check — planning never downloads or ingests artifacts.
+existence check — planning never downloads or ingests artifacts. With no
+remote it writes nothing: no `.vx/cache`, no index, not the directory a
+mistyped `--cache-dir` names. With one, it keeps the remote hits it found
+in the local index, so the `vx run` after it fetches them at once. Each
+remote that can batch is asked once for every key; one that cannot, or
+whose batch failed, is asked each key at once, so an unreachable remote
+costs the plan its timeout about twice, not once per task.
 
 ```
 $ vx run ci --dry

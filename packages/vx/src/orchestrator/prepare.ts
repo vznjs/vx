@@ -253,13 +253,16 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
  * holds the store while it waits for a `vx cache clean` that holds the lock,
  * and holds a cache directory with no store (`sharedCacheDir`) shared.
  * `countDependents`: a run's, which schedules by them (`PreparedRun.dependents`);
- * a plan never reads them.
+ * a plan never reads them. `planning`: a plan's (`--dry`). With no remote
+ * to probe it opens the cache to read only: no directory, index,
+ * `.gitignore` or row is made.
  */
 export async function prepareRunLocked(
   options: RunOptions,
   log: Logger,
   beforeOpen?: (workspaceRoot: string, sharedCacheDir: string | undefined) => Promise<void>,
   countDependents = false,
+  planning = false,
 ): Promise<PreparedRun> {
   beginRun()
   mark('startup')
@@ -325,8 +328,10 @@ export async function prepareRunLocked(
     ? path.resolve(options.cwd, options.cacheDir)
     : resolveCacheDir(workspaceRoot, workspaceConfig)
   // Before any racy window is judged: a file system behind this process's
-  // clock dated a mid-command edit before the command (fs-clock.ts).
-  measureFsClockLag(cacheDir)
+  // clock dated a mid-command edit before the command (fs-clock.ts). A plan
+  // keys as the run does but may make no cache dir: it measures in `.vx`,
+  // on the workspace's file system, which the workspace file makes exist.
+  measureFsClockLag(planning ? path.join(workspaceRoot, '.vx') : cacheDir)
   // Asked now, read when the cache opens: a repository with no remote is
   // named by its root commit, a git spawn the discovery below overlaps.
   const storeRoot = options.cacheDir ? null : resolveStoreRoot(workspaceRoot, workspaceConfig)
@@ -391,12 +396,22 @@ export async function prepareRunLocked(
   // A cache directory with no store may be another workspace's too: the
   // run holds it shared (`holdCacheDir`).
   await beforeOpen?.(workspaceRoot, resolvedStore === null ? cacheDir : undefined)
+  // A plan with no remote to probe writes nothing: it reads the index as the
+  // run would, one of another schema as the empty one the run's reset
+  // leaves (`'preview'`), and upserts no file-hash memo. One with a remote
+  // keeps the hits its probe finds, for the `vx run` that follows (an
+  // index made for them if need be): that run GETs them before its own
+  // probe answers (2026-10-23).
+  const planReadOnly =
+    planning &&
+    (!wanted.remoteRead ||
+      (options.remoteCache === undefined && !plugins.some((p) => p.cache !== undefined)))
   const localCache = new Cache(
     cacheDir,
-    { read: wanted.localRead, write: wanted.localWrite },
+    { read: wanted.localRead, write: wanted.localWrite && !planReadOnly },
     workspaceRoot,
     options.artifactCeiling,
-    'open',
+    planReadOnly ? 'preview' : 'open',
     resolvedStore,
     {
       embeddings: (resolveSetting('cache.store.embeddings', workspaceConfig).value ??

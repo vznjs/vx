@@ -702,6 +702,9 @@ function entryOf(
   return entry
 }
 
+/** Why a reading handle (`'inspect'`, `'preview'`) writes nothing: no index to read was there. */
+const NO_INDEX = 'no index there yet'
+
 /** The sidecar's `exec` from a save's entry: only the axes the runner reported. */
 function usageOfEntry(entry: { cpuMs?: number; peakRssBytes?: number }): ExecUsage | undefined {
   if (entry.cpuMs === undefined && entry.peakRssBytes === undefined) return undefined
@@ -1141,9 +1144,10 @@ export class Cache implements CacheLayer {
     /**
      * `'inspect'`: a reading verb (`why`, `last`, `info`). It never resets
      * the index: a schema it cannot read is refused, named, and left as it
-     * was. `'preview'`: a dry prune, which reads such an index as the reset
-     * the real prune does first leaves it, empty, with the store still
-     * reached, so it names what that prune takes (item 1083).
+     * was. `'preview'`: a dry prune or a `--dry` plan, which reads such an
+     * index as the reset the real prune or run does first leaves it, empty,
+     * with the store still reached, so it names what that prune takes
+     * (item 1083).
      */
     mode: 'open' | 'inspect' | 'preview' = 'open',
     /**
@@ -1175,7 +1179,7 @@ export class Cache implements CacheLayer {
     const absent =
       mode !== 'open' &&
       (!existsSync(dbFile) || (mode === 'preview' && indexOfAnotherSchema(dbFile)))
-    this.writeBlocked = absent ? 'no index there yet' : openCacheDir(cacheDir, repoDir)
+    this.writeBlocked = absent ? NO_INDEX : openCacheDir(cacheDir, repoDir)
     this.write = localPolicy.write && this.writeBlocked === null
     // A directory this user cannot write with no index in it yet: SQLite
     // cannot make one, and its `unable to open database file` stack reached
@@ -2866,7 +2870,8 @@ export class Cache implements CacheLayer {
    * returns says so; an empty one has nothing to serve and refuses.
    */
   readOnlyNotice(): string | null {
-    if (this.writeBlocked === null) return null
+    // A reading handle over no index: nothing was refused it.
+    if (this.writeBlocked === null || this.writeBlocked === NO_INDEX) return null
     if (this.empty) this.assertWritable()
     return (
       `cache directory ${this.cacheDir} is not writable (${this.writeBlocked}) — serving hits ` +

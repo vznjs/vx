@@ -718,13 +718,8 @@ describe('planRun() — planning executes nothing', () => {
       // `cleanOutputs` is part of EXECUTION, not planning: a `--dry` that
       // wiped the output tree would destroy a build the user still wanted.
       expect(existsSync(straggler)).toBe(true)
-      {
-        const db = openDb(cacheDir)
-        expect(countRows(db, 'runs')).toBe(0)
-        expect(countRows(db, 'invocations')).toBe(0)
-        expect(countRows(db, 'entries')).toBe(0)
-        db.close()
-      }
+      // No history, no entry: not even an index (`dry-no-writes.test.ts`).
+      expect(existsSync(cacheDir)).toBe(false)
 
       // The control: a real run does all three things planning refused to do.
       const r = await run({ cwd: root, tasks: ['build'], log: quietLogger })

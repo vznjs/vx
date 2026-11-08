@@ -12,7 +12,7 @@
 // side-effect-free pure probes.
 
 import type { CacheLayer, CachePolicy, GitFilesCache } from '../cache/index.js'
-import { cachesNothing, FULL_CACHE_POLICY } from '../cache/index.js'
+import { cachesNothing, FULL_CACHE_POLICY, networkConcurrency } from '../cache/index.js'
 import { ranNoCache } from '../report/index.js'
 import { idleServers, isGroupTask, runGraph, type TaskNode } from '../graph/index.js'
 import type { AffectedReason } from './affected-tasks.js'
@@ -205,15 +205,23 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
   })
   if (probed.size > 0) {
     const infos = await args.cache.remoteHasMany?.([...new Set(probed.values())])
-    for (const [id, hash] of probed) {
-      const where = await args.cache.has(hash)
-      cacheStatusById.set(
-        id,
-        where === null ? 'miss' : where === 'remote' ? 'hit-remote' : 'hit-local',
-      )
-      const size = where === 'remote' ? infos?.get(hash)?.size : undefined
-      if (size !== undefined) remoteBytesById.set(id, size)
+    // Asked at once, as a run pulls: in series, a remote that cannot batch
+    // cost its round-trip, or its timeout, once per key.
+    const pending = [...probed]
+    let next = 0
+    const one = async (): Promise<void> => {
+      while (next < pending.length) {
+        const [id, hash] = pending[next++]!
+        const where = await args.cache.has(hash)
+        cacheStatusById.set(
+          id,
+          where === null ? 'miss' : where === 'remote' ? 'hit-remote' : 'hit-local',
+        )
+        const size = where === 'remote' ? infos?.get(hash)?.size : undefined
+        if (size !== undefined) remoteBytesById.set(id, size)
+      }
     }
+    await Promise.all(Array.from({ length: Math.min(pending.length, networkConcurrency()) }, one))
   }
 
   if (args.restorable !== undefined) {

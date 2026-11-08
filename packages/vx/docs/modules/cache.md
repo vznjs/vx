@@ -876,7 +876,8 @@ verb) refuses a schema it cannot read with a `UserError` that names the
 directory and both versions and leaves the index as it was (item 896). Over a directory
 with no `cache.db`, `Cache.inspect` reads an empty index in memory and
 creates nothing on disk: no directory, no `.gitignore`, no database
-(item 900). A shared `store.db` with no file or no tables yet is read
+(item 900). So does `'preview'` (a dry prune, and a `vx run --dry` with
+no remote to probe). A shared `store.db` with no file or no tables yet is read
 the same way, so a reading verb never writes a store another opener may
 be making. A `cache.db` SQLite cannot read (`SQLITE_NOTADB`,
 `SQLITE_CORRUPT*` from the open's first statements) is refused by both
