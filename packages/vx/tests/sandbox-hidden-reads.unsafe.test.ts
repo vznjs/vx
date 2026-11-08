@@ -104,10 +104,11 @@ describe.skipIf(!available || process.platform !== 'linux')('a hidden store', ()
       return r.stdout.toString() + r.stderr.toString()
     }
     vx('lock')
-    const hint = (t: string): string | undefined =>
-      vx('run', `app#${t}`)
-        .split('\n')
-        .find((l) => l.startsWith('vx: the sandbox hid paths'))
+    // With no hint line the whole output stands in, so a failure shows why.
+    const hint = (t: string): string => {
+      const out = vx('run', `app#${t}`)
+      return out.split('\n').find((l) => l.startsWith('vx: the sandbox hid paths')) ?? out
+    }
     const said = 'vx: the sandbox hid paths outside the project that exist on this machine'
     const walled = 'They are walled on purpose, so vx suggests no grant for them.'
     const npmrc = path.join(home, 'dot', 'npmrc')
