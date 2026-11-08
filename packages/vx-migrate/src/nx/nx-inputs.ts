@@ -40,6 +40,8 @@ export interface NxInputs {
   }>
   /** `{ dependentTasksOutputFiles }` globs: keyed only through a `dependsOn` edge. */
   readonly dependentOutputs: string[]
+  /** Those of them marked `transitive`: read from every task below, not only the direct ones. */
+  readonly transitiveOutputs: string[]
 }
 
 export function emptyNxInputs(): NxInputs {
@@ -50,6 +52,7 @@ export function emptyNxInputs(): NxInputs {
     runtimeCmds: [],
     upstream: [],
     dependentOutputs: [],
+    transitiveOutputs: [],
   }
 }
 
@@ -223,7 +226,9 @@ export function expandNxInputs(
       // The mapper checks an edge is left to carry them.
       if (o.dependentTasksOutputFiles !== undefined) {
         const g = o.dependentTasksOutputFiles
-        into.dependentOutputs.push(typeof g === 'string' ? g : JSON.stringify(g))
+        const glob = typeof g === 'string' ? g : JSON.stringify(g)
+        into.dependentOutputs.push(glob)
+        if (o.transitive === true) into.transitiveOutputs.push(glob)
         return
       }
       // `{ workingDirectory }` hashes where Nx was started (`cwd:relative`

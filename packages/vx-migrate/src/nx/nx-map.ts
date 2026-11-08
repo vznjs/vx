@@ -1126,7 +1126,11 @@ function buildTask(
 
   const generated: GeneratedTask = { name: variant.name, todos, task }
   if (cacheEnabled && inputs.dependentOutputs.length > 0)
-    dependentReaders.set(generated, { globs: inputs.dependentOutputs, dependsOn: target.dependsOn })
+    dependentReaders.set(generated, {
+      globs: inputs.dependentOutputs,
+      transitive: inputs.transitiveOutputs,
+      dependsOn: target.dependsOn,
+    })
   const produced = [
     ...outFiles.filter((o) => !o.startsWith('!')).map((o) => path.posix.join(projectRel, o)),
     ...wsOutFiles.filter((o) => !o.startsWith('!')),
@@ -1152,37 +1156,63 @@ function keyUncachedProducerOutputs(
   projects: readonly GeneratedProject[],
   reached: (name: string) => ReadonlySet<string>,
 ): void {
-  const byId = new Map<string, GeneratedTask>()
-  for (const p of projects) for (const t of p.tasks) byId.set(`${p.name}#${t.name}`, t)
+  const byId = new Map<string, { project: string; task: GeneratedTask }>()
+  for (const p of projects)
+    for (const t of p.tasks) byId.set(`${p.name}#${t.name}`, { project: p.name, task: t })
+  const edgesOf = (project: string, deps: unknown): [id: string, filter: string][] =>
+    (Array.isArray(deps) ? deps : []).flatMap((d): [string, string][] => {
+      if (typeof d !== 'string' || d.includes('*') || d.includes('#inputs:')) return []
+      return d.startsWith('^')
+        ? [...reached(project)].map((q) => [`${q}#${d.slice(1)}`, `${q}#${d.slice(1)}`])
+        : [[d.includes('#') ? d : `${project}#${d}`, d]]
+    })
   for (const p of projects) {
     for (const t of p.tasks) {
       const reader = dependentReaders.get(t)
       if (reader === undefined || t.task?.['cache'] !== true) continue
-      const deps = t.task['dependsOn']
-      if (!Array.isArray(deps)) continue
       const rels: string[] = []
       const unfold: string[] = []
-      for (const d of deps) {
-        if (typeof d !== 'string' || d.includes('*') || d.includes('#inputs:')) continue
-        const edges: [id: string, filter: string][] = d.startsWith('^')
-          ? [...reached(p.name)].map((q) => [`${q}#${d.slice(1)}`, `${q}#${d.slice(1)}`])
-          : [[d.includes('#') ? d : `${p.name}#${d}`, d]]
-        for (const [id, filter] of edges) {
-          const producer = byId.get(id)
-          if (producer?.task?.['exec'] === undefined || producer.task['cache'] === true) continue
-          const outs = producedPaths.get(producer) ?? []
-          if (outs.length === 0) continue
-          unfold.push(`!${filter}`)
-          for (const o of outs)
-            // A glob output (`dist/**/*.{js,d.ts}{,.map}`): every file under
-            // its literal head, which the probe can walk.
-            if (/[*?[{]/.test(o)) rels.push(`${globHead(o)}/**/*`)
-            else
-              for (const g of reader.globs)
-                // `**/<name>` is a find under the output; any other glob (a brace, a
-                // class), every file there.
-                rels.push(/^\*\*\/[^/*?[{]*\*?[^/*?[{]*$/.test(g) ? `${o}/${g}` : `${o}/**/*`)
+      const keyOutputs = (producer: GeneratedTask, globs: readonly string[]): void => {
+        for (const o of producedPaths.get(producer) ?? [])
+          // A glob output (`dist/**/*.{js,d.ts}{,.map}`): every file under
+          // its literal head, which the probe can walk.
+          if (/[*?[{]/.test(o)) rels.push(`${globHead(o)}/**/*`)
+          else
+            for (const g of globs)
+              // `**/<name>` is a find under the output; any other glob (a brace, a
+              // class), every file there.
+              rels.push(/^\*\*\/[^/*?[{]*\*?[^/*?[{]*$/.test(g) ? `${o}/${g}` : `${o}/**/*`)
+      }
+      const uncachedWriter = (producer: GeneratedTask | undefined): producer is GeneratedTask =>
+        producer?.task?.['exec'] !== undefined &&
+        producer.task['cache'] !== true &&
+        (producedPaths.get(producer)?.length ?? 0) > 0
+      for (const [id, filter] of edgesOf(p.name, t.task['dependsOn'])) {
+        const producer = byId.get(id)?.task
+        if (producer === undefined) continue
+        // `transitive: true` reads the outputs of every task below, not
+        // only the direct ones: an uncached `fetch` behind an `nx:noop`
+        // `prep` hid its schema, and the reader replayed the old one (hunt,
+        // 2026-11-08). A key folding the edge answers the probe before the
+        // fetch ran, so the edge is left out and every output below it,
+        // cached or not, is keyed by the probe.
+        const below: GeneratedTask[] = []
+        if (reader.transitive.length > 0) {
+          const seen = new Set<string>([id])
+          const stack = edgesOf(byId.get(id)!.project, producer.task?.['dependsOn'])
+          while (stack.length > 0) {
+            const [next] = stack.pop()!
+            const node = byId.get(next)
+            if (seen.has(next) || node === undefined) continue
+            seen.add(next)
+            below.push(node.task)
+            stack.push(...edgesOf(node.project, node.task.task?.['dependsOn']))
+          }
         }
+        if (!uncachedWriter(producer) && !below.some(uncachedWriter)) continue
+        unfold.push(`!${filter}`)
+        keyOutputs(producer, reader.globs)
+        for (const b of below) keyOutputs(b, reader.transitive)
       }
       if (rels.length === 0) continue
       const probe = dotenvGlobsProbe([...new Set(rels)])
@@ -1214,7 +1244,10 @@ function globHead(glob: string): string {
   return segs.slice(0, i).join('/')
 }
 
-const dependentReaders = new WeakMap<GeneratedTask, { globs: string[]; dependsOn: unknown }>()
+const dependentReaders = new WeakMap<
+  GeneratedTask,
+  { globs: string[]; transitive: string[]; dependsOn: unknown }
+>()
 
 function orphanReaderTodo(globs: readonly string[], dependsOn: unknown): string {
   return `reads ${globs.map((g) => `\`${g}\``).join(', ')} from the outputs of the tasks it depends on, and no task it depends on is migrated (dependsOn ${JSON.stringify(dependsOn ?? [])}) — uncached here, so it never replays output generated from an older input; migrate the producer and depend on it to cache this task`
