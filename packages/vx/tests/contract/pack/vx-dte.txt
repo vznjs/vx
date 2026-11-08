@@ -19,6 +19,7 @@ src/planner.ts
 src/plugin.ts
 src/printable.ts
 src/seal.ts
+src/server-fit.ts
 src/strategy.ts
 src/trace.ts
 src/tree.ts

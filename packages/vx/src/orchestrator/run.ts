@@ -78,7 +78,7 @@ function printTimings(): void {
   if (lines !== undefined) ui.print('err', ui.trace(lines))
 }
 import { detectColors, type ColorSupport } from '../ui/index.js'
-import { keyedProjects, readableDeps } from './keyed-projects.js'
+import { keyedProjects, nestedDirsOf, readableDeps } from './keyed-projects.js'
 import { isDefaultBuild } from '../graph/index.js'
 import { commandWriteReach, prepareSandbox } from './sandbox-request.js'
 import { recordOutputDirSnapshots, type OutputDirSnapshot, type SaveFacts } from './miss-save.js'
@@ -125,15 +125,15 @@ import { isPassStatus } from '../graph/index.js'
 import type { RunContextRecord } from './telemetry.js'
 import { plan, type RunPlan } from './plan.js'
 import type { AffectedReason } from './affected-tasks.js'
-import {
-  namesRemote,
-  openRemotes,
-  prepareRun,
-  prepareRunLocked,
-  type PreparedRun,
-} from './prepare.js'
+import { namesRemote, openRemotes, prepareRunLocked, type PreparedRun } from './prepare.js'
 import { acquireRunLock, runLockPath, type RunLockRelease } from './run-lock.js'
-import { exitOfSignal, type HeldSignals, holdSignals, terminateChildren } from './signals.js'
+import {
+  exitOfSignal,
+  type HeldSignals,
+  holdSignals,
+  terminateChildren,
+  unlessStopped,
+} from './signals.js'
 import { CYCLE_INTERRUPT, runStop } from './run-stop.js'
 import {
   hasPooledExecutor,
@@ -172,7 +172,10 @@ import {
   failServer,
   holdServers,
   sessionEnd,
+  serverUsers,
+  stopServer,
   takeHeldServers,
+  unneededServers,
 } from './persistent.js'
 import { serverKey } from './persistent-task.js'
 import { writeRunProfile } from './run-artifacts.js'
@@ -681,6 +684,7 @@ async function runOnBus(
       branch: prepared.branch(),
       secrets,
       step,
+      signal: signals.held?.signal,
     })
   } catch (err) {
     disposePlugins?.()
@@ -729,16 +733,20 @@ async function runOnBus(
   }
 
   // Resolved ONCE per run, in declaration order, the local executor last.
-  // A broken factory aborts here, before any task starts.
+  // A broken factory aborts here, before any task starts, and a held
+  // signal ends the wait on one that never settles.
   const executors: readonly TaskExecutor[] = await abandoning(() =>
-    resolveExecutors(prepared.plugins, {
-      workspaceRoot: prepared.workspaceRoot,
-      cacheDir: prepared.cacheDir,
-      warn: warnOf(log),
-      concurrency,
-      artifacts: taskArtifacts(prepared.cache, prepared.workspaceRoot),
-      cacheFacts: () => cacheFacts(prepared.remotes, prepared.cacheRefs),
-    }),
+    unlessStopped(
+      resolveExecutors(prepared.plugins, {
+        workspaceRoot: prepared.workspaceRoot,
+        cacheDir: prepared.cacheDir,
+        warn: warnOf(log),
+        concurrency,
+        artifacts: taskArtifacts(prepared.cache, prepared.workspaceRoot),
+        cacheFacts: () => cacheFacts(prepared.remotes, prepared.cacheRefs),
+      }),
+      signals.held?.signal,
+    ),
   )
   // Placement: decided ONCE per task, before scheduling, so the scheduler
   // can admit a remote-pooled task against its pool instead of a local
@@ -984,7 +992,7 @@ async function runOnBus(
       )
     })
     const deferredSaves = new Map<string, Promise<SaveFacts>>()
-    const windows = commandWindows()
+    const windows = options.commandWindows ?? commandWindows()
     // A server held from an earlier run (`vx watch`) runs through this one
     // too, so it may write a mutable input while it is described.
     for (const id of heldBefore.kept.keys()) {
@@ -1241,8 +1249,14 @@ async function runOnBus(
     // dead runs on a failure the outcomes do not hold yet (the server's
     // says `success` until the run ends), so it is seeded here, at its
     // dispatch, and the tracker carries it to what is built on it.
+    // A server can also die under a task that is running (`serverDiedUnder`),
+    // which seeds it then, and so does a task that left a process running
+    // (`leftRunning`).
     const taintSeeds = new Set(excluded.seeds)
-    const taint = taintTracker(options.continueMode === 'always', taintSeeds, nodes)
+    const hasServers = [...nodes.values()].some((n) => n.config.exec?.persistent !== undefined)
+    const continueAlways = options.continueMode === 'always'
+    let taint = taintTracker(continueAlways, taintSeeds, nodes, hasServers)
+    let taintOn = continueAlways || taintSeeds.size > 0 || hasServers
     // Each task that ran tainted, and the task at the root of it: its
     // outcome's `taintedBy` once it finishes.
     const taintedRan = new Map<string, string>()
@@ -1274,6 +1288,7 @@ async function runOnBus(
       fingerprintWatch,
       keyedProjects: keyed,
       readableDeps: readable,
+      nestedDirsOf: nestedDirsOf(nodes, prepared.keyOnly, nestedDirsByProject),
       outputDirSnapshots,
       deferSave: saveLane.defer,
       deferredSaves,
@@ -1282,6 +1297,39 @@ async function runOnBus(
       failFast: failFast.signal,
       inputStability,
       serverReady: (id) => void sinceReady.set(id, []),
+    }
+    if (hasServers)
+      scope.serverDiedUnder = async (node) => {
+        const behind = (pick: (id: string) => boolean): string | undefined => {
+          for (const d of node.deps) {
+            const s = deadServerBehind(nodes, pick, d)
+            if (s !== undefined) return s
+          }
+          return undefined
+        }
+        let dead = behind(serverDied)
+        // A server that died just before the task ended may be heard after
+        // it: both exits can land in one turn of the event loop, the task's
+        // handled first and its save decided in that turn's microtasks. The
+        // next turn has handled the rest.
+        if (dead === undefined && behind((id) => persistentRegistry.has(id)) !== undefined) {
+          await new Promise<void>((resolve) => setImmediate(resolve))
+          dead = behind(serverDied)
+        }
+        if (dead === undefined) return false
+        taintSeeds.add(node.id)
+        taintedRan.set(node.id, dead)
+        return true
+      }
+    scope.leftRunning = (node) => {
+      // The check stays off until the first leftover: it is seeded before
+      // the task settles, so every outcome a dependent's judge reads is
+      // recorded by the tracker made here.
+      if (!taintOn) {
+        taint = taintTracker(continueAlways, taintSeeds, nodes, true)
+        taintOn = true
+      }
+      taintSeeds.add(node.id)
     }
     if (options.retries !== undefined) scope.retries = options.retries
     scope.knownFlaky = (node, hash) => {
@@ -1418,7 +1466,10 @@ async function runOnBus(
     // graph runs (history-stream.ts); every other row waits for the bundle.
     // A row with forward args is the bundle's too: only it digests them.
     const historyAt = historyFiles(prepared.localCache)
-    const stream = historyAt === undefined ? undefined : new HistoryStream<TaskOutcome>(historyAt)
+    let expectedHits = 0
+    for (const probe of shortCircuit.preProbed.values()) if (probe.hit !== null) expectedHits++
+    const stream =
+      historyAt === undefined ? undefined : new HistoryStream<TaskOutcome>(historyAt, expectedHits)
     const forwards = (options.forwardArgs?.length ?? 0) > 0
     const streamHit = (o: TaskOutcome): void => {
       if (stream === undefined || isGroupTask(o.node)) return
@@ -1435,6 +1486,50 @@ async function runOnBus(
           remoteTraffic: prepared.localCache.traffic.keys,
         }),
       )
+    }
+    // A dependency-only server stops once no task left uses it, not at the
+    // end of the graph: it held a worker's cores for nothing. Not under a
+    // hold, whose next cycle may reuse it.
+    const unneeded =
+      options.holdPersistent === true
+        ? undefined
+        : unneededServers(nodes, options.log === undefined && (options.handleSignals ?? true))
+    const serving = executors.filter((e) => e.servers === true && e.unneeded !== undefined)
+    const released = new Set<string>()
+    const stopping: Promise<void>[] = []
+    // A server stops after the servers using it (`serverUsers`), which this
+    // same release reached first.
+    const usersOf = unneeded === undefined ? undefined : serverUsers(nodes)
+    const stops = new Map<string, Promise<void>>()
+    const release = (id: string): void => {
+      // A stop signals every server once and waits out its grace: a second
+      // signal here cut a server's cleanup short.
+      if (stop.signal.aborted) return
+      for (const s of unneeded?.(id) ?? []) {
+        // Copies an executor started beside the dependants it ran.
+        for (const e of serving)
+          try {
+            e.unneeded!(s)
+          } catch {
+            // Its copies stop at its teardown, as before.
+          }
+        const child = persistentRegistry.get(s)
+        // One that died on its own stays: the end of the graph reports it.
+        if (child === undefined || hasEnded(child)) continue
+        released.add(s)
+        persistentRegistry.delete(s)
+        const users: Promise<void>[] = []
+        for (const u of usersOf?.get(s) ?? []) {
+          const p = stops.get(u)
+          if (p !== undefined) users.push(p)
+        }
+        const p =
+          users.length === 0
+            ? stopServer(child)
+            : Promise.allSettled(users).then(() => stopServer(child))
+        stops.set(s, p)
+        stopping.push(p)
+      }
     }
     const outcomes = await runGraph({
       nodes,
@@ -1466,12 +1561,14 @@ async function runOnBus(
         if (sinceReady.size > 0) releaseSinceReady(o.node.id)
         streamHit(o)
         demand.finished(o.node.id)
+        release(o.node.id)
         // A server that dies while the graph runs is no longer running:
         // its pin stayed `running` under the line naming its exit.
         const server = o.status === 'success' ? persistentRegistry.get(o.node.id) : undefined
         if (server !== undefined && o.serverExit === undefined)
           void server.exited.then((code) => {
-            if (code !== 0 && !graphOver && !stop.signal.aborted) o.serverExit = code
+            if (code !== 0 && !graphOver && !stop.signal.aborted && !released.has(o.node.id))
+              o.serverExit = code
           })
       },
       // A crash a hand-broken lock entry caused is named as that; asked
@@ -1567,6 +1664,7 @@ async function runOnBus(
     // A stop already signalled every server once and waits out its grace:
     // a SIGTERM here, while a server ran its cleanup, cut it short.
     if (stop.signal.aborted) await stop.aborting?.catch(() => {})
+    await Promise.all(stopping)
     const { keepAlive, crashed: crashedPersistent } = await disposeServers({
       registry: persistentRegistry,
       nodes,
@@ -2034,10 +2132,12 @@ function warnNoRemote(prepared: PreparedRun, options: RunOptions, log: Logger): 
  * Returns a `RunPlan` predicting the cache hit/miss outcome of every
  * task. Used by `--dry`.
  *
- * Side-effects are limited to opening + closing the local Cache handle
- * (and running `inputs.runtime` probe commands, which key
- * derivation requires). Cache probing is the byte-free `cache.has()`
- * existence check — no artifact download, no ingest, no accessed_at bump.
+ * Side-effects are limited to running `inputs.runtime` probe commands,
+ * which key derivation requires: with no remote the local cache opens to
+ * read only (`prepareRunLocked`'s `planning`); with one, the remote hits
+ * found are kept in the index for the run after. Probing is the
+ * byte-free `cache.has()` existence check — no artifact download, no
+ * ingest, no accessed_at bump.
  */
 export async function planRun(options: RunOptions): Promise<RunPlan> {
   refuseRunOptions(options)
@@ -2045,7 +2145,13 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
   // what a stage says on the way goes to stderr (C-6).
   const log = options.log ?? defaultLogger(undefined, undefined, process.stderr)
   const reasons = new Map<string, AffectedReason>()
-  const prepared = await prepareRun({ ...options, affectedReasons: reasons }, log)
+  const prepared = await prepareRunLocked(
+    { ...options, affectedReasons: reasons },
+    log,
+    undefined,
+    false,
+    true,
+  )
   try {
     options = withRunSettings(options, prepared.workspaceConfig)
     if (prepared.unresolvedTasks.length > 0) {

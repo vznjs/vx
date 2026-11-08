@@ -122,9 +122,18 @@ export function headBase(workspaceRoot: string, ref: string): string | undefined
    beside the run failed on that lock. A file it then lists as modified
    whose content still hashes (`git hash-object`, a link's target in
    process) to the base's blob is dropped, so a stat-only change selects
-   nothing, as the refresh did.
+   nothing, as the refresh did. A file a clean filter can rewrite
+   (`core.autocrlf`, or a `text`, `eol`, `ident`, `filter` or
+   `working-tree-encoding` attribute per `git check-attr`) stays: its
+   filtered hash can match the base while the key, which hashes raw
+   bytes, moved (a CRLF edit to an LF file). So does such a file git
+   was told not to look at (`--assume-unchanged`).
 3. Untracked files (`git ls-files --others --exclude-standard`) are
-   unioned in — a brand-new source file is a change. `.vx/projects.lock.json` is
+   unioned in — a brand-new source file is a change. The `git config`
+   that asks for a partial clone asks `core.ignorecase` too: set true on
+   a disk that tells case apart (`ignoreCaseLies`), the listing runs with
+   `-c core.ignorecase=false`, else a new `a.txt` beside the tracked
+   `A.txt` selected nothing. `.vx/projects.lock.json` is
    no project's path: its entries are compared at the base and now (when
    both have a lock that parses), and a project whose entry changed is
    selected whole, so a lock rewritten over the same configs selects
@@ -154,7 +163,10 @@ export function headBase(workspaceRoot: string, ref: string): string | undefined
      imports the changed file — see
      [`config-imports.md`](./config-imports.md). Resolved-config
      hashing folds those values into the key, so selection has to see
-     them too.
+     them too. A changed file the workspace config imports selects
+     every project; one it imports above the workspace root, which the
+     `--relative` diff never lists, is asked of git by path
+     (`outsideChanged`).
    - **Workspace globs.** For every changed path, `workspaceGlobOwners`
      (`cli/select.ts`) asks which projects declare
      a matching `inputs.workspaceFiles` glob — through the run
@@ -172,7 +184,10 @@ export function headBase(workspaceRoot: string, ref: string): string | undefined
      (`outputs.workspaceFiles`, or its `outputs.files`) matches nothing,
      as the key folds only a tracked one there; one git stopped
      tracking is in the diff too, and the base key folded it, so it
-     still matches. The `--affected` sugar has staged
+     still matches. A task without `workspaceFiles` is skipped
+     outright, and each distinct list is matched against the changed
+     paths once, not once per task: tasks × paths took 14.5 s on 8000
+     projects with 64k changed paths. The `--affected` sugar has staged
      every config for its graph walk already; a bare `[ref]` filter pays
      that one load when something changed.
 
@@ -208,7 +223,10 @@ exactly that. The config-import channel
 ## Filter integration
 
 `cli/select.ts:resolveFilters` invokes `affectedProjects` once per
-`[<since>]` filter, stuffs the result in
+`[<since>]` filter (`affectedChanges` for `--affected`'s), one after
+another, starting before the workspace config and discovery with the
+whole-tree walk beside them: those need only the root and the ref, and
+`projects` is the discovery's promise. It stuffs the result in
 `affectedByFilter: Map<ParsedFilter, Set<string>>`, then calls
 `applyFilters({ filters, projects, graph, affectedByFilter })`.
 
@@ -228,7 +246,9 @@ spawns) — easy to test against in-memory fixtures.
   against the working tree, so no base blob is ever read (a stat-dirty
   file made `git diff <base>` fetch one per file; git 2.43 crashed).
   Probes set `GIT_NO_LAZY_FETCH`: a missing commit fetched its whole
-  history.
+  history. With no `remote.origin.url` nothing is fetched: a filtered
+  fetch from no origin fails, yet first writes a promisor
+  `[remote "origin"]` into the user's config.
 - **Doesn't honor `.gitattributes` or `--diff-filter`.** A
   whitespace-only commit still marks projects as affected.
 - **Doesn't intersect with `inputs.files`.** A project is

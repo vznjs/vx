@@ -47,11 +47,14 @@ export interface ComputeHashArgs {
 }
 
 export async function computeTaskHash(args: ComputeHashArgs): Promise<string>
+// A key derivation whose throw is rethrown as the scheduler's `KeyFailed`.
+export async function keyOf(derived: Promise<string>): Promise<string>
 export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
   hash: string
   inputs: TaskInputs
   facts: InputFact[]
   describedAt: number
+  readUpstream: () => Promise<void> // lists `inputs.upstream`, a non-cacheable upstream's outputs from disk
   added: () => string | undefined // an input file the key did not fold that exists now
 }>
 
@@ -60,14 +63,21 @@ export interface InputFact {
   path: string
   digest: string
   since: number
+  ctimeMs?: number // the ctime of the describe's stat behind the digest (none for an index OID)
   behind?: string // a link's content as the key folds it (`behindLink`)
 }
 export async function movedInput(
   facts: readonly InputFact[],
   cache: CacheLayer,
-  commandFrom?: number, // the describe's start, just before the command
+  commandFrom?: number, // the command's start on the file system's clock (`fsClockNow`), just after the describe
   byBytes?: (file: string, ctimeMs: number) => boolean, // `'mutable'`: true judges that write by bytes
 ): Promise<string | undefined>
+// command-windows.ts: when each command of the run ran and where it may write.
+export interface CommandWindows {
+  open(id: string, projectDir: string, reach: WriteReach): () => void // a command starts; the function marks its end
+  writerDuring(self: string, file: string, from: number, to: number): string | undefined // another command that may write `file` and ran within [from, to]
+}
+export function commandWindows(): CommandWindows
 export function computeGroupKey(args: ComputeHashArgs): Promise<string>
 // The fold memo's files token for one task, or undefined (run-keys.md).
 export function taskFilesToken(
@@ -108,20 +118,32 @@ export interface UpfrontGroupKey {
   hashed file from the describe's own start (`describedAt`). Its
   `added` runs inputs.md's `addedInput` over the listings the key was
   filtered from, dated from the enumeration's start (the describe's
-  own start with no run cache).
+  own start with no run cache). `inputs.upstream` lists each upstream's
+  outputs from the local index; `readUpstream`, which execute-task awaits
+  for a plugin executor only, lists a non-cacheable upstream's from its
+  declared outputs on disk (it keeps no entry, and a remote executor
+  shipped its dependant without them).
 - `movedInput` — the post-command re-check (item 743): one `lstat` per
   fact; a file whose ctime is not older than its fact by
   `FILE_HASH_RACY_MS` (plus a second for a whole-second stamp, two
   for an even one, `racyWindowMs`) is hashed again and compared, and a missing file
-  has moved. So has one whose ctime is at or after `commandFrom`
-  (less that widening for a whole-second stamp), whatever it holds now:
-  an input changed and changed BACK while the command ran matches its
-  digest again (item 1015). Where `byBytes` answers true (execute-task
+  has moved. So has one whose ctime is after `commandFrom` (or within
+  a whole-second stamp's widening of it), whatever it holds now: an
+  input changed and changed BACK while the command ran matches its
+  digest again (item 1015). A ctime equal to `commandFrom` shares its
+  coarse tick: it is an upstream's write, judged by content, when the
+  describe's stat saw that very ctime (`InputFact.ctimeMs`), else the
+  command's. Where `byBytes` answers true (execute-task
   passes it for `inputs.stability.strategy: 'mutable'` or
   `VX_INPUTS_STABILITY_STRATEGY=mutable`, true when no other command
   that may write the file ran between the describe and that write,
-  `command-windows.ts`) such a write is hashed and compared instead. Returns the
+  `command-windows.ts`; `vx watch` reads the same windows to tell a
+  user's write during a cycle from the run's own, `RunOptions.commandWindows`) such a write is hashed and compared instead. Returns the
   first moved path; execute-task then withholds the save.
+- `keyOf` — wraps a key derivation for `executeTask` and `plan()`: a
+  throw (a runtime probe that exits non-zero, a refused `inputs.env`
+  value) becomes `KeyFailed` (scheduler.md), so the run and `--dry` say
+  `cache key not derived: …` alike and the outcome is marked `isKeyFailed`.
 - `computeGroupKey` — for group tasks (no `exec`): rolls up upstream
   hashes only, so downstream keys still cascade through the group. The
   default `build` (projects.ts), the one group with `cache`, is keyed as

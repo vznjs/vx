@@ -53,7 +53,7 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `remoteCache.apiUrl` | supported | The cache URL when neither the option nor `TURBO_API` is set, as in Turbo. |
 | `remoteCache.enabled` | mapped, with a note | `false` turns `turboCache()` off unless its options name a cache. |
 | `remoteCache.loginUrl` | not applicable | Used only by `turbo login`; vx has no login. |
-| `remoteCache.preflight` | supported | `true` sends Turbo's `OPTIONS` preflight and follows its `Location`, below `TURBO_PREFLIGHT` (1 or 0) and `turboCache({ preflight })`. |
+| `remoteCache.preflight` | supported | `true` sends Turbo's `OPTIONS` preflight and follows its `Location` (http(s) only; never plain http with the token from an https URL), below `TURBO_PREFLIGHT` (1 or 0) and `turboCache({ preflight })`. |
 | `remoteCache.signature` | supported | `true` signs and verifies with `TURBO_REMOTE_CACHE_SIGNATURE_KEY`, as in Turbo; with signing off the env key is not read. `turboCache({ signatureKey })` signs either way. Signing with no key is no remote (a warning), as in Turbo; no team id signs as `''`. |
 | `remoteCache.teamId` | supported | Used when neither the option nor `TURBO_TEAMID` is set. |
 | `remoteCache.teamSlug` | supported | Used when neither the option nor `TURBO_TEAM` is set. |
@@ -165,5 +165,5 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `{runtime}` | supported | Becomes `inputs.workspaceRuntime`, run at the workspace root as Nx does. |
 | `{env}` | supported | Goes to `inputs.env` and `exec.env.passThrough`. |
 | `{externalDependencies}` | mapped, with a note | Core keys no lockfile. With a @vzn/vx-lockfile plugin, which keys the project's and the root's dependencies, dropped: silent for names the root package.json declares, a TODO names any other. With no plugin claiming the lockfile, the task keys the whole file. |
-| `{dependentTasksOutputFiles, transitive}` | supported | vx folds each dependency's cache key (its inputs, transitively) through `dependsOn`, and a cached task's output follows from its inputs. An uncached producer's matching files are an `inputs.workspaceRuntime` probe, answered after it ran. |
+| `{dependentTasksOutputFiles, transitive}` | supported | vx folds each dependency's cache key (its inputs, transitively) through `dependsOn`, and a cached task's output follows from its inputs. An uncached producer's matching files are an `inputs.workspaceRuntime` probe, answered after it ran; with `transitive`, one behind an `nx:noop` group or another task too. A `^` edge with no Nx dependency reads nothing and stays cached. |
 | `{json, fields, excludeFields}` | mapped, with a note | The whole file is hashed, a superset of the selected fields. |

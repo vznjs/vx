@@ -33,6 +33,7 @@ export {
   latestRunId,
   listInvocations,
   listRuns,
+  recordedTasks,
   rootCauses,
   upstreamTask,
   whyDidThisRerun,

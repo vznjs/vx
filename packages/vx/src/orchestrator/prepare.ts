@@ -84,6 +84,7 @@ import {
   discoverProjects,
   gitOfDiscovery,
   graphOfDiscovery,
+  ignoredConfigRefusal,
   loadProjects,
   loadWorkspacePlugins,
   lockOfDiscovery,
@@ -253,13 +254,16 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
  * holds the store while it waits for a `vx cache clean` that holds the lock,
  * and holds a cache directory with no store (`sharedCacheDir`) shared.
  * `countDependents`: a run's, which schedules by them (`PreparedRun.dependents`);
- * a plan never reads them.
+ * a plan never reads them. `planning`: a plan's (`--dry`). With no remote
+ * to probe it opens the cache to read only: no directory, index,
+ * `.gitignore` or row is made.
  */
 export async function prepareRunLocked(
   options: RunOptions,
   log: Logger,
   beforeOpen?: (workspaceRoot: string, sharedCacheDir: string | undefined) => Promise<void>,
   countDependents = false,
+  planning = false,
 ): Promise<PreparedRun> {
   beginRun()
   mark('startup')
@@ -325,8 +329,10 @@ export async function prepareRunLocked(
     ? path.resolve(options.cwd, options.cacheDir)
     : resolveCacheDir(workspaceRoot, workspaceConfig)
   // Before any racy window is judged: a file system behind this process's
-  // clock dated a mid-command edit before the command (fs-clock.ts).
-  measureFsClockLag(cacheDir)
+  // clock dated a mid-command edit before the command (fs-clock.ts). A plan
+  // keys as the run does but may make no cache dir: it measures in `.vx`,
+  // on the workspace's file system, which the workspace file makes exist.
+  measureFsClockLag(planning ? path.join(workspaceRoot, '.vx') : cacheDir)
   // Asked now, read when the cache opens: a repository with no remote is
   // named by its root commit, a git spawn the discovery below overlaps.
   const storeRoot = options.cacheDir ? null : resolveStoreRoot(workspaceRoot, workspaceConfig)
@@ -391,20 +397,47 @@ export async function prepareRunLocked(
   // A cache directory with no store may be another workspace's too: the
   // run holds it shared (`holdCacheDir`).
   await beforeOpen?.(workspaceRoot, resolvedStore === null ? cacheDir : undefined)
-  const localCache = new Cache(
-    cacheDir,
-    { read: wanted.localRead, write: wanted.localWrite },
-    workspaceRoot,
-    options.artifactCeiling,
-    'open',
-    resolvedStore,
-    {
-      embeddings: (resolveSetting('cache.store.embeddings', workspaceConfig).value ??
-        DEFAULT_STORE.embeddings) as number,
-      decompress: (resolveSetting('cache.store.decompress', workspaceConfig).value ??
-        DEFAULT_STORE.decompress) as boolean,
-    },
-  )
+  // A plan with no remote to probe writes nothing: it reads the index as the
+  // run would, one of another schema as the empty one the run's reset
+  // leaves (`'preview'`), and upserts no file-hash memo. One with a remote
+  // keeps the hits its probe finds, for the `vx run` that follows (an
+  // index made for them if need be): that run GETs them before its own
+  // probe answers (2026-10-23).
+  const planReadOnly =
+    planning &&
+    (!wanted.remoteRead ||
+      (options.remoteCache === undefined && !plugins.some((p) => p.cache !== undefined)))
+  const openCache = (): Cache =>
+    new Cache(
+      cacheDir,
+      { read: wanted.localRead, write: wanted.localWrite && !planReadOnly },
+      workspaceRoot,
+      options.artifactCeiling,
+      planReadOnly ? 'preview' : 'open',
+      resolvedStore,
+      {
+        embeddings: (resolveSetting('cache.store.embeddings', workspaceConfig).value ??
+          DEFAULT_STORE.embeddings) as number,
+        decompress: (resolveSetting('cache.store.decompress', workspaceConfig).value ??
+          DEFAULT_STORE.decompress) as boolean,
+      },
+    )
+  // A `vx cache clean` in another checkout holds the shared store alone
+  // until it has deleted it (`attachStore`), as this run's hold keeps a
+  // clean waiting: the run waits its turn, then opens the store there now.
+  let localCache: Cache
+  for (let said = false; ; await Bun.sleep(50)) {
+    try {
+      localCache = openCache()
+      break
+    } catch (err) {
+      if (resolvedStore == null || (err as { code?: unknown }).code !== 'SQLITE_BUSY') throw err
+    }
+    if (!said) {
+      said = true
+      warnOf(log)(`[vx] waiting for a vx cache clean of ${resolvedStore} to finish…`)
+    }
+  }
   const unwritable = localCache.readOnlyNotice()
   if (unwritable !== null) warnOf(log)(`[vx] ${unwritable}`)
   const policy: CachePolicy = unwritable === null ? wanted : { ...wanted, localWrite: false }
@@ -1085,13 +1118,17 @@ export function workspaceCachePolicy(
 /** A config no locked project has, looked for only when the lock holds none. */
 function unlockedConfigOf(
   configured: readonly unknown[],
-  metas: ReadonlyArray<{ dir: string }>,
+  metas: ReadonlyArray<{ name: string; dir: string }>,
   workspaceRoot: string,
 ): string | undefined {
   if (configured.length > 0) return undefined
   for (const m of metas) {
     const config = PROJECT_CONFIG_FILENAMES.find((n) => existsSync(path.join(m.dir, n)))
-    if (config !== undefined) return relPosix(workspaceRoot, path.join(m.dir, config))
+    if (config === undefined) continue
+    const file = path.join(m.dir, config)
+    // `vx lock` never reads it: the hint would send the user to it for nothing.
+    if (ignoredConfigRefusal(workspaceRoot, m, file) === undefined)
+      return relPosix(workspaceRoot, file)
   }
   return undefined
 }
@@ -1121,10 +1158,7 @@ async function refuseUnlockedConfig(
         ? undefined
         : await unlockedDir(name, metas, workspaceRoot))
     if (config === undefined) continue
-    throw new UserError(
-      `${spec}: ${relPosix(workspaceRoot, config)} is not in the lock yet — run \`vx lock\``,
-      'VX_E_LOCK',
-    )
+    throw new UserError(`${spec}: ${notLockedYet(workspaceRoot, config, metas, name)}`, 'VX_E_LOCK')
   }
 }
 
@@ -1147,11 +1181,26 @@ function refuseUnlockedScope(
   for (const name of selected) {
     const config = unlockedConfig(name, metas)
     if (config === undefined) continue
-    throw new UserError(
-      `${spec}: ${relPosix(workspaceRoot, config)} is not in the lock yet — run \`vx lock\``,
-      'VX_E_LOCK',
-    )
+    throw new UserError(`${spec}: ${notLockedYet(workspaceRoot, config, metas, name)}`, 'VX_E_LOCK')
   }
+}
+
+/**
+ * Why the lock holds no `config`: git ignores it, in a directory a
+ * `discover` plugin made a project, which `vx lock` cannot fix; else it
+ * came after the lock.
+ */
+function notLockedYet(
+  workspaceRoot: string,
+  config: string,
+  metas: ReadonlyArray<{ name: string; dir: string }>,
+  name: string,
+): string {
+  const meta = metas.find((m) => m.name === name)
+  return (
+    (meta === undefined ? undefined : ignoredConfigRefusal(workspaceRoot, meta, config)) ??
+    `${relPosix(workspaceRoot, config)} is not in the lock yet — run \`vx lock\``
+  )
 }
 
 /** The config file in a project's directory the lock holds none for. */

@@ -310,6 +310,37 @@ describe('vx lock prints a config refusal with its frame', () => {
     }
   })
 
+  // A glob refusal quotes the glob raw, so one holding a backslash is no
+  // JSON string: the frame's parse threw "JSON Parse error" and vx lock
+  // crashed in place of the refusal.
+  it('a glob refusal quoting a backslash, framed at its field', async () => {
+    for (const glob of ['app/\\[id\\]/**.ts', 'src/{b}.ts', 'src/@(a|b).ts', 'src/(a|b).ts']) {
+      const root = await realpath(await makeWorkspace({ prefix: 'vx-frame-glob-' }))
+      try {
+        const pkg = path.join(root, 'packages', 'b')
+        await mkdir(pkg, { recursive: true })
+        await writeFile(
+          path.join(pkg, 'vx.config.mjs'),
+          `export default {\n  tasks: {\n    build: {\n      exec: { command: 'true' },\n` +
+            `      inputs: { files: [${JSON.stringify(glob)}] },\n    },\n  },\n}\n`,
+        )
+        const r = Bun.spawnSync(['bun', BIN, 'lock'], {
+          cwd: root,
+          env: { ...process.env, NO_COLOR: '1' },
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+        const err = r.stderr.toString()
+        expect([glob, r.exitCode, err.includes('JSON Parse')]).toEqual([glob, 1, false])
+        expect(err).toStartWith(
+          '✗ vx lock  lock not written\n\n  packages/b/vx.config.mjs:5:17\n  tasks.build.inputs.files: ',
+        )
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    }
+  })
+
   it('a syntax error too, at the line Bun places it', async () => {
     const root = await realpath(await makeWorkspace({ prefix: 'vx-frame-syntax-' }))
     try {

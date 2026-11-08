@@ -9,6 +9,18 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## close the next hardening batch
+
+SCHEMA_VERSION v55; the next run on every machine misses once.
+
+## cache: date files a restore writes now, not with saved mtime
+
+the local cache index is schema v55; what it recorded before is dropped on first open, so the next run misses once.
+
+## sandbox: judge a linked node_modules by its target
+
+CACHE_VERSION is vx-cache-v52; entries saved before it are never read, so the next run misses once.
+
 ## vx-dte: group machines into worker types for exec.worker
 
 dte({ workers: { <size>: {...} } }) is now dte({ workers: { <type>: { machines: { <name>: {...} } } } }); machine names in output and adapter options are <type>.<machine>.

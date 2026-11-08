@@ -81,7 +81,7 @@ export function checkGraph(
   nodes: Map<string, TaskNode>,
   workspaceRoot?: string,
   rules?: GraphRules, // `exclusiveOutputs`: edge-ordered overlap
-): void // id keys, deps, cycle, output collisions, inputs reading outputs; `locked` skips the rules
+): void // id keys, deps (a repeat dropped), cycle, output collisions, inputs reading outputs; `locked` skips the rules
 // Does `negatives` (an input list's `!` entries, `!` stripped) take back
 // every path `output` can select? (X-54)
 export function outputTakenBack(output: string, negatives: readonly string[]): boolean
@@ -122,6 +122,14 @@ export function unresolvedRequests(
 // Flags the display-only `surfaced` tasks a requested GROUP stands for;
 // returns how many it flagged. See "transparent folders" in cli.md.
 export function markSurfacedDeps(nodes: Map<string, TaskNode>): number
+
+// stand-ins.ts, internal (not on the façade): what each edge past a default
+// build on a package cycle stands in for, kept off TaskNode's public shape
+// under a symbol key that spread copies carry.
+export type StandIns = Readonly<Record<string, readonly string[]>>
+export function standInsOf(node: TaskNode): StandIns | undefined
+export function setStandIns(node: TaskNode, standIns: StandIns): void
+export function addStandIn(node: TaskNode, id: string, past: readonly string[]): void // the walk's
 
 // True only when two output globs PROVABLY select an overlapping set —
 // the test behind the refusal below, on the façade because
@@ -166,7 +174,14 @@ pattern (`bui*`, `^bui*`) —
 is added and goes on past it, so the builds it cannot depend on still
 come first (X-120: by name it stopped there, and `a#test` on `build`,
 with `a` and `b` on the default build depending on each other, folded
-nothing of `b`). Off a cycle it is a holder like any other. A config's
+nothing of `b`). Each edge taken past one is recorded in the
+dependant against the edges it went past (`standInsOf`), and
+`inputs.tasks` selecting those selects it (`selectFoldedDeps`): by name
+alone, `tasks: ['build']` or `['a#build']` kept `a#build`, dropped
+`b#build`, and an edit to `b` replayed the hit. The record is not on
+`TaskNode`'s public shape; the graph memo stores it, and
+`applyGraphStage` re-attaches it by id to a node a `graph` hook rebuilt,
+less any edge the hook removed. Off a cycle it is a holder like any other. A config's
 keyed group of the same shape (`inputs`, no `exec`, `dependsOn` exactly
 `['^name']` of its own name; `isChainGroup`) is treated the same; any
 other keyed group on a cycle expands its own `dependsOn` like a task
@@ -211,7 +226,8 @@ their `dependsOn` array.
 
 After every reachable node has been added, `checkGraph()` checks the
 graph (the `graph` stage runs it again after its plugins, item 981):
-each node under its own id, every dep a node, then `detectCycle()` runs a
+each node under its own id, every dep a node named once (a plugin's
+repeat is dropped), then `detectCycle()` runs a
 3-color DFS:
 
 - WHITE = unvisited
@@ -238,23 +254,28 @@ It never compares all pairs:
 `outputs.files` is compared only within a project and
 `outputs.workspaceFiles` only among its declarers, and within each
 domain a path index (`overlapCandidates`) names the pairs that can
-overlap. Two equal globs are one lookup (equal literals too, through
-their `/**` twins), and a literal meets the globs whose literal head
-names one of its ancestor directories. The head ends at the first
-character `Bun.Glob` may read as other than itself, `*?{}` plus `\`
-and a leading `!`, so a wildcard in the first segment files the glob
-at the root. The pairs are compared in the order all pairs met them,
-so the refusal names the same pair and the marks land in the same
-order. One project of 4,000 tasks with outputs built its graph in
-10.0 s (distinct literals) and now in 10 ms (item 746).
+overlap. Two globs meet only when one's literal prefix lies at or
+under the other's (equal literals too, through their `/**` twins), and
+a literal meets the globs whose literal head names one of its ancestor
+directories. The head ends at the first character `Bun.Glob` may read
+as other than itself, `*?{}` plus `\` and a leading `!`, so a wildcard
+in the first segment files the glob at the root. The pairs are compared
+in the order all pairs met them, so the refusal names the same pair and
+the marks land in the same order. One project of 4,000 tasks with
+outputs built its graph in 10.0 s (distinct literals) and now in 10 ms
+(item 746). Each relation is indexed from both ends, so the pairs are
+found one task at a time as they are compared: 20,000 tasks sharing
+`dist/**` held all 200 million pairs before the first refused, and died
+`RangeError: Out of memory`; now the first pair refuses at once.
 
-## Inputs inside a nested project
+## Inputs and outputs inside a nested project
 
 Given `nestedProjects` (only `vx lock` passes it) and unlocked,
-`refuseNestedInputs` refuses an `inputs.files` entry whose brace
-alternative's fixed prefix lies inside a project nested in the task's
-own (`VX_E_NESTED_INPUT`): the boundary drops every file it can match,
-so it keys nothing (`tests/nested-input.test.ts`).
+`refuseNestedGlobs` refuses an `inputs.files` or `outputs.files` entry
+whose brace alternative's fixed prefix lies inside a project nested in
+the task's own (`VX_E_NESTED_INPUT`, `VX_E_NESTED_OUTPUT`): the boundary
+drops every file it can match, so an input keys nothing and an output
+saves nothing (`tests/nested-input.test.ts`).
 
 ## Inputs that read outputs
 

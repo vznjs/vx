@@ -311,6 +311,44 @@ describe('excludeSiblingOutputs — no key reads a sibling output (X-54)', () =>
     const tasks = excludeSiblingOutputs([task('build', ['dist/**']), reader('test', ['**/*'])])
     expect(inputsOf(tasks[1]!)?.['files']).toEqual(['**/*', '!dist/**'])
   })
+
+  // Turbo walks an explicit glob on disk: taken back, `gen/**` left build
+  // keyed on none of what gen wrote, and no edge carried gen's key.
+  it("walking globs, uncaches a reader whose glob names a sibling's output it has no edge to", () => {
+    const edged = {
+      ...reader('edged', ['gen/**']),
+      task: { dependsOn: ['mid'], inputs: { files: ['gen/**'] } },
+    }
+    const tasks = excludeSiblingOutputs(
+      [
+        task('gen', ['gen/**']),
+        { ...task('mid', []), task: { dependsOn: ['gen'] } },
+        reader('build', ['src/**', 'gen/**']),
+        edged,
+        // CONTROL: a glob led by `**` walks the whole package, as the default.
+        reader('lint', ['**/*.ts']),
+      ],
+      true,
+    )
+    expect([
+      inputsOf(tasks[2]!),
+      tasks[2]!.todos,
+      inputsOf(tasks[3]!)?.['files'],
+      inputsOf(tasks[4]!)?.['files'],
+    ]).toEqual([
+      undefined,
+      [
+        'reads "gen/**", which "gen" writes and no dependsOn reaches — vx keys a task only on ' +
+          'files no other task writes, so it runs uncached; add the edge or read the source ' +
+          'instead in a vx.config to cache it',
+      ],
+      ['gen/**', '!gen/**'],
+      ['**/*.ts', '!gen/**'],
+    ])
+    // CONTROL: Nx hashes no gitignored file, so its mapping keeps the `!`.
+    const nx = excludeSiblingOutputs([task('gen', ['gen/**']), reader('build', ['gen/**'])])
+    expect(inputsOf(nx[1]!)?.['files']).toEqual(['gen/**', '!gen/**'])
+  })
 })
 
 describe('excludeWorkspaceOutputs — workspace inputs against every output (X-54)', () => {

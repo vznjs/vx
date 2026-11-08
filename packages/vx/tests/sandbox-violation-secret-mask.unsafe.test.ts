@@ -5,6 +5,7 @@
 import { realpathSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { decodeOutputLog } from '../src/orchestrator/output-log.js'
 import { run } from './helpers/orchestrator.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -41,5 +42,40 @@ describe.skipIf(!available || process.platform !== 'linux')('a violation line', 
 
   it('CONTROL: a value under a plain name is printed as the task spelled it', async () => {
     expect(await lines('OUT_NAME')).toEqual([`${REFUSED} ${root}/out-definedvalue77. ${GRANT}`])
+  })
+})
+
+// A retry after a refused write: the shell exited 0 and the refusal failed
+// the attempt, yet the retry line read `after exit 1` and the refusal went
+// with the attempt, absent from its kept log (`vx last --log`).
+describe.skipIf(!available || process.platform !== 'linux')('a retry after a violation', () => {
+  let root: string
+  beforeEach(async () => {
+    root = realpathSync(await makeWorkspace({ prefix: 'vx-violation-retry-' }))
+  })
+  afterEach(() => rm(root, { recursive: true, force: true }))
+
+  it('names the violation and keeps its line with the attempt', async () => {
+    await addProject(root, 'p', {
+      config: `export default { tasks: { build: { exec: {
+        command: 'if [ ! -e state/f ]; then : > state/f; echo bad > undeclared; echo OUT1; exit 0; fi; echo OUT2',
+        retries: 1,
+        sandbox: { allow: { write: ['state/'] } },
+      } } } }\n`,
+      files: { 'state/.keep': '' },
+    })
+    const err: string[] = []
+    const r = await run({
+      cwd: root,
+      tasks: ['build'],
+      log: { ...quiet, taskStderr: (_n: unknown, c: string) => err.push(c) },
+    })
+    const o = r.outcomes[0]!
+    expect(o.status).toBe('success')
+    expect(err.join('')).toContain('vx: retrying p#build (attempt 2/2) after 1 sandbox violation\n')
+    const kept = decodeOutputLog(o.attemptOutputs![0]!)
+      .map((c) => c.text)
+      .join('')
+    expect(kept).toContain(`${root}/packages/p/undeclared`)
   })
 })

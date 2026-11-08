@@ -151,7 +151,7 @@ function stopGuard(): void {
 
 function guardWrite(line: string): void {
   if (typeof guardFd !== 'number') return
-  let deadline = Date.now() + GUARD_STALL_MS
+  let deadline = performance.now() + GUARD_STALL_MS
   // A turn's batch can be more than the queue takes at once: it goes in
   // pieces as the guard drains it, and only a guard that takes nothing for
   // the whole stall is gone. With one deadline for the batch, 2000 strikes
@@ -162,9 +162,9 @@ function guardWrite(line: string): void {
       const n = writeSync(guardFd, bytes, 0, Math.min(bytes.length, GUARD_PIECE))
       if (n === bytes.length) return
       bytes = bytes.subarray(n)
-      deadline = Date.now() + GUARD_STALL_MS
+      deadline = performance.now() + GUARD_STALL_MS
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'EAGAIN' || Date.now() >= deadline) break
+      if ((err as NodeJS.ErrnoException).code !== 'EAGAIN' || performance.now() >= deadline) break
       Bun.sleepSync(1)
     }
   }
@@ -414,7 +414,7 @@ export async function untilGroupsGone(
   children: readonly Child[],
   graceMs: number,
 ): Promise<Child[]> {
-  const deadline = Date.now() + graceMs
+  const deadline = performance.now() + graceMs
   let timer: ReturnType<typeof setTimeout> | undefined
   // Not unref'd: it is what guarantees progress when every other handle
   // has drained, and the grace is bounded either way.
@@ -426,8 +426,8 @@ export async function untilGroupsGone(
   ])
   if (timer !== undefined) clearTimeout(timer)
   let left = children.filter(groupAlive)
-  while (left.length > 0 && Date.now() < deadline) {
-    await Bun.sleep(Math.min(GROUP_POLL_MS, deadline - Date.now()))
+  while (left.length > 0 && performance.now() < deadline) {
+    await Bun.sleep(Math.min(GROUP_POLL_MS, deadline - performance.now()))
     left = left.filter(groupAlive)
   }
   return left

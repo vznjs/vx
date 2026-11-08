@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, lstatSync } from 'node:fs'
 import path from 'node:path'
 import type { ExecConfig, TaskConfig, InputsConfig, InputStability } from '../config.js'
 import {
@@ -18,10 +18,15 @@ import {
   resolveWorkspaceOutputs,
   stampOutputs,
   stampWorkspaceOutputs,
+  stampCommitted,
+  committedMoved,
   FULL_CACHE_POLICY,
   type GitFilesCache,
   racyWindowMs,
+  stampGrainMs,
   type TaskInputComponent,
+  declaresInput,
+  fsClockNow,
 } from '../cache/index.js'
 import {
   signalExitCode,
@@ -47,8 +52,10 @@ import {
 } from './output-log.js'
 import {
   isGroupTask,
+  OutputsFailed,
   RestoreDemoted,
   RestoreFailed,
+  standInsOf,
   type TaskNode,
   type TaskOutcome,
 } from '../graph/index.js'
@@ -109,6 +116,7 @@ import {
   type HashCache,
   type InputFact,
   isKeyless,
+  keyOf,
   movedInput,
   type UpfrontGroupKey,
 } from './task-hash.js'
@@ -143,6 +151,12 @@ export interface ExecuteArgs {
    * machine. The hash is still computed — dependents fold it.
    */
   remoteOnlyNoop?: boolean
+  /**
+   * The task depends on a `remoteOnlyNoop` one, directly or through others
+   * (`Placements.belowNoop`): it saves nothing, since its key names the
+   * no-op's outputs, which never landed.
+   */
+  belowNoop?: boolean
   /**
    * `exec.remote: 'only'` placed on a remote executor: execute remotely,
    * but this machine's disk is untouched — no output clean, no vx cache
@@ -264,6 +278,12 @@ export interface ExecuteArgs {
    */
   readableDeps?: (node: TaskNode) => readonly TaskNode[]
   /**
+   * The projects nested in a keyed one, by its dir (keyed-projects.ts
+   * `nestedDirsOf`): walled from a task granted that linked package.
+   * Absent: none.
+   */
+  nestedDirsOf?: (projectDir: string) => readonly string[]
+  /**
    * Run-scoped list the miss path appends its output-directory snapshot
    * request to, taken at run end (run.ts) instead of right after the save:
    * a directory written milliseconds ago is inside the snapshot's racy
@@ -323,6 +343,18 @@ export interface ExecuteArgs {
    * the task's outcome has been logged).
    */
   serverReady?: (id: string) => void
+  /**
+   * Asked just before a miss is saved: whether a server it depends on
+   * (through groups too) died while it ran, which then holds the save. Its
+   * key is a healthy run's; its bytes were built against a dead server.
+   */
+  serverDiedUnder?: (node: TaskNode) => Promise<boolean>
+  /**
+   * Told once when an attempt's shell left a process running: it may still
+   * write the outputs a dependent reads, so run.ts seeds the run's taint
+   * with this task and nothing built on it is saved.
+   */
+  leftRunning?: (node: TaskNode) => void
   /** A `vx watch` cycle (`RunOptions.watch`): an input edited mid-run is the next cycle's. */
   watch?: true
 }
@@ -480,16 +512,18 @@ async function executeGroupTask(args: ExecuteArgs): Promise<TaskOutcome> {
     )
   }
   const wallclockNs = process.hrtime.bigint() - args.runStartHrTimeNs
-  const hash = await computeTaskHash({
-    node: args.node,
-    upstream: args.upstream,
-    workspaceRoot: args.workspaceRoot,
-    cache: args.cache,
-    forwardArgs: args.forwardArgs,
-    nestedProjectDirs: args.nestedProjectDirs,
-    ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
-    ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
-  })
+  const hash = await keyOf(
+    computeTaskHash({
+      node: args.node,
+      upstream: args.upstream,
+      workspaceRoot: args.workspaceRoot,
+      cache: args.cache,
+      forwardArgs: args.forwardArgs,
+      nestedProjectDirs: args.nestedProjectDirs,
+      ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
+      ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
+    }),
+  )
   return groupOutcome(args.node, args.upstream, hash, wallclockNs)
 }
 
@@ -571,7 +605,13 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // nothing to read under it, and nothing a later run could find.
   const present = upstream.filter((u): u is TaskOutcome => u !== undefined)
   const folded = new Set(
-    filterUpstreamHashes(present, cfg.inputs?.tasks, node.projectName, node.id).map(([id]) => id),
+    filterUpstreamHashes(
+      present,
+      cfg.inputs?.tasks,
+      node.projectName,
+      node.id,
+      standInsOf(node),
+    ).map(([id]) => id),
   )
   const foldedTasks = expandGroupUpstream(present.filter((u) => folded.has(u.node.id)))
   const keylessBy = isKeyless(cfg)
@@ -598,7 +638,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   let unkeyed = unkeyedUpstream !== undefined
   /** The input `keyStillTrue` found moved under the command (`TaskOutcome.driftedInput`). */
   let driftedInput: string | null | undefined
-  const willSave = willWrite && args.taintedUpstream !== true && !unkeyed && !keyless
+  const willSave =
+    willWrite && args.taintedUpstream !== true && !unkeyed && !keyless && args.belowNoop !== true
 
   // The executor retains nothing: the entry's output is the attempt's
   // `output` log, both streams in the order they reached the logger, kept
@@ -685,7 +726,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     signal: AbortSignal | undefined,
   ): Promise<unknown> {
     if (signal === undefined || isLocalExecutor(args.executor)) return running
-    const started = Date.now()
+    const started = performance.now()
     let graceTimer: ReturnType<typeof setTimeout> | undefined
     let onAbort: (() => void) | undefined
     const abandoned = new Promise<ExecuteResult>((resolve) => {
@@ -700,7 +741,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
           const reason: unknown = signal.reason
           resolve({
             exitCode: signalExitCode(reason === 'SIGINT' ? 'SIGINT' : 'SIGTERM'),
-            durationMs: Date.now() - started,
+            durationMs: Math.round(performance.now() - started),
             stdout: '',
             stderr: '',
             violations: [],
@@ -749,19 +790,21 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const hash =
     preProbed?.hash ??
     args.upfrontKey ??
-    (await computeTaskHash({
-      node,
-      upstream,
-      workspaceRoot: args.workspaceRoot,
-      cache,
-      forwardArgs: args.forwardArgs,
-      nestedProjectDirs: args.nestedProjectDirs,
-      ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
-      ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
-      ...(args.probesAfterWrites !== undefined
-        ? { probesAfterWrites: args.probesAfterWrites }
-        : {}),
-    }))
+    (await keyOf(
+      computeTaskHash({
+        node,
+        upstream,
+        workspaceRoot: args.workspaceRoot,
+        cache,
+        forwardArgs: args.forwardArgs,
+        nestedProjectDirs: args.nestedProjectDirs,
+        ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
+        ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
+        ...(args.probesAfterWrites !== undefined
+          ? { probesAfterWrites: args.probesAfterWrites }
+          : {}),
+      }),
+    ))
 
   // The local no-op half of `exec.remote: 'only'`: no remote executor took
   // the task, so it succeeds without running. The hash was still computed —
@@ -779,15 +822,22 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
   }
 
+  const ownInputs = {
+    projectDir: node.projectDir,
+    workspaceRoot: args.workspaceRoot,
+    declared: node.config.inputs,
+  }
   const cleanArgs = {
     projectDir: node.projectDir,
     outputs,
     nestedProjectDirs: args.nestedProjectDirs,
+    inputs: ownInputs,
     committed: committedFiles(args.gitFilesCache, node.projectDir),
   }
   const wsCleanArgs = {
     workspaceRoot: args.workspaceRoot,
     outputs: wsOutputs,
+    inputs: ownInputs,
     committed: committedFiles(args.gitFilesCache, args.workspaceRoot),
   }
   // An ADDITIVE task (its outputs overlap an upstream's, with the edge that
@@ -800,9 +850,14 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const additive = (node.addsToOutputsOf?.length ?? 0) > 0
   let stampedBefore: ReadonlyMap<string, OutputStamp> | undefined
   let wsStampedBefore: ReadonlyMap<string, OutputStamp> | undefined
-  // A failed attempt changed or removed a file the stamp found: no retry
-  // can put it back, so no entry holds only the passing attempt's work.
+  // A failed attempt changed or removed a file the stamp found, or a
+  // committed file under the outputs (no clean deletes one): no retry can
+  // put it back, so no entry holds only the passing attempt's work.
   let failedTouchedFound = false
+  // The committed files under the outputs as the first attempt found them,
+  // stamped only when a retry can follow.
+  let committedBefore: ReadonlyMap<string, OutputStamp> | undefined
+  let wsCommittedBefore: ReadonlyMap<string, OutputStamp> | undefined
   // `outputs.clean: false` leaves the outputs to the first attempt's
   // command, and the save stores whatever they hold after it, a leftover
   // included: the user opted out of the clean-tree guarantee
@@ -858,6 +913,14 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
           : {}),
       })
     : undefined
+  // The command's start for the re-check (`movedInput`), on the clock that
+  // stamps its writes: off `Date.now()`, a coarse kernel tick dated an edit
+  // in the command's first tick before it, and an edit undone by the end
+  // read as an upstream's write of the key's bytes. After the describe, so
+  // the stats that tell an upstream's write in its tick apart come first.
+  const commandFrom = cfgCacheable
+    ? fsClockNow(args.cacheDir ?? path.join(args.workspaceRoot, '.vx'))
+    : 0
   /** The other command that may have put a moved input back (`ownRewrite`). */
   let rewroteBy: string | undefined
   /**
@@ -928,7 +991,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const inputChanges = described !== undefined ? args.explainMiss?.(node.id, captured) : undefined
   // A plugin may keep the request past the run (the cache closed): it gets
   // the upstream outputs read now. Only the local floor leaves them unread.
-  if (inputs !== undefined && !isLocalExecutor(args.executor)) void inputs.upstream
+  if (inputs !== undefined && !isLocalExecutor(args.executor)) await described!.readUpstream()
   // A declared input set that resolves to NOTHING is the quiet stale hit:
   // the key stops moving with this project's source and every later run
   // is a hit. Almost always a glob written against the wrong directory
@@ -976,6 +1039,36 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // the last attempt alone read `max 407ms` beside a footer of 837 (item
   // 1101). A saved entry keeps the attempt that produced it, what a hit saves.
   let spentMs = 0
+  // A known flake gets a retry its config did not ask for (below).
+  const retryCanFollow =
+    maxAttempts > 1 || (!retriesSet && cfgCacheable && !keyless && args.knownFlaky !== undefined)
+  // Stamps the committed files a clean found before the first attempt, and
+  // before a retry taints the save if a failed attempt moved one.
+  const checkCommitted = (
+    root: string,
+    rels: readonly string[],
+    committed: (abs: string) => boolean,
+    before: ReadonlyMap<string, OutputStamp> | undefined,
+  ): ReadonlyMap<string, OutputStamp> | undefined => {
+    if (!retryCanFollow) return undefined
+    const files = rels.map((r) => path.resolve(root, r))
+    if (before === undefined) return stampCommitted(files, committed)
+    if (committedMoved(files, committed, before)) failedTouchedFound = true
+    return before
+  }
+
+  // vx's own work on the outputs, around a command that exited `exitCode`.
+  async function outputsStep<T>(
+    step: 'clean' | 'save',
+    exitCode: number,
+    work: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await work()
+    } catch (err) {
+      throw new OutputsFailed(err, step, exitCode, spentMs)
+    }
+  }
 
   // One task attempt: clean the declared outputs (before EVERY attempt — so a
   // stale prior-build artifact can't survive into a fresh run, and a failed
@@ -996,55 +1089,92 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // tree would replace a stale build with nothing at all. The eligibility
     // gate guarantees no key in this run can see what stays behind, and the
     // summary names every deferred task so `dist/` is not silently stale.
-    if (additive && willWrite && !deferralRequested && outputs.length > 0) {
-      const endStamp = span('miss: stamp outputs')
-      if (stampedBefore === undefined) stampedBefore = await stampOutputs(cleanArgs)
-      else {
-        const rels = await dropFailedAdditions(
+    // Its throw (a name vx cannot clear) fails the task before this
+    // attempt's command: no exit of its own to name.
+    await outputsStep('clean', attempt > 1 ? effectiveExitCode : 1, async () => {
+      if (additive && willWrite && !deferralRequested && outputs.length > 0) {
+        const endStamp = span('miss: stamp outputs')
+        if (stampedBefore === undefined) stampedBefore = await stampOutputs(cleanArgs)
+        else {
+          const rels = await dropFailedAdditions(
+            node.projectDir,
+            outputs,
+            stampedBefore,
+            cleanArgs.committed,
+            await ownOutputsSince(cleanArgs, stampedBefore),
+            () => resolveOutputs(cleanArgs),
+          )
+          args.gitFilesCache?.markOutputsChanged(node.projectDir, rels)
+        }
+        endStamp()
+      } else if (clean && outputs.length > 0) {
+        // Mark the wiped paths, exactly as the workspace twin below does. The
+        // git snapshot still lists them with their committed index OIDs, and
+        // resolveFiles SKIPS its existence probe for any path carrying a
+        // trusted OID — so a declared output the producer deletes and does not
+        // re-create would stay in a same-project consumer's input set, keeping
+        // that consumer's key unchanged while the file is gone from disk.
+        const endClean = span('miss: clean outputs')
+        const cleanedRels = await cleanOutputs(cleanArgs)
+        endClean()
+        args.gitFilesCache?.markOutputsChanged(node.projectDir, cleanedRels)
+        committedBefore = checkCommitted(
           node.projectDir,
-          outputs,
-          stampedBefore,
+          cleanedRels,
           cleanArgs.committed,
-          await ownOutputsSince(cleanArgs, stampedBefore),
-          () => resolveOutputs(cleanArgs),
+          committedBefore,
         )
-        args.gitFilesCache?.markOutputsChanged(node.projectDir, rels)
+      } else if (keepOutputs && willWrite && !deferralRequested && outputs.length > 0) {
+        committedBefore = checkCommitted(
+          node.projectDir,
+          retryCanFollow
+            ? (await resolveOutputs(cleanArgs)).map((f) => relPosix(node.projectDir, f))
+            : [],
+          cleanArgs.committed,
+          committedBefore,
+        )
       }
-      endStamp()
-    } else if (clean && outputs.length > 0) {
-      // Mark the wiped paths, exactly as the workspace twin below does. The
-      // git snapshot still lists them with their committed index OIDs, and
-      // resolveFiles SKIPS its existence probe for any path carrying a
-      // trusted OID — so a declared output the producer deletes and does not
-      // re-create would stay in a same-project consumer's input set, keeping
-      // that consumer's key unchanged while the file is gone from disk.
-      const endClean = span('miss: clean outputs')
-      const cleanedRels = await cleanOutputs(cleanArgs)
-      endClean()
-      args.gitFilesCache?.markOutputsChanged(node.projectDir, cleanedRels)
-    }
-    if (additive && willWrite && !deferralRequested && wsOutputs.length > 0) {
-      // A root-anchored addition is stamped as the project one above: a
-      // glob clean deleted the upstream's files before this task, which
-      // reads them, ran (A-43).
-      if (wsStampedBefore === undefined) wsStampedBefore = await stampWorkspaceOutputs(wsCleanArgs)
-      else {
-        const rels = await dropFailedAdditions(
+      if (additive && willWrite && !deferralRequested && wsOutputs.length > 0) {
+        // A root-anchored addition is stamped as the project one above: a
+        // glob clean deleted the upstream's files before this task, which
+        // reads them, ran (A-43).
+        if (wsStampedBefore === undefined)
+          wsStampedBefore = await stampWorkspaceOutputs(wsCleanArgs)
+        else {
+          const rels = await dropFailedAdditions(
+            args.workspaceRoot,
+            wsOutputs,
+            wsStampedBefore,
+            wsCleanArgs.committed,
+            await ownWorkspaceOutputsSince(wsCleanArgs, wsStampedBefore),
+            () => resolveWorkspaceOutputs(wsCleanArgs),
+          )
+          args.gitFilesCache?.markWorkspaceOutputsChanged(args.workspaceRoot, rels)
+        }
+      } else if (clean && wsOutputs.length > 0) {
+        // Root-anchored deletions can land in other projects' dirs; mark
+        // them so stale per-project git snapshots can't survive the wipe.
+        const cleanedWsRels = await cleanWorkspaceOutputs(wsCleanArgs)
+        args.gitFilesCache?.markWorkspaceOutputsChanged(args.workspaceRoot, cleanedWsRels)
+        wsCommittedBefore = checkCommitted(
           args.workspaceRoot,
-          wsOutputs,
-          wsStampedBefore,
+          cleanedWsRels,
           wsCleanArgs.committed,
-          await ownWorkspaceOutputsSince(wsCleanArgs, wsStampedBefore),
-          () => resolveWorkspaceOutputs(wsCleanArgs),
+          wsCommittedBefore,
         )
-        args.gitFilesCache?.markWorkspaceOutputsChanged(args.workspaceRoot, rels)
+      } else if (keepOutputs && willWrite && !deferralRequested && wsOutputs.length > 0) {
+        wsCommittedBefore = checkCommitted(
+          args.workspaceRoot,
+          retryCanFollow
+            ? (await resolveWorkspaceOutputs(wsCleanArgs)).map((f) =>
+                relPosix(args.workspaceRoot, f),
+              )
+            : [],
+          wsCleanArgs.committed,
+          wsCommittedBefore,
+        )
       }
-    } else if (clean && wsOutputs.length > 0) {
-      // Root-anchored deletions can land in other projects' dirs; mark
-      // them so stale per-project git snapshots can't survive the wipe.
-      const cleanedWsRels = await cleanWorkspaceOutputs(wsCleanArgs)
-      args.gitFilesCache?.markWorkspaceOutputsChanged(args.workspaceRoot, cleanedWsRels)
-    }
+    })
     // What the attempt before this one left, put back if this one is
     // withdrawn: it stands, with its output and its refusals.
     const standing = { output, violations, flushMasked }
@@ -1353,8 +1483,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
     // A failed attempt's leftover may write into the retry's outputs too.
     // It is not killed, as a passing attempt's is not: only the save is
-    // withheld (`nothingLeftRunning`).
-    if (result.leftRunning === true) leftRunning = true
+    // withheld (`nothingLeftRunning`), and its dependents' (`args.leftRunning`).
+    if (result.leftRunning === true && !leftRunning) {
+      leftRunning = true
+      args.leftRunning?.(node)
+    }
     forgetUndeclaredWrites(args, writeReach)
     if (writesFingerprint) args.fingerprintWatch?.wrote()
     spentMs += result.durationMs
@@ -1414,12 +1547,36 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       exitCode: effectiveExitCode,
       ...(result.timedOut === true ? { timedOut: true as const } : {}),
     })
+    // The outcome's SANDBOX VIOLATIONS section is the last attempt's: a
+    // retried attempt's refusals go into its own output, kept for
+    // `vx last --log`, as the section prints them.
+    const refused = new Set<string>()
+    let denials = 0
+    for (const v of violations) {
+      const line = printable(secrets?.mask(v.line) ?? v.line)
+      if (!refused.has(line) && v.hint !== true) denials++
+      refused.add(line)
+    }
+    if (refused.size > 0 && output !== undefined) {
+      const section = `${midLine ? '\n' : ''}${denials > 0 ? `SANDBOX VIOLATIONS (${denials})` : 'SANDBOX'}\n${[...refused].join('\n')}\n`
+      output.push(section, true)
+      log.taskStderr(node, section)
+      midLine = false
+    }
     attemptOutputs.push(
       output === undefined ? '' : failedOutputLog(output, true, secrets ?? undefined),
     )
+    // The shell's own exit 0 failed only on the refusal: `exit 1` named
+    // nothing that happened.
+    const why =
+      result.timedOut === true
+        ? 'a timeout'
+        : result.exitCode === 0 && denials > 0
+          ? `${denials} sandbox violation${denials === 1 ? '' : 's'}`
+          : `exit ${effectiveExitCode}`
     log.taskStderr(
       node,
-      `${midLine ? '\n' : ''}vx: retrying ${node.id} (attempt ${attempt + 1}/${maxAttempts}) after ${result.timedOut === true ? 'a timeout' : `exit ${effectiveExitCode}`}\n`,
+      `${midLine ? '\n' : ''}vx: retrying ${node.id} (attempt ${attempt + 1}/${maxAttempts}) after ${why}\n`,
     )
   }
 
@@ -1516,6 +1673,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       args.cacheDir,
       deps.reads,
       deps.reported,
+      args.nestedDirsOf,
     )
     placeholders = sb.placeholders
     withheld = sb.withheld
@@ -1544,7 +1702,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // edit's bytes under the old key (X-123).
     const materialize = result.outputs?.kind === 'deferred' ? result.outputs.materialize : undefined
     if (materialize !== undefined) {
-      const keyed = await keyStillTrue()
+      const keyed = (await keyStillTrue()) && (await args.serverDiedUnder?.(node)) !== true
       args.deferred?.register(node.id, {
         materialize,
         ...(keyed ? { hash } : {}),
@@ -1563,30 +1721,33 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     willSave &&
     nothingLeftRunning() &&
     (await keyStillTrue()) &&
+    (await args.serverDiedUnder?.(node)) !== true &&
     (own = await ownOutputs()) !== undefined
   ) {
-    const { landed } = await saveMiss({
-      ...own,
-      node,
-      hash,
-      cache,
-      log,
-      workspaceRoot: args.workspaceRoot,
-      nestedProjectDirs: args.nestedProjectDirs,
-      gitFilesCache: args.gitFilesCache,
-      outputs,
-      wsOutputs,
-      captured,
-      command: storedCommand,
-      durationMs: result.durationMs,
-      stdout: storedOutput(),
-      ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),
-      ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),
-      outputDirSnapshots: args.outputDirSnapshots,
-      deferSave: args.deferSave,
-      // A sink listens: say what the save cost.
-      measure: args.explainMiss !== undefined,
-    })
+    const { landed } = await outputsStep('save', effectiveExitCode, () =>
+      saveMiss({
+        ...own,
+        node,
+        hash,
+        cache,
+        log,
+        workspaceRoot: args.workspaceRoot,
+        nestedProjectDirs: args.nestedProjectDirs,
+        gitFilesCache: args.gitFilesCache,
+        outputs,
+        wsOutputs,
+        captured,
+        command: storedCommand,
+        durationMs: result.durationMs,
+        stdout: storedOutput(),
+        ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),
+        ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),
+        outputDirSnapshots: args.outputDirSnapshots,
+        deferSave: args.deferSave,
+        // A sink listens: say what the save cost.
+        measure: args.explainMiss !== undefined,
+      }),
+    )
     // A run that settles the outcome on `landed` learns there whether the
     // entry is in; without one, the save is done (a `--force` save may have kept the entry it found).
     if (args.deferredSaves !== undefined) args.deferredSaves.set(node.id, landed)
@@ -1603,10 +1764,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       })
   } else if (cfgCacheable && !remoteOnly && !deferralRequested) {
     // Ran here and saves nothing — failed, a read-only policy, a tainted
-    // upstream, a key that no longer held — yet it wrote what a save would
-    // have marked, and may have rewritten an input the re-check before a
-    // save catches. A same-run reader keyed from the snapshot's OIDs for
-    // either replayed the bytes from before the command (item 750). A
+    // upstream, a server that died under it, a key that no longer held —
+    // yet it wrote what a save would have marked, and may have rewritten an
+    // input the re-check before a save catches. A same-run reader keyed
+    // from the snapshot's OIDs for either replayed the bytes from before the command (item 750). A
     // withheld save already dropped the project; this finds the same move
     // again and drops it again.
     const endCheck = span('miss: recheck inputs')
@@ -1629,7 +1790,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   /**
    * What an additive run saves as its own, or undefined when it removed a
    * file it found: no entry replays a removal (`ownOutputsSince`), so the
-   * task saves nothing and runs again.
+   * task saves nothing and runs again. Undefined too for any task when a
+   * failed attempt moved a file no clean removed (`failedTouchedFound`).
    */
   async function ownOutputs(): Promise<
     { ownOutputFiles?: string[]; ownWsOutputFiles?: string[] } | undefined
@@ -1699,12 +1861,22 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       const changed = new Set(result.changed.map((f) => path.join(args.workspaceRoot, f)))
       const there = keyedInputs(described!.facts).find((f) => changed.has(f.path))
       if (there !== undefined) return there.path
+      // One the key never folded, as this disk lacks it (untracked there),
+      // that the declaration matches: the command read it, and its entry
+      // here was every later run's hit (2026-11-07).
+      const dir = relPosix(args.workspaceRoot, node.projectDir)
+      for (const f of result.changed) {
+        const own = relPosix(node.projectDir, path.join(args.workspaceRoot, f))
+        const projectRel = own.startsWith('../') ? null : own
+        if (declaresInput(cfg, projectRel, f, false, true, dir))
+          return path.join(args.workspaceRoot, f)
+      }
     }
     return (
       (await movedInput(
         keyedInputs(described!.facts),
         cache,
-        described!.describedAt,
+        commandFrom,
         stability.strategy === 'mutable' ? ownRewrite : undefined,
       )) ?? described!.added()
     )
@@ -1729,22 +1901,44 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // `'unchecked'` skips the check of the command's own window; a key the
     // re-derive before the command already disagreed with still withholds,
     // since it never described the bytes the command read.
-    if (stability.strategy === 'unchecked' && described!.hash === hash) return true
+    // Unchecked, the command may still have rewritten an input in place: a
+    // later reader keyed after it (stable-keys.ts) must not read the
+    // project's run-start facts.
+    if (stability.strategy === 'unchecked' && described!.hash === hash) {
+      if (args.executor.remote !== true)
+        forgetUndeclaredWrites(
+          args,
+          wsOutputs.length > 0 ? 'workspace' : commandWriteReach(node, args.workspaceRoot),
+        )
+      return true
+    }
     const endCheck = span('miss: recheck inputs')
     const moved = await movedSinceKey()
     endCheck()
     if (moved === undefined) return true
-    const what =
-      (moved === null ? 'its inputs' : `\`${printable(relPosix(args.workspaceRoot, moved))}\``) +
-      ' changed after its key was taken' +
-      (rewroteBy === undefined ? '' : ` while ${rewroteBy} ran`)
+    const name =
+      moved === null ? 'its inputs' : `\`${printable(relPosix(args.workspaceRoot, moved))}\``
+    // Only its ctime moved: a hard link (`cp -al src dist`), chmod or chown.
+    // The line called that a change and offered a rewrite's way out. It is
+    // still withheld: an edit undone with its mtime put back reads the same.
+    // Not said of a change an executor reported from where it ran.
+    const fact =
+      moved === null || rewroteBy !== undefined || (result.changed?.length ?? 0) > 0
+        ? undefined
+        : keyedInputs(described!.facts).find((f) => f.path === moved)
+    const ctimeOnly = fact !== undefined && (await onlyCtimeMoved(fact, commandFrom, cache))
+    const what = ctimeOnly
+      ? `${name}'s ctime moved while the task ran, but not its bytes or mtime (a hard link, chmod or chown)`
+      : `${name} changed after its key was taken` +
+        (rewroteBy === undefined ? '' : ` while ${rewroteBy} ran`)
     // A task that regenerates its own input (TanStack Router's committed
     // `routeTree.gen.ts`, rewritten to the same bytes by every build) is
     // never saved (item 1015), and the line said so without the way out.
     // A file the key read may instead be one the task rewrites in place (a
     // formatter's temp + rename), whose sources cannot be its outputs: vx
     // deletes outputs before the command. Its way out is judging the write
-    // by its bytes. Neither is said of a file the task deleted.
+    // by its bytes. Neither is said of a file this disk lacks: one the task
+    // deleted, or one only where an executor ran it.
     const read =
       moved !== null &&
       keyedInputs(described!.facts).some((f) => f.path === moved && f.digest !== ABSENT_INPUT)
@@ -1752,12 +1946,14 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // first, or the way out read as the fix for the user's own edit.
     const hint =
       (args.watch === true && rewroteBy === undefined ? '; the next cycle runs on it' : '') +
-      (moved === null || rewroteBy !== undefined || (read && !existsSync(moved))
-        ? ''
-        : '; if the task generates it, declare it in outputs' +
-          (read && stability.strategy !== 'mutable'
-            ? "; if it rewrites it in place, set inputs.stability: { strategy: 'mutable' }"
-            : ''))
+      (ctimeOnly
+        ? "; if the task hard-links it, copy it instead, or set inputs.stability: { strategy: 'mutable' }"
+        : moved === null || rewroteBy !== undefined || !existsSync(moved)
+          ? ''
+          : '; if the task generates it, declare it in outputs' +
+            (read && stability.strategy !== 'mutable'
+              ? "; if it rewrites it in place, set inputs.stability: { strategy: 'mutable' }"
+              : ''))
     if (stability.severity === 'error') {
       warnOf(log)(
         `[vx] ${node.id}: ${what} — the result is not saved, ` +
@@ -1766,8 +1962,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       movedFails = moved === null ? '' : printable(relPosix(args.workspaceRoot, moved))
     } else {
       warnOf(log)(
-        `[vx] ${node.id}: ${what} — the result stands, ` +
-          `but is not saved under a key that no longer describes it${hint}`,
+        `[vx] ${node.id}: ${what} — ` +
+          (ctimeOnly
+            ? 'vx cannot tell that from an edit undone, so the result stands but is not saved'
+            : 'the result stands, but is not saved under a key that no longer describes it') +
+          hint,
       )
     }
     forgetUndeclaredWrites(args, wsOutputs.length > 0 ? 'workspace' : 'project')
@@ -1879,4 +2078,22 @@ function deadSourceGlobs(
     if (p.startsWith(prefix) && ownMatch(p.slice(prefix.length))) return []
   }
   return [...own, ...ws]
+}
+
+/**
+ * Whether a moved input kept the bytes and the mtime its key folded, so only
+ * its ctime moved. Asked once, of the file a re-check named: the common
+ * path pays nothing.
+ */
+async function onlyCtimeMoved(fact: InputFact, from: number, cache: CacheLayer): Promise<boolean> {
+  if (fact.digest === ABSENT_INPUT || fact.behind !== undefined) return false
+  let st
+  try {
+    st = lstatSync(fact.path)
+  } catch {
+    return false
+  }
+  if (st.ctimeMs < from - stampGrainMs(st.ctimeMs)) return false
+  if (st.mtimeMs >= from - stampGrainMs(st.mtimeMs)) return false
+  return (await cache.hashFile(fact.path).catch(() => undefined)) === fact.digest
 }

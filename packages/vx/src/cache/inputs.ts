@@ -30,8 +30,11 @@ import {
 import { rm, rmdir } from 'node:fs/promises'
 import type { InputsConfig, TaskConfig } from '../config.js'
 import {
+  appendTail,
+  createTail,
   literalPath,
   anyTaskGlob,
+  tailText,
   asTrees,
   isExecutableMissing,
   isInstalledPath,
@@ -325,6 +328,7 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
             args.runtimeScope === undefined
               ? `${args.projectDir}\0`
               : `${args.projectDir}\0${args.runtimeScope}\0`,
+            'runtime',
           ),
           resolveRuntimeValues(
             wsRuntimeDecl,
@@ -333,6 +337,7 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
             args.workspaceRoot,
             args.workspaceRuntimeCache,
             args.runtimeScope === undefined ? '' : `\0${args.runtimeScope}\0`,
+            'workspaceRuntime',
           ),
         ])
   return {
@@ -605,6 +610,7 @@ export function answerRuntime(
         [path.join(workspaceRoot, 'node_modules', '.bin')],
         workspaceRoot,
         undefined,
+        'workspaceRuntime',
       )
     : runRuntimeCommand(
         command,
@@ -612,6 +618,7 @@ export function answerRuntime(
         projectBinDirs(projectDir, workspaceRoot),
         workspaceRoot,
         undefined,
+        'runtime',
       )
 }
 
@@ -660,7 +667,9 @@ async function runRuntimeCommand(
   binDirs: readonly string[],
   workspaceRoot: string,
   owner: RuntimeMemo | undefined,
+  field: RuntimeField,
 ): Promise<string> {
+  const probe = `inputs.${field} probe`
   // As a task's (exec/env.ts): no member's bin inherited from `npm run`.
   const ambient = withoutWorkspaceBins(process.env['PATH'] ?? '', workspaceRoot)
   // As the task's PATH does (exec/env.ts): a dir holding the delimiter
@@ -688,10 +697,10 @@ async function runRuntimeCommand(
     // the shell, not the command (item 244).
     if (isExecutableMissing(err)) {
       throw new UserError(
-        `inputs runtime command could not run: vx runs it with sh -c and 'sh' is not on PATH (command: ${command}, cwd: ${cwd}). Install a POSIX sh and re-run.`,
+        `${probe} could not run: vx runs it with sh -c and 'sh' is not on PATH (command: ${command}, cwd: ${cwd}). Install a POSIX sh and re-run.`,
       )
     }
-    throw new UserError(`inputs runtime command failed to spawn: ${command} (cwd: ${cwd})`)
+    throw new UserError(`${probe} failed to spawn: ${command} (cwd: ${cwd})`)
   }
   liveProbes.add(proc)
   let mine: Set<ReturnType<typeof Bun.spawn>> | undefined
@@ -729,10 +738,14 @@ async function runRuntimeCommand(
   }
   if (exitCode !== 0) {
     const lossy = new TextDecoder()
-    const shown = `${lossy.decode(stdout)}${lossy.decode(stderr)}`.trim()
+    // Capped as a persistent task's log is: a chatty probe put megabytes
+    // into one error line. The tail is kept; the failure is usually last.
+    const tail = createTail()
+    appendTail(tail, `${lossy.decode(stdout)}${lossy.decode(stderr)}`.trim())
+    const shown = tailText(tail)
+    const lost = tail.dropped === 0 ? '' : `… ${tail.dropped} earlier characters dropped\n`
     throw new UserError(
-      `inputs runtime command exited ${exitCode}: ${command} (cwd: ${cwd})` +
-        (shown ? `\n${shown}` : ''),
+      `${probe} exited ${exitCode}: ${command} (cwd: ${cwd})` + (shown ? `\n${lost}${shown}` : ''),
     )
   }
   let out: string
@@ -744,7 +757,7 @@ async function runRuntimeCommand(
     // A lossy decode keys every invalid byte as U+FFFD: Latin-1 é and è
     // folded the same output and replayed each other's build.
     throw new UserError(
-      `inputs runtime command printed bytes that are not UTF-8: ${command} (cwd: ${cwd}). ` +
+      `${probe} printed bytes that are not UTF-8: ${command} (cwd: ${cwd}). ` +
         `Pipe it through a hash or od.`,
     )
   }
@@ -777,6 +790,8 @@ const liveProbes = new Set<ReturnType<typeof Bun.spawn>>()
 let probeExitHooked = false
 
 type RuntimeMemo = Map<string, Promise<string>>
+/** The field a probe is declared under, as its errors name it. */
+type RuntimeField = 'runtime' | 'workspaceRuntime'
 /** The probes each run started, by the run's memo: one run's stop is not another's. */
 const probesOf = new WeakMap<RuntimeMemo, Set<ReturnType<typeof Bun.spawn>>>()
 
@@ -856,6 +871,7 @@ async function resolveRuntimeValues(
   workspaceRoot: string,
   memo: Map<string, Promise<string>> | undefined,
   memoKeyPrefix: string,
+  field: RuntimeField,
 ): Promise<Array<[string, string]>> {
   if (commands.length === 0) return []
   const unique = [...new Set(commands)].sort()
@@ -864,7 +880,7 @@ async function resolveRuntimeValues(
       const key = `${memoKeyPrefix}${cmd}`
       let p = memo?.get(key)
       if (p === undefined) {
-        p = runRuntimeCommand(cmd, cwd, binDirs, workspaceRoot, memo)
+        p = runRuntimeCommand(cmd, cwd, binDirs, workspaceRoot, memo, field)
         memo?.set(key, p)
       }
       return [cmd, await p] as [string, string]
@@ -882,6 +898,13 @@ function outputExcludes(outputs: readonly string[], scope: 'project' | 'workspac
   return outputNever(outputs, scope).map(globFor)
 }
 
+/** A task's `inputs` and the directories they anchor at, for `refuseLinkedIntoInputs`. */
+export interface OwnInputs {
+  projectDir: string
+  workspaceRoot: string
+  declared: InputsConfig | undefined
+}
+
 /**
  * Resolve declared output globs (project-relative) to actual produced files.
  * An output directory linked out of the project is refused by name (X-88):
@@ -891,6 +914,7 @@ export async function resolveOutputs(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
+  inputs?: OwnInputs | undefined
 }): Promise<string[]> {
   return (await scanOutputs(args)).files
 }
@@ -919,6 +943,8 @@ export async function resolveOutputTree(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
+  /** The task's own inputs: an output directory linked into them is refused. */
+  inputs?: OwnInputs | undefined
   /**
    * Also list the FIFOs, sockets and devices the globs name: a save refuses
    * them, a clean removes them. `'later'` leaves `special` empty and hands
@@ -966,6 +992,7 @@ async function scanOutputs(
     projectDir: string
     outputs: readonly string[]
     nestedProjectDirs: string[]
+    inputs?: OwnInputs | undefined
     clearing?: boolean
   },
   emptyDirs?: Set<string>,
@@ -975,7 +1002,7 @@ async function scanOutputs(
   if (positive.length === 0) return { files: [] }
   const excludeGlobs = [...outputExcludes(positive, 'project'), ...asTrees(negative).map(globFor)]
   const trees = asTrees(positive)
-  const absent = refuseDirLinkedOut(args.projectDir, trees, 'project')
+  const absent = refuseDirLinkedOut(args.projectDir, trees, 'project', args.inputs)
   const scanned = [
     ...(await scanUnion(
       trees,
@@ -1022,11 +1049,15 @@ export function committedFiles(
  * repository through `dist -> .git`. One out of the root is refused in
  * either scope too: a workspace output's every file was dropped as outside
  * and an empty entry saved, while the project twin refused the task (M-65).
+ * So is one holding an entry of the task's own `inputs`, in either scope:
+ * X-55 read through the link, as `dist -> src` under `src/**` had the
+ * clean delete every untracked source.
  */
 function refuseDirLinkedOut(
   root: string,
   trees: readonly string[],
   scope: 'project' | 'workspace',
+  inputs?: OwnInputs,
 ): Set<string> {
   // The heads found absent: the scan that follows skips them without
   // asking again (a restore after a clean asks of every one).
@@ -1071,9 +1102,57 @@ function refuseDirLinkedOut(
             'link and re-run, or stop declaring outputs under it.',
         )
       }
+      if (inputs !== undefined) refuseLinkedIntoInputs(at, real, inputs)
     }
   }
   return absent
+}
+
+/**
+ * Throws when an entry of `inputs` can match a path under the real
+ * directory `real`: `files` under the project, `workspaceFiles` under the
+ * workspace root. A link to an ancestor of the anchor holds every entry.
+ * Negations are not subtracted: a link onto files the task reads is wrong
+ * even where one excludes them.
+ */
+function refuseLinkedIntoInputs(at: string, real: string, inputs: OwnInputs): void {
+  const holds = (anchor: string, globs: readonly string[] | undefined): boolean => {
+    const { positive } = splitNegations(globs ?? [])
+    if (positive.length === 0) return false
+    const realAnchor = realOr(anchor)
+    const rel = relPosix(realAnchor, real)
+    if (rel === '..' || rel.startsWith('../')) return isInside(real, realAnchor)
+    const dir = rel === '' ? [] : rel.split('/')
+    return asTrees(positive).some((g) => reachesBelow(g.split('/'), dir))
+  }
+  if (
+    !holds(inputs.projectDir, inputs.declared?.files) &&
+    !holds(inputs.workspaceRoot, inputs.declared?.workspaceFiles)
+  )
+    return
+  throw new UserError(
+    `${at} is a symbolic link into ${real}, which the task's own inputs read — vx removes a ` +
+      `task's outputs before it runs, so the task would delete its own sources. Remove the ` +
+      'link and re-run, or stop declaring outputs under it.',
+    'VX_E_INPUT_IS_OUTPUT',
+  )
+}
+
+/**
+ * Whether the glob split into `segments` can match a path below the
+ * directory `dir` (split too): each of `dir`'s names matches its segment
+ * and the glob goes on past them, or a `**` comes first. `**\/*.ts` and
+ * `src/**` reach below `src/lib`; `src/**` and `*.json` do not reach below
+ * `build-out`.
+ */
+function reachesBelow(segments: readonly string[], dir: readonly string[]): boolean {
+  for (let i = 0; i < dir.length; i++) {
+    const seg = segments[i]
+    if (seg === undefined) return false
+    if (seg === '**') return true
+    if (!globFor(seg).match(dir[i]!)) return false
+  }
+  return segments.length > dir.length
 }
 
 /**
@@ -1222,6 +1301,7 @@ export async function cleanOutputs(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
+  inputs?: OwnInputs | undefined
   committed?: (abs: string) => boolean
   /**
    * What `resolveOutputs` returned for these same arguments, when the
@@ -1389,6 +1469,7 @@ export async function stampOutputs(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
+  inputs?: OwnInputs | undefined
 }): Promise<Map<string, OutputStamp>> {
   return stampFiles(await resolveOutputs(args))
 }
@@ -1397,8 +1478,31 @@ export async function stampOutputs(args: {
 export async function stampWorkspaceOutputs(args: {
   workspaceRoot: string
   outputs: readonly string[]
+  inputs?: OwnInputs | undefined
 }): Promise<Map<string, OutputStamp>> {
   return stampFiles(await resolveWorkspaceOutputs(args))
+}
+
+/**
+ * The stamps of the committed files among `files`, the outputs a clean
+ * found. No clean deletes one, so a failed attempt's change to it stays
+ * for the retry: `committedMoved` tells.
+ */
+export function stampCommitted(
+  files: readonly string[],
+  committed: (abs: string) => boolean,
+): Map<string, OutputStamp> {
+  return stampFiles(files.filter(committed))
+}
+
+/** Whether a committed file among `files` was added, removed or touched since `before` (`stampCommitted`). */
+export function committedMoved(
+  files: readonly string[],
+  committed: (abs: string) => boolean,
+  before: ReadonlyMap<string, OutputStamp>,
+): boolean {
+  const changed = changedSince(files.filter(committed), before)
+  return changed === undefined || changed.length > 0
 }
 
 function stampFiles(files: readonly string[]): Map<string, OutputStamp> {
@@ -1427,7 +1531,12 @@ function stampFiles(files: readonly string[]): Map<string, OutputStamp> {
  * file back, so no entry reproduces that run and none is saved.
  */
 export async function ownOutputsSince(
-  args: { projectDir: string; outputs: readonly string[]; nestedProjectDirs: string[] },
+  args: {
+    projectDir: string
+    outputs: readonly string[]
+    nestedProjectDirs: string[]
+    inputs?: OwnInputs | undefined
+  },
   before: ReadonlyMap<string, OutputStamp>,
 ): Promise<string[] | undefined> {
   return changedSince(await resolveOutputs(args), before)
@@ -1435,7 +1544,7 @@ export async function ownOutputsSince(
 
 /** `ownOutputsSince` for root-anchored `outputs.workspaceFiles` (A-43). */
 export async function ownWorkspaceOutputsSince(
-  args: { workspaceRoot: string; outputs: readonly string[] },
+  args: { workspaceRoot: string; outputs: readonly string[]; inputs?: OwnInputs | undefined },
   before: ReadonlyMap<string, OutputStamp>,
 ): Promise<string[] | undefined> {
   return changedSince(await resolveWorkspaceOutputs(args), before)
@@ -1729,6 +1838,7 @@ export async function resolveWorkspaceOutputs(
   args: {
     workspaceRoot: string
     outputs: readonly string[]
+    inputs?: OwnInputs | undefined
     clearing?: boolean
   },
   emptyDirs?: Set<string>,
@@ -1738,7 +1848,7 @@ export async function resolveWorkspaceOutputs(
   if (positive.length === 0) return []
   const excludeGlobs = [...outputExcludes(positive, 'workspace'), ...asTrees(negative).map(globFor)]
   const trees = asTrees(positive)
-  const absent = refuseDirLinkedOut(args.workspaceRoot, trees, 'workspace')
+  const absent = refuseDirLinkedOut(args.workspaceRoot, trees, 'workspace', args.inputs)
   const scanned = [
     ...(await scanUnion(
       trees,
@@ -1763,6 +1873,8 @@ export async function resolveWorkspaceOutputTree(args: {
   workspaceRoot: string
   outputs: readonly string[]
   /** As `resolveOutputTree`'s. */
+  inputs?: OwnInputs | undefined
+  /** As `resolveOutputTree`'s. */
   special?: boolean | 'later'
   clearing?: boolean
 }): Promise<OutputTree> {
@@ -1784,6 +1896,7 @@ export async function resolveWorkspaceOutputTree(args: {
 export async function cleanWorkspaceOutputs(args: {
   workspaceRoot: string
   outputs: readonly string[]
+  inputs?: OwnInputs | undefined
   committed?: (abs: string) => boolean
   /** `cleanOutputs`'s `resolved`, from `resolveWorkspaceOutputs`. */
   resolved?: readonly string[] | undefined
@@ -2172,9 +2285,43 @@ function throughLinks(
  * read through it, and an edit there was a hit (2026-10-28). Such a path
  * that is a link to a directory is an input (`dirLinkInput`). Generous on
  * purpose: a wrong yes costs one lookup, and folds a linked directory.
+ *
+ * Asked of every path no glob takes, so the prefixes are a map walked by
+ * the path's own `/`s: a scan of every prefix per path was 8,000 globs ×
+ * 200,000 files, minutes per key.
  */
-function mayHoldMatch(positive: readonly string[]): (rel: string) => boolean {
-  const reach = asTrees(positive.flatMap(braceAlternatives)).map((g) => {
+export function mayHoldMatch(positive: readonly string[]): (rel: string) => boolean {
+  // A prefix ends in `/` (or is empty), so the ones a path starts with are
+  // its slices that end at one of its own `/`s.
+  const byPrefix = new Map<string, { deep: boolean; depth: number }>()
+  for (const r of holdReach(positive)) {
+    const seen = byPrefix.get(r.prefix)
+    if (seen === undefined) byPrefix.set(r.prefix, { deep: r.deep, depth: r.depth })
+    else {
+      seen.deep ||= r.deep
+      seen.depth = Math.max(seen.depth, r.depth)
+    }
+  }
+  if (byPrefix.size === 0) return () => false
+  return (rel) => {
+    let slashes = 0
+    for (let i = 0; i < rel.length; i++) if (rel.charCodeAt(i) === 47) slashes++
+    const depth = slashes + 1
+    let r = rel.length > 0 ? byPrefix.get('') : undefined
+    if (r !== undefined && (r.deep || depth < r.depth)) return true
+    for (let i = rel.indexOf('/'); i !== -1 && i < rel.length - 1; i = rel.indexOf('/', i + 1)) {
+      r = byPrefix.get(rel.slice(0, i + 1))
+      if (r !== undefined && (r.deep || depth < r.depth)) return true
+    }
+    return false
+  }
+}
+
+/** Each positive alternative's fixed prefix (`''` or ending in `/`), whether it has a `**`, and its depth. */
+export function holdReach(
+  positive: readonly string[],
+): { prefix: string; deep: boolean; depth: number }[] {
+  return asTrees(positive.flatMap(braceAlternatives)).map((g) => {
     const prefix = staticPrefix(g)
     return {
       prefix: prefix === '.' ? '' : `${prefix}/`,
@@ -2182,14 +2329,6 @@ function mayHoldMatch(positive: readonly string[]): (rel: string) => boolean {
       depth: g.split('/').length,
     }
   })
-  return (rel) => {
-    let depth: number | undefined
-    for (const r of reach) {
-      if (!rel.startsWith(r.prefix) || rel.length === r.prefix.length) continue
-      if (r.deep || (depth ??= rel.split('/').length) < r.depth) return true
-    }
-    return false
-  }
 }
 
 /**

@@ -814,3 +814,19 @@ it('advises the Macs the live plan would start', () => {
   const macs = advice.declared!.fleet.find((f) => f.size === 'mac')
   expect(macs?.count).toBe(1)
 })
+
+// A server's base is booked once on each worker that runs it, not per
+// dependant (2026-11-07).
+it('books a server’s base once per worker, beside each dependant’s own cores', () => {
+  const servers = [{ id: 's#db', cores: 2 }]
+  const plain = ['a', 'b', 'c'].map((id) => task(id, 1_000))
+  const tasks = plain.map((t) => ({ ...t, servers }))
+  // 2 for the base, then 1 each: two fit on 4 cores, the third after.
+  expect(simulate(tasks, [worker('w')])).toBe(2_000)
+  // CONTROL: with no base all three fit at once.
+  expect(simulate(plain, [worker('w')])).toBe(1_000)
+  // A worker already running it books it no more.
+  const serving = worker('w', { serving: new Map([['s#db', 2]]) })
+  expect(simulate(tasks, [serving])).toBe(2_000)
+  expect(simulate(tasks.slice(0, 2), [serving])).toBe(1_000)
+})

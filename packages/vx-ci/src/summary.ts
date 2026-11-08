@@ -212,7 +212,7 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
       const signal = exitSignal(t.exitCode)
       const blocked = blockedBy.get(t.taskId) ?? []
       lines.push(
-        `- **${escapeMarkdownCell(escapeInline(t.taskId))}** — ${t.cacheSource === 'none' ? 'cache restore failed' : t.notReady !== undefined ? `never ready (${t.notReady === 'timeout' ? 'timed out' : t.notReady === 'exited' ? 'exited' : 'spawn failed'}), exit ${t.exitCode}` : t.timedOut === true ? `timed out, exit ${t.exitCode}` : `exit ${t.exitCode}${signal === undefined ? '' : ` (128 + ${signal})`}`}${t.sandboxViolations !== undefined && t.sandboxViolations > 0 ? ` · ${t.sandboxViolations} sandbox violation${t.sandboxViolations === 1 ? '' : 's'}` : ''}${blocked.length > 0 ? ` · blocked ${blocked.join(', ')}` : ''}`,
+        `- **${escapeMarkdownCell(escapeInline(t.taskId))}** — ${t.cacheSource === 'none' ? 'cache restore failed' : t.notReady !== undefined ? `never ready (${t.notReady === 'timeout' ? 'timed out' : t.notReady === 'exited' ? 'exited' : 'spawn failed'}), exit ${t.exitCode}` : t.timedOut === true ? `timed out, exit ${t.exitCode}` : t.exitCode === 0 ? 'cache save failed' : `exit ${t.exitCode}${signal === undefined ? '' : ` (128 + ${signal})`}`}${t.sandboxViolations !== undefined && t.sandboxViolations > 0 ? ` · ${t.sandboxViolations} sandbox violation${t.sandboxViolations === 1 ? '' : 's'}` : ''}${blocked.length > 0 ? ` · blocked ${blocked.join(', ')}` : ''}`,
       )
     }
     lines.push('')

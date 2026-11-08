@@ -49,7 +49,7 @@ async function project(): Promise<void> {
 }
 
 const said = (cwd: string): string =>
-  `[vx] app#t: inputs runtime command exited 3: echo "saw $(cat tok)"; exit 3 (cwd: ${cwd})\nsaw *** ***\n`
+  `[vx] app#t: cache key not derived: inputs.runtime probe exited 3: echo "saw $(cat tok)"; exit 3 (cwd: ${cwd})\nsaw *** ***\n`
 
 it("a failed probe's output is masked in the task's stream", async () => {
   await project()
@@ -62,7 +62,7 @@ it("a failed probe's output is masked in the task's stream", async () => {
   }
   const r = await run({ cwd: root, tasks: ['t'], projects: ['app'], log, handleSignals: false })
   expect(r.outcomes.map((o) => o.status)).toEqual(['failed'])
-  expect(lines.filter((l) => l.includes('runtime command'))).toEqual([
+  expect(lines.filter((l) => l.includes('runtime probe'))).toEqual([
     said(path.join(root, 'packages', 'app')),
   ])
   expect(lines.some((l) => l.includes(SECRET) || l.includes(PAT))).toBe(false)

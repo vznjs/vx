@@ -13,7 +13,9 @@ import {
   TIMEOUT,
   type Fixture,
 } from './helpers/orchestrator-fixture.js'
-import type { RemoteCacheLayer } from '../src/cache/index.js'
+import type { CacheLayer, RemoteCacheLayer } from '../src/cache/index.js'
+import type { TaskNode } from '../src/graph/index.js'
+import { askRemote } from '../src/orchestrator/held-servers.js'
 import { planRun, run } from './helpers/orchestrator.js'
 
 function memoryRemote(): RemoteCacheLayer {
@@ -187,4 +189,120 @@ describe('a server behind remote hits', () => {
     },
     TIMEOUT,
   )
+})
+
+// Local hits already spared a server behind a group or under another
+// server; a remote's hits held only a server every direct dependant of
+// which was a hit, so the group's server booted, and the server under a
+// held one booted unasked, failing a run its hits had passed.
+describe('a server behind remote hits, through a group or another server', () => {
+  let fixture: Fixture
+  // Each server in a project of its own: a server's key is unstable behind
+  // an uncached dep that may write its project.
+  const dirs = new Map<string, string>()
+  const server = (deps: string, extra = '') => `
+        export default {
+          tasks: {
+            srv: {
+              dependsOn: [${deps}],
+              exec: {
+                command: 'touch started; echo READY; exec sleep 30',
+                persistent: { readyWhen: 'READY' },
+              },
+              inputs: { files: ['srv.txt'] },
+            },${extra}
+          },
+        }
+      `
+  const setup = async (projects: Record<string, string>, dependsOn: string) => {
+    fixture = await makeWorkspace('vx-held-servers-')
+    dirs.clear()
+    for (const [name, config] of Object.entries(projects)) {
+      const dir = await addProject(fixture.root, name, config)
+      await writeFile(path.join(dir, 'srv.txt'), name)
+      dirs.set(name, dir)
+    }
+    const dir = await addProject(
+      fixture.root,
+      'app',
+      `
+        export default {
+          tasks: {
+            t1: {
+              dependsOn: ['${dependsOn}'],
+              exec: { command: 'cat t1.txt > t1.out' },
+              inputs: { files: ['t1.txt'] },
+              outputs: { files: ['t1.out'] },
+              cache: true,
+            },
+          },
+        }
+      `,
+    )
+    await writeFile(path.join(dir, 't1.txt'), 't1')
+  }
+  const runOnce = async (remote: RemoteCacheLayer) => {
+    await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
+    for (const dir of dirs.values()) await rm(path.join(dir, 'started'), { force: true })
+    const r = await run({
+      cwd: fixture.root,
+      tasks: ['t1'],
+      log: silentLogger(fixture),
+      remoteCache: remote,
+      remoteReadOnlyByDefault: false,
+    })
+    expect(r.ok).toBe(true)
+    return r.outcomes.map((o) => `${o.node.id} ${o.status}`).sort()
+  }
+  const startedServers = () =>
+    [...dirs].filter(([, dir]) => existsSync(path.join(dir, 'started'))).map(([name]) => name)
+  afterEach(() => rm(fixture.root, { recursive: true, force: true }))
+
+  it(
+    'a server behind a group never starts',
+    async () => {
+      await setup({ svc: server('', " env: { dependsOn: ['srv'] },") }, 'svc#env')
+      const remote = memoryRemote()
+      await runOnce(remote)
+      expect(startedServers()).toEqual(['svc'])
+      expect(await runOnce(remote)).toEqual(['app#t1 cache-hit-remote'])
+      expect(startedServers()).toEqual([])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a server under a held server never starts',
+    async () => {
+      await setup({ svc: server("'db#srv'"), db: server('') }, 'svc#srv')
+      const remote = memoryRemote()
+      await runOnce(remote)
+      expect(startedServers()).toEqual(['svc', 'db'])
+      expect(await runOnce(remote)).toEqual(['app#t1 cache-hit-remote'])
+      expect(startedServers()).toEqual([])
+    },
+    TIMEOUT,
+  )
+})
+
+describe('askRemote', () => {
+  // A dependant listed twice (a plugin's repeated edge) counted as two
+  // answers owed: the second never came and the run never settled.
+  it('answers a held server whose dependant is listed twice', async () => {
+    const node = { id: 'app#t', config: { exec: { command: 'x' } } } as unknown as TaskNode
+    const shortCircuit = {
+      preProbed: new Map(),
+      restoreTier: new Set<string>(),
+      remoteAsk: new Map([['app#t', 'h']]),
+    }
+    const cache = { get: async () => ({}) } as unknown as CacheLayer
+    const answer = askRemote(
+      new Map([['svc#srv', ['app#t', 'app#t']]]),
+      new Map([['app#t', node]]),
+      shortCircuit,
+      cache,
+    ).get('svc#srv')!
+    const settled = await Promise.race([answer, Bun.sleep(1000).then(() => 'unsettled')])
+    expect([settled, [...shortCircuit.restoreTier]]).toEqual([['app#t'], ['app#t']])
+  })
 })

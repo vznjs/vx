@@ -1,6 +1,6 @@
 // A cycle's start was read off `Date.now()`, while a file's mtime comes
 // from the kernel's coarse clock, which runs up to a tick behind it (and
-// further under load; `fsClockNow` in watch-fs.ts has the measurement). A
+// further under load; `fsClockNow` in fs-clock.ts has the measurement). A
 // write the cycle made in that window carried an mtime BEFORE the start,
 // so "written during the last cycle" missed it and the run's own write to
 // an ignored file an uncached task reads started a cycle as a user's edit.

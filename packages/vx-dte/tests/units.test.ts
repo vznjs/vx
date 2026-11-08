@@ -26,7 +26,7 @@ import {
 } from '../src/worker.js'
 import { docker, dte, local } from '../src/index.js'
 import { errorLine } from '../src/local.js'
-import { bytes, changedSinceParent, homeOf, needOf, pace } from '../src/plugin.js'
+import { bytes, changedSinceParent, homeOf, needOf, pace, serversOf } from '../src/plugin.js'
 import { hostPlatform, isUserError, type Platform, UserError } from '@vzn/vx'
 import {
   type CacheFacts,
@@ -97,6 +97,21 @@ it('a worker clears the files a task’s outputs match, links included, before i
   expect(
     await outputFiles(from, 'p', { files: ['out/**', '!out/*.map'], workspaceFiles: [] }),
   ).toEqual(['p/out/deep/a.sh', 'p/out/link'])
+})
+
+// Keyed unset on the orchestrator, a host name the worker filled with its
+// own ran on a value the key never folded.
+it('a worker leaves unset a host name the key folds as unset', () => {
+  const saved = process.env['XDG_CONFIG_HOME']
+  process.env['XDG_CONFIG_HOME'] = '/worker/config'
+  try {
+    const env = localEnv({ X: '1' }, '/orc/ws', '/worker/ws', ['XDG_CONFIG_HOME'])
+    expect('XDG_CONFIG_HOME' in env).toBe(false)
+    expect(localEnv({ X: '1' }, '/orc/ws', '/worker/ws')['XDG_CONFIG_HOME']).toBe('/worker/config')
+  } finally {
+    if (saved === undefined) delete process.env['XDG_CONFIG_HOME']
+    else process.env['XDG_CONFIG_HOME'] = saved
+  }
 })
 
 it('a worker runs the orchestrator’s env with its own root, host names and PATH', () => {
@@ -250,8 +265,9 @@ it('a send to a worker the relay would not take is said', async () => {
       { v: 1, cores: 1, memory: 1, tree: 'bbb' },
       undefined,
     )
-    for (let i = 0; i < 40 && said.length === 0; i++) await Bun.sleep(50)
+    for (let i = 0; i < 40 && said.length < 2; i++) await Bun.sleep(50)
     expect(said).toEqual([
+      `[vx] dte: refused worker ${worker.id}: checked out tree bbb, the run is on aaa`,
       `[vx] dte: sending refused to ${worker.id} failed: relay: 503 overloaded`,
     ])
     await o.close()
@@ -877,6 +893,7 @@ async function harness(
     kept?: (id: string) => void
     sent?: Map<string, number>
     pinWaitMs?: number
+    warn?: (m: string) => void
   } = {},
 ) {
   const store = fakeArtifacts()
@@ -1348,6 +1365,30 @@ it('says a task waited on a worker that never joined, once the run is over', asy
   await h.stop()
   expect(h.o.footer().map(([k, line]) => [k, ui.inline(line, { enabled: false })])).toEqual([
     ['workers', 'none joined: a task waited on one'],
+  ])
+})
+
+// A worker on another tree was refused while a task waited: only the
+// worker heard why, and the footer said none joined (2026-11-07).
+it('says a worker it refused, as it refuses and once the run is over', async () => {
+  const said: string[] = []
+  const h = await harness(new Map([node('t1')]), undefined, undefined, undefined, undefined, {
+    warn: (m) => said.push(m),
+  })
+  void h.o.execute(h.req('t1'))
+  const w = await join(
+    h.served.url,
+    R,
+    'worker',
+    { v: 1, cores: 1, memory: 1, tree: 'x', id: 'ci#1' },
+    undefined,
+  )
+  let got: unknown[] = []
+  for (let i = 0; i < 20 && got.length === 0; i++) got = await w.poll()
+  expect(said).toEqual(['[vx] dte: refused worker ci#1: checked out tree x, the run is on c'])
+  await h.stop()
+  expect(h.o.footer().map(([k, line]) => [k, ui.inline(line, { enabled: false })])).toEqual([
+    ['workers', 'none joined: 1 refused (checked out tree x, the run is on c)'],
   ])
 })
 
@@ -2390,6 +2431,36 @@ it('sends a host name such as HOME only when the task’s env.define sets it', a
   }
 })
 
+// A host name the task keys in inputs.env folded the orchestrator's value,
+// and the worker ran with its own under that key.
+it('sends a host name the task keys in inputs.env, with the value keyed', async () => {
+  const h = await harness(new Map([node('t1')]))
+  try {
+    const a = await h.worker(1)
+    await Bun.sleep(50)
+    void h.o.execute({
+      ...h.req('t1'),
+      env: { XDG_CONFIG_HOME: '/orc/config', HOME: '/orc/home', X: '1' },
+      inputs: {
+        files: [],
+        env: [
+          { name: 'XDG_CONFIG_HOME', value: '/orc/config' },
+          { name: 'TMPDIR', value: undefined },
+        ],
+        runtime: [],
+        workspaceRuntime: [],
+        upstream: [],
+        configDigest: 'c',
+      },
+    } as unknown as ExecuteRequest)
+    expect(await a.batches()).toEqual([['t1']])
+    expect(a.orders[0]!.env).toEqual({ XDG_CONFIG_HOME: '/orc/config', X: '1' })
+    expect(a.orders[0]!.unset).toEqual(['TMPDIR'])
+  } finally {
+    await h.stop()
+  }
+})
+
 // A plain object's `__proto__` is the setter: the name a task defined was
 // keyed and never sent.
 it('sends a name `__proto__` as any other name', async () => {
@@ -2976,6 +3047,109 @@ it('a worker uploads a key the run found missing, and its run key, asking the re
         [runKey(R, 'v'), true],
       ]),
     )
+  } finally {
+    await served.stop()
+  }
+})
+
+// A worker whose checkout held an untracked file under a task's inputs
+// built with it, and saved the entry under the run's clean key: every later
+// run restored it (2026-11-07). The orchestrator refuses one its key reads.
+it('a worker saves under the run key a task whose project holds an untracked file', async () => {
+  const root = await checkout()
+  await mkdir(path.join(root, 'c'))
+  for (const f of ['a/src/zz.txt', 'b/out/old.txt', 'd/x.log', 'e/inner/n.txt'])
+    await mkdir(path.dirname(path.join(root, f)), { recursive: true }).then(() =>
+      writeFile(path.join(root, f), 'STALE\n'),
+    )
+  await writeFile(path.join(root, '.gitignore'), '*.log\n')
+  const served = servedRelay()
+  try {
+    const o = sealOrchestrator(
+      await join(served.url, R, 'orchestrator', null, undefined),
+      R,
+      secretProof('s'),
+    )
+    const saved: string[] = []
+    const artifacts: TaskArtifacts = {
+      async save(key) {
+        saved.push(key)
+      },
+      async output() {
+        return null
+      },
+      async share() {
+        return false
+      },
+      async resend() {
+        return false
+      },
+      async restore() {
+        return null
+      },
+    }
+    const code = runWorker({
+      relay: served.url,
+      run: R,
+      root,
+      token: async () => undefined,
+      proof: secretProof('s'),
+      artifacts: () => artifacts,
+    })
+    const order = (
+      task: string,
+      project: string,
+      command = 'true',
+      nested: string[] = [],
+    ): RunOrder => ({
+      task,
+      key: `k-${task}`,
+      runKey: runKey(R, task),
+      deps: [],
+      nested,
+      command,
+      cwd: project,
+      project,
+      env: {},
+      outputs: { files: ['out/**'], workspaceFiles: [] },
+      cores: 1,
+      memory: 0,
+    })
+    // b's stray is its own output; c writes its own; d's is ignored; e's
+    // is a nested project's.
+    const tasks = [
+      order('a', 'a'),
+      order('b', 'b'),
+      order('c', 'c', 'echo new > new.txt'),
+      order('d', 'd'),
+      order('e', 'e', 'true', ['e/inner']),
+    ]
+    const ends = new Map<string, unknown>()
+    for (let i = 0; i < 100 && ends.size < tasks.length; i++)
+      for (const { from, body } of flat(await o.poll())) {
+        const m = body as {
+          type: string
+          id?: string
+          task?: string
+          result?: { changed?: string[] }
+        }
+        if (from === 'relay' && m.type === 'joined') {
+          await o.send(m.id!, {
+            type: 'welcome',
+            name: 'a',
+            cache: { refs: [], lent: {} },
+            cores: 5,
+            memory: 1e9,
+          })
+          await o.send(m.id!, { type: 'batch', n: 1, root, realRoot: root, tasks })
+        } else if (m.type === 'end') {
+          ends.set(m.task!, m.result?.changed)
+          if (ends.size === tasks.length) await o.send(from, { type: 'exit' })
+        }
+      }
+    expect(await code).toBe(0)
+    expect(saved.sort()).toEqual([runKey(R, 'a'), 'k-b', 'k-c', 'k-d', 'k-e'].sort())
+    expect(ends.get('a')).toEqual(['a/src/zz.txt'])
   } finally {
     await served.stop()
   }
@@ -4845,6 +5019,28 @@ it('takes a result’s parts ahead of its end as one result', async () => {
   }
 })
 
+// A lost worker's parts were held for the rest of the run: its `end` never comes.
+it('drops the parts of a result whose worker is lost before its end', async () => {
+  const h = await harness(new Map([node('t')]))
+  try {
+    const a = await h.worker(1)
+    const ran = h.o.execute(h.req('t', 'k-t'))
+    expect(await a.batches()).toEqual([['t']])
+    await a.say({ type: 'part', task: 't', changed: ['a/1'] })
+    const held = (h.o as unknown as { parts: Map<string, unknown> }).parts
+    for (let i = 0; i < 100 && held.size === 0; i++) await Bun.sleep(10)
+    expect(held.size).toBe(1)
+    h.o.failed('worker#1', 'exited 137')
+    expect(held.size).toBe(0)
+    const b = await h.worker(1)
+    expect(await b.batches()).toEqual([['t']])
+    await b.finish('t', 'k-t', { exitCode: 0, durationMs: 1, changed: ['a/2'] })
+    expect((await ran).changed).toEqual(['a/2'])
+  } finally {
+    await h.stop()
+  }
+})
+
 // A workspace in a repository subdirectory: git named the file from the
 // repository's root, which matched no keyed file, and core saved a task's
 // rewrite of its own input under its key (2026-10-25).
@@ -5151,6 +5347,7 @@ it('takes a key that reads a dependency’s outputs, which its worker restores',
       } as unknown as TaskNode,
     ] as const
   const nodes = new Map([node('a#gen', [], ['dist/**']), node('a#use', ['a#gen'])])
+  const blob = (p: string): string => git('rev-parse', `HEAD:${p}`) || 'untracked'
   const served = servedRelay()
   try {
     const o = new Orchestrator({
@@ -5168,7 +5365,8 @@ it('takes a key that reads a dependency’s outputs, which its worker restores',
       ({
         taskId: 'a#use',
         cwd: path.join(root, 'a'),
-        inputs: { files: paths.map((p) => ({ path: p, digest: 'd' })) },
+        // A tracked file's as the commit holds it: one keyed otherwise is refused.
+        inputs: { files: paths.map((p) => ({ path: p, digest: blob(p) })) },
       }) as unknown as ExecuteRequest
     const queued = await Promise.race([
       o.execute(req('a/x', 'a/dist/out')).then(
@@ -5720,4 +5918,19 @@ it('makes no ask of a platform task no worker of its platform can take', () => {
     deps: () => [],
   })
   expect(one.to.get('x')?.id).toBe('l')
+})
+
+it('serversOf names a task’s servers through groups, and the servers they need', () => {
+  const node = (id: string, deps: string[], exec?: Record<string, unknown>) =>
+    [id, { id, deps, config: exec === undefined ? {} : { exec } } as unknown as TaskNode] as const
+  const nodes = new Map([
+    node('s#db', [], { command: 'db', persistent: {} }),
+    node('s#api', ['s#db'], { command: 'api', persistent: {} }),
+    node('s#env', ['s#api']),
+    node('s#build', [], { command: 'build' }),
+    node('s#e2e', ['s#env', 's#build'], { command: 'e2e' }),
+  ])
+  expect(serversOf(nodes, 's#e2e').sort((x, y) => x.localeCompare(y))).toEqual(['s#api', 's#db'])
+  expect(serversOf(nodes, 's#build')).toEqual([])
+  expect(serversOf(undefined, 's#e2e')).toEqual([])
 })

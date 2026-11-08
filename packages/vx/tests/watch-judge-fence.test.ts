@@ -8,7 +8,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
 import { makeFence } from '../src/cli/watch-filter.js'
-import { fsClockNow } from '../src/cli/watch-fs.js'
+import { fsClockNow } from '../src/cache/index.js'
 import { ChangeJudge } from '../src/cli/watch-judge.js'
 
 it('an ignored file in a nested project is no edit of the uncached root above it (X-43)', async () => {

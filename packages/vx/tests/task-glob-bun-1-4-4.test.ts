@@ -76,6 +76,28 @@ it('a range expands to the names Bun.Glob matches', () => {
   }
 })
 
+// An escape turned brace expansion off: `{src,app/\\[id\\]}` stayed one
+// glob, so no alternative became a tree and `src/a.ts` left the key.
+it('a brace with an escaped char, and an escaped brace, expand to what Bun.Glob matches', () => {
+  const names = ['a', 'b', '[id]', 'a,b', 'c', 'b}c', '{a,b}', '{a,b', 'xa', 'x[id]', 'xa,b', 'xc']
+  for (const p of [
+    '{a,\\[id\\]}',
+    'x{a,\\[id\\]}',
+    'x{a\\,b,c}',
+    '{a,b\\}c}',
+    '\\{a,b\\}',
+    '\\{a,{b,c}',
+  ]) {
+    const alts = braceAlternatives(p)
+    expect([p, names.filter((n) => alts.some((a) => new Bun.Glob(a).match(n)))]).toEqual([
+      p,
+      names.filter((n) => new Bun.Glob(p).match(n)),
+    ])
+  }
+  expect(braceAlternatives('{src,app/\\[id\\]}')).toEqual(['src', 'app/\\[id\\]'])
+  expect(braceAlternatives('\\{a,b\\}')).toEqual(['\\{a,b\\}'])
+})
+
 it('src/a{1..3}.ts keys a1 and a2, and not a4', async () => {
   const { dir, statuses } = await project('src/a{1..3}.ts')
   expect(await statuses()).toEqual(['success'])

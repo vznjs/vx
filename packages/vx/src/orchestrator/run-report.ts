@@ -44,7 +44,7 @@ export function keepsFailures(where: unknown, ci: boolean): boolean {
 const KEEP_CONCURRENCY = 8
 
 /** The files `node`'s declared outputs match on disk now, workspace-relative and sorted. */
-async function outputsLeft(
+export async function outputsLeft(
   node: TaskNode,
   workspaceRoot: string,
   nestedProjectDirs: string[],

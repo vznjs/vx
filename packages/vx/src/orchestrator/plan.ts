@@ -12,13 +12,20 @@
 // side-effect-free pure probes.
 
 import type { CacheLayer, CachePolicy, GitFilesCache } from '../cache/index.js'
-import { cachesNothing, FULL_CACHE_POLICY } from '../cache/index.js'
+import { cachesNothing, FULL_CACHE_POLICY, networkConcurrency } from '../cache/index.js'
 import { ranNoCache } from '../report/index.js'
-import { idleServers, isGroupTask, runGraph, type TaskNode } from '../graph/index.js'
+import {
+  idleServers,
+  isGroupTask,
+  isKeyFailed,
+  markKeyFailed,
+  runGraph,
+  type TaskNode,
+} from '../graph/index.js'
 import type { AffectedReason } from './affected-tasks.js'
 import type { HistoryProvider } from '../history/index.js'
 import { hostPlatform } from '../exec/index.js'
-import { computeGroupKey, computeTaskHash } from './task-hash.js'
+import { computeGroupKey, computeTaskHash, keyOf } from './task-hash.js'
 import { dependedOn, keyedOutcome, keylessServer, keyUpstream } from './upstream.js'
 
 export type CacheStatus =
@@ -177,10 +184,12 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
       }
       if (isGroupTask(node)) {
         cacheStatusById.set(node.id, 'group')
-        return keyedOutcome(node, await computeGroupKey(hashArgs))
+        return keyedOutcome(node, await keyOf(computeGroupKey(hashArgs)))
       }
 
-      const hash = keylessServer(node, depended) ? undefined : await computeTaskHash(hashArgs)
+      const hash = keylessServer(node, depended)
+        ? undefined
+        : await keyOf(computeTaskHash(hashArgs))
 
       // Prediction keys off READS: a no-read policy re-executes every task,
       // so nothing is probed. Whether that run is a miss or no cache at all
@@ -205,15 +214,23 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
   })
   if (probed.size > 0) {
     const infos = await args.cache.remoteHasMany?.([...new Set(probed.values())])
-    for (const [id, hash] of probed) {
-      const where = await args.cache.has(hash)
-      cacheStatusById.set(
-        id,
-        where === null ? 'miss' : where === 'remote' ? 'hit-remote' : 'hit-local',
-      )
-      const size = where === 'remote' ? infos?.get(hash)?.size : undefined
-      if (size !== undefined) remoteBytesById.set(id, size)
+    // Asked at once, as a run pulls: in series, a remote that cannot batch
+    // cost its round-trip, or its timeout, once per key.
+    const pending = [...probed]
+    let next = 0
+    const one = async (): Promise<void> => {
+      while (next < pending.length) {
+        const [id, hash] = pending[next++]!
+        const where = await args.cache.has(hash)
+        cacheStatusById.set(
+          id,
+          where === null ? 'miss' : where === 'remote' ? 'hit-remote' : 'hit-local',
+        )
+        const size = where === 'remote' ? infos?.get(hash)?.size : undefined
+        if (size !== undefined) remoteBytesById.set(id, size)
+      }
     }
+    await Promise.all(Array.from({ length: Math.min(pending.length, networkConcurrency()) }, one))
   }
 
   if (args.restorable !== undefined) {
@@ -234,6 +251,11 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
       cacheStatusById.set(id, 'not-started')
   }
 
+  // A task whose key could not be derived fails the run, so the plan is
+  // marked (`isKeyFailed`) and `--dry` exits 1; the scheduler printed the
+  // run's own line for each.
+  const failed = [...outcomes.values()].some(isKeyFailed)
+  const mark = (p: RunPlan): RunPlan => (failed ? markKeyFailed(p) : p)
   const skips = platformSkips(args.nodes, args.otherPlatform)
   const tasks: PlannedTask[] = []
   for (const id of args.nodes.keys()) {
@@ -268,13 +290,13 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
         const p50 = p50s.get(t.node.id)
         if (p50 !== undefined) t.p50Ms = p50
       }
-      return { tasks, predicted: predictPlan(tasks), ...downgradeField(args) }
+      return mark({ tasks, predicted: predictPlan(tasks), ...downgradeField(args) })
     } catch {
       // Failing open: prediction is a nicety — a broken history read must
       // never break `--dry`.
     }
   }
-  return { tasks, ...downgradeField(args) }
+  return mark({ tasks, ...downgradeField(args) })
 }
 
 /**

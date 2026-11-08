@@ -49,12 +49,17 @@ const RECORD_KINDS: Record<TelemetryRecord['kind'], true> = {
   'run.end': true,
 }
 
-/** Reject anything that is not sink-shaped, naming what arrived. */
+/**
+ * Reject anything that is not sink-shaped, naming what arrived, and return
+ * a copy of its members read once here. The sink is user input: a getter
+ * read again downstream, outside this try, threw past every guard and
+ * failed a green run.
+ */
 function checkSink(sink: unknown): TelemetrySink {
   if (typeof sink !== 'object' || sink === null) {
     throw new Error(`telemetry sink must be an object, got ${sink === null ? 'null' : typeof sink}`)
   }
-  const wants = (sink as TelemetrySink).wants
+  const { name, wants, onRecord, onRunSummary, flush } = sink as TelemetrySink
   if (wants !== undefined && !Array.isArray(wants)) {
     throw new Error(`telemetry sink 'wants' must be an array, got ${typeof wants}`)
   }
@@ -71,13 +76,24 @@ function checkSink(sink: unknown): TelemetrySink {
   // subscribed to the bus and heard nothing — the plugin was "on" and did
   // nothing. Refused here, which the caller turns into the same warning
   // a throwing hook gets: never a failed run.
-  const s = sink as TelemetrySink
-  if (typeof s.onRecord !== 'function' && typeof s.onRunSummary !== 'function') {
+  if (typeof onRecord !== 'function' && typeof onRunSummary !== 'function') {
     throw new Error(
       'telemetry sink handles nothing: neither onRecord nor onRunSummary is a function',
     )
   }
-  return s
+  for (const [key, fn] of Object.entries({ onRecord, onRunSummary, flush })) {
+    if (fn !== undefined && typeof fn !== 'function') {
+      throw new Error(`telemetry sink '${key}' must be a function, got ${typeof fn}`)
+    }
+  }
+  // Bound: a sink written as a class reads its own state through `this`.
+  return {
+    ...(typeof name === 'string' ? { name } : {}),
+    ...(wants !== undefined ? { wants: [...wants] } : {}),
+    ...(onRecord !== undefined ? { onRecord: onRecord.bind(sink) } : {}),
+    ...(onRunSummary !== undefined ? { onRunSummary: onRunSummary.bind(sink) } : {}),
+    ...(flush !== undefined ? { flush: flush.bind(sink) } : {}),
+  }
 }
 
 /**

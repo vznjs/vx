@@ -1276,11 +1276,14 @@ of every sandboxed task the run holds: the runtime's proxy and its
 unix-socket filter are one per process, set from their union before the
 first sandboxed task (`prepareSandbox`). A request that carries a
 `signal` but no `liveChildren` has its children stopped here when it
-aborts, the way a run's stop ends its own.
+aborts, the way a run's stop ends its own. `onServer` hears each
+server's pid as it spawns, and `undefined` as `stop` ends it: a worker
+meters what its servers use.
 
 ```ts
 export function localFloor(
   sandboxes: readonly NonNullable<ExecConfig['sandbox']>[] = [],
+  onServer?: (taskId: string, pid: number | undefined) => void,
 ): LocalFloor
 ```
 
@@ -1292,6 +1295,7 @@ type · `src/orchestrator/local-floor.ts`
 export interface LocalFloor {
   execute(req: ExecuteRequest): Promise<ExecuteResult>
   rearm(sandboxes: readonly NonNullable<ExecConfig['sandbox']>[]): Promise<void>
+  stop(taskId: string): Promise<void>
   close(): Promise<void>
 }
 ```
@@ -1803,10 +1807,12 @@ load, package graph, task graph — but stops short of execution.
 Returns a `RunPlan` predicting the cache hit/miss outcome of every
 task. Used by `--dry`.
 
-Side-effects are limited to opening + closing the local Cache handle
-(and running `inputs.runtime` probe commands, which key
-derivation requires). Cache probing is the byte-free `cache.has()`
-existence check — no artifact download, no ingest, no accessed_at bump.
+Side-effects are limited to running `inputs.runtime` probe commands,
+which key derivation requires: with no remote the local cache opens to
+read only (`prepareRunLocked`'s `planning`); with one, the remote hits
+found are kept in the index for the run after. Probing is the
+byte-free `cache.has()` existence check — no artifact download, no
+ingest, no accessed_at bump.
 
 ```ts
 export async function planRun(options: RunOptions): Promise<RunPlan>
@@ -2405,6 +2411,7 @@ export interface RunOptions {
   holdPersistent?: boolean
   watch?: boolean
   keep?: HeldPersistent
+  commandWindows?: CommandWindows
   summaryTable?: boolean
   tty?: boolean
   log?: Logger
@@ -2748,6 +2755,7 @@ export async function sandboxRequestFor(
   cacheDir?: string,
   dependencyOutputs: readonly string[] = [],
   dependencyReported: readonly string[] = [],
+  nestedOf: (projectDir: string) => readonly string[] = () => [],
 ): Promise<SandboxRequest>
 ```
 
@@ -2937,6 +2945,7 @@ export interface TaskExecutor {
   advice?(): readonly WorkerAdvice[]
   profile?(): readonly Record<string, unknown>[]
   running?(taskId: string): string | null | undefined
+  unneeded?(taskId: string): void
   execute(req: ExecuteRequest): Promise<ExecuteResult>
 }
 ```

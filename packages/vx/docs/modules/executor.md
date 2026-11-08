@@ -11,7 +11,7 @@ sandbox violations). Core's own executor, `localExecutor`, is the same
 
 ## Public surface
 
-- `TaskExecutor { name; remote?; sandbox?; capacity?; accepts?(task); demand?(remaining, missed); footer?(); machines?(); idealMs?(); advice?(); profile?(); running?(id); execute(req) }`
+- `TaskExecutor { name; remote?; sandbox?; capacity?; accepts?(task); demand?(remaining, missed); footer?(); machines?(); idealMs?(); advice?(); profile?(); running?(id); unneeded?(id); execute(req) }`
   — `idealMs()` is the run's end had it placed its tasks perfectly, from
   the run's start, replayed from what each took (the run summary's
   `idealMs`, shown beside the real time)
@@ -49,7 +49,7 @@ cpuPeak; cpuAvg; memoryPeakBytes; memoryAvgBytes; utilization }`), asked
   dependencies where it runs the task (`req.servers`, each a `ServerSpec
 { taskId; command; cwd; env; readyWhen?; timeoutMs?; sandbox? }`, in dependency
   order), so their dependants are not pinned for it; `localFloor` starts
-  each once, a sandboxed one inside its `exec.sandbox` built there, shares it with every later task, and stops them on `close()`,
+  each once, a sandboxed one inside its `exec.sandbox` built there, shares it with every later task, and stops one on `stop(id)` (core calls the executor's `unneeded(id)` once no task left in the run uses it) or all on `close()`; its `onServer` hears each server's pid as it spawns and stops (a worker meters its servers),
   and a server that never became ready, or crashed after it was, fails the task with why,
   and a stop of the request ends its wait on one; `runtime: true`
   says a remote one answers a task's `inputs.runtime` / `workspaceRuntime`
@@ -143,9 +143,10 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   expectation a worker must reproduce), `upstream` (dependency task ids +
   cache keys + each one's declared `outputs`, workspace-relative — already
   restored on disk before this task runs, so an input-shipping executor can
-  put them in the input root; empty when that dependency has no local cache
-  entry; read from the index up front for a plugin executor, never for
-  the local floor), and `configDigest`.
+  put them in the input root; a non-cacheable dependency's are its declared
+  outputs found on disk, and a cacheable one with no local cache entry has
+  none; read up front for a plugin executor, never for the local floor),
+  and `configDigest`.
   Present on the miss path of a cacheable task only; a task with no
   `cache` ships nothing. Built by `task-hash.describeTaskInputs` from the
   SAME resolution that produced the key, so it cannot drift from what a
@@ -161,8 +162,10 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   its shell exited (it held the output past the drain bound, or was
   still in the task's process group): core saves no entry for the task.
   `changed` lists the tracked files (workspace-relative) the command
-  changed where an executor ran it elsewhere: one the key read withholds
-  core's save under the key, with the line an input changed here gets.
+  changed where an executor ran it elsewhere, and the untracked ones it
+  found there: one the key read, or one its inputs declare (this disk
+  lacks it, so the key never folded it), withholds core's save under the
+  key, with the line an input changed here gets.
   Checked at the
   seam (`assertExecuteResult`): a plugin that resolves something else is
   refused with one line naming the executor, the task and the field

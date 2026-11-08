@@ -10,12 +10,12 @@ export class VxCacheLayer implements RemoteCacheLayer {
     private readonly wait: (ms: number) => Promise<void> = Bun.sleep,
   )
   lent: (() => string | undefined) | undefined
-  async lend(): Promise<LentAccess | undefined>
+  lend(): Promise<LentAccess | undefined>
   async open(): Promise<void>
   async has(hash: string): Promise<ArtifactInfo | null>
-  async hasMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
-  async get(hash: string): Promise<{ body: Response; durationMs: undefined } | null | undefined>
-  async put(
+  hasMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
+  get(hash: string): Promise<{ body: Response; durationMs: undefined } | null | undefined>
+  put(
     hash: string,
     body: Blob,
     meta: { durationMs: number; replace?: true },

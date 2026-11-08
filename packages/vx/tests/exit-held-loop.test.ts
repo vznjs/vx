@@ -96,3 +96,27 @@ it(
   },
   HANG_MS + 5_000,
 )
+
+it(
+  'a default export that never settles fails at the budget, in a project or the workspace config',
+  async () => {
+    // The deadline covered only the import: the awaited default hung
+    // `vx lock` for good.
+    const never = 'export default new Promise(() => { setInterval(() => {}, 1000) })\n'
+    const env = { VX_CONFIG_WORKER_TIMEOUT: '300ms' }
+    const r = await lock(never, env)
+    expect({ code: r.code, out: r.out, err: r.err }).toEqual({
+      code: 1,
+      out: '',
+      err: `✗ vx lock  lock not written\n\n  Project config ${r.file} did not finish evaluating within 300ms (VX_CONFIG_WORKER_TIMEOUT)\n`,
+    })
+    const workspace = path.join(root, '.vx', 'workspace.mjs')
+    await writeFile(workspace, never)
+    const w = await lock('export default {}\n', env)
+    expect({ code: w.code, out: w.out }).toEqual({ code: 1, out: '' })
+    expect(w.err).toContain(
+      `Workspace config ${workspace} did not finish evaluating within 300ms (VX_CONFIG_WORKER_TIMEOUT)`,
+    )
+  },
+  2 * HANG_MS + 5_000,
+)

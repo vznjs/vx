@@ -30,7 +30,9 @@ export function commandWindows(): CommandWindows {
       const w: Window = { id, projectDir, reach, from: Date.now(), to: Infinity }
       windows.push(w)
       return () => {
-        w.to = Date.now()
+        // `Date.now()` floors to the ms and a ctime does not: the command's
+        // last write can be stamped up to a millisecond past it.
+        w.to = Date.now() + 1
       }
     },
     writerDuring(self, file, from, to) {

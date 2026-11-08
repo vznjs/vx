@@ -2,8 +2,8 @@
 // them. Workers compare trees, not commits, so a run on uncommitted changes
 // still matches the worktrees `local()` makes from them.
 
-import { existsSync } from 'node:fs'
-import { copyFile, mkdtemp, rm, stat, utimes } from 'node:fs/promises'
+import { existsSync, lstatSync } from 'node:fs'
+import { copyFile, mkdtemp, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { PROJECT_CONFIG_FILENAMES, UserError } from '@vzn/vx'
@@ -44,7 +44,15 @@ export async function snapshot(root: string): Promise<{ commit: string; tree: st
       if ((await git(['read-tree', head], root, env)) === undefined) return none
     }
     await unflag(top, env)
-    if ((await git([...UNSPARSE, 'add', '-u', '--', ':/'], root, env)) === undefined) return none
+    // The executable bit as on disk, which core keys from an lstat under
+    // `core.fileMode=false` too: there `add -u` staged no `chmod +x`,
+    // workers checked the file out 644, and saved what it built under the
+    // key of its 755 (2026-11-08).
+    if (
+      (await git([...UNSPARSE, '-c', 'core.fileMode=true', 'add', '-u', '--', ':/'], root, env)) ===
+      undefined
+    )
+      return none
     const tree = (await git(['write-tree'], root, env))?.trim()
     if (tree === undefined || tree === '') return none
     const was = (await git(['rev-parse', `${head}^{tree}`], root))?.trim()
@@ -58,6 +66,132 @@ export async function snapshot(root: string): Promise<{ commit: string; tree: st
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
+}
+
+/**
+ * Each tracked file a git filter of this machine checked out other than
+ * the commit holds it (`text`, `eol`, `ident`, `filter`,
+ * `working-tree-encoding`, `core.autocrlf`), written back as the commit's
+ * bytes; the paths written. The run keys its disk's bytes and refuses a
+ * task that keys a file the commit holds otherwise, so these are the bytes
+ * its key read: a worktree that smudged LF to CRLF built CRLF output under
+ * the key of the LF file, a stale hit (2026-11-08).
+ */
+export async function unfilter(root: string): Promise<string[]> {
+  const top = (await git(['rev-parse', '--show-toplevel'], root))?.trim()
+  if (top === undefined || top === '') return []
+  const vars = await git(['var', '-l'], top)
+  if (vars === undefined) return []
+  const config = varList(vars)
+  const every = autocrlf(config)
+  // The common repository names no filter: no index read.
+  if (!every && !(await attributed(top, config))) return []
+  const staged = await git([...UNSPARSE, 'ls-files', '-s', '-z'], top)
+  if (staged === undefined) return []
+  const blobs = new Map<string, string>()
+  for (const e of staged.split('\0')) {
+    const m = /^(?:100644|100755) ([0-9a-f]+) 0\t(.*)$/s.exec(e)
+    if (m !== null) blobs.set(m[2]!, m[1]!)
+  }
+  let paths = [...blobs.keys()]
+  if (!every) paths = await filtered(top, paths)
+  // `--stdin-paths` reads lines; a file off disk (a sparse checkout's) is no checkout.
+  paths = paths.filter((p) => !p.includes('\n') && isFile(path.join(top, p)))
+  if (paths.length === 0) return []
+  const raw = await git(
+    ['hash-object', '--no-filters', '--stdin-paths'],
+    top,
+    undefined,
+    paths.join('\n') + '\n',
+  )
+  if (raw === undefined) return []
+  const oids = raw.split('\n')
+  const off = paths.filter((p, i) => oids[i] !== blobs.get(p))
+  if (off.length === 0) return []
+  const p = Bun.spawn(['git', 'cat-file', '--batch'], {
+    cwd: top,
+    stdin: Buffer.from(off.map((f) => blobs.get(f)).join('\n') + '\n'),
+    stdout: 'pipe',
+    stderr: 'ignore',
+  })
+  const [out, code] = await Promise.all([new Response(p.stdout).bytes(), p.exited])
+  if (code !== 0) throw new UserError(`vx dte worker: git could not read ${off[0]}'s blob`)
+  // Each `<oid> blob <size>\n<bytes>\n`.
+  let at = 0
+  for (const f of off) {
+    const nl = out.indexOf(10, at)
+    const size = Number(new TextDecoder().decode(out.subarray(at, nl)).split(' ')[2])
+    await writeFile(path.join(top, f), out.subarray(nl + 1, nl + 1 + size))
+    at = nl + 1 + size + 1
+  }
+  return off
+}
+
+/** Whether `file` is a regular file on disk. */
+function isFile(file: string): boolean {
+  try {
+    return lstatSync(file).isFile()
+  } catch {
+    // quiet: off disk is no file
+    return false
+  }
+}
+
+/** `git var -l`'s last value of each name; a bare key (true) has none. */
+function varList(vars: string): Map<string, string | undefined> {
+  const out = new Map<string, string | undefined>()
+  for (const line of vars.split('\n')) {
+    const eq = line.indexOf('=')
+    if (eq === -1) out.set(line.toLowerCase(), undefined)
+    else out.set(line.slice(0, eq).toLowerCase(), line.slice(eq + 1))
+  }
+  return out
+}
+
+/** Whether `core.autocrlf`, as git reads it, converts line ends. */
+function autocrlf(config: Map<string, string | undefined>): boolean {
+  if (!config.has('core.autocrlf')) return false
+  const v = config.get('core.autocrlf')
+  if (v === undefined) return true
+  const s = v.trim().toLowerCase()
+  if (s === 'input' || s === 'true' || s === 'yes' || s === 'on') return true
+  return /^-?\d+$/.test(s) && Number(s) !== 0
+}
+
+/**
+ * Whether any attributes file may name a filter: a `.gitattributes` in the
+ * tree, `$GIT_DIR/info/attributes`, or the global or system one git names
+ * (`git var`, from git 2.42; an older git names neither, so any may).
+ */
+async function attributed(top: string, config: Map<string, string | undefined>): Promise<boolean> {
+  if (existsSync(path.join(top, '.gitattributes'))) return true
+  const [tracked, info] = await Promise.all([
+    git([...UNSPARSE, 'ls-files', '-z', '--', ':(glob)**/.gitattributes'], top),
+    git(['rev-parse', '--path-format=absolute', '--git-path', 'info/attributes'], top),
+  ])
+  if (tracked !== '' || info === undefined || existsSync(info.trim())) return true
+  if (!config.has('git_attr_global')) return true
+  for (const name of ['git_attr_global', 'git_attr_system']) {
+    const f = config.get(name)
+    if (f !== undefined && f !== '' && existsSync(f)) return true
+  }
+  return false
+}
+
+/** Of `paths`, those a filter attribute names (set, or given a value). */
+async function filtered(top: string, paths: string[]): Promise<string[]> {
+  const out = await git(
+    ['check-attr', '-z', '--stdin', 'text', 'eol', 'ident', 'filter', 'working-tree-encoding'],
+    top,
+    undefined,
+    paths.join('\0') + '\0',
+  )
+  if (out === undefined) return paths
+  const named = new Set<string>()
+  const f = out.split('\0')
+  for (let i = 0; i + 2 < f.length; i += 3)
+    if (f[i + 2] !== 'unspecified' && f[i + 2] !== 'unset') named.add(f[i]!)
+  return paths.filter((p) => named.has(p))
 }
 
 /**
@@ -138,10 +272,11 @@ async function git(
   args: string[],
   cwd: string,
   env?: Record<string, string>,
+  input?: string,
 ): Promise<string | undefined> {
   const p = Bun.spawn(['git', ...args], {
     cwd,
-    stdin: 'ignore',
+    stdin: input === undefined ? 'ignore' : Buffer.from(input),
     stdout: 'pipe',
     stderr: 'ignore',
     ...(env === undefined ? {} : { env: { ...process.env, ...env } }),

@@ -154,6 +154,7 @@ here, itself or in a brace group.
 | [`migration.md`](./migration.md)           | `src/workspace/migration.ts` — the plan → files seam `@vzn/vx-migrate` and any adoption tool write through.                                                                                                    |
 |                                            | `src/workspace/config-eval.ts` — fresh re-evaluation in a Worker (see project-loader.md).                                                                                                                      |
 |                                            | `src/workspace/config-bytecode.ts` — the workspace config's cached bytecode bundle (see project-loader.md).                                                                                                    |
+|                                            | `src/workspace/module-state.ts` — what a shared module's exports hold, to refuse a config that changes one (see project-loader.md).                                                                            |
 
 ## Graph + scheduler
 
@@ -163,6 +164,7 @@ here, itself or in a brace group.
 |                                              | `src/graph/definition.ts` — `taskDefinition(s)`, what history keys a task by (see task-graph.md).         |
 |                                              | `src/graph/default-build.ts` — the `build` a project declaring none gets (see task-graph.md).             |
 |                                              | `src/graph/critical-path.ts` — `criticalPath`, the order a `schedule` plugin returns (see task-graph.md). |
+|                                              | `src/graph/stand-ins.ts` — what an edge past a cycle's default build stands in for (see task-graph.md).   |
 | [`scheduler.md`](./scheduler.md)             | `src/graph/scheduler.ts` — parallel topological executor.                                                 |
 |                                              | `src/graph/priorities.ts` — the ready-queue ranking (see scheduler.md).                                   |
 |                                              | `src/graph/task-status.ts` — the status vocabulary (see scheduler.md).                                    |
@@ -216,31 +218,32 @@ here, itself or in a brace group.
 
 ## Utilities
 
-| File                                               | Topic                                                                                                                                                                        |
-| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`util-paths.md`](./util-paths.md)                 | `src/util/paths.ts` — POSIX-path normaliser for stable cache keys.                                                                                                           |
-| [`util-hash.md`](./util-hash.md)                   | `src/util/hash.ts` — xxHash3 helpers shared by every key-derivation site.                                                                                                    |
-| [`util-ulid.md`](./util-ulid.md)                   | `src/util/ulid.ts` — run-id generator (`Bun.randomUUIDv7` wrapper).                                                                                                          |
-| [`util-errors.md`](./util-errors.md)               | `src/util/errors.ts` — `UserError` class for stack-less error reporting; `src/util/config-frame.ts` — a config refusal at its line.                                          |
-| [`timing.md`](./timing.md)                         | `src/util/timing.ts` — the `VX_DEBUG_TIMING=1` stage table + per-task spans.                                                                                                 |
-| [`util-edit-distance.md`](./util-edit-distance.md) | `src/util/edit-distance.ts` — the one "did you mean" rule.                                                                                                                   |
-| [`util-bun-version.md`](./util-bun-version.md)     | `src/util/bun-version.ts` — the Bun floor, read at run time, and what breaks below it.                                                                                       |
-| [`util-num.md`](./util-num.md)                     | `src/util/num.ts` — `MAX_TIMEOUT_MS`, `clampInt`, `parseDecimalInt`.                                                                                                         |
-| [`util-settle.md`](./util-settle.md)               | `src/util/settle.ts` — the end-of-run settle bound for plugin teardown.                                                                                                      |
-| [`util-tail.md`](./util-tail.md)                   | `src/util/tail.ts` — head-evicting tail for a persistent task's output.                                                                                                      |
-| [`util-secret-mask.md`](./util-secret-mask.md)     | `src/util/secret-mask.ts` — masks secret-named variables' values in what vx shows.                                                                                           |
-| [`util-hide-env.md`](./util-hide-env.md)           | `src/util/hide-env.ts` — `hideEnvFromTasks`: non-dumpable on Linux, startup values zeroed on macOS, so tasks cannot read vx's env.                                           |
-| [`util-which.md`](./util-which.md)                 | `src/util/which.ts` — `executablePath`: a tool's absolute path on vx's own PATH, found once.                                                                                 |
-| [`util-procfs.md`](./util-procfs.md)               | `src/util/procfs.ts` — `procfsIsOwn`: is `/proc` this pid namespace's view, asked once.                                                                                      |
-| [`util-secrets.md`](./util-secrets.md)             | `src/util/{secrets,hidden-prompt}.ts` — `ctx.secret`: a plugin's OS keychain entries, asked once on a terminal when missing.                                                 |
-| [`util-hangup.md`](./util-hangup.md)               | `src/util/hangup.ts` — `hangupIgnored`: did vx start with SIGHUP ignored (nohup), asked once.                                                                                |
-| [`util-git-ignored.md`](./util-git-ignored.md)     | `src/util/git-ignored.ts` — whether git ignores everything an output glob writes, asked of git (`check-ignore`, `ls-files`).                                                 |
-| [`util-real-path.md`](./util-real-path.md)         | `src/util/real-path.ts` — `realPath`: the OS's final path; `realpathOf`: realpath past a backslash.                                                                          |
-| [`util-cgroup.md`](./util-cgroup.md)               | `src/util/cgroup.ts` — the cores and memory this process may use, as its cgroup bounds them.                                                                                 |
-|                                                    | `src/util/{size,verbs}.ts` — `parseSize`, `parseDuration`, `treeBytes` (cli-cache.md) and the core verb list (cli.md).                                                       |
-|                                                    | `src/util/task-id.ts` — `splitTaskId`, the first-`#` inverse of `taskId` (task-graph.md).                                                                                    |
-|                                                    | `src/util/env-flag.ts` — `envFlagOn`: whether `CI` and the like are on (`0`, `false` and empty are off).                                                                     |
-|                                                    | `src/util/write-file.ts` — `refuseSymlink`, `writeNoFollow`: a generated file never written through a link (migration.md); `writeAllOrNone`: the locks, all renamed or none. |
+| File                                                       | Topic                                                                                                                                                                        |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`util-paths.md`](./util-paths.md)                         | `src/util/paths.ts` — POSIX-path normaliser for stable cache keys.                                                                                                           |
+| [`util-hash.md`](./util-hash.md)                           | `src/util/hash.ts` — xxHash3 helpers shared by every key-derivation site.                                                                                                    |
+| [`util-ulid.md`](./util-ulid.md)                           | `src/util/ulid.ts` — run-id generator (`Bun.randomUUIDv7` wrapper).                                                                                                          |
+| [`util-errors.md`](./util-errors.md)                       | `src/util/errors.ts` — `UserError` class for stack-less error reporting; `src/util/config-frame.ts` — a config refusal at its line.                                          |
+| [`timing.md`](./timing.md)                                 | `src/util/timing.ts` — the `VX_DEBUG_TIMING=1` stage table + per-task spans.                                                                                                 |
+| [`util-edit-distance.md`](./util-edit-distance.md)         | `src/util/edit-distance.ts` — the one "did you mean" rule.                                                                                                                   |
+| [`util-bun-version.md`](./util-bun-version.md)             | `src/util/bun-version.ts` — the Bun floor, read at run time, and what breaks below it.                                                                                       |
+| [`util-num.md`](./util-num.md)                             | `src/util/num.ts` — `MAX_TIMEOUT_MS`, `clampInt`, `parseDecimalInt`.                                                                                                         |
+| [`util-settle.md`](./util-settle.md)                       | `src/util/settle.ts` — the end-of-run settle bound for plugin teardown.                                                                                                      |
+| [`util-tail.md`](./util-tail.md)                           | `src/util/tail.ts` — head-evicting tail for a persistent task's output.                                                                                                      |
+| [`util-secret-mask.md`](./util-secret-mask.md)             | `src/util/secret-mask.ts` — masks secret-named variables' values in what vx shows.                                                                                           |
+| [`util-hide-env.md`](./util-hide-env.md)                   | `src/util/hide-env.ts` — `hideEnvFromTasks`: non-dumpable on Linux, startup values zeroed on macOS, so tasks cannot read vx's env.                                           |
+| [`util-which.md`](./util-which.md)                         | `src/util/which.ts` — `executablePath`: a tool's absolute path on vx's own PATH, found once.                                                                                 |
+| [`util-procfs.md`](./util-procfs.md)                       | `src/util/procfs.ts` — `procfsIsOwn`: is `/proc` this pid namespace's view, asked once.                                                                                      |
+| [`util-secrets.md`](./util-secrets.md)                     | `src/util/{secrets,hidden-prompt}.ts` — `ctx.secret`: a plugin's OS keychain entries, asked once on a terminal when missing.                                                 |
+| [`util-hangup.md`](./util-hangup.md)                       | `src/util/hangup.ts` — `hangupIgnored`: did vx start with SIGHUP ignored (nohup), asked once.                                                                                |
+| [`util-git-ignored.md`](./util-git-ignored.md)             | `src/util/git-ignored.ts` — whether git ignores everything an output glob writes, asked of git (`check-ignore`, `ls-files`).                                                 |
+| [`util-real-path.md`](./util-real-path.md)                 | `src/util/real-path.ts` — `realPath`: the OS's final path; `realpathOf`: realpath past a backslash.                                                                          |
+| [`util-foreign-cache-dir.md`](./util-foreign-cache-dir.md) | `src/util/foreign-cache-dir.ts` — `refuseForeignCacheDir`: a cache dir that resolves to home, `/` or the workspace is refused before vx writes there.                        |
+| [`util-cgroup.md`](./util-cgroup.md)                       | `src/util/cgroup.ts` — the cores and memory this process may use, as its cgroup bounds them.                                                                                 |
+|                                                            | `src/util/{size,verbs}.ts` — `parseSize`, `parseDuration`, `treeBytes` (cli-cache.md) and the core verb list (cli.md).                                                       |
+|                                                            | `src/util/task-id.ts` — `splitTaskId`, the first-`#` inverse of `taskId` (task-graph.md).                                                                                    |
+|                                                            | `src/util/env-flag.ts` — `envFlagOn`: whether `CI` and the like are on (`0`, `false` and empty are off).                                                                     |
+|                                                            | `src/util/write-file.ts` — `refuseSymlink`, `writeNoFollow`: a generated file never written through a link (migration.md); `writeAllOrNone`: the locks, all renamed or none. |
 
 For the public package surface (what `import('@vzn/vx')` resolves to)
 see [`index.md`](./index.md).

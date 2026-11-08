@@ -4,6 +4,9 @@
 // token goes along. A server that hands out signed storage URLs needs it.
 
 import { afterAll, describe, expect, it } from 'bun:test'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { resolveTurboCacheConfig, TurboRemoteCache } from '../src/turbo-cache/index.js'
 
 const TOKEN = 'secret-token'
@@ -54,6 +57,7 @@ const elsewhere = Bun.serve({
 const apiSeen: Seen[] = []
 let toBucket = false
 let redirect = false
+let location: string | undefined
 const own = new Map<string, Uint8Array>()
 const api = Bun.serve({
   port: 0,
@@ -66,6 +70,10 @@ const api = Bun.serve({
       const hash = url.pathname.split('/').pop()!
       if (url.searchParams.get('slug') !== 'team') return new Response('no team', { status: 400 })
       if (redirect) return Response.redirect(`${elsewhere.url.origin}${url.pathname}`, 307)
+      if (location !== undefined)
+        return new Response(null, {
+          headers: { Location: location, 'Access-Control-Allow-Headers': '*' },
+        })
       return toBucket
         ? new Response(null, {
             headers: { Location: `${storage.url.origin}/b/${hash}?sig=ok` },
@@ -175,6 +183,68 @@ describe('TurboRemoteCache with preflight', () => {
     expect(elsewhereSeen.map((s) => [s.method, s.headers.get('authorization')])).toEqual([
       ['HEAD', null],
     ])
+  })
+
+  it('refuses a Location that is not http(s): no local file is read or "written"', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'vx-preflight-'))
+    await Bun.write(join(dir, HASH), 'LOCAL FILE BYTES')
+    location = `file://${dir}/${HASH}`
+    try {
+      const c = cache(true)
+      const refused = 'the preflight pointed at file:, not an http(s) URL'
+      await expect(c.has(HASH)).rejects.toThrow(refused)
+      await expect(c.get(HASH)).rejects.toThrow(refused)
+      location = `file://${dir}/new`
+      await expect(c.put(HASH, new Blob(['artifact']), { durationMs: 1 })).rejects.toThrow(refused)
+      expect(await Bun.file(join(dir, 'new')).exists()).toBe(false)
+    } finally {
+      location = undefined
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('refuses an https API whose preflight sends the token to plain http', async () => {
+    const sent: string[] = []
+    const fake = (async (input: string | URL, init?: RequestInit) => {
+      sent.push(`${init?.method} ${String(input)}`)
+      return init?.method === 'OPTIONS'
+        ? new Response(null, {
+            headers: {
+              Location: `http://other.example/b/${HASH}`,
+              'Access-Control-Allow-Headers': 'Authorization',
+            },
+          })
+        : new Response('', { status: 404 })
+    }) as typeof fetch
+    const config = resolveTurboCacheConfig(
+      { url: 'https://cache.example', token: TOKEN, teamSlug: 'team', retries: 0, preflight: true },
+      {},
+    )!
+    const c = new TurboRemoteCache(config, fake)
+    const refused = await c.has(HASH).catch((err: Error) => err.message)
+    expect(refused).toBe(
+      'the preflight pointed an https API at http://other.example, which would send the token in the clear',
+    )
+    expect(refused).not.toContain(TOKEN)
+    expect(sent).toEqual([`OPTIONS https://cache.example/v8/artifacts/${HASH}?slug=team`])
+  })
+
+  it('an https API may point a preflight at plain http when the token does not go along', async () => {
+    const sent: string[] = []
+    const fake = (async (input: string | URL, init?: RequestInit) => {
+      sent.push(
+        `${init?.method} ${String(input)} ${new Headers(init?.headers).has('authorization')}`,
+      )
+      return init?.method === 'OPTIONS'
+        ? new Response(null, { headers: { Location: `http://bucket.example/b/${HASH}?sig=ok` } })
+        : new Response('', { status: 404 })
+    }) as typeof fetch
+    const config = resolveTurboCacheConfig(
+      { url: 'https://cache.example', token: TOKEN, teamSlug: 'team', retries: 0, preflight: true },
+      {},
+    )!
+    expect(await new TurboRemoteCache(config, fake).has(HASH)).toBeNull()
+    expect(sent[1]).toBe(`HEAD http://bucket.example/b/${HASH}?sig=ok false`)
   })
 
   it('sends no OPTIONS without preflight', async () => {

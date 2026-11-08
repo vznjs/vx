@@ -78,7 +78,12 @@ Piggybacks on `runGraph` with `concurrency: 1` and a planning
 2. Probe `cache.has(hash)` — a presence check, never a fetch:
    `'local'` → `'hit-local'`, `'remote'` → `'hit-remote'`, nothing →
    `'miss'`. Prediction keys off READS: a no-read policy predicts
-   without probing, `'miss'` when it still writes (`--force`).
+   without probing, `'miss'` when it still writes (`--force`). The
+   keys are probed after the walk: `remoteHasMany` once for all of
+   them, then `has` for each, `networkConcurrency()` at a time, so a
+   remote that cannot batch, or whose batch failed, costs one
+   round-trip (or timeout) for the plan, not one per key
+   (`tests/dry-remote-failfast.test.ts`).
 3. Group tasks short-circuit to `'group'`. A persistent task is keyed
    as on the live path and reads `'no-cache'`; the plan and the run must
    key it alike, or `--dry` calls its dependants misses under a key the
@@ -89,7 +94,7 @@ Piggybacks on `runGraph` with `concurrency: 1` and a planning
    `ranNoCache` (`events.ts`), the predicate every run surface labels by,
    so the plan and the run agree.
    A server the run would leave idle (`idleServers`: not requested, and
-   every dependant a `restorable` hit, local or remote, through unrequested groups) → `'not-started'`; `planRun`
+   every dependant a `restorable` hit, local or remote, through unrequested groups and servers) → `'not-started'`; `planRun`
    fills `restorable` by the run's own gates (`shouldShortCircuit`,
    stable keys, `restoreTierExclusions`) only when a server could idle
    (WD-17).
@@ -107,7 +112,14 @@ Piggybacks on `runGraph` with `concurrency: 1` and a planning
 
 None: `cache.has` bumps nothing (the `accessed_at` column moves on a
 fetch, which a plan never makes), no spawn, no `cleanOutputs`, no
-`restoreOutputs`.
+`restoreOutputs`. With no remote to probe, `planRun` opens the local
+cache to read only (`prepareRunLocked`'s `planning`, `Cache` mode
+`'preview'`): no cache directory, index, `.gitignore` or file-hash memo
+row is made, and an index of another schema reads as the empty one the
+run's reset leaves (`tests/dry-no-writes.test.ts`). The one write: with a
+remote, the hits its probe finds are kept in the index (made for them if
+need be), so the `vx run` that follows GETs them before its own probe
+answers (`tests/orchestrator-remote.test.ts` › "plan then run").
 
 ## Why concurrency: 1
 

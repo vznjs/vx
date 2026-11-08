@@ -84,8 +84,9 @@ export interface TaskInputs {
    * Dependencies whose cache keys are folded. `outputs` lists each one's
    * declared output files (workspace-relative POSIX, as stored with its cache
    * entry) — restored on disk before this task runs, so an input-shipping
-   * executor can include them in the input root. Empty when the upstream's
-   * entry is not in the local index (a non-cacheable dependency).
+   * executor can include them in the input root. A non-cacheable
+   * dependency's are its declared outputs found on disk; a cacheable one
+   * with no entry in the local index lists none.
    */
   readonly upstream: ReadonlyArray<{
     readonly taskId: string
@@ -254,10 +255,11 @@ export interface ExecuteResult extends RunResult {
    */
   readonly outputs?: { kind: 'disk' } | { kind: 'deferred'; materialize: () => Promise<void> }
   /**
-   * Tracked files the command changed where it ran, workspace-relative
-   * POSIX: an executor that runs it elsewhere says so, as this disk shows
-   * none of it. One the key read withholds the save under the key, as an
-   * input changed here does.
+   * Tracked files the command changed where it ran, and untracked ones it
+   * found there, workspace-relative POSIX: an executor that runs it
+   * elsewhere says so, as this disk shows none of it. One the key read, or
+   * one its inputs declare, withholds the save under the key, as an input
+   * changed here does.
    */
   readonly changed?: readonly string[]
   /**
@@ -443,6 +445,13 @@ export interface TaskExecutor {
    * answers `null` for, and the task is skipped, never started.
    */
   running?(taskId: string): string | null | undefined
+  /**
+   * A `servers` executor's: no task left in the run uses persistent task
+   * `taskId`, so each copy it started beside a dependant stops now, not at
+   * teardown. Core asks once, as the run stops its own copy (`schema.md`,
+   * "Stopped once nothing needs it"). A throw is ignored.
+   */
+  unneeded?(taskId: string): void
   execute(req: ExecuteRequest): Promise<ExecuteResult>
 }
 

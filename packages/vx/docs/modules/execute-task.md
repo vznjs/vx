@@ -27,7 +27,7 @@ export interface ExecuteArgs {
   liveChildren?: Set<ReturnType<typeof Bun.spawn>> // run-scoped; the signal handler signals these
   track?: (taskId: string, pid: number) => () => void // TelemetrySource.track: samples each attempt's tree
   // … and the optional run-scoped fields (timeout, preProbed, download,
-  // deferSave, taintedUpstream, fingerprintWatch, noDependants,
+  // deferSave, taintedUpstream, serverDiedUnder, leftRunning, fingerprintWatch, noDependants,
   // probesAfterWrites, …)
 }
 
@@ -94,7 +94,9 @@ one-shot handler mid-cleanup.
 
 ### C. Normal task
 
-1. `computeTaskHash(...)` — see below — unless the up-front pass
+1. `computeTaskHash(...)` — see below, through `keyOf`: a throw is
+   `KeyFailed`, a failed outcome marked `isKeyFailed` and no command run —
+   unless the up-front pass
    already has the key: a `preProbed` hash, or an uncached task's
    `upfrontKey` (local-shortcircuit.md; a persistent task takes it too).
 2. `cleanArgs = { projectDir, outputs, nestedProjectDirs }` is
@@ -150,7 +152,12 @@ one-shot handler mid-cleanup.
      immediately) re-cleans declared outputs and re-executes, with one
      `vx: retrying <id> (attempt <k>/<total>) after exit <code>` stderr
      line between attempts, which ends `after a timeout` instead when
-     the attempt was killed by `timeout`. The final outcome (and the
+     the attempt was killed by `timeout`, and
+     `after <n> sandbox violation(s)` when the shell exited 0 and only
+     a refusal failed it.
+     A retried attempt's violation lines go into its own output, under
+     `SANDBOX VIOLATIONS (<n>)` (the outcome's section is the last
+     attempt's), so `vx last --log` keeps them. The final outcome (and the
      cached stdout) is the last attempt's, its `durationMs` every
      attempt's; `TaskOutcome.attempts` is
      set when > 1.
@@ -162,14 +169,21 @@ one-shot handler mid-cleanup.
    the listing (`described.added`, inputs.md's `addedInput`). A move withholds the save, says so on the
    status line, and drops the project's facts as an uncached command
    does (every partition when the task declares workspace outputs,
-   whose save would have marked them). A claimed root file (a lockfile) a
+   whose save would have marked them). Strategy `'unchecked'` skips the
+   move check but still drops the facts where the command may write
+   (`commandWriteReach`; every partition with workspace outputs), since
+   a reader keyed after it reads them. A claimed root file (a lockfile) a
    task rewrote since the run read it withholds the save too (the run's
    `FingerprintWatch`, [`fingerprint-watch.md`](./fingerprint-watch.md),
-   item 750). Otherwise `resolveOutputs(...)` →
+   item 750), and so does a server it depends on (through groups and servers too)
+   that died while it ran (`serverDiedUnder`, run.ts: it seeds the
+   run's taint, so what is built on it is not saved either), and so does
+   an upstream that is a `remote: 'only'` no-op, directly or through
+   others (`belowNoop`): its key names outputs that never landed. Otherwise `resolveOutputs(...)` →
    `cache.save({ hash, projectDir, outputFiles, entry })`.
    **If it ran here and saves nothing** — it failed, the policy writes
-   nothing (`--cache-policy=local:r,remote:r`), an upstream failed, the key no
-   longer held — the same re-check runs (`movedInput`), and a move drops
+   nothing (`--cache-policy=local:r,remote:r`), an upstream failed or
+   no-op'd, an upstream left a process running, a server died under it, the key no longer held — the same re-check runs (`movedInput`), and a move drops
    the project's facts; otherwise its declared outputs are resolved and
    marked in the git snapshot as a save marks them (`markUnsaved`). A
    same-run reader keyed from the snapshot's OIDs for either replayed
@@ -193,7 +207,7 @@ Moved out on 2026-09-10 as pure code motion; re-exported from here.
 ## The save
 
 An ADDITIVE task (`node.addsToOutputsOf`, item 588; only with
-`rules.exclusiveOutputs: false`, X-53) is not cleaned by
+`run.rules.exclusiveOutputs: false`, X-53) is not cleaned by
 glob before an attempt: its outputs are stamped once before the first
 attempt (`stampOutputs`) and, after a 0 exit, its own set is what the
 run added or changed against that stamp (`ownOutputsSince`), handed to
@@ -205,12 +219,17 @@ an artifact holds what a run wrote, never what it took away, and the
 upstream's restore puts the file back (X-32). Before a retry, what the
 failed attempt added against the stamp is removed by path
 (`dropFailedAdditions`, `cleanOutputPaths`); a found file it changed or
-removed cannot be put back, so that task saves nothing.
+removed cannot be put back, so that task saves nothing. No clean
+deletes a committed file under the outputs either: when a retry can
+follow, the first attempt's clean stamps them (`stampCommitted`), and a
+retry's clean that finds one added, removed or touched
+(`committedMoved`) withholds the pass's save the same way.
 
 A process any attempt's shell left running (`ExecuteResult.leftRunning`)
 withholds the save, a failed attempt's too: it may write into the
 passing attempt's outputs. It is not killed, as a passing attempt's
-is not.
+is not. The first one also calls `ExecuteArgs.leftRunning` (run.ts: it
+seeds the run's taint, so what is built on it is not saved either).
 
 What a miss leaves behind — outputs resolved, artifact and rows saved,
 output prefixes recorded, git snapshot marked — is

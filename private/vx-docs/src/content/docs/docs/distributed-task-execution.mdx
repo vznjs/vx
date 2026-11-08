@@ -172,6 +172,10 @@ A worker checks out your files as git has them, uncommitted changes
 included. A file git does not track is not there: a task that reads one
 fails, naming it.
 
+A worker builds on the bytes and modes git stores, with its filters
+undone (line endings, `ident`, LFS). A task whose input differs on disk,
+such as a CRLF checkout, fails, naming it.
+
 ---
 
 ## Adapters
@@ -199,6 +203,10 @@ run says the relay has no live run.
   no other can take.
 - A task no worker can take, such as one whose `exec.platforms` no
   machine offers, stops the run before any task starts.
+- A task that reads what an uncached task leaves on its worker, where
+  that task's `exec.worker` or `exec.platforms` rule out the reader's
+  machine, stops the run before any task starts. Cache the upstream, or
+  run both alike.
 - A sandboxed task runs inside the same `exec.sandbox` on its worker.
 - A task's `exec.timeout` counts from its start on its worker, not from
   the wait for one.

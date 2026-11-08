@@ -91,13 +91,14 @@ export function runStop(args: {
   // A server that ends on its own while the graph still runs is said at
   // once: its dependants were failing against it, and the end of the run
   // was the first word of it (C-69). Not once the graph is done (the end
-  // of the run and the keep-alive wait say it) nor under a stop.
+  // of the run and the keep-alive wait say it) nor under a stop, nor once
+  // the run took it out to stop it (no task left needed it).
   let graphDone = false
   const persistentRegistry = new (class extends Map<string, Child> {
     override set(id: string, child: Child): this {
       super.set(id, child)
       void child.exited.then((code) => {
-        if (code !== 0 && !graphDone && !controller.signal.aborted)
+        if (code !== 0 && !graphDone && !controller.signal.aborted && this.get(id) === child)
           warnOf(log)(`vx: ${id} exited with code ${code} while the run went on`)
       })
       return this

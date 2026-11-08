@@ -6,6 +6,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import {
   executablePath,
+  gitCaseArgs,
   gitEnv,
   isLiteralPattern,
   normalizeGlob,
@@ -15,7 +16,12 @@ import {
   taskGlob,
 } from '../util/index.js'
 import { asTrees } from '../cache/index.js'
-import { PROJECT_CONFIG_FILENAMES, WORKSPACE_CONFIG_FILENAMES } from '../workspace/index.js'
+import {
+  DEPENDENCIES_LOCK_NAME,
+  parseDependenciesLock,
+  PROJECT_CONFIG_FILENAMES,
+  WORKSPACE_CONFIG_FILENAMES,
+} from '../workspace/index.js'
 import { isIgnoredDir } from './watch-fs.js'
 
 const IGNORED_SUFFIXES = ['~']
@@ -27,19 +33,31 @@ const IGNORED_SUFFIXES = ['~']
  * writes to `.vx/cache` again.
  *
  * Segment-wise, not prefix-wise: `node_modules` is ignored wherever it appears
- * in the path, not only at the root.
+ * in the path, not only at the root. `makeWatchIgnore` keeps a path there
+ * that an input names or git tracks.
  */
 export function isIgnoredWatchPath(rel: string): boolean {
+  return ignoredBy(rel) !== undefined
+}
+
+/** Why `isIgnoredWatchPath` drops `rel`: `'node_modules'` when only that segment does. */
+function ignoredBy(rel: string): 'always' | 'node_modules' | undefined {
   const segments = rel.split(path.sep)
-  for (let i = 1; i <= segments.length; i++) if (isIgnoredDir(segments.slice(0, i))) return true
-  if (IGNORED_SUFFIXES.some((suf) => rel.endsWith(suf))) return true
+  let why: 'node_modules' | undefined
+  for (let i = 1; i <= segments.length; i++) {
+    if (!isIgnoredDir(segments.slice(0, i))) continue
+    if (segments[i - 1] !== 'node_modules') return 'always'
+    why = 'node_modules'
+  }
+  if (IGNORED_SUFFIXES.some((suf) => rel.endsWith(suf))) return 'always'
   const last = segments.length - 1
   // The cache's first save writes `.vx/.gitignore`, which ignores only the
   // `.vx/cache` and `.vx/tmp` already skipped: a watched root project ran
   // one more cycle for it.
-  if (segments[last] === '.gitignore' && segments[last - 1] === '.vx') return true
+  if (segments[last] === '.gitignore' && segments[last - 1] === '.vx') return 'always'
   // `vx lock`'s review copy: no input, so a re-lock is no cycle.
-  return segments[last] === 'vx.lock.json'
+  if (segments[last] === 'vx.lock.json') return 'always'
+  return why
 }
 
 /**
@@ -152,6 +170,44 @@ export function makeWatchIgnore(
     }
     return trackedDirs.has(abs)
   }
+  // Under `node_modules`, only what an input names through that segment
+  // (`node_modules/.prisma/client/**`): a broad glob (`**`, `src/**` over
+  // `src/node_modules`) never reached it, and walking every package to drop
+  // its events is the cost the skip spares.
+  const namesModules = (abs: string, dir: boolean): boolean =>
+    read.some(([base, globs, not, containers, reaches, trees]) => {
+      if (!abs.startsWith(base + path.sep)) return false
+      const rel = abs
+        .slice(base.length + 1)
+        .split(path.sep)
+        .join('/')
+      const segments = rel.split('/')
+      const through = segments.slice(0, segments.lastIndexOf('node_modules') + 1).join('/')
+      if (dir && trees.some((t) => rel === t || rel.startsWith(`${t}/`))) return false
+      return reaches.some(([p, max], i) => {
+        if (p !== through && !p.startsWith(`${through}/`)) return false
+        if (!dir)
+          return (
+            globs[i]!.match(rel) &&
+            !not.some((g) => g.match(rel)) &&
+            !containers.some((c) => c === rel || c.startsWith(`${rel}/`))
+          )
+        return (
+          segments.length < max && (p === rel || p.startsWith(`${rel}/`) || rel.startsWith(`${p}/`))
+        )
+      })
+    })
+  // Core never cleans or saves a file git tracks and keys it under the
+  // task's own output glob (2026-10-14); a submodule is listed as its
+  // gitlink alone, so a path under a tracked one counts.
+  const isTracked = (abs: string): boolean => {
+    if (tracked === undefined) return false
+    for (let p = abs; p.length > 1; p = path.dirname(p)) {
+      if (tracked.has(p)) return true
+      if (p === path.dirname(p)) break
+    }
+    return false
+  }
   const isInput = (abs: string): boolean =>
     read.some(([dir, globs, not, containers]) => {
       if (!abs.startsWith(dir + path.sep)) return false
@@ -164,19 +220,15 @@ export function makeWatchIgnore(
       return !containers.some((c) => c === rel || c.startsWith(`${rel}/`))
     })
   return (base, filename, dir = false) => {
-    if (isIgnoredWatchPath(filename)) return true
+    const why = ignoredBy(filename)
+    if (why === 'always') return true
     const abs = path.resolve(base, filename)
     if (abs === cacheAbs || abs.startsWith(cacheAbs + path.sep)) return true
+    if (why === 'node_modules')
+      return !(namesModules(abs, dir) || (dir ? holdsTracked(abs) : isTracked(abs)))
     if (isInput(abs)) return false
     if (dir && (mayHoldInput(abs) || holdsTracked(abs))) return false
-    // Core never cleans or saves a file git tracks and keys it under the
-    // task's own output glob (2026-10-14); a submodule is listed as its
-    // gitlink alone, so a path under a tracked one counts.
-    if (tracked !== undefined)
-      for (let p = abs; p.length > 1; p = path.dirname(p)) {
-        if (tracked.has(p)) return false
-        if (p === path.dirname(p)) break
-      }
+    if (isTracked(abs)) return false
     for (const [dir, isOutput, containers] of declared) {
       if (!abs.startsWith(dir + path.sep)) continue
       const rel = abs
@@ -399,6 +451,26 @@ export function isWorkspaceConfigFile(name: string): boolean {
 }
 
 /**
+ * The files the claimed files' recorded digests read besides them
+ * (`FingerprintDigests.extras`: a `file:` dependency's directory, a patch),
+ * absolute, from `.vx/dependencies.lock.json` as `vx lock` wrote it: a run
+ * keys them from there. Empty when there is no readable lock.
+ */
+export function lockedExtras(workspaceRoot: string): Set<string> {
+  let bytes: Uint8Array | null = null
+  try {
+    bytes = fs.readFileSync(path.join(workspaceRoot, DEPENDENCIES_LOCK_NAME))
+  } catch {
+    // No lock: no record, and a run refuses a claimant that asks for one.
+  }
+  const lock = parseDependenciesLock(bytes)
+  const out = new Set<string>()
+  for (const rec of Object.values(lock?.files ?? {}))
+    for (const rel of Object.keys(rec.extras ?? {})) out.add(path.resolve(workspaceRoot, rel))
+  return out
+}
+
+/**
  * Paths as git spells them under `root`: a project reached through a
  * symlink below the root (`packages/x -> ../shared/x`) is watched at the
  * link, and git names and answers for its files only at the real place.
@@ -446,6 +518,7 @@ export function gitFiles(
     proc = Bun.spawnSync({
       cmd: [
         executablePath('git'),
+        ...gitCaseArgs(workspaceRoot),
         'ls-files',
         '-z',
         '-t',

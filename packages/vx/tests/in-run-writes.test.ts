@@ -10,10 +10,10 @@
 //     fingerprint folded (`pnpm install` without `--frozen-lockfile`).
 // Every row but the controls failed on the tree before the fix.
 
-import { mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import type { CachePolicy } from '../src/cache/index.js'
+import { FILE_HASH_RACY_MS, racyWindowMs, type CachePolicy } from '../src/cache/index.js'
 import type { TaskNode } from '../src/graph/index.js'
 import type { RunSummary } from '../src/orchestrator/index.js'
 import type { Logger } from '../src/report/index.js'
@@ -113,6 +113,119 @@ describe('a cached task that rewrites its own input', () => {
       }
       // Before the fix `build` was classed stable, keyed on `a.ts` = B before
       // `fmt` wrote A, and the fourth run restored the third run's B.
+      expect(outs).toEqual(['A', 'B', 'B', 'A'])
+    },
+    TIMEOUT,
+  )
+
+  const UNCHECKED = FORMATTER.replace(
+    "inputs: { files: ['seed.txt', 'a.ts'] }",
+    "inputs: { files: ['seed.txt', 'a.ts'], stability: { strategy: 'unchecked' } }",
+  )
+
+  /**
+   * Each seed's `out` after a run of `task`. Before each run `a.ts`, which
+   * the last run's `fmt` wrote, is waited past the racy window: a file
+   * written inside it is hashed again on every read, so the run-start fact
+   * a later key reused is only learned once it is past (a run a second
+   * apart, as a user's are).
+   */
+  async function uncheckedSeeds(app: string, task: string, out: string): Promise<string[]> {
+    const outs: string[] = []
+    for (const seed of ['A', 'B', 'B', 'A']) {
+      await writeFile(path.join(app, 'seed.txt'), seed)
+      const { ctimeMs } = await stat(path.join(app, 'a.ts'))
+      const settled = ctimeMs + racyWindowMs(ctimeMs, FILE_HASH_RACY_MS) + 1
+      await Bun.sleep(Math.max(0, settled - Date.now()))
+      await runTask(task)
+      outs.push(await readFile(out, 'utf8'))
+    }
+    return outs
+  }
+
+  it(
+    "the same under strategy 'unchecked': skipping the check still drops what the run knew",
+    async () => {
+      // `'unchecked'` returned before the re-check, the one place a cached
+      // rewrite dropped the project's facts: `build`, keyed after `fmt`,
+      // still read `a.ts`'s run-start digest and the fourth run restored B.
+      const app = await fixture(UNCHECKED)
+      expect(await uncheckedSeeds(app, 'build', path.join(app, 'dist', 'out.txt'))).toEqual([
+        'A',
+        'B',
+        'B',
+        'A',
+      ])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "control: under 'unchecked', a reader in another project through workspaceFiles reads the rewrite",
+    async () => {
+      // Passed before the fix too: a workspaceFiles key hashes the file
+      // again rather than reuse the project's run-start digest. `peek`,
+      // keyed up front, reads the workspace's files before `fmt` runs.
+      const app = await fixture(UNCHECKED)
+      const lib = await addProject(root, 'lib', {
+        config: `
+          export default {
+            tasks: {
+              peek: {
+                exec: { command: 'true' },
+                inputs: { files: [], workspaceFiles: ['packages/app/a.ts'] },
+                outputs: { files: [] }, cache: true,
+              },
+              build: {
+                dependsOn: ['app#fmt', 'peek'],
+                exec: { command: 'mkdir -p dist && cat ../app/a.ts > dist/out.txt' },
+                inputs: { files: [], workspaceFiles: ['packages/app/a.ts'], tasks: [] },
+                outputs: { files: ['dist/**'] }, cache: true,
+              },
+            },
+          }
+        `,
+      })
+      commit()
+      expect(await uncheckedSeeds(app, 'lib#build', path.join(lib, 'dist', 'out.txt'))).toEqual([
+        'A',
+        'B',
+        'B',
+        'A',
+      ])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'the same through a keyed group that folds no key of the rewriter',
+    async () => {
+      // `build` folds the group's key, and the group's `tasks: []` folds no
+      // key of `fmt`. The gate read a keyed group as folding every
+      // dependency, keyed `build` up front, and the fourth run restored B.
+      const app = await fixture(`
+        export default {
+          tasks: {
+            fmt: {
+              exec: { command: 'cp seed.txt a.ts' },
+              inputs: { files: ['seed.txt', 'a.ts'], stability: { strategy: 'mutable' } },
+              outputs: { files: [] }, cache: true,
+            },
+            g: { dependsOn: ['fmt'], inputs: { files: ['a.ts'], tasks: [] } },
+            build: {
+              dependsOn: ['g'],
+              exec: { command: 'mkdir -p dist && cat a.ts > dist/out.txt' },
+              inputs: { files: [] }, outputs: { files: ['dist/**'] }, cache: true,
+            },
+          },
+        }
+      `)
+      const outs: string[] = []
+      for (const seed of ['A', 'B', 'B', 'A']) {
+        await writeFile(path.join(app, 'seed.txt'), seed)
+        await runTask('build')
+        outs.push(await readFile(path.join(app, 'dist', 'out.txt'), 'utf8'))
+      }
       expect(outs).toEqual(['A', 'B', 'B', 'A'])
     },
     TIMEOUT,
@@ -442,6 +555,18 @@ describe('the stability gate: which readers are keyed before a rewriter ran', ()
       expect(await sameProject(group, '[]')).toBe(false)
       await fresh()
       expect(await sameProject(group, "['pre']")).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "through a keyed group: the group's own inputs.tasks decides what folding it covers",
+    async () => {
+      const keyed = (tasks: string) =>
+        `{ dependsOn: ['fmt'], inputs: { files: ['a.ts'], tasks: ${tasks} } }`
+      expect(await sameProject(keyed('[]'))).toBe(false)
+      await fresh()
+      expect(await sameProject(keyed("['fmt']"))).toBe(true)
     },
     TIMEOUT,
   )
@@ -901,6 +1026,31 @@ describe('a runtime probe that reads an upstream output', () => {
       } finally {
         prepared.cache.close()
       }
+      expect(await seeds(libDir, appDir)).toEqual(['A', 'B', 'B', 'A'])
+    },
+    TIMEOUT,
+  )
+
+  it.each([
+    ['project', "runtime: ['cat ../lib/out.txt 2>/dev/null || true']"],
+    ['workspace', "workspaceRuntime: ['cat packages/lib/out.txt 2>/dev/null || true']"],
+  ])(
+    'a folded writer that is not cached does not cover its writes: the %s probe waits',
+    async (_kind, probe) => {
+      // An uncached task's key is not a function of what it writes: here it
+      // reads no file. Before the fix the probe read `out.txt` before `gen`
+      // rewrote it, and the third run restored the first run's A.
+      const libDir = await addProject(root, 'lib', {
+        config: lib
+          .replace("inputs: { files: ['seed.txt'] }", 'inputs: { files: [] }')
+          .replace('cache: true', 'cache: false'),
+        files: { 'seed.txt': 'X' },
+      })
+      const appDir = await addProject(root, 'app', {
+        config: app(probe).replace('tasks: [], ', ''),
+      })
+      await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\nout.txt\n')
+      commit()
       expect(await seeds(libDir, appDir)).toEqual(['A', 'B', 'B', 'A'])
     },
     TIMEOUT,

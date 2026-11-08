@@ -45,7 +45,8 @@ import {
   type WiredResult,
 } from './messages.js'
 import { leftUnder, names, outputFiles } from './outputs.js'
-import { snapshot } from './tree.js'
+import { serverFit } from './server-fit.js'
+import { snapshot, unfilter } from './tree.js'
 import { sealWorker, type Proof } from './seal.js'
 import { join, ORCHESTRATOR_SILENT, RelayError, unsent as unsentBy } from './wire.js'
 
@@ -66,6 +67,8 @@ export async function runWorker(opts: {
   // The tracked files as they are, as the run snapshots its own: HEAD's
   // tree let in a checkout whose prepare rewrote a tracked file, and the
   // task built from it was saved under the clean key (2026-10-25).
+  // Its files first as the commit holds them, as the run's key read them.
+  await unfilter(opts.root)
   const base = await snapshot(opts.root)
   const tree = base.tree
   // Never an output, as core never cleans one: the checkout is the run's
@@ -132,7 +135,40 @@ export async function runWorker(opts: {
   }
   let tasksCpuMs = 0
   const trees = treeMeter()
-  const frame = (): Load => ({ ...load.now(), tasks: trees.now() })
+  // Its servers' trees, and which dependants each serves now: their CPU is
+  // charged to those tasks, and each base reported (`serverFit`).
+  const serverTrees = treeMeter()
+  const fit = serverFit()
+  const frame = (): Load => {
+    const servers = fit.bases()
+    return {
+      ...load.now(),
+      tasks: trees.now(),
+      ...(Object.keys(servers).length === 0 ? {} : { servers }),
+    }
+  }
+  const usersOf = new Map<string, Set<string>>()
+  let sampledAt = performance.now()
+  const sampler = setInterval(() => {
+    const at = performance.now()
+    const ms = at - sampledAt
+    sampledAt = at
+    if (usersOf.size === 0) return
+    const capped = load.now().cpu >= cores * FULL
+    for (const [server, users] of usersOf)
+      fit.sample(server, [...users], serverTrees.coresOf(server), ms, capped)
+  }, TREE_EVERY_MS)
+  sampler.unref?.()
+  const newFloor = (sandboxes: Parameters<typeof localFloor>[0] = []): LocalFloor =>
+    localFloor(sandboxes, (id, pid) => {
+      if (pid === undefined) {
+        serverTrees.drop(id)
+        usersOf.delete(id)
+      } else {
+        serverTrees.watch(id, pid)
+        usersOf.set(id, usersOf.get(id) ?? new Set())
+      }
+    })
   /**
    * Entries whose files are here, restored or run here, by key: tasks
    * started together wait on one restore, never run before it.
@@ -454,7 +490,7 @@ export async function runWorker(opts: {
         command: m.command,
         forwardArgs: [],
         cwd: path.join(opts.root, m.cwd),
-        env: localEnv(m.env, root, opts.root),
+        env: localEnv(m.env, root, opts.root, m.unset),
         envDefine: {},
         // Both streams as one capture, in the order written, as core keeps a
         // run's: kept apart, a hit replayed every stdout line before the
@@ -488,16 +524,40 @@ export async function runWorker(opts: {
               })),
             }),
       }
-      floor ??= localFloor()
+      // An untracked file under its project is one the orchestrator's key
+      // never read (it refuses one it keys), yet the command may: one a
+      // checkout left built into the output saved under the clean key, and
+      // every later run restored it (2026-11-07). Listed before the command,
+      // so a file the task writes is not taken for one it read.
+      const strays = await untrackedUnder(opts.root, m, [names(m.project, m.outputs), ...upstream])
+      floor ??= newFloor()
       ui.print('out', ui.status('info', m.task, ui.dim('running')))
       const crowd = load.mark()
+      const serves = (m.servers ?? []).map((sv) => sv.task)
+      // Counted a user once its server is up: `onServer` makes the set.
+      const using = (): void => {
+        for (const sv of serves) usersOf.get(sv)?.add(m.task)
+      }
       const {
         outputs: _,
         stdout: _o,
         stderr: _e,
         ...res
-      } = await floor.execute(req).finally(() => trees.drop(m.task))
+      } = await floor
+        .execute({
+          ...req,
+          onSpawn: (pid) => {
+            using()
+            req.onSpawn?.(pid)
+          },
+        })
+        .finally(() => {
+          trees.drop(m.task)
+          for (const sv of serves) usersOf.get(sv)?.delete(m.task)
+        })
       tasksCpuMs += res.cpuMs ?? 0
+      // What its servers did for it: its CPU as history books it.
+      const served = fit.take(m.task)
       const cpuShare = load.shareSince(
         crowd,
         res.cpuMs === undefined || !(res.durationMs > 0) ? undefined : res.cpuMs / res.durationMs,
@@ -540,7 +600,10 @@ export async function runWorker(opts: {
       // it; this entry is withheld for any. Nor for an additive task that
       // removed an upstream's file: a hit left the file in place, and core
       // saves none once this machine removes it too (2026-10-24).
-      const changed = await changedTracked(opts.root, base.commit, m, names(m.project, m.outputs))
+      const changed = [
+        ...(await changedTracked(opts.root, base.commit, m, names(m.project, m.outputs))),
+        ...strays,
+      ]
       const now = await stamps([...found.keys()])
       const others = unchanged(found, now)
       const removed = [...found.keys()]
@@ -559,6 +622,7 @@ export async function runWorker(opts: {
           : m.runKey
       await reply(m, key, others, {
         ...res,
+        ...(served > 0 ? { cpuMs: (res.cpuMs ?? 0) + served } : {}),
         output: output.chunks(),
         violations: back,
         ...(cpuShare === undefined ? {} : { cpuShare }),
@@ -617,13 +681,28 @@ export async function runWorker(opts: {
           ahead.set(m.task, [...(ahead.get(m.task) ?? []), ...m.deps])
         } else if (m.type === 'cancel') {
           running.get(m.task)?.abort()
+        } else if (m.type === 'unserve') {
+          // Not awaited: its grace must not hold the next order.
+          const task = m.task
+          void floor
+            ?.stop(task)
+            .catch((err: unknown) =>
+              ui.print(
+                'err',
+                ui.status(
+                  'warn',
+                  task,
+                  `server not stopped: ${err instanceof Error ? err.message : String(err)}`,
+                ),
+              ),
+            )
         } else if (m.type === 'batch') {
           // Every batch of a run names the same orchestrator root.
           root = m.root
           realRoot = m.realRoot
           batch = m.n
           if (m.sandboxes !== undefined) {
-            if (floor === undefined) floor = localFloor(m.sandboxes)
+            if (floor === undefined) floor = newFloor(m.sandboxes)
             else await floor.rearm(m.sandboxes)
           }
           for (const t of m.tasks) {
@@ -661,6 +740,8 @@ export async function runWorker(opts: {
     process.off('SIGINT', onInt)
     process.off('SIGTERM', onTerm)
     trees.stop()
+    serverTrees.stop()
+    clearInterval(sampler)
     leaving.abort()
     for (const c of running.values()) c.abort()
     await Promise.all(work)
@@ -855,6 +936,8 @@ export function treeMeter(
   watch: (task: string, pid: number) => void
   drop: (task: string) => void
   now: () => number
+  /** One watched tree's cores over the last look. */
+  coresOf: (task: string) => number
   stop: () => void
 } {
   const watched = new Map<string, { pid: number; at: number; cpuMs: number; cores: number }>()
@@ -902,6 +985,7 @@ export function treeMeter(
       for (const w of watched.values()) cores += w.cores
       return Math.round(cores * 100) / 100
     },
+    coresOf: (task) => watched.get(task)?.cores ?? 0,
     stop,
   }
 }
@@ -993,6 +1077,38 @@ export async function changedTracked(
     .filter((f) => f !== '' && !output(f) && !m.nested.some((n) => f.startsWith(`${n}/`)))
 }
 
+/**
+ * Untracked files git does not ignore under the task's project,
+ * workspace-relative, those `held` matches (its outputs, its dependencies')
+ * and nested projects' aside.
+ */
+async function untrackedUnder(
+  root: string,
+  m: RunOrder,
+  held: readonly ((file: string) => boolean)[],
+): Promise<string[]> {
+  const p = Bun.spawn(
+    [
+      'git',
+      'ls-files',
+      '--others',
+      '--exclude-standard',
+      '-z',
+      '--',
+      m.project === '' ? '.' : `:(literal)${m.project}`,
+    ],
+    { cwd: root, stdin: 'ignore', stdout: 'pipe', stderr: 'ignore' },
+  )
+  const [out, exit] = await Promise.all([new Response(p.stdout).text(), p.exited])
+  // A git that could not say is no proof there are none.
+  if (exit !== 0) return [m.project === '' ? '.' : m.project]
+  return out
+    .split('\0')
+    .filter(
+      (f) => f !== '' && !held.some((h) => h(f)) && !m.nested.some((n) => f.startsWith(`${n}/`)),
+    )
+}
+
 /** The checkout's tracked files, relative to `root`; none outside git. */
 export function trackedFiles(root: string): Set<string> {
   const r = Bun.spawnSync(['git', 'ls-files', '-z'], { cwd: root, stderr: 'pipe' })
@@ -1022,23 +1138,25 @@ function available(): number {
 
 /**
  * The orchestrator's env for a task, made this machine's: its checkout root
- * swapped for ours, host names from our own env, and PATH our own behind
- * the workspace's bin directories.
+ * swapped for ours, host names from our own env but those its key folds as
+ * `unset`, and PATH our own behind the workspace's bin directories.
  */
 export function localEnv(
   env: Readonly<Record<string, string>>,
   remoteRoot: string,
   root: string,
+  unset: readonly string[] = [],
 ): Record<string, string | undefined> {
   // By path: a plain replace moved `/ws2` and `/private/ws` with `/ws`.
   const out: Record<string, string | undefined> = swapRoots({ ...env }, [[remoteRoot, root]])
-  // Sent only when the task's `env.define` names it: its value, as keyed.
+  // Sent only when the task's `env.define` names it or its `inputs.env`
+  // keys it: its value, as keyed.
   // Else this machine's manager, as core sets it on a local task.
-  if (!('npm_execpath' in out)) {
+  if (!('npm_execpath' in out) && !unset.includes('npm_execpath')) {
     const manager = packageManagerPath(root)
     if (manager !== null) out['npm_execpath'] = manager
   }
-  for (const k of HOST_ENV) if (!(k in out)) out[k] = process.env[k]
+  for (const k of HOST_ENV) if (!(k in out) && !unset.includes(k)) out[k] = process.env[k]
   const bins = (out['PATH'] ?? '').split(':').filter((p) => p === root || p.startsWith(`${root}/`))
   out['PATH'] = [...bins, process.env['PATH'] ?? ''].join(':')
   return out

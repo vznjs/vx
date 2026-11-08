@@ -56,6 +56,8 @@ export interface PlanTask {
   /** Its number in the run's graph and its deps' (`planTasks`): a plan's shape reads them, not ids. */
   readonly n?: number
   readonly depsN?: Int32Array
+  /** Its servers' bases (`Need.servers`): booked once on each worker. */
+  readonly servers?: Need['servers']
 }
 
 /** The run's tasks numbered once, and each one's deps by number. */
@@ -100,6 +102,8 @@ export interface PlanWorker {
   readonly platform?: string | undefined
   /** The size it was started as (`Size.name`): what its warm-up is learned by. */
   readonly size?: string | undefined
+  /** The servers it runs, each with the base booked there. */
+  readonly serving?: ReadonlyMap<string, number> | undefined
 }
 
 /** A worker's warm-up, one for all, or by its size (`Size.name`; none for one that joined on its own). */
@@ -260,6 +264,7 @@ export function planTasks(
       platform: typeof home === 'function' ? home(e.node) : (e.node.platform ?? home),
       n: e.n,
       depsN: e.depsN,
+      ...(n.servers === undefined ? {} : { servers: n.servers }),
     })
   }
   return out
@@ -416,8 +421,9 @@ function play(
     memory: w.memory,
     platform: w.platform,
     at: w.at,
-    used: { cores: 0, memory: 0 },
+    used: { cores: [...(w.serving?.values() ?? [])].reduce((a, b) => a + b, 0), memory: 0 },
     running: 0,
+    serving: new Set(w.serving?.keys()),
   }))
   // Ends to come: [at, slot, cores, memory, task or undefined].
   const ends = new Ends()

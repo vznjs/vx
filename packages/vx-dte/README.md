@@ -65,12 +65,12 @@ the initiator.
   anyone who reads the repository's Actions sees. A dispatch GitHub
   answers without a run id (204) is refused, so its workers exit.
 
-| Who           | `info` / `body`                                         |
-| ------------- | ------------------------------------------------------- |
-| worker `join` | `info: { "noise": <message 1>, "token"? }`              |
-| orchestrator  | `{ "type": "hello", "noise": <message 2>, "token"? }`   |
-| orchestrator  | `{ "type": "refused", "reason" }`, plain, then `remove` |
-| either, then  | `["<n>.<ciphertext>", …]`                               |
+| Who           | `info` / `body`                                            |
+| ------------- | ---------------------------------------------------------- |
+| worker `join` | `info: { "noise": <message 1>, "token"? }`                 |
+| orchestrator  | `{ "type": "hello", "noise": <message 2>, "token"? }`      |
+| orchestrator  | `{ "type": "refused", "reason" }`, plain, then `remove`    |
+| either, then  | `["<n>.<ciphertext>", …]`, or `["+", …]` with more to come |
 
 The orchestrator checks each worker the moment the relay says it joined,
 and `remove`s one whose handshake fails. Message 1's payload is the
@@ -79,7 +79,10 @@ body is Noise transport messages, base64, each at most 65535 bytes and
 naming its nonce `n` (Noise §11.4, since a relay may reorder); each is
 sealed with associated data `<first n>.<parts>` of its body, so no part
 opens in another body, and a body's parts take consecutive nonces, so
-none is repeated or reordered in it. A body whose first nonce was seen before is a
+none is repeated or reordered in it. A body of more than 5 parts goes
+over several sends of 5, each but the last led by `"+"`, so no frame
+passes the relay's 1 MiB; the receiver holds them until the last and
+opens the body whole. A body whose first nonce was seen before is a
 replay and is dropped; one older than a body already opened (the relay
 held it back: the wire's numbers are outside the seal) or that does not
 open loses its sender. The plaintext is a lead byte, the length of
@@ -140,7 +143,8 @@ index being committed is left as it is. When a worker fails, its row names
 the error line and the log that holds its whole stderr and all `prepare`
 printed. At the run's end,
 or on Ctrl-C, vx exits without waiting for the worktrees to be removed:
-a detached shell removes them and prunes git's records. A run whose vx
+a detached shell waits up to 5 s for the workers to leave, kills any
+still running, removes the worktrees and prunes git's records. A run whose vx
 was killed (`kill -9`) removes none; the next `local()` run in the
 repository removes them, once their run's process is gone.
 
@@ -520,9 +524,16 @@ use your own instead.
   A sandbox the worker cannot host (no `bwrap` in its image) fails the
   task there, as it fails here; the worker stays in the run.
 - A persistent task a task depends on starts on the worker that runs the
-  task, once per worker, ready before it, and stops when the worker leaves;
+  task, once per worker, ready before it, and stops there once no task left
+  in the run uses it (the run's `unneeded`), or when the worker leaves;
   the orchestrator never starts it, and a worker no dependant reaches
-  never does (2026-10-22).
+  never does (2026-10-22). Its CPU is learned on the worker each second
+  as `cores = base + each running dependant's cost`: the base from looks
+  with no dependant running, each cost from looks with it (a look on a
+  full machine only raises them). Each dependant's cost is added to its
+  CPU, so its history books it; the base is booked once on each worker
+  that starts the server, in placement and in the plan, and kept for the
+  next run under the commit, as warm-ups are.
 - A task whose key hashes a runtime probe (`inputs.runtime`, such as
   `bun --version`) runs on a worker, which answers the probe first and
   fails the task when it answers otherwise than this machine did. A path
@@ -548,7 +559,9 @@ use your own instead.
   deep graph's orders stay small.
 - A task runs with the orchestrator's environment under the worker's
   root. `HOME`, `TMPDIR`, `USER` and the like are the worker's own, unless
-  the task's `env.define` sets them; `npm_execpath` is the workspace's
+  the task's `env.define` sets them or its `inputs.env` keys them: a keyed
+  one is the orchestrator's value, or unset where it is unset there, so
+  the worker runs on what the key saw; `npm_execpath` is the workspace's
   package manager on the worker, as core sets it on a local task.
 - A worker restores, by key, the declared outputs of every task the one
   it runs depends on, each after its own dependencies (an additive task's
@@ -559,7 +572,9 @@ use your own instead.
   leaves no file. One waits there up to 10 s; past that, with that worker
   gone or of another platform, or with its uncached upstreams on two
   workers, the upstream runs again where the dependant can go, and the
-  dependant follows it. A task whose upload no remote took after three
+  dependant follows it. One whose `exec.worker` or `exec.platforms` rules
+  out where its dependant runs refuses the run before a worker starts,
+  naming both: cache it, or run both alike. A task whose upload no remote took after three
   tries (too big, a 429, a reset connection) is its worker's fault: that
   worker takes no more tasks and the task runs on another; a second fault
   fails the run. Before a task runs, its
@@ -581,18 +596,30 @@ use your own instead.
   `--no-cache` or read-only run, a dependant of a failure under
   `--continue=always`, one that left a process running that may still
   write its outputs, one a stopped run cancelled), and one that left a tracked file under its project
-  changed on its worker (a formatter's input), which this machine never
-  sees: core withholds its own save when the key read that file, and says so.
+  changed on its worker (a formatter's input), or that found an untracked,
+  unignored file under its project there (its outputs and its dependencies'
+  aside), which this machine never sees: core withholds its own save when
+  the key read that file or its inputs declare it, and says so.
 - Under `--force`, a success is saved under its key (which keeps an entry
   it already holds, as core does) and under the run's key, which this
   machine and the dependants' workers restore: the bytes this run built,
   never the entry it bypassed.
 - A worker whose tracked files differ from the orchestrator's (another
   tree, or the same commit with a tracked file changed, such as by a
-  prepare step) is refused. Both sides read their tracked files as they
+  prepare step) is refused, and the orchestrator says so as it happens:
+  `[vx] dte: refused worker <id>: <reason>`. Both sides read their tracked files as they
   are on disk, a file flagged `assume-unchanged` or `skip-worktree` too
   (one a sparse checkout left off disk is its index's), so the same change
   on both is the same tree.
+- A worker runs the commit's bytes and modes, which are the ones the key
+  read: the run's snapshot stages each file's executable bit as on disk
+  (under `core.fileMode=false` too, as core keys it), and a worker writes
+  back as the commit holds it each file a git filter of its own checked
+  out otherwise (`text`, `eol`, `ident`, `filter` such as LFS,
+  `working-tree-encoding`, `core.autocrlf`). A task whose key hashes a
+  tracked file that is on disk other than the commit holds it (CRLF such
+  a filter wrote, an expanded ident, an LFS file's content) fails, naming
+  the file: no worker builds on those bytes.
 - A task whose key hashes a file the run's commit lacks (untracked, or
   gitignored and named outright, or inside a submodule, whose files the
   commit holds only as a gitlink) fails, naming the file: no worker has it.
@@ -753,8 +780,9 @@ not:
 
 A run over that started none (every task a hit) says
 `workers   none started: no task needed one`; one where a task waited
-on a worker and none joined (none started, or each refused) says
-`workers   none joined: a task waited on one`.
+on a worker and none joined says
+`workers   none joined: a task waited on one`, or, when the run refused
+workers, `workers   none joined: 2 refused (<first reason>)`.
 
 Under each worker, and `local`, the footer then spells out what it did:
 its time online, busy and idle; its CPU peak and average in cores and

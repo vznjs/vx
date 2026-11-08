@@ -96,7 +96,8 @@ expires it (`@vzn/vx-cache-server`'s Expiry).
 A refused token is said once and turns the remote off for the run; a
 refused write (a job that reads only) turns off writes alone. Any other
 refusal is a warning naming the server's own words, and the task reads
-as a miss.
+as a miss. A token the request sent (the job's OIDC token, a lent one,
+`VX_CACHE_TOKEN`) that those words or any error quote is written `***`.
 
 Every read names scopes, each a ref, percent-encoded. A check names the run's refs in order (its branch, then the
 branch it merges into, then the default branch; on CI `github()` or

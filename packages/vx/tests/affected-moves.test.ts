@@ -119,3 +119,15 @@ it('a deleted project with a config selects every project: who held an edge to i
   commit('drop c')
   expect(await owners(projectsAt({ a: 'packages/a', b: 'packages/b' }))).toEqual(['a', 'b'])
 })
+
+// Under `.vx` no config is a project (discovery skips it), so one deleted
+// there removed no project: it selected every project.
+it('a config deleted under .vx selects nothing', async () => {
+  await withConfigs()
+  await mkdir(path.join(root, '.vx', 'x'), { recursive: true })
+  await writeFile(path.join(root, '.vx', 'x', 'vx.config.mjs'), 'export default {}\n')
+  commit('state')
+  git('rm', '-rq', '.vx/x')
+  commit('drop state')
+  expect(await owners(projectsAt(ABC))).toEqual([])
+})

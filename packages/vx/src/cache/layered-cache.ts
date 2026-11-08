@@ -35,6 +35,7 @@ import type {
   SaveArgs,
 } from './cache.js'
 import type { OutputDirRow } from './cache.js'
+import { shareSeenHasher } from './cache.js'
 import { isCorruptArtifact } from './layer.js'
 import { RemoteLane, type ResolvedRemote } from './remote-lane.js'
 import type { PluginSecrets } from '../util/index.js'
@@ -224,6 +225,8 @@ export class LayeredCache implements CacheLayer {
   private readonly lanes: readonly RemoteLane[]
   /** Each key `save` uploaded: whether a remote took it (`uploaded`). */
   private readonly sent = new Map<string, Promise<boolean>>()
+  /** Each key whose stored entry `save` kept, until `kept` answers for it. */
+  private readonly keptHere = new Set<string>()
 
   /**
    * In-flight remote pulls keyed by hash. `prefetch` and `get` both go
@@ -259,6 +262,7 @@ export class LayeredCache implements CacheLayer {
     uploadConcurrency?: number,
   ) {
     this.lanes = remotes.map((r) => new RemoteLane(r, local.traffic, uploadConcurrency))
+    shareSeenHasher(local, this)
   }
 
   // Asked, not kept: a remote whose `open` failed leaves the run after this is built.
@@ -589,7 +593,7 @@ export class LayeredCache implements CacheLayer {
   }
 
   kept(hash: string): boolean {
-    return this.local.kept(hash)
+    return this.keptHere.delete(hash) || this.local.kept(hash)
   }
 
   hashFile(filePath: string): Promise<string> {
@@ -609,6 +613,8 @@ export class LayeredCache implements CacheLayer {
     // Local write honors its own gates inside Cache.save (no-op when local
     // writes are disabled).
     await this.local.save(args)
+    const kept = this.local.kept(args.hash)
+    if (kept) this.keptHere.add(args.hash)
     const writable = this.lanes.filter((l) => l.write)
     if (writable.length === 0) return
     // Write-through upload, OFF the task's critical path: each PUT runs in
@@ -631,9 +637,11 @@ export class LayeredCache implements CacheLayer {
     // while this task's output files are still on disk. Deferring THIS
     // read would pack whatever the tree happens to hold when the job
     // runs. Such a run keeps the old memory profile by necessity — the
-    // bytes exist nowhere else.
+    // bytes exist nowhere else. So with an entry the save kept (`--force`):
+    // its artifact is an older run's, maybe the corrupt one `--force` was
+    // run to replace, and a remote holding none took it for good.
     let packed: Uint8Array | undefined
-    if (!this.local.localWritesEnabled) {
+    if (!this.local.localWritesEnabled || kept) {
       try {
         packed = await this.local.packArtifactBytes(args)
       } catch (err) {

@@ -10,6 +10,7 @@ import {
   parseDependencySpec,
   type DependencySpec,
 } from '../util/index.js'
+import { standInsOf, type StandIns } from './stand-ins.js'
 import type { TaskNode } from './task-graph.js'
 
 /**
@@ -36,9 +37,13 @@ export function keyedDeps(node: TaskNode): readonly string[] {
  * A filter selects among the task's own dependencies, never through a
  * group: `dependsOn: ['build']` over a group `build` of `build.a` and
  * `build.b` offers the filter `build`, not its members. A pattern that
- * matches only a member (`build.*`) therefore selected nothing, and the key stopped moving
- * with that member's inputs: a stale hit under a green run. Such a spec
- * is refused, once, over the graph every key site reads. One that matches
+ * matches a member (`build.*`) the filter folds neither directly nor
+ * through a selected group therefore left it out, and the key stopped
+ * moving with that member's inputs: a stale hit under a green run. That
+ * held when the pattern also matched another dependency directly
+ * (`dependsOn: ['build', 'build.a']`), so such a spec is refused, once,
+ * over the graph every key site reads, unless it matches the group
+ * itself (a negation of the group is a decision). One that matches
  * nothing anywhere stays legal (a preset's pattern needn't match in every
  * project). An exact name is refused earlier, at load, unless `dependsOn`
  * names it (`assertFilterNamesDeclaredDeps`).
@@ -49,19 +54,33 @@ export function refuseFiltersThroughGroups(nodes: ReadonlyMap<string, TaskNode>)
     if (filter === undefined || filter.length === 0) continue
     const deps = keyedDeps(node).flatMap((id) => nodes.get(id) ?? [])
     const groups = deps.filter(isGroupTask)
+    const folded = new Set<TaskNode>()
+    if (groups.length > 0) {
+      const units = deps.map((n) => ({ node: n, unit: n.id }))
+      const picked = selectFoldedDeps(units, filter, node.projectName, node.id, standInsOf(node))
+      for (const { node: n } of picked) {
+        folded.add(n)
+        if (isGroupTask(n)) for (const m of groupMembers(n, nodes)) folded.add(m)
+      }
+    }
     for (const raw of filter) {
       const spec = parseSpec(raw, node.id)
       if (spec.negated) continue
       const matches = specMatcher(spec)
       const hit = (n: TaskNode): boolean => matches(n, n.projectName === node.projectName)
-      if (deps.some(hit)) continue
+      const direct = deps.some(hit)
       for (const group of groups) {
-        const member = groupMembers(group, nodes).find(hit)
+        if (hit(group)) continue
+        const member = groupMembers(group, nodes).find(
+          (m) => hit(m) && !folded.has(m) && !deps.includes(m),
+        )
         if (member === undefined) continue
+        const outcome = direct ? 'so the key leaves it out' : 'so it selects nothing'
         throw new UserError(
-          `${node.id}: inputs.tasks: '${raw}' matches ${member.id} only through the group ${group.id}, so it selects nothing; name '${group.taskName}' or depend on ${member.id} directly`,
+          `${node.id}: inputs.tasks: '${raw}' matches ${member.id} only through the group ${group.id}, ${outcome}; name '${group.taskName}' or depend on ${member.id} directly`,
         )
       }
+      if (direct) continue
       if (
         namesNoDependency(spec, node.config.dependsOn ?? []) ||
         namesTransitiveDependency(spec, node, nodes, hit)
@@ -193,16 +212,26 @@ export interface FoldCandidate {
  *   - `filter === undefined` → every candidate, as given.
  *   - `filter === []`        → none (fully decoupled).
  *
- * Otherwise deduped by `unit`, first candidate kept. The unit is the
- * fold's own identity, not the task's: two groups over the same members
- * share one hash, so excluding either excludes both, and a selection by
- * task id would keep the other while the key folded neither.
+ * Otherwise deduped by `unit`, first selected candidate kept. The unit is
+ * the fold's own identity, not the task's: two groups over the same members
+ * share one hash. A negation drops only the candidates it names, and the
+ * dedup runs after every entry, so a unit still selected through another
+ * candidate stays folded: deleting by unit let `['^*', '!c#build']` drop
+ * b#build's group with c#build's, and a change beneath both replayed the
+ * old hit.
+ *
+ * `standIns` is the task's `standInsOf`: an edge added past a
+ * default build on a package cycle is selected whenever an edge it went
+ * past is. That build folds nothing of its cycle, so `['build']` on
+ * `a ↔ b` selected a#build alone, dropped b#build, and an edit to b
+ * replayed the old hit.
  */
 export function selectFoldedDeps(
   deps: readonly FoldCandidate[],
   filter: readonly string[] | undefined,
   selfProjectName: string,
   selfTaskId: string,
+  standIns?: StandIns,
 ): FoldCandidate[] {
   if (filter === undefined) return [...deps]
 
@@ -211,18 +240,25 @@ export function selectFoldedDeps(
   // Per-spec predicate, compiled once (exact compares + patterns).
   const matchers = specs.map((spec) => specMatcher(spec))
 
-  const selected = new Map<string, FoldCandidate>()
+  const selected = new Set<FoldCandidate>()
   for (let i = 0; i < specs.length; i++) {
     const spec = specs[i]!
     const matches = matchers[i]!
     for (const d of deps) {
       const isSelf = d.node.projectName === selfProjectName
       if (!matches(d.node, isSelf)) continue
-      if (spec.negated) selected.delete(d.unit)
-      else if (!selected.has(d.unit)) selected.set(d.unit, d)
+      if (spec.negated) selected.delete(d)
+      else selected.add(d)
     }
   }
-  return [...selected.values()]
+  if (standIns !== undefined) {
+    const ids = new Set<string>()
+    for (const d of selected) ids.add(d.node.id)
+    for (const d of deps) if (standIns[d.node.id]?.some((p) => ids.has(p))) selected.add(d)
+  }
+  const byUnit = new Map<string, FoldCandidate>()
+  for (const d of selected) if (!byUnit.has(d.unit)) byUnit.set(d.unit, d)
+  return [...byUnit.values()]
 }
 
 /** Exact-name compare, or the shared `*`-glob when the name is a pattern. */
@@ -281,7 +317,13 @@ export function foldedDeps(node: TaskNode, nodeOf: (id: string) => TaskNode): Fo
     candidates.push({ node: dep, unit: foldUnit(dep) })
   }
   if (isGroupTask(node) && node.config.inputs === undefined) return candidates
-  return selectFoldedDeps(candidates, node.config.inputs?.tasks, node.projectName, node.id)
+  return selectFoldedDeps(
+    candidates,
+    node.config.inputs?.tasks,
+    node.projectName,
+    node.id,
+    standInsOf(node),
+  )
 }
 
 /**

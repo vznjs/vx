@@ -410,6 +410,17 @@ function failedWithWrites(db: Database, id: string | null): number {
   return row !== null && writesCache(row.p) ? row.f : 0
 }
 
+const NO_WRITE = '--no-cache, or a --cache-policy without write'
+
+/** False only when the run's recorded policy writes no cache; an unrecorded one may have. */
+function runWritesCache(db: Database, id: string | null): boolean {
+  if (id === null) return true
+  const row = db.query('SELECT cache_policy AS p FROM invocations WHERE run_id = ?').get(id) as {
+    p: string
+  } | null
+  return row === null || writesCache(row.p)
+}
+
 /**
  * The endings an UNCHANGED cache key can have. A re-execution is told apart
  * by the evidence the index holds: every one used to blame `--no-cache` /
@@ -842,7 +853,13 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
   // the failure, or the one that broke it).
   // So did one that passed beside a failed task (--continue).
   const tainted = isPassStatus(prev.status) && failedWithWrites(db, prev.runId) > 0
-  if (cur.length > 0 && old.length === 0 && (!isPassStatus(prev.status) || tainted)) {
+  // So did one whose run wrote no cache (--no-cache, a read-only policy).
+  const prevNoWrite = isPassStatus(prev.status) && !runWritesCache(db, prev.runId)
+  if (
+    cur.length > 0 &&
+    old.length === 0 &&
+    (!isPassStatus(prev.status) || tainted || prevNoWrite)
+  ) {
     const saved = db
       .query(
         `SELECT run_id AS runId, hash FROM runs
@@ -853,7 +870,12 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
       .get(project, task, this_.id) as { runId: string | null; hash: string } | undefined
     if (saved) {
       const { entries, unchangedCount } = diffKeyComponents(loadEntryInputs(db, saved.hash), cur)
-      const since = `run ${saved.runId}, the last that saved an entry (${tainted ? 'the previous run ran beside a failed task, so it was not saved' : `the previous run ended ${prev.status}`})`
+      const why = tainted
+        ? 'the previous run ran beside a failed task, so it was not saved'
+        : prevNoWrite
+          ? `the previous run did not write the cache: ${NO_WRITE}`
+          : `the previous run ended ${prev.status}`
+      const since = `run ${saved.runId}, the last that saved an entry (${why})`
       return {
         runId,
         taskId,
@@ -878,11 +900,15 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
     const unsaved =
       cur.length === 0 && !isPassStatus(this_.status)
         ? `this run ended ${this_.status}`
-        : old.length === 0 && !isPassStatus(prev.status)
-          ? `the previous run ended ${prev.status}`
-          : old.length === 0 && tainted
-            ? 'the previous run ran beside a failed task'
-            : null
+        : cur.length === 0 && !runWritesCache(db, runId)
+          ? `this run did not write the cache (${NO_WRITE})`
+          : old.length === 0 && !isPassStatus(prev.status)
+            ? `the previous run ended ${prev.status}`
+            : old.length === 0 && tainted
+              ? 'the previous run ran beside a failed task'
+              : old.length === 0 && prevNoWrite
+                ? `the previous run did not write the cache (${NO_WRITE})`
+                : null
     return {
       runId,
       taskId,
@@ -929,10 +955,54 @@ export function upstreamTask(name: string): string {
   return i < 0 ? name : name.slice(i + GROUP_VIA.length)
 }
 
+/**
+ * The tasks `runId` recorded a row for, as `project#task`. One read: runs
+ * has no (project, task) index (schema.ts), so asking per task scans the
+ * run's rows each time, and a 10,000-task fan-in asked 10,000 times.
+ */
+export function recordedTasks(db: Database, runId: string): Set<string> {
+  const rows = db.query('SELECT project, task FROM runs WHERE run_id = ?').all(runId) as {
+    project: string
+    task: string
+  }[]
+  return new Set(rows.map((r) => `${r.project}#${r.task}`))
+}
+
 export interface RootCause {
-  /** From the asked task down to the one whose own inputs moved. */
-  chain: string[]
-  entries: CacheKeyDiff['entries']
+  /**
+   * From the asked task down to the one whose own inputs moved. Built on
+   * each read, as long as the chain: a deep graph has as many roots as
+   * tasks, so read it only for a root that is shown.
+   */
+  readonly chain: string[]
+  /** The task whose own inputs moved: the chain's last id. */
+  readonly task: string
+  readonly entries: CacheKeyDiff['entries']
+}
+
+/** A visited task: the step that reached it (`group ← task` through a group) and the visit it came from. */
+interface Reach {
+  readonly up: Reach | null
+  readonly step: readonly string[]
+}
+
+class Cause implements RootCause {
+  constructor(
+    private readonly reach: Reach,
+    readonly task: string,
+    readonly entries: CacheKeyDiff['entries'],
+  ) {}
+
+  get chain(): string[] {
+    const steps: (readonly string[])[] = []
+    for (let r: Reach | null = this.reach; r !== null; r = r.up) steps.push(r.step)
+    return steps.reverse().flat()
+  }
+
+  /** `--format json`'s root: its chain and entries, as before the back links. */
+  toJSON(): { chain: string[]; entries: CacheKeyDiff['entries'] } {
+    return { chain: this.chain, entries: this.entries }
+  }
 }
 
 /**
@@ -943,7 +1013,9 @@ export interface RootCause {
  * moved since a run of it alone in between. A task visited once is not
  * walked again (a diamond names its root once). A group records no run,
  * so `groups` (group id → the tasks it gathers) carries the walk through
- * it.
+ * it. Depth first, on a stack of its own: a 20,000-task chain is deeper
+ * than recursion goes, and each visit keeps only a link to the one that
+ * reached it, so no chain is copied per level.
  */
 export function rootCauses(
   db: Database,
@@ -952,44 +1024,50 @@ export function rootCauses(
   entries: CacheKeyDiff['entries'],
   groups: ReadonlyMap<string, readonly string[]> = new Map(),
 ): RootCause[] {
-  const recorded = db.query('SELECT 1 FROM runs WHERE run_id = ? AND project = ? AND task = ?')
+  const recorded = recordedTasks(db, runId)
   const roots: RootCause[] = []
   const seen = new Set([taskId])
-  const walk = (chain: string[], moved: CacheKeyDiff['entries']): void => {
-    for (const e of moved) {
-      if (e.kind !== 'upstream') continue
-      const task = upstreamTask(e.name)
-      if (seen.has(task)) continue
-      seen.add(task)
-      const next = [...chain, ...e.name.split(GROUP_VIA)]
-      if (recorded.get(runId, ...splitTaskId(task)) === null) {
-        // A group: its members carry the walk, by their own rows named
-        // through it (`group ← task`) when the key has them, else by the
-        // graph, whose members carry none of the dependant's keys.
-        const via = `${e.name}${GROUP_VIA}`
-        if (moved.some((x) => x.kind === 'upstream' && x.name.startsWith(via))) continue
-        const members = groups.get(task) ?? []
-        walk(
-          next,
-          members.map((name) => ({ ...e, name, before: null, after: null })),
-        )
-        continue
-      }
-      let d: CacheKeyDiff['entries']
-      if (e.before !== null && e.after !== null) {
-        const before = loadEntryInputs(db, e.before)
-        const after = loadEntryInputs(db, e.after)
-        // A pruned or unsaved side kept no fingerprints: nothing to name.
-        d = before.length > 0 && after.length > 0 ? diffKeyComponents(before, after).entries : []
-      } else {
-        d = cacheKeyDiff(db, runId, task).entries
-      }
-      const own = d.filter((x) => x.kind !== 'upstream')
-      if (own.length > 0) roots.push({ chain: next, entries: own })
-      walk(next, d)
+  const stack = [{ from: { up: null, step: [taskId] } as Reach, moved: entries, i: 0 }]
+  while (stack.length > 0) {
+    const frame = stack.at(-1)!
+    const { moved } = frame
+    if (frame.i === moved.length) {
+      stack.pop()
+      continue
     }
+    const e = moved[frame.i++]!
+    if (e.kind !== 'upstream') continue
+    const task = upstreamTask(e.name)
+    if (seen.has(task)) continue
+    seen.add(task)
+    const reach: Reach = { up: frame.from, step: e.name.split(GROUP_VIA) }
+    if (!recorded.has(task)) {
+      // A group: its members carry the walk, by their own rows named
+      // through it (`group ← task`) when the key has them, else by the
+      // graph, whose members carry none of the dependant's keys.
+      const via = `${e.name}${GROUP_VIA}`
+      if (moved.some((x) => x.kind === 'upstream' && x.name.startsWith(via))) continue
+      const members = groups.get(task) ?? []
+      stack.push({
+        from: reach,
+        moved: members.map((name) => ({ ...e, name, before: null, after: null })),
+        i: 0,
+      })
+      continue
+    }
+    let d: CacheKeyDiff['entries']
+    if (e.before !== null && e.after !== null) {
+      const before = loadEntryInputs(db, e.before)
+      const after = loadEntryInputs(db, e.after)
+      // A pruned or unsaved side kept no fingerprints: nothing to name.
+      d = before.length > 0 && after.length > 0 ? diffKeyComponents(before, after).entries : []
+    } else {
+      d = cacheKeyDiff(db, runId, task).entries
+    }
+    const own = d.filter((x) => x.kind !== 'upstream')
+    if (own.length > 0) roots.push(new Cause(reach, task, own))
+    stack.push({ from: reach, moved: d, i: 0 })
   }
-  walk([taskId], entries)
   return roots
 }
 
@@ -1014,43 +1092,65 @@ const WRITE_SLACK_MS = 5
  * that writes a file another key reads re-keys that task on every run.
  * The file's mtime against the recorded windows, so
  * a writer that runs each time is named from its latest run, and an
- * edit made outside a run names none.
+ * edit made outside a run, or after run `runId` ended, names none.
  */
 export function inputWriters(
   db: Database,
+  runId: string,
   workspaceRoot: string,
   taskId: string,
   entries: CacheKeyDiff['entries'],
   roots: readonly RootCause[],
 ): InputWriter[] {
+  // Bounded on both sides by the longest recorded window, so the query
+  // walks `runs_started_at` over that span, not every older row.
   const during = db.query(
     `SELECT project, task FROM main.runs
-      WHERE started_at <= ?1 + ${WRITE_SLACK_MS} AND ended_at >= ?1 - ${WRITE_SLACK_MS}
-        AND status != 'skipped'
+      WHERE started_at BETWEEN ?1 - ?2 - ${WRITE_SLACK_MS} AND ?1 + ${WRITE_SLACK_MS}
+        AND ended_at >= ?1 - ${WRITE_SLACK_MS} AND status != 'skipped'
       GROUP BY project, task ORDER BY MIN(started_at) LIMIT 3`,
   )
+  let bounds: { longest: number; runEnd: number } | undefined
+  // A deep graph has as many roots as tasks, most reading the same files:
+  // each file is stat'd and asked about once.
+  const byFile = new Map<string, string[] | null>()
+  const writersOf = (file: string): string[] | null => {
+    let w = byFile.get(file)
+    if (w !== undefined) return w
+    w = null
+    let mtime: number | undefined
+    try {
+      mtime = statSync(path.join(workspaceRoot, file)).mtimeMs
+    } catch {}
+    if (mtime !== undefined && bounds === undefined) {
+      const b = db
+        .query(
+          `SELECT (SELECT MAX(ended_at - started_at) FROM main.runs WHERE status != 'skipped') AS ms,
+                  (SELECT MAX(r.ended_at) FROM main.runs r JOIN main.run_ids k ON k.id = r.run
+                    WHERE k.run_id = ?1) AS runEnd`,
+        )
+        .get(runId) as { ms: number | null; runEnd: number | null }
+      bounds = { longest: b.ms ?? 0, runEnd: b.runEnd ?? 0 }
+    }
+    // A change after the asked run ended came after its tasks read the
+    // file: it says nothing about who wrote what they saw.
+    if (mtime !== undefined && mtime <= bounds!.runEnd + WRITE_SLACK_MS) {
+      const rows = during.all(mtime, bounds!.longest) as { project: string; task: string }[]
+      if (rows.length > 0) w = rows.map((r) => `${r.project}#${r.task}`)
+    }
+    byFile.set(file, w)
+    return w
+  }
   const out: InputWriter[] = []
   const owners = [
     { taskId, entries },
-    ...roots.map((r) => ({ taskId: r.chain.at(-1)!, entries: r.entries })),
+    ...roots.map((r) => ({ taskId: r.task, entries: r.entries })),
   ]
   for (const owner of owners) {
     for (const e of owner.entries) {
       if (e.kind !== 'file' || e.change === 'removed') continue
-      let mtime: number
-      try {
-        mtime = statSync(path.join(workspaceRoot, e.name)).mtimeMs
-      } catch {
-        continue
-      }
-      const rows = during.all(mtime) as { project: string; task: string }[]
-      if (rows.length > 0) {
-        out.push({
-          taskId: owner.taskId,
-          file: e.name,
-          writers: rows.map((r) => `${r.project}#${r.task}`),
-        })
-      }
+      const writers = writersOf(e.name)
+      if (writers !== null) out.push({ taskId: owner.taskId, file: e.name, writers })
     }
   }
   return out

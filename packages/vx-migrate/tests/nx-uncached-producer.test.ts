@@ -113,3 +113,30 @@ it(
   },
   TIMEOUT,
 )
+
+it(
+  'a `transitive` reader re-runs when an uncached producer behind a group writes new bytes',
+  async () => {
+    // Nx's `transitive: true` hashes the outputs of every task below the
+    // reader; an `nx:noop` `prep` between `codegen` and `fetch` hid fetch's
+    // schema, and v2 replayed v1's types (hunt, 2026-11-08).
+    const graph = await Bun.file(path.join(root, 'graph.json')).json()
+    const targets = graph.graph.nodes.lib.data.targets
+    targets.prep = { executor: 'nx:noop', dependsOn: ['fetch'] }
+    targets.codegen.dependsOn = ['prep']
+    targets.codegen.inputs[1] = { dependentTasksOutputFiles: '**/*.json', transitive: true }
+    await writeFile(path.join(root, 'graph.json'), JSON.stringify(graph))
+    Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+    const opts = { cwd: root, tasks: ['lib#codegen'], log: silent(), handleSignals: false }
+    const out = path.join(root, 'packages', 'lib', 'out', 'types.txt')
+    const statusOf = (r: Awaited<ReturnType<typeof run>>) =>
+      r.outcomes.find((o) => o.node.id === 'lib#codegen')!.status
+    await writeFile(path.join(root, 'remote.txt'), 'v1\n')
+    expect(statusOf(await run(opts))).toBe('success')
+    await writeFile(path.join(root, 'remote.txt'), 'v2\n')
+    expect(statusOf(await run(opts))).toBe('success')
+    expect(await Bun.file(out).text()).toBe('v2\n')
+    expect(statusOf(await run(opts))).toBe('cache-hit')
+  },
+  TIMEOUT,
+)

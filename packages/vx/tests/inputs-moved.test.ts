@@ -429,6 +429,47 @@ describe('inputs.stability: what a write during the command means', () => {
 
 describe('the other moves', () => {
   it(
+    'an input the task hard-links: the line says only its ctime moved, and mutable saves it',
+    async () => {
+      // A hard link bumps the source's ctime and nothing else, which the
+      // line called a change and answered with a hint for a rewrite. It is
+      // still withheld: an edit undone with its mtime put back reads the same.
+      // The sleep only clears the kernel's coarse tick (~10 ms, fs-clock.ts),
+      // which can date a link made at once before the command began.
+      const config = (stability: string) => `
+        export default {
+          tasks: {
+            build: {
+              exec: { command: 'sleep 0.1 && mkdir -p dist && ln src/a.txt dist/a.txt' },
+              inputs: { files: ['src/**']${stability} },
+              outputs: { files: ['dist/**'] }, cache: true,
+            },
+          },
+        }
+      `
+      const app = await addProject(root, 'app', {
+        config: config(''),
+        files: { 'src/a.txt': 'a' },
+      })
+      await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\n')
+      commit()
+      await runTask('build')
+      expect(status.filter((l) => l.includes('packages/app/src/a.txt'))).toEqual([
+        "[vx] app#build: `packages/app/src/a.txt`'s ctime moved while the task ran, but not its bytes or mtime (a hard link, chmod or chown) — vx cannot tell that from an edit undone, so the result stands but is not saved; if the task hard-links it, copy it instead, or set inputs.stability: { strategy: 'mutable' }",
+      ])
+      await writeFile(
+        path.join(app, 'vx.config.mjs'),
+        config(", stability: { strategy: 'mutable' }"),
+      )
+      await rm(path.join(app, 'dist'), { recursive: true, force: true })
+      await runTask('build')
+      expect(status.filter((l) => l.includes('packages/app/src/a.txt'))).toEqual([])
+      expect(statusOf(await runTask('build'), 'app#build')).toBe('cache-hit')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'an input the task deletes: the entry is withheld',
     async () => {
       const app = await addProject(root, 'app', {
@@ -1042,6 +1083,32 @@ describe('movedInput — which files the re-check hashes again', () => {
       await movedInput([{ path: f, digest: 'd', since: ctime }], cache, ctime + 1),
     ).toBeUndefined()
     expect(calls).toEqual([f])
+  })
+
+  it("one stamped in the command start's own tick is the upstream's only if the describe saw that ctime", async () => {
+    // A coarse clock dates a write in the start's tick at the start, an
+    // upstream's just before it and the command's first just after. Read
+    // as the command's, a fast upstream's output withheld its reader's save.
+    const f = path.join(root, 'tick.txt')
+    await writeFile(f, 'x')
+    const ctime = lstatSync(f).ctimeMs
+    const seen = counting('d')
+    expect(
+      await movedInput([{ path: f, digest: 'd', since: ctime, ctimeMs: ctime }], seen.cache, ctime),
+    ).toBeUndefined()
+    expect(seen.calls).toEqual([f])
+    // An index OID's file was not stat'ed at the describe: the tie is the command's.
+    const unseen = counting('d')
+    expect(await movedInput([{ path: f, digest: 'd', since: ctime }], unseen.cache, ctime)).toBe(f)
+    expect(unseen.calls).toEqual([])
+    // Nor is a ctime the describe saw differently.
+    expect(
+      await movedInput(
+        [{ path: f, digest: 'd', since: ctime, ctimeMs: ctime - 1 }],
+        unseen.cache,
+        ctime,
+      ),
+    ).toBe(f)
   })
 
   it('a file that is gone has moved, and nothing is read', async () => {

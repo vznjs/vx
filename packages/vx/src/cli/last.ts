@@ -2,11 +2,12 @@
 // without re-executing anything. Comparison gap #12: with the dashboard's
 // run-detail page gone (the 2026-08-23 cloud removal), the local run
 // history in cache.db is the only replay surface, and this verb reads it.
-// Read-only — no config evaluation, no re-hash, no cache probe.
+// Read-only — no config evaluation, no re-hash, no cache probe; `--stats`
+// reads the lock only for each task's definition.
 
 import type { Database } from 'bun:sqlite'
 import { indexDb, Cache, keptSteps, keptWarnings, type RunStep } from '../cache/index.js'
-import { formatBytes } from './format.js'
+import { buildTaskGraph, expandRequested, isDefaultBuild, taskDefinitions } from '../graph/index.js'
 import { flagHint, formatValue, seeHelp } from './help.js'
 import {
   type FailureMode,
@@ -18,7 +19,9 @@ import {
   type RunSummaryRow,
 } from '../history/index.js'
 import {
+  applyGraphStage,
   currentBranch,
+  hasHook,
   type LiveSnapshot,
   liveSocketPath,
   exitSignal,
@@ -45,9 +48,18 @@ import {
 } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import { sayNotice } from '../ui/index.js'
-import { findWorkspaceRoot } from '../workspace/index.js'
+import { runRules } from '../settings.js'
+import { buildPackageGraph, findWorkspaceRoot } from '../workspace/index.js'
 import { findCwdProject } from './select.js'
-import { cliCacheDir, parseCacheDirFlag, rootSpelled } from './workspace-config.js'
+import {
+  cliCacheDir,
+  discoverCliProjects,
+  loadCliProjects,
+  loadCliWorkspace,
+  parseCacheDirFlag,
+  rootSpelled,
+  stageCacheDir,
+} from './workspace-config.js'
 
 interface LastArgs {
   runId?: string
@@ -292,17 +304,70 @@ export interface TaskStats {
 }
 
 /**
+ * Each task's definition (`taskDefinitions`) as a run builds the graph
+ * now: the lock's configs with the `project` and `graph` stages applied.
+ * Undefined when none loads (no lock, a broken config): then every
+ * definition's rows are read, as before definitions were kept.
+ */
+async function definitionsNow(
+  root: string,
+  cacheDir: string | undefined,
+): Promise<Map<string, string> | undefined> {
+  try {
+    // A plugin's warning is the run's to say, not a history read's.
+    const opts = { warn: () => {}, ...(cacheDir === undefined ? {} : { cacheDir }) }
+    const metas = await discoverCliProjects(root)
+    const projects = await loadCliProjects(root, metas, 'all', opts)
+    const ws = await loadCliWorkspace(root, opts.warn)
+    const rules = runRules(ws.workspaceConfig)
+    const names = new Set<string>()
+    for (const p of projects.values())
+      for (const t of Object.keys(p.config.tasks ?? {})) names.add(t)
+    const nodes = buildTaskGraph({
+      projects,
+      packageGraph: buildPackageGraph(metas),
+      requested: expandRequested([...names], [...projects.keys()], projects, isDefaultBuild),
+      workspaceRoot: root,
+      rules,
+    })
+    if (hasHook(ws.plugins, 'graph'))
+      await applyGraphStage(ws.plugins, nodes, {
+        workspaceRoot: root,
+        cacheDir: stageCacheDir(ws, opts),
+        projectMetas: metas,
+        warn: opts.warn,
+        rules,
+      })
+    return taskDefinitions(nodes.values())
+  } catch {
+    return undefined
+  }
+}
+
+/** Each task's definition as run `runId` recorded it: what its live rows read history by. */
+function runDefinitions(db: Database, runId: string): Map<string, string> {
+  const rows = db
+    .query(
+      `SELECT r.project, r.task, r.def FROM main.runs r JOIN main.run_ids k ON k.id = r.run
+       WHERE k.run_id = ? AND r.def IS NOT NULL`,
+    )
+    .all(runId) as { project: string; task: string; def: string }[]
+  return new Map(rows.map((r) => [`${r.project}#${r.task}`, r.def]))
+}
+
+/**
  * `--stats`: what the scheduler and `--dry` learn from history, per task,
  * over the same window (`LocalHistoryProvider`), with the p50 a run on
- * `branch` forecasts.
+ * `branch` forecasts from the timings of each task's definition `defs`.
  */
 async function printStats(
   db: Database,
   target: string | undefined,
   format: 'pretty' | 'json',
   branch: string | null,
+  defs: ReadonlyMap<string, string> | undefined,
 ): Promise<number> {
-  const provider = new LocalHistoryProvider(db, undefined, branch)
+  const provider = new LocalHistoryProvider(db, undefined, branch, defs)
   const matches = (id: string): boolean =>
     target === undefined || (target.includes('#') ? id === target : splitTaskId(id)[1] === target)
   const stats: TaskStats[] = [...(await provider.loadAll())]
@@ -732,13 +797,17 @@ export function formatTaskRows(
   // The run's own grid (`taskList`): a replay reads as the run did. What
   // the run said below the row (an exit, why it skipped) rides it dim.
   const rows = ordered.map((t) => {
-    // A cached failure with no cache outcome is a hit whose restore failed: no exit.
+    // A cached failure with no cache outcome is a hit whose restore failed: no
+    // exit. One whose command exited 0 failed in its save (a server that
+    // exited 0 before ready says so in its reason).
     const failure =
       t.status !== 'failed'
         ? ''
         : t.cached === true && t.cacheHit === null
           ? 'cache restore failed'
-          : `exit ${t.exitCode}`
+          : t.exitCode === 0 && t.notReady === null
+            ? 'cache save failed'
+            : `exit ${t.exitCode}`
     const note = (
       failure + reasonParts(t, skippedHere, inputMoved.get(`${t.project}#${t.task}`))
     ).trim()
@@ -857,7 +926,13 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
     if (parsed.stats === true) {
       const branch = currentBranch(root, undefined, parsed.branch)
       const task = parsed.task === undefined ? undefined : await rootSpelled(root, parsed.task)
-      return await printStats(db, task, parsed.format, branch)
+      return await printStats(
+        db,
+        task,
+        parsed.format,
+        branch,
+        await definitionsNow(root, parsed.cacheDir),
+      )
     }
 
     if (parsed.log !== undefined) {
@@ -871,12 +946,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         // never ran was told how to spell a task id. A typo of one that
         // ran is named, as `vx why` names it.
         const recorded = parsed.log.includes('#')
-          ? (
-              db.query('SELECT DISTINCT project, task FROM main.runs').all() as {
-                project: string
-                task: string
-              }[]
-            ).map((r) => `${r.project}#${r.task}`)
+          ? new LocalHistoryProvider(db).recentTaskIds()
           : []
         const ran = nearest(parsed.log, recorded)
         // No near name: what of that project has run, so the next try is a pick.
@@ -1069,17 +1139,18 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
     const ranIds = (detail?.tasks ?? [])
       .filter((t) => t.status === 'success' || t.status === 'failed')
       .map((t) => `${t.project}#${t.task}`)
-    const usual = new Map(
-      new LocalHistoryProvider(db, undefined, currentBranch(root)).p50sNow(ranIds),
+    // Each task's timings of the definition it ran under, as its live row
+    // read them: an older definition's timings are another task's.
+    const history = new LocalHistoryProvider(
+      db,
+      undefined,
+      currentBranch(root),
+      runDefinitions(db, inv.runId),
     )
+    const usual = new Map(history.p50sNow(ranIds))
     // A task whose one timing is this run's own has no usual to compare
     // with: `+0ms` claimed a baseline the live row rightly showed as `—`.
-    const alone = db
-      .query(
-        'SELECT project, task FROM task_durations GROUP BY project, task HAVING COUNT(*) = 1 AND MIN(recorded_at) >= ?',
-      )
-      .all(inv.startedAt) as { project: string; task: string }[]
-    for (const r of alone) usual.delete(`${r.project}#${r.task}`)
+    for (const id of history.timedOnlySince(ranIds, inv.startedAt)) usual.delete(id)
     const taskRows = formatTaskRows(detail?.tasks ?? [], moved, usual)
     if (taskRows.length > 0)
       blocks.push(ui.section('Tasks', String(detail?.tasks.length ?? 0), ...taskRows))

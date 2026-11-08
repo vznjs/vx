@@ -12,6 +12,7 @@ import {
   type ProjectEntry,
   type TaskNode,
 } from '../src/graph/task-graph.js'
+import { foldedDeps } from '../src/graph/folds.js'
 import { UserError } from '../src/util/index.js'
 
 function project(name: string, tasks: Record<string, TaskConfig>): ProjectEntry {
@@ -1086,6 +1087,26 @@ describe('checkGraph re-derives the addition marks (item 981)', () => {
   })
 })
 
+describe('checkGraph after a graph plugin', () => {
+  // A plugin's repeated edge folded the upstream into the key twice and
+  // left a held server waiting on one answer too many: the run never settled.
+  it('drops a repeated edge, keeping the order of the rest', () => {
+    const nodes = buildTaskGraph({
+      projects: projects(project('a', { x: cmd('x'), y: cmd('y'), z: cmd('z') })),
+      packageGraph: packageGraph({}),
+      requested: [
+        { project: 'a', task: 'x' },
+        { project: 'a', task: 'y' },
+        { project: 'a', task: 'z' },
+      ],
+    })
+    const z = nodes.get('a#z')!
+    z.deps = ['a#y', 'a#x', 'a#y']
+    checkGraph(nodes)
+    expect(z.deps).toEqual(['a#y', 'a#x'])
+  })
+})
+
 describe('detectCycle skips a finished node', () => {
   it('a chain of forty stacked diamonds is walked once per node, not once per path', () => {
     // The BLACK skip in the cycle detector is the difference between one
@@ -1494,6 +1515,29 @@ describe('buildTaskGraph — cycle topologies (Nx parity)', () => {
       'b#build': [],
       'c#build': ['a#build', 'b#build'],
     })
+  })
+
+  it('inputs.tasks naming a default build on a cycle folds the edges past it', () => {
+    // `['build']` and `['a#build']` selected a#build alone, which folds
+    // nothing of b: the edge past it to b#build was dropped from the key.
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('a', {
+          ...defaultBuild,
+          test: { ...cmd('t'), dependsOn: ['build'], inputs: { files: [], tasks: ['build'] } },
+        }),
+        project('b', defaultBuild),
+        project('c', {
+          build: { ...cmd('c'), dependsOn: ['^build'], inputs: { files: [], tasks: ['a#build'] } },
+        }),
+      ),
+      packageGraph: packageGraph({ a: ['b'], b: ['a'], c: ['a'] }),
+      requested: [{ project: 'a', task: 'test' }, build('c')],
+    })
+    const folded = (id: string) =>
+      foldedDeps(nodes.get(id)!, (d) => nodes.get(d)!).map((f) => f.node.id)
+    expect(folded('a#test')).toEqual(['a#build', 'b#build'])
+    expect(folded('c#build')).toEqual(['a#build', 'b#build'])
   })
 
   it('an edge by pattern to a default build on a cycle goes on past it, as by name', () => {

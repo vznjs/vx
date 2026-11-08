@@ -597,6 +597,101 @@ describe('a release from the npm registry', () => {
     )
     expect([await readFile(dest, 'utf8'), await readdir(sub)]).toEqual(['old', ['vx']])
   })
+
+  // A registry that took the connection and never answered hung `vx
+  // upgrade` (and a release `vx init`) with no output: no timeout.
+  it('a registry that accepts and never answers is the could-not-reach refusal', async () => {
+    const mute = Bun.listen({
+      hostname: '127.0.0.1',
+      port: 0,
+      socket: { data() {}, open() {} },
+    })
+    try {
+      const host = `127.0.0.1:${mute.port}`
+      const registry = { url: `http://${host}/`, auth: () => undefined }
+      const message = await fetchManifest(PKG, 'latest', 'vx upgrade', registry, 100).then(
+        () => 'resolved',
+        (err: Error) => err.message,
+      )
+      expect(message).toBe(
+        `vx upgrade: could not reach ${host} to read the release (no answer in 0.1 s) — check the network or the proxy and re-run`,
+      )
+    } finally {
+      mute.stop(true)
+    }
+  })
+
+  it('a body that stops between chunks is refused; one that keeps moving finishes', async () => {
+    const doc = JSON.stringify({ version: '9.9.9', pad: 'x'.repeat(64) })
+    const server = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch: (req) =>
+        new Response(
+          new ReadableStream({
+            async start(controller) {
+              if (new URL(req.url).pathname === '/stall/latest') {
+                controller.enqueue(new TextEncoder().encode(doc.slice(0, 10)))
+                return
+              }
+              // 8 chunks 100 ms apart: each gap under the 300 ms silence, the whole over it.
+              for (let at = 0; at < doc.length; at += Math.ceil(doc.length / 8)) {
+                controller.enqueue(
+                  new TextEncoder().encode(doc.slice(at, at + Math.ceil(doc.length / 8))),
+                )
+                await Bun.sleep(100)
+              }
+              controller.close()
+            },
+          }),
+          { headers: { 'Content-Type': 'application/json' } },
+        ),
+    })
+    try {
+      const host = `127.0.0.1:${server.port}`
+      const registry = { url: `http://${host}/`, auth: () => undefined }
+      expect(await fetchManifest('slow', 'latest', 'vx upgrade', registry, 300)).toEqual(
+        JSON.parse(doc),
+      )
+      const message = await fetchManifest('stall', 'latest', 'vx upgrade', registry, 300).then(
+        () => 'resolved',
+        (err: Error) => err.message,
+      )
+      expect(message).toBe(
+        `vx upgrade: could not read the release from ${host} (no answer in 0.3 s) — nothing replaced; check the network or the proxy and re-run`,
+      )
+    } finally {
+      await server.stop(true)
+    }
+  })
+
+  it('a tarball that stops arriving is refused and replaces nothing', async () => {
+    const stall = (): Response =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('x'.repeat(1000)))
+          },
+        }),
+      )
+    const sub = mkdtempSync(path.join(dir, 'stall-'))
+    const dest = path.join(sub, 'vx')
+    await writeFile(dest, 'old')
+    const message = await withFetch(
+      { [MANIFEST_URL]: () => Response.json(manifest()), [TARBALL_URL]: stall },
+      () =>
+        replaceBinary(dest, () =>
+          releaseBinary(PKG, '9.9.9', () => {}, TEST_KEY, undefined, 100),
+        ).then(
+          () => 'installed',
+          (err: Error) => err.message,
+        ),
+    )
+    expect(message).toBe(
+      'vx upgrade: could not download the release from registry.npmjs.org (no answer in 0.1 s) — nothing replaced; check the network or the proxy and re-run',
+    )
+    expect([await readFile(dest, 'utf8'), await readdir(sub)]).toEqual(['old', ['vx']])
+  })
 })
 
 describe('binaryFromTarball', () => {
@@ -1291,6 +1386,37 @@ describe('upgradeBinary: the version it already is', () => {
     }))
     expect(r).toEqual({ moved: false, asked: [] })
     expect(await readFile(dest, 'utf8')).toBe('old')
+  })
+
+  it('as latest, says so before refusing a directory it cannot write', async () => {
+    // A root-owned binary already at latest was told to sudo, exit 1: the
+    // write check ran before the registry named latest.
+    const host = `@vzn/vx-${process.platform}-${process.arch}`
+    const latest = `https://registry.npmjs.org/${host}/latest`
+    const integrity = integrityOf(TGZ)
+    const at = (version: string) => ({
+      version,
+      dist: {
+        tarball: TARBALL_URL,
+        integrity,
+        signatures: [{ keyid: TEST_KEY.id, sig: signed(`${host}@${version}:${integrity}`) }],
+      },
+    })
+    const dest = path.join(dir, 'not-there', 'vx')
+    const run = (served: string) =>
+      withFetch({ [latest]: () => Response.json(at(served)) }, async (asked) => ({
+        outcome: await upgradeBinary(dest, 'latest', '9.9.9', '', TEST_KEY).then(
+          (moved) => moved,
+          (err: Error) => err.message,
+        ),
+        asked,
+      }))
+    expect(await run('9.9.9')).toEqual({ outcome: false, asked: [latest] })
+    // CONTROL: a newer latest still refuses before its download.
+    expect(await run('9.9.10')).toEqual({
+      outcome: `vx upgrade: cannot write to ${path.dirname(dest)} (ENOENT), where this vx lives — nothing downloaded; re-run as a user who can (sudo vx upgrade), or install vx somewhere you can write`,
+      asked: [latest],
+    })
   })
 })
 

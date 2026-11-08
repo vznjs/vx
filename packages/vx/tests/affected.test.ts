@@ -15,7 +15,7 @@ import { lock } from './helpers/orchestrator.js'
 import type { FingerprintContext, VxPlugin } from '../src/index.js'
 import { UserError } from '../src/util/index.js'
 import { addProject, gitInitCommit, makeWorkspace } from './helpers/workspace.js'
-import { declaresInput, startGitEnumeration } from '../src/cache/index.js'
+import { declaresInput, startGitEnumeration, workspaceFilesReachInto } from '../src/cache/index.js'
 
 const CORE_BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 
@@ -2164,6 +2164,142 @@ describe("workspaceGlobOwners: the run path's staged load", () => {
         new Set([rel]),
       )
     expect([await loose('shared/gen/out.txt'), await loose('shared/src.txt')]).toEqual([[], ['p']])
+  })
+})
+
+describe('workspaceGlobOwners at scale', () => {
+  type Task = {
+    exec: { command: string }
+    inputs: { files: string[]; workspaceFiles?: string[] }
+    outputs?: { files: string[]; workspaceFiles: string[] }
+  }
+  type Config = { name: string; tasks: Record<string, Task> }
+  const stagedOf = (configs: Config[]) => async () =>
+    new Map(
+      configs.map((c) => [
+        c.name,
+        {
+          name: c.name,
+          dir: `/ws/packages/${c.name}`,
+          config: { tasks: c.tasks },
+        } as unknown as ProjectEntry,
+      ]),
+    )
+
+  it('reads each changed path once per distinct workspaceFiles list, never for a task without one', async () => {
+    // Every task asked every changed path: 8000 projects with 64k changed
+    // paths took 14.5 s in `vx show --affected` with no glob declared.
+    const configs: Config[] = Array.from({ length: 50 }, (_, i) => ({
+      name: `p${i}`,
+      tasks: {
+        build: { exec: { command: 'true' }, inputs: { files: ['src/**'] } },
+        test: { exec: { command: 'true' }, inputs: { files: ['src/**'] } },
+        ...(i % 10 === 0
+          ? {
+              gen: {
+                exec: { command: 'true' },
+                inputs: { files: [], workspaceFiles: ['shared/**'] },
+              },
+            }
+          : {}),
+      },
+    }))
+    const paths = Array.from({ length: 100 }, (_, i) => `other/f${i}.ts`)
+    let reads = 0
+    const changed = new Proxy(paths, {
+      get(target, key, receiver) {
+        if (typeof key === 'string' && /^\d+$/.test(key)) reads++
+        return Reflect.get(target, key, receiver)
+      },
+    })
+    expect(await workspaceGlobOwners('/ws', [], changed, {}, stagedOf(configs))).toEqual([])
+    expect(reads).toBeLessThanOrEqual(paths.length)
+  })
+
+  it('selects exactly what asking every task every path selects', async () => {
+    // The pre-grouping logic, kept as the oracle.
+    const oracle = (
+      configs: Config[],
+      changed: string[],
+      nested: string[],
+      dirLinks: Set<string>,
+      untracked: Set<string>,
+    ): string[] =>
+      configs
+        .filter((c) =>
+          Object.values(c.tasks).some(
+            (task) =>
+              changed.some((rel) =>
+                declaresInput(
+                  task as never,
+                  null,
+                  rel,
+                  dirLinks.has(rel),
+                  untracked.has(rel),
+                  `packages/${c.name}`,
+                ),
+              ) || nested.some((dir) => workspaceFilesReachInto(task as never, dir)),
+          ),
+        )
+        .map((c) => c.name)
+    let seed = 0x9e3779b9
+    const rand = (n: number): number => {
+      seed ^= seed << 13
+      seed ^= seed >>> 17
+      seed ^= seed << 5
+      return (seed >>> 0) % n
+    }
+    const pick = <T>(xs: readonly T[]): T => xs[rand(xs.length)]!
+    const lists = [
+      ['shared/**'],
+      ['shared/a/**', '!shared/a/x.ts'],
+      ['docs/*.md'],
+      ['shared/**', 'docs/**'],
+    ]
+    const pool = [
+      'shared/a/x.ts',
+      'shared/a/y.ts',
+      'shared/gen/out.ts',
+      'docs/r.md',
+      'docs/deep/r.md',
+      'packages/p0/gen/o.ts',
+      'other/z.ts',
+      'shared/link',
+    ]
+    let selected = 0
+    for (let round = 0; round < 300; round++) {
+      const configs: Config[] = Array.from({ length: 1 + rand(6) }, (_, i) => {
+        const tasks: Record<string, Task> = {}
+        for (let t = rand(4); t >= 0; t--) {
+          const task: Task = { exec: { command: 'true' }, inputs: { files: ['src/**'] } }
+          if (rand(3) > 0) task.inputs.workspaceFiles = [...pick(lists)]
+          if (rand(2) === 0) {
+            task.outputs = { files: ['gen/**'], workspaceFiles: ['shared/gen/**'] }
+          }
+          tasks[`t${t}`] = task
+        }
+        return { name: `p${i}`, tasks }
+      })
+      const changed = pool.filter(() => rand(3) === 0)
+      const nested = rand(4) === 0 ? ['shared/sub'] : []
+      const dirLinks = new Set(changed.filter((p) => p === 'shared/link' && rand(2) === 0))
+      const untracked = new Set(changed.filter(() => rand(2) === 0))
+      const want = oracle(configs, changed, nested, dirLinks, untracked)
+      selected += want.length
+      const owners = await workspaceGlobOwners(
+        '/ws',
+        [],
+        changed,
+        {},
+        stagedOf(configs),
+        nested,
+        dirLinks,
+        untracked,
+      )
+      expect({ round, owners }).toEqual({ round, owners: want })
+    }
+    // The rounds must select something, or equal answers prove nothing.
+    expect(selected).toBeGreaterThan(100)
   })
 })
 

@@ -122,6 +122,32 @@ describe('createForecast', () => {
     // Only tasks history never saw are left: nothing to say.
     expect(f(new Set(['p#x']), new Map(), 0).etaMs).toBeUndefined()
   })
+
+  // A task event forces a frame and each frame a pass: a pass over every
+  // finished task again cost a 20,000-task run ~1.6 s on a terminal.
+  it('a pass reads only what the last one left unfinished', () => {
+    const ids = Array.from({ length: 1000 }, (_, i) => `p#t${i}`)
+    const f = createForecast(graph(...ids.map((id) => node(id))), new Map(), 4)
+    let reads = 0
+    class Counted extends Set<string> {
+      override has(id: string): boolean {
+        reads++
+        return super.has(id)
+      }
+    }
+    const finished = new Counted(ids.slice(0, 990))
+    f(finished, new Map(), 0)
+    expect(reads).toBe(1000)
+    reads = 0
+    for (const id of ids.slice(990, 995)) finished.add(id)
+    expect(f(finished, new Map([['p#t995', 0]]), 0).blockedBy.size).toBe(0)
+    expect(reads).toBe(10)
+    // Another set starts over: it may hold less.
+    reads = 0
+    const fresh = new Counted(ids.slice(0, 500))
+    expect(f(fresh, new Map(), 0).waiting).toBe(0)
+    expect(reads).toBe(1000)
+  })
 })
 
 describe('terminalSignals', () => {

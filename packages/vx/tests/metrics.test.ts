@@ -1,10 +1,14 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'bun:test'
+import type { Database } from 'bun:sqlite'
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { indexDb, type InvocationRecord, Cache, type RunRecord } from '../src/cache/index.js'
 import {
   cacheKeyDiff,
+  type CacheKeyDiff,
+  inputWriters,
+  rootCauses,
   explainCacheKey as explainCacheKeyQuery,
   getInvocation,
   getRun,
@@ -770,6 +774,49 @@ describe('cacheKeyDiff', () => {
       )
     })
   })
+  // `--no-cache` / `--cache-policy=local:r` passes and saves nothing: the
+  // note blamed a prune for it.
+  it('names a run that did not write the cache, not a prune', () => {
+    const run = (cache: Cache, hash: string, runId: string, startedAt: number, policy: string) =>
+      cache.recordRunBundle({
+        runs: [mkRun({ hash, project: 'pkg', task: 'test', runId, startedAt })],
+        invocation: mkInvocation({ runId, startedAt, cachePolicy: policy }),
+      })
+    const rw = 'local:rw,remote:'
+    for (const policy of ['local:,remote:', 'local:r,remote:']) {
+      withCache((cache) => {
+        run(cache, 'hA', 'r-1', 1000, rw)
+        run(cache, 'hB', 'r-2', 2000, policy)
+        seedEntryInputs(cache, 'hA', [{ kind: 'file', name: 'a.ts', hash: 'x' }])
+        expect(cacheKeyDiff(indexDb(cache), 'r-2', 'pkg#test').note).toBe(
+          'cache key changed but input fingerprints are unavailable — this run did not write the cache (--no-cache, or a --cache-policy without write) and saved no entry; only the key change is known',
+        )
+      })
+    }
+    // The previous run did not write: the last saved entry still names what moved.
+    withCache((cache) => {
+      run(cache, 'hA', 'r-1', 1000, rw)
+      run(cache, 'hB', 'r-2', 2000, 'local:,remote:')
+      run(cache, 'hC', 'r-3', 3000, rw)
+      seedEntryInputs(cache, 'hA', [{ kind: 'file', name: 'a.ts', hash: 'x' }])
+      seedEntryInputs(cache, 'hC', [{ kind: 'file', name: 'a.ts', hash: 'z' }])
+      const diff = cacheKeyDiff(indexDb(cache), 'r-3', 'pkg#test')
+      expect([diff.previousRunId, diff.entries.map((e) => e.name), diff.note]).toEqual([
+        'r-1',
+        ['a.ts'],
+        '1 cache-key component(s) changed since run r-1, the last that saved an entry (the previous run did not write the cache: --no-cache, or a --cache-policy without write)',
+      ])
+    })
+    // With no saved run before it, the cause is still named.
+    withCache((cache) => {
+      run(cache, 'hB', 'r-2', 2000, 'local:,remote:')
+      run(cache, 'hC', 'r-3', 3000, rw)
+      seedEntryInputs(cache, 'hC', [{ kind: 'file', name: 'a.ts', hash: 'z' }])
+      expect(cacheKeyDiff(indexDb(cache), 'r-3', 'pkg#test').note).toBe(
+        'cache key changed but input fingerprints are unavailable — the previous run did not write the cache (--no-cache, or a --cache-policy without write) and saved no entry; only the key change is known',
+      )
+    })
+  })
 })
 
 describe('getRun', () => {
@@ -870,6 +917,193 @@ describe('the newest recorded run is the latest, whatever the clock said', () =>
       ])
       expect(listRuns(db, { limit: 1 })[0]!.runId).toBe('r-2')
       expect(listInvocations(db, { limit: 1 })[0]!.runId).toBe('r-2')
+    })
+  })
+})
+
+describe('vx why at scale', () => {
+  // A chain t0 ← t1 ← … ← t{N-1} where every task reads the moved file:
+  // every task is a root, with a chain as deep as its place.
+  const N = 10_000
+  const FILE = 'p/src/a.txt'
+  const moved = (i: number): CacheKeyDiff['entries'][number] => ({
+    kind: 'file',
+    name: FILE,
+    change: 'changed',
+    before: `o${i}`,
+    after: `n${i}`,
+  })
+  function seedChain(cache: Cache, windowAt: number): CacheKeyDiff['entries'] {
+    const db = indexDb(cache)
+    cache.recordRuns(
+      Array.from({ length: N }, (_, i) =>
+        mkRun({
+          hash: `B${i}`,
+          project: 'p',
+          task: `t${i}`,
+          runId: 'r-2',
+          startedAt: windowAt + 100 * i,
+          endedAt: windowAt + 100 * i + 50,
+        }),
+      ),
+    )
+    const entry = db.query(
+      `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)
+       VALUES (?, 'p', 't', 'cmd', 0, 0, 0, 0, 0)`,
+    )
+    const inputs = db.query('INSERT INTO entry_inputs(entry_hash, components) VALUES (?, ?)')
+    db.transaction(() => {
+      for (let i = 0; i < N - 1; i++) {
+        for (const [side, oid] of [
+          ['A', 'o'],
+          ['B', 'n'],
+        ] as const) {
+          entry.run(`${side}${i}`)
+          const rows: [string, string, string][] = [['file', FILE, `${oid}${i}`]]
+          if (i > 0) rows.push(['upstream', `p#t${i - 1}`, `${side}${i - 1}`])
+          inputs.run(`${side}${i}`, JSON.stringify(rows))
+        }
+      }
+    })()
+    return [
+      moved(N - 1),
+      {
+        kind: 'upstream',
+        name: `p#t${N - 2}`,
+        change: 'changed',
+        before: `A${N - 2}`,
+        after: `B${N - 2}`,
+      },
+    ]
+  }
+
+  /** `db` whose statements count each execution, by the SQL they ran. */
+  function counting(db: Database): { db: Database; ran: string[] } {
+    const ran: string[] = []
+    const wrapped = new Proxy(db, {
+      get(target, key) {
+        if (key !== 'query') return Reflect.get(target, key, target)
+        return (sql: string) =>
+          new Proxy(target.query(sql), {
+            get(stmt, k) {
+              const v = Reflect.get(stmt, k, stmt)
+              if (typeof v !== 'function') return v
+              return (...args: unknown[]) => {
+                if (k === 'all' || k === 'get' || k === 'values') ran.push(sql)
+                return v.apply(stmt, args)
+              }
+            },
+          })
+      },
+    })
+    return { db: wrapped, ran }
+  }
+
+  let dir: string
+  let cache: Cache
+  let entries: CacheKeyDiff['entries']
+  beforeAll(() => {
+    dir = mkdtempSync(path.join(tmpdir(), 'vx-metrics-scale-'))
+    cache = new Cache(path.join(dir, 'cache'))
+    entries = seedChain(cache, 1000)
+  })
+  afterAll(() => {
+    cache.close()
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('walks a deep chain without copying it per level, reading the run once', () => {
+    const { db, ran } = counting(indexDb(cache))
+    Bun.gc(true)
+    const before = process.memoryUsage().heapUsed
+    const roots = rootCauses(db, 'r-2', `p#t${N - 1}`, entries)
+    Bun.gc(true)
+    // A chain copied at each level held N²/2 ids (400 MB at N = 10,000).
+    expect(process.memoryUsage().heapUsed - before).toBeLessThan(64 * 1024 * 1024)
+    // runs has no (project, task) index: a read per task scanned the run each time.
+    expect(ran.filter((sql) => /\bFROM runs\b/.test(sql))).toHaveLength(1)
+    expect(roots.length).toBe(N - 1)
+    expect(roots[0]!.chain).toEqual([`p#t${N - 1}`, `p#t${N - 2}`])
+    expect(roots.at(-1)!.chain).toEqual(Array.from({ length: N }, (_, i) => `p#t${N - 1 - i}`))
+    expect(JSON.parse(JSON.stringify(roots[0]))).toEqual({
+      chain: roots[0]!.chain,
+      entries: [moved(N - 2)],
+    })
+  }, 60_000)
+
+  it('stats and queries each moved file once, whatever the roots', () => {
+    const ws = path.join(dir, 'ws')
+    mkdirSync(path.join(ws, 'p', 'src'), { recursive: true })
+    writeFileSync(path.join(ws, FILE), 'x')
+    // Written while p#t5 ran (1500–1550 ms).
+    utimesSync(path.join(ws, FILE), 1.52, 1.52)
+    const roots = rootCauses(indexDb(cache), 'r-2', `p#t${N - 1}`, entries)
+    const { db, ran } = counting(indexDb(cache))
+    const writers = inputWriters(db, 'r-2', ws, `p#t${N - 1}`, entries, roots)
+    expect(writers.length).toBe(N)
+    expect(writers.every((w) => w.file === FILE && w.writers.join() === 'p#t5')).toBe(true)
+    expect(writers.at(-1)!.taskId).toBe('p#t0')
+    expect(ran.length).toBeLessThanOrEqual(2)
+  }, 60_000)
+})
+
+describe('inputWriters', () => {
+  // `vx why --run` on a past run named the task of a LATER run whose
+  // window held the file's current mtime: that change came after the run
+  // read the file, so it says nothing about who wrote what the run saw.
+  it('names no writer for a change made after the asked run ended', () => {
+    withCache((cache) => {
+      const ws = mkdtempSync(path.join(tmpdir(), 'vx-writers-'))
+      try {
+        mkdirSync(path.join(ws, 'a'))
+        writeFileSync(path.join(ws, 'a/x.txt'), 'x')
+        cache.recordRuns([
+          mkRun({
+            hash: 'h1',
+            project: 'a',
+            task: 'build',
+            runId: 'r-1',
+            startedAt: 1000,
+            endedAt: 1100,
+          }),
+          mkRun({
+            hash: 'g2',
+            project: 'b',
+            task: 'gen',
+            runId: 'r-2',
+            startedAt: 1900,
+            endedAt: 2000,
+          }),
+          mkRun({
+            hash: 'h2',
+            project: 'a',
+            task: 'build',
+            runId: 'r-2',
+            startedAt: 2000,
+            endedAt: 2100,
+          }),
+          mkRun({
+            hash: '',
+            project: 'b',
+            task: 'slow',
+            runId: 'r-3',
+            startedAt: 3000,
+            endedAt: 6000,
+          }),
+        ])
+        const entries: CacheKeyDiff['entries'] = [
+          { kind: 'file', name: 'a/x.txt', change: 'changed', before: 'o', after: 'n' },
+        ]
+        const ask = (): string[][] =>
+          inputWriters(indexDb(cache), 'r-2', ws, 'a#build', entries, []).map((w) => w.writers)
+        // CONTROL: last changed while r-2's b#gen ran.
+        utimesSync(path.join(ws, 'a/x.txt'), 1.95, 1.95)
+        expect(ask()).toEqual([['b#gen']])
+        utimesSync(path.join(ws, 'a/x.txt'), 4, 4)
+        expect(ask()).toEqual([])
+      } finally {
+        rmSync(ws, { recursive: true, force: true })
+      }
     })
   })
 })

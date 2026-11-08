@@ -29,6 +29,7 @@ import type { PackageGraph, ProjectEntry } from '../workspace/index.js'
 import { isDefaultBuild } from './default-build.js'
 import { foldedDeps, isGroupTask } from './folds.js'
 import type { TaskOutcome } from './scheduler.js'
+import { addStandIn } from './stand-ins.js'
 
 // Re-exported so existing importers keep working while the type's home
 // moves to workspace (it's the joint product of discovery + loading).
@@ -310,7 +311,7 @@ export interface BuildGraphOptions {
   /**
    * By project name, every project rooted inside its dir (absolute dirs).
    * Given with `workspaceRoot` and unlocked (`vx lock`), an `inputs.files`
-   * entry rooted inside one is refused (`refuseNestedInputs`).
+   * or `outputs.files` entry rooted inside one is refused (`refuseNestedGlobs`).
    */
   nestedProjects?: ReadonlyMap<string, ReadonlyArray<{ name: string; dir: string }>>
   /**
@@ -521,20 +522,33 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
   // packages below it, passing through the ones `visited` holds and the
   // ones that declare no `name`, and on past a default build on a cycle.
   // True when it found a holder.
-  function walkHolders(frame: Frame, name: string, visited: Set<string>, start: string): boolean {
-    const frontier = [...packageGraph.directDeps(start)]
+  // `past` holds the edges already gone past: each edge the walk adds
+  // beyond them stands in for them (`standInsOf`).
+  function walkHolders(
+    frame: Frame,
+    name: string,
+    visited: Set<string>,
+    start: string,
+    past: readonly string[],
+  ): boolean {
+    const frontier: Array<[project: string, past: readonly string[]]> = packageGraph
+      .directDeps(start)
+      .map((d) => [d, past])
     let held = false
     while (frontier.length > 0) {
-      const target = frontier.pop()!
+      const [target, via] = frontier.pop()!
       if (visited.has(target)) continue
       visited.add(target)
       if (visit(frame, target, name, false)) {
         held = true
+        const id = taskId(target, name)
+        if (via.length > 0) addStandIn(frame.node, id, via)
         const task = declaredTask(projects.get(target)!.config, name)!
         if (isChainGroup(task, name) && onCycle(target)) {
-          frontier.push(...packageGraph.directDeps(target))
+          const next = [...via, id]
+          for (const d of packageGraph.directDeps(target)) frontier.push([d, next])
         }
-      } else frontier.push(...packageGraph.directDeps(target))
+      } else for (const d of packageGraph.directDeps(target)) frontier.push([d, via])
     }
     return held
   }
@@ -546,7 +560,8 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
   // and hit after `b` changed.
   function goPast(frame: Frame, project: string, name: string, visited: Set<string>): void {
     const task = declaredTask(projects.get(project)!.config, name)!
-    if (isChainGroup(task, name) && onCycle(project)) walkHolders(frame, name, visited, project)
+    if (isChainGroup(task, name) && onCycle(project))
+      walkHolders(frame, name, visited, project, [taskId(project, name)])
   }
 
   // Resolves one `dependsOn` entry of `frame`'s task into its edges.
@@ -655,7 +670,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
       }
       const visited = new Set<string>([projectName])
       if (!isTaskPattern(spec.task)) {
-        const held = walkHolders(frame, spec.task, visited, projectName)
+        const held = walkHolders(frame, spec.task, visited, projectName, [])
         if (!held && !declaredAnywhere(projectName, spec.task)) {
           if (undeclaredDeps === undefined) throw undeclaredDepsError(id, spec.task, declared ?? [])
           undeclaredDeps(id, spec.task)
@@ -757,14 +772,19 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
     const frame: Frame = { node: x, entry: 0, added: false, pending: null, next: 0 }
     let reaching: Set<string> | null = null
     const visited = new Set<string>([x.projectName])
-    const frontier = [...packageGraph.directDeps(x.projectName)]
+    const frontier: Array<[project: string, past: readonly string[]]> = packageGraph
+      .directDeps(x.projectName)
+      .map((d) => [d, []])
+    const push = (from: string, via: readonly string[]): void => {
+      for (const d of packageGraph.directDeps(from)) frontier.push([d, via])
+    }
     while (frontier.length > 0) {
-      const target = frontier.pop()!
+      const [target, via] = frontier.pop()!
       if (visited.has(target)) continue
       visited.add(target)
       const task = declaredTask(projects.get(target)?.config, name)
       if (task === undefined) {
-        frontier.push(...packageGraph.directDeps(target))
+        push(target, via)
         continue
       }
       const to = taskId(target, name)
@@ -776,7 +796,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
           reaching = null
         }
         if (isChainGroup(task, name) || (reaching ??= reachingTo(nodes, x.id)).has(to)) {
-          frontier.push(...packageGraph.directDeps(target))
+          push(target, via)
           continue
         }
       }
@@ -785,8 +805,8 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
       visit(frame, target, name, false)
       drain()
       if (nodes.size !== size) reaching = null
-      if (isChainGroup(task, name) && onCycle(target))
-        frontier.push(...packageGraph.directDeps(target))
+      if (via.length > 0) addStandIn(x, to, via)
+      if (isChainGroup(task, name) && onCycle(target)) push(target, [...via, to])
     }
     x.deps = [...new Set(x.deps)].sort()
   }
@@ -805,7 +825,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
 
   checkGraph(nodes, options.workspaceRoot, options.rules)
   if (options.nestedProjects !== undefined && options.rules?.locked !== true)
-    refuseNestedInputs(nodes, options.nestedProjects, options.workspaceRoot)
+    refuseNestedGlobs(nodes, options.nestedProjects, options.workspaceRoot)
   if (options.projectConfigs !== undefined && options.workspaceRoot !== undefined)
     refuseConfigOutputs(nodes, options.projectConfigs, options.workspaceRoot)
   return nodes
@@ -853,14 +873,16 @@ function refuseConfigOutputs(
 }
 
 /**
- * Refuse an `inputs.files` entry rooted inside a project nested in the
- * task's own: every file it can match belongs to that project, which a
- * project's globs never reach, so the entry keys nothing and an edit there
- * hits (a `dist/**` over a build output holding its own config was dropped
- * from the key in silence). Judged by each brace alternative's fixed
- * prefix: `**` or a sibling reaches past the nested dir and is fine.
+ * Refuse an `inputs.files` or `outputs.files` entry rooted inside a project
+ * nested in the task's own: every file it can match belongs to that
+ * project, which a project's globs never reach. An input keys nothing, so
+ * an edit there hits (a `dist/**` over a build output holding its own
+ * config was dropped from the key in silence); an output saves nothing,
+ * and the nested project's own artifact there could hold the outer task's
+ * bytes. Judged by each brace alternative's fixed prefix: `**` or a
+ * sibling reaches past the nested dir and is fine.
  */
-function refuseNestedInputs(
+function refuseNestedGlobs(
   nodes: ReadonlyMap<string, TaskNode>,
   nested: ReadonlyMap<string, ReadonlyArray<{ name: string; dir: string }>>,
   workspaceRoot: string | undefined,
@@ -868,24 +890,31 @@ function refuseNestedInputs(
   for (const n of nodes.values()) {
     const inner = nested.get(n.projectName)
     if (inner === undefined || inner.length === 0 || isGroupTask(n)) continue
-    for (const g of positives(n.config.inputs?.files)) {
-      for (const alt of braceAlternatives(g)) {
-        const prefix = staticPrefix(alt)
-        if (prefix === '.' || prefix === '') continue
-        const abs = path.join(n.projectDir, prefix)
-        const hit = inner.find((p) => abs === p.dir || abs.startsWith(p.dir + path.sep))
-        if (hit === undefined) continue
-        const rel =
-          workspaceRoot === undefined
-            ? hit.name
-            : relPosix(workspaceRoot, path.join(n.projectDir, alt.replace(/^\.\//, '')))
-        throw new UserError(
-          `${n.id} reads ${JSON.stringify(g)} in inputs.files, which lies inside the project ` +
-            `${hit.name}: a project's globs never reach another project's files, so it keys ` +
-            `nothing. Depend on a ${hit.name} task, or name the files in inputs.workspaceFiles ` +
-            `(${JSON.stringify(rel)}).`,
-          'VX_E_NESTED_INPUT',
-        )
+    for (const side of ['inputs', 'outputs'] as const) {
+      for (const g of positives(n.config[side]?.files)) {
+        for (const alt of braceAlternatives(g)) {
+          const prefix = staticPrefix(alt)
+          if (prefix === '.' || prefix === '') continue
+          const abs = path.join(n.projectDir, prefix)
+          const hit = inner.find((p) => abs === p.dir || abs.startsWith(p.dir + path.sep))
+          if (hit === undefined) continue
+          const rel =
+            workspaceRoot === undefined
+              ? hit.name
+              : relPosix(workspaceRoot, path.join(n.projectDir, alt.replace(/^\.\//, '')))
+          throw new UserError(
+            side === 'inputs'
+              ? `${n.id} reads ${JSON.stringify(g)} in inputs.files, which lies inside the project ` +
+                  `${hit.name}: a project's globs never reach another project's files, so it keys ` +
+                  `nothing. Depend on a ${hit.name} task, or name the files in inputs.workspaceFiles ` +
+                  `(${JSON.stringify(rel)}).`
+              : `${n.id} writes ${JSON.stringify(g)} in outputs.files, which lies inside the project ` +
+                  `${hit.name}: a project's globs never reach another project's files, so it saves ` +
+                  `nothing. Let a ${hit.name} task write them, or name them in outputs.workspaceFiles ` +
+                  `(${JSON.stringify(rel)}).`,
+            side === 'inputs' ? 'VX_E_NESTED_INPUT' : 'VX_E_NESTED_OUTPUT',
+          )
+        }
       }
     }
   }
@@ -914,7 +943,7 @@ function reachingTo(nodes: Map<string, TaskNode>, target: string): Set<string> {
 
 /**
  * What a task graph must hold before it is scheduled: each node under its
- * own id, every dep a node, no cycle, and no two tasks deleting each
+ * own id, every dep a node named once, no cycle, and no two tasks deleting each
  * other's outputs. The builder's output holds the first two by
  * construction; the `graph` stage runs this again after its plugins, which
  * could move a node to another key (the scheduler then died on a raw
@@ -936,6 +965,12 @@ export function checkGraph(
       if (!nodes.has(dep)) {
         throw new Error(`${node.id} depends on '${dep}', which is not a task in this run's graph`)
       }
+    }
+    // A plugin's repeated edge, as the builder's own: folded into the key
+    // twice, and owed twice by a server held on the remote's answer.
+    if (node.deps.length > 1) {
+      const unique = new Set(node.deps)
+      if (unique.size < node.deps.length) node.deps = [...unique]
     }
     delete node.addsToOutputsOf
     delete node.outputsAddedToBy
@@ -1392,10 +1427,14 @@ function detectOutputCollisions(
       entries.push({ node, globs, rel })
     }
   }
-  for (const [i, j] of overlapCandidates(entries, (e) => e.globs)) {
+  for (const [i, j] of overlapCandidates(
+    entries,
+    (e) => e.globs,
+    (e) => e.rel !== undefined,
+  )) {
     const x = entries[i]!
     const y = entries[j]!
-    if ((x.rel === undefined) === (y.rel === undefined) || x.node === y.node) continue
+    if (x.node === y.node) continue
     const [ws, files] = x.rel === undefined ? [x, y] : [y, x]
     collideAcross(ws.node, ws.globs, files.node, files.globs, files.rel!, reaches, exclusive)
   }
@@ -1546,21 +1585,20 @@ function mayOverlap<T>(
 
 /**
  * The pairs `[i, j]`, `i < j`, of `tasks` whose declared outputs CAN
- * overlap, ascending by `i` then `j`: a superset of the pairs
+ * overlap, yielded ascending by `i` then `j`: a superset of the pairs
  * `outputsOverlap` accepts, so `collide` over them decides exactly what it
  * decided over all pairs, and in the same order (the first refusal named,
  * and the addition marks pushed, are all-pairs' own).
  *
- * `outputsOverlap` compares the `asTrees` forms three ways. Two equal
- * globs are one lookup. Two equal literals are too, since each literal
- * carries its `/**` twin. And a glob matches a literal only when the
+ * `outputsOverlap` compares the `asTrees` forms three ways. Two globs,
+ * equal or not, meet only when one's literal prefix lies at or under the
+ * other's. Two equal literals do too, since each literal carries its `/**`
+ * twin. And a glob matches a literal only when the
  * literal lies under the directory the glob's literal head names
  * (`dist/sub/**` → `dist/sub`; `*.js` → the root, so a wildcard in the
  * first segment meets every literal): a literal meets the globs filed at
  * each of its ancestors. The fuzz above found no glob matching the
- * directory its own head names. A whole subtree meets the globs whose
- * literal prefix lies at or under it, found the same way from the glob's
- * side (item 941).
+ * directory its own head names.
  *
  * Given `sideOf`, only the pairs whose members sit on different sides are
  * wanted (a reader and a writer, `detectInputOverlaps`), and each index is
@@ -1572,85 +1610,120 @@ function overlapCandidates<T>(
   tasks: readonly T[],
   globsOf: (n: T) => readonly string[] | undefined,
   sideOf?: (n: T) => boolean,
-): Array<[number, number]> {
-  if (!mayOverlap(tasks, globsOf, sideOf)) return []
+): Iterable<[number, number]> {
+  // Nearly every bucket stops here, so it starts no generator.
+  return mayOverlap(tasks, globsOf, sideOf) ? indexedCandidates(tasks, globsOf, sideOf) : []
+}
+
+/** `overlapCandidates` past `mayOverlap`. */
+function* indexedCandidates<T>(
+  tasks: readonly T[],
+  globsOf: (n: T) => readonly string[] | undefined,
+  sideOf?: (n: T) => boolean,
+): Generator<[number, number]> {
   const sides = sideOf === undefined ? 1 : 2
   // The index a member of side `s` looks up: its own side's, or the other's.
   const across = (s: number): number => (sides === 1 ? s : 1 - s)
   const perSide = (): Array<Map<string, number[]>> =>
     Array.from({ length: sides }, () => new Map<string, number[]>())
-  const globs = perSide()
-  const globsUnder = perSide()
-  const literals: Array<[task: number, path: string]> = []
-  // `covers` (item 941): a whole subtree `P/**` meets every glob whose
-  // literal prefix is P or under it, so each glob looks up the subtrees
-  // filed at its prefix and at each of that prefix's ancestors.
-  const subtrees = perSide()
-  const prefixes: Array<[task: number, prefix: string]> = []
   const file = (index: Map<string, number[]>, key: string, i: number): void => {
     const list = index.get(key)
     if (list === undefined) index.set(key, [i])
     else list.push(i)
   }
+  const fileAncestors = (index: Map<string, number[]>, key: string, i: number): void => {
+    for (let sep = key.indexOf('/'); sep !== -1; sep = key.indexOf('/', sep + 1)) {
+      file(index, key.slice(0, sep), i)
+    }
+  }
+  // Each relation below is filed from both of its ends, so a member finds
+  // every partner by its own lookups and the pairs are yielded one `i` at a
+  // time. 20,000 tasks sharing `dist/**` are 200 million pairs, and holding
+  // them all before the first was compared ran out of memory (hunt); the
+  // caller refuses at the first, so only that `i`'s partners are built.
+  //
+  // Two globs meet only when one's literal prefix is the other's or under
+  // it: the rule of `witnessed`, and of `covers` (item 941: a whole subtree
+  // `P/**` has the prefix P), and two equal globs share one. Each glob is
+  // filed at its prefix (found from it and from under it), and at the
+  // prefix, the root and each ancestor (found from above).
+  const byPrefix = perSide()
+  const overPrefix = perSide()
+  // A literal meets the globs filed at each of its ancestors.
+  const globsUnder = perSide()
+  const literals = perSide()
+  interface Tree {
+    /** Its literal prefix, `''` at the root. */
+    prefix: string
+    /** The directory its literal head names. */
+    head: string
+  }
+  const trees: Tree[][] = []
+  const paths: string[][] = []
   const side: number[] = []
   for (let i = 0; i < tasks.length; i++) {
     const s = sideOf?.(tasks[i]!) === true ? 1 : 0
     side.push(s)
+    const own: Tree[] = []
+    const lits: string[] = []
     // Each brace alternative, as `outputsOverlap` reads them.
     for (const tree of asTrees((globsOf(tasks[i]!) ?? []).flatMap(braceAlternatives))) {
       const lit = literalPath(tree)
       if (lit !== null) {
-        literals.push([i, lit])
+        lits.push(lit)
+        file(literals[s]!, '', i)
+        fileAncestors(literals[s]!, lit, i)
         continue
       }
-      file(globs[s]!, tree, i)
-      const dir = wholeSubtreePrefixes([tree])?.[0]
-      if (dir !== undefined) file(subtrees[s]!, dir, i)
-      prefixes.push([i, staticPrefix(tree)])
-      const head = tree.slice(0, tree.search(GLOB_HEAD_END))
-      file(globsUnder[s]!, head.slice(0, Math.max(0, head.lastIndexOf('/'))), i)
+      const prefix = rootless(staticPrefix(tree))
+      file(byPrefix[s]!, prefix, i)
+      file(overPrefix[s]!, prefix, i)
+      if (prefix !== '') file(overPrefix[s]!, '', i)
+      fileAncestors(overPrefix[s]!, prefix, i)
+      const lead = tree.slice(0, tree.search(GLOB_HEAD_END))
+      const head = lead.slice(0, Math.max(0, lead.lastIndexOf('/')))
+      file(globsUnder[s]!, head, i)
+      own.push({ prefix, head })
     }
+    trees.push(own)
+    paths.push(lits)
   }
   const n = tasks.length
-  const pairs = new Set<number>()
-  const pair = (x: number, y: number): void => {
-    if (x !== y) pairs.add(x < y ? x * n + y : y * n + x)
-  }
-  for (const [tree, list] of globs[0]!) {
-    const other = sides === 1 ? list : (globs[1]!.get(tree) ?? [])
-    for (let x = 0; x < list.length; x++) {
-      for (let y = sides === 1 ? x + 1 : 0; y < other.length; y++) pair(list[x]!, other[y]!)
+  // The `i` each partner was last taken for, so one found twice is kept once.
+  const takenFor = new Int32Array(n).fill(-1)
+  let found: number[] = []
+  const take = (i: number, list: readonly number[] | undefined): void => {
+    if (list === undefined) return
+    for (const j of list) {
+      if (j > i && takenFor[j] !== i) {
+        takenFor[j] = i
+        found.push(j)
+      }
     }
   }
-  // `witnessed`: two globs meet only when one's literal prefix is the
-  // other's or under it, so each looks up the globs filed at its prefix
-  // and at each ancestor.
-  const byPrefix = perSide()
-  for (const [i, prefix] of prefixes) file(byPrefix[side[i]!]!, rootless(prefix), i)
-  for (const [i, raw] of prefixes) {
-    const index = byPrefix[across(side[i]!)]!
-    const prefix = rootless(raw)
-    for (const j of index.get(prefix) ?? []) pair(i, j)
-    if (prefix !== '') for (const j of index.get('') ?? []) pair(i, j)
-    for (let sep = prefix.indexOf('/'); sep !== -1; sep = prefix.indexOf('/', sep + 1)) {
-      for (const j of index.get(prefix.slice(0, sep)) ?? []) pair(i, j)
+  const takeAncestors = (i: number, index: Map<string, number[]>, key: string): void => {
+    for (let sep = key.indexOf('/'); sep !== -1; sep = key.indexOf('/', sep + 1)) {
+      take(i, index.get(key.slice(0, sep)))
     }
   }
-  for (const [i, prefix] of prefixes) {
-    const index = subtrees[across(side[i]!)]!
-    for (const j of index.get(prefix) ?? []) pair(i, j)
-    for (let sep = prefix.indexOf('/'); sep !== -1; sep = prefix.indexOf('/', sep + 1)) {
-      for (const j of index.get(prefix.slice(0, sep)) ?? []) pair(i, j)
+  for (let i = 0; i < n; i++) {
+    const o = across(side[i]!)
+    for (const { prefix, head } of trees[i]!) {
+      take(i, byPrefix[o]!.get(prefix))
+      if (prefix !== '') take(i, byPrefix[o]!.get(''))
+      takeAncestors(i, byPrefix[o]!, prefix)
+      take(i, overPrefix[o]!.get(prefix))
+      take(i, literals[o]!.get(head))
     }
-  }
-  for (const [i, path] of literals) {
-    const index = globsUnder[across(side[i]!)]!
-    for (const j of index.get('') ?? []) pair(i, j)
-    for (let sep = path.indexOf('/'); sep !== -1; sep = path.indexOf('/', sep + 1)) {
-      for (const j of index.get(path.slice(0, sep)) ?? []) pair(i, j)
+    for (const path of paths[i]!) {
+      take(i, globsUnder[o]!.get(''))
+      takeAncestors(i, globsUnder[o]!, path)
     }
+    if (found.length === 0) continue
+    const partners = found.sort((x, y) => x - y)
+    found = []
+    for (const j of partners) yield [i, j]
   }
-  return [...pairs].sort((x, y) => x - y).map((p) => [Math.floor(p / n), p % n])
 }
 
 /**

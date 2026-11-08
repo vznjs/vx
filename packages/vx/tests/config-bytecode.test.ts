@@ -57,9 +57,10 @@ interface Probe {
   bundled: boolean
 }
 
-function probe(): Probe {
+function probe(env: Record<string, string | undefined> = process.env): Probe {
   const p = Bun.spawnSync([process.execPath, BIN, 'probe'], {
     cwd: root,
+    env,
     stdout: 'pipe',
     stderr: 'pipe',
   })
@@ -159,6 +160,63 @@ describe('workspace config bytecode', () => {
       TIMEOUT,
     )
   }
+
+  // Bun.build inlines `process.env.NODE_ENV` by default, and the bundle's
+  // name folds no env: it froze the building run's value.
+  it(
+    'the bundle reads NODE_ENV at run time, as the source does',
+    async () => {
+      await writeFile(
+        path.join(root, '.vx', 'workspace.ts'),
+        "import probe from 'vx-probe'\nexport default { plugins: [probe(String(process.env.NODE_ENV))] }\n",
+      )
+      const { NODE_ENV: _, ...unset } = process.env
+      expect(probe(unset)).toMatchObject({ value: 'undefined', bundled: false })
+      expect(probe(unset)).toMatchObject({ value: 'undefined', bundled: true })
+      expect(probe({ ...unset, NODE_ENV: 'production' })).toMatchObject({
+        value: 'production',
+        bundled: true,
+      })
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a linked config retargeted at the same bytes loads the new target, not the old bundle',
+    async () => {
+      for (const v of ['A', 'B']) {
+        await mkdir(path.join(root, `cfg${v}`))
+        await writeFile(
+          path.join(root, `cfg${v}`, 'workspace.ts'),
+          "import probe from 'vx-probe'\nimport v from './helper'\nexport default { plugins: [probe(v)] }\n",
+        )
+        await writeFile(path.join(root, `cfg${v}`, 'helper.ts'), `export default '${v}'\n`)
+      }
+      const link = path.join(root, '.vx', 'workspace.ts')
+      await rm(link)
+      await symlink('../cfgA/workspace.ts', link)
+      probe()
+      expect(probe()).toMatchObject({ value: 'A', bundled: true })
+      await rm(link)
+      await symlink('../cfgB/workspace.ts', link)
+      expect(probe()).toMatchObject({ value: 'B', bundled: false })
+      expect(probe()).toMatchObject({ value: 'B', bundled: true })
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a bundle that no longer loads is built again',
+    async () => {
+      probe()
+      expect(probe().bundled).toBe(true)
+      const js = (await compiled()).find((f) => f.endsWith('.js'))!
+      await Bun.$`truncate -s 200 ${path.join(root, '.vx', 'cache', 'compiled', js)}`.quiet()
+      expect(probe()).toMatchObject({ value: 'one', bundled: false })
+      expect(probe()).toMatchObject({ value: 'one', bundled: true })
+    },
+    TIMEOUT,
+  )
 
   it(
     'a fresh workspace with no cache yet gets no bundle',

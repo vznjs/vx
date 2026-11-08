@@ -142,6 +142,12 @@ interface Worker {
   load?: { cpu: number; memory: number; at: number }
   /** Tasks whose outputs it holds: it ran them, or was sent them. */
   readonly has: Set<string>
+  /**
+   * The persistent tasks it runs, each with the base it books there
+   * (`Need.servers`): booked once, by the first task placed there that
+   * needs it, and given back when the run says none needs it.
+   */
+  readonly serving: Map<string, number>
   /** Each dependency it was sent whole, by the key it was sent under: the next order names it alone. */
   readonly sentDeps: Map<string, string>
   /** Sends to it go out in order: a run's parts before the run. */
@@ -170,6 +176,8 @@ export interface OrchestratorOptions {
   readonly tree: string
   readonly nodes: () => ReadonlyMap<string, TaskNode> | undefined
   readonly need: (taskId: string) => Need
+  /** Each server's base, cores, as workers fit them: updated in place. */
+  readonly bases?: Map<string, number>
   /** The run's cache, by key: what workers save to and this machine restores from. */
   readonly artifacts: TaskArtifacts
   /** What workers read the cache under (`ExecutorContext.cacheFacts`). */
@@ -335,6 +343,8 @@ export class Orchestrator {
   private readonly unstarted = new Map<string, string>()
   /** A task waited here on a worker: one ended with none joined needed one. */
   private waited = false
+  /** Why each worker this run refused was refused, in order. */
+  private readonly refused: string[] = []
   /** Started, then not needed before they joined (`release`), or given up as late. */
   private readonly cancelled = new Set<string>()
   /** Of `cancelled`, those given up past their join limit, not let go: taken if they join. */
@@ -475,6 +485,21 @@ export class Orchestrator {
             : `${req.taskId} keys ${stray.path}, in submodule ${link}, whose files workers do not check out: leave it out of the task's inputs`,
         )
       }
+      // A worker runs the commit's bytes and modes (`unfilter`): a file on
+      // disk otherwise (CRLF a git filter wrote, an expanded ident, an LFS
+      // file's content) is not what it builds on, and the output saved
+      // under the key of this disk's bytes was a stale hit (2026-11-08).
+      const off =
+        tree === undefined
+          ? undefined
+          : req.inputs.files.find((f) => {
+              const has = tree.files.get(f.path)
+              return has !== undefined && has !== f.digest && !made(f.path)
+            })
+      if (off !== undefined)
+        throw new UserError(
+          `${req.taskId} keys ${off.path}, which is on disk other than the commit workers check out holds it (a git filter's text, eol, ident or LFS bytes, or core.autocrlf): leave it out of the task's inputs, or run the task without dte`,
+        )
     }
     for (const u of req.inputs?.upstream ?? []) this.upstreamKeys.set(u.taskId, u.hash)
     await this.share(up, nodes)
@@ -570,6 +595,17 @@ export class Orchestrator {
     return this.trace.events(this.ended ? this.endedAt : performance.now())
   }
 
+  /** No task left in the run uses server `task`: each worker that started it stops it. */
+  unneeded(task: string): void {
+    for (const a of this.workers.values()) {
+      const base = a.serving.get(task)
+      if (base === undefined) continue
+      a.serving.delete(task)
+      a.usedCores -= base
+      this.post(a, { type: 'unserve', task })
+    }
+  }
+
   private abort(job: Job): void {
     if (this.waiting.get(job.req.taskId) === job) {
       this.waiting.delete(job.req.taskId)
@@ -632,6 +668,7 @@ export class Orchestrator {
         running,
         has: a.has,
         platform: a.platform,
+        serving: new Set(a.serving.keys()),
         a,
       }
     })
@@ -673,6 +710,12 @@ export class Orchestrator {
       })
       a.usedCores += job.held.cores
       a.usedMemory += job.held.memory
+      // A server it starts there books its base once, while it runs.
+      for (const sv of job.need.servers ?? [])
+        if (!a.serving.has(sv.id)) {
+          a.serving.set(sv.id, sv.cores)
+          a.usedCores += sv.cores
+        }
       const batch = batches.get(a)
       if (batch === undefined) batches.set(a, [job])
       else batch.push(job)
@@ -760,7 +803,11 @@ export class Orchestrator {
     return this.o.pinWaitMs ?? PIN_WAIT_MS
   }
 
-  /** `ids`, uncached tasks that ran, run again where `where` says, for a dependant. */
+  /**
+   * `ids`, uncached tasks that ran, run again where `where` says, for a
+   * dependant: on its place, which the plan refused when one names another
+   * worker type or platform (`apart`).
+   */
   private remake(
     ids: readonly string[],
     where: { only?: string; avoid?: string; platform?: string | undefined },
@@ -867,6 +914,12 @@ export class Orchestrator {
     const self = Number(load.self)
     if (Number.isFinite(avg) && avg >= 0)
       a.usage.machine(avg, Number.isFinite(self) && self >= 0 ? self : undefined, a.load.at)
+    // Its servers' bases as it fits them (`server-fit.ts`): what the next
+    // task needing one books, and the next run.
+    if (typeof load.servers === 'object' && load.servers !== null)
+      for (const [id, cores] of Object.entries(load.servers))
+        if (typeof cores === 'number' && Number.isFinite(cores) && cores >= 0 && cores <= a.cores)
+          this.o.bases?.set(id, cores)
     const tasks = Number(load.tasks)
     this.trace.load(a.label, a.load.cpu, a.load.at, Number.isFinite(tasks) ? tasks : undefined)
   }
@@ -996,7 +1049,9 @@ export class Orchestrator {
       // A task sent here leaves its outputs here for its dependants.
       a.has.add(req.taskId)
       const node = nodes?.get(req.taskId)
-      const env = defined(req.env, req.envDefine)
+      const keyed = hostKeyed(req)
+      const env = defined(req.env, req.envDefine, keyed)
+      const unset = keyed.filter((k) => req.env[k] === undefined && !(k in req.envDefine))
       const order = {
         task: req.taskId,
         // Unsaved: under the run's own key, as an uncached task's.
@@ -1014,6 +1069,7 @@ export class Orchestrator {
         cwd: path.relative(this.o.root, req.cwd),
         project: node === undefined ? '' : path.relative(this.o.root, node.projectDir),
         env,
+        ...(unset.length === 0 ? {} : { unset }),
         ...(node?.config.exec?.env?.secret === undefined
           ? {}
           : { secret: [...node.config.exec.env.secret] }),
@@ -1131,6 +1187,9 @@ export class Orchestrator {
           // Its orders' bytes, a comma between each, in the batch's own.
           a.usage.bytesIn += bytesOf({ ...batch, tasks: [] }) + bytes + tasks.length - 1
           for (const { intro } of part) for (const [t, k] of intro) a.sentDeps.set(t, k)
+          for (const { order } of part)
+            for (const sv of order.servers ?? [])
+              if (!a.serving.has(sv.task)) a.serving.set(sv.task, 0)
           for (const { job } of part) {
             pending.delete(job)
             // Sent, it runs: its worker takes only what it has room for.
@@ -1464,7 +1523,11 @@ export class Orchestrator {
     if (body.type === 'joined') {
       const info = body.info as Partial<WorkerInfo> | null
       const id = body.id!
+      // Only the worker heard why: the run sat silent and its footer said
+      // none joined (2026-11-07).
       const refuse = (reason: string): void => {
+        this.refused.push(reason)
+        this.warn(`dte: refused worker ${typeof info?.id === 'string' ? info.id : id}: ${reason}`)
         void this.o.me
           .send(id, { type: 'refused', reason } satisfies ToWorker)
           .catch(this.unsent('refused', id))
@@ -1544,6 +1607,7 @@ export class Orchestrator {
         started: new Set(),
         batches: 0,
         has: new Set(),
+        serving: new Map(),
         sentDeps: new Map(),
         // Its name first, before any batch.
         chain: this.cache()
@@ -1575,6 +1639,8 @@ export class Orchestrator {
     a.usage.to = performance.now()
     this.trace.left(a.label, 'lost', a.usage.to)
     this.gone.push(a)
+    // Its results' `end`s never come.
+    for (const k of this.parts.keys()) if (k.startsWith(`${a.id}\0`)) this.parts.delete(k)
     // Its tasks run again: first, as they were first to go.
     const back: Job[] = []
     for (const j of [...a.busy.values()]) {
@@ -1872,6 +1938,7 @@ export class Orchestrator {
         cores: a.cores,
         memory: a.memory,
         platform: a.platform,
+        ...(a.serving.size === 0 ? {} : { serving: new Map(a.serving) }),
         ...(a.declared === undefined ? {} : { size: a.declared.size }),
         at: 0,
         idle: a.busy.size === 0,
@@ -2253,15 +2320,21 @@ export class Orchestrator {
   ): [string, ui.Inline][] {
     // Over with none, it says so: core's own `N workers` (this machine's
     // pool) read as the run's when no task needed one (2026-10-25), and
-    // says when one did and none joined (2026-11-06).
+    // says when one did and none joined (2026-11-06), and why any it
+    // refused was (2026-11-07).
     if (this.spawnedAt.size === 0 && this.workers.size === 0 && this.gone.length === 0)
       return this.ended
         ? [
             [
               'workers',
-              this.waited
-                ? ui.tone('warn', 'none joined: a task waited on one')
-                : ui.dim('none started: no task needed one'),
+              this.refused.length > 0
+                ? ui.tone(
+                    'warn',
+                    `none joined: ${this.refused.length} refused (${this.refused[0]})`,
+                  )
+                : this.waited
+                  ? ui.tone('warn', 'none joined: a task waited on one')
+                  : ui.dim('none started: no task needed one'),
             ],
           ]
         : []
@@ -2503,8 +2576,8 @@ const nested = new WeakMap<
   { dirs: string[]; by: Map<string, readonly string[]> }
 >()
 
-/** A tree's file paths, and its submodules' (gitlinks); `dirs` once asked. */
-type Tree = { files: Set<string>; links: string[]; dirs?: Set<string> }
+/** A tree's files, each path with its identity as core keys it, and its submodules' (gitlinks); `dirs` once asked. */
+type Tree = { files: Map<string, string>; links: string[]; dirs?: Set<string> }
 
 /** Whether `tree` has a file under `dir`, or `dir` in a submodule (checked out or not, its own say). */
 function holds(tree: Tree, dir: string): boolean {
@@ -2514,7 +2587,7 @@ function holds(tree: Tree, dir: string): boolean {
       for (let d = path.posix.dirname(f); d !== '.' && !dirs.has(d); d = path.posix.dirname(d))
         dirs.add(d)
     }
-    for (const f of tree.files) above(f)
+    for (const f of tree.files.keys()) above(f)
     for (const l of tree.links) above(l)
   }
   return tree.dirs.has(dir) || tree.links.some((l) => dir === l || dir.startsWith(`${l}/`))
@@ -2536,14 +2609,16 @@ async function listTree(root: string, tree: string): Promise<Tree | undefined> {
   }
   const [out, code] = await Promise.all([new Response(p.stdout).text(), p.exited])
   if (code !== 0) return undefined
-  const files = new Set<string>()
+  const files = new Map<string, string>()
   const links: string[] = []
   for (const e of out.split('\0')) {
     const tab = e.indexOf('\t')
     if (tab === -1) continue
     const name = e.slice(tab + 1)
-    if (e.startsWith('160000 ')) links.push(name)
-    else files.add(name)
+    // `<mode> <type> <oid>`: core's identity is the OID, the mode before it unless a plain file's.
+    const [mode, , oid] = e.slice(0, tab).split(' ')
+    if (mode === '160000') links.push(name)
+    else files.set(name, mode === '100644' ? oid! : `${mode}:${oid}`)
   }
   return { files, links }
 }
@@ -2568,6 +2643,47 @@ function leaves(node: TaskNode): boolean {
   if (node.config.cache === true) return false
   const sandbox = node.config.exec?.sandbox
   return sandbox === undefined || (sandbox.allow?.write?.length ?? 0) > 0
+}
+
+/**
+ * A task and an upstream of it that `leaves` files, which `bound` says
+ * cannot run where the task does (its `exec.worker` or `exec.platforms`):
+ * the task reads those files where the upstream ran, or runs it again
+ * where it runs itself. Undefined when none.
+ */
+export function apart(
+  nodes: ReadonlyMap<string, TaskNode>,
+  bound: (upstream: TaskNode, dependant: TaskNode) => boolean,
+): { upstream: string; dependant: string } | undefined {
+  const runs = (n: TaskNode): boolean =>
+    n.config.exec?.command !== undefined && n.config.exec.persistent === undefined
+  const named = [...nodes.values()].filter(
+    (n) =>
+      runs(n) &&
+      leaves(n) &&
+      (n.config.exec?.worker !== undefined || n.config.exec?.platforms !== undefined),
+  )
+  if (named.length === 0) return undefined
+  const below = new Map<string, string[]>()
+  for (const n of nodes.values())
+    for (const d of n.deps) {
+      const of = below.get(d)
+      if (of === undefined) below.set(d, [n.id])
+      else of.push(n.id)
+    }
+  for (const u of named) {
+    const seen = new Set<string>()
+    const walk = [...(below.get(u.id) ?? [])]
+    for (let id = walk.pop(); id !== undefined; id = walk.pop()) {
+      if (seen.has(id)) continue
+      seen.add(id)
+      const d = nodes.get(id)
+      if (d === undefined) continue
+      if (runs(d) && bound(u, d)) return { upstream: u.id, dependant: id }
+      walk.push(...(below.get(id) ?? []))
+    }
+  }
+  return undefined
 }
 
 /**
@@ -2651,17 +2767,24 @@ function runtimeOrders(req: ExecuteRequest): { runtime?: RuntimeOrder[] } {
 
 /**
  * `env` as it travels: no unset name, and no name whose value is the
- * worker's (`HOST_ENV`) unless `define` sets it. A defined `HOME` ran
- * with the worker's own, saved under a key that folded the defined one
- * (2026-10-24).
+ * worker's (`HOST_ENV`) unless `define` sets it or the task keys it
+ * (`keyed`). A defined `HOME` ran with the worker's own, saved under a key
+ * that folded the defined one (2026-10-24); a keyed `XDG_CONFIG_HOME` did
+ * the same (2026-11-07).
  */
 function defined(
   env: NodeJS.ProcessEnv,
   define: Readonly<Record<string, string>>,
+  keyed: readonly string[] = [],
 ): Record<string, string> {
   // No prototype: on `{}`, a name `__proto__` hit the setter and was not sent.
   const out: Record<string, string> = Object.create(null)
   for (const [k, v] of Object.entries(env))
-    if (v !== undefined && (!HOST_ENV.includes(k) || k in define)) out[k] = v
+    if (v !== undefined && (!HOST_ENV.includes(k) || k in define || keyed.includes(k))) out[k] = v
   return out
+}
+
+/** The `HOST_ENV` names the task's `inputs.env` keys: their value is this machine's, as keyed. */
+function hostKeyed(req: ExecuteRequest): string[] {
+  return (req.inputs?.env ?? []).map((e) => e.name).filter((k) => HOST_ENV.includes(k))
 }

@@ -565,7 +565,7 @@ export function armTimeout(
     timer = afterPendingExits(fire)
   }, timeoutMs)
   function fire(): void {
-    firedAt = Date.now()
+    firedAt = performance.now()
     killTree(proc, 'SIGTERM')
     // Escalate to SIGKILL after a grace: a child that TRAPS+IGNORES SIGTERM
     // (`trap '' TERM`) would otherwise defeat the timeout entirely and hang
@@ -586,7 +586,7 @@ export function armTimeout(
       clearTimeout(timer)
       if (killTimer !== undefined) clearTimeout(killTimer)
       if (firedAt === undefined) return
-      const left = await untilGroupsGone([proc], Math.max(0, firedAt + graceMs - Date.now()))
+      const left = await untilGroupsGone([proc], Math.max(0, firedAt + graceMs - performance.now()))
       for (const child of left) killTree(child, 'SIGKILL')
       if (left.length > 0) sigkilled = true
     },
@@ -823,7 +823,7 @@ export interface PersistentOptions extends Omit<RunOptions, 'forwardArgs' | 'cap
  * `onStderr` callbacks for the whole lifetime of the child.
  */
 export function runPersistent(opts: PersistentOptions): PersistentSpawn {
-  const start = Date.now()
+  const start = performance.now()
   let readyAt: number | undefined
   // When the readiness wait gave up: the wait's length, not the kill grace
   // a TERM-trapping server runs out after it.
@@ -884,13 +884,18 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     const message =
       isExecutableMissing(err) && !existsSync(opts.cwd)
         ? `its working directory ${opts.cwd} does not exist`
-        : spawnErrorReason(err, opts.signalChannel === true ? SANDBOXED_TASK : 'task', opts.command)
+        : spawnErrorReason(
+            err,
+            opts.signalChannel === true ? SANDBOXED_TASK : 'task',
+            opts.command,
+            opts.env,
+          )
     return {
       child: undefined,
       ready: Promise.reject(
         new PersistentReadyError(`failed to spawn persistent task: ${message}`, 'spawn'),
       ),
-      readyMs: () => Date.now() - start,
+      readyMs: () => Math.round(performance.now() - start),
       gaveUp: () => false,
     }
   } finally {
@@ -907,7 +912,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   const markReady = (): void => {
     // A marker printed on the way down, once the wait gave up, is not ready.
     if (readyAt === undefined && gaveUpAt === undefined && !failedExit) {
-      readyAt = Date.now()
+      readyAt = performance.now()
       if (readyTimer !== undefined) clearTimeout(readyTimer)
       resolveReady()
       opts.onReady?.()
@@ -1024,7 +1029,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     const limit = opts.timeoutMs
     const giveUp = async (): Promise<void> => {
       if (readyAt !== undefined) return
-      gaveUpAt = Date.now()
+      gaveUpAt = performance.now()
       // Listed on the group guard until the SIGKILL: the shell may die on
       // the SIGTERM and let the group go while the server runs out the
       // grace, and a vx killed inside it leaves the server to the guard
@@ -1090,7 +1095,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   return {
     child,
     ready,
-    readyMs: () => (readyAt ?? gaveUpAt ?? Date.now()) - start,
+    readyMs: () => Math.round((readyAt ?? gaveUpAt ?? performance.now()) - start),
     gaveUp: () => gaveUpAt !== undefined,
   }
 }
@@ -1112,6 +1117,8 @@ export function spawnFailureText(
   cwd: string,
   what = 'task',
   command?: string,
+  /** The spawn's environment: an `E2BIG` it caused names it, not the command. */
+  env?: NodeJS.ProcessEnv,
 ): string {
   if (isExecutableMissing(err)) {
     // Bun names `sh` in the ENOENT a missing directory gives too.
@@ -1119,19 +1126,26 @@ export function spawnFailureText(
       ? `[vx] vx runs each task with sh -c: failed to spawn 'sh' (working dir: ${cwd}). Install a POSIX sh and re-run.\n`
       : `[vx] failed to spawn ${what}: its working directory ${cwd} does not exist\n`
   }
-  return `[vx] failed to spawn ${what}: ${spawnErrorReason(err, what, command)}\n`
+  return `[vx] failed to spawn ${what}: ${spawnErrorReason(err, what, command, env)}\n`
 }
 
 /** Bun's text for a spawn that threw, and the way out when the limit hit is a known one. */
-function spawnErrorReason(err: unknown, what: string, command: string | undefined): string {
+function spawnErrorReason(
+  err: unknown,
+  what: string,
+  command: string | undefined,
+  env?: NodeJS.ProcessEnv,
+): string {
   const message = err instanceof Error ? err.message : String(err)
   const hint = isOutOfFds(err)
     ? ` — ${OUT_OF_FDS_HINT}`
     : command !== undefined && (err as NodeJS.ErrnoException | undefined)?.code === 'E2BIG'
-      ? ` — ${argTooLongHint(command, what === SANDBOXED_TASK)}`
+      ? ` — ${argTooLongHint(command, what === SANDBOXED_TASK, env)}`
       : ''
   return `${message}${hint}`
 }
+
+const MAX_ARG_STRLEN = 128 * 1024
 
 /**
  * A task's command, the args after `--` folded in, is ONE argument to
@@ -1139,13 +1153,49 @@ function spawnErrorReason(err: unknown, what: string, command: string | undefine
  * below the argv total: a file list forwarded to a linter failed with a
  * bare E2BIG, which reads as "too many files" and names no way out.
  */
-function argTooLongHint(command: string, wrapped: boolean): string {
-  const kib = Math.ceil(Buffer.byteLength(command) / 1024)
+function argTooLongHint(command: string, wrapped: boolean, env?: NodeJS.ProcessEnv): string {
+  const bytes = Buffer.byteLength(command)
+  const kib = Math.ceil(bytes / 1024)
+  // The limit counts the environment too, and caps each entry as it does
+  // one argument: a task's 4.4 MB `define` was blamed on its 1 KiB command.
+  const vars = env === undefined ? null : envSize(env)
+  if (vars !== null && (bytes <= MAX_ARG_STRLEN || vars.bytes > bytes)) {
+    return (
+      `the task environment is ${Math.ceil(vars.bytes / 1024)} KiB in ${vars.count} variables, ` +
+      `largest ${vars.largest} at ${Math.ceil(vars.largestBytes / 1024)} KiB; Linux caps one ` +
+      `entry at 128 KiB and the command with the environment at a quarter of the stack limit ` +
+      `(often 2 MiB): pass large values through a file the tool reads`
+    )
+  }
   const what = wrapped ? "with the args after -- and the sandbox's wrap" : 'with the args after --'
   return (
     `the command, ${what}, is ${kib} KiB, and one argument to sh -c may hold at ` +
     `most 128 KiB on Linux: pass a long list through a file the tool reads (xargs, a response file)`
   )
+}
+
+/** What `execve` copies of an environment: each `name=value` and its NUL. */
+function envSize(env: NodeJS.ProcessEnv): {
+  bytes: number
+  count: number
+  largest: string
+  largestBytes: number
+} {
+  let bytes = 0
+  let count = 0
+  let largest = ''
+  let largestBytes = 0
+  for (const [name, value] of Object.entries(env)) {
+    if (value === undefined) continue
+    const entry = Buffer.byteLength(name) + Buffer.byteLength(value) + 2
+    bytes += entry
+    count++
+    if (entry > largestBytes) {
+      largest = name
+      largestBytes = entry
+    }
+  }
+  return { bytes, count, largest, largestBytes }
 }
 
 /** A stop's own sweep, for a child it missed: the polite signal, then SIGKILL past the grace. */
@@ -1161,7 +1211,9 @@ async function stopLate(proc: Child, signal: 'SIGINT' | 'SIGTERM'): Promise<void
 }
 
 export async function runCommand(opts: RunOptions): Promise<RunResult> {
-  const start = Date.now()
+  // Elapsed time, not wall time: an NTP step mid-task gave a negative or
+  // hour-long duration (the executor check refuses a negative one).
+  const start = performance.now()
   const fullCommand = withForwardArgs(opts.command, opts.forwardArgs)
 
   let proc: Child
@@ -1211,11 +1263,11 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
             )
     } catch (err) {
       pipes.close()
-      const stderr = spawnFailureText(err, opts.cwd, 'task', fullCommand)
+      const stderr = spawnFailureText(err, opts.cwd, 'task', fullCommand, opts.env)
       opts.onStderr?.(stderr)
       return {
         exitCode: 127,
-        durationMs: Date.now() - start,
+        durationMs: Math.round(performance.now() - start),
         stdout: '',
         stderr,
         spawnFailed: true,
@@ -1277,7 +1329,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
     opts.onStderr?.(text)
     return {
       exitCode: 127,
-      durationMs: Date.now() - start,
+      durationMs: Math.round(performance.now() - start),
       stdout,
       stderr: stderr + text,
       spawnFailed: true,
@@ -1288,7 +1340,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   const exitCode = exited === 0 && timeout.timedOut() ? signalExitCode('SIGTERM') : exited
   return {
     exitCode,
-    durationMs: Date.now() - start,
+    durationMs: Math.round(performance.now() - start),
     stdout,
     stderr,
     ...(proc.signalCode != null ? { signal: proc.signalCode } : {}),
@@ -1356,8 +1408,9 @@ function rssFloorFor(peak: number): number {
 
 /**
  * What a task's captured output keeps: the first `CAPTURE_HEAD_CHARS` and
- * the last `CAPTURE_TAIL_CHARS` characters, the dropped middle counted and
- * named where it was. The live stream is never bounded — every byte still
+ * the last `CAPTURE_TAIL_CHARS` characters (UTF-16 units: 8 MiB of ASCII),
+ * the dropped middle counted in the UTF-8 bytes the task wrote and named
+ * where it was. The live stream is never bounded — every byte still
  * reaches the terminal as the task writes it — only the copy vx retains
  * for the cache entry and its replay. Unbounded, a task printing 200 MB
  * cost vx 620 MB of RSS on the miss AND on every hit, and its stdout sat
@@ -1403,9 +1456,15 @@ const OWN_DROPPED_LINE = new RegExp(
 )
 const UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
 
-/** Whether `chunk` is the line a `BoundedCapture` puts where its dropped middle was. */
+/**
+ * The dropped lines `chunks()` returned, known by the object, not the text:
+ * a task's own chunk that read like one was copied past the mask.
+ */
+const droppedChunks = new WeakSet<CapturedChunk>()
+
+/** Whether `chunk` is the line a `BoundedCapture` put where its dropped middle was (the object `chunks()` returned). */
 export function isDroppedOutputChunk(chunk: CapturedChunk): boolean {
-  return !chunk.err && DROPPED_LINE.test(chunk.text)
+  return droppedChunks.has(chunk)
 }
 
 const isHighSurrogate = (code: number): boolean => code >= 0xd800 && code <= 0xdbff
@@ -1428,6 +1487,7 @@ export class BoundedCapture {
   private headLen = 0
   private readonly tail: CapturedChunk[] = []
   private tailLen = 0
+  /** UTF-8 bytes: a count of UTF-16 units said a third of the bytes CJK text dropped. */
   private dropped = 0
   private seen = 0
 
@@ -1485,12 +1545,12 @@ export class BoundedCapture {
       if (first.text.length <= excess) {
         this.tail.shift()
         this.tailLen -= first.text.length
-        this.dropped += first.text.length
+        this.dropped += Buffer.byteLength(first.text)
       } else {
         const cut = isHighSurrogate(first.text.charCodeAt(excess - 1)) ? excess + 1 : excess
+        this.dropped += Buffer.byteLength(first.text.slice(0, cut))
         this.tail[0] = { text: first.text.slice(cut), err: first.err }
         this.tailLen -= cut
-        this.dropped += cut
       }
     }
   }
@@ -1518,16 +1578,13 @@ export class BoundedCapture {
 
   /** The kept chunks in arrival order, the dropped middle named on stdout. */
   chunks(): CapturedChunk[] {
-    return this.dropped === 0
-      ? [...this.head, ...this.tail]
-      : [
-          ...this.head,
-          {
-            text: droppedOutputLine(this.dropped, this.headChars, this.tailChars),
-            err: false,
-          },
-          ...this.tail,
-        ]
+    if (this.dropped === 0) return [...this.head, ...this.tail]
+    const line = {
+      text: droppedOutputLine(this.dropped, this.headChars, this.tailChars),
+      err: false,
+    }
+    droppedChunks.add(line)
+    return [...this.head, line, ...this.tail]
   }
 
   text(): string {

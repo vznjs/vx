@@ -136,6 +136,29 @@ describe('materialiseOutputs refuses what lands outside the workspace (L-2)', ()
     expect(existsSync(path.join(cwd, 'dist'))).toBe(false)
   })
 
+  // A chain of directories `a/a/a/…`. 100 000 deep overflowed the stack
+  // counting it; 2 100 deep wrote a 4 KiB path's directories until the
+  // file system's raw ENAMETOOLONG.
+  it.each([100_000, 2_100])('a Tree %d directories deep is refused before a write', async (n) => {
+    let cur: Directory = { files: [], directories: [], symlinks: [] }
+    const children: Directory[] = []
+    for (let i = 0; i < n; i++) {
+      children.push(cur)
+      cur = {
+        files: [],
+        directories: [{ name: 'a', digest: sha256(encodeDirectory(cur)) }],
+        symlinks: [],
+      }
+    }
+    const r = await run({
+      output_directories: [{ path: 'dist', tree_digest: tree(cur, children.reverse()) }],
+    })
+    expect(r).toMatch(
+      /^the server's Tree for .*dist holds a path \d+ bytes long, past PATH_MAX \(\d+\) — refused$/,
+    )
+    expect(existsSync(path.join(cwd, 'dist'))).toBe(false)
+  })
+
   it('a Tree name of `..`', async () => {
     const up: Directory = {
       files: [{ name: 'new', digest: blob('pwned'), is_executable: false }],

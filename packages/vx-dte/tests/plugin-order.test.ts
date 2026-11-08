@@ -392,3 +392,112 @@ it('hands every ready task over, whatever its machines hold', async () => {
     await rm(root, { recursive: true, force: true })
   }
 })
+
+/**
+ * What `schedule` says of `nodes` (`[id, deps, exec, placed]` each, `cache`
+ * those with ids in it) under a dte() of `workers`: undefined, or its error.
+ */
+async function plans(
+  workers: NonNullable<NonNullable<Parameters<typeof dte>[0]>['workers']>,
+  nodes: [string, string[], Record<string, unknown>, Partial<TaskNode>][],
+  cached: string[] = [],
+): Promise<string | undefined> {
+  const relay = serveRelay({ port: 0, hostname: '127.0.0.1' })
+  const env = { run: process.env['VX_DTE_RUN'], secret: process.env['VX_DTE_SECRET'] }
+  process.env['VX_DTE_RUN'] = crypto.randomUUID()
+  process.env['VX_DTE_SECRET'] = 'place-secret'
+  const plugin = dte({ relay: relay.url, workers, adapter: { spawn: () => {} } })
+  const root = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-place-'))
+  try {
+    await writeFile(path.join(root, 'f'), 'x')
+    const git = (...args: string[]) =>
+      Bun.spawnSync(['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', ...args], {
+        cwd: root,
+      })
+    git('init', '-q')
+    git('add', '.')
+    git('commit', '-qm', 'r')
+    await plugin.executor!({
+      workspaceRoot: root,
+      cacheDir: root,
+      warn: () => {},
+      concurrency: 1,
+      artifacts: {},
+      cacheFacts: () => ({}),
+    } as never)
+    const graph = new Map(
+      nodes.map(([id, deps, exec, placed]) => [
+        id,
+        {
+          id,
+          deps,
+          projectDir: root,
+          config: { cache: cached.includes(id), exec: { command: 'true', ...exec } },
+          ...placed,
+        } as unknown as TaskNode,
+      ]),
+    )
+    return await Promise.resolve(
+      plugin.schedule!(graph, {
+        workspaceRoot: root,
+        cacheDir: root,
+        warn: () => {},
+        branch: null,
+        localCache: noHistory(root),
+        refine: () => {},
+        onRefine: () => {},
+        flaky: () => {},
+        refining: async () => {},
+      } as never),
+    ).then(
+      () => undefined,
+      (err: Error) => err.message,
+    )
+  } finally {
+    await plugin.teardown?.({} as never)
+    await relay.stop()
+    if (env.run === undefined) delete process.env['VX_DTE_RUN']
+    else process.env['VX_DTE_RUN'] = env.run
+    if (env.secret === undefined) delete process.env['VX_DTE_SECRET']
+    else process.env['VX_DTE_SECRET'] = env.secret
+    await rm(root, { recursive: true, force: true })
+  }
+}
+
+// An uncached upstream naming exec.worker 'alpha' ran there, then again
+// on 'beta' for its dependant there, a worker type it does not name: the
+// run gave it the dependant's place (2026-11-08).
+it('refuses a plan whose task reads an uncached upstream’s files from a worker type it cannot run on', async () => {
+  const machines = { small: { max: 1, cpu: 1, memory: '1GB' } }
+  const workers = { alpha: { machines }, beta: { machines } }
+  const graph = (worker?: string): Parameters<typeof plans>[1] => [
+    ['g#gen', [], worker === undefined ? {} : { worker }, { worker: 'alpha' }],
+    ['h#use', ['g#gen'], { worker: 'beta' }, { worker: 'beta' }],
+  ]
+  expect(await plans(workers, graph('alpha'))).toMatch(
+    /h#use runs on beta:\S+ and reads what uncached g#gen leaves where it runs, which cannot be there: its exec.worker or exec.platforms say alpha:/,
+  )
+  // Cached, its files go by the cache to any worker.
+  expect(await plans(workers, graph('alpha'), ['g#gen'])).toBeUndefined()
+  // Naming no type, it runs again on the dependant's.
+  expect(await plans(workers, graph())).toBeUndefined()
+}, 30_000)
+
+it('refuses a plan whose task reads an uncached upstream’s files from a platform it does not declare', async () => {
+  const workers = {
+    hosted: {
+      machines: {
+        small: { max: 1, cpu: 1, memory: '1GB', platform: 'linux-x64' as const },
+        arm: { max: 1, cpu: 1, memory: '1GB', platform: 'linux-arm64' as const },
+      },
+    },
+  }
+  const graph = (platforms?: string[]): Parameters<typeof plans>[1] => [
+    ['g#gen', [], platforms === undefined ? {} : { platforms }, { platform: 'linux-x64' }],
+    ['h#use', ['g#gen'], { platforms: ['linux-arm64'] }, { platform: 'linux-arm64' }],
+  ]
+  expect(await plans(workers, graph(['linux-x64']))).toMatch(
+    /h#use runs on linux-arm64 and reads what uncached g#gen leaves where it runs, which cannot be there: its exec.worker or exec.platforms say linux-x64/,
+  )
+  expect(await plans(workers, graph())).toBeUndefined()
+}, 30_000)

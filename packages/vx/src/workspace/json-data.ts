@@ -12,6 +12,10 @@
 // `JSON.stringify` (config-eval.ts). The worker embeds `nonJsonPaths` by its source text, so
 // the function must stay self-contained: no import, no module-scope name.
 //
+// JSON writes only own enumerable string keys: a symbol key or a
+// non-enumerable property vanished from the key and the lock
+// (`"config":{}`), so it is refused too.
+//
 // An `undefined` PROPERTY is allowed: JSON drops it, the validator reads
 // it as absent, and configs write it with conditional spreads. Inside an
 // array it is refused, because JSON writes it as `null`.
@@ -29,14 +33,20 @@ export function nonJsonPaths(value: unknown): NonJsonValue[] {
   // The key or index at each level, rendered only for a finding: the walk
   // runs on every first load, and a path string built per node cost three
   // times the schema check itself.
-  const keys: Array<string | number> = []
+  const keys: Array<string | number | symbol> = []
   // The objects on the path to the one being walked: a cycle throws in
   // `JSON.stringify` and would recurse here forever. A DAG is data.
   const ancestors: object[] = []
   const MAX_DEPTH = 256
   const found = (is: string): void => {
     let path = ''
-    for (const k of keys) path += typeof k === 'number' ? `[${k}]` : path === '' ? k : `.${k}`
+    for (const k of keys)
+      path +=
+        typeof k === 'number' || typeof k === 'symbol'
+          ? `[${String(k)}]`
+          : path === ''
+            ? k
+            : `.${k}`
     out.push({ path: path === '' ? 'the default export' : path, is })
   }
   const walk = (v: unknown, inArray: boolean): void => {
@@ -64,6 +74,13 @@ export function nonJsonPaths(value: unknown): NonJsonValue[] {
           walk(v[i], true)
           keys.pop()
         }
+        // Symbols only: listing an array's own names allocates every index
+        // string, +1-4% on a 20k-task lock, for a named property no config writes.
+        for (const key of Object.getOwnPropertySymbols(v)) {
+          keys.push(key)
+          found('a symbol key, which JSON drops')
+          keys.pop()
+        }
         ancestors.pop()
         return
       }
@@ -78,16 +95,18 @@ export function nonJsonPaths(value: unknown): NonJsonValue[] {
         return
       }
       ancestors.push(v)
-      for (const key of Object.keys(v)) {
+      for (const key of Reflect.ownKeys(v)) {
         keys.push(key)
         // Read by descriptor: a getter is code, and each read may answer
         // differently. `vx show` read one three times, so the key, the
         // check and the command could each see another value, and a
         // throwing one surfaced as vx's own stack (D-67). Never called here.
-        const d = Object.getOwnPropertyDescriptor(v, key)
-        if (d !== undefined && d.get !== undefined) found('a getter')
-        else if (d !== undefined && d.set !== undefined) found('a setter')
-        else walk(d?.value, false)
+        const d = Object.getOwnPropertyDescriptor(v, key) as PropertyDescriptor
+        if (typeof key === 'symbol') found('a symbol key, which JSON drops')
+        else if (d.enumerable !== true) found('a non-enumerable property, which JSON drops')
+        else if (d.get !== undefined) found('a getter')
+        else if (d.set !== undefined) found('a setter')
+        else walk(d.value, false)
         keys.pop()
       }
       ancestors.pop()

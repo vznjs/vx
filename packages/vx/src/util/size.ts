@@ -70,10 +70,20 @@ export function formatBytes(n: number): string {
   return `${v.toFixed(0)} PB`
 }
 
-/** Bytes under `p` on disk, links not followed; 0 when it is missing. */
+/** Bytes under `p` on disk, links not followed; 0 when missing, and for a directory this user cannot list. */
 export function treeBytes(p: string): number {
   const st = lstatSync(p, { throwIfNoEntry: false })
   if (st === undefined) return 0
   if (!st.isDirectory()) return st.size
-  return readdirSync(p).reduce((n, e) => n + treeBytes(path.join(p, e)), 0)
+  let names: string[]
+  try {
+    names = readdirSync(p)
+  } catch (err) {
+    // A directory this user cannot list (another user's store, a task's
+    // 0700 output) is a size nobody here can read, not a failed report.
+    const code = (err as NodeJS.ErrnoException).code
+    if (code === 'EACCES' || code === 'EPERM') return 0
+    throw err
+  }
+  return names.reduce((n, e) => n + treeBytes(path.join(p, e)), 0)
 }

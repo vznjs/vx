@@ -8,6 +8,7 @@ import { expect, it } from 'bun:test'
 import type { TaskConfig } from '../src/config.js'
 import { IndexFoldMemo } from '../src/cache/fold-memo.js'
 import { buildTaskGraph, type ProjectEntry } from '../src/graph/task-graph.js'
+import { standInsOf } from '../src/graph/stand-ins.js'
 import { memoGraph, type GraphMemo } from '../src/orchestrator/graph-memo.js'
 import { buildPackageGraph } from '../src/workspace/package-graph.js'
 import type { ProjectMeta } from '../src/workspace/workspace.js'
@@ -122,4 +123,27 @@ it('a graph read back keeps its addition marks: task ids, and the globs that add
   expect(built.get('a#build')!.outputsAddedToBy).toEqual(['dist/gen/**'])
   memoGraph(opts, memo)
   expect([...memoGraph(opts, memo).nodes.entries()]).toEqual([...built.entries()])
+})
+
+it('a graph read back keeps what each edge past a default build on a cycle stands for', () => {
+  // Rebuilt without it, `inputs.tasks: ['build']` folded a#build alone on
+  // every warm run, and an edit to b replayed a#test's hit.
+  const cycle: ProjectMeta[] = [
+    { name: 'a', dir: '/ws/a', configPath: '/ws/a/vx.config.ts', deps: ['b'] },
+    { name: 'b', dir: '/ws/b', configPath: '/ws/b/vx.config.ts', deps: ['a'] },
+  ]
+  const memo = memoOn('lock-1', cycle)
+  const build: TaskConfig = { dependsOn: ['^build'], inputs: { files: ['**'] }, cache: true }
+  const test: TaskConfig = { dependsOn: ['build'], exec: { command: 't' } }
+  const projects = new Map<string, ProjectEntry>([
+    ['a', { name: 'a', dir: '/ws/a', config: { tasks: { build, test } } }],
+    ['b', { name: 'b', dir: '/ws/b', config: { tasks: { build } } }],
+  ])
+  const opts = { ...options(projects, cycle), requested: [{ project: 'a', task: 'test' }] }
+  const built = buildTaskGraph(opts)
+  expect(standInsOf(built.get('a#test')!)).toEqual({ 'b#build': ['a#build'] })
+  memoGraph(opts, memo)
+  const again = memoGraph(opts, memo).nodes
+  expect([...again.entries()]).toEqual([...built.entries()])
+  expect(standInsOf(again.get('a#test')!)).toEqual({ 'b#build': ['a#build'] })
 })

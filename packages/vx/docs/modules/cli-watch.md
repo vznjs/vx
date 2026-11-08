@@ -52,12 +52,15 @@ export interface JudgeContext {
   fenced?(ownDir: string, abs: string): boolean // in a project nested under ownDir (makeFence)
   existedAtArm?: ReadonlySet<string> // what git listed at the arm; absent when it could not answer
   trackedAtArm?: ReadonlySet<string> // what git tracked at the arm: a held server is never blamed for one
+  clock?(): number // now on the mtime clock (fsClockNow); Date.now() when absent
 }
 export class ChangeJudge {
   readonly pending: Map<string, string> // path → label, what fired since the last judgement
   lastCycle: { start: number; end: number } | undefined // start on the mtime clock (fsClockNow), as armedAt
+  cycle: { from: number; to: number; windows: CommandWindows } | undefined // the cycle the last change-finding judgement started: from it on the mtime clock to the run's end, with the run's command windows (RunOptions.commandWindows)
   constructor(ctx: JudgeContext)
   seed(abs: string): void // record a path's state now, if unjudged: a link armed for its target
+  sawEvent(abs: string): void // an event: a write during `cycle` no command of it (nor a held server) may have made is a change next time, whatever it settles to
   unseen(moved: readonly (string | null)[]): void // inputs a run read in a state no judgement saw (TaskOutcome.driftedInput): each is a change next time; null marks every pending path
   judge(): string | undefined // the first changed path's label, or none
 }
@@ -85,6 +88,7 @@ export function gitFiles(
   workspaceRoot: string,
 ): { listed: Set<string>; tracked: Set<string>; links: Set<string> } | undefined // one `git ls-files -t -s` at the arm; links: the symlinks, whose targets watch arms
 export function gitSpeller(root: string): (p: string) => string // a path as git spells it: a symlinked dir below the root resolved
+export function lockedExtras(workspaceRoot: string): Set<string> // the files the recorded digests read besides a claimed file (.vx/dependencies.lock.json extras), absolute: watch arms them
 export function makeRootEventFilter(
   workspaceRoot: string,
   projectDirs: readonly string[],
@@ -119,9 +123,9 @@ export function armWatcher(
   recursive: boolean,
   onEvent: (filename: string) => void,
   timeoutMs?: number,
+  skipDir?: (rel: string) => boolean, // on Linux, asked of a directory under node_modules only
 ): ArmedWatcher
 export function modifiedBefore(abs: string, t: number): boolean
-export function fsClockNow(dir: string): number
 export const CLOSED: WatchHandle // watches nothing: a dropped slot, an arm not made
 export class WatcherPool {
   constructor(skip: (dir: string, rel: string) => boolean) // what the poller leaves unsampled
@@ -142,6 +146,10 @@ recursive arm is one non-recursive watch per directory that never enters
 this repo's root arm went from 4,657 inotify watches to 435 and its arm
 from 75 to 43 ms (min of 6, interleaved); a directory that appears is
 watched and what it already holds reported (`watch-tree-linux.test.ts`).
+It enters a `node_modules` only where the pool's `skip` keeps it: an
+input names a path there through that segment, or git tracks a file
+there; a re-read that changes which inputs name one re-arms the trees
+(`watch-node-modules-input.test.ts`).
 
 ## Flag surface
 
@@ -271,10 +279,12 @@ git checkout packages`) was no event to its own arm, nor to the
      made again, and every edit after it (macOS CI, 2026-11-04). Under
      `VX_DEBUG_WATCH` each arm line says its watch count, and on macOS
      it holds still across a removal and a restore.
-   - Filter out `node_modules` / `.git` / `.vx/cache` path segments,
+   - Filter out `node_modules` (save an input named through it, or a
+     file git tracks under it) / `.git` / `.vx/cache` path segments,
      `.vx/tmp` (restore staging), the `~` suffix (editor swap files), the RESOLVED
      cache directory (a relocated `cache.dir` would otherwise re-trigger
-     every cycle), and each project's declared outputs
+     every cycle; re-read with the watched set, so a `cache.dir` edit
+     mid-watch moves it, `tests/watch-cache-dir-change.test.ts`), and each project's declared outputs
      (`outputs.files`, root-relative `workspaceFiles`) — a cycle
      that writes `dist/` is not an edit, and neither is `dist` itself;
      a path a task the watch reaches declares as an input is never
@@ -330,7 +340,7 @@ git checkout packages`) was no event to its own arm, nor to the
    - Reentrancy guard: while a cycle is running, further events set
      a `pending` flag; the loop drains it after the current cycle
      finishes. Two events can collapse into one re-run.
-6. **Exit.** `watchCmd` installs `process.once` handlers for SIGINT,
+6. **Exit.** `watchCmd` installs `process.on` handlers for SIGINT,
    SIGTERM and SIGHUP BEFORE the initial run; each aborts one
    `AbortController`, with the signal's name as the reason, whose
    signal every cycle's `run()` carries (`RunOptions.signal`, `handleSignals: false`). The
@@ -344,7 +354,9 @@ git checkout packages`) was no event to its own arm, nor to the
    prints `vx watch: stopped`, the last line. Until 2026-09-10 the handlers went in
    with the loop, so a SIGTERM during the initial run took Bun's
    default (exit 143) and orphaned the cycle's child
-   (`tests/watch-signals.test.ts`).
+   (`tests/watch-signals.test.ts`). A repeat is a no-op (the abort is
+   once); under `once` a second signal mid-teardown took Bun's default
+   exit, not 0 (same file, "a second SIGINT during the teardown").
 
 ## Why not filter by `inputs.files`
 
@@ -419,7 +431,9 @@ on, as the cache keys decide.
   log stamped to the second rewrites the same bytes between changes.
 - Start a cycle on a file born and gone since the arm (vim's `4913`
   write probe): `gitFiles` lists what existed at the arm, and a gone path
-  it did not list was never read by a key (`watch-transient-file.test.ts`).
+  it did not list was never read by a key (`watch-transient-file.test.ts`),
+  unless it was born during a cycle where no command of it may write
+  (`sawEvent`) and its event came while it was there.
   Git lists a nested repository (a submodule, a vendored clone) as one
   entry, so a gone path under one is still a deletion.
 
@@ -429,6 +443,13 @@ on, as the cache keys decide.
   re-run of the user's specified task across the entire scope.
 - Restart a server for an edit to its own sources: the dev tool
   reloads those itself. Only its config, or its death, restarts it.
+- Tell a user's write from the run's own inside a command's window
+  (`CommandWindows.writerDuring`, widened by the racy window at its start
+  and a millisecond at its end, which `Date.now()` floors): an edit
+  there, put back before the next judgement, is judged by state alone.
+  An unsandboxed task writing outside its project (out of contract) is
+  not the run's, so the same bytes rewritten there every run re-run the
+  loop, named after three cycles.
 - Re-key a cycle when a task rewrites a lockfile _during_ it: the keys
   are taken once per cycle. The run itself notices (item 750,
   [`fingerprint-watch.md`](./fingerprint-watch.md)): nothing keyed
@@ -453,7 +474,8 @@ end), `tests/watch-loop-members.test.ts` (a project the lock adds or drops),
 `tests/watch-affected.test.ts` (`--affected` past the first cycle),
 `tests/watch-anchored-scope.test.ts` (what `pkg#task` watches),
 `tests/watch-loop-uncached.test.ts` (undeclared writes judged by
-settled state), `tests/watch-loop-selfwrite.test.ts` (a file rewritten
+settled state), `tests/watch-edit-before-keys.test.ts` (an edit after
+the judgement, before the keys, put back mid-cycle), `tests/watch-loop-selfwrite.test.ts` (a file rewritten
 with different bytes every run), `tests/watch-signals.test.ts` (SIGINT
 and SIGTERM during the initial run and a cycle; a Ctrl-C reaches the
 cycle's task and the held dev server as SIGINT), and

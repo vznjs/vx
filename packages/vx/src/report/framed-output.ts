@@ -26,7 +26,13 @@
 // `--ui=stream` mode.
 
 import { withForwardArgs } from '../exec/index.js'
-import { isCacheHit, isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
+import {
+  isCacheHit,
+  isGroupTask,
+  isKeyFailed,
+  type TaskNode,
+  type TaskOutcome,
+} from '../graph/index.js'
 import { formatElapsed, maskedCommand, printable } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import {
@@ -325,17 +331,19 @@ function statusOf(o: TaskOutcome): { word: string; color: Style } {
   }
 }
 
-/** Whether the task ran its command: a hit whose restore failed did not. */
+/** Whether the task ran its command: a hit whose restore failed did not, nor a task with no key. */
 function ranCommand(o: TaskOutcome): boolean {
-  return o.status === 'success' || (o.status === 'failed' && o.restoreFailed !== true)
+  return (
+    o.status === 'success' || (o.status === 'failed' && o.restoreFailed !== true && !isKeyFailed(o))
+  )
 }
 
 /**
  * Cache-axis word + color. Empty for states that never reached the cache,
- * and for a hit whose restore failed: neither a miss nor a hit.
+ * a hit whose restore failed (neither a miss nor a hit) and a task with no key.
  */
 function cacheOf(o: TaskOutcome): { word: string; color: Style } {
-  if (o.restoreFailed === true) return { word: '', color: 'muted' }
+  if (o.restoreFailed === true || isKeyFailed(o)) return { word: '', color: 'muted' }
   switch (o.status) {
     case 'success':
     case 'failed':
@@ -886,7 +894,7 @@ function violationSection(outcome: TaskOutcome, colors: ColorSupport): string[] 
           ...(fix.inputs !== undefined
             ? [
                 dim(
-                  `and, if the output depends on them, inputs.files: [${fix.inputs.map((p) => `'${printable(p)}'`).join(', ')}]`,
+                  `and, if the output depends on them, inputs.files: [${fix.inputs.map(jsString).join(', ')}]`,
                 ),
               ]
             : []),
@@ -1059,6 +1067,9 @@ function formatStatusTag(o: TaskOutcome, colors: ColorSupport): string {
   }
 }
 
+/** A fix path as the single-quoted JS literal the config line pastes. */
+const jsString = (p: string): string => `'${printable(p.replace(/[\\']/g, '\\$&'))}'`
+
 /**
  * The fix as the config line it is: `exec.sandbox.allow: { read: ['a'] }`,
  * or undefined when every denial was a withheld credential path.
@@ -1067,7 +1078,7 @@ function sandboxFixLine(f: NonNullable<TaskOutcome['sandboxFix']>): string | und
   const fix = Object.entries(f).filter(([k]) => k !== 'withheld' && k !== 'inputs')
   if (fix.length === 0) return undefined
   const parts = fix.map(
-    ([k, list]: [string, string[]]) => `${k}: [${list.map((p) => `'${printable(p)}'`).join(', ')}]`,
+    ([k, list]: [string, string[]]) => `${k}: [${list.map(jsString).join(', ')}]`,
   )
   return `exec.sandbox.allow: { ${parts.join(', ')} }`
 }

@@ -150,11 +150,22 @@ describe('a shallow clone', () => {
   it('with no origin to fetch from, says the clone is shallow', async () => {
     const root = await clone('feat')
     gitIn(root)('remote', 'remove', 'origin')
+    const config = await Bun.file(path.join(root, '.git/config')).text()
     const refusal = await changed(root, 'HEAD~1').then(
       () => 'resolved',
       (err: Error) => err.message,
     )
+    // `git fetch origin` cannot work here: the message names a URL instead.
     expect(refusal).toBe(
+      'git ref "HEAD~1" did not resolve. Pass a branch or commit you have locally. ' +
+        'This clone is shallow and has no origin remote: fetch the base from where it lives ' +
+        '(`git fetch --depth=1 <url> <base>`), or add one (`git remote add origin <url>`).',
+    )
+    // A filtered fetch from no origin wrote a promisor `[remote "origin"]`.
+    expect(await Bun.file(path.join(root, '.git/config')).text()).toBe(config)
+    const unset = await clone('feat')
+    gitIn(unset)('remote', 'set-url', 'origin', `file://${dir}/nowhere`)
+    expect(await changed(unset, 'HEAD~1').catch((err: Error) => err.message)).toBe(
       'git ref "HEAD~1" did not resolve. Pass a branch or commit you have locally. ' +
         'This clone is shallow and origin did not give it: fetch the base (`git fetch --depth=1 origin <base>`).',
     )
@@ -166,6 +177,12 @@ describe('a shallow clone', () => {
     expect(await changed(cut, 'origin/main').catch((err: Error) => err.message)).toBe(
       'git ref "origin/main" has no merge base with HEAD in this shallow clone, and origin ' +
         'did not give the history between them: fetch it (`git fetch --unshallow origin`).',
+    )
+    const tip = sha(cut, 'origin/main')
+    gitIn(cut)('remote', 'remove', 'origin')
+    expect(await changed(cut, tip).catch((err: Error) => err.message)).toBe(
+      `git ref "${tip}" has no merge base with HEAD in this shallow clone, which has no ` +
+        'origin remote: fetch the history between them (`git fetch --unshallow <url>`).',
     )
     // CONTROL: the same missing ref in a full clone keeps the bare message.
     expect(await changed(origin, 'HEAD~99').catch((err: Error) => err.message)).toBe(

@@ -16,6 +16,8 @@ import {
   buildTaskGraph,
   computeReverseDepCount,
   declaredTask,
+  setStandIns,
+  standInsOf,
   type TaskNode,
 } from '../graph/index.js'
 import { xxh3hex } from '../util/index.js'
@@ -25,7 +27,7 @@ import { codeIdentity } from './run-keys.js'
 type BuildGraphOptions = Parameters<typeof buildTaskGraph>[0]
 
 /** Moves every remembered graph: bump it when what a token stands for changes. */
-const GRAPH_MEMO_VERSION = 'graph-memo-v1'
+const GRAPH_MEMO_VERSION = 'graph-memo-v2'
 
 /** What names a run's configs: the lock they were read from and the projects discovered. */
 export interface GraphMemo {
@@ -38,7 +40,9 @@ export interface GraphMemo {
  * A node as the memo holds it: its project and task, requested, its deps
  * and the tasks it adds outputs to as positions in the list (ids in full
  * were 123 KB for 1,206 tasks, and parsing them back cost what the walk
- * saved), and the globs that add to its own outputs.
+ * saved), the globs that add to its own outputs, and its stand-ins
+ * (rebuilt without it, `inputs.tasks` dropped the edges past a default
+ * build on a package cycle on every warm run).
  */
 type Row = [
   project: string,
@@ -47,6 +51,7 @@ type Row = [
   deps: number[],
   adds?: number[] | null,
   added?: string[] | null,
+  stands?: Array<[edge: number, past: number[]]>,
 ]
 
 /**
@@ -97,10 +102,22 @@ function rowsOf(nodes: Map<string, TaskNode>): Row[] {
   const pos = (ids: readonly string[]): number[] => ids.map((d) => at.get(d)!)
   return [...nodes.values()].map((n) => {
     const row: Row = [n.projectName, n.taskName, n.requested ? 1 : 0, pos(n.deps)]
-    if (n.addsToOutputsOf !== undefined || n.outputsAddedToBy !== undefined)
+    const standsFor = standInsOf(n)
+    if (
+      n.addsToOutputsOf !== undefined ||
+      n.outputsAddedToBy !== undefined ||
+      standsFor !== undefined
+    )
       row.push(
         n.addsToOutputsOf === undefined ? null : pos(n.addsToOutputsOf),
         n.outputsAddedToBy ?? null,
+      )
+    if (standsFor !== undefined)
+      row.push(
+        Object.entries(standsFor).map(([edge, past]): [number, number[]] => [
+          at.get(edge)!,
+          pos(past),
+        ]),
       )
     return row
   })
@@ -134,11 +151,16 @@ function rebuilt(
   const ids = (at: readonly number[]): string[] => at.map((i) => list[i]!.id)
   const nodes = new Map<string, TaskNode>()
   for (let i = 0; i < rows.length; i++) {
-    const [, , , deps, adds, added] = rows[i]!
+    const [, , , deps, adds, added, stands] = rows[i]!
     const node = list[i]!
     node.deps = ids(deps)
     if (adds != null) node.addsToOutputsOf = ids(adds)
     if (added != null) node.outputsAddedToBy = added
+    if (stands !== undefined) {
+      const standsFor: Record<string, string[]> = {}
+      for (const [edge, past] of stands) standsFor[list[edge]!.id] = ids(past)
+      setStandIns(node, standsFor)
+    }
     nodes.set(node.id, node)
   }
   return nodes

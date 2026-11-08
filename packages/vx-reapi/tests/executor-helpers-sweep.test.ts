@@ -212,6 +212,7 @@ describe('the action’s environment', () => {
     ).toEqual([
       { name: 'A', value: '1' },
       { name: 'D', value: 'defined' },
+      { name: 'FORCE_COLOR', value: '1' },
     ])
   })
 })
@@ -340,6 +341,25 @@ describe.if(CHUNKING_SUPPORTED)('the record’s output directories', () => {
     expect(recordOf('k-none').map((d) => d.path)).toEqual(['pkg/mods'])
     await run('k-partial', ['mods/x*/gen'])
     expect(recordOf('k-partial').map((d) => d.path)).toEqual(['pkg/mods'])
+  })
+
+  // A replay refuses a path past PATH_MAX; splitting walked its depth by
+  // recursion, and 100 000 deep overflowed the stack into a warning.
+  it('a capture holding a path past PATH_MAX is recorded whole, unsplit', async () => {
+    let cur = dir(['x'])
+    const chain = [cur]
+    for (let i = 0; i < 2_100; i++) chain.push((cur = dir([], { a: cur })))
+    const top = chain.pop()!
+    executeReturning('mods', fake.put(encodeTree(top, chain.reverse())))
+    const warns: string[] = []
+    const deep = request({
+      cacheKey: 'k-deep',
+      outputs: { files: ['mods/*'], workspaceFiles: [] },
+      remoteOnly: true,
+    })
+    expect(await refusal(runOne(deep, warns))).toBe('resolved')
+    expect(recordOf('k-deep').map((d) => d.path)).toEqual(['pkg/mods'])
+    expect(warns).toEqual([])
   })
 
   it('each match once, its Tree carrying every descendant and a hole skipped, uploaded', async () => {

@@ -177,3 +177,44 @@ describe("a base ref's bun.lock under --affected", () => {
     }
   })
 })
+
+describe('a pnpm-lock.yaml naming a package it has no entry for', () => {
+  // pnpm refuses it (ERR_PNPM_LOCKFILE_MISSING_DEPENDENCY, "Broken
+  // lockfile"); the graph made the missing package a leaf, so a file cut
+  // after `snapshots:` keyed every project on versions alone.
+  const importerFoo =
+    'importers:\n  .:\n    dependencies:\n      foo:\n        specifier: ^1.0.0\n        version: 1.0.0\n'
+  const lockfiles: [string, string][] = [
+    [
+      `lockfileVersion: '9.0'\n${importerFoo}packages:\n  foo@1.0.0:\n    resolution: {integrity: sha512-x}\nsnapshots:\n`,
+      'pnpm-lock.yaml: no entry for foo@1.0.0, which importer . names',
+    ],
+    [
+      `lockfileVersion: '9.0'\n${importerFoo}packages:\n  foo@1.0.0:\n    resolution: {integrity: sha512-x}\nsnapshots:\n  foo@1.0.0:\n    dependencies:\n      bar: 2.0.0\n`,
+      'pnpm-lock.yaml: no entry for bar@2.0.0, which foo@1.0.0 names',
+    ],
+    [
+      `lockfileVersion: '6.0'\n${importerFoo}packages:\n  /foo@1.0.0:\n    resolution: {integrity: sha512-x}\n    dependencies:\n      bar: 2.0.0\n`,
+      'pnpm-lock.yaml: no entry for /bar@2.0.0, which /foo@1.0.0 names',
+    ],
+    [
+      'lockfileVersion: 5.4\nimporters:\n  .:\n    specifiers:\n      foo: ^1.0.0\n    dependencies:\n      foo: 1.0.0\npackages:\n',
+      'pnpm-lock.yaml: no entry for /foo/1.0.0, which importer . names',
+    ],
+  ]
+  for (const [text, message] of lockfiles) {
+    it(`is refused: ${message}`, async () => {
+      const root = await mkdtemp(path.join(tmpdir(), 'vx-pnpm-broken-'))
+      try {
+        await writeFile(path.join(root, 'pnpm-lock.yaml'), text)
+        const got = await lockedKey(pnpm(), root, path.join(root, '.c')).then(
+          () => '(no refusal)',
+          (e: unknown) => (e instanceof Error ? e.message : String(e)),
+        )
+        expect(got).toBe(`${message} — regenerate it with \`pnpm install\``)
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    })
+  }
+})

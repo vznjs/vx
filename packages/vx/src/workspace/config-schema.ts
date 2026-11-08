@@ -23,6 +23,7 @@ import {
   UserError,
   BUN_GLOB_WILDCARDS,
   EXTGLOB,
+  braceAlternatives,
   braceRange,
   BRACE_RANGE_LIMIT,
   anyTaskGlob,
@@ -1314,7 +1315,11 @@ function assertKnownFields(value: object, allowed: ReadonlySet<string>, where: s
     if (!allowed.has(key)) {
       // The nearest accepted spelling first: the list says what the level
       // takes, the hint says which one was meant.
-      const foreign = FOREIGN_FIELDS.get(allowed)?.[key] ?? nestedHome(allowed, key)
+      // Own keys only: `constructor` read Object's and printed its source.
+      const spellings = FOREIGN_FIELDS.get(allowed)
+      const foreign =
+        (spellings !== undefined && Object.hasOwn(spellings, key) ? spellings[key] : undefined) ??
+        nestedHome(allowed, key)
       const near =
         nearest(key, allowed) ?? (allowed === WORKSPACE_FIELDS ? nearestSetting(key) : undefined)
       throw new UserError(
@@ -1424,14 +1429,25 @@ function assertNoForeignToken(glob: string, where: string): void {
  * and names both.
  */
 function assertNoGluedGlobstar(glob: string, where: string): void {
+  if (gluesGlobstar(glob)) throw gluedGlobstar(glob, `"${glob}"`, where)
+  // Split on `{` `}` `,` alone, `src/{a,**}.ts` passed and expanded to
+  // `src/**.ts`, one level.
+  const alt = braceAlternatives(glob).find(gluesGlobstar)
+  if (alt !== undefined) throw gluedGlobstar(alt, `"${glob}" expands to "${alt}": that`, where)
+}
+
+function gluesGlobstar(glob: string): boolean {
   const body = glob.startsWith('!') ? glob.slice(1) : glob
-  if (!body.split(/[/{},]/).some((seg) => seg.includes('**') && /[^*]/.test(seg))) return
+  return body.split(/[/{},]/).some((seg) => seg.includes('**') && /[^*]/.test(seg))
+}
+
+function gluedGlobstar(glob: string, subject: string, where: string): UserError {
   const deep = glob.replace(/\*\*([^*/{},]+)/g, '**/*$1').replace(/([^*/{},]+)\*\*/g, '$1*/**')
   const one = glob.replace(/\*{2,}/g, (run, at: number) =>
     /[^*/{},]/.test(glob[at - 1] ?? '') || /[^*/{},]/.test(glob[at + run.length] ?? '') ? '*' : run,
   )
-  throw new UserError(
-    `${where}: "${glob}" glues ** to other text in one path segment, which vx's glob engine ` +
+  return new UserError(
+    `${where}: ${subject} glues ** to other text in one path segment, which vx's glob engine ` +
       `reads as one *, a single directory level. Write "${deep}" for every depth, or "${one}" ` +
       `for one level.`,
   )
@@ -1703,8 +1719,8 @@ function isEnvName(name: unknown): name is string {
  * A task name `dependsOn`, `inputs.tasks` and the CLI can name. Each
  * refused shape loaded and could not be referenced: `x#y` read as project
  * `x`, `^gen` as every dependency's `gen`, a `*` as a pattern, `''` ran
- * under `--all` as `a#` and `vx run a#` refused it, and a padded name was
- * trimmed away by the reader (item 1000).
+ * under `--all` as `a#` and `vx run a#` refused it, `-x` as a flag, and a
+ * padded name was trimmed away by the reader (item 1000).
  */
 function assertTaskName(name: string, configPath: string): void {
   const why = taskNameProblem(name)
@@ -1727,9 +1743,11 @@ export function taskNameProblem(name: string): string | null {
           ? "holds '*', which makes it a pattern"
           : name.startsWith('^') || name.startsWith('!')
             ? `starts with '${name[0]}', which names dependencies' tasks or negates`
-            : hasControl(name)
-              ? 'holds a control character'
-              : null
+            : name.startsWith('-')
+              ? "starts with '-', which the CLI reads as a flag"
+              : hasControl(name)
+                ? 'holds a control character'
+                : null
 }
 
 /**

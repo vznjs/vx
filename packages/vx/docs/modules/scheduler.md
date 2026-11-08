@@ -126,8 +126,9 @@ export interface ScheduleOptions {
 
 export async function runGraph(options: ScheduleOptions): Promise<Map<string, TaskOutcome>>
 
-// The dead server a dependency stands for: itself, or one a group reaches.
-// Iterative, each node once: a deep chain of groups does not overflow.
+// The dead server a dependency stands for: itself, or one a group or a server
+// reaches (`web` stays up on `api`). Iterative, each node once: a deep chain
+// of groups does not overflow.
 export function deadServerBehind(
   nodes: ReadonlyMap<string, TaskNode>,
   serverDied: (id: string) => boolean,
@@ -135,7 +136,8 @@ export function deadServerBehind(
 ): string | undefined
 
 // Persistent tasks nobody asked for whose every dependant is a restore-tier hit,
-// or an unrequested group only such hits stand behind (those groups go in `groups`).
+// or an unrequested group or server only such hits stand behind (those groups and
+// servers go in `groups`, settled as a group is).
 export function idleServers(
   nodes: ReadonlyMap<string, TaskNode>,
   dependents: ReadonlyMap<string, string[]>,
@@ -153,6 +155,29 @@ export class RestoreDemoted extends Error {
 export class RestoreFailed extends Error {
   constructor(readonly error: unknown)
 }
+
+// Thrown by `execute` when deriving the key threw (task-hash.md `keyOf`):
+// reported as `[vx] <id>: cache key not derived: <error>`, the outcome
+// `failed` and marked: `isKeyFailed(outcome)`.
+export class KeyFailed extends Error {
+  constructor(readonly error: unknown)
+}
+
+// A symbol mark, not a field (`TaskOutcome` and `RunPlan` are public types):
+// it rides a spread copy and never reaches JSON. The plan marks itself when
+// any task's key failed, and `--dry` exits 1 on it.
+export function markKeyFailed<T extends object>(o: T): T
+export function isKeyFailed(o: object): boolean
+
+// Thrown by `execute` when vx's own clean before an attempt, or its save
+// after an exit 0, threw: the outcome keeps `exitCode` and `durationMs`
+// (the command's, or vx's 1 and 0 when it never ran) and is marked with
+// the step, so no label names an exit the command never returned.
+export class OutputsFailed extends Error {
+  constructor(readonly error: unknown, readonly step: 'clean' | 'save', readonly exitCode: number, readonly durationMs: number)
+}
+export function markOutputsFailed<T extends object>(o: T, step: 'clean' | 'save'): T
+export function outputsFailedOf(o: object): 'clean' | 'save' | undefined
 ```
 
 `task-status.ts` holds `TaskStatus` and what each status means, so no
@@ -198,9 +223,12 @@ server and its hits is idle with it: it waits the same way, settles
 with no outcome once every hit above it has one, and a demotion above
 it wakes it and the server.
 A `heldServers` server does not dispatch until its promise answers: the
-dependants it names join the restore lane, and it is idle when every
-dependant is then in the tier, else it dispatches as usual
-(`orchestrator/held-servers.ts` asks the remote).
+dependants it names join the restore lane, and it is idle when
+`idleServers` then finds it so, with the groups and the held servers
+beneath it that the same walk passes through; else it dispatches as
+usual (`orchestrator/held-servers.ts` holds every server that walk would
+idle were each remote key a hit, and asks the remote for the keys above
+it).
 
 A run counts dependents once: the `most-work` baseline is also every
 row's `blocks`, groups counted as the scheduler counts them, and the

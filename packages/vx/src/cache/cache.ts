@@ -79,6 +79,8 @@ import {
   isFsRefusal,
   isOutOfFds,
   OUT_OF_FDS_HINT,
+  OWN_DIR_HINT,
+  refuseForeignCacheDir,
   restorableOutput,
   relPosix,
   span,
@@ -101,7 +103,7 @@ import {
   stagesInto,
   writeTree,
 } from './archive.js'
-import { readUmask, restoredMode } from './umask.js'
+import { modeMatches, readUmask, restoredMode } from './umask.js'
 import {
   ArtifactVanishedError,
   type CacheEntry,
@@ -155,6 +157,8 @@ import { WalCheckpointer } from './checkpointer.js'
 const HELD_SLICE = 250
 /** SQLite's own default, back on a connection whose checkpoint thread failed. */
 const WAL_AUTOCHECKPOINT = 1000
+/** Asks whether an open database file is still the one at its name (`attachStore`). */
+const SQLITE_FCNTL_HAS_MOVED = 20
 
 const ORPHAN_GRACE_MS = 60 * 60 * 1000
 
@@ -395,7 +399,13 @@ function cantOpenIndex(dbFile: string, err: unknown): UserError | undefined {
 //   v54: entries.run_id — the run that wrote the entry, so `vx last
 //        --log` tells a run's own output from another run's under the same
 //        key. The cache KEY is unchanged.
-export const SCHEMA_VERSION = 'v54'
+//   v55: output_stamps.mtime_ms — the mtime the file carried when
+//        stamped. A restore dates each file it writes now, as the task's
+//        write would, not with the entry's saved mtime: a make-style
+//        dependant took a restored upstream as older than its own output
+//        and saved bytes built from another upstream. The cache KEY and
+//        the stored artifact are unchanged.
+export const SCHEMA_VERSION = 'v55'
 
 /**
  * An entry's key components as its one `entry_inputs` row (v34): JSON
@@ -447,27 +457,30 @@ const ARTIFACT_TABLES = ['artifacts', 'artifacts_meta']
 const ARTIFACT_LAYOUT = 'a2'
 
 /**
- * An index that records a schema other than this vx's: the one an opener
- * that writes resets. Reads the recorded version alone and touches
- * nothing; an unreadable file is left to the open to refuse.
+ * A preview's index connection and the schema it records, which the open
+ * keeps and reuses. A version other than this vx's is the index an opener
+ * that writes resets; an unreadable file is left to the open to refuse.
  */
-function indexOfAnotherSchema(dbFile: string): boolean {
-  let found: string | undefined
+function previewIndex(dbFile: string): { db: Database; version: string | undefined } | undefined {
+  let db: Database
   try {
-    const db = new Database(dbFile, { readonly: true })
-    try {
-      found = (
-        db.query("SELECT value FROM schema_meta WHERE key = 'version'").get() as {
-          value: string
-        } | null
-      )?.value
-    } finally {
-      closeDb(db)
-    }
+    db = new Database(dbFile, { create: true })
   } catch {
-    return false
+    // The main open names why.
+    return undefined
   }
-  return found !== undefined && found !== SCHEMA_VERSION
+  try {
+    const version = (
+      db.prepare("SELECT value FROM schema_meta WHERE key = 'version'").get() as {
+        value: string
+      } | null
+    )?.value
+    return { db, version }
+  } catch {
+    // No stamp read (no table yet, busy, not a database): the main open
+    // reads it again and refuses what it must.
+    return { db, version: undefined }
+  }
 }
 
 /** The largest compressed log a probe loads with its entry. */
@@ -700,6 +713,9 @@ function entryOf(
   return entry
 }
 
+/** Why a reading handle (`'inspect'`, `'preview'`) writes nothing: no index to read was there. */
+const NO_INDEX = 'no index there yet'
+
 /** The sidecar's `exec` from a save's entry: only the axes the runner reported. */
 function usageOfEntry(entry: { cpuMs?: number; peakRssBytes?: number }): ExecUsage | undefined {
   if (entry.cpuMs === undefined && entry.peakRssBytes === undefined) return undefined
@@ -721,7 +737,8 @@ function usageOfEntry(entry: { cpuMs?: number; peakRssBytes?: number }): ExecUsa
  * failure is another question's answer: `access` on the directory is also
  * "does it exist" (made only on ENOENT), `access` on the database also "is
  * it there", and the ignore file is created exclusively instead of probed
- * first. An existing cache costs three calls; it cost six.
+ * first. An existing cache costs three calls, it cost six, and two more
+ * resolve it (`refuseForeignCacheDir`).
  */
 function openCacheDir(cacheDir: string, workspaceRoot?: string, index = 'cache.db'): string | null {
   const [ignore, ignoreText] = ignoreFileFor(cacheDir)
@@ -742,12 +759,17 @@ function openCacheDir(cacheDir: string, workspaceRoot?: string, index = 'cache.d
     if (code !== 'ENOENT') return errorText(err)
     refuseManifestDir(cacheDir, workspaceRoot)
   }
+  if (index === 'cache.db') refuseForeignCacheDir(cacheDir, workspaceRoot)
   writeIgnore(ignore, ignoreText)
   return null
 }
 
-/** `openCacheDir` for the shared store: why it cannot be used, or null. Never throws. */
-function storeBlocked(storeDir: string, storeRoot: string | null): string | null {
+/**
+ * `openCacheDir` for the shared store: why it cannot be used, or null. Never
+ * throws. `make` false asks the same question and makes or changes
+ * nothing, so a reading verb settles where the entries are as a run does.
+ */
+function storeBlocked(storeDir: string, storeRoot: string | null, make: boolean): string | null {
   try {
     if (storeRoot !== null) {
       // `~/.vx`, `~/.vx/<id>`, `~/.vx/<id>/cache`: owner-only, each level
@@ -755,21 +777,53 @@ function storeBlocked(storeDir: string, storeRoot: string | null): string | null
       // replayed into the workspace, so nobody else may write them.
       const vxHome = path.dirname(path.dirname(storeRoot))
       for (const dir of [vxHome, path.dirname(storeRoot), storeRoot]) {
-        const refused = ensurePrivateDir(dir)
+        // The levels below one not made yet are made by this user, 0700.
+        if (!make && lstatSync(dir, { throwIfNoEntry: false }) === undefined)
+          return mkdirBlocked(dir, false)
+        const refused = ensurePrivateDir(dir, make)
         if (refused !== null) return refused
       }
     }
-    return openCacheDir(storeDir, undefined, 'store.db')
+    if (make) return openCacheDir(storeDir, undefined, 'store.db')
+    try {
+      accessSync(storeDir, constants.W_OK)
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') return errorText(err)
+      return mkdirBlocked(storeDir, true)
+    }
+    try {
+      accessSync(path.join(storeDir, 'store.db'), constants.W_OK)
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') return errorText(err)
+      refuseManifestDir(storeDir, undefined)
+    }
+    return null
   } catch (err) {
     return errorText(err)
   }
 }
 
-function ensurePrivateDir(dir: string): string | null {
+/** Why `mkdir` (`-p` with `recursive`) of `dir` would fail, asked without making it. */
+function mkdirBlocked(dir: string, recursive: boolean): string | null {
+  let up = path.dirname(dir)
+  if (recursive)
+    while (lstatSync(up, { throwIfNoEntry: false }) === undefined) up = path.dirname(up)
   try {
-    mkdirSync(dir, { mode: 0o700 })
+    if (!statSync(up).isDirectory()) return `${up} is not a directory`
+    accessSync(up, constants.W_OK)
+    return null
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') return errorText(err)
+    return errorText(err)
+  }
+}
+
+function ensurePrivateDir(dir: string, make: boolean): string | null {
+  if (make) {
+    try {
+      mkdirSync(dir, { mode: 0o700 })
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') return errorText(err)
+    }
   }
   const st = lstatSync(dir)
   if (!st.isDirectory()) return `${dir} is not a directory`
@@ -781,7 +835,7 @@ function ensurePrivateDir(dir: string): string | null {
   // The user's own directory open to others (a `~/.vx` made at the
   // default umask, 0755) is vx's to close: refusing it left the store
   // unused on a stock macOS home (2026-10-06: "you should own it").
-  if ((st.mode & 0o077) !== 0) {
+  if (make && (st.mode & 0o077) !== 0) {
     try {
       chmodSync(dir, 0o700)
     } catch (err) {
@@ -877,8 +931,6 @@ const MANIFESTS = [
   ...['ts', 'mts', 'js', 'mjs', 'cts', 'cjs'].map((ext) => `vx.config.${ext}`),
   ...['ts', 'mts', 'js', 'mjs', 'cts', 'cjs'].map((ext) => `.vx/workspace.${ext}`),
 ]
-const OWN_DIR_HINT =
-  'Point `cache.dir` in .vx/workspace.ts (or --cache-dir) at a directory of its own, such as .vx/cache.'
 
 function makeCacheDir(cacheDir: string): void {
   try {
@@ -972,6 +1024,43 @@ export interface RemoteTraffic {
   readonly keys: Map<string, RemoteKeyTraffic>
 }
 
+/**
+ * Core's own cache's `hashFile`, also told the ctime of the stat its digest
+ * came from (`hashFileSeen`). Kept off `CacheLayer`, a public type: another
+ * layer has none here.
+ */
+const seenHashers = new WeakMap<
+  CacheLayer,
+  {
+    /** The layer's `hashFile` when it registered: one replaced since is not this. */
+    method: CacheLayer['hashFile']
+    hash: (file: string, seen: (ctimeMs: number) => void) => Promise<string>
+  }
+>()
+
+/**
+ * `layer.hashFile(file)`, and `seen` told the ctime of the stat the digest
+ * came from when the layer is core's own cache (the re-check's tie rule,
+ * `InputFact.ctimeMs`). Any other layer tells nothing, and so does one
+ * whose `hashFile` was replaced since.
+ */
+export function hashFileSeen(
+  layer: CacheLayer,
+  file: string,
+  seen: (ctimeMs: number) => void,
+): Promise<string> {
+  const own = seenHashers.get(layer)
+  return own === undefined || own.method !== layer.hashFile
+    ? layer.hashFile(file)
+    : own.hash(file, seen)
+}
+
+/** `to` answers `hashFileSeen` as `from` does: a layer over core's cache. */
+export function shareSeenHasher(from: CacheLayer, to: CacheLayer): void {
+  const own = seenHashers.get(from)
+  if (own !== undefined) seenHashers.set(to, { method: to.hashFile, hash: own.hash })
+}
+
 export class Cache implements CacheLayer {
   /** This IS the local layer — there is nothing slower behind it. */
   readonly hasRemote = false
@@ -1008,6 +1097,12 @@ export class Cache implements CacheLayer {
    * serves those rows only while the blob still carries it.
    */
   private readonly heldInlineAt = new Map<string, number>()
+  /**
+   * The mtime each file the last restore of a key left, by row path
+   * (`extractArtifactStream`'s `dated`): its stamps take that, not the
+   * row's saved one. Taken by `recordOutputStamps`.
+   */
+  private readonly datedMtimes = new Map<string, Map<string, number>>()
   /** Keys the last lookups found an inline artifact for and no row: `adopt`'s to read. */
   private readonly rowless = new Set<string>()
   /** Row-less lookups that stat'ed their artifact path (`artifactFileMayExist`). */
@@ -1103,9 +1198,10 @@ export class Cache implements CacheLayer {
     /**
      * `'inspect'`: a reading verb (`why`, `last`, `info`). It never resets
      * the index: a schema it cannot read is refused, named, and left as it
-     * was. `'preview'`: a dry prune, which reads such an index as the reset
-     * the real prune does first leaves it, empty, with the store still
-     * reached, so it names what that prune takes (item 1083).
+     * was. `'preview'`: a dry prune or a `--dry` plan, which reads such an
+     * index as the reset the real prune or run does first leaves it, empty,
+     * with the store still reached, so it names what that prune takes
+     * (item 1083).
      */
     mode: 'open' | 'inspect' | 'preview' = 'open',
     /**
@@ -1134,10 +1230,20 @@ export class Cache implements CacheLayer {
     // said "no recorded runs yet" (item 900).
     const dbFile = path.join(cacheDir, 'cache.db')
     this.dbFile = dbFile
-    const absent =
-      mode !== 'open' &&
-      (!existsSync(dbFile) || (mode === 'preview' && indexOfAnotherSchema(dbFile)))
-    this.writeBlocked = absent ? 'no index there yet' : openCacheDir(cacheDir, repoDir)
+    let absent = mode !== 'open' && !existsSync(dbFile)
+    // A preview reads an index of another schema as the empty one a reset
+    // leaves. The version is read on the connection the index keeps, once:
+    // a second connection for it cost a plan a statement (perf-guard).
+    let early: { db: Database; version: string | undefined } | undefined
+    if (mode === 'preview' && !absent) {
+      early = previewIndex(dbFile)
+      if (early !== undefined && early.version !== undefined && early.version !== SCHEMA_VERSION) {
+        closeDb(early.db)
+        early = undefined
+        absent = true
+      }
+    }
+    this.writeBlocked = absent ? NO_INDEX : openCacheDir(cacheDir, repoDir)
     this.write = localPolicy.write && this.writeBlocked === null
     // A directory this user cannot write with no index in it yet: SQLite
     // cannot make one, and its `unable to open database file` stack reached
@@ -1147,7 +1253,7 @@ export class Cache implements CacheLayer {
     const memory = absent || (this.writeBlocked !== null && !existsSync(dbFile))
     this.empty = memory
     try {
-      this.db = new Database(memory ? ':memory:' : dbFile, { create: true })
+      this.db = early?.db ?? new Database(memory ? ':memory:' : dbFile, { create: true })
     } catch (err) {
       throw cantOpenIndex(dbFile, err) ?? err
     }
@@ -1242,7 +1348,7 @@ export class Cache implements CacheLayer {
         )
       }
     }
-    const current = readable(readVersion)
+    const current = early?.version ?? readable(readVersion)
     if (current !== SCHEMA_VERSION) {
       try {
         if (current !== undefined) refuseUnreadable(current)
@@ -1303,15 +1409,18 @@ export class Cache implements CacheLayer {
     // every mode reads it: a dry prune names what the real one takes, and
     // `vx info` the store the next run fills, not one a moved HOME left.
     let storeDir = storeRoot === undefined ? recorded : (storeRoot ?? undefined)
-    if (storeDir !== undefined && mode === 'open' && this.writeBlocked === null) {
-      const blocked = storeBlocked(storeDir, typeof storeRoot === 'string' ? storeRoot : null)
-      if (blocked !== null) {
+    // Every mode settles the store as a run does, the reading ones without
+    // touching it: `vx info` and a dry prune read the entries runs use, not
+    // a store another user owns (one `sudo vx run`).
+    const root = typeof storeRoot === 'string' ? storeRoot : null
+    if (storeDir !== undefined && (this.writeBlocked === null || absent)) {
+      if (storeBlocked(storeDir, root, mode === 'open') !== null) {
         // A home this user cannot write (a container, a read-only mount):
         // the entries stay in this workspace rather than fail the run.
         const fallback = cacheDir
         if (fallback !== storeDir) {
           storeDir = fallback
-          openCacheDir(fallback)
+          if (mode === 'open') openCacheDir(fallback)
         }
       }
     }
@@ -1332,7 +1441,9 @@ export class Cache implements CacheLayer {
     this.storeDir = storeDir
     this.artifactDir = storeDir ?? cacheDir
     if (storeDir !== undefined) {
-      this.attachStore(storeDir, mode !== 'open')
+      this.attachStore(storeDir, mode !== 'open', (dir) =>
+        dir === cacheDir ? openCacheDir(dir) : storeBlocked(dir, root, true),
+      )
       this.storeReset = this.matchStoreSchema(mode === 'open' && this.writeBlocked === null)
     } else {
       createTables(this.db, 'main')
@@ -1408,6 +1519,10 @@ export class Cache implements CacheLayer {
     // The slices: each owns its statements over this handle and its table(s);
     // the schema above is the one place every table is declared.
     this.files = new FileHashStore(this.db, cacheDir, this.write, repoDir)
+    seenHashers.set(this, {
+      method: this.hashFile,
+      hash: (file, seen) => this.guard(() => this.files.hashFile(file, seen)),
+    })
     this.outputs = new OutputIndex(this.db, this.writeBlocked === null && !this.inspecting)
     this.folds = new IndexFoldMemo(this.db, this.write && !this.inspecting)
     this.history = new RunHistory(this.db, (v) => this.digestValue(v))
@@ -1534,25 +1649,59 @@ export class Cache implements CacheLayer {
    * WAL for both, so a workspace's run and another's share the store as
    * two runs on one `--cache-dir` share an index. A reading verb over a
    * store with no file or no tables yet reads an empty one in memory.
+   *
+   * Every checkout of a repository shares its store, each with a run lock
+   * of its own, and a `vx cache clean` in one holds the store alone
+   * (`holdStore`) until it has deleted it. A writing open meeting that hold
+   * answers SQLITE_BUSY within a second, for its caller to wait and open
+   * again (prepare.ts). One let in once the clean let go opened the
+   * store.db the clean unlinked, and saved its entry into it: it makes the
+   * store again (`remake`, private and ignored) and opens that. Once in,
+   * its lock keeps a clean out until it closes.
    */
-  private attachStore(storeDir: string, inspecting: boolean): void {
+  private attachStore(
+    storeDir: string,
+    inspecting: boolean,
+    remake: (dir: string) => string | null,
+  ): void {
     const storeFile = path.join(storeDir, 'store.db')
     let absent = inspecting && !existsSync(storeFile)
     try {
-      this.db.prepare('ATTACH DATABASE ? AS store').run(absent ? ':memory:' : storeFile)
-      // One with no tables yet is read empty in memory too: the journal
-      // switch and the table creation below are writes, under no write
-      // lock, racing an opener making that store.
-      if (
-        inspecting &&
-        !absent &&
-        this.db.prepare("SELECT 1 FROM store.sqlite_master WHERE name = 'entries'").get() == null
-      ) {
+      for (let retried = false; ;) {
+        // The attach reads the store's schema: its first lock on it.
+        if (!inspecting) this.db.exec('PRAGMA busy_timeout = 1000')
+        try {
+          this.db.prepare('ATTACH DATABASE ? AS store').run(absent ? ':memory:' : storeFile)
+        } catch (err) {
+          // A file whose directory went: SQLite cannot open its -wal there.
+          const busy = (err as { code?: unknown }).code === 'SQLITE_BUSY'
+          if (inspecting || busy || retried || remake(storeDir) !== null) throw err
+          retried = true
+          continue
+        }
+        // One with no tables yet is read empty in memory too: the journal
+        // switch and the table creation below are writes, under no write
+        // lock, racing an opener making that store.
+        if (
+          inspecting &&
+          !absent &&
+          this.db.prepare("SELECT 1 FROM store.sqlite_master WHERE name = 'entries'").get() == null
+        ) {
+          this.db.exec('DETACH DATABASE store')
+          this.db.prepare('ATTACH DATABASE ? AS store').run(':memory:')
+          absent = true
+        }
+        this.db.exec('PRAGMA store.journal_mode = WAL')
+        if (inspecting) break
+        this.db.exec('PRAGMA busy_timeout = 5000')
+        // One stat, SQLite's: is the file open still the one at its name?
+        const moved = new Int32Array(2)
+        this.db.fileControl('store', SQLITE_FCNTL_HAS_MOVED, moved)
+        if (moved[0] === 0) break
         this.db.exec('DETACH DATABASE store')
-        this.db.prepare('ATTACH DATABASE ? AS store').run(':memory:')
-        absent = true
+        const refused = remake(storeDir)
+        if (refused !== null) throw new Error(`${storeFile} was deleted, and ${refused}`)
       }
-      this.db.exec('PRAGMA store.journal_mode = WAL')
       if (!absent) this.db.fileControl('store', SQLITE_FCNTL_PERSIST_WAL, 1)
       this.db.exec('PRAGMA store.journal_size_limit = 67108864')
       this.db.exec('PRAGMA store.synchronous = NORMAL')
@@ -2180,7 +2329,9 @@ export class Cache implements CacheLayer {
     await this.outputs.recordOutputDirs(hash, projectDir, prefixes, holds)
   }
   recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void {
-    this.outputs.recordOutputStamps(hash, projectDir, workspaceRoot)
+    const dated = this.datedMtimes.get(hash)
+    this.datedMtimes.delete(hash)
+    this.outputs.recordOutputStamps(hash, projectDir, workspaceRoot, dated)
   }
   loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]> {
     return this.guard(() => this.outputs.loadOutputDirsBatch(hashes))
@@ -2255,6 +2406,7 @@ export class Cache implements CacheLayer {
     workspaceRoot: string | undefined,
     verify: (provided: ReadonlySet<string>) => void,
     accept: ((name: string) => boolean) | undefined,
+    dated: Map<string, number>,
   ): Promise<void> {
     const files = rows.filter((r) => !r.path.endsWith('/') && r.mode !== LINK_MODE)
     let bytes = 0
@@ -2265,7 +2417,19 @@ export class Cache implements CacheLayer {
         `its outputs hold ${formatBytes(bytes)}, past the ${formatBytes(this.artifactCeiling)} artifact ceiling`,
       )
     }
-    if (await this.copyTree(hash, tree, treeIno, rows, files, projectDir, workspaceRoot, accept))
+    if (
+      await this.copyTree(
+        hash,
+        tree,
+        treeIno,
+        rows,
+        files,
+        projectDir,
+        workspaceRoot,
+        accept,
+        dated,
+      )
+    )
       return
     await extractArtifactStream(
       packArtifactStream(this.treePlan(hash, tree, rows)),
@@ -2274,6 +2438,8 @@ export class Cache implements CacheLayer {
       verify,
       accept,
       workspaceRoot,
+      undefined,
+      dated,
     )
   }
 
@@ -2324,6 +2490,7 @@ export class Cache implements CacheLayer {
     projectDir: string,
     workspaceRoot: string | undefined,
     accept: ((name: string) => boolean) | undefined,
+    dated: Map<string, number>,
   ): Promise<boolean> {
     for (const r of rows) {
       if (r.path.startsWith(WORKSPACE_OUTPUT_PREFIX) || r.mode === LINK_MODE) return false
@@ -2443,6 +2610,9 @@ export class Cache implements CacheLayer {
     }
     const landed: string[] = []
     let landing = false
+    // Every file here is written, so each is dated now (see `dated`).
+    const now = Date.now()
+    const nowDate = new Date(now)
     try {
       const dirs = new Set<string>()
       for (const r of rows) {
@@ -2459,8 +2629,8 @@ export class Cache implements CacheLayer {
             throw new CorruptArtifactError(hash, `${r.path} holds ${n} bytes, recorded ${r.size}`)
           const mode = restoredMode(r.mode)
           if (mode !== plain) await chmod(to, mode)
-          const at = new Date(r.mtimeMs)
-          await utimes(to, at, at)
+          await utimes(to, nowDate, nowDate)
+          dated.set(`outputs/${r.path}`, now)
         }),
       )
       const failed = copied.find((c) => c.status === 'rejected')
@@ -2638,7 +2808,7 @@ export class Cache implements CacheLayer {
       .filter((r) => workspaceRoot !== undefined || !r.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
       .map((r) => (r.path.startsWith(WORKSPACE_OUTPUT_PREFIX) ? r.path : `outputs/${r.path}`))
     endRows()
-    const moded = absentModedDirs(rows, projectDir, workspaceRoot)
+    const moded = modedDirs(rows, projectDir, workspaceRoot)
     const verify = (provided: ReadonlySet<string>): void => {
       const missing = expected.filter((name) => !provided.has(name))
       if (missing.length > 0) {
@@ -2659,6 +2829,7 @@ export class Cache implements CacheLayer {
     // per 1 000). The local artifact was validated at ingest, so a missing
     // declared size is allowed; the output ceiling applies to both.
     const tree = treeIno === undefined ? undefined : this.treePath(hash)
+    const written = new Map<string, number>()
     const endExtract = span('restore: extract')
     try {
       // Every step here is an async filesystem call on purpose: a
@@ -2677,11 +2848,29 @@ export class Cache implements CacheLayer {
           workspaceRoot,
           verify,
           accept,
+          written,
         )
       } else {
         const tar = await decodedTar(inline ?? Bun.file(src), hash, this.artifactCeiling)
-        await extractArtifactStream(tar, projectDir, workspaceRoot, verify, accept, workspaceRoot)
+        await extractArtifactStream(
+          tar,
+          projectDir,
+          workspaceRoot,
+          verify,
+          accept,
+          workspaceRoot,
+          undefined,
+          written,
+        )
       }
+      // Keyed by row path: a project output's row drops the `outputs/`.
+      const byRow = new Map<string, number>()
+      for (const [name, t] of written)
+        byRow.set(
+          name.startsWith(WORKSPACE_OUTPUT_PREFIX) ? name : name.slice('outputs/'.length),
+          t,
+        )
+      this.datedMtimes.set(hash, byRow)
       for (const [dir, mode] of moded) await chmod(dir, restoredMode(mode))
     } catch (err) {
       // A UserError here is the extractor naming the tree's fault (an
@@ -2825,7 +3014,8 @@ export class Cache implements CacheLayer {
    * returns says so; an empty one has nothing to serve and refuses.
    */
   readOnlyNotice(): string | null {
-    if (this.writeBlocked === null) return null
+    // A reading handle over no index: nothing was refused it.
+    if (this.writeBlocked === null || this.writeBlocked === NO_INDEX) return null
     if (this.empty) this.assertWritable()
     return (
       `cache directory ${this.cacheDir} is not writable (${this.writeBlocked}) — serving hits ` +
@@ -4103,7 +4293,7 @@ export async function holdStore(
   } catch {
     return () => {}
   }
-  const started = Date.now()
+  const started = performance.now()
   let said = false
   for (;;) {
     try {
@@ -4116,7 +4306,7 @@ export async function holdStore(
         return () => {}
       }
     }
-    if (!said && Date.now() - started >= 1_000) {
+    if (!said && performance.now() - started >= 1_000) {
       said = true
       log(`[vx] waiting for another vx process using the cache store ${storeDir} to finish…`)
     }
@@ -4150,7 +4340,7 @@ export async function holdCacheDir(
   signal?: AbortSignal,
 ): Promise<() => void> {
   const file = path.join(dir, DIR_LOCK)
-  const started = Date.now()
+  const started = performance.now()
   let said = false
   for (;;) {
     if (signal?.aborted === true) return () => {}
@@ -4191,7 +4381,7 @@ export async function holdCacheDir(
       closeDb(db)
       if ((err as { code?: string }).code !== 'SQLITE_BUSY') return () => {}
     }
-    if (!said && Date.now() - started >= 1_000) {
+    if (!said && performance.now() - started >= 1_000) {
       said = true
       log(
         mode === 'exclusive'
@@ -4249,12 +4439,14 @@ function assertArtifactNames(
 
 /**
  * The directories with a mode to restore (`DIR_MODE` rows) that are absent
- * before the restore, deepest first: the restore makes them with mkdir's
- * default, and each is then given the mode the miss left, minus the umask
- * as a file's is. One that stands is the tree's, left as it is. A mode
- * only ever narrows mkdir's default, whatever an artifact says.
+ * before the restore, or stand with another mode, deepest first: the
+ * restore makes a missing one with mkdir's default, and each is then given
+ * the mode the miss left, minus the umask as a file's is. A standing one
+ * kept its own mode once, so a branch switch A → B → A left B's 0755 on
+ * A's `chmod 700 dist/keys`. A symlink is never followed. A mode only ever
+ * narrows mkdir's default, whatever an artifact says.
  */
-function absentModedDirs(
+function modedDirs(
   rows: readonly OutputFileRow[],
   projectDir: string,
   workspaceRoot: string | undefined,
@@ -4268,7 +4460,9 @@ function absentModedDirs(
     const dir = ws
       ? path.join(workspaceRoot!, rel.slice(WORKSPACE_OUTPUT_PREFIX.length))
       : path.join(projectDir, rel)
-    if (lstatSync(dir, { throwIfNoEntry: false }) === undefined) out.push([dir, r.mode & 0o777])
+    const st = lstatSync(dir, { throwIfNoEntry: false })
+    if (st === undefined || (st.isDirectory() && !modeMatches(st.mode, r.mode)))
+      out.push([dir, r.mode & 0o777])
   }
   return out.sort((a, b) => b[0].length - a[0].length)
 }

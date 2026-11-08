@@ -37,7 +37,8 @@ and key derivation logic live here.
   `behindLink(link, hashFile)` is the digest the key folds for one; the
   item-743 re-check follows each linked input again with it.
 - `fs-clock.ts` — how far the workspace's file system clock runs behind
-  this process's, measured once a run; `racyWindowMs` adds it.
+  this process's, measured once a run; `racyWindowMs` adds it. And
+  `fsClockNow`, "now" read off that clock itself.
 - `output-index.ts` — `OutputIndex`: `output_files` / `output_dirs` rows
   and the two proofs a hit runs before skipping a restore. The batched
   `getMany` hands both batch reads its live hashes as one JSON array,
@@ -51,7 +52,9 @@ json_each(?))` builds a lookup of every hash first (~3 ms of 8,002
 - `history-stream.ts` / `history-writer.ts` — `HistoryStream`: a run's
   hits written on a thread of their own while the graph runs, 512 to a
   transaction, through a second connection on the same files
-  (`historyFiles(cache)`). A run with fewer hits writes none there; a
+  (`historyFiles(cache)`). The thread starts only for a run of 2,048
+  hits or more (its confirmed local hits after the classify, or the hit
+  that reaches it): below that its start cost more than it saved. A
   batch the thread does not land comes back and goes in the bundle. The
   writer is a second `bun build --compile` entry point.
 - `checkpointer.ts` — `WalCheckpointer`: once a run's first save commits
@@ -214,6 +217,27 @@ export function racyWindowMs(stampMs: number, windowMs: number): number
 // kernel's 20 ms tick. Set by a test to simulate a lagging file system.
 export function measureFsClockLag(dir: string): void
 export function setFsClockLag(lagMs: number): void
+
+// "Now" on the clock that stamps the next write (fs-clock.ts): a stamp read
+// off a file written and removed in `dir`, `Date.now()` less the lag when
+// it cannot be written. The coarse kernel tick under the measured lag puts a
+// write up to a tick before a `Date.now()` read ahead of it; `vx watch`'s
+// arm and cycle start and the re-check's command start read it instead.
+export function fsClockNow(dir: string): number
+// What a stamp's own precision may hide: 1000 ms for a whole-second stamp,
+// 2000 for an even one (FAT), else 0.
+export function stampGrainMs(stampMs: number): number
+
+// `layer.hashFile(file)`, and `seen` told the ctime of the stat the digest
+// came from when the layer is core's own `Cache` (or a `LayeredCache` over
+// it): the describe records it for the re-check's tie rule
+// (task-hash.md). Off `CacheLayer`, a public type; any other layer tells
+// nothing, and the tie then counts as the command's write.
+export function hashFileSeen(
+  layer: CacheLayer,
+  file: string,
+  seen: (ctimeMs: number) => void,
+): Promise<string>
 
 // What a symlinked directory input keys (linked-inputs.ts): every regular
 // file and link under `dir`, relative and sorted, `.git`, `node_modules`,
@@ -452,13 +476,14 @@ export function holdCacheDir(
 // when the store keeps no history on disk.
 export function historyFiles(cache: Cache): { index: string; store?: string } | undefined
 // A run's hits written on a thread while the graph runs, 512 to a
-// transaction; `finish` hands back what did not land, for the bundle.
+// transaction, once `expected` (its confirmed local hits) or the hits
+// added reach 2,048; `finish` hands back what did not land, for the bundle.
 export class HistoryStream<T> {
-  constructor(files: { index: string; store?: string })
+  constructor(files: { index: string; store?: string }, expected: number)
   add(item: T, record: RunRecord): void
   finish(): Promise<{ landed: Streamed<T>[]; unlanded: Streamed<T>[] }>
 }
-export const SCHEMA_VERSION = 'v54'
+export const SCHEMA_VERSION = 'v55'
 // An entry_stdout row's log, its zstd frame decoded (v52); null reads as ''.
 // `vx last --log` reads the row itself.
 export function storedLog(blob: Uint8Array | null): string
@@ -807,8 +832,8 @@ row for every task — cache hits and misses, successes and failures — and
 one `invocations` header row (command, git/CI/host context, run-level
 counts) **atomically in one transaction**, less the hits a
 `HistoryStream` already wrote while the graph ran (a warm run's 8,002
-rows were the main thread's last ~65 ms; their batches land beside the
-graph instead, and the header still comes last, so `vx last` lists a
+rows were the main thread's last ~65 ms; from 2,048 hits their batches
+land beside the graph instead, and the header still comes last, so `vx last` lists a
 run only once all its rows are in), with one shared-store
 `task_durations` row per executed success, tagged `branchSource(branch)`
 (`'branch:<name>'`, `'branch:'` with none) and the commit: what a
@@ -854,8 +879,8 @@ Outputs` additionally refuses when the archive cannot produce an output
 
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
-`CACHE_VERSION` is currently `'vx-cache-v51'`; `SCHEMA_VERSION` is
-`'v54'`. Bump `CACHE_VERSION` when:
+`CACHE_VERSION` is currently `'vx-cache-v52'`; `SCHEMA_VERSION` is
+`'v55'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside
   `key()`).
@@ -873,7 +898,8 @@ verb) refuses a schema it cannot read with a `UserError` that names the
 directory and both versions and leaves the index as it was (item 896). Over a directory
 with no `cache.db`, `Cache.inspect` reads an empty index in memory and
 creates nothing on disk: no directory, no `.gitignore`, no database
-(item 900). A shared `store.db` with no file or no tables yet is read
+(item 900). So does `'preview'` (a dry prune, and a `vx run --dry` with
+no remote to probe). A shared `store.db` with no file or no tables yet is read
 the same way, so a reading verb never writes a store another opener may
 be making. A `cache.db` SQLite cannot read (`SQLITE_NOTADB`,
 `SQLITE_CORRUPT*` from the open's first statements) is refused by both

@@ -5,6 +5,7 @@
 // 2026-10-17); any other server names its token URL.
 
 import { deadline } from '../remote-deadline.js'
+import { hideTokens } from '../remote-refusal.js'
 
 /** `turboCache({ oidc })`: `true` is Vercel's hosted cache with its defaults. */
 export interface TurboOidcOptions {
@@ -103,14 +104,15 @@ const where = (url: string) => (URL.canParse(url) ? new URL(url).host : 'the end
  * A refusal's own words: RFC 6749's `error` and `error_description`, or
  * GitHub's `message`. Only those fields, which name a fault and never
  * carry a token; any other body is left unread. "answered HTTP 400" alone
- * did not say the audience or the grant was wrong.
+ * did not say the audience or the grant was wrong. A server may still
+ * quote what it was `sent`: each token is written `***` before the cut.
  */
-async function refused(res: Response, what: string): Promise<Error> {
+async function refused(res: Response, what: string, sent: readonly string[]): Promise<Error> {
   // quiet: a body that is not JSON says nothing; the status still names the refusal
   const body = (await res.json().catch(() => null)) as Record<string, unknown> | null
   const text = (v: unknown): string | undefined =>
     typeof v === 'string' && v.trim() !== ''
-      ? v.replace(/\s+/g, ' ').trim().slice(0, 200)
+      ? hideTokens(v, sent).replace(/\s+/g, ' ').trim().slice(0, 200)
       : undefined
   const said = [text(body?.['error']), text(body?.['error_description']) ?? text(body?.['message'])]
     .filter((s) => s !== undefined)
@@ -118,8 +120,13 @@ async function refused(res: Response, what: string): Promise<Error> {
   return new Error(`${what} answered HTTP ${res.status}${said === '' ? '' : `: ${said}`}`)
 }
 
-async function field(res: Response, name: string, what: string): Promise<string> {
-  if (!res.ok) throw await refused(res, what)
+async function field(
+  res: Response,
+  name: string,
+  what: string,
+  sent: readonly string[],
+): Promise<string> {
+  if (!res.ok) throw await refused(res, what, sent)
   const value = ((await res.json().catch(() => null)) as Record<string, unknown> | null)?.[name]
   if (typeof value !== 'string' || value === '') throw new Error(`${what} sent no ${name}`)
   return value
@@ -148,6 +155,7 @@ export async function exchangeOidc(
     ),
     'value',
     `GitHub's OIDC endpoint (${where(cfg.idTokenUrl)})`,
+    [cfg.idTokenBearer],
   )
   const res = await send(
     fetchImpl,
@@ -162,7 +170,7 @@ export async function exchangeOidc(
     wait,
   )
   const what = `the token exchange (${where(cfg.tokenUrl)})`
-  if (!res.ok) throw await refused(res, what)
+  if (!res.ok) throw await refused(res, what, [idToken])
   const body = (await res.json().catch(() => null)) as Record<string, unknown> | null
   const token = body?.['access_token']
   if (typeof token !== 'string' || token === '') throw new Error(`${what} sent no access_token`)
@@ -192,6 +200,6 @@ export async function revokeOidc(
     }),
     wait,
   )
-  if (!res.ok) throw await refused(res, `revoking at ${where(cfg.revokeUrl)}`)
+  if (!res.ok) throw await refused(res, `revoking at ${where(cfg.revokeUrl)}`, [token])
   await res.body?.cancel()
 }

@@ -39,6 +39,7 @@ import path from 'node:path'
 import * as ui from '../ui/index.js'
 import { MAX_TIMEOUT_MS, parseDuration, testTimerMs, UserError } from '../util/index.js'
 import { nonJsonMessage, nonJsonPaths, type NonJsonValue } from './json-data.js'
+import { changedExports, exportState } from './module-state.js'
 
 /** Why a config's `process.exit` throws, on both load paths (D-65). */
 export const CONFIG_EXIT = 'a config exports its object; it cannot end the run'
@@ -77,6 +78,8 @@ export const WATCHED_BUILTIN_NAMES = [
 
 const WORKER_SRC = `
 const nonJsonPaths = ${nonJsonPaths.toString()}
+const exportState = ${exportState.toString()}
+const changedExports = ${changedExports.toString()}
 // The parent's stdout is a verb's JSON, and a config printing on a repeat
 // load wrote into it: the parent's own redirect covers the parent thread
 // only (D-64). This worker only evaluates configs, so every route to fd 1
@@ -172,6 +175,15 @@ self.onmessage = async (e) => {
   const umaskBack = () => {
     if (umaskIn !== null && globalThis.process.umask() !== umaskIn) globalThis.process.umask(umaskIn)
   }
+  // Asked which shared modules this config changes: each is imported
+  // first, so its state before the config's own code runs is known.
+  const modules = []
+  for (const m of e.data.modules ?? []) {
+    try {
+      const ns = await import(m)
+      modules.push([m, ns, exportState(ns)])
+    } catch {}
+  }
   try {
     const literalPath = /[\\\\?]/.test(path)
     if (literalPath) {
@@ -197,6 +209,7 @@ self.onmessage = async (e) => {
       json: isObject && nonJson.length === 0 ? JSON.stringify(mod) : null,
       fn: typeof mod === 'function',
       changed: report,
+      modules: modules.filter(([, ns, before]) => changedExports(before, exportState(ns)).length > 0).map(([m]) => m),
     })
   } catch (thrown) {
     // Two syntax errors arrive as one AggregateError, whose own message
@@ -500,20 +513,40 @@ export async function evaluateConfigFresh(configPath: string): Promise<unknown> 
  * changes nothing, fails before reporting, or outlives the budget.
  */
 export async function builtinsChangedBy(configPath: string): Promise<string[]> {
+  return (await blame(configPath, { blame: true })).changed ?? []
+}
+
+/**
+ * Which of `modules` evaluating `configPath` alone changes the exported
+ * values of, in a worker of its own: a round that found a module several
+ * configs import changed asks each of them in turn, to name the one that
+ * changed it. Empty as `builtinsChangedBy` is.
+ */
+export async function modulesChangedBy(
+  configPath: string,
+  modules: readonly string[],
+): Promise<string[]> {
+  return (await blame(configPath, { modules })).modules ?? []
+}
+
+async function blame(
+  configPath: string,
+  ask: { blame?: true; modules?: readonly string[] },
+): Promise<{ changed?: string[]; modules?: string[] }> {
   const w = new Worker(WORKER_URL)
   try {
-    return await new Promise<string[]>((resolve) => {
-      const timer = setTimeout(() => resolve([]), evalBudgetMs())
+    return await new Promise((resolve) => {
+      const timer = setTimeout(() => resolve({}), evalBudgetMs())
       timer.unref?.()
       w.onmessage = (event: MessageEvent): void => {
         clearTimeout(timer)
-        resolve((event.data as { changed?: string[] }).changed ?? [])
+        resolve(event.data as { changed?: string[]; modules?: string[] })
       }
       w.onerror = (): void => {
         clearTimeout(timer)
-        resolve([])
+        resolve({})
       }
-      w.postMessage({ id: 0, path: path.resolve(configPath), env: { ...process.env }, blame: true })
+      w.postMessage({ id: 0, path: path.resolve(configPath), env: { ...process.env }, ...ask })
     })
   } finally {
     w.terminate()

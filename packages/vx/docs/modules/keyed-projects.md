@@ -20,7 +20,17 @@ export function readableDeps(
   nodes: ReadonlyMap<string, TaskNode>,
   keyOnly?: ReadonlyMap<string, TaskNode>,
 ): (node: TaskNode) => readonly TaskNode[]
+export function nestedDirsOf(
+  nodes: ReadonlyMap<string, TaskNode>,
+  keyOnly: ReadonlyMap<string, TaskNode>,
+  nestedDirsByProject: ReadonlyMap<string, readonly string[]>,
+): (projectDir: string) => readonly string[]
 ```
+
+`nestedDirsOf` is the projects nested in a keyed one, by its directory
+(`ExecuteArgs.nestedDirsOf`): a task granted that linked package is
+walled from them, since its key stops at a nested project
+(`sandbox-request.ts`).
 
 `readableDeps` is the one-step version for outputs: the exec tasks a
 task's key folds directly, through a group to its members. A sandboxed

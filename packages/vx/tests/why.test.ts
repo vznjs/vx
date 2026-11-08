@@ -903,6 +903,43 @@ describe('vx why in a workspace that never ran (E-39)', () => {
   }, 30_000)
 })
 
+// Only another task had run: a bare name the cwd project declares but never
+// ran read "no recorded runs for task", the message for a name nobody ran,
+// and a group's id pointed at a task list it can never join.
+describe('vx why of a declared task that never ran', () => {
+  it('names the cwd project, and a group as one', async () => {
+    const root = await makeWorkspace()
+    try {
+      const app = path.join(root, 'packages', 'app')
+      await writeFile(
+        path.join(app, 'vx.config.mjs'),
+        APP_CONFIG.replace(
+          'cache: true,\n      },',
+          "cache: true,\n      },\n      dev: { exec: { command: 'true' } },\n      all: { dependsOn: ['build'] },",
+        ),
+      )
+      expect((await vx(root, ['run', 'app#build'])).code).toBe(0)
+      const dev = await vx(app, ['why', 'dev'])
+      expect({ code: dev.code, err: dev.err }).toEqual({
+        code: 1,
+        err: '› vx why  no runs of app#dev yet\n\n  fix  vx run dev\n',
+      })
+      for (const [cwd, target, id] of [
+        [app, 'all', 'app#all'],
+        [root, 'app#all', 'app#all'],
+      ] as const) {
+        const r = await vx(cwd, ['why', target])
+        expect({ code: r.code, err: r.err }).toEqual({
+          code: 1,
+          err: `› vx why  ${id} is a group, which records no run\n\n  fix  vx show ${id}\n`,
+        })
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 30_000)
+})
+
 describe('vx why after a run of only a group (X-50)', () => {
   it('says no run executed a task, instead of "nothing has run here yet"', async () => {
     const root = await makeWorkspace()
@@ -1192,6 +1229,54 @@ describe('vx why — an upstream that is a group', () => {
         const r = await vx(root, ['why', 'app#test'])
         expect(r.out).toContain('app#test ← app#prep ← lib#build ← file packages/lib/a.txt')
         expect(r.out).not.toContain('vx why app#prep')
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
+describe('vx why — a long root-cause chain', () => {
+  it(
+    'prints the chain’s two ends around a count; JSON keeps it whole',
+    async () => {
+      const root = await makeWorkspaceRoot({ prefix: 'vx-why-long-', git: false })
+      try {
+        const dir = path.join(root, 'packages', 'app')
+        await mkdir(dir, { recursive: true })
+        await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app' }))
+        await writeFile(path.join(dir, 'a.txt'), 'v1')
+        await writeFile(path.join(dir, 'b.txt'), 'b')
+        // t0 reads the file that moves; t1..t7 each depend on the one below.
+        const tasks = Array.from(
+          { length: 8 },
+          (_, i) =>
+            `t${i}: { ${i > 0 ? `dependsOn: ['t${i - 1}'], ` : ''}exec: { command: 'true' }, inputs: { files: ['${i === 0 ? 'a' : 'b'}.txt'] }, outputs: { files: [] }, cache: true },`,
+        )
+        await writeFile(
+          path.join(dir, 'vx.config.mjs'),
+          `export default { tasks: {\n${tasks.join('\n')}\n} }`,
+        )
+        const git = gitIn(root)
+        git('init', '-q')
+        git('add', '-A')
+        expect((await vx(root, ['run', 'app#t7'])).code).toBe(0)
+        await writeFile(path.join(dir, 'a.txt'), 'v2')
+        expect((await vx(root, ['run', 'app#t7'])).code).toBe(0)
+
+        const r = await vx(root, ['why', 'app#t7'])
+        expect(r.out).toContain(
+          'app#t7 ← app#t6 ← 3 more ← app#t2 ← app#t1 ← app#t0 ← file packages/app/a.txt',
+        )
+        const j = JSON.parse((await vx(root, ['why', 'app#t7', '--format', 'json'])).out) as {
+          roots: { chain: string[] }[]
+          writers: unknown[]
+        }
+        expect(j.roots.map((x) => x.chain)).toEqual([
+          ['app#t7', 'app#t6', 'app#t5', 'app#t4', 'app#t3', 'app#t2', 'app#t1', 'app#t0'],
+        ])
+        expect(j.writers).toEqual([])
       } finally {
         await rm(root, { recursive: true, force: true })
       }

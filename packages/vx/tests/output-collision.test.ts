@@ -786,6 +786,20 @@ describe('the check must not cost the graph its linearity', () => {
       expect(best).toBeLessThan(250)
     }
   }, 120_000)
+
+  it('refuses 20,000 tasks sharing one output glob at the first pair, in bounded memory', () => {
+    // Every pair of them is a candidate: 200 million, all held in one Set
+    // before the first was compared, ended in `RangeError: Out of memory`
+    // (hunt). Compared as found, the first pair refuses.
+    const TASKS = 20_000
+    const tasks: Record<string, TaskConfig> = {}
+    for (let t = 0; t < TASKS; t++) tasks[`t${t}`] = task(['dist/**'])
+    const cpu = cpuClock()
+    expect(() => graph({ app: tasks })).toThrow(
+      'app#t0 and app#t1 both declare the output "dist/**"',
+    )
+    expect(cpu()).toBeLessThan(2_000)
+  }, 120_000)
 })
 
 // The pairs compared inside one domain come from a path index

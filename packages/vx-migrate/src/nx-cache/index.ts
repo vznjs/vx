@@ -22,7 +22,7 @@ import {
 } from '@vzn/vx'
 import { deadline, MAX_TIMER_MS } from '../remote-deadline.js'
 import { checkRemoteUrl } from '../remote-url.js'
-import { refusal } from '../remote-refusal.js'
+import { hideTokens, hidingErrors, refusal } from '../remote-refusal.js'
 import { OutageBreaker } from '../remote-breaker.js'
 import { Cooldown, withRetry } from '../remote-retry.js'
 import {
@@ -112,6 +112,8 @@ export class NxRemoteCache implements RemoteCacheLayer {
   private token: string | undefined
   /** Set by `open` when the token came from the keychain: a refusal deletes it. */
   private forget: (() => Promise<void>) | undefined
+  /** The token as a refusal that quotes it says it: `***`. */
+  private readonly hidden = (text: string): string => hideTokens(text, [this.token])
   private readonly keychainRemote: KeychainRemote
   constructor(
     private readonly config: NxCacheConfig,
@@ -156,21 +158,24 @@ export class NxRemoteCache implements RemoteCacheLayer {
       // every hit read as a corrupt artifact (nx#33092).
       headers['Accept'] = 'application/octet-stream'
     }
-    const res = await this.breaker.send(
-      () =>
-        withRetry(
-          () =>
-            this.fetchImpl(`${this.config.url}/v1/cache/${hash}`, {
-              method,
-              headers,
-              ...(body === undefined ? {} : { body }),
-              signal: deadline(this.config.timeoutMs),
-            }),
-          this.config.retries,
-          this.wait,
-          this.cooldown,
-        ),
-      method === 'GET',
+    const res = await hidingErrors(
+      this.breaker.send(
+        () =>
+          withRetry(
+            () =>
+              this.fetchImpl(`${this.config.url}/v1/cache/${hash}`, {
+                method,
+                headers,
+                ...(body === undefined ? {} : { body }),
+                signal: deadline(this.config.timeoutMs),
+              }),
+            this.config.retries,
+            this.wait,
+            this.cooldown,
+          ),
+        method === 'GET',
+      ),
+      this.hidden,
     )
     if (method === 'PUT' && res.status === 403) {
       const first = !this.writesRefused
@@ -178,14 +183,14 @@ export class NxRemoteCache implements RemoteCacheLayer {
       if (!first) return undefined
       // The status and the server's own words, as turboCache() says them.
       throw new Error(
-        `${(await refusal(res)).message}: access forbidden (a read-only token cannot write); uploads off for this run, reads go on`,
+        `${(await refusal(res, this.hidden)).message}: access forbidden (a read-only token cannot write); uploads off for this run, reads go on`,
       )
     }
     if (res.status === 401 || res.status === 403) {
       const first = !this.disabled
       this.disabled = true
       if (!first) return undefined
-      const said = (await refusal(res)).message
+      const said = (await refusal(res, this.hidden)).message
       const why =
         res.status === 401
           ? 'missing or invalid token'
@@ -218,7 +223,7 @@ export class NxRemoteCache implements RemoteCacheLayer {
         await res.body?.cancel()
         return null
       }
-      throw await refusal(res)
+      throw await refusal(res, this.hidden)
     }
     return res
   }
@@ -245,7 +250,7 @@ export class NxRemoteCache implements RemoteCacheLayer {
       await res.body?.cancel()
       return meta?.replace === true ? false : undefined
     }
-    throw await refusal(res)
+    throw await refusal(res, this.hidden)
   }
 }
 

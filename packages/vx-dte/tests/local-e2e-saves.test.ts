@@ -602,3 +602,28 @@ it('workers run the tracked files as they are, uncommitted changes too', async (
   // Nothing was committed or reset to get there.
   expect(git('status', '--porcelain').stdout.toString()).toContain(' M .vx/workspace.mjs\n')
 }, 60_000)
+
+// A `.gitattributes` committed after the file: this disk kept LF, which
+// the key read, the worker's worktree checked it out CRLF, and the CRLF
+// copy was saved under that key, a stale hit for the next run (2026-11-08).
+it('runs a task on the bytes its key read, not those a git filter checks out', async () => {
+  const git = (...a: string[]) =>
+    Bun.spawnSync(['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', ...a], { cwd: root })
+  await writeFile(path.join(root, '.gitattributes'), 'e/src/*.txt text eol=crlf\n')
+  git('add', '.gitattributes')
+  git('commit', '-qm', 'crlf')
+  const r = vx(['run', 'e#copy'], 'e2e-eol')
+  const out = r.stdout.toString() + r.stderr.toString()
+  expect([r.exitCode, out]).toEqual([0, expect.stringContaining(' · linux.small#')])
+  expect(await readFile(path.join(root, 'e/out/t.txt'), 'utf8')).toBe('a\nb\n')
+  // Checked out CRLF here too: the commit holds LF, so no worker has the bytes the key reads.
+  await rm(path.join(root, 'e/src/t.txt'))
+  git('checkout', 'e/src/t.txt')
+  const crlf = vx(['run', 'e#copy'], 'e2e-crlf')
+  expect([crlf.exitCode, crlf.stdout.toString() + crlf.stderr.toString()]).toEqual([
+    1,
+    expect.stringContaining(
+      'e#copy keys e/src/t.txt, which is on disk other than the commit workers check out holds it',
+    ),
+  ])
+}, 60_000)

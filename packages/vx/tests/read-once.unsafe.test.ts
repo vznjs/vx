@@ -139,6 +139,9 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
       // reads again, once per config change; from then on only vx reads it
       // (workspace/config-bytecode.ts).
       for (const name of ['cold', 'build', 'warm']) {
+        // A real run's cache dir: `--dry` makes none, and the bytecode
+        // bundle is built only under one.
+        if (name === 'build') await mkdir(path.join(root, '.vx', 'cache'), { recursive: true })
         const run = await tracedRun(name)
         expect(run('packages/a/vx.config.mjs')).toEqual(['newfstatat'])
         expect(run('packages/a/package.json')).toEqual([])

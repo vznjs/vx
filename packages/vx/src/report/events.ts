@@ -8,7 +8,7 @@
 
 import { exitSignal } from '../exec/index.js'
 import type { InputChanges, TaskNode, TaskOutcome } from '../graph/index.js'
-import { isGroupTask } from '../graph/index.js'
+import { isGroupTask, isKeyFailed, markOutputsFailed, outputsFailedOf } from '../graph/index.js'
 import { heldSecrets, maskedCommand, type SecretMask, secretMask } from '../util/index.js'
 import type { Logger } from './logger.js'
 import type { RunContext } from './summary.js'
@@ -349,7 +349,9 @@ export function outcomeWord(o: Pick<OutcomeView, 'status' | 'restored'>): string
 
 /**
  * `outcomeWord` with the exit code a failure carries: `failed (exit 9)`.
- * A hit whose restore failed ran nothing, so it has no exit to name.
+ * A hit whose restore failed ran nothing, so it has no exit to name, nor
+ * does a task whose key could not be derived (`isKeyFailed`) or whose
+ * output clean or save vx refused (`outputsFailedOf`): the step reads.
  */
 export function outcomeLabel(
   o: Pick<
@@ -367,6 +369,10 @@ export function outcomeLabel(
   >,
 ): string {
   if (o.status === 'failed' && o.restoreFailed === true) return 'failed (cache restore failed)'
+  if (o.status === 'failed' && isKeyFailed(o)) return 'failed (cache key not derived)'
+  const step = o.status === 'failed' ? outputsFailedOf(o) : undefined
+  if (step !== undefined)
+    return step === 'save' ? 'failed (cache save failed)' : 'failed (output clean failed)'
   if (o.status === 'failed')
     return failedLabel(o.exitCode, o.timedOut, o.sandboxViolations, o.notReady, o.inputMoved)
   if (o.status === 'skipped') return skippedLabel(o)
@@ -458,6 +464,8 @@ export function projectOutcome(outcome: TaskOutcome): OutcomeView {
   if (isGroupTask(outcome.node)) view.isGroup = true
   else if (ranNoCache(outcome)) view.noCache = true
   if (outcome.restoreFailed === true) view.restoreFailed = true
+  const step = outputsFailedOf(outcome)
+  if (step !== undefined) markOutputsFailed(view, step)
   if (outcome.storedDurationMs !== undefined) view.storedDurationMs = outcome.storedDurationMs
   if (outcome.storedCpuMs !== undefined) view.storedCpuMs = outcome.storedCpuMs
   if (outcome.storedPeakRssBytes !== undefined) view.storedPeakRssBytes = outcome.storedPeakRssBytes

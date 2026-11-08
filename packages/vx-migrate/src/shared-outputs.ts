@@ -405,10 +405,17 @@ function inputsOf(t: GeneratedTask): { files: string[]; workspaceFiles?: unknown
  * files git tracks, and a build's outputs are not, so the adopted tool
  * never keyed them either. A literal input another task writes cannot be
  * taken back (core refuses a `!` over a literal input), so that task runs
- * uncached with a todo. A reader whose `!` hides a committed file is the
- * tracked pass's (`spareTrackedOutputs`).
+ * uncached with a todo. Under `walksGlobs` (Turbo) so does a glob that
+ * names the output's place (`gen/**` beside a `gen` writing `gen/**`)
+ * when no `dependsOn` path reaches the writer: Turbo walks an explicit
+ * glob on disk, and with no edge the writer's key does not reach the
+ * reader's either, so taken back it replayed the old output. A glob led
+ * by `**` walks the whole package, as the default does, and keeps the
+ * `!`. Nx hashes no gitignored file, and its mapper drops an input under
+ * an untracked output before this pass. A reader whose `!` hides a
+ * committed file is the tracked pass's (`spareTrackedOutputs`).
  */
-export function excludeSiblingOutputs(tasks: GeneratedTask[]): GeneratedTask[] {
+export function excludeSiblingOutputs(tasks: GeneratedTask[], walksGlobs = false): GeneratedTask[] {
   const writers = tasks.flatMap((t, index) => {
     const c = cachedOutputs(t, index)
     return c === null ? [] : [c]
@@ -435,11 +442,43 @@ export function excludeSiblingOutputs(tasks: GeneratedTask[]): GeneratedTask[] {
           )
           return
         }
+        const named = walksGlobs
+          ? read.find((g) => !g.replace(/^(\.\/)+/, '').startsWith('**'))
+          : undefined
+        if (named !== undefined && !isKeyedGroup(t) && !reaches(tasks, index, w.index)) {
+          unkey(t.task!)
+          t.todos.push(
+            `reads ${JSON.stringify(named)}, which ${JSON.stringify(w.name)} writes and no ` +
+              'dependsOn reaches — vx keys a task only on files no other task writes, so it runs ' +
+              'uncached; add the edge or read the source instead in a vx.config to cache it',
+          )
+          return
+        }
         inputs.files.push(`!${out}`)
       }
     }
   })
   return tasks
+}
+
+/** Does a same-project `dependsOn` path lead from task `from` to task `to`? */
+function reaches(tasks: readonly GeneratedTask[], from: number, to: number): boolean {
+  const byName = new Map(tasks.map((t, i) => [t.name, i]))
+  const seen = new Set([from])
+  const queue = [from]
+  for (let i = queue.shift(); i !== undefined; i = queue.shift()) {
+    const deps = tasks[i]!.task?.['dependsOn']
+    if (!Array.isArray(deps)) continue
+    for (const d of deps) {
+      const next = typeof d === 'string' ? byName.get(d) : undefined
+      if (next === to) return true
+      if (next !== undefined && !seen.has(next)) {
+        seen.add(next)
+        queue.push(next)
+      }
+    }
+  }
+  return false
 }
 
 /**

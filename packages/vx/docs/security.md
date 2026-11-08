@@ -169,8 +169,10 @@ A task with `exec.sandbox` runs where only what it declares exists:
   `~/.npmrc`, `~/.netrc`, the token files of deploy and agent CLIs such
   as Vercel, Wrangler, Fly or Claude, and the like; the list is in the
   schema's sandbox section) are unreadable unless `allow.read` names one
-  (L-41), cannot be hard-linked into an output for vx to pack, and a denied read's `fix:` hint never suggests granting one
-  (`tests/sandbox-credential-stores.unsafe.test.ts`, `tests/sandbox-fix.test.ts`);
+  (L-41), cannot be hard-linked into an output for vx to pack, and neither a denied read's `fix:` hint
+  nor the note naming the paths the wall hid ever suggests granting one, or vx's own store
+  (`tests/sandbox-credential-stores.unsafe.test.ts`, `tests/sandbox-fix.test.ts`,
+  `tests/sandbox-hidden-reads.unsafe.test.ts`);
 - vx's own cache directory, wherever `cache.dir` puts it in the
   workspace, is a wall like `.vx/cache`: a broad grant stops at it, and a write
   grant that would bind it, or that lies inside it or `.git`, is refused
@@ -237,7 +239,9 @@ exports it: task output, the stdout a hit replays, commands, an
 executor's error, telemetry,
 `vx show` (L-26). Values in the run history are digests under a per-store
 salt, and what follows `--` on the command line reaches telemetry as a
-count, not a quote, a secret before it masked (L-44). A remote executor (`@vzn/vx-reapi`) receives a
+count, not a quote, a secret before it masked (L-44). The origin
+remote's URL reaches telemetry, a branch's cache scope and the files
+`vx dte init` writes with no userinfo, query or fragment. A remote executor (`@vzn/vx-reapi`) receives a
 task's `exec.env.define` values and the `inputs.env` values its
 local child gets, never `passThrough`; those values sit unmasked in the
 action's Command, which the remote stores in its CAS, as Bazel's

@@ -18,6 +18,7 @@ export {
 } from './folds.js'
 export { DEFAULT_BUILD, isDefaultBuild } from './default-build.js'
 export { computeReverseDepCount } from './priorities.js'
+export { setStandIns, type StandIns, standInsOf } from './stand-ins.js'
 export { criticalPath } from './critical-path.js'
 export { taskDefinition, taskDefinitions } from './definition.js'
 export {
@@ -26,6 +27,12 @@ export {
   idleServers,
   type InputChanges,
   RestoreDemoted,
+  isKeyFailed,
+  KeyFailed,
+  markKeyFailed,
+  markOutputsFailed,
+  OutputsFailed,
+  outputsFailedOf,
   RestoreFailed,
   runGraph,
   type TaskOutcome,

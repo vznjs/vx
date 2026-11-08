@@ -5,7 +5,7 @@
 // verb is the plugin's, so a repo on neither CI has none.
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { ui, UserError } from '@vzn/vx'
@@ -124,12 +124,20 @@ export async function setup(o: SetupOptions): Promise<number> {
       await run(['apparmor_parser', '-R', '/etc/apparmor.d/bwrap-userns-restrict'])
       await run(['rm', '/etc/apparmor.d/bwrap-userns-restrict'])
     }
-    const profile = path.join(os.tmpdir(), `vx-bwrap-${process.pid}.apparmor`)
-    await writeFile(
-      profile,
-      'abi <abi/4.0>,\ninclude <tunables/global>\nprofile bwrap /usr/bin/bwrap flags=(unconfined) {\n  userns,\n}\n',
-    )
-    await run(['cp', profile, '/etc/apparmor.d/bwrap'])
+    // A fresh directory, only this user's: at tmpdir/vx-bwrap-<pid>.apparmor,
+    // a guessable name, a planted symlink took the write and root copied
+    // whatever that file held into /etc/apparmor.d.
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-bwrap-'))
+    try {
+      const profile = path.join(dir, 'bwrap.apparmor')
+      await writeFile(
+        profile,
+        'abi <abi/4.0>,\ninclude <tunables/global>\nprofile bwrap /usr/bin/bwrap flags=(unconfined) {\n  userns,\n}\n',
+      )
+      await run(['cp', profile, '/etc/apparmor.d/bwrap'])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
     await run(['apparmor_parser', '-r', '/etc/apparmor.d/bwrap'])
   }
   // GitLab keeps it in the checkout, where a root task's `**` keyed the

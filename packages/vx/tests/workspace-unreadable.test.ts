@@ -65,7 +65,8 @@ describe.skipIf(skipAsRoot('a workspace file this user may not read'))(
 
     it('a manifest it may not read is a key input it cannot hash, not a lost project', async () => {
       const r = await run('packages/b/package.json')
-      expect([r.code, r.planned]).toEqual([0, ['a', 'b']])
+      // b's key cannot be derived: the plan lists both and exits 1, as the run fails b.
+      expect([r.code, r.planned]).toEqual([1, ['a', 'b']])
       expect(r.err).toContain(
         '<root>/packages/b/package.json is not readable by this user (EACCES), and vx reads it to derive a cache key',
       )

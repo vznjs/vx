@@ -109,3 +109,45 @@ it(
   },
   TIMEOUT,
 )
+
+// The leftover's dependent reads the half-written tree and its key folds
+// the upstream's input key: saved, the next run rebuilt the upstream and
+// hit the dependent, replaying the partial bytes. The leftover seeds the
+// run's taint, so nothing built on it is saved.
+it(
+  'a task built on a leftover writer is not saved either',
+  async () => {
+    const root = await makeWorkspace({ prefix: 'vx-left-running-' })
+    made.push(root)
+    await addProject(root, 'a', {
+      files: { 'src/a.txt': 'a', '.gitignore': 'dist/\n' },
+      config: `export default { tasks: { build: {
+      exec: { command: 'mkdir -p dist; echo partial > dist/out; (sleep 1; echo full > dist/out) >/dev/null 2>&1 &' },
+      inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+    } } }`,
+    })
+    await addProject(root, 'b', {
+      files: { 'src/b.txt': 'b', '.gitignore': 'dist/\n' },
+      config: `export default { tasks: { build: {
+      exec: { command: 'mkdir -p dist; cat ../a/dist/out > dist/copy' },
+      inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+      dependsOn: ['a#build'],
+    } } }`,
+    })
+    const fx = { root, log: [] as string[], err: [] as string[] }
+    const opts = { cwd: root, tasks: ['b#build'], log: silentLogger(fx) }
+    const first = await run(opts)
+    expect(first.outcomes.map((o) => [o.node.id, o.status, o.taintedBy])).toEqual([
+      ['a#build', 'success', undefined],
+      ['b#build', 'success', 'a#build'],
+    ])
+    await Bun.sleep(1200)
+    const second = await run(opts)
+    expect(second.outcomes.map((o) => [o.node.id, o.status])).toEqual([
+      ['a#build', 'success'],
+      ['b#build', 'success'],
+    ])
+    await Bun.sleep(1200)
+  },
+  TIMEOUT,
+)

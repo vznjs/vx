@@ -11,12 +11,20 @@ run-level capabilities (`executor`, `cache`), and runs each plugin's
 `teardown()` at the end of the run, crash-isolated and time-bounded.
 A hook's throw reads `plugin '<p>' failed in <hook>: <message>`; a bug
 (a `TypeError`, `ReferenceError`, `RangeError` or `SyntaxError`) adds
-`(at <file>:<line>:<col>)`, the first frame outside vx.
+`(at <file>:<line>:<col>)`, the first frame outside vx. What a hook
+answered is read and checked the same way (`reading`): a getter or Proxy
+trap in it that threw crashed vx with a raw stack (2026-11-07). A
+`discover` entry, a `key` record, a digest's `projects` and an
+`affected` list are copied as they are checked, and core uses the copy,
+so a getter cannot answer the check one value and the run another
+(`tests/plugin-hostile-answers.test.ts`, `tests/discover-stage.test.ts`).
 After the `graph` stage the graph is re-checked the way the builder
 checks its own (`checkGraph`: each node under its own id, every dep a
 node, no cycle, no two tasks deleting each other's outputs, the addition
 marks derived again) and a violation is reported against the last plugin
-that ran. Only the first two were checked until item 981: a plugin that
+that ran. A dep listed twice is dropped to one, as the builder dedupes
+its own: the key folded the upstream twice, and a server held on the
+remote's answer waited on one answer too many, so the run never settled. Only the first two were checked until item 981: a plugin that
 dropped the edge between two overlapping outputs lost one task's files
 under a green run, and one that moved a node to another key crashed
 the scheduler with a raw TypeError. Before that, after EACH plugin,

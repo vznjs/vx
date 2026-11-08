@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
-import { fsClockNow } from '../src/cli/watch-fs.js'
+import { fsClockNow } from '../src/cache/index.js'
 import { ChangeJudge } from '../src/cli/watch-judge.js'
 
 it('a changed file names the cycle before a directory that came with it', async () => {

@@ -24,10 +24,18 @@ rules stand between them and neither changes what the task is:
   seeds the same taint (`seeds`): a task whose key folds a dependency
   that did not run (`excluded-keys.md`) has bytes nothing vouches for,
   and so does everything built on it. Under `always`, `run()` also seeds
-  a task that starts while a server it depends on (through groups too,
-  `deadServerBehind`) has died: the server's outcome says `success`
-  until the run ends, so no settled outcome holds that failure yet. No seed and no `always` keeps
-  the check off. A task's taint is read from its deps' SETTLED outcomes
+  a task that starts while a server it depends on (through groups and
+  servers too, `deadServerBehind`) has died: the server's outcome says `success`
+  until the run ends, so no settled outcome holds that failure yet. In
+  any mode, a task such a server died UNDER (it was ready at dispatch)
+  is seeded just before its save (`ExecuteArgs.serverDiedUnder`), which
+  withholds that save; a graph with a server therefore keeps the check on
+  (`seedsLater`). So is a task whose shell left a process running
+  (`ExecuteArgs.leftRunning`): its dependents read a tree it may still
+  write. `run()` turns the check on at that first leftover, before the
+  task settles, so the tracker it makes then has every outcome a
+  dependent's taint is read from. No seed, no server and no `always`
+  keeps the check off. A task's taint is read from its deps' SETTLED outcomes
   (the scheduler's `onFinish` feeds `settled`), not from what it saw at
   dispatch: a restore-tier hit dispatches before its deps settle, saw
   holes, and passed nothing on, so its dependent saved a failed dep's
@@ -54,6 +62,7 @@ export function taintTracker(
   continueAlways: boolean,
   seeds: ReadonlySet<string>,
   nodes: ReadonlyMap<string, TaskNode>,
+  seedsLater?: boolean, // seeds may be added while the run goes on
 ): TaintTracker
 
 export interface AdmissionArgs {

@@ -54,6 +54,8 @@ export interface RunOrder {
   cwd: string
   project: string
   env: Record<string, string>
+  /** `HOST_ENV` names its key folds as unset: the worker leaves them unset, not its own. */
+  unset?: string[]
   /** Its `exec.env.secret`: the names in `env` whose values its saved output masks. */
   secret?: string[]
   timeoutMs?: number
@@ -120,6 +122,8 @@ export type ToWorker =
   /** Part of an order's `deps`, ahead of the batch whose order was too long for one frame. */
   | { type: 'deps'; task: string; deps: WiredDep[] }
   | { type: 'cancel'; task: string }
+  /** No task left in the run uses persistent task `task`: it stops here. */
+  | { type: 'unserve'; task: string }
   /**
    * It was taken into the run, under the name the run's output gives it,
    * and reads the cache as the run does: its refs, and the access the
@@ -157,6 +161,8 @@ export interface Load {
   readonly self?: number
   /** When it was read, by the worker's clock: its task times are read against it. */
   readonly at?: number
+  /** Each server it runs, its base as fitted (`server-fit.ts`): cores it uses with no dependant's work. */
+  readonly servers?: Record<string, number>
 }
 
 /** A task's times on its worker, epoch ms by the worker's clock: begun, command ended. */
@@ -222,7 +228,9 @@ export type WiredResult = Omit<ExecuteResult, 'violations' | 'outputs' | 'stdout
 
 /**
  * Names whose value is the worker's own: the orchestrator sends one only
- * when a task's `env.define` sets it, a value its key includes.
+ * when a task's `env.define` sets it or its `inputs.env` keys it, a value
+ * its key includes; a keyed one unset there is unset on the worker too
+ * (`RunOrder.unset`).
  */
 export const HOST_ENV = [
   'HOME',

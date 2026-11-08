@@ -589,10 +589,10 @@ describePerf('cache baseline: save + restore', () => {
     expect(await cache.isOutputsCurrent(dest, rows)).toBe(false)
   })
 
-  it('restoreOutputs restores the recorded ms mtime on every restore and repairs a wrong-sized file', async () => {
-    // `Cache.restoreOutputs` ALWAYS materialises: a `.vx-tmp-*` renamed
-    // over each target, so a second restore is a new inode with the same
-    // bytes and the same sidecar mtime. Skipping a restore whose tree is
+  it('restoreOutputs dates each file it writes now, keeps a current one, and repairs a wrong-sized file', async () => {
+    // `Cache.restoreOutputs` ALWAYS materialises: a file it writes is
+    // renamed over its target and dated now, as the task's write would be;
+    // one that already holds the bytes keeps its inode and mtime. Skipping a restore whose tree is
     // already current is the ORCHESTRATOR's decision (`isOutputsCurrent`
     // over the output_files rows — docs/caching.md § A current tree),
     // pinned in the execute-task and output-dirs suites, not here. This
@@ -616,12 +616,12 @@ describePerf('cache baseline: save + restore', () => {
     const dest = path.join(tmpdir, 'e2e-mf-target')
     await mkdir(dest, { recursive: true })
 
+    const since = Date.now()
     await cache.restoreOutputs('e2e-mf', dest)
     const oneFile = path.join(dest, 'dist', 'out0.js')
     const source = await stat(path.join(projectDir, 'dist', 'out0.js'))
     const cold = await stat(oneFile)
-    // The sidecar records whole milliseconds (docs/caching.md § Storage layout).
-    expect(cold.mtimeMs).toBe(Math.floor(source.mtimeMs))
+    expect(cold.mtimeMs).toBeGreaterThanOrEqual(since)
 
     // A second restore over a current tree leaves it: same inode, same mtime.
     await cache.restoreOutputs('e2e-mf', dest)
@@ -636,9 +636,10 @@ describePerf('cache baseline: save + restore', () => {
     expect((await stat(oneFile)).size).toBe(source.size)
     await Bun.write(oneFile, 'corrupted-different-size')
     expect((await stat(oneFile)).size).not.toBe(source.size)
+    const repaired = Date.now()
     await cache.restoreOutputs('e2e-mf', dest)
     expect((await stat(oneFile)).size).toBe(source.size)
-    expect((await stat(oneFile)).mtimeMs).toBe(Math.floor(source.mtimeMs))
+    expect((await stat(oneFile)).mtimeMs).toBeGreaterThanOrEqual(repaired)
   })
 
   it('restoreOutputs (10 small files) — median < 30ms', async () => {

@@ -30,8 +30,6 @@ export const WATCH_PROBE = '.vx-watch-probe'
 
 /** How long a watcher gets to report its own probe before the loop goes on without proof. */
 export const WATCH_PROBE_TIMEOUT_MS = 2_000
-/** The file `fsClockNow` writes and removes, under the cache dir the watchers ignore. */
-const WATCH_CLOCK_STAMP = '.vx-watch-clock'
 
 /** Anything the loop needs to shut down at exit. */
 export interface WatchHandle {
@@ -104,20 +102,19 @@ export function pollWatcher(
         if (e.name === WATCH_PROBE) continue
         const childRel = rel === '' ? e.name : `${rel}/${e.name}`
         if (e.isDirectory()) {
-          if (recursive) {
-            if (!skipDir(childRel)) walk(path.join(abs, e.name), childRel)
-          } else {
-            // A non-recursive arm is there for a name coming or going (a
-            // project's parent hears the project made again), as the OS
-            // watcher reports it: by the directory's identity, not its
-            // times, which every write inside moves.
-            try {
-              const st = fs.statSync(path.join(abs, e.name))
-              current.set(childRel, `dir:${st.dev}:${st.ino}:${st.birthtimeMs}`)
-            } catch {
-              // raced with a delete; the next scan settles it
-            }
+          if (recursive && skipDir(childRel)) continue
+          // A directory is sampled for a name coming or going (a project's
+          // parent hears the project made again, one moved in names its
+          // files, whose times predate the arm), as the OS watcher reports
+          // it: by its identity, not its times, which every write inside
+          // moves.
+          try {
+            const st = fs.statSync(path.join(abs, e.name))
+            current.set(childRel, `dir:${st.dev}:${st.ino}:${st.birthtimeMs}`)
+          } catch {
+            continue // raced with a delete; the next scan settles it
           }
+          if (recursive) walk(path.join(abs, e.name), childRel)
           continue
         }
         // A link is an input as its target string (watch-judge.ts), so that
@@ -184,6 +181,8 @@ export function armWatcher(
   recursive: boolean,
   onEvent: (filename: string) => void,
   timeoutMs = WATCH_PROBE_TIMEOUT_MS,
+  /** The poller's `skipDir`, asked on Linux of a directory under `node_modules` only. */
+  skipDir: (rel: string) => boolean = (rel) => isIgnoredDir(rel.split('/')),
 ): ArmedWatcher {
   let markReady: (ok: boolean) => void = () => {}
   let arrived = false
@@ -211,7 +210,7 @@ export function armWatcher(
   }
   const watcher: WatchHandle =
     recursive && process.platform === 'linux'
-      ? treeWatcher(dir, listener)
+      ? treeWatcher(dir, listener, skipDir)
       : fs.watch(dir, { recursive, persistent: true }, (_event, filename) => listener(filename))
   const probe = path.join(dir, WATCH_PROBE)
   const ready = (async (): Promise<boolean> => {
@@ -220,7 +219,7 @@ export function armWatcher(
     // measured 2026-09-03, with every delivered event under 60 ms). So it is
     // re-written on a short backoff until its event arrives — the first write
     // after the stream goes live is the one that proves it.
-    const deadline = Date.now() + timeoutMs
+    const deadline = performance.now() + timeoutMs
     let ok = false
     let step = 50
     while (!ok) {
@@ -229,7 +228,7 @@ export function armWatcher(
       } catch {
         break // an unwritable dir gets no proof; the watcher is kept
       }
-      const remaining = deadline - Date.now()
+      const remaining = deadline - performance.now()
       if (remaining <= 0) {
         // The write itself can outlast the budget (a loaded macOS runner:
         // 261 ms against 100, E-87), and the loop has not yielded yet: let
@@ -267,8 +266,19 @@ export function armWatcher(
  * inotify watch follows the inode and would report the old name. The
  * arming walk throws at the watch limit, so the pool's fallback still
  * applies; a subdirectory that vanished mid-walk is simply not watched.
+ * A `node_modules` is entered where `skipDir` keeps it: an input names a
+ * path there, or git tracks a file there (watch-filter.ts).
  */
-function treeWatcher(root: string, listener: (filename: string) => void): WatchHandle {
+function treeWatcher(
+  root: string,
+  listener: (filename: string) => void,
+  skipDir: (rel: string) => boolean,
+): WatchHandle {
+  const skips = (rel: string): boolean => {
+    const segments = rel.split('/')
+    if (isIgnoredDir(segments) && segments.at(-1) !== 'node_modules') return true
+    return segments.includes('node_modules') && skipDir(rel)
+  }
   const watchers = new Map<string, fs.FSWatcher>()
   // Which directory each watch holds: inotify follows the inode, so a name
   // removed and made again before its event is handled stats as a
@@ -300,7 +310,7 @@ function treeWatcher(root: string, listener: (filename: string) => void): WatchH
         if (name == null || typeof name !== 'string' || name === '' || name === '.') return
         const child = rel === '' ? name : `${rel}/${name}`
         listener(child)
-        if (isIgnoredDir(child.split('/'))) return
+        if (skips(child)) return
         let st: fs.Stats
         try {
           st = fs.statSync(path.join(abs, name))
@@ -347,7 +357,7 @@ function treeWatcher(root: string, listener: (filename: string) => void): WatchH
     for (const e of entries) {
       const child = rel === '' ? e.name : `${rel}/${e.name}`
       if (e.isDirectory()) {
-        if (!isIgnoredDir(child.split('/'))) watchDir(child, report)
+        if (!skips(child)) watchDir(child, report)
       } else if (report) listener(child)
     }
   }
@@ -381,31 +391,6 @@ export function modifiedBefore(abs: string, t: number): boolean {
     return Math.max(st.mtimeMs, st.ctimeMs) < t
   } catch {
     return false
-  }
-}
-
-/**
- * "Now" as the filesystem will stamp the next write, not as `Date.now()`
- * reads it. A file's mtime comes from the kernel's coarse clock, which
- * runs up to a tick behind the fine clock `Date.now()` reads — measured
- * on the Linux bench box 2026-09-11: 2 of 3,000 tight writes carried an
- * mtime 5.8 ms EARLIER than a `Date.now()` taken before the write, and
- * more under CPU load, where the tick is skipped. An `armedAt` from the
- * fine clock then judged an edit made right after the ready line as
- * "modified before the arm" and dropped it (the watch e2e flake, three
- * shard runs that day; traced: raw event, trigger, `same=true`). A stamp
- * read off a file written here is on the mtime clock itself, and every
- * later write's mtime is at or after it.
- */
-export function fsClockNow(dir: string): number {
-  const stamp = path.join(dir, WATCH_CLOCK_STAMP)
-  try {
-    fs.writeFileSync(stamp, '')
-    const at = fs.statSync(stamp).mtimeMs
-    fs.unlinkSync(stamp)
-    return at
-  } catch {
-    return Date.now()
   }
 }
 
@@ -460,7 +445,9 @@ export class WatcherPool {
     }
     let armed: ArmedWatcher
     try {
-      armed = armWatcher(dir, recursive, onEvent)
+      armed = armWatcher(dir, recursive, onEvent, WATCH_PROBE_TIMEOUT_MS, (rel) =>
+        this.skip(dir, rel),
+      )
     } catch (err) {
       // The OS's watch limit, not the directory: the loop said "watching"
       // and never fired. The poller needs no watch slot.

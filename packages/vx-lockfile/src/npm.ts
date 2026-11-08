@@ -9,7 +9,7 @@
 
 import { reachDigests, type LockfileImporter } from '@vzn/vx'
 import { reachedImporters, withTransitive } from './graph.js'
-import { depsOf, peerOnly, record } from './json.js'
+import { depsOf, peerOnly, record, sectionsOf } from './json.js'
 
 // The graph the digest built from this parse, for `importerLinks`: `vx
 // lock` asks for both, and the edges do not depend on `files`.
@@ -27,6 +27,8 @@ export interface Lockfile {
 
 export interface Entry {
   readonly deps: ReadonlyMap<string, string>
+  /** the root's and a workspace's `sectionsOf`; '' for any other entry */
+  readonly sections: string
   /** version + resolved + integrity — whatever pins the bytes; '' for a link, the root, a workspace */
   readonly resolution: string
   /** the path a `link: true` entry points at */
@@ -77,6 +79,7 @@ export function parseLockfile(text: string): Lockfile {
       p !== '' && !p.startsWith('node_modules/') && !p.includes('/node_modules/') && isMember(p)
     packages.set(p, {
       deps: depsOf(e),
+      sections: p === '' || isWorkspace ? sectionsOf(e) : '',
       // The root's and a workspace's `version` is their own package.json's,
       // not what npm installed: a release bump of the root re-keyed every
       // task with node_modules unchanged.
@@ -196,7 +199,11 @@ function buildGraph(
     // it sits: a re-hoist of one version re-keyed every project reaching it
     // (D-140). Where it sits decides what it resolves; that is the edges.
     // The root and a workspace keep their path, which is who they are.
-    material.push(`${p === '' || e.isWorkspace ? p : installName(p)}\0${e.resolution}`)
+    material.push(
+      p === '' || e.isWorkspace
+        ? `${p}\0${e.resolution}\nsections\0${e.sections}`
+        : `${installName(p)}\0${e.resolution}`,
+    )
     edges.push([])
   }
   // npm links a `file:` directory, or with `install-links=true` copies it,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { appendFile, rm } from 'node:fs/promises'
+import { appendFile, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { run } from './helpers/orchestrator.js'
 import {
@@ -10,6 +10,11 @@ import {
 import { addProject, makeWorkspace, silentLogger, TIMEOUT } from './helpers/orchestrator-fixture.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 import { UserError } from '../src/util/index.js'
+
+const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+
+/** A refusal as `vx lock` says it, which a run's lock helper throws first. */
+const byLock = (message: string) => `✗ vx lock  lock not written\n\n  ${message}`
 
 // filterUpstreamHashes(upstream, filter, selfProjectName, selfTaskId) →
 // Array<[upstreamTaskId, hash]>. The filter is Turbo/Nx micro-syntax
@@ -111,6 +116,25 @@ describe('filterUpstreamHashes', () => {
     // Both tasks share the hash `dup`; only one pair survives, named by
     // the first task encountered (self#x).
     expect(filterUpstreamHashes(up, ['*'], 'self', 'self#build')).toEqual([['self#x', 'dup']])
+  })
+
+  // Two groups over the same members share a hash. Deleting by hash let
+  // `!c#build` drop b#build, which `^*` still selected: the key folded
+  // neither, and a change beneath them replayed the old hit.
+  it('a negation drops only what it names: a shared hash still selected stays folded', () => {
+    const up = [outcome('b#build', 'g'), outcome('c#build', 'g')]
+    expect(filterUpstreamHashes(up, ['^*', '!c#build'], 'app', 'app#build')).toEqual([
+      ['b#build', 'g'],
+    ])
+    expect(filterUpstreamHashes(up, ['^*', '!b#build'], 'app', 'app#build')).toEqual([
+      ['c#build', 'g'],
+    ])
+    // CONTROL: negating both drops the hash.
+    expect(filterUpstreamHashes(up, ['^*', '!b#build', '!c#build'], 'app', 'app#build')).toEqual([])
+    // Order still rules: a later positive entry brings a negated one back.
+    expect(filterUpstreamHashes(up, ['!c#build', 'c#build'], 'app', 'app#build')).toEqual([
+      ['c#build', 'g'],
+    ])
   })
 
   it('wraps an invalid filter spec in a UserError naming the task', () => {
@@ -366,20 +390,95 @@ describe('inputs.tasks through a group', () => {
     'a pattern that matches only a member is refused, naming the member and the group',
     async () => {
       expect(await runWith(['build.*'])).toBe(
-        "@x/a#test: inputs.tasks: 'build.*' matches @x/a#build.a only through the group @x/a#build, so it selects nothing; name 'build' or depend on @x/a#build.a directly",
+        byLock(
+          "@x/a#test: inputs.tasks: 'build.*' matches @x/a#build.a only through the group @x/a#build, so it selects nothing; name 'build' or depend on @x/a#build.a directly",
+        ),
       )
       expect(await runWith(['*.b'])).toContain("'*.b' matches @x/a#build.b only through")
     },
     TIMEOUT,
   )
 
+  // The pattern also matched the direct build.a, so the refusal was skipped,
+  // and build.b, reached only through the group, stayed out of the key.
   it(
-    'CONTROLS: the group, a direct edge, a negation and a pattern matching nothing run',
+    'a pattern that also matches a direct dependency is refused for the member it leaves out',
+    async () => {
+      expect(await runWith(['build.*'], ['build', 'build.a'])).toBe(
+        byLock(
+          "@x/a#test: inputs.tasks: 'build.*' matches @x/a#build.b only through the group @x/a#build, so the key leaves it out; name 'build' or depend on @x/a#build.b directly",
+        ),
+      )
+      expect(await runWith(['^build.*', 'build.*'], ['build', 'build.a'])).toContain(
+        "'build.*' matches @x/a#build.b only through",
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'CONTROLS: the group, direct edges, a negation and a pattern matching nothing run',
     async () => {
       expect(await runWith(['build'])).toBe('ok')
-      expect(await runWith(['build.*'], ['build', 'build.a'])).toBe('ok')
+      expect(await runWith(['build.*'], ['build', 'build.a', 'build.b'])).toBe('ok')
+      expect(await runWith(['build', 'build.*'], ['build', 'build.a'])).toBe('ok')
       expect(await runWith(['*', '!build.a'])).toBe('ok')
+      expect(await runWith(['*', '!build'])).toBe('ok')
       expect(await runWith(['lint.*'])).toBe('ok')
+    },
+    TIMEOUT,
+  )
+})
+
+// b and c each have an unkeyed `build` group over lib#build alone, so both
+// groups hash alike. `!c#build` dropped b#build too, and a change to lib's
+// source replayed app's old hit.
+describe('inputs.tasks: negating one of two groups over the same members', () => {
+  it(
+    'keeps the other folded: a change beneath it reruns the reader',
+    async () => {
+      const fixture = await makeWorkspace('vx-filter-shared-unit-', {
+        app: ['b', 'c'],
+        b: ['lib'],
+        c: ['lib'],
+      })
+      try {
+        const cache = `outputs: { files: ['dist/**'] }, cache: true`
+        const lib = await addProject(fixture.root, 'lib', {
+          files: { 'src/x': '1\n' },
+          config: `export default { tasks: { build: {
+            exec: { command: 'mkdir -p dist && cat src/x > dist/o' },
+            inputs: { files: ['src/**'] }, ${cache},
+          } } }`,
+        })
+        for (const name of ['b', 'c']) {
+          await addProject(fixture.root, name, {
+            config: `export default { tasks: { build: { dependsOn: ['^build'] } } }`,
+          })
+        }
+        const app = await addProject(fixture.root, 'app', {
+          files: { 'src/a': '1\n' },
+          config: `export default { tasks: { build: {
+            exec: { command: 'mkdir -p dist && cat ../lib/dist/o > dist/o' },
+            dependsOn: ['^build'],
+            inputs: { files: ['src/**'], tasks: ['^*', '!c#build'] }, ${cache},
+          } } }`,
+        })
+        const build = async () => {
+          const r = await run({
+            cwd: fixture.root,
+            tasks: ['app#build'],
+            log: silentLogger(fixture),
+          })
+          expect(r.ok).toBe(true)
+          return readFile(path.join(app, 'dist', 'o'), 'utf8')
+        }
+        expect(await build()).toBe('1\n')
+        await writeFile(path.join(lib, 'src', 'x'), '3\n')
+        expect(await build()).toBe('3\n')
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
     },
     TIMEOUT,
   )
@@ -427,21 +526,29 @@ describe('inputs.tasks: an exact entry naming no dependency', () => {
   }
 
   it(
-    'is refused when the run plans, naming the dependencies it could have named',
+    'is refused by vx lock, naming the dependencies it could have named',
     async () => {
       const tail =
         'so it selects nothing and the key would not move with them; fix the name, or use [] to decouple on purpose'
       expect(await runWith(['nope#build'])).toBe(
-        `@x/a#test: inputs.tasks: 'nope#build' names none of its dependencies (@x/a#build), ${tail}`,
+        byLock(
+          `@x/a#test: inputs.tasks: 'nope#build' names none of its dependencies (@x/a#build), ${tail}`,
+        ),
       )
       expect(await runWith(['a#build'])).toBe(
-        `@x/a#test: inputs.tasks: 'a#build' names none of its dependencies (@x/a#build), ${tail}`,
+        byLock(
+          `@x/a#test: inputs.tasks: 'a#build' names none of its dependencies (@x/a#build), ${tail}`,
+        ),
       )
       expect(await runWith(['build'], ['@x/b#build'])).toBe(
-        `@x/a#test: inputs.tasks: 'build' names none of its dependencies (@x/b#build), ${tail}`,
+        byLock(
+          `@x/a#test: inputs.tasks: 'build' names none of its dependencies (@x/b#build), ${tail}`,
+        ),
       )
       expect(await runWith(['^build'], ['@x/a#build'])).toBe(
-        `@x/a#test: inputs.tasks: '^build' names none of its dependencies (@x/a#build), ${tail}`,
+        byLock(
+          `@x/a#test: inputs.tasks: '^build' names none of its dependencies (@x/a#build), ${tail}`,
+        ),
       )
     },
     TIMEOUT,
@@ -471,23 +578,29 @@ describe('inputs.tasks: an exact entry naming no dependency', () => {
 // dependencies (b#build), the filter selected none, and an edit to c's
 // sources replayed a's hit: a stale hit.
 describe('inputs.tasks: an exact entry naming a transitive dependency', () => {
-  const runWith = async (filter: string[]) => {
+  const task = (extra: string) =>
+    `{ exec: { command: 'true' }, inputs: { files: ['src/**']${extra} }, outputs: { files: [] }, cache: true, dependsOn: ['^build'] }`
+  const aConfig = (filter: string[]) =>
+    `export default { tasks: { build: ${task(`, tasks: ${JSON.stringify(filter)}`)} } }`
+  const chain = async (filter: string[]) => {
     const fixture = await makeWorkspace('vx-filter-transitive-', {
       '@x/a': ['@x/b'],
       '@x/b': ['@x/c'],
     })
-    try {
-      const task = (extra: string) =>
-        `{ exec: { command: 'true' }, inputs: { files: ['src/**']${extra} }, outputs: { files: [] }, cache: true, dependsOn: ['^build'] }`
-      for (const p of ['c', 'b'])
-        await addProject(fixture.root, `@x/${p}`, {
-          files: { [`src/${p}.js`]: '1\n' },
-          config: `export default { tasks: { build: ${task('')} } }`,
-        })
-      await addProject(fixture.root, '@x/a', {
-        files: { 'src/a.js': '1\n' },
-        config: `export default { tasks: { build: ${task(`, tasks: ${JSON.stringify(filter)}`)} } }`,
+    for (const p of ['c', 'b'])
+      await addProject(fixture.root, `@x/${p}`, {
+        files: { [`src/${p}.js`]: '1\n' },
+        config: `export default { tasks: { build: ${task('')} } }`,
       })
+    await addProject(fixture.root, '@x/a', {
+      files: { 'src/a.js': '1\n' },
+      config: aConfig(filter),
+    })
+    return fixture
+  }
+  const runWith = async (filter: string[]) => {
+    const fixture = await chain(filter)
+    try {
       return await run({
         cwd: fixture.root,
         tasks: ['@x/a#build'],
@@ -502,11 +615,42 @@ describe('inputs.tasks: an exact entry naming a transitive dependency', () => {
   }
 
   it(
-    'is refused when the run plans, as an entry naming no dependency is',
+    'is refused by vx lock, as an entry naming no dependency is',
     async () => {
       expect(await runWith(['@x/c#build'])).toBe(
-        "@x/a#build: inputs.tasks: '@x/c#build' names none of its dependencies (@x/b#build), so it selects nothing and the key would not move with them; fix the name, or use [] to decouple on purpose",
+        byLock(
+          "@x/a#build: inputs.tasks: '@x/c#build' names none of its dependencies (@x/b#build), so it selects nothing and the key would not move with them; fix the name, or use [] to decouple on purpose",
+        ),
       )
+    },
+    TIMEOUT,
+  )
+
+  // `vx lock` never called the refusal, so the lock and `--check` passed
+  // a config every run refused.
+  it(
+    'is refused by vx lock and by vx lock --check',
+    async () => {
+      const fixture = await chain(['@x/b#build'])
+      const vx = (...args: string[]) =>
+        Bun.spawnSync({ cmd: [process.execPath, BIN, ...args], cwd: fixture.root })
+      try {
+        expect(vx('lock').exitCode).toBe(0)
+        await writeFile(
+          path.join(fixture.root, 'packages', 'x-a', 'vx.config.mjs'),
+          aConfig(['@x/c#build']),
+        )
+        const said =
+          "@x/a#build: inputs.tasks: '@x/c#build' names none of its dependencies (@x/b#build)"
+        const check = vx('lock', '--check')
+        expect(check.stderr.toString()).toContain(said)
+        expect(check.exitCode).toBe(1)
+        const lock = vx('lock')
+        expect(lock.stderr.toString()).toContain(said)
+        expect(lock.exitCode).toBe(1)
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
     },
     TIMEOUT,
   )

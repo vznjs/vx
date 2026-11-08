@@ -318,6 +318,16 @@ function spent(err: unknown): unknown {
 
 const RETRY_DELAYS_MS = [100, 400, 1600]
 
+/**
+ * Re-attaching to an operation. A proxy that cuts long streams cuts a
+ * progressing action again and again, so only attaches that delivered no
+ * operation spend `RETRY_DELAYS_MS`'s budget. The wait still grows per
+ * consecutive cut, so a server that answers EXECUTING and hangs up is not
+ * re-dialled every 100 ms; it starts over once a stream advanced the stage
+ * or stayed open `steadyMs`. A mutable object: tests shorten it.
+ */
+export const reattach = { backoffMs: [100, 400, 1600, 5000], steadyMs: 10_000 }
+
 const deadlineOf = (bounds: grpc.CallOptions): number => (bounds.deadline as Date).getTime()
 
 const executionAborted = (): Error => new Error('execution aborted')
@@ -909,17 +919,19 @@ export class ReapiClient {
   /**
    * Upload blobs, choosing the transport per blob: batched while they fit the
    * server's batch budget, ByteStream for the rest. Only what
-   * `FindMissingBlobs` reports absent is sent at all.
+   * `FindMissingBlobs` reports absent is sent, unless `everyBlob`: a server
+   * whose Execute just named them missing has already contradicted it.
    */
   async uploadBlobs(
     blobs: ReadonlyArray<{ digest: Digest; data: Uint8Array }>,
     maxBatchBytes = 0,
+    everyBlob = false,
   ): Promise<void> {
     if (blobs.length === 0) return
-    const missing = new Set(
-      (await this.findMissingBlobs(blobs.map((b) => b.digest))).map((d) => d.hash),
-    )
-    const todo = blobs.filter((b) => missing.has(b.digest.hash))
+    const missing = everyBlob
+      ? undefined
+      : new Set((await this.findMissingBlobs(blobs.map((b) => b.digest))).map((d) => d.hash))
+    const todo = missing === undefined ? blobs : blobs.filter((b) => missing.has(b.digest.hash))
     // 0 means the server did not say; the gRPC default max message is 4 MB and
     // the request carries framing on top, so leave headroom rather than
     // discovering the limit as a RESOURCE_EXHAUSTED mid-run.
@@ -1433,27 +1445,47 @@ export class ReapiClient {
       ...(this.digestFunction === 'SHA256' ? {} : { digest_function: this.digestFunction }),
     }
     let operationName = ''
-    for (let attempt = 0; ; attempt++) {
+    // Attaches in a row that delivered no operation, cuts since a stream last
+    // advanced or held, and the furthest stage reached.
+    let empty = 0
+    let cuts = 0
+    let reached = -1
+    for (;;) {
       let failure: unknown
+      let delivered = false
+      let advanced = false
+      const opened = performance.now()
+      const onStage = (stage: string): void => {
+        const rank = EXEC_STAGE.indexOf(stage as (typeof EXEC_STAGE)[number])
+        if (rank > reached) {
+          reached = rank
+          advanced = true
+        }
+        opts.onStage?.(stage)
+      }
       try {
         const op =
           operationName === ''
-            ? await this.operationStream('execute', req, signal, opts.onStage, (n) => {
-                operationName = n
-                opts.onOperation?.(n)
+            ? await this.operationStream('execute', req, signal, onStage, (o) => {
+                delivered = true
+                if (o.name === '' || o.name === undefined) return
+                operationName = o.name
+                opts.onOperation?.(o.name)
               })
             : await this.operationStream(
                 'waitExecution',
                 { name: operationName },
                 signal,
-                opts.onStage,
+                onStage,
+                () => {
+                  delivered = true
+                },
               )
         if (op.done) return op
         // A stream can END cleanly on an operation still QUEUED or EXECUTING
         // (a server or proxy cutting long streams); the operation lives on,
-        // so it is re-attached as a dropped stream is, on the same budget.
-        // An unnamed one cannot be re-attached, and a plain Error is not
-        // retried.
+        // so it is re-attached as a dropped stream is. An unnamed one cannot
+        // be re-attached, and a plain Error is not retried.
         if (operationName === '') {
           throw new Error('execution stream closed before the operation finished')
         }
@@ -1466,12 +1498,18 @@ export class ReapiClient {
         // (a restart lost it). Nothing is running to re-attach to, and the
         // action is the same bytes, so it is executed again, on the same
         // budget — as Bazel's executor does.
-        if (code === NOT_FOUND && operationName !== '') operationName = ''
-        else if (!isRetryable(code)) throw err
+        if (code === NOT_FOUND && operationName !== '') {
+          operationName = ''
+          reached = -1
+        } else if (!isRetryable(code)) throw err
         failure = err
       }
-      const delay = RETRY_DELAYS_MS[attempt]
-      if (delay === undefined) throw failure
+      // An EXECUTING-then-cut loop never spends this budget; the executor's
+      // stall bound (`exec.timeout` / `executeTimeoutMs`) ends it.
+      empty = delivered ? 0 : empty + 1
+      if (empty > RETRY_DELAYS_MS.length) throw failure
+      if (advanced || performance.now() - opened >= reattach.steadyMs) cuts = 0
+      const delay = reattach.backoffMs[Math.min(cuts++, reattach.backoffMs.length - 1)]!
       await abortableSleep(delay, signal)
     }
   }
@@ -1507,7 +1545,7 @@ export class ReapiClient {
     req: unknown,
     signal?: AbortSignal,
     onStage?: (stage: string) => void,
-    onName?: (name: string) => void,
+    onOperation?: (op: Operation) => void,
   ): Promise<Operation> {
     return new Promise((resolve, reject) => {
       // An aborted signal never fires `abort` again, and the stream has no
@@ -1526,7 +1564,7 @@ export class ReapiClient {
       signal?.addEventListener('abort', onAbort, { once: true })
       stream.on('data', (op: Operation) => {
         last = op
-        if (op.name !== '' && op.name !== undefined && onName !== undefined) onName(op.name)
+        onOperation?.(op)
         // ExecuteOperationMetadata carries the action's STAGE
         // (QUEUED / EXECUTING / COMPLETED). Surfacing it is the difference
         // between "vx is hung" and "the action is queued behind 40 others".

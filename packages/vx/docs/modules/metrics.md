@@ -19,9 +19,10 @@ explainCacheKey(db, taskId): CacheKeyExplanation    // latest entry for a task
 latestRunId(db, taskId): string | null              // the run a caller without one means
 whyDidThisRerun(db, runId, taskId): WhyDidThisRerun // this run vs the previous one
 cacheKeyDiff(db, runId, taskId): CacheKeyDiff       // which key components moved
-rootCauses(db, runId, taskId, entries, groups?): RootCause[] // under moved upstreams (through groups), the tasks whose own inputs moved between the keys the dependant folded
+rootCauses(db, runId, taskId, entries, groups?): RootCause[] // under moved upstreams (through groups), the tasks whose own inputs moved between the keys the dependant folded; on its own stack, each visit linked to the one that reached it, so no chain is copied per level
+recordedTasks(db, runId): Set<string>               // the run's rows as project#task, read once
 upstreamTask(name): string                           // the task an upstream row names, past a group (GROUP_VIA)
-inputWriters(db, root, taskId, entries, roots): InputWriter[] // tasks running when a moved input file last changed (stats it)
+inputWriters(db, runId, root, taskId, entries, roots): InputWriter[] // tasks running when a moved input file last changed, if not after run runId ended (stats and asks once per file)
 loadEntryInputs(db, entryHash): TaskInputComponent[] // one entry's key components, [] when none
 diffKeyComponents(before, after): { entries, unchangedCount } // the join, no store
 
@@ -30,7 +31,7 @@ ListRunsArgs        // { limit?, project?, task?, runId? }
 ListInvocationsArgs // { limit? }
 CacheEntryRow       // an entries row: hash, project, task, command, exitCode, durationMs, sizeBytes, createdAt, accessedAt
 InputDiffEntry      // one moved component: kind, name, change ('added' | 'removed' | 'changed'), before, after
-RootCause           // { chain: the asked task down to the root, entries: its own moved components }
+RootCause           // { chain: the asked task down to the root, built on each read; task: the root; entries: its own moved components }; JSON is { chain, entries }
 InputWriter         // { taskId, file, writers: the tasks running when the file last changed }
 ```
 
@@ -163,12 +164,13 @@ readers.
 
 `tests/metrics.test.ts` (every query, the three unchanged-key notes,
 the diff's four verdicts and its order by kind and by name, degraded
-rows whose fingerprints were pruned);
+rows whose fingerprints were pruned; the root-cause walk and the
+writers over a 10,000-task chain, by memory and statement count);
 `tests/run-record-completeness.test.ts` (a run writes what these read);
 `tests/status-vocabulary.test.ts` (no hand-typed status lists).
 
 ## Replacing this module
 
-A reader over another store implements the same eleven signatures (the
+A reader over another store implements the same twelve signatures (the
 join, `diffKeyComponents`, needs no store and is reused as it is); the
 CLI verbs format, they do not query.

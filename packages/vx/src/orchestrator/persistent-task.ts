@@ -30,7 +30,7 @@ import {
 } from './sandbox-request.js'
 import { shellVerdict } from './shell-verdict.js'
 import { forwardedSignal, terminateChildren } from './signals.js'
-import { computeTaskHash } from './task-hash.js'
+import { computeTaskHash, keyOf } from './task-hash.js'
 import {
   forgetUndeclaredWrites,
   isAborted,
@@ -52,16 +52,18 @@ export function serverKey(args: ExecuteArgs): Promise<string | undefined> | stri
   if (args.noDependants === true) return undefined
   return (
     args.upfrontKey ??
-    computeTaskHash({
-      node: args.node,
-      upstream: args.upstream,
-      workspaceRoot: args.workspaceRoot,
-      cache: args.cache,
-      forwardArgs: args.forwardArgs,
-      nestedProjectDirs: args.nestedProjectDirs,
-      ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
-      ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
-    })
+    keyOf(
+      computeTaskHash({
+        node: args.node,
+        upstream: args.upstream,
+        workspaceRoot: args.workspaceRoot,
+        cache: args.cache,
+        forwardArgs: args.forwardArgs,
+        nestedProjectDirs: args.nestedProjectDirs,
+        ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
+        ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
+      }),
+    )
   )
 }
 

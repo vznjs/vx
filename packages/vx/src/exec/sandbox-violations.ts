@@ -26,6 +26,7 @@ import type {
  *   <pid> access("<path>", <mode>) = -1 EACCES (...)
  *   <pid> statx(AT_FDCWD, "<path>", <flags>, <mask>, ...) = -1 ENOENT (...)
  *   <pid> execve("<path>", ["<argv0>", ...], <envp>) = -1 ENOENT (...)
+ *   <pid> readlinkat(AT_FDCWD, "<path>", 0x..., <size>) = -1 ENOENT (...)
  *
  * …but ONLY when the syscall completes without another traced process
  * interleaving. Under `-f` strace splits an interrupted call across two
@@ -42,7 +43,8 @@ import type {
  * (`cStringPath` decodes it). Paths that are relative resolve against the
  * task's cwd (set by Bun.spawn).
  */
-const SYSCALLS = 'openat|open|execve|faccessat2|faccessat|access|statx|newfstatat'
+const SYSCALLS =
+  'openat|open|execve|faccessat2|faccessat|access|statx|newfstatat|readlinkat|readlink'
 const QUOTED = '"((?:[^"\\\\]|\\\\.)+)"'
 // The directory descriptor a call names, `-y`'s path included: taken up to
 // the `, "` that opens the path argument, since a directory's name may hold
@@ -75,7 +77,18 @@ const PROBES = new Set([
   'statx',
   'newfstatat',
   'chdir',
+  'readlinkat',
+  'readlink',
 ])
+/**
+ * The calls that read a link itself, never its target: git hashes a link
+ * by its target string, so `readlink cfg` read an input no open showed.
+ */
+const READLINKS = new Set(['readlinkat', 'readlink'])
+const READLINK_RE = new RegExp(
+  `^(\\d+)\\s+(readlinkat|readlink)\\((?:${DIRFD})?${QUOTED}, .*\\)\\s*=\\s*\\d+$`,
+)
+const READLINK_UNFINISHED_RE = /^\d+\s+readlink(?:at)?\(.*<unfinished/
 /** A resumed call that SUCCEEDED — clears the pending entry, emits nothing. */
 const STRACE_RESUMED_OK_RE = new RegExp(`^(\\d+)\\s+<\\.\\.\\. (${SYSCALLS}) resumed>`)
 /**
@@ -265,6 +278,18 @@ export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCa
         const m = OPENED_RE.exec(line)
         if (m !== null) opened(m[1]!, m[2] ?? 'AT_FDCWD', cStringPath(m[3]!), m[4]!)
       }
+      if (reads && line.includes('readlink')) {
+        const m = READLINK_RE.exec(line)
+        if (m !== null) {
+          const rawPath = cStringPath(m[5]!)
+          denied(
+            m[1]!,
+            { syscall: m[2]!, rawPath, errno: '', read: true, ...within(m[4], rawPath) },
+            m[3],
+          )
+          continue
+        }
+      }
       if (reads && line.includes('open')) {
         const m = OPEN_READ_RE.exec(line)
         if (m !== null) {
@@ -309,7 +334,9 @@ export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCa
         rawPath,
         ...within(unfinished[4], rawPath),
         ...writeFlags(line),
-        ...(reads && OPEN_READ_UNFINISHED_RE.test(line) ? { read: true as const } : {}),
+        ...(reads && (OPEN_READ_UNFINISHED_RE.test(line) || READLINK_UNFINISHED_RE.test(line))
+          ? { read: true as const }
+          : {}),
         ...(unfinished[3] !== undefined ? { dirfd: unfinished[3] } : {}),
       })
       continue
@@ -343,7 +370,14 @@ export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCa
       if (numbered && (held?.syscall === 'openat' || held?.syscall === 'open') && fd !== null) {
         opened(resumedOk[1], held.dirfd ?? 'AT_FDCWD', held.rawPath, fd[1]!)
       }
-      if (held?.read === true && fd !== null) {
+      if (held?.read === true && fd !== null && READLINKS.has(held.syscall)) {
+        const { syscall, rawPath, dir, dirfd } = held
+        denied(
+          resumedOk[1],
+          { syscall, rawPath, errno: '', read: true, ...(dir !== undefined ? { dir } : {}) },
+          dirfd,
+        )
+      } else if (held?.read === true && fd !== null) {
         const at = readPath(held.dirfd ?? 'AT_FDCWD', held.rawPath, fd[2])
         if (at !== undefined) {
           denied(resumedOk[1], { syscall: held.syscall, rawPath: at, errno: '', read: true })
@@ -515,7 +549,9 @@ export async function parseStraceViolations(
     judged.add(call)
     if (judged.size % JUDGED_PER_TURN === 0) await new Promise((r) => setImmediate(r))
     const lexical = absolutize(rawPath, dir ?? baselines.cwd)
-    const abs = toRealPath(lexical)
+    const abs = READLINKS.has(syscall)
+      ? path.join(toRealPath(path.dirname(lexical)), path.basename(lexical))
+      : toRealPath(lexical)
     // Only report paths under the workspace-root deny anchor — system
     // libs / /proc / /sys / etc. probes are not interesting violations.
     if (!denyAnchors.some((root) => atOrUnder(abs, root))) continue
@@ -551,8 +587,8 @@ export async function parseStraceViolations(
             path: abs,
             // An open is a read or a write depending on flags the parse
             // does not keep, and `access` may ask either — so either list
-            // can silence it.
-            ignorable: ['read', 'write'],
+            // can silence it. A readlink only reads.
+            ignorable: READLINKS.has(syscall) ? ['read'] : ['read', 'write'],
             ...(syscall === 'openat' ? { opened: writes === true ? 'write' : 'read' } : {}),
             ...(via === undefined ? {} : { via }),
           },
@@ -879,6 +915,13 @@ export function refusedConnections(records: readonly string[]): SandboxViolation
 const NAME_SYSCALL = /^(?:symlink|unlink|rename|rmdir|mknod|link)/
 /** The calls the observer records twice, source and destination, in that order. */
 const MOVES = /^(?:rename|link)/
+/**
+ * The observer's opens that may be reads: an `openat2`'s flags lie in a
+ * struct its seccomp filter cannot read, so it takes every one, and its
+ * record names no flags. strace never sees one (USER_NOTIF wins over
+ * TRACE), so this record is the only trace of an `openat2` read.
+ */
+const OPEN_EITHER = /^openat2$/
 
 /**
  * The writes SRT's Linux observer saw that this task's binds do not cover.
@@ -898,7 +941,9 @@ const MOVES = /^(?:rename|link)/
  * when the task started is reported; one the task made is its own unless
  * it outlives the task, since an atomic writer stages beside its target
  * (the reason for the widening) and renames. A made directory holds
- * nothing of its own: only a new one left behind is reported.
+ * nothing of its own: only a new one left behind is reported. An
+ * `openat2` may be a read (`OPEN_EITHER`): where the task may read its
+ * path it is nothing, elsewhere an open named for a read.
  */
 export function refusedWrites(
   records: readonly string[],
@@ -928,8 +973,10 @@ export function refusedWrites(
       const top = path.join(dir, path.relative(dir, abs).split(path.sep)[0]!)
       if (!entries.has(top)) return exists(abs) && !(syscall.startsWith('mkdir') && abs !== top)
       if (syscall.startsWith('mkdir')) return false
-      // A granted read as a link's source: the read the grant allows.
-      return !(syscall.startsWith('link') && readable.some((r) => atOrUnder(abs, r)))
+      // A granted read as a link's source, or as an `openat2` (read or
+      // write, `OPEN_EITHER`): the read the grant allows.
+      const reads = syscall.startsWith('link') || OPEN_EITHER.test(syscall)
+      return !(reads && readable.some((r) => atOrUnder(abs, r)))
     }
     return false
   }
@@ -961,6 +1008,11 @@ export function refusedWrites(
     // So does one a read grant shows, or holds: `mkdir -p src` under
     // `read: ['src']` failed a clean task the same way (X-82).
     if (!bound && syscall.startsWith('mkdir') && inSandbox(abs, binds, readable)) continue
+    // A write where the sandbox can read met the read-only bind and
+    // landed nothing; a read there was granted. Either way, nothing to say:
+    // judged a write, a granted `openat2(O_RDONLY)` failed a clean task.
+    const either = OPEN_EITHER.test(syscall)
+    if (!bound && either && inSandbox(abs, binds, readable)) continue
     const key = `${syscall}|${abs}`
     if (seen.has(key)) continue
     seen.add(key)
@@ -976,6 +1028,14 @@ export function refusedWrites(
         ? {
             line: `${syscall}(${raw}) = a link or move no grant covers  [${abs}]`,
             ignorable: ['read', 'write'] as const,
+          }
+        : {}),
+      // Named for a read, the cheaper grant: a write grant reads too.
+      ...(either
+        ? {
+            line: `${syscall}(${raw}) = an open no grant covers  [${abs}]`,
+            ignorable: ['read', 'write'] as const,
+            opened: 'read' as const,
           }
         : {}),
     })

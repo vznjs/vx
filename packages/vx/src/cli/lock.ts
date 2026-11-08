@@ -3,17 +3,24 @@
 // `vx lock --check` — audit the lock against a fresh evaluation in the
 // current environment. Design: docs/design/config-lock-2026-06.md.
 
+import { readdirSync } from 'node:fs'
 import { open } from 'node:fs/promises'
 import path from 'node:path'
 import type { ProjectConfig } from '../config.js'
 import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
-import { buildTaskGraph, expandRequested, isDefaultBuild } from '../graph/index.js'
+import {
+  buildTaskGraph,
+  expandRequested,
+  isDefaultBuild,
+  refuseFiltersThroughGroups,
+} from '../graph/index.js'
 import {
   applyGraphStage,
   claimedDigests,
   discoverProjects,
   fingerprintClaims,
   hasHook,
+  ignoredConfigRefusal,
   loadProjects,
 } from '../orchestrator/index.js'
 import { resolveSetting, runRules } from '../settings.js'
@@ -27,7 +34,7 @@ import {
   maskedLine,
   relPosix,
   type RefusalParts,
-  type UserError,
+  UserError,
   secretMask,
   secretNamed,
   type SecretMask,
@@ -42,6 +49,7 @@ import {
   findProjectConfigs,
   findWorkspaceRoot,
   REVIEW_FILE,
+  PROJECT_CONFIG_FILENAMES,
   loadProjectConfigs,
   LOCKFILE_NAME,
   LOCKFILE_VERSION,
@@ -206,6 +214,10 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     const view = structuredClone(out.fresh)
     const lock = async (): Promise<Lockfile> => view
     out.all = await discoverProjects(root, lock, plugins, cacheDir, warn)
+    for (const m of out.all) {
+      const why = m.configPath === null ? ignoredConfigRefusal(root, m) : undefined
+      if (why !== undefined) throw new UserError(why, 'VX_E_LOCK')
+    }
     const { projects } = await loadProjects({
       workspaceRoot: root,
       cacheDir,
@@ -262,6 +274,9 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
         warn,
         rules,
       })
+    // A run refuses it after its `graph` stage; the lock, which holds the
+    // graph every run trusts, refuses it too.
+    refuseFiltersThroughGroups(nodes)
   } catch (err) {
     if (isUserError(err))
       return {
@@ -456,11 +471,11 @@ async function writeLock(
   }
   // The copies first: one that cannot be written leaves the lock as it was,
   // not a new lock beside stale copies and a stack.
-  for (const r of reviews) refuseSymlink(r.file)
+  for (const r of reviews) refuseSymlink(r.file, root)
   const blocked = (
     await Promise.all(
       reviews.map((r) =>
-        writeNoFollow(r.file, r.text).then(
+        writeNoFollow(r.file, r.text, root).then(
           () => null,
           (err: unknown): { file: string; err: NodeJS.ErrnoException } => {
             if (typeof (err as NodeJS.ErrnoException).code !== 'string' || isOutOfFds(err))
@@ -483,10 +498,13 @@ async function writeLock(
     })
     return 1
   }
-  await writeAllOrNone([
-    lockfileWrite(root, check.fresh),
-    ...(check.dependencies === null ? [] : [dependenciesLockWrite(root, check.dependencies)]),
-  ])
+  await writeAllOrNone(
+    [
+      lockfileWrite(root, check.fresh),
+      ...(check.dependencies === null ? [] : [dependenciesLockWrite(root, check.dependencies)]),
+    ],
+    root,
+  )
   await writeIfMissing(path.join(root, '.vx', '.gitattributes'), DOT_VX_GITATTRIBUTES)
   const n = metas.length
   say(`${n} project config${n === 1 ? '' : 's'} → ${LOCKFILE_NAME}${bareNote(bare)}`)
@@ -538,8 +556,26 @@ async function strayCopies(check: GraphCheck): Promise<string[]> {
   return [...new Set([...kept.filter((f) => f !== null), ...check.strayReviews])].sort()
 }
 
-const strayLine = (root: string, file: string): string =>
-  `${relPosix(root, file)} has no vx.config beside it — delete it`
+/**
+ * A copy's config renamed to a name vx does not read (`.json`, `.tsx`)
+ * is still there: "delete it" was the wrong advice. Looked for only here,
+ * once a copy is already stray.
+ */
+function strayLine(root: string, file: string): string {
+  const copy = `${relPosix(root, file)} has no vx.config beside it`
+  let names: string[] = []
+  try {
+    names = readdirSync(path.dirname(file))
+  } catch {
+    // gone or unreadable: nothing beside it to name
+  }
+  const unread = names
+    .filter((n) => n.startsWith('vx.config.') && !PROJECT_CONFIG_FILENAMES.includes(n))
+    .sort()[0]
+  if (unread === undefined) return `${copy} — delete it`
+  const exts = PROJECT_CONFIG_FILENAMES.map((n) => n.slice('vx.config.'.length)).join(', ')
+  return `${copy}: ${unread} is not a config vx reads (${exts})`
+}
 
 /**
  * Each place an evaluated config holds the value of a secret in this
@@ -610,10 +646,11 @@ function warnShadowed(root: string, check: GraphCheck, verb: string): void {
 
 /**
  * `read` with each file's record taken from `fresh` where only the files
- * its digests read moved (same bytes, same extra files): a run digests
- * anew on such an edit (`lockfileClaim`'s `lockedOnce`), and cli.md says
- * it needs no `vx lock`, yet `--check` failed every edit in a `file:`
- * directory or a patch.
+ * its digests read moved (same bytes, same extra files, an extra's hash
+ * changed): a run digests anew on such an edit (`lockfileClaim`'s
+ * `lockedOnce`), and cli.md says it needs no `vx lock`, yet `--check`
+ * failed every edit in a `file:` directory or a patch. With every hash
+ * unchanged a run keys from the record, so its digests are compared.
  */
 function liveExtras(read: DependenciesLock, fresh: DependenciesLock): DependenciesLock {
   const files = { ...read.files }
@@ -622,7 +659,8 @@ function liveExtras(read: DependenciesLock, fresh: DependenciesLock): Dependenci
     if (
       was !== undefined &&
       was.hash === now.hash &&
-      Bun.deepEquals(Object.keys(was.extras ?? {}), Object.keys(now.extras ?? {}))
+      Bun.deepEquals(Object.keys(was.extras ?? {}), Object.keys(now.extras ?? {})) &&
+      !Bun.deepEquals(was.extras ?? {}, now.extras ?? {})
     )
       files[name] = now
   }

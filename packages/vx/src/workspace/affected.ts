@@ -11,8 +11,10 @@ import { lstat, readlink, realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
   executablePath,
+  gitCaseArgs,
   gitEnv,
   gitSpawnRefusal,
+  ignoreCaseLies,
   isExecutableMissing,
   isInstalledPath,
   notAWorkTree,
@@ -31,7 +33,7 @@ import {
 import { configImportOwners, realpathOr } from './config-imports.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 import { bunPatchFiles } from './fingerprint.js'
-import { PROJECT_CONFIG_FILENAMES, REVIEW_FILE, type ProjectMeta } from './workspace.js'
+import { inVxDir, PROJECT_CONFIG_FILENAMES, REVIEW_FILE, type ProjectMeta } from './workspace.js'
 
 /**
  * Every git call here goes through these two: a git that is not on PATH
@@ -287,7 +289,19 @@ export async function affectedChanges(
   // itself is the base, as before. Turbo's two-dot range `A..HEAD` is the
   // one form that diffs from A itself.
   // Asked beside the base, not after it: the diff's shape waits on it.
-  const partial = isPartialClone(args.workspaceRoot).catch(() => false)
+  const config = gitConfigFacts(args.workspaceRoot).catch(() => ({
+    partial: false,
+    ignoreCase: false,
+    autocrlf: false,
+  }))
+  const partial = config.then((c) => c.partial)
+  const autocrlf = config.then((c) => c.autocrlf)
+  // `core.ignorecase=true` on a disk that tells case apart hid a new
+  // `a.txt` beside the tracked `A.txt` from the untracked listings.
+  const caseArgs = config.then((c) => {
+    if (c.ignoreCase) ignoreCaseLies(args.workspaceRoot, args.workspaceRoot)
+    return gitCaseArgs(args.workspaceRoot)
+  })
   const base = fromMergeBase
     ? await mergeBase(args.workspaceRoot, since)
     : await rangeBase(args.workspaceRoot, since)
@@ -320,14 +334,20 @@ export async function affectedChanges(
     //
     // `--raw` for each path's mode: a gitlink (160000) is a nested
     // repository, one path standing for every file in it (`nested` below).
-    gitDiffPaths(args.workspaceRoot, base, partial),
+    gitDiffPaths(args.workspaceRoot, base, partial, autocrlf),
     // `git diff` never reports untracked-but-not-ignored files, but input
     // enumeration does (`git ls-files --cached --others --exclude-standard`),
     // so a brand-new source file changes a task's cache key. Union it in or
     // `--affected` skips a package that genuinely has new work.
     (async () =>
       (await args.untracked?.().catch(() => null)) ??
-      gitPaths(args.workspaceRoot, ['ls-files', '--others', '--exclude-standard', '-z']))(),
+      gitPaths(args.workspaceRoot, [
+        ...(await caseArgs),
+        'ls-files',
+        '--others',
+        '--exclude-standard',
+        '-z',
+      ]))(),
   ])
 
   const projects = await args.projects
@@ -368,12 +388,22 @@ export async function affectedChanges(
       (await listIndex()).filter((e) => e.flagged).map((e) => e.path))(),
   ])
   const dirLinkSet = new Set<string>()
-  changed.push(...(await linkedChanges(args.workspaceRoot, links, changed, dirLinkSet)))
+  changed.push(
+    ...(await linkedChanges(args.workspaceRoot, links, changed, dirLinkSet, await caseArgs)),
+  )
   // A path git was told not to look at (`update-index --assume-unchanged`,
   // `--skip-worktree`): `git diff` reports no edit to it, and the key
   // hashes it from disk, so the task missed and selection left it out.
   if (flagged.length > 0) {
-    changed.push(...(await flaggedChanges(args.workspaceRoot, flagged, await listIndex(), changed)))
+    changed.push(
+      ...(await flaggedChanges(
+        args.workspaceRoot,
+        flagged,
+        await listIndex(),
+        changed,
+        await autocrlf,
+      )),
+    )
   }
   // A changed path that is a link to a directory, or was a link and is
   // no link to a file now: a glob reaching below it keys what is behind
@@ -635,6 +665,10 @@ export async function affectedChanges(
       workspaceConfigs: WORKSPACE_CONFIG_FILENAMES.map((n) => path.join(rootDir, n)),
     })
     if (imports.workspace !== undefined) return everything(imports.workspace)
+    if (imports.outside !== undefined) {
+      const moved = await outsideChanged(args.workspaceRoot, base, imports.outside)
+      if (moved !== undefined) return everything(moved)
+    }
     for (const name of imports.owners) {
       owned.add(name)
       whole.add(name)
@@ -725,6 +759,8 @@ async function removedProjectConfigs(
   for (const [rel, bytes] of atBase) {
     // A manifest's directory may never have been a project; a config's was.
     if (bytes === null || !CONFIG_NAMES.has(path.posix.basename(rel))) continue
+    // Under `.vx` no config made a project, at the base either.
+    if (inVxDir(rel)) continue
     const dir = path.resolve(workspaceRoot, path.posix.dirname(rel)).normalize('NFC')
     if (dirs.has(dir)) continue
     if (await Bun.file(path.join(workspaceRoot, rel)).exists()) continue
@@ -863,11 +899,13 @@ async function flaggedChanges(
   flagged: readonly string[],
   index: readonly IndexEntry[],
   changed: readonly string[],
+  /** `core.autocrlf` converts (`gitConfigFacts`). */
+  autocrlf: boolean,
 ): Promise<string[]> {
   const byPath = new Map(index.map((e) => [e.path, e]))
   const seen = new Set(changed)
   const out: string[] = []
-  const hash: IndexEntry[] = []
+  let hash: IndexEntry[] = []
   for (const rel of flagged) {
     const entry = byPath.get(rel)
     if (entry === undefined || seen.has(rel)) continue
@@ -878,6 +916,13 @@ async function flaggedChanges(
     } else if (entry.mode === '120000' || rel.includes('\n')) out.push(rel)
     else hash.push(entry)
   }
+  const raw = await filtered(
+    workspaceRoot,
+    hash.map((e) => e.path),
+    autocrlf,
+  )
+  for (const e of hash) if (raw.has(e.path)) out.push(e.path)
+  if (raw.size > 0) hash = hash.filter((e) => !raw.has(e.path))
   if (hash.length === 0) return out
   // `--stdin-paths` hashes each file as `git add` would (its clean
   // filters), so an unchanged one names the index's blob.
@@ -914,6 +959,8 @@ async function linkedChanges(
   changed: readonly string[],
   /** Given each link to a directory. */
   dirs: Set<string>,
+  /** `gitCaseArgs`, for the ignored listing. */
+  caseArgs: readonly string[],
 ): Promise<string[]> {
   if (links.length === 0) return []
   const realRoot = await realpath(workspaceRoot).catch(() => workspaceRoot)
@@ -936,6 +983,7 @@ async function linkedChanges(
   if (inside.length === 0) return out
   const named = inside.map((l) => l.target).filter((t) => t !== '')
   const ignored = await gitPaths(workspaceRoot, [
+    ...caseArgs,
     'ls-files',
     '--others',
     '--ignored',
@@ -1033,6 +1081,8 @@ async function gitDiffPaths(
   workspaceRoot: string,
   base: string,
   partial: Promise<boolean>,
+  /** `core.autocrlf` converts (`gitConfigFacts`). */
+  autocrlf: Promise<boolean>,
 ): Promise<{ paths: string[]; gitlinks: string[]; links: string[] }> {
   const diff = (...revs: string[]) =>
     gitPaths(workspaceRoot, [
@@ -1078,7 +1128,7 @@ async function gitDiffPaths(
     }
   }
   if (unread.length === 0) return { paths, gitlinks, links }
-  const same = await statOnly(workspaceRoot, unread)
+  const same = await statOnly(workspaceRoot, unread, await autocrlf)
   return { paths: paths.filter((p) => !same.has(p)), gitlinks, links }
 }
 
@@ -1090,9 +1140,11 @@ async function gitDiffPaths(
 async function statOnly(
   workspaceRoot: string,
   unread: readonly { rel: string; oid: string; link: boolean }[],
+  /** `core.autocrlf` converts (`gitConfigFacts`). */
+  autocrlf: boolean,
 ): Promise<Set<string>> {
   const same = new Set<string>()
-  const files: { rel: string; oid: string }[] = []
+  let files: { rel: string; oid: string }[] = []
   for (const u of unread) {
     if (!u.link) {
       // `--stdin-paths` reads a line and unquotes a leading `"`; the
@@ -1110,6 +1162,12 @@ async function statOnly(
       // not a link any more: a change
     }
   }
+  const raw = await filtered(
+    workspaceRoot,
+    files.map((f) => f.rel),
+    autocrlf,
+  )
+  if (raw.size > 0) files = files.filter((f) => !raw.has(f.rel))
   if (files.length === 0) return same
   const proc = spawnGit(
     ['hash-object', '--stdin-paths'],
@@ -1125,14 +1183,103 @@ async function statOnly(
   return same
 }
 
-/** A remote that serves missing objects on demand: `--filter` on a clone or a fetch. */
-async function isPartialClone(workspaceRoot: string): Promise<boolean> {
+/**
+ * The first of `files` (absolute, above the workspace root) that changed
+ * since `base` or is untracked, workspace-relative: `gitDiffPaths` is
+ * `--relative` and never lists one. A file outside the repository is
+ * git's to tell no more than the key's to pin.
+ */
+async function outsideChanged(
+  workspaceRoot: string,
+  base: string,
+  files: readonly string[],
+): Promise<string | undefined> {
+  const realRoot = realpathOr(workspaceRoot)
+  const top = spawnGitSync(['rev-parse', '--show-toplevel'], workspaceRoot)
+  if (top.exitCode !== 0) return undefined
+  const repo = realpathOr(new TextDecoder().decode(top.stdout).replace(/\n$/, ''))
+  const rels = files.filter((f) => f.startsWith(repo + path.sep)).map((f) => relPosix(realRoot, f))
+  if (rels.length === 0) return undefined
+  const specs = rels.map((r) => `:(literal)${r}`)
+  const [diffed, untracked] = await Promise.all([
+    gitPaths(workspaceRoot, [
+      '-c',
+      'diff.autoRefreshIndex=false',
+      'diff',
+      '--no-renames',
+      '--name-only',
+      '-z',
+      '--end-of-options',
+      base,
+      '--',
+      ...specs,
+    ]),
+    gitPaths(workspaceRoot, ['ls-files', '--others', '--exclude-standard', '-z', '--', ...specs]),
+  ])
+  if (diffed.length > 0) return relPosix(realRoot, path.join(repo, diffed[0]!))
+  return untracked[0]
+}
+
+/**
+ * Of `rels`, the paths a clean filter can rewrite (`core.autocrlf`, or a
+ * `text`, `eol`, `ident`, `filter` or `working-tree-encoding` attribute),
+ * as the key asks it (cache/git-inputs.ts `dropFilteredOids`). `hash-object`
+ * names such a file's filtered blob, which a CRLF edit to an LF file leaves
+ * the base's, while the key hashes the raw bytes; and raw bytes equal to the
+ * blob prove nothing, since a checkout under `eol=crlf` writes others. So
+ * each is a change. A failed `check-attr` names every path.
+ */
+async function filtered(
+  workspaceRoot: string,
+  rels: readonly string[],
+  autocrlf: boolean,
+): Promise<Set<string>> {
+  if (rels.length === 0 || autocrlf) return new Set(rels)
   const proc = spawnGit(
-    ['config', '--get-regexp', String.raw`^(remote\..*\.promisor|extensions\.partialclone)$`],
+    ['check-attr', '--stdin', '-z', 'text', 'eol', 'ident', 'filter', 'working-tree-encoding'],
+    workspaceRoot,
+    new TextEncoder().encode(rels.map((r) => `${r}\0`).join('')),
+  )
+  const [out, exit] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
+  if (exit !== 0) return new Set(rels)
+  const hit = new Set<string>()
+  const fields = out.split('\0')
+  for (let i = 0; i + 2 < fields.length; i += 3) {
+    if (fields[i + 2] !== 'unspecified' && fields[i + 2] !== 'unset') hit.add(fields[i]!)
+  }
+  return hit
+}
+
+/**
+ * Three config facts in one `git config`: `partial`, a remote that serves
+ * missing objects on demand (`--filter` on a clone or a fetch),
+ * `ignoreCase`, `core.ignorecase` set true, and `autocrlf`,
+ * `core.autocrlf` set `true` or `input`.
+ */
+async function gitConfigFacts(
+  workspaceRoot: string,
+): Promise<{ partial: boolean; ignoreCase: boolean; autocrlf: boolean }> {
+  const proc = spawnGit(
+    [
+      'config',
+      '--get-regexp',
+      String.raw`^(remote\..*\.promisor|extensions\.partialclone|core\.ignorecase|core\.autocrlf)$`,
+    ],
     workspaceRoot,
   )
   const [out] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
-  return out.split('\n').some((l) => l.startsWith('extensions.') || l.endsWith(' true'))
+  let partial = false
+  let ignoreCase = false
+  let autocrlf = false
+  for (const l of out.split('\n')) {
+    // A bare key (`[core] ignorecase`) is true, as git reads it.
+    if (l.startsWith('core.ignorecase'))
+      ignoreCase = /^core\.ignorecase( (true|yes|on|[-+]?0*[1-9]\d*[kmg]?))?$/i.test(l)
+    else if (l.startsWith('core.autocrlf'))
+      autocrlf = /^core\.autocrlf( (input|true|yes|on|[-+]?0*[1-9]\d*[kmg]?))?$/i.test(l)
+    else if (l.startsWith('extensions.') || l.endsWith(' true')) partial = true
+  }
+  return { partial, ignoreCase, autocrlf }
 }
 
 /**
@@ -1303,8 +1450,10 @@ async function mergeBase(workspaceRoot: string, ref: string): Promise<string> {
     isShallow(workspaceRoot)
   ) {
     throw new UserError(
-      `git ref "${ref}" has no merge base with HEAD in this shallow clone, and origin did not ` +
-        'give the history between them: fetch it (`git fetch --unshallow origin`).',
+      `git ref "${ref}" has no merge base with HEAD in this shallow clone, ` +
+        (hasOrigin(workspaceRoot)
+          ? 'and origin did not give the history between them: fetch it (`git fetch --unshallow origin`).'
+          : 'which has no origin remote: fetch the history between them (`git fetch --unshallow <url>`).'),
       'VX_E_AFFECTED_BASE',
     )
   }
@@ -1419,7 +1568,7 @@ async function rangeBase(workspaceRoot: string, ref: string): Promise<string> {
   return ref
 }
 
-/** The clones `fetchOrigin` fetched into, so made partial: `isPartialClone` may have answered first. */
+/** The clones `fetchOrigin` fetched into, so made partial: `gitConfigFacts` may have answered first. */
 const fetchedInto = new Set<string>()
 
 /** Deepening stops here (2,047 commits on each side): past it, the base is the user's to fetch. */
@@ -1428,6 +1577,18 @@ const MAX_DEEPEN = 1024
 function isShallow(workspaceRoot: string): boolean {
   const proc = spawnGitSync(['rev-parse', '--is-shallow-repository'], workspaceRoot, 'ignore')
   return new TextDecoder().decode(proc.stdout).trim() === 'true'
+}
+
+/**
+ * Whether origin has a URL. Asked only in a shallow clone, before a fetch
+ * or on a refusal. Not `git remote get-url`: a `[remote "origin"]` of
+ * promisor keys alone (git's filtered fetch from no origin writes one) it
+ * names as a URL.
+ */
+function hasOrigin(workspaceRoot: string): boolean {
+  return (
+    spawnGitSync(['config', '--get', 'remote.origin.url'], workspaceRoot, 'ignore').exitCode === 0
+  )
 }
 
 /** The parents a commit names, even where a shallow clone cut them off. */
@@ -1496,6 +1657,9 @@ async function originDefaultBranch(workspaceRoot: string): Promise<string | unde
  * demand. Never prompts for credentials; false when it failed.
  */
 async function fetchOrigin(workspaceRoot: string, args: string[]): Promise<boolean> {
+  // With no origin the fetch fails, yet first writes a promisor
+  // `[remote "origin"]` into the user's config.
+  if (!hasOrigin(workspaceRoot)) return false
   try {
     const proc = Bun.spawn({
       cmd: [
@@ -1568,9 +1732,12 @@ async function verifyRef(workspaceRoot: string, ref: string): Promise<void> {
   // no origin, no network, a name only another clone has.
   throw new UserError(
     `git ref "${ref}" did not resolve. Pass a branch or commit you have locally.` +
-      (isShallow(workspaceRoot)
-        ? ' This clone is shallow and origin did not give it: fetch the base (`git fetch --depth=1 origin <base>`).'
-        : ''),
+      (!isShallow(workspaceRoot)
+        ? ''
+        : hasOrigin(workspaceRoot)
+          ? ' This clone is shallow and origin did not give it: fetch the base (`git fetch --depth=1 origin <base>`).'
+          : ' This clone is shallow and has no origin remote: fetch the base from where it lives ' +
+            '(`git fetch --depth=1 <url> <base>`), or add one (`git remote add origin <url>`).'),
     'VX_E_AFFECTED_BASE',
   )
 }

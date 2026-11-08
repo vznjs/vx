@@ -31,6 +31,18 @@ export function data(stream: StreamName, bytes: string): void {
   streamOf(stream).write(bytes)
 }
 
+/**
+ * `data` for bytes too many for one string, written piece by piece. A
+ * pipe that reads slower than vx writes is waited on: unwaited, every
+ * piece queues in memory until the reader catches up.
+ */
+export async function dataPieces(stream: StreamName, pieces: Iterable<string>): Promise<void> {
+  const s = streamOf(stream)
+  for (const piece of pieces) {
+    if (!s.write(piece)) await new Promise((resolve) => s.once('drain', resolve))
+  }
+}
+
 /** Whether a stream paints. */
 export function colorsOf(stream: StreamName): ReturnType<typeof detectColors> {
   return detectColors(streamOf(stream))

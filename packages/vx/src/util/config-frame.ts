@@ -14,6 +14,19 @@ const HEAD =
   /^(\/[^\n]*?\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s)(?:: (?:(tasks\.[^\s:]+)(:?)|`([^`\n]+)`|task name ("(?:[^"\\\n]|\\.)*")))? /
 
 /**
+ * A quoted name as the source spells it. A glob refusal quotes the glob
+ * raw, so `"app/\\[id\\]"` is no JSON string: parsed alone, vx lock crashed
+ * on it in place of the refusal.
+ */
+function unquote(quoted: string): string {
+  try {
+    return JSON.parse(quoted) as string
+  } catch {
+    return quoted.slice(1, -1)
+  }
+}
+
+/**
  * The message with its file named at `line:col`, relative to `cwd`, and a
  * frame of the source under it; undefined when the message names no
  * config field or the field is not found in the file.
@@ -37,13 +50,13 @@ export function configErrorFrame(message: string, cwd: string): string | undefin
     colon === ':'
       ? /^(?:`([^`]+)`|("(?:[^"\\\n]|\\.)*"))/.exec(rest)
       : /^has (?:unknown )?field "([^"]+)"/.exec(rest)
-  const named = said === null ? null : [said[0], said[1] ?? JSON.parse(said[2]!)]
+  const named = said === null ? null : [said[0], said[1] ?? unquote(said[2]!)]
   // `plugins[2].name`: an element of an array, framed at the element (a
   // plugin is a call, so no key inside it is searched).
   const element = setting === undefined ? null : /^([^[]+)\[(\d+)\]/.exec(setting)
   const fieldPath =
     taskName !== undefined
-      ? ['tasks', JSON.parse(taskName)]
+      ? ['tasks', unquote(taskName)]
       : element !== null
         ? element[1]!.split('.')
         : (tasksPath ?? setting)?.split('.')

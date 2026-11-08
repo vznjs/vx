@@ -77,4 +77,37 @@ describe('affectedRoots', () => {
       ),
     ).toEqual(['app#top', 'app#seed'])
   })
+
+  // `top#lint`'s `^lint` passes through `mid`. Loaded with no `lint`, `mid`
+  // folds nothing into the key, so its change reaches nothing; not loaded (a
+  // scoped load), it may hold the task, so its change still reaches it.
+  it('a ^name passed through a package reaches the task only when it loaded no config', () => {
+    const top = {
+      ...node('top#lint', 'other.txt'),
+      projectName: 'top',
+      config: { ...cached('other.txt'), dependsOn: ['^lint'] },
+    } as TaskNode
+    const midChanged: AffectedChanges = {
+      projects: new Set(['mid']),
+      changed: ['mid/a.ts'],
+      paths: new Map([['mid', ['a.ts']]]),
+      whole: new Set(),
+    }
+    const graph = {
+      edgeSource: true,
+      directDeps: (p: string) => (p === 'top' ? ['mid'] : []),
+    } as unknown as PackageGraph
+    const loaded = (withMid: boolean) =>
+      new Map([
+        ['top', { name: 'top', dir: '/w/top', config: { tasks: { lint: top.config } } }],
+        ...(withMid
+          ? [['mid', { name: 'mid', dir: '/w/mid', config: { tasks: {} } }] as const]
+          : []),
+      ]) as unknown as ReadonlyMap<string, ProjectEntry>
+    const nodes = new Map([['top#lint', top]])
+    expect([
+      affectedRoots(nodes, ['top#lint'], midChanged, loaded(true), graph, '/w'),
+      affectedRoots(nodes, ['top#lint'], midChanged, loaded(false), graph, '/w'),
+    ]).toEqual([[], ['top#lint']])
+  })
 })

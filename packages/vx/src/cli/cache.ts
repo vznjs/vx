@@ -1,4 +1,12 @@
-import { existsSync, lstatSync, readdirSync, rmSync } from 'node:fs'
+import {
+  accessSync,
+  constants,
+  existsSync,
+  lstatSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+} from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { Cache, holdCacheDir, holdStore, vxCacheEntries } from '../cache/index.js'
@@ -9,12 +17,13 @@ import {
   nearest,
   parseDuration,
   parseSize,
+  refuseForeignCacheDir,
   relPosix,
   treeBytes,
 } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import { acquireRunLock } from '../orchestrator/index.js'
-import { findWorkspaceRoot } from '../workspace/index.js'
+import { findWorkspaceRoot, repoIdsOf } from '../workspace/index.js'
 import {
   cliCacheDir,
   loadCliWorkspace,
@@ -355,6 +364,12 @@ async function clearHeld(
   // The store the index recorded and today's (a changed HOME, an origin
   // added) both go; a directory with no index is not a vx cache to delete.
   const targets: string[] = []
+  try {
+    refuseForeignCacheDir(dir, root)
+  } catch (err) {
+    if (!isUserError(err)) throw err
+    return refuse('cache clean', args, err.message, errorCode(err))
+  }
   if (existsSync(path.join(dir, 'cache.db'))) {
     // An index SQLite cannot read is what its own refusal sends here to
     // clear: today's store stands in for the one it recorded.
@@ -370,8 +385,12 @@ async function clearHeld(
     }
     targets.push(dir)
     // The index is a file in the checkout (committed, or restored from a CI
-    // cache): the store it names is deleted only when it is one.
-    if (store !== undefined && isStore(store)) targets.push(store)
+    // cache): the store it names is deleted only when it is one, and this
+    // workspace's: an index copied from another named that one's store.
+    if (store !== undefined && store !== storeRoot && isStore(store)) {
+      const id = path.basename(path.dirname(path.resolve(store)))
+      if ((await repoIdsOf(root)).includes(id)) targets.push(store)
+    }
     // Today's store too: the next run reads it, whichever store the index
     // last recorded (a moved HOME, an origin added).
     if (storeRoot !== null) targets.push(storeRoot)
@@ -389,8 +408,8 @@ async function clearHeld(
   // `cache.dir: '.vx'` (or the root) would take the workspace config and
   // the lock with it.
   const dotVx = path.join(root, '.vx')
-  const doomed = [...new Set(targets.map((t) => path.resolve(t)))].filter((t) => existsSync(t))
-  const unsafe = doomed.find((t) => t === dotVx || !path.relative(t, dotVx).startsWith('..'))
+  const found = [...new Set(targets.map((t) => path.resolve(t)))].filter((t) => existsSync(t))
+  const unsafe = found.find((t) => t === dotVx || !path.relative(t, dotVx).startsWith('..'))
   if (unsafe !== undefined) {
     return refuse(
       'cache clean',
@@ -402,16 +421,37 @@ async function clearHeld(
   const dry = parsed.dry === true
   // `.vx/cache` and the stores are vx's own; any other directory is the
   // user's, cleared entry by entry and removed only if that empties it.
-  // A `.vx/cache` linked to a volume (a CI cache mount) is emptied through
-  // the link: removing the link alone left the cache where it points.
+  // A `.vx/cache` linked to a volume (a CI cache mount) is cleared through
+  // the link: removing the link alone left the cache where it points. Only
+  // vx's entries there: emptying it took whatever else the target held.
   const own = path.join(dotVx, 'cache')
   const named = path.resolve(dir) === own ? undefined : path.resolve(dir)
   const linked = named === undefined && existsSync(own) && lstatSync(own).isSymbolicLink()
+  // Every target is asked before the first delete: a store another user
+  // owns (one `sudo vx run`) failed the clear after `.vx/cache` was gone.
+  // Such a store is left, as runs leave it for `.vx/cache`; a cache
+  // directory this user cannot remove refuses the clear whole.
+  const doomed: string[] = []
+  for (const t of found) {
+    const why = removeBlocked(t, t !== named && !(linked && t === own))
+    if (why === null) doomed.push(t)
+    else if (t !== path.resolve(dir))
+      warnToStderr(`cache store ${t} left as is: this user cannot remove it (${why})`)
+    else
+      return refuse(
+        'cache clean',
+        args,
+        `cache directory ${t} cannot be removed by this user (${why}); nothing was deleted`,
+        'VX_E_FS',
+      )
+  }
   const entries = (t: string): string[] =>
     t === named
       ? vxCacheEntries(t).map((e) => path.join(t, e))
       : linked && t === own
-        ? readdirSync(t).map((e) => path.join(t, e))
+        ? [...vxCacheEntries(t), 'compiled']
+            .map((e) => path.join(t, e))
+            .filter((e) => existsSync(e))
         : [t]
   const bytes = doomed.reduce((n, t) => n + entries(t).reduce((m, e) => m + treeBytes(e), 0), 0)
   if (!dry) {
@@ -422,18 +462,28 @@ async function clearHeld(
     // on each other.
     const shared = storeRoot === null ? path.resolve(dir) : undefined
     const holds: (() => void)[] = []
+    const asides: string[] = []
     try {
       for (const t of [...doomed].sort()) {
         holds.push(await holdStore(t, warnToStderr))
         if (t === shared) holds.push(await holdCacheDir(t, 'exclusive', warnToStderr))
       }
       for (const t of doomed) {
-        for (const e of entries(t)) rmSync(e, { recursive: true, force: true })
+        for (const e of entries(t)) {
+          // A store leaves its name at once, under the hold, and is deleted
+          // after it. Deleted where it stood, a run in another checkout
+          // opening it mid-delete made a store.db there that the delete then
+          // took, with the entry the run saved.
+          const aside = e === t && t !== path.resolve(dir) ? moveAside(t) : undefined
+          if (aside !== undefined) asides.push(aside)
+          else rmSync(e, { recursive: true, force: true })
+        }
         if (t === named && readdirSync(t).length === 0) rmSync(t, { recursive: true })
       }
     } finally {
       for (const release of holds) release()
     }
+    for (const aside of asides) rmSync(aside, { recursive: true, force: true })
   }
   const shown = doomed.map((t) => (path.relative(root, t).startsWith('..') ? t : relPosix(root, t)))
   if (parsed.format === 'json') {
@@ -450,6 +500,29 @@ async function clearHeld(
         : []),
     )
   return 0
+}
+
+/** `dir` renamed beside itself, over a crashed clean's leftover, or undefined where it cannot be. */
+function moveAside(dir: string): string | undefined {
+  const aside = `${dir}.removing`
+  try {
+    rmSync(aside, { recursive: true, force: true })
+    renameSync(dir, aside)
+    return aside
+  } catch {
+    return undefined
+  }
+}
+
+/** Why this user cannot remove `t` (`whole`) or empty it, or null. */
+function removeBlocked(t: string, whole: boolean): string | null {
+  try {
+    accessSync(t, constants.R_OK | constants.W_OK | constants.X_OK)
+    if (whole) accessSync(path.dirname(t), constants.W_OK | constants.X_OK)
+    return null
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code ?? String(err)
+  }
 }
 
 /** A store's shape: `<home>/.vx/<id>/cache` holding its `store.db`. */

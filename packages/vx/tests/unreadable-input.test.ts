@@ -47,7 +47,7 @@ describe('an input this user cannot read', () => {
       const r = await run({ cwd: fx.root, tasks: ['build'], log: silentLogger(fx) })
       expect(r.outcomes.map((o) => o.status)).toEqual(['failed'])
       expect(fx.err.filter((l) => l.includes('[vx] app#build:')).map((l) => l.trim())).toEqual([
-        `[vx] app#build: ${secret} is not readable by this user (EACCES), and vx reads it to ` +
+        `[vx] app#build: cache key not derived: ${secret} is not readable by this user (EACCES), and vx reads it to ` +
           'derive a cache key. Make it readable, or, for a task input, take it out of ' +
           'inputs.files.',
       ])

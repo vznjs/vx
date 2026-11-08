@@ -1486,7 +1486,10 @@ export interface SandboxViolation {
    * leaves it hidden.
    */
   via?: string
-  /** Linux: what a refused `openat`'s flags asked for. */
+  /**
+   * Linux: what a refused `openat`'s flags asked for; for an `openat2`,
+   * whose flags no record names, a read.
+   */
   opened?: 'read' | 'write'
   ignorable?: readonly ('read' | 'write' | 'network' | 'systemInfo')[]
 }
@@ -1862,17 +1865,20 @@ function ownGroupCommand(
  * What strace stops on: the reads (`openat`, and `open`, musl's open():
  * traced as openat alone, a sibling under a widened write grant was read
  * unreported and cached; arm64 has no `open`; an `openat2` never reaches
- * strace, SRT's write observer takes each one first), the execs and
- * access probes (a refused
- * `./gen.sh || fallback` passed unreported), and what moves or makes a
- * process's cwd. Not the stat family: a stop per stat cost oxlint 19% and
- * `git status` 30%, where the execs and probes cost nothing measurable, and
+ * strace, SRT's write observer takes each one first: `refusedWrites`),
+ * the execs and access probes (a refused
+ * `./gen.sh || fallback` passed unreported), `readlink` (git hashes a link
+ * by its target string: `readlink cfg > out.txt` under a widened grant
+ * cached `v1` and replayed it after `cfg` pointed at `v2`; a stop costs
+ * ~9 µs, 37 ms on 2,000 links, below the A/A noise on oxlint and vx), and
+ * what moves or makes a process's cwd. Not the stat family: a stop per
+ * stat cost oxlint 19% and `git status` 30%, where the execs and probes cost nothing measurable, and
  * vx's own no-op run 69% (pr-bench, 495 → 835 ms, 2026-10-23). So a tool
  * that stats before it opens, as Ubuntu 26's cat (uutils) does, refused
  * nothing the trace sees.
  */
 const TRACED_CALLS =
-  'trace=openat,?open,execve,?access,faccessat,?faccessat2,chdir,fchdir,clone,?clone3,?fork,?vfork'
+  'trace=openat,?open,execve,?access,faccessat,?faccessat2,?readlink,?readlinkat,chdir,fchdir,clone,?clone3,?fork,?vfork'
 
 /** The descriptor an in-sandbox strace writes its trace to (`ownGroupCommand`). */
 const TRACE_FD = 5
@@ -2214,8 +2220,8 @@ async function hostBridgesListen(ports: readonly number[], tag: string): Promise
   if (!procfsIsOwn()) return
   const want = ports.map((p) => `0100007F:${p.toString(16).toUpperCase().padStart(4, '0')}`)
   const procs = hostBridges.get(tag)?.procs ?? []
-  const until = Date.now() + 5_000
-  while (Date.now() < until && procs.every((p) => p.exitCode === null)) {
+  const until = performance.now() + 5_000
+  while (performance.now() < until && procs.every((p) => p.exitCode === null)) {
     let table: string
     try {
       table = readFileSync('/proc/net/tcp', 'utf8')
@@ -2479,7 +2485,8 @@ const STRACE_OWN_ERROR = /^(?:[^\s:]*\/)?strace: /
 async function runSandboxedOnce(
   args: SandboxedRunArgs,
 ): Promise<SandboxedRunResult & { tracerFailed: boolean; mountGone: boolean; ranMs: number }> {
-  const start = Date.now()
+  // Elapsed time, not wall time: see runCommand.
+  const start = performance.now()
   const { SandboxManager } = await loadSrt()
   // Linux: SRT's store sees only writes (below), so read denials need
   // the command traced and the trace parsed for denied syscalls. The trace
@@ -2526,7 +2533,7 @@ async function runSandboxedOnce(
     const signal = stopSignal(args.signal.reason)
     return {
       exitCode: signalExitCode(signal),
-      durationMs: Date.now() - start,
+      durationMs: Math.round(performance.now() - start),
       stdout: '',
       stderr: '',
       signal,
@@ -2574,14 +2581,14 @@ async function runSandboxedOnce(
       rmSync(straceLog, { force: true })
       liveTempFiles.delete(straceLog)
     }
-    const stderr = spawnFailureText(err, args.cwd, SANDBOXED_TASK, wrapped)
+    const stderr = spawnFailureText(err, args.cwd, SANDBOXED_TASK, wrapped, args.env)
     args.onStderr?.(stderr)
     releaseBridges(tag)
     void takeRecords(false)
     afterCommand(SandboxManager)
     return {
       exitCode: 127,
-      durationMs: Date.now() - start,
+      durationMs: Math.round(performance.now() - start),
       stdout: '',
       stderr,
       spawnFailed: true,
@@ -2600,7 +2607,7 @@ async function runSandboxedOnce(
   args.onSpawn?.(proc.pid)
   const watch = process.platform === 'linux' ? watchTree(proc.pid) : undefined
   const timeout = armTimeout(proc, args.timeoutMs)
-  const armedAt = Date.now()
+  const armedAt = performance.now()
   const ac = new AbortController()
   // The unfinished last line of stderr, and whether a line was strace's.
   let partial = ''
@@ -2629,7 +2636,7 @@ async function runSandboxedOnce(
   // OR a clean exit that backgrounds a process) can't hang the run — timeout
   // aborts at once, otherwise drainOrAbort bounds the post-exit drain.
   await proc.exited
-  const ranMs = Date.now() - armedAt
+  const ranMs = Math.round(performance.now() - armedAt)
   const looked = watch?.stop()
   await timeout.settle()
   let cut = false
@@ -2797,14 +2804,15 @@ async function runSandboxedOnce(
       config: args.config,
       skip: [taskTmpRoot()],
     })
-    if (hidden.length > 0) violations.push(hiddenReadsHint(hidden, args.reportWithin))
+    if (hidden.length > 0)
+      violations.push(hiddenReadsHint(hidden, baselines.denyRead, args.reportWithin))
   }
 
   afterCommand(SandboxManager)
 
   return {
     exitCode,
-    durationMs: Date.now() - start,
+    durationMs: Math.round(performance.now() - start),
     stdout,
     stderr,
     violations,
@@ -2856,15 +2864,7 @@ function outsideWritesHint(
 ): SandboxViolation {
   const shown = paths.slice(0, 5).join(', ')
   const more = paths.length > 5 ? ` and ${paths.length - 5} more` : ''
-  const home = toRealPath(os.homedir())
-  const dir = path.dirname(paths[0]!)
-  // In the workspace, from the project, as a committed config spells it:
-  // the absolute path held only on the machine that printed it.
-  const spelled = walled.some((w) => atOrUnder(dir, toRealPath(w)))
-    ? path.relative(toRealPath(within), dir) || '.'
-    : atOrUnder(dir, home)
-      ? `~${dir.slice(home.length)}`
-      : dir
+  const spelled = grantSpelling(path.dirname(paths[0]!), walled, within)
   const refused =
     `vx: the sandbox refused writes outside the project, which are not reported as ` +
     `violations: ${shown}${more}.`
@@ -2930,17 +2930,50 @@ function hostTempRoots(): string[] {
   return [...new Set(['/tmp', '/var/tmp', os.tmpdir()].map(toRealPath))]
 }
 
-function hiddenReadsHint(paths: readonly string[], within: string): SandboxViolation {
+/**
+ * The hint for reads the wall hid outside the project. A path under a
+ * deny entry other than the ones holding the project (a credential store
+ * or its link's target, vx's own store, the repository's git data outside
+ * the workspace) is walled on purpose and never the suggested grant: an
+ * agent applies a suggestion as given, and `cat ~/.npmrc` was told to
+ * grant `../../home/.npmrc`.
+ */
+function hiddenReadsHint(
+  paths: readonly string[],
+  walled: readonly string[],
+  within: string,
+): SandboxViolation {
   const shown = paths.slice(0, 5).join(', ')
   const more = paths.length > 5 ? ` and ${paths.length - 5} more` : ''
+  const project = toRealPath(within)
+  const deny = walled.map(toRealPath)
+  const grantable = paths.find((p) => !deny.some((w) => atOrUnder(p, w) && !atOrUnder(project, w)))
+  const said =
+    `vx: the sandbox hid paths outside the project that exist on this machine, which are ` +
+    `not reported as violations: ${shown}${more}.`
   return {
     timestamp: new Date(),
     hint: true,
     line:
-      `vx: the sandbox hid paths outside the project that exist on this machine, which are ` +
-      `not reported as violations: ${shown}${more}. If the task reads one, grant it, e.g. ` +
-      `\`allow: { read: [${jsString(path.relative(toRealPath(within), paths[0]!))}] }\`.`,
+      grantable === undefined
+        ? `${said} They are walled on purpose, so vx suggests no grant for them.`
+        : `${said} If the task reads one, grant it, e.g. ` +
+          `\`allow: { read: [${jsString(grantSpelling(grantable, walled, within))}] }\`.`,
   }
+}
+
+/**
+ * A path as a committed config spells its grant: from the project inside
+ * the walls (the absolute path holds only on the machine that printed
+ * it), `~/…` under home, else absolute.
+ */
+function grantSpelling(p: string, walled: readonly string[], within: string): string {
+  const home = toRealPath(os.homedir())
+  return walled.some((w) => atOrUnder(p, toRealPath(w)))
+    ? path.relative(toRealPath(within), p) || '.'
+    : atOrUnder(p, home)
+      ? `~${p.slice(home.length)}`
+      : p
 }
 
 /**

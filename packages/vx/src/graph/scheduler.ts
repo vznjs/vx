@@ -46,6 +46,68 @@ export class RestoreFailed extends Error {
   }
 }
 
+/**
+ * Thrown by `execute` when deriving the task's key threw (a runtime probe
+ * that exited non-zero, a refused `inputs.env` value). The command never
+ * ran: the failed outcome is marked (`isKeyFailed`), and the line says so.
+ */
+export class KeyFailed extends Error {
+  constructor(readonly error: unknown) {
+    super(thrownMessage(error))
+    this.name = 'KeyFailed'
+  }
+}
+
+// A mark, not a field: `TaskOutcome` and `RunPlan` are public types. A symbol
+// rides a spread copy and never reaches JSON.
+const KEY_FAILED = Symbol('keyFailed')
+
+/** Mark a failed outcome (or a plan holding one) as having no derivable key. */
+export function markKeyFailed<T extends object>(o: T): T {
+  ;(o as Record<symbol, unknown>)[KEY_FAILED] = true
+  return o
+}
+
+/** Whether `markKeyFailed` marked it: no key, so no command ran and no cache was asked. */
+export function isKeyFailed(o: object): boolean {
+  return (o as Record<symbol, unknown>)[KEY_FAILED] === true
+}
+
+/**
+ * Thrown by `execute` when vx's own work on a miss's outputs threw: the
+ * clean before an attempt, or the save after an exit 0 (a name that is
+ * not UTF-8). The outcome keeps `exitCode` and `durationMs` (what the
+ * command returned and took so far) and is marked (`outputsFailedOf`),
+ * so no label names an exit the command never returned.
+ */
+export class OutputsFailed extends Error {
+  constructor(
+    readonly error: unknown,
+    readonly step: OutputsStep,
+    readonly exitCode: number,
+    readonly durationMs: number,
+  ) {
+    super(thrownMessage(error))
+    this.name = 'OutputsFailed'
+  }
+}
+
+type OutputsStep = 'clean' | 'save'
+
+// A mark, as KEY_FAILED: `TaskOutcome` is a public type.
+const OUTPUTS_FAILED = Symbol('outputsFailed')
+
+/** Mark a failed outcome (or its view) with the output step that failed it. */
+export function markOutputsFailed<T extends object>(o: T, step: OutputsStep): T {
+  ;(o as Record<symbol, unknown>)[OUTPUTS_FAILED] = step
+  return o
+}
+
+/** The output step `markOutputsFailed` marked, if any. */
+export function outputsFailedOf(o: object): OutputsStep | undefined {
+  return (o as Record<symbol, OutputsStep | undefined>)[OUTPUTS_FAILED]
+}
+
 /** What moved in a missed task's key since the last entry saved for it. */
 export interface InputChanges {
   /** How many components changed, appeared or went. 0: the same key, its entry gone. */
@@ -170,8 +232,8 @@ export interface TaskOutcome {
   blockedBy?: string
   /**
    * On an outcome that ran behind a failed dependency (`continueMode:
-   * 'always'`) or one `--exclude-dependencies` dropped: the task at the root
-   * of it. Its result is not its key's, so no flaky verdict reads it and
+   * 'always'`), one `--exclude-dependencies` dropped, or a server that died
+   * while it ran: the task at the root of it. Its result is not its key's, so no flaky verdict reads it and
    * its run row names the root as a skip's `blockedBy` does. Set by `run()`
    * before any observer (a plugin's `onTaskComplete`) hears the outcome.
    */
@@ -566,11 +628,13 @@ class ReadyHeap {
 }
 
 /**
- * The dead server a dependency stands for: itself, or one a group reaches.
- * A group is a name for its deps, and it finished the moment the server
- * was ready, so a task behind it ran against the dead one. Walked with a
- * stack and a seen set: recursion threw `RangeError` on a deep chain of
- * groups, and re-walked a group each path reached it by.
+ * The dead server a dependency stands for: itself, or one a group or a
+ * server reaches. A group is a name for its deps, and it finished the
+ * moment the server was ready, so a task behind it ran against the dead
+ * one; a server stays up on the servers it depends on, so a task behind
+ * `web` runs against the `api` under it too. Walked with a stack and a
+ * seen set: recursion threw `RangeError` on a deep chain of groups, and
+ * re-walked a group each path reached it by.
  */
 export function deadServerBehind(
   nodes: ReadonlyMap<string, TaskNode>,
@@ -585,7 +649,7 @@ export function deadServerBehind(
     seen.add(at)
     if (serverDied(at)) return at
     const n = nodes.get(at)
-    if (n === undefined || !isGroupTask(n)) continue
+    if (n === undefined || (!isGroupTask(n) && n.config.exec?.persistent === undefined)) continue
     // Reversed, so the first dep is walked first, as the order it names them.
     for (let i = n.deps.length - 1; i >= 0; i--) stack.push(n.deps[i]!)
   }
@@ -663,7 +727,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   // (`dormant`) until a dependant is demoted, which starts it, or until
   // every dependant has finished, which settles it unspawned. Settled
   // without an outcome: it is not part of the run, as a pruned task is not.
-  // A group between it and its hits is idle with it.
+  // A group or a server between it and its hits is idle with it.
   const idleGroups = new Set<string>()
   const idle = idleServers(nodes, dependents, restoreTier, idleGroups)
   for (const g of idleGroups) idle.add(g)
@@ -720,7 +784,8 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   // complete.
   // When each queued id became ready; dispatch takes it out.
   const readyAt = new Map<string, number>()
-  const startedAt = Date.now()
+  // Elapsed-time stamps (queue and hold waits), immune to wall clock steps.
+  const startedAt = performance.now()
   for (const node of nodes.values()) {
     if (restoreTier?.has(node.id)) restoreReady.push(node.id)
     else if (node.deps.length === 0) execReady.push(node.id)
@@ -932,7 +997,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         if (heldRelease.delete(d)) enter(d)
         else if (!inRestoreTier(d)) {
           execReady.push(d)
-          readyAt.set(d, Date.now())
+          readyAt.set(d, performance.now())
         }
       }
     }
@@ -1063,7 +1128,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
             if (hasRoom(id)) {
               if (!admitActive || admits(id)) return id
               // A free worker, refused by the policy: the hold starts now.
-              if (!heldSince.has(id)) heldSince.set(id, Date.now())
+              if (!heldSince.has(id)) heldSince.set(id, performance.now())
             }
             parked.push([id, seq])
           }
@@ -1143,7 +1208,8 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
           continue
         }
 
-        const queuedMs = Date.now() - (readyAt.get(id) ?? Date.now())
+        const readySince = readyAt.get(id)
+        const queuedMs = readySince === undefined ? 0 : Math.round(performance.now() - readySince)
         readyAt.delete(id)
         const settle = settleInPlace(node, upstream)
         let now: TaskOutcome | undefined
@@ -1165,7 +1231,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         // tick sees it; the completion callbacks unlist it.
         const untrack = track(id)
         const since = admitActive ? heldSince.get(id) : undefined
-        const heldMs = since === undefined ? 0 : Math.max(1, Date.now() - since)
+        const heldMs = since === undefined ? 0 : Math.max(1, Math.round(performance.now() - since))
         if (since !== undefined) heldSince.delete(id)
         const withHold = (o: TaskOutcome): TaskOutcome =>
           heldMs === 0 && queuedMs === 0
@@ -1223,17 +1289,22 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
                 idle.delete(p)
                 if (dormant.delete(p)) {
                   execReady.push(p)
-                  readyAt.set(p, Date.now())
+                  readyAt.set(p, performance.now())
                 }
               })
               if (pending.get(id) === 0) {
                 execReady.push(id)
-                readyAt.set(id, Date.now())
+                readyAt.set(id, performance.now())
               }
               tick()
               return
             }
-            const err = thrown instanceof RestoreFailed ? thrown.error : thrown
+            const err =
+              thrown instanceof RestoreFailed ||
+              thrown instanceof KeyFailed ||
+              thrown instanceof OutputsFailed
+                ? thrown.error
+                : thrown
             const message = thrownMessage(err)
             // After the run's stop a rejection is the stop's doing (a probe
             // it killed, C-65): aborted, as any task it kills, and unsaid.
@@ -1241,10 +1312,12 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
             const outcome: TaskOutcome = withHold({
               node,
               status: stopped ? 'aborted' : 'failed',
-              exitCode: 1,
-              durationMs: 0,
+              exitCode: thrown instanceof OutputsFailed ? thrown.exitCode : 1,
+              durationMs: thrown instanceof OutputsFailed ? thrown.durationMs : 0,
               ...(thrown instanceof RestoreFailed && !stopped ? { restoreFailed: true } : {}),
             })
+            if (thrown instanceof KeyFailed && !stopped) markKeyFailed(outcome)
+            if (thrown instanceof OutputsFailed && !stopped) markOutputsFailed(outcome, thrown.step)
             leave()
             untrack()
             if (stopped) {
@@ -1259,9 +1332,10 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
             // Out of descriptors is the environment's limit too: a stack
             // naming a file that was fine sent the user after the file.
             if (isUserError(err) || isFsRefusal(err) || isOutOfFds(err)) {
-              const text = isUserError(err)
+              const said = isUserError(err)
                 ? message
                 : `${message} — ${isOutOfFds(err) ? OUT_OF_FDS_HINT : fsRefusalHint(err)}`
+              const text = thrown instanceof KeyFailed ? `cache key not derived: ${said}` : said
               // In a task's own output block, in full: that block is read
               // alone, and "as <task> above" named one printed elsewhere or
               // not at all (2026-10-22). On bare stderr the first is above.
@@ -1329,9 +1403,25 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
           continue
         promoted.add(d)
         restoreReady.push(d)
-        readyAt.set(d, Date.now())
+        readyAt.set(d, performance.now())
       }
-      if (dependents.get(id)?.every((d) => inRestoreTier(d)) === true) idle.add(id)
+      // Idle as `idleServers` finds it: through the groups and servers
+      // nobody asked for above it. The servers beneath it are held on the
+      // same keys, so the walk idles them with it; a server already
+      // answered, or never held, keeps its course.
+      if (found.length > 0) {
+        const tier =
+          demoted.size === 0 ? restoreTier : new Set([...restoreTier!].filter(inRestoreTier))
+        const between = new Set<string>()
+        const holdsHere = (s: string): boolean =>
+          s === id || unanswered.has(s) || isGroupTask(nodes.get(s) as TaskNode)
+        for (const s of idleServers(nodes, dependents, tier, between)) if (holdsHere(s)) idle.add(s)
+        for (const g of between)
+          if (holdsHere(g) && !idleGroups.has(g)) {
+            idleGroups.add(g)
+            idle.add(g)
+          }
+      }
       if (heldReady.delete(id)) execReady.push(id)
       tick()
     }
@@ -1359,10 +1449,11 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
 
 /**
  * Persistent tasks nobody asked for whose every dependant is a restore-tier
- * hit, or a group nobody asked for that only such dependants stand behind:
- * a group runs nothing, so `env: { dependsOn: ['dev'] }` between the server
- * and its hits booted the server on every warm run. Those groups go in
- * `groups`.
+ * hit, or a group or server nobody asked for that only such dependants
+ * stand behind: a group runs nothing, so `env: { dependsOn: ['dev'] }`
+ * between the server and its hits booted the server on every warm run, and
+ * `api` under an idle `web` serves nobody either. Those groups and servers
+ * go in `groups`: the scheduler settles them as it settles a group.
  */
 export function idleServers(
   nodes: ReadonlyMap<string, TaskNode>,
@@ -1373,10 +1464,10 @@ export function idleServers(
   const out = new Set<string>()
   if (restoreTier === undefined || restoreTier.size === 0) return out
   const unasked = (n: TaskNode): boolean => !n.requested && n.surfaced !== true
-  // Per group: whether only hits stand behind it. Post-order on a stack, as
-  // groups nest as deep as the graph.
+  // Per group or server: whether only hits stand behind it. Post-order on a
+  // stack, as groups and servers nest as deep as the graph.
   const spare = new Map<string, boolean>()
-  const spareGroup = (root: string): boolean => {
+  const spareNode = (root: string): boolean => {
     const stack = [root]
     while (stack.length > 0) {
       const id = stack[stack.length - 1]!
@@ -1386,7 +1477,12 @@ export function idleServers(
       }
       const n = nodes.get(id)
       const ds = dependents.get(id)
-      if (n === undefined || !isGroupTask(n) || !unasked(n) || ds === undefined) {
+      if (
+        n === undefined ||
+        (!isGroupTask(n) && n.config.exec?.persistent === undefined) ||
+        !unasked(n) ||
+        ds === undefined
+      ) {
         spare.set(id, false)
         stack.pop()
         continue
@@ -1407,7 +1503,7 @@ export function idleServers(
   for (const n of nodes.values()) {
     if (n.config.exec?.persistent === undefined || !unasked(n)) continue
     const ds = dependents.get(n.id)
-    if (ds === undefined || !ds.every((d) => restoreTier.has(d) || spareGroup(d))) continue
+    if (ds === undefined || !ds.every((d) => restoreTier.has(d) || spareNode(d))) continue
     out.add(n.id)
     if (groups === undefined) continue
     const stack = ds.filter((d) => !restoreTier.has(d))

@@ -7,10 +7,13 @@
 // (`dependentTasksOutputFiles`) is nothing; `externalDependencies` is a todo saying
 // so. Extracted from `buildTask` in item 606.
 
-import path from 'node:path'
 import { nxWorkspacePath, underProject, withProjectDir } from './nx-outputs.js'
-import type { TrackedKinds } from '../tracked-outputs.js'
-import { gluedGlobstarAsStar, minimatchToVx, nxBareGroups } from '../glob-grammar.js'
+import {
+  apartTakeBacks,
+  gluedGlobstarAsStar,
+  minimatchToVx,
+  nxBareGroups,
+} from '../glob-grammar.js'
 import { shellQuote } from '../nx-command.js'
 
 export interface NxInputs {
@@ -37,6 +40,8 @@ export interface NxInputs {
   }>
   /** `{ dependentTasksOutputFiles }` globs: keyed only through a `dependsOn` edge. */
   readonly dependentOutputs: string[]
+  /** Those of them marked `transitive`: read from every task below, not only the direct ones. */
+  readonly transitiveOutputs: string[]
 }
 
 export function emptyNxInputs(): NxInputs {
@@ -47,6 +52,7 @@ export function emptyNxInputs(): NxInputs {
     runtimeCmds: [],
     upstream: [],
     dependentOutputs: [],
+    transitiveOutputs: [],
   }
 }
 
@@ -78,8 +84,8 @@ export function expandNxInputs(
     readonly rel: string
     readonly name: string
     readonly outputs?: readonly string[]
-    /** git's tracked files by directory; unknown, every output counts as ignored. */
-    readonly tracked?: (rel: string) => TrackedKinds
+    /** The root-relative outputs git ignores; unknown, every output counts as ignored. */
+    readonly ignoredOutputs?: ReadonlySet<string>
     /** The root package.json's dependency names: a lockfile plugin keys them into every task. */
     readonly rootDeps?: ReadonlySet<string>
     /** The root lockfile no plugin claims, which nothing keys unless a task lists it. */
@@ -88,6 +94,9 @@ export function expandNxInputs(
   into: NxInputs,
   todos: string[],
 ): void {
+  // A `{workspaceRoot}` path into the project, kept apart from the
+  // project's own set until the end (see there).
+  const wsOwn: string[] = []
   const expand = (entry: unknown, seen: Set<string>): void => {
     if (typeof entry === 'string') {
       let s = entry
@@ -115,14 +124,7 @@ export function expandNxInputs(
         // An output git tracks (a generator writing into `src`) is hashed,
         // and dropping it keyed `build` on no file (stale hit, 2026-10-28).
         const lit = withProjectDir(p, at.rel, false)
-        const ignored = (o: string): boolean => {
-          if (at.tracked === undefined) return true
-          const dir = path.posix.dirname(o)
-          return (
-            at.tracked(o).files.length === 0 &&
-            !at.tracked(dir).files.includes(dir === '.' ? o : o.slice(dir.length + 1))
-          )
-        }
+        const ignored = (o: string): boolean => at.ignoredOutputs?.has(o) ?? true
         if (
           neg === '' &&
           at.outputs?.some((o) => (lit === o || lit.startsWith(`${o}/`)) && ignored(o))
@@ -143,7 +145,10 @@ export function expandNxInputs(
             ? null
             : underProject(g, at.rel)
         if (own === null) into.wsFiles.push(neg + withProjectDir(g, at.rel, true))
-        else into.files.push(neg + (own === '' ? '**/*' : withProjectDir(own, at.rel, true)))
+        else
+          (s.startsWith('{workspaceRoot}') ? wsOwn : into.files).push(
+            neg + (own === '' ? '**/*' : withProjectDir(own, at.rel, true)),
+          )
         return
       }
       // Bare string = named-input reference.
@@ -221,7 +226,9 @@ export function expandNxInputs(
       // The mapper checks an edge is left to carry them.
       if (o.dependentTasksOutputFiles !== undefined) {
         const g = o.dependentTasksOutputFiles
-        into.dependentOutputs.push(typeof g === 'string' ? g : JSON.stringify(g))
+        const glob = typeof g === 'string' ? g : JSON.stringify(g)
+        into.dependentOutputs.push(glob)
+        if (o.transitive === true) into.transitiveOutputs.push(glob)
         return
       }
       // `{ workingDirectory }` hashes where Nx was started (`cwd:relative`
@@ -283,6 +290,16 @@ export function expandNxInputs(
       )
   }
   for (const entry of entries) expand(entry, new Set())
+  // Nx hashes the `{projectRoot}` and `{workspaceRoot}` filesets as two
+  // sets, a `!` acting only inside its own; core subtracts every `!` in
+  // `files` from every entry. Production's `!{projectRoot}/jest.config.[jt]s`
+  // took out a target's `{workspaceRoot}/libs/a/jest.config.ts`, and an
+  // edit to it replayed (stale hit). A `!` that may reach the other set
+  // goes: more keyed, never less.
+  if (wsOwn.length > 0) {
+    const [own, ws] = apartTakeBacks(into.files, wsOwn)
+    into.files.splice(0, into.files.length, ...own, ...ws)
+  }
   // Nx matches a project fileset with no positive glob against every project
   // file, the negations taken out: nx-recipes' `noMarkdown` is
   // `["!{projectRoot}/**/*.md"]`, and a `.tsx` edit re-runs its build while a

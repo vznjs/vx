@@ -472,6 +472,28 @@ describe('normalizeRemoteUrl', () => {
   })
 })
 
+// A credential in the remote URL reached telemetry (the repository, the
+// workspace name): the userinfo was cut at its FIRST `@`, so a password
+// holding one kept its tail, and a query token was never dropped.
+describe('normalizeRemoteUrl keeps no credential', () => {
+  it('ends the userinfo at the last `@` before the path, as a URL parser does', () => {
+    expect(normalizeRemoteUrl('https://user:p@ssSECRETPW@host/g/r.git')).toBe('host/g/r')
+    expect(normalizeRemoteUrl('https://tok@en:x@host:8443/g/r')).toBe('host/g/r')
+  })
+
+  it('drops a query and a fragment', () => {
+    expect(normalizeRemoteUrl('https://gitlab.example.com/g/r.git?private_token=X')).toBe(
+      'gitlab.example.com/g/r',
+    )
+    expect(normalizeRemoteUrl('https://host/g/r#SECRET')).toBe('host/g/r')
+    expect(normalizeRemoteUrl('git@host:g/r.git?token=X')).toBe('host/g/r')
+  })
+
+  it('CONTROL: an `@` in the path is not userinfo', () => {
+    expect(normalizeRemoteUrl('https://host/g/r@v2')).toBe('host/g/r@v2')
+  })
+})
+
 describe('captureWorkspaceIdentity', () => {
   let dir: string
 

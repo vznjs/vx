@@ -44,7 +44,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v51'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v52'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -133,7 +133,7 @@ over (in order):
    refuses a `bun.lockb` with no `bun.lock`, which it cannot read), and
    this repo declares `bun()`. Each also claims its manager's install
    settings (`pnpm()`: `pnpm-workspace.yaml`, `.npmrc`, the root `package.json`'s `pnpm` field; `bun()`:
-   `bunfig.toml`, `.npmrc`; `npm()`: `.npmrc`; `yarn()`: `.yarnrc.yml`, `.yarnrc`, `.npmrc`, the root `package.json`'s `workspaces.nohoist`, `installConfig` and `resolutions`)
+   `bunfig.toml`, `.npmrc`; `npm()`: `.npmrc`; `yarn()`: `.yarnrc.yml`, `.yarnrc`, `.npmrc`, the root `package.json`'s `workspaces.nohoist`, `installConfig`, `resolutions` and dependency ranges)
    and folds each whole into every task.
 
    The run reads each claimed root file once, before any task. A task
@@ -285,7 +285,10 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     is a task whose declared outputs hold one, rather than the file
     dropping out of the key or the artifact without a word
     (turborepo#9345); one found by the clean before a run or a
-    restore is refused as one vx cannot clear. Rename it, or exclude
+    restore is refused as one vx cannot clear. The task reads
+    `failed (cache save failed)` (its command exited 0, with its real
+    time) or `failed (output clean failed)` (its command did not run),
+    never an exit the command did not return. Rename it, or exclude
     it with a negated glob.
 
     Your globs are a **filter over the set git reports**, so a broad
@@ -328,7 +331,16 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     rewrite that keeps its mtime (`cp -p`, `tar -x`) reads clean to
     git, and until 2026-09-27 (A-6) kept the old bytes' key. Every file
     is then hashed through the memo below, which keys on ctime and
-    inode.
+    inode. `core.ignorecase=true` on a disk that does not fold case (a
+    `.git` copied from macOS to Linux) made `git status` take a new
+    `a.txt` for the tracked `A.txt`, so it entered no key; under that
+    setting vx looks up `HEAD` as `head` once, and on a disk that tells
+    them apart asks git again with `-c core.ignorecase=false`, as every
+    later listing under the workspace does (`--affected`, watch's
+    inventory, `vx lock`'s discovery and ignore checks). vx
+    trusts what `git status` calls clean, so a `core.fsmonitor` that
+    misses an event (a dead daemon, a network share) keeps an edited
+    file's old key: a stale hit.
 
     Even with ctime trusted, git reads it to the second, and its racy
     rule looks at mtime alone. So a same-size rewrite that keeps an
@@ -420,15 +432,16 @@ On a hit:
    (its existence is verified with one stat), so hit cost doesn't
    scale with artifact size.
 2. If the on-disk output tree already matches the cached snapshot
-   (size + mode + **millisecond**-mtime check against `output_files`),
-   extraction is skipped entirely — the outcome reports **up-to-date**
-   (`restored: false`). Mode and millisecond mtime ride the artifact's
-   own `.vx-meta.json` sidecar — recorded from a stat while packing —
-   so the index rows and the restored tree carry the identical values
-   whether the entry was saved locally or ingested from a remote, and
-   the comparison is exact in steady state. The check also requires the
-   file's inode and ctime to equal the ones this machine recorded after
-   the save or restore that last wrote it (`recordOutputStamps`). Size,
+   (size + mode against `output_files`, a **millisecond**-mtime check
+   against this machine's stamp), extraction is skipped entirely — the outcome
+   reports **up-to-date** (`restored: false`). Mode and millisecond
+   mtime ride the artifact's own `.vx-meta.json` sidecar — recorded from
+   a stat while packing — so the index rows carry the identical values
+   whether the entry was saved locally or ingested from a remote. The
+   check also requires the file's inode, ctime and mtime to equal the
+   ones this machine recorded after the save or restore that last wrote
+   it (`recordOutputStamps`, `output_stamps`): a restore dates the files
+   it writes now (step 3), so the stamp, not the row, holds their mtime. Size,
    mode and mtime alone cannot tell two entries apart when their
    outputs carry one fixed mtime (`tar -x`, `cp -p`, `SOURCE_DATE_EPOCH`)
    and one size: a v1 → v2 → v1 round trip reported up-to-date with v2's
@@ -441,7 +454,7 @@ On a hit:
    restores and stamps. The residual: ctime ticks on the kernel's coarse
    clock (4 ms at HZ=250), so a same-size rewrite inside the tick of
    vx's own write, in place or as a new file that took the same inode,
-   with its mtime forged back, still matches.
+   still matches.
 3. Otherwise the `outputs/<rel>` (+ `workspace-outputs/<rel>`) entries
    are extracted from the artifact (its bytes inline in the index, read
    in one snapshot with the entry's rows, or
@@ -453,7 +466,14 @@ On a hit:
    rename per file, each across directories out of one staging
    directory, doubled a 5,000-artifact restore's kernel time. A
    file that already holds the entry's bytes (compared byte for byte, up
-   to 4 MiB) is left in place, only its mode and mtime set. A
+   to 4 MiB) is left in place, only its mode set. Every file the restore
+   writes is dated now, as the task's own write would be, never with its
+   saved mtime, and no file's mtime moves back: a saved mtime predates
+   outputs written since, so a make-style dependant that keeps its
+   outputs (`clean: false`, a `[ out -nt in ]` check) took a restored,
+   changed upstream as older than its own output, skipped the rebuild
+   and saved the other upstream's bytes under the new key (until
+   2026-11-08, `tests/restore-mtime.test.ts`). A
    target on another filesystem is first copied to a temp beside it,
    every such copy before any rename, so a copy that fails (a full disk
    there) changes nothing; a file
@@ -624,8 +644,8 @@ the tree last matched the entry (`output_files`, and since 2026-09-03
    so the hit does not snapshot it again) keeps the walk — and a walk that
    proves the tree current records the directories so the following hit
    can skip it.
-2. **The files.** Every recorded file's `(size, mode, mtime-ms)` must
-   match. This never left: the directory rule only replaces the
+2. **The files.** Every recorded file's `(size, mode)` and the stamped
+   `(mtime-ms, inode, ctime)` must match. This never left: the directory rule only replaces the
    enumeration, not the fingerprint.
 
 The trade is the one every mtime-based skip accepts, already documented
@@ -761,7 +781,9 @@ read-through (`remoteRead`), upload (`remoteWrite`), and prefetch
 - `willWrite = task is cached AND it is not remote-only AND (localWrite || remoteWrite)`
 
 A task reads the cache only when `willRead`, saves only when
-`willWrite` and it folds no keyless task, and cleans its declared outputs
+`willWrite`, it folds no keyless task and no task it depends on is a
+remote-only no-op (an `exec.remote: 'only'` task no remote executor took:
+it ran nothing under the key a real run has), and cleans its declared outputs
 before exec only when `willWrite`. A keyless task runs a command and
 declares no `inputs`: its key is unknown, so a task that folds it
 (through `dependsOn`, directly or through a group) always misses. Remote-only is an `exec.remote: 'only'` task placed on a
@@ -854,19 +876,34 @@ executor seam needs anyway) must equal it. Then each input file is
 after, or within `FILE_HASH_RACY_MS` before, the moment its digest was
 learned — the enumeration's start for an index OID, the describe for a
 hashed file — is hashed again and compared, and a file that is gone has
-moved. A file written at or after the describe (just before the command)
+moved. A file written after the describe (just before the command)
 has moved whatever it holds (a whole-second stamp counts as any moment
 of its second, an even one of two, in both checks): an input changed and changed BACK while the
 command ran matched its digest again, and its output, built from the
 edit, was filed under the key and restored over the original (item
-1015). A symlinked input is also followed again: the key folds the
+1015). That moment is read off the file system's clock (a file written
+and removed in the cache dir, `fsClockNow`), not `Date.now()`: Linux
+before 6.13 stamps from its coarse clock, a tick behind, which dated an
+edit in the command's first tick before it. A coarse clock gives a write
+in that moment's own tick the moment itself, whether an upstream's just
+before or the command's just after: it is the upstream's when the
+describe's stat of the file saw that ctime already, else the command's
+(a tracked clean file, keyed by its index OID, is not stat'ed there).
+The residual: an upstream's write, the describe and an edit by the
+command all inside one tick, which a kernel since 6.13 stamps apart. A symlinked input is also followed again: the key folds the
 content behind it, which an edit changes without touching the link, and
 a different digest there has moved. When one moved, the task's result stands but no entry is saved,
 one status line names the file (``[vx] app#format: `packages/app/a.ts`
 changed after its key was taken — …``), and the run forgets what it
 knew about the project, as after an uncached task (§ Cache key
 derivation, step 11). This covers a formatter rewriting its own input
-(turborepo#10111) and a user's edit mid-run (turborepo#1146). A task
+(turborepo#10111) and a user's edit mid-run (turborepo#1146). A file
+whose ctime alone moved during the command, its bytes and mtime as the
+key found them (a hard link such as `cp -al src dist`, a chmod, a chown),
+is withheld too, since an edit undone with its mtime put back looks the
+same; its line says so (``… `app/src/a.txt`'s ctime moved while the task
+ran, but not its bytes or mtime …``) and names the ways out: copy instead
+of linking, or `inputs.stability: { strategy: 'mutable' }`. A task
 left remote (`--cache-download=none`) is held to the same checks: a moved
 key still lets a local consumer fetch its outputs, but the fetch saves
 no entry; until X-123 it saved them under the old key. A task
@@ -981,6 +1018,10 @@ Declared `outputs.files` are wiped in two distinct places:
 - **After restore on a cache hit.** The post-restore tree is the
   cached snapshot byte-for-byte: the restore renames the entry's files
   over the ones it finds, then removes what the entry does not hold.
+  Each output directory with a recorded mode (`dirModes`) gets it whether
+  the restore made it or found it standing with another, and a mode that
+  differs makes the tree stale (2026-11-07: a branch switch A → B → A
+  left B's 0755 on A's `chmod 700 dist/keys`).
   Hand-edits to output files don't persist through a cache replay. When
   the hit's own check walked the output globs to find the tree stale,
   the removal uses that walk's list instead of walking again (X-161).
@@ -1010,7 +1051,8 @@ clean deleted a committed file under an output, and a reader with no edge
 to its producer failed naming only the file (A-48, vueuse's
 `metadata/index.json`). Untracked files under the glob are cleaned as
 before. Paths compare as
-git compares them: case-folded under `core.ignorecase` (macOS), and a
+git compares them: case-folded under `core.ignorecase` where the disk
+folds case too (macOS), and a
 file inside a submodule counts as committed.
 Workspace outputs take the same rules, and a path an output `!` entry
 takes back (A-44) is off the wipe, the artifact and the restore alike.
@@ -1057,7 +1099,7 @@ Two cached tasks whose declared outputs overlap are refused at graph
 build: any path both could write counts, so `build/{a,b}.js` meets
 `build/*.js`, and `out/**` meets a glob for each `.d.ts` one level down
 at `out/types/x.d.ts`. By default that holds even when one depends on the other: the
-workspace rule `rules.exclusiveOutputs` (on unless set to `false` in
+workspace rule `run.rules.exclusiveOutputs` (on unless set to `false` in
 `.vx/workspace.ts`, X-53) keeps one path to one task, and its refusal says
 how to turn it off. The shape below is correct, only slower: a stamp
 before every run, a diff after, and a clean by rows. Give each task its
@@ -1155,6 +1197,10 @@ the same selection `inputs.tasks` applies at hash time
 `selectFoldedDeps`); every other link target inside the root is
 withheld, so an import of a sibling the key never sees fails and is
 reported instead of caching a result an edit there would not re-run.
+A `node_modules` that is itself a link (`ln -s ../b node_modules`) is
+judged by its target the same way, and one holding the project or `.git`
+is never granted. A granted package's nested projects are walled unless
+the key folds them too: its own key stops at them.
 Any exec task counts, cached or not: its key includes its project's files
 through its `inputs`, and one with no `inputs` is keyless, so a key that
 folds it is never stored or read. A persistent task counts the same way,
@@ -1225,6 +1271,10 @@ content hasher, which hashes the worktree bytes — the correct source
 either way. The only cost is reading the file, which is exactly what
 the gate exists to avoid paying needlessly.
 
+`--affected` asks the same question (`core.autocrlf`, then `check-attr`)
+of a file whose stat moved: such a file is a change, though git, which
+compares after the filter, calls it clean against the base.
+
 ## Runtime inputs and the lock (the env parallel)
 
 `inputs.runtime` / `inputs.workspaceRuntime` are modeled
@@ -1246,10 +1296,11 @@ config), not a per-task probe: it is not asked again before a save, as
 input files are, because that would be one spawn per command per miss
 where a file costs one `lstat`. A command that reads another task's
 OUTPUT reads whatever is on disk when it is asked. When the reader's key
-folds that task's key, the upstream key covers it: an answer taken before
-the upstream ran costs a spurious miss on the run after the output
-changes, never a stale hit, and the answer stays shared. When it does
-not (`tasks: []`, a filter that leaves it out, transitively), nothing
+folds that task's key and that task is cached, the upstream key covers
+it: an answer taken before the upstream ran costs a spurious miss on the
+run after the output changes, never a stale hit, and the answer stays
+shared. When it does not (`tasks: []`, a filter that leaves it out, an
+uncached writer, whose writes its key does not follow, transitively), nothing
 covered it until X-34: the save filed bytes built from the new state
 under the old answer, and a later run that started from the old state
 hit them. Now such a task (`probesAfterWrites`, stable-keys.ts) takes no
@@ -1321,9 +1372,16 @@ do not share a temp directory, so they do not share the lock.
 A `vx cache clean` in any checkout of the repository waits for every
 vx process holding the shared store open (a run holds it from its lock
 to its end), so it never deletes the store under a run in a sibling checkout,
-whose own lock it never took. So does a clean of a cache directory with
-no store (`--cache-dir`, `cache.dir`, `VX_CACHE_DIR`), which another
-workspace's runs may share: each run holds it shared (`cache.lock` in
+whose own lock it never took. It holds the store alone while it moves it
+aside (`cache.removing` beside it) and deletes it after, so a run
+arriving meanwhile waits (`[vx] waiting for a vx cache clean of <dir>
+to finish…`) and then makes a new store; one arriving after the move
+makes it at once. A run that opened the store as the clean let go
+checks that the file it holds is still the one at its name (one stat)
+and makes a new store if not: it used to die after 5 s on `database is
+locked`, or save into the deleted store and lose that entry. A clean of a cache directory with
+no store (`--cache-dir`, `cache.dir`, `VX_CACHE_DIR`) waits too, as another
+workspace's runs may share it: each run holds it shared (`cache.lock` in
 it) from before its cache opens to its end, the clean holds it alone,
 and a run arriving meanwhile waits for the clean. A run waiting for the lock holds no cache
 open, so a clean holding the lock never waits on it. An eviction can still land between a
@@ -1438,10 +1496,13 @@ cache is vx's to keep), and keeps every artifact, each indexed again
 when its task next hits. The check, drop, re-create and stamp are one
 write transaction, so another version's open waits rather than landing
 between them. A home this user cannot write keeps the store
-in `<workspaceRoot>/.vx/cache/` instead, silently. Name a
-cache directory (`cache.dir` in .vx/workspace.ts, `--cache-dir`, or
-`VX_CACHE_DIR`, in that order of precedence, relative to the workspace
-root) and it holds everything, shared with no other workspace:
+in `<workspaceRoot>/.vx/cache/` instead, silently, and so does a store
+another user owns (one `sudo vx run`). `vx info` and `vx cache clean`
+decide it the same way, the reading ones without making or changing
+anything, so they read the entries runs use. Name a
+cache directory (`--cache-dir`, relative to the working directory; else
+`VX_CACHE_DIR`, else `cache.dir` in .vx/workspace.ts, each relative to the
+workspace root) and it holds everything, shared with no other workspace:
 
 ```
 <cacheDir>/                                 (default .vx/cache when one is named)
@@ -1459,6 +1520,7 @@ root) and it holds everything, shared with no other workspace:
 └── <hash>.tree/                             one artifact per cache entry, the larger ones (v47):
     ├── outputs/<rel>                       declared output files, project-relative (when any),
     │                                       each with its saved mode and mtime
+    │                                       (a restore dates its copy now)
     ├── workspace-outputs/<rel>             declared outputs.workspaceFiles,
     │                                       WORKSPACE-ROOT-relative (when any)
     ├── .vx-meta.json                       per-output [mode, mtimeMs], the key it was
@@ -1592,11 +1654,13 @@ Tar headers carry mode and second mtimes. vx needs both permission bits (a lost 
 and breaks warm) and millisecond mtimes (the skip-restore probe compares
 them) exactly, so the pack stats each output once and writes
 `.vx-meta.json` — `{ version, key, files: { <entry>: [mode, mtimeMs] }, dirs?, links?, dirModes?, exec? }` —
-into the archive. Restore applies both, the mode minus the process
+into the archive. A restore applies the mode, minus the process
 umask as tar gives a non-root user (under `umask 077` a 0644 output comes
 back 0600; until 2026-10-16 it came back 0644, readable by every user,
 `tests/restore-umask.test.ts`), and a tree a restore left that way still
-reads as current. Both apply at their edges too: a mode of
+reads as current. The mtime is the index rows' and the cache's own
+tree form's; a restore dates a file it writes now (§ Cache lookup → restore).
+Both hold at their edges too: a mode of
 000, an mtime of 0 (`SOURCE_DATE_EPOCH=0`), one before 1970, whose
 tar header carries 0 since ustar's field holds no sign, and one past
 March 2242, whose header carries the field's 11-digit maximum (X-114:
@@ -1674,7 +1738,11 @@ followed by the clean as by the save and restore, named by a glob
 (`dist/**`) or a literal (`dist`) alike, so its target is the
 output and an entry holds only what its run wrote (X-88); one that
 resolves outside the project refuses the task, naming the link, and
-nothing is deleted through it (X-5), and so does an
+nothing is deleted through it (X-5); so does one, in either scope, that
+resolves into a directory an entry of the task's own `inputs.files` or
+`inputs.workspaceFiles` can match below (`dist -> src` under `src/**` or
+`**/*.ts`: the clean deleted every untracked source, X-55; `dist ->
+build-out` under `src/**` stays an output), and so does an
 `outputs.workspaceFiles` directory that resolves outside the workspace
 (it saved an empty entry under a warning, M-65). So does one, in either scope, that
 resolves into the root's own `.git` (any case) or its `.vx`: for the root
@@ -1777,7 +1845,7 @@ keep). The artifacts stay: each is indexed again from its own bytes
 when its task next asks for its key (below).
 
 ```sql
--- src/cache/schema.ts (SCHEMA_VERSION = 'v54', in cache.ts)
+-- src/cache/schema.ts (SCHEMA_VERSION = 'v55', in cache.ts)
 -- With a shared store, entries, entry_stdout, output_files, entry_inputs,
 -- store_meta, task_durations, task_outcomes, blob_sizes, plugin_blobs and remote_hits live in its store.db, attached as `store`; the rest is
 -- the workspace's cache.db. A named cache dir holds all of them.
@@ -1959,11 +2027,13 @@ CREATE TABLE output_files (
 -- current. Apart from the shared entry: two worktrees overwrote each
 -- other's stamps and every switch restored. No foreign key (the entry
 -- may be the store's); prune and re-save delete what they orphan.
+-- v55: and its mtime, since a restore dates a file it writes now.
 CREATE TABLE output_stamps (
   entry_hash  TEXT NOT NULL,
   path        TEXT NOT NULL,
   ino         INTEGER NOT NULL,
   ctime_ms    INTEGER NOT NULL,
+  mtime_ms    INTEGER NOT NULL,
   PRIMARY KEY (entry_hash, path)
 );
 
@@ -2330,6 +2400,11 @@ breaking footer).
 
 ### History
 
+- **v51 → v52**: stored bytes wrong under a key the change does not move
+  (2026-11-07). A sandboxed task could read through a `node_modules`
+  that is itself a link (to the workspace root or a sibling project), or
+  into a keyed linked package's nested project, and its key folded
+  neither; a v51 entry may hold those bytes, so it is never read.
 - **v50 → v51**: stored bytes wrong under a key the change does not move
   (2026-10-29). An output ending `/.` stored nothing, and a stored stream
   could keep a secret split across stdout and stderr writes unmasked; a

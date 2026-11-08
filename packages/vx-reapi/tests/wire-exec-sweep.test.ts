@@ -1,10 +1,10 @@
 // Item 824's sweep of wire.ts, second slice (Execute, split, splice,
 // GetTree): each row fails with one line of the client undone, on the
 // offline fake (helpers/fake-reapi.ts).
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import * as grpc from '@grpc/grpc-js'
 import { encodeDigest } from '../src/merkle.js'
-import { ReapiClient } from '../src/wire.js'
+import { ReapiClient, reattach } from '../src/wire.js'
 import { CHUNKING_SUPPORTED } from './helpers/bun-floor.js'
 import { startFakeReapi, type FakeReapi } from './helpers/fake-reapi.js'
 
@@ -148,25 +148,79 @@ describe.if(CHUNKING_SUPPORTED)('the operation stream', () => {
     expect(calls[1]!.request['name']).toBe(op.name)
   })
 
-  it('re-attaching to a stream that keeps ending early spends the retry budget, then refuses', async () => {
-    fake.onExecute = () => ({ stages: ['EXECUTING'], endEarly: true })
-    const mark = fake.calls.length
-    const refused = await using((c) =>
-      c.execute(c.digestOf(bytes('never done'))).then(
-        () => 'resolved',
+  // A proxy that cuts long streams cuts a progressing action every time:
+  // only attaches that deliver nothing spend the budget.
+  describe('re-attach under repeated cuts', () => {
+    const saved = { ...reattach }
+    beforeEach(() => {
+      reattach.backoffMs = [1, 2, 4]
+    })
+    afterEach(() => {
+      Object.assign(reattach, saved)
+    })
+    const settle = (p: Promise<{ done?: boolean }>) =>
+      p.then(
+        (o) => `done=${o.done}`,
         (e: Error) => e.message,
-      ),
-    )
-    const calls = fake.calls.slice(mark)
-    expect(calls.map((x) => x.method)).toEqual([
-      'Execute',
-      'WaitExecution',
-      'WaitExecution',
-      'WaitExecution',
-    ])
-    expect(refused).toBe(
-      `execution stream for ${String(calls[1]!.request['name'])} closed before the operation finished`,
-    )
+      )
+
+    it('a stream cut after EXECUTING four times completes on the fifth attach', async () => {
+      let n = 0
+      fake.onExecute = () =>
+        ++n <= 4
+          ? { stages: ['EXECUTING'], endEarly: true }
+          : { response: { result: { exit_code: 0 } } }
+      const mark = fake.calls.length
+      const out = await using((c) => settle(c.execute(c.digestOf(bytes('long cut')))))
+      expect([out, fake.calls.slice(mark).map((x) => x.method)]).toEqual([
+        'done=true',
+        ['Execute', 'WaitExecution', 'WaitExecution', 'WaitExecution', 'WaitExecution'],
+      ])
+    })
+
+    it('an UNAVAILABLE after EXECUTING four times completes on the fifth attach', async () => {
+      let n = 0
+      fake.onExecute = () =>
+        ++n <= 4
+          ? {
+              stages: ['EXECUTING'],
+              error: { code: grpc.status.UNAVAILABLE, details: 'proxy reset' },
+            }
+          : { response: { result: { exit_code: 0 } } }
+      const out = await using((c) => settle(c.execute(c.digestOf(bytes('long reset')))))
+      expect(out).toBe('done=true')
+    })
+
+    it('attaches that deliver nothing spend the budget, then refuse', async () => {
+      fake.onExecute = () => ({ stages: ['EXECUTING'], endEarly: true })
+      // Four in a row, as many as an Execute refused before any operation.
+      fake.fail('WaitExecution', grpc.status.UNAVAILABLE, 4)
+      const mark = fake.calls.length
+      const out = await using((c) => settle(c.execute(c.digestOf(bytes('gone')))))
+      expect([out, fake.calls.slice(mark).map((x) => x.method)]).toEqual([
+        '14 UNAVAILABLE: injected UNAVAILABLE',
+        ['Execute', 'WaitExecution', 'WaitExecution', 'WaitExecution', 'WaitExecution'],
+      ])
+    })
+
+    it('an EXECUTING-then-cut loop backs off more per cut and ends only on the caller', async () => {
+      reattach.backoffMs = [20, 40, 80]
+      const at: number[] = []
+      const ctl = new AbortController()
+      fake.onExecute = () => {
+        at.push(performance.now())
+        if (at.length === 6) ctl.abort()
+        return { stages: ['EXECUTING'], endEarly: true }
+      }
+      const out = await using((c) => settle(c.execute(c.digestOf(bytes('loops')), {}, ctl.signal)))
+      const gaps = at.slice(1).map((t, i) => t - at[i]!)
+      // Execute advanced the stage, so its cut waits the first step; each
+      // later cut waits one longer, capped at the last.
+      expect([out, gaps.map((g, i) => g >= [20, 40, 80, 80, 80][i]! - 2)]).toEqual([
+        'execution aborted',
+        [true, true, true, true, true],
+      ])
+    })
   })
 
   it('an unfinished operation with no name cannot be re-attached and is refused', async () => {

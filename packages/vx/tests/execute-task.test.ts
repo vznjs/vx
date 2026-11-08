@@ -303,6 +303,68 @@ describe("execute-task — exec.remote:'only' with no remote executor", () => {
       await closeBench(b)
     }
   })
+
+  it(
+    'saves no dependant: its key folds an upstream key whose outputs never landed',
+    async () => {
+      // `remote` is not in the key, so the no-op's key is the one a real run
+      // of it has. `app` saved, under a key folding it, output built with no
+      // `gen` output at all; once `gen` really ran, `app` hit that entry and
+      // replayed MISSING. `top` reads `app`'s output: one hop further, same.
+      fixture = await makeWorkspace()
+      try {
+        const gen = (remote: string) => `export default { tasks: { build: {
+          exec: { command: 'mkdir -p dist && cp src/a.txt dist/v.txt'${remote} },
+          inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+        } } }`
+        const genDir = await addProject(fixture.root, 'gen', gen(", remote: 'only'"))
+        await mkdir(path.join(genDir, 'src'))
+        await writeFile(path.join(genDir, 'src', 'a.txt'), 'v1\n')
+        const appDir = await addProject(
+          fixture.root,
+          'app',
+          `export default { tasks: { build: {
+            exec: { command: '(cat ../gen/dist/v.txt 2>/dev/null || echo MISSING) > out.txt' },
+            dependsOn: ['gen#build'], inputs: { files: ['package.json'] },
+            outputs: { files: ['out.txt'] }, cache: true,
+          } } }`,
+        )
+        const topDir = await addProject(
+          fixture.root,
+          'top',
+          `export default { tasks: { build: {
+            exec: { command: 'cp ../app/out.txt out.txt' },
+            dependsOn: ['app#build'], inputs: { files: ['package.json'] },
+            outputs: { files: ['out.txt'] }, cache: true,
+          } } }`,
+        )
+        gitInit(fixture.root)
+        const once = { cwd: fixture.root, tasks: ['build'], projects: ['top'] }
+        const first = await run({ ...once, log: capturingLogger(fixture) })
+        expect(first.ok).toBe(true)
+        expect(await readFile(path.join(topDir, 'out.txt'), 'utf8')).toBe('MISSING\n')
+
+        await writeFile(path.join(genDir, 'vx.config.mjs'), gen(''))
+        await rm(path.join(appDir, 'out.txt'))
+        await rm(path.join(topDir, 'out.txt'))
+        const second = await run({ ...once, log: capturingLogger(fixture) })
+        expect(Object.fromEntries(second.outcomes.map((o) => [o.node.id, o.status]))).toEqual({
+          'app#build': 'success',
+          'gen#build': 'success',
+          'top#build': 'success',
+        })
+        expect(await readFile(path.join(appDir, 'out.txt'), 'utf8')).toBe('v1\n')
+        expect(await readFile(path.join(topDir, 'out.txt'), 'utf8')).toBe('v1\n')
+
+        // CONTROL: entries under keys folding a real run are saved and hit.
+        const third = await run({ ...once, log: capturingLogger(fixture) })
+        expect(third.outcomes.map((o) => o.status)).toEqual(['cache-hit', 'cache-hit', 'cache-hit'])
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
 })
 
 describe('execute-task — what the outcome and the request carry', () => {
@@ -411,6 +473,46 @@ describe('execute-task — what the outcome and the request carry', () => {
       expect([moved.status, moved.saved]).toEqual(['success', undefined])
       expect(f.err.join('')).toContain('`proj/package.json` changed after its key was taken')
       expect((await run(['proj/other.txt'])).saved).toBe(true)
+    } finally {
+      await closeBench(b)
+    }
+  })
+
+  it('saves nothing under the key when the executor found a declared input this disk lacks', async () => {
+    // A distributed run's worker held an untracked file under the task's
+    // input glob: the key never folded it, the command read it, and the
+    // entry was every later run's hit (2026-11-07).
+    const b = await bench()
+    try {
+      const f = { root: '', out: [] as string[], err: [] as string[] }
+      const log: Logger = { ...capturingLogger(f), warn: (line) => f.err.push(line) }
+      const elsewhere = (changed: string[]) =>
+        ({
+          name: 'org/elsewhere',
+          remote: true,
+          execute: async () => ({
+            exitCode: 0,
+            durationMs: 1,
+            stdout: '',
+            stderr: '',
+            violations: [],
+            changed,
+          }),
+        }) as never
+      const cached = node(b, {
+        exec: { command: 'true' },
+        inputs: { files: ['src/**'] },
+        outputs: { files: ['out/**'] },
+        cache: true,
+      })
+      const run = (changed: string[]) =>
+        executeTask({ ...baseArgs(b, cached, log), executor: elsewhere(changed) })
+      const stray = await run(['proj/src/zz.txt'])
+      expect([stray.status, stray.saved]).toEqual(['success', undefined])
+      expect(f.err.join('')).toContain('`proj/src/zz.txt` changed after its key was taken')
+      expect(f.err.join('')).not.toContain('declare it in outputs')
+      // Under its own outputs it is none of the key's.
+      expect((await run(['proj/out/r.txt'])).saved).toBe(true)
     } finally {
       await closeBench(b)
     }
@@ -2195,6 +2297,56 @@ describe('execute-task — the executor input set is ADDRESSED and ORDERED', () 
         expect(reads).toBe(0)
         expect(await runWith(true, 'shipping')).toEqual(['proj/dist/lib.js'])
         expect(reads).toBe(1)
+      } finally {
+        await closeBench(b)
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "a non-cacheable upstream's declared outputs on disk reach a plugin executor",
+    async () => {
+      // It keeps no index entry, so its list was empty: a remote executor
+      // shipped the dependant without the files it reads, and saved what
+      // that build printed under the key (a stale hit).
+      const b = await bench()
+      try {
+        const log = capturingLogger({ root: '', out: [], err: [] })
+        const producer = node(
+          b,
+          {
+            exec: { command: 'mkdir -p gen && echo g > gen/out.txt' },
+            inputs: { files: ['package.json'] },
+            outputs: { files: ['gen/**'] },
+          },
+          'proj#gen',
+        )
+        const made = await executeTask(baseArgs(b, producer, log))
+        expect(made.status).toBe('success')
+        let seen: ExecuteRequest | undefined
+        const capturing: TaskExecutor = {
+          name: 'capture',
+          execute: (req) => {
+            seen = req
+            return localExecutor().execute(req)
+          },
+        }
+        const consumer = node(
+          b,
+          {
+            dependsOn: ['gen'],
+            exec: { command: 'true' },
+            inputs: { files: ['package.json'] },
+            outputs: { files: [] },
+            cache: true,
+          },
+          'proj#build',
+        )
+        await executeTask({ ...baseArgs(b, consumer, log), upstream: [made], executor: capturing })
+        expect(seen?.inputs?.upstream.map((u) => [u.taskId, u.outputs])).toEqual([
+          ['proj#gen', ['proj/gen/out.txt']],
+        ])
       } finally {
         await closeBench(b)
       }

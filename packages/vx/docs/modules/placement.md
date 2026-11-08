@@ -24,6 +24,7 @@ export function terminalHolders(nodes: Map<string, TaskNode>, tty: boolean): Set
 export interface Placements {
   executors: Map<string, TaskExecutor> // every placed task → the executor that took it
   remoteOnlyNoop: Set<string> // `remote: 'only'` tasks no remote executor took
+  belowNoop: Set<string> // tasks that depend on one of those, directly or through others: none saves
   remoteOnly: Set<string> // `remote: 'only'` tasks a remote executor took
   servers: Map<string, TaskNode[]> // task on a `servers` executor → the persistent tasks it starts there
   carried: Set<string> // persistent tasks every dependant carries: never started here
@@ -63,9 +64,13 @@ export const UNPLACED_EXECUTOR: TaskExecutor
 // core's local executor for a plugin that runs tasks itself; arms the sandbox outside a run
 export interface LocalFloor {
   execute(req: ExecuteRequest): Promise<ExecuteResult>
+  stop(taskId: string): Promise<void>
   close(): Promise<void>
 }
-export function localFloor(sandboxes?: readonly SandboxConfig[]): LocalFloor
+export function localFloor(
+  sandboxes?: readonly SandboxConfig[],
+  onServer?: (taskId: string, pid: number | undefined) => void,
+): LocalFloor
 ```
 
 ## Rules
@@ -103,6 +108,10 @@ export function localFloor(sandboxes?: readonly SandboxConfig[]): LocalFloor
   there and its outputs stay remote (`remoteOnly`); with no remote
   executor it is a **no-op** on this machine — never executed, outputs
   never cleaned or restored (`remoteOnlyNoop`) — and the run says so.
+  Its key is the one a real run has (`remote` is not in it), so every
+  task that depends on it, directly or through others (`belowNoop`),
+  saves no entry: one under a key folding it would hold output built
+  without its outputs, where a run over them looks.
 - A pooled executor (one with `capacity`) hands the scheduler its pool
   through `poolOfPlacement`, so it can run more tasks at once than the
   local worker count. Each executor is its own pool: the scheduler counts

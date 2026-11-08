@@ -108,7 +108,8 @@ a plugin's base commit (`setBranch({ base })`), else
 `origin/<baseBranch>`, refused on that branch (`affected.md`); an explicit
 base that is HEAD itself (a single-branch clone) is named, with the
 two bases that would compare something; `HEAD` by name is told its
-working tree has no change.
+working tree has no change when the diff named none (an edit to a root
+file no task declares gets the bare note).
 
 ## Interactive picker
 
@@ -143,6 +144,9 @@ If `--dry` is set:
    a runnable spec, is within two edits), before any JSON is
    written. An empty plan from an `--affected` or diff filter exits 0
    (`no affected project declares task(s): …`).
+4. A plan marked `isKeyFailed` (a task whose key could not be derived)
+   prints as usual, after the scheduler's `cache key not derived: …`
+   line on stderr, and exits 1, as the run fails that task.
 
 ## Verbose summary
 

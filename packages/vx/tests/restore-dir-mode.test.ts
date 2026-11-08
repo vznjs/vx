@@ -10,6 +10,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs'
 import path from 'node:path'
@@ -127,3 +128,58 @@ for (const [form, extra] of [
     60_000,
   )
 }
+
+// A hit onto a directory that stands gives it the recorded mode too: a
+// branch switch A (700) → B (755) → A kept B's 0755, and the keys A's task
+// kept to their owner were readable by every user.
+it.skipIf(process.platform === 'win32')(
+  'a hit gives a standing output directory its recorded mode',
+  async () => {
+    const before = process.umask(0o022)
+    try {
+      const root = await makeWorkspace({ prefix: 'vx-dir-mode-switch-' })
+      made.push(root)
+      const app = await addProject(root, 'app', {
+        config: `export default { tasks: { build: {
+          exec: { command: 'mkdir -p dist/keys && echo k > dist/keys/id && chmod $(cat src/mode) dist/keys' },
+          inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+        } } }`,
+        files: { 'src/mode': '700\n', '.gitignore': 'dist/\n' },
+      })
+      const git = gitIn(root)
+      git('add', '-A')
+      git('commit', '-q', '-m', 'init')
+      const cacheDir = path.join(root, '.cache')
+      const build = () => vx(root, ['run', 'build', '--all', '--cache-dir', cacheDir])
+      const keys = path.join(app, 'dist/keys')
+      const mode = () => (statSync(keys).mode & 0o777).toString(8)
+      for (const m of ['700', '755']) {
+        writeFileSync(path.join(app, 'src/mode'), `${m}\n`)
+        const miss = await build()
+        expect(`${miss.code}\n${miss.err}`).toStartWith('0\n')
+        expect(mode()).toBe(m)
+      }
+      writeFileSync(path.join(app, 'src/mode'), '700\n')
+      const hit = await build()
+      expect(`${hit.code}\n${hit.err}`).toStartWith('0\n')
+      expect(hit.out + hit.err).toContain('local 1↓')
+      expect(mode()).toBe('700')
+
+      // A mode changed by hand, the files untouched, makes the tree stale;
+      // the new mtime only sends the hit past the directory snapshot.
+      chmodSync(keys, 0o755)
+      utimesSync(keys, new Date(), new Date(Date.now() + 5000))
+      const chmodded = await build()
+      expect(`${chmodded.code}\n${chmodded.err}`).toStartWith('0\n')
+      expect(chmodded.out + chmodded.err).toContain('local 1↓')
+      expect(mode()).toBe('700')
+
+      const again = await build()
+      expect(`${again.code}\n${again.err}`).toStartWith('0\n')
+      expect(again.out + again.err).toContain('local 1✓')
+    } finally {
+      process.umask(before)
+    }
+  },
+  60_000,
+)

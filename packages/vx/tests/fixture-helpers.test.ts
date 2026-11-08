@@ -343,10 +343,12 @@ describe('the watch-loop helpers', () => {
       ),
     ).toBe('timed out')
     const t0 = Date.now()
+    // Its first line: a watch another suite in this process ran in the
+    // last minute is appended to the message (watch-loop.ts `live`).
     expect(
       await until(() => false, 'the moon', 60).then(
         () => 'ok',
-        (e: Error) => e.message,
+        (e: Error) => e.message.split('\n')[0],
       ),
     ).toBe('timed out waiting for the moon')
     expect(Date.now() - t0).toBeGreaterThanOrEqual(55)

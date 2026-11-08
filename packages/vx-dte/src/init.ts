@@ -47,12 +47,14 @@ export interface DteInit {
 /** `owner/repo` of the `origin` remote and its host: what the relay's ALLOW names. */
 export function originOf(root: string): { repository?: string; host?: string } {
   const r = Bun.spawnSync(['git', 'config', '--get', 'remote.origin.url'], { cwd: root })
-  const url = r.exitCode === 0 ? r.stdout.toString().trim() : ''
+  // No credential reaches the written files: a query (`?private_token=`)
+  // is dropped, and a URL's userinfo ends at its last `@` (a password may hold one).
+  const url = (r.exitCode === 0 ? r.stdout.toString().trim() : '').replace(/[?#].*$/s, '')
   const m = /[:/]([^:]+?\/[^/]+?)(?:\.git)?\/?$/.exec(url.replace(/^[a-z+]+:\/\/[^/]+\//, '/'))
   // An https URL's port is its issuer's; an ssh one's is not.
   const host =
-    /^https?:\/\/(?:[^@/]*@)?([^/]+)/.exec(url)?.[1] ??
-    /^[a-z+]+:\/\/(?:[^@/]*@)?([^/:]+)/.exec(url)?.[1] ??
+    /^https?:\/\/(?:[^/]*@)?([^/]+)/.exec(url)?.[1] ??
+    /^[a-z+]+:\/\/(?:[^/]*@)?([^/:]+)/.exec(url)?.[1] ??
     /^(?:[^@/:]*@)?([^/:]+):/.exec(url)?.[1]
   return {
     ...(m?.[1] === undefined ? {} : { repository: m[1] }),

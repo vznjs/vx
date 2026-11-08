@@ -31,7 +31,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
 import { Database } from 'bun:sqlite'
 import { type CacheLayer, type CachePolicy, GitFilesCache } from '../src/cache/index.js'
-import type { TaskNode } from '../src/graph/index.js'
+import { isKeyFailed, type TaskNode } from '../src/graph/index.js'
 import type { HistoryProvider, HistoryTable, TaskHistory } from '../src/history/history.js'
 import type { Logger } from '../src/report/index.js'
 import { planRun, run } from './helpers/orchestrator.js'
@@ -346,11 +346,12 @@ describe('plan() — a key that cannot be derived', () => {
     // dependents without ever calling plan's execute closure — so neither
     // reaches `cacheStatusById`.
     //
-    // KNOWN DEFECT, pinned as-is (plan.ts:147): the `?? 'no-cache'` fallback
-    // conflates "this task opted out of caching" with "we never got to probe
-    // it", and `hash: o.hash ?? ''` gives both an empty key. `--dry` reports
-    // a cacheable task as uncacheable and still resolves, while the
-    // equivalent `vx run` fails. See the e2e counterpart below.
+    // KNOWN DEFECT, pinned as-is: the `?? 'no-cache'` fallback conflates
+    // "this task opted out of caching" with "we never got to probe it", and
+    // `hash: o.hash ?? ''` gives both an empty key; no status in the plan's
+    // closed set says "fails" or "skipped behind a failure". The plan
+    // is marked (`isKeyFailed`), so `--dry` exits 1 as the run does
+    // (tests/key-not-derived.test.ts). See the e2e counterpart below.
     const nodes = makeNodes([{ id: 'a#codegen' }, { id: 'a#build', deps: ['a#codegen'] }])
     const cache = {
       hasRemote: false,
@@ -370,6 +371,7 @@ describe('plan() — a key that cannot be derived', () => {
 
     expect(statusById(p)).toEqual({ 'a#codegen': 'no-cache', 'a#build': 'no-cache' })
     expect(p.tasks.map((t) => t.hash)).toEqual(['', ''])
+    expect(isKeyFailed(p)).toBe(true)
   })
 })
 
@@ -718,13 +720,8 @@ describe('planRun() — planning executes nothing', () => {
       // `cleanOutputs` is part of EXECUTION, not planning: a `--dry` that
       // wiped the output tree would destroy a build the user still wanted.
       expect(existsSync(straggler)).toBe(true)
-      {
-        const db = openDb(cacheDir)
-        expect(countRows(db, 'runs')).toBe(0)
-        expect(countRows(db, 'invocations')).toBe(0)
-        expect(countRows(db, 'entries')).toBe(0)
-        db.close()
-      }
+      // No history, no entry: not even an index (`dry-no-writes.test.ts`).
+      expect(existsSync(cacheDir)).toBe(false)
 
       // The control: a real run does all three things planning refused to do.
       const r = await run({ cwd: root, tasks: ['build'], log: quietLogger })
@@ -1013,9 +1010,9 @@ describe('planRun() — unresolved requests', () => {
       // The production reachability of the unit pin above: a
       // `inputs.runtime` probe that exits non-zero is a documented
       // fail-loud UserError. `vx run` turns it into a FAILED run (exit 1);
-      // `vx run --dry` resolves happily and prints "not cacheable" for two
-      // tasks that both declare a cache block. The only signal is a raw
-      // `[vx] p#codegen: …` line the scheduler writes straight to stderr.
+      // `vx run --dry` exits 1 too, with the run's `[vx] p#codegen: cache key
+      // not derived: …` line, but its rows still say "not cacheable" for two
+      // tasks that both declare a cache block.
       const broken = await makeWorkspace()
       try {
         await addProject(broken, 'p', {
@@ -1045,6 +1042,7 @@ describe('planRun() — unresolved requests', () => {
         // Both are counted as would-run work of unknown cost, which is the
         // most visible symptom in `--dry`'s footer.
         expect(p.predicted?.unknownCount).toBe(2)
+        expect(isKeyFailed(p)).toBe(true)
 
         // The control that makes it a defect rather than a convention: the
         // real run does NOT quietly proceed.

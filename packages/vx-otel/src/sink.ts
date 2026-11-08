@@ -210,7 +210,7 @@ async function postOnce(
     // (walked the adopter's path, 2026-09-20). The body is the
     // collector's own explanation, so a line of it rides the message.
     // quiet: the status alone still names the refusal
-    const text = await res.text().catch(() => '')
+    const text = await upTo(res, REPLY_BYTES).catch(() => '')
     if (res.status >= 300 && res.status < 400) {
       const location = res.headers.get('location')
       const to = location === null ? null : URL.parse(location, url)
@@ -232,6 +232,35 @@ async function postOnce(
     clearTimeout(timer)
     deadline?.removeEventListener('abort', onDeadline)
   }
+}
+
+/**
+ * Room for a collector's error line or partial-success JSON: read whole,
+ * an endless 200 grew vx to 2.1 GB RSS within the flush deadline.
+ */
+const REPLY_BYTES = 64 * 1024
+
+/**
+ * A body's first `max` bytes as text, the rest cancelled unread
+ * (vx-history's and vx-cache's `upTo`).
+ */
+async function upTo(res: Response, max: number): Promise<string> {
+  const reader = res.body?.getReader()
+  if (reader === undefined) return ''
+  const parts: Uint8Array[] = []
+  let n = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    parts.push(value)
+    n += value.byteLength
+    if (n > max) {
+      // quiet: the rest is unwanted; its cancel adds nothing
+      await reader.cancel().catch(() => {})
+      return Buffer.concat(parts).subarray(0, max).toString('utf8')
+    }
+  }
+  return Buffer.concat(parts).toString('utf8')
 }
 
 /**

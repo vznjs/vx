@@ -85,14 +85,16 @@ terminal and a task succeeding or failing. Read it alongside
  │       the dirty AND untracked sets, the one worktree walk; `var -l`
  │       for core.autocrlf and the attributes files git reads outside
  │       the tree; the facts — prefix, common dir, object format, index
- │       file — read off a plain `.git` directory, else one
+ │       file, git dir — read off a plain `.git` directory, else one
  │       `rev-parse --show-prefix --git-common-dir --show-object-format
- │       --git-path index`,
+ │       --git-path index --absolute-git-dir`,
  │       memoized per process and shared with the file hasher)
  │       fill the per-project GitFilesCache with file lists + index
  │       OIDs. `ls-files --others` is NOT among them — status's
  │       `-uall` already answers untracked, and asking git twice
- │       walked the same tree again. A fifth, `check-attr`, runs only
+ │       walked the same tree again. `core.ignorecase=true` on a disk
+ │       that tells case apart runs status again with
+ │       `-c core.ignorecase=false`. A fifth, `check-attr`, runs only
  │       when an attributes file could rewrite bytes. An index the
  │       cache holds no blob-size verdict for (keyed by the index
  │       file's hash, A-60) adds `ls-files --debug` for the recorded
@@ -282,6 +284,8 @@ terminal and a task succeeding or failing. Read it alongside
  │            keyStillTrue() — if a claimed root file or an
  │              input moved since the key was taken, the result stands
  │              but the save is withheld (said on the status line).
+ │            serverDiedUnder() — a server it depends on died while
+ │              it ran: the save is withheld, and its dependants'.
  │            saveMiss — in the slot: resolveOutputs(outputs) +
  │              resolveWorkspaceOutputs → file lists, and the
  │              project's git snapshot notes the written output paths
@@ -300,7 +304,8 @@ terminal and a task succeeding or failing. Read it alongside
  │            wallclockStartNs, wallclockEndNs }.
  │
  └─ End-of-run
-    1. SIGTERM dependency-only persistent children; persistent tasks
+    1. SIGTERM dependency-only persistent children still up (each is
+       stopped earlier, once every task using it finished); persistent tasks
        the user REQUESTED, those a requested group stands for (through
        nested groups, not through a one-shot), and the persistent tasks
        they depend on, are kept alive (see below).
@@ -443,7 +448,7 @@ broader access has cache-stability implications).
 | Two projects of one name                                                                                                                                         | `checkProjectNames` throws with both paths                                                                                                                                                                                                                                                                                                                                                                                                              |
 | Cycle in task graph                                                                                                                                              | `detectCycle` throws with the cycle path                                                                                                                                                                                                                                                                                                                                                                                                                |
 | Malformed config                                                                                                                                                 | `loadProjectConfigs` throws (UserError) with file + field                                                                                                                                                                                                                                                                                                                                                                                               |
-| `inputs.runtime` command exits non-zero                                                                                                                          | UserError naming the command + exit code; that task is `failed`, dependents skip                                                                                                                                                                                                                                                                                                                                                                        |
+| `inputs.runtime` / `workspaceRuntime` probe exits non-zero                                                                                                       | `cache key not derived: inputs.runtime probe exited N: <command>`; that task is `failed (cache key not derived)` with no command run, dependents skip                                                                                                                                                                                                                                                                                                   |
 
 By default (`--continue=deps-ok`) failures don't kill the scheduler —
 independent tasks already in flight finish, and unrelated tasks not yet
@@ -488,7 +493,8 @@ wire forwarders attach beside it). What renders:
   chunks per-task and dumps the full body as a framed block on task
   completion. No per-line prefix, no interleaving between concurrent
   tasks.
-- **Cache write.** The captured stdout — its first and last 8 MiB,
+- **Cache write.** The captured stdout — its first and last 8 Mi
+  characters (8 MiB of ASCII),
   the cut middle named — is stored in the entry; replay is stdout-only.
 - **Cache hit replay.** The stored stdout is fed through the same
   logger path, so it renders per the active flow (streamed raw for a
@@ -558,8 +564,18 @@ stdio elsewhere (`writer >/dev/null 2>&1 &`): it holds no pipe, so
 nothing is cut, but it is still in the task's process group when the
 shell exits, and the same warning names it. A leftover of a failed
 attempt withholds its retry's save too: it may write into what the
-retry produces. Under a Linux sandbox the
-leftover dies with the task's pid namespace instead. Turbo waits for the pipe instead,
+retry produces. Nor is what is built on it saved: a dependent read the
+half-written tree, and its key folds the leftover task's, so the next run
+rebuilt that task and hit the dependent's partial bytes. Under a Linux sandbox the
+leftover dies with the task's pid namespace instead, `setsid` or not.
+Unsandboxed, or under macOS's sandbox, a leftover that also left the
+group (`setsid`, a daemon that double-forks) and holds no pipe is not
+seen: the task is saved with its outputs as they stood at exit, and a
+hit replays that. vx does not chase it: macOS keeps nothing that ties
+such a process to the task that started it, Linux's ways (a child
+subreaper, a cgroup) work only there, and either would also take a
+shared daemon a task starts (sccache, Gradle's, Bazel's server) for a
+leftover and stop that task's saves. Turbo waits for the pipe instead,
 which a leftover server holds forever. A task whose output matters
 waits for what it starts (`wait`).
 

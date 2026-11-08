@@ -81,16 +81,27 @@ shared, so each waits for the other. A dry run takes no lock.
 With neither bound, deletes the cache directory a run would use (`.vx/cache`, `cache.dir`,
 `--cache-dir`) when it holds a `cache.db`, and the store that index
 records (`Cache.storeDir`, else `resolveStoreRoot`): the entries live
-in `~/.vx/<id>/cache`. A target that is `.vx` or holds it (the
-workspace config, the lock, `.vx/.gitignore`) is refused. A cache
+in `~/.vx/<id>/cache`. The recorded store goes only when its `<id>` is
+one of `repoIdsOf(root)`: an index copied from another workspace named
+that one's store. A target that is `.vx` or holds it (the
+workspace config, the lock, `.vx/.gitignore`) is refused, and so,
+first, is a cache directory `refuseForeignCacheDir` refuses (home, `/`,
+the workspace, a `.git`, reached through a link). A cache
 directory other than `.vx/cache` is the user's: only `vxCacheEntries`
 (the index and its WAL, `VX_ARTIFACT_NAME` files, an unchanged `*`
 `.gitignore`; every other record is in the index) go, then the
-directory if empty (item 968). The size is
+directory if empty (item 968). A linked `.vx/cache` loses those and
+`compiled/`, never the rest of what its target holds. The size is
 summed before the delete (links not followed); the delete takes the run
 lock, as a prune does, and holds each store it deletes alone
 (`holdStore`, in path order) once no other process has it open: a
 checkout's lock never covered the store its sibling checkouts run on.
+Under that hold a store is renamed to `<store>.removing` (one a crashed
+clean left is deleted first) and deleted once the holds are released
+(`moveAside`): deleted in place, its `store.db` went before its other
+files, and a sibling's run in between made a `store.db` there that the
+delete then took, with the entry saved. A run that meets the hold waits
+for it (`attachStore`, prepare.ts).
 A cache directory with no store it deletes is held exclusive too
 (`holdCacheDir`): another workspace's run on it died opening it as the
 clear deleted it (ENOENT on its `.gitignore`, SQLite's disk I/O error). `--dry` deletes nothing and takes no lock.

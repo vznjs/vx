@@ -1777,6 +1777,36 @@ describe('runCommand — the rows its sweep asked for', () => {
     expect(r.stderr).toContain('the command, with the args after --, is 2930 KiB')
   })
 
+  // The limit counts the environment too: a task's `define` of 4.4 MB
+  // failed with a line blaming its 1 KiB command.
+  it('an environment too large to spawn is named, not the command', async () => {
+    const env: Record<string, string> = { PATH: process.env.PATH ?? '' }
+    for (let i = 0; i < 20_000; i++) env[`V${i}`] = 'x'.repeat(200)
+    env['HUGE_ONE'] = 'y'.repeat(32_000) // past a CI runner's PATH (1 KiB), under Linux's 128 KiB per entry
+    const r = await runCommand({ command: 'true', cwd: dir, env })
+    expect([r.exitCode, r.spawnFailed]).toEqual([127, true])
+    expect(r.stderr).toContain('E2BIG')
+    // 20,000 entries of ~207 bytes, HUGE_ONE's 31 KiB, and PATH.
+    expect(r.stderr).toMatch(/the task environment is 40[5-9]\d KiB in 20002 variables/)
+    expect(r.stderr).toContain('largest HUGE_ONE')
+    expect(r.stderr).not.toContain('the command,')
+  })
+
+  it('one environment entry too large to spawn is named, for a server too', async () => {
+    const spawn = runPersistent({
+      command: `true ${'x'.repeat(1000)}`,
+      cwd: dir,
+      env: { PATH: process.env.PATH ?? '', BLOB: 'z'.repeat(3_000_000) },
+    })
+    const err = await spawn.ready.then(
+      () => undefined,
+      (e: unknown) => e,
+    )
+    expect((err as Error).message).toContain('E2BIG')
+    expect((err as Error).message).toContain('largest BLOB at 2930 KiB')
+    expect((err as Error).message).not.toContain('the command,')
+  })
+
   // A server's command is one argument too; its refusal said only E2BIG.
   it('a server command too long to spawn says what the limit is', async () => {
     const spawn = runPersistent({

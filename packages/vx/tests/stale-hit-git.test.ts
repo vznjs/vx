@@ -244,6 +244,53 @@ describe('stale cache hits', () => {
     TIMEOUT,
   )
 
+  // No clean deletes a committed file, so attempt 1's `HALF` stayed for
+  // attempt 2 to pass beside, the pass was saved under the tree's key, and
+  // a hit after `git checkout` wrote `HALF` over the committed file.
+  for (const [scope, file, half, clean] of [
+    ['project', 'p/gen/route.ts', 'gen/route.ts', true],
+    ['workspace', 'wsgen/route.ts', '../wsgen/route.ts', true],
+    ['project (outputs.clean: false)', 'p/gen/route.ts', 'gen/route.ts', false],
+    ['workspace (outputs.clean: false)', 'wsgen/route.ts', '../wsgen/route.ts', false],
+  ] as const)
+    it(
+      `a retry that passes is not saved when a failed attempt changed a committed ${scope} output`,
+      async () => {
+        await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+        await writeLocalWorkspace(root)
+        const marker = path.join(root, 'tried')
+        await write(
+          path.join(root, 'p/vx.config.mjs'),
+          `export default { tasks: { build: {
+             exec: {
+               command: 'if [ ! -f ${marker} ]; then touch ${marker}; echo HALF > ${half}; exit 1; fi; mkdir -p gen; echo ok > gen/out.js',
+               retries: 1,
+             },
+             inputs: { files: ['src/**'] },
+             outputs: { files: ['gen/**'], workspaceFiles: ['wsgen/**'], clean: ${clean} },
+             cache: true,
+           } } }`,
+        )
+        await write(path.join(root, 'p/src/a'), 'x')
+        await write(path.join(root, file), 'original\n')
+        await write(path.join(root, '.gitignore'), '.vx/cache/\ntried\n')
+        git(root, 'init', '-q')
+        expect(vx(root, 'lock')).not.toMatch(/✗/)
+        git(root, 'add', '-A')
+        git(root, 'commit', '-q', '-m', 'initial')
+
+        expect(vx(root, 'run', 'p#build')).toMatch(/2 attempts/)
+        git(root, 'checkout', '--', file)
+        expect(vx(root, 'run', 'p#build')).not.toMatch(/restored|up-to-date/)
+        expect(await readFile(path.join(root, file), 'utf8')).toBe('original\n')
+        // The clean run that followed is the entry.
+        await rm(path.join(root, 'p/gen/out.js'))
+        expect(vx(root, 'run', 'p#build')).toMatch(/p#build[^\n]*restored-local/)
+        expect(await readFile(path.join(root, file), 'utf8')).toBe('original\n')
+      },
+      TIMEOUT,
+    )
+
   it(
     'a committed file under a root-anchored output survives the clean before a run',
     async () => {
@@ -714,6 +761,48 @@ describe('stale cache hits', () => {
       expect(() => runGitLsFiles(p)).toThrow(/^git could not open the directory p\/d{38}…/)
       await write(path.join(root, '.gitignore'), `p/${seg}/\n`)
       await enumerate([p])
+    },
+    TIMEOUT,
+  )
+
+  // A directory removed between git's read of its parent and its own open
+  // (a run lock's staging directory renamed in a TMPDIR inside the
+  // workspace) warned `No such file or directory`, and the run was
+  // refused as a path too long. Nothing is under a directory that is not
+  // there; one still there that git could not open still refuses.
+  it(
+    'a directory gone before git opened it is no refusal; one still there is',
+    async () => {
+      await write(path.join(root, 'p/package.json'), '{}')
+      await write(path.join(root, 'p/kept/f'), 'x')
+      git(root, 'init', '-q')
+      const bin = await mkdtemp(path.join(os.tmpdir(), 'vx-git-shim-'))
+      const real = Bun.which('git')!
+      const shim = (dir: string, reason: string) =>
+        writeFile(
+          path.join(bin, 'git'),
+          `#!/bin/sh\nfor a; do case "$a" in ls-files|status) echo "warning: could not open directory '${dir}/': ${reason}" >&2;; esac; done\nexec ${real} "$@"\n`,
+          { mode: 0o755 },
+        )
+      const saved = process.env['PATH']
+      process.env['PATH'] = `${bin}:${saved}`
+      try {
+        const p = path.join(root, 'p')
+        const enumerate = (dirs: string[]) => populateGitFilesCache(root, dirs, new GitFilesCache())
+        await shim('p/gone', 'No such file or directory')
+        for (const dirs of [[root], [p]]) await enumerate(dirs)
+        expect(runGitLsFiles(p).files).toContain('kept/f')
+        await shim('p/package.json/x', 'Not a directory')
+        expect(runGitLsFiles(p).files).toContain('kept/f')
+        await shim('p/kept', 'Too many open files')
+        await expect(enumerate([root])).rejects.toThrow(
+          /^git could not open the directory p\/kept\//,
+        )
+        expect(() => runGitLsFiles(p)).toThrow(/^git could not open the directory p\/kept\//)
+      } finally {
+        process.env['PATH'] = saved
+        await rm(bin, { recursive: true, force: true })
+      }
     },
     TIMEOUT,
   )
@@ -1252,6 +1341,30 @@ describe.skipIf(process.platform === 'darwin')('a name that is not UTF-8', () =>
       const second = vxExit(root, 'run', 'build')
       expect(second.out).not.toContain('restored')
       expect(second.out).not.toMatch(/ \d+✓/)
+    },
+    TIMEOUT,
+  )
+
+  // The command exited 0: `failed (exit 1)` with `(0ms)` named an exit it
+  // never returned and dropped the time it took; the next run's clean
+  // refusal ran no command at all.
+  it(
+    'a save or clean refused by that name names the step, not an exit the command never returned',
+    async () => {
+      await project(`mkdir -p dist && printf b > "dist/$(printf 'x\\377y')" && sleep 0.3`)
+      git(root, 'init', '-q')
+      const first = vxExit(root, 'run', 'build')
+      expect([first.code, first.out]).toEqual([1, expect.stringContaining('cannot save')])
+      expect(first.out).toContain('failed (cache save failed)')
+      expect(first.out).not.toContain('exit 1')
+      expect(first.out).not.toContain('(0ms)')
+      const last = vxExit(root, 'last')
+      expect(last.out).toContain('cache save failed')
+      expect(last.out).not.toContain('exit 1')
+      const second = vxExit(root, 'run', 'build')
+      expect([second.code, second.out]).toEqual([1, expect.stringContaining('cannot clear')])
+      expect(second.out).toContain('failed (output clean failed)')
+      expect(second.out).not.toContain('exit 1')
     },
     TIMEOUT,
   )

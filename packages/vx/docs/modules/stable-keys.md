@@ -66,7 +66,9 @@ check-ignore` over their directories (`util/git-ignored.ts`) that
   A **cached** task may rewrite its own inputs in place (a formatter with
   `outputs: []`), and `commandWriteReach` says where: it counts only for
   a reader whose key does not fold its key, on some path of folds
-  (`tasks: []`, or a filter that leaves it out). A key that folds the
+  (`tasks: []`, or a filter that leaves it out, a keyed group's own
+  filter included: read as folding everything, a keyed group's
+  `tasks: []` hid the rewriter and its reader was restored). A key that folds the
   rewriter's names what it writes, since what it may rewrite are its own
   inputs; a key that does not was taken over the bytes before it (item
   750: the cached twin of 743's A,B,B,A, replaying B on the fourth run).
@@ -94,11 +96,12 @@ check-ignore` over their directories (`util/git-ignored.ts`) that
   previous run's bytes. A writer is an upstream whose command may write
   (`commandWriteReach`) or that declares outputs; "does not fold" is
   `graph/folds.ts`' `foldedDeps`, transitively (a writer behind a
-  folded dependency that leaves it out counts). `deriveStableKeys`
+  folded dependency that leaves it out counts; so does a folded writer
+  that is not cached, whose writes its key does not follow). `deriveStableKeys`
   takes no key for such a task (unstable, so never probed or restored
   ahead of its writer, and its probe is not spawned up front), and
   `ComputeHashArgs.probesAfterWrites` answers its probes for it alone.
-  A key that folds the writer's keeps the run's shared answer: an early
+  A key that folds a cached writer's keeps the run's shared answer: an early
   answer then costs a spurious miss on the run after the bytes change,
   never a stale hit. Memoised per graph; a graph with no probe walks
   nothing.

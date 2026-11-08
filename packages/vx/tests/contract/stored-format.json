@@ -1,6 +1,6 @@
 {
   "index": {
-    "version": "v54",
+    "version": "v55",
     "layout": [
       "CREATE INDEX invocations_branch  ON invocations(branch)",
       "",
@@ -161,6 +161,7 @@
       "path        TEXT NOT NULL,",
       "ino         INTEGER NOT NULL,",
       "ctime_ms    INTEGER NOT NULL,",
+      "mtime_ms    INTEGER NOT NULL,",
       "PRIMARY KEY (entry_hash, path)",
       ")",
       "",
@@ -276,7 +277,7 @@
     ]
   },
   "artifact": {
-    "version": "vx-cache-v51",
+    "version": "vx-cache-v52",
     "layout": {
       "entries": [
         {

@@ -44,10 +44,19 @@ export function gitOfDiscovery(projects: readonly ProjectMeta[]): LazyGitEnumera
 export function lockOfDiscovery(
   projects: readonly ProjectMeta[],
 ): (() => Promise<Lockfile>) | undefined
-// The package graph a selection pass built over that array with no task edge
-// in it: the graph a run reusing the discovery would build again.
+// The package graph a selection pass built over that array whose task edges
+// added none: the graph a run reusing the discovery would build again.
 export function keepDiscoveryGraph(projects: readonly ProjectMeta[], graph: PackageGraph): void
 export function graphOfDiscovery(projects: readonly ProjectMeta[]): PackageGraph | undefined
+// Why a project a `discover` plugin added has no config while its directory
+// holds one git ignores (`config`, looked for when not given), naming the
+// plugin, or undefined: `vx lock` refuses it, and a run says it instead of
+// "run `vx lock`", which reads only what git lists.
+export function ignoredConfigRefusal(
+  root: string,
+  meta: { readonly name: string; readonly dir: string },
+  config?: string,
+): string | undefined
 
 // The graph is read only for the closure, so only a closure load needs one.
 export type LoadProjectsArgs = LoadProjectsBase &

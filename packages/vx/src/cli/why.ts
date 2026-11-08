@@ -13,6 +13,8 @@ import {
   explainCacheKey,
   inputWriters,
   latestRunId,
+  LocalHistoryProvider,
+  recordedTasks,
   rootCauses,
   upstreamTask,
   whyDidThisRerun,
@@ -20,6 +22,7 @@ import {
 import { resolveRunId } from '../orchestrator/index.js'
 import { MASKED, nearMatches, printable, refusal, UserError } from '../util/index.js'
 import * as ui from '../ui/index.js'
+import type { InputWriter, RootCause } from '../history/index.js'
 import type { Style } from '../ui/index.js'
 import { runRules } from '../settings.js'
 import { buildPackageGraph, findWorkspaceRoot } from '../workspace/index.js'
@@ -155,8 +158,8 @@ async function resolveTarget(
   cache: Cache,
   target: string,
   cwdProject: () => Promise<string | null>,
-  declared: () => Promise<boolean>,
-  declaresId: (id: string) => Promise<boolean>,
+  declared: () => Promise<Declared>,
+  declaresId: (id: string) => Promise<Declared>,
 ): Promise<string> {
   const db = indexDb(cache)
   if (target.includes('#')) {
@@ -168,6 +171,7 @@ async function resolveTarget(
       .query('SELECT 1 FROM main.runs WHERE project = ? AND task = ? ORDER BY id DESC LIMIT 1')
       .get(project, task)
     if (hit !== null) return target
+    if ((await declaresId(target)) === 'group') throw groupRefusal(target)
   } else {
     // A bare name reads only its own task's rows: the DISTINCT over every
     // pair sorted the whole history (24 of 26 ms at 58k rows), and its list
@@ -179,13 +183,17 @@ async function resolveTarget(
         project: string
       }[]
     ).map((r) => `${r.project}#${target}`)
-    const here = matches.length > 0 ? await cwdProject() : null
+    // Asked even when no project ran it: the cwd project's own that never
+    // ran read as a name nobody declares.
+    const here = await cwdProject()
     if (here !== null) {
       const own = `${here}#${target}`
       if (matches.includes(own)) return own
       // `vx run build` here runs this project's own: another project's
       // runs were explained in its place, unsaid.
-      if (await declaresId(own)) {
+      const kind = await declaresId(own)
+      if (kind === 'group') throw groupRefusal(own)
+      if (kind !== false) {
         throw refusal(
           { tone: 'info', headline: `no runs of ${own} yet`, fix: `vx run ${target}` },
           { code: 'VX_E_NO_HISTORY', message: `vx why: no recorded runs for "${own}"` },
@@ -201,10 +209,7 @@ async function resolveTarget(
       )
     }
   }
-  const pairs = db
-    .query('SELECT DISTINCT project, task FROM main.runs ORDER BY project, task')
-    .all() as Array<{ project: string; task: string }>
-  const ids = pairs.map((p) => `${p.project}#${p.task}`)
+  const ids = new LocalHistoryProvider(db).recentTaskIds()
   const invoked = ids.length === 0 && db.query('SELECT 1 FROM invocations LIMIT 1').get() !== null
   if (ids.length === 0 && !invoked) {
     // `vx run` of a task no project declares is refused: its advice was that.
@@ -212,7 +217,7 @@ async function resolveTarget(
     // Where the cwd's project does not declare it (a monorepo root), a bare
     // `vx run build` is refused too: that advice sent the user in a circle.
     const here = known && !target.includes('#') ? await cwdProject() : null
-    const all = here !== null && !(await declaresId(`${here}#${target}`)) ? ' --all' : ''
+    const all = here !== null && (await declaresId(`${here}#${target}`)) === false ? ' --all' : ''
     throw refusal(
       known
         ? { tone: 'info', headline: `no runs of ${target} yet`, fix: `vx run ${target}${all}` }
@@ -343,18 +348,16 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
     // each moved dependency in this run down to the tasks whose own
     // inputs moved, so one `vx why` names the file, not the next task.
     // A group records no run: the graph names what it gathers.
+    const recorded = recordedTasks(db, runId)
     const unrecorded = diff.entries.filter(
-      (e) =>
-        e.kind === 'upstream' &&
-        e.change === 'changed' &&
-        !cacheKeyDiff(db, runId, upstreamTask(e.name)).found,
+      (e) => e.kind === 'upstream' && e.change === 'changed' && !recorded.has(upstreamTask(e.name)),
     )
     const groups = unrecorded.length > 0 ? await groupMembers(root, taskId) : new Map()
     const roots = rootCauses(db, runId, taskId, diff.entries, groups)
-    const writers = inputWriters(db, root, taskId, diff.entries, roots)
+    const writers = inputWriters(db, runId, root, taskId, diff.entries, roots)
 
     if (parsed.format === 'json') {
-      ui.data('out', `${JSON.stringify({ taskId, runId, why, diff, roots, writers })}\n`)
+      await ui.dataPieces('out', jsonPieces({ taskId, runId, why, diff }, roots, writers))
       return 0
     }
 
@@ -421,8 +424,18 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
           const what = r.entries.map((e) =>
             e.name === e.kind ? e.kind : `${e.kind} ${printable(e.name)}`,
           )
+          // A 20,000-task chain printed whole is one 389 KB line.
+          const chain = r.chain
+          const ids =
+            chain.length > CHAIN_SHOWN
+              ? [
+                  ...chain.slice(0, 2).map((id) => ui.id(id)),
+                  ui.dim(`${chain.length - 5} more`),
+                  ...chain.slice(-3).map((id) => ui.id(id)),
+                ]
+              : chain.map((id) => ui.id(id))
           return [
-            ...r.chain.flatMap((id, i) => [...(i > 0 ? [ui.dim(' \u2190 ')] : []), ui.id(id)]),
+            ...ids.flatMap((id, i) => [...(i > 0 ? [ui.dim(' \u2190 ')] : []), id]),
             ui.dim(' \u2190 '),
             ui.strong(
               `${what.slice(0, 3).join(', ')}${what.length > 3 ? ` and ${what.length - 3} more` : ''}`,
@@ -484,6 +497,33 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
 
 const ROOTS_SHOWN = 5
 
+/** Longer root-cause chains print their two ends around a count. */
+const CHAIN_SHOWN = 6
+
+/** Bytes of roots per piece written. */
+const PIECE_BYTES = 1 << 20
+
+/**
+ * `{ ...head, roots, writers }` as one `JSON.stringify` of it gives, in
+ * pieces: every root carries its whole chain, so a 20,000-task chain's
+ * roots hold 2×10⁸ ids, more than one string holds.
+ */
+function* jsonPieces(
+  head: object,
+  roots: readonly RootCause[],
+  writers: readonly InputWriter[],
+): Generator<string> {
+  let piece = `${JSON.stringify(head).slice(0, -1)},"roots":[`
+  for (let i = 0; i < roots.length; i++) {
+    piece += `${i > 0 ? ',' : ''}${JSON.stringify(roots[i])}`
+    if (piece.length >= PIECE_BYTES) {
+      yield piece
+      piece = ''
+    }
+  }
+  yield `${piece}],"writers":${JSON.stringify(writers)}}\n`
+}
+
 const CHANGE_HUE: Record<string, Style> = { added: 'ok', removed: 'error', changed: 'warn' }
 
 type DiffEntry = ReturnType<typeof cacheKeyDiff>['entries'][number]
@@ -522,21 +562,39 @@ function upstreamTodo(upstream: readonly DiffEntry[], unrecorded: readonly DiffE
   return out
 }
 
-/** Whether a project declares `target` (`pkg#task`, or a bare task); true when no config loads. */
-async function declares(root: string, target: string, own = false): Promise<boolean> {
+/** A declared group (no `exec`) records no run: `group` when every declaration is one. */
+type Declared = false | 'task' | 'group'
+
+/** Whether a project declares `target` (`pkg#task`, or a bare task); `task` when no config loads. */
+async function declares(root: string, target: string, own = false): Promise<Declared> {
   try {
     const projects = await loadCliProjects(root, await discoverCliProjects(root), 'all')
     const [project, task] = target.includes('#') ? splitTaskId(target) : [undefined, target]
-    return [...projects.values()].some(
-      (p) =>
-        (project === undefined || p.name === project) &&
+    const found = [...projects.values()].flatMap((p) => {
+      const t = p.config.tasks?.[task]
+      return (project === undefined || p.name === project) &&
         Object.hasOwn(p.config.tasks ?? {}, task) &&
-        !(own && isDefaultBuild(p.config.tasks?.[task])),
-    )
+        !(own && isDefaultBuild(t))
+        ? [t]
+        : []
+    })
+    if (found.length === 0) return false
+    // The default build is a group too, but no one declared it.
+    return found.every((t) => t?.exec === undefined && !isDefaultBuild(t)) ? 'group' : 'task'
   } catch {
     // quiet: with no lock or a broken config, the run says why itself
-    return true
+    return 'task'
   }
+}
+
+function groupRefusal(id: string): UserError {
+  return refusal(
+    { tone: 'info', headline: `${id} is a group, which records no run`, fix: `vx show ${id}` },
+    {
+      code: 'VX_E_NO_HISTORY',
+      message: `vx why: ${id} is a group, which records no run (vx show ${id} names what it gathers)`,
+    },
+  )
 }
 
 /**
