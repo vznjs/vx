@@ -57,6 +57,13 @@ it("a subgroup's project path is kept whole, as gitlab() names it", () => {
   expect(localBranchScope(root, undefined, env)).toBe('acme/web/app:feat')
 })
 
+// The scope reaches a remote cache: a token in the URL's query rode in it.
+it('a token in the remote URL never reaches the scope', () => {
+  git('remote', 'set-url', 'origin', 'https://u:p@ss@gitlab.com/acme/app.git?private_token=SECRET')
+  git('checkout', '-q', '-b', 'feat')
+  expect(localBranchScope(root, undefined, env)).toBe('acme/app:feat')
+})
+
 it('no remote URL, no scope: nothing names the repository', () => {
   git('remote', 'remove', 'origin')
   git('checkout', '-q', '-b', 'feat')

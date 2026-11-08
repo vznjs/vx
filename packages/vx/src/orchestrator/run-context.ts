@@ -455,13 +455,17 @@ function workTreePath(root: string): string | undefined {
  * Normalize a git remote URL so every checkout of the same repository
  * derives the SAME workspace id: `git@github.com:o/r.git`,
  * `ssh://git@github.com/o/r`, and `https://github.com/o/r.git` all
- * reduce to `github.com/o/r`.
+ * reduce to `github.com/o/r`. No credential survives: the userinfo ends
+ * at the last `@` before the path, as a URL parser splits it (a password
+ * may hold `@`), and a query or fragment (`?private_token=`) is dropped.
  */
 export function normalizeRemoteUrl(raw: string): string {
   let s = raw.trim().toLowerCase()
   const hadProtocol = /^[a-z+]+:\/\//.test(s)
   s = s.replace(/^[a-z+]+:\/\//, '') // protocol
-  s = s.replace(/^[^@/]+@/, '') // user[:pass]@
+  s = s.replace(/[?#].*$/s, '') // ?query, #fragment
+  // user[:pass]@; scp shorthand has no password, and its path follows a `:`.
+  s = s.replace(hadProtocol ? /^[^/]*@/ : /^[^@/]+@/, '')
   // A `:port` only appears in a protocol-form URL (`ssh://host:2222/path`); the
   // scp shorthand `host:path` has no port. STRIP it (the old code reinserted it
   // as a path segment, so `ssh://host:2222/o/r` and `https://host/o/r` — the
