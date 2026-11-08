@@ -124,7 +124,6 @@ export function armWatcher(
   timeoutMs?: number,
 ): ArmedWatcher
 export function modifiedBefore(abs: string, t: number): boolean
-export function fsClockNow(dir: string): number
 export const CLOSED: WatchHandle // watches nothing: a dropped slot, an arm not made
 export class WatcherPool {
   constructor(skip: (dir: string, rel: string) => boolean) // what the poller leaves unsampled

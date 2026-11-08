@@ -1018,6 +1018,43 @@ export interface RemoteTraffic {
   readonly keys: Map<string, RemoteKeyTraffic>
 }
 
+/**
+ * Core's own cache's `hashFile`, also told the ctime of the stat its digest
+ * came from (`hashFileSeen`). Kept off `CacheLayer`, a public type: another
+ * layer has none here.
+ */
+const seenHashers = new WeakMap<
+  CacheLayer,
+  {
+    /** The layer's `hashFile` when it registered: one replaced since is not this. */
+    method: CacheLayer['hashFile']
+    hash: (file: string, seen: (ctimeMs: number) => void) => Promise<string>
+  }
+>()
+
+/**
+ * `layer.hashFile(file)`, and `seen` told the ctime of the stat the digest
+ * came from when the layer is core's own cache (the re-check's tie rule,
+ * `InputFact.ctimeMs`). Any other layer tells nothing, and so does one
+ * whose `hashFile` was replaced since.
+ */
+export function hashFileSeen(
+  layer: CacheLayer,
+  file: string,
+  seen: (ctimeMs: number) => void,
+): Promise<string> {
+  const own = seenHashers.get(layer)
+  return own === undefined || own.method !== layer.hashFile
+    ? layer.hashFile(file)
+    : own.hash(file, seen)
+}
+
+/** `to` answers `hashFileSeen` as `from` does: a layer over core's cache. */
+export function shareSeenHasher(from: CacheLayer, to: CacheLayer): void {
+  const own = seenHashers.get(from)
+  if (own !== undefined) seenHashers.set(to, { method: to.hashFile, hash: own.hash })
+}
+
 export class Cache implements CacheLayer {
   /** This IS the local layer — there is nothing slower behind it. */
   readonly hasRemote = false
@@ -1470,6 +1507,10 @@ export class Cache implements CacheLayer {
     // The slices: each owns its statements over this handle and its table(s);
     // the schema above is the one place every table is declared.
     this.files = new FileHashStore(this.db, cacheDir, this.write, repoDir)
+    seenHashers.set(this, {
+      method: this.hashFile,
+      hash: (file, seen) => this.guard(() => this.files.hashFile(file, seen)),
+    })
     this.outputs = new OutputIndex(this.db, this.writeBlocked === null && !this.inspecting)
     this.folds = new IndexFoldMemo(this.db, this.write && !this.inspecting)
     this.history = new RunHistory(this.db, (v) => this.digestValue(v))

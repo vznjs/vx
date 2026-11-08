@@ -9,12 +9,14 @@ import {
   behindLink,
   filesToken,
   foldHead,
+  hashFileSeen,
   type InputListing,
   type CacheKeyInput,
   type CacheLayer,
   FILE_HASH_RACY_MS,
   racyWindowMs,
   resolveInputs,
+  stampGrainMs,
   type ResolveInputsArgs,
   type GitFilesCache,
   type TaskInputComponent,
@@ -184,6 +186,12 @@ export interface InputFact {
   digest: string
   since: number
   /**
+   * The ctime of the stat its digest came from, for a file hashed at the
+   * describe (an index OID was not stat'ed): a ctime still equal to it is
+   * not a write since, though the command's start shares its coarse tick.
+   */
+  ctimeMs?: number
+  /**
    * For a link, the content behind it (`behindLink`), which the key folds
    * after the link's own target string. An edit there leaves the link
    * untouched, so the re-check compares this rather than the link's ctime.
@@ -211,8 +219,13 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
   const hashedAt = Date.now()
   const { input, listings } = await resolveKeyInput(args)
   const sorted = [...input.inputFiles].sort()
+  const ctimes = new Map<string, number>()
   const digests = await Promise.all(
-    sorted.map((f) => input.fileHashes?.get(f) ?? args.cache.hashFile(f).catch(absentOr)),
+    sorted.map(
+      (f) =>
+        input.fileHashes?.get(f) ??
+        hashFileSeen(args.cache, f, (c) => ctimes.set(f, c)).catch(absentOr),
+    ),
   )
   // Learned BEFORE the key folds it: an edit in between then reads as a
   // move at the re-check (a withheld save), never as content the key
@@ -238,6 +251,8 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
       digest: digests[i]!,
       since: input.fileHashes?.has(f) === true ? indexedAt : hashedAt,
     }
+    const ctimeMs = ctimes.get(f)
+    if (ctimeMs !== undefined) fact.ctimeMs = ctimeMs
     const linked = behind.get(f)
     if (linked !== undefined) fact.behind = linked
     return fact
@@ -296,11 +311,15 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
  * a file whose ctime is older than its fact (by the racy window, as git
  * judges its index) has not been written since, and one that is not gets
  * hashed again and compared. ctime, because no writer can set it back. A
- * file that is gone has moved. One written at or after `commandFrom` (the
- * describe just before the command) has moved whatever it holds now: an
- * input changed and changed BACK while the command ran matched its digest
- * again, and the entry saved the other content's output under the key (item
- * 1015). A write before it — an upstream's — is judged by content, as before.
+ * file that is gone has moved. One written after `commandFrom` (read off
+ * the file system's clock, `fsClockNow`, just after the describe) has moved
+ * whatever it holds now: an input changed and changed BACK while the
+ * command ran matched its digest again, and the entry saved the other
+ * content's output under the key (item 1015). A write before it — an
+ * upstream's — is judged by content, as before. A coarse clock dates a
+ * write in `commandFrom`'s own tick at it, before or after: such a ctime is
+ * the upstream's when the describe's stat saw it already
+ * (`InputFact.ctimeMs`), else the command's.
  * `byBytes` (`inputs.stability.strategy: 'mutable'`) judges a write during
  * the command by content too, when it answers true for that file and its
  * ctime: the task says the same bytes are its own identical rewrite
@@ -327,9 +346,14 @@ export async function movedInput(
     // Back since the key folded it gone.
     if (f.digest === ABSENT_INPUT) return f.path
     // A whole-second stamp may stand for any write in its second (two for
-    // an even one, FAT's tick), one during the command included
-    // (`racyWindowMs`).
-    if (commandFrom !== undefined && ctimeMs >= commandFrom - racyWindowMs(ctimeMs, 0)) {
+    // an even one, FAT's tick), one during the command included. No lag
+    // widens it: `commandFrom` is on the file system's clock already.
+    const grainMs = stampGrainMs(ctimeMs)
+    if (
+      commandFrom !== undefined &&
+      (ctimeMs > commandFrom ||
+        (ctimeMs >= commandFrom - grainMs && (grainMs > 0 || f.ctimeMs !== ctimeMs)))
+    ) {
       if (byBytes?.(f.path, ctimeMs) !== true) return f.path
       suspects.push(f)
       continue

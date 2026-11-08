@@ -19,13 +19,8 @@ import {
   makeRootEventFilter,
   makeWatchIgnore,
 } from '../src/cli/watch-filter.js'
-import {
-  armWatcher,
-  fsClockNow,
-  modifiedBefore,
-  pollWatcher,
-  WATCH_PROBE,
-} from '../src/cli/watch-fs.js'
+import { armWatcher, modifiedBefore, pollWatcher, WATCH_PROBE } from '../src/cli/watch-fs.js'
+import { fsClockNow } from '../src/cache/index.js'
 import { watchProbeDelivered } from './helpers/watch-events.js'
 import { edgesSource, packagesSource, PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 import { lock } from './helpers/orchestrator.js'
@@ -1122,7 +1117,7 @@ describe('fsClockNow — the arm instant on the mtime clock', () => {
         fs.writeFileSync(f, String(writes))
         expect(modifiedBefore(f, armedAt)).toBe(false)
       }
-      expect(fs.existsSync(path.join(dir, '.vx-watch-clock'))).toBe(false)
+      expect(fs.readdirSync(dir)).toEqual(['edit.txt'])
       // And a file from before the arm still reads as before it.
       await writeFile(f, 'old')
       await new Promise((r) => setTimeout(r, 30))

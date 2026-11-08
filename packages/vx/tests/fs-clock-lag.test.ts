@@ -127,6 +127,54 @@ describe('a file system clock behind the process', () => {
   )
 })
 
+describe('a lag the measurement calls the kernel tick', () => {
+  it(
+    'an input edited and put back as the command starts is still a moved input',
+    async () => {
+      // Linux before 6.13 stamps a file from its coarse clock, up to a tick
+      // behind a `Date.now()` read before the write, and the measurement
+      // leaves a lag that small out. The re-check took the command's start
+      // from `Date.now()`, so an edit in the command's first tick, undone
+      // before it ended, read as an upstream's write of the key's bytes,
+      // and the entry filed the edit's output under them. Simulated: the
+      // process clock moves ahead once the task starts, past the measurement.
+      const app = await addProject(root, 'app', {
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: 'IFS= read -r was < src/a.ts; echo EDITED > src/a.ts; mkdir -p dist; cat src/a.ts > dist/out.js; echo "$was" > src/a.ts' },
+                inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+              },
+            },
+          }
+        `,
+        files: { 'src/a.ts': 'X\n' },
+      })
+      await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\n')
+      gitIn(root)('add', '-A')
+      gitIn(root)('commit', '-q', '-m', 'fixture')
+
+      status = []
+      const first = await run({
+        cwd: root,
+        tasks: ['build'],
+        log: { ...logger, taskStart: () => lagBy(LAG_MS) },
+      })
+      Date.now = realNow
+      expect(first.ok).toBe(true)
+      // Before the fix: no line, and the entry held `EDITED` under X's key.
+      expect(status.filter((l) => MOVED.test(l))).toHaveLength(1)
+
+      await rm(path.join(app, 'dist'), { recursive: true, force: true })
+      const again = await runTask('build')
+      // Before the fix: a local hit, replaying the entry saved under X's key.
+      expect(statusOf(again, 'app#build')).toBe('success')
+    },
+    TIMEOUT,
+  )
+})
+
 describe('racyWindowMs', () => {
   it('widens every window by the lag, and only by a lag past the clock tick', () => {
     setFsClockLag(LAG_MS)

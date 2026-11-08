@@ -138,7 +138,7 @@ export class FileHashStore {
    * form while this hashes the worktree bytes, so `inputs.ts` drops
    * the index OID for those paths and routes them here.
    */
-  async hashFile(filePath: string): Promise<string> {
+  async hashFile(filePath: string, seen?: (ctimeMs: number) => void): Promise<string> {
     // lstatSync intentional: a single stat is ~1.6µs (Bun 1.3); the
     // async-stat equivalent adds ~75µs of Promise machinery per call.
     // Promise.all over the batched callers (key derivation) gives no
@@ -154,6 +154,7 @@ export class FileHashStore {
       // a more useful error.
       return await this.hashFileFromDisk(filePath)
     }
+    seen?.(st.ctimeMs)
     // A symlink's identity is git's: the blob of its TARGET STRING, its
     // mode-120000 index OID, so a retarget moves it. What it points to
     // folds after it (linked-inputs.ts). No memo: readlink is one syscall,

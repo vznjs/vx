@@ -62,12 +62,13 @@ export interface InputFact {
   path: string
   digest: string
   since: number
+  ctimeMs?: number // the ctime of the describe's stat behind the digest (none for an index OID)
   behind?: string // a link's content as the key folds it (`behindLink`)
 }
 export async function movedInput(
   facts: readonly InputFact[],
   cache: CacheLayer,
-  commandFrom?: number, // the describe's start, just before the command
+  commandFrom?: number, // the command's start on the file system's clock (`fsClockNow`), just after the describe
   byBytes?: (file: string, ctimeMs: number) => boolean, // `'mutable'`: true judges that write by bytes
 ): Promise<string | undefined>
 // command-windows.ts: when each command of the run ran and where it may write.
@@ -121,10 +122,13 @@ export interface UpfrontGroupKey {
   fact; a file whose ctime is not older than its fact by
   `FILE_HASH_RACY_MS` (plus a second for a whole-second stamp, two
   for an even one, `racyWindowMs`) is hashed again and compared, and a missing file
-  has moved. So has one whose ctime is at or after `commandFrom`
-  (less that widening for a whole-second stamp), whatever it holds now:
-  an input changed and changed BACK while the command ran matches its
-  digest again (item 1015). Where `byBytes` answers true (execute-task
+  has moved. So has one whose ctime is after `commandFrom` (or within
+  a whole-second stamp's widening of it), whatever it holds now: an
+  input changed and changed BACK while the command ran matches its
+  digest again (item 1015). A ctime equal to `commandFrom` shares its
+  coarse tick: it is an upstream's write, judged by content, when the
+  describe's stat saw that very ctime (`InputFact.ctimeMs`), else the
+  command's. Where `byBytes` answers true (execute-task
   passes it for `inputs.stability.strategy: 'mutable'` or
   `VX_INPUTS_STABILITY_STRATEGY=mutable`, true when no other command
   that may write the file ran between the describe and that write,

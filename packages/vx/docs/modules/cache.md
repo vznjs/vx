@@ -37,7 +37,8 @@ and key derivation logic live here.
   `behindLink(link, hashFile)` is the digest the key folds for one; the
   item-743 re-check follows each linked input again with it.
 - `fs-clock.ts` — how far the workspace's file system clock runs behind
-  this process's, measured once a run; `racyWindowMs` adds it.
+  this process's, measured once a run; `racyWindowMs` adds it. And
+  `fsClockNow`, "now" read off that clock itself.
 - `output-index.ts` — `OutputIndex`: `output_files` / `output_dirs` rows
   and the two proofs a hit runs before skipping a restore. The batched
   `getMany` hands both batch reads its live hashes as one JSON array,
@@ -216,6 +217,27 @@ export function racyWindowMs(stampMs: number, windowMs: number): number
 // kernel's 20 ms tick. Set by a test to simulate a lagging file system.
 export function measureFsClockLag(dir: string): void
 export function setFsClockLag(lagMs: number): void
+
+// "Now" on the clock that stamps the next write (fs-clock.ts): a stamp read
+// off a file written and removed in `dir`, `Date.now()` less the lag when
+// it cannot be written. The coarse kernel tick under the measured lag puts a
+// write up to a tick before a `Date.now()` read ahead of it; `vx watch`'s
+// arm and cycle start and the re-check's command start read it instead.
+export function fsClockNow(dir: string): number
+// What a stamp's own precision may hide: 1000 ms for a whole-second stamp,
+// 2000 for an even one (FAT), else 0.
+export function stampGrainMs(stampMs: number): number
+
+// `layer.hashFile(file)`, and `seen` told the ctime of the stat the digest
+// came from when the layer is core's own `Cache` (or a `LayeredCache` over
+// it): the describe records it for the re-check's tie rule
+// (task-hash.md). Off `CacheLayer`, a public type; any other layer tells
+// nothing, and the tie then counts as the command's write.
+export function hashFileSeen(
+  layer: CacheLayer,
+  file: string,
+  seen: (ctimeMs: number) => void,
+): Promise<string>
 
 // What a symlinked directory input keys (linked-inputs.ts): every regular
 // file and link under `dir`, relative and sorted, `.git`, `node_modules`,

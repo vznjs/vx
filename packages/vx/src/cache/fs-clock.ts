@@ -41,6 +41,32 @@ export function stampGrainMs(stampMs: number): number {
 }
 
 /**
+ * "Now" as the file system will stamp the next write, not as `Date.now()`
+ * reads it: a stamp read off a file written and removed in `dir` (the
+ * run's cache dir), and every later write's mtime and ctime is at or after
+ * it. Linux before 6.13 stamps from its coarse clock, a tick behind the
+ * fine clock `Date.now()` reads — on the Linux bench box 2026-09-11, 2 of
+ * 3,000 tight writes carried an mtime 5.8 ms EARLIER than a `Date.now()`
+ * taken before the write, and more under CPU load. That lag is under the
+ * one `measureFsClockLag` applies, so a window that asks "written after
+ * this moment?" takes the moment from here: `vx watch`'s arm and cycle
+ * start (an edit right after the ready line was dropped as "before the
+ * arm"), and the re-check's command start. A dir that cannot take the
+ * file falls back to `Date.now()` less the measured lag.
+ */
+export function fsClockNow(dir: string): number {
+  const stamp = path.join(dir, `.vx-clock-${process.pid}`)
+  try {
+    writeFileSync(stamp, '')
+    const at = statSync(stamp).mtimeMs
+    unlinkSync(stamp)
+    return at
+  } catch {
+    return Date.now() - lagMs
+  }
+}
+
+/**
  * Measure the lag from a file written and removed in `dir` (the run's cache
  * dir: on the workspace's file system by default, and ignored by git and
  * `vx watch`), and apply it. Once a run: one write, one stat, one unlink. A
