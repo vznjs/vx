@@ -170,7 +170,11 @@ VX_DTE_RUN=$(uuidgen) vx run build --all
 
 A worker checks out your files as git has them, uncommitted changes
 included. A file git does not track is not there: a task that reads one
-fails, naming it.
+fails, naming it. A worker builds on the bytes and modes the commit
+holds, which are what the run's key reads, with git's filters on the
+worker undone (line endings, `ident`, LFS). A task whose input is on
+disk other than the commit holds it, such as a CRLF checkout, fails,
+naming it.
 
 ---
 
@@ -199,6 +203,10 @@ run says the relay has no live run.
   no other can take.
 - A task no worker can take, such as one whose `exec.platforms` no
   machine offers, stops the run before any task starts.
+- A task that reads what an uncached task leaves on its worker, where
+  that task's `exec.worker` or `exec.platforms` rule out the reader's
+  machine, stops the run before any task starts. Cache the upstream, or
+  run both alike.
 - A sandboxed task runs inside the same `exec.sandbox` on its worker.
 - A task's `exec.timeout` counts from its start on its worker, not from
   the wait for one.

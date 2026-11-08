@@ -531,6 +531,22 @@ export function dte(options: DteOptions = {}) {
       tails = undefined
       // A run that is not distributed reads nothing.
       if (orchestrator === undefined) return undefined
+      // An uncached upstream runs again where its dependant runs, on a
+      // worker type or platform it may name otherwise: refused here, not
+      // run there (2026-11-08).
+      const { apart } = await import('./orchestrator.js')
+      const where = (n: TaskNode): string => placeOf(n.worker, n.platform) ?? ''
+      const platformOf = (n: TaskNode): string => where(n).slice(where(n).indexOf(':') + 1)
+      const bound = apart(
+        graph,
+        (u, d) =>
+          (multi && u.config.exec?.worker !== undefined && u.worker !== d.worker) ||
+          (u.config.exec?.platforms !== undefined && platformOf(u) !== platformOf(d)),
+      )
+      if (bound !== undefined)
+        throw new UserError(
+          `dte(): ${bound.dependant} runs on ${where(graph.get(bound.dependant)!)} and reads what uncached ${bound.upstream} leaves where it runs, which cannot be there: its exec.worker or exec.platforms say ${where(graph.get(bound.upstream)!)}. Cache ${bound.upstream}, or run both alike`,
+        )
       const ids = [...graph.values()]
         .filter((n) => n.config.exec?.command !== undefined)
         .map((n) => n.id)

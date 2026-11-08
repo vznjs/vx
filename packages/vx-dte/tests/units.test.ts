@@ -5325,6 +5325,7 @@ it('takes a key that reads a dependency’s outputs, which its worker restores',
       } as unknown as TaskNode,
     ] as const
   const nodes = new Map([node('a#gen', [], ['dist/**']), node('a#use', ['a#gen'])])
+  const blob = (p: string): string => git('rev-parse', `HEAD:${p}`) || 'untracked'
   const served = servedRelay()
   try {
     const o = new Orchestrator({
@@ -5342,7 +5343,8 @@ it('takes a key that reads a dependency’s outputs, which its worker restores',
       ({
         taskId: 'a#use',
         cwd: path.join(root, 'a'),
-        inputs: { files: paths.map((p) => ({ path: p, digest: 'd' })) },
+        // A tracked file's as the commit holds it: one keyed otherwise is refused.
+        inputs: { files: paths.map((p) => ({ path: p, digest: blob(p) })) },
       }) as unknown as ExecuteRequest
     const queued = await Promise.race([
       o.execute(req('a/x', 'a/dist/out')).then(

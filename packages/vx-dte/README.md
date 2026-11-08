@@ -569,7 +569,9 @@ use your own instead.
   leaves no file. One waits there up to 10 s; past that, with that worker
   gone or of another platform, or with its uncached upstreams on two
   workers, the upstream runs again where the dependant can go, and the
-  dependant follows it. A task whose upload no remote took after three
+  dependant follows it. One whose `exec.worker` or `exec.platforms` rules
+  out where its dependant runs refuses the run before a worker starts,
+  naming both: cache it, or run both alike. A task whose upload no remote took after three
   tries (too big, a 429, a reset connection) is its worker's fault: that
   worker takes no more tasks and the task runs on another; a second fault
   fails the run. Before a task runs, its
@@ -606,6 +608,15 @@ use your own instead.
   are on disk, a file flagged `assume-unchanged` or `skip-worktree` too
   (one a sparse checkout left off disk is its index's), so the same change
   on both is the same tree.
+- A worker runs the commit's bytes and modes, which are the ones the key
+  read: the run's snapshot stages each file's executable bit as on disk
+  (under `core.fileMode=false` too, as core keys it), and a worker writes
+  back as the commit holds it each file a git filter of its own checked
+  out otherwise (`text`, `eol`, `ident`, `filter` such as LFS,
+  `working-tree-encoding`, `core.autocrlf`). A task whose key hashes a
+  tracked file that is on disk other than the commit holds it (CRLF such
+  a filter wrote, an expanded ident, an LFS file's content) fails, naming
+  the file: no worker builds on those bytes.
 - A task whose key hashes a file the run's commit lacks (untracked, or
   gitignored and named outright, or inside a submodule, whose files the
   commit holds only as a gitlink) fails, naming the file: no worker has it.

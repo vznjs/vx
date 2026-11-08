@@ -1,10 +1,10 @@
 // The run's snapshot of its tracked files (src/tree.ts).
 
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
-import { snapshot, untrackedWorkspace } from '../src/tree.ts'
+import { snapshot, unfilter, untrackedWorkspace } from '../src/tree.ts'
 
 // Mid-merge, `git stash create` refuses the unmerged index, and the run
 // took HEAD for its tree: workers ran HEAD's files under keys of the
@@ -156,6 +156,80 @@ it('names an untracked workspace config, the one core loads', async () => {
     // A .ts beside it is the one core loads.
     await writeFile(path.join(ws, '.vx/workspace.ts'), 'export default {}\n')
     expect(await untrackedWorkspace(ws, (await snapshot(ws)).tree)).toBe('.vx/workspace.ts')
+  } finally {
+    await rm(repo, { recursive: true, force: true })
+  }
+})
+
+/** A fresh repository, and git run in it with an identity: its stdout, trimmed. */
+async function repository(): Promise<{ repo: string; git: (...a: string[]) => string }> {
+  const repo = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-tree-'))
+  const git = (...a: string[]) =>
+    Bun.spawnSync(
+      [
+        'git',
+        '-c',
+        'user.email=t@vx.local',
+        '-c',
+        'user.name=t',
+        '-c',
+        'commit.gpgsign=false',
+        ...a,
+      ],
+      { cwd: repo, stdout: 'pipe', stderr: 'ignore' },
+    )
+      .stdout.toString()
+      .trim()
+  git('init', '-q')
+  return { repo, git }
+}
+
+// Under core.fileMode=false (WSL's DrvFs) `add -u` staged no `chmod +x`,
+// which core keys from an lstat: workers checked the file out 644 and
+// saved what it built under the key of its 755 (2026-11-08).
+it('snapshots an executable bit core.fileMode=false hides from git', async () => {
+  const { repo, git } = await repository()
+  try {
+    await writeFile(path.join(repo, 's.sh'), '#!/bin/sh\n')
+    git('add', 's.sh')
+    git('commit', '-qm', 'a')
+    git('config', 'core.fileMode', 'false')
+    await chmod(path.join(repo, 's.sh'), 0o755)
+    const { tree } = await snapshot(repo)
+    expect(git('ls-tree', tree, 's.sh')).toStartWith('100755 ')
+  } finally {
+    await rm(repo, { recursive: true, force: true })
+  }
+})
+
+// A `.gitattributes` committed after the file: the run's disk kept LF,
+// which its key read, and a worktree checked it out CRLF, whose output
+// was saved under that key, a stale hit (2026-11-08).
+it('writes back as its blob a file a git filter checked out otherwise', async () => {
+  const { repo, git } = await repository()
+  try {
+    await writeFile(path.join(repo, 't.txt'), 'a\nb\n')
+    await writeFile(path.join(repo, 'u.txt'), 'a\nb\n')
+    git('add', '.')
+    git('commit', '-qm', 'a')
+    expect(await unfilter(repo)).toEqual([])
+    await writeFile(path.join(repo, '.gitattributes'), 't.txt text eol=crlf\n')
+    git('add', '.gitattributes')
+    git('commit', '-qm', 'crlf')
+    await rm(path.join(repo, 't.txt'))
+    git('checkout', 't.txt')
+    expect(await readFile(path.join(repo, 't.txt'), 'utf8')).toBe('a\r\nb\r\n')
+    expect(await unfilter(repo)).toEqual(['t.txt'])
+    expect(await readFile(path.join(repo, 't.txt'), 'utf8')).toBe('a\nb\n')
+    // Its tree is the commit's, as the run's.
+    expect((await snapshot(repo)).tree).toBe(git('rev-parse', 'HEAD^{tree}'))
+    // core.autocrlf needs no attribute.
+    git('config', 'core.autocrlf', 'true')
+    await rm(path.join(repo, 'u.txt'))
+    git('checkout', 'u.txt')
+    expect(await readFile(path.join(repo, 'u.txt'), 'utf8')).toBe('a\r\nb\r\n')
+    expect(await unfilter(repo)).toEqual(['u.txt'])
+    expect(await readFile(path.join(repo, 'u.txt'), 'utf8')).toBe('a\nb\n')
   } finally {
     await rm(repo, { recursive: true, force: true })
   }
