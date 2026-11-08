@@ -88,6 +88,7 @@ export function gitFiles(
   workspaceRoot: string,
 ): { listed: Set<string>; tracked: Set<string>; links: Set<string> } | undefined // one `git ls-files -t -s` at the arm; links: the symlinks, whose targets watch arms
 export function gitSpeller(root: string): (p: string) => string // a path as git spells it: a symlinked dir below the root resolved
+export function lockedExtras(workspaceRoot: string): Set<string> // the files the recorded digests read besides a claimed file (.vx/dependencies.lock.json extras), absolute: watch arms them
 export function makeRootEventFilter(
   workspaceRoot: string,
   projectDirs: readonly string[],
