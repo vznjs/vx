@@ -238,7 +238,9 @@ spawns) — easy to test against in-memory fixtures.
   against the working tree, so no base blob is ever read (a stat-dirty
   file made `git diff <base>` fetch one per file; git 2.43 crashed).
   Probes set `GIT_NO_LAZY_FETCH`: a missing commit fetched its whole
-  history.
+  history. With no `remote.origin.url` nothing is fetched: a filtered
+  fetch from no origin fails, yet first writes a promisor
+  `[remote "origin"]` into the user's config.
 - **Doesn't honor `.gitattributes` or `--diff-filter`.** A
   whitespace-only commit still marks projects as affected.
 - **Doesn't intersect with `inputs.files`.** A project is

@@ -150,6 +150,7 @@ describe('a shallow clone', () => {
   it('with no origin to fetch from, says the clone is shallow', async () => {
     const root = await clone('feat')
     gitIn(root)('remote', 'remove', 'origin')
+    const config = await Bun.file(path.join(root, '.git/config')).text()
     const refusal = await changed(root, 'HEAD~1').then(
       () => 'resolved',
       (err: Error) => err.message,
@@ -160,6 +161,8 @@ describe('a shallow clone', () => {
         'This clone is shallow and has no origin remote: fetch the base from where it lives ' +
         '(`git fetch --depth=1 <url> <base>`), or add one (`git remote add origin <url>`).',
     )
+    // A filtered fetch from no origin wrote a promisor `[remote "origin"]`.
+    expect(await Bun.file(path.join(root, '.git/config')).text()).toBe(config)
     const unset = await clone('feat')
     gitIn(unset)('remote', 'set-url', 'origin', `file://${dir}/nowhere`)
     expect(await changed(unset, 'HEAD~1').catch((err: Error) => err.message)).toBe(

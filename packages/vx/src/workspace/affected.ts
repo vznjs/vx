@@ -1476,9 +1476,10 @@ function isShallow(workspaceRoot: string): boolean {
 }
 
 /**
- * Whether origin has a URL. Asked only on a refusal, to say what to fetch
- * from. Not `git remote get-url`: a failed `fetchOrigin` with no origin
- * leaves a `[remote "origin"]` of promisor keys, which it names as a URL.
+ * Whether origin has a URL. Asked only in a shallow clone, before a fetch
+ * or on a refusal. Not `git remote get-url`: a `[remote "origin"]` of
+ * promisor keys alone (git's filtered fetch from no origin writes one) it
+ * names as a URL.
  */
 function hasOrigin(workspaceRoot: string): boolean {
   return (
@@ -1552,6 +1553,9 @@ async function originDefaultBranch(workspaceRoot: string): Promise<string | unde
  * demand. Never prompts for credentials; false when it failed.
  */
 async function fetchOrigin(workspaceRoot: string, args: string[]): Promise<boolean> {
+  // With no origin the fetch fails, yet first writes a promisor
+  // `[remote "origin"]` into the user's config.
+  if (!hasOrigin(workspaceRoot)) return false
   try {
     const proc = Bun.spawn({
       cmd: [
