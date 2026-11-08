@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, lstatSync } from 'node:fs'
 import path from 'node:path'
 import type { ExecConfig, TaskConfig, InputsConfig, InputStability } from '../config.js'
 import {
@@ -1784,10 +1784,22 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     const moved = await movedSinceKey()
     endCheck()
     if (moved === undefined) return true
-    const what =
-      (moved === null ? 'its inputs' : `\`${printable(relPosix(args.workspaceRoot, moved))}\``) +
-      ' changed after its key was taken' +
-      (rewroteBy === undefined ? '' : ` while ${rewroteBy} ran`)
+    const name =
+      moved === null ? 'its inputs' : `\`${printable(relPosix(args.workspaceRoot, moved))}\``
+    // Only its ctime moved: a hard link (`cp -al src dist`), chmod or chown.
+    // The line called that a change and offered a rewrite's way out. It is
+    // still withheld: an edit undone with its mtime put back reads the same.
+    // Not said of a change an executor reported from where it ran.
+    const fact =
+      moved === null || rewroteBy !== undefined || (result.changed?.length ?? 0) > 0
+        ? undefined
+        : keyedInputs(described!.facts).find((f) => f.path === moved)
+    const ctimeOnly =
+      fact !== undefined && (await onlyCtimeMoved(fact, described!.describedAt, cache))
+    const what = ctimeOnly
+      ? `${name}'s ctime moved while the task ran, but not its bytes or mtime (a hard link, chmod or chown)`
+      : `${name} changed after its key was taken` +
+        (rewroteBy === undefined ? '' : ` while ${rewroteBy} ran`)
     // A task that regenerates its own input (TanStack Router's committed
     // `routeTree.gen.ts`, rewritten to the same bytes by every build) is
     // never saved (item 1015), and the line said so without the way out.
@@ -1803,12 +1815,14 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // first, or the way out read as the fix for the user's own edit.
     const hint =
       (args.watch === true && rewroteBy === undefined ? '; the next cycle runs on it' : '') +
-      (moved === null || rewroteBy !== undefined || !existsSync(moved)
-        ? ''
-        : '; if the task generates it, declare it in outputs' +
-          (read && stability.strategy !== 'mutable'
-            ? "; if it rewrites it in place, set inputs.stability: { strategy: 'mutable' }"
-            : ''))
+      (ctimeOnly
+        ? "; if the task hard-links it, copy it instead, or set inputs.stability: { strategy: 'mutable' }"
+        : moved === null || rewroteBy !== undefined || !existsSync(moved)
+          ? ''
+          : '; if the task generates it, declare it in outputs' +
+            (read && stability.strategy !== 'mutable'
+              ? "; if it rewrites it in place, set inputs.stability: { strategy: 'mutable' }"
+              : ''))
     if (stability.severity === 'error') {
       warnOf(log)(
         `[vx] ${node.id}: ${what} — the result is not saved, ` +
@@ -1817,8 +1831,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       movedFails = moved === null ? '' : printable(relPosix(args.workspaceRoot, moved))
     } else {
       warnOf(log)(
-        `[vx] ${node.id}: ${what} — the result stands, ` +
-          `but is not saved under a key that no longer describes it${hint}`,
+        `[vx] ${node.id}: ${what} — ` +
+          (ctimeOnly
+            ? 'vx cannot tell that from an edit undone, so the result stands but is not saved'
+            : 'the result stands, but is not saved under a key that no longer describes it') +
+          hint,
       )
     }
     forgetUndeclaredWrites(args, wsOutputs.length > 0 ? 'workspace' : 'project')
@@ -1930,4 +1947,22 @@ function deadSourceGlobs(
     if (p.startsWith(prefix) && ownMatch(p.slice(prefix.length))) return []
   }
   return [...own, ...ws]
+}
+
+/**
+ * Whether a moved input kept the bytes and the mtime its key folded, so only
+ * its ctime moved. Asked once, of the file a re-check named: the common
+ * path pays nothing.
+ */
+async function onlyCtimeMoved(fact: InputFact, from: number, cache: CacheLayer): Promise<boolean> {
+  if (fact.digest === ABSENT_INPUT || fact.behind !== undefined) return false
+  let st
+  try {
+    st = lstatSync(fact.path)
+  } catch {
+    return false
+  }
+  if (st.ctimeMs < from - racyWindowMs(st.ctimeMs, 0)) return false
+  if (st.mtimeMs >= from - racyWindowMs(st.mtimeMs, 0)) return false
+  return (await cache.hashFile(fact.path).catch(() => undefined)) === fact.digest
 }

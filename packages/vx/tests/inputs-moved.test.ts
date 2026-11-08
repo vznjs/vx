@@ -429,6 +429,47 @@ describe('inputs.stability: what a write during the command means', () => {
 
 describe('the other moves', () => {
   it(
+    'an input the task hard-links: the line says only its ctime moved, and mutable saves it',
+    async () => {
+      // A hard link bumps the source's ctime and nothing else, which the
+      // line called a change and answered with a hint for a rewrite. It is
+      // still withheld: an edit undone with its mtime put back reads the same.
+      // The sleep only clears the kernel's coarse tick (~10 ms, fs-clock.ts),
+      // which can date a link made at once before the command began.
+      const config = (stability: string) => `
+        export default {
+          tasks: {
+            build: {
+              exec: { command: 'sleep 0.1 && mkdir -p dist && ln src/a.txt dist/a.txt' },
+              inputs: { files: ['src/**']${stability} },
+              outputs: { files: ['dist/**'] }, cache: true,
+            },
+          },
+        }
+      `
+      const app = await addProject(root, 'app', {
+        config: config(''),
+        files: { 'src/a.txt': 'a' },
+      })
+      await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\n')
+      commit()
+      await runTask('build')
+      expect(status.filter((l) => l.includes('packages/app/src/a.txt'))).toEqual([
+        "[vx] app#build: `packages/app/src/a.txt`'s ctime moved while the task ran, but not its bytes or mtime (a hard link, chmod or chown) — vx cannot tell that from an edit undone, so the result stands but is not saved; if the task hard-links it, copy it instead, or set inputs.stability: { strategy: 'mutable' }",
+      ])
+      await writeFile(
+        path.join(app, 'vx.config.mjs'),
+        config(", stability: { strategy: 'mutable' }"),
+      )
+      await rm(path.join(app, 'dist'), { recursive: true, force: true })
+      await runTask('build')
+      expect(status.filter((l) => l.includes('packages/app/src/a.txt'))).toEqual([])
+      expect(statusOf(await runTask('build'), 'app#build')).toBe('cache-hit')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'an input the task deletes: the entry is withheld',
     async () => {
       const app = await addProject(root, 'app', {

@@ -875,7 +875,13 @@ one status line names the file (``[vx] app#format: `packages/app/a.ts`
 changed after its key was taken — …``), and the run forgets what it
 knew about the project, as after an uncached task (§ Cache key
 derivation, step 11). This covers a formatter rewriting its own input
-(turborepo#10111) and a user's edit mid-run (turborepo#1146). A task
+(turborepo#10111) and a user's edit mid-run (turborepo#1146). A file
+whose ctime alone moved during the command, its bytes and mtime as the
+key found them (a hard link such as `cp -al src dist`, a chmod, a chown),
+is withheld too, since an edit undone with its mtime put back looks the
+same; its line says so (``… `app/src/a.txt`'s ctime moved while the task
+ran, but not its bytes or mtime …``) and names the ways out: copy instead
+of linking, or `inputs.stability: { strategy: 'mutable' }`. A task
 left remote (`--cache-download=none`) is held to the same checks: a moved
 key still lets a local consumer fetch its outputs, but the fetch saves
 no entry; until X-123 it saved them under the old key. A task
