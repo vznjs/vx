@@ -36,7 +36,7 @@
         "install"
       ],
       "exec": {
-        "command": "for f in tests/cache-ac-refused.test.ts tests/cancel-operation.test.ts tests/exec-e2e.test.ts tests/executor-auth.test.ts tests/executor-sweep.test.ts tests/executor.test.ts tests/fake-reapi.test.ts tests/materialise-fence.test.ts tests/merkle-sweep.test.ts tests/reapi-e2e.test.ts tests/string-map-options.test.ts tests/wedged.test.ts tests/wire-exec-unavailable.test.ts; do echo \"== $f\"; bun test --only-failures \"$f\" --timeout 90000 || exit 1; done",
+        "command": "for f in tests/cache-ac-refused.test.ts tests/cancel-operation.test.ts tests/exec-e2e.test.ts tests/executor-auth.test.ts tests/executor-sweep.test.ts tests/executor.test.ts tests/fake-reapi.test.ts tests/materialise-fence.test.ts tests/merkle-sweep.test.ts tests/reapi-e2e.test.ts tests/shared-subtree.test.ts tests/string-map-options.test.ts tests/wedged.test.ts tests/wire-exec-unavailable.test.ts; do echo \"== $f\"; bun test --only-failures \"$f\" --timeout 90000 || exit 1; done",
         "env": {
           "passThrough": [
             "VX_REAPI_TEST_ENDPOINT",
