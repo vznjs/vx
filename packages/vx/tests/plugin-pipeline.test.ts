@@ -275,6 +275,26 @@ describe('project stage', () => {
   )
 
   it(
+    'an edit to one task leaves an alike task of the same project as declared',
+    async () => {
+      // The lock pools the two alike tasks into one object; a copy that kept
+      // the sharing ran `l2` with the command the hook set for `l1`.
+      const alike = `{ exec: { command: 'echo original' }, inputs: { files: ['src/**'] }, outputs: { files: [] } }`
+      await pkg('a', `export default { tasks: { l1: ${alike}, l2: ${alike} } }`)
+      await workspace([
+        pluginSource(
+          'org/edit',
+          `{ project(config) { config.tasks.l1.exec.command = 'echo L1' } }`,
+        ),
+      ])
+      const plan = await planRun({ cwd: root, tasks: ['l1', 'l2'], log: silent() })
+      const of = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.exec?.command
+      expect([of('a#l1'), of('a#l2')]).toEqual(['echo L1', 'echo original'])
+    },
+    TIMEOUT,
+  )
+
+  it(
     'an injected task runs, and keys exactly like the same task written by hand',
     async () => {
       await pkg('a', build)

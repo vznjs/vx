@@ -402,9 +402,10 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
       }
       const frozen: ProjectConfig =
         meta.configPath === null ? { tasks: {} } : (loaded[next++] as ProjectConfig)
-      // The lock shares a task two projects declare alike: an edit in place
-      // works on this project's own copy.
-      const config = projectStage ? structuredClone(frozen) : frozen
+      // The lock shares a task, or a part of one, every place declares alike,
+      // in this project too: an edit in place works on a copy that shares
+      // nothing. `structuredClone` keeps the sharing; the lock is JSON.
+      const config: ProjectConfig = projectStage ? JSON.parse(JSON.stringify(frozen)) : frozen
       if (projectStage) {
         // The `project` stage edits the validated object in place; core
         // re-validates after EACH plugin so a plugin can only produce what
