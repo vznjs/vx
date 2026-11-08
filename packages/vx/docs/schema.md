@@ -1293,7 +1293,7 @@ either form; two `pkg#task` entries must agree on the project. One that
 is not named (`['buidl']`) is refused at load: it would match nothing at hash time and fold no upstream hash,
 decoupling the task from its dependencies with no diagnostic — a stale
 hit waiting for the next upstream change. An exact entry is held again once the
-graph is built, when the run plans: one that names none of the task's
+graph is built, by `vx lock` (and `--check`) and when the run plans: one that names none of the task's
 dependencies is refused (`['nope#build']`, or `['a#build']` for a
 project named `packages/a`, over `dependsOn: ['build']`; `['build']`
 over another project's `['b#build']`; `['^build']` over this project's
@@ -1310,7 +1310,7 @@ A filter selects among the task's own dependencies, never through a
 group: over `dependsOn: ['build']`, where `build` is a group of
 `build.a` and `build.b`, the filter sees `build`, not its members. A
 pattern that matches no dependency but does match a group's member
-(`'build.*'` there) is refused when the run plans: it would select
+(`'build.*'` there) is refused by `vx lock` and when the run plans: it would select
 nothing and stop the key moving with that member. Name the group, or
 depend on the member directly.
 

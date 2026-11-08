@@ -44,8 +44,8 @@ export function refuseFiltersThroughGroups(nodes: ReadonlyMap<string, TaskNode>)
   entry or dependency with any form whose task half matches, unable to
   tell this project's name from another's, so `['nope#build']` over
   `dependsOn: ['build']` (or `['build']` over `['b#build']`) selected
-  nothing and replayed a stale hit. Once the graph is built it is
-  refused unless a `^` entry or a pattern names its task, either of
+  nothing and replayed a stale hit. Once the graph is built (`vx lock`,
+  `--check` and a run's plan) it is refused unless a `^` entry or a pattern names its task, either of
   which may match nothing in a preset's project.
 - **A group folds every dependency**; an exec task what its
   `inputs.tasks` selects (absent means all).

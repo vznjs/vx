@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { appendFile, rm } from 'node:fs/promises'
+import { appendFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { run } from './helpers/orchestrator.js'
 import {
@@ -10,6 +10,11 @@ import {
 import { addProject, makeWorkspace, silentLogger, TIMEOUT } from './helpers/orchestrator-fixture.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 import { UserError } from '../src/util/index.js'
+
+const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+
+/** A refusal as `vx lock` says it, which a run's lock helper throws first. */
+const byLock = (message: string) => `✗ vx lock  lock not written\n\n  ${message}`
 
 // filterUpstreamHashes(upstream, filter, selfProjectName, selfTaskId) →
 // Array<[upstreamTaskId, hash]>. The filter is Turbo/Nx micro-syntax
@@ -366,7 +371,9 @@ describe('inputs.tasks through a group', () => {
     'a pattern that matches only a member is refused, naming the member and the group',
     async () => {
       expect(await runWith(['build.*'])).toBe(
-        "@x/a#test: inputs.tasks: 'build.*' matches @x/a#build.a only through the group @x/a#build, so it selects nothing; name 'build' or depend on @x/a#build.a directly",
+        byLock(
+          "@x/a#test: inputs.tasks: 'build.*' matches @x/a#build.a only through the group @x/a#build, so it selects nothing; name 'build' or depend on @x/a#build.a directly",
+        ),
       )
       expect(await runWith(['*.b'])).toContain("'*.b' matches @x/a#build.b only through")
     },
@@ -427,21 +434,29 @@ describe('inputs.tasks: an exact entry naming no dependency', () => {
   }
 
   it(
-    'is refused when the run plans, naming the dependencies it could have named',
+    'is refused by vx lock, naming the dependencies it could have named',
     async () => {
       const tail =
         'so it selects nothing and the key would not move with them; fix the name, or use [] to decouple on purpose'
       expect(await runWith(['nope#build'])).toBe(
-        `@x/a#test: inputs.tasks: 'nope#build' names none of its dependencies (@x/a#build), ${tail}`,
+        byLock(
+          `@x/a#test: inputs.tasks: 'nope#build' names none of its dependencies (@x/a#build), ${tail}`,
+        ),
       )
       expect(await runWith(['a#build'])).toBe(
-        `@x/a#test: inputs.tasks: 'a#build' names none of its dependencies (@x/a#build), ${tail}`,
+        byLock(
+          `@x/a#test: inputs.tasks: 'a#build' names none of its dependencies (@x/a#build), ${tail}`,
+        ),
       )
       expect(await runWith(['build'], ['@x/b#build'])).toBe(
-        `@x/a#test: inputs.tasks: 'build' names none of its dependencies (@x/b#build), ${tail}`,
+        byLock(
+          `@x/a#test: inputs.tasks: 'build' names none of its dependencies (@x/b#build), ${tail}`,
+        ),
       )
       expect(await runWith(['^build'], ['@x/a#build'])).toBe(
-        `@x/a#test: inputs.tasks: '^build' names none of its dependencies (@x/a#build), ${tail}`,
+        byLock(
+          `@x/a#test: inputs.tasks: '^build' names none of its dependencies (@x/a#build), ${tail}`,
+        ),
       )
     },
     TIMEOUT,
@@ -471,23 +486,29 @@ describe('inputs.tasks: an exact entry naming no dependency', () => {
 // dependencies (b#build), the filter selected none, and an edit to c's
 // sources replayed a's hit: a stale hit.
 describe('inputs.tasks: an exact entry naming a transitive dependency', () => {
-  const runWith = async (filter: string[]) => {
+  const task = (extra: string) =>
+    `{ exec: { command: 'true' }, inputs: { files: ['src/**']${extra} }, outputs: { files: [] }, cache: true, dependsOn: ['^build'] }`
+  const aConfig = (filter: string[]) =>
+    `export default { tasks: { build: ${task(`, tasks: ${JSON.stringify(filter)}`)} } }`
+  const chain = async (filter: string[]) => {
     const fixture = await makeWorkspace('vx-filter-transitive-', {
       '@x/a': ['@x/b'],
       '@x/b': ['@x/c'],
     })
-    try {
-      const task = (extra: string) =>
-        `{ exec: { command: 'true' }, inputs: { files: ['src/**']${extra} }, outputs: { files: [] }, cache: true, dependsOn: ['^build'] }`
-      for (const p of ['c', 'b'])
-        await addProject(fixture.root, `@x/${p}`, {
-          files: { [`src/${p}.js`]: '1\n' },
-          config: `export default { tasks: { build: ${task('')} } }`,
-        })
-      await addProject(fixture.root, '@x/a', {
-        files: { 'src/a.js': '1\n' },
-        config: `export default { tasks: { build: ${task(`, tasks: ${JSON.stringify(filter)}`)} } }`,
+    for (const p of ['c', 'b'])
+      await addProject(fixture.root, `@x/${p}`, {
+        files: { [`src/${p}.js`]: '1\n' },
+        config: `export default { tasks: { build: ${task('')} } }`,
       })
+    await addProject(fixture.root, '@x/a', {
+      files: { 'src/a.js': '1\n' },
+      config: aConfig(filter),
+    })
+    return fixture
+  }
+  const runWith = async (filter: string[]) => {
+    const fixture = await chain(filter)
+    try {
       return await run({
         cwd: fixture.root,
         tasks: ['@x/a#build'],
@@ -502,11 +523,42 @@ describe('inputs.tasks: an exact entry naming a transitive dependency', () => {
   }
 
   it(
-    'is refused when the run plans, as an entry naming no dependency is',
+    'is refused by vx lock, as an entry naming no dependency is',
     async () => {
       expect(await runWith(['@x/c#build'])).toBe(
-        "@x/a#build: inputs.tasks: '@x/c#build' names none of its dependencies (@x/b#build), so it selects nothing and the key would not move with them; fix the name, or use [] to decouple on purpose",
+        byLock(
+          "@x/a#build: inputs.tasks: '@x/c#build' names none of its dependencies (@x/b#build), so it selects nothing and the key would not move with them; fix the name, or use [] to decouple on purpose",
+        ),
       )
+    },
+    TIMEOUT,
+  )
+
+  // `vx lock` never called the refusal, so the lock and `--check` passed
+  // a config every run refused.
+  it(
+    'is refused by vx lock and by vx lock --check',
+    async () => {
+      const fixture = await chain(['@x/b#build'])
+      const vx = (...args: string[]) =>
+        Bun.spawnSync({ cmd: [process.execPath, BIN, ...args], cwd: fixture.root })
+      try {
+        expect(vx('lock').exitCode).toBe(0)
+        await writeFile(
+          path.join(fixture.root, 'packages', 'x-a', 'vx.config.mjs'),
+          aConfig(['@x/c#build']),
+        )
+        const said =
+          "@x/a#build: inputs.tasks: '@x/c#build' names none of its dependencies (@x/b#build)"
+        const check = vx('lock', '--check')
+        expect(check.stderr.toString()).toContain(said)
+        expect(check.exitCode).toBe(1)
+        const lock = vx('lock')
+        expect(lock.stderr.toString()).toContain(said)
+        expect(lock.exitCode).toBe(1)
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
     },
     TIMEOUT,
   )

@@ -8,7 +8,12 @@ import { open } from 'node:fs/promises'
 import path from 'node:path'
 import type { ProjectConfig } from '../config.js'
 import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
-import { buildTaskGraph, expandRequested, isDefaultBuild } from '../graph/index.js'
+import {
+  buildTaskGraph,
+  expandRequested,
+  isDefaultBuild,
+  refuseFiltersThroughGroups,
+} from '../graph/index.js'
 import {
   applyGraphStage,
   claimedDigests,
@@ -264,6 +269,9 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
         warn,
         rules,
       })
+    // A run refuses it after its `graph` stage; the lock, which holds the
+    // graph every run trusts, refuses it too.
+    refuseFiltersThroughGroups(nodes)
   } catch (err) {
     if (isUserError(err))
       return {
