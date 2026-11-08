@@ -797,16 +797,22 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
   }
 
+  const ownInputs = {
+    projectDir: node.projectDir,
+    workspaceRoot: args.workspaceRoot,
+    declared: node.config.inputs,
+  }
   const cleanArgs = {
     projectDir: node.projectDir,
     outputs,
     nestedProjectDirs: args.nestedProjectDirs,
-    inputs: node.config.inputs?.files,
+    inputs: ownInputs,
     committed: committedFiles(args.gitFilesCache, node.projectDir),
   }
   const wsCleanArgs = {
     workspaceRoot: args.workspaceRoot,
     outputs: wsOutputs,
+    inputs: ownInputs,
     committed: committedFiles(args.gitFilesCache, args.workspaceRoot),
   }
   // An ADDITIVE task (its outputs overlap an upstream's, with the edge that

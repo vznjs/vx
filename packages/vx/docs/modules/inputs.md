@@ -137,13 +137,20 @@ export function filesToken(
   >,
 ): string | undefined
 
-// `inputs`, the task's `inputs.files`: an output directory linked into
-// them refuses the task, here and in every walk below (X-55 through a link).
+// `inputs`, the task's own `inputs` (`files` under `projectDir`,
+// `workspaceFiles` under `workspaceRoot`): an output directory linked into
+// them refuses the task, here and in every walk below, the workspace
+// twins too (X-55 through a link).
+export interface OwnInputs {
+  projectDir: string
+  workspaceRoot: string
+  declared: InputsConfig | undefined
+}
 export async function resolveOutputs(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
-  inputs?: readonly string[] | undefined
+  inputs?: OwnInputs | undefined
 }): Promise<string[]>
 
 // Whether resolveOutputs takes `rel`, without the walk: a directory
@@ -163,7 +170,7 @@ export async function resolveOutputTree(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
-  inputs?: readonly string[] | undefined
+  inputs?: OwnInputs | undefined
   special?: boolean | 'later'
   clearing?: boolean
 }): Promise<OutputTree> // { files, emptyDirs, special: string[], findSpecial?: () => string[] }
@@ -179,7 +186,7 @@ export async function cleanOutputs(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
-  inputs?: readonly string[] | undefined
+  inputs?: OwnInputs | undefined
   committed?: (abs: string) => boolean // git tracks it: never removed (default: asks git)
 }): Promise<string[]>
 
@@ -187,7 +194,12 @@ export async function cleanOutputs(args: {
 // no project-dir exclusion; the clean returns the root-relative paths
 // it removed, for `GitFilesCache.markWorkspaceOutputsChanged`.
 export async function resolveWorkspaceOutputs(
-  args: { workspaceRoot: string; outputs: readonly string[]; clearing?: boolean },
+  args: {
+    workspaceRoot: string
+    outputs: readonly string[]
+    inputs?: OwnInputs | undefined
+    clearing?: boolean
+  },
   emptyDirs?: Set<string>, // filled with the empty directories the globs match
   special?: SpecialProbe, // its `find` set to list the FIFOs, sockets and devices they name
 ): Promise<string[]>
@@ -195,12 +207,14 @@ export async function resolveWorkspaceOutputs(
 export async function resolveWorkspaceOutputTree(args: {
   workspaceRoot: string
   outputs: readonly string[]
+  inputs?: OwnInputs | undefined
   special?: boolean | 'later'
   clearing?: boolean
 }): Promise<OutputTree>
 export async function cleanWorkspaceOutputs(args: {
   workspaceRoot: string
   outputs: readonly string[]
+  inputs?: OwnInputs | undefined
   committed?: (abs: string) => boolean
 }): Promise<string[]>
 
@@ -229,14 +243,14 @@ export async function stampOutputs(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
-  inputs?: readonly string[] | undefined
+  inputs?: OwnInputs | undefined
 }): Promise<Map<string, OutputStamp>>
 export async function ownOutputsSince(
   args: {
     projectDir: string
     outputs: readonly string[]
     nestedProjectDirs: string[]
-    inputs?: readonly string[] | undefined
+    inputs?: OwnInputs | undefined
   },
   before: ReadonlyMap<string, OutputStamp>,
 ): Promise<string[] | undefined>
@@ -244,9 +258,10 @@ export async function ownOutputsSince(
 export async function stampWorkspaceOutputs(args: {
   workspaceRoot: string
   outputs: readonly string[]
+  inputs?: OwnInputs | undefined
 }): Promise<Map<string, OutputStamp>>
 export async function ownWorkspaceOutputsSince(
-  args: { workspaceRoot: string; outputs: readonly string[] },
+  args: { workspaceRoot: string; outputs: readonly string[]; inputs?: OwnInputs | undefined },
   before: ReadonlyMap<string, OutputStamp>,
 ): Promise<string[] | undefined>
 export async function cleanOutputPaths(args: {

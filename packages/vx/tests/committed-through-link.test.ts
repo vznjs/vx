@@ -112,3 +112,84 @@ it(
   },
   TIMEOUT,
 )
+
+// The workspace twin: `outputs.workspaceFiles: ['packages/app/dist/**']` through
+// `app/dist -> src` was walked with no inputs, so the clean deleted the
+// untracked sources `inputs.files` or `inputs.workspaceFiles` read.
+it.each(["files: ['src/**']", "files: [], workspaceFiles: ['packages/app/src/**']"])(
+  'a workspace output dir linked into its own inputs is refused, deleting nothing (%s)',
+  async (inputs) => {
+    const dir = await addProject(f.root, 'app', {
+      files: { 'src/a.txt': 'v1', '.gitignore': 'dist\nsrc/local.env\n' },
+      config: `export default { tasks: { build: {
+        exec: { command: 'cp src/a.txt dist/a.out' },
+        inputs: { ${inputs} }, outputs: { files: [], workspaceFiles: ['packages/app/dist/**'] }, cache: true,
+      } } }`,
+    })
+    symlinkSync('src', path.join(dir, 'dist'))
+    const git = gitIn(f.root)
+    git('add', '-A')
+    git('commit', '-q', '-m', 'init')
+    await writeFile(path.join(dir, 'src/new.txt'), 'new work')
+    await writeFile(path.join(dir, 'src/local.env'), 'ignored work')
+    const r = await run({ cwd: f.root, tasks: ['build'], log: silentLogger(f) })
+    expect(r.outcomes[0]?.status).toBe('failed')
+    expect(f.err.join('\n')).toContain(`${path.join(dir, 'dist')} is a symbolic link into`)
+    expect(existsSync(path.join(dir, 'src/new.txt'))).toBe(true)
+    expect(existsSync(path.join(dir, 'src/local.env'))).toBe(true)
+    expect(existsSync(path.join(dir, 'src/a.out'))).toBe(false)
+  },
+  TIMEOUT,
+)
+
+it(
+  "a hit's restore refuses a workspace output dir since linked into its inputs, deleting nothing",
+  async () => {
+    const dir = await addProject(f.root, 'app', {
+      files: { 'src/a.txt': 'v1', '.gitignore': 'dist\nsrc/local.env\n' },
+      config: `export default { tasks: { build: {
+        exec: { command: 'mkdir -p dist && cp src/a.txt dist/a.out' },
+        inputs: { files: [], workspaceFiles: ['packages/app/src/**'] }, outputs: { files: [], workspaceFiles: ['packages/app/dist/**'] },
+        cache: true,
+      } } }`,
+    })
+    const git = gitIn(f.root)
+    git('add', '-A')
+    git('commit', '-q', '-m', 'init')
+    const miss = await run({ cwd: f.root, tasks: ['build'], log: silentLogger(f) })
+    expect(miss.outcomes[0]?.status).toBe('success')
+    await rm(path.join(dir, 'dist'), { recursive: true })
+    symlinkSync('src', path.join(dir, 'dist'))
+    await writeFile(path.join(dir, 'src/local.env'), 'ignored work')
+    const hit = await run({ cwd: f.root, tasks: ['build'], log: silentLogger(f) })
+    expect(hit.outcomes[0]?.status).toBe('failed')
+    expect(f.err.join('\n')).toContain(`${path.join(dir, 'dist')} is a symbolic link into`)
+    expect(existsSync(path.join(dir, 'src/local.env'))).toBe(true)
+    expect(existsSync(path.join(dir, 'src/a.out'))).toBe(false)
+  },
+  TIMEOUT,
+)
+
+// A project output linked into what `inputs.workspaceFiles` alone reads.
+it(
+  'an output dir linked into its own workspace inputs is refused, deleting nothing',
+  async () => {
+    const dir = await addProject(f.root, 'app', {
+      files: { 'src/a.txt': 'v1', '.gitignore': 'dist\nsrc/local.env\n' },
+      config: `export default { tasks: { build: {
+        exec: { command: 'cp src/a.txt dist/a.out' },
+        inputs: { files: [], workspaceFiles: ['packages/app/src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+      } } }`,
+    })
+    symlinkSync('src', path.join(dir, 'dist'))
+    const git = gitIn(f.root)
+    git('add', '-A')
+    git('commit', '-q', '-m', 'init')
+    await writeFile(path.join(dir, 'src/new.txt'), 'new work')
+    const r = await run({ cwd: f.root, tasks: ['build'], log: silentLogger(f) })
+    expect(r.outcomes[0]?.status).toBe('failed')
+    expect(f.err.join('\n')).toContain(`${path.join(dir, 'dist')} is a symbolic link into`)
+    expect(existsSync(path.join(dir, 'src/new.txt'))).toBe(true)
+  },
+  TIMEOUT,
+)

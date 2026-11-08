@@ -898,6 +898,13 @@ function outputExcludes(outputs: readonly string[], scope: 'project' | 'workspac
   return outputNever(outputs, scope).map(globFor)
 }
 
+/** A task's `inputs` and the directories they anchor at, for `refuseLinkedIntoInputs`. */
+export interface OwnInputs {
+  projectDir: string
+  workspaceRoot: string
+  declared: InputsConfig | undefined
+}
+
 /**
  * Resolve declared output globs (project-relative) to actual produced files.
  * An output directory linked out of the project is refused by name (X-88):
@@ -907,7 +914,7 @@ export async function resolveOutputs(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
-  inputs?: readonly string[] | undefined
+  inputs?: OwnInputs | undefined
 }): Promise<string[]> {
   return (await scanOutputs(args)).files
 }
@@ -936,8 +943,8 @@ export async function resolveOutputTree(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
-  /** The task's `inputs.files`: an output directory linked into them is refused. */
-  inputs?: readonly string[] | undefined
+  /** The task's own inputs: an output directory linked into them is refused. */
+  inputs?: OwnInputs | undefined
   /**
    * Also list the FIFOs, sockets and devices the globs name: a save refuses
    * them, a clean removes them. `'later'` leaves `special` empty and hands
@@ -985,7 +992,7 @@ async function scanOutputs(
     projectDir: string
     outputs: readonly string[]
     nestedProjectDirs: string[]
-    inputs?: readonly string[] | undefined
+    inputs?: OwnInputs | undefined
     clearing?: boolean
   },
   emptyDirs?: Set<string>,
@@ -1042,15 +1049,15 @@ export function committedFiles(
  * repository through `dist -> .git`. One out of the root is refused in
  * either scope too: a workspace output's every file was dropped as outside
  * and an empty entry saved, while the project twin refused the task (M-65).
- * So is one holding an entry of `inputs`, the task's own input globs
- * relative to `root`: X-55 read through the link, as `dist -> src` under
- * `src/**` had the clean delete every untracked source.
+ * So is one holding an entry of the task's own `inputs`, in either scope:
+ * X-55 read through the link, as `dist -> src` under `src/**` had the
+ * clean delete every untracked source.
  */
 function refuseDirLinkedOut(
   root: string,
   trees: readonly string[],
   scope: 'project' | 'workspace',
-  inputs?: readonly string[],
+  inputs?: OwnInputs,
 ): Set<string> {
   // The heads found absent: the scan that follows skips them without
   // asking again (a restore after a clean asks of every one).
@@ -1095,24 +1102,32 @@ function refuseDirLinkedOut(
             'link and re-run, or stop declaring outputs under it.',
         )
       }
-      if (inputs !== undefined && inputs.length > 0)
-        refuseLinkedIntoInputs(at, real, realRoot, inputs)
+      if (inputs !== undefined) refuseLinkedIntoInputs(at, real, inputs)
     }
   }
   return absent
 }
 
-/** Throws when the real directory `real`, under `realRoot`, holds an entry of `inputs` whole. */
-function refuseLinkedIntoInputs(
-  at: string,
-  real: string,
-  realRoot: string,
-  inputs: readonly string[],
-): void {
-  const rel = relPosix(realRoot, real)
-  const under = rel === '' ? '' : `${rel}/`
-  const { positive } = splitNegations(inputs)
-  if (!holdReach(positive).some((r) => r.prefix.startsWith(under))) return
+/**
+ * Throws when the real directory `real` holds an entry of `inputs` whole:
+ * `files` under the project, `workspaceFiles` under the workspace root.
+ * A link to an ancestor of the anchor holds every entry.
+ */
+function refuseLinkedIntoInputs(at: string, real: string, inputs: OwnInputs): void {
+  const holds = (anchor: string, globs: readonly string[] | undefined): boolean => {
+    const { positive } = splitNegations(globs ?? [])
+    if (positive.length === 0) return false
+    const realAnchor = realOr(anchor)
+    const rel = relPosix(realAnchor, real)
+    if (rel === '..' || rel.startsWith('../')) return isInside(real, realAnchor)
+    const under = rel === '' ? '' : `${rel}/`
+    return holdReach(positive).some((r) => r.prefix.startsWith(under))
+  }
+  if (
+    !holds(inputs.projectDir, inputs.declared?.files) &&
+    !holds(inputs.workspaceRoot, inputs.declared?.workspaceFiles)
+  )
+    return
   throw new UserError(
     `${at} is a symbolic link into ${real}, which the task's own inputs read — vx removes a ` +
       `task's outputs before it runs, so the task would delete its own sources. Remove the ` +
@@ -1267,7 +1282,7 @@ export async function cleanOutputs(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
-  inputs?: readonly string[] | undefined
+  inputs?: OwnInputs | undefined
   committed?: (abs: string) => boolean
   /**
    * What `resolveOutputs` returned for these same arguments, when the
@@ -1435,7 +1450,7 @@ export async function stampOutputs(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
-  inputs?: readonly string[] | undefined
+  inputs?: OwnInputs | undefined
 }): Promise<Map<string, OutputStamp>> {
   return stampFiles(await resolveOutputs(args))
 }
@@ -1444,6 +1459,7 @@ export async function stampOutputs(args: {
 export async function stampWorkspaceOutputs(args: {
   workspaceRoot: string
   outputs: readonly string[]
+  inputs?: OwnInputs | undefined
 }): Promise<Map<string, OutputStamp>> {
   return stampFiles(await resolveWorkspaceOutputs(args))
 }
@@ -1478,7 +1494,7 @@ export async function ownOutputsSince(
     projectDir: string
     outputs: readonly string[]
     nestedProjectDirs: string[]
-    inputs?: readonly string[] | undefined
+    inputs?: OwnInputs | undefined
   },
   before: ReadonlyMap<string, OutputStamp>,
 ): Promise<string[] | undefined> {
@@ -1487,7 +1503,7 @@ export async function ownOutputsSince(
 
 /** `ownOutputsSince` for root-anchored `outputs.workspaceFiles` (A-43). */
 export async function ownWorkspaceOutputsSince(
-  args: { workspaceRoot: string; outputs: readonly string[] },
+  args: { workspaceRoot: string; outputs: readonly string[]; inputs?: OwnInputs | undefined },
   before: ReadonlyMap<string, OutputStamp>,
 ): Promise<string[] | undefined> {
   return changedSince(await resolveWorkspaceOutputs(args), before)
@@ -1781,6 +1797,7 @@ export async function resolveWorkspaceOutputs(
   args: {
     workspaceRoot: string
     outputs: readonly string[]
+    inputs?: OwnInputs | undefined
     clearing?: boolean
   },
   emptyDirs?: Set<string>,
@@ -1790,7 +1807,7 @@ export async function resolveWorkspaceOutputs(
   if (positive.length === 0) return []
   const excludeGlobs = [...outputExcludes(positive, 'workspace'), ...asTrees(negative).map(globFor)]
   const trees = asTrees(positive)
-  const absent = refuseDirLinkedOut(args.workspaceRoot, trees, 'workspace')
+  const absent = refuseDirLinkedOut(args.workspaceRoot, trees, 'workspace', args.inputs)
   const scanned = [
     ...(await scanUnion(
       trees,
@@ -1815,6 +1832,8 @@ export async function resolveWorkspaceOutputTree(args: {
   workspaceRoot: string
   outputs: readonly string[]
   /** As `resolveOutputTree`'s. */
+  inputs?: OwnInputs | undefined
+  /** As `resolveOutputTree`'s. */
   special?: boolean | 'later'
   clearing?: boolean
 }): Promise<OutputTree> {
@@ -1836,6 +1855,7 @@ export async function resolveWorkspaceOutputTree(args: {
 export async function cleanWorkspaceOutputs(args: {
   workspaceRoot: string
   outputs: readonly string[]
+  inputs?: OwnInputs | undefined
   committed?: (abs: string) => boolean
   /** `cleanOutputs`'s `resolved`, from `resolveWorkspaceOutputs`. */
   resolved?: readonly string[] | undefined
