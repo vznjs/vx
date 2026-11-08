@@ -131,6 +131,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'restore-keep-rewrite',
     'restore-link-git',
     'restore-link-out',
+    'restore-mtime',
     'restore-umask',
     'retries',
     'root-project',
