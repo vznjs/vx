@@ -215,4 +215,105 @@ export default [
       { affected: 'build', base: 'HEAD', expect: { exit: 0, notRan: ['a#build'] } },
     ],
   }),
+  defineCase({
+    id: 'env/variable-named-proto-reaches-task',
+    category: 'env',
+    kind: 'correctness',
+    title: 'A declared variable named `__proto__` reaches the task and keys it',
+    why: '`__proto__` is a legal variable name. A tool that builds the task’s environment as a plain JavaScript object sets the object’s prototype instead of a variable, so the task never sees it while the key still counts it. The task then runs without a value the key says it had.',
+    from: ['env'],
+    needs: ['env-inputs'],
+    workspace: one(
+      build({
+        command: "mkdir -p dist && env | sed -n 's/^__proto__=//p' > dist/out.txt",
+        env: ['__proto__'],
+      }),
+    ),
+    steps: [
+      {
+        run: 'build',
+        env: { ['__proto__']: 'v1' },
+        expect: { exit: 0, files: { [out('a')]: 'v1\n' } },
+      },
+      {
+        run: 'build',
+        env: { ['__proto__']: 'v2' },
+        expect: { exit: 0, ran: ['a#build'], files: { [out('a')]: 'v2\n' } },
+      },
+    ],
+  }),
+  defineCase({
+    id: 'inputs/brace-holding-escaped-brackets',
+    category: 'inputs',
+    kind: 'correctness',
+    title: 'A brace input naming `src` and the escaped `app/\\[id\\]` keys both directories',
+    why: 'Next.js routes live in folders like `app/[id]`, so a glob must escape the brackets to name the folder. `{src,app/\\[id\\]}` names two directories, each a tree of inputs. A tool that stops expanding the brace once it sees an escape matches neither, so an edit to the route replays a stale build.',
+    from: ['util-paths'],
+    workspace: one(
+      build({
+        command: "mkdir -p dist && cat src/a.txt 'app/[id]/page.txt' > dist/out.txt",
+        inputs: ['{src,app/\\[id\\]}'],
+      }),
+      { 'src/a.txt': 'a\n', 'app/[id]/page.txt': 'p1\n' },
+    ),
+    steps: [
+      { run: 'build', expect: { exit: 0, files: { [out('a')]: 'a\np1\n' } } },
+      { write: { 'packages/a/app/[id]/page.txt': 'p2\n' } },
+      { run: 'build', expect: { exit: 0, ran: ['a#build'], files: { [out('a')]: 'a\np2\n' } } },
+      { write: { [A]: 'a2\n' } },
+      { run: 'build', expect: { exit: 0, ran: ['a#build'], files: { [out('a')]: 'a2\np2\n' } } },
+    ],
+  }),
+
+  defineCase({
+    id: 'outputs/brace-holding-escaped-brackets',
+    category: 'outputs',
+    kind: 'correctness',
+    title: 'A brace output whose alternative escapes `[` and `]` restores both trees',
+    why: '`{dist,app/\\[id\\]}/**` names two output trees, one of them a folder with brackets in its name. A tool that stops expanding the brace once it sees an escape saves neither. A hit then restores nothing and the build looks done while its files are missing.',
+    from: ['util-paths'],
+    workspace: one(
+      build({
+        command:
+          "mkdir -p dist 'app/[id]' && cat src/a.txt > dist/out.txt && cat src/a.txt > 'app/[id]/gen.txt'",
+        outputs: ['{dist,app/\\[id\\]}/**'],
+      }),
+    ),
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { write: { 'packages/a/dist': null, 'packages/a/app': null } },
+      {
+        run: 'build',
+        expect: {
+          exit: 0,
+          files: { [out('a')]: 'a\n', 'packages/a/app/[id]/gen.txt': 'a\n' },
+        },
+      },
+    ],
+  }),
+  defineCase({
+    id: 'sandbox/other-project-read-through-git-fails',
+    category: 'sandbox',
+    kind: 'correctness',
+    title: 'An isolated task that reads another project’s file through git fails',
+    why: 'Git’s object store holds every committed file of every project. A task that runs `git show` against it reads another project’s source without touching that project’s folder, and nothing keys the file. Walling off the folders but not the repository leaves the same stale-hit hole open through git.',
+    from: ['sandbox-grants.unsafe'],
+    needs: ['sandbox'],
+    workspace: {
+      projects: {
+        a: {
+          tasks: {
+            build: build({
+              command:
+                'mkdir -p dist && git --git-dir=../../.git show HEAD:packages/b/src/b.txt > dist/out.txt',
+              sandbox: {},
+            }),
+          },
+          files: { 'src/a.txt': 'a\n' },
+        },
+        b: { files: { 'src/b.txt': 'b\n' } },
+      },
+    },
+    steps: [{ run: 'build', expect: { exit: 'fail' } }],
+  }),
 ]

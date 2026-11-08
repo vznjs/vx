@@ -1,10 +1,11 @@
 {
   "coverage": {
-    "ported": 227,
+    "ported": 228,
     "rest": {
       "pending": [
         "clean-readonly-dir",
         "deferred-output-empty",
+        "server-stops-unneeded",
         "uncached-outputs",
         "watch-dependency-gone",
         "workspace-file-broken"
@@ -332,6 +333,7 @@
         "vx-dte/queue",
         "vx-dte/run-id",
         "vx-dte/seal",
+        "vx-dte/server-fit",
         "vx-dte/sim",
         "vx-dte/trace",
         "vx-dte/tree",
@@ -873,7 +875,6 @@
         "user-error-classify",
         "util-hash",
         "util-num",
-        "util-paths",
         "util-procfs",
         "util-settle",
         "util-size",
@@ -1004,14 +1005,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 982,
-        "can": 982,
-        "of": 984
+        "pass": 986,
+        "can": 986,
+        "of": 988
       },
       "correctness": {
-        "pass": 806,
-        "can": 806,
-        "of": 808
+        "pass": 810,
+        "can": 810,
+        "of": 812
       },
       "efficiency": {
         "pass": 167,
@@ -1049,19 +1050,19 @@
         "of": 42
       },
       "inputs": {
-        "pass": 302,
-        "can": 302,
-        "of": 302
+        "pass": 303,
+        "can": 303,
+        "of": 303
       },
       "env": {
-        "pass": 30,
-        "can": 30,
-        "of": 32
+        "pass": 31,
+        "can": 31,
+        "of": 33
       },
       "outputs": {
-        "pass": 223,
-        "can": 223,
-        "of": 223
+        "pass": 224,
+        "can": 224,
+        "of": 224
       },
       "report": {
         "pass": 9,
@@ -1069,9 +1070,9 @@
         "of": 9
       },
       "sandbox": {
-        "pass": 18,
-        "can": 18,
-        "of": 18
+        "pass": 19,
+        "can": 19,
+        "of": 19
       },
       "watch": {
         "pass": 31,
@@ -1081,14 +1082,14 @@
     },
     "turbo": {
       "all": {
-        "pass": 627,
-        "can": 901,
-        "of": 984
+        "pass": 629,
+        "can": 904,
+        "of": 988
       },
       "correctness": {
-        "pass": 506,
-        "can": 731,
-        "of": 808
+        "pass": 508,
+        "can": 734,
+        "of": 812
       },
       "efficiency": {
         "pass": 117,
@@ -1127,18 +1128,18 @@
       },
       "inputs": {
         "pass": 187,
-        "can": 292,
-        "of": 302
+        "can": 293,
+        "of": 303
       },
       "env": {
-        "pass": 26,
-        "can": 30,
-        "of": 32
+        "pass": 27,
+        "can": 31,
+        "of": 33
       },
       "outputs": {
-        "pass": 160,
-        "can": 220,
-        "of": 223
+        "pass": 161,
+        "can": 221,
+        "of": 224
       },
       "report": {
         "pass": 4,
@@ -1148,7 +1149,7 @@
       "sandbox": {
         "pass": 1,
         "can": 1,
-        "of": 18
+        "of": 19
       },
       "watch": {
         "pass": 28,
@@ -1158,14 +1159,14 @@
     },
     "nx": {
       "all": {
-        "pass": 640,
-        "can": 926,
-        "of": 984
+        "pass": 642,
+        "can": 929,
+        "of": 988
       },
       "correctness": {
-        "pass": 482,
-        "can": 752,
-        "of": 808
+        "pass": 484,
+        "can": 755,
+        "of": 812
       },
       "efficiency": {
         "pass": 154,
@@ -1204,18 +1205,18 @@
       },
       "inputs": {
         "pass": 186,
-        "can": 302,
-        "of": 302
+        "can": 303,
+        "of": 303
       },
       "env": {
-        "pass": 24,
-        "can": 30,
-        "of": 32
+        "pass": 25,
+        "can": 31,
+        "of": 33
       },
       "outputs": {
-        "pass": 156,
-        "can": 220,
-        "of": 223
+        "pass": 157,
+        "can": 221,
+        "of": 224
       },
       "report": {
         "pass": 4,
@@ -1225,7 +1226,7 @@
       "sandbox": {
         "pass": 0,
         "can": 1,
-        "of": 18
+        "of": 19
       },
       "watch": {
         "pass": 27,
@@ -1235,14 +1236,14 @@
     },
     "vite-task": {
       "all": {
-        "pass": 499,
-        "can": 739,
-        "of": 984
+        "pass": 501,
+        "can": 742,
+        "of": 988
       },
       "correctness": {
-        "pass": 410,
-        "can": 611,
-        "of": 808
+        "pass": 412,
+        "can": 614,
+        "of": 812
       },
       "efficiency": {
         "pass": 87,
@@ -1281,18 +1282,18 @@
       },
       "inputs": {
         "pass": 177,
-        "can": 293,
-        "of": 302
+        "can": 294,
+        "of": 303
       },
       "env": {
-        "pass": 28,
-        "can": 29,
-        "of": 32
+        "pass": 29,
+        "can": 30,
+        "of": 33
       },
       "outputs": {
-        "pass": 139,
-        "can": 220,
-        "of": 223
+        "pass": 140,
+        "can": 221,
+        "of": 224
       },
       "report": {
         "pass": 2,
@@ -1302,7 +1303,7 @@
       "sandbox": {
         "pass": 1,
         "can": 1,
-        "of": 18
+        "of": 19
       },
       "watch": {
         "pass": 0,
@@ -1312,14 +1313,14 @@
     },
     "nix": {
       "all": {
-        "pass": 473,
-        "can": 699,
-        "of": 984
+        "pass": 477,
+        "can": 703,
+        "of": 988
       },
       "correctness": {
-        "pass": 407,
-        "can": 578,
-        "of": 808
+        "pass": 411,
+        "can": 582,
+        "of": 812
       },
       "efficiency": {
         "pass": 64,
@@ -1357,19 +1358,19 @@
         "of": 42
       },
       "inputs": {
-        "pass": 175,
-        "can": 292,
-        "of": 302
+        "pass": 176,
+        "can": 293,
+        "of": 303
       },
       "env": {
-        "pass": 21,
-        "can": 29,
-        "of": 32
+        "pass": 22,
+        "can": 30,
+        "of": 33
       },
       "outputs": {
-        "pass": 158,
-        "can": 218,
-        "of": 223
+        "pass": 159,
+        "can": 219,
+        "of": 224
       },
       "report": {
         "pass": 2,
@@ -1377,9 +1378,9 @@
         "of": 9
       },
       "sandbox": {
-        "pass": 15,
-        "can": 17,
-        "of": 18
+        "pass": 16,
+        "can": 18,
+        "of": 19
       },
       "watch": {
         "pass": 0,
@@ -1390,13 +1391,13 @@
     "moon": {
       "all": {
         "pass": 579,
-        "can": 887,
-        "of": 984
+        "can": 890,
+        "of": 988
       },
       "correctness": {
         "pass": 449,
-        "can": 726,
-        "of": 808
+        "can": 729,
+        "of": 812
       },
       "efficiency": {
         "pass": 125,
@@ -1435,18 +1436,18 @@
       },
       "inputs": {
         "pass": 192,
-        "can": 302,
-        "of": 302
+        "can": 303,
+        "of": 303
       },
       "env": {
         "pass": 26,
-        "can": 30,
-        "of": 32
+        "can": 31,
+        "of": 33
       },
       "outputs": {
         "pass": 122,
-        "can": 223,
-        "of": 223
+        "can": 224,
+        "of": 224
       },
       "report": {
         "pass": 5,
@@ -1456,7 +1457,7 @@
       "sandbox": {
         "pass": 0,
         "can": 1,
-        "of": 18
+        "of": 19
       },
       "watch": {
         "pass": 0,
@@ -5492,7 +5493,7 @@
       "title": "An edit to an input named with spaces, `$` and quotes runs the task again",
       "why": "File names with spaces, quotes or `$` are legal and occur in real repos, for example among assets and fixtures. If such a name is mangled when it is listed, quoted or passed through a shell, the file drops out of the key. Edits to it then never rerun the task, and the build ships its old content.",
       "from": [
-        "hash-scenarios",
+        "hash-scenarios-names",
         "git-enum-unicode"
       ],
       "outcomes": {
@@ -23037,7 +23038,7 @@
       "title": "An input `src/*:bar.txt` keys `foo:bar.txt` and `foo::bar.txt`: a `:` is part of a name",
       "why": "In a glob, a `:` is an ordinary character of a file name, not syntax. A runner that reads `src/*:bar.txt` as something else, such as a prefix or a path list, matches no file, and the task is keyed on nothing. Edits to `foo:bar.txt` then replay the old output. Both `foo:bar.txt` and `foo::bar.txt` match and must count.",
       "from": [
-        "hash-scenarios"
+        "hash-scenarios-names"
       ],
       "outcomes": {
         "vx": {
@@ -23071,7 +23072,7 @@
       "title": "An input `src/a,b.ts` keys the file named so: a `,` outside braces is part of a name",
       "why": "A `,` means something in a glob only inside braces; elsewhere it is part of the name. A runner that splits `src/a,b.ts` into two patterns keys on `src/a` and `b.ts`, neither of which exists, so the file named `a,b.ts` is no input. Editing it then replays the old output, and the build ships stale code.",
       "from": [
-        "hash-scenarios"
+        "hash-scenarios-names"
       ],
       "outcomes": {
         "vx": {
@@ -23105,7 +23106,7 @@
       "title": "Inputs through `@scope`, `a+b` and `(marketing)` directories key the files under them",
       "why": "Paths with `@scope`, `a+b` and `(marketing)` are common: package scopes, and route groups in web frameworks. A glob engine that reads `+`, `@` or `( )` as pattern syntax matches nothing under them. The task is then keyed without its pages or modules, and an edit there replays the old build. These characters must match themselves.",
       "from": [
-        "hash-scenarios"
+        "hash-scenarios-names"
       ],
       "outcomes": {
         "vx": {
@@ -23143,7 +23144,7 @@
       "title": "Inputs named with a `$`, quotes, a space or a tab, committed or not, each rerun the task when edited",
       "why": "File names may hold `$`, quotes, spaces or tabs, and route files such as `$id.tsx` are common. If the runner passes names through a shell, or splits a list on white space, such a file is mangled or lost. Its edits then replay the old output. Names must be handled as bytes from the file system to the key, committed or not.",
       "from": [
-        "hash-scenarios"
+        "hash-scenarios-names"
       ],
       "outcomes": {
         "vx": {
@@ -23209,7 +23210,7 @@
       "title": "An input `src/[invalid` keys the file named so, or is refused, never left unkeyed",
       "why": "An unclosed `[` opens no character class, so `src/[invalid` is the name of a file. A runner may key that file, or refuse the glob as malformed; both tell the truth. What it must not do is match nothing and run with the input silently left out, since an edit to the file would then replay the old build.",
       "from": [
-        "hash-scenarios"
+        "hash-scenarios-names"
       ],
       "outcomes": {
         "vx": {
@@ -23915,7 +23916,7 @@
       "title": "A task stored by a run of every project replays when the run names its project, or excludes another",
       "why": "Which projects a run selects is not an input of a task: the same task on the same tree is one entry. A developer who builds everything, then only `lib`, should get a replay. A runner that folds the selection into the key misses whenever the filter differs, so local runs and CI jobs with other filters never share results.",
       "from": [
-        "hash-scenarios",
+        "hash-scenarios-names",
         "parity-turbo-hashing"
       ],
       "outcomes": {
@@ -23947,7 +23948,7 @@
       "title": "A task an affected run selects replays what a run of every project stored",
       "why": "A run limited to changed projects asks for the same tasks on the same files as a full run. The full run already stored them, so the affected run should replay. A runner that keys on how a task was selected misses here, and CI rebuilds work that a full run on the same commit has already done.",
       "from": [
-        "hash-scenarios"
+        "hash-scenarios-names"
       ],
       "outcomes": {
         "vx": {
@@ -23979,7 +23980,7 @@
       "title": "A task keyed on a root file and no project file runs again when the root file changes",
       "why": "A task may depend on a file at the workspace root, such as a shared config, and declare it explicitly. That file is then part of its key even when no project file is. A runner that ignores root inputs when the project lists none replays the old output after the root file changes, and the new config never reaches the build.",
       "from": [
-        "hash-scenarios"
+        "hash-scenarios-names"
       ],
       "outcomes": {
         "vx": {
@@ -33587,7 +33588,7 @@
       "why": "Each value of a keyed variable has its own entry, and a new value must not push out the old one. Builds that switch between modes, such as dev and prod or two targets, go back and forth all day. A cache that keeps only the latest value rebuilds on every switch, though both results are already known.",
       "from": [
         "env",
-        "hash-scenarios"
+        "hash-scenarios-names"
       ],
       "outcomes": {
         "vx": {
@@ -34731,6 +34732,142 @@
         },
         "moon": {
           "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/variable-named-proto-reaches-task",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A declared variable named `__proto__` reaches the task and keys it",
+      "why": "`__proto__` is a legal variable name. A tool that builds the task’s environment as a plain JavaScript object sets the object’s prototype instead of a variable, so the task never sees it while the key still counts it. The task then runs without a value the key says it had.",
+      "from": [
+        "env"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 2,
+          "detail": "did not run a#build"
+        }
+      }
+    },
+    {
+      "id": "inputs/brace-holding-escaped-brackets",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "A brace input naming `src` and the escaped `app/\\[id\\]` keys both directories",
+      "why": "Next.js routes live in folders like `app/[id]`, so a glob must escape the brackets to name the folder. `{src,app/\\[id\\]}` names two directories, each a tree of inputs. A tool that stops expanding the brace once it sees an escape matches neither, so an edit to the route replays a stale build.",
+      "from": [
+        "util-paths"
+      ],
+      "outcomes": {
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run a#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run a#build"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run a#build"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        },
+        "vx": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/brace-holding-escaped-brackets",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A brace output whose alternative escapes `[` and `]` restores both trees",
+      "why": "`{dist,app/\\[id\\]}/**` names two output trees, one of them a folder with brackets in its name. A tool that stops expanding the brace once it sees an escape saves neither. A hit then restores nothing and the build looks done while its files are missing.",
+      "from": [
+        "util-paths"
+      ],
+      "outcomes": {
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        },
+        "vx": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "sandbox/other-project-read-through-git-fails",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task that reads another project’s file through git fails",
+      "why": "Git’s object store holds every committed file of every project. A task that runs `git show` against it reads another project’s source without touching that project’s folder, and nothing keys the file. Walling off the folders but not the repository leaves the same stale-hit hole open through git.",
+      "from": [
+        "sandbox-grants.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "needs sandbox"
         }
       }
     }
