@@ -31,6 +31,8 @@ it("the PR's title is a Conventional Commits header", () => {
 // subject cannot change without rewriting the branch every landed PR
 // shares (2026-10-28).
 const KNOWN = new Set([
+  // The worker-bytes paragraph split, pushed with its body line as the subject.
+  '028652fd3d3f00b7b7bd95678edfcd6ae7d81f83',
   // The retry committed-output fix, pushed before its subject was cut: 73 chars.
   '843709e7f54a865711beb4c145511720f367feb8',
   // The read-only plugin views' commit, pushed before its subject was cut: 73 chars.

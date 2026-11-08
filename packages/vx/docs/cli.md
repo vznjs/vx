@@ -431,6 +431,10 @@ What counts as a change:
 - A file git was told not to look at (`git update-index
 --assume-unchanged` or `--skip-worktree`) counts when its bytes on disk
   differ, as the key hashes them. One a sparse checkout left out does not.
+- A file a clean filter can rewrite (`core.autocrlf`, a `text`, `eol`,
+  `ident`, `filter` or `working-tree-encoding` attribute) counts when git
+  sees its stat move, even if its filtered bytes match the base: the key
+  hashes the raw bytes, so a CRLF edit to an LF file is a change.
 - A symlinked input is its target: a link whose target changed is a
   change, and a link to a target git cannot diff (outside the
   workspace, or ignored) is one on every run. A link to a directory
@@ -489,7 +493,10 @@ was there at the base.
 **A workspace config change selects everything.** The plugins in
 `.vx/workspace.*` shape every resolved config, so an edit there can
 change any key, and vx cannot tell which. So does an edit to a file it
-imports, directly or through another file. A root file a plugin reads
+imports, directly or through another file, including a workspace
+package it imports by name (linked into `node_modules`, as
+`workspace:*` does) and a file above the workspace root in the same
+git repository. A root file a plugin reads
 without importing it counts when the plugin claims it
 (`VxPlugin.fingerprint`): `turbo()` claims `turbo.json` and
 `turbo.jsonc`, `nx()` claims `nx.json`, and either answers every project.
@@ -509,7 +516,8 @@ imports it, directly or through another shared file.
   `../../packages/lib/preset.ts` is selected when that file, or one it
   imports, changes.
 
-To opt a helper out, import it by a bare package name. See
+To opt a project config's helper out, import it by a bare package
+name. See
 [`docs/modules/config-imports.md`](./modules/config-imports.md).
 
 **Nothing changed exits 0.** When only `--affected` or `[<ref>]`

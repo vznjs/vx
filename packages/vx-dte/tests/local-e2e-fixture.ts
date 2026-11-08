@@ -155,6 +155,12 @@ export default { name: 'p', tasks: {
   fmt: { exec: { command: 'echo x >> in.txt && mkdir -p out && cp in.txt out/f.txt' }, inputs: { files: ['in.txt'] }, outputs: { files: ['out/**'] }, cache: true },
 } }
 `,
+    // A task keying a file a git filter may check out otherwise.
+    'e/src/t.txt': 'a\nb\n',
+    'e/vx.config.mjs': `export default { name: 'e', tasks: {
+  copy: { exec: { command: 'mkdir -p out && cp src/t.txt out/t.txt' }, inputs: { files: ['src/**'] }, outputs: { files: ['out/**'] }, cache: true },
+} }
+`,
     // Two uncached generators, long enough to run on two workers, and a
     // task reading both: no cache carries their files (#4407).
     'k/vx.config.mjs': `const gen = (n) => ({ exec: { command: 'sleep 1 && echo ' + n + ' > ' + n + '.txt' } })

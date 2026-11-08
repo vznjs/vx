@@ -46,7 +46,7 @@ import {
 } from './messages.js'
 import { leftUnder, names, outputFiles } from './outputs.js'
 import { serverFit } from './server-fit.js'
-import { snapshot } from './tree.js'
+import { snapshot, unfilter } from './tree.js'
 import { sealWorker, type Proof } from './seal.js'
 import { join, ORCHESTRATOR_SILENT, RelayError, unsent as unsentBy } from './wire.js'
 
@@ -67,6 +67,8 @@ export async function runWorker(opts: {
   // The tracked files as they are, as the run snapshots its own: HEAD's
   // tree let in a checkout whose prepare rewrote a tracked file, and the
   // task built from it was saved under the clean key (2026-10-25).
+  // Its files first as the commit holds them, as the run's key read them.
+  await unfilter(opts.root)
   const base = await snapshot(opts.root)
   const tree = base.tree
   // Never an output, as core never cleans one: the checkout is the run's

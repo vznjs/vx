@@ -30,7 +30,12 @@ rules stand between them and neither changes what the task is:
   any mode, a task such a server died UNDER (it was ready at dispatch)
   is seeded just before its save (`ExecuteArgs.serverDiedUnder`), which
   withholds that save; a graph with a server therefore keeps the check on
-  (`seedsLater`). No seed, no server and no `always` keeps the check off. A task's taint is read from its deps' SETTLED outcomes
+  (`seedsLater`). So is a task whose shell left a process running
+  (`ExecuteArgs.leftRunning`): its dependents read a tree it may still
+  write. `run()` turns the check on at that first leftover, before the
+  task settles, so the tracker it makes then has every outcome a
+  dependent's taint is read from. No seed, no server and no `always`
+  keeps the check off. A task's taint is read from its deps' SETTLED outcomes
   (the scheduler's `onFinish` feeds `settled`), not from what it saw at
   dispatch: a restore-tier hit dispatches before its deps settle, saw
   holes, and passed nothing on, so its dependent saved a failed dep's

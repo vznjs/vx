@@ -122,7 +122,12 @@ export function headBase(workspaceRoot: string, ref: string): string | undefined
    beside the run failed on that lock. A file it then lists as modified
    whose content still hashes (`git hash-object`, a link's target in
    process) to the base's blob is dropped, so a stat-only change selects
-   nothing, as the refresh did.
+   nothing, as the refresh did. A file a clean filter can rewrite
+   (`core.autocrlf`, or a `text`, `eol`, `ident`, `filter` or
+   `working-tree-encoding` attribute per `git check-attr`) stays: its
+   filtered hash can match the base while the key, which hashes raw
+   bytes, moved (a CRLF edit to an LF file). So does such a file git
+   was told not to look at (`--assume-unchanged`).
 3. Untracked files (`git ls-files --others --exclude-standard`) are
    unioned in — a brand-new source file is a change. The `git config`
    that asks for a partial clone asks `core.ignorecase` too: set true on
@@ -158,7 +163,10 @@ export function headBase(workspaceRoot: string, ref: string): string | undefined
      imports the changed file — see
      [`config-imports.md`](./config-imports.md). Resolved-config
      hashing folds those values into the key, so selection has to see
-     them too.
+     them too. A changed file the workspace config imports selects
+     every project; one it imports above the workspace root, which the
+     `--relative` diff never lists, is asked of git by path
+     (`outsideChanged`).
    - **Workspace globs.** For every changed path, `workspaceGlobOwners`
      (`cli/select.ts`) asks which projects declare
      a matching `inputs.workspaceFiles` glob — through the run

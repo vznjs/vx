@@ -485,6 +485,21 @@ export class Orchestrator {
             : `${req.taskId} keys ${stray.path}, in submodule ${link}, whose files workers do not check out: leave it out of the task's inputs`,
         )
       }
+      // A worker runs the commit's bytes and modes (`unfilter`): a file on
+      // disk otherwise (CRLF a git filter wrote, an expanded ident, an LFS
+      // file's content) is not what it builds on, and the output saved
+      // under the key of this disk's bytes was a stale hit (2026-11-08).
+      const off =
+        tree === undefined
+          ? undefined
+          : req.inputs.files.find((f) => {
+              const has = tree.files.get(f.path)
+              return has !== undefined && has !== f.digest && !made(f.path)
+            })
+      if (off !== undefined)
+        throw new UserError(
+          `${req.taskId} keys ${off.path}, which is on disk other than the commit workers check out holds it (a git filter's text, eol, ident or LFS bytes, or core.autocrlf): leave it out of the task's inputs, or run the task without dte`,
+        )
     }
     for (const u of req.inputs?.upstream ?? []) this.upstreamKeys.set(u.taskId, u.hash)
     await this.share(up, nodes)
@@ -788,7 +803,11 @@ export class Orchestrator {
     return this.o.pinWaitMs ?? PIN_WAIT_MS
   }
 
-  /** `ids`, uncached tasks that ran, run again where `where` says, for a dependant. */
+  /**
+   * `ids`, uncached tasks that ran, run again where `where` says, for a
+   * dependant: on its place, which the plan refused when one names another
+   * worker type or platform (`apart`).
+   */
   private remake(
     ids: readonly string[],
     where: { only?: string; avoid?: string; platform?: string | undefined },
@@ -2555,8 +2574,8 @@ const nested = new WeakMap<
   { dirs: string[]; by: Map<string, readonly string[]> }
 >()
 
-/** A tree's file paths, and its submodules' (gitlinks); `dirs` once asked. */
-type Tree = { files: Set<string>; links: string[]; dirs?: Set<string> }
+/** A tree's files, each path with its identity as core keys it, and its submodules' (gitlinks); `dirs` once asked. */
+type Tree = { files: Map<string, string>; links: string[]; dirs?: Set<string> }
 
 /** Whether `tree` has a file under `dir`, or `dir` in a submodule (checked out or not, its own say). */
 function holds(tree: Tree, dir: string): boolean {
@@ -2566,7 +2585,7 @@ function holds(tree: Tree, dir: string): boolean {
       for (let d = path.posix.dirname(f); d !== '.' && !dirs.has(d); d = path.posix.dirname(d))
         dirs.add(d)
     }
-    for (const f of tree.files) above(f)
+    for (const f of tree.files.keys()) above(f)
     for (const l of tree.links) above(l)
   }
   return tree.dirs.has(dir) || tree.links.some((l) => dir === l || dir.startsWith(`${l}/`))
@@ -2588,14 +2607,16 @@ async function listTree(root: string, tree: string): Promise<Tree | undefined> {
   }
   const [out, code] = await Promise.all([new Response(p.stdout).text(), p.exited])
   if (code !== 0) return undefined
-  const files = new Set<string>()
+  const files = new Map<string, string>()
   const links: string[] = []
   for (const e of out.split('\0')) {
     const tab = e.indexOf('\t')
     if (tab === -1) continue
     const name = e.slice(tab + 1)
-    if (e.startsWith('160000 ')) links.push(name)
-    else files.add(name)
+    // `<mode> <type> <oid>`: core's identity is the OID, the mode before it unless a plain file's.
+    const [mode, , oid] = e.slice(0, tab).split(' ')
+    if (mode === '160000') links.push(name)
+    else files.set(name, mode === '100644' ? oid! : `${mode}:${oid}`)
   }
   return { files, links }
 }
@@ -2620,6 +2641,47 @@ function leaves(node: TaskNode): boolean {
   if (node.config.cache === true) return false
   const sandbox = node.config.exec?.sandbox
   return sandbox === undefined || (sandbox.allow?.write?.length ?? 0) > 0
+}
+
+/**
+ * A task and an upstream of it that `leaves` files, which `bound` says
+ * cannot run where the task does (its `exec.worker` or `exec.platforms`):
+ * the task reads those files where the upstream ran, or runs it again
+ * where it runs itself. Undefined when none.
+ */
+export function apart(
+  nodes: ReadonlyMap<string, TaskNode>,
+  bound: (upstream: TaskNode, dependant: TaskNode) => boolean,
+): { upstream: string; dependant: string } | undefined {
+  const runs = (n: TaskNode): boolean =>
+    n.config.exec?.command !== undefined && n.config.exec.persistent === undefined
+  const named = [...nodes.values()].filter(
+    (n) =>
+      runs(n) &&
+      leaves(n) &&
+      (n.config.exec?.worker !== undefined || n.config.exec?.platforms !== undefined),
+  )
+  if (named.length === 0) return undefined
+  const below = new Map<string, string[]>()
+  for (const n of nodes.values())
+    for (const d of n.deps) {
+      const of = below.get(d)
+      if (of === undefined) below.set(d, [n.id])
+      else of.push(n.id)
+    }
+  for (const u of named) {
+    const seen = new Set<string>()
+    const walk = [...(below.get(u.id) ?? [])]
+    for (let id = walk.pop(); id !== undefined; id = walk.pop()) {
+      if (seen.has(id)) continue
+      seen.add(id)
+      const d = nodes.get(id)
+      if (d === undefined) continue
+      if (runs(d) && bound(u, d)) return { upstream: u.id, dependant: id }
+      walk.push(...(below.get(id) ?? []))
+    }
+  }
+  return undefined
 }
 
 /**

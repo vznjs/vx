@@ -591,6 +591,7 @@ describe('hasPooledExecutor / poolOfPlacement', () => {
         ['a#z', exec('local')],
       ]),
       remoteOnlyNoop: new Set(),
+      belowNoop: new Set(),
       remoteOnly: new Set(),
       servers: new Map(),
       carried: new Set(),
@@ -618,6 +619,7 @@ describe('hasPooledExecutor / poolOfPlacement', () => {
         ['a#z', first],
       ]),
       remoteOnlyNoop: new Set(),
+      belowNoop: new Set(),
       remoteOnly: new Set(),
       servers: new Map(),
       carried: new Set(),
@@ -655,6 +657,7 @@ describe('locallyPlaced — "not remote", not "declared local"', () => {
   const placements = (entries: [string, TaskExecutor][]): Placements => ({
     executors: new Map(entries),
     remoteOnlyNoop: new Set(),
+    belowNoop: new Set(),
     remoteOnly: new Set(),
     servers: new Map(),
     carried: new Set(),

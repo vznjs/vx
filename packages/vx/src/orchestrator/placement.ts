@@ -205,6 +205,13 @@ export interface Placements {
    * did before the field existed.
    */
   remoteOnlyNoop: Set<string>
+  /**
+   * Tasks that depend on a `remoteOnlyNoop` one, directly or through
+   * others: each saves no entry. `remote` is not in the key, so the no-op's
+   * key is the one a real run of it has, and a dependant's key folding it
+   * would file output built without its outputs where a run over them looks.
+   */
+  belowNoop: Set<string>
   /** `'only'` tasks a remote executor DID take — executed remotely, outputs stay remote. */
   remoteOnly: Set<string>
   /** Each task placed on a `servers` executor → the persistent tasks it starts there. */
@@ -285,6 +292,7 @@ export function placeTasks(
   const placements: Placements = {
     executors: new Map(),
     remoteOnlyNoop: new Set(),
+    belowNoop: new Set(),
     remoteOnly: new Set(),
     servers: new Map(),
     carried: new Set(),
@@ -315,6 +323,7 @@ export function placeTasks(
       placements.executors.set(node.id, floor)
       if (node.config.exec?.remote === 'only') placements.remoteOnlyNoop.add(node.id)
     }
+    markBelowNoop(nodes, placements)
     return placements
   }
   const pinned = pinsOf({})
@@ -421,7 +430,29 @@ export function placeTasks(
     if (sole !== undefined) refuse(node.id, 'it starts a server only beside a task that needs it')
     here(node)
   }
+  markBelowNoop(nodes, placements)
   return placements
+}
+
+/** Fills `belowNoop`: every task that reaches a `remoteOnlyNoop` one. */
+function markBelowNoop(nodes: Map<string, TaskNode>, placements: Placements): void {
+  if (placements.remoteOnlyNoop.size === 0) return
+  const dependants = new Map<string, string[]>()
+  for (const node of nodes.values())
+    for (const dep of node.deps) {
+      const list = dependants.get(dep)
+      if (list === undefined) dependants.set(dep, [node.id])
+      else list.push(node.id)
+    }
+  // An explicit stack: a recursion per edge throws on a deep chain.
+  const stack = [...placements.remoteOnlyNoop]
+  while (stack.length > 0) {
+    for (const id of dependants.get(stack.pop()!) ?? []) {
+      if (placements.belowNoop.has(id)) continue
+      placements.belowNoop.add(id)
+      stack.push(id)
+    }
+  }
 }
 
 /**

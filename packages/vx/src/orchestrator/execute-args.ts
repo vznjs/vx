@@ -18,6 +18,7 @@ type TaskField =
   | 'executor'
   | 'nestedProjectDirs'
   | 'remoteOnlyNoop'
+  | 'belowNoop'
   | 'remoteOnly'
   | 'download'
   | 'preProbed'
@@ -69,6 +70,7 @@ export function executeArgsOf(
     const upfrontGroupKey = shortCircuit.groupKeys.get(id)
     if (facts.downloadModeOf?.get(id) === 'deferred') a.download = 'deferred'
     if (placements.remoteOnlyNoop.has(id)) a.remoteOnlyNoop = true
+    if (placements.belowNoop.has(id)) a.belowNoop = true
     if (placements.remoteOnly.has(id)) a.remoteOnly = true
     if (placements.carried.has(id)) a.carried = true
     const servers = placements.servers.get(id)

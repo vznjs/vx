@@ -38,6 +38,7 @@ export interface ConfigImportOwnersArgs {
 export interface ConfigImportOwners {
   owners: Set<string>
   workspace?: string // a changed file a workspace config imports: `affected.ts` widens to all
+  outside?: string[] // files a workspace config imports above the root: `affected.ts` asks git
 }
 export function configImportOwners(a: ConfigImportOwnersArgs): Promise<ConfigImportOwners>
 
@@ -68,6 +69,7 @@ does not apply.
    quoted `./`, `../`, `.`, `..`, `#`, escape or tsconfig alias skips the scan), keep the
    local specifiers (below), resolve them, and record the REVERSE edge `target → importer`.
    Targets outside the workspace, or under `node_modules`, are dropped.
+   The workspace config's walk goes further (below).
 3. **Descend through every file the walk reaches**, another project's
    included: the evaluation follows those imports (`configImports`), so
    the key does too (X-128). Each file is read once however many configs
@@ -113,6 +115,18 @@ The watch walk once kept `./` and `../` alone, and both walks dropped
 maps is not scanned for one; at 5,000 configs that each import a
 package and sit under a tsconfig, the lookup costs a one-file change
 140 → 200 ms, and nothing when the configs import only `@vzn/vx`.
+
+**The workspace config goes further.** A project config is read from
+the lock; the workspace config is loaded live, so whatever its import
+closure holds moves every key. Its walk (and the walk of what it
+reaches) also follows a bare specifier whose nearest
+`node_modules/<package>` links outside any `node_modules`: a workspace
+package (`workspace:*`), which no lockfile pins. And it keeps a target
+above the workspace root (`../../shared/p.ts` from a workspace in a
+repository's subdirectory) as `outside`: `git diff --relative` never
+lists such a file, so `affected.ts` asks git about those paths alone
+and widens to every project when one changed or is untracked. A file
+outside the repository is not asked.
 
 **Not bounded by project.** The walk stopped at the first file of
 another project, on the reasoning that containment selects that project.
@@ -160,7 +174,7 @@ the channel cost 0.36 ms.
 
 Imports only (a file a config READS is not followed, above), local
 specifiers only (relative, `#imports` or tsconfig-mapped), and nothing under `node_modules` or outside the
-workspace. Until X-128 the walk also stopped at the first file of
+workspace, but for the workspace config's walk (above). Until X-128 the walk also stopped at the first file of
 another project (and, before D-41, of a root project): both left an
 importer out while its key moved.
 
@@ -170,7 +184,7 @@ A config that imports a file by relative path is selected by every edit
 to that file, even when the imported value cannot change the key (an
 identity like `defineProject`). vx cannot tell those apart without
 evaluating, and selection may over-select safely (it is never hashed)
-but must never under-select. A config importing its helpers by BARE
+but must never under-select. A project config importing its helpers by BARE
 specifier opts out of this channel; every config in this repo imports
 `@vzn/vx` that way (`@vzn/vx-docs` once imported core's `src/index.ts`
 relatively and was selected by every edit to it).

@@ -773,7 +773,9 @@ read-through (`remoteRead`), upload (`remoteWrite`), and prefetch
 - `willWrite = task is cached AND it is not remote-only AND (localWrite || remoteWrite)`
 
 A task reads the cache only when `willRead`, saves only when
-`willWrite` and it folds no keyless task, and cleans its declared outputs
+`willWrite`, it folds no keyless task and no task it depends on is a
+remote-only no-op (an `exec.remote: 'only'` task no remote executor took:
+it ran nothing under the key a real run has), and cleans its declared outputs
 before exec only when `willWrite`. A keyless task runs a command and
 declares no `inputs`: its key is unknown, so a task that folds it
 (through `dependsOn`, directly or through a group) always misses. Remote-only is an `exec.remote: 'only'` task placed on a
@@ -1260,6 +1262,10 @@ Losing an OID is not over-invalidation. It routes that path to the
 content hasher, which hashes the worktree bytes — the correct source
 either way. The only cost is reading the file, which is exactly what
 the gate exists to avoid paying needlessly.
+
+`--affected` asks the same question (`core.autocrlf`, then `check-attr`)
+of a file whose stat moved: such a file is a change, though git, which
+compares after the filter, calls it clean against the base.
 
 ## Runtime inputs and the lock (the env parallel)
 
