@@ -189,6 +189,8 @@ export function mapNxOutputs(
       )
       continue
     }
+    const rootWide =
+      (projectRel === '' || projectRel === '.') && o.slice(neg.length).startsWith('{workspaceRoot}')
     const globs = vxOutputGlobs(neg + s)
     if (globs === null) {
       todos.push(`output ${JSON.stringify(o)} has a glob form vx cannot spell — dropped`)
@@ -197,7 +199,10 @@ export function mapNxOutputs(
     for (const g of globs) {
       const gn = g.startsWith('!') ? '!' : ''
       const gs = g.slice(gn.length)
-      const own = underProject(gs, projectRel)
+      // As the root project's inputs map (nx-inputs.ts): a `{workspaceRoot}`
+      // output names a workspace path, which may lie in a nested project a
+      // project glob never reaches (core refuses one there).
+      const own = rootWide ? null : underProject(gs, projectRel)
       if (own !== null) {
         outFiles.push(gn + (own === '' ? '**' : withProjectDir(own, projectRel, true)))
         continue
