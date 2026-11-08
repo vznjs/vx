@@ -326,14 +326,14 @@ function zeroSegments(glob: string): string | null {
 }
 
 /**
- * A glob with its `..` segments collapsed, as Turbo cleans the path before
- * it walks (turborepo-globwalk's `collapse_path`): `src/../../shared/**` is
- * `../shared/**`. A `$TURBO_ROOT$/` prefix is the root, not a segment.
+ * A glob with its `.` and `..` segments collapsed, as Turbo cleans the path
+ * before it walks (turborepo-globwalk's `collapse_path`): `src/../../shared/**`
+ * is `../shared/**`, `./src/**` is `src/**`. A `$TURBO_ROOT$/` prefix is
+ * the root, not a segment.
  */
 function collapseDots(glob: string): string {
   if (glob.startsWith('$TURBO_ROOT$/'))
     return '$TURBO_ROOT$/' + collapseDots(glob.slice('$TURBO_ROOT$/'.length))
-  if (!/(^|\/)\.\.(\/|$)/.test(glob)) return glob
   return path.posix.normalize(glob)
 }
 

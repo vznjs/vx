@@ -49,4 +49,15 @@ describe('turbo-map: `.` and `..` segments in a glob', () => {
       (await mapTask({ outputs: ['../out/**', '../gen/**'] })).task.outputs!['workspaceFiles'],
     )
   })
+
+  // Kept as written, `./src/**` keyed its files but core's per-glob check
+  // matched none, and every run warned "inputs matched no files".
+  it('maps a `./` glob as its clean spelling', async () => {
+    const dotted = await mapTask({ inputs: ['./src/**', '!./src/x.md'], outputs: ['./dist/**'] })
+    const clean = await mapTask({ inputs: ['src/**', '!src/x.md'], outputs: ['dist/**'] })
+    expect([dotted.task.inputs, dotted.task.outputs]).toEqual([
+      clean.task.inputs,
+      clean.task.outputs,
+    ])
+  })
 })
