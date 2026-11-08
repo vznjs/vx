@@ -57,4 +57,15 @@ describe('computeNestedProjectDirs', () => {
   it('empty input → empty map', () => {
     expect(computeNestedProjectDirs([]).size).toBe(0)
   })
+
+  it('adds a nested workspace to every project it lies under, and to no sibling', () => {
+    const projects = [entry('root', '/repo'), entry('a', '/repo/a'), entry('ax', '/repo/a-x')]
+    const r = computeNestedProjectDirs(projects, ['/repo/a/inner'])
+    expect(r.get('root')).toEqual(['/repo/a', '/repo/a-x', '/repo/a/inner'])
+    expect(r.get('a')).toEqual(['/repo/a/inner'])
+    expect(r.get('ax')).toEqual([])
+    // None: the dirs, and so every key over them, are what they were.
+    expect(computeNestedProjectDirs(projects)).toEqual(computeNestedProjectDirs(projects, []))
+    expect(computeNestedProjectDirs(projects).get('a')).toEqual([])
+  })
 })

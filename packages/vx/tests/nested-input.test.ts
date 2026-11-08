@@ -6,11 +6,16 @@
 // An output glob there saves nothing for the same reason: the run warned
 // "outputs matched no files" over a file it had written, and the nested
 // project's artifact could hold the outer task's bytes.
+// A directory holding its own `.vx/workspace.*` is a boundary the same way:
+// a glob that ran into it folded its files (its `.vx/cache` too) into the
+// outer key, and the clean before a run deleted its untracked files.
 
-import { rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'bun:test'
-import { lock } from './helpers/orchestrator.js'
+import { LOCKFILE_NAME } from '../src/workspace/index.js'
+import { lock, run } from './helpers/orchestrator.js'
+import { silentLogger } from './helpers/orchestrator-fixture.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 const roots: string[] = []
@@ -94,5 +99,82 @@ describe('an output under a nested project', () => {
   it('is no refusal for a sibling or a negation', async () => {
     expect(await lockError(await workspace(['src/**'], ['distx/**']))).toBeNull()
     expect(await lockError(await workspace(['src/**'], ['out/**', '!dist/**']))).toBeNull()
+  })
+})
+
+const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const silent = silentLogger({ root: '', log: [], err: [] })
+
+/** `packages/a` declaring `files`, holding `inner`, a workspace of its own with an uncommitted project. */
+async function nestedWorkspace(inputs: string[], outputs: string[]): Promise<string> {
+  const root = await makeWorkspace({ prefix: 'vx-nested-ws-', workspaceFile: false })
+  roots.push(root)
+  await addProject(root, 'a', {
+    config: `export default { tasks: { build: {
+  exec: { command: 'mkdir -p out && echo o > out/o.txt' },
+  inputs: { files: ${JSON.stringify(inputs)} },
+  outputs: { files: ${JSON.stringify(outputs)} },
+  cache: true,
+} } }
+`,
+    files: { 'src/a.txt': 'a' },
+  })
+  const inner = path.join(root, 'packages/a/inner')
+  await mkdir(path.join(inner, '.vx'), { recursive: true })
+  await mkdir(path.join(inner, 'p/src'), { recursive: true })
+  await writeFile(path.join(inner, '.vx/workspace.mjs'), 'export default {}\n')
+  await writeFile(
+    path.join(inner, 'p/vx.config.mjs'),
+    "export default { tasks: { t: { exec: { command: 'true' } } } }\n",
+  )
+  await writeFile(path.join(inner, 'p/src/work.txt'), 'precious')
+  return root
+}
+
+describe('a nested workspace', () => {
+  it('is out of an outer output glob: the clean before a run leaves its files', async () => {
+    const root = await nestedWorkspace(['src/**'], ['**/*.txt', '!src/**'])
+    const r = await run({ cwd: root, tasks: ['packages/a#build'], log: silent })
+    expect(r.outcomes.map((o) => o.status)).toEqual(['success'])
+    const inner = path.join(root, 'packages/a/inner')
+    expect(await readFile(path.join(inner, 'p/src/work.txt'), 'utf8')).toBe('precious')
+    expect(await Bun.file(path.join(inner, '.vx/workspace.mjs')).exists()).toBe(true)
+  })
+
+  it('is out of an outer input glob: an edit in it keys nothing', async () => {
+    const root = await nestedWorkspace(['**'], ['out/**'])
+    expect(
+      (await run({ cwd: root, tasks: ['packages/a#build'], log: silent })).outcomes[0]!.status,
+    ).toBe('success')
+    await writeFile(path.join(root, 'packages/a/inner/p/src/work.txt'), 'edited')
+    expect(
+      (await run({ cwd: root, tasks: ['packages/a#build'], log: silent })).outcomes[0]!.status,
+    ).toBe('cache-hit')
+  })
+
+  it('is refused at lock as an output or input glob rooted in it', async () => {
+    expect(await lockError(await nestedWorkspace(['src/**'], ['inner/**']))).toContain(
+      'packages/a#build writes "inner/**" in outputs.files, which lies inside the workspace packages/a/inner',
+    )
+    expect(await lockError(await nestedWorkspace(['inner/p/**'], ['out/**']))).toContain(
+      'packages/a#build reads "inner/p/**" in inputs.files, which lies inside the workspace packages/a/inner',
+    )
+  })
+
+  it('is in the lock, and a lock without it is stale', async () => {
+    const root = await nestedWorkspace(['src/**'], ['out/**'])
+    await lock(root)
+    const file = path.join(root, LOCKFILE_NAME)
+    const locked = JSON.parse(await readFile(file, 'utf8')) as Record<string, unknown>
+    expect(locked['nestedWorkspaces']).toEqual(['packages/a/inner'])
+    delete locked['nestedWorkspaces']
+    await writeFile(file, JSON.stringify(locked))
+    const check = Bun.spawnSync({
+      cmd: [process.execPath, BIN, 'lock', '--check'],
+      cwd: root,
+      env: { ...process.env, VX_LOCK_REVIEW_FILES: 'false', NO_COLOR: '1' },
+    })
+    expect(check.exitCode).toBe(1)
+    expect(check.stderr.toString()).toContain('packages/a/inner')
   })
 })

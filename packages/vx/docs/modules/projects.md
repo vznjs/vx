@@ -44,6 +44,9 @@ export function gitOfDiscovery(projects: readonly ProjectMeta[]): LazyGitEnumera
 export function lockOfDiscovery(
   projects: readonly ProjectMeta[],
 ): (() => Promise<Lockfile>) | undefined
+// The nested workspace roots (absolute) that lock records, by the same array;
+// none for an array no discovery made. A run's nested dirs stop at each.
+export function nestedWorkspacesOf(projects: readonly ProjectMeta[]): readonly string[]
 // The package graph a selection pass built over that array whose task edges
 // added none: the graph a run reusing the discovery would build again.
 export function keepDiscoveryGraph(projects: readonly ProjectMeta[], graph: PackageGraph): void

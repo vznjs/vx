@@ -26,7 +26,8 @@ re-exported from `@vzn/vx`.
 core reads no `package.json` and no package-manager member list. `vx lock`
 finds them (git's tracked and unignored files; a config at or under a
 nested `.vx/workspace.*`, ignored or not, is that workspace's) and records each by
-directory; a run takes its projects from the lock, so a config added since
+directory, and each nested workspace root too: every outer project's globs
+stop there as at a nested project. A run takes its projects from the lock, so a config added since
 runs once `vx lock` records it. A `discover` plugin may add directories
 with no config (`@vzn/vx-lockfile` adds the package manager's members);
 one whose config git ignores is refused, naming the plugin and the file.
@@ -1469,7 +1470,10 @@ Like inputs, outputs stop at a project boundary: an entry rooted inside
 a nested project (`sub/dist/**` when `sub/` holds its own config) would
 save nothing, so `vx lock` refuses it (`VX_E_NESTED_OUTPUT`): let that
 project's task write the files, or name them in
-`outputs.workspaceFiles`. `**`, a sibling and a `!` entry are fine.
+`outputs.workspaceFiles`. `**`, a sibling and a `!` entry are fine. A
+nested workspace (`sub/` holding its own `.vx/workspace.*`) is the same
+boundary: no glob of an outer project matches under it, so the clean
+before a run never deletes its files.
 
 A **symlink** the globs match is an output: it is cached and restored
 as the link, its target as written (a link to a file, to a directory,

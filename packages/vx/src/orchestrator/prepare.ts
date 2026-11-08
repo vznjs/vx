@@ -90,6 +90,7 @@ import {
   lockOfDiscovery,
   lockReader,
   type LoadedProjects,
+  nestedWorkspacesOf,
 } from './projects.js'
 import { keptByAffected } from './affected-tasks.js'
 import { applyGraphStage } from './graph-stage.js'
@@ -515,8 +516,11 @@ export async function prepareRunLocked(
   // config or not: `--affected` gives a changed path to the deepest project
   // dir, and a config-less one keys its files under its default `build`, so
   // a parent's glob that folded (or cleaned) them crossed a boundary the
-  // selection drew (X-57).
-  const nestedDirsByProject = computeNestedProjectDirs(projectMetas)
+  // selection drew (X-57). A nested workspace is a boundary the same way.
+  const nestedDirsByProject = computeNestedProjectDirs(
+    projectMetas,
+    nestedWorkspacesOf(projectMetas),
+  )
 
   const candidateProjects = options.projects
     ? options.projects.filter((p) => projects.has(p))

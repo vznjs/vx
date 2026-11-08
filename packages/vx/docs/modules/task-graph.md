@@ -41,7 +41,10 @@ export interface BuildGraphOptions {
   rules?: GraphRules | undefined // the workspace's `rules`; each on unless false (X-53)
   // By project name, every project rooted inside its dir; with `workspaceRoot`
   // and unlocked (`vx lock`), an `inputs.files` entry rooted in one is refused.
-  nestedProjects?: ReadonlyMap<string, ReadonlyArray<{ name: string; dir: string }>>
+  nestedProjects?: ReadonlyMap<
+    string,
+    ReadonlyArray<{ name: string; dir: string; workspace?: boolean }>
+  >
   // Every project's config (absolute); with `workspaceRoot`, an
   // `outputs.workspaceFiles` glob covering one is refused (`vx lock`).
   projectConfigs?: ReadonlyArray<{ name: string; configPath: string }>
@@ -273,9 +276,11 @@ found one task at a time as they are compared: 20,000 tasks sharing
 Given `nestedProjects` (only `vx lock` passes it) and unlocked,
 `refuseNestedGlobs` refuses an `inputs.files` or `outputs.files` entry
 whose brace alternative's fixed prefix lies inside a project nested in
-the task's own (`VX_E_NESTED_INPUT`, `VX_E_NESTED_OUTPUT`): the boundary
-drops every file it can match, so an input keys nothing and an output
-saves nothing (`tests/nested-input.test.ts`).
+the task's own, or inside a nested workspace (an entry marked
+`workspace`, named by its root-relative dir) (`VX_E_NESTED_INPUT`,
+`VX_E_NESTED_OUTPUT`): the boundary drops every file it can match, so an
+input keys nothing and an output saves nothing
+(`tests/nested-input.test.ts`).
 
 ## Inputs that read outputs
 

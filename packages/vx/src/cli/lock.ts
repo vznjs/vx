@@ -190,7 +190,12 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
   try {
     const { workspaceConfig, plugins, cacheDir } = await loadCliWorkspace(root)
     out.reviewFiles = resolveSetting('lock.reviewFiles', workspaceConfig).value !== false
-    const { configs: found, strayReviews, shadowed } = await findProjectConfigs(root)
+    const {
+      configs: found,
+      strayReviews,
+      shadowed,
+      nestedWorkspaces,
+    } = await findProjectConfigs(root)
     out.strayReviews = strayReviews
     out.shadowed = shadowed
     // The one load that evaluates: every reader reads the lock this writes.
@@ -210,6 +215,8 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
         },
       ]),
     )
+    if (nestedWorkspaces.length > 0)
+      out.fresh.nestedWorkspaces = nestedWorkspaces.map((dir) => lockKey(root, dir))
     // The stages edit what they are handed; the lock keeps what the configs say.
     const view = structuredClone(out.fresh)
     const lock = async (): Promise<Lockfile> => view
@@ -257,9 +264,14 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
       workspaceRoot: root,
       rules,
       nestedProjects: new Map(
-        [...computeNestedProjectDirs(out.all)].map(([name, dirs]) => [
+        [...computeNestedProjectDirs(out.all, nestedWorkspaces)].map(([name, dirs]) => [
           name,
-          dirs.map((dir) => ({ name: nameOf.get(dir)!, dir })),
+          dirs.map((dir) => {
+            const project = nameOf.get(dir)
+            return project === undefined
+              ? { name: relPosix(root, dir), dir, workspace: true }
+              : { name: project, dir }
+          }),
         ]),
       ),
       projectConfigs: out.all.flatMap((m) =>
@@ -730,6 +742,16 @@ async function checkLock(root: string, json: boolean): Promise<number> {
     failures.push(problem)
     drifted.add(dir)
   }
+  const lockedWalls = lock.nestedWorkspaces ?? []
+  const walls = check.fresh.nestedWorkspaces ?? []
+  for (const dir of walls)
+    if (!lockedWalls.includes(dir))
+      failures.push(`${dir} is a nested workspace the lock does not hold — run 'vx lock'`)
+  for (const dir of lockedWalls)
+    if (!walls.includes(dir))
+      failures.push(
+        `the lock holds ${dir} as a nested workspace, which it is not now — run 'vx lock'`,
+      )
   if (broken !== null && check.loaded) failures.push(broken)
   // Each config that does not load, as `vx lock` names them: a CI fixing
   // one at a time re-ran the gate once per broken config.

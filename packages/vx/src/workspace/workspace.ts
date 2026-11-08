@@ -273,6 +273,8 @@ export interface ProjectConfigs {
   readonly strayReviews: string[]
   /** Absolute: config files a higher-precedence one beside them hides, the root's workspace config among them, by the one read. */
   readonly shadowed: { file: string; read: string }[]
+  /** Absolute, sorted: the outermost directories holding their own `.vx/workspace.*`. */
+  readonly nestedWorkspaces: string[]
 }
 
 /**
@@ -363,7 +365,12 @@ export async function findProjectConfigs(root: string): Promise<ProjectConfigs> 
   )
     .filter((f) => f !== null)
     .sort()
-  return { configs, strayReviews, shadowed }
+  // A project's globs stop at each, as at a nested project (computeNestedProjectDirs).
+  const nestedWorkspaces = nested
+    .filter((n) => !nested.some((m) => n.startsWith(`${m}/`)))
+    .map((rel) => path.join(root, rel))
+    .sort()
+  return { configs, strayReviews, shadowed, nestedWorkspaces: [...new Set(nestedWorkspaces)] }
 }
 
 /**

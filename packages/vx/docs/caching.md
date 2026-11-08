@@ -1190,7 +1190,12 @@ project `--affected` gives its files to, and its default `build` keys
 them (X-57). The same set fences the output clean, so a root
 `outputs.files: ['**/*.js']` never removes a member's source. Every
 glob pass drops a path under one of them (an ancestor lookup,
-A-11). The only way
+A-11). A nested workspace (a directory holding its own
+`.vx/workspace.*`, which `vx lock` records in the lock) joins the set the
+same way: an outer `**` folded its files, its `.vx/cache` included, into
+the outer key, and the clean before a run deleted its untracked files.
+`vx lock` refuses a glob rooted in one, as in a nested project, and
+`vx lock --check` fails a lock that does not hold one. The only way
 for project A to depend on project B's state via project-relative
 globs is `dependsOn` + upstream-hash propagation (step 8).
 

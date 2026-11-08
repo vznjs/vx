@@ -156,6 +156,17 @@ export function lockOfDiscovery(
   return discoveredLock.get(projects)
 }
 
+/** The nested workspace roots (absolute) the lock a discovery read records, by the array it returned. */
+const discoveredWalls = new WeakMap<readonly ProjectMeta[], readonly string[]>()
+
+/**
+ * Where every project's globs stop besides its nested projects: the
+ * nested workspaces `vx lock` found. None for an array no discovery made.
+ */
+export function nestedWorkspacesOf(projects: readonly ProjectMeta[]): readonly string[] {
+  return discoveredWalls.get(projects) ?? []
+}
+
 /**
  * The package graph a selection pass built over a discovery, by that
  * discovery's array, when it folded no task edge in: the graph a run that
@@ -211,7 +222,13 @@ export async function discoverProjects(
   /** The run's enumeration, which `DiscoverContext.worktreeChanges` reads (and starts). */
   git: LazyGitEnumeration = lazyGitEnumeration(workspaceRoot),
 ): Promise<ProjectMeta[]> {
-  const projects = lockedProjects(workspaceRoot, (await lock()).projects)
+  const read = await lock()
+  const projects = lockedProjects(workspaceRoot, read.projects)
+  if (read.nestedWorkspaces !== undefined)
+    discoveredWalls.set(
+      projects,
+      read.nestedWorkspaces.map((rel) => path.join(workspaceRoot, rel)),
+    )
   // Registered whatever the hooks: an `--affected` selection reads its
   // untracked files from this walk, and the run reuses it (I-26).
   discoveredGit.set(projects, git)
