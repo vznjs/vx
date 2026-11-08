@@ -2097,7 +2097,11 @@ its config's `name`, else by a plugin's `discover` stage (vx-lockfile
 gives `package.json`'s `name`), else by its root-relative path (`//` for
 the root); two projects of one name are refused naming both
 directories. The plugin `discover` stage runs here as in a run, and may
-add directories (X-143). Before writing, it
+add directories (X-143); one holding a config git ignores is refused, as
+is `--check`, naming the plugin and the file: "plugin 'vx-gen' adds project
+gen, but git ignores gen/vx.config.ts, so `vx lock` cannot read it —
+unignore it or delete it" (a run naming its task says the same, never
+"run `vx lock`"). Before writing, it
 builds the graph of every task the workspace declares, `graph` stage
 included, and checks the graph rules (`run.rules`), which no run
 checks, `dependencies` (which projects a project may depend on,

@@ -84,6 +84,7 @@ import {
   discoverProjects,
   gitOfDiscovery,
   graphOfDiscovery,
+  ignoredConfigRefusal,
   loadProjects,
   loadWorkspacePlugins,
   lockOfDiscovery,
@@ -1117,13 +1118,17 @@ export function workspaceCachePolicy(
 /** A config no locked project has, looked for only when the lock holds none. */
 function unlockedConfigOf(
   configured: readonly unknown[],
-  metas: ReadonlyArray<{ dir: string }>,
+  metas: ReadonlyArray<{ name: string; dir: string }>,
   workspaceRoot: string,
 ): string | undefined {
   if (configured.length > 0) return undefined
   for (const m of metas) {
     const config = PROJECT_CONFIG_FILENAMES.find((n) => existsSync(path.join(m.dir, n)))
-    if (config !== undefined) return relPosix(workspaceRoot, path.join(m.dir, config))
+    if (config === undefined) continue
+    const file = path.join(m.dir, config)
+    // `vx lock` never reads it: the hint would send the user to it for nothing.
+    if (ignoredConfigRefusal(workspaceRoot, m, file) === undefined)
+      return relPosix(workspaceRoot, file)
   }
   return undefined
 }
@@ -1153,10 +1158,7 @@ async function refuseUnlockedConfig(
         ? undefined
         : await unlockedDir(name, metas, workspaceRoot))
     if (config === undefined) continue
-    throw new UserError(
-      `${spec}: ${relPosix(workspaceRoot, config)} is not in the lock yet — run \`vx lock\``,
-      'VX_E_LOCK',
-    )
+    throw new UserError(`${spec}: ${notLockedYet(workspaceRoot, config, metas, name)}`, 'VX_E_LOCK')
   }
 }
 
@@ -1179,11 +1181,26 @@ function refuseUnlockedScope(
   for (const name of selected) {
     const config = unlockedConfig(name, metas)
     if (config === undefined) continue
-    throw new UserError(
-      `${spec}: ${relPosix(workspaceRoot, config)} is not in the lock yet — run \`vx lock\``,
-      'VX_E_LOCK',
-    )
+    throw new UserError(`${spec}: ${notLockedYet(workspaceRoot, config, metas, name)}`, 'VX_E_LOCK')
   }
+}
+
+/**
+ * Why the lock holds no `config`: git ignores it, in a directory a
+ * `discover` plugin made a project, which `vx lock` cannot fix; else it
+ * came after the lock.
+ */
+function notLockedYet(
+  workspaceRoot: string,
+  config: string,
+  metas: ReadonlyArray<{ name: string; dir: string }>,
+  name: string,
+): string {
+  const meta = metas.find((m) => m.name === name)
+  return (
+    (meta === undefined ? undefined : ignoredConfigRefusal(workspaceRoot, meta, config)) ??
+    `${relPosix(workspaceRoot, config)} is not in the lock yet — run \`vx lock\``
+  )
 }
 
 /** The config file in a project's directory the lock holds none for. */

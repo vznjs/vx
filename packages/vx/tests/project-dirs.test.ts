@@ -191,6 +191,34 @@ describe('a project is a directory with a vx.config', () => {
     TIMEOUT,
   )
 
+  // The lock held no config for a discovered `gen` whose config git
+  // ignores: `--check` passed, `gen#build` said "run `vx lock`", which
+  // changed nothing, and `build --all` dropped its tasks.
+  it(
+    'a discovered directory whose config git ignores is refused, not sent to `vx lock`',
+    async () => {
+      await write(path.join(root, '.gitignore'), 'gen/\n')
+      await write(path.join(root, 'gen/vx.config.mjs'), config())
+      await write(path.join(root, 'kept/vx.config.mjs'), config())
+      expect(vx(root, 'lock').code).toBe(0)
+      await write(
+        path.join(root, '.vx/workspace.mjs'),
+        `${PLUGIN_IMPORT}export default { plugins: [${pluginSource(
+          'vx-test-gen',
+          `{ discover: () => [{ dir: 'gen' }] }`,
+        )}] }\n`,
+      )
+      const ignored =
+        "plugin 'vx-test-gen' adds project gen, but git ignores gen/vx.config.mjs, so `vx lock` cannot read it — unignore it or delete it"
+      expect(planned(root, 'gen#hello')).toBe(`exit 1: ✗ vx run  gen#hello: ${ignored}`)
+      for (const args of [['lock'], ['lock', '--check']]) {
+        const r = vx(root, ...args)
+        expect([r.code, r.err.includes(ignored)]).toEqual([1, true])
+      }
+    },
+    TIMEOUT,
+  )
+
   it(
     "a config at or under a nested .vx/workspace is that workspace's, not this one's",
     async () => {

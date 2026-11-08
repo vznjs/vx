@@ -20,6 +20,7 @@ import {
   discoverProjects,
   fingerprintClaims,
   hasHook,
+  ignoredConfigRefusal,
   loadProjects,
 } from '../orchestrator/index.js'
 import { resolveSetting, runRules } from '../settings.js'
@@ -33,7 +34,7 @@ import {
   maskedLine,
   relPosix,
   type RefusalParts,
-  type UserError,
+  UserError,
   secretMask,
   secretNamed,
   type SecretMask,
@@ -213,6 +214,10 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     const view = structuredClone(out.fresh)
     const lock = async (): Promise<Lockfile> => view
     out.all = await discoverProjects(root, lock, plugins, cacheDir, warn)
+    for (const m of out.all) {
+      const why = m.configPath === null ? ignoredConfigRefusal(root, m) : undefined
+      if (why !== undefined) throw new UserError(why, 'VX_E_LOCK')
+    }
     const { projects } = await loadProjects({
       workspaceRoot: root,
       cacheDir,
