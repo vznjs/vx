@@ -151,6 +151,12 @@ export interface ExecuteArgs {
    */
   remoteOnlyNoop?: boolean
   /**
+   * The task depends on a `remoteOnlyNoop` one, directly or through others
+   * (`Placements.belowNoop`): it saves nothing, since its key names the
+   * no-op's outputs, which never landed.
+   */
+  belowNoop?: boolean
+  /**
    * `exec.remote: 'only'` placed on a remote executor: execute remotely,
    * but this machine's disk is untouched — no output clean, no vx cache
    * probe/restore/save. The task's outputs live in the REMOTE store and
@@ -619,7 +625,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   let unkeyed = unkeyedUpstream !== undefined
   /** The input `keyStillTrue` found moved under the command (`TaskOutcome.driftedInput`). */
   let driftedInput: string | null | undefined
-  const willSave = willWrite && args.taintedUpstream !== true && !unkeyed && !keyless
+  const willSave =
+    willWrite && args.taintedUpstream !== true && !unkeyed && !keyless && args.belowNoop !== true
 
   // The executor retains nothing: the entry's output is the attempt's
   // `output` log, both streams in the order they reached the logger, kept

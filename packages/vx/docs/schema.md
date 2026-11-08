@@ -395,7 +395,10 @@ daemon, a Docker socket, a device, a VPN-only host.
   worker→store→worker without ever transiting the submitter. With no remote
   executor it succeeds without running and dependents use the machine's
   ambient state (the dev's own `node_modules`), exactly as before the field
-  existed. An `'only'` task must declare `cache` — its inputs are what a
+  existed. Its key is the one a real run of it has, so a task that depends
+  on it, directly or through others, still reads the cache but saves
+  nothing: an entry built from the ambient state would sit where a run
+  over the task's real outputs looks. An `'only'` task must declare `cache` — its inputs are what a
   worker reproduces and its key is the address of its remote record. One
   without is refused at load.
 

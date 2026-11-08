@@ -177,11 +177,13 @@ one-shot handler mid-cleanup.
    `FingerprintWatch`, [`fingerprint-watch.md`](./fingerprint-watch.md),
    item 750), and so does a server it depends on (through groups and servers too)
    that died while it ran (`serverDiedUnder`, run.ts: it seeds the
-   run's taint, so what is built on it is not saved either). Otherwise `resolveOutputs(...)` →
+   run's taint, so what is built on it is not saved either), and so does
+   an upstream that is a `remote: 'only'` no-op, directly or through
+   others (`belowNoop`): its key names outputs that never landed. Otherwise `resolveOutputs(...)` →
    `cache.save({ hash, projectDir, outputFiles, entry })`.
    **If it ran here and saves nothing** — it failed, the policy writes
-   nothing (`--cache-policy=local:r,remote:r`), an upstream failed, a
-   server died under it, the key no longer held — the same re-check runs (`movedInput`), and a move drops
+   nothing (`--cache-policy=local:r,remote:r`), an upstream failed or
+   no-op'd, a server died under it, the key no longer held — the same re-check runs (`movedInput`), and a move drops
    the project's facts; otherwise its declared outputs are resolved and
    marked in the git snapshot as a save marks them (`markUnsaved`). A
    same-run reader keyed from the snapshot's OIDs for either replayed

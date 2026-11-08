@@ -303,6 +303,68 @@ describe("execute-task — exec.remote:'only' with no remote executor", () => {
       await closeBench(b)
     }
   })
+
+  it(
+    'saves no dependant: its key folds an upstream key whose outputs never landed',
+    async () => {
+      // `remote` is not in the key, so the no-op's key is the one a real run
+      // of it has. `app` saved, under a key folding it, output built with no
+      // `gen` output at all; once `gen` really ran, `app` hit that entry and
+      // replayed MISSING. `top` reads `app`'s output: one hop further, same.
+      fixture = await makeWorkspace()
+      try {
+        const gen = (remote: string) => `export default { tasks: { build: {
+          exec: { command: 'mkdir -p dist && cp src/a.txt dist/v.txt'${remote} },
+          inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+        } } }`
+        const genDir = await addProject(fixture.root, 'gen', gen(", remote: 'only'"))
+        await mkdir(path.join(genDir, 'src'))
+        await writeFile(path.join(genDir, 'src', 'a.txt'), 'v1\n')
+        const appDir = await addProject(
+          fixture.root,
+          'app',
+          `export default { tasks: { build: {
+            exec: { command: '(cat ../gen/dist/v.txt 2>/dev/null || echo MISSING) > out.txt' },
+            dependsOn: ['gen#build'], inputs: { files: ['package.json'] },
+            outputs: { files: ['out.txt'] }, cache: true,
+          } } }`,
+        )
+        const topDir = await addProject(
+          fixture.root,
+          'top',
+          `export default { tasks: { build: {
+            exec: { command: 'cp ../app/out.txt out.txt' },
+            dependsOn: ['app#build'], inputs: { files: ['package.json'] },
+            outputs: { files: ['out.txt'] }, cache: true,
+          } } }`,
+        )
+        gitInit(fixture.root)
+        const once = { cwd: fixture.root, tasks: ['build'], projects: ['top'] }
+        const first = await run({ ...once, log: capturingLogger(fixture) })
+        expect(first.ok).toBe(true)
+        expect(await readFile(path.join(topDir, 'out.txt'), 'utf8')).toBe('MISSING\n')
+
+        await writeFile(path.join(genDir, 'vx.config.mjs'), gen(''))
+        await rm(path.join(appDir, 'out.txt'))
+        await rm(path.join(topDir, 'out.txt'))
+        const second = await run({ ...once, log: capturingLogger(fixture) })
+        expect(Object.fromEntries(second.outcomes.map((o) => [o.node.id, o.status]))).toEqual({
+          'app#build': 'success',
+          'gen#build': 'success',
+          'top#build': 'success',
+        })
+        expect(await readFile(path.join(appDir, 'out.txt'), 'utf8')).toBe('v1\n')
+        expect(await readFile(path.join(topDir, 'out.txt'), 'utf8')).toBe('v1\n')
+
+        // CONTROL: entries under keys folding a real run are saved and hit.
+        const third = await run({ ...once, log: capturingLogger(fixture) })
+        expect(third.outcomes.map((o) => o.status)).toEqual(['cache-hit', 'cache-hit', 'cache-hit'])
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
 })
 
 describe('execute-task — what the outcome and the request carry', () => {
