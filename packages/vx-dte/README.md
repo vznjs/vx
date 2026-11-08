@@ -65,12 +65,12 @@ the initiator.
   anyone who reads the repository's Actions sees. A dispatch GitHub
   answers without a run id (204) is refused, so its workers exit.
 
-| Who           | `info` / `body`                                         |
-| ------------- | ------------------------------------------------------- |
-| worker `join` | `info: { "noise": <message 1>, "token"? }`              |
-| orchestrator  | `{ "type": "hello", "noise": <message 2>, "token"? }`   |
-| orchestrator  | `{ "type": "refused", "reason" }`, plain, then `remove` |
-| either, then  | `["<n>.<ciphertext>", …]`                               |
+| Who           | `info` / `body`                                            |
+| ------------- | ---------------------------------------------------------- |
+| worker `join` | `info: { "noise": <message 1>, "token"? }`                 |
+| orchestrator  | `{ "type": "hello", "noise": <message 2>, "token"? }`      |
+| orchestrator  | `{ "type": "refused", "reason" }`, plain, then `remove`    |
+| either, then  | `["<n>.<ciphertext>", …]`, or `["+", …]` with more to come |
 
 The orchestrator checks each worker the moment the relay says it joined,
 and `remove`s one whose handshake fails. Message 1's payload is the
@@ -79,7 +79,10 @@ body is Noise transport messages, base64, each at most 65535 bytes and
 naming its nonce `n` (Noise §11.4, since a relay may reorder); each is
 sealed with associated data `<first n>.<parts>` of its body, so no part
 opens in another body, and a body's parts take consecutive nonces, so
-none is repeated or reordered in it. A body whose first nonce was seen before is a
+none is repeated or reordered in it. A body of more than 5 parts goes
+over several sends of 5, each but the last led by `"+"`, so no frame
+passes the relay's 1 MiB; the receiver holds them until the last and
+opens the body whole. A body whose first nonce was seen before is a
 replay and is dropped; one older than a body already opened (the relay
 held it back: the wire's numbers are outside the seal) or that does not
 open loses its sender. The plaintext is a lead byte, the length of

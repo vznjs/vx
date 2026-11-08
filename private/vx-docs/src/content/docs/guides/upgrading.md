@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## close the next hardening batch
+
+SCHEMA_VERSION v55; the next run on every machine misses once.
+
 ## cache: date files a restore writes now, not with saved mtime
 
 the local cache index is schema v55; what it recorded before is dropped on first open, so the next run misses once.

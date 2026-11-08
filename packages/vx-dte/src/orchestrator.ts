@@ -1639,6 +1639,8 @@ export class Orchestrator {
     a.usage.to = performance.now()
     this.trace.left(a.label, 'lost', a.usage.to)
     this.gone.push(a)
+    // Its results' `end`s never come.
+    for (const k of this.parts.keys()) if (k.startsWith(`${a.id}\0`)) this.parts.delete(k)
     // Its tasks run again: first, as they were first to go.
     const back: Job[] = []
     for (const j of [...a.busy.values()]) {

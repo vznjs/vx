@@ -219,6 +219,8 @@ class Session {
   private readonly seen = new Set<number>()
   /** The last nonce of the newest body opened. */
   private newest = -1
+  /** A body's parts from its sends so far, until the send that ends it. */
+  private held: { n: number; c: string }[] = []
   /** The last send handed to the wire, or still sealing: the next waits on it. */
   private turn: Promise<unknown> = Promise.resolve()
   /** Bodies asked for in this turn of the event loop, or while the send before seals: sealed as one. */
@@ -239,7 +241,8 @@ class Session {
    * small one sealed next (a worker's `end` before its `ran`, 2026-10-26).
    * The wire numbers a send as it is handed over, so only the handing waits.
    * Bodies that wait together go as one: each was a send, a relay frame
-   * and its answer of its own.
+   * and its answer of its own. A body of more parts than a frame holds
+   * goes over several sends, each but the last led by `+`.
    */
   send(body: unknown, wire: (sealed: string[]) => Promise<void>): Promise<void> {
     const json = JSON.stringify(body)
@@ -254,7 +257,13 @@ class Session {
     let handed: Promise<void> | undefined
     const sealed = this.turn.then(async () => {
       if (this.group === mine) this.group = undefined
-      handed = wire(await this.seal(`[${mine.bodies.join(',')}]`))
+      const parts = await this.seal(`[${mine.bodies.join(',')}]`)
+      const sends: Promise<void>[] = []
+      for (let at = 0; at < parts.length; at += SEND_PARTS) {
+        const some = parts.slice(at, at + SEND_PARTS)
+        sends.push(wire(at + SEND_PARTS < parts.length ? [MORE, ...some] : some))
+      }
+      handed = Promise.all(sends).then(() => undefined)
     })
     // quiet: `sent` hands each caller this error; the next turn must not inherit it.
     this.turn = sealed.catch(() => undefined)
@@ -281,9 +290,12 @@ class Session {
 
   /** Its bodies; `REPLAY` for one delivered before; undefined for one that does not open. */
   async open(s: unknown): Promise<unknown[] | typeof REPLAY | undefined> {
-    if (!Array.isArray(s) || s.length === 0) return undefined
-    const parts: { n: number; c: string }[] = []
-    for (const p of s) {
+    const parts = this.held
+    this.held = []
+    if (!Array.isArray(s)) return undefined
+    const more = s[0] === MORE
+    if (s.length === (more ? 1 : 0)) return undefined
+    for (const p of more ? s.slice(1) : s) {
       if (typeof p !== 'string') return undefined
       const [n, c] = p.split('.')
       const seq = Number(n)
@@ -297,6 +309,10 @@ class Session {
     // The wire numbers sends outside the seal, in the order they were
     // sealed: one older than a body already opened was held back by the relay.
     if (parts[0]!.n <= this.newest) return undefined
+    if (more) {
+      this.held = parts
+      return []
+    }
     // Each part is sealed to its body's first nonce and part count: unbound,
     // a relay spliced a fresh first part onto a delivered body's second.
     const ad = bodyAd(parts[0]!.n, parts.length)
@@ -317,12 +333,20 @@ class Session {
   }
 }
 
+/**
+ * Transport messages per send: six of 64 KiB, in base64, pass the wire's
+ * 512 KiB frame, and a task's env of 1.3 MB sealed as one send passed the
+ * relay's 1 MiB (2026-11-08).
+ */
+const SEND_PARTS = 5
+/** Leads each send of a body but its last. */
+const MORE = '+'
 /** Leads a body zstd-compressed, and one as its JSON. */
 const ZSTD = 0
 const RAW = 1
 /**
  * Bodies of up to this much JSON go sealed as one; each body of more goes
- * alone, and the wire keeps a frame under the relay's limit by its own.
+ * alone, over as many sends as its parts take (`SEND_PARTS`).
  */
 const GROUP_BYTES = 64 * 1024
 /** The lead byte and its sender's history length; a compressed one's frame length next. */

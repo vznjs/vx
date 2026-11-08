@@ -5019,6 +5019,28 @@ it('takes a result’s parts ahead of its end as one result', async () => {
   }
 })
 
+// A lost worker's parts were held for the rest of the run: its `end` never comes.
+it('drops the parts of a result whose worker is lost before its end', async () => {
+  const h = await harness(new Map([node('t')]))
+  try {
+    const a = await h.worker(1)
+    const ran = h.o.execute(h.req('t', 'k-t'))
+    expect(await a.batches()).toEqual([['t']])
+    await a.say({ type: 'part', task: 't', changed: ['a/1'] })
+    const held = (h.o as unknown as { parts: Map<string, unknown> }).parts
+    for (let i = 0; i < 100 && held.size === 0; i++) await Bun.sleep(10)
+    expect(held.size).toBe(1)
+    h.o.failed('worker#1', 'exited 137')
+    expect(held.size).toBe(0)
+    const b = await h.worker(1)
+    expect(await b.batches()).toEqual([['t']])
+    await b.finish('t', 'k-t', { exitCode: 0, durationMs: 1, changed: ['a/2'] })
+    expect((await ran).changed).toEqual(['a/2'])
+  } finally {
+    await h.stop()
+  }
+})
+
 // A workspace in a repository subdirectory: git named the file from the
 // repository's root, which matched no keyed file, and core saved a task's
 // rewrite of its own input under its key (2026-10-25).
