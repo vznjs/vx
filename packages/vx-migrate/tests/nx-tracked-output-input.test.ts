@@ -2,6 +2,8 @@
 // every output for gitignored, as Nx's file map skips gitignored files.
 // A generator that writes into a TRACKED `src` left `build` keyed on no
 // file, and a committed source change replayed the old `dist` (stale hit).
+// Then an untracked `src` git does not ignore was taken for ignored: Nx's
+// file map lists it, so it hashes the input, and the edit replayed.
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -18,7 +20,12 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-async function inputsOfBuild(tracked: readonly string[] | undefined): Promise<unknown> {
+async function inputsOfBuild(
+  tracked: readonly string[] | undefined,
+  gitignore = '',
+): Promise<unknown> {
+  Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+  await writeFile(path.join(root, '.gitignore'), gitignore)
   const dir = path.join(root, 'packages', 'a')
   await mkdir(dir, { recursive: true })
   await writeFile(path.join(dir, 'package.json'), '{"name":"a"}')
@@ -52,9 +59,11 @@ async function inputsOfBuild(tracked: readonly string[] | undefined): Promise<un
 
 // Kept, the input meets gen's output in the sibling and tracked passes,
 // which leave `build` uncached with a todo rather than keyed on nothing.
-it('an input under a tracked output stays an input; under an untracked one it is dropped', async () => {
+it('an input under a tracked or unignored output stays an input; under an ignored one it is dropped', async () => {
   expect(await inputsOfBuild(['packages/a/package.json', 'packages/a/src/i.ts'])).toContain(
     'src/**/*',
   )
-  expect(await inputsOfBuild(['packages/a/package.json'])).toEqual([])
+  expect(await inputsOfBuild(['packages/a/package.json'])).toContain('src/**/*')
+  expect(await inputsOfBuild(['packages/a/package.json'], 'src/\n')).toEqual([])
+  expect(await inputsOfBuild(['packages/a/package.json'], 'packages/a/src\n')).toEqual([])
 })

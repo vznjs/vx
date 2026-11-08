@@ -373,7 +373,7 @@ function taskKeysSorted(key: string, value: unknown): unknown {
  * (item 972).
  */
 export function writeLockfile(root: string, lock: Lockfile): Promise<void> {
-  return writeAllOrNone([lockfileWrite(root, lock)])
+  return writeAllOrNone([lockfileWrite(root, lock)], root)
 }
 
 /** The lock's file and bytes, for `writeAllOrNone`. */

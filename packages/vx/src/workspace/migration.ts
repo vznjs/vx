@@ -381,7 +381,8 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   // `root`, a workspace glob): one that names `../x` wrote outside it.
   // A member directory linked out of the root is spelled inside it, so the
   // real directory is asked too: core's discovery never loads a config
-  // there. `.vx` itself may be a link.
+  // there. `.vx` is not a project: its files are refused outside the
+  // root at the write (`refuseSymlink`).
   const realRoot = realpathSync(root)
   for (const f of files) {
     const rel = relPosix(root, f.abs)
@@ -434,8 +435,8 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
       ui.print('out', ui.excerpt(f.relPath, f.contents))
     }
   } else if (!dry) {
-    for (const f of files) refuseSymlink(f.abs)
-    for (const f of files) await writeNoFollow(f.abs, f.contents)
+    for (const f of files) refuseSymlink(f.abs, root)
+    for (const f of files) await writeNoFollow(f.abs, f.contents, root)
     for (const f of replaced) await unlink(f)
     // The lock that follows loads its plugins from the file just written.
     workspaceFileWritten()

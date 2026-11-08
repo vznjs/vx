@@ -40,6 +40,7 @@ export async function fetchManifest(
   spec: string,
   verb?: string,
   registry?: Registry,
+  silenceMs?: number, // each wait on the registry; default 30 s
 ): Promise<unknown> // the registry's document
 export interface SignedRelease {
   version: string
@@ -57,6 +58,7 @@ export async function releaseBinary(
   announce: (version: string) => void,
   key?: SigningKey,
   current?: string, // the version being replaced; default this vx's
+  silenceMs?: number, // each wait on the registry; default 30 s
 ): Promise<Uint8Array | null>
 export async function replaceBinary(
   dest: string,

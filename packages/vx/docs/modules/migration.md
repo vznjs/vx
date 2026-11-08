@@ -138,7 +138,8 @@ export function taskNameProblem(name: string): string | null
   preset), abort the whole run before a byte lands.
 - No write goes through a symlink (`src/util/write-file.ts`, shared with
   `vx init` and `vx lock`): `refuseSymlink` refuses every target that is a
-  link before the first write, so a refusal leaves none half-made, and
+  link, or whose directory resolves outside the workspace root (a cloned
+  `.vx -> ../x`), before the first write, so a refusal leaves none half-made, and
   `writeNoFollow` writes a temp beside the file, renamed over it, so a
   link put there after the check is replaced, not followed. A directory
   where the file goes is named (`directoryInTheWay`), not shown as `EISDIR`.
@@ -151,7 +152,8 @@ export function taskNameProblem(name: string): string | null
   spelling and by its real directory: a member linked out of the root
   (`packages/a -> ../../out/a`) is refused too, as core's discovery never
   loads a config there. One linked to a directory inside the root is
-  written at the real place; `.vx` itself may be a link.
+  written at the real place. A `.vx` (or any parent) that resolves outside
+  the root is refused at the write, by `refuseSymlink` and `writeNoFollow`.
 - `quoteTsLiteral` escapes backslash, quote and raw newlines — a value with
   an embedded newline (legal JSON) must round-trip through the loader.
 

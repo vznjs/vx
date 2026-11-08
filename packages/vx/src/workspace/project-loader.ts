@@ -1129,6 +1129,7 @@ const BUN_MEMBERS_VX_READS: readonly PropertyKey[] = [
   'Transpiler',
   'build',
   'color',
+  'concatArrayBuffers',
   'connect',
   'deepEquals',
   'env',

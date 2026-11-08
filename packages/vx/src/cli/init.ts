@@ -356,7 +356,7 @@ async function scaffoldPlugin(seam: string, root: string, args: InitArgs): Promi
     }
   }
   if (!args.dry) {
-    for (const [rel] of files) refuseSymlink(path.join(root, rel))
+    for (const [rel] of files) refuseSymlink(path.join(root, rel), root)
     await mkdir(path.join(root, 'plugins'), { recursive: true }).catch(
       (err: NodeJS.ErrnoException) => {
         if (err.code !== 'EEXIST' && err.code !== 'ENOTDIR') throw err
@@ -365,7 +365,7 @@ async function scaffoldPlugin(seam: string, root: string, args: InitArgs): Promi
         )
       },
     )
-    for (const [rel, text] of files) await writeNoFollow(path.join(root, rel), text)
+    for (const [rel, text] of files) await writeNoFollow(path.join(root, rel), text, root)
   }
   const factory = /^export function (\w+)/m.exec(template.plugin)![1]!
   const workspaceFile =
@@ -519,17 +519,19 @@ async function starter(
     ui.print('out', ui.report(`vx init ${VERSION}`, [...rows, null, ['next', next]]))
     return 0
   }
-  for (const f of files) refuseSymlink(path.join(root, f.path))
+  for (const f of files) refuseSymlink(path.join(root, f.path), root)
   const ran = await install(pkgRoot, false, plugins)
   if (ran.length > 0) rows.push(['installed', ...ran])
   for (const f of files) {
-    await writeNoFollow(path.join(root, f.path), f.contents).catch((err: NodeJS.ErrnoException) => {
-      // writeNoFollow's mkdir of a parent that is a file says EEXIST.
-      if (err.code !== 'ENOTDIR' && err.code !== 'EEXIST') throw err
-      throw new UserError(
-        `vx init: cannot write ${f.path}: ${path.dirname(f.path)} is a file, not a directory; move it and re-run`,
-      )
-    })
+    await writeNoFollow(path.join(root, f.path), f.contents, root).catch(
+      (err: NodeJS.ErrnoException) => {
+        // writeNoFollow's mkdir of a parent that is a file says EEXIST.
+        if (err.code !== 'ENOTDIR' && err.code !== 'EEXIST') throw err
+        throw new UserError(
+          `vx init: cannot write ${f.path}: ${path.dirname(f.path)} is a file, not a directory; move it and re-run`,
+        )
+      },
+    )
   }
   for (const f of replaced) await unlink(path.join(root, f))
   // The lock that follows loads the workspace file just written.

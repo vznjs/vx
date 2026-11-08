@@ -17,6 +17,7 @@
 // default configuration is folded into the base task.
 
 import { existsSync } from 'node:fs'
+import { lstat } from 'node:fs/promises'
 import path from 'node:path'
 import { type Duration, type GeneratedProject, type GeneratedTask, UserError } from '@vzn/vx'
 import type { PackageMeta } from '../packages.js'
@@ -36,7 +37,7 @@ import {
   wildcardTodo,
   uncache,
 } from '../shared-outputs.js'
-import type { TrackedKinds } from '../tracked-outputs.js'
+import { gitIgnored, type TrackedKinds } from '../tracked-outputs.js'
 import { isRecord, packageScripts, relPosix } from '../paths.js'
 import { withLernaOrder } from './lerna.js'
 import { mapNxDeps, matchNxProjects, type TaskNameFor } from './nx-deps.js'
@@ -303,6 +304,8 @@ type MapOpts = MapNxOptions & {
   readonly hooks: (dir: string) => boolean
   /** Tasks per `syncGenerators` list, said once in the notes. */
   readonly syncTasks: Map<string, number>
+  /** Root-relative outputs git ignores (`ignoredOutputs`); unknown without git. */
+  readonly ignoredOutputs: ReadonlySet<string> | undefined
 }
 
 export interface NxMapping {
@@ -326,6 +329,46 @@ function nxTags(node: NxNode | undefined): string[] {
           typeof t === 'string' && t.trim() !== '' && t !== 'npm:public' && t !== 'npm:private',
       )
     : []
+}
+
+/**
+ * The outputs of every project whose input Nx never hashes: git tracks
+ * nothing under it and ignores it, as Nx's file map skips gitignored files
+ * (a changed `dist` file is a hit under Nx 23.3, YL-1). One untracked but
+ * not ignored is in Nx's file map, so an input under it is hashed: taken
+ * for ignored, `build` keyed on no file and a generated source's edit
+ * replayed (stale hit). One `git check-ignore` per mapping.
+ */
+async function ignoredOutputs(
+  root: string,
+  nodes: Readonly<Record<string, NxNode>>,
+  tracked: (rel: string) => TrackedKinds,
+): Promise<ReadonlySet<string>> {
+  const untracked = new Set<string>()
+  for (const [nodeName, node] of Object.entries(nodes)) {
+    const rel = normRel(node?.data?.root ?? '')
+    for (const o of nxProjectOutputs(node?.data?.targets, rel || '.', node?.name ?? nodeName)) {
+      const dir = path.posix.dirname(o)
+      if (
+        tracked(o).files.length === 0 &&
+        !tracked(dir).files.includes(dir === '.' ? o : o.slice(dir.length + 1))
+      )
+        untracked.add(o)
+    }
+  }
+  // A missing `dist` matches a `dist/` rule only spelled as a directory;
+  // an existing file never does.
+  const hit = await gitIgnored(
+    root,
+    [...untracked].flatMap((o) => [o, `${o}/`]),
+  )
+  const out = new Set<string>()
+  for (const o of untracked) {
+    if (hit.has(o)) out.add(o)
+    else if (hit.has(`${o}/`) && !(await lstat(path.join(root, o)).catch(() => null))?.isFile())
+      out.add(o)
+  }
+  return out
 }
 
 function normRel(p: string): string {
@@ -363,6 +406,8 @@ export async function mapNxWorkspace(
     pnp: yarnPnp(root),
     hooks: (dir) => runsScriptHooks(dir, hookMemo) !== null,
     syncTasks: new Map(),
+    ignoredOutputs:
+      opts.tracked === undefined ? undefined : await ignoredOutputs(root, nodeMap, opts.tracked),
   }
 
   const metaByRel = new Map<string, PackageMeta>()
@@ -417,7 +462,13 @@ export async function mapNxWorkspace(
     nodeNameOf.set(synthetic, nodeName)
   }
 
-  const upstream = planNxUpstream(nodeMap, g.dependencies, namedInputs, metaByNode, opts.tracked)
+  const upstream = planNxUpstream(
+    nodeMap,
+    g.dependencies,
+    namedInputs,
+    metaByNode,
+    mapOpts.ignoredOutputs,
+  )
 
   const taskNameFor: TaskNameFor = (project, target, configuration) => {
     const t = nodeMap[project]?.data?.targets?.[target]
@@ -872,7 +923,7 @@ function buildTask(
     rel: projectRel,
     name: projectName,
     outputs: nxProjectOutputs(nodeMap[nodeName]?.data?.targets, projectRel, projectName),
-    ...(opts.tracked === undefined ? {} : { tracked: opts.tracked }),
+    ...(opts.ignoredOutputs === undefined ? {} : { ignoredOutputs: opts.ignoredOutputs }),
     rootDeps: opts.rootDeps,
     ...(opts.lockfile === undefined ? {} : { lockfile: opts.lockfile }),
   }

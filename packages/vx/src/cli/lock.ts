@@ -466,11 +466,11 @@ async function writeLock(
   }
   // The copies first: one that cannot be written leaves the lock as it was,
   // not a new lock beside stale copies and a stack.
-  for (const r of reviews) refuseSymlink(r.file)
+  for (const r of reviews) refuseSymlink(r.file, root)
   const blocked = (
     await Promise.all(
       reviews.map((r) =>
-        writeNoFollow(r.file, r.text).then(
+        writeNoFollow(r.file, r.text, root).then(
           () => null,
           (err: unknown): { file: string; err: NodeJS.ErrnoException } => {
             if (typeof (err as NodeJS.ErrnoException).code !== 'string' || isOutOfFds(err))
@@ -493,10 +493,13 @@ async function writeLock(
     })
     return 1
   }
-  await writeAllOrNone([
-    lockfileWrite(root, check.fresh),
-    ...(check.dependencies === null ? [] : [dependenciesLockWrite(root, check.dependencies)]),
-  ])
+  await writeAllOrNone(
+    [
+      lockfileWrite(root, check.fresh),
+      ...(check.dependencies === null ? [] : [dependenciesLockWrite(root, check.dependencies)]),
+    ],
+    root,
+  )
   await writeIfMissing(path.join(root, '.vx', '.gitattributes'), DOT_VX_GITATTRIBUTES)
   const n = metas.length
   say(`${n} project config${n === 1 ? '' : 's'} → ${LOCKFILE_NAME}${bareNote(bare)}`)
