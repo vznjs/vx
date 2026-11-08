@@ -112,25 +112,42 @@ export function versionSpec(tag: string | undefined): string {
 }
 
 /**
+ * How long a registry may stay silent, before its headers or between two
+ * chunks of a body, before vx gives up: one that took the connection and
+ * never answered hung `vx upgrade` and `vx init` with no output. A slow
+ * download that keeps moving is never cut.
+ */
+const SILENCE_MS = 30_000
+
+const silence = (ms: number): Error => new Error(`no answer in ${ms / 1000} s`)
+
+/**
  * `fetch` on a box that cannot reach the host rejects with Bun's own
  * `TypeError` ("Unable to connect. Is the computer able to access the
  * url?", "Was there a typo in the url or port?"), which the CLI printed
  * as an internal error with a stack (a network namespace without a
- * route, 2026-09-16). One line, the host and the reason.
+ * route, 2026-09-16). One line, the host and the reason. `quiet` aborts
+ * the request after `silenceMs` without headers; the body read
+ * (`bodyOrRefuse`) aborts it too.
  */
 async function fetchOrRefuse(
   url: string,
   init: RequestInit,
   what: string,
-  verb = 'vx upgrade',
+  verb: string,
+  quiet: AbortController,
+  silenceMs: number,
 ): Promise<Response> {
+  const timer = setTimeout(() => quiet.abort(silence(silenceMs)), silenceMs)
   try {
-    return await fetch(url, init)
+    return await fetch(url, { ...init, signal: quiet.signal })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     throw new UserError(
       `${verb}: could not reach ${new URL(url).host} to ${what} (${message}) — check the network or the proxy and re-run`,
     )
+  } finally {
+    clearTimeout(timer)
   }
 }
 
@@ -139,17 +156,36 @@ async function fetchOrRefuse(
  * connection drop before the body does (a proxy that cuts a transfer):
  * Bun rejects the read with its own `TypeError` (`ECONNRESET`, "The socket
  * connection was closed unexpectedly"), which `fetchOrRefuse` never sees
- * and the CLI printed as an internal error with a stack.
+ * and the CLI printed as an internal error with a stack. A body silent for
+ * `silenceMs` between chunks is the same refusal, and its request aborted.
  */
-async function readOrRefuse<T>(
-  read: () => Promise<T>,
+async function bodyOrRefuse<T>(
+  res: Response,
+  parse: (bytes: Uint8Array) => T,
   url: string,
   what: string,
-  verb = 'vx upgrade',
+  verb: string,
+  quiet: AbortController,
+  silenceMs: number,
 ): Promise<T> {
   try {
-    return await read()
+    const parts: Uint8Array[] = []
+    const reader = res.body?.getReader()
+    for (;;) {
+      if (reader === undefined) break
+      let timer: Timer | undefined
+      const next = await Promise.race([
+        reader.read(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(silence(silenceMs)), silenceMs)
+        }),
+      ]).finally(() => clearTimeout(timer))
+      if (next.done) break
+      parts.push(next.value)
+    }
+    return parse(new Uint8Array(Bun.concatArrayBuffers(parts)))
   } catch (err) {
+    quiet.abort()
     const message = err instanceof Error ? err.message : String(err)
     throw new UserError(
       `${verb}: could not ${what} from ${new URL(url).host} (${message}) — nothing replaced; check the network or the proxy and re-run`,
@@ -163,8 +199,10 @@ export async function fetchManifest(
   spec: string,
   verb = 'vx upgrade',
   registry: Registry = resolveRegistry(pkg.split('/')[0]!),
+  silenceMs = SILENCE_MS,
 ): Promise<unknown> {
   const url = `${registry.url}${pkg}/${spec}`
+  const quiet = new AbortController()
   const res = await fetchOrRefuse(
     url,
     {
@@ -177,15 +215,19 @@ export async function fetchManifest(
     },
     'read the release',
     verb,
+    quiet,
+    silenceMs,
   )
   if (!res.ok) {
+    quiet.abort()
     throw new UserError(
       `${verb}: could not read ${pkg}@${spec} from ${new URL(url).host} (${res.status})${res.status === 404 && spec !== 'latest' ? ` — is ${spec} a published version?` : ''}${res.status === 401 || res.status === 403 ? ' — check the registry credentials in .npmrc or bunfig.toml' : ''}`,
     )
   }
   // A body that is not JSON (a captive portal's page, a proxy's error
   // page served with a 200) is the same refusal as a cut one.
-  return await readOrRefuse(() => res.json(), url, 'read the release', verb)
+  const json = (bytes: Uint8Array): unknown => JSON.parse(new TextDecoder().decode(bytes))
+  return await bodyOrRefuse(res, json, url, 'read the release', verb, quiet, silenceMs)
 }
 
 function authHeader(registry: Registry, url: string): Record<string, string> {
@@ -276,20 +318,35 @@ export function verifiedRelease(
 }
 
 /** Download `release.tarball` and check its bytes against the signed SHA-512. */
-async function downloadVerified(release: SignedRelease, registry: Registry): Promise<Uint8Array> {
+async function downloadVerified(
+  release: SignedRelease,
+  registry: Registry,
+  silenceMs: number,
+): Promise<Uint8Array> {
   const url = release.tarball
+  const quiet = new AbortController()
   const res = await fetchOrRefuse(
     url,
     { redirect: 'follow', headers: authHeader(registry, url) },
     'download the release',
+    'vx upgrade',
+    quiet,
+    silenceMs,
   )
   if (!res.ok) {
+    quiet.abort()
     throw new UserError(
       `vx upgrade: download failed (${res.status}) — ${url} — nothing replaced; re-run`,
     )
   }
-  const bytes = new Uint8Array(
-    await readOrRefuse(() => res.arrayBuffer(), url, 'download the release'),
+  const bytes = await bodyOrRefuse(
+    res,
+    (b) => b,
+    url,
+    'download the release',
+    'vx upgrade',
+    quiet,
+    silenceMs,
   )
   const got = `sha512-${new Bun.CryptoHasher('sha512').update(bytes).digest('base64')}`
   if (got !== release.integrity) {
@@ -344,9 +401,14 @@ async function signedRelease(
   spec: string,
   key: SigningKey,
   current: string,
+  silenceMs = SILENCE_MS,
 ): Promise<{ version: string; download: () => Promise<Uint8Array> } | null> {
   const registry = resolveRegistry(pkg.split('/')[0]!)
-  const release = verifiedRelease(await fetchManifest(pkg, spec, undefined, registry), pkg, key)
+  const release = verifiedRelease(
+    await fetchManifest(pkg, spec, undefined, registry, silenceMs),
+    pkg,
+    key,
+  )
   // npm signs every version it published: the signature proves the bytes,
   // not that they are the version asked for, so a mirror could hand back an
   // older one.
@@ -359,7 +421,7 @@ async function signedRelease(
   if (spec === 'latest') refuseOlderLatest(release.version, current, pkg)
   return {
     version: release.version,
-    download: async () => binaryFromTarball(await downloadVerified(release, registry)),
+    download: async () => binaryFromTarball(await downloadVerified(release, registry, silenceMs)),
   }
 }
 
@@ -369,7 +431,8 @@ async function signedRelease(
  * the next step runs. A signed version other than the one asked, or as
  * `latest` one below `current`, is refused. Null when the release is
  * `current`, the version of the vx being replaced; `announce` hears the
- * version before the download starts.
+ * version before the download starts. `silenceMs` bounds each wait on the
+ * registry (`SILENCE_MS`).
  */
 export async function releaseBinary(
   pkg: string,
@@ -377,8 +440,9 @@ export async function releaseBinary(
   announce: (version: string) => void,
   key: SigningKey = NPM_SIGNING_KEY,
   current = VERSION,
+  silenceMs = SILENCE_MS,
 ): Promise<Uint8Array | null> {
-  const release = await signedRelease(pkg, spec, key, current)
+  const release = await signedRelease(pkg, spec, key, current, silenceMs)
   if (release === null) return null
   announce(release.version)
   return await release.download()
