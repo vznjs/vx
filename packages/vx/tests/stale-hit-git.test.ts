@@ -244,6 +244,53 @@ describe('stale cache hits', () => {
     TIMEOUT,
   )
 
+  // No clean deletes a committed file, so attempt 1's `HALF` stayed for
+  // attempt 2 to pass beside, the pass was saved under the tree's key, and
+  // a hit after `git checkout` wrote `HALF` over the committed file.
+  for (const [scope, file, half, clean] of [
+    ['project', 'p/gen/route.ts', 'gen/route.ts', true],
+    ['workspace', 'wsgen/route.ts', '../wsgen/route.ts', true],
+    ['project (outputs.clean: false)', 'p/gen/route.ts', 'gen/route.ts', false],
+    ['workspace (outputs.clean: false)', 'wsgen/route.ts', '../wsgen/route.ts', false],
+  ] as const)
+    it(
+      `a retry that passes is not saved when a failed attempt changed a committed ${scope} output`,
+      async () => {
+        await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+        await writeLocalWorkspace(root)
+        const marker = path.join(root, 'tried')
+        await write(
+          path.join(root, 'p/vx.config.mjs'),
+          `export default { tasks: { build: {
+             exec: {
+               command: 'if [ ! -f ${marker} ]; then touch ${marker}; echo HALF > ${half}; exit 1; fi; mkdir -p gen; echo ok > gen/out.js',
+               retries: 1,
+             },
+             inputs: { files: ['src/**'] },
+             outputs: { files: ['gen/**'], workspaceFiles: ['wsgen/**'], clean: ${clean} },
+             cache: true,
+           } } }`,
+        )
+        await write(path.join(root, 'p/src/a'), 'x')
+        await write(path.join(root, file), 'original\n')
+        await write(path.join(root, '.gitignore'), '.vx/cache/\ntried\n')
+        git(root, 'init', '-q')
+        expect(vx(root, 'lock')).not.toMatch(/✗/)
+        git(root, 'add', '-A')
+        git(root, 'commit', '-q', '-m', 'initial')
+
+        expect(vx(root, 'run', 'p#build')).toMatch(/2 attempts/)
+        git(root, 'checkout', '--', file)
+        expect(vx(root, 'run', 'p#build')).not.toMatch(/restored|up-to-date/)
+        expect(await readFile(path.join(root, file), 'utf8')).toBe('original\n')
+        // The clean run that followed is the entry.
+        await rm(path.join(root, 'p/gen/out.js'))
+        expect(vx(root, 'run', 'p#build')).toMatch(/p#build[^\n]*restored-local/)
+        expect(await readFile(path.join(root, file), 'utf8')).toBe('original\n')
+      },
+      TIMEOUT,
+    )
+
   it(
     'a committed file under a root-anchored output survives the clean before a run',
     async () => {

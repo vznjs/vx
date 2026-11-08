@@ -306,7 +306,9 @@ test: { exec: { command: 'bun test', retries: 1 } }
   first attempt — a failed attempt's partial outputs can't leak into
   the next. An [additive](caching.md#additive-outputs-two-tasks-one-tree-an-edge-between-them)
   task removes what the failed attempt added instead; one that changed
-  or removed a file it found saves nothing on its pass. A process a
+  or removed a file it found saves nothing on its pass. No clean
+  deletes a committed file, so a pass after a failed attempt that
+  changed, added or removed a committed output is not saved either. A process a
   failed attempt left running may still write into the next attempt's
   outputs, so its pass is not saved, with the same warning as a
   passing attempt's leftover.

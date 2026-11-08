@@ -264,6 +264,18 @@ export async function ownWorkspaceOutputsSince(
   args: { workspaceRoot: string; outputs: readonly string[]; inputs?: OwnInputs | undefined },
   before: ReadonlyMap<string, OutputStamp>,
 ): Promise<string[] | undefined>
+// No clean deletes a committed file, so before a retry these tell whether
+// a failed attempt added, removed or touched one among the files a clean
+// found: the pass is then not saved.
+export function stampCommitted(
+  files: readonly string[],
+  committed: (abs: string) => boolean,
+): Map<string, OutputStamp>
+export function committedMoved(
+  files: readonly string[],
+  committed: (abs: string) => boolean,
+  before: ReadonlyMap<string, OutputStamp>,
+): boolean
 export async function cleanOutputPaths(args: {
   projectDir: string
   rels: readonly string[]

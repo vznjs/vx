@@ -75,6 +75,8 @@ export {
   ownOutputsSince,
   ownWorkspaceOutputsSince,
   stampOutputs,
+  stampCommitted,
+  committedMoved,
   stampWorkspaceOutputs,
   stopRuntimeProbes,
   answerRuntime,

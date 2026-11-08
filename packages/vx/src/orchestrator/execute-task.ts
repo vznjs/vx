@@ -18,6 +18,8 @@ import {
   resolveWorkspaceOutputs,
   stampOutputs,
   stampWorkspaceOutputs,
+  stampCommitted,
+  committedMoved,
   FULL_CACHE_POLICY,
   type GitFilesCache,
   racyWindowMs,
@@ -828,9 +830,14 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const additive = (node.addsToOutputsOf?.length ?? 0) > 0
   let stampedBefore: ReadonlyMap<string, OutputStamp> | undefined
   let wsStampedBefore: ReadonlyMap<string, OutputStamp> | undefined
-  // A failed attempt changed or removed a file the stamp found: no retry
-  // can put it back, so no entry holds only the passing attempt's work.
+  // A failed attempt changed or removed a file the stamp found, or a
+  // committed file under the outputs (no clean deletes one): no retry can
+  // put it back, so no entry holds only the passing attempt's work.
   let failedTouchedFound = false
+  // The committed files under the outputs as the first attempt found them,
+  // stamped only when a retry can follow.
+  let committedBefore: ReadonlyMap<string, OutputStamp> | undefined
+  let wsCommittedBefore: ReadonlyMap<string, OutputStamp> | undefined
   // `outputs.clean: false` leaves the outputs to the first attempt's
   // command, and the save stores whatever they hold after it, a leftover
   // included: the user opted out of the clean-tree guarantee
@@ -1012,6 +1019,23 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // the last attempt alone read `max 407ms` beside a footer of 837 (item
   // 1101). A saved entry keeps the attempt that produced it, what a hit saves.
   let spentMs = 0
+  // A known flake gets a retry its config did not ask for (below).
+  const retryCanFollow =
+    maxAttempts > 1 || (!retriesSet && cfgCacheable && !keyless && args.knownFlaky !== undefined)
+  // Stamps the committed files a clean found before the first attempt, and
+  // before a retry taints the save if a failed attempt moved one.
+  const checkCommitted = (
+    root: string,
+    rels: readonly string[],
+    committed: (abs: string) => boolean,
+    before: ReadonlyMap<string, OutputStamp> | undefined,
+  ): ReadonlyMap<string, OutputStamp> | undefined => {
+    if (!retryCanFollow) return undefined
+    const files = rels.map((r) => path.resolve(root, r))
+    if (before === undefined) return stampCommitted(files, committed)
+    if (committedMoved(files, committed, before)) failedTouchedFound = true
+    return before
+  }
 
   // vx's own work on the outputs, around a command that exited `exitCode`.
   async function outputsStep<T>(
@@ -1074,6 +1098,21 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         const cleanedRels = await cleanOutputs(cleanArgs)
         endClean()
         args.gitFilesCache?.markOutputsChanged(node.projectDir, cleanedRels)
+        committedBefore = checkCommitted(
+          node.projectDir,
+          cleanedRels,
+          cleanArgs.committed,
+          committedBefore,
+        )
+      } else if (keepOutputs && willWrite && !deferralRequested && outputs.length > 0) {
+        committedBefore = checkCommitted(
+          node.projectDir,
+          retryCanFollow
+            ? (await resolveOutputs(cleanArgs)).map((f) => relPosix(node.projectDir, f))
+            : [],
+          cleanArgs.committed,
+          committedBefore,
+        )
       }
       if (additive && willWrite && !deferralRequested && wsOutputs.length > 0) {
         // A root-anchored addition is stamped as the project one above: a
@@ -1097,6 +1136,23 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         // them so stale per-project git snapshots can't survive the wipe.
         const cleanedWsRels = await cleanWorkspaceOutputs(wsCleanArgs)
         args.gitFilesCache?.markWorkspaceOutputsChanged(args.workspaceRoot, cleanedWsRels)
+        wsCommittedBefore = checkCommitted(
+          args.workspaceRoot,
+          cleanedWsRels,
+          wsCleanArgs.committed,
+          wsCommittedBefore,
+        )
+      } else if (keepOutputs && willWrite && !deferralRequested && wsOutputs.length > 0) {
+        wsCommittedBefore = checkCommitted(
+          args.workspaceRoot,
+          retryCanFollow
+            ? (await resolveWorkspaceOutputs(wsCleanArgs)).map((f) =>
+                relPosix(args.workspaceRoot, f),
+              )
+            : [],
+          wsCleanArgs.committed,
+          wsCommittedBefore,
+        )
       }
     })
     // What the attempt before this one left, put back if this one is
@@ -1711,7 +1767,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   /**
    * What an additive run saves as its own, or undefined when it removed a
    * file it found: no entry replays a removal (`ownOutputsSince`), so the
-   * task saves nothing and runs again.
+   * task saves nothing and runs again. Undefined too for any task when a
+   * failed attempt moved a file no clean removed (`failedTouchedFound`).
    */
   async function ownOutputs(): Promise<
     { ownOutputFiles?: string[]; ownWsOutputFiles?: string[] } | undefined
