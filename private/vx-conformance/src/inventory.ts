@@ -139,6 +139,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'key-not-derived',
     'runtime-inputs',
     'select',
+    'server-chain',
     'server-chain-stop-order',
     'server-crash-fail-fast',
     'server-crash-through-group',

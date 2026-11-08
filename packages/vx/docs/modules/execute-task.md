@@ -175,7 +175,7 @@ one-shot handler mid-cleanup.
    a reader keyed after it reads them. A claimed root file (a lockfile) a
    task rewrote since the run read it withholds the save too (the run's
    `FingerprintWatch`, [`fingerprint-watch.md`](./fingerprint-watch.md),
-   item 750), and so does a server it depends on (through groups too)
+   item 750), and so does a server it depends on (through groups and servers too)
    that died while it ran (`serverDiedUnder`, run.ts: it seeds the
    run's taint, so what is built on it is not saved either). Otherwise `resolveOutputs(...)` →
    `cache.save({ hash, projectDir, outputFiles, entry })`.

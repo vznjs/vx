@@ -556,7 +556,8 @@ Semantics:
   remote, is never spawned: a fully cached `vx run e2e` does not boot the server
   `e2e` depends on, and the server is in no outcome or count. A group
   between them that nobody requested (`env: { dependsOn: ['dev'] }`) is
-  passed through for local hits. Behind a
+  passed through for local hits, and so is a server nobody requested:
+  `api` that only an idle `web` needs is not started either. Behind a
   remote cache, the server waits for the remote's answer on the
   dependants the local store missed, and starts at the first miss. It starts
   if one of those hits turns out to need running (its artifact went),
@@ -575,7 +576,9 @@ Semantics:
   run, and vx names it: `vx: <id> exited with code <n>` (a signal death
   as its `128 + n` code), at once while the graph still runs (`… while
 the run went on`), so a dependant failing against it reads why. Its own outcome is `failed` with that exit
-  code, and the footer counts it so (item 1071). A cached dependant that
+  code, and the footer counts it so (item 1071). A task that reaches it
+  through a group or another server (`e2e` on `web` on `api`) depends on
+  it too. A cached dependant that
   was running when it died still passes, but is not saved, nor is what
   is built on it: its key is a healthy run's, its bytes are not. An exit 0 on its own is
   fine (a daemon that forks and returns), and one kept only as a
