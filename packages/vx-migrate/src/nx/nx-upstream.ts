@@ -18,11 +18,10 @@
 // and edges only out of the cycle.
 import type { GeneratedTask } from '@vzn/vx'
 import type { PackageMeta } from '../packages.js'
-import type { TrackedKinds } from '../tracked-outputs.js'
 import { emptyNxInputs, expandNxInputs, type NxInputs } from './nx-inputs.js'
 import { nxProjectOutputs } from './nx-outputs.js'
 import { matchNxProjects } from './nx-deps.js'
-import { literalGlob } from '../glob-grammar.js'
+import { apartTakeBacks, literalGlob } from '../glob-grammar.js'
 
 interface GraphNode {
   name?: string
@@ -73,7 +72,7 @@ export function planNxUpstream(
   dependencies: unknown,
   workspaceNamed: Readonly<Record<string, unknown[]>> | null,
   metaByNode: ReadonlyMap<string, PackageMeta>,
-  tracked?: (rel: string) => TrackedKinds,
+  ignoredOutputs?: ReadonlySet<string>,
 ): NxUpstream {
   const isProject = (n: string): boolean => typeof nodes[n]?.data?.root === 'string'
   const projectTags = Object.entries(nodes).map(([name, n]) => ({
@@ -194,13 +193,12 @@ export function planNxUpstream(
     expandOwn(node, name, own, todos)
     const rel = normRel(nodes[node]?.data?.root ?? '')
     const inputs = emptyNxInputs()
-    for (const g of own.files) {
+    const files = own.files.map((g) => {
       const neg = g.startsWith('!') ? '!' : ''
-      inputs.wsFiles.push(
-        rel === '' ? g : `${neg}${literalGlob(rel)}/${neg === '' ? g : g.slice(1)}`,
-      )
-    }
-    inputs.wsFiles.push(...own.wsFiles)
+      return rel === '' ? g : `${neg}${literalGlob(rel)}/${neg === '' ? g : g.slice(1)}`
+    })
+    // Two of Nx's sets in one list, as in `expandNxInputs`.
+    inputs.wsFiles.push(...apartTakeBacks(files, own.wsFiles).flat())
     inputs.envNames.push(...own.envNames)
     inputs.runtimeCmds.push(...own.runtimeCmds)
     inputs.upstream.push(...own.upstream)
@@ -223,13 +221,15 @@ export function planNxUpstream(
       rel,
       name: nm,
       outputs: nxProjectOutputs(nodes[node]?.data?.targets, rel || '.', nm),
-      ...(tracked === undefined ? {} : { tracked }),
+      ...(ignoredOutputs === undefined ? {} : { ignoredOutputs }),
     }
     expandNxInputs([name], namedOf(node), at, into, todos)
   }
 
   const merge = (from: NxInputs, into: NxInputs): void => {
-    into.wsFiles.push(...from.wsFiles)
+    // A node's sets meet the reader's in one list: a `!` reaching another
+    // set's entry goes, as in `expandNxInputs`.
+    into.wsFiles.splice(0, Infinity, ...apartTakeBacks(into.wsFiles, from.wsFiles).flat())
     for (const n of from.envNames) if (!into.envNames.includes(n)) into.envNames.push(n)
     for (const c of from.runtimeCmds) if (!into.runtimeCmds.includes(c)) into.runtimeCmds.push(c)
   }

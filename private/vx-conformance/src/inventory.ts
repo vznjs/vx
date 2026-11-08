@@ -686,6 +686,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-migrate/nx-input-keyed-group',
     'vx-migrate/nx-input-projects',
     'vx-migrate/nx-input-projects-deps',
+    'vx-migrate/nx-input-sets',
     'vx-migrate/nx-legacy-executors',
     'vx-migrate/nx-lerna-order',
     'vx-migrate/nx-map-sweep',
