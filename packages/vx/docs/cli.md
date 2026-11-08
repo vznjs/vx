@@ -1577,9 +1577,12 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    starts a cycle, since no cache key can see it (a user's edit to one
    still does in a project with a task that has a command and no cache,
    which reads what it likes, item 947, outside any project nested
-   in it; a write the last cycle made is not, read off the later of
+   in it, and to one a task names outright; a write the last cycle made is not, read off the later of
    its mtime and ctime, so an output a cache hit restores with its
-   saved mtime is the run's, `watch-restored-output.test.ts`) — or declared an
+   saved mtime is the run's, `watch-restored-output.test.ts`, unless
+   no command of the cycle may have made it: an edit to
+   `node_modules/.gen/**` after its task ran, while another task held
+   the run, is a cycle, `watch-node-modules-input.test.ts`) — or declared an
    output, or the loop re-runs on it; after three such cycles in a row
    watch names the path and the remedy, once, and keeps going. A dev
    server the last cycle left running counts as that cycle for as long
