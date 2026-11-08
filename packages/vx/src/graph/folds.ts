@@ -10,6 +10,7 @@ import {
   parseDependencySpec,
   type DependencySpec,
 } from '../util/index.js'
+import { standInsOf, type StandIns } from './stand-ins.js'
 import type { TaskNode } from './task-graph.js'
 
 /**
@@ -56,7 +57,8 @@ export function refuseFiltersThroughGroups(nodes: ReadonlyMap<string, TaskNode>)
     const folded = new Set<TaskNode>()
     if (groups.length > 0) {
       const units = deps.map((n) => ({ node: n, unit: n.id }))
-      for (const { node: n } of selectFoldedDeps(units, filter, node.projectName, node.id)) {
+      const picked = selectFoldedDeps(units, filter, node.projectName, node.id, standInsOf(node))
+      for (const { node: n } of picked) {
         folded.add(n)
         if (isGroupTask(n)) for (const m of groupMembers(n, nodes)) folded.add(m)
       }
@@ -217,12 +219,19 @@ export interface FoldCandidate {
  * candidate stays folded: deleting by unit let `['^*', '!c#build']` drop
  * b#build's group with c#build's, and a change beneath both replayed the
  * old hit.
+ *
+ * `standIns` is the task's `standInsOf`: an edge added past a
+ * default build on a package cycle is selected whenever an edge it went
+ * past is. That build folds nothing of its cycle, so `['build']` on
+ * `a ↔ b` selected a#build alone, dropped b#build, and an edit to b
+ * replayed the old hit.
  */
 export function selectFoldedDeps(
   deps: readonly FoldCandidate[],
   filter: readonly string[] | undefined,
   selfProjectName: string,
   selfTaskId: string,
+  standIns?: StandIns,
 ): FoldCandidate[] {
   if (filter === undefined) return [...deps]
 
@@ -241,6 +250,11 @@ export function selectFoldedDeps(
       if (spec.negated) selected.delete(d)
       else selected.add(d)
     }
+  }
+  if (standIns !== undefined) {
+    const ids = new Set<string>()
+    for (const d of selected) ids.add(d.node.id)
+    for (const d of deps) if (standIns[d.node.id]?.some((p) => ids.has(p))) selected.add(d)
   }
   const byUnit = new Map<string, FoldCandidate>()
   for (const d of selected) if (!byUnit.has(d.unit)) byUnit.set(d.unit, d)
@@ -303,7 +317,13 @@ export function foldedDeps(node: TaskNode, nodeOf: (id: string) => TaskNode): Fo
     candidates.push({ node: dep, unit: foldUnit(dep) })
   }
   if (isGroupTask(node) && node.config.inputs === undefined) return candidates
-  return selectFoldedDeps(candidates, node.config.inputs?.tasks, node.projectName, node.id)
+  return selectFoldedDeps(
+    candidates,
+    node.config.inputs?.tasks,
+    node.projectName,
+    node.id,
+    standInsOf(node),
+  )
 }
 
 /**

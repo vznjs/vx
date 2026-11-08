@@ -55,6 +55,7 @@ import {
   OutputsFailed,
   RestoreDemoted,
   RestoreFailed,
+  standInsOf,
   type TaskNode,
   type TaskOutcome,
 } from '../graph/index.js'
@@ -604,7 +605,13 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // nothing to read under it, and nothing a later run could find.
   const present = upstream.filter((u): u is TaskOutcome => u !== undefined)
   const folded = new Set(
-    filterUpstreamHashes(present, cfg.inputs?.tasks, node.projectName, node.id).map(([id]) => id),
+    filterUpstreamHashes(
+      present,
+      cfg.inputs?.tasks,
+      node.projectName,
+      node.id,
+      standInsOf(node),
+    ).map(([id]) => id),
   )
   const foldedTasks = expandGroupUpstream(present.filter((u) => folded.has(u.node.id)))
   const keylessBy = isKeyless(cfg)

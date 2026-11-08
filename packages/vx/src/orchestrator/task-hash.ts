@@ -23,7 +23,13 @@ import {
   WORKSPACE_OUTPUT_PREFIX,
 } from '../cache/index.js'
 import type { InputFile, TaskInputs } from '../exec/index.js'
-import { isGroupTask, KeyFailed, type TaskNode, type TaskOutcome } from '../graph/index.js'
+import {
+  isGroupTask,
+  KeyFailed,
+  standInsOf,
+  type TaskNode,
+  type TaskOutcome,
+} from '../graph/index.js'
 import { GROUP_VIA } from '../history/index.js'
 import {
   isUserError,
@@ -443,6 +449,7 @@ async function resolveKeyInput(
     cfg.inputs?.tasks,
     args.node.projectName,
     args.node.id,
+    standInsOf(args.node),
   )
   const upstreamHashes = upstreamPairs.map(([, hash]) => hash)
   // hash → upstream task id, for capture-row naming only (not folded).

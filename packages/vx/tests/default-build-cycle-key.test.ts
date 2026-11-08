@@ -61,3 +61,55 @@ describe('default builds on a package cycle', () => {
     expect(after.text).not.toMatch(/ \d+✓/)
   }, 30_000)
 })
+
+// `inputs.tasks` naming the build an edge went past selected that build
+// alone: the edge past it (b#build) stood in for it and was dropped, and
+// an edit to b replayed the old hit.
+describe('inputs.tasks naming a default build on a package cycle', () => {
+  let root: string
+  beforeEach(async () => {
+    root = await makeWorkspace({
+      prefix: 'vx-cycle-filter-',
+      edges: { a: ['b'], b: ['a'], c: ['a'] },
+    })
+    await addProject(root, 'a', {
+      config: `export default { tasks: {
+        lint: { exec: { command: 'true' }, inputs: { files: [] } },
+        test: {
+          dependsOn: ['build', 'lint'],
+          exec: { command: 'cat ../b/src/index.js' },
+          inputs: { files: ['src/**'], tasks: ['build'] }, outputs: { files: [] }, cache: true,
+        },
+      } }\n`,
+      files: { 'src/index.js': 'a-1\n' },
+    })
+    await addProject(root, 'b', { files: { 'src/index.js': 'b-1\n' } })
+    await addProject(root, 'c', {
+      config: `export default { tasks: { build: {
+        dependsOn: ['^build'],
+        exec: { command: 'cat ../b/src/index.js' },
+        inputs: { files: ['src/**'], tasks: ['a#build'] }, outputs: { files: [] }, cache: true,
+      } } }\n`,
+      files: { 'src/index.js': 'c-1\n' },
+    })
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  // The second run reads the graph back from its memo, which must keep
+  // what each edge stands for, or its key is not the first run's.
+  for (const [form, task] of [
+    ['same-project', 'a#test'],
+    ['cross-project', 'c#build'],
+  ] as const) {
+    it(`a ${form} filter hits warm and re-runs when the other's files change`, async () => {
+      expect((await vx(root, ['run', task])).code).toBe(0)
+      expect((await vx(root, ['run', task])).text).toContain('local 1✓')
+      await writeFile(path.join(root, 'packages', 'b', 'src', 'index.js'), 'b-2\n')
+      const after = await vx(root, ['run', task])
+      expect(after.code).toBe(0)
+      expect(after.text).toContain('b-2')
+    }, 30_000)
+  }
+})

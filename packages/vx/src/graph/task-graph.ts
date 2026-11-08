@@ -29,6 +29,7 @@ import type { PackageGraph, ProjectEntry } from '../workspace/index.js'
 import { isDefaultBuild } from './default-build.js'
 import { foldedDeps, isGroupTask } from './folds.js'
 import type { TaskOutcome } from './scheduler.js'
+import { addStandIn } from './stand-ins.js'
 
 // Re-exported so existing importers keep working while the type's home
 // moves to workspace (it's the joint product of discovery + loading).
@@ -521,20 +522,33 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
   // packages below it, passing through the ones `visited` holds and the
   // ones that declare no `name`, and on past a default build on a cycle.
   // True when it found a holder.
-  function walkHolders(frame: Frame, name: string, visited: Set<string>, start: string): boolean {
-    const frontier = [...packageGraph.directDeps(start)]
+  // `past` holds the edges already gone past: each edge the walk adds
+  // beyond them stands in for them (`standInsOf`).
+  function walkHolders(
+    frame: Frame,
+    name: string,
+    visited: Set<string>,
+    start: string,
+    past: readonly string[],
+  ): boolean {
+    const frontier: Array<[project: string, past: readonly string[]]> = packageGraph
+      .directDeps(start)
+      .map((d) => [d, past])
     let held = false
     while (frontier.length > 0) {
-      const target = frontier.pop()!
+      const [target, via] = frontier.pop()!
       if (visited.has(target)) continue
       visited.add(target)
       if (visit(frame, target, name, false)) {
         held = true
+        const id = taskId(target, name)
+        if (via.length > 0) addStandIn(frame.node, id, via)
         const task = declaredTask(projects.get(target)!.config, name)!
         if (isChainGroup(task, name) && onCycle(target)) {
-          frontier.push(...packageGraph.directDeps(target))
+          const next = [...via, id]
+          for (const d of packageGraph.directDeps(target)) frontier.push([d, next])
         }
-      } else frontier.push(...packageGraph.directDeps(target))
+      } else for (const d of packageGraph.directDeps(target)) frontier.push([d, via])
     }
     return held
   }
@@ -546,7 +560,8 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
   // and hit after `b` changed.
   function goPast(frame: Frame, project: string, name: string, visited: Set<string>): void {
     const task = declaredTask(projects.get(project)!.config, name)!
-    if (isChainGroup(task, name) && onCycle(project)) walkHolders(frame, name, visited, project)
+    if (isChainGroup(task, name) && onCycle(project))
+      walkHolders(frame, name, visited, project, [taskId(project, name)])
   }
 
   // Resolves one `dependsOn` entry of `frame`'s task into its edges.
@@ -655,7 +670,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
       }
       const visited = new Set<string>([projectName])
       if (!isTaskPattern(spec.task)) {
-        const held = walkHolders(frame, spec.task, visited, projectName)
+        const held = walkHolders(frame, spec.task, visited, projectName, [])
         if (!held && !declaredAnywhere(projectName, spec.task)) {
           if (undeclaredDeps === undefined) throw undeclaredDepsError(id, spec.task, declared ?? [])
           undeclaredDeps(id, spec.task)
@@ -757,14 +772,19 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
     const frame: Frame = { node: x, entry: 0, added: false, pending: null, next: 0 }
     let reaching: Set<string> | null = null
     const visited = new Set<string>([x.projectName])
-    const frontier = [...packageGraph.directDeps(x.projectName)]
+    const frontier: Array<[project: string, past: readonly string[]]> = packageGraph
+      .directDeps(x.projectName)
+      .map((d) => [d, []])
+    const push = (from: string, via: readonly string[]): void => {
+      for (const d of packageGraph.directDeps(from)) frontier.push([d, via])
+    }
     while (frontier.length > 0) {
-      const target = frontier.pop()!
+      const [target, via] = frontier.pop()!
       if (visited.has(target)) continue
       visited.add(target)
       const task = declaredTask(projects.get(target)?.config, name)
       if (task === undefined) {
-        frontier.push(...packageGraph.directDeps(target))
+        push(target, via)
         continue
       }
       const to = taskId(target, name)
@@ -776,7 +796,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
           reaching = null
         }
         if (isChainGroup(task, name) || (reaching ??= reachingTo(nodes, x.id)).has(to)) {
-          frontier.push(...packageGraph.directDeps(target))
+          push(target, via)
           continue
         }
       }
@@ -785,8 +805,8 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
       visit(frame, target, name, false)
       drain()
       if (nodes.size !== size) reaching = null
-      if (isChainGroup(task, name) && onCycle(target))
-        frontier.push(...packageGraph.directDeps(target))
+      if (via.length > 0) addStandIn(x, to, via)
+      if (isChainGroup(task, name) && onCycle(target)) push(target, [...via, to])
     }
     x.deps = [...new Set(x.deps)].sort()
   }

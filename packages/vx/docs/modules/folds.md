@@ -21,11 +21,13 @@ export interface FoldCandidate {
   unit: string // what the fold dedups by: the hash, or a stand-in equal exactly when the hashes are
 }
 // `inputs.tasks` applied in order, last write wins; undefined selects all, [] none.
+// An edge in `standIns` (the task's `standInsOf`) is selected with any edge it went past.
 export function selectFoldedDeps(
   deps: readonly FoldCandidate[],
   filter: readonly string[] | undefined,
   selfProjectName: string,
   selfTaskId: string,
+  standIns?: StandIns,
 ): FoldCandidate[]
 // The dependencies one task's key folds, as `keyUpstream` hands them to
 // the key: scheduled edges less order-only ones, plus `excludedUpstream`.

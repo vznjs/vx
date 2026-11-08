@@ -1332,6 +1332,12 @@ matches a direct dependency (`dependsOn: ['build', 'build.a']`): the
 key would not move with the member it leaves out (`build.b`). Name the
 group, or depend on the member directly.
 
+A default `build` on a package cycle folds none of the builds on its
+cycle, so an edge to one also takes edges past it to theirs (`a ↔ b`:
+`dependsOn: ['build']` in a reaches `a#build` and `b#build`). An entry
+that selects `a#build` (`'build'`, `'a#build'`) selects the edges past
+it too: selecting `a#build` alone left the key unmoved by an edit to b.
+
 Examples:
 
 ```ts

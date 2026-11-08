@@ -15,6 +15,7 @@ import {
   foldedDeps,
   isGroupTask,
   outputTakenBack,
+  standInsOf,
   type TaskNode,
   type TaskOutcome,
 } from '../graph/index.js'
@@ -604,7 +605,9 @@ function foldedBy(
   const filter = node.config.inputs?.tasks
   if (filter === undefined) return (dep) => keyById.has(dep)
   const hashes = new Set(
-    filterUpstreamHashes(upstream, filter, node.projectName, node.id).map(([, h]) => h),
+    filterUpstreamHashes(upstream, filter, node.projectName, node.id, standInsOf(node)).map(
+      ([, h]) => h,
+    ),
   )
   return (dep) => {
     const h = keyById.get(dep)
