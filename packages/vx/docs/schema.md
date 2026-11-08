@@ -564,8 +564,9 @@ Semantics:
   between them that nobody requested (`env: { dependsOn: ['dev'] }`) is
   passed through for local hits, and so is a server nobody requested:
   `api` that only an idle `web` needs is not started either. Behind a
-  remote cache, the server waits for the remote's answer on the
-  dependants the local store missed, and starts at the first miss. It starts
+  remote cache, through the same groups and servers, the server waits
+  for the remote's answer on the dependants the local store missed, and
+  starts at the first miss. It starts
   if one of those hits turns out to need running (its artifact went),
   and that task runs once it is ready. A dependant whose key the
   server's writes could change (one in its own project, unless a sandbox
