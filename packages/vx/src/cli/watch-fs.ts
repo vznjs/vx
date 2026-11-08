@@ -102,20 +102,19 @@ export function pollWatcher(
         if (e.name === WATCH_PROBE) continue
         const childRel = rel === '' ? e.name : `${rel}/${e.name}`
         if (e.isDirectory()) {
-          if (recursive) {
-            if (!skipDir(childRel)) walk(path.join(abs, e.name), childRel)
-          } else {
-            // A non-recursive arm is there for a name coming or going (a
-            // project's parent hears the project made again), as the OS
-            // watcher reports it: by the directory's identity, not its
-            // times, which every write inside moves.
-            try {
-              const st = fs.statSync(path.join(abs, e.name))
-              current.set(childRel, `dir:${st.dev}:${st.ino}:${st.birthtimeMs}`)
-            } catch {
-              // raced with a delete; the next scan settles it
-            }
+          if (recursive && skipDir(childRel)) continue
+          // A directory is sampled for a name coming or going (a project's
+          // parent hears the project made again, one moved in names its
+          // files, whose times predate the arm), as the OS watcher reports
+          // it: by its identity, not its times, which every write inside
+          // moves.
+          try {
+            const st = fs.statSync(path.join(abs, e.name))
+            current.set(childRel, `dir:${st.dev}:${st.ino}:${st.birthtimeMs}`)
+          } catch {
+            continue // raced with a delete; the next scan settles it
           }
+          if (recursive) walk(path.join(abs, e.name), childRel)
           continue
         }
         // A link is an input as its target string (watch-judge.ts), so that

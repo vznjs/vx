@@ -1176,6 +1176,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'watch-judge-properties',
     'watch-loop-dump',
     'watch-one-stream',
+    'watch-poll-moved-dir',
     'watch-poll-output-beside-input',
     'watch-pool-close',
     'watch-server-blame',

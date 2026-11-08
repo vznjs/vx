@@ -1662,9 +1662,9 @@ Always ignored (no re-trigger):
   cycle, which writes again — a loop that never settles. A `cache.dir`
   edit mid-watch moves the filter with it, from the cycle that re-reads
   the config.
-- A new empty directory (`mkdir src/new`): it holds nothing a key reads,
-  and the poller, which samples files, never saw one. A file made in it
-  is the change. A project directory made again, which the watch waits
+- A new empty directory (`mkdir src/new`): it holds nothing a key reads.
+  A file made in it is the change, and so is a directory moved in with
+  files (`mv stage src/moved`), whatever their times. A project directory made again, which the watch waits
   on, still is one.
 
 Everything else triggers a cycle. We deliberately don't filter events
@@ -1694,7 +1694,9 @@ unless a task's inputs can lie in one (`src/**/*.ts` beside an output
 `src/**/*.js`) or git tracks a file there.
 It samples each file's later clock of mtime and ctime, so a replacement
 that carries the old file's mtime (`cp -p`, `rsync -a`, a `mv`) is an
-edit to it as it is to the OS watcher.
+edit to it as it is to the OS watcher. It samples each directory by
+its identity, as the OS watcher reports it, so one moved in is a
+change though its files keep times from before the arm.
 
 ### Claimed root file changes
 

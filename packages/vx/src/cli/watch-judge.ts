@@ -245,8 +245,8 @@ export class ChangeJudge {
     const prev = this.lastState.get(abs)
     this.lastState.set(abs, state)
     if (prev !== undefined) return prev === state
-    // A new empty directory holds nothing a key reads, and the poller,
-    // sampling files, never reported one: a file made in it is the edit.
+    // A new empty directory holds nothing a key reads: a file made in it
+    // is the edit.
     // One a watch waits on (a project directory made again) is a change:
     // its cycle re-arms the project.
     if (state === EMPTY_DIR && isDirectory(abs) && this.ctx.awaited?.(abs) !== true) return true
