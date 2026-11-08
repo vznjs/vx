@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   symlinkSync,
@@ -128,3 +129,42 @@ for (const [what, existing] of [
     )
   })
 }
+
+// Only the file's own name was checked: a cloned `.vx -> ../outside`
+// made `vx init` write workspace.ts, the locks and their ignores there.
+const outsideRefused = (at: string, link: string): string =>
+  `refusing to write ${at}: ${link} resolves to ${outside}, outside the workspace; remove the link and run again`
+
+it('vx init refuses a .vx linked outside the workspace and writes nothing there', () => {
+  symlinkSync(outside, path.join(root, '.vx'))
+  const r = vx('init')
+  expect(r.code).toBe(1)
+  expect(r.err).toContain(
+    outsideRefused(path.join(root, '.vx', 'workspace.ts'), path.join(root, '.vx')),
+  )
+  expect(readdirSync(outside)).toEqual([])
+})
+
+it('vx init --plugin refuses a plugins directory linked outside the workspace', () => {
+  mkdirSync(path.join(root, '.vx'))
+  writeFileSync(path.join(root, '.vx', 'workspace.mjs'), 'export default { plugins: [] }\n')
+  symlinkSync(outside, path.join(root, 'plugins'))
+  const r = vx('init', '--plugin', 'executor')
+  expect(r.code).toBe(1)
+  expect(r.err).toContain(
+    outsideRefused(path.join(root, 'plugins', 'package.json'), path.join(root, 'plugins')),
+  )
+  expect(readdirSync(outside)).toEqual([])
+})
+
+it('vx lock refuses a .vx linked outside the workspace and writes no lock there', () => {
+  writeFileSync(path.join(outside, 'workspace.mjs'), 'export default { plugins: [] }\n')
+  symlinkSync(outside, path.join(root, '.vx'))
+  writeFileSync(path.join(root, 'vx.config.mjs'), CONFIG)
+  const r = vx('lock')
+  expect(r.code).toBe(1)
+  expect(r.err).toContain(
+    outsideRefused(path.join(root, '.vx', 'projects.lock.json'), path.join(root, '.vx')),
+  )
+  expect(readdirSync(outside)).toEqual(['workspace.mjs'])
+})

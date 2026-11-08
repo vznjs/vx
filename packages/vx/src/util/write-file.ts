@@ -1,14 +1,43 @@
-import { lstatSync, readlinkSync, writeFileSync } from 'node:fs'
+import { lstatSync, readlinkSync, realpathSync, writeFileSync } from 'node:fs'
 import { lstat, mkdir, open, rename, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { UserError } from './errors.js'
 
 /**
- * Refuses a `file` that is a symlink: a repo can carry `vx.config.ts ->
- * /anywhere`, and a write through it lands outside the workspace. Called
- * before the first of a set of writes, so a refusal leaves none half-made.
+ * Refuses a `file` whose directory resolves outside `root`: a repo can
+ * carry `.vx -> ../anywhere` (or `plugins -> ...`), and checking only the
+ * file's own name wrote through it. The nearest directory that exists is
+ * asked; one not made yet is made under it.
  */
-export function refuseSymlink(file: string): void {
+function refuseOutside(file: string, root: string): void {
+  const top = realpathSync(root)
+  for (let at = path.dirname(file); ; at = path.dirname(at)) {
+    let real: string
+    try {
+      real = realpathSync(at)
+    } catch {
+      // quiet: not made yet (or a dangling link mkdir cannot make through)
+      if (at === path.dirname(at)) return
+      continue
+    }
+    const rel = path.relative(top, real)
+    if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) {
+      throw new UserError(
+        `refusing to write ${file}: ${at} resolves to ${real}, outside the workspace; remove the link and run again`,
+      )
+    }
+    return
+  }
+}
+
+/**
+ * Refuses a `file` that is a symlink, or whose directory resolves outside
+ * `root`: a repo can carry `vx.config.ts -> /anywhere`, and a write
+ * through it lands outside the workspace. Called before the first of a
+ * set of writes, so a refusal leaves none half-made.
+ */
+export function refuseSymlink(file: string, root: string): void {
+  refuseOutside(file, root)
   let link: string
   try {
     if (!lstatSync(file).isSymbolicLink()) return
@@ -41,12 +70,14 @@ export interface PendingWrite {
 
 /**
  * Writes each file to a temp beside it, then renames them all over their
- * names: a reader never sees half a file, and a refusal leaves every file
+ * names: a reader never sees half a file, and a refusal (one outside
+ * `root`, as `refuseSymlink`'s) leaves every file
  * as it was, not one new beside one old (`vx lock` said it wrote nothing
  * while the config lock held the edit). A refusal names the file the user
  * knows, never its temp.
  */
-export async function writeAllOrNone(files: readonly PendingWrite[]): Promise<void> {
+export async function writeAllOrNone(files: readonly PendingWrite[], root: string): Promise<void> {
+  for (const f of files) refuseOutside(f.file, root)
   const tag = `.tmp-${process.pid}-${Math.random().toString(36).slice(2)}`
   let at = 0
   try {
@@ -71,10 +102,10 @@ export async function writeAllOrNone(files: readonly PendingWrite[]): Promise<vo
 /**
  * Writes `text` to `file`, never through a link: a temp beside it, made
  * with O_EXCL, renamed over it. A rename replaces a link put there after
- * the check, never its target.
+ * the check, never its target. Refused outside `root` (`refuseSymlink`).
  */
-export async function writeNoFollow(file: string, text: string): Promise<void> {
-  refuseSymlink(file)
+export async function writeNoFollow(file: string, text: string, root: string): Promise<void> {
+  refuseSymlink(file, root)
   await mkdir(path.dirname(file), { recursive: true })
   const tmp = `${file}.tmp-${process.pid}-${Math.random().toString(36).slice(2)}`
   try {

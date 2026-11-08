@@ -2079,6 +2079,9 @@ checks, `dependencies` (which projects a project may depend on,
 bracket class spells a path that exists (`app/[id]/**` beside the
 directory `app/[id]`; write `app/\[id\]/**`): a broken one prints `✗ vx lock  lock not written`
 with the rule's refusal under it and writes nothing.
+A lock or review copy that is a symlink, or whose directory resolves
+outside the workspace (a `.vx` linked out of it), is refused the same
+way, before anything is written.
 
 `.vx/projects.lock.json` is minified: it is the one file vx reads, and it loads
 faster that way (10,000 projects: 15.6 ms against 22.5 ms pretty). For
@@ -2422,9 +2425,12 @@ mirror must pass on npm's signature: the check above does not change.
 
 A host it cannot reach (no route, a proxy that is down) is one line,
 `could not reach registry.npmjs.org to read the release (…) — check the
-network or the proxy and re-run`, never a stack; so is a document cut
-after the headers or not JSON (a captive portal's page served with a
-200), and a tarball cut the same way. A binary whose directory this user
+network or the proxy and re-run`, never a stack; so is a registry that
+takes the connection and sends nothing for 30 s (`no answer in 30 s`),
+before its headers or between two chunks of a body (a slow download that
+keeps moving is never cut), a document cut after the headers or not JSON
+(a captive portal's page served with a 200), and a tarball cut the same
+way. A binary whose directory this user
 cannot write (a root-owned `/usr/local/bin`) is refused before the
 download: `cannot write to <dir> (EACCES), where this vx lives — nothing
 downloaded; re-run as a user who can (sudo vx upgrade), …`. The new
@@ -2513,6 +2519,12 @@ vx never installs Node or a package manager: one not on `PATH` is refused with t
 `vx init` sets up vx in a repository: it installs `@vzn/vx`, writes
 `.vx/workspace.ts` and a root `vx.config.ts`, and writes the lock. In a
 Turborepo or Nx repo it maps their config instead.
+
+It never writes through a link: a file that is a symlink, or one whose
+directory resolves outside the workspace (a cloned `.vx -> ../x`), is
+refused before the first write (`refusing to write <file>: <dir>
+resolves to <real>, outside the workspace; remove the link and run
+again`), with nothing written.
 
 ### Usage
 
@@ -2636,7 +2648,8 @@ declares it in the workspace file a run reads (`.vx/workspace.ts` when
 there is none). The templates are TypeScript, so `--mjs` with
 `--plugin` is refused, and so is a second seam. An existing file is refused without
 `--force`, a dangling symlink included; a symlink is refused with it too, since vx never
-writes through one. `--dry` names the files and writes nothing. The two files are
+writes through one, and so is a `plugins` directory that resolves outside the
+workspace. `--dry` names the files and writes nothing. The two files are
 `private/vx-plugin-examples/plugins`, which the gate runs, copied into
 core (`src/cli/plugin-templates.ts`) and held equal by
 `tests/plugin-templates.unsafe.test.ts` (H-21).
