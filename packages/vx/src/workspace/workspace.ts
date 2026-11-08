@@ -365,7 +365,7 @@ export async function findProjectConfigs(root: string): Promise<ProjectConfigs> 
   )
     .filter((f) => f !== null)
     .sort()
-  // A project's globs stop at each, as at a nested project (computeNestedProjectDirs).
+  // A project's outputs stop at each, as at a nested project (computeNestedProjectDirs).
   const nestedWorkspaces = nested
     .filter((n) => !nested.some((m) => n.startsWith(`${m}/`)))
     .map((rel) => path.join(root, rel))

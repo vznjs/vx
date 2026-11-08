@@ -2093,9 +2093,10 @@ nested repository's own configs too), or walks the tree outside git
 nested `.vx/workspace.*`, even one the ignore rules hide, or under a
 `node_modules` (an installed package is no project, ignored or not) or
 a `.vx` (vx's own state, in git as outside it). Each nested workspace
-root is recorded too (`nestedWorkspaces`): every outer project's globs
-stop there as at a nested project, so a run's key, clean, save and
-restore never reach it, and `--check` fails a lock that misses one.
+root is recorded too (`nestedWorkspaces`): every outer project's outputs
+stop there as at a nested project, so a run's clean, save and restore
+never reach it (its inputs still key its files), and `--check` fails a
+lock that misses one.
 Configs are
 programs; `vx lock` evaluates them in the current environment and
 stores the post-evaluation objects, by directory (version 5; a lock an
@@ -2933,8 +2934,9 @@ A task's `inputs.files` entry is rooted inside a project nested in its
 own (`dist/**` where `dist/` holds a config): a project's globs never
 reach another project's files, so it would key nothing. Depend on a
 task of the nested project, or name the files in
-`inputs.workspaceFiles`, as the message shows. A nested workspace
-(`dist/` holding its own `.vx/workspace.*`) is refused the same way.
+`inputs.workspaceFiles`, as the message shows. A glob rooted in a nested
+workspace (`dist/` holding its own `.vx/workspace.*`) is not refused: it
+keys that workspace's files.
 `vx lock` refuses it, not a run: a run trusts the graph the lock holds.
 
 #### `VX_E_NESTED_OUTPUT`
@@ -2944,7 +2946,8 @@ own (`sub/dist/**` where `sub/` holds a config): a project's globs never
 reach another project's files, so it would save nothing. Let a task of
 the nested project write the files, or name them in
 `outputs.workspaceFiles`, as the message shows. A nested workspace
-(`sub/` holding its own `.vx/workspace.*`) is refused the same way.
+(`sub/` holding its own `.vx/workspace.*`) is refused the same way, though
+an input glob may reach into one.
 `vx lock` refuses it, not a run: a run trusts the graph the lock holds.
 
 #### `VX_E_DEPENDENCY_RULE`

@@ -160,7 +160,7 @@ export function lockOfDiscovery(
 const discoveredWalls = new WeakMap<readonly ProjectMeta[], readonly string[]>()
 
 /**
- * Where every project's globs stop besides its nested projects: the
+ * Where every project's outputs stop besides its nested projects: the
  * nested workspaces `vx lock` found. None for an array no discovery made.
  */
 export function nestedWorkspacesOf(projects: readonly ProjectMeta[]): readonly string[] {

@@ -58,6 +58,7 @@ export interface RestoreHitArgs {
 export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
   const { args, hash } = given
   const { node } = args
+  const outputNested = args.outputNestedDirs ?? args.nestedProjectDirs
   const cfgOut = node.config.outputs
   const outputs = cfgOut?.files ?? []
   const wsOutputs = cfgOut?.workspaceFiles ?? []
@@ -141,7 +142,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
       const projTree = await resolveOutputTree({
         projectDir: node.projectDir,
         outputs,
-        nestedProjectDirs: args.nestedProjectDirs,
+        nestedProjectDirs: outputNested,
         inputs: ownInputs,
         special: 'later',
         clearing: true,
@@ -222,10 +223,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
           // Held to the rows like the run-end snapshot (item 1087): a stray
           // written since the walk listed its directory, more than a racy
           // window before this, is not the entry's.
-          const holds = entryHolds(
-            node,
-            outputWalkTakes(node.projectDir, outputs, args.nestedProjectDirs),
-          )
+          const holds = entryHolds(node, outputWalkTakes(node.projectDir, outputs, outputNested))
           await args.cache.recordOutputDirs?.(hash, node.projectDir, dirPrefixes, (files) =>
             holds(files, expected),
           )
@@ -245,7 +243,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
       const actual = await resolveOutputTree({
         projectDir: node.projectDir,
         outputs,
-        nestedProjectDirs: args.nestedProjectDirs,
+        nestedProjectDirs: outputNested,
         inputs: ownInputs,
         special: 'later',
         clearing: true,
@@ -268,7 +266,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
     const cleanArgs = {
       projectDir: node.projectDir,
       outputs,
-      nestedProjectDirs: args.nestedProjectDirs,
+      nestedProjectDirs: outputNested,
       inputs: ownInputs,
       committed: committedFiles(args.gitFilesCache, node.projectDir),
     }
@@ -392,7 +390,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
         hash,
         projectDir: node.projectDir,
         prefixes: dirPrefixes,
-        holds: entryHolds(node, outputWalkTakes(node.projectDir, outputs, args.nestedProjectDirs)),
+        holds: entryHolds(node, outputWalkTakes(node.projectDir, outputs, outputNested)),
       })
     }
     // Restored outputs changed the project's tree — but on this

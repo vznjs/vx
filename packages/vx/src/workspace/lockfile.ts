@@ -47,7 +47,7 @@ export interface Lockfile {
   projects: Record<string, LockedProject>
   /**
    * Root-relative POSIX directories holding their own `.vx/workspace.*`,
-   * where every outer project's globs stop. Absent when there is none, so a
+   * where every outer project's outputs stop. Absent when there is none, so a
    * workspace without one locks the bytes it always did.
    */
   nestedWorkspaces?: string[]

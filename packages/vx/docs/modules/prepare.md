@@ -96,8 +96,10 @@ export function unlockedDir(
    it is kept in the graph (for its edges) and contributes no tasks
    unless a plugin fills the `project` stage, or the default `build`.
 3. **Package + task structure** — `buildPackageGraph`,
-   `computeNestedProjectDirs` (the nested workspaces the lock records,
-   `nestedWorkspacesOf`, included), `expandRequested` (plus
+   `computeNestedProjectDirs` (once for the key, and once more with the
+   nested workspaces the lock records, `nestedWorkspacesOf`, for the
+   output readers: `outputWallsOf(nestedDirsByProject)` returns it, the
+   map itself when there is none), `expandRequested` (plus
    `unresolvedRequests`, the same predicate run in reverse to name the
    specs that resolved to nothing).
 4. **Cache + fingerprint** — `new Cache(dir)` on `--cache-dir` or

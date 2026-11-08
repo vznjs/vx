@@ -27,7 +27,7 @@ export interface Lockfile {
   // directory, so a name a plugin gives never invalidates the lock
   projects: Record<string, LockedProject>
   // root-relative POSIX dirs holding their own `.vx/workspace.*`, where every
-  // outer project's globs stop; written only when there is one
+  // outer project's outputs stop; written only when there is one
   nestedWorkspaces?: string[]
   validated?: string // the self-digest writeLockfile appends
 }

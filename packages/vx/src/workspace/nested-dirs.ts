@@ -21,9 +21,10 @@ import type { ProjectEntry } from './workspace.js'
  * full tail.
  *
  * `workspaces`: the absolute roots of nested workspaces (each holds its own
- * `.vx/workspace.*`), a boundary the same way: each joins the dirs of every
- * project it lies under. An outer glob that ran into one folded its files
- * into the outer key and the clean before a run deleted them.
+ * `.vx/workspace.*`), a boundary for outputs: each joins the dirs of every
+ * project it lies under. An outer output glob that ran into one let the
+ * clean before a run delete its files. Never passed for inputs: a task may
+ * read them, and an input left out of the key is a stale hit.
  */
 export function computeNestedProjectDirs(
   entries: Array<Pick<ProjectEntry, 'name' | 'dir'>>,

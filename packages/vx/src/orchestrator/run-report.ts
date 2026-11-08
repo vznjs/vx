@@ -26,6 +26,7 @@ export type KeepRunEntry = (name: string, bytes: Uint8Array) => Promise<boolean>
 export interface RunKeeperArgs {
   readonly runId: string
   readonly workspaceRoot: string
+  /** Where each project's outputs stop (prepare.ts `outputWallsOf`). */
   readonly nestedDirsByProject: ReadonlyMap<string, string[]>
   readonly keep: KeepRunEntry
   /** Whether a failed task's log and outputs are kept (`cache.upload.failures`). */

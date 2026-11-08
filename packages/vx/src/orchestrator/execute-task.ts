@@ -176,6 +176,11 @@ export interface ExecuteArgs {
    *  where a locally-placed consumer fetches its producers from. */
   deferred?: DeferredOutputs
   nestedProjectDirs: string[]
+  /**
+   * Where its outputs stop when that is more than `nestedProjectDirs`: the
+   * nested workspaces under it too (prepare.ts `outputWallsOf`).
+   */
+  outputNestedDirs?: string[]
   /** The run's cache directory: walled off from a sandboxed task's grants. */
   cacheDir?: string
   /** Anchor for hrtime spans across all tasks in this run. */
@@ -830,7 +835,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const cleanArgs = {
     projectDir: node.projectDir,
     outputs,
-    nestedProjectDirs: args.nestedProjectDirs,
+    nestedProjectDirs: args.outputNestedDirs ?? args.nestedProjectDirs,
     inputs: ownInputs,
     committed: committedFiles(args.gitFilesCache, node.projectDir),
   }
@@ -1732,7 +1737,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         cache,
         log,
         workspaceRoot: args.workspaceRoot,
-        nestedProjectDirs: args.nestedProjectDirs,
+        nestedProjectDirs: args.outputNestedDirs ?? args.nestedProjectDirs,
         gitFilesCache: args.gitFilesCache,
         outputs,
         wsOutputs,
@@ -1758,7 +1763,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       unsavedBytes = await unsavedOutputBytes({
         node,
         workspaceRoot: args.workspaceRoot,
-        nestedProjectDirs: args.nestedProjectDirs,
+        nestedProjectDirs: args.outputNestedDirs ?? args.nestedProjectDirs,
         outputs,
         wsOutputs,
       })
@@ -1779,7 +1784,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       unsavedBytes = await markUnsaved({
         node,
         workspaceRoot: args.workspaceRoot,
-        nestedProjectDirs: args.nestedProjectDirs,
+        nestedProjectDirs: args.outputNestedDirs ?? args.nestedProjectDirs,
         gitFilesCache: args.gitFilesCache,
         outputs,
         wsOutputs,

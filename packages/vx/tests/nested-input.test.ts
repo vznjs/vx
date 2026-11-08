@@ -6,9 +6,10 @@
 // An output glob there saves nothing for the same reason: the run warned
 // "outputs matched no files" over a file it had written, and the nested
 // project's artifact could hold the outer task's bytes.
-// A directory holding its own `.vx/workspace.*` is a boundary the same way:
-// a glob that ran into it folded its files (its `.vx/cache` too) into the
-// outer key, and the clean before a run deleted its untracked files.
+// A directory holding its own `.vx/workspace.*` is a boundary for outputs
+// only: the clean before a run deleted its untracked files. An input glob
+// still folds its files, as a task may read them (a git worktree checked
+// out under `src/` holds one): an extra miss, never a stale hit.
 
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -141,7 +142,7 @@ describe('a nested workspace', () => {
     expect(await Bun.file(path.join(inner, '.vx/workspace.mjs')).exists()).toBe(true)
   })
 
-  it('is out of an outer input glob: an edit in it keys nothing', async () => {
+  it('is in an outer input glob: an edit in it re-keys the task', async () => {
     const root = await nestedWorkspace(['**'], ['out/**'])
     expect(
       (await run({ cwd: root, tasks: ['packages/a#build'], log: silent })).outcomes[0]!.status,
@@ -149,16 +150,14 @@ describe('a nested workspace', () => {
     await writeFile(path.join(root, 'packages/a/inner/p/src/work.txt'), 'edited')
     expect(
       (await run({ cwd: root, tasks: ['packages/a#build'], log: silent })).outcomes[0]!.status,
-    ).toBe('cache-hit')
+    ).toBe('success')
   })
 
-  it('is refused at lock as an output or input glob rooted in it', async () => {
+  it('is refused at lock as an output glob rooted in it, not as an input one', async () => {
     expect(await lockError(await nestedWorkspace(['src/**'], ['inner/**']))).toContain(
       'packages/a#build writes "inner/**" in outputs.files, which lies inside the workspace packages/a/inner',
     )
-    expect(await lockError(await nestedWorkspace(['inner/p/**'], ['out/**']))).toContain(
-      'packages/a#build reads "inner/p/**" in inputs.files, which lies inside the workspace packages/a/inner',
-    )
+    expect(await lockError(await nestedWorkspace(['inner/p/**'], ['out/**']))).toBeNull()
   })
 
   it('is in the lock, and a lock without it is stale', async () => {

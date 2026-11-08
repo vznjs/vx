@@ -126,7 +126,13 @@ import { isPassStatus } from '../graph/index.js'
 import type { RunContextRecord } from './telemetry.js'
 import { plan, type RunPlan } from './plan.js'
 import type { AffectedReason } from './affected-tasks.js'
-import { namesRemote, openRemotes, prepareRunLocked, type PreparedRun } from './prepare.js'
+import {
+  namesRemote,
+  openRemotes,
+  outputWallsOf,
+  prepareRunLocked,
+  type PreparedRun,
+} from './prepare.js'
 import { acquireRunLock, runLockPath, type RunLockRelease } from './run-lock.js'
 import {
   exitOfSignal,
@@ -657,7 +663,7 @@ async function runOnBus(
       : new RunKeeper({
           runId,
           workspaceRoot: prepared.workspaceRoot,
-          nestedDirsByProject: prepared.nestedDirsByProject,
+          nestedDirsByProject: outputWallsOf(prepared.nestedDirsByProject),
           keep: prepared.keepRunEntry,
           failures: keepRun.failures,
           traffic: prepared.localCache.traffic,
@@ -882,7 +888,7 @@ async function runOnBus(
       nodes,
       cache,
       workspaceRoot,
-      nestedDirsByProject,
+      nestedDirsByProject: outputWallsOf(nestedDirsByProject),
       ...(gitFilesCache !== undefined ? { gitFilesCache } : {}),
       localWrite: policy.localWrite,
       log,

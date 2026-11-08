@@ -35,7 +35,8 @@ export interface DeferredOutputsArgs {
   nodes: Map<string, TaskNode>
   cache: CacheLayer
   workspaceRoot: string
-  nestedDirsByProject: Map<string, string[]>
+  /** Where each project's outputs stop (prepare.ts `outputWallsOf`). */
+  nestedDirsByProject: ReadonlyMap<string, string[]>
   gitFilesCache?: GitFilesCache
   /** False when the run's policy writes no local entries. */
   localWrite: boolean

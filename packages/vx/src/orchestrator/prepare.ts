@@ -516,11 +516,11 @@ export async function prepareRunLocked(
   // config or not: `--affected` gives a changed path to the deepest project
   // dir, and a config-less one keys its files under its default `build`, so
   // a parent's glob that folded (or cleaned) them crossed a boundary the
-  // selection drew (X-57). A nested workspace is a boundary the same way.
-  const nestedDirsByProject = computeNestedProjectDirs(
-    projectMetas,
-    nestedWorkspacesOf(projectMetas),
-  )
+  // selection drew (X-57).
+  const nestedDirsByProject = computeNestedProjectDirs(projectMetas)
+  const nestedWorkspaces = nestedWorkspacesOf(projectMetas)
+  if (nestedWorkspaces.length > 0)
+    outputWalls.set(nestedDirsByProject, computeNestedProjectDirs(projectMetas, nestedWorkspaces))
 
   const candidateProjects = options.projects
     ? options.projects.filter((p) => projects.has(p))
@@ -1105,6 +1105,23 @@ function pruneToClosure(nodes: Map<string, TaskNode>, roots: ReadonlySet<string>
 
 export const namesRemote = (spec: string | undefined): boolean =>
   spec !== undefined && /remote:[rw]/.test(spec)
+
+/** Each run's output walls, by its `nestedDirsByProject`, when it has a nested workspace. */
+const outputWalls = new WeakMap<ReadonlyMap<string, string[]>, ReadonlyMap<string, string[]>>()
+
+/**
+ * Where each project's outputs stop: its nested projects and every nested
+ * workspace under it. Its inputs stop at the projects alone: a task may
+ * read a nested workspace's files (a git worktree checked out under
+ * `src/` holds one), so folding them costs a miss, and leaving them out
+ * a stale hit; cleaning them deleted another workspace's work. The map
+ * itself when there is no nested workspace.
+ */
+export function outputWallsOf(
+  nestedDirsByProject: ReadonlyMap<string, string[]>,
+): ReadonlyMap<string, string[]> {
+  return outputWalls.get(nestedDirsByProject) ?? nestedDirsByProject
+}
 
 /**
  * The workspace's `cache.policy`, parsed: the schema checks only its shape,
