@@ -115,6 +115,15 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   0.16 ms later, and watch re-ran an uncached task on its own output
   (2026-11-08, `command-windows.ts`). Compare a stamp with a window's
   end plus one.
+- A window OPENED at `Date.now()` is a tick late: the kernel stamps a
+  ctime from its coarse clock (4 ms at HZ=250, 7 ms measured behind
+  `Date.now()`), so a command's write in its first milliseconds read as
+  one before it and a same-bytes rewrite was saved (inputs-moved, once,
+  under load; 2026-11-08). Take the moment off the file system's clock
+  (`fsClockNow`); inside its tick no clock orders two writes, so ask
+  whether the stat before saw that ctime. A probe rewrites by rename, as
+  `sed -i` does: rewritten in place just after a stat, the file rarely
+  showed the tick (multigrain stamps, Linux 6.13+).
 - Bun's per-test timeout is a wall budget too. A test that spawns vx and
   git (457 ms idle, 1.3 s under strace) passed 5 s on a packed DTE worker
   (#4198), so every task that launches `bun test` passes `--timeout=30000`
