@@ -157,6 +157,8 @@ import { WalCheckpointer } from './checkpointer.js'
 const HELD_SLICE = 250
 /** SQLite's own default, back on a connection whose checkpoint thread failed. */
 const WAL_AUTOCHECKPOINT = 1000
+/** Asks whether an open database file is still the one at its name (`attachStore`). */
+const SQLITE_FCNTL_HAS_MOVED = 20
 
 const ORPHAN_GRACE_MS = 60 * 60 * 1000
 
@@ -1361,8 +1363,8 @@ export class Cache implements CacheLayer {
     // Every mode settles the store as a run does, the reading ones without
     // touching it: `vx info` and a dry prune read the entries runs use, not
     // a store another user owns (one `sudo vx run`).
+    const root = typeof storeRoot === 'string' ? storeRoot : null
     if (storeDir !== undefined && (this.writeBlocked === null || absent)) {
-      const root = typeof storeRoot === 'string' ? storeRoot : null
       if (storeBlocked(storeDir, root, mode === 'open') !== null) {
         // A home this user cannot write (a container, a read-only mount):
         // the entries stay in this workspace rather than fail the run.
@@ -1390,7 +1392,9 @@ export class Cache implements CacheLayer {
     this.storeDir = storeDir
     this.artifactDir = storeDir ?? cacheDir
     if (storeDir !== undefined) {
-      this.attachStore(storeDir, mode !== 'open')
+      this.attachStore(storeDir, mode !== 'open', (dir) =>
+        dir === cacheDir ? openCacheDir(dir) : storeBlocked(dir, root, true),
+      )
       this.storeReset = this.matchStoreSchema(mode === 'open' && this.writeBlocked === null)
     } else {
       createTables(this.db, 'main')
@@ -1592,25 +1596,59 @@ export class Cache implements CacheLayer {
    * WAL for both, so a workspace's run and another's share the store as
    * two runs on one `--cache-dir` share an index. A reading verb over a
    * store with no file or no tables yet reads an empty one in memory.
+   *
+   * Every checkout of a repository shares its store, each with a run lock
+   * of its own, and a `vx cache clean` in one holds the store alone
+   * (`holdStore`) until it has deleted it. A writing open meeting that hold
+   * answers SQLITE_BUSY within a second, for its caller to wait and open
+   * again (prepare.ts). One let in once the clean let go opened the
+   * store.db the clean unlinked, and saved its entry into it: it makes the
+   * store again (`remake`, private and ignored) and opens that. Once in,
+   * its lock keeps a clean out until it closes.
    */
-  private attachStore(storeDir: string, inspecting: boolean): void {
+  private attachStore(
+    storeDir: string,
+    inspecting: boolean,
+    remake: (dir: string) => string | null,
+  ): void {
     const storeFile = path.join(storeDir, 'store.db')
     let absent = inspecting && !existsSync(storeFile)
     try {
-      this.db.prepare('ATTACH DATABASE ? AS store').run(absent ? ':memory:' : storeFile)
-      // One with no tables yet is read empty in memory too: the journal
-      // switch and the table creation below are writes, under no write
-      // lock, racing an opener making that store.
-      if (
-        inspecting &&
-        !absent &&
-        this.db.prepare("SELECT 1 FROM store.sqlite_master WHERE name = 'entries'").get() == null
-      ) {
+      for (let retried = false; ;) {
+        // The attach reads the store's schema: its first lock on it.
+        if (!inspecting) this.db.exec('PRAGMA busy_timeout = 1000')
+        try {
+          this.db.prepare('ATTACH DATABASE ? AS store').run(absent ? ':memory:' : storeFile)
+        } catch (err) {
+          // A file whose directory went: SQLite cannot open its -wal there.
+          const busy = (err as { code?: unknown }).code === 'SQLITE_BUSY'
+          if (inspecting || busy || retried || remake(storeDir) !== null) throw err
+          retried = true
+          continue
+        }
+        // One with no tables yet is read empty in memory too: the journal
+        // switch and the table creation below are writes, under no write
+        // lock, racing an opener making that store.
+        if (
+          inspecting &&
+          !absent &&
+          this.db.prepare("SELECT 1 FROM store.sqlite_master WHERE name = 'entries'").get() == null
+        ) {
+          this.db.exec('DETACH DATABASE store')
+          this.db.prepare('ATTACH DATABASE ? AS store').run(':memory:')
+          absent = true
+        }
+        this.db.exec('PRAGMA store.journal_mode = WAL')
+        if (inspecting) break
+        this.db.exec('PRAGMA busy_timeout = 5000')
+        // One stat, SQLite's: is the file open still the one at its name?
+        const moved = new Int32Array(2)
+        this.db.fileControl('store', SQLITE_FCNTL_HAS_MOVED, moved)
+        if (moved[0] === 0) break
         this.db.exec('DETACH DATABASE store')
-        this.db.prepare('ATTACH DATABASE ? AS store').run(':memory:')
-        absent = true
+        const refused = remake(storeDir)
+        if (refused !== null) throw new Error(`${storeFile} was deleted, and ${refused}`)
       }
-      this.db.exec('PRAGMA store.journal_mode = WAL')
       if (!absent) this.db.fileControl('store', SQLITE_FCNTL_PERSIST_WAL, 1)
       this.db.exec('PRAGMA store.journal_size_limit = 67108864')
       this.db.exec('PRAGMA store.synchronous = NORMAL')

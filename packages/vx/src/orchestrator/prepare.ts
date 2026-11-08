@@ -406,20 +406,37 @@ export async function prepareRunLocked(
     planning &&
     (!wanted.remoteRead ||
       (options.remoteCache === undefined && !plugins.some((p) => p.cache !== undefined)))
-  const localCache = new Cache(
-    cacheDir,
-    { read: wanted.localRead, write: wanted.localWrite && !planReadOnly },
-    workspaceRoot,
-    options.artifactCeiling,
-    planReadOnly ? 'preview' : 'open',
-    resolvedStore,
-    {
-      embeddings: (resolveSetting('cache.store.embeddings', workspaceConfig).value ??
-        DEFAULT_STORE.embeddings) as number,
-      decompress: (resolveSetting('cache.store.decompress', workspaceConfig).value ??
-        DEFAULT_STORE.decompress) as boolean,
-    },
-  )
+  const openCache = (): Cache =>
+    new Cache(
+      cacheDir,
+      { read: wanted.localRead, write: wanted.localWrite && !planReadOnly },
+      workspaceRoot,
+      options.artifactCeiling,
+      planReadOnly ? 'preview' : 'open',
+      resolvedStore,
+      {
+        embeddings: (resolveSetting('cache.store.embeddings', workspaceConfig).value ??
+          DEFAULT_STORE.embeddings) as number,
+        decompress: (resolveSetting('cache.store.decompress', workspaceConfig).value ??
+          DEFAULT_STORE.decompress) as boolean,
+      },
+    )
+  // A `vx cache clean` in another checkout holds the shared store alone
+  // until it has deleted it (`attachStore`), as this run's hold keeps a
+  // clean waiting: the run waits its turn, then opens the store there now.
+  let localCache: Cache
+  for (let said = false; ; await Bun.sleep(50)) {
+    try {
+      localCache = openCache()
+      break
+    } catch (err) {
+      if (resolvedStore == null || (err as { code?: unknown }).code !== 'SQLITE_BUSY') throw err
+    }
+    if (!said) {
+      said = true
+      warnOf(log)(`[vx] waiting for a vx cache clean of ${resolvedStore} to finish…`)
+    }
+  }
   const unwritable = localCache.readOnlyNotice()
   if (unwritable !== null) warnOf(log)(`[vx] ${unwritable}`)
   const policy: CachePolicy = unwritable === null ? wanted : { ...wanted, localWrite: false }

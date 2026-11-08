@@ -1345,9 +1345,16 @@ do not share a temp directory, so they do not share the lock.
 A `vx cache clean` in any checkout of the repository waits for every
 vx process holding the shared store open (a run holds it from its lock
 to its end), so it never deletes the store under a run in a sibling checkout,
-whose own lock it never took. So does a clean of a cache directory with
-no store (`--cache-dir`, `cache.dir`, `VX_CACHE_DIR`), which another
-workspace's runs may share: each run holds it shared (`cache.lock` in
+whose own lock it never took. It holds the store alone while it moves it
+aside (`cache.removing` beside it) and deletes it after, so a run
+arriving meanwhile waits (`[vx] waiting for a vx cache clean of <dir>
+to finish…`) and then makes a new store; one arriving after the move
+makes it at once. A run that opened the store as the clean let go
+checks that the file it holds is still the one at its name (one stat)
+and makes a new store if not: it used to die after 5 s on `database is
+locked`, or save into the deleted store and lose that entry. A clean of a cache directory with
+no store (`--cache-dir`, `cache.dir`, `VX_CACHE_DIR`) waits too, as another
+workspace's runs may share it: each run holds it shared (`cache.lock` in
 it) from before its cache opens to its end, the clean holds it alone,
 and a run arriving meanwhile waits for the clean. A run waiting for the lock holds no cache
 open, so a clean holding the lock never waits on it. An eviction can still land between a

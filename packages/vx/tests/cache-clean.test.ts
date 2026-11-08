@@ -5,13 +5,23 @@
 // store by hand (2026-10-14).
 
 import { Database } from 'bun:sqlite'
-import { cpSync, existsSync, mkdirSync, readdirSync, realpathSync, symlinkSync } from 'node:fs'
-import { mkdtemp, rm } from 'node:fs/promises'
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  realpathSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
+import { mkdtemp, rename, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { addProject, makeWorkspace } from './helpers/workspace.js'
-import { holdCacheDir } from '../src/cache/index.js'
+import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
+import { holdCacheDir, holdStore } from '../src/cache/index.js'
+import { acquireRunLock } from '../src/orchestrator/index.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 30_000
@@ -391,6 +401,119 @@ describe('vx cache clean with no bound clears the cache', () => {
         expect(existsSync(path.join(shared, 'cache.db'))).toBe(true)
       } finally {
         if (!released) release()
+      }
+    },
+    TIMEOUT,
+  )
+  // The store is shared by every checkout of the repository, each with a
+  // run lock of its own: a run in one opening the store while a clean in
+  // another held it died after 5 s on SQLite's "database is locked", or,
+  // let in sooner, saved into the store.db the clean had unlinked and made
+  // the directory again open to others, with no .gitignore. The clean moves
+  // the store aside under its hold and deletes it after (cli/cache.ts), and
+  // a run in a third checkout may make the store again meanwhile.
+  it.each([
+    ['deleted it', (st: string) => rm(st, { recursive: true })],
+    [
+      'moved it aside, and another run made it again',
+      async (st: string) => {
+        await rename(st, `${st}.removing`)
+        mkdirSync(st, { mode: 0o700 })
+        const made = new Database(path.join(st, 'store.db'))
+        made.exec('PRAGMA journal_mode = WAL')
+        made.close()
+      },
+    ],
+  ])(
+    'a run waits for a clean of the store, which then %s: it opens the store there now',
+    async (_, clean) => {
+      expect((await vx(['run', 'build', '--all'])).code).toBe(0)
+      const st = store()
+      // Stands in for another checkout's clean, holding the store.
+      const release = await holdStore(st, () => {})
+      let released = false
+      try {
+        const run = await spawnUntil(
+          root,
+          ['run', 'build', '--all'],
+          { VX_CACHE_DIR: '' },
+          'waiting for a vx cache clean',
+        )
+        expect(run.said).toContain(`waiting for a vx cache clean of ${st} to finish`)
+        expect(run.proc.exitCode).toBe(null)
+        // Let go mid-open: the run's next open waits on the hold up to a
+        // second, with the old store.db open. The run then makes a store of
+        // its own there, misses and saves into it.
+        await Bun.sleep(300)
+        await clean(st)
+        release()
+        released = true
+        const r = await run.ended
+        expect(`${r.code}\n${r.err}`).toStartWith('0\n')
+        expect(r.out).toContain('local 1↑')
+        expect(statSync(st).mode & 0o777).toBe(0o700)
+        expect(existsSync(path.join(st, '.gitignore'))).toBe(true)
+        const db = new Database(path.join(st, 'store.db'), { readonly: true })
+        try {
+          expect((db.query('SELECT count(*) AS n FROM entries').get() as { n: number }).n).toBe(1)
+        } finally {
+          db.close()
+        }
+        expect((await vx(['run', 'build', '--all'])).out).toContain('local 1✓')
+      } finally {
+        if (!released) release()
+      }
+    },
+    TIMEOUT,
+  )
+  // Deleted where it stood, the store's index went first and its other
+  // files after, and a run in another checkout in between made a store.db
+  // there that the delete then took, with the entry the run saved.
+  it(
+    'a run in another checkout while a clean deletes the store keeps what it saves',
+    async () => {
+      const wt = `${root}-wt`
+      gitIn(root)('worktree', 'add', '-q', wt)
+      try {
+        cpSync(path.join(root, 'packages', 'app'), path.join(wt, 'packages', 'app'), {
+          recursive: true,
+        })
+        expect((await vx(['run', 'build', '--all'])).code).toBe(0)
+        const st = store()
+        // Entries beside the index, most of which a delete in place takes
+        // after it, in whatever order the directory lists them.
+        for (let d = 0; d < 100; d++) {
+          mkdirSync(path.join(st, `junk${d}`))
+          for (let i = 0; i < 150; i++) writeFileSync(path.join(st, `junk${d}`, String(i)), '')
+        }
+        // The run waits on its own lock, held here, until the delete is on:
+        // it takes that lock just before it opens the store.
+        const lock = await acquireRunLock(wt, { log: () => {} })
+        const run = await spawnUntil(
+          wt,
+          ['run', 'build', '--all'],
+          { VX_CACHE_DIR: '' },
+          'waiting for another vx run',
+        )
+        const clean = Bun.spawn([process.execPath, BIN, 'cache', 'clean'], {
+          cwd: root,
+          stdout: 'ignore',
+          stderr: 'ignore',
+          env: { ...process.env, NO_COLOR: '1', HOME: home, VX_CACHE_DIR: '' },
+        })
+        while (existsSync(path.join(st, 'store.db')) && clean.exitCode === null) await Bun.sleep(1)
+        await lock()
+        const r = await run.ended
+        expect(`${r.code}\n${r.err}`).toStartWith('0\n')
+        expect(await clean.exited).toBe(0)
+        expect(r.out).toContain('local 1↑')
+        const again = Bun.spawnSync([process.execPath, BIN, 'run', 'build', '--all'], {
+          cwd: wt,
+          env: { ...process.env, NO_COLOR: '1', HOME: home, VX_CACHE_DIR: '' },
+        })
+        expect(again.stdout.toString()).toContain('local 1✓')
+      } finally {
+        await rm(wt, { recursive: true, force: true })
       }
     },
     TIMEOUT,

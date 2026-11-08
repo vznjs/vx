@@ -1940,7 +1940,10 @@ $ vx cache clean --global --dry
 It waits for a `vx run` on this workspace to finish first (the run's
 lock), for every vx process holding a store it deletes open (a run
 in another checkout of the workspace), and for every run of another
-workspace on a cache directory with no store it deletes, as a trim does. With `--format json` it prints
+workspace on a cache directory with no store it deletes, as a trim does.
+A run in another checkout that starts meanwhile waits for it (`[vx]
+waiting for a vx cache clean of <dir> to finish…`), then makes a new
+store. With `--format json` it prints
 `{ dry, cleared, bytesFreed }` (`schemas/cache.json`), `cleared`
 listing the directories.
 

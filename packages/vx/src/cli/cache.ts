@@ -1,4 +1,12 @@
-import { accessSync, constants, existsSync, lstatSync, readdirSync, rmSync } from 'node:fs'
+import {
+  accessSync,
+  constants,
+  existsSync,
+  lstatSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+} from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { Cache, holdCacheDir, holdStore, vxCacheEntries } from '../cache/index.js'
@@ -454,18 +462,28 @@ async function clearHeld(
     // on each other.
     const shared = storeRoot === null ? path.resolve(dir) : undefined
     const holds: (() => void)[] = []
+    const asides: string[] = []
     try {
       for (const t of [...doomed].sort()) {
         holds.push(await holdStore(t, warnToStderr))
         if (t === shared) holds.push(await holdCacheDir(t, 'exclusive', warnToStderr))
       }
       for (const t of doomed) {
-        for (const e of entries(t)) rmSync(e, { recursive: true, force: true })
+        for (const e of entries(t)) {
+          // A store leaves its name at once, under the hold, and is deleted
+          // after it. Deleted where it stood, a run in another checkout
+          // opening it mid-delete made a store.db there that the delete then
+          // took, with the entry the run saved.
+          const aside = e === t && t !== path.resolve(dir) ? moveAside(t) : undefined
+          if (aside !== undefined) asides.push(aside)
+          else rmSync(e, { recursive: true, force: true })
+        }
         if (t === named && readdirSync(t).length === 0) rmSync(t, { recursive: true })
       }
     } finally {
       for (const release of holds) release()
     }
+    for (const aside of asides) rmSync(aside, { recursive: true, force: true })
   }
   const shown = doomed.map((t) => (path.relative(root, t).startsWith('..') ? t : relPosix(root, t)))
   if (parsed.format === 'json') {
@@ -482,6 +500,18 @@ async function clearHeld(
         : []),
     )
   return 0
+}
+
+/** `dir` renamed beside itself, over a crashed clean's leftover, or undefined where it cannot be. */
+function moveAside(dir: string): string | undefined {
+  const aside = `${dir}.removing`
+  try {
+    rmSync(aside, { recursive: true, force: true })
+    renameSync(dir, aside)
+    return aside
+  } catch {
+    return undefined
+  }
 }
 
 /** Why this user cannot remove `t` (`whole`) or empty it, or null. */
