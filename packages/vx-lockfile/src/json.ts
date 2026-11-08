@@ -20,6 +20,20 @@ export function depsOf(
   return out
 }
 
+/**
+ * Which field each dependency sits in, as `field\0name` lines sorted: an
+ * install that omits dev or optional packages (npm `omit=dev`, pnpm
+ * `--prod`, bun `--production`) lays out what it says, and a merged
+ * name → version map does not.
+ */
+export function sectionsOf(e: Json, fields: readonly string[] = DEP_FIELDS): string {
+  const out: string[] = []
+  for (const field of fields) {
+    for (const name of Object.keys(record(e[field]) ?? {})) out.push(`${field}\0${name}`)
+  }
+  return out.sort().join('\n')
+}
+
 /** The `peerDependencies` names an entry installs under no other field. */
 export function peerOnly(e: Json): ReadonlySet<string> {
   const installed = depsOf(e, DEP_FIELDS.slice(0, 3))

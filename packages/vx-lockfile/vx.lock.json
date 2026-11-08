@@ -138,7 +138,7 @@
     "test.shard-2": {
       "description": "bun test, shard 2 of 3",
       "exec": {
-        "command": "bun test --only-failures --timeout=30000 tests/bun-patch-precise.test.ts tests/closure-per-project.test.ts tests/deleted-project.test.ts tests/lazy-load.test.ts tests/lockfile-choice.test.ts tests/outside-dir-dep.test.ts tests/overrides-precise.test.ts tests/pnpm-exclude-links.test.ts tests/pnpm-ignored-optional.test.ts tests/pnpm-injected-workspace.test.ts tests/refusal-message.test.ts tests/unknown-options.test.ts tests/yarn-classic-link-workspace.test.ts tests/yarn-package-extensions.test.ts tests/yarn-transparent-workspaces.test.ts tests/yarn.test.ts",
+        "command": "bun test --only-failures --timeout=30000 tests/bun-patch-precise.test.ts tests/closure-per-project.test.ts tests/deleted-project.test.ts tests/dependency-section.test.ts tests/lazy-load.test.ts tests/lockfile-choice.test.ts tests/outside-dir-dep.test.ts tests/overrides-precise.test.ts tests/pnpm-exclude-links.test.ts tests/pnpm-ignored-optional.test.ts tests/pnpm-injected-workspace.test.ts tests/refusal-message.test.ts tests/unknown-options.test.ts tests/yarn-classic-link-workspace.test.ts tests/yarn-package-extensions.test.ts tests/yarn-transparent-workspaces.test.ts tests/yarn.test.ts",
         "env": {
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",

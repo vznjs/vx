@@ -13,7 +13,7 @@
 
 import { reachDigests, type LockfileImporter } from '@vzn/vx'
 import { reachedImporters, withTransitive } from './graph.js'
-import { record, stable } from './json.js'
+import { record, sectionsOf, stable } from './json.js'
 import { joinPosix, resolvePosix } from './posix.js'
 
 // The graph the digest built from this parse, for `importerLinks`: `vx
@@ -24,6 +24,8 @@ export interface Lockfile {
   readonly version: string
   /** importer path (`.`, `packages/a`) → dependency name → version or `link:…` */
   readonly importers: ReadonlyMap<string, ReadonlyMap<string, string>>
+  /** importer path → which field each dependency sits in (`sectionsOf`) */
+  readonly sections: ReadonlyMap<string, string>
   /** snapshot key → dependency name → version (v9 `snapshots`; v5/v6 `packages`) */
   readonly snapshots: ReadonlyMap<string, ReadonlyMap<string, string>>
   /** package key (v9: `name@version`; v5/v6: the snapshot key) → resolution digest */
@@ -78,12 +80,17 @@ export function parseLockfile(text: string): Lockfile {
   }
 
   const importers = new Map<string, ReadonlyMap<string, string>>()
+  const sections = new Map<string, string>()
   const rawImporters = record(doc['importers'])
   if (rawImporters !== undefined) {
-    for (const [dir, entry] of Object.entries(rawImporters)) importers.set(dir, depsOf(entry))
+    for (const [dir, entry] of Object.entries(rawImporters)) {
+      importers.set(dir, depsOf(entry))
+      sections.set(dir, sectionsOf(record(entry) ?? {}, DEP_FIELDS))
+    }
   } else if (DEP_FIELDS.some((f) => doc[f] !== undefined)) {
     // A single-package lockfile keeps its dependencies at the top level.
     importers.set('.', depsOf(doc))
+    sections.set('.', sectionsOf(doc, DEP_FIELDS))
   }
 
   const snapshots = new Map<string, ReadonlyMap<string, string>>()
@@ -127,7 +134,17 @@ export function parseLockfile(text: string): Lockfile {
       : { lockfileVersion: version, rest, leading },
   )
   const excludesLinks = record(doc['settings'])?.['excludeLinksFromLockfile'] === true
-  return { version, importers, snapshots, resolutions, patches, directories, global, excludesLinks }
+  return {
+    version,
+    importers,
+    sections,
+    snapshots,
+    resolutions,
+    patches,
+    directories,
+    global,
+    excludesLinks,
+  }
 }
 
 /**
@@ -395,7 +412,9 @@ function buildGraph(lock: Lockfile, files: ReadonlyMap<string, string>): Graph {
   // importers that link each other were told apart by their edges alone,
   // and swapping which reaches which version gave the same lines, so a
   // lockfile that moved both installs keyed neither (item 1073).
-  for (const dir of lock.importers.keys()) node(importerNode(dir), importerNode(dir))
+  for (const dir of lock.importers.keys()) {
+    node(importerNode(dir), `${importerNode(dir)}\nsections\0${lock.sections.get(dir)}`)
+  }
   const link = (from: number, by: string, dir: string, name: string, version: string): void => {
     if (version.startsWith('link:')) {
       const target = linkTarget(lock, dir, version)
