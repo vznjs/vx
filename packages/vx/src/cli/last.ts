@@ -797,13 +797,17 @@ export function formatTaskRows(
   // The run's own grid (`taskList`): a replay reads as the run did. What
   // the run said below the row (an exit, why it skipped) rides it dim.
   const rows = ordered.map((t) => {
-    // A cached failure with no cache outcome is a hit whose restore failed: no exit.
+    // A cached failure with no cache outcome is a hit whose restore failed: no
+    // exit. One whose command exited 0 failed in its save (a server that
+    // exited 0 before ready says so in its reason).
     const failure =
       t.status !== 'failed'
         ? ''
         : t.cached === true && t.cacheHit === null
           ? 'cache restore failed'
-          : `exit ${t.exitCode}`
+          : t.exitCode === 0 && t.notReady === null
+            ? 'cache save failed'
+            : `exit ${t.exitCode}`
     const note = (
       failure + reasonParts(t, skippedHere, inputMoved.get(`${t.project}#${t.task}`))
     ).trim()

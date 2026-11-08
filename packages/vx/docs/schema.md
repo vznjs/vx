@@ -1366,7 +1366,8 @@ nothing. `strategy` says which writes count:
 - `'unchecked'`: none. The entry is saved under the key taken before the
   command, whatever the command did to its inputs; `severity` is ignored.
   A key that no longer held before the command started still withholds
-  it.
+  it. A later task that reads the rewritten file still reads its new
+  bytes.
 
 A write that counts withholds the entry, and `severity` says what else
 happens: `'warn'` (the default) keeps the result, says why on the status

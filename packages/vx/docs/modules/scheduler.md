@@ -166,6 +166,16 @@ export class KeyFailed extends Error {
 // any task's key failed, and `--dry` exits 1 on it.
 export function markKeyFailed<T extends object>(o: T): T
 export function isKeyFailed(o: object): boolean
+
+// Thrown by `execute` when vx's own clean before an attempt, or its save
+// after an exit 0, threw: the outcome keeps `exitCode` and `durationMs`
+// (the command's, or vx's 1 and 0 when it never ran) and is marked with
+// the step, so no label names an exit the command never returned.
+export class OutputsFailed extends Error {
+  constructor(readonly error: unknown, readonly step: 'clean' | 'save', readonly exitCode: number, readonly durationMs: number)
+}
+export function markOutputsFailed<T extends object>(o: T, step: 'clean' | 'save'): T
+export function outputsFailedOf(o: object): 'clean' | 'save' | undefined
 ```
 
 `task-status.ts` holds `TaskStatus` and what each status means, so no

@@ -382,6 +382,13 @@ describe('renderJobSummary', () => {
     expect(md).toContain('- **b#build** — cache restore failed\n')
   })
 
+  it('a failure whose command exited 0 is its save, never `exit 0`', () => {
+    const md = renderJobSummary(
+      summary([task({ taskId: 'b#build', status: 'failed', exitCode: 0, cacheSource: 'miss' })]),
+    )
+    expect(md).toContain('- **b#build** — cache save failed\n')
+  })
+
   it('escapes pipes in task ids — a hostile name cannot break the table', () => {
     const md = renderJobSummary(summary([task({ taskId: 'a#e|vil' })]))
     expect(md).toContain('a#e\\|vil')
