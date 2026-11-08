@@ -132,14 +132,25 @@ describe('the walk (R3)', () => {
     expect(keyedOf(nodes, 'app#test')).toEqual(['/ws/mid', '/ws/ui'])
   })
 
-  it('two groups over the same members share one hash: excluding one excludes both', () => {
+  // The key folds the shared hash while either group is selected: a
+  // negation drops only what it names (excluding one excluded both, and a
+  // change beneath them replayed the old hit).
+  it('two groups over the same members share one hash: excluding one keeps the other', () => {
     const nodes = graph({
       'app#test': [withTasks(CACHED, ['^*', '!ui#pack']), ['ui#pack', 'ui#pack2']],
       'ui#pack': [GROUP, ['ui#source']],
       'ui#pack2': [GROUP, ['ui#source']],
       'ui#source': [CACHED, []],
     })
-    expect(keyedOf(nodes, 'app#test')).toEqual([])
+    expect(keyedOf(nodes, 'app#test')).toEqual(['/ws/ui'])
+    // CONTROL: excluding both keys neither.
+    const both = graph({
+      'app#test': [withTasks(CACHED, ['^*', '!ui#pack', '!ui#pack2']), ['ui#pack', 'ui#pack2']],
+      'ui#pack': [GROUP, ['ui#source']],
+      'ui#pack2': [GROUP, ['ui#source']],
+      'ui#source': [CACHED, []],
+    })
+    expect(keyedOf(both, 'app#test')).toEqual([])
   })
 
   // A `graph` plugin may leave a node's deps in any order; the group hash
@@ -152,7 +163,7 @@ describe('the walk (R3)', () => {
       'ui#a': [CACHED, []],
       'ui#b': [CACHED, []],
     })
-    expect(keyedOf(nodes, 'app#test')).toEqual([])
+    expect(keyedOf(nodes, 'app#test')).toEqual(['/ws/ui'])
   })
 
   // `--exclude-dependencies` leaves a group's `deps` without its dropped
@@ -367,6 +378,12 @@ describe('K(T) is what moves the key (R4)', () => {
       title: 'two groups over the same members, one excluded',
       dependsOn: ['@x/ui#pack', '@x/ui#pack2'],
       tasks: ['^*', '!@x/ui#pack'],
+      keyed: ['@x/ui'],
+    },
+    {
+      title: 'two groups over the same members, both excluded',
+      dependsOn: ['@x/ui#pack', '@x/ui#pack2'],
+      tasks: ['^*', '!@x/ui#pack', '!@x/ui#pack2'],
       keyed: [],
     },
   ]
