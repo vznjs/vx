@@ -27,7 +27,7 @@ export interface ExecuteArgs {
   liveChildren?: Set<ReturnType<typeof Bun.spawn>> // run-scoped; the signal handler signals these
   track?: (taskId: string, pid: number) => () => void // TelemetrySource.track: samples each attempt's tree
   // … and the optional run-scoped fields (timeout, preProbed, download,
-  // deferSave, taintedUpstream, serverDiedUnder, fingerprintWatch, noDependants,
+  // deferSave, taintedUpstream, serverDiedUnder, leftRunning, fingerprintWatch, noDependants,
   // probesAfterWrites, …)
 }
 
@@ -183,7 +183,7 @@ one-shot handler mid-cleanup.
    `cache.save({ hash, projectDir, outputFiles, entry })`.
    **If it ran here and saves nothing** — it failed, the policy writes
    nothing (`--cache-policy=local:r,remote:r`), an upstream failed or
-   no-op'd, a server died under it, the key no longer held — the same re-check runs (`movedInput`), and a move drops
+   no-op'd, an upstream left a process running, a server died under it, the key no longer held — the same re-check runs (`movedInput`), and a move drops
    the project's facts; otherwise its declared outputs are resolved and
    marked in the git snapshot as a save marks them (`markUnsaved`). A
    same-run reader keyed from the snapshot's OIDs for either replayed
@@ -228,7 +228,8 @@ retry's clean that finds one added, removed or touched
 A process any attempt's shell left running (`ExecuteResult.leftRunning`)
 withholds the save, a failed attempt's too: it may write into the
 passing attempt's outputs. It is not killed, as a passing attempt's
-is not.
+is not. The first one also calls `ExecuteArgs.leftRunning` (run.ts: it
+seeds the run's taint, so what is built on it is not saved either).
 
 What a miss leaves behind — outputs resolved, artifact and rows saved,
 output prefixes recorded, git snapshot marked — is

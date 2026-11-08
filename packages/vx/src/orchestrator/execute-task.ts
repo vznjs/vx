@@ -348,6 +348,12 @@ export interface ExecuteArgs {
    * key is a healthy run's; its bytes were built against a dead server.
    */
   serverDiedUnder?: (node: TaskNode) => Promise<boolean>
+  /**
+   * Told once when an attempt's shell left a process running: it may still
+   * write the outputs a dependent reads, so run.ts seeds the run's taint
+   * with this task and nothing built on it is saved.
+   */
+  leftRunning?: (node: TaskNode) => void
   /** A `vx watch` cycle (`RunOptions.watch`): an input edited mid-run is the next cycle's. */
   watch?: true
 }
@@ -1470,8 +1476,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
     // A failed attempt's leftover may write into the retry's outputs too.
     // It is not killed, as a passing attempt's is not: only the save is
-    // withheld (`nothingLeftRunning`).
-    if (result.leftRunning === true) leftRunning = true
+    // withheld (`nothingLeftRunning`), and its dependents' (`args.leftRunning`).
+    if (result.leftRunning === true && !leftRunning) {
+      leftRunning = true
+      args.leftRunning?.(node)
+    }
     forgetUndeclaredWrites(args, writeReach)
     if (writesFingerprint) args.fingerprintWatch?.wrote()
     spentMs += result.durationMs

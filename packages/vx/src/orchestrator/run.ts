@@ -1250,10 +1250,13 @@ async function runOnBus(
     // says `success` until the run ends), so it is seeded here, at its
     // dispatch, and the tracker carries it to what is built on it.
     // A server can also die under a task that is running (`serverDiedUnder`),
-    // which seeds it then.
+    // which seeds it then, and so does a task that left a process running
+    // (`leftRunning`).
     const taintSeeds = new Set(excluded.seeds)
     const hasServers = [...nodes.values()].some((n) => n.config.exec?.persistent !== undefined)
-    const taint = taintTracker(options.continueMode === 'always', taintSeeds, nodes, hasServers)
+    const continueAlways = options.continueMode === 'always'
+    let taint = taintTracker(continueAlways, taintSeeds, nodes, hasServers)
+    let taintOn = continueAlways || taintSeeds.size > 0 || hasServers
     // Each task that ran tainted, and the task at the root of it: its
     // outcome's `taintedBy` once it finishes.
     const taintedRan = new Map<string, string>()
@@ -1318,6 +1321,16 @@ async function runOnBus(
         taintedRan.set(node.id, dead)
         return true
       }
+    scope.leftRunning = (node) => {
+      // The check stays off until the first leftover: it is seeded before
+      // the task settles, so every outcome a dependent's judge reads is
+      // recorded by the tracker made here.
+      if (!taintOn) {
+        taint = taintTracker(continueAlways, taintSeeds, nodes, true)
+        taintOn = true
+      }
+      taintSeeds.add(node.id)
+    }
     if (options.retries !== undefined) scope.retries = options.retries
     scope.knownFlaky = (node, hash) => {
       if (sharedFlaky.has(node.id)) return true

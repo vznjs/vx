@@ -564,7 +564,9 @@ stdio elsewhere (`writer >/dev/null 2>&1 &`): it holds no pipe, so
 nothing is cut, but it is still in the task's process group when the
 shell exits, and the same warning names it. A leftover of a failed
 attempt withholds its retry's save too: it may write into what the
-retry produces. Under a Linux sandbox the
+retry produces. Nor is what is built on it saved: a dependent read the
+half-written tree, and its key folds the leftover task's, so the next run
+rebuilt that task and hit the dependent's partial bytes. Under a Linux sandbox the
 leftover dies with the task's pid namespace instead, `setsid` or not.
 Unsandboxed, or under macOS's sandbox, a leftover that also left the
 group (`setsid`, a daemon that double-forks) and holds no pipe is not
