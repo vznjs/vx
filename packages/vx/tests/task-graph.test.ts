@@ -1087,6 +1087,26 @@ describe('checkGraph re-derives the addition marks (item 981)', () => {
   })
 })
 
+describe('checkGraph after a graph plugin', () => {
+  // A plugin's repeated edge folded the upstream into the key twice and
+  // left a held server waiting on one answer too many: the run never settled.
+  it('drops a repeated edge, keeping the order of the rest', () => {
+    const nodes = buildTaskGraph({
+      projects: projects(project('a', { x: cmd('x'), y: cmd('y'), z: cmd('z') })),
+      packageGraph: packageGraph({}),
+      requested: [
+        { project: 'a', task: 'x' },
+        { project: 'a', task: 'y' },
+        { project: 'a', task: 'z' },
+      ],
+    })
+    const z = nodes.get('a#z')!
+    z.deps = ['a#y', 'a#x', 'a#y']
+    checkGraph(nodes)
+    expect(z.deps).toEqual(['a#y', 'a#x'])
+  })
+})
+
 describe('detectCycle skips a finished node', () => {
   it('a chain of forty stacked diamonds is walked once per node, not once per path', () => {
     // The BLACK skip in the cycle detector is the difference between one

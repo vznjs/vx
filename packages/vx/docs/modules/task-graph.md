@@ -81,7 +81,7 @@ export function checkGraph(
   nodes: Map<string, TaskNode>,
   workspaceRoot?: string,
   rules?: GraphRules, // `exclusiveOutputs`: edge-ordered overlap
-): void // id keys, deps, cycle, output collisions, inputs reading outputs; `locked` skips the rules
+): void // id keys, deps (a repeat dropped), cycle, output collisions, inputs reading outputs; `locked` skips the rules
 // Does `negatives` (an input list's `!` entries, `!` stripped) take back
 // every path `output` can select? (X-54)
 export function outputTakenBack(output: string, negatives: readonly string[]): boolean
@@ -226,7 +226,8 @@ their `dependsOn` array.
 
 After every reachable node has been added, `checkGraph()` checks the
 graph (the `graph` stage runs it again after its plugins, item 981):
-each node under its own id, every dep a node, then `detectCycle()` runs a
+each node under its own id, every dep a node named once (a plugin's
+repeat is dropped), then `detectCycle()` runs a
 3-color DFS:
 
 - WHITE = unvisited
