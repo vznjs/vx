@@ -313,7 +313,10 @@ test: { exec: { command: 'bun test', retries: 1 } }
 - Every attempt streams its output live. Between attempts vx emits one
   stderr line into the task's stream, ending in the reason:
   `vx: retrying <id> (attempt <k>/<total>) after exit <code>`, or
-  `after a timeout` when the attempt was killed by `timeout`.
+  `after a timeout` when the attempt was killed by `timeout`, or
+  `after 1 sandbox violation` when the command exited 0 and a refused
+  access failed it. That attempt's violation lines print above the
+  line, under `SANDBOX VIOLATIONS (<n>)`, and stay in its log.
 - The final outcome is the LAST attempt's: the first success wins (and
   is what gets cached — its output only, not a concatenation of failed
   attempts); if every attempt fails, the task is `failed` with the last

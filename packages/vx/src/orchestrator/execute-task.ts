@@ -1427,12 +1427,36 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       exitCode: effectiveExitCode,
       ...(result.timedOut === true ? { timedOut: true as const } : {}),
     })
+    // The outcome's SANDBOX VIOLATIONS section is the last attempt's: a
+    // retried attempt's refusals go into its own output, kept for
+    // `vx last --log`, as the section prints them.
+    const refused = new Set<string>()
+    let denials = 0
+    for (const v of violations) {
+      const line = printable(secrets?.mask(v.line) ?? v.line)
+      if (!refused.has(line) && v.hint !== true) denials++
+      refused.add(line)
+    }
+    if (refused.size > 0 && output !== undefined) {
+      const section = `${midLine ? '\n' : ''}${denials > 0 ? `SANDBOX VIOLATIONS (${denials})` : 'SANDBOX'}\n${[...refused].join('\n')}\n`
+      output.push(section, true)
+      log.taskStderr(node, section)
+      midLine = false
+    }
     attemptOutputs.push(
       output === undefined ? '' : failedOutputLog(output, true, secrets ?? undefined),
     )
+    // The shell's own exit 0 failed only on the refusal: `exit 1` named
+    // nothing that happened.
+    const why =
+      result.timedOut === true
+        ? 'a timeout'
+        : result.exitCode === 0 && denials > 0
+          ? `${denials} sandbox violation${denials === 1 ? '' : 's'}`
+          : `exit ${effectiveExitCode}`
     log.taskStderr(
       node,
-      `${midLine ? '\n' : ''}vx: retrying ${node.id} (attempt ${attempt + 1}/${maxAttempts}) after ${result.timedOut === true ? 'a timeout' : `exit ${effectiveExitCode}`}\n`,
+      `${midLine ? '\n' : ''}vx: retrying ${node.id} (attempt ${attempt + 1}/${maxAttempts}) after ${why}\n`,
     )
   }
 

@@ -150,7 +150,12 @@ one-shot handler mid-cleanup.
      immediately) re-cleans declared outputs and re-executes, with one
      `vx: retrying <id> (attempt <k>/<total>) after exit <code>` stderr
      line between attempts, which ends `after a timeout` instead when
-     the attempt was killed by `timeout`. The final outcome (and the
+     the attempt was killed by `timeout`, and
+     `after <n> sandbox violation(s)` when the shell exited 0 and only
+     a refusal failed it.
+     A retried attempt's violation lines go into its own output, under
+     `SANDBOX VIOLATIONS (<n>)` (the outcome's section is the last
+     attempt's), so `vx last --log` keeps them. The final outcome (and the
      cached stdout) is the last attempt's, its `durationMs` every
      attempt's; `TaskOutcome.attempts` is
      set when > 1.
