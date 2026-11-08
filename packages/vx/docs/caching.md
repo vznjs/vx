@@ -285,7 +285,10 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     is a task whose declared outputs hold one, rather than the file
     dropping out of the key or the artifact without a word
     (turborepo#9345); one found by the clean before a run or a
-    restore is refused as one vx cannot clear. Rename it, or exclude
+    restore is refused as one vx cannot clear. The task reads
+    `failed (cache save failed)` (its command exited 0, with its real
+    time) or `failed (output clean failed)` (its command did not run),
+    never an exit the command did not return. Rename it, or exclude
     it with a negated glob.
 
     Your globs are a **filter over the set git reports**, so a broad

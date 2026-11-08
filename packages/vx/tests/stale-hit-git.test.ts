@@ -1298,6 +1298,30 @@ describe.skipIf(process.platform === 'darwin')('a name that is not UTF-8', () =>
     TIMEOUT,
   )
 
+  // The command exited 0: `failed (exit 1)` with `(0ms)` named an exit it
+  // never returned and dropped the time it took; the next run's clean
+  // refusal ran no command at all.
+  it(
+    'a save or clean refused by that name names the step, not an exit the command never returned',
+    async () => {
+      await project(`mkdir -p dist && printf b > "dist/$(printf 'x\\377y')" && sleep 0.3`)
+      git(root, 'init', '-q')
+      const first = vxExit(root, 'run', 'build')
+      expect([first.code, first.out]).toEqual([1, expect.stringContaining('cannot save')])
+      expect(first.out).toContain('failed (cache save failed)')
+      expect(first.out).not.toContain('exit 1')
+      expect(first.out).not.toContain('(0ms)')
+      const last = vxExit(root, 'last')
+      expect(last.out).toContain('cache save failed')
+      expect(last.out).not.toContain('exit 1')
+      const second = vxExit(root, 'run', 'build')
+      expect([second.code, second.out]).toEqual([1, expect.stringContaining('cannot clear')])
+      expect(second.out).toContain('failed (output clean failed)')
+      expect(second.out).not.toContain('exit 1')
+    },
+    TIMEOUT,
+  )
+
   // A hit saves nothing: one left by hand among the outputs is refused for
   // the clean, not as a file vx "cannot save".
   it(

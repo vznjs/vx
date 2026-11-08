@@ -950,6 +950,11 @@ other persistent task`), and a non-zero exit makes the run exit 1
      runtime probe that exited non-zero, a refused `inputs.env` value)
      is the same, `failed (cache key not derived)`, under the line
      `[vx] app#build: cache key not derived: inputs.runtime probe exited 7: …`.
+     A miss whose output clean vx refused before its command (a name
+     that is not UTF-8) is `failed (output clean failed)`; one whose
+     command exited 0 and whose save vx refused is `failed (cache save
+failed)`, a miss with the command's time; `vx last` says `cache
+save failed` for it, not an exit.
    - **cpu** and **mem**: the task's process tree's average cores since
      it started and its peak memory so far, looked at every 500 ms only
      while this list draws (a pipe or CI reads nothing); on a finished

@@ -48,6 +48,7 @@ import {
 } from './output-log.js'
 import {
   isGroupTask,
+  OutputsFailed,
   RestoreDemoted,
   RestoreFailed,
   type TaskNode,
@@ -1002,6 +1003,19 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // 1101). A saved entry keeps the attempt that produced it, what a hit saves.
   let spentMs = 0
 
+  // vx's own work on the outputs, around a command that exited `exitCode`.
+  async function outputsStep<T>(
+    step: 'clean' | 'save',
+    exitCode: number,
+    work: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await work()
+    } catch (err) {
+      throw new OutputsFailed(err, step, exitCode, spentMs)
+    }
+  }
+
   // One task attempt: clean the declared outputs (before EVERY attempt — so a
   // stale prior-build artifact can't survive into a fresh run, and a failed
   // attempt's partial outputs can't leak into the next; gated on WRITES so a
@@ -1021,55 +1035,60 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // tree would replace a stale build with nothing at all. The eligibility
     // gate guarantees no key in this run can see what stays behind, and the
     // summary names every deferred task so `dist/` is not silently stale.
-    if (additive && willWrite && !deferralRequested && outputs.length > 0) {
-      const endStamp = span('miss: stamp outputs')
-      if (stampedBefore === undefined) stampedBefore = await stampOutputs(cleanArgs)
-      else {
-        const rels = await dropFailedAdditions(
-          node.projectDir,
-          outputs,
-          stampedBefore,
-          cleanArgs.committed,
-          await ownOutputsSince(cleanArgs, stampedBefore),
-          () => resolveOutputs(cleanArgs),
-        )
-        args.gitFilesCache?.markOutputsChanged(node.projectDir, rels)
+    // Its throw (a name vx cannot clear) fails the task before this
+    // attempt's command: no exit of its own to name.
+    await outputsStep('clean', attempt > 1 ? effectiveExitCode : 1, async () => {
+      if (additive && willWrite && !deferralRequested && outputs.length > 0) {
+        const endStamp = span('miss: stamp outputs')
+        if (stampedBefore === undefined) stampedBefore = await stampOutputs(cleanArgs)
+        else {
+          const rels = await dropFailedAdditions(
+            node.projectDir,
+            outputs,
+            stampedBefore,
+            cleanArgs.committed,
+            await ownOutputsSince(cleanArgs, stampedBefore),
+            () => resolveOutputs(cleanArgs),
+          )
+          args.gitFilesCache?.markOutputsChanged(node.projectDir, rels)
+        }
+        endStamp()
+      } else if (clean && outputs.length > 0) {
+        // Mark the wiped paths, exactly as the workspace twin below does. The
+        // git snapshot still lists them with their committed index OIDs, and
+        // resolveFiles SKIPS its existence probe for any path carrying a
+        // trusted OID — so a declared output the producer deletes and does not
+        // re-create would stay in a same-project consumer's input set, keeping
+        // that consumer's key unchanged while the file is gone from disk.
+        const endClean = span('miss: clean outputs')
+        const cleanedRels = await cleanOutputs(cleanArgs)
+        endClean()
+        args.gitFilesCache?.markOutputsChanged(node.projectDir, cleanedRels)
       }
-      endStamp()
-    } else if (clean && outputs.length > 0) {
-      // Mark the wiped paths, exactly as the workspace twin below does. The
-      // git snapshot still lists them with their committed index OIDs, and
-      // resolveFiles SKIPS its existence probe for any path carrying a
-      // trusted OID — so a declared output the producer deletes and does not
-      // re-create would stay in a same-project consumer's input set, keeping
-      // that consumer's key unchanged while the file is gone from disk.
-      const endClean = span('miss: clean outputs')
-      const cleanedRels = await cleanOutputs(cleanArgs)
-      endClean()
-      args.gitFilesCache?.markOutputsChanged(node.projectDir, cleanedRels)
-    }
-    if (additive && willWrite && !deferralRequested && wsOutputs.length > 0) {
-      // A root-anchored addition is stamped as the project one above: a
-      // glob clean deleted the upstream's files before this task, which
-      // reads them, ran (A-43).
-      if (wsStampedBefore === undefined) wsStampedBefore = await stampWorkspaceOutputs(wsCleanArgs)
-      else {
-        const rels = await dropFailedAdditions(
-          args.workspaceRoot,
-          wsOutputs,
-          wsStampedBefore,
-          wsCleanArgs.committed,
-          await ownWorkspaceOutputsSince(wsCleanArgs, wsStampedBefore),
-          () => resolveWorkspaceOutputs(wsCleanArgs),
-        )
-        args.gitFilesCache?.markWorkspaceOutputsChanged(args.workspaceRoot, rels)
+      if (additive && willWrite && !deferralRequested && wsOutputs.length > 0) {
+        // A root-anchored addition is stamped as the project one above: a
+        // glob clean deleted the upstream's files before this task, which
+        // reads them, ran (A-43).
+        if (wsStampedBefore === undefined)
+          wsStampedBefore = await stampWorkspaceOutputs(wsCleanArgs)
+        else {
+          const rels = await dropFailedAdditions(
+            args.workspaceRoot,
+            wsOutputs,
+            wsStampedBefore,
+            wsCleanArgs.committed,
+            await ownWorkspaceOutputsSince(wsCleanArgs, wsStampedBefore),
+            () => resolveWorkspaceOutputs(wsCleanArgs),
+          )
+          args.gitFilesCache?.markWorkspaceOutputsChanged(args.workspaceRoot, rels)
+        }
+      } else if (clean && wsOutputs.length > 0) {
+        // Root-anchored deletions can land in other projects' dirs; mark
+        // them so stale per-project git snapshots can't survive the wipe.
+        const cleanedWsRels = await cleanWorkspaceOutputs(wsCleanArgs)
+        args.gitFilesCache?.markWorkspaceOutputsChanged(args.workspaceRoot, cleanedWsRels)
       }
-    } else if (clean && wsOutputs.length > 0) {
-      // Root-anchored deletions can land in other projects' dirs; mark
-      // them so stale per-project git snapshots can't survive the wipe.
-      const cleanedWsRels = await cleanWorkspaceOutputs(wsCleanArgs)
-      args.gitFilesCache?.markWorkspaceOutputsChanged(args.workspaceRoot, cleanedWsRels)
-    }
+    })
     // What the attempt before this one left, put back if this one is
     // withdrawn: it stands, with its output and its refusals.
     const standing = { output, violations, flushMasked }
@@ -1616,28 +1635,30 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     (await args.serverDiedUnder?.(node)) !== true &&
     (own = await ownOutputs()) !== undefined
   ) {
-    const { landed } = await saveMiss({
-      ...own,
-      node,
-      hash,
-      cache,
-      log,
-      workspaceRoot: args.workspaceRoot,
-      nestedProjectDirs: args.nestedProjectDirs,
-      gitFilesCache: args.gitFilesCache,
-      outputs,
-      wsOutputs,
-      captured,
-      command: storedCommand,
-      durationMs: result.durationMs,
-      stdout: storedOutput(),
-      ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),
-      ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),
-      outputDirSnapshots: args.outputDirSnapshots,
-      deferSave: args.deferSave,
-      // A sink listens: say what the save cost.
-      measure: args.explainMiss !== undefined,
-    })
+    const { landed } = await outputsStep('save', effectiveExitCode, () =>
+      saveMiss({
+        ...own,
+        node,
+        hash,
+        cache,
+        log,
+        workspaceRoot: args.workspaceRoot,
+        nestedProjectDirs: args.nestedProjectDirs,
+        gitFilesCache: args.gitFilesCache,
+        outputs,
+        wsOutputs,
+        captured,
+        command: storedCommand,
+        durationMs: result.durationMs,
+        stdout: storedOutput(),
+        ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),
+        ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),
+        outputDirSnapshots: args.outputDirSnapshots,
+        deferSave: args.deferSave,
+        // A sink listens: say what the save cost.
+        measure: args.explainMiss !== undefined,
+      }),
+    )
     // A run that settles the outcome on `landed` learns there whether the
     // entry is in; without one, the save is done (a `--force` save may have kept the entry it found).
     if (args.deferredSaves !== undefined) args.deferredSaves.set(node.id, landed)

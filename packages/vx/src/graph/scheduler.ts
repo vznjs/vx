@@ -73,6 +73,41 @@ export function isKeyFailed(o: object): boolean {
   return (o as Record<symbol, unknown>)[KEY_FAILED] === true
 }
 
+/**
+ * Thrown by `execute` when vx's own work on a miss's outputs threw: the
+ * clean before an attempt, or the save after an exit 0 (a name that is
+ * not UTF-8). The outcome keeps `exitCode` and `durationMs` (what the
+ * command returned and took so far) and is marked (`outputsFailedOf`),
+ * so no label names an exit the command never returned.
+ */
+export class OutputsFailed extends Error {
+  constructor(
+    readonly error: unknown,
+    readonly step: OutputsStep,
+    readonly exitCode: number,
+    readonly durationMs: number,
+  ) {
+    super(thrownMessage(error))
+    this.name = 'OutputsFailed'
+  }
+}
+
+type OutputsStep = 'clean' | 'save'
+
+// A mark, as KEY_FAILED: `TaskOutcome` is a public type.
+const OUTPUTS_FAILED = Symbol('outputsFailed')
+
+/** Mark a failed outcome (or its view) with the output step that failed it. */
+export function markOutputsFailed<T extends object>(o: T, step: OutputsStep): T {
+  ;(o as Record<symbol, unknown>)[OUTPUTS_FAILED] = step
+  return o
+}
+
+/** The output step `markOutputsFailed` marked, if any. */
+export function outputsFailedOf(o: object): OutputsStep | undefined {
+  return (o as Record<symbol, OutputsStep | undefined>)[OUTPUTS_FAILED]
+}
+
 /** What moved in a missed task's key since the last entry saved for it. */
 export interface InputChanges {
   /** How many components changed, appeared or went. 0: the same key, its entry gone. */
@@ -1263,7 +1298,11 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
               return
             }
             const err =
-              thrown instanceof RestoreFailed || thrown instanceof KeyFailed ? thrown.error : thrown
+              thrown instanceof RestoreFailed ||
+              thrown instanceof KeyFailed ||
+              thrown instanceof OutputsFailed
+                ? thrown.error
+                : thrown
             const message = thrownMessage(err)
             // After the run's stop a rejection is the stop's doing (a probe
             // it killed, C-65): aborted, as any task it kills, and unsaid.
@@ -1271,11 +1310,12 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
             const outcome: TaskOutcome = withHold({
               node,
               status: stopped ? 'aborted' : 'failed',
-              exitCode: 1,
-              durationMs: 0,
+              exitCode: thrown instanceof OutputsFailed ? thrown.exitCode : 1,
+              durationMs: thrown instanceof OutputsFailed ? thrown.durationMs : 0,
               ...(thrown instanceof RestoreFailed && !stopped ? { restoreFailed: true } : {}),
             })
             if (thrown instanceof KeyFailed && !stopped) markKeyFailed(outcome)
+            if (thrown instanceof OutputsFailed && !stopped) markOutputsFailed(outcome, thrown.step)
             leave()
             untrack()
             if (stopped) {
