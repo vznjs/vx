@@ -84,9 +84,9 @@ export async function movedInput(
   commandFrom?: number, // the command's start on the file system's clock (`fsClockNow`), just after the describe
   byBytes?: (file: string, ctimeMs: number) => boolean, // `'mutable'`: true judges that write by bytes
 ): Promise<string | undefined>
-// command-windows.ts: when each command of the run ran, and each hit's restore, and where it may write.
+// command-windows.ts: when each command of the run ran, and each restore or deferred fetch, and where it may write.
 export interface CommandWindows {
-  open(id: string, projectDir: string, reach: WriteReach): () => void // a command or a hit's restore starts; the function marks its end
+  open(id: string, projectDir: string, reach: WriteReach): () => void // a command, a hit's restore or a deferred fetch starts; the function marks its end
   writerDuring(self: string, file: string, from: number, to: number): string | undefined // another command that may write `file` and ran within [from, to]
 }
 export function commandWindows(): CommandWindows

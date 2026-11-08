@@ -5,12 +5,12 @@
 // See docs/design/download-policy-cas-cache-2026-08.md §14.
 
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
-import { planRun, run } from './helpers/orchestrator.js'
+import { commandWindows, planRun, run } from './helpers/orchestrator.js'
 import { formatPlanJson, formatPlanText } from '../src/cli/plan-format.js'
 import { deferralEligibility, resolveDownloadModes } from '../src/orchestrator/download-policy.js'
 import { DeferredOutputs } from '../src/orchestrator/deferred-outputs.js'
@@ -381,6 +381,8 @@ interface Fake {
   failMaterialize?: boolean
   failProducer?: boolean
   deferAlways?: boolean
+  /** A pause before the fetch writes: no window of the producer's own command can cover it. */
+  materializeDelayMs?: number
 }
 
 /**
@@ -487,6 +489,7 @@ async function fixture(
                  return { ...base, outputs: { kind: 'deferred', materialize: async () => {
                    fake.materialized.push(req.taskId)
                    if (fake.failMaterialize === true) throw new Error('blob evicted from CAS')
+                   if (fake.materializeDelayMs !== undefined) await Bun.sleep(fake.materializeDelayMs)
                    await write()
                  } } }
                }
@@ -634,6 +637,35 @@ describe('--cache-download end to end', () => {
         existsSync(straggler),
         await readFile(path.join(a.root, 'packages', 'pkg-a', 'out', 'gen.txt'), 'utf8'),
       ]).toEqual([false, 'GENERATED'])
+    } finally {
+      a.cleanup()
+    }
+  })
+
+  // A fetch writes the producer's outputs as a restore does, and `vx watch`
+  // takes a write in a cycle no command window covers for the user's edit
+  // (`sawEvent`): with none, a deferred fetch started one more cycle.
+  it("a fetch is a writer of the run's command windows", async () => {
+    const a = await fixture()
+    try {
+      fake().materializeDelayMs = 100
+      const windows = commandWindows()
+      const r = await run({
+        cwd: a.root,
+        tasks: ['use'],
+        projects: ['pkg-b'],
+        download: 'none',
+        commandWindows: windows,
+        log: silent(),
+        handleSignals: false,
+      })
+      const out = path.join(a.root, 'packages', 'pkg-a', 'out', 'gen.txt')
+      const t = (await stat(out)).ctimeMs
+      expect([r.ok, fake().materialized, windows.writerDuring('', out, t, t)]).toEqual([
+        true,
+        ['pkg-a#gen'],
+        'pkg-a#gen',
+      ])
     } finally {
       a.cleanup()
     }

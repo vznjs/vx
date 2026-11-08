@@ -884,6 +884,7 @@ async function runOnBus(
     // happened.
     const policy: CachePolicy = effectiveCachePolicy(prepared.cachePolicy, remoteCacheEnabled)
     warnNoRemote(prepared, options, log)
+    const windows = options.commandWindows ?? commandWindows()
     const deferredOutputs = new DeferredOutputs({
       nodes,
       cache,
@@ -892,6 +893,7 @@ async function runOnBus(
       ...(gitFilesCache !== undefined ? { gitFilesCache } : {}),
       localWrite: policy.localWrite,
       log,
+      commandWindows: windows,
     })
 
     // Per-run context for the Tier-3 `invocations` header row. Captured
@@ -998,7 +1000,6 @@ async function runOnBus(
       )
     })
     const deferredSaves = new Map<string, Promise<SaveFacts>>()
-    const windows = options.commandWindows ?? commandWindows()
     // A server held from an earlier run (`vx watch`) runs through this one
     // too, so it may write a mutable input while it is described.
     for (const id of heldBefore.kept.keys()) {
