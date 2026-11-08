@@ -1323,10 +1323,11 @@ nothing in some projects); `[]` is the explicit way to decouple.
 A filter selects among the task's own dependencies, never through a
 group: over `dependsOn: ['build']`, where `build` is a group of
 `build.a` and `build.b`, the filter sees `build`, not its members. A
-pattern that matches no dependency but does match a group's member
-(`'build.*'` there) is refused by `vx lock` and when the run plans: it would select
-nothing and stop the key moving with that member. Name the group, or
-depend on the member directly.
+pattern that matches a group's member (`'build.*'` there) but not the
+group is refused by `vx lock` and when the run plans, even when it also
+matches a direct dependency (`dependsOn: ['build', 'build.a']`): the
+key would not move with the member it leaves out (`build.b`). Name the
+group, or depend on the member directly.
 
 Examples:
 

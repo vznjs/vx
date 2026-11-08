@@ -38,8 +38,9 @@ export function refuseFiltersThroughGroups(nodes: ReadonlyMap<string, TaskNode>)
 ## Rules
 
 - **A filter selects among the task's own dependencies, never through a
-  group.** `build.*` over a group `build` selects nothing, so it is
-  refused rather than decoupling the key.
+  group.** `build.*` over a group `build` misses the members the key
+  does not fold otherwise, so it is refused rather than decoupling the
+  key, also when it matches another dependency directly.
 - **An exact filter names a dependency.** The load pairs a `pkg#task`
   entry or dependency with any form whose task half matches, unable to
   tell this project's name from another's, so `['nope#build']` over

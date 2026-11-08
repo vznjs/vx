@@ -36,9 +36,13 @@ export function keyedDeps(node: TaskNode): readonly string[] {
  * A filter selects among the task's own dependencies, never through a
  * group: `dependsOn: ['build']` over a group `build` of `build.a` and
  * `build.b` offers the filter `build`, not its members. A pattern that
- * matches only a member (`build.*`) therefore selected nothing, and the key stopped moving
- * with that member's inputs: a stale hit under a green run. Such a spec
- * is refused, once, over the graph every key site reads. One that matches
+ * matches a member (`build.*`) the filter folds neither directly nor
+ * through a selected group therefore left it out, and the key stopped
+ * moving with that member's inputs: a stale hit under a green run. That
+ * held when the pattern also matched another dependency directly
+ * (`dependsOn: ['build', 'build.a']`), so such a spec is refused, once,
+ * over the graph every key site reads, unless it matches the group
+ * itself (a negation of the group is a decision). One that matches
  * nothing anywhere stays legal (a preset's pattern needn't match in every
  * project). An exact name is refused earlier, at load, unless `dependsOn`
  * names it (`assertFilterNamesDeclaredDeps`).
@@ -49,19 +53,32 @@ export function refuseFiltersThroughGroups(nodes: ReadonlyMap<string, TaskNode>)
     if (filter === undefined || filter.length === 0) continue
     const deps = keyedDeps(node).flatMap((id) => nodes.get(id) ?? [])
     const groups = deps.filter(isGroupTask)
+    const folded = new Set<TaskNode>()
+    if (groups.length > 0) {
+      const units = deps.map((n) => ({ node: n, unit: n.id }))
+      for (const { node: n } of selectFoldedDeps(units, filter, node.projectName, node.id)) {
+        folded.add(n)
+        if (isGroupTask(n)) for (const m of groupMembers(n, nodes)) folded.add(m)
+      }
+    }
     for (const raw of filter) {
       const spec = parseSpec(raw, node.id)
       if (spec.negated) continue
       const matches = specMatcher(spec)
       const hit = (n: TaskNode): boolean => matches(n, n.projectName === node.projectName)
-      if (deps.some(hit)) continue
+      const direct = deps.some(hit)
       for (const group of groups) {
-        const member = groupMembers(group, nodes).find(hit)
+        if (hit(group)) continue
+        const member = groupMembers(group, nodes).find(
+          (m) => hit(m) && !folded.has(m) && !deps.includes(m),
+        )
         if (member === undefined) continue
+        const outcome = direct ? 'so the key leaves it out' : 'so it selects nothing'
         throw new UserError(
-          `${node.id}: inputs.tasks: '${raw}' matches ${member.id} only through the group ${group.id}, so it selects nothing; name '${group.taskName}' or depend on ${member.id} directly`,
+          `${node.id}: inputs.tasks: '${raw}' matches ${member.id} only through the group ${group.id}, ${outcome}; name '${group.taskName}' or depend on ${member.id} directly`,
         )
       }
+      if (direct) continue
       if (
         namesNoDependency(spec, node.config.dependsOn ?? []) ||
         namesTransitiveDependency(spec, node, nodes, hit)
