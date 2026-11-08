@@ -159,7 +159,10 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // worth; every cycle after an edit must load and list live.
   delete opts.staged
   delete opts.discovered
-  process.once('SIGINT', () => stop.abort('SIGINT'))
+  // `on`, not `once`: a second signal during the teardown is absorbed (an
+  // abort is once), where `once` left it to Bun's default, exit 130 with
+  // the cycle's children mid-grace.
+  process.on('SIGINT', () => stop.abort('SIGINT'))
   // Said once the loop is down, the last line: written as the signal
   // landed, the aborted cycle's summary printed below it.
   const stopped = (): number => {
@@ -169,11 +172,11 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     }
     return 0
   }
-  process.once('SIGTERM', () => stop.abort('SIGTERM'))
+  process.on('SIGTERM', () => stop.abort('SIGTERM'))
   // A task runs in its own session (exec/kill-tree.ts): the terminal
   // closing reaches the loop alone, and the loop passes it on — unless vx
   // was started with it ignored (nohup).
-  if (!hangupIgnored()) process.once('SIGHUP', () => stop.abort('SIGHUP'))
+  if (!hangupIgnored()) process.on('SIGHUP', () => stop.abort('SIGHUP'))
 
   // Enumerate projects-in-scope so we know what dirs to watch: the bare
   // tasks' scope (`opts.projects`; undefined means "every project", or
@@ -341,12 +344,16 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
         const all = await discoverCliProjects(workspaceRoot, load)
         const sweep = await sweepConfigs(all, workspaceRoot, load, opts.tasks)
         const now = await watchedProjects(workspaceRoot, all, inScope(all), load, sweep.staged)
+        const wsNow = await loadCliWorkspace(workspaceRoot, quiet)
         return {
           projects: now,
           // A plugin the workspace config gained since claims its file from
           // the cycle that loaded it; read once, its edits started nothing
           // until a restart.
-          claimedRootFiles: claimsOf((await loadCliWorkspace(workspaceRoot, quiet)).plugins),
+          claimedRootFiles: claimsOf(wsNow.plugins),
+          // The dir the cycle just wrote its store to: kept from the start,
+          // a `cache.dir` edit let those writes start the next cycle.
+          cacheDir: opts.cacheDir ?? wsNow.cacheDir,
           workspaceWide: sweep.workspaceWide,
           workspaceInputs: sweep.workspaceInputs,
           outputs: sweep.outputs,
@@ -429,6 +436,7 @@ const fenceDirs = (all: readonly ProjectMeta[]): string[] => all.map((p) => p.di
 
 interface Rediscovered {
   projects: readonly ProjectMeta[]
+  cacheDir: string
   claimedRootFiles: ReadonlySet<string>
   workspaceWide: boolean
   workspaceInputs: readonly string[]
@@ -442,9 +450,10 @@ interface Rediscovered {
 }
 
 async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
-  const { opts, stop, workspaceRoot, projects, cacheDir } = args
+  const { opts, stop, workspaceRoot, projects } = args
   // The watched set as of the last cycle: `rearm` replaces these after an
   // event that can change it, and every filter below reads the current one.
+  let cacheDir = args.cacheDir
   let workspaceWide = args.workspaceWide
   let projectDirs = args.projectDirs
   let workspaceInputs = args.workspaceInputs
@@ -1112,6 +1121,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     } catch (err) {
       return err
     }
+    cacheDir = next.cacheDir
     projectDirs = next.projects.map((p) => p.dir)
     workspaceInputs = next.workspaceInputs
     outputs = next.outputs

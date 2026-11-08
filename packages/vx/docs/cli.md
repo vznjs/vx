@@ -1634,7 +1634,9 @@ Always ignored (no re-trigger):
 - The run's **resolved cache directory**, wherever it is. `.vx/cache/` covers the
   default, but `defineWorkspace({ cache: { dir } })` and `--cache-dir` can put it
   anywhere; watching it would let vx's own cache writes trigger the next
-  cycle, which writes again — a loop that never settles.
+  cycle, which writes again — a loop that never settles. A `cache.dir`
+  edit mid-watch moves the filter with it, from the cycle that re-reads
+  the config.
 - A new empty directory (`mkdir src/new`): it holds nothing a key reads,
   and the poller, which samples files, never saw one. A file made in it
   is the change. A project directory made again, which the watch waits
@@ -1724,7 +1726,9 @@ re-runs itself and what it depends on.
   first — its children, and the dev server held between cycles, get the
   signal watch received (a Ctrl-C as SIGINT; a SIGTERM or SIGHUP as SIGTERM),
   a 2 s grace, then SIGKILL — and the process leaves only
-  once it has returned, so a CI cancellation never orphans a task.
+  once it has returned, so a CI cancellation never orphans a task. A
+  second signal during that teardown changes nothing: still `0`, once
+  the cycle is down.
   Also `0`, with no watch, when `--affected` selects nothing: watch
   prints `vx watch: nothing affected since <ref>` and exits as `vx run`
   does.

@@ -277,7 +277,8 @@ git checkout packages`) was no event to its own arm, nor to the
    - Filter out `node_modules` / `.git` / `.vx/cache` path segments,
      `.vx/tmp` (restore staging), the `~` suffix (editor swap files), the RESOLVED
      cache directory (a relocated `cache.dir` would otherwise re-trigger
-     every cycle), and each project's declared outputs
+     every cycle; re-read with the watched set, so a `cache.dir` edit
+     mid-watch moves it, `tests/watch-cache-dir-change.test.ts`), and each project's declared outputs
      (`outputs.files`, root-relative `workspaceFiles`) — a cycle
      that writes `dist/` is not an edit, and neither is `dist` itself;
      a path a task the watch reaches declares as an input is never
@@ -333,7 +334,7 @@ git checkout packages`) was no event to its own arm, nor to the
    - Reentrancy guard: while a cycle is running, further events set
      a `pending` flag; the loop drains it after the current cycle
      finishes. Two events can collapse into one re-run.
-6. **Exit.** `watchCmd` installs `process.once` handlers for SIGINT,
+6. **Exit.** `watchCmd` installs `process.on` handlers for SIGINT,
    SIGTERM and SIGHUP BEFORE the initial run; each aborts one
    `AbortController`, with the signal's name as the reason, whose
    signal every cycle's `run()` carries (`RunOptions.signal`, `handleSignals: false`). The
@@ -347,7 +348,9 @@ git checkout packages`) was no event to its own arm, nor to the
    prints `vx watch: stopped`, the last line. Until 2026-09-10 the handlers went in
    with the loop, so a SIGTERM during the initial run took Bun's
    default (exit 143) and orphaned the cycle's child
-   (`tests/watch-signals.test.ts`).
+   (`tests/watch-signals.test.ts`). A repeat is a no-op (the abort is
+   once); under `once` a second Ctrl-C mid-teardown took Bun's default,
+   exit 130 (same file, "a second SIGINT during the teardown").
 
 ## Why not filter by `inputs.files`
 
