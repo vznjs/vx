@@ -349,8 +349,8 @@ git checkout packages`) was no event to its own arm, nor to the
    with the loop, so a SIGTERM during the initial run took Bun's
    default (exit 143) and orphaned the cycle's child
    (`tests/watch-signals.test.ts`). A repeat is a no-op (the abort is
-   once); under `once` a second Ctrl-C mid-teardown took Bun's default,
-   exit 130 (same file, "a second SIGINT during the teardown").
+   once); under `once` a second signal mid-teardown took Bun's default
+   exit, not 0 (same file, "a second SIGINT during the teardown").
 
 ## Why not filter by `inputs.files`
 
