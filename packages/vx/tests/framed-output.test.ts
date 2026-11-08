@@ -806,6 +806,24 @@ describe('persistent task framing', () => {
     expect(close.match(/[\x00-\x09\x0b-\x1f\x7f-\x9f]/g)).toBeNull()
   })
 
+  it('writes each fix path as a JS string literal', () => {
+    // `qu'ote".txt` closed the quote early: the line was not valid JS.
+    const close = formatFrameClose(
+      node('a#build', 'cat x'),
+      outcome('a#build', 'failed', {
+        exitCode: 1,
+        sandboxViolations: 1,
+        sandboxViolationLines: ['cat(1) deny(1) file-read-data /w/a/x'],
+        sandboxFix: { read: ['qu\'ote".txt', 'pages/\\[id\\].tsx'], inputs: ['qu\'ote".txt'] },
+      }),
+    )
+    const line = close.split('\n').find((l) => l.startsWith('fix: '))!
+    expect(line).toBe(
+      "fix: exec.sandbox.allow: { read: ['qu\\'ote\".txt', 'pages/\\\\[id\\\\].tsx'] }",
+    )
+    expect(close).toContain("inputs.files: ['qu\\'ote\".txt']")
+  })
+
   it("vx's own notes are not counted as violations in the header", () => {
     // The header counted the `vx:` note lines: "(2)" over one denial and
     // a closing "1 sandbox violation", and "(1)" over a note alone.

@@ -1396,6 +1396,10 @@ and forced to exit non-zero. No cache is written for a failed task. The
 task's `SANDBOX VIOLATIONS` section ends with a dimmed `fix:` line,
 the grants that would have allowed each denial, project-relative:
 `fix: exec.sandbox.allow: { read: ['tsconfig.json'], write: ['dist/'] }`.
+Each path is a JS string literal, spelled as the glob it must be: a
+bracket escaped (`read: ['pages/\\[id\\].tsx']`, and so in `inputs.files`);
+a path no grant can name alone (a `*`, `?` or backslash, and on Linux a
+write with a bracket; `schema.md`) is granted as the directory above it.
 On Linux a refused open is a read or a write by the flags it asked
 with: a missing file opened to read is a read grant, never a file vx
 would create. A host `deny.network` holds gets no network grant.

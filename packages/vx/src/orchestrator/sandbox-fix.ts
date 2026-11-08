@@ -26,8 +26,8 @@ function isCredential(abs: string): boolean {
 }
 
 /**
- * A path as a grant spells it: project-relative inside the project, `~/…`
- * under home, else absolute.
+ * A path as a grant names it, unescaped: project-relative inside the
+ * project, `~/…` under home, else absolute.
  */
 function grantPath(abs: string, projectDir: string): string {
   const rel = path.relative(projectDir, abs)
@@ -38,6 +38,23 @@ function grantPath(abs: string, projectDir: string): string {
 }
 
 /**
+ * The grant that allows `abs`, spelled as the sandbox reads it: a bracket
+ * escaped, since `pages/[id].tsx` is a class that grants `pages/i.tsx`,
+ * and applying the fix failed the run again on the same read. A path no
+ * grant can name alone (a `*`, `?` or backslash; on Linux a write with a
+ * bracket too: sandbox-binds.ts) is granted as the directory above it.
+ */
+function grantFor(abs: string, projectDir: string, kind: 'read' | 'write'): string {
+  const raw = grantPath(abs, projectDir)
+  const bad = (kind === 'write' && process.platform === 'linux' ? /[*?[\]\\]/ : /[*?\\]/).exec(raw)
+  const at = bad === null ? raw : raw.slice(0, raw.lastIndexOf('/', bad.index) + 1) || '.'
+  return at.replace(/[[\]]/g, '\\$&')
+}
+
+/** A project path as `inputs.files` names it: each task-glob wildcard escaped. */
+const taskGlobOf = (rel: string): string => rel.replace(/[*?{}[\]\\]/g, '\\$&')
+
+/**
  * A write grant covers the top directory the write landed in: granting
  * `dist/a.js` alone fails the run again on `dist/b.js`. Not when the task
  * reads that directory as an input: the grant would let it write its own
@@ -45,7 +62,7 @@ function grantPath(abs: string, projectDir: string): string {
  */
 function writeGrant(grant: string, isDir: boolean, inputs: readonly string[]): string {
   const slash = grant.indexOf('/')
-  const exact = isDir ? `${grant}/` : grant
+  const exact = isDir && !grant.endsWith('/') ? `${grant}/` : grant
   if (grant.startsWith('~/') || path.isAbsolute(grant) || slash === -1) return exact
   const top = grant.slice(0, slash)
   return inputs.some((g) => readsDir(g, top)) ? exact : `${top}/`
@@ -116,17 +133,17 @@ export function sandboxFix(
     else if (v.path === undefined) continue
     else if (isCredential(v.path)) fix.withheld.add(grantPath(v.path, projectDir))
     else if (kind === 'read') {
-      const grant = grantPath(v.path, projectDir)
-      fix.read.add(grant)
+      const rel = grantPath(v.path, projectDir)
+      fix.read.add(grantFor(v.path, projectDir, 'read'))
       // The link the task opened lies in a directory the sandbox lacks: the
       // target alone stays unreachable, and the fix named it again forever.
-      if (v.via !== undefined) fix.read.add(grantPath(v.via, projectDir))
-      if (keyed !== undefined && inProject(grant) && !keyed(grant)) fix.inputs.add(grant)
+      if (v.via !== undefined) fix.read.add(grantFor(v.via, projectDir, 'read'))
+      if (keyed !== undefined && inProject(rel) && !keyed(rel)) fix.inputs.add(taskGlobOf(rel))
     } else {
       const isDir =
         v.line.startsWith('mkdir') ||
         lstatSync(v.path, { throwIfNoEntry: false })?.isDirectory() === true
-      fix.write.add(writeGrant(grantPath(v.path, projectDir), isDir, inputs ?? []))
+      fix.write.add(writeGrant(grantFor(v.path, projectDir, 'write'), isDir, inputs ?? []))
     }
   }
   const out: SandboxFix = {}

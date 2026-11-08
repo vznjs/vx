@@ -886,7 +886,7 @@ function violationSection(outcome: TaskOutcome, colors: ColorSupport): string[] 
           ...(fix.inputs !== undefined
             ? [
                 dim(
-                  `and, if the output depends on them, inputs.files: [${fix.inputs.map((p) => `'${printable(p)}'`).join(', ')}]`,
+                  `and, if the output depends on them, inputs.files: [${fix.inputs.map(jsString).join(', ')}]`,
                 ),
               ]
             : []),
@@ -1059,6 +1059,9 @@ function formatStatusTag(o: TaskOutcome, colors: ColorSupport): string {
   }
 }
 
+/** A fix path as the single-quoted JS literal the config line pastes. */
+const jsString = (p: string): string => `'${printable(p.replace(/[\\']/g, '\\$&'))}'`
+
 /**
  * The fix as the config line it is: `exec.sandbox.allow: { read: ['a'] }`,
  * or undefined when every denial was a withheld credential path.
@@ -1067,7 +1070,7 @@ function sandboxFixLine(f: NonNullable<TaskOutcome['sandboxFix']>): string | und
   const fix = Object.entries(f).filter(([k]) => k !== 'withheld' && k !== 'inputs')
   if (fix.length === 0) return undefined
   const parts = fix.map(
-    ([k, list]: [string, string[]]) => `${k}: [${list.map((p) => `'${printable(p)}'`).join(', ')}]`,
+    ([k, list]: [string, string[]]) => `${k}: [${list.map(jsString).join(', ')}]`,
   )
   return `exec.sandbox.allow: { ${parts.join(', ')} }`
 }
