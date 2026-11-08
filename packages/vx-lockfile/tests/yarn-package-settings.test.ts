@@ -2,8 +2,9 @@
 // `workspaces.nohoist`, and yarn.lock records none of it: `**/is-number`
 // there moved is-number into packages/b/node_modules under a
 // byte-identical yarn.lock (probed, yarn 1.22), and no key but the root's
-// own moved. `installConfig` is the same kind of field. The rest of the
-// manifest is the lockfile's to record, or the root's own input.
+// own moved. `installConfig` is the same kind of field, and so are the
+// root's dependency ranges (yarn-classic-root-deps.test.ts). The rest of
+// the manifest is the root's own input.
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -31,7 +32,7 @@ it("the root package.json's nohoist and installConfig key every task, and nothin
   await manifest({
     name: 'root',
     workspaces: { packages: ['packages/*'] },
-    dependencies: { x: '1' },
+    scripts: { build: 'x' },
   })
   expect(await key()).toBe(base)
   await manifest({ name: 'root', workspaces: { packages: ['packages/*'], nohoist: ['**/x'] } })
@@ -51,7 +52,7 @@ it("the root package.json's nohoist and installConfig key every task, and nothin
       },
       ctx,
     )
-  expect(await affectedBy({ name: 'r' }, { name: 'r', dependencies: { x: '1' } })).toEqual([])
+  expect(await affectedBy({ name: 'r' }, { name: 'r', scripts: { build: 'x' } })).toEqual([])
   expect(
     await affectedBy({ name: 'r' }, { name: 'r', workspaces: { packages: [], nohoist: ['x'] } }),
   ).toBeUndefined()

@@ -49,16 +49,18 @@ A lockfile the parser cannot read **refuses the run**, naming the file, the reas
 
 Files no lockfile records lay `node_modules` out anew under a byte-identical lockfile (pnpm's `node-linker`, bun's `linker = "isolated"`, a registry in `.npmrc`, Yarn 4's catalogs). Each plugin owns its manager's and hashes each present file whole into every task; a change to one selects every project under `--affected`:
 
-| Plugin   | Settings                                                                                                                          |
-| -------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm()` | `pnpm-workspace.yaml`, `.npmrc`, the root manifest's `pnpm` field (`package.json`, `package.json5` or `package.yaml`)             |
-| `bun()`  | `bunfig.toml`, `.npmrc`                                                                                                           |
-| `npm()`  | `.npmrc`                                                                                                                          |
-| `yarn()` | `.yarnrc.yml`, `.yarnrc` and `.npmrc` (yarn 1), the root `package.json`'s `workspaces.nohoist`, `installConfig` and `resolutions` |
+| Plugin   | Settings                                                                                                                                                                                     |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm()` | `pnpm-workspace.yaml`, `.npmrc`, the root manifest's `pnpm` field (`package.json`, `package.json5` or `package.yaml`)                                                                        |
+| `bun()`  | `bunfig.toml`, `.npmrc`                                                                                                                                                                      |
+| `npm()`  | `.npmrc`                                                                                                                                                                                     |
+| `yarn()` | `.yarnrc.yml`, `.yarnrc` and `.npmrc` (yarn 1), the root `package.json`'s `workspaces.nohoist`, `installConfig`, `resolutions`, `dependencies`, `devDependencies` and `optionalDependencies` |
 
 `pnpm()` hashes `pnpm-workspace.yaml` without `patchedDependencies`, `overrides`, `catalog` and `catalogs`, which pnpm 10+ keeps there: the lockfile records what each one did, per project, so a patch, an override or a catalog bump re-keys only the projects that reach the package it changes, and `--affected` selects them through the lockfile. Any other setting in the file re-keys every project, and a file that does not parse is hashed whole. The root manifest (`package.json`, `package.json5` or `package.yaml`) adds only its `pnpm` field (`onlyBuiltDependencies` and the rest pnpm reads there and the lockfile does not record), its `overrides` and `patchedDependencies` aside: a root dependency edit is the lockfile's.
 
 `yarn()` reads the root `package.json`'s `resolutions` because yarn.lock does not record where one applies: a parent-scoped one (`"is-odd/is-number"`) leaves the parent's entry on the range it declares, so adding one whose range another package already keys changes the install under a byte-identical yarn.lock. Berry's overrides also become edges: each entry a `resolutions` key reaches (any entry depending on the name, or only the named parent's for a scoped one; a parent's range or a `**` counts as any parent) gets an edge to the entry the override's range names, so a lockfile-only bump of that entry (`yarn up -R is-number`) re-keys the parent's workspaces too, not only the package that keys the range itself. An unreadable scope over-keys, never under-keys.
+
+It reads the root's `dependencies`, `devDependencies` and `optionalDependencies` because yarn 1's lockfile records no importer, only the ranges asked: moving a range between the root and a workspace (root `is-number` `^6` → `^7`, `packages/a` `^7` → `^6`) leaves yarn.lock byte-identical and moves the root `node_modules` copy every project without its own resolves. Any change to them re-keys every project and selects every project under `--affected`; berry records them on the root workspace's entry, which every project's digest already folds.
 
 A file has one owner, so two of these plugins that share a settings file (`pnpm()` and `bun()` both own `.npmrc`) cannot be declared together.
 
