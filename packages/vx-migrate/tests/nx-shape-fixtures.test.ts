@@ -323,11 +323,9 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
           '!out-tsc/**/*',
           '!dist/**/*',
         ],
+        // `@ts/util#build` is a leaf Nx links nothing to, so it is cached
+        // and its key stands for its outputs: no walk of them.
         workspaceFiles: ['tsconfig.base.json'],
-        // `@ts/util#build` is uncached (it reaches no producer), so its
-        // glob outputs are keyed by a walk of their literal head.
-        workspaceRuntime: [expect.stringContaining('find packages/util/dist ')],
-        tasks: ['*', '^*', '!@ts/util#build'],
       },
       {
         outputs: {
