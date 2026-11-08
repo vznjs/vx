@@ -1250,6 +1250,8 @@ export async function mapTurboWorkspace(
   // whose own edges lack `^name` (opencode's `build: { dependsOn: [] }`)
   // is key-only too: Turbo's `^build` stops at it, and core's walked past
   // it to the builds below, running and keying ones Turbo never waits on.
+  // `cache: false` does not stop it: a key-only node stores nothing, and
+  // Turbo's no-op hashes the package's files cached or not.
   const keyOnly = new Map<string, Set<string>>()
   for (const meta of metas) {
     const scripts = packageScripts(meta)
@@ -1261,7 +1263,7 @@ export async function mapTurboWorkspace(
       if (!(caretSelf.has(name) || stops) || !withScript.has(name) || transit.has(name)) continue
       if (scripts[name] !== undefined || commandOverride(def) !== undefined) continue
       if (sidecarGroups.has(`${meta.name}#${name}`)) continue
-      if (def?.cache === false || def?.persistent === true) continue
+      if (def?.persistent === true) continue
       emitted.get(meta.name)!.add(name)
       runnable.get(meta.name)!.add(name)
       let set = keyOnly.get(meta.name)

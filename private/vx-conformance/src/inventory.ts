@@ -793,6 +793,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-migrate/turbo-nested-inputs',
     'vx-migrate/turbo-negated-output-inputs',
     'vx-migrate/turbo-noop-node',
+    'vx-migrate/turbo-noop-uncached',
     'vx-migrate/turbo-oidc',
     'vx-migrate/turbo-output-mode',
     'vx-migrate/turbo-package-tags',
