@@ -33,8 +33,17 @@ export interface HashCache {
 }
 // cleanOutputs: the workspace's `outputs.clean`, kept beside the HashCache (not on it, the package's surface);
 // `false` keys a task without its own as if it declared it
-export function createHashCache(folds?: FoldMemo, cleanOutputs?: boolean): HashCache
+// strategies: `VX_INPUTS_STABILITY_STRATEGY` (`run`) and the workspace's `inputs.stability.strategy`, kept beside
+// it the same way; a key folds the strategy a task runs under when it differs from what the task declares
+export function createHashCache(
+  folds?: FoldMemo,
+  cleanOutputs?: boolean,
+  strategies?: { run?: InputStability['strategy']; workspace?: InputStability['strategy'] },
+): HashCache
 export function workspaceCleanOf(hashCache: HashCache): boolean | undefined
+export function inputStrategiesOf(
+  hashCache: HashCache,
+): { run?: InputStability['strategy']; workspace?: InputStability['strategy'] } | undefined
 
 export interface ComputeHashArgs {
   node: TaskNode

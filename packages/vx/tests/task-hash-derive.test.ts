@@ -353,6 +353,46 @@ describe("computeTaskHash — the workspace's outputs.clean", () => {
   })
 })
 
+describe('computeTaskHash — the inputs.stability.strategy a task runs under', () => {
+  // The strategy decides which saves are kept: `'unchecked'` keeps one
+  // whose input moved under the command. A task's own field was folded
+  // (it is config), the workspace's and the variable's were not, so an
+  // entry kept unchecked was hit after the check was back on.
+  type Strategy = 'immutable' | 'mutable' | 'unchecked'
+  const ws = (run?: Strategy, workspace?: Strategy) =>
+    createHashCache(undefined, undefined, { run, workspace })
+  const own = (strategy: Strategy) => node({}, { inputs: { files: [], stability: { strategy } } })
+
+  it("the workspace's or the variable's folds in, as the task declaring it would", async () => {
+    for (const s of ['unchecked', 'mutable'] as const) {
+      const declared = await key({ node: own(s), hashCache: ws() })
+      expect(await key({ hashCache: ws(undefined, s) })).toBe(declared)
+      expect(await key({ hashCache: ws(s) })).toBe(declared)
+      expect(declared).not.toBe(await key())
+    }
+  })
+
+  it("'immutable' or unset keeps the key a workspace without it derives", async () => {
+    expect(await key({ hashCache: ws(undefined, 'immutable') })).toBe(await key())
+    expect(await key({ hashCache: ws('immutable') })).toBe(await key())
+    expect(await key({ hashCache: ws() })).toBe(await key())
+  })
+
+  it("a task's own beats the workspace's; the variable beats both", async () => {
+    const checked = own('immutable')
+    expect(await key({ node: checked, hashCache: ws(undefined, 'unchecked') })).toBe(
+      await key({ node: checked }),
+    )
+    expect(await key({ node: checked, hashCache: ws('unchecked') })).toBe(
+      await key({ node: own('unchecked') }),
+    )
+    const unchecked = own('unchecked')
+    expect(await key({ node: unchecked, hashCache: ws('unchecked') })).toBe(
+      await key({ node: unchecked }),
+    )
+  })
+})
+
 describe('computeTaskHash — forwardArgs are scoped to REQUESTED tasks', () => {
   // `vx run test -- --watch` must apply the trailing args to `test` and to
   // nothing else. Before the 2026-05 fix they leaked into every task

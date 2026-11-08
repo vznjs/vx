@@ -70,6 +70,14 @@ over (in order):
      folds as the task's own `false` would; `true` or unset folds
      nothing, so those keys never moved. Unfolded, the entry an unclean
      run saved, leftovers included, was hit after the clean was back on.
+   - `inputs.stability.strategy` as the task runs it:
+     `VX_INPUTS_STABILITY_STRATEGY`, else the task's own, else the
+     workspace's, folded as the task's own would be when it differs from
+     what the task declares (`'immutable'` when it declares none). Unset
+     or `'immutable'` folds nothing. It decides which saves are kept:
+     unfolded, an entry `'unchecked'` kept was hit after the check was
+     back on, and a formatter it covered never ran. The severity is not
+     folded: it fails the task, it keeps no other save.
    - `description` (because it's part of the resolved object — even
      though it has no behavioural effect; a description change isn't a
      correctness change but the cost of a re-run is low).
@@ -2360,6 +2368,12 @@ moat.
 - **`run.timeout` / `run.retries`** (flag, variable or workspace). Run
   options, as the flags are: a passing attempt stores the same outputs
   under any limit or budget, and a retry starts clean.
+
+- **Every other setting** (`run.*`, `cache.*`, `lock.*`, `watch.*`,
+  `baseBranch`, `inputs.stability.severity`). Each decides how a run
+  runs or where an entry lives, never which outputs a save keeps. The
+  two that do, `outputs.clean` and `inputs.stability.strategy`, fold
+  (step 3).
 
 ## Bumping `CACHE_VERSION`
 

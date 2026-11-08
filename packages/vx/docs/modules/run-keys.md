@@ -63,8 +63,10 @@ export function codeIdentity(): string
   mtime, ctime and inode: an npm tarball's fixed mtime left a same-size
   upgrade unseen), the workspace root, forward args, claimed root files,
   nested project dirs, the outputs git ignores, the workspace's
-  `outputs.clean` (a config key folds it, and a remembered graph's
-  token names the lock, not `.vx/workspace`), then per task its id,
+  `outputs.clean` and the `inputs.stability.strategy` of the workspace
+  and of `VX_INPUTS_STABILITY_STRATEGY` (a config key folds them, and a
+  remembered graph's token names the lock, not `.vx/workspace` or the
+  variables), then per task its id,
   project, edges, `requested`, resolved config hash, plugin key parts,
   output adders and files token's hash (`inputs.md`, the fold memo's), and the
   declared env values. When the nodes are a remembered graph no plugin

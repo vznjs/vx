@@ -9,7 +9,7 @@
 
 import { existsSync, realpathSync } from 'node:fs'
 import path from 'node:path'
-import type { WorkspaceConfig } from '../config.js'
+import type { InputStability, WorkspaceConfig } from '../config.js'
 import {
   beginRun,
   mark,
@@ -103,7 +103,7 @@ import { cacheRefs, currentBranch, resolveCacheScope } from './run-context.js'
 import { createHashCache, type HashCache } from './task-hash.js'
 import { type Logger, warnOf } from '../report/index.js'
 import type { RunOptions } from './options.js'
-import { resolveSetting, runRules } from '../settings.js'
+import { resolveSetting, runRules, settingEnv } from '../settings.js'
 
 export interface PreparedRun {
   workspaceRoot: string
@@ -659,6 +659,10 @@ export async function prepareRunLocked(
     const hashCache = createHashCache(
       localCache.foldMemo(),
       resolveSetting('outputs.clean', workspaceConfig).value as boolean | undefined,
+      {
+        run: settingEnv('inputs.stability.strategy') as InputStability['strategy'],
+        workspace: workspaceConfig?.inputs?.stability?.strategy,
+      },
     )
     const fingerprintWatch = new FingerprintWatch(
       workspaceRoot,

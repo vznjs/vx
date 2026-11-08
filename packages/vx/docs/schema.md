@@ -1406,7 +1406,10 @@ Each field is resolved on its own, highest first:
 3. the workspace's `inputs.stability` (`.vx/workspace.ts`);
 4. the default, `'immutable'` and `'warn'`.
 
-Never folded into a cache key.
+The strategy a task runs under is in its key, from whichever source:
+an entry `'unchecked'` kept is no hit once the check is back. Unset or
+`'immutable'` from the variable or the workspace folds nothing. The
+severity is folded only as the task's own field.
 
 ```ts
 import { defineProject } from '@vzn/vx/config'
@@ -2130,8 +2133,9 @@ unit (`'500ms'`, `'30s'`, `'10m'`, `'2h'`, `'30d'`), and a bare number is
 refused naming the forms with units; a size carries one too (`'10GB'`).
 `debug.timing`, `debug.watch`, `debug.dumpable`, `config.workerTimeout` and `run.outputLogs` are read
 before the workspace loads, so they have a variable (and a flag) only.
-None is folded into a cache key but `outputs.clean`, which keys a task
-without its own as if it declared it. `vx info` lists every setting not at its
+None is folded into a cache key but `outputs.clean` and
+`inputs.stability.strategy`, which key a task as if it declared the value
+it runs under. `vx info` lists every setting not at its
 default and where it came from.
 
 ### Settings
@@ -2336,8 +2340,8 @@ interface CacheSettings {
 - **`inputs.stability`** — the `inputs.stability` of every task that
   does not set its own field, same shape (`{ strategy, severity }`, §
   `cache`). `VX_INPUTS_STABILITY_STRATEGY` and `_SEVERITY` still
-  override every task for the run. Never folded
-  into a cache key.
+  override every task for the run. A `strategy` other than
+  `'immutable'` keys a task without its own as if it declared it.
 - **`run.rules`** — checks on the task graph, each on unless set to
   `false`. Turning one off allows a shape vx runs correctly but more
   slowly; never folded into a cache key. A value that is not a boolean,
