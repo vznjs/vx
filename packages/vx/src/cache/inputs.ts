@@ -1483,6 +1483,28 @@ export async function stampWorkspaceOutputs(args: {
   return stampFiles(await resolveWorkspaceOutputs(args))
 }
 
+/**
+ * The stamps of the committed files among `files`, the outputs a clean
+ * found. No clean deletes one, so a failed attempt's change to it stays
+ * for the retry: `committedMoved` tells.
+ */
+export function stampCommitted(
+  files: readonly string[],
+  committed: (abs: string) => boolean,
+): Map<string, OutputStamp> {
+  return stampFiles(files.filter(committed))
+}
+
+/** Whether a committed file among `files` was added, removed or touched since `before` (`stampCommitted`). */
+export function committedMoved(
+  files: readonly string[],
+  committed: (abs: string) => boolean,
+  before: ReadonlyMap<string, OutputStamp>,
+): boolean {
+  const changed = changedSince(files.filter(committed), before)
+  return changed === undefined || changed.length > 0
+}
+
 function stampFiles(files: readonly string[]): Map<string, OutputStamp> {
   const out = new Map<string, OutputStamp>()
   for (const f of files) {

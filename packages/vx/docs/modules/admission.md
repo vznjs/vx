@@ -24,8 +24,8 @@ rules stand between them and neither changes what the task is:
   seeds the same taint (`seeds`): a task whose key folds a dependency
   that did not run (`excluded-keys.md`) has bytes nothing vouches for,
   and so does everything built on it. Under `always`, `run()` also seeds
-  a task that starts while a server it depends on (through groups too,
-  `deadServerBehind`) has died: the server's outcome says `success`
+  a task that starts while a server it depends on (through groups and
+  servers too, `deadServerBehind`) has died: the server's outcome says `success`
   until the run ends, so no settled outcome holds that failure yet. In
   any mode, a task such a server died UNDER (it was ready at dispatch)
   is seeded just before its save (`ExecuteArgs.serverDiedUnder`), which

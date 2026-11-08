@@ -175,7 +175,7 @@ one-shot handler mid-cleanup.
    a reader keyed after it reads them. A claimed root file (a lockfile) a
    task rewrote since the run read it withholds the save too (the run's
    `FingerprintWatch`, [`fingerprint-watch.md`](./fingerprint-watch.md),
-   item 750), and so does a server it depends on (through groups too)
+   item 750), and so does a server it depends on (through groups and servers too)
    that died while it ran (`serverDiedUnder`, run.ts: it seeds the
    run's taint, so what is built on it is not saved either). Otherwise `resolveOutputs(...)` →
    `cache.save({ hash, projectDir, outputFiles, entry })`.
@@ -205,7 +205,7 @@ Moved out on 2026-09-10 as pure code motion; re-exported from here.
 ## The save
 
 An ADDITIVE task (`node.addsToOutputsOf`, item 588; only with
-`rules.exclusiveOutputs: false`, X-53) is not cleaned by
+`run.rules.exclusiveOutputs: false`, X-53) is not cleaned by
 glob before an attempt: its outputs are stamped once before the first
 attempt (`stampOutputs`) and, after a 0 exit, its own set is what the
 run added or changed against that stamp (`ownOutputsSince`), handed to
@@ -217,7 +217,11 @@ an artifact holds what a run wrote, never what it took away, and the
 upstream's restore puts the file back (X-32). Before a retry, what the
 failed attempt added against the stamp is removed by path
 (`dropFailedAdditions`, `cleanOutputPaths`); a found file it changed or
-removed cannot be put back, so that task saves nothing.
+removed cannot be put back, so that task saves nothing. No clean
+deletes a committed file under the outputs either: when a retry can
+follow, the first attempt's clean stamps them (`stampCommitted`), and a
+retry's clean that finds one added, removed or touched
+(`committedMoved`) withholds the pass's save the same way.
 
 A process any attempt's shell left running (`ExecuteResult.leftRunning`)
 withholds the save, a failed attempt's too: it may write into the

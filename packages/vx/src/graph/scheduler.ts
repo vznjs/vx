@@ -628,11 +628,13 @@ class ReadyHeap {
 }
 
 /**
- * The dead server a dependency stands for: itself, or one a group reaches.
- * A group is a name for its deps, and it finished the moment the server
- * was ready, so a task behind it ran against the dead one. Walked with a
- * stack and a seen set: recursion threw `RangeError` on a deep chain of
- * groups, and re-walked a group each path reached it by.
+ * The dead server a dependency stands for: itself, or one a group or a
+ * server reaches. A group is a name for its deps, and it finished the
+ * moment the server was ready, so a task behind it ran against the dead
+ * one; a server stays up on the servers it depends on, so a task behind
+ * `web` runs against the `api` under it too. Walked with a stack and a
+ * seen set: recursion threw `RangeError` on a deep chain of groups, and
+ * re-walked a group each path reached it by.
  */
 export function deadServerBehind(
   nodes: ReadonlyMap<string, TaskNode>,
@@ -647,7 +649,7 @@ export function deadServerBehind(
     seen.add(at)
     if (serverDied(at)) return at
     const n = nodes.get(at)
-    if (n === undefined || !isGroupTask(n)) continue
+    if (n === undefined || (!isGroupTask(n) && n.config.exec?.persistent === undefined)) continue
     // Reversed, so the first dep is walked first, as the order it names them.
     for (let i = n.deps.length - 1; i >= 0; i--) stack.push(n.deps[i]!)
   }
@@ -725,7 +727,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   // (`dormant`) until a dependant is demoted, which starts it, or until
   // every dependant has finished, which settles it unspawned. Settled
   // without an outcome: it is not part of the run, as a pruned task is not.
-  // A group between it and its hits is idle with it.
+  // A group or a server between it and its hits is idle with it.
   const idleGroups = new Set<string>()
   const idle = idleServers(nodes, dependents, restoreTier, idleGroups)
   for (const g of idleGroups) idle.add(g)
@@ -1431,10 +1433,11 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
 
 /**
  * Persistent tasks nobody asked for whose every dependant is a restore-tier
- * hit, or a group nobody asked for that only such dependants stand behind:
- * a group runs nothing, so `env: { dependsOn: ['dev'] }` between the server
- * and its hits booted the server on every warm run. Those groups go in
- * `groups`.
+ * hit, or a group or server nobody asked for that only such dependants
+ * stand behind: a group runs nothing, so `env: { dependsOn: ['dev'] }`
+ * between the server and its hits booted the server on every warm run, and
+ * `api` under an idle `web` serves nobody either. Those groups and servers
+ * go in `groups`: the scheduler settles them as it settles a group.
  */
 export function idleServers(
   nodes: ReadonlyMap<string, TaskNode>,
@@ -1445,10 +1448,10 @@ export function idleServers(
   const out = new Set<string>()
   if (restoreTier === undefined || restoreTier.size === 0) return out
   const unasked = (n: TaskNode): boolean => !n.requested && n.surfaced !== true
-  // Per group: whether only hits stand behind it. Post-order on a stack, as
-  // groups nest as deep as the graph.
+  // Per group or server: whether only hits stand behind it. Post-order on a
+  // stack, as groups and servers nest as deep as the graph.
   const spare = new Map<string, boolean>()
-  const spareGroup = (root: string): boolean => {
+  const spareNode = (root: string): boolean => {
     const stack = [root]
     while (stack.length > 0) {
       const id = stack[stack.length - 1]!
@@ -1458,7 +1461,12 @@ export function idleServers(
       }
       const n = nodes.get(id)
       const ds = dependents.get(id)
-      if (n === undefined || !isGroupTask(n) || !unasked(n) || ds === undefined) {
+      if (
+        n === undefined ||
+        (!isGroupTask(n) && n.config.exec?.persistent === undefined) ||
+        !unasked(n) ||
+        ds === undefined
+      ) {
         spare.set(id, false)
         stack.pop()
         continue
@@ -1479,7 +1487,7 @@ export function idleServers(
   for (const n of nodes.values()) {
     if (n.config.exec?.persistent === undefined || !unasked(n)) continue
     const ds = dependents.get(n.id)
-    if (ds === undefined || !ds.every((d) => restoreTier.has(d) || spareGroup(d))) continue
+    if (ds === undefined || !ds.every((d) => restoreTier.has(d) || spareNode(d))) continue
     out.add(n.id)
     if (groups === undefined) continue
     const stack = ds.filter((d) => !restoreTier.has(d))

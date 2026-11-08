@@ -306,7 +306,9 @@ test: { exec: { command: 'bun test', retries: 1 } }
   first attempt — a failed attempt's partial outputs can't leak into
   the next. An [additive](caching.md#additive-outputs-two-tasks-one-tree-an-edge-between-them)
   task removes what the failed attempt added instead; one that changed
-  or removed a file it found saves nothing on its pass. A process a
+  or removed a file it found saves nothing on its pass. No clean
+  deletes a committed file, so a pass after a failed attempt that
+  changed, added or removed a committed output is not saved either. A process a
   failed attempt left running may still write into the next attempt's
   outputs, so its pass is not saved, with the same warning as a
   passing attempt's leftover.
@@ -556,7 +558,8 @@ Semantics:
   remote, is never spawned: a fully cached `vx run e2e` does not boot the server
   `e2e` depends on, and the server is in no outcome or count. A group
   between them that nobody requested (`env: { dependsOn: ['dev'] }`) is
-  passed through for local hits. Behind a
+  passed through for local hits, and so is a server nobody requested:
+  `api` that only an idle `web` needs is not started either. Behind a
   remote cache, the server waits for the remote's answer on the
   dependants the local store missed, and starts at the first miss. It starts
   if one of those hits turns out to need running (its artifact went),
@@ -575,7 +578,9 @@ Semantics:
   run, and vx names it: `vx: <id> exited with code <n>` (a signal death
   as its `128 + n` code), at once while the graph still runs (`… while
 the run went on`), so a dependant failing against it reads why. Its own outcome is `failed` with that exit
-  code, and the footer counts it so (item 1071). A cached dependant that
+  code, and the footer counts it so (item 1071). A task that reaches it
+  through a group or another server (`e2e` on `web` on `api`) depends on
+  it too. A cached dependant that
   was running when it died still passes, but is not saved, nor is what
   is built on it: its key is a healthy run's, its bytes are not. An exit 0 on its own is
   fine (a daemon that forks and returns), and one kept only as a
@@ -1318,10 +1323,11 @@ nothing in some projects); `[]` is the explicit way to decouple.
 A filter selects among the task's own dependencies, never through a
 group: over `dependsOn: ['build']`, where `build` is a group of
 `build.a` and `build.b`, the filter sees `build`, not its members. A
-pattern that matches no dependency but does match a group's member
-(`'build.*'` there) is refused by `vx lock` and when the run plans: it would select
-nothing and stop the key moving with that member. Name the group, or
-depend on the member directly.
+pattern that matches a group's member (`'build.*'` there) but not the
+group is refused by `vx lock` and when the run plans, even when it also
+matches a direct dependency (`dependsOn: ['build', 'build.a']`): the
+key would not move with the member it leaves out (`build.b`). Name the
+group, or depend on the member directly.
 
 Examples:
 

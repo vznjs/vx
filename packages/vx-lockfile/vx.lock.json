@@ -98,7 +98,7 @@
     "test.shard-1": {
       "description": "bun test, shard 1 of 3",
       "exec": {
-        "command": "bun test --only-failures --timeout=30000 tests/dependency-names.test.ts tests/extra-in-project.test.ts tests/file-dir-dep.test.ts tests/link-to-workspace.test.ts tests/lockfile-shapes.test.ts tests/npm.test.ts tests/pnpm-workspace-precise.test.ts tests/rehoist-identity.test.ts tests/transitive-workspace.test.ts tests/yarn-package-settings.test.ts",
+        "command": "bun test --only-failures --timeout=30000 tests/dependency-names.test.ts tests/extra-in-project.test.ts tests/file-dir-dep.test.ts tests/link-to-workspace.test.ts tests/lockfile-shapes.test.ts tests/npm.test.ts tests/pnpm-workspace-precise.test.ts tests/rehoist-identity.test.ts tests/transitive-workspace.test.ts tests/yarn-classic-root-deps.test.ts tests/yarn-package-settings.test.ts",
         "env": {
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",

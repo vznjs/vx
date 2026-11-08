@@ -77,7 +77,7 @@ run's (`sweepStaging`, `tests/restore-staging.test.ts`).
 
 ## Additive tasks (item 588)
 
-Only with `rules.exclusiveOutputs: false` (X-53); by default the graph
+Only with `run.rules.exclusiveOutputs: false` (X-53); by default the graph
 refuses an edge-ordered overlap. An ADDITIVE task
 (`node.addsToOutputsOf`) is judged current by its
 recorded rows alone and its restore rewrites exactly those rows, never

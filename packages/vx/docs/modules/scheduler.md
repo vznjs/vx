@@ -126,8 +126,9 @@ export interface ScheduleOptions {
 
 export async function runGraph(options: ScheduleOptions): Promise<Map<string, TaskOutcome>>
 
-// The dead server a dependency stands for: itself, or one a group reaches.
-// Iterative, each node once: a deep chain of groups does not overflow.
+// The dead server a dependency stands for: itself, or one a group or a server
+// reaches (`web` stays up on `api`). Iterative, each node once: a deep chain
+// of groups does not overflow.
 export function deadServerBehind(
   nodes: ReadonlyMap<string, TaskNode>,
   serverDied: (id: string) => boolean,
@@ -135,7 +136,8 @@ export function deadServerBehind(
 ): string | undefined
 
 // Persistent tasks nobody asked for whose every dependant is a restore-tier hit,
-// or an unrequested group only such hits stand behind (those groups go in `groups`).
+// or an unrequested group or server only such hits stand behind (those groups and
+// servers go in `groups`, settled as a group is).
 export function idleServers(
   nodes: ReadonlyMap<string, TaskNode>,
   dependents: ReadonlyMap<string, string[]>,

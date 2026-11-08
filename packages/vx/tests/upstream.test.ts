@@ -399,12 +399,31 @@ describe('inputs.tasks through a group', () => {
     TIMEOUT,
   )
 
+  // The pattern also matched the direct build.a, so the refusal was skipped,
+  // and build.b, reached only through the group, stayed out of the key.
   it(
-    'CONTROLS: the group, a direct edge, a negation and a pattern matching nothing run',
+    'a pattern that also matches a direct dependency is refused for the member it leaves out',
+    async () => {
+      expect(await runWith(['build.*'], ['build', 'build.a'])).toBe(
+        byLock(
+          "@x/a#test: inputs.tasks: 'build.*' matches @x/a#build.b only through the group @x/a#build, so the key leaves it out; name 'build' or depend on @x/a#build.b directly",
+        ),
+      )
+      expect(await runWith(['^build.*', 'build.*'], ['build', 'build.a'])).toContain(
+        "'build.*' matches @x/a#build.b only through",
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'CONTROLS: the group, direct edges, a negation and a pattern matching nothing run',
     async () => {
       expect(await runWith(['build'])).toBe('ok')
-      expect(await runWith(['build.*'], ['build', 'build.a'])).toBe('ok')
+      expect(await runWith(['build.*'], ['build', 'build.a', 'build.b'])).toBe('ok')
+      expect(await runWith(['build', 'build.*'], ['build', 'build.a'])).toBe('ok')
       expect(await runWith(['*', '!build.a'])).toBe('ok')
+      expect(await runWith(['*', '!build'])).toBe('ok')
       expect(await runWith(['lint.*'])).toBe('ok')
     },
     TIMEOUT,

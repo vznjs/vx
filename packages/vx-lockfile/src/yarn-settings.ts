@@ -9,8 +9,14 @@ import { record, stable, type Json } from './json.js'
  * (`"is-odd/is-number"`) leaves the parent's entry on the range it
  * declares, so adding one whose range another package already keys
  * changes the install with yarn.lock byte for byte (turborepo#14499).
- * Its dependencies are the lockfile's to record. Undefined for a file that does not parse to a mapping, folded
- * whole.
+ * Its `dependencies`, `devDependencies` and `optionalDependencies` too:
+ * Yarn 1 records no importer, only the ranges asked, so moving a range
+ * between the root and a workspace (root is-number ^6 → ^7, a's ^7 → ^6)
+ * leaves yarn.lock byte for byte and moves the root node_modules copy
+ * every project without its own resolves (probed, yarn 1.22). Berry
+ * records them on the root workspace's entry, whose digest reaches every
+ * task already, so folding them there costs no extra re-key. Undefined
+ * for a file that does not parse to a mapping, folded whole.
  */
 export function packageSettings(text: string): string | undefined {
   let doc: unknown
@@ -25,6 +31,8 @@ export function packageSettings(text: string): string | undefined {
   const nohoist = record(map['workspaces'])?.['nohoist']
   if (nohoist !== undefined) kept['nohoist'] = nohoist
   if (map['installConfig'] !== undefined) kept['installConfig'] = map['installConfig']
-  if (map['resolutions'] !== undefined) kept['resolutions'] = map['resolutions']
+  for (const field of ['resolutions', 'dependencies', 'devDependencies', 'optionalDependencies']) {
+    if (map[field] !== undefined) kept[field] = map[field]
+  }
   return `yarn-package\0${stable(kept)}`
 }

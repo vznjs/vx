@@ -268,8 +268,9 @@ const MANAGERS = {
     // under an unchanged yarn.lock (probed, yarn 1.22). Yarn 1 reads an
     // option `.yarnrc` leaves unset from `.npmrc`: `production=true` there
     // dropped every devDependency (probed, yarn 1.22).
-    // The root package.json for `workspaces.nohoist` and `installConfig`,
-    // which lay the install out and the lockfile does not record.
+    // The root package.json for `workspaces.nohoist`, `installConfig`,
+    // `resolutions` and its dependency ranges, which lay the install out
+    // and the lockfile does not record (yarn-settings.ts).
     settings: ['.yarnrc.yml', '.yarnrc', '.npmrc', 'package.json'],
     settingsText: (file, text) =>
       file === 'package.json' ? yarnSettings().packageSettings(text) : undefined,
