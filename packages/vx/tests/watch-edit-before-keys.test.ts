@@ -10,7 +10,8 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, it } from 'bun:test'
+import { afterEach, expect, it } from 'bun:test'
+import { commandWindows } from '../src/orchestrator/index.js'
 import { startWatch, until, type Watch } from './helpers/watch-loop.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
@@ -70,3 +71,22 @@ it('an input edited before its key and put back during the cycle starts the next
   await writeFile(at('after.go'), '')
   await until(async () => (await out()) === 'two\n', 'the output built from two again', 20_000)
 }, 60_000)
+
+// `Date.now()` floors to the millisecond and a ctime does not: a task's
+// last write stamped 0.16 ms past the floored close read as no command's,
+// and an uncached `rm -rf dist; …` re-ran the loop on its own output
+// (watch-loop-uncached, macOS CI and VX_WATCH_POLL=1, 2026-11-08).
+it("a write stamped in the millisecond its command's window closed is that command's", () => {
+  const now = Date.now
+  try {
+    Date.now = () => 1_000
+    const windows = commandWindows()
+    const close = windows.open('app#build', '/ws/app', 'project')
+    Date.now = () => 1_005
+    close()
+    expect(windows.writerDuring('', '/ws/app/dist/out.txt', 1_005.16, 1_005.16)).toBe('app#build')
+    expect(windows.writerDuring('', '/ws/app/dist/out.txt', 1_006.5, 1_006.5)).toBeUndefined()
+  } finally {
+    Date.now = now
+  }
+})

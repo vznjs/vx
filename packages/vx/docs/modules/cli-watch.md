@@ -435,7 +435,8 @@ on, as the cache keys decide.
 - Restart a server for an edit to its own sources: the dev tool
   reloads those itself. Only its config, or its death, restarts it.
 - Tell a user's write from the run's own inside a command's window
-  (`CommandWindows.writerDuring`, widened by the racy window): an edit
+  (`CommandWindows.writerDuring`, widened by the racy window at its start
+  and a millisecond at its end, which `Date.now()` floors): an edit
   there, put back before the next judgement, is judged by state alone.
   An unsandboxed task writing outside its project (out of contract) is
   not the run's, so the same bytes rewritten there every run re-run the

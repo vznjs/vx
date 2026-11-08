@@ -110,6 +110,11 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   refused it and a task that exited 0 failed the run; a step forward put an
   hour into the timings history (2026-11-07, `tests/wall-clock-step.test.ts`).
   `Date.now()` is for timestamps only.
+- `Date.now()` floors to the millisecond; a ctime does not. A window
+  closed at `Date.now()` missed its own command's last write stamped
+  0.16 ms later, and watch re-ran an uncached task on its own output
+  (2026-11-08, `command-windows.ts`). Compare a stamp with a window's
+  end plus one.
 - Bun's per-test timeout is a wall budget too. A test that spawns vx and
   git (457 ms idle, 1.3 s under strace) passed 5 s on a packed DTE worker
   (#4198), so every task that launches `bun test` passes `--timeout=30000`
