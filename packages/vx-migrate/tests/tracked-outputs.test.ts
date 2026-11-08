@@ -61,6 +61,36 @@ describe('spareTrackedOutputs — a reader whose `!` hides a committed file (X-5
   })
 })
 
+// turbo()'s `outputs: ["*/**", "!src/**"]`: the writer's own `!` spares
+// src, but a sibling's take-back of `*/**` still hid it, and a key-only
+// `transit` keyed nothing (`**/*, !*, !*/**`).
+describe('spareTrackedOutputs — a committed file the writer takes back itself', () => {
+  it('still unhides it from a keyed group and uncaches a reader that hides it', () => {
+    const writer = task({ files: ['*/**', '*', '!package.json', '!src/**', '!src'] })
+    const transit = {
+      name: 'transit',
+      task: { inputs: { files: ['**/*', '!*', '!*/**'] } } as Record<string, unknown>,
+    }
+    const lint = {
+      name: 'lint',
+      task: { exec: { command: 'l' }, inputs: { files: ['**/*', '!*', '!*/**'] } } as Record<
+        string,
+        unknown
+      >,
+    }
+    const todos = spareTrackedOutputs(
+      '/w',
+      [{ name: 'a', dir: '/w/packages/a', tasks: [writer, transit, lint] }],
+      ['packages/a/package.json', 'packages/a/src/index.js'],
+    )
+    expect([transit.task['inputs'], lint.task['inputs'], todos.map(([id]) => id)]).toEqual([
+      { files: ['**/*'] },
+      undefined,
+      ['a#lint'],
+    ])
+  })
+})
+
 describe('spareTrackedOutputs — an output naming one committed file', () => {
   const reader = (inputs: Record<string, string[]>) => ({
     name: 'build',
