@@ -99,7 +99,7 @@ describe('sh absent from PATH', () => {
     const r = vx(root, bin, ['run', 'build', '--all'])
     expect(r.code).toBe(1)
     expect(r.text).toContain(
-      "inputs runtime command could not run: vx runs it with sh -c and 'sh' is not on PATH (command: echo v1, cwd: ",
+      "inputs.runtime probe could not run: vx runs it with sh -c and 'sh' is not on PATH (command: echo v1, cwd: ",
     )
     expect(r.text).toContain('Install a POSIX sh and re-run.')
     expect(r.text).not.toContain('Executable not found')

@@ -946,7 +946,10 @@ other persistent task`), and a non-zero exit makes the run exit 1
      `failed` with cache `—`: neither a miss nor a hit. It ran no
      command, so its row has no `±usual`, cpu or mem, its frame no
      command line, and its label is `failed (cache restore failed)`
-     over the restore's error.
+     over the restore's error. A task whose key could not be derived (a
+     runtime probe that exited non-zero, a refused `inputs.env` value)
+     is the same, `failed (cache key not derived)`, under the line
+     `[vx] app#build: cache key not derived: inputs.runtime probe exited 7: …`.
    - **cpu** and **mem**: the task's process tree's average cores since
      it started and its peak memory so far, looked at every 500 ms only
      while this list draws (a pipe or CI reads nothing); on a finished
@@ -1223,6 +1226,14 @@ them: the row says why (`needs darwin-arm64, this is linux-x64`,
 `blocked by mac#build`) and the JSON carries `otherPlatform` or
 `blockedBy`. On CI, or when no executor routes such a task, `--dry`
 refuses as the run does.
+
+**A key that cannot be derived.** A task whose `inputs.runtime` /
+`workspaceRuntime` probe exits non-zero, or whose `inputs.env` value is
+refused, has no key, and the run fails it. `--dry` prints the run's own
+line to stderr (`[vx] app#build: cache key not derived: inputs.runtime
+probe exited 7: …`), still prints the plan, and exits 1. The task's row,
+and its dependants', read `run` `no-cache` with an empty `hash`: the
+closed status set has no word for a failure.
 
 Row legend (the run's own words; the status word's colour carries the outcome):
 

@@ -33,7 +33,7 @@ describe('a runtime probe under a directory holding the PATH delimiter', () => {
         ownOutputs: [],
         nestedProjectDirs: [],
       })
-      await expect(resolved).rejects.toThrow('runtime command exited 127')
+      await expect(resolved).rejects.toThrow('inputs.runtime probe exited 127')
       expect(existsSync(marker)).toBe(false)
     } finally {
       await rm(parent, { recursive: true, force: true })

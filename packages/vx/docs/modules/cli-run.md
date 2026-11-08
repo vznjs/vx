@@ -144,6 +144,9 @@ If `--dry` is set:
    a runnable spec, is within two edits), before any JSON is
    written. An empty plan from an `--affected` or diff filter exits 0
    (`no affected project declares task(s): …`).
+4. A plan marked `isKeyFailed` (a task whose key could not be derived)
+   prints as usual, after the scheduler's `cache key not derived: …`
+   line on stderr, and exits 1, as the run fails that task.
 
 ## Verbose summary
 

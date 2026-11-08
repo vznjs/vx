@@ -30,8 +30,11 @@ import {
 import { rm, rmdir } from 'node:fs/promises'
 import type { InputsConfig, TaskConfig } from '../config.js'
 import {
+  appendTail,
+  createTail,
   literalPath,
   anyTaskGlob,
+  tailText,
   asTrees,
   isExecutableMissing,
   isInstalledPath,
@@ -325,6 +328,7 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
             args.runtimeScope === undefined
               ? `${args.projectDir}\0`
               : `${args.projectDir}\0${args.runtimeScope}\0`,
+            'runtime',
           ),
           resolveRuntimeValues(
             wsRuntimeDecl,
@@ -333,6 +337,7 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
             args.workspaceRoot,
             args.workspaceRuntimeCache,
             args.runtimeScope === undefined ? '' : `\0${args.runtimeScope}\0`,
+            'workspaceRuntime',
           ),
         ])
   return {
@@ -605,6 +610,7 @@ export function answerRuntime(
         [path.join(workspaceRoot, 'node_modules', '.bin')],
         workspaceRoot,
         undefined,
+        'workspaceRuntime',
       )
     : runRuntimeCommand(
         command,
@@ -612,6 +618,7 @@ export function answerRuntime(
         projectBinDirs(projectDir, workspaceRoot),
         workspaceRoot,
         undefined,
+        'runtime',
       )
 }
 
@@ -660,7 +667,9 @@ async function runRuntimeCommand(
   binDirs: readonly string[],
   workspaceRoot: string,
   owner: RuntimeMemo | undefined,
+  field: RuntimeField,
 ): Promise<string> {
+  const probe = `inputs.${field} probe`
   // As a task's (exec/env.ts): no member's bin inherited from `npm run`.
   const ambient = withoutWorkspaceBins(process.env['PATH'] ?? '', workspaceRoot)
   // As the task's PATH does (exec/env.ts): a dir holding the delimiter
@@ -688,10 +697,10 @@ async function runRuntimeCommand(
     // the shell, not the command (item 244).
     if (isExecutableMissing(err)) {
       throw new UserError(
-        `inputs runtime command could not run: vx runs it with sh -c and 'sh' is not on PATH (command: ${command}, cwd: ${cwd}). Install a POSIX sh and re-run.`,
+        `${probe} could not run: vx runs it with sh -c and 'sh' is not on PATH (command: ${command}, cwd: ${cwd}). Install a POSIX sh and re-run.`,
       )
     }
-    throw new UserError(`inputs runtime command failed to spawn: ${command} (cwd: ${cwd})`)
+    throw new UserError(`${probe} failed to spawn: ${command} (cwd: ${cwd})`)
   }
   liveProbes.add(proc)
   let mine: Set<ReturnType<typeof Bun.spawn>> | undefined
@@ -729,10 +738,14 @@ async function runRuntimeCommand(
   }
   if (exitCode !== 0) {
     const lossy = new TextDecoder()
-    const shown = `${lossy.decode(stdout)}${lossy.decode(stderr)}`.trim()
+    // Capped as a persistent task's log is: a chatty probe put megabytes
+    // into one error line. The tail is kept; the failure is usually last.
+    const tail = createTail()
+    appendTail(tail, `${lossy.decode(stdout)}${lossy.decode(stderr)}`.trim())
+    const shown = tailText(tail)
+    const lost = tail.dropped === 0 ? '' : `… ${tail.dropped} earlier characters dropped\n`
     throw new UserError(
-      `inputs runtime command exited ${exitCode}: ${command} (cwd: ${cwd})` +
-        (shown ? `\n${shown}` : ''),
+      `${probe} exited ${exitCode}: ${command} (cwd: ${cwd})` + (shown ? `\n${lost}${shown}` : ''),
     )
   }
   let out: string
@@ -744,7 +757,7 @@ async function runRuntimeCommand(
     // A lossy decode keys every invalid byte as U+FFFD: Latin-1 é and è
     // folded the same output and replayed each other's build.
     throw new UserError(
-      `inputs runtime command printed bytes that are not UTF-8: ${command} (cwd: ${cwd}). ` +
+      `${probe} printed bytes that are not UTF-8: ${command} (cwd: ${cwd}). ` +
         `Pipe it through a hash or od.`,
     )
   }
@@ -777,6 +790,8 @@ const liveProbes = new Set<ReturnType<typeof Bun.spawn>>()
 let probeExitHooked = false
 
 type RuntimeMemo = Map<string, Promise<string>>
+/** The field a probe is declared under, as its errors name it. */
+type RuntimeField = 'runtime' | 'workspaceRuntime'
 /** The probes each run started, by the run's memo: one run's stop is not another's. */
 const probesOf = new WeakMap<RuntimeMemo, Set<ReturnType<typeof Bun.spawn>>>()
 
@@ -856,6 +871,7 @@ async function resolveRuntimeValues(
   workspaceRoot: string,
   memo: Map<string, Promise<string>> | undefined,
   memoKeyPrefix: string,
+  field: RuntimeField,
 ): Promise<Array<[string, string]>> {
   if (commands.length === 0) return []
   const unique = [...new Set(commands)].sort()
@@ -864,7 +880,7 @@ async function resolveRuntimeValues(
       const key = `${memoKeyPrefix}${cmd}`
       let p = memo?.get(key)
       if (p === undefined) {
-        p = runRuntimeCommand(cmd, cwd, binDirs, workspaceRoot, memo)
+        p = runRuntimeCommand(cmd, cwd, binDirs, workspaceRoot, memo, field)
         memo?.set(key, p)
       }
       return [cmd, await p] as [string, string]

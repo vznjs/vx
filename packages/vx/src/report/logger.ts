@@ -31,7 +31,7 @@ import {
   type RunContext,
   type TaskBucket,
 } from './summary.js'
-import { isGroupTask } from '../graph/index.js'
+import { isGroupTask, isKeyFailed } from '../graph/index.js'
 import {
   appendTail,
   createTail,
@@ -215,7 +215,7 @@ function ghaFenceEnds(token: string): [open: string, close: string] {
 }
 
 const cacheWordOf = (o: TaskOutcome): 'miss' | 'no-cache' | '' =>
-  o.restoreFailed === true ? '' : ranNoCache(o) ? 'no-cache' : 'miss'
+  o.restoreFailed === true || isKeyFailed(o) ? '' : ranNoCache(o) ? 'no-cache' : 'miss'
 
 export function resolveOutputView(
   options: {
@@ -391,6 +391,8 @@ export function defaultLogger(
   let restoredRemote = 0
   // Hits whose restore failed: failed, and in no cache count.
   let restoreFailed = 0
+  // A task with no key asked no cache: not a miss.
+  let keyFailed = 0
   let saved = 0
   let notSaved = 0
   let skippedCount = 0
@@ -579,7 +581,7 @@ export function defaultLogger(
               restoredRemote,
               saved,
               notSaved,
-              miss: succeeded + failed - noCache - restoreFailed,
+              miss: succeeded + failed - noCache - restoreFailed - keyFailed,
               noCache,
               ...(restoreFailed > 0 ? { restoreFailed } : {}),
               left: total - done - stopped - notRun,
@@ -1143,6 +1145,7 @@ export function defaultLogger(
         if (outcome.status === 'failed') {
           failed++
           if (outcome.restoreFailed === true) restoreFailed++
+          else if (isKeyFailed(outcome)) keyFailed++
           else if (ranNoCache(outcome)) noCache++
         } else if (node.config.exec?.persistent !== undefined && outcome.status === 'success') {
           // A persistent task's outcome arrives at READY; the child

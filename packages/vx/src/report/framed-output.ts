@@ -26,7 +26,13 @@
 // `--ui=stream` mode.
 
 import { withForwardArgs } from '../exec/index.js'
-import { isCacheHit, isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
+import {
+  isCacheHit,
+  isGroupTask,
+  isKeyFailed,
+  type TaskNode,
+  type TaskOutcome,
+} from '../graph/index.js'
 import { formatElapsed, maskedCommand, printable } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import {
@@ -325,17 +331,19 @@ function statusOf(o: TaskOutcome): { word: string; color: Style } {
   }
 }
 
-/** Whether the task ran its command: a hit whose restore failed did not. */
+/** Whether the task ran its command: a hit whose restore failed did not, nor a task with no key. */
 function ranCommand(o: TaskOutcome): boolean {
-  return o.status === 'success' || (o.status === 'failed' && o.restoreFailed !== true)
+  return (
+    o.status === 'success' || (o.status === 'failed' && o.restoreFailed !== true && !isKeyFailed(o))
+  )
 }
 
 /**
  * Cache-axis word + color. Empty for states that never reached the cache,
- * and for a hit whose restore failed: neither a miss nor a hit.
+ * a hit whose restore failed (neither a miss nor a hit) and a task with no key.
  */
 function cacheOf(o: TaskOutcome): { word: string; color: Style } {
-  if (o.restoreFailed === true) return { word: '', color: 'muted' }
+  if (o.restoreFailed === true || isKeyFailed(o)) return { word: '', color: 'muted' }
   switch (o.status) {
     case 'success':
     case 'failed':

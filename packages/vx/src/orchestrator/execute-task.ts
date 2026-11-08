@@ -110,6 +110,7 @@ import {
   type HashCache,
   type InputFact,
   isKeyless,
+  keyOf,
   movedInput,
   type UpfrontGroupKey,
 } from './task-hash.js'
@@ -493,16 +494,18 @@ async function executeGroupTask(args: ExecuteArgs): Promise<TaskOutcome> {
     )
   }
   const wallclockNs = process.hrtime.bigint() - args.runStartHrTimeNs
-  const hash = await computeTaskHash({
-    node: args.node,
-    upstream: args.upstream,
-    workspaceRoot: args.workspaceRoot,
-    cache: args.cache,
-    forwardArgs: args.forwardArgs,
-    nestedProjectDirs: args.nestedProjectDirs,
-    ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
-    ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
-  })
+  const hash = await keyOf(
+    computeTaskHash({
+      node: args.node,
+      upstream: args.upstream,
+      workspaceRoot: args.workspaceRoot,
+      cache: args.cache,
+      forwardArgs: args.forwardArgs,
+      nestedProjectDirs: args.nestedProjectDirs,
+      ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
+      ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
+    }),
+  )
   return groupOutcome(args.node, args.upstream, hash, wallclockNs)
 }
 
@@ -762,19 +765,21 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const hash =
     preProbed?.hash ??
     args.upfrontKey ??
-    (await computeTaskHash({
-      node,
-      upstream,
-      workspaceRoot: args.workspaceRoot,
-      cache,
-      forwardArgs: args.forwardArgs,
-      nestedProjectDirs: args.nestedProjectDirs,
-      ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
-      ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
-      ...(args.probesAfterWrites !== undefined
-        ? { probesAfterWrites: args.probesAfterWrites }
-        : {}),
-    }))
+    (await keyOf(
+      computeTaskHash({
+        node,
+        upstream,
+        workspaceRoot: args.workspaceRoot,
+        cache,
+        forwardArgs: args.forwardArgs,
+        nestedProjectDirs: args.nestedProjectDirs,
+        ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
+        ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
+        ...(args.probesAfterWrites !== undefined
+          ? { probesAfterWrites: args.probesAfterWrites }
+          : {}),
+      }),
+    ))
 
   // The local no-op half of `exec.remote: 'only'`: no remote executor took
   // the task, so it succeeds without running. The hash was still computed —

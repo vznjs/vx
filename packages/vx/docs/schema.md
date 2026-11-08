@@ -1194,8 +1194,11 @@ Semantics:
   resolved config), not their output, so the field stays correct under
   the lock every run reads — the changed output of a locked command
   still busts the cache.
-- A **non-zero exit fails the run** (a hard `UserError` naming the
-  command and exit code) — fail-loud, like a missing git binary. A
+- A **non-zero exit fails the task** before its command runs, and
+  `--dry` exits 1: `[vx] app#build: cache key not derived:
+inputs.runtime probe exited 7: <command> (cwd: …)`, then the probe's
+  output, its last 64 KiB (`… N earlier characters dropped` above a
+  longer one) — fail-loud, like a missing git binary. A
   flaky probe should not silently degrade to a stale hit.
 - **Output that is not UTF-8 fails the run** too: a lossy decode keyed
   every invalid byte alike. Pipe binary output through a hash or `od`.
