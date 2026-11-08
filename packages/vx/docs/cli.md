@@ -356,7 +356,9 @@ git: <root> is not inside a git work tree`. A repository with no commit
 - A ref that does not exist is `git ref "<ref>" did not resolve`, with
   git's reason when it gives one (`main@{9}`: `log for 'main' only has 2
 entries`). In a
-  shallow clone it adds how to fetch it (`git fetch --depth=1 origin <base>`).
+  shallow clone it adds how to fetch it (`git fetch --depth=1 origin <base>`;
+  with no origin remote, `git fetch --depth=1 <url> <base>` or
+  `git remote add origin <url>`).
 - A project whose directory is a symlink inside the workspace
   (`packages/b -> ../ext/b`) is selected by a change at the real place
   too. A link to outside the workspace is outside git's view.
@@ -2778,7 +2780,9 @@ ref does not resolve, is a range (`A..B`) or an exclusion (`^A`), names
 a path inside a commit, or the repository has no history to compare
 with. Pass a branch or commit you have locally, alone:
 `--affected=origin/main`. A shallow clone fetches its base from origin
-itself; with no origin, fetch it (`git fetch --depth=1 origin <base>`).
+itself; when origin cannot give it, fetch it (`git fetch --depth=1 origin <base>`),
+and with no origin remote, from its URL (`git fetch --depth=1 <url> <base>`) or
+add one (`git remote add origin <url>`).
 
 #### `VX_E_NO_GIT`
 

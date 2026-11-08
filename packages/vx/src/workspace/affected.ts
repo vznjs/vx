@@ -1346,8 +1346,10 @@ async function mergeBase(workspaceRoot: string, ref: string): Promise<string> {
     isShallow(workspaceRoot)
   ) {
     throw new UserError(
-      `git ref "${ref}" has no merge base with HEAD in this shallow clone, and origin did not ` +
-        'give the history between them: fetch it (`git fetch --unshallow origin`).',
+      `git ref "${ref}" has no merge base with HEAD in this shallow clone, ` +
+        (hasOrigin(workspaceRoot)
+          ? 'and origin did not give the history between them: fetch it (`git fetch --unshallow origin`).'
+          : 'which has no origin remote: fetch the history between them (`git fetch --unshallow <url>`).'),
       'VX_E_AFFECTED_BASE',
     )
   }
@@ -1471,6 +1473,17 @@ const MAX_DEEPEN = 1024
 function isShallow(workspaceRoot: string): boolean {
   const proc = spawnGitSync(['rev-parse', '--is-shallow-repository'], workspaceRoot, 'ignore')
   return new TextDecoder().decode(proc.stdout).trim() === 'true'
+}
+
+/**
+ * Whether origin has a URL. Asked only on a refusal, to say what to fetch
+ * from. Not `git remote get-url`: a failed `fetchOrigin` with no origin
+ * leaves a `[remote "origin"]` of promisor keys, which it names as a URL.
+ */
+function hasOrigin(workspaceRoot: string): boolean {
+  return (
+    spawnGitSync(['config', '--get', 'remote.origin.url'], workspaceRoot, 'ignore').exitCode === 0
+  )
 }
 
 /** The parents a commit names, even where a shallow clone cut them off. */
@@ -1611,9 +1624,12 @@ async function verifyRef(workspaceRoot: string, ref: string): Promise<void> {
   // no origin, no network, a name only another clone has.
   throw new UserError(
     `git ref "${ref}" did not resolve. Pass a branch or commit you have locally.` +
-      (isShallow(workspaceRoot)
-        ? ' This clone is shallow and origin did not give it: fetch the base (`git fetch --depth=1 origin <base>`).'
-        : ''),
+      (!isShallow(workspaceRoot)
+        ? ''
+        : hasOrigin(workspaceRoot)
+          ? ' This clone is shallow and origin did not give it: fetch the base (`git fetch --depth=1 origin <base>`).'
+          : ' This clone is shallow and has no origin remote: fetch the base from where it lives ' +
+            '(`git fetch --depth=1 <url> <base>`), or add one (`git remote add origin <url>`).'),
     'VX_E_AFFECTED_BASE',
   )
 }
