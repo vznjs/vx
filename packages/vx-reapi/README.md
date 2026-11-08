@@ -143,8 +143,9 @@ the record, as a vx hit replays them. A run core does not save
 (`--no-cache`, a read-only policy, a tainted upstream) records under a key
 only this run's executor knows instead: its dependants in this run graft
 from it, and no later run replays it as the task's hit. A `v1` record kept no stderr and is
-never read: its key executes once more and writes a `v2` one. `--force`
-bypasses it.
+never read: its key executes once more and writes a `v2` one. A record
+with a non-zero exit code (vx writes none, but the action cache is the
+server's) is no record either: the task executes. `--force` bypasses it.
 
 The input tree is read after the key was taken, so each file's bytes are
 held to the git blob id the key hashed for it. A file edited, removed or

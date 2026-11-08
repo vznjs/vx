@@ -687,7 +687,10 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
           )
           return null
         })
-        if (prior !== null) {
+        // A record of a failed run is no hit: this module records only exit 0,
+        // but the action cache is the server's, and a worker or another client
+        // may cache a failure. Replayed, it was a success with its outputs saved.
+        if (prior !== null && (prior.exit_code ?? 0) === 0) {
           // The stream blobs too: an evicted one fails the replay, and the
           // probe says so before any output is written.
           const streamBlobs = [
