@@ -449,27 +449,30 @@ const ARTIFACT_TABLES = ['artifacts', 'artifacts_meta']
 const ARTIFACT_LAYOUT = 'a2'
 
 /**
- * An index that records a schema other than this vx's: the one an opener
- * that writes resets. Reads the recorded version alone and touches
- * nothing; an unreadable file is left to the open to refuse.
+ * A preview's index connection and the schema it records, which the open
+ * keeps and reuses. A version other than this vx's is the index an opener
+ * that writes resets; an unreadable file is left to the open to refuse.
  */
-function indexOfAnotherSchema(dbFile: string): boolean {
-  let found: string | undefined
+function previewIndex(dbFile: string): { db: Database; version: string | undefined } | undefined {
+  let db: Database
   try {
-    const db = new Database(dbFile, { readonly: true })
-    try {
-      found = (
-        db.query("SELECT value FROM schema_meta WHERE key = 'version'").get() as {
-          value: string
-        } | null
-      )?.value
-    } finally {
-      closeDb(db)
-    }
+    db = new Database(dbFile, { create: true })
   } catch {
-    return false
+    // The main open names why.
+    return undefined
   }
-  return found !== undefined && found !== SCHEMA_VERSION
+  try {
+    const version = (
+      db.prepare("SELECT value FROM schema_meta WHERE key = 'version'").get() as {
+        value: string
+      } | null
+    )?.value
+    return { db, version }
+  } catch {
+    // No stamp read (no table yet, busy, not a database): the main open
+    // reads it again and refuses what it must.
+    return { db, version: undefined }
+  }
 }
 
 /** The largest compressed log a probe loads with its entry. */
@@ -1176,9 +1179,19 @@ export class Cache implements CacheLayer {
     // said "no recorded runs yet" (item 900).
     const dbFile = path.join(cacheDir, 'cache.db')
     this.dbFile = dbFile
-    const absent =
-      mode !== 'open' &&
-      (!existsSync(dbFile) || (mode === 'preview' && indexOfAnotherSchema(dbFile)))
+    let absent = mode !== 'open' && !existsSync(dbFile)
+    // A preview reads an index of another schema as the empty one a reset
+    // leaves. The version is read on the connection the index keeps, once:
+    // a second connection for it cost a plan a statement (perf-guard).
+    let early: { db: Database; version: string | undefined } | undefined
+    if (mode === 'preview' && !absent) {
+      early = previewIndex(dbFile)
+      if (early !== undefined && early.version !== undefined && early.version !== SCHEMA_VERSION) {
+        closeDb(early.db)
+        early = undefined
+        absent = true
+      }
+    }
     this.writeBlocked = absent ? NO_INDEX : openCacheDir(cacheDir, repoDir)
     this.write = localPolicy.write && this.writeBlocked === null
     // A directory this user cannot write with no index in it yet: SQLite
@@ -1189,7 +1202,7 @@ export class Cache implements CacheLayer {
     const memory = absent || (this.writeBlocked !== null && !existsSync(dbFile))
     this.empty = memory
     try {
-      this.db = new Database(memory ? ':memory:' : dbFile, { create: true })
+      this.db = early?.db ?? new Database(memory ? ':memory:' : dbFile, { create: true })
     } catch (err) {
       throw cantOpenIndex(dbFile, err) ?? err
     }
@@ -1284,7 +1297,7 @@ export class Cache implements CacheLayer {
         )
       }
     }
-    const current = readable(readVersion)
+    const current = early?.version ?? readable(readVersion)
     if (current !== SCHEMA_VERSION) {
       try {
         if (current !== undefined) refuseUnreadable(current)
