@@ -388,6 +388,62 @@ describe('a malformed telemetry() return is rejected at the boundary', () => {
     expect(warnings.join('\n')).toContain('boom')
   })
 
+  // The host checked `wants` in a try, then the source read every member
+  // again outside one: a getter that threw on that later read crashed a
+  // green run (exit 1), and a throwing `name` lost the disabled warning.
+  it('reads each sink member once, so a getter cannot throw later', async () => {
+    const once = <T>(value: T): (() => T) => {
+      let reads = 0
+      return () => {
+        if (++reads > 1) throw new Error(`read twice`)
+        return value
+      }
+    }
+    const kinds: string[] = []
+    const name = once('own')
+    const wants = once(['run.start'] as const)
+    const onRecord = once((r: { kind: string }) => void kinds.push(r.kind))
+    const onRunSummary = once(() => {
+      throw new Error('boom')
+    })
+    const flush = once(async () => undefined)
+    const warnings: string[] = []
+    const bus = createEventBus()
+    const handle = await subscribeTelemetry(
+      [
+        testPlugin('org/getters', {
+          telemetry: (() => ({
+            get name() {
+              return name()
+            },
+            get wants() {
+              return wants()
+            },
+            get onRecord() {
+              return onRecord()
+            },
+            get onRunSummary() {
+              return onRunSummary()
+            },
+            get flush() {
+              return flush()
+            },
+          })) as never,
+        }),
+      ],
+      bus,
+      { ...ctx, warn: (m) => warnings.push(m) },
+      RUN,
+    )
+    bus.emit({ kind: 'run:start', info: { total: 1 } })
+    handle!.emitSummary({} as RunSummaryRecord)
+    await handle!.flush()
+    expect(kinds).toEqual(['run.start'])
+    expect(warnings).toEqual([
+      "[vx] telemetry sink 'own' threw in onRunSummary; disabled for this run: boom",
+    ])
+  })
+
   it('is all-or-nothing: a good sink beside a bad one in one array is dropped too', async () => {
     const { handle } = await subscribeWith([{ onRunSummary: () => undefined }, null])
     expect(handle).toBeUndefined()
