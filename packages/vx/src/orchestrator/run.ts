@@ -178,6 +178,7 @@ import {
   failServer,
   holdServers,
   sessionEnd,
+  serverUsers,
   stopServer,
   takeHeldServers,
   unneededServers,
@@ -1489,6 +1490,10 @@ async function runOnBus(
     const serving = executors.filter((e) => e.servers === true && e.unneeded !== undefined)
     const released = new Set<string>()
     const stopping: Promise<void>[] = []
+    // A server stops after the servers using it (`serverUsers`), which this
+    // same release reached first.
+    const usersOf = unneeded === undefined ? undefined : serverUsers(nodes)
+    const stops = new Map<string, Promise<void>>()
     const release = (id: string): void => {
       // A stop signals every server once and waits out its grace: a second
       // signal here cut a server's cleanup short.
@@ -1506,7 +1511,17 @@ async function runOnBus(
         if (child === undefined || hasEnded(child)) continue
         released.add(s)
         persistentRegistry.delete(s)
-        stopping.push(stopServer(child))
+        const users: Promise<void>[] = []
+        for (const u of usersOf?.get(s) ?? []) {
+          const p = stops.get(u)
+          if (p !== undefined) users.push(p)
+        }
+        const p =
+          users.length === 0
+            ? stopServer(child)
+            : Promise.allSettled(users).then(() => stopServer(child))
+        stops.set(s, p)
+        stopping.push(p)
       }
     }
     const outcomes = await runGraph({

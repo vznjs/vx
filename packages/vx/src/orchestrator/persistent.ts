@@ -139,6 +139,37 @@ export function unneededServers(
   }
 }
 
+/**
+ * The servers that use each server, directly or through groups. A server
+ * stops only once these have: one may still talk to it while it shuts
+ * down (a flush to its database), and both stopped at once took the
+ * database away under that handler.
+ */
+export function serverUsers(
+  nodes: ReadonlyMap<string, TaskNode>,
+): ReadonlyMap<string, readonly string[]> {
+  const isServer = (n: TaskNode | undefined): boolean => n?.config.exec?.persistent !== undefined
+  const users = new Map<string, string[]>()
+  for (const [id, n] of nodes) {
+    if (!isServer(n)) continue
+    const stack = [...n.deps]
+    const seen = new Set<string>()
+    while (stack.length > 0) {
+      const d = stack.pop()!
+      if (seen.has(d)) continue
+      seen.add(d)
+      const dn = nodes.get(d)
+      if (dn !== undefined && isGroupTask(dn)) stack.push(...dn.deps)
+      else if (isServer(dn)) {
+        const list = users.get(d)
+        if (list === undefined) users.set(d, [id])
+        else list.push(id)
+      }
+    }
+  }
+  return users
+}
+
 /** Stop one server as `shutdownPersistent` stops the rest: SIGTERM, then SIGKILL past the grace. */
 export async function stopServer(
   child: Child,
@@ -169,6 +200,7 @@ export async function shutdownPersistent(
   registry: ReadonlyMap<string, Child>,
   keepAlive: readonly Child[],
   graceMs: number = killGraceMs(PERSISTENT_SHUTDOWN_GRACE_MS),
+  usersOf: ReadonlyMap<string, readonly string[]> = new Map(),
 ): Promise<CrashedPersistent[]> {
   const kept = new Set(keepAlive)
   const crashed: CrashedPersistent[] = []
@@ -176,13 +208,30 @@ export async function shutdownPersistent(
     if (kept.has(child) || !hasEnded(child) || child.exitCode === 0) continue
     crashed.push({ id, code: child.exitCode ?? child.signalCode ?? 'unknown' })
   }
-  const dying = [...registry.values()].filter((c) => !kept.has(c))
+  const dying = [...registry].filter(([, c]) => !kept.has(c))
   if (dying.length === 0) return crashed
-  const letGo = holdGroups(dying)
+  const letGo = holdGroups(dying.map(([, c]) => c))
+  // Each after the servers using it (`serverUsers`); the rest at once.
+  const stops = new Map<string, Promise<void>>()
+  const stop = (id: string, child: Child): Promise<void> => {
+    const known = stops.get(id)
+    if (known !== undefined) return known
+    const users: Promise<void>[] = []
+    for (const u of usersOf.get(id) ?? []) {
+      const c = registry.get(u)
+      if (c !== undefined && !kept.has(c)) users.push(stop(u, c))
+    }
+    const own = async (): Promise<void> => {
+      killTree(child, 'SIGTERM')
+      for (const c of await untilGroupsGone([child], graceMs)) killTree(c, 'SIGKILL')
+      await child.exited
+    }
+    const p = users.length === 0 ? own() : Promise.allSettled(users).then(own)
+    stops.set(id, p)
+    return p
+  }
   try {
-    for (const child of dying) killTree(child, 'SIGTERM')
-    for (const child of await untilGroupsGone(dying, graceMs)) killTree(child, 'SIGKILL')
-    await Promise.allSettled(dying.map((c) => c.exited))
+    await Promise.allSettled(dying.map(([id, c]) => stop(id, c)))
   } finally {
     letGo()
   }
@@ -367,9 +416,9 @@ export async function disposeServers(args: {
       (c) => hasEnded(c) && c.exitCode !== 0 && !keepAlive.children.includes(c),
     )
   if (failedElsewhere && !args.hold && !args.continueAlways) keepAlive = { nodes: [], children: [] }
-  const crashed = (await shutdownPersistent(registry, keepAlive.children)).filter(
-    (c) => endedBeforeStop?.has(registry.get(c.id)!) ?? true,
-  )
+  const crashed = (
+    await shutdownPersistent(registry, keepAlive.children, undefined, serverUsers(args.nodes))
+  ).filter((c) => endedBeforeStop?.has(registry.get(c.id)!) ?? true)
   for (const c of crashed) failServer(outcomes, c.id, c.code)
   keepAlive.nodes.forEach((n, i) => {
     const child = keepAlive.children[i]!

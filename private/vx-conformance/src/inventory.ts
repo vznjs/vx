@@ -138,6 +138,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'run-output',
     'runtime-inputs',
     'select',
+    'server-chain-stop-order',
     'server-crash-fail-fast',
     'server-crash-through-group',
     'server-died-under-task',

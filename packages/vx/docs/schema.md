@@ -581,7 +581,9 @@ the run went on`), so a dependant failing against it reads why. Its own outcome 
   gets `SIGTERM` (`SIGKILL` past the kill grace) as soon as every task
   that uses it, directly or through groups, has finished, while the rest
   of the graph still runs: it no longer holds the machine's cores. A
-  server that uses another counts as finished once it is stopped. The
+  server that uses another counts as finished once it is stopped, and
+  the one it uses gets its `SIGTERM` only then, here and at the end of
+  the graph: its shutdown may still talk to it. The
   stop is no crash. `vx watch` holds its servers for the next cycle, and
   a Ctrl-C stops them all as before. In the foreground vx KEEPS the
   persistent tasks you requested, those a requested group stands for,

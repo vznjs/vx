@@ -152,7 +152,9 @@ export interface RunSummary {
     needs), to KEEP ALIVE in the real CLI foreground (`options.log === undefined
 && handleSignals !== false`); `shutdownPersistent` SIGTERMs every
     other persistent child's group and waits for the groups, SIGKILLing
-    whatever is left after a 2 s grace (see util-settle.md, kill-tree.md).
+    whatever is left after a 2 s grace (see util-settle.md, kill-tree.md),
+    each server only once the servers using it (`serverUsers`, through
+    groups too) have exited, as the early stop of an unneeded server does.
     Before the SIGTERM it returns the children that already ended on
     their own, not cleanly (`CrashedPersistent`: a non-zero exit or a
     signal): each fails the run, its outcome becomes `failed` with that
