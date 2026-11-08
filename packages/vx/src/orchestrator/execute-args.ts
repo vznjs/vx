@@ -10,6 +10,7 @@ import type { DownloadMode } from './download-policy.js'
 import type { ExecuteArgs } from './execute-task.js'
 import type { ShortCircuit } from './local-shortcircuit.js'
 import { UNPLACED_EXECUTOR, type Placements } from './placement.js'
+import { outputWallsOf } from './prepare.js'
 
 type TaskField =
   | 'node'
@@ -17,6 +18,7 @@ type TaskField =
   | 'log'
   | 'executor'
   | 'nestedProjectDirs'
+  | 'outputNestedDirs'
   | 'remoteOnlyNoop'
   | 'belowNoop'
   | 'remoteOnly'
@@ -55,6 +57,7 @@ export function executeArgsOf(
   facts: TaskFacts,
 ): (node: TaskNode, upstream: TaskOutcome[], reuseProbe: boolean, tainted: boolean) => ExecuteArgs {
   const { placements, shortCircuit } = facts
+  const walls = outputWallsOf(facts.nestedDirsByProject)
   return (node, upstream, reuseProbe, tainted) => {
     const id = node.id
     const a: ExecuteArgs = {
@@ -68,6 +71,7 @@ export function executeArgsOf(
     const probe = reuseProbe ? shortCircuit.preProbed.get(id) : undefined
     const upfrontKey = shortCircuit.uncachedKeys.get(id)
     const upfrontGroupKey = shortCircuit.groupKeys.get(id)
+    if (walls !== facts.nestedDirsByProject) a.outputNestedDirs = walls.get(node.projectName) ?? []
     if (facts.downloadModeOf?.get(id) === 'deferred') a.download = 'deferred'
     if (placements.remoteOnlyNoop.has(id)) a.remoteOnlyNoop = true
     if (placements.belowNoop.has(id)) a.belowNoop = true

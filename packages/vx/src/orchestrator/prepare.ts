@@ -9,7 +9,7 @@
 
 import { existsSync, realpathSync } from 'node:fs'
 import path from 'node:path'
-import type { WorkspaceConfig } from '../config.js'
+import type { InputStability, WorkspaceConfig } from '../config.js'
 import {
   beginRun,
   mark,
@@ -90,6 +90,7 @@ import {
   lockOfDiscovery,
   lockReader,
   type LoadedProjects,
+  nestedWorkspacesOf,
 } from './projects.js'
 import { keptByAffected } from './affected-tasks.js'
 import { applyGraphStage } from './graph-stage.js'
@@ -102,7 +103,7 @@ import { cacheRefs, currentBranch, resolveCacheScope } from './run-context.js'
 import { createHashCache, type HashCache } from './task-hash.js'
 import { type Logger, warnOf } from '../report/index.js'
 import type { RunOptions } from './options.js'
-import { resolveSetting, runRules } from '../settings.js'
+import { resolveSetting, runRules, settingEnv } from '../settings.js'
 
 export interface PreparedRun {
   workspaceRoot: string
@@ -517,6 +518,9 @@ export async function prepareRunLocked(
   // a parent's glob that folded (or cleaned) them crossed a boundary the
   // selection drew (X-57).
   const nestedDirsByProject = computeNestedProjectDirs(projectMetas)
+  const nestedWorkspaces = nestedWorkspacesOf(projectMetas)
+  if (nestedWorkspaces.length > 0)
+    outputWalls.set(nestedDirsByProject, computeNestedProjectDirs(projectMetas, nestedWorkspaces))
 
   const candidateProjects = options.projects
     ? options.projects.filter((p) => projects.has(p))
@@ -652,7 +656,14 @@ export async function prepareRunLocked(
   // cycle under `vx watch` (item 1029). run() owns both only once this
   // returns.
   try {
-    const hashCache = createHashCache(localCache.foldMemo())
+    const hashCache = createHashCache(
+      localCache.foldMemo(),
+      resolveSetting('outputs.clean', workspaceConfig).value as boolean | undefined,
+      {
+        run: settingEnv('inputs.stability.strategy') as InputStability['strategy'],
+        workspace: workspaceConfig?.inputs?.stability?.strategy,
+      },
+    )
     const fingerprintWatch = new FingerprintWatch(
       workspaceRoot,
       claimed,
@@ -1094,6 +1105,23 @@ function pruneToClosure(nodes: Map<string, TaskNode>, roots: ReadonlySet<string>
 
 export const namesRemote = (spec: string | undefined): boolean =>
   spec !== undefined && /remote:[rw]/.test(spec)
+
+/** Each run's output walls, by its `nestedDirsByProject`, when it has a nested workspace. */
+const outputWalls = new WeakMap<ReadonlyMap<string, string[]>, ReadonlyMap<string, string[]>>()
+
+/**
+ * Where each project's outputs stop: its nested projects and every nested
+ * workspace under it. Its inputs stop at the projects alone: a task may
+ * read a nested workspace's files (a git worktree checked out under
+ * `src/` holds one), so folding them costs a miss, and leaving them out
+ * a stale hit; cleaning them deleted another workspace's work. The map
+ * itself when there is no nested workspace.
+ */
+export function outputWallsOf(
+  nestedDirsByProject: ReadonlyMap<string, string[]>,
+): ReadonlyMap<string, string[]> {
+  return outputWalls.get(nestedDirsByProject) ?? nestedDirsByProject
+}
 
 /**
  * The workspace's `cache.policy`, parsed: the schema checks only its shape,

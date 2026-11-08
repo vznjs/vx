@@ -46,6 +46,8 @@ export interface ProjectConfigs {
   readonly configs: ConfigDir[]
   readonly strayReviews: string[]
   readonly shadowed: { file: string; read: string }[]
+  // the outermost nested workspace roots, absolute: `vx lock` records them
+  readonly nestedWorkspaces: string[]
 }
 
 // A project's config file names, in the order discovery prefers them.

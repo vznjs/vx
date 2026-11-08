@@ -21,6 +21,7 @@ import {
 } from '../cache/index.js'
 import type { TaskNode } from '../graph/index.js'
 import { type Logger, warnOf } from '../report/index.js'
+import type { CommandWindows } from './command-windows.js'
 import { bracketLiteralHint } from './miss-save.js'
 
 export interface DeferredEntry {
@@ -35,11 +36,14 @@ export interface DeferredOutputsArgs {
   nodes: Map<string, TaskNode>
   cache: CacheLayer
   workspaceRoot: string
-  nestedDirsByProject: Map<string, string[]>
+  /** Where each project's outputs stop (prepare.ts `outputWallsOf`). */
+  nestedDirsByProject: ReadonlyMap<string, string[]>
   gitFilesCache?: GitFilesCache
   /** False when the run's policy writes no local entries. */
   localWrite: boolean
   log: Logger
+  /** The run's command windows: a fetch writes into the tree as a restore does. */
+  commandWindows?: CommandWindows
 }
 
 export class DeferredOutputs {
@@ -139,18 +143,26 @@ export class DeferredOutputs {
     // reader of these outputs can be in the run — `deferralEligibility`
     // keeps every same-project reader and every workspaceFiles reader
     // eager — so deleting the post-fetch mark survives the whole core
-    // suite (item 643).
-    if (outputs.length > 0) {
-      const cleaned = await cleanOutputs(cleanArgs)
-      this.args.gitFilesCache?.markOutputsChanged(producer.projectDir, cleaned)
-    }
+    // suite (item 643). In a window, as a hit's restore (hit-restore.ts):
+    // without one, `vx watch` took the fetched outputs for the user's edit
+    // and ran one more cycle.
+    const closeWindow =
+      this.args.commandWindows?.open(taskId, producer.projectDir, 'project') ?? (() => {})
     try {
-      await entry.materialize()
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      throw new Error(
-        `could not fetch deferred outputs of ${taskId}: ${msg} — re-run it with --force, or use --cache-download=all`,
-      )
+      if (outputs.length > 0) {
+        const cleaned = await cleanOutputs(cleanArgs)
+        this.args.gitFilesCache?.markOutputsChanged(producer.projectDir, cleaned)
+      }
+      try {
+        await entry.materialize()
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        throw new Error(
+          `could not fetch deferred outputs of ${taskId}: ${msg} — re-run it with --force, or use --cache-download=all`,
+        )
+      }
+    } finally {
+      closeWindow()
     }
     const { files: outputFiles, emptyDirs } = await resolveOutputTree(cleanArgs)
     this.args.gitFilesCache?.markOutputsChanged(

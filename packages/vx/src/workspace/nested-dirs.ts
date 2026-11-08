@@ -19,9 +19,16 @@ import type { ProjectEntry } from './workspace.js'
  * once we leave the `p.dir` block entirely. The inner loop is still bounded by
  * that block (near-O(P log P) on real trees; interlopers are few), not the
  * full tail.
+ *
+ * `workspaces`: the absolute roots of nested workspaces (each holds its own
+ * `.vx/workspace.*`), a boundary for outputs: each joins the dirs of every
+ * project it lies under. An outer output glob that ran into one let the
+ * clean before a run delete its files. Never passed for inputs: a task may
+ * read them, and an input left out of the key is a stale hit.
  */
 export function computeNestedProjectDirs(
   entries: Array<Pick<ProjectEntry, 'name' | 'dir'>>,
+  workspaces: readonly string[] = [],
 ): Map<string, string[]> {
   const result = new Map<string, string[]>()
   if (entries.length === 0) return result
@@ -42,6 +49,7 @@ export function computeNestedProjectDirs(
       // else: an interloping sibling (`foo-utils` for `foo`) that shares the
       // string prefix but isn't nested — skip it, descendants may follow.
     }
+    for (const w of workspaces) if (w.startsWith(prefix)) nested.push(w)
     result.set(p.name, nested)
   }
   return result

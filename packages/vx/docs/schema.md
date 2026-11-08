@@ -26,7 +26,8 @@ re-exported from `@vzn/vx`.
 core reads no `package.json` and no package-manager member list. `vx lock`
 finds them (git's tracked and unignored files; a config at or under a
 nested `.vx/workspace.*`, ignored or not, is that workspace's) and records each by
-directory; a run takes its projects from the lock, so a config added since
+directory, and each nested workspace root too: every outer project's outputs
+stop there as at a nested project (its inputs do not). A run takes its projects from the lock, so a config added since
 runs once `vx lock` records it. A `discover` plugin may add directories
 with no config (`@vzn/vx-lockfile` adds the package manager's members);
 one whose config git ignores is refused, naming the plugin and the file.
@@ -1405,7 +1406,10 @@ Each field is resolved on its own, highest first:
 3. the workspace's `inputs.stability` (`.vx/workspace.ts`);
 4. the default, `'immutable'` and `'warn'`.
 
-Never folded into a cache key.
+The strategy a task runs under is in its key, from whichever source:
+an entry `'unchecked'` kept is no hit once the check is back. Unset or
+`'immutable'` from the variable or the workspace folds nothing. The
+severity is folded only as the task's own field.
 
 ```ts
 import { defineProject } from '@vzn/vx/config'
@@ -1469,7 +1473,11 @@ Like inputs, outputs stop at a project boundary: an entry rooted inside
 a nested project (`sub/dist/**` when `sub/` holds its own config) would
 save nothing, so `vx lock` refuses it (`VX_E_NESTED_OUTPUT`): let that
 project's task write the files, or name them in
-`outputs.workspaceFiles`. `**`, a sibling and a `!` entry are fine.
+`outputs.workspaceFiles`. `**`, a sibling and a `!` entry are fine. A
+nested workspace (`sub/` holding its own `.vx/workspace.*`) is the same
+boundary for outputs: no output glob of an outer project matches under
+it, so the clean before a run never deletes its files. An input glob
+still matches there, so an edit in it re-keys the outer task.
 
 A **symlink** the globs match is an output: it is cached and restored
 as the link, its target as written (a link to a file, to a directory,
@@ -1493,7 +1501,8 @@ first, for a tool that reads its own last output (tsc's
 stores every file the outputs match after the run, so a file an older
 build left behind is cached and restored on every machine. A retry
 still starts clean, and a hit still restores bit-identically. Omitted → the workspace's
-`outputs.clean`, else `true`.
+`outputs.clean`, else `true`; a workspace `false` keys the task as its own
+`false` would.
 
 A **`!` entry takes a path back** from what the positive globs select
 (A-44; a scratch dir under `dist` stays out of the clean this way; a
@@ -2125,7 +2134,9 @@ unit (`'500ms'`, `'30s'`, `'10m'`, `'2h'`, `'30d'`), and a bare number is
 refused naming the forms with units; a size carries one too (`'10GB'`).
 `debug.timing`, `debug.watch`, `debug.dumpable`, `config.workerTimeout` and `run.outputLogs` are read
 before the workspace loads, so they have a variable (and a flag) only.
-None is folded into a cache key. `vx info` lists every setting not at its
+None is folded into a cache key but `outputs.clean` and
+`inputs.stability.strategy`, which key a task as if it declared the value
+it runs under. `vx info` lists every setting not at its
 default and where it came from.
 
 ### Settings
@@ -2330,8 +2341,8 @@ interface CacheSettings {
 - **`inputs.stability`** — the `inputs.stability` of every task that
   does not set its own field, same shape (`{ strategy, severity }`, §
   `cache`). `VX_INPUTS_STABILITY_STRATEGY` and `_SEVERITY` still
-  override every task for the run. Never folded
-  into a cache key.
+  override every task for the run. A `strategy` other than
+  `'immutable'` keys a task without its own as if it declared it.
 - **`run.rules`** — checks on the task graph, each on unless set to
   `false`. Turning one off allows a shape vx runs correctly but more
   slowly; never folded into a cache key. A value that is not a boolean,

@@ -45,6 +45,12 @@ export interface Lockfile {
    * by directory, so a name a plugin gives never invalidates the lock.
    */
   projects: Record<string, LockedProject>
+  /**
+   * Root-relative POSIX directories holding their own `.vx/workspace.*`,
+   * where every outer project's outputs stop. Absent when there is none, so a
+   * workspace without one locks the bytes it always did.
+   */
+  nestedWorkspaces?: string[]
   /** Written by `writeLockfile` from the bytes; never read off the object. */
   validated?: string
 }
@@ -139,7 +145,7 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     throw new UserError(`${LOCKFILE_NAME} must be a JSON object — re-run \`vx lock\``, 'VX_E_LOCK')
   }
-  const lock = parsed as { version?: unknown; projects?: unknown }
+  const lock = parsed as { version?: unknown; projects?: unknown; nestedWorkspaces?: unknown }
   if (lock.version !== LOCKFILE_VERSION) {
     throw new UserError(
       `${LOCKFILE_NAME} has unsupported version ${String(lock.version)} ` +
@@ -177,6 +183,17 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
     ) {
       throw malformed(dir)
     }
+  }
+  const nested = lock.nestedWorkspaces
+  if (
+    nested !== undefined &&
+    (!Array.isArray(nested) ||
+      nested.some((d) => typeof d !== 'string' || d === '.' || !isLockKey(d)))
+  ) {
+    throw new UserError(
+      `${LOCKFILE_NAME}: \`nestedWorkspaces\` must list directories under the workspace root — re-run \`vx lock\``,
+      'VX_E_LOCK',
+    )
   }
   pooledIn(parsed as Pooled)
   // After the pool is put back, as a task may be an index into it. A
@@ -382,7 +399,12 @@ export function lockfileWrite(root: string, lock: Lockfile): PendingWrite {
   // JSON (measured, 10k projects: 15.6 ms against 22.5 ms). `vx.lock.json`
   // beside each config is the copy for people.
   const sorted = JSON.parse(JSON.stringify(lock.projects, taskKeysSorted)) as Lockfile['projects']
-  const body = JSON.stringify({ version: lock.version, ...pooledOut(sorted) })
+  const nested = lock.nestedWorkspaces ?? []
+  const body = JSON.stringify({
+    version: lock.version,
+    ...(nested.length > 0 ? { nestedWorkspaces: nested } : {}),
+    ...pooledOut(sorted),
+  })
   return {
     file: lockfilePath(root),
     text: `${body.slice(0, -1)},"validated":"${validatedDigest(body)}"}\n`,

@@ -112,6 +112,30 @@ describe('outputs.clean', () => {
   )
 
   it(
+    "the workspace's value is in the key: turning the clean back on hits no entry holding a leftover",
+    async () => {
+      const ws = path.join(f.root, '.vx/workspace.mjs')
+      await writeFile(ws, 'export default { outputs: { clean: false } }\n')
+      const dir = await addProject(f.root, 'app', {
+        files: { 'src/a.txt': 'v1', '.gitignore': 'dist\n' },
+        config: task('mkdir -p dist && cp src/a.txt dist/a.txt', ''),
+      })
+      await seed(dir, { 'dist/old.txt': 'stale' })
+      expect(await build()).toBe('success')
+      // Warm runs over ignored outputs leave the run key memo a row the flip
+      // must not read back.
+      expect(await build()).toBe('cache-hit')
+      expect(await build()).toBe('cache-hit')
+      await writeFile(ws, 'export default { outputs: { clean: true } }\n')
+      await rm(path.join(dir, 'dist'), { recursive: true, force: true })
+      expect(await build()).toBe('success')
+      expect(existsSync(path.join(dir, 'dist/old.txt'))).toBe(false)
+      expect(await build()).toBe('cache-hit')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a retry still starts from clean outputs',
     async () => {
       const dir = await addProject(f.root, 'app', {

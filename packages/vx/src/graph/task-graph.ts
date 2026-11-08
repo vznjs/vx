@@ -309,11 +309,16 @@ export interface BuildGraphOptions {
   /** The workspace's `run.rules`; each is on unless set to `false`. */
   rules?: GraphRules | undefined
   /**
-   * By project name, every project rooted inside its dir (absolute dirs).
+   * By project name, every project rooted inside its dir (absolute dirs),
+   * and every nested workspace (`workspace`, named by its root-relative dir).
    * Given with `workspaceRoot` and unlocked (`vx lock`), an `inputs.files`
-   * or `outputs.files` entry rooted inside one is refused (`refuseNestedGlobs`).
+   * or `outputs.files` entry rooted inside a project is refused, and an
+   * `outputs.files` one inside a workspace (`refuseNestedGlobs`).
    */
-  nestedProjects?: ReadonlyMap<string, ReadonlyArray<{ name: string; dir: string }>>
+  nestedProjects?: ReadonlyMap<
+    string,
+    ReadonlyArray<{ name: string; dir: string; workspace?: boolean }>
+  >
   /**
    * Every project's config file (absolute). Given with `workspaceRoot`, an
    * `outputs.workspaceFiles` glob covering one is refused (`refuseConfigOutputs`).
@@ -874,17 +879,19 @@ function refuseConfigOutputs(
 
 /**
  * Refuse an `inputs.files` or `outputs.files` entry rooted inside a project
- * nested in the task's own: every file it can match belongs to that
- * project, which a project's globs never reach. An input keys nothing, so
- * an edit there hits (a `dist/**` over a build output holding its own
- * config was dropped from the key in silence); an output saves nothing,
- * and the nested project's own artifact there could hold the outer task's
- * bytes. Judged by each brace alternative's fixed prefix: `**` or a
- * sibling reaches past the nested dir and is fine.
+ * nested in the task's own, or an `outputs.files` one inside a nested
+ * workspace: every file it can match belongs to that project, which a
+ * project's globs never reach. An input keys nothing, so an edit there hits
+ * (a `dist/**` over a build output holding its own config was dropped from
+ * the key in silence); an output saves nothing, and the nested project's
+ * own artifact there could hold the outer task's bytes. An input still
+ * reaches into a nested workspace, so one rooted there keys its files.
+ * Judged by each brace alternative's fixed prefix: `**` or a sibling
+ * reaches past the nested dir and is fine.
  */
 function refuseNestedGlobs(
   nodes: ReadonlyMap<string, TaskNode>,
-  nested: ReadonlyMap<string, ReadonlyArray<{ name: string; dir: string }>>,
+  nested: ReadonlyMap<string, ReadonlyArray<{ name: string; dir: string; workspace?: boolean }>>,
   workspaceRoot: string | undefined,
 ): void {
   for (const n of nodes.values()) {
@@ -896,12 +903,25 @@ function refuseNestedGlobs(
           const prefix = staticPrefix(alt)
           if (prefix === '.' || prefix === '') continue
           const abs = path.join(n.projectDir, prefix)
-          const hit = inner.find((p) => abs === p.dir || abs.startsWith(p.dir + path.sep))
+          const hit = inner.find(
+            (p) =>
+              (side === 'outputs' || p.workspace !== true) &&
+              (abs === p.dir || abs.startsWith(p.dir + path.sep)),
+          )
           if (hit === undefined) continue
           const rel =
             workspaceRoot === undefined
               ? hit.name
               : relPosix(workspaceRoot, path.join(n.projectDir, alt.replace(/^\.\//, '')))
+          if (hit.workspace === true)
+            throw new UserError(
+              `${n.id} writes ${JSON.stringify(g)} in outputs.files, which lies inside the ` +
+                `workspace ${hit.name} (it holds its own .vx/workspace.*): a project's outputs ` +
+                `never reach another workspace's files, so it saves nothing. Let that ` +
+                `workspace's own tasks write them, or name them in outputs.workspaceFiles ` +
+                `(${JSON.stringify(rel)}).`,
+              'VX_E_NESTED_OUTPUT',
+            )
           throw new UserError(
             side === 'inputs'
               ? `${n.id} reads ${JSON.stringify(g)} in inputs.files, which lies inside the project ` +

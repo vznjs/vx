@@ -26,6 +26,9 @@ export interface Lockfile {
   // root-relative POSIX directory (`.` for the root) → its project; by
   // directory, so a name a plugin gives never invalidates the lock
   projects: Record<string, LockedProject>
+  // root-relative POSIX dirs holding their own `.vx/workspace.*`, where every
+  // outer project's outputs stop; written only when there is one
+  nestedWorkspaces?: string[]
   validated?: string // the self-digest writeLockfile appends
 }
 // On disk only: `pool` holds each task, exec, env, sandbox, inputs or cache
@@ -63,7 +66,8 @@ each keyed by a directory under the root as `lockKey` spells it (`.`, or
 a relative POSIX path with no empty, `.` or `..` segment: a run joins it
 onto the root, and `../x` ran a project outside the workspace), and the
 shapes a run walks: `name` a string, `tags` a list, `tasks` an object of
-objects, each `dependsOn` a list (a string one was walked per character).
+objects, each `dependsOn` a list (a string one was walked per character),
+and `nestedWorkspaces`, when present, a list of such keys other than `.`.
 Anything else, including a lock an earlier vx wrote (version 2 keyed
 by name), is a `UserError` asking to re-run `vx lock`. `frozenProjectConfigs` is what a run's load serves instead
 of an evaluation: an entry missing for the project is a

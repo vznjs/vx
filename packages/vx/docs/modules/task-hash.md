@@ -31,7 +31,19 @@ export interface HashCache {
   folds?: FoldMemo | undefined // each task's last key by its probe, across runs (cache.md, fold-memo.ts)
   graph?: string | undefined // the remembered graph's token while nothing edited the nodes (graph-memo.md)
 }
-export function createHashCache(folds?: FoldMemo): HashCache
+// cleanOutputs: the workspace's `outputs.clean`, kept beside the HashCache (not on it, the package's surface);
+// `false` keys a task without its own as if it declared it
+// strategies: `VX_INPUTS_STABILITY_STRATEGY` (`run`) and the workspace's `inputs.stability.strategy`, kept beside
+// it the same way; a key folds the strategy a task runs under when it differs from what the task declares
+export function createHashCache(
+  folds?: FoldMemo,
+  cleanOutputs?: boolean,
+  strategies?: { run?: InputStability['strategy']; workspace?: InputStability['strategy'] },
+): HashCache
+export function workspaceCleanOf(hashCache: HashCache): boolean | undefined
+export function inputStrategiesOf(
+  hashCache: HashCache,
+): { run?: InputStability['strategy']; workspace?: InputStability['strategy'] } | undefined
 
 export interface ComputeHashArgs {
   node: TaskNode
@@ -72,9 +84,9 @@ export async function movedInput(
   commandFrom?: number, // the command's start on the file system's clock (`fsClockNow`), just after the describe
   byBytes?: (file: string, ctimeMs: number) => boolean, // `'mutable'`: true judges that write by bytes
 ): Promise<string | undefined>
-// command-windows.ts: when each command of the run ran and where it may write.
+// command-windows.ts: when each command of the run ran, and each restore or deferred fetch, and where it may write.
 export interface CommandWindows {
-  open(id: string, projectDir: string, reach: WriteReach): () => void // a command starts; the function marks its end
+  open(id: string, projectDir: string, reach: WriteReach): () => void // a command, a hit's restore or a deferred fetch starts; the function marks its end
   writerDuring(self: string, file: string, from: number, to: number): string | undefined // another command that may write `file` and ran within [from, to]
 }
 export function commandWindows(): CommandWindows

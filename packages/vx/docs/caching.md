@@ -65,6 +65,19 @@ over (in order):
      `inputs.runtime` / `workspaceRuntime` declarations (the
      strings themselves; their resolved file content / env values /
      command output contribute separately).
+   - `outputs.clean` as the task runs it: a task without its own takes
+     the workspace's (after the `config` stage), and a workspace `false`
+     folds as the task's own `false` would; `true` or unset folds
+     nothing, so those keys never moved. Unfolded, the entry an unclean
+     run saved, leftovers included, was hit after the clean was back on.
+   - `inputs.stability.strategy` as the task runs it:
+     `VX_INPUTS_STABILITY_STRATEGY`, else the task's own, else the
+     workspace's, folded as the task's own would be when it differs from
+     what the task declares (`'immutable'` when it declares none). Unset
+     or `'immutable'` folds nothing. It decides which saves are kept:
+     unfolded, an entry `'unchecked'` kept was hit after the check was
+     back on, and a formatter it covered never ran. The severity is not
+     folded: it fails the task, it keeps no other save.
    - `description` (because it's part of the resolved object — even
      though it has no behavioural effect; a description change isn't a
      correctness change but the cost of a re-run is low).
@@ -1185,7 +1198,13 @@ project `--affected` gives its files to, and its default `build` keys
 them (X-57). The same set fences the output clean, so a root
 `outputs.files: ['**/*.js']` never removes a member's source. Every
 glob pass drops a path under one of them (an ancestor lookup,
-A-11). The only way
+A-11). A nested workspace (a directory holding its own
+`.vx/workspace.*`, which `vx lock` records in the lock) joins the set for
+outputs only: the clean before a run deleted its untracked files. Inputs
+still fold its files, as a task may read them (a git worktree checked out
+under `src/` holds one): an extra miss, never a stale hit. `vx lock`
+refuses an output glob rooted in one, and `vx lock --check` fails a lock
+that does not hold one. The only way
 for project A to depend on project B's state via project-relative
 globs is `dependsOn` + upstream-hash propagation (step 8).
 
@@ -2346,6 +2365,16 @@ moat.
   ran. They were folded in before the placement fields existed, and
   stripping them now would be a `CACHE_VERSION` bump for no correctness
   gain.
+
+- **`run.timeout` / `run.retries`** (flag, variable or workspace). Run
+  options, as the flags are: a passing attempt stores the same outputs
+  under any limit or budget, and a retry starts clean.
+
+- **Every other setting** (`run.*`, `cache.*`, `lock.*`, `watch.*`,
+  `baseBranch`, `inputs.stability.severity`). Each decides how a run
+  runs or where an entry lives, never which outputs a save keeps. The
+  two that do, `outputs.clean` and `inputs.stability.strategy`, fold
+  (step 3).
 
 ## Bumping `CACHE_VERSION`
 

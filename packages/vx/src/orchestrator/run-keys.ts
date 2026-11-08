@@ -15,7 +15,14 @@ import type { GitFilesCache } from '../cache/index.js'
 import type { TaskNode } from '../graph/index.js'
 import { xxh3hex } from '../util/index.js'
 import type { StableKey } from './stable-keys.js'
-import { hashTaskConfig, isKeyless, taskFilesToken, type HashCache } from './task-hash.js'
+import {
+  hashTaskConfig,
+  inputStrategiesOf,
+  isKeyless,
+  taskFilesToken,
+  workspaceCleanOf,
+  type HashCache,
+} from './task-hash.js'
 
 /** Moves every remembered run: bump it when what a token stands for changes. */
 const RUN_MEMO_VERSION = 'run-memo-v2'
@@ -64,6 +71,11 @@ export function runKeysToken(args: RunKeysArgs): RunKeysAt | undefined {
     JSON.stringify([...args.nestedDirsByProject]),
     // Which outputs git ignores decides which a reader may see (`readableOutputs`).
     [...args.gitFilesCache.ignoredOutputs].sort().join('\0'),
+    // Folded into a config's key; a remembered graph's token names the
+    // lock, not `.vx/workspace` or the variables.
+    String(workspaceCleanOf(args.hashCache)),
+    String(inputStrategiesOf(args.hashCache)?.run),
+    String(inputStrategiesOf(args.hashCache)?.workspace),
   ]
   // A remembered graph's token names every node's edges and config, so
   // each node adds only what may differ under it (4 of 8 ms at 1,206

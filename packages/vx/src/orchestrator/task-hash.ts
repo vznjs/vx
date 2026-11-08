@@ -1,6 +1,6 @@
 import { lstatSync } from 'node:fs'
 import path from 'node:path'
-import type { TaskConfig } from '../config.js'
+import type { InputStability, TaskConfig } from '../config.js'
 import type { FoldMemo, ProjectFilesCache, WorkspaceFilesCache } from '../cache/index.js'
 import {
   ABSENT_INPUT,
@@ -72,8 +72,41 @@ export interface HashCache {
   graph?: string | undefined
 }
 
-export function createHashCache(folds?: FoldMemo): HashCache {
-  return {
+/**
+ * `.vx/workspace`'s `outputs.clean`, after the config stage, by the run's
+ * hash cache: a task without its own runs under it, so its key folds it
+ * (`hashableConfig`). Beside `HashCache`, not on it: that type is the
+ * package's surface.
+ */
+const workspaceClean = new WeakMap<HashCache, boolean>()
+
+/** The workspace's `outputs.clean` the run's keys were derived under. */
+export function workspaceCleanOf(hashCache: HashCache): boolean | undefined {
+  return workspaceClean.get(hashCache)
+}
+
+/**
+ * The `inputs.stability.strategy` of `VX_INPUTS_STABILITY_STRATEGY` (`run`,
+ * beating a task's own) and of `.vx/workspace` (beaten by it), by the run's
+ * hash cache: it decides which saves are kept, so a key folds the one a
+ * task runs under (`hashableConfig`). Beside `HashCache` as the clean is.
+ */
+const inputStrategies = new WeakMap<HashCache, InputStrategies>()
+
+type InputStrategy = InputStability['strategy']
+type InputStrategies = { run?: InputStrategy; workspace?: InputStrategy }
+
+/** The run-level `inputs.stability.strategy` values the run's keys were derived under. */
+export function inputStrategiesOf(hashCache: HashCache): InputStrategies | undefined {
+  return inputStrategies.get(hashCache)
+}
+
+export function createHashCache(
+  folds?: FoldMemo,
+  cleanOutputs?: boolean,
+  strategies?: InputStrategies,
+): HashCache {
+  const hashCache: HashCache = {
     taskConfig: new WeakMap(),
     runtime: new Map(),
     workspaceRuntime: new Map(),
@@ -81,6 +114,10 @@ export function createHashCache(folds?: FoldMemo): HashCache {
     projectFiles: new Map(),
     folds,
   }
+  if (cleanOutputs !== undefined) workspaceClean.set(hashCache, cleanOutputs)
+  if (strategies?.run !== undefined || strategies?.workspace !== undefined)
+    inputStrategies.set(hashCache, strategies)
+  return hashCache
 }
 
 export interface ComputeHashArgs {
@@ -566,11 +603,40 @@ export function hashTaskConfig(cfg: TaskConfig, hashCache?: HashCache): string {
   if (hashCache) {
     const cached = hashCache.taskConfig.get(cfg)
     if (cached !== undefined) return cached
-    const hash = xxh3hex(JSON.stringify(hashableConfig(cfg)))
+    const hash = xxh3hex(JSON.stringify(hashableConfig(asRun(cfg, hashCache))))
     hashCache.taskConfig.set(cfg, hash)
     return hash
   }
   return xxh3hex(JSON.stringify(hashableConfig(cfg)))
+}
+
+/**
+ * The config as the task runs it, where a run-level value changes what is
+ * saved: folded as the task's own field would be, and only then, so every
+ * key that never ran under one stays.
+ *
+ * A workspace `outputs.clean: false` saves whatever the outputs held before
+ * the command, a leftover included: a key that missed it hit that entry
+ * once the clean was back on. An `inputs.stability.strategy` other than
+ * `'immutable'` keeps a save the check withholds (`'unchecked'`, one whose
+ * input moved under the command): unfolded, that entry was hit once the
+ * check was back on, and a formatter it covered never ran.
+ */
+function asRun(cfg: TaskConfig, hashCache: HashCache): TaskConfig {
+  let out = cfg
+  if (workspaceClean.get(hashCache) === false && cfg.outputs && cfg.outputs.clean === undefined) {
+    out = { ...out, outputs: { ...cfg.outputs, clean: false } }
+  }
+  const strategies = inputStrategies.get(hashCache)
+  const inputs = cfg.inputs
+  if (strategies !== undefined && inputs !== undefined && cfg.exec !== undefined) {
+    const own = inputs.stability?.strategy
+    const runs = strategies.run ?? own ?? strategies.workspace ?? 'immutable'
+    if (runs !== (own ?? 'immutable')) {
+      out = { ...out, inputs: { ...inputs, stability: { ...inputs.stability, strategy: runs } } }
+    }
+  }
+  return out
 }
 
 /**

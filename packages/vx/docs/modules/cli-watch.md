@@ -449,7 +449,10 @@ on, as the cache keys decide.
   there, put back before the next judgement, is judged by state alone.
   An unsandboxed task writing outside its project (out of contract) is
   not the run's, so the same bytes rewritten there every run re-run the
-  loop, named after three cycles.
+  loop, named after three cycles. A hit's restore and a deferred fetch
+  open a window as a command does (hit-restore.ts, deferred-outputs.ts): without one, a restore more than a racy
+  window before the next command read as the user's write and started
+  one more cycle.
 - Re-key a cycle when a task rewrites a lockfile _during_ it: the keys
   are taken once per cycle. The run itself notices (item 750,
   [`fingerprint-watch.md`](./fingerprint-watch.md)): nothing keyed

@@ -11,7 +11,13 @@ const dir = '/w/packages/a'
 
 function args(
   nodes: TaskNode[],
-  opts: { digest?: string; nested?: string[]; graph?: string } = {},
+  opts: {
+    digest?: string
+    nested?: string[]
+    graph?: string
+    clean?: boolean | undefined
+    strategy?: Parameters<typeof createHashCache>[2]
+  } = {},
 ): Parameters<typeof runKeysToken>[0] {
   const gitFilesCache = new GitFilesCache()
   const snapshot = ['src/a.ts']
@@ -22,7 +28,7 @@ function args(
     get: (id, probe) => rows.get(`${id}\0${probe}`),
     set: (id, probe, key) => void rows.set(`${id}\0${probe}`, key),
   }
-  const hashCache = createHashCache(folds)
+  const hashCache = createHashCache(folds, opts.clean, opts.strategy)
   hashCache.graph = opts.graph ?? 'graph'
   return {
     nodes: new Map(nodes.map((n) => [n.id, n])),
@@ -149,4 +155,25 @@ it('reads remembered keys back by node place, under a token that pins the order'
   // The same nodes in another order are another token: no row of this one.
   const reordered = args([...nodes].reverse())
   expect(runKeysToken(reordered)!.id).not.toBe(at.id)
+})
+
+// A remembered graph's token names the lock, which never holds
+// `.vx/workspace`: its `outputs.clean: false` moved no token, and the
+// keys of the unclean run were read back after the clean was on again.
+it("moves with the workspace's outputs.clean under a remembered graph", () => {
+  const token = (clean?: boolean) => runKeysToken(args(nodesOf(declared), { clean }))?.token
+  expect(token(false)).toBeDefined()
+  expect(token(false)).not.toBe(token(undefined))
+  expect(token(false)).not.toBe(token(true))
+})
+
+// The same for the strategy a task runs under: the workspace's and the
+// variable's fold into a config's key, and neither is in the lock.
+it('moves with the inputs.stability.strategy of the workspace and the variable', () => {
+  const token = (strategy?: Parameters<typeof createHashCache>[2]) =>
+    runKeysToken(args(nodesOf(declared), { strategy }))?.token
+  expect(token()).toBeDefined()
+  expect(token({ workspace: 'unchecked' })).not.toBe(token())
+  expect(token({ run: 'unchecked' })).not.toBe(token())
+  expect(token({ run: 'unchecked' })).not.toBe(token({ workspace: 'unchecked' }))
 })

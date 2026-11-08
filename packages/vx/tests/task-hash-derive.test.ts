@@ -325,6 +325,74 @@ describe('computeTaskHash — what the config contributes', () => {
   })
 })
 
+describe("computeTaskHash — the workspace's outputs.clean", () => {
+  // A task without its own `outputs.clean` takes the workspace's, and
+  // `false` saves whatever the outputs held, a leftover included: a key
+  // that did not see it hit that entry after the workspace turned the
+  // clean back on.
+  const ws = (clean: boolean | undefined) => createHashCache(undefined, clean)
+
+  it('false folds in, as the task declaring it would', async () => {
+    const off = await key({ hashCache: ws(false) })
+    expect(off).not.toBe(await key({ hashCache: ws(undefined) }))
+    const own = node({}, { outputs: { files: [], clean: false } })
+    expect(off).toBe(await key({ node: own, hashCache: ws(undefined) }))
+  })
+
+  it('true or unset keeps the key a workspace without it derives', async () => {
+    expect(await key({ hashCache: ws(true) })).toBe(await key())
+    expect(await key({ hashCache: ws(undefined) })).toBe(await key())
+  })
+
+  it("a task's own value wins, and a task with no outputs has nothing to clean", async () => {
+    const own = node({}, { outputs: { files: [], clean: true } })
+    expect(await key({ node: own, hashCache: ws(false) })).toBe(await key({ node: own }))
+    const bare = node()
+    delete bare.config.outputs
+    expect(await key({ node: bare, hashCache: ws(false) })).toBe(await key({ node: bare }))
+  })
+})
+
+describe('computeTaskHash — the inputs.stability.strategy a task runs under', () => {
+  // The strategy decides which saves are kept: `'unchecked'` keeps one
+  // whose input moved under the command. A task's own field was folded
+  // (it is config), the workspace's and the variable's were not, so an
+  // entry kept unchecked was hit after the check was back on.
+  type Strategy = 'immutable' | 'mutable' | 'unchecked'
+  const ws = (run?: Strategy, workspace?: Strategy) =>
+    createHashCache(undefined, undefined, { run, workspace })
+  const own = (strategy: Strategy) => node({}, { inputs: { files: [], stability: { strategy } } })
+
+  it("the workspace's or the variable's folds in, as the task declaring it would", async () => {
+    for (const s of ['unchecked', 'mutable'] as const) {
+      const declared = await key({ node: own(s), hashCache: ws() })
+      expect(await key({ hashCache: ws(undefined, s) })).toBe(declared)
+      expect(await key({ hashCache: ws(s) })).toBe(declared)
+      expect(declared).not.toBe(await key())
+    }
+  })
+
+  it("'immutable' or unset keeps the key a workspace without it derives", async () => {
+    expect(await key({ hashCache: ws(undefined, 'immutable') })).toBe(await key())
+    expect(await key({ hashCache: ws('immutable') })).toBe(await key())
+    expect(await key({ hashCache: ws() })).toBe(await key())
+  })
+
+  it("a task's own beats the workspace's; the variable beats both", async () => {
+    const checked = own('immutable')
+    expect(await key({ node: checked, hashCache: ws(undefined, 'unchecked') })).toBe(
+      await key({ node: checked }),
+    )
+    expect(await key({ node: checked, hashCache: ws('unchecked') })).toBe(
+      await key({ node: own('unchecked') }),
+    )
+    const unchecked = own('unchecked')
+    expect(await key({ node: unchecked, hashCache: ws('unchecked') })).toBe(
+      await key({ node: unchecked }),
+    )
+  })
+})
+
 describe('computeTaskHash — forwardArgs are scoped to REQUESTED tasks', () => {
   // `vx run test -- --watch` must apply the trailing args to `test` and to
   // nothing else. Before the 2026-05 fix they leaked into every task

@@ -38,6 +38,7 @@ import {
   VX_RUN_WORKSPACE_ENV,
 } from '../exec/index.js'
 import { DeferredOutputs } from './deferred-outputs.js'
+import { workspaceCleanOf } from './task-hash.js'
 import { resolveDownloadModes } from './download-policy.js'
 import type { MachineReport, TaskExecutor, WorkerAdvice } from '../exec/index.js'
 import {
@@ -125,7 +126,13 @@ import { isPassStatus } from '../graph/index.js'
 import type { RunContextRecord } from './telemetry.js'
 import { plan, type RunPlan } from './plan.js'
 import type { AffectedReason } from './affected-tasks.js'
-import { namesRemote, openRemotes, prepareRunLocked, type PreparedRun } from './prepare.js'
+import {
+  namesRemote,
+  openRemotes,
+  outputWallsOf,
+  prepareRunLocked,
+  type PreparedRun,
+} from './prepare.js'
 import { acquireRunLock, runLockPath, type RunLockRelease } from './run-lock.js'
 import {
   exitOfSignal,
@@ -568,9 +575,8 @@ async function runOnBus(
         ? { workspace: prepared.workspaceConfig.inputs.stability }
         : {}),
     }
-    cleanOutputs = resolveSetting('outputs.clean', prepared.workspaceConfig).value as
-      | boolean
-      | undefined
+    // Resolved once, beside the keys that fold it (prepare.ts).
+    cleanOutputs = workspaceCleanOf(prepared.hashCache)
   } catch (err) {
     await teardown()
     await closeUnrun()
@@ -657,7 +663,7 @@ async function runOnBus(
       : new RunKeeper({
           runId,
           workspaceRoot: prepared.workspaceRoot,
-          nestedDirsByProject: prepared.nestedDirsByProject,
+          nestedDirsByProject: outputWallsOf(prepared.nestedDirsByProject),
           keep: prepared.keepRunEntry,
           failures: keepRun.failures,
           traffic: prepared.localCache.traffic,
@@ -878,14 +884,16 @@ async function runOnBus(
     // happened.
     const policy: CachePolicy = effectiveCachePolicy(prepared.cachePolicy, remoteCacheEnabled)
     warnNoRemote(prepared, options, log)
+    const windows = options.commandWindows ?? commandWindows()
     const deferredOutputs = new DeferredOutputs({
       nodes,
       cache,
       workspaceRoot,
-      nestedDirsByProject,
+      nestedDirsByProject: outputWallsOf(nestedDirsByProject),
       ...(gitFilesCache !== undefined ? { gitFilesCache } : {}),
       localWrite: policy.localWrite,
       log,
+      commandWindows: windows,
     })
 
     // Per-run context for the Tier-3 `invocations` header row. Captured
@@ -992,7 +1000,6 @@ async function runOnBus(
       )
     })
     const deferredSaves = new Map<string, Promise<SaveFacts>>()
-    const windows = options.commandWindows ?? commandWindows()
     // A server held from an earlier run (`vx watch`) runs through this one
     // too, so it may write a mutable input while it is described.
     for (const id of heldBefore.kept.keys()) {

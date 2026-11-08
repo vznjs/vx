@@ -23,6 +23,7 @@ export interface DeferredOutputsArgs {
   gitFilesCache?: GitFilesCache
   localWrite: boolean
   log: Logger
+  commandWindows?: CommandWindows // the run's (command-windows.ts): the clean and fetch open a window under the producer's id, as a hit's restore does, so `vx watch` does not take the fetched outputs for the user's edit
 }
 
 export class DeferredOutputs {

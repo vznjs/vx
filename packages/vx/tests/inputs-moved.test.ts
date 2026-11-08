@@ -345,6 +345,42 @@ describe('inputs.stability: what a write during the command means', () => {
   )
 
   it(
+    "the workspace's strategy is in the key: an entry kept unchecked is no hit once the check is back",
+    async () => {
+      await fixture('unformatted')
+      const ws = path.join(root, '.vx/workspace.mjs')
+      await writeFile(ws, workspaceWith("inputs: { stability: { strategy: 'unchecked' } }"))
+      await runTask('format')
+      // Warm runs leave the run key memo a row the flip must not read back.
+      await runTask('format')
+      await runTask('format')
+      gitIn(root)('checkout', '--', 'packages/app/a.ts')
+      await writeFile(ws, workspaceWith("inputs: { stability: { strategy: 'immutable' } }"))
+      expect(statusOf(await runTask('format'), 'app#format')).toBe('success')
+      expect(await readFile(path.join(root, 'packages/app/a.ts'), 'utf8')).toBe(
+        'const x = "formatted"\n',
+      )
+      expect(status.filter((l) => MOVED.test(l))).toEqual(WITHHELD)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'VX_INPUTS_STABILITY_STRATEGY is in the key too',
+    async () => {
+      process.env['VX_INPUTS_STABILITY_STRATEGY'] = 'unchecked'
+      await fixture('unformatted')
+      await runTask('format')
+      await runTask('format')
+      gitIn(root)('checkout', '--', 'packages/app/a.ts')
+      delete process.env['VX_INPUTS_STABILITY_STRATEGY']
+      expect(statusOf(await runTask('format'), 'app#format')).toBe('success')
+      expect(status.filter((l) => MOVED.test(l))).toEqual(WITHHELD)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'on CI the default still withholds (2026-10-12: a concurrent task can put an input back)',
     async () => {
       const ci = process.env['CI']
