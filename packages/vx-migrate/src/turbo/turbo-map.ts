@@ -325,6 +325,18 @@ function zeroSegments(glob: string): string | null {
   return head === '' || isLiteralPattern(head.replace(/\\./g, '_')) ? null : head
 }
 
+/**
+ * A glob with its `..` segments collapsed, as Turbo cleans the path before
+ * it walks (turborepo-globwalk's `collapse_path`): `src/../../shared/**` is
+ * `../shared/**`. A `$TURBO_ROOT$/` prefix is the root, not a segment.
+ */
+function collapseDots(glob: string): string {
+  if (glob.startsWith('$TURBO_ROOT$/'))
+    return '$TURBO_ROOT$/' + collapseDots(glob.slice('$TURBO_ROOT$/'.length))
+  if (!/(^|\/)\.\.(\/|$)/.test(glob)) return glob
+  return path.posix.normalize(glob)
+}
+
 /** A glob, `!` or not, and the X its `X/**` also matches in Turbo (`zeroSegments`). */
 function withZeroSegments(glob: string): string[] {
   const neg = glob.startsWith('!') ? '!' : ''
@@ -2176,12 +2188,13 @@ function buildTask(
       // build (item 1031). A positive glob with no safe
       // form widens to every package file; a negation with none is dropped
       // (it would exclude fewer files, never more).
-      const wax = minimatchToVx(neg ? i.slice(1) : i, neg)
-      if (wax === null) {
+      const vx = minimatchToVx(neg ? i.slice(1) : i, neg)
+      if (vx === null) {
         todos.push(`input ${JSON.stringify(i)}: glob syntax vx cannot take — map manually`)
         if (!neg) files.push('**/*')
         continue
       }
+      const wax = collapseDots(vx)
       const translated = (neg ? '!' : '') + wax
       const body = wax
       const up = climbed(translated)
@@ -2302,7 +2315,7 @@ function buildTask(
     // `.next/**` minus `!.next/cache/**` saved the cache and cleaned it
     // before every run while vx outputs could not exclude.
     const neg = mapped.startsWith('!') ? '!' : ''
-    const o = mapped.slice(neg.length)
+    const o = collapseDots(mapped.slice(neg.length))
     const signed = (g: string) => {
       const head = zeroSegments(g)
       const out = head === null ? [neg + g] : [neg + g, neg + head]

@@ -780,6 +780,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-migrate/turbo-caret-stop',
     'vx-migrate/turbo-dependency-outputs',
     'vx-migrate/turbo-dependency-outputs-upstream',
+    'vx-migrate/turbo-dot-segments',
     'vx-migrate/turbo-dotenv-globs',
     'vx-migrate/turbo-entry-root-edge',
     'vx-migrate/turbo-env-key',
