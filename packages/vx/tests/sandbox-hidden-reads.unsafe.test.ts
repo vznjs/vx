@@ -80,15 +80,18 @@ describe.skipIf(!available || process.platform !== 'linux')('a hidden store', ()
     await mkdir(path.join(ws, 'app'), { recursive: true })
     await writeFile(path.join(ws, 'tsconfig.base.json'), '{}\n')
     await Bun.write(path.join(ws, '.vx/workspace.mjs'), 'export default {}\n')
+    // The shell opens each store: Ubuntu 26's cat (uutils) stats first,
+    // and a stat is not traced, so `cat ~/.vx/probe` left no record of
+    // the wall on CI (sandbox-runtime.md names the gap).
     const task = (command: string) =>
       `{ exec: { command: ${JSON.stringify(command)}, sandbox: { allow: { read: ['.'] } } } }`
     await writeFile(
       path.join(ws, 'app', 'vx.config.mjs'),
       `export default { tasks: {
-  npmrc: ${task('cat ~/.npmrc')},
-  gh: ${task('cat ~/.config/gh/hosts.yml')},
-  vx: ${task('cat ~/.vx/probe')},
-  both: ${task('cat ~/.npmrc; cat < ../tsconfig.base.json; false')},
+  npmrc: ${task('cat < ~/.npmrc')},
+  gh: ${task('cat < ~/.config/gh/hosts.yml')},
+  vx: ${task('cat < ~/.vx/probe')},
+  both: ${task('cat < ~/.npmrc; cat < ../tsconfig.base.json; false')},
 } }
 `,
     )
