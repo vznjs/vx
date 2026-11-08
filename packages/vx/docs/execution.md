@@ -282,6 +282,8 @@ terminal and a task succeeding or failing. Read it alongside
  │            keyStillTrue() — if a claimed root file or an
  │              input moved since the key was taken, the result stands
  │              but the save is withheld (said on the status line).
+ │            serverDiedUnder() — a server it depends on died while
+ │              it ran: the save is withheld, and its dependants'.
  │            saveMiss — in the slot: resolveOutputs(outputs) +
  │              resolveWorkspaceOutputs → file lists, and the
  │              project's git snapshot notes the written output paths

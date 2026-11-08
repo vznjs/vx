@@ -572,7 +572,9 @@ Semantics:
   run, and vx names it: `vx: <id> exited with code <n>` (a signal death
   as its `128 + n` code), at once while the graph still runs (`… while
 the run went on`), so a dependant failing against it reads why. Its own outcome is `failed` with that exit
-  code, and the footer counts it so (item 1071). An exit 0 on its own is
+  code, and the footer counts it so (item 1071). A cached dependant that
+  was running when it died still passes, but is not saved, nor is what
+  is built on it: its key is a healthy run's, its bytes are not. An exit 0 on its own is
   fine (a daemon that forks and returns), and one kept only as a
   dependency does not end the foreground hold (WD-3).
 - **Stopped once nothing needs it.** A persistent task vx does not keep

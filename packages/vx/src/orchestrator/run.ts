@@ -1254,8 +1254,11 @@ async function runOnBus(
     // dead runs on a failure the outcomes do not hold yet (the server's
     // says `success` until the run ends), so it is seeded here, at its
     // dispatch, and the tracker carries it to what is built on it.
+    // A server can also die under a task that is running (`serverDiedUnder`),
+    // which seeds it then.
     const taintSeeds = new Set(excluded.seeds)
-    const taint = taintTracker(options.continueMode === 'always', taintSeeds, nodes)
+    const hasServers = [...nodes.values()].some((n) => n.config.exec?.persistent !== undefined)
+    const taint = taintTracker(options.continueMode === 'always', taintSeeds, nodes, hasServers)
     // Each task that ran tainted, and the task at the root of it: its
     // outcome's `taintedBy` once it finishes.
     const taintedRan = new Map<string, string>()
@@ -1297,6 +1300,29 @@ async function runOnBus(
       inputStability,
       serverReady: (id) => void sinceReady.set(id, []),
     }
+    if (hasServers)
+      scope.serverDiedUnder = async (node) => {
+        const behind = (pick: (id: string) => boolean): string | undefined => {
+          for (const d of node.deps) {
+            const s = deadServerBehind(nodes, pick, d)
+            if (s !== undefined) return s
+          }
+          return undefined
+        }
+        let dead = behind(serverDied)
+        // A server that died just before the task ended may be heard after
+        // it: both exits can land in one turn of the event loop, the task's
+        // handled first and its save decided in that turn's microtasks. The
+        // next turn has handled the rest.
+        if (dead === undefined && behind((id) => persistentRegistry.has(id)) !== undefined) {
+          await new Promise<void>((resolve) => setImmediate(resolve))
+          dead = behind(serverDied)
+        }
+        if (dead === undefined) return false
+        taintSeeds.add(node.id)
+        taintedRan.set(node.id, dead)
+        return true
+      }
     if (options.retries !== undefined) scope.retries = options.retries
     scope.knownFlaky = (node, hash) => {
       if (sharedFlaky.has(node.id)) return true

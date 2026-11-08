@@ -170,8 +170,8 @@ export interface TaskOutcome {
   blockedBy?: string
   /**
    * On an outcome that ran behind a failed dependency (`continueMode:
-   * 'always'`) or one `--exclude-dependencies` dropped: the task at the root
-   * of it. Its result is not its key's, so no flaky verdict reads it and
+   * 'always'`), one `--exclude-dependencies` dropped, or a server that died
+   * while it ran: the task at the root of it. Its result is not its key's, so no flaky verdict reads it and
    * its run row names the root as a skip's `blockedBy` does. Set by `run()`
    * before any observer (a plugin's `onTaskComplete`) hears the outcome.
    */

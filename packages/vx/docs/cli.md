@@ -1078,7 +1078,8 @@ down with it:
 - **`deps-ok`** (default): the failure's transitive dependents are
   skipped; independent siblings keep running. A server that dies after
   it became ready is a failure to its dependents not yet started,
-  including those that reach it through a group.
+  including those that reach it through a group; a dependent running
+  when it died finishes but is not saved, nor is what is built on it.
 - **`never`**: fail fast — the first failure stops dispatch. In-flight
   tasks finish their attempt and start no retry; everything not yet started (cache restores
   included) completes as skipped. A server that dies after it became

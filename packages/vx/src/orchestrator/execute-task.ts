@@ -330,6 +330,12 @@ export interface ExecuteArgs {
    * the task's outcome has been logged).
    */
   serverReady?: (id: string) => void
+  /**
+   * Asked just before a miss is saved: whether a server it depends on
+   * (through groups too) died while it ran, which then holds the save. Its
+   * key is a healthy run's; its bytes were built against a dead server.
+   */
+  serverDiedUnder?: (node: TaskNode) => Promise<boolean>
   /** A `vx watch` cycle (`RunOptions.watch`): an input edited mid-run is the next cycle's. */
   watch?: true
 }
@@ -1552,7 +1558,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // edit's bytes under the old key (X-123).
     const materialize = result.outputs?.kind === 'deferred' ? result.outputs.materialize : undefined
     if (materialize !== undefined) {
-      const keyed = await keyStillTrue()
+      const keyed = (await keyStillTrue()) && (await args.serverDiedUnder?.(node)) !== true
       args.deferred?.register(node.id, {
         materialize,
         ...(keyed ? { hash } : {}),
@@ -1571,6 +1577,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     willSave &&
     nothingLeftRunning() &&
     (await keyStillTrue()) &&
+    (await args.serverDiedUnder?.(node)) !== true &&
     (own = await ownOutputs()) !== undefined
   ) {
     const { landed } = await saveMiss({
@@ -1611,10 +1618,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       })
   } else if (cfgCacheable && !remoteOnly && !deferralRequested) {
     // Ran here and saves nothing — failed, a read-only policy, a tainted
-    // upstream, a key that no longer held — yet it wrote what a save would
-    // have marked, and may have rewritten an input the re-check before a
-    // save catches. A same-run reader keyed from the snapshot's OIDs for
-    // either replayed the bytes from before the command (item 750). A
+    // upstream, a server that died under it, a key that no longer held —
+    // yet it wrote what a save would have marked, and may have rewritten an
+    // input the re-check before a save catches. A same-run reader keyed
+    // from the snapshot's OIDs for either replayed the bytes from before the command (item 750). A
     // withheld save already dropped the project; this finds the same move
     // again and drops it again.
     const endCheck = span('miss: recheck inputs')

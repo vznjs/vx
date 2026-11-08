@@ -140,6 +140,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'select',
     'server-crash-fail-fast',
     'server-crash-through-group',
+    'server-died-under-task',
     'server-stops-unneeded',
     'signal-death',
     'signal-handling',
