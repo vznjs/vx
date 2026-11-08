@@ -21,6 +21,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'absent-input',
     'affected',
     'affected-base-notes',
+    'affected-clean-filters',
     'affected-config-deleted',
     'affected-count-placeholder',
     'affected-default-text',

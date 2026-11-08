@@ -431,6 +431,10 @@ What counts as a change:
 - A file git was told not to look at (`git update-index
 --assume-unchanged` or `--skip-worktree`) counts when its bytes on disk
   differ, as the key hashes them. One a sparse checkout left out does not.
+- A file a clean filter can rewrite (`core.autocrlf`, a `text`, `eol`,
+  `ident`, `filter` or `working-tree-encoding` attribute) counts when git
+  sees its stat move, even if its filtered bytes match the base: the key
+  hashes the raw bytes, so a CRLF edit to an LF file is a change.
 - A symlinked input is its target: a link whose target changed is a
   change, and a link to a target git cannot diff (outside the
   workspace, or ignored) is one on every run. A link to a directory

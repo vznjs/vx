@@ -292,8 +292,10 @@ export async function affectedChanges(
   const config = gitConfigFacts(args.workspaceRoot).catch(() => ({
     partial: false,
     ignoreCase: false,
+    autocrlf: false,
   }))
   const partial = config.then((c) => c.partial)
+  const autocrlf = config.then((c) => c.autocrlf)
   // `core.ignorecase=true` on a disk that tells case apart hid a new
   // `a.txt` beside the tracked `A.txt` from the untracked listings.
   const caseArgs = config.then((c) => {
@@ -332,7 +334,7 @@ export async function affectedChanges(
     //
     // `--raw` for each path's mode: a gitlink (160000) is a nested
     // repository, one path standing for every file in it (`nested` below).
-    gitDiffPaths(args.workspaceRoot, base, partial),
+    gitDiffPaths(args.workspaceRoot, base, partial, autocrlf),
     // `git diff` never reports untracked-but-not-ignored files, but input
     // enumeration does (`git ls-files --cached --others --exclude-standard`),
     // so a brand-new source file changes a task's cache key. Union it in or
@@ -393,7 +395,15 @@ export async function affectedChanges(
   // `--skip-worktree`): `git diff` reports no edit to it, and the key
   // hashes it from disk, so the task missed and selection left it out.
   if (flagged.length > 0) {
-    changed.push(...(await flaggedChanges(args.workspaceRoot, flagged, await listIndex(), changed)))
+    changed.push(
+      ...(await flaggedChanges(
+        args.workspaceRoot,
+        flagged,
+        await listIndex(),
+        changed,
+        await autocrlf,
+      )),
+    )
   }
   // A changed path that is a link to a directory, or was a link and is
   // no link to a file now: a glob reaching below it keys what is behind
@@ -885,11 +895,13 @@ async function flaggedChanges(
   flagged: readonly string[],
   index: readonly IndexEntry[],
   changed: readonly string[],
+  /** `core.autocrlf` converts (`gitConfigFacts`). */
+  autocrlf: boolean,
 ): Promise<string[]> {
   const byPath = new Map(index.map((e) => [e.path, e]))
   const seen = new Set(changed)
   const out: string[] = []
-  const hash: IndexEntry[] = []
+  let hash: IndexEntry[] = []
   for (const rel of flagged) {
     const entry = byPath.get(rel)
     if (entry === undefined || seen.has(rel)) continue
@@ -900,6 +912,13 @@ async function flaggedChanges(
     } else if (entry.mode === '120000' || rel.includes('\n')) out.push(rel)
     else hash.push(entry)
   }
+  const raw = await filtered(
+    workspaceRoot,
+    hash.map((e) => e.path),
+    autocrlf,
+  )
+  for (const e of hash) if (raw.has(e.path)) out.push(e.path)
+  if (raw.size > 0) hash = hash.filter((e) => !raw.has(e.path))
   if (hash.length === 0) return out
   // `--stdin-paths` hashes each file as `git add` would (its clean
   // filters), so an unchanged one names the index's blob.
@@ -1058,6 +1077,8 @@ async function gitDiffPaths(
   workspaceRoot: string,
   base: string,
   partial: Promise<boolean>,
+  /** `core.autocrlf` converts (`gitConfigFacts`). */
+  autocrlf: Promise<boolean>,
 ): Promise<{ paths: string[]; gitlinks: string[]; links: string[] }> {
   const diff = (...revs: string[]) =>
     gitPaths(workspaceRoot, [
@@ -1103,7 +1124,7 @@ async function gitDiffPaths(
     }
   }
   if (unread.length === 0) return { paths, gitlinks, links }
-  const same = await statOnly(workspaceRoot, unread)
+  const same = await statOnly(workspaceRoot, unread, await autocrlf)
   return { paths: paths.filter((p) => !same.has(p)), gitlinks, links }
 }
 
@@ -1115,9 +1136,11 @@ async function gitDiffPaths(
 async function statOnly(
   workspaceRoot: string,
   unread: readonly { rel: string; oid: string; link: boolean }[],
+  /** `core.autocrlf` converts (`gitConfigFacts`). */
+  autocrlf: boolean,
 ): Promise<Set<string>> {
   const same = new Set<string>()
-  const files: { rel: string; oid: string }[] = []
+  let files: { rel: string; oid: string }[] = []
   for (const u of unread) {
     if (!u.link) {
       // `--stdin-paths` reads a line and unquotes a leading `"`; the
@@ -1135,6 +1158,12 @@ async function statOnly(
       // not a link any more: a change
     }
   }
+  const raw = await filtered(
+    workspaceRoot,
+    files.map((f) => f.rel),
+    autocrlf,
+  )
+  if (raw.size > 0) files = files.filter((f) => !raw.has(f.rel))
   if (files.length === 0) return same
   const proc = spawnGit(
     ['hash-object', '--stdin-paths'],
@@ -1151,31 +1180,65 @@ async function statOnly(
 }
 
 /**
- * Two config facts in one `git config`: `partial`, a remote that serves
- * missing objects on demand (`--filter` on a clone or a fetch), and
- * `ignoreCase`, `core.ignorecase` set true.
+ * Of `rels`, the paths a clean filter can rewrite (`core.autocrlf`, or a
+ * `text`, `eol`, `ident`, `filter` or `working-tree-encoding` attribute),
+ * as the key asks it (cache/git-inputs.ts `dropFilteredOids`). `hash-object`
+ * names such a file's filtered blob, which a CRLF edit to an LF file leaves
+ * the base's, while the key hashes the raw bytes; and raw bytes equal to the
+ * blob prove nothing, since a checkout under `eol=crlf` writes others. So
+ * each is a change. A failed `check-attr` names every path.
+ */
+async function filtered(
+  workspaceRoot: string,
+  rels: readonly string[],
+  autocrlf: boolean,
+): Promise<Set<string>> {
+  if (rels.length === 0 || autocrlf) return new Set(rels)
+  const proc = spawnGit(
+    ['check-attr', '--stdin', '-z', 'text', 'eol', 'ident', 'filter', 'working-tree-encoding'],
+    workspaceRoot,
+    new TextEncoder().encode(rels.map((r) => `${r}\0`).join('')),
+  )
+  const [out, exit] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
+  if (exit !== 0) return new Set(rels)
+  const hit = new Set<string>()
+  const fields = out.split('\0')
+  for (let i = 0; i + 2 < fields.length; i += 3) {
+    if (fields[i + 2] !== 'unspecified' && fields[i + 2] !== 'unset') hit.add(fields[i]!)
+  }
+  return hit
+}
+
+/**
+ * Three config facts in one `git config`: `partial`, a remote that serves
+ * missing objects on demand (`--filter` on a clone or a fetch),
+ * `ignoreCase`, `core.ignorecase` set true, and `autocrlf`,
+ * `core.autocrlf` set `true` or `input`.
  */
 async function gitConfigFacts(
   workspaceRoot: string,
-): Promise<{ partial: boolean; ignoreCase: boolean }> {
+): Promise<{ partial: boolean; ignoreCase: boolean; autocrlf: boolean }> {
   const proc = spawnGit(
     [
       'config',
       '--get-regexp',
-      String.raw`^(remote\..*\.promisor|extensions\.partialclone|core\.ignorecase)$`,
+      String.raw`^(remote\..*\.promisor|extensions\.partialclone|core\.ignorecase|core\.autocrlf)$`,
     ],
     workspaceRoot,
   )
   const [out] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
   let partial = false
   let ignoreCase = false
+  let autocrlf = false
   for (const l of out.split('\n')) {
     // A bare key (`[core] ignorecase`) is true, as git reads it.
     if (l.startsWith('core.ignorecase'))
       ignoreCase = /^core\.ignorecase( (true|yes|on|[-+]?0*[1-9]\d*[kmg]?))?$/i.test(l)
+    else if (l.startsWith('core.autocrlf'))
+      autocrlf = /^core\.autocrlf( (input|true|yes|on|[-+]?0*[1-9]\d*[kmg]?))?$/i.test(l)
     else if (l.startsWith('extensions.') || l.endsWith(' true')) partial = true
   }
-  return { partial, ignoreCase }
+  return { partial, ignoreCase, autocrlf }
 }
 
 /**

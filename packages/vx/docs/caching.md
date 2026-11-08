@@ -1263,6 +1263,10 @@ content hasher, which hashes the worktree bytes — the correct source
 either way. The only cost is reading the file, which is exactly what
 the gate exists to avoid paying needlessly.
 
+`--affected` asks the same question (`core.autocrlf`, then `check-attr`)
+of a file whose stat moved: such a file is a change, though git, which
+compares after the filter, calls it clean against the base.
+
 ## Runtime inputs and the lock (the env parallel)
 
 `inputs.runtime` / `inputs.workspaceRuntime` are modeled
