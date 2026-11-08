@@ -13,10 +13,6 @@ first; its text is that footer: what changed and what to do.
 
 SCHEMA_VERSION v55; the next run on every machine misses once.
 
-## cache: date files a restore writes now, not with saved mtime
-
-the local cache index is schema v55; what it recorded before is dropped on first open, so the next run misses once.
-
 ## sandbox: judge a linked node_modules by its target
 
 CACHE_VERSION is vx-cache-v52; entries saved before it are never read, so the next run misses once.
