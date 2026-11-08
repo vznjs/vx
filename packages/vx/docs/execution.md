@@ -92,7 +92,9 @@ terminal and a task succeeding or failing. Read it alongside
  │       fill the per-project GitFilesCache with file lists + index
  │       OIDs. `ls-files --others` is NOT among them — status's
  │       `-uall` already answers untracked, and asking git twice
- │       walked the same tree again. A fifth, `check-attr`, runs only
+ │       walked the same tree again. `core.ignorecase=true` on a disk
+ │       that tells case apart runs status again with
+ │       `-c core.ignorecase=false`. A fifth, `check-attr`, runs only
  │       when an attributes file could rewrite bytes. An index the
  │       cache holds no blob-size verdict for (keyed by the index
  │       file's hash, A-60) adds `ls-files --debug` for the recorded

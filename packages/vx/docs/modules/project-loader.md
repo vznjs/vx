@@ -194,7 +194,7 @@ readers that reach it here.
   module each one imports. Cost: +3 ms on a cold 300-config load, none warm.
 - Nor change a module another config imports: first loads share the
   module registry, so a config's `reg.push('a')` on a shared module reached
-  every config evaluated after it, and `vx lock` wrote b's `echo a,b` beside
+  every config evaluated after it, and the lock recorded b's `echo a,b` beside
   a and `echo b` without it, or when a loaded later. Isolating each config
   would take a worker per config, which D-68 measured out. Instead, before
   any config evaluates, a round of several first loads imports each local

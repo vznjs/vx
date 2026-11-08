@@ -197,6 +197,7 @@ src/util/edit-distance.ts
 src/util/env-flag.ts
 src/util/errors.ts
 src/util/essential-env.ts
+src/util/foreign-cache-dir.ts
 src/util/git-ignored.ts
 src/util/hangup.ts
 src/util/hash.ts
@@ -236,6 +237,7 @@ src/workspace/json-data.ts
 src/workspace/load-reads.ts
 src/workspace/lockfile.ts
 src/workspace/migration.ts
+src/workspace/module-state.ts
 src/workspace/nested-dirs.ts
 src/workspace/package-graph.ts
 src/workspace/project-loader.ts

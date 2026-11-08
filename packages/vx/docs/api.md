@@ -2753,6 +2753,7 @@ export async function sandboxRequestFor(
   cacheDir?: string,
   dependencyOutputs: readonly string[] = [],
   dependencyReported: readonly string[] = [],
+  nestedOf: (projectDir: string) => readonly string[] = () => [],
 ): Promise<SandboxRequest>
 ```
 

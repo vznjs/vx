@@ -18,6 +18,7 @@ const SHARDS: readonly (readonly string[])[] = [
     'materialise-fence',
     'merkle-sweep',
     'reapi-e2e',
+    'shared-subtree',
     'string-map-options',
     'wedged',
     'wire-exec-unavailable',

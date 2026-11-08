@@ -36,7 +36,10 @@ describe('execution.md follows the source it traces', () => {
     const fn = /export async function startGitEnumeration\b[\s\S]*?\n\}/.exec(src)
     expect(fn).not.toBeNull()
     const spawned = [
-      ...new Set([...fn![0]!.matchAll(/spawnGit\(\s*\[\s*'([a-z-]+)'/g)].map((m) => m[1]!)),
+      // A spread before the verb is git's own options (`-c core.ignorecase=false`).
+      ...new Set(
+        [...fn![0]!.matchAll(/spawnGit\(\s*\[\s*(?:\.\.\.\w+,\s*)*'([a-z-]+)'/g)].map((m) => m[1]!),
+      ),
     ]
     // The rev-parse is asked through `repoFacts`, the memo the file hasher
     // shares: its command is read from there.

@@ -557,7 +557,7 @@ use your own instead.
   root. `HOME`, `TMPDIR`, `USER` and the like are the worker's own, unless
   the task's `env.define` sets them or its `inputs.env` keys them: a keyed
   one is the orchestrator's value, or unset where it is unset there, so
-  the worker runs on what the key folds; `npm_execpath` is the workspace's
+  the worker runs on what the key saw; `npm_execpath` is the workspace's
   package manager on the worker, as core sets it on a local task.
 - A worker restores, by key, the declared outputs of every task the one
   it runs depends on, each after its own dependencies (an additive task's

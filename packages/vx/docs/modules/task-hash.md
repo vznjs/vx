@@ -68,6 +68,12 @@ export async function movedInput(
   commandFrom?: number, // the describe's start, just before the command
   byBytes?: (file: string, ctimeMs: number) => boolean, // `'mutable'`: true judges that write by bytes
 ): Promise<string | undefined>
+// command-windows.ts: when each command of the run ran and where it may write.
+export interface CommandWindows {
+  open(id: string, projectDir: string, reach: WriteReach): () => void // a command starts; the function marks its end
+  writerDuring(self: string, file: string, from: number, to: number): string | undefined // another command that may write `file` and ran within [from, to]
+}
+export function commandWindows(): CommandWindows
 export function computeGroupKey(args: ComputeHashArgs): Promise<string>
 // The fold memo's files token for one task, or undefined (run-keys.md).
 export function taskFilesToken(

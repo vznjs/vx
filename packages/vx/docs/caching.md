@@ -331,7 +331,7 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     inode. `core.ignorecase=true` on a disk that does not fold case (a
     `.git` copied from macOS to Linux) made `git status` take a new
     `a.txt` for the tracked `A.txt`, so it entered no key; under that
-    setting vx stats `HEAD` as `head` once, and on a disk that tells
+    setting vx looks up `HEAD` as `head` once, and on a disk that tells
     them apart asks git again with `-c core.ignorecase=false`, as every
     later listing under the workspace does (`--affected`, watch's
     inventory, `vx lock`'s discovery and ignore checks). vx
