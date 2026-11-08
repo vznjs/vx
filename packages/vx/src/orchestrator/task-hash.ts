@@ -70,9 +70,14 @@ export interface HashCache {
    * while no plugin or flag has edited them since.
    */
   graph?: string | undefined
+  /**
+   * `.vx/workspace`'s `outputs.clean`, after the config stage: a task
+   * without its own runs under it, so its key folds it (`hashableConfig`).
+   */
+  cleanOutputs?: boolean | undefined
 }
 
-export function createHashCache(folds?: FoldMemo): HashCache {
+export function createHashCache(folds?: FoldMemo, cleanOutputs?: boolean): HashCache {
   return {
     taskConfig: new WeakMap(),
     runtime: new Map(),
@@ -80,6 +85,7 @@ export function createHashCache(folds?: FoldMemo): HashCache {
     workspaceFiles: new Map(),
     projectFiles: new Map(),
     folds,
+    cleanOutputs,
   }
 }
 
@@ -566,11 +572,24 @@ export function hashTaskConfig(cfg: TaskConfig, hashCache?: HashCache): string {
   if (hashCache) {
     const cached = hashCache.taskConfig.get(cfg)
     if (cached !== undefined) return cached
-    const hash = xxh3hex(JSON.stringify(hashableConfig(cfg)))
+    const hash = xxh3hex(JSON.stringify(hashableConfig(withInheritedClean(cfg, hashCache))))
     hashCache.taskConfig.set(cfg, hash)
     return hash
   }
   return xxh3hex(JSON.stringify(hashableConfig(cfg)))
+}
+
+/**
+ * The config as the task runs it: a workspace `outputs.clean: false` saves
+ * whatever the outputs held before the command, a leftover included, so a
+ * key that missed it hit that entry once the clean was back on. Folded as
+ * the task's own `false` would be, and only then: `true` is the default, so
+ * every key that never ran unclean stays.
+ */
+function withInheritedClean(cfg: TaskConfig, hashCache: HashCache): TaskConfig {
+  if (hashCache.cleanOutputs !== false || cfg.outputs === undefined) return cfg
+  if (cfg.outputs.clean !== undefined) return cfg
+  return { ...cfg, outputs: { ...cfg.outputs, clean: false } }
 }
 
 /**

@@ -652,7 +652,10 @@ export async function prepareRunLocked(
   // cycle under `vx watch` (item 1029). run() owns both only once this
   // returns.
   try {
-    const hashCache = createHashCache(localCache.foldMemo())
+    const hashCache = createHashCache(
+      localCache.foldMemo(),
+      resolveSetting('outputs.clean', workspaceConfig).value as boolean | undefined,
+    )
     const fingerprintWatch = new FingerprintWatch(
       workspaceRoot,
       claimed,

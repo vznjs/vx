@@ -1493,7 +1493,8 @@ first, for a tool that reads its own last output (tsc's
 stores every file the outputs match after the run, so a file an older
 build left behind is cached and restored on every machine. A retry
 still starts clean, and a hit still restores bit-identically. Omitted → the workspace's
-`outputs.clean`, else `true`.
+`outputs.clean`, else `true`; a workspace `false` keys the task as its own
+`false` would.
 
 A **`!` entry takes a path back** from what the positive globs select
 (A-44; a scratch dir under `dist` stays out of the clean this way; a
@@ -2125,7 +2126,8 @@ unit (`'500ms'`, `'30s'`, `'10m'`, `'2h'`, `'30d'`), and a bare number is
 refused naming the forms with units; a size carries one too (`'10GB'`).
 `debug.timing`, `debug.watch`, `debug.dumpable`, `config.workerTimeout` and `run.outputLogs` are read
 before the workspace loads, so they have a variable (and a flag) only.
-None is folded into a cache key. `vx info` lists every setting not at its
+None is folded into a cache key but `outputs.clean`, which keys a task
+without its own as if it declared it. `vx info` lists every setting not at its
 default and where it came from.
 
 ### Settings

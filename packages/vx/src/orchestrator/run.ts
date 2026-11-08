@@ -568,9 +568,8 @@ async function runOnBus(
         ? { workspace: prepared.workspaceConfig.inputs.stability }
         : {}),
     }
-    cleanOutputs = resolveSetting('outputs.clean', prepared.workspaceConfig).value as
-      | boolean
-      | undefined
+    // Resolved once, beside the keys that fold it (prepare.ts).
+    cleanOutputs = prepared.hashCache.cleanOutputs
   } catch (err) {
     await teardown()
     await closeUnrun()

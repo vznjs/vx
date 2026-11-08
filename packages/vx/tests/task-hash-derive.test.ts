@@ -325,6 +325,34 @@ describe('computeTaskHash — what the config contributes', () => {
   })
 })
 
+describe("computeTaskHash — the workspace's outputs.clean", () => {
+  // A task without its own `outputs.clean` takes the workspace's, and
+  // `false` saves whatever the outputs held, a leftover included: a key
+  // that did not see it hit that entry after the workspace turned the
+  // clean back on.
+  const ws = (clean: boolean | undefined) => createHashCache(undefined, clean)
+
+  it('false folds in, as the task declaring it would', async () => {
+    const off = await key({ hashCache: ws(false) })
+    expect(off).not.toBe(await key({ hashCache: ws(undefined) }))
+    const own = node({}, { outputs: { files: [], clean: false } })
+    expect(off).toBe(await key({ node: own, hashCache: ws(undefined) }))
+  })
+
+  it('true or unset keeps the key a workspace without it derives', async () => {
+    expect(await key({ hashCache: ws(true) })).toBe(await key())
+    expect(await key({ hashCache: ws(undefined) })).toBe(await key())
+  })
+
+  it("a task's own value wins, and a task with no outputs has nothing to clean", async () => {
+    const own = node({}, { outputs: { files: [], clean: true } })
+    expect(await key({ node: own, hashCache: ws(false) })).toBe(await key({ node: own }))
+    const bare = node()
+    delete bare.config.outputs
+    expect(await key({ node: bare, hashCache: ws(false) })).toBe(await key({ node: bare }))
+  })
+})
+
 describe('computeTaskHash — forwardArgs are scoped to REQUESTED tasks', () => {
   // `vx run test -- --watch` must apply the trailing args to `test` and to
   // nothing else. Before the 2026-05 fix they leaked into every task

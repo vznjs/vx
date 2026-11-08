@@ -65,6 +65,11 @@ over (in order):
      `inputs.runtime` / `workspaceRuntime` declarations (the
      strings themselves; their resolved file content / env values /
      command output contribute separately).
+   - `outputs.clean` as the task runs it: a task without its own takes
+     the workspace's (after the `config` stage), and a workspace `false`
+     folds as the task's own `false` would; `true` or unset folds
+     nothing, so those keys never moved. Unfolded, the entry an unclean
+     run saved, leftovers included, was hit after the clean was back on.
    - `description` (because it's part of the resolved object — even
      though it has no behavioural effect; a description change isn't a
      correctness change but the cost of a re-run is low).
@@ -2346,6 +2351,10 @@ moat.
   ran. They were folded in before the placement fields existed, and
   stripping them now would be a `CACHE_VERSION` bump for no correctness
   gain.
+
+- **`run.timeout` / `run.retries`** (flag, variable or workspace). Run
+  options, as the flags are: a passing attempt stores the same outputs
+  under any limit or budget, and a retry starts clean.
 
 ## Bumping `CACHE_VERSION`
 
