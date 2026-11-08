@@ -6,7 +6,7 @@
 import { lstatSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { SandboxViolation } from '../exec/index.js'
+import { MOUNT_WILDCARDS, type SandboxViolation } from '../exec/index.js'
 import type { TaskOutcome } from '../graph/index.js'
 import { isLiteralPattern } from '../util/index.js'
 import { credentialStorePaths } from './sandbox-request.js'
@@ -46,8 +46,11 @@ function grantPath(abs: string, projectDir: string): string {
  */
 function grantFor(abs: string, projectDir: string, kind: 'read' | 'write'): string {
   const raw = grantPath(abs, projectDir)
-  const bad = (kind === 'write' && process.platform === 'linux' ? /[*?[\]\\]/ : /[*?\\]/).exec(raw)
-  const at = bad === null ? raw : raw.slice(0, raw.lastIndexOf('/', bad.index) + 1) || '.'
+  const wild = raw.search(
+    kind === 'write' && process.platform === 'linux' ? MOUNT_WILDCARDS : /[*?]/,
+  )
+  const bad = Math.min(...[wild, raw.indexOf('\\')].filter((i) => i >= 0))
+  const at = bad === Infinity ? raw : raw.slice(0, raw.lastIndexOf('/', bad) + 1) || '.'
   return at.replace(/[[\]]/g, '\\$&')
 }
 

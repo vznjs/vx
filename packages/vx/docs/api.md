@@ -1807,10 +1807,12 @@ load, package graph, task graph — but stops short of execution.
 Returns a `RunPlan` predicting the cache hit/miss outcome of every
 task. Used by `--dry`.
 
-Side-effects are limited to opening + closing the local Cache handle
-(and running `inputs.runtime` probe commands, which key
-derivation requires). Cache probing is the byte-free `cache.has()`
-existence check — no artifact download, no ingest, no accessed_at bump.
+Side-effects are limited to running `inputs.runtime` probe commands,
+which key derivation requires: with no remote the local cache opens to
+read only (`prepareRunLocked`'s `planning`); with one, the remote hits
+found are kept in the index for the run after. Probing is the
+byte-free `cache.has()` existence check — no artifact download, no
+ingest, no accessed_at bump.
 
 ```ts
 export async function planRun(options: RunOptions): Promise<RunPlan>

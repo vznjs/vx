@@ -800,7 +800,8 @@ describe('vx run with pnpm() declared', () => {
   })
 
   it('a warm run reads the memo instead of parsing', async () => {
-    await hashes()
+    // A run keeps the memo; `--dry` writes nothing (docs/modules/plan.md).
+    await statuses()
     const cacheDir = path.join(root, '.vx', 'cache')
     const memo = readMemo(cacheDir, 'pnpm-lock.yaml')
     expect(Object.keys(memo.importers ?? {}).sort()).toEqual([
@@ -825,7 +826,7 @@ describe('vx run with pnpm() declared', () => {
     await writeFile(path.join(root, 'pnpm-lock.yaml'), v9({ pnpmfile: 'x' }))
     await workspace('pnpm() /* another */')
     const fresh = readMemo(cacheDir, 'pnpm-lock.yaml')
-    await hashes()
+    await statuses()
     const rewritten = readMemo(cacheDir, 'pnpm-lock.yaml')
     expect(rewritten.lock).not.toBe(fresh.lock)
   })
