@@ -1790,7 +1790,17 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // `'unchecked'` skips the check of the command's own window; a key the
     // re-derive before the command already disagreed with still withholds,
     // since it never described the bytes the command read.
-    if (stability.strategy === 'unchecked' && described!.hash === hash) return true
+    // Unchecked, the command may still have rewritten an input in place: a
+    // later reader keyed after it (stable-keys.ts) must not read the
+    // project's run-start facts.
+    if (stability.strategy === 'unchecked' && described!.hash === hash) {
+      if (args.executor.remote !== true)
+        forgetUndeclaredWrites(
+          args,
+          wsOutputs.length > 0 ? 'workspace' : commandWriteReach(node, args.workspaceRoot),
+        )
+      return true
+    }
     const endCheck = span('miss: recheck inputs')
     const moved = await movedSinceKey()
     endCheck()

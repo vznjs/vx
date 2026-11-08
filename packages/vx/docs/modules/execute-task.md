@@ -169,7 +169,10 @@ one-shot handler mid-cleanup.
    the listing (`described.added`, inputs.md's `addedInput`). A move withholds the save, says so on the
    status line, and drops the project's facts as an uncached command
    does (every partition when the task declares workspace outputs,
-   whose save would have marked them). A claimed root file (a lockfile) a
+   whose save would have marked them). Strategy `'unchecked'` skips the
+   move check but still drops the facts where the command may write
+   (`commandWriteReach`; every partition with workspace outputs), since
+   a reader keyed after it reads them. A claimed root file (a lockfile) a
    task rewrote since the run read it withholds the save too (the run's
    `FingerprintWatch`, [`fingerprint-watch.md`](./fingerprint-watch.md),
    item 750), and so does a server it depends on (through groups too)
