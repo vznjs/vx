@@ -515,6 +515,10 @@ worker (`tests/vx-run-e2e.test.ts`):
   miss can leave the artifact store and the execution record holding
   results of different executions under one pure-input key, and a worker
   fed the record would see bytes this machine's own tasks do not.
+- An upstream that writes inside `install`'s directory (a `prisma generate`
+  into `node_modules/.prisma`) is merged into it: the worker sees both. A
+  DECLARED input file under a grafted directory is replaced by the graft,
+  with a warning.
 - With **no remote executor declared**, `install` is a local no-op and
   dependents use whatever the machine has ambient — a laptop run behaves
   exactly as it did before the field existed.

@@ -30,11 +30,11 @@ interface InputTree {
   /** File count, for logging/metrics. */
   fileCount: number
   /**
-   * Paths where a grafted subtree SHADOWED a disk-built directory of the
-   * same name. The graft wins (it is the upstream's authoritative output;
-   * the disk copy at best a stale materialisation) — but any DECLARED input
-   * files under that path are silently absent from the tree, so the caller
-   * should surface these.
+   * Paths where a grafted subtree SHADOWED declared input files read from
+   * disk under the same name. The graft wins (it is the upstream's
+   * authoritative output; the disk copy at best a stale materialisation) —
+   * but those files are absent from the tree, so the caller should surface
+   * these. Another upstream's output under a graft is merged in instead.
    */
   shadowed: string[]
   /**
@@ -102,7 +102,10 @@ export interface TreeGraft {
  * the graph self-consistent regardless of who produced it — file digests are
  * untouched (content-addressed, already in the CAS).
  */
-function canonicaliseTree(graft: TreeGraft): { root: Digest; blobs: Blob[] } {
+function canonicaliseTree(
+  graft: TreeGraft,
+  known: Map<string, Directory>,
+): { root: Digest; blobs: Blob[] } {
   // Keyed by the worker's own bytes first: a child re-encoded by US matches
   // its parent's reference only when both encoders agree byte for byte, and
   // one that does not (a field order, a `node_properties` our decoder drops)
@@ -136,6 +139,7 @@ function canonicaliseTree(graft: TreeGraft): { root: Digest; blobs: Blob[] } {
     const data = encodeDirectory(canonical)
     const digest = sha256(data)
     blobs.push({ digest, data })
+    known.set(digest.hash, canonical)
     return digest
   }
   return { root: rebuild(graft.root), blobs }
@@ -202,6 +206,61 @@ export async function buildInputTree(args: {
   const seen = new Set<string>()
   const moved: string[] = []
   let fileCount = 0
+  // A graft's directories by canonical digest, and the nodes opened from
+  // them: another upstream's output under a Tree graft is inserted into it,
+  // never dropped by it (prisma's client under install's node_modules).
+  const known = new Map<string, Directory>()
+  const fromGraft = new WeakSet<DirNode>()
+  const opened = (raw: Digest, at: string): Directory => {
+    const dir = known.get(raw.hash)
+    if (dir === undefined) {
+      throw new Error(
+        `vx-reapi: cannot add an upstream output under ${at}: the upstream Tree that holds it does not list it`,
+      )
+    }
+    return dir
+  }
+  const descend = (node: DirNode, seg: string, at: string): DirNode => {
+    let next = node.dirs.get(seg)
+    if (next !== undefined) return next
+    const raw = node.rawDirs.get(seg)
+    if (raw === undefined) {
+      next = emptyDir()
+    } else {
+      const dir = opened(raw, at)
+      next = {
+        files: new Map(dir.files.map((f) => [f.name, f])),
+        dirs: new Map(),
+        symlinks: new Map(dir.symlinks.map((s) => [s.name, s])),
+        rawDirs: new Map(dir.directories.map((d) => [d.name, d.digest])),
+      }
+      fromGraft.add(next)
+      node.rawDirs.delete(seg)
+    }
+    node.dirs.set(seg, next)
+    return next
+  }
+  const insertAt = (rel: string): { node: DirNode; leaf: string } => {
+    const parts = rel.split('/')
+    let node = root
+    for (let i = 0; i < parts.length - 1; i++) {
+      node = descend(node, parts[i]!, parts.slice(0, i + 1).join('/'))
+    }
+    return { node, leaf: parts[parts.length - 1]! }
+  }
+  /** A graft's directory laid over `target`, merging where both hold a directory. */
+  const overlay = (target: DirNode, raw: Digest, at: string): void => {
+    const dir = opened(raw, at)
+    for (const f of dir.files) target.files.set(f.name, f)
+    for (const s of dir.symlinks) target.symlinks.set(s.name, s)
+    for (const d of dir.directories) {
+      if (target.dirs.has(d.name) || target.rawDirs.has(d.name)) {
+        overlay(descend(target, d.name, `${at}/${d.name}`), d.digest, `${at}/${d.name}`)
+      } else {
+        target.rawDirs.set(d.name, d.digest)
+      }
+    }
+  }
 
   // Insertion order is NOT what makes the tree deterministic — `encodeDirectory`
   // sorts every node's names at encode time, and it has to, because grafts are
@@ -232,27 +291,27 @@ export async function buildInputTree(args: {
     if (!st.isFile()) return { kind: 'other' as const }
     return { kind: 'file' as const, data: await read(abs), mode: st.mode }
   })
+  // A declared input is placed before the Tree grafts, which replace one
+  // under them (`shadowed`); an upstream's output read from disk after
+  // them, as it is that upstream's own and lands beside theirs.
+  const later: (() => void)[] = []
   for (const [i, rel] of sorted.entries()) {
     const got = reads[i]!
     if (got.kind === 'gone') {
       moved.push(rel)
       continue
     }
+    const deferred = args.expected !== undefined && !args.expected.has(rel)
     if (got.kind === 'link') {
       const target = got.target
       const want = args.expected?.get(rel)
       if (want !== undefined && !carriesOid(new TextEncoder().encode(target), want)) moved.push(rel)
-      const parts = rel.split('/')
-      let node = root
-      for (const seg of parts.slice(0, -1)) {
-        let next = node.dirs.get(seg)
-        if (next === undefined) {
-          next = emptyDir()
-          node.dirs.set(seg, next)
-        }
-        node = next
+      const place = (): void => {
+        const { node, leaf } = insertAt(rel)
+        node.symlinks.set(leaf, { name: leaf, target })
       }
-      node.symlinks.set(parts[parts.length - 1]!, { name: parts[parts.length - 1]!, target })
+      if (deferred) later.push(place)
+      else place()
       continue
     }
     if (got.kind === 'other') {
@@ -272,40 +331,47 @@ export async function buildInputTree(args: {
       seen.add(digest.hash)
       blobs.push({ digest, data })
     }
-    const parts = rel.split('/')
-    let node = root
-    for (const seg of parts.slice(0, -1)) {
-      let next = node.dirs.get(seg)
-      if (next === undefined) {
-        next = emptyDir()
-        node.dirs.set(seg, next)
-      }
-      node = next
-    }
     // The owner-execute bit is what REAPI models; group/other add nothing a
     // worker can act on.
-    node.files.set(parts[parts.length - 1]!, {
-      name: parts[parts.length - 1]!,
-      digest,
-      is_executable: (got.mode & 0o100) !== 0,
-    })
+    const isExecutable = (got.mode & 0o100) !== 0
+    const place = (): void => {
+      const { node, leaf } = insertAt(rel)
+      node.files.set(leaf, { name: leaf, digest, is_executable: isExecutable })
+    }
+    if (deferred) later.push(place)
+    else place()
     fileCount++
   }
 
-  const insertAt = (rel: string): { node: DirNode; leaf: string } => {
-    const parts = rel.split('/')
-    let node = root
-    for (const seg of parts.slice(0, -1)) {
-      let next = node.dirs.get(seg)
-      if (next === undefined) {
-        next = emptyDir()
-        node.dirs.set(seg, next)
+  // Ancestors first, so a nested graft finds the one above it to merge into.
+  const shadowed: string[] = []
+  const treeGrafts = [...(args.treeGrafts ?? [])].sort((a, b) =>
+    a.path < b.path ? -1 : a.path > b.path ? 1 : 0,
+  )
+  for (const graft of treeGrafts) {
+    const { node, leaf } = insertAt(graft.path)
+    const canonical = canonicaliseTree(graft, known)
+    for (const b of canonical.blobs) {
+      if (!seen.has(b.digest.hash)) {
+        seen.add(b.digest.hash)
+        blobs.push(b)
       }
-      node = next
     }
-    return { node, leaf: parts[parts.length - 1]! }
+    const there = node.dirs.get(leaf)
+    if (node.rawDirs.has(leaf) || (there !== undefined && fromGraft.has(there))) {
+      overlay(descend(node, leaf, graft.path), canonical.root, graft.path)
+      continue
+    }
+    // The graft wins over declared inputs read from disk: it is the
+    // upstream's authoritative output, the disk copy at best a stale
+    // materialisation of it.
+    if (there !== undefined) {
+      shadowed.push(graft.path)
+      node.dirs.delete(leaf)
+    }
+    node.rawDirs.set(leaf, canonical.root)
   }
-
+  for (const place of later) place()
   for (const graft of args.fileGrafts ?? []) {
     const { node, leaf } = insertAt(graft.path)
     node.files.set(leaf, { name: leaf, digest: graft.digest, is_executable: graft.isExecutable })
@@ -317,29 +383,11 @@ export async function buildInputTree(args: {
   }
   for (const dir of args.ensureDirs ?? []) {
     if (dir === '') continue
+    const parts = dir.split('/')
     let node = root
-    for (const seg of dir.split('/')) {
-      let next = node.dirs.get(seg)
-      if (next === undefined) {
-        next = emptyDir()
-        node.dirs.set(seg, next)
-      }
-      node = next
+    for (let i = 0; i < parts.length; i++) {
+      node = descend(node, parts[i]!, parts.slice(0, i + 1).join('/'))
     }
-  }
-
-  const shadowed: string[] = []
-  for (const graft of args.treeGrafts ?? []) {
-    const { node, leaf } = insertAt(graft.path)
-    if (node.dirs.has(leaf)) shadowed.push(graft.path)
-    const canonical = canonicaliseTree(graft)
-    for (const b of canonical.blobs) {
-      if (!seen.has(b.digest.hash)) {
-        seen.add(b.digest.hash)
-        blobs.push(b)
-      }
-    }
-    node.rawDirs.set(leaf, canonical.root)
   }
 
   const rootDigest = serialise(root, blobs, seen)
@@ -384,13 +432,11 @@ function serialise(node: DirNode, blobs: Blob[], seen: Set<string>): Digest {
   const directories: DirectoryNode[] = []
   const dirNames = utf8Sorted([...new Set([...node.dirs.keys(), ...node.rawDirs.keys()])])
   for (const name of dirNames) {
+    // A name is in one map or the other, never both (`buildInputTree`).
     const sub = node.dirs.get(name)
     directories.push({
       name,
-      // A grafted subtree wins over a disk-built one of the same name: the
-      // graft is the upstream's AUTHORITATIVE output, the disk copy at best
-      // a stale materialisation of it.
-      digest: node.rawDirs.get(name) ?? serialise(sub!, blobs, seen),
+      digest: sub === undefined ? node.rawDirs.get(name)! : serialise(sub, blobs, seen),
     })
   }
   const files = utf8Sorted([...node.files.keys()]).map((n) => node.files.get(n)!)

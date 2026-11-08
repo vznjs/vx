@@ -12,7 +12,9 @@ import {
   encodeCommand,
   encodeDirectory,
   sha256,
+  type TreeGraft,
 } from '../src/merkle.js'
+import type { Directory } from '../src/wire.js'
 
 let root: string
 
@@ -171,6 +173,114 @@ describe('graft shadowing', () => {
     })
     expect(clean.shadowed).toEqual([])
     void h
+  })
+})
+
+// `install` outputs node_modules as a Tree; `prisma`, after it, writes
+// node_modules/.prisma. The Tree graft replaced the whole subtree, so a
+// dependant of both ran without prisma's client and its result was saved.
+describe('an upstream output nested under another upstream Tree graft', () => {
+  const bytes = (s: string) => new TextEncoder().encode(s)
+  /** Every path in the tree, `path` for a file and `path -> target` for a symlink. */
+  const listing = (tree: Awaited<ReturnType<typeof buildInputTree>>): string[] => {
+    const byHash = new Map(tree.blobs.map((b) => [b.digest.hash, b.data]))
+    const out: string[] = []
+    const walk = (hash: string, at: string): void => {
+      const dir = decodeDirectory(byHash.get(hash)!)
+      for (const f of dir.files) out.push(`${at}${f.name}`)
+      for (const s of dir.symlinks) out.push(`${at}${s.name} -> ${s.target}`)
+      for (const d of dir.directories) walk(d.digest.hash, `${at}${d.name}/`)
+    }
+    walk(tree.root.hash, '')
+    return out.sort()
+  }
+  const liba = sha256(bytes('liba'))
+  const libaDir: Directory = {
+    files: [{ name: 'index.js', digest: liba, is_executable: false }],
+    directories: [],
+    symlinks: [],
+  }
+  const install: TreeGraft = {
+    path: 'app/node_modules',
+    root: {
+      files: [],
+      directories: [{ name: 'liba', digest: sha256(encodeDirectory(libaDir)) }],
+      symlinks: [],
+    },
+    children: [libaDir],
+  }
+  let ws: string
+  beforeAll(async () => {
+    ws = await mkdtemp(path.join(tmpdir(), 'vx-reapi-nested-graft-'))
+    await mkdir(path.join(ws, 'app', 'node_modules', '.prisma'), { recursive: true })
+    await writeFile(path.join(ws, 'app', 'node_modules', '.prisma', 'client.js'), 'prisma')
+  })
+  afterAll(async () => {
+    await rm(ws, { recursive: true, force: true })
+  })
+
+  it('a file graft under it is merged in, not dropped', async () => {
+    const client = sha256(bytes('prisma'))
+    const tree = await buildInputTree({
+      workspaceRoot: ws,
+      paths: [],
+      expected: new Map(),
+      treeGrafts: [install],
+      fileGrafts: [
+        { path: 'app/node_modules/.prisma/client.js', digest: client, isExecutable: false },
+      ],
+    })
+    expect(listing(tree)).toEqual([
+      'app/node_modules/.prisma/client.js',
+      'app/node_modules/liba/index.js',
+    ])
+    // No input was declared there, so nothing was shadowed.
+    expect(tree.shadowed).toEqual([])
+  })
+
+  it('a Tree graft under it is merged in', async () => {
+    const clientDir: Directory = {
+      files: [{ name: 'client.js', digest: sha256(bytes('prisma')), is_executable: false }],
+      directories: [],
+      symlinks: [],
+    }
+    const tree = await buildInputTree({
+      workspaceRoot: ws,
+      paths: [],
+      expected: new Map(),
+      treeGrafts: [{ path: 'app/node_modules/.prisma', root: clientDir, children: [] }, install],
+    })
+    expect(listing(tree)).toEqual([
+      'app/node_modules/.prisma/client.js',
+      'app/node_modules/liba/index.js',
+    ])
+  })
+
+  it('an upstream output on this disk under it is merged in', async () => {
+    const tree = await buildInputTree({
+      workspaceRoot: ws,
+      paths: ['app/node_modules/.prisma/client.js'],
+      expected: new Map(),
+      treeGrafts: [install],
+    })
+    expect(listing(tree)).toEqual([
+      'app/node_modules/.prisma/client.js',
+      'app/node_modules/liba/index.js',
+    ])
+    expect(tree.shadowed).toEqual([])
+  })
+
+  it('a declared input under it is still replaced and reported (control)', async () => {
+    const tree = await buildInputTree({
+      workspaceRoot: ws,
+      paths: ['app/node_modules/.prisma/client.js'],
+      expected: new Map([
+        ['app/node_modules/.prisma/client.js', '9a4b5e0e5f0d0f0bd2a4b8b5d3f2d6c0f36f1f7a'],
+      ]),
+      treeGrafts: [install],
+    })
+    expect(listing(tree)).toEqual(['app/node_modules/liba/index.js'])
+    expect(tree.shadowed).toEqual(['app/node_modules'])
   })
 })
 
