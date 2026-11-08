@@ -63,6 +63,8 @@ export interface TaskArtifacts {
   save(key: string, task: ArtifactTask, run: ArtifactRun): Promise<void>
   restore(key: string, task: ArtifactTask): Promise<CapturedChunk[] | null>
   // The output alone, no file laid (a remote-only task's stay off this disk).
+  // A remote read is kept locally, so a later restore downloads nothing; it
+  // names no task, so its row reads `<key>#unknown` and its names go unchecked.
   output(key: string): Promise<CapturedChunk[] | null>
   // True once a remote the run reads holds it: this machine's entry uploaded
   // to those it writes when none does. Another machine reads the remotes alone.
