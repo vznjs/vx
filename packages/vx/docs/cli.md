@@ -1493,7 +1493,7 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    there or in a project's parent directory is a cycle too, and so is the
    repository's `.git/info/exclude`: inputs are
    gitignore-aware, so it changes what keys read (X-136). The files a
-   claimed file's digests read besides it, as `vx lock` recorded them in
+   claimed file's digests read besides it, as the lock recorded them in
    `.vx/dependencies.lock.json` (a `file:` or `link:` dependency's
    directory, inside the root or not, and a patch file), are watched too,
    and their edit is a cycle; a re-lock that changes the set re-arms it. A file a
