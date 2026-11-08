@@ -991,7 +991,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const inputChanges = described !== undefined ? args.explainMiss?.(node.id, captured) : undefined
   // A plugin may keep the request past the run (the cache closed): it gets
   // the upstream outputs read now. Only the local floor leaves them unread.
-  if (inputs !== undefined && !isLocalExecutor(args.executor)) void inputs.upstream
+  if (inputs !== undefined && !isLocalExecutor(args.executor)) await described!.readUpstream()
   // A declared input set that resolves to NOTHING is the quiet stale hit:
   // the key stops moving with this project's source and every later run
   // is a hit. Almost always a glob written against the wrong directory

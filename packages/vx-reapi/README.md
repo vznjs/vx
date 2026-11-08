@@ -460,7 +460,10 @@ A cache-only server (bazel-remote advertises `exec_enabled: false`) makes the
 plugin **decline the executor with a warning** rather than submit work that
 will never be answered. Only cacheable tasks are eligible — a task with no
 `cache: true` has no described inputs, so a worker would run it against an
-empty input root. A cacheable task's root holds its declared input files.
+empty input root. A cacheable task's root holds its declared input files
+and its upstreams' declared outputs. An upstream with no `cache` runs on
+this machine and leaves no record, so its outputs ship from this disk; a
+file it writes outside its declared `outputs` never reaches the worker.
 
 Verified end-to-end against a live NativeLink scheduler + worker: input tree
 uploaded, QUEUED → EXECUTING → COMPLETED streamed, stdout returned inline,

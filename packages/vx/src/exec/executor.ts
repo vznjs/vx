@@ -84,8 +84,9 @@ export interface TaskInputs {
    * Dependencies whose cache keys are folded. `outputs` lists each one's
    * declared output files (workspace-relative POSIX, as stored with its cache
    * entry) — restored on disk before this task runs, so an input-shipping
-   * executor can include them in the input root. Empty when the upstream's
-   * entry is not in the local index (a non-cacheable dependency).
+   * executor can include them in the input root. A non-cacheable
+   * dependency's are its declared outputs found on disk; a cacheable one
+   * with no entry in the local index lists none.
    */
   readonly upstream: ReadonlyArray<{
     readonly taskId: string
