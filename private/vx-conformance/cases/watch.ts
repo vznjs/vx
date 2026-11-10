@@ -171,6 +171,29 @@ export default [
   }),
 
   watchCase({
+    id: 'watch/directory-moved-in-reruns',
+    kind: 'correctness',
+    title: 'A folder moved into the inputs rebuilds with its files, and so does an edit inside it',
+    why: 'Moving a folder in is one rename: no file inside it is written, so a watch that waits for file writes hears nothing. Its files are still new inputs, as if they had been created there. The build must take them, and the folder must be watched from then on so its next edit rebuilds too.',
+    from: ['watch-tree-linux'],
+    workspace: app(
+      { files: { 'staging/sub/c.txt': 'c1\n' } },
+      { command: 'mkdir -p dist && cat $(find src -type f | sort) > dist/out.txt' },
+    ),
+    phases: [
+      firstBuild,
+      {
+        sh: 'mv packages/app/staging/sub packages/app/src/sub',
+        expect: { ran: ['app#build'], files: { [OUT]: 'a1\nc1\n' } },
+      },
+      {
+        write: { 'packages/app/src/sub/c.txt': 'c2\n' },
+        expect: { ran: ['app#build'], files: { [OUT]: 'a1\nc2\n' } },
+      },
+    ],
+  }),
+
+  watchCase({
     id: 'watch/empty-directory-reruns-nothing',
     kind: 'efficiency',
     title: 'Creating an empty folder under the inputs reruns nothing',
