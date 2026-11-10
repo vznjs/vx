@@ -2650,7 +2650,12 @@ export class Cache implements CacheLayer {
       for (const r of rows) {
         dirs.add(target(r.path.endsWith('/') ? r.path.slice(0, -1) : path.posix.dirname(r.path)))
       }
-      for (const d of dirs) await mkdir(d, { recursive: true })
+      // Only the deepest, at once: each makes its parents, and one after
+      // another they cost solid's 13-directory restore ~1.5 ms of awaits.
+      const sorted = [...dirs].sort()
+      const leaves = sorted.filter((d, i) => !sorted[i + 1]?.startsWith(`${d}/`))
+      if (leaves.length === 1) await mkdir(leaves[0]!, { recursive: true })
+      else await Promise.all(leaves.map((d) => mkdir(d, { recursive: true })))
       // Every copy settles before a failure is handled: one still in flight
       // would write its file again after the cleanup removed it.
       const copied = await Promise.allSettled(
@@ -2669,9 +2674,17 @@ export class Cache implements CacheLayer {
       if (failed !== undefined) throw failed.reason
       if (swapped()) throw new ArtifactVanishedError(hash)
       landing = true
-      for (const rel of roots) {
+      // At once, every one settled before a failure is handled, as the
+      // copies; one alone is awaited, as a 1,601-restore run felt the promises.
+      const land = async (rel: string): Promise<void> => {
         await rename(temps.get(rel)!, path.join(projectDir, rel))
         landed.push(rel)
+      }
+      if (roots.length === 1) await land(roots[0]!)
+      else {
+        const renamed = await Promise.allSettled(roots.map(land))
+        const unrenamed = renamed.find((c) => c.status === 'rejected')
+        if (unrenamed !== undefined) throw unrenamed.reason
       }
     } catch (err) {
       await Promise.all([...temps.values()].map((t) => rm(t, { recursive: true, force: true })))
