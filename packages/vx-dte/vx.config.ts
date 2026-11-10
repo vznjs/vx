@@ -4,7 +4,15 @@ import { defineProject } from '@vzn/vx'
 // touched this package (PR #4314): each heavy file is a task of its own,
 // the rest one more. The rest is every file but those, so a new one is
 // never left out.
-const HEAVY = ['wire', 'wire-faults', 'wire-dials', 'local-e2e', 'local-e2e-saves', 'units', 'gitlab']
+const HEAVY = [
+  'wire',
+  'wire-faults',
+  'wire-dials',
+  'local-e2e',
+  'local-e2e-saves',
+  'units',
+  'gitlab',
+]
 const rest = `$(ls tests/*.test.ts | grep -v ${HEAVY.map((f) => `-e /${f}.test.ts`).join(' ')})`
 
 /** `bun test` over `files`, a shard of the suite. */
