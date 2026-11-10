@@ -14,7 +14,9 @@ import {
   beginRun,
   mark,
   nearest,
+  OWN_DIR_HINT,
   relPosix,
+  restorableOutput,
   type SecretBroker,
   thrownMessage,
   UserError,
@@ -908,6 +910,7 @@ export async function prepareRunLocked(
       await applyKeyHooks(plugins, nodes, { workspaceRoot, cacheDir, warn: warnOf(log), locked })
     }
     refuseFiltersThroughGroups(nodes)
+    refuseCacheInOutputs(nodes, gitFilesCache.vxDirs, cacheDir, workspaceRoot, nestedDirsByProject)
     const exclude = options.excludeDependencies
     // The nodes are what the graph token names only while nothing edited them.
     if (
@@ -1294,6 +1297,47 @@ export async function openRemotes(
     }
   }
   return closed && !remotes.some((r) => r.read || r.write)
+}
+
+/**
+ * Refuses a run whose cache directory lies under a task's declared outputs:
+ * the task's output clean deleted the index mid-run, and with
+ * `clean: false` each save packed the index and earlier entries into its
+ * own, which a hit then restored over the live index. Probed at the files
+ * every cache holds, with the walk's own matcher (a glob naming the
+ * directory takes its tree), so a `!` take-back keeps the run. Free unless
+ * the cache is inside the workspace; then one prefix test per task.
+ */
+function refuseCacheInOutputs(
+  nodes: ReadonlyMap<string, TaskNode>,
+  vxDirs: readonly string[],
+  cacheDir: string,
+  workspaceRoot: string,
+  nestedDirsByProject: ReadonlyMap<string, string[]>,
+): void {
+  const dir = vxDirs[0]
+  if (dir === undefined) return
+  const under = (base: string) => dir === base || dir.startsWith(base + path.sep)
+  const reaches = (globs: readonly string[], base: string, scope: 'project' | 'workspace') => {
+    const take = restorableOutput(globs, scope)
+    const rel = relPosix(base, dir)
+    return ['cache.db', 'cache.lock'].some((f) => take(rel === '' ? f : `${rel}/${f}`))
+  }
+  const walls = outputWallsOf(nestedDirsByProject)
+  for (const n of nodes.values()) {
+    const files = n.config.outputs?.files ?? []
+    const ws = n.config.outputs?.workspaceFiles ?? []
+    const own =
+      files.length > 0 &&
+      under(n.projectDir) &&
+      !(walls.get(n.projectName) ?? []).some(under) &&
+      reaches(files, n.projectDir, 'project')
+    if (own || (ws.length > 0 && reaches(ws, workspaceRoot, 'workspace')))
+      throw new UserError(
+        `cache directory ${cacheDir} lies under the outputs of ${n.id}: its output clean would delete the cache, or its save would pack the cache into its own entry. ${OWN_DIR_HINT}`,
+        'VX_E_CONFIG',
+      )
+  }
 }
 
 /**

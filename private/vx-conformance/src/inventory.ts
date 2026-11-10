@@ -47,6 +47,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'brace-outputs',
     'cache',
     'cache-declaration-warnings',
+    'cache-dir-in-outputs',
     'cache-hygiene',
     'clean-readonly-dir',
     'cleaned-tracked-reader',

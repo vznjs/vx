@@ -464,10 +464,15 @@ On a hit:
    hands the new one the freed inode (measured, item 941), so ctime is
    the guard. A row with no stamp (an ingest from a remote, or a file
    that had changed when the stamp was taken) is never current: the hit
-   restores and stamps. The residual: ctime ticks on the kernel's coarse
-   clock (4 ms at HZ=250), so a same-size rewrite inside the tick of
-   vx's own write, in place or as a new file that took the same inode,
-   still matches.
+   restores and stamps. A file whose ctime has no sub-second part (a
+   file system that keeps whole seconds: ext3, HFS+, FAT, some NFS) is
+   not stamped while that second, widened as the racy windows are, is
+   current: a same-size hand edit later in the second of vx's own write
+   kept every field and read up-to-date over the wrong bytes on every
+   later run. The next hit finds the bytes equal and stamps then. The
+   residual: ctime ticks on the kernel's coarse clock (4 ms at HZ=250),
+   so a same-size rewrite inside the tick of vx's own write, in place or
+   as a new file that took the same inode, still matches.
 3. Otherwise the `outputs/<rel>` (+ `workspace-outputs/<rel>`) entries
    are extracted from the artifact (its bytes inline in the index, read
    in one snapshot with the entry's rows, or
@@ -1524,7 +1529,9 @@ decide it the same way, the reading ones without making or changing
 anything, so they read the entries runs use. Name a
 cache directory (`--cache-dir`, relative to the working directory; else
 `VX_CACHE_DIR`, else `cache.dir` in .vx/workspace.ts, each relative to the
-workspace root) and it holds everything, shared with no other workspace:
+workspace root) and it holds everything, shared with no other workspace.
+One under a selected task's declared outputs is refused before any task,
+naming the task: the task's output clean would delete it mid-run. Its layout:
 
 ```
 <cacheDir>/                                 (default .vx/cache when one is named)
