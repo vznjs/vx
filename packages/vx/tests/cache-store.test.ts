@@ -58,7 +58,7 @@ const treeFile = (cacheDir: string): string => {
   const rel = readdirSync(cacheDir, { recursive: true })
     .map(String)
     .find((n) => n.endsWith(`${HASH}.tree`))!
-  return path.join(cacheDir, rel, 'outputs/out/a.bin')
+  return path.join(cacheDir, rel, 'out/a.bin')
 }
 
 const combos: StoreOptions[] = []
@@ -211,7 +211,7 @@ describe('a tree hit', () => {
     await utimes(file, st.atime, st.mtime)
     await cache.restoreOutputs(HASH, proj)
     expect(await readFile(path.join(proj, 'out/a.bin'), 'utf8')).toBe(edited)
-    expect(readdirSync(path.dirname(path.dirname(path.dirname(file))))).not.toContain('.vx-sum')
+    expect(readdirSync(path.dirname(path.dirname(file)))).not.toContain('.vx-sum')
     cache.close()
   })
 })
@@ -306,10 +306,10 @@ describe('a tree hit into absent outputs', () => {
 describe('a tree no row names', () => {
   it('is an orphan the sweep sizes and reaps; an indexed tree stays', async () => {
     const { cache, proj } = await saved({ embeddings: 0, decompress: true }, LARGE)
-    const indexed = path.dirname(path.dirname(path.dirname(treeFile(path.join(root, 'c')))))
+    const indexed = path.dirname(path.dirname(treeFile(path.join(root, 'c'))))
     const orphan = path.join(path.dirname(indexed), 'fedcba9876543210.tree')
-    await mkdir(path.join(orphan, 'outputs'), { recursive: true })
-    await writeFile(path.join(orphan, 'outputs/x'), 'x'.repeat(11))
+    await mkdir(orphan, { recursive: true })
+    await writeFile(path.join(orphan, 'x'), 'x'.repeat(11))
     const old = (Date.now() - 2 * 60 * 60 * 1000) / 1000
     await utimes(orphan, old, old)
     await utimes(indexed, old, old)
