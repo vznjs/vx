@@ -140,7 +140,8 @@ export function headBase(workspaceRoot: string, ref: string): string | undefined
    nothing. A changed path that is a link to a directory, or was a link (mode
    120000 on either side) and is no link to a file now, is a `dirLinks`
    entry: `declaresInput` matches it as a directory a glob may reach
-   below, as the key does (`mayHoldMatch`).
+   below, as the key does (`mayHoldMatch`), and a negation by the paths
+   beneath it, never its name.
 4. A changed ROOT file a `fingerprint` plugin claims (a lockfile under
    `@vzn/vx-lockfile`) is asked of its claimant, which names the
    projects whose dependency closure moved —

@@ -812,6 +812,20 @@ function canAccess(p: string, mode: number): boolean {
   }
 }
 
+/**
+ * `lstat`, or undefined for a path that is not there, a parent that is a
+ * file included: `throwIfNoEntry: false` passes over ENOENT alone, and the
+ * ENOTDIR of `conf/b.txt` under a file `conf` failed the key (2026-11-10).
+ */
+export function lstatOrAbsent(p: string): Stats | undefined {
+  try {
+    return lstatSync(p, { throwIfNoEntry: false })
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOTDIR') return undefined
+    throw err
+  }
+}
+
 function vanished(p: string): boolean {
   try {
     lstatSync(p)
@@ -2378,7 +2392,7 @@ function statRecords(
   const now = Date.now()
   let out = ''
   for (const rel of rels) {
-    const st = lstatSync(abs(rel), { throwIfNoEntry: false })
+    const st = lstatOrAbsent(abs(rel))
     if (st === undefined || !st.isFile()) return undefined
     if (now - Math.floor(st.ctimeMs) < racyWindowMs(st.ctimeMs, FILE_HASH_RACY_MS)) return
     const mode = (st.mode & 0o100) !== 0 ? '100755' : '100644'

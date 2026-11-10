@@ -134,6 +134,72 @@ describe('a symlinked input keys what it points to', () => {
     TIMEOUT,
   )
 
+  // 2026-11-10: a negation was asked of the link's own name, so
+  // `!src/**/*.skip` over `src/l.skip -> ../shared` took out every file
+  // behind it, where under a real `src/d.skip/` it takes out none: an edit
+  // there was a hit. A negation applies to the paths beneath the link.
+  it(
+    'a negation that matches a directory link’s name keeps the files behind it',
+    async () => {
+      await writeFile(path.join(root, '.gitignore'), '.vx/cache/\nout.txt\ngen/\n')
+      for (const d of ['other', 'more', 'gone', 'kept', 'wide']) {
+        await mkdir(path.join(root, d))
+        await writeFile(path.join(root, d, 'z.txt'), `${d} 1\n`)
+      }
+      app = await addProject(root, 'a', {
+        config: `export default { tasks: { build: { exec: { command: 'cat src/l.skip/x.txt gen/n.skip/z.txt ../../ws/m.skip/z.txt src/u.skip/z.txt ../../gen/w.skip/z.txt > out.txt' }, inputs: { files: ['src/**', '!src/**/*.skip', 'gen/**', '!gen/**/*.skip', '!src/g'], workspaceFiles: ['ws/**', '!ws/**/*.skip', 'gen/**', '!gen/**/*.skip'] }, outputs: { files: ['out.txt'] }, cache: true } } }`,
+      })
+      await mkdir(path.join(app, 'src'))
+      await mkdir(path.join(app, 'gen'))
+      await mkdir(path.join(root, 'ws'))
+      await symlink('../../../shared', path.join(app, 'src', 'l.skip'))
+      await symlink('../../../other', path.join(app, 'gen', 'n.skip'))
+      await symlink('../more', path.join(root, 'ws', 'm.skip'))
+      await mkdir(path.join(root, 'gen'))
+      await symlink('../wide', path.join(root, 'gen', 'w.skip'))
+      await symlink('../../../kept', path.join(app, 'src', 'g'))
+      commit('fixture')
+      await symlink('../../../gone', path.join(app, 'src', 'u.skip'))
+      await rebuildsAfter(
+        () => writeFile(path.join(root, 'shared', 'x.txt'), 'V2\n'),
+        'V2\nother 1\nmore 1\ngone 1\nwide 1\n',
+      )
+      for (const [d, want] of [
+        ['other', 'V2\nother 2\nmore 1\ngone 1\nwide 1\n'],
+        ['more', 'V2\nother 2\nmore 2\ngone 1\nwide 1\n'],
+        ['gone', 'V2\nother 2\nmore 2\ngone 2\nwide 1\n'],
+        ['wide', 'V2\nother 2\nmore 2\ngone 2\nwide 2\n'],
+      ] as const) {
+        await writeFile(path.join(root, d, 'z.txt'), `${d} 2\n`)
+        expect(statusOf(await build()), `${d}: ${said.join('')}`).toBe('success')
+        expect(await out()).toBe(want)
+      }
+      // A negation that takes back the whole tree under a link still does.
+      await writeFile(path.join(root, 'kept', 'z.txt'), 'kept 2\n')
+      expect(statusOf(await build())).toBe('cache-hit')
+    },
+    TIMEOUT,
+  )
+
+  // The same negation asked of a link the command adds while it runs: the
+  // save went ahead under a key without it, and a hit replayed it once gone.
+  it(
+    'a directory link a negation names, added while the command runs, withholds the save',
+    async () => {
+      app = await addProject(root, 'a', {
+        config: `export default { tasks: { build: { exec: { command: 'ln -s ../../../shared src/n.skip && cat src/n.skip/x.txt > out.txt' }, inputs: { files: ['src/**', '!src/**/*.skip'] }, outputs: { files: ['out.txt'] }, cache: true } } }`,
+      })
+      await mkdir(path.join(app, 'src'))
+      await writeFile(path.join(app, 'src', 'a.txt'), 'a\n')
+      commit('fixture')
+      expect(statusOf(await build()), said.join('')).toBe('success')
+      expect(said.join('')).toMatch(/changed after its key was taken/)
+      await rm(path.join(app, 'src', 'n.skip'))
+      expect(statusOf(await build()), said.join('')).toBe('success')
+    },
+    TIMEOUT,
+  )
+
   it(
     'a brace glob whose alternative directory is a link: an edit behind it',
     async () => {

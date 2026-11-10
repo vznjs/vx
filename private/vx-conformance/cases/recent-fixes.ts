@@ -354,4 +354,34 @@ export default [
       { run: 'build', projects: ['app'], expect: { exit: 'fail' } },
     ],
   }),
+  defineCase({
+    id: 'inputs/negation-matching-a-directory-link-name-keeps-its-files',
+    category: 'inputs',
+    kind: 'correctness',
+    title: 'A negation that matches a directory link’s name still keys the files behind it',
+    why: 'Inputs are `src/**` but not `src/**/*.skip`, and `src/l.skip` is a link to a shared folder the build reads. Under a real folder named `l.skip` the negation matches none of its files, so they stay inputs; a link must not change that. A tool that matches the negation against the link’s own name drops every file behind it, and an edit there replays the old build.',
+    from: ['linked-inputs'],
+    workspace: {
+      projects: {
+        a: {
+          tasks: {
+            build: build({
+              command:
+                'mkdir -p dist && find -L src -type f ! -name "*.skip" | sort | xargs cat > dist/out.txt',
+              inputs: ['src/**', '!src/**/*.skip'],
+            }),
+          },
+          files: { 'src/a.txt': 'a\n' },
+        },
+      },
+      files: { 'top/f.txt': 'one\n' },
+    },
+    steps: [
+      { link: { 'packages/a/src/l.skip': '../../../top' } },
+      { commit: 'link' },
+      { run: 'build', expect: { exit: 0, files: { [out('a')]: 'a\none\n' } } },
+      { write: { 'top/f.txt': 'two\n' } },
+      { run: 'build', expect: { exit: 0, files: { [out('a')]: 'a\ntwo\n' } } },
+    ],
+  }),
 ]

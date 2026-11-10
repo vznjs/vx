@@ -2068,6 +2068,19 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
 }
 
 /**
+ * Whether `abs` leads to a directory. A link that leads nowhere is no
+ * directory: under a file (ENOTDIR) or in a loop (ELOOP) as well as
+ * dangling, where the stat's throw failed the run (2026-11-10).
+ */
+function linksToDir(abs: string): boolean {
+  try {
+    return statSync(abs, { throwIfNoEntry: false })?.isDirectory() === true
+  } catch {
+    return false
+  }
+}
+
+/**
  * The wildcard input globs, when not one of them matched a file: the
  * literal files beside them did. A lockfile plugin appends `package.json`
  * to every task's inputs, so `scr/**` for `src/**` kept a non-empty set
@@ -2095,8 +2108,7 @@ function deadSourceGlobs(
   // A link to a directory a glob reaches below is listed by its own name,
   // which the glob does not match: `src/**` over `src -> ../shared` was
   // called dead though an edit through it moved the key.
-  for (const { path: p } of files)
-    if (statSync(path.join(root, p), { throwIfNoEntry: false })?.isDirectory() === true) return []
+  for (const { path: p } of files) if (linksToDir(path.join(root, p))) return []
   return [...own, ...ws]
 }
 

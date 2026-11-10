@@ -31,7 +31,7 @@ export function declaresInput(
   task: TaskConfig,
   projectRel: string | null,
   workspaceRel: string | null,
-  dirLink?: boolean, // the path is a link to a directory: a glob that may reach below it counts
+  dirLink?: boolean, // the path is a link to a directory: a glob that may reach below it counts, unless a negation takes back its whole tree
   untracked?: boolean, // git does not track it: under the task's own outputs it is no input
   projectDir?: string, // the task's project, workspace-relative: its outputs.files a workspaceFiles glob reaches
 ): boolean
@@ -108,7 +108,7 @@ export interface InputListing {
   workspaceRoot: string // where git's location variables point; a nested repo's root is listed without them
   listed: readonly string[] // root-relative, as git listed them
   isInput: (rel: string) => boolean // the declaration's verdict
-  linked: (rel: string) => boolean // a link to a directory here is an input
+  linked: (rel: string) => boolean // a link to a directory here is an input; a negation counts only if it takes back the tree beneath
   nested: (rel: string) => boolean // inside a nested project
   prefixes: readonly string[] // directories a positive entry reaches, '' for the root
   literals: readonly string[]
@@ -345,7 +345,8 @@ other walker: a project outside a git work tree is a `UserError`
    or under it — is read from disk (`ignoredReach`, `ignoredInputs`):
    gitignored, named outright, so an input (2026-10-16). Outside
    the per-run memo, since a dependency writes there mid-run. One that
-   does not exist stays silent until it does.
+   does not exist (under a parent that is a file, too) stays silent
+   until it does.
 3. **Negative globs** — entries starting with `!`. The `!` is
    stripped; the rest becomes a `Bun.Glob` (a literal is a tree here
    too) and any matched path is removed.
