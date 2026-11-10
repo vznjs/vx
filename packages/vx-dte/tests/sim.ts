@@ -6,7 +6,7 @@
 // What the summary's Workers table would say comes back with it.
 
 import type { TaskNode } from '@vzn/vx'
-import { type Need, Queue } from '../src/dispatch.js'
+import { type Need, Queue, type Soon } from '../src/dispatch.js'
 import { needOf } from '../src/plugin.js'
 import { booked, DEFAULT_STRATEGY, type Strategy } from '../src/strategy.js'
 import {
@@ -18,7 +18,9 @@ import {
   type Forecast,
   type PlanTask,
   type PlanWorker,
+  leftMs,
   type Size,
+  UNKNOWN_MS,
 } from '../src/planner.js'
 
 /** One task of the run: as the CI graph declares it, and how it ran if it missed. */
@@ -260,11 +262,46 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
         running: w.running.size,
         has: w.has,
         platform: w.platform,
+        ends: [...w.running.values()].map(
+          (r) =>
+            [
+              Math.max(1, leftMs(r.startedAt + (r.knownMs ?? UNKNOWN_MS) - now)),
+              Math.min(r.booked.cores, w.cores),
+              Math.min(r.booked.memory, w.memory),
+            ] as const,
+        ),
         w,
       }
     })
+    // Tasks about to be ready: every dependency running or ended (`Orchestrator.soon`).
+    const endsAt = new Map<string, number>()
+    for (const w of joined())
+      for (const r of w.running.values())
+        endsAt.set(r.id, now + Math.max(1, leftMs(r.startedAt + (r.knownMs ?? UNKNOWN_MS) - now)))
+    const soon: Soon[] = []
+    for (const t of graph) {
+      if (!t.exec || t.ran === undefined || readyAt.has(t.id) || done.has(t.id)) continue
+      let at = 0
+      let ok = t.deps.length > 0
+      for (const d of t.deps) {
+        if (done.has(d)) continue
+        const e = endsAt.get(d)
+        if (e === undefined) {
+          ok = false
+          break
+        }
+        at = Math.max(at, e - now)
+      }
+      if (ok)
+        soon.push({ need: need(t.id), at, rank: tail(t.id), ms: durationMs(t.id) ?? UNKNOWN_MS })
+    }
+    soon.sort((a, b) => b.rank - a.rank)
     // The live run's own rule (`Orchestrator.pump`).
-    const to = queue.pass(bins, { deps: (id) => byId.get(id)!.deps })
+    const to = queue.pass(bins, {
+      deps: (id) => byId.get(id)!.deps,
+      ms: durationMs,
+      soon: soon.slice(0, 4 * bins.length + 8),
+    })
     for (const [id, bin] of to) {
       const w = bin.w
       if (overloaded.has(w.id)) overSent++
