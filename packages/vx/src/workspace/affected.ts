@@ -888,6 +888,16 @@ async function indexEntries(workspaceRoot: string): Promise<IndexEntry[]> {
   return out
 }
 
+/** No entry at `p`, under a parent that is now a file too (ENOTDIR). */
+function absent(p: string): boolean {
+  try {
+    return lstatSync(p, { throwIfNoEntry: false }) === undefined
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOTDIR') return true
+    throw err
+  }
+}
+
 /**
  * The flagged paths whose disk side moved from the index (`git diff` covers
  * the index against the base): a file whose bytes hash to another blob, a
@@ -911,7 +921,7 @@ async function flaggedChanges(
     if (entry === undefined || seen.has(rel)) continue
     // Synchronous: a sparse checkout flags its every absent file, and one
     // awaited stat each was 7 s per 100,000 (a loop of these, 0.15 s).
-    if (lstatSync(path.join(workspaceRoot, rel), { throwIfNoEntry: false }) === undefined) {
+    if (absent(path.join(workspaceRoot, rel))) {
       if (!entry.skipWorktree) out.push(rel)
     } else if (entry.mode === '120000' || rel.includes('\n')) out.push(rel)
     else hash.push(entry)

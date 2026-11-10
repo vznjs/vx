@@ -426,6 +426,13 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     pattern, and an edit behind it was a hit (2026-10-28). So is one
     in a gitignored directory an entry names (`gen/**/*.ts` over
     `gen/v -> ../shared`), which the walk on disk meets the same way.
+    A `!` entry applies to the paths beneath such a link, as beneath a
+    real directory, never to its name: `!src/**/*.skip` keeps
+    `src/l.skip -> ../top`, as it keeps every file of a real
+    `src/d.skip/`, and only a negation that takes back the whole tree
+    (`!src/l.skip`, `!src/l.skip/**`) leaves the link out. Asked of the
+    name, the negation dropped every file behind it, and an edit there
+    was a hit (2026-11-10).
 
 The composition is seed-chained (`xxh3(part, prevDigest)`) with a
 label prefix per field, so two different field layouts can't collide.
@@ -961,7 +968,11 @@ candidate turned up; a hit runs no command and checks nothing.
 A file listed but gone before the key hashes it (an upstream that
 deletes a file its dependant's globs match) is keyed as absent, not
 read: the dependant failed as `internal error … ENOENT` on every run
-until A-55. Absent stays unmoved while it stays gone.
+until A-55. Absent stays unmoved while it stays gone. So is a
+declared path under a parent that is now a file (`conf/b.txt` with
+`conf` a file, a tracked directory replaced by a file): its `lstat`
+answers ENOTDIR, which failed the key as an internal error until
+2026-11-10.
 Its dependants whose keys fold its key save nothing either,
 transitively: that key does not name the bytes they built from (`[vx] app#use: ran
 over app#gen's outputs, which its key no longer describes — …`). Until

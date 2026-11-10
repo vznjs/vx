@@ -436,4 +436,26 @@ describe('--affected and a directory link below a glob', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'a link whose name a negation matches still selects the task: the negation is asked of the paths beneath it',
+    async () => {
+      // `!**/*.skip` matched the link's name, where under a real `v.skip/`
+      // directory it matches no file (2026-11-10). `all` claims the link's
+      // path, so the project is not reached whole.
+      await write(
+        path.join(root, 'pkgs/app/vx.config.mjs'),
+        `export default { tasks: { files: ${keyed('["src/**", "!src/**/*.skip"]')}, ws: ${keyed('[]', '["shared/**", "!shared/**/*.skip"]')}, gone: ${keyed('["src/**", "!src/v.skip"]')}, all: ${keyed('["src/**"]')} } }\n`,
+      )
+      await write(path.join(root, 'linked/b.txt'), '1')
+      await symlink('../../../linked', path.join(root, 'pkgs/app/src/v.skip'))
+      await symlink('../linked', path.join(root, 'shared/v.skip'))
+      await editBehindLink()
+      expect(planned('files')).toEqual(['app#files'])
+      expect(planned('ws')).toEqual(['app#ws'])
+      // CONTROL: a negation that takes back the whole tree under the link.
+      expect(planned('gone')).toContain('othing affected')
+    },
+    TIMEOUT,
+  )
 })

@@ -213,6 +213,8 @@ export function repoRootOf(workspaceRoot: string, gitPrefix: string): string // 
 // The identity the key folds: the blob OID, prefixed `<mode>:` unless mode is 100644 (item 887)
 export function fileIdentity(mode: string, oid: string): string
 export function parseCheckAttrOutput(out: string): Set<string>
+// `lstat`, or undefined for no entry, under a parent that is a file (ENOTDIR) too
+export function lstatOrAbsent(p: string): Stats | undefined
 export function autocrlfConverts(gitVars: string): boolean // over `git var -l`
 // `core.trustctime` off or `core.checkStat=minimal`: `git status` cannot see a
 // same-size, time-keeping rewrite, so the enumeration trusts no OID (A-6).

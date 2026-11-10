@@ -753,7 +753,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
    */
   statOf(abs: string): Stats | undefined {
     if (this.stats.has(abs)) return this.stats.get(abs)
-    const st = lstatSync(abs, { throwIfNoEntry: false })
+    const st = lstatOrAbsent(abs)
     this.stats.set(abs, st)
     return st
   }
@@ -977,6 +977,20 @@ function canAccess(p: string, mode: number): boolean {
     return true
   } catch (err) {
     return (err as NodeJS.ErrnoException).code !== 'EACCES'
+  }
+}
+
+/**
+ * `lstat`, or undefined for a path that is not there, a parent that is a
+ * file included: `throwIfNoEntry: false` passes over ENOENT alone, and the
+ * ENOTDIR of `conf/b.txt` under a file `conf` failed the key (2026-11-10).
+ */
+export function lstatOrAbsent(p: string): Stats | undefined {
+  try {
+    return lstatSync(p, { throwIfNoEntry: false })
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOTDIR') return undefined
+    throw err
   }
 }
 

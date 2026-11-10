@@ -58,7 +58,13 @@ import {
   writableUnder,
   withoutWorkspaceBins,
 } from '../util/index.js'
-import { GitFilesCache, listingEnv, newFilesIgnoredIn, runGitLsFiles } from './git-inputs.js'
+import {
+  GitFilesCache,
+  listingEnv,
+  lstatOrAbsent,
+  newFilesIgnoredIn,
+  runGitLsFiles,
+} from './git-inputs.js'
 import { FILE_HASH_RACY_MS, racyWindowMs } from './layer.js'
 
 // The git side lives in git-inputs.ts; its whole public surface is
@@ -504,7 +510,9 @@ function resolveWorkspaceFiles(args: {
       !excludedByDeclaration(rel) &&
       !own(rel),
     linked: (rel) =>
-      (mayHold ??= mayHoldMatch(positive))(rel) && !excludedByDeclaration(rel) && !own(rel),
+      (mayHold ??= mayHoldMatch(positive))(rel) &&
+      !excludedBeneath(excludedByDeclaration, rel) &&
+      !own(rel),
     nested: () => false,
     ...reachOf(positive),
   }
@@ -562,9 +570,8 @@ async function resolveWorkspaceFilesOver(
   const oids = args.gitFilesCache?.oidsFor(args.workspaceRoot)
   const mayHold = mayHoldMatch(positive)
   for (const rel of gitFiles) {
-    if (isPositive(rel)) {
-      if (!excluded(rel)) candidates.push(path.resolve(args.workspaceRoot, rel))
-    } else if (mayHold(rel) && !excluded(rel)) {
+    if (isPositive(rel) && !excluded(rel)) candidates.push(path.resolve(args.workspaceRoot, rel))
+    else if (mayHold(rel) && !excludedBeneath(excluded, rel)) {
       const abs = path.resolve(args.workspaceRoot, rel)
       if (dirLinkInput(abs, oids)) candidates.push(abs)
     }
@@ -2204,7 +2211,7 @@ function ignoredInputs(
   for (const entry of reach) {
     const abs = path.resolve(root, entry)
     if (vxOwn(abs)) continue
-    const st = lstatSync(abs, { throwIfNoEntry: false })
+    const st = lstatOrAbsent(abs)
     if (st === undefined) continue
     if (!st.isDirectory()) {
       if ((st.isFile() || st.isSymbolicLink()) && accept(entry)) found.add(abs)
@@ -2446,6 +2453,22 @@ export function holdReach(
   })
 }
 
+/** A name no file holds: only a `!` entry that takes back a whole tree matches it. */
+const BENEATH = '\0'
+
+/**
+ * Whether the `!` entries take back every path under `rel`, a link to a
+ * directory: a negation applies to the files behind it, as under a real
+ * directory, never to the link's own name. `!src/**\/*.skip` matched the
+ * name of `src/l.skip -> ../top` and dropped every file behind it, where
+ * under a real `src/d.skip/` it drops none, so an edit there was a hit
+ * (2026-11-10). Two depths, so `!l/*` alone, which leaves `l/a/b` an
+ * input, keeps the link.
+ */
+function excludedBeneath(isExcluded: (rel: string) => boolean, rel: string): boolean {
+  return isExcluded(`${rel}/${BENEATH}`) && isExcluded(`${rel}/${BENEATH}/${BENEATH}`)
+}
+
 /**
  * Whether `abs`, a path a glob may reach below, is a link to a directory.
  * A trusted index OID answers for a tracked file with no syscall: only a
@@ -2495,7 +2518,12 @@ export function declaresInput(
     if (plan !== null && (inPlan(plan, projectRel) || (!untracked && ownOnly(plan, projectRel)))) {
       return true
     }
-    if (plan !== null && dirLink && plan.mayHold(projectRel) && !plan.isExcluded(projectRel)) {
+    if (
+      plan !== null &&
+      dirLink &&
+      plan.mayHold(projectRel) &&
+      !excludedBeneath(plan.isExcluded, projectRel)
+    ) {
       return true
     }
   }
@@ -2570,7 +2598,9 @@ function workspaceMatcher(decl: readonly string[]): (rel: string, dirLink: boole
   const isPositive = throughLinks(positive, anyTaskGlob(asTrees(positive)))
   const mayHold = mayHoldMatch(positive)
   const isExcluded = anyTaskGlob([...WORKSPACE_ALWAYS_IGNORE, ...asTrees(negative)])
-  m = (rel, dirLink) => (isPositive(rel) || (dirLink && mayHold(rel))) && !isExcluded(rel)
+  m = (rel, dirLink) =>
+    (isPositive(rel) && !isExcluded(rel)) ||
+    (dirLink && mayHold(rel) && !excludedBeneath(isExcluded, rel))
   workspaceMatchers.set(key, m)
   return m
 }
@@ -2679,7 +2709,12 @@ async function resolveFiles(
     if (nested(rel) || ownWsOutput(rel)) continue
     const abs = base === undefined ? path.resolve(args.projectDir, rel) : (paths?.[i] ?? base + rel)
     if (!input && !ownOnly(plan, rel)) {
-      if (plan.mayHold(rel) && !isExcluded(rel) && !ownOutput(rel) && dirLinkInput(abs, oids)) {
+      if (
+        plan.mayHold(rel) &&
+        !excludedBeneath(isExcluded, rel) &&
+        !ownOutput(rel) &&
+        dirLinkInput(abs, oids)
+      ) {
         candidates.push(paths === undefined ? abs : (paths[i] = abs))
       }
       continue
@@ -2736,7 +2771,7 @@ function withIgnored(
     (rel) => inPlan(plan, rel) && !nested(rel) && !ownWsOutput(rel),
     (rel) =>
       plan.mayHold(rel) &&
-      !plan.isExcluded(rel) &&
+      !excludedBeneath(plan.isExcluded, rel) &&
       !plan.ownOutput(rel) &&
       !nested(rel) &&
       !ownWsOutput(rel),
@@ -2764,7 +2799,10 @@ function listingFor(
           (committed ??= committedFiles(args.gitFilesCache, root))(path.join(root, rel)))) &&
       !ownWsOutput(rel),
     linked: (rel) =>
-      plan.mayHold(rel) && !plan.isExcluded(rel) && !plan.ownOutput(rel) && !ownWsOutput(rel),
+      plan.mayHold(rel) &&
+      !excludedBeneath(plan.isExcluded, rel) &&
+      !plan.ownOutput(rel) &&
+      !ownWsOutput(rel),
     nested,
     prefixes: plan.prefixes,
     literals: plan.literals,
