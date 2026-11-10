@@ -2407,6 +2407,7 @@ export class Cache implements CacheLayer {
     verify: (provided: ReadonlySet<string>) => void,
     accept: ((name: string) => boolean) | undefined,
     dated: Map<string, number>,
+    absentDirs: Set<string>,
   ): Promise<void> {
     const files = rows.filter((r) => !r.path.endsWith('/') && r.mode !== LINK_MODE)
     let bytes = 0
@@ -2428,6 +2429,7 @@ export class Cache implements CacheLayer {
         workspaceRoot,
         accept,
         dated,
+        absentDirs,
       )
     )
       return
@@ -2440,6 +2442,7 @@ export class Cache implements CacheLayer {
       workspaceRoot,
       undefined,
       dated,
+      absentDirs,
     )
   }
 
@@ -2491,6 +2494,7 @@ export class Cache implements CacheLayer {
     workspaceRoot: string | undefined,
     accept: ((name: string) => boolean) | undefined,
     dated: Map<string, number>,
+    absentDirs: Set<string>,
   ): Promise<boolean> {
     for (const r of rows) {
       if (r.path.startsWith(WORKSPACE_OUTPUT_PREFIX) || r.mode === LINK_MODE) return false
@@ -2509,6 +2513,7 @@ export class Cache implements CacheLayer {
         try {
           const st = lstatSync(path.join(projectDir, rel), { throwIfNoEntry: false })
           known = st === undefined ? 'absent' : st.isDirectory() ? 'dir' : 'other'
+          if (known === 'absent') absentDirs.add(path.join(projectDir, rel))
         } catch {
           known = 'other'
         }
@@ -2809,6 +2814,8 @@ export class Cache implements CacheLayer {
       .map((r) => (r.path.startsWith(WORKSPACE_OUTPUT_PREFIX) ? r.path : `outputs/${r.path}`))
     endRows()
     const moded = modedDirs(rows, projectDir, workspaceRoot)
+    // The directories the restore found missing: made 0755, not asked again.
+    const absentDirs = new Set<string>()
     const verify = (provided: ReadonlySet<string>): void => {
       const missing = expected.filter((name) => !provided.has(name))
       if (missing.length > 0) {
@@ -2849,6 +2856,7 @@ export class Cache implements CacheLayer {
           verify,
           accept,
           written,
+          absentDirs,
         )
       } else {
         const tar = await decodedTar(inline ?? Bun.file(src), hash, this.artifactCeiling)
@@ -2861,6 +2869,7 @@ export class Cache implements CacheLayer {
           workspaceRoot,
           undefined,
           written,
+          absentDirs,
         )
       }
       // Keyed by row path: a project output's row drops the `outputs/`.
@@ -2871,7 +2880,11 @@ export class Cache implements CacheLayer {
           t,
         )
       this.datedMtimes.set(hash, byRow)
-      for (const [dir, mode] of moded) await chmod(dir, restoredMode(mode))
+      const dirModes = [
+        ...moded,
+        ...narrowedDirs(rows, projectDir, workspaceRoot, absentDirs),
+      ].sort((a, b) => b[0].length - a[0].length)
+      for (const [dir, mode] of dirModes) await chmod(dir, restoredMode(mode))
     } catch (err) {
       // A UserError here is the extractor naming the tree's fault (an
       // output directory that links out of the project).
@@ -4452,36 +4465,55 @@ function modedDirs(
   workspaceRoot: string | undefined,
 ): Array<[string, number]> {
   const out: Array<[string, number]> = []
-  const abs = (rel: string): string | undefined => {
-    if (!rel.startsWith(WORKSPACE_OUTPUT_PREFIX)) return path.join(projectDir, rel)
-    return workspaceRoot === undefined
-      ? undefined
-      : path.join(workspaceRoot, rel.slice(WORKSPACE_OUTPUT_PREFIX.length))
-  }
-  // A directory with no recorded mode was left at least 0755: one standing
-  // narrower (a switch from an entry that chmods it, a hand's chmod) is
-  // given 0755. A missing one is mkdir's, which is that already.
-  const wide = (rel: string): void => {
-    const dir = abs(rel)
-    if (dir === undefined) return
-    const st = lstatSync(dir, { throwIfNoEntry: false })
-    if (st?.isDirectory() === true && !wideDirMode(st.mode)) out.push([dir, 0o755])
-  }
   for (const r of rows) {
-    if (!r.path.endsWith('/')) continue
-    const rel = r.path.slice(0, -1)
-    if ((r.mode & 0o170000) !== DIR_MODE) {
-      wide(rel)
-      continue
-    }
-    const dir = abs(rel)
+    if ((r.mode & 0o170000) !== DIR_MODE || !r.path.endsWith('/')) continue
+    const dir = rowDir(r.path.slice(0, -1), projectDir, workspaceRoot)
     if (dir === undefined) continue
     const st = lstatSync(dir, { throwIfNoEntry: false })
     if (st === undefined || (st.isDirectory() && !modeMatches(st.mode, r.mode)))
       out.push([dir, r.mode & 0o777])
   }
+  return out
+}
+
+/** A row's directory on disk; a workspace one with no workspace, none. */
+function rowDir(
+  rel: string,
+  projectDir: string,
+  workspaceRoot: string | undefined,
+): string | undefined {
+  if (!rel.startsWith(WORKSPACE_OUTPUT_PREFIX)) return path.join(projectDir, rel)
+  return workspaceRoot === undefined
+    ? undefined
+    : path.join(workspaceRoot, rel.slice(WORKSPACE_OUTPUT_PREFIX.length))
+}
+
+/**
+ * The directories with no recorded mode that stood narrower than 0755
+ * through the restore (a switch from an entry that chmods one, a hand's
+ * chmod), each to be given 0755: an entry records only a narrower mode. A
+ * directory the restore made (`made`, found missing) is mkdir's, 0755
+ * already, and is not asked about again.
+ */
+function narrowedDirs(
+  rows: readonly OutputFileRow[],
+  projectDir: string,
+  workspaceRoot: string | undefined,
+  made: ReadonlySet<string>,
+): Array<[string, number]> {
+  const out: Array<[string, number]> = []
+  const wide = (rel: string): void => {
+    const dir = rowDir(rel, projectDir, workspaceRoot)
+    if (dir === undefined || made.has(dir)) return
+    for (let up = path.dirname(dir); up !== dir && up.length > 1; up = path.dirname(up))
+      if (made.has(up)) return
+    const st = lstatSync(dir, { throwIfNoEntry: false })
+    if (st?.isDirectory() === true && !wideDirMode(st.mode)) out.push([dir, 0o755])
+  }
+  for (const r of rows)
+    if (r.path.endsWith('/') && (r.mode & 0o170000) !== DIR_MODE) wide(r.path.slice(0, -1))
   for (const rel of rowAncestors(rows)) wide(rel)
-  return out.sort((a, b) => b[0].length - a[0].length)
+  return out
 }
 
 /** A row's path as the tree names its file. */
