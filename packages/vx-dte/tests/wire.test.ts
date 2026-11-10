@@ -506,8 +506,10 @@ it('a worker whose orchestrator does not come back ends two heartbeats after the
 })
 
 // A worker the run no longer holds (lost, removed) that joins again is let go.
+// CI, 2026-11-10: at 500 ms beats the worker, whose orchestrator here never
+// polls, lost it (3 beats) before the rejoin's refusal reached it under load.
 it('lets go of a worker that joins again naming an id it does not hold', async () => {
-  const served = servedRelay({ heartbeatMs: 500 })
+  const served = servedRelay({ heartbeatMs: 2_000 })
   try {
     const o = await join(served.url, R2, 'orchestrator', null, undefined)
     const a = await join(served.url, R2, 'worker', null, undefined)
@@ -996,6 +998,8 @@ it('gives up on a relay that answers nothing in 10 s in all, and names it', asyn
   const server = Bun.serve({
     hostname: '127.0.0.1',
     port: 0,
+    // Bun's 10 s default closed the held request first: ECONNRESET at 9.4 s (CI, 2026-11-10).
+    idleTimeout: 0,
     fetch: () => new Promise<Response>(() => {}),
   })
   servers.push({ url: '', stop: () => server.stop(true) })
