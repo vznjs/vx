@@ -522,7 +522,7 @@ async function runOnBus(
     // this one's: it waits for this hold, and this for it. Released with the
     // run lock.
     if (sharedCacheDir !== undefined) {
-      const dir = await holdCacheDir(sharedCacheDir, 'shared', warnOf(log), signal)
+      const dir = await holdCacheDir(sharedCacheDir, 'shared', warnOf(log), signal, root)
       heldLock = Object.assign(
         async (): Promise<void> => {
           dir()
