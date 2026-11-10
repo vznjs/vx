@@ -16,8 +16,16 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { parseRunArgs, resolveRunOptions, type RunArgs, spacedHint } from './run.js'
 import { refuse, seeHelp } from './help.js'
-import { fsClockNow, namedIgnoredReach, repoFacts } from '../cache/index.js'
 import {
+  FILE_HASH_RACY_MS,
+  fsClockNow,
+  namedIgnoredReach,
+  racyWindowMs,
+  repoFacts,
+} from '../cache/index.js'
+import {
+  type CommandWindows,
+  commandWindows,
   fingerprintClaims,
   forwardedSignal,
   run as runOrchestrator,
@@ -231,22 +239,27 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
 
   // Initial run — same code path as `vx run`.
   //
-  // Watchers do not exist yet, so an edit made WHILE this run is executing is
-  // dropped by the OS and never triggers a re-run. Known and deliberate: the
-  // obvious fix (install watchers first) forces `anyTaskUsesWorkspaceFiles`
-  // ahead of the run to decide which watchers to install, and that marks every
-  // config loaded — so the initial run's own loads become REPEATs and pay a
-  // worker round-trip each (see config-eval.ts). Trading a hot-path regression
-  // on every `vx watch` for a window a user rarely edits into is a bad deal.
-  // An edit to the inputs of a task the run was running is caught anyway:
-  // the run leaves that task unsaved, and the loop starts on it (`drifted`).
+  // Watchers do not exist yet, so the OS drops the event of an edit made
+  // WHILE this run is executing. Known and deliberate: the obvious fix
+  // (install watchers first) forces `anyTaskUsesWorkspaceFiles` ahead of the
+  // run to decide which watchers to install, and that marks every config
+  // loaded — so the initial run's own loads become REPEATs and pay a worker
+  // round-trip each (see config-eval.ts). The edit is found instead: one to
+  // the inputs of a task the run was running leaves that task unsaved, and
+  // the loop starts on it (`drifted`); any other is a file the arm finds
+  // written since the run started by none of its commands (`InitialRun`).
   // The exception: once the run waits on a server's readiness alone, every
   // config is loaded, and the loop arms with the run as its cycle in
   // flight. Unarmed, a server that never got ready held the initial run
   // for good, and the fix to it was never heard (X-139).
   let loop: Promise<void> | undefined
+  const initialRun: InitialRun = {
+    from: fsClockNow(opts.cacheDir ?? path.join(workspaceRoot, '.vx')),
+    windows: commandWindows(),
+    lock: lockStamp(workspaceRoot),
+  }
   const initial: InitialCycle = {
-    cycle: watchCycle(opts, stop.signal, () => {
+    cycle: watchCycle({ ...opts, commandWindows: initialRun.windows }, stop.signal, () => {
       if (initial.onWaiting !== undefined) initial.onWaiting()
       else if (loop === undefined && (scope.length > 0 || unlocked) && !stop.signal.aborted)
         loop = armLoop(initial)
@@ -330,6 +343,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
       opts,
       held,
       initial,
+      initialRun,
       tasks: openingTasks,
       drifted,
       stop: stop.signal,
@@ -388,6 +402,16 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   }
 }
 
+/** What the initial run's own writes are told from an edit by: no watcher was armed. */
+interface InitialRun {
+  /** Its start, on the mtime clock (`fsClockNow`). */
+  readonly from: number
+  /** Its commands' windows: a write inside one may be the run's own. */
+  readonly windows: CommandWindows
+  /** The lock as it read it (`lockStamp`). */
+  readonly lock: string
+}
+
 /** The initial run, when the loop arms while it is still in flight. */
 interface InitialCycle {
   readonly cycle: WatchCycle
@@ -403,6 +427,7 @@ interface WatchLoopArgs {
   held: HeldPersistent | undefined
   /** The initial run, still in flight: the loop's first cycle. */
   initial: InitialCycle | undefined
+  initialRun: InitialRun
   /** The initial run's task count, once it has started. */
   tasks: () => number | undefined
   /** A task the initial run left unsaved because its inputs moved under it (`TaskOutcome.unkeyed`). */
@@ -539,17 +564,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
 
   const hasWorkspaceFile = (): boolean =>
     WORKSPACE_CONFIG_FILENAMES.some((n) => fs.existsSync(path.join(workspaceRoot, n)))
-  const lockAbs = path.join(workspaceRoot, LOCKFILE_NAME)
-  const lockStamp = (): string => {
-    try {
-      const st = fs.statSync(lockAbs)
-      return `${st.ino}:${st.size}:${st.mtimeMs}:${st.ctimeMs}`
-    } catch {
-      return ''
-    }
-  }
   /** The lock as the last cycle found it: a config edit with no re-lock since changes no command. */
-  let lockSeen = lockStamp()
+  let lockSeen = args.initialRun.lock
   // Every cycle's configs are the lock's, so a config edit alone ran a cycle
   // that printed `changed` and nothing else, read as the edit applied. A
   // config gone is the run's own refusal to name.
@@ -605,7 +621,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
             // new package while its first cycle runs queues like any other; armed
             // only after, it fell in the gap and ran nothing (X-138). The re-read
             // after the run stays, for what the run itself changed.
-            lockAtRun = lockStamp()
+            lockAtRun = lockStamp(workspaceRoot)
             const relocked = lockAtRun !== lockSeen
             lockSeen = lockAtRun
             // The file marks the root, and `vx run` refuses without it; a
@@ -697,7 +713,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
         // lock written in between was the re-arm's to read, its new pollers
         // took it as their baseline, and it was never an event (macOS CI,
         // 2026-11-06).
-        if (lockAtRun !== undefined && lockStamp() !== lockAtRun) rootFileEvent(LOCKFILE_NAME)
+        if (lockAtRun !== undefined && lockStamp(workspaceRoot) !== lockAtRun)
+          rootFileEvent(LOCKFILE_NAME)
         // What landed mid-run is judged on settled state, one window
         // after the run, under the label of what actually arrived.
         current = undefined
@@ -726,7 +743,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   // project would otherwise trigger every save during `bun install` —
   // and vx's own cache writes would trigger a cycle that writes again.
   /** What existed and was tracked at the arm, so a file born and gone since is no deletion and a tracked one is the user's edit (watch-judge.ts). */
-  const atArm = gitFiles(workspaceRoot)
+  const atArm = gitFiles(workspaceRoot, true)
   let isIgnoredPath = makeWatchIgnore(cacheDir, outputs, inputs, atArm?.tracked)
   let fenced = makeFence(args.fenceDirs)
   let matters = makeRootEventFilter(
@@ -925,6 +942,23 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
       if (abs.startsWith(real + path.sep)) projectEvent(proj, path.relative(real, abs))
     }
   }
+  const wideEvent = (filename: string): void => {
+    if (!matters(filename) || isIgnoredPath(workspaceRoot, filename)) return
+    const abs = path.join(workspaceRoot, filename)
+    if (
+      shapesWatchedSet(filename) ||
+      filename === LOCKFILE_NAME ||
+      claimedRootFiles.has(filename) ||
+      configImportFiles.includes(abs)
+    )
+      reread = true
+    if (wsConfigImportFiles.includes(abs)) sayStaleImport(abs)
+    const owner = ownerOf(abs)
+    trigger(
+      owner === undefined ? `root ${filename}` : `${owner.name} ${path.relative(owner.dir, abs)}`,
+      abs,
+    )
+  }
   const armRoot = (): void => {
     try {
       rootArm = workspaceWide
@@ -937,23 +971,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
           // / .git / .vx and declared outputs out of what remains.
           arm(workspaceRoot, true, (filename) => {
             if (oneStream) heardInStream(filename)
-            if (!matters(filename) || isIgnoredPath(workspaceRoot, filename)) return
-            const abs = path.join(workspaceRoot, filename)
-            if (
-              shapesWatchedSet(filename) ||
-              filename === LOCKFILE_NAME ||
-              claimedRootFiles.has(filename) ||
-              configImportFiles.includes(abs)
-            )
-              reread = true
-            if (wsConfigImportFiles.includes(abs)) sayStaleImport(abs)
-            const owner = ownerOf(abs)
-            trigger(
-              owner === undefined
-                ? `root ${filename}`
-                : `${owner.name} ${path.relative(owner.dir, abs)}`,
-              abs,
-            )
+            wideEvent(filename)
           })
         : oneStream
           ? arm(workspaceRoot, true, streamEvent)
@@ -1361,10 +1379,53 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   sayWatching(projects.length)
   sayArmed(projects.length)
   // An edit made while the initial run ran landed before any watcher, and
-  // its mtime predates the arm, so no event or judgement can find it: the
-  // run's own re-check did (it left the task unsaved), and that starts the
-  // first cycle. Unheard, watch idled over output built from the old bytes.
-  if (args.drifted !== undefined) void cycle(`${args.drifted} inputs, edited during the first run`)
+  // its mtime predates the arm, so no event or judgement can find it.
+  // Unheard, watch idled over output built from the old bytes. One to a
+  // task the run was running, the run's own re-check found (it left the
+  // task unsaved); any other is heard here.
+  const heard = heardSinceRun()
+  if (args.drifted !== undefined && !heard)
+    void cycle(`${args.drifted} inputs, edited during the first run`)
+
+  /**
+   * The files written since the initial run started, by none of its
+   * commands, an event each, judged as changes. Only a file git finds
+   * untracked or modified can be one, and `atArm` asked git once already,
+   * so a start with no edit adds `-m`'s stats and nothing else. An edit
+   * made before its task keyed it re-runs to a hit.
+   */
+  function heardSinceRun(): boolean {
+    let heard = false
+    for (const abs of atArm?.dirty ?? []) {
+      let t: number
+      try {
+        const st = fs.lstatSync(abs)
+        if (Math.max(st.mtimeMs, st.ctimeMs) < args.initialRun.from) continue
+        t = st.ctimeMs
+      } catch {
+        // Gone: a deletion has no date, and one made before the start would run every start.
+        continue
+      }
+      if (
+        args.initialRun.windows.writerDuring('', abs, t, t + racyWindowMs(t, FILE_HASH_RACY_MS)) !==
+        undefined
+      )
+        continue
+      const rel = path.relative(workspaceRoot, abs)
+      if (workspaceWide) wideEvent(rel)
+      else {
+        if (!rel.includes(path.sep)) rootFileEvent(rel)
+        else if (rel.startsWith(`.vx${path.sep}`) && !rel.slice(4).includes(path.sep))
+          dotVxEvent(rel.slice(4))
+        for (const proj of watched)
+          if (abs.startsWith(proj.dir + path.sep)) projectEvent(proj, path.relative(proj.dir, abs))
+      }
+      if (!changes.pending.has(abs)) continue
+      changes.unseen([abs])
+      heard = true
+    }
+    return heard
+  }
 
   return await new Promise<void>((resolve) => {
     const cleanup = async (): Promise<void> => {
@@ -1383,6 +1444,16 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     }
     stop.addEventListener('abort', () => void cleanup(), { once: true })
   })
+}
+
+/** The lock's identity, `''` when there is none: a re-lock changes it. */
+function lockStamp(workspaceRoot: string): string {
+  try {
+    const st = fs.statSync(path.join(workspaceRoot, LOCKFILE_NAME))
+    return `${st.ino}:${st.size}:${st.mtimeMs}:${st.ctimeMs}`
+  } catch {
+    return ''
+  }
 }
 
 /**

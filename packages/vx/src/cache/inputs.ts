@@ -1310,6 +1310,13 @@ export async function cleanOutputs(args: {
    * restore's tree work (X-161).
    */
   resolved?: readonly string[] | undefined
+  /**
+   * The task's command runs next. A directory of this user's the clean
+   * opened (`removeAll`) is left open: given its `chmod 555` back, a
+   * kept `dist` refused the command's own write, and the task never
+   * missed again.
+   */
+  beforeRun?: boolean
 }): Promise<string[]> {
   const committed = committedPastLinks(
     args.projectDir,
@@ -1330,6 +1337,7 @@ export async function cleanOutputs(args: {
   const removed = await removeAll(
     [...matched, ...tree.special].filter((f) => !committed(f)),
     args.projectDir,
+    args.beforeRun,
   )
   await pruneEmptiedDirs(
     args.projectDir,
@@ -1337,6 +1345,7 @@ export async function cleanOutputs(args: {
     pruneScope(args.projectDir, args.outputs),
     undefined,
     tree.emptyDirs,
+    args.beforeRun,
   )
   // Project-relative posix paths the outputs reach, for the caller's
   // GitFilesCache.markOutputsChanged: a committed one kept here is the
@@ -1599,8 +1608,13 @@ const SYNC_CLEAN_MAX = 128
  * into it does (archive.ts `reopen`): else that task could never run or
  * restore again until someone chmodded the tree by hand. The prune after
  * reopens the same way for the subdirectories it removes (`pruneEmptiedDirs`).
+ * `keepOpen`: the command runs next, and gets no mode back (`cleanOutputs`).
  */
-async function removeAll(all: readonly string[], root: string): Promise<string[]> {
+async function removeAll(
+  all: readonly string[],
+  root: string,
+  keepOpen = false,
+): Promise<string[]> {
   const files = insideRoot(all, root)
   const reopened: Reopened = new Map()
   const reopen = (dir: string): boolean => reopenDir(dir, reopened)
@@ -1644,21 +1658,24 @@ async function removeAll(all: readonly string[], root: string): Promise<string[]
     )
     return files
   } finally {
-    giveBack(reopened)
+    if (!keepOpen) giveBack(reopened)
   }
 }
 
-/** Directories given owner write and search for a remove, with the mode each had. */
+/** Directories given missing owner bits for a remove or a walk, with the mode each had. */
 type Reopened = Map<string, number>
 
-/** Whether `dir` is now open to a remove: this user's, and its missing owner bits given. */
-function reopenDir(dir: string, reopened: Reopened): boolean {
+/**
+ * Whether `dir` is now open: this user's, and the owner `bits` it lacked
+ * given (write and search for a remove, read and search for a walk).
+ */
+function reopenDir(dir: string, reopened: Reopened, bits = 0o300): boolean {
   if (reopened.has(dir)) return true
   const st = lstatSync(dir, { throwIfNoEntry: false })
   if (st?.isDirectory() !== true || st.uid !== process.getuid?.()) return false
-  if ((st.mode & 0o300) === 0o300) return false
+  if ((st.mode & bits) === bits) return false
   reopened.set(dir, st.mode & 0o7777)
-  chmodSync(dir, (st.mode & 0o7777) | 0o300)
+  chmodSync(dir, (st.mode & 0o7777) | bits)
   return true
 }
 
@@ -1716,7 +1733,7 @@ function insideRoot(files: readonly string[], root: string): string[] {
  * wrote `dist/out/…` and now writes `dist/out`) blocks the rename. A directory that still
  * holds something — a stray the globs do not cover — stays, and the restore
  * says so if it is in the way. With a `scope`, only a directory inside it
- * goes (`pruneScope`).
+ * goes (`pruneScope`). `keepOpen` as `removeAll`'s.
  */
 async function pruneEmptiedDirs(
   root: string,
@@ -1724,6 +1741,7 @@ async function pruneEmptiedDirs(
   scope?: PruneScope,
   keep?: ReadonlySet<string>,
   emptyDirs: readonly string[] = [],
+  keepOpen = false,
 ): Promise<void> {
   const rootResolved = path.resolve(root)
   // LEVEL ORDER, not a walk-up per directory. A parent is attempted only
@@ -1783,7 +1801,7 @@ async function pruneEmptiedDirs(
       level = parents
     }
   } finally {
-    giveBack(reopened)
+    if (!keepOpen) giveBack(reopened)
   }
 }
 
@@ -1900,6 +1918,8 @@ export async function cleanWorkspaceOutputs(args: {
   committed?: (abs: string) => boolean
   /** `cleanOutputs`'s `resolved`, from `resolveWorkspaceOutputs`. */
   resolved?: readonly string[] | undefined
+  /** As `cleanOutputs`'s. */
+  beforeRun?: boolean
 }): Promise<string[]> {
   const committed = committedPastLinks(
     args.workspaceRoot,
@@ -1916,10 +1936,12 @@ export async function cleanWorkspaceOutputs(args: {
     await removeAll(
       [...matched, ...tree.special].filter((f) => !committed(f)),
       args.workspaceRoot,
+      args.beforeRun,
     ),
     pruneScope(args.workspaceRoot, args.outputs),
     undefined,
     tree.emptyDirs,
+    args.beforeRun,
   )
   return matched.map((f) => relPosix(args.workspaceRoot, f))
 }
@@ -2107,18 +2129,30 @@ function ignoredInputs(
       if ((st.isFile() || st.isSymbolicLink()) && accept(entry)) found.add(abs)
       continue
     }
-    for (const rel of WALK.scanSync({
-      cwd: abs,
-      onlyFiles: false,
-      followSymlinks: false,
-      dot: true,
-    })) {
-      const full = `${entry}/${rel.split(path.sep).join('/')}`
-      const file = path.join(abs, rel)
-      if (vxOwn(file)) continue
-      if (accept(full)) {
-        if (isInputOnDisk(file)) found.add(file)
-      } else if (linked(full) && dirLinkInput(file, undefined)) found.add(file)
+    try {
+      for (const rel of WALK.scanSync({
+        cwd: abs,
+        onlyFiles: false,
+        followSymlinks: false,
+        dot: true,
+      })) {
+        const full = `${entry}/${rel.split(path.sep).join('/')}`
+        const file = path.join(abs, rel)
+        if (vxOwn(file)) continue
+        if (accept(full)) {
+          if (isInputOnDisk(file)) found.add(file)
+        } else if (linked(full) && dirLinkInput(file, undefined)) found.add(file)
+      }
+    } catch (err) {
+      const e = err as NodeJS.ErrnoException
+      if (e.code !== 'EACCES' || e.path === undefined) throw err
+      // The walk stops at a directory it cannot list: the files past it
+      // would be in no key. Named, not told as a write it is not.
+      throw new UserError(
+        `cannot list input directory ${relPosix(root, path.resolve(abs, e.path))}: EACCES — ` +
+          `no key would see the files under it; give this user read and search permission ` +
+          `on it (chmod u+rx), or stop declaring it as an input`,
+      )
     }
   }
   return [...found].sort()
@@ -2908,7 +2942,35 @@ async function scanUnion(
       if (emptyDirs !== undefined && readdirSync(abs).length === 0) emptyDirs.add(abs)
     } else if (st === undefined && rel.includes('\ufffd')) refuseUndecodableOutput(abs, clearing)
   }
-  const opts = { cwd, onlyFiles: false, followSymlinks: false, dot: true }
+  const opts = { onlyFiles: false, followSymlinks: false, dot: true }
+  // A directory the task left unlistable (`chmod 000 dist/s`) stopped the
+  // walk with EACCES: the clean failed every later run until a manual
+  // chmod. A walk for a clean or a restore opens this user's own for its
+  // listing and gives each its mode back; a save refuses it by its path
+  // (`unlistedOutput`), as it cannot store what it cannot read.
+  const reopened: Reopened = new Map()
+  const tried = new Set<string>()
+  const walk = (glob: Bun.Glob, at: string, each: (rel: string) => void): void => {
+    for (;;) {
+      try {
+        for (const rel of glob.scanSync({ ...opts, cwd: at })) each(rel)
+        return
+      } catch (err) {
+        const e = err as NodeJS.ErrnoException
+        if (e.code !== 'EACCES' || e.path === undefined) throw err
+        const dir = path.resolve(at, e.path)
+        // Under a directory with no search bit (`chmod 444`) the refusal
+        // names its child: the parent is the one to open.
+        const open = (d: string): boolean => {
+          if (tried.has(d)) return false
+          tried.add(d)
+          return reopenDir(d, reopened, 0o500)
+        }
+        if (!clearing || !(open(dir) || open(path.dirname(dir))))
+          throw unlistedOutput(cwd, dir, clearing)
+      }
+    }
+  }
   // `Bun.Glob`'s scan finds nothing for a brace whose alternatives hold a
   // `/`: `{dist,lib/esm}/**` saved an empty artifact, and a hit restored
   // nothing over a cleaned tree (A-10). Expanded here, as discovery does.
@@ -2934,18 +2996,26 @@ async function scanUnion(
     !patterns.some((p) => headLinked(cwd, p))
   ) {
     const any = anyTaskGlob(patterns)
-    for (const rel of WHOLE_TREE.scanSync(opts)) if (any(rel)) take(rel)
+    try {
+      walk(WHOLE_TREE, cwd, (rel) => {
+        if (any(rel)) take(rel)
+      })
+    } finally {
+      giveBack(reopened)
+    }
     return matches
   }
-  for (const pattern of patterns) {
-    if (absentPrefix(cwd, pattern, absent)) continue
-    const from = scanRoot(cwd, pattern)
-    if (from === null) continue
-    roots?.add(from === undefined ? cwd : from.dir)
-    if (from === undefined) for (const rel of globFor(pattern).scanSync(opts)) take(rel)
-    else
-      for (const rel of globFor(from.rest).scanSync({ ...opts, cwd: from.dir }))
-        take(`${from.prefix}/${rel}`)
+  try {
+    for (const pattern of patterns) {
+      if (absentPrefix(cwd, pattern, absent)) continue
+      const from = scanRoot(cwd, pattern)
+      if (from === null) continue
+      roots?.add(from === undefined ? cwd : from.dir)
+      if (from === undefined) walk(globFor(pattern), cwd, take)
+      else walk(globFor(from.rest), from.dir, (rel) => take(`${from.prefix}/${rel}`))
+    }
+  } finally {
+    giveBack(reopened)
   }
   // A literal names the path and its tree (`dist`, `dist/**`), and a tree
   // whose head is a directory link is walked through it: the link and the
@@ -2960,6 +3030,17 @@ async function scanUnion(
     }
   }
   return matches
+}
+
+/** The refusal of an output directory this user cannot list, by its path from `cwd`. */
+function unlistedOutput(cwd: string, dir: string, clearing: boolean): UserError {
+  const why = clearing
+    ? "vx lists a task's declared outputs to clear them before it runs and before a restore"
+    : "vx lists a task's declared outputs to save them, and cannot store what it cannot read"
+  return new UserError(
+    `cannot list declared output directory ${relPosix(cwd, dir)}: EACCES — ${why}; ` +
+      `leave it readable and searchable by this user (chmod u+rx), or stop declaring it as an output`,
+  )
 }
 
 /** Filled by a walk asked for it: what lists the FIFOs, sockets and devices its globs name. */

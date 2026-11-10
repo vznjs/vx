@@ -1093,8 +1093,15 @@ Skipped when:
 
 A directory of this user's that withholds its own write (a task's
 `chmod 555 dist/ro`, which a hit restores too) gets owner write for the
-clean's remove, then its mode back, as a restore's write into it does; the
-subdirectories the clean empties in it go too.
+clean's remove, as a restore's write into it does; the subdirectories the
+clean empties in it go too. Before a restore it gets its mode back after.
+Before the command runs it stays writable: a glob's root stays (`dist`
+for `dist/**`), and given back a task's `chmod 555 dist` it refused the
+command's own write, so the task never missed again. One the task left
+unlistable (`chmod 000 dist/s`) is listed the same way for a clean or a
+restore; a save cannot store what it cannot read, so it fails the task
+with `cannot list declared output directory dist/s: EACCES — …`, and the
+next run's clean still clears it.
 A declared output the process cannot remove even so (a `dist/` another
 user wrote, a read-only checkout) fails the task with `cannot remove
 declared output <path>: EACCES — …`, and a restore that cannot write
@@ -1485,7 +1492,11 @@ by this user, or point cacheDir / --cache-dir at one that is.` (A-40).
 An input the key must hash that this user cannot read fails its task
 naming the read: `<path> is not readable by this user (EACCES), and vx
 reads it to derive a cache key. Make it readable, or, for a task input,
-take it out of inputs.files.` (A-50).
+take it out of inputs.files.` (A-50). An input directory this user may
+enter but not list (`chmod 111`) refuses the run by name: git cannot
+list it, so the files a task reads there by name were in no key, and an
+edit to one was a stale hit. One it may not enter is left out, as no task
+of its reads under it.
 
 By default the entries and their artifacts live in a **shared store**
 in `~/.vx/<id>/cache`, and each workspace keeps only its own index in

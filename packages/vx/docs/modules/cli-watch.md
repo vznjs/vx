@@ -86,7 +86,8 @@ export function makeWatchIgnore(
 export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set<string> // one `git check-ignore --stdin`
 export function gitFiles(
   workspaceRoot: string,
-): { listed: Set<string>; tracked: Set<string>; links: Set<string> } | undefined // one `git ls-files -t -s` at the arm; links: the symlinks, whose targets watch arms
+  dirty?: boolean, // add `-m`: `dirty` is the untracked files and the tracked ones modified
+): { listed: Set<string>; tracked: Set<string>; links: Set<string>; dirty: Set<string> } | undefined // one `git ls-files -t -s` at the arm; links: the symlinks, whose targets watch arms
 export function gitSpeller(root: string): (p: string) => string // a path as git spells it: a symlinked dir below the root resolved
 export function lockedExtras(workspaceRoot: string): Set<string> // the files the recorded digests read besides a claimed file (.vx/dependencies.lock.json extras), absolute: watch arms them
 export function makeRootEventFilter(
@@ -186,6 +187,15 @@ too: they format one run's result.
    `opts.selectedOutright` are dropped: the `--affected` diff is the
    tree at start, so a later cycle runs the requested task across the
    scope and the keys decide (`tests/watch-affected.test.ts`).
+   No watcher hears an edit made while it runs. One to a task it was
+   running leaves the task unsaved (`drifted`); any other is found once
+   the loop arms (`heardSinceRun`): of the files the arm's `gitFiles`
+   lists as untracked or modified, each written since the run started
+   (`InitialRun.from`, on the mtime clock) outside every window of its
+   commands (`InitialRun.windows`) is an event, marked `unseen` so the
+   judgement takes it for a change; a re-lock among them is the first
+   cycle's (`InitialRun.lock`). A start with no edit pays `-m`'s stats
+   alone (`tests/watch-initial-edit-done.test.ts`).
 5. **Watch loop** (`runWatchLoop`):
    - For each project a cycle can run (`watchedProjects`: the scope
      plus its transitive dependencies through `buildPackageGraph` with

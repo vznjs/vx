@@ -507,12 +507,17 @@ export function gitSpeller(root: string): (p: string) => string {
  * (watch-judge.ts). `tracked` is the files git tracks: a user edits those,
  * so a server cannot be blamed for one. `links` is the symlinks among the
  * files: a key reads what each points to (cache/linked-inputs.ts), so watch
- * arms that too. Undefined when git cannot answer:
- * no inventory, every gone path is a deletion as before.
+ * arms that too. With `dirty`, `dirty` is the untracked files and the
+ * tracked ones git finds modified (`-m` stats each tracked file): the only
+ * files an edit made before the arm can lie in. Undefined when git cannot
+ * answer: no inventory, every gone path is a deletion as before.
  */
 export function gitFiles(
   workspaceRoot: string,
-): { listed: Set<string>; tracked: Set<string>; links: Set<string> } | undefined {
+  dirty = false,
+):
+  | { listed: Set<string>; tracked: Set<string>; links: Set<string>; dirty: Set<string> }
+  | undefined {
   let proc: ReturnType<typeof Bun.spawnSync>
   try {
     proc = Bun.spawnSync({
@@ -526,6 +531,7 @@ export function gitFiles(
         '--cached',
         '--others',
         '--exclude-standard',
+        ...(dirty ? ['-m'] : []),
       ],
       env: gitEnv(),
       cwd: workspaceRoot,
@@ -539,6 +545,7 @@ export function gitFiles(
   const files = new Set<string>()
   const tracked = new Set<string>()
   const links = new Set<string>()
+  const modified = new Set<string>()
   for (const entry of new TextDecoder('utf-8', { ignoreBOM: true })
     .decode(proc.stdout)
     .split('\0')) {
@@ -549,13 +556,16 @@ export function gitFiles(
     const p = untracked ? entry.slice(2) : entry.slice(entry.indexOf('\t') + 1)
     // An untracked nested repository is listed as `dir/`.
     let abs = path.join(workspaceRoot, p.endsWith('/') ? p.slice(0, -1) : p)
+    // `-m` lists a modified file a second time, tagged `C`.
+    if (entry[0] === 'C' || (dirty && untracked && !p.endsWith('/'))) modified.add(abs)
+    if (entry[0] === 'C') continue
     files.add(abs)
     if (!untracked) tracked.add(abs)
     if (untracked ? isLink(abs) : entry.startsWith('120000 ', 2)) links.add(abs)
     for (abs = path.dirname(abs); abs !== workspaceRoot && !files.has(abs); abs = path.dirname(abs))
       files.add(abs)
   }
-  return { listed: files, tracked, links }
+  return { listed: files, tracked, links, dirty: modified }
 }
 
 function isLink(abs: string): boolean {

@@ -395,6 +395,41 @@ export default [
   }),
 
   watchCase({
+    id: 'watch/edit-after-task-in-first-run-rebuilds',
+    kind: 'correctness',
+    title:
+      'An edit made during the watch’s first build, to a task already done, is built right after',
+    why: 'The first build of a watch can finish one task while another still runs, and a save to the finished task’s source lands in that gap. No running task read the edit, so nothing marks its output stale. The watch must still build it once it starts watching, or it idles on output from the old bytes.',
+    from: ['watch-initial-edit-done'],
+    workspace: {
+      projects: {
+        lib: chainProject('lib'),
+        app: {
+          tasks: {
+            // `started` once lib's build is long done, so the edit lands after it.
+            build: build(
+              'sleep 0.5 && mkdir -p dist && cp src/a.txt dist/started && sleep 2 && cat src/*.txt > dist/out.txt',
+            ),
+          },
+          files: { 'src/a.txt': 'a1\n' },
+        },
+      },
+    },
+    phases: [
+      {
+        expect: {
+          files: { 'packages/lib/dist/out.txt': 'lib\n', 'packages/app/dist/started': 'a1\n' },
+          inFlight: true,
+        },
+      },
+      {
+        write: { 'packages/lib/src/a.txt': 'lib2\n' },
+        expect: { ran: ['lib#build'], files: { 'packages/lib/dist/out.txt': 'lib2\n' } },
+      },
+    ],
+  }),
+
+  watchCase({
     id: 'watch/keeps-watching-after-failure',
     kind: 'correctness',
     title: 'A build that fails while watching is built again once the source is fixed',

@@ -188,6 +188,8 @@ export async function cleanOutputs(args: {
   nestedProjectDirs: string[]
   inputs?: OwnInputs | undefined
   committed?: (abs: string) => boolean // git tracks it: never removed (default: asks git)
+  resolved?: readonly string[] | undefined // the walk's files, when the caller just walked
+  beforeRun?: boolean // the command runs next: a directory the clean opened stays open
 }): Promise<string[]>
 
 // The same pair for `outputs.workspaceFiles`, anchored at the root with
@@ -216,6 +218,8 @@ export async function cleanWorkspaceOutputs(args: {
   outputs: readonly string[]
   inputs?: OwnInputs | undefined
   committed?: (abs: string) => boolean
+  resolved?: readonly string[] | undefined
+  beforeRun?: boolean
 }): Promise<string[]>
 
 // No clean removes a file git tracks (2026-10-14); `committedFiles`
@@ -455,9 +459,21 @@ task's declared outputs. A
 directory of this user's that withholds its own write (`chmod 555
 dist/ro`) gets owner write for the remove and its mode back after, and
 the prune reopens one the same way to remove an emptied subdirectory
-(`tests/clean-readonly-dir.test.ts`). A declared output the process
+(`tests/clean-readonly-dir.test.ts`). Before the command runs
+(`beforeRun`) no mode is given back: a kept glob root the task made 555
+(`chmod 555 dist`) refused the command's own write, and the task never
+missed again. A declared output the process
 cannot remove even so — another user's `dist/`, a read-only checkout —
 is a `UserError` naming the path, not an internal error.
+
+An output directory the task left unlistable (`chmod 000 dist/s` or
+`111`) stopped the output walk with EACCES. A walk for a clean or a
+restore gives this user's own read and search for its listing and the
+mode back after; a save refuses it, `cannot list declared output
+directory dist/s: EACCES — …`, as it cannot store what it cannot read.
+An ignored input under a directory the walk cannot list is refused the
+same way, `cannot list input directory <path>: EACCES — …`
+(`tests/unlistable-input-dir.test.ts`).
 
 ## What this does NOT do
 

@@ -1127,7 +1127,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         // re-create would stay in a same-project consumer's input set, keeping
         // that consumer's key unchanged while the file is gone from disk.
         const endClean = span('miss: clean outputs')
-        const cleanedRels = await cleanOutputs(cleanArgs)
+        const cleanedRels = await cleanOutputs({ ...cleanArgs, beforeRun: true })
         endClean()
         args.gitFilesCache?.markOutputsChanged(node.projectDir, cleanedRels)
         committedBefore = checkCommitted(
@@ -1166,7 +1166,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       } else if (clean && wsOutputs.length > 0) {
         // Root-anchored deletions can land in other projects' dirs; mark
         // them so stale per-project git snapshots can't survive the wipe.
-        const cleanedWsRels = await cleanWorkspaceOutputs(wsCleanArgs)
+        const cleanedWsRels = await cleanWorkspaceOutputs({ ...wsCleanArgs, beforeRun: true })
         args.gitFilesCache?.markWorkspaceOutputsChanged(args.workspaceRoot, cleanedWsRels)
         wsCommittedBefore = checkCommitted(
           args.workspaceRoot,
