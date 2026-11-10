@@ -366,6 +366,8 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
         cores: w.cores,
         memory: w.memory,
         platform: w.platform,
+        // As the orchestrator: its declared size, which a stand-in starts again.
+        size: sizeOf.get(w.id)?.name,
         at: 0,
         idle: jobs.length === 0,
         running: jobs.map((r) => ({
