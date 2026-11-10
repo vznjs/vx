@@ -41,8 +41,12 @@ enter a directory, so the files under it were in no key: past PATH_MAX
 (4096 bytes on Linux) an edit there was a stale hit. The status walk and
 `runGitLsFiles` refuse such a warning, naming the directory (git cuts its
 message at 4096 bytes, so a long one is shown cut). A directory this user
-may not read is left out as before: no task of theirs reads it either,
-and a root-owned volume beside the projects must not stop every run.
+may not enter is left out as before: no task of theirs reads under it
+either, and a root-owned volume beside the projects must not stop every
+run. One it may enter but not list (`chmod 111`) is refused, `git could
+not list the directory <dir>: it can be entered but not read …`: a task
+reads a file there by name, and an edit to it was a stale hit
+(`tests/unlistable-input-dir.test.ts`).
 A directory gone before git opened it (a run lock's staging directory in a
 TMPDIR inside the workspace) holds no file to miss, so it is skipped too.
 A cut message is never skipped: it may name a prefix of a real path.

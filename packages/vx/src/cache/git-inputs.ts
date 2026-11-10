@@ -761,9 +761,11 @@ const UNOPENED = "warning: could not open directory '"
  * Refuses a walk git did not finish. `could not open directory` is a
  * warning and the exit is 0, so the files under it were in no key: past
  * PATH_MAX (4096 bytes on Linux) an edit there was a stale hit. A directory
- * this user may not read is left out as before: no task of theirs reads it
- * either, and a root-owned volume beside the projects must not stop every
- * run. git cuts its message at 4096 bytes, so a long path comes with no
+ * this user may not enter is left out as before: no task of theirs reads
+ * under it either, and a root-owned volume beside the projects must not
+ * stop every run. One it may enter but not list (`chmod 111`) is refused:
+ * a task reads a file there by name, and an edit to it was a stale hit.
+ * git cuts its message at 4096 bytes, so a long path comes with no
  * reason. `cwd`: where git ran; it names the directory from its work tree's top.
  */
 function refuseUnopenedDirs(cwd: string, stderr: string): void {
@@ -786,16 +788,27 @@ function refuseUnopenedDirs(cwd: string, stderr: string): void {
     // TMPDIR inside the workspace): no file is under it to miss. Only a
     // line git did not cut: a cut one may name a prefix of a real path.
     if (end !== -1 && vanished(at)) continue
-    try {
-      accessSync(at, fsConstants.R_OK | fsConstants.X_OK)
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'EACCES') continue
-    }
+    if (!canAccess(at, fsConstants.X_OK)) continue
     const shown = dir.length > 100 ? `${dir.slice(0, 40)}…${dir.slice(-40)}` : dir
+    if (end !== -1 && !canAccess(at, fsConstants.R_OK))
+      throw new UserError(
+        `git could not list the directory ${shown}: it can be entered but not read, so no key would see the files under it. Give this user read permission on it, or ignore it in .gitignore.`,
+        'VX_E_GIT',
+      )
     throw new UserError(
       `git could not open the directory ${shown}, so no key would see the files under it. Shorten the path, or ignore it in .gitignore.`,
       'VX_E_GIT',
     )
+  }
+}
+
+/** False only when `p` refuses this user `mode` (EACCES); any other error is no answer. */
+function canAccess(p: string, mode: number): boolean {
+  try {
+    accessSync(p, mode)
+    return true
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code !== 'EACCES'
   }
 }
 

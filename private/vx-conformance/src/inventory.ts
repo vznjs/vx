@@ -171,6 +171,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'uncached-upstream-key',
     'undeclared-writes',
     'unkeyed-upstream',
+    'unlistable-input-dir',
     'unreadable-input',
     'vx-lockfile/closure-per-project',
     'vx-lockfile/deleted-project',
