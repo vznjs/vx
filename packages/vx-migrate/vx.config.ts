@@ -27,7 +27,8 @@ const TEST_SHARDS = 4
 const testShard = (i: number) => ({
   description: `bun test, shard ${i} of ${TEST_SHARDS}`,
   exec: {
-    command: `bun test --only-failures --timeout=30000 --shard=${i}/${TEST_SHARDS} --timings=tests/timings.json`,
+    // Bun's transpiler cache in the task's own TMPDIR: each vx it spawns compiled src again.
+    command: `BUN_RUNTIME_TRANSPILER_CACHE_PATH="\${TMPDIR:-/tmp}/bun-transpiler" bun test --only-failures --timeout=30000 --shard=${i}/${TEST_SHARDS} --timings=tests/timings.json`,
     // `nx-exec-live.test.ts` runs the bin against REAL Nx when
     // VX_NX_MODULES names an install (CI puts one under `.nx-live/`,
     // inside this project, so the sandbox's read grant covers it) and

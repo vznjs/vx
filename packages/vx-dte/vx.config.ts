@@ -11,7 +11,8 @@ const rest = `$(ls tests/*.test.ts | grep -v ${HEAVY.map((f) => `-e /${f}.test.t
 const testTask = (files: string) => ({
   description: `bun test ${files === rest ? 'the files no other shard runs' : files}`,
   exec: {
-    command: `bun test --only-failures --timeout=30000 ${files}`,
+    // Bun's transpiler cache in the task's own TMPDIR: each vx it spawns compiled src again.
+    command: `BUN_RUNTIME_TRANSPILER_CACHE_PATH="\${TMPDIR:-/tmp}/bun-transpiler" bun test --only-failures --timeout=30000 ${files}`,
     // Fixture repos assume git's defaults; a global config may sign commits.
     // Bun's transpiler cache writes under HOME, outside the sandbox's grants.
     env: {
