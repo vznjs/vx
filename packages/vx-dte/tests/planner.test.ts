@@ -62,8 +62,8 @@ it('plans main’s run on four workers: only its misses are work, never a group 
   )
   expect(work.map((t) => t.id).sort()).toEqual(Object.keys(ran).sort())
   const p = plan(work, [], candidates([small], new Map(), [], work.length), WARM)
-  // Four end it on its longest chain; three, the fewest within 5% of it, ended it late (2026-11-10).
-  expect(p.start).toEqual([small, small, small, small])
+  // Three end it on its longest chain: a fourth, asked at once, ends it no sooner (2026-11-10).
+  expect(p.start).toEqual([small, small, small])
   expect(p.release).toEqual([])
   // How busy it keeps them is tests/sim.test.ts's to judge.
   // The longest chain, vx-docs's import, build and test, after the warm-up.

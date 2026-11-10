@@ -489,7 +489,9 @@ use your own instead.
   a whole worker, or bigger than any, runs alone on an idle one (one that
   filled its worker last time). The first such task waiting holds
   the worker that empties soonest: no task after it is sent there, so it
-  is not passed over again and again.
+  is not passed over again and again. Any ready task with history that
+  fits no worker now keeps its room where it first frees: a task of lower
+  rank goes there only beside it, and one with no history still goes.
 - A task naming `exec.platforms` runs only on a worker of the platform
   core placed it on: this machine's when a size has it, else the first of
   the task's a size has. A worker reports its platform when it joins: a
@@ -916,13 +918,15 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     one joining after its size's warm-up: this run's first of that size,
     else an earlier run's, else any size's this run, else 20 s,
     and the best end is the one with all N. A new worker starts only when
-    a task reaches its latest start (the best end less its chain) with no
-    room on a worker already running: a task with slack waits for room
-    the run pays for anyway, and the critical path never waits. A worker
-    started for a task starts as soon as that task is ready, and tasks
-    with slack fill its room. A task with no history counts twice its
-    guess toward how soon its chain must start; one running past its
-    history counts as running as long again.
+    a task reaches its latest start (the best end less three times its
+    chain, as history is a guess) with no room sooner on a worker running
+    or starting: a task with slack waits for room the run pays for
+    anyway, and the critical path never waits. A worker started for a
+    task starts as soon as that task is ready, and tasks with slack fill
+    its room. A chain through a task with no history has no slack the
+    plan can prove: it takes room on a worker running or starting as it
+    gets ready, and starts no worker for that alone. A task running past
+    its history counts as running as long again.
     It plays only two warm-ups and the longest task ahead; past that, the
     rest ends no sooner than its longest chain, nor than its work spread
     on the cores it has, and the next plan, a warm-up on, sees further.

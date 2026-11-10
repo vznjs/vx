@@ -73,51 +73,75 @@ function trap(r: () => number, steps: number, fillers: number, cores: number): T
   ]
 }
 
-// Each family's worker time, over five graphs, on its floor (all its
-// work on cores, one warm-up): the plan this replaced cost 1.63, 1.62,
-// 1.59, 1.40 and 2.55, and ended 1% late on average, 4% at most.
+// Over ten graphs a family, each ends past its chain and one warm-up by
+// 1% on average and 8% at most, and its worker time on its floor (all
+// its work on cores, one warm-up) is at most `cost`. Wall time first,
+// then worker time (2026-11-10): the plan of fewest workers within 5%
+// ended 0.6 to 2% late on average, 10% at most, for 1.30 to 1.57.
 const families: [name: string, cores: number, make: (r: () => number) => Task[], cost: number][] = [
-  ['random', 4, (r) => random(r, 40, 0.05, 4), 1.45],
-  ['dense', 4, (r) => random(r, 80, 0.15, 4), 1.9],
-  ['layered', 4, (r) => layered(r, 6, 12, 4), 1.75],
-  ['wide', 8, (r) => layered(r, 3, 40, 8), 1.55],
-  ['trap', 4, (r) => trap(r, 10, 30, 4), 1.65],
+  ['random', 4, (r) => random(r, 40, 0.05, 4), 1.55],
+  ['dense', 4, (r) => random(r, 80, 0.15, 4), 1.7],
+  ['layered', 4, (r) => layered(r, 6, 12, 4), 1.7],
+  ['wide', 8, (r) => layered(r, 3, 40, 8), 1.65],
+  ['trap', 4, (r) => trap(r, 10, 30, 4), 1.55],
 ]
+
+/** A family's graph `seed`, as run: how late past its chain and a warm-up, its worker time and floor. */
+function run(cores: number, make: (r: () => number) => Task[], seed: number, unknown = 0) {
+  // A unit is 3 s: tasks of 3 to 300 s.
+  const tasks = make(rng(seed * 7919)).map((t) => ({ ...t, ms: t.ms * 3_000 }))
+  const none = rng(seed * 104729)
+  const graph: SimTask[] = tasks.map((t, i) => ({
+    id: `t${i}`,
+    deps: t.deps.map((d) => `t${d}`),
+    exec: true,
+    cache: true,
+    ran: { ms: t.ms, cores: t.cores, memory: 1e8 },
+    ...(none() < unknown ? { known: null } : {}),
+  }))
+  const tail: number[] = []
+  for (let i = tasks.length - 1; i >= 0; i--) tail[i] = tasks[i]!.ms
+  for (let i = tasks.length - 1; i >= 0; i--)
+    for (const d of tasks[i]!.deps) tail[d] = Math.max(tail[d]!, tasks[d]!.ms + tail[i]!)
+  const chain = Math.max(...tail)
+  const r = simulate(graph, {
+    sizes: [{ name: 'w', max: 1000, cpu: cores, memory: 64e9 }],
+    warmUpMs: () => WARM_UP_MS,
+    likely: new Set(graph.map((t) => t.id)),
+  })
+  return {
+    late: (r.endMs - chain - WARM_UP_MS) / chain,
+    spent: r.workers.reduce((a, w) => a + (w.leftAt ?? w.cancelledAt ?? r.endMs) - w.spawnedAt, 0),
+    floor: tasks.reduce((a, t) => a + (t.ms * t.cores) / cores, 0) + WARM_UP_MS,
+  }
+}
 
 for (const [name, cores, make, cost] of families)
   it(`${name} graphs end at their chain on little worker time`, () => {
-    let spentAll = 0
-    let floorAll = 0
-    for (const seed of [1, 2, 3, 4, 5]) {
-      // A unit is 3 s: tasks of 3 to 300 s.
-      const tasks = make(rng(seed * 7919)).map((t) => ({ ...t, ms: t.ms * 3_000 }))
-      const graph: SimTask[] = tasks.map((t, i) => ({
-        id: `t${i}`,
-        deps: t.deps.map((d) => `t${d}`),
-        exec: true,
-        cache: true,
-        ran: { ms: t.ms, cores: t.cores, memory: 1e8 },
-      }))
-      const tail: number[] = []
-      for (let i = tasks.length - 1; i >= 0; i--) tail[i] = tasks[i]!.ms
-      for (let i = tasks.length - 1; i >= 0; i--)
-        for (const d of tasks[i]!.deps) tail[d] = Math.max(tail[d]!, tasks[d]!.ms + tail[i]!)
-      const chain = Math.max(...tail)
-      const work = tasks.reduce((a, t) => a + (t.ms * t.cores) / cores, 0)
-      const r = simulate(graph, {
-        sizes: [{ name: 'w', max: 1000, cpu: cores, memory: 64e9 }],
-        warmUpMs: () => WARM_UP_MS,
-        likely: new Set(graph.map((t) => t.id)),
-      })
-      const spent = r.workers.reduce(
-        (a, w) => a + (w.leftAt ?? w.cancelledAt ?? r.endMs) - w.spawnedAt,
-        0,
-      )
-      // A worker's warm-up past the chain, and 2.5% for a planned place a
-      // task's first worker could not give it (trap, seed 1).
-      expect(r.endMs).toBeLessThanOrEqual(chain * 1.025 + WARM_UP_MS)
-      spentAll += spent
-      floorAll += work + WARM_UP_MS
+    let spent = 0
+    let floor = 0
+    let late = 0
+    for (let seed = 1; seed <= 10; seed++) {
+      const r = run(cores, make, seed)
+      expect(r.late).toBeLessThanOrEqual(0.08)
+      late += r.late / 10
+      spent += r.spent
+      floor += r.floor
     }
-    expect(spentAll / floorAll).toBeLessThanOrEqual(cost)
+    expect(late).toBeLessThanOrEqual(0.01)
+    expect(spent / floor).toBeLessThanOrEqual(cost)
+  })
+
+// A third of the tasks of no history, each guessed at 30 s: a chain
+// through one has no slack the plan can prove, so it starts as it gets
+// ready. Waiting on the guess, the plan before ended 3.5 to 13% late on
+// average (2026-11-10). A guessed task books what it guesses and slows
+// what shares its worker, so one graph moves a family's average: wide
+// seed 9 went from 12% to 18% with ready holds, while 30 more seeds
+// went from 9.9% to 9.5%.
+for (const [name, cores, make] of families)
+  it(`${name} graphs a third unmeasured end within 7% of their chain`, () => {
+    let late = 0
+    for (let seed = 1; seed <= 10; seed++) late += run(cores, make, seed, 0.3).late / 10
+    expect(late).toBeLessThanOrEqual(0.07)
   })

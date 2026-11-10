@@ -116,11 +116,14 @@ export function dispatch<B extends Bin>(
   // of them at each event was most of a 10 000-task sim (2026-11-05).
   const bounds: Bounds = { done: false, open: true, free: 0, cores: 0, memory: 0 }
   let i = 0
+  const kept = new Set<string>()
   function* asks(): Generator<Ask> {
     for (; i < queue.length; i++) {
       const id = queue[i]!
       if (bounds.done) return
       if (dead(needs[i]!, bounds)) {
+        if (o.soon !== undefined)
+          holdReady(bins, kept, id, needs[i]!, o.tail?.(id) ?? 0, o.ms?.(id))
         read.push(id)
         continue
       }
@@ -211,6 +214,8 @@ export interface Hold {
   readonly cores: number
   readonly memory: number
   readonly rank: number
+  /** Kept for a ready task no worker fits now (`holdReady`). */
+  readonly ready?: true
 }
 
 /** A task the run expects ready `at` ms from now, with its rank (its chain) and time. */
@@ -255,7 +260,7 @@ export function holdFor(bins: readonly Bin[], soon: readonly Soon[]): void {
 }
 
 /** Keeps room for `s` on the bin where it is first free from its `at`. */
-function holdOne(bins: readonly Bin[], s: Soon): void {
+function holdOne(bins: readonly Bin[], s: Soon, ready?: true): void {
   {
     let best: Bin | undefined
     let bestAt = Infinity
@@ -286,8 +291,28 @@ function holdOne(bins: readonly Bin[], s: Soon): void {
       cores: Math.min(s.need.cores, best.cores),
       memory: Math.min(s.need.memory, best.memory),
       rank: s.rank,
+      ...(ready === undefined ? {} : { ready }),
     })
   }
+}
+
+/**
+ * Keeps room for a ready task no worker fits now where it first frees, a
+ * worker's count of them a pass: skipped unheld, smaller tasks of lower
+ * rank took each core as it freed and the critical path waited 6 s (main
+ * 2163fff, 2026-11-10).
+ */
+function holdReady(
+  bins: readonly Bin[],
+  kept: Set<string>,
+  id: string,
+  need: Need,
+  rank: number,
+  ms: number | undefined,
+): void {
+  if (ms === undefined || kept.has(id) || kept.size >= bins.length) return
+  kept.add(id)
+  holdOne(bins, { need, at: 0, rank, ms }, true)
 }
 
 /** Whether `ask` on `b` would take room a hold of higher rank keeps. */
@@ -296,6 +321,10 @@ function breaks(b: Bin, ask: Ask): boolean {
   const until = ask.ms ?? Infinity
   for (const h of b.holds) {
     if (h.rank <= ask.rank || h.at >= until) continue
+    // One of no history still goes: held back for a guessed-at chain, it
+    // was the critical path more often than the task held for (lab, wide
+    // graphs a third unmeasured: 9.9% late to 10.8%, 9.5% passing it).
+    if (h.ready === true && until === Infinity) continue
     const u = heldAt(b, h.at)
     if (u.cores + ask.need.cores > b.cores + 1e-9 || u.memory + ask.need.memory > b.memory)
       return true
@@ -722,6 +751,7 @@ export class Queue {
     const bounds: Bounds = { done: false, open: true, free: 0, cores: 0, memory: 0 }
     const done: Entry[] = []
     let cursor: Entry | undefined
+    const kept = new Set<string>()
     function* asks(): Generator<Ask> {
       for (;;) {
         if (bounds.done) return
@@ -730,7 +760,11 @@ export class Queue {
         let second: Entry | undefined
         for (const x of gs) {
           if (x.at >= x.q.length) continue
-          if (!x.odd && x.full(bounds)) continue
+          if (!x.odd && x.full(bounds)) {
+            const e = o.soon === undefined ? undefined : x.q[x.skip(x.at)]
+            if (e !== undefined) holdReady(bins, kept, e.id, book(e.need), -e.rank, o.ms?.(e.id))
+            continue
+          }
           if (cursor !== undefined && !before(cursor, x.q[x.at]!)) x.at = x.after(cursor)
           x.at = x.skip(x.at)
           const e = x.q[x.at]
@@ -750,7 +784,10 @@ export class Queue {
           cursor = e
           if (bounds.done) return
           const need = book(e.need)
-          if (dead(need, bounds)) continue
+          if (dead(need, bounds)) {
+            if (o.soon !== undefined) holdReady(bins, kept, e.id, need, -e.rank, o.ms?.(e.id))
+            continue
+          }
           const gate = o.gate?.(e.id) ?? {}
           if (gate === 'done') {
             done.push(e)
