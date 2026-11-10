@@ -126,6 +126,15 @@ export class OutputIndex {
    */
   private readonly pendingDirs = new Map<string, Array<[string, number]> | null>()
   /**
+   * The modes of the directories a `true` `outputDirsCurrent` just
+   * lstat'ed, by absolute path: the `isOutputsCurrent` a hit asks next, in
+   * the same synchronous check, reads an ancestor's mode here, not from a
+   * second stat of the same directory (1,600 of a 9,603-task warm run's
+   * stats, 2026-11-10). Taken by that call whatever it asks, so a mode is
+   * never read past it.
+   */
+  private dirModes: Map<string, number> | undefined
+  /**
    * Stamps taken and not yet written, flushed with the directory snapshots:
    * inode and ctime by path, so a batch read finds a row's stamp without
    * scanning them all (rows × stamps was ~7 s for a 40,000-file output).
@@ -303,6 +312,8 @@ export class OutputIndex {
     // Empty manifest case (a task produced no outputs) → trivially
     // current; the on-disk tree under projectDir is whatever it was,
     // and nothing was supposed to land there.
+    const known = this.dirModes
+    this.dirModes = undefined
     if (expected.length === 0) return true
     // statSync, deliberately. The async form measured faster on 2026-09-02,
     // when a hit walked its whole output tree; since the directory
@@ -354,8 +365,9 @@ export class OutputIndex {
     // A directory holding outputs has no row unless its mode is narrow, so
     // a chmod of one left the tree "current" (a stat per directory).
     for (const dir of rowAncestors(expected)) {
-      const s = statSync(path.join(projectDir, dir), { throwIfNoEntry: false })
-      if (s === undefined || !wideDirMode(s.mode)) return false
+      const abs = path.join(projectDir, dir)
+      const mode = known?.get(abs) ?? statSync(abs, { throwIfNoEntry: false })?.mode
+      if (mode === undefined || !wideDirMode(mode)) return false
     }
     return true
   }
@@ -573,21 +585,29 @@ export class OutputIndex {
 
   /** True iff every recorded directory exists with its recorded mtime (ms). Same forged-mtime trade as the file check. */
   outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): boolean {
+    this.dirModes = undefined
     if (rows.length === 0) return false
+    const modes = new Map<string, number>()
     const results = rows.map((r) => {
+      const abs = path.join(projectDir, r.path)
       let st
       try {
         // No throw for a missing dir: every restore after a clean asks
         // about one, and an exception per hit cost more than the stat.
-        st = lstatSync(path.join(projectDir, r.path), { throwIfNoEntry: false })
+        st = lstatSync(abs, { throwIfNoEntry: false })
       } catch {
         return r.mtimeMs === ABSENT_DIR_MTIME
       }
       if (st === undefined) return r.mtimeMs === ABSENT_DIR_MTIME
       if (r.mtimeMs === ABSENT_DIR_MTIME) return false
       if (r.mtimeMs === FILE_PREFIX_MTIME) return st.isFile()
-      return st.isDirectory() && Math.abs(st.mtimeMs - r.mtimeMs) < 1
+      if (!st.isDirectory()) return false
+      // A directory, not a link to one: its stat is this lstat.
+      modes.set(abs, st.mode)
+      return Math.abs(st.mtimeMs - r.mtimeMs) < 1
     })
-    return results.every(Boolean)
+    const current = results.every(Boolean)
+    if (current) this.dirModes = modes
+    return current
   }
 }
