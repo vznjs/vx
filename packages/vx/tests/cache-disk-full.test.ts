@@ -15,6 +15,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { indexDb, Cache, FILE_HASH_RACY_MS } from '../src/cache/index.js'
+import { TAR_STORE } from './helpers/tar-store.js'
 
 let root: string
 let cacheDir: string
@@ -106,7 +107,16 @@ describe('a full index', () => {
 
 describe('a full disk', () => {
   it('a save whose temp write fails leaves no temp', async () => {
-    const cache = new Cache(cacheDir)
+    // The tar form writes one temp file; the tree form's is the next test's.
+    const cache = new Cache(
+      cacheDir,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     const spy = spyOn(fsp, 'writeFile').mockImplementation((async (file: string) => {
       writeFileSync(file, 'partial')
       throw Object.assign(new Error('ENOSPC: no space left on device, write'), { code: 'ENOSPC' })

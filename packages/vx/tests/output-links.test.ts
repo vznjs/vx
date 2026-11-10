@@ -408,18 +408,16 @@ it.skipIf(process.platform === 'win32')(
   },
 )
 
-// What the sidecar calls a file is packed only as one: a link there is
+// What the rows call a file is packed only as one: a link there is
 // read through, so its target's bytes would ride the artifact.
 it.skipIf(process.platform === 'win32')('a kept tree packs no link it calls a file', () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-links-tree-'))
   made.push(dir)
-  mkdirSync(path.join(dir, 'outputs'))
-  symlinkSync('/etc/hostname', path.join(dir, 'outputs', 'k'))
-  writeFileSync(
-    path.join(dir, '.vx-meta.json'),
-    JSON.stringify({ version: 1, files: { 'outputs/k': [0o644, 0] } }),
+  symlinkSync('/etc/hostname', path.join(dir, 'k'))
+  const rows = [{ path: 'k', size: 1, mode: 0o644, mtimeMs: 0 }]
+  expect(() => planOfTree(dir, '', rows, 'k1', undefined)).toThrow(
+    'kept tree entry outputs/k is not a regular file',
   )
-  expect(() => planOfTree(dir, '')).toThrow('kept tree entry outputs/k is not a regular file')
 })
 
 it.skipIf(process.platform === 'win32')(
