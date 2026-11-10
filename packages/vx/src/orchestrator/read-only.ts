@@ -5,8 +5,6 @@
 // throws, inside the plugin's own call, where core already reports a throw
 // naming the plugin.
 
-import type { RunEvent } from '../report/index.js'
-
 /**
  * Freezes `value` and everything it holds, in place: for an object core
  * built for plugins and no longer writes (a telemetry record, the run
@@ -37,7 +35,7 @@ function refused(key: string | symbol): TypeError {
  * (`serverExit`), and a frozen deep copy of each node and outcome was ~5 us
  * of every task a hook heard (10,000 tasks: 45 ms).
  */
-export function readOnlyEvents(): (event: RunEvent) => RunEvent {
+export function readOnlyEvents(): <T>(value: T) => T {
   return readOnlyViews()
 }
 
