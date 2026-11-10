@@ -371,14 +371,38 @@ export default defineProject({
     // main (scripts/live-bench.ts): the committed copy is older than the
     // live one (2026-11-01), and the deploy never waits on the bench
     // (2026-11-06). Uncached: those numbers are no file of the commit.
-    'deploy.pages': {
+    // The build runs beside the tests and only the upload waits on `ci`:
+    // built after `ci`, it added 108 s to main's run (2026-11-10). Its
+    // files stay on its worker, where the upload follows it.
+    'build.live': {
       description:
-        "build the site with main's newest bench numbers → dist-live/ and deploy it to GitHub Pages (GitHub Actions only)",
-      dependsOn: ['ci', 'install', 'import', 'build.images'],
+        "build the site with main's newest bench numbers → dist-live/ (GitHub Actions only)",
+      dependsOn: ['install', 'import', 'build.images'],
       exec: {
-        command: `bun scripts/live-bench.ts && rm -rf .astro/live && ${ASTRO_BUILD} --outDir dist-live && bun scripts/deploy-pages.ts dist-live`,
+        command: `bun scripts/live-bench.ts && rm -rf .astro/live && ${ASTRO_BUILD} --outDir dist-live`,
         env: {
           define: { ASTRO_TELEMETRY_DISABLED: '1', VX_DOCS_BENCH: 'measured/live.json' },
+          passThrough: ['GITHUB_TOKEN', 'GITHUB_REPOSITORY', 'GITHUB_API_URL'],
+          secret: ['GITHUB_TOKEN'],
+        },
+        sandbox: {
+          allow: {
+            read: ['**/*'],
+            write: ['measured/live.json', 'dist-live/**', '.astro/**'],
+            systemInfo: ['vfs.disk-space', 'net.link.addr'],
+            machLookup: ['com.apple.SystemConfiguration.DNSConfiguration'],
+            network: ['api.github.com', '*.blob.core.windows.net'],
+          },
+        },
+      },
+    },
+    'deploy.pages': {
+      description:
+        'deploy dist-live/ to GitHub Pages once every check passed (GitHub Actions only)',
+      dependsOn: ['ci', 'build.live'],
+      exec: {
+        command: 'bun scripts/deploy-pages.ts dist-live',
+        env: {
           passThrough: [
             'ACTIONS_RUNTIME_TOKEN',
             'ACTIONS_RESULTS_URL',
@@ -394,9 +418,7 @@ export default defineProject({
         sandbox: {
           allow: {
             read: ['**/*'],
-            write: ['measured/live.json', 'dist-live/**', '.astro/**'],
             systemInfo: ['vfs.disk-space', 'net.link.addr'],
-            machLookup: ['com.apple.SystemConfiguration.DNSConfiguration'],
             network: [
               '*.actions.githubusercontent.com',
               '*.blob.core.windows.net',
