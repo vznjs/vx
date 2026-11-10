@@ -7,6 +7,7 @@ import { afterEach, beforeEach, expect, it } from 'bun:test'
 import type { PluginCache } from '@vzn/vx'
 import {
   parseServerBases,
+  parseSizeOthers,
   parseWarmUps,
   readServerBases,
   readWarmUps,
@@ -115,4 +116,12 @@ it("a later commit's run books the server bases an earlier run learned, this run
   expect(parseServerBases(enc({ version: 1, servers: { a: -1, b: 'x', c: 2 } }))).toEqual(
     new Map([['c', 2]]),
   )
+})
+
+it("reads each size's other cores as server bases are read", () => {
+  const enc = (v: unknown): Uint8Array => new TextEncoder().encode(JSON.stringify(v))
+  expect(parseSizeOthers(enc({ version: 1, sizes: { small: 0.8, mac: -1, x: 'a' } }))).toEqual(
+    new Map([['small', 0.8]]),
+  )
+  expect(parseSizeOthers(enc({ version: 1, servers: { small: 0.8 } }))).toBeNull()
 })

@@ -480,7 +480,10 @@ use your own instead.
   its report no longer names goes back to the queue at once. A task goes to it only when it fits now: while
   one of its cores is free and the task's memory fits. What a worker has
   in use is what its running tasks used on their last run (history's
-  measured CPU and peak RAM), or its live load plus what was sent since
+  measured CPU and peak RAM), plus the cores its machine spends on no
+  task of the run while it runs some (each frame's load less its tasks',
+  averaged: a GitHub runner's own agent and the like, 0.6 to 1.1 of a
+  4-core small's), or its live load plus what was sent since
   when that is more. Never less: load lags a task's start, and a test
   shard idle for a second then uses all its cores. A command that ended
   frees its cores while its outputs save, and its worker's load until the
@@ -917,7 +920,10 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     that work out on its workers and on N more (`src/planner.ts`), each new
     one joining after its size's warm-up: this run's first of that size,
     else an earlier run's, else any size's this run, else 20 s,
-    and the best end is the one with all N. A new worker starts only when
+    and the best end is the one with all N. A worker counts its cores
+    less what its machine spends besides the run's tasks, and a new one
+    of a size what this run's of that size spent, else an earlier run's
+    (kept under the commit, as warm-ups are), else none. A new worker starts only when
     a task reaches its latest start (the best end less three times its
     chain, as history is a guess) with no room sooner on a worker running
     or starting: a task with slack waits for room the run pays for

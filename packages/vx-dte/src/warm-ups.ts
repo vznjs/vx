@@ -106,6 +106,11 @@ const basesKeyOf = (sha: string): string => `server-bases\0${sha}`
 
 /** `{ version: 1, servers: { id: cores } }`'s bases, each finite in [0, MAX_CORES]; null for anything else. */
 export function parseServerBases(bytes: Uint8Array): Map<string, number> | null {
+  return parseCores(bytes, 'servers')
+}
+
+/** `{ version: 1, [field]: { name: cores } }`'s cores, each finite in [0, MAX_CORES]; null for anything else. */
+function parseCores(bytes: Uint8Array, field: 'servers' | 'sizes'): Map<string, number> | null {
   if (bytes.byteLength > MAX_BYTES) return null
   let parsed: unknown
   try {
@@ -115,10 +120,11 @@ export function parseServerBases(bytes: Uint8Array): Map<string, number> | null 
     return null
   }
   if (typeof parsed !== 'object' || parsed === null) return null
-  const { version, servers } = parsed as { version?: unknown; servers?: unknown }
-  if (version !== 1 || typeof servers !== 'object' || servers === null || Array.isArray(servers))
+  const { version } = parsed as { version?: unknown }
+  const named = (parsed as Record<string, unknown>)[field]
+  if (version !== 1 || typeof named !== 'object' || named === null || Array.isArray(named))
     return null
-  const entries = Object.entries(servers)
+  const entries = Object.entries(named)
   if (entries.length > MAX_SERVERS) return null
   const out = new Map<string, number>()
   for (const [id, cores] of entries)
@@ -147,5 +153,39 @@ export async function writeServerBases(
   await cache.put(
     basesKeyOf(head),
     new TextEncoder().encode(JSON.stringify({ version: 1, servers })),
+  )
+}
+
+// Each size's cores its machines spend besides the run's tasks
+// (`Orchestrator.othersOf`): the plan leaves them out of each new worker
+// of the size before one joins. Kept as the warm-ups are.
+
+const othersKeyOf = (sha: string): string => `size-others\0${sha}`
+
+/** `{ version: 1, sizes: { name: cores } }`'s cores, each finite in [0, MAX_CORES]; null for anything else. */
+export function parseSizeOthers(bytes: Uint8Array): Map<string, number> | null {
+  return parseCores(bytes, 'sizes')
+}
+
+/** The newest sizes' other cores an ancestor's run wrote. */
+export function readSizeOthers(cache: PluginCache, root: string): Promise<Map<string, number>> {
+  return newest(cache, root, othersKeyOf, parseSizeOthers)
+}
+
+/** `learned` with this run's own over it, under HEAD. */
+export async function writeSizeOthers(
+  cache: PluginCache,
+  root: string,
+  learned: ReadonlyMap<string, number>,
+  run: ReadonlyMap<string, number>,
+): Promise<void> {
+  if (run.size === 0) return
+  const [head] = await commits(root)
+  if (head === undefined) return
+  const sizes: Record<string, number> = {}
+  for (const [name, cores] of [...learned, ...run]) sizes[name] = Math.round(cores * 100) / 100
+  await cache.put(
+    othersKeyOf(head),
+    new TextEncoder().encode(JSON.stringify({ version: 1, sizes })),
   )
 }

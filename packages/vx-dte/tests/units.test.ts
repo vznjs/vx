@@ -1210,6 +1210,35 @@ it('sends a worker what its booking fits, though its load reads low; busier than
   }
 })
 
+// Main 36e410f: a 4-core small spent 0.6 to 1.1 cores on no task of the
+// run (GitHub's runner agent among them), the run booked all 4, and its
+// test shards ran 30% past their history. What a machine spends besides
+// the run's tasks is booked on it, and the plan leaves it out.
+it("books a worker's cores its machine spends besides the run's tasks", async () => {
+  const ids = Array.from({ length: 5 }, (_, i) => `t${i + 1}`)
+  const h = await harness(new Map(ids.map((id) => node(id))))
+  try {
+    const a = await h.worker(4)
+    await Bun.sleep(50)
+    for (const id of ids) void h.o.execute(h.req(id))
+    expect(await a.batches()).toEqual([['t1', 't2', 't3', 't4']])
+    await a.say({
+      type: 'report',
+      running: ['t1', 't2', 't3', 't4'],
+      batch: 1,
+      load: { cpu: 4, memory: 0, tasks: 3 },
+    })
+    await a.say({ type: 'ran', task: 't1', load: { cpu: 3.9, memory: 0, tasks: 2.9 } })
+    await Bun.sleep(50)
+    expect(h.o.where('t5')).toBeNull()
+    const w = h.o.planState(() => undefined, 0).workers.find((x) => x.id === a.id)!
+    expect(w.cores).toBeCloseTo(3)
+    expect(w.running.reduce((n, r) => n + r.cores, 0)).toBeCloseTo(3)
+  } finally {
+    await h.stop()
+  }
+})
+
 // Main 2975e38: a Mac's frame as a task ended read 2.9 of 3 cores busy,
 // that task and its save among them, and held the next task for the next
 // frame, up to 30 s on.
