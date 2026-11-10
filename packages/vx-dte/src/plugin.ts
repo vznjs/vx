@@ -336,6 +336,8 @@ export function dte(options: DteOptions = {}) {
   let bases = new Map<string, number>()
   /** The bases as read, before this run's: kept with this run's over them. */
   let basesRead: ReadonlyMap<string, number> = new Map()
+  /** Each size's cores an earlier run's machines spent besides its tasks (`Orchestrator.othersOf`). */
+  let othersRead: ReadonlyMap<string, number> = new Map()
   let warming: Promise<void> = Promise.resolve()
   /** On CI, where the run keeps the warm-ups it learned: `setup`'s cache, root and warn. */
   let keep: { cache: PluginCache; root: string; warn: (m: string) => void } | undefined
@@ -381,7 +383,16 @@ export function dte(options: DteOptions = {}) {
         ),
       )
     }
+    if (k !== undefined && o !== undefined) {
+      const { writeSizeOthers } = await import('./warm-ups.js')
+      await writeSizeOthers(k.cache, k.root, othersRead, o.othersOf()).catch((err: unknown) =>
+        k.warn(
+          `[vx] dte: sizes' other cores not kept: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      )
+    }
     learned = new Map()
+    othersRead = new Map()
     bases = new Map()
     basesRead = new Map()
     warming = Promise.resolve()
@@ -586,9 +597,17 @@ export function dte(options: DteOptions = {}) {
             ),
         )
       warming = import('./warm-ups.js')
-        .then((w) => w.readWarmUps(ctx.cache, ctx.workspaceRoot))
+        .then((w) =>
+          Promise.all([
+            w.readWarmUps(ctx.cache, ctx.workspaceRoot),
+            w.readSizeOthers(ctx.cache, ctx.workspaceRoot),
+          ]),
+        )
         .then(
-          (m) => void (learned = m),
+          ([m, others]) => {
+            learned = m
+            othersRead = others
+          },
           (err: unknown) =>
             ctx.warn(
               `[vx] dte: no warm-ups learned: ${err instanceof Error ? err.message : String(err)}`,
@@ -808,9 +827,16 @@ export function dte(options: DteOptions = {}) {
         }
         const state = o.planState(ms, warmUp)
         const running = state.running
+        // Each size as the plan counts it: its cores less what its
+        // machines spend besides the run's tasks, this run's or an earlier one's.
+        const others = o.othersOf()
+        const planned = sizes.map((s) => {
+          const other = others.get(s.name) ?? othersRead.get(s.name) ?? 0
+          return other > 0 ? { ...s, cpu: Math.max(s.cpu / 2, s.cpu - other) } : s
+        })
         const workers = keepLast(
           state.workers,
-          sizes,
+          planned,
           started,
           (p) => (leftOf.get(p) ?? 0) > 0 || (p === home && (leftOf.get('') ?? 0) > 0),
         )
@@ -824,7 +850,7 @@ export function dte(options: DteOptions = {}) {
           durationMs: ms,
           workers,
           running,
-          sizes,
+          sizes: planned,
           started,
           final,
           warmUpMs: warmUp,
@@ -899,7 +925,9 @@ export function dte(options: DteOptions = {}) {
           p.endsInMs,
           tasks.filter((t) => !measured(t.id)).map((t) => t.id),
         )
-        for (const s of p.start) {
+        for (const p0 of p.start) {
+          // Started as declared: the plan's size is its cores less the other.
+          const s = sizes.find((x) => x.name === p0.name) ?? p0
           ++index
           const id = nextId(s.name)
           const a = spawnOf(s, id, index)
