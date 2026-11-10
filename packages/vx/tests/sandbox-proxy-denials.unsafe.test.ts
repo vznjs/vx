@@ -130,7 +130,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
       const socat = Bun.which('socat')!
       writeFileSync(
         path.join(shim, 'socat'),
-        `#!/bin/sh\ncase "$*" in *TCP-LISTEN*) sleep 1;; esac\nexec ${socat} "$@"\n`,
+        `#!/bin/sh\ncase "$*" in *TCP*-LISTEN*) sleep 1;; esac\nexec ${socat} "$@"\n`,
       )
       chmodSync(path.join(shim, 'socat'), 0o755)
     })

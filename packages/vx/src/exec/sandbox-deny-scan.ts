@@ -1,6 +1,6 @@
 // The sandbox runtime's mandatory-deny scan, scoped to what a task can
 // write (B-40). SRT walks `process.cwd()` (the workspace root) with
-// `rg --max-depth 3` on every wrap and keeps a hit only when it lies in
+// `rg --max-depth 4` on every wrap and keeps a hit only when it lies in
 // an allowed write path: anything else is already read-only under
 // `--ro-bind / /`. A deny is the hit or one of its ancestors, so every
 // hit that counts lies under a write path, and walking the write paths
@@ -19,8 +19,9 @@ import path from 'node:path'
 import { relPosix, UserError } from '../util/index.js'
 import { atOrUnder, MOUNT_WILDCARDS } from './sandbox-paths.js'
 
-/** SRT's `rg --max-depth` for the scan (`DEFAULT_MANDATORY_DENY_SEARCH_DEPTH`). */
+/** SRT's `DEFAULT_MANDATORY_DENY_SEARCH_DEPTH`; rg lists files one level deeper. */
 const SEARCH_DEPTH = 3
+const WALK_DEPTH = SEARCH_DEPTH + 1
 
 /** SRT's `DANGEROUS_FILES`: matched by name, case-insensitively, at any depth. */
 const DANGEROUS_FILES = new Set([
@@ -63,31 +64,41 @@ function isHit(rel: string, gitConfig: boolean): boolean {
     return false
   }
   if (DANGEROUS_DIRS.some(inside) || inside('.git/hooks')) return true
+  const inGit = segs.length >= 2 && segs[segs.length - 2] === '.git'
+  // `**/.git/HEAD` marks a repository whose hooks are denied before there are any.
+  if (inGit && segs[segs.length - 1] === 'head') return true
   // `**/.git/config`, unless the task grants `gitConfig` (B-41).
-  return (
-    !gitConfig &&
-    segs.length >= 2 &&
-    segs[segs.length - 2] === '.git' &&
-    segs[segs.length - 1] === 'config'
-  )
+  return !gitConfig && inGit && segs[segs.length - 1] === 'config'
 }
 
-/** The deny path SRT derives from a hit (`linuxGetMandatoryDenyPaths`), or none. */
+/** The names a hit can lie under, by path component, in SRT's order. */
+const DIRECTORY_NAMES = [...DANGEROUS_DIRS, '.git/hooks', '.git/config', '.git/HEAD'].map((n) =>
+  lower(n).split('/'),
+)
+
+/** The deny path SRT derives from a hit at `rel` under `cwd` (`linuxGetMandatoryDenyPaths`), or none. */
 function denyOf(cwd: string, rel: string): string | undefined {
-  const absolute = path.resolve(cwd, rel)
-  const segments = absolute.split(path.sep)
-  // Two-segment names never equal one segment: their hits fall through to
-  // the file itself, as they do in SRT.
-  for (const dir of [...DANGEROUS_DIRS, '.git']) {
-    const i = segments.findIndex((s) => lower(s) === lower(dir))
-    if (i === -1) continue
-    if (dir !== '.git') return segments.slice(0, i + 1).join(path.sep)
-    const gitDir = segments.slice(0, i + 1).join(path.sep)
-    if (rel.includes('.git/hooks')) return path.join(gitDir, 'hooks')
-    if (rel.includes('.git/config')) return path.join(gitDir, 'config')
-    return undefined
+  const segments = rel.split('/')
+  const segs = segments.map(lower)
+  // The first named directory on the way down, else the file itself; a
+  // named directory may lie one level less deep (each costs mounts).
+  let at = segments.length - 1
+  let length = 1
+  let deepest = SEARCH_DEPTH - 1
+  search: for (let i = 0; i < segs.length; i++) {
+    for (const name of DIRECTORY_NAMES) {
+      if (name.every((c, k) => segs[i + k] === c)) {
+        at = i
+        length = name.length
+        deepest = SEARCH_DEPTH - 2
+        break search
+      }
+    }
   }
-  return absolute
+  if (at > deepest) return undefined
+  const found = segments.slice(0, at + length)
+  if (segs[at] === '.git' && segs[at + 1] === 'head') found[at + 1] = 'hooks'
+  return path.join(cwd, ...found)
 }
 
 /**
@@ -118,7 +129,7 @@ export function scopedMandatoryDenies(
     for (const e of entries) {
       const childRel = rel === '' ? e.name : `${rel}/${e.name}`
       if (e.isDirectory()) {
-        if (depth + 1 < SEARCH_DEPTH) visit(path.join(abs, e.name), childRel, depth + 1)
+        if (depth + 1 < WALK_DEPTH) visit(path.join(abs, e.name), childRel, depth + 1)
       } else if (isHit(childRel, gitConfig)) {
         const d = denyOf(cwd, childRel)
         if (d !== undefined) denies.add(d)
@@ -128,7 +139,7 @@ export function scopedMandatoryDenies(
   for (const root of roots) {
     const rel = relPosix(cwd, root)
     const depth = rel === '' ? 0 : rel.split('/').length
-    if (depth > SEARCH_DEPTH) continue
+    if (depth > WALK_DEPTH) continue
     let dir: boolean
     try {
       dir = lstatSync(root).isDirectory()
@@ -136,7 +147,7 @@ export function scopedMandatoryDenies(
       continue
     }
     if (dir) {
-      if (depth < SEARCH_DEPTH) visit(root, rel, depth)
+      if (depth < WALK_DEPTH) visit(root, rel, depth)
     } else if (isHit(rel, gitConfig)) {
       const d = denyOf(cwd, rel)
       if (d !== undefined) denies.add(d)

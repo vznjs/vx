@@ -34,10 +34,8 @@ import {
 import { type RunSummary } from '../src/orchestrator/index.js'
 import { run } from './helpers/orchestrator.js'
 // SRT's own strip and glob compiler: what a macOS grant covers is its answer.
-import {
-  globToRegex,
-  removeTrailingGlobSuffix,
-} from '@anthropic-ai/sandbox-runtime/dist/sandbox/sandbox-utils.js'
+import { removeTrailingGlobSuffix } from '@anthropic-ai/sandbox-runtime/dist/sandbox/sandbox-utils.js'
+import { globToRegex } from '@anthropic-ai/sandbox-runtime/dist/sandbox/glob-pattern.js'
 import { sandboxRequestFor } from '../src/orchestrator/sandbox-request.js'
 import type { TaskNode } from '../src/graph/index.js'
 import {

@@ -1140,7 +1140,7 @@ function spawnErrorReason(
   const hint = isOutOfFds(err)
     ? ` — ${OUT_OF_FDS_HINT}`
     : command !== undefined && (err as NodeJS.ErrnoException | undefined)?.code === 'E2BIG'
-      ? ` — ${argTooLongHint(command, what === SANDBOXED_TASK, env)}`
+      ? ` — ${argTooLongHint(Buffer.byteLength(command), what === SANDBOXED_TASK, env)}`
       : ''
   return `${message}${hint}`
 }
@@ -1153,8 +1153,7 @@ const MAX_ARG_STRLEN = 128 * 1024
  * below the argv total: a file list forwarded to a linter failed with a
  * bare E2BIG, which reads as "too many files" and names no way out.
  */
-function argTooLongHint(command: string, wrapped: boolean, env?: NodeJS.ProcessEnv): string {
-  const bytes = Buffer.byteLength(command)
+function argTooLongHint(bytes: number, wrapped: boolean, env?: NodeJS.ProcessEnv): string {
   const kib = Math.ceil(bytes / 1024)
   // The limit counts the environment too, and caps each entry as it does
   // one argument: a task's 4.4 MB `define` was blamed on its 1 KiB command.
@@ -1196,6 +1195,15 @@ function envSize(env: NodeJS.ProcessEnv): {
     }
   }
   return { bytes, count, largest, largestBytes }
+}
+
+/**
+ * SRT (0.0.81) measures the wrap itself and refuses one over the limit
+ * before any spawn, so the E2BIG never comes: the same failure, said the
+ * same way, for `bytes` of wrapped command.
+ */
+export function sandboxArgTooLongText(bytes: number): string {
+  return `[vx] failed to spawn ${SANDBOXED_TASK}: argument list too long (E2BIG) — ${argTooLongHint(bytes, true)}\n`
 }
 
 /** A stop's own sweep, for a child it missed: the polite signal, then SIGKILL past the grace. */
