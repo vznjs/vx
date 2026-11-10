@@ -177,10 +177,18 @@ export class RunHistory {
       .immediate()
   }
 
-  /** One `task_durations` row per executed success, as if run alone: what a forecast reads. */
+  /**
+   * One `task_durations` row per executed success, as if run alone: what a
+   * forecast reads. Not one run with forwarded args: `test -- one.test.ts`
+   * times a sliver of the task, not the task.
+   */
   private insertDurations(runs: readonly RunRecord[], source: string, sha: string | null): void {
     const done = runs.filter(
-      (r) => r.status === 'success' && r.cacheHit !== true && isMeasure(aloneMs(r)),
+      (r) =>
+        r.status === 'success' &&
+        r.cacheHit !== true &&
+        !r.forwardArgs?.length &&
+        isMeasure(aloneMs(r)),
     )
     for (let i = 0; i < done.length; i += DURATIONS_PER_INSERT) {
       const block = done.slice(i, i + DURATIONS_PER_INSERT)

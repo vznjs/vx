@@ -943,7 +943,8 @@ other persistent task`), and a non-zero exit makes the run exit 1
    A running row's status is yellow.
 
    - **time**: the live elapsed time; no spinner.
-   - **usual**: the task's executed p50 from local history, fixed while
+   - **usual**: the task's executed p50 from local history (a run with
+     forwarded args, `-- <args>`, is left out), fixed while
      the time counts up toward it; `—` for a task history never
      timed. History is read once, on the first row that asks, so a run
      that executes nothing never reads it. The results list's `±usual`
