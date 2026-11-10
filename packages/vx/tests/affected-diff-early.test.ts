@@ -121,5 +121,5 @@ it('--affected spawns merge-base and the whole-tree walk before the discover sta
   })
   // Once per run: the run reuses the walk and the diff selection made.
   expect(calls.filter((c) => c.endsWith(' ls-files -s -v -z -- .'))).toHaveLength(1)
-  expect(calls.filter((c) => /^(-c \S+ )?diff /.test(c))).toHaveLength(1)
+  expect(calls.filter((c) => /^(-c \S+ )*diff /.test(c))).toHaveLength(1)
 })

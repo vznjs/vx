@@ -50,7 +50,8 @@ the projects reaching it move.
 A named path above the root (a `file:` or `link:` directory beside the
 checkout, `../vendor/dep`) is read and hashed into the key like one
 inside it. Git holds no base for it, so `--affected` sees an edit there
-only when the lockfile changes too.
+only when the lockfile changes too; nor for a gitignored file in a
+directory inside the root, which `hashDir` reads as the manager copies it.
 
 ## Claiming a file (`VxPlugin.fingerprint`)
 

@@ -38,6 +38,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'affected-submodule',
     'affected-tasks',
     'affected-unicode',
+    'affected-weak-stat',
     'affected-workspace-files',
     'affected-workspace-plugin',
     'archive-restore-fuzz',

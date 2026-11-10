@@ -307,7 +307,8 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     Your globs are a **filter over the set git reports**, so a broad
     glob never reaches a gitignored file. An entry that names one
     outright does: a literal (`.env.local`, `gen`), or a glob whose fixed
-    prefix git ignores (`dist/**`), walked on disk under that prefix
+    prefix git ignores (`dist/**`, or a `gen` whose every file it
+    ignores, where it lists nothing), walked on disk under that prefix
     only (2026-10-16). Such a file is hashed from disk with the
     blob formula an untracked file gets, and is never stored or
     restored. `--affected` reflects only what git sees, so an edit to
@@ -396,7 +397,10 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     string, kept the key that `git status` and `--affected` saw move.
     Under `core.fileMode=false` (WSL's DrvFs) git reports no chmod, so
     there a clean file's mode comes from an lstat too, and its OID
-    from the index (item 1076). Each of these settings is read as git
+    from the index (item 1076), and `--affected` diffs with
+    `core.fileMode=true` (likewise `core.trustctime=true` and
+    `core.checkStat=default` under a weakened stat), so it selects what
+    the key sees. Each of these settings is read as git
     reads a boolean: `false`, `no`, `off`, the empty value or a zero
     integer (`0`, `00`) is false, and a bare key is true.
 

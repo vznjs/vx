@@ -330,6 +330,21 @@ it(
 )
 
 it(
+  'a glob over a directory whose every file a pattern ignores walks it: git reports the directory ignored',
+  async () => {
+    root = await workspace(
+      { t: task("{ files: ['gen/**'] }") },
+      { 'gen/x.generated.js': 'v1\n' },
+      '*.generated.js\n',
+    )
+    const t = await key('lib#t')
+    await writeFile(pkg('gen/x.generated.js'), 'v2\n')
+    expect(await key('lib#t')).not.toBe(t)
+  },
+  TIMEOUT,
+)
+
+it(
   'a walked ignored prefix skips the cache directory under it: the task hits',
   async () => {
     // `tmp/` is ignored and named outright, so `tmp/**` walks it on disk,

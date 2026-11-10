@@ -127,7 +127,16 @@ export function headBase(workspaceRoot: string, ref: string): string | undefined
    `working-tree-encoding` attribute per `git check-attr`) stays: its
    filtered hash can match the base while the key, which hashes raw
    bytes, moved (a CRLF edit to an LF file). So does such a file git
-   was told not to look at (`--assume-unchanged`).
+   was told not to look at (`--assume-unchanged`). The diff also runs
+   with `core.fileMode=true`, `core.trustctime=true` and
+   `core.checkStat=default`, as the key does not trust the weaker view:
+   under `core.fileMode=false` a `chmod +x` moved the key and selected
+   nothing, and under `core.trustctime=false` or `core.checkStat=minimal`
+   a same-size rewrite keeping its mtime (`cp -p`, `tar -x`) did the
+   same. A file only the full stat calls dirty is hashed as above; on a
+   normal repository these are git's defaults. A rewrite in place within
+   the second the index recorded the file is still unseen: git compares
+   a ctime by the second.
 3. Untracked files (`git ls-files --others --exclude-standard`) are
    unioned in — a brand-new source file is a change. The `git config`
    that asks for a partial clone asks `core.ignorecase` too: set true on

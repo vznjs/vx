@@ -1067,7 +1067,7 @@ async function gitPaths(workspaceRoot: string, cmd: string[]): Promise<string[]>
   const exit = await proc.exited
   if (exit !== 0) {
     throw new UserError(
-      `git ${cmd[cmd[0] === '-c' ? 2 : 0]} failed (exit ${exit}): ${stderr.trim()}`,
+      `git ${cmd.find((a, i) => a !== '-c' && cmd[i - 1] !== '-c')} failed (exit ${exit}): ${stderr.trim()}`,
       'VX_E_GIT',
     )
   }
@@ -1098,6 +1098,16 @@ async function gitDiffPaths(
     gitPaths(workspaceRoot, [
       '-c',
       'diff.autoRefreshIndex=false',
+      // The key reads the worktree's mode under `core.fileMode=false` and
+      // trusts no index OID under a weakened stat (git-inputs.ts), so the
+      // diff judges by git's full stat: a file only that stat calls dirty
+      // is hashed below, and only a DrvFs mode over-selects.
+      '-c',
+      'core.fileMode=true',
+      '-c',
+      'core.trustctime=true',
+      '-c',
+      'core.checkStat=default',
       'diff',
       '--no-renames',
       '--ignore-submodules=none',

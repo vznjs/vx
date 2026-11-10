@@ -1031,13 +1031,16 @@ Always applied to every glob pass (regardless of what you wrote):
   `.cache/gen/**`), which is then walked on disk under that prefix only.
   A directory git ignores but for a file it lists (`gen/*` with
   `!gen/.gitkeep`, or `gen/` with a force-added file) counts as ignored:
-  `gen/**` reads the untracked files beside the kept one.
+  `gen/**` reads the untracked files beside the kept one. So does a
+  directory where git lists nothing because it ignores every file in it
+  (`src/**` over a `src` holding only `*.log` files): `git status`
+  reports the directory itself as ignored.
   Each alternative of a brace counts on its own: `{gen/a.txt,gen/b.txt}`
   names both files and `{gen,out}/**` both trees, as `gen/{a,b}.txt` does.
   Such a file is hashed from disk and never stored or restored; a
   missing one is not an input until it exists. A broad glob (`**`,
-  `src/**` over a listed `src`) still skips ignored files, so it never
-  walks `node_modules`.
+  `src/**` over a `src` holding a file git lists) still skips ignored
+  files, so it never walks `node_modules`.
   Its bytes differ per machine, so machines with different files miss
   each other's shared entries. An ignored file never selects a task
   under `--affected` on its own, as in Nx (only what git sees does); `vx
