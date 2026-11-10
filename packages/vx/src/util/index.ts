@@ -106,6 +106,7 @@ export {
   ignoreCaseLies,
   ignoreProbes,
   listedSync,
+  skipWorktreeSync,
   wholeIgnored,
 } from './git-ignored.js'
 export { OWN_DIR_HINT, refuseForeignCacheDir } from './foreign-cache-dir.js'

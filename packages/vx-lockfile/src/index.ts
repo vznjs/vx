@@ -538,6 +538,7 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
         manager.peersInManifest === true,
         rootIsProject,
         manifest,
+        new Set(ctx.projects.map((p) => importerOf(ctx.workspaceRoot, p.dir))),
       )
     },
     async project(config, ctx) {
@@ -886,7 +887,9 @@ async function withManifestLinks(
  * install, and the importers the root installs. A peer, package-installed
  * or root-installed importer orders a build unless it would close a cycle
  * through the order edges, then it is `reach` only, in name order so the
- * edge kept is stable.
+ * edge kept is stable. An edge to an importer with no manifest stands when
+ * core already has a project there (`projects`, importer paths): a sparse
+ * checkout left it out, and its dependants must not run or key without it.
  */
 async function discovered(
   root: string,
@@ -894,6 +897,7 @@ async function discovered(
   peersInManifest: boolean,
   rootIsProject: boolean,
   manifest: (dir: string) => Promise<Record<string, unknown> | null>,
+  projects: ReadonlySet<string>,
 ): Promise<DiscoveredProject[]> {
   const dirOf = (importer: string): string => (importer === '.' ? root : path.join(root, importer))
   const read = await Promise.all(
@@ -903,6 +907,7 @@ async function discovered(
   )
   const manifests = new Map<string, Record<string, unknown>>()
   for (const [i, pkg] of read) if (pkg !== null) manifests.set(i, pkg)
+  const linked = (i: string): boolean => manifests.has(i) || projects.has(i)
   const names = new Map<string, number>()
   for (const pkg of manifests.values()) {
     const n = pkg['name']
@@ -921,7 +926,7 @@ async function discovered(
   // Installed at the root `node_modules`, so every project resolves it
   // whatever its own manifest declares (Turbo #8364, #8465).
   const rootLinked = Object.values(importers.get('.')?.deps ?? {}).filter(
-    (t) => t !== '.' && manifests.has(t),
+    (t) => t !== '.' && linked(t),
   )
   const order = new Map<string, Set<string>>()
   const peers = new Map<string, Set<string>>()
@@ -931,13 +936,13 @@ async function discovered(
     const peer = new Set<string>(i === '.' ? [] : rootLinked.filter((t) => t !== i))
     const manifestPeers = peersInManifest ? manifestPeerNames(manifests.get(i)!) : undefined
     for (const [name, target] of Object.entries(links.deps)) {
-      if (manifests.has(target)) (manifestPeers?.has(name) === true ? peer : own).add(target)
+      if (linked(target)) (manifestPeers?.has(name) === true ? peer : own).add(target)
     }
-    for (const target of Object.values(links.peers)) if (manifests.has(target)) peer.add(target)
+    for (const target of Object.values(links.peers)) if (linked(target)) peer.add(target)
     // Installed only through a package (a registry package's dependency on
     // a workspace): it orders like a peer, as nothing the importer's own
     // manifest declares puts the edge there.
-    for (const target of links.transitive ?? []) if (manifests.has(target)) peer.add(target)
+    for (const target of links.transitive ?? []) if (linked(target)) peer.add(target)
     order.set(i, own)
     peers.set(i, peer)
   }
