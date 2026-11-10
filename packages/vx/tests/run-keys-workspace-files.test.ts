@@ -10,6 +10,7 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { gitIn, makeWorkspace } from './helpers/workspace.js'
+import { GitFilesCache } from '../src/cache/index.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 
@@ -122,3 +123,28 @@ it('a workspace file a project output also matches is not keyed for that task', 
   build()
   expect((await runs()).filter((r) => r === 'b')).toEqual(['b'])
 }, 60_000)
+
+it('a declaration walks only the paths under its heads, untracked ones listed last too', () => {
+  // Untracked paths follow the tracked ones, so the snapshot is not in
+  // order, and the walk took every workspace path for each declaration
+  // (vueuse with its configs untracked: 8 ms of a no-op, 2026-11-10).
+  const oidsOf = (paths: readonly string[]) =>
+    new Map(paths.map((rel) => [`/w/${rel}`, `100644:${rel.replace(/\W/g, '')}`]))
+  const cache = new GitFilesCache()
+  const snapshot = ['a/x.ts', 'b/y.ts', 'c/z.ts', 'b/new.ts']
+  cache.set('/w', snapshot)
+  cache.setOids('/w', oidsOf(snapshot))
+  const asked: string[] = []
+  const takes = (rel: string): boolean => {
+    asked.push(rel)
+    return rel.startsWith('b/')
+  }
+  const digest = cache.declarationDigest('/w', snapshot, 'b', takes, ['b'])
+  expect(asked).toEqual(['b/new.ts', 'b/y.ts'])
+  // CONTROL: the digest is the same paths' whatever order git listed them in.
+  const other = new GitFilesCache()
+  const sorted = [...snapshot].sort()
+  other.set('/w', sorted)
+  other.setOids('/w', oidsOf(sorted))
+  expect(other.declarationDigest('/w', sorted, 'b', takes, ['b'])).toBe(digest!)
+})

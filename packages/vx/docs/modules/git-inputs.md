@@ -106,7 +106,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     snapshot: readonly string[],
     key: string,
     takes: (rel: string) => boolean,
-    heads?: readonly string[], // its entries' fixed heads: only paths at, under or above one are asked
+    heads?: readonly string[], // its entries' fixed heads: only paths at, under or above one are asked, found in a sorted copy when git listed untracked paths last
   ): string | undefined // filesDigest of the workspace paths a workspaceFiles declaration may take in
   statOf(abs: string): Stats | undefined // a path's lstat, once until a partition moves
   noteFilesDigest(

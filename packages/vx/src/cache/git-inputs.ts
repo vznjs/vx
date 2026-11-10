@@ -313,38 +313,42 @@ interface IgnoredListing {
 
 /**
  * The paths of `snapshot` at, under or above one of `heads` (root-relative,
- * none empty), in its order: every path a glob with that fixed head can take
- * in, through a link above it too. A walk of all of it took each
+ * none empty), in code-unit order: every path a glob with that fixed head
+ * can take in, through a link above it too. A walk of all of it took each
  * declaration's globs to every workspace path (vueuse: 11 declarations,
- * 1,583 paths). The whole of it when it is not in code-unit order.
+ * 1,583 paths). A snapshot not in that order (untracked paths follow the
+ * tracked ones) is searched through a sorted copy, made once: walked whole,
+ * it cost vueuse's no-op 8 ms with its configs untracked.
  */
 function underHeads(snapshot: readonly string[], heads: readonly string[]): readonly string[] {
-  let sorted = sortedMemo.get(snapshot)
-  if (sorted === undefined) {
-    sorted = true
+  let ordered = sortedMemo.get(snapshot)
+  if (ordered === undefined) {
+    let sorted = true
     for (let i = 1; i < snapshot.length; i++) {
       if (!(snapshot[i - 1]! < snapshot[i]!)) {
         sorted = false
         break
       }
     }
-    sortedMemo.set(snapshot, sorted)
+    ordered = sorted ? snapshot : [...snapshot].sort()
+    sortedMemo.set(snapshot, ordered)
   }
-  if (!sorted) return snapshot
+  const list = ordered
   const lowerBound = (key: string): number => {
     let lo = 0
-    let hi = snapshot.length
+    let hi = list.length
     while (lo < hi) {
       const mid = (lo + hi) >>> 1
-      if (snapshot[mid]! < key) lo = mid + 1
+      if (list[mid]! < key) lo = mid + 1
       else hi = mid
     }
     return lo
   }
   const at = new Set<number>()
   const exact = (rel: string): void => {
-    const i = lowerBound(rel)
-    if (snapshot[i] === rel) at.add(i)
+    let i = lowerBound(rel)
+    // A path listed twice (tracked and untracked spellings) is taken once each.
+    for (; list[i] === rel; i++) at.add(i)
   }
   for (const head of heads) {
     for (let i = head.lastIndexOf('/'); i > 0; i = head.lastIndexOf('/', i - 1))
@@ -354,10 +358,10 @@ function underHeads(snapshot: readonly string[], heads: readonly string[]): read
     const end = lowerBound(`${head}0`)
     for (let i = lowerBound(`${head}/`); i < end; i++) at.add(i)
   }
-  return [...at].sort((x, y) => x - y).map((i) => snapshot[i]!)
+  return [...at].sort((x, y) => x - y).map((i) => list[i]!)
 }
 
-const sortedMemo = new WeakMap<readonly string[], boolean>()
+const sortedMemo = new WeakMap<readonly string[], readonly string[]>()
 
 /** Past this many, a directory is asked alone, when it is: most never are. */
 const BATCHED_DIRS = 256
