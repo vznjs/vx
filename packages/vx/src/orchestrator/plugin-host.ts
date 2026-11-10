@@ -854,6 +854,9 @@ export async function resolveCache(
 /** The plugin each resolved executor came from, so a hook of it that throws is named. */
 const executorPlugin = new WeakMap<TaskExecutor, string>()
 
+/** Each error `nameExecutorFailure` made, and the executor it names. */
+const failedOn = new WeakMap<object, string>()
+
 /**
  * A plugin executor's throw from `execute`, named as every other hook's
  * is: `plugin 'p' (executor 'e') failed in execute: …`. It read `internal
@@ -868,7 +871,16 @@ export function nameExecutorFailure(executor: TaskExecutor, err: unknown): unkno
   if (!executorPlugin.has(executor)) return err
   const named = new UserError(`${executorLabel(executor)} failed in execute: ${thrownMessage(err)}`)
   named.cause = err
+  failedOn.set(named, executor.name)
   return named
+}
+
+/**
+ * The executor a task's error says failed it, if a plugin's did: the task
+ * was placed there, and its row read `local` with no `where` to show.
+ */
+export function executorFailedOn(err: unknown): string | undefined {
+  return typeof err === 'object' && err !== null ? failedOn.get(err) : undefined
 }
 
 /** How a message names `executor`: its plugin and its own name, or its name alone (the floor). */

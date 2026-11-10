@@ -192,6 +192,36 @@ it("an exit 0 after exec.timeout's abort is a timeout on a plugin executor too (
   expect(await once()).toEqual([['app#slow', 'failed', 143, true]])
 }, 30_000)
 
+// An executor may keep its own clock: a task with no `exec.timeout` it
+// reports timed out read "timed out after undefinedms — its executor was
+// aborted", though core aborted nothing.
+it('a timeout the executor reports on a task with none says so, and fails', async () => {
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
+    localWorkspaceSource([
+      pluginSource(
+        'org/own-clock',
+        `{ executor() { return { name: 'own-clock', async execute() {
+            return { exitCode: 0, timedOut: true, durationMs: 1, stdout: '', stderr: '', violations: [] }
+          } } } }`,
+      ),
+    ]),
+  )
+  await addProject(root, 'app', `export default { tasks: { t: { exec: { command: 'true' } } } }`)
+  const stderr: string[] = []
+  const r = await run({
+    cwd: root,
+    tasks: ['t'],
+    projects: ['app'],
+    log: { ...silent, taskStderr: (_n, chunk) => stderr.push(chunk) },
+    handleSignals: false,
+  })
+  expect(r.outcomes.map((o) => [o.node.id, o.status, o.exitCode, o.timedOut === true])).toEqual([
+    ['app#t', 'failed', 143, true],
+  ])
+  expect(stderr.join('')).toBe('[vx] timed out — as its executor reported\n')
+}, 30_000)
+
 // `--continue=never` starts nothing after a failure. A task a plugin
 // executor still held for a machine (`running` answered `null`) is not
 // started, and vx-dte sent one to a worker after the failure (2026-11-06).
@@ -298,8 +328,9 @@ describe('an executor that ignores the signal', () => {
       log: { ...silent, taskStderr: (_n, chunk) => stderr.push(chunk) },
       handleSignals: false,
     })
-    expect(r.outcomes.map((o) => [o.node.id, o.status, o.timedOut === true])).toEqual([
-      ['app#slow', 'failed', true],
+    // Its row names the executor it was placed on, not this machine.
+    expect(r.outcomes.map((o) => [o.node.id, o.status, o.timedOut === true, o.where])).toEqual([
+      ['app#slow', 'failed', true, 'deaf'],
     ])
     expect(Date.now() - started).toBeLessThan(10_000)
     // On its own line: the executor's last output ended mid-line.
@@ -388,4 +419,29 @@ it('the line naming a thrown executor starts its own line', async () => {
     handleSignals: false,
   })
   expect(seq.join('')).toStartWith('partial\n[vx] ')
+}, 30_000)
+
+// A throw gives core no `where`: the row read `local` for a task placed on
+// the plugin's executor.
+it('a thrown executor names itself as where the task was placed', async () => {
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
+    localWorkspaceSource([
+      pluginSource(
+        'org/thrower',
+        `{ executor() { return { name: 'thrower', async execute() { throw new Error('boom') } } } }`,
+      ),
+    ]),
+  )
+  await addProject(root, 'app', `export default { tasks: { t: { exec: { command: 'true' } } } }`)
+  const r = await run({
+    cwd: root,
+    tasks: ['t'],
+    projects: ['app'],
+    log: silent,
+    handleSignals: false,
+  })
+  expect(r.outcomes.map((o) => [o.node.id, o.status, o.where])).toEqual([
+    ['app#t', 'failed', 'thrower'],
+  ])
 }, 30_000)

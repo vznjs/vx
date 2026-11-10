@@ -107,7 +107,9 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   begun: an executor ends its work and returns, since core
   cannot reach a process it spawned; any exit after the timeout's
   abort, a 0 included, is recorded `timedOut` and fails (X-125); one that has not returned within the
-  kill grace of the abort is abandoned, the attempt settled without it),
+  kill grace of the abort is abandoned, the attempt settled without it,
+  its `where` the executor's name; a `timedOut` it reports on its own
+  clock fails the same, the line saying its executor reported it),
   `liveChildren?`, `onSpawn?` (an executor that runs the command as a
   process on this machine calls it with the pid, so a telemetry sink can
   sample the tree's CPU and memory; absent when nothing samples),
@@ -177,7 +179,8 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   types too: each violation an object with a string `line`, `where` a
   non-empty string, `cpuMs` / `peakRssBytes` non-negative numbers,
   `signal` a name or a positive integer (Bun's number for a signal with
-  no name), `timedOut` a boolean, `machine` positive `cores`,
+  no name) and never beside an `exitCode` 0 (a killed command exits
+  128 + n; that pass was saved), `timedOut` a boolean, `machine` positive `cores`,
   non-negative `memoryBytes` and an optional positive `cpuShare` (a
   `where` object lost the run's history to a bind error). `where` is the
   executor-reported placement label (a REAPI worker id); absent = this

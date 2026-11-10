@@ -294,10 +294,10 @@ describe('assertExecuteResult — what a plugin executor may resolve', () => {
 
   // Bun reports a signal with no name (Linux's real-time ones) by number.
   it('a signal by name or by number is accepted', () => {
-    expect([refusal({ ...ok, signal: 'SIGTERM' }), refusal({ ...ok, signal: 34 })]).toEqual([
-      'ACCEPTED',
-      'ACCEPTED',
-    ])
+    expect([
+      refusal({ ...ok, exitCode: 143, signal: 'SIGTERM' }),
+      refusal({ ...ok, exitCode: 162, signal: 34 }),
+    ]).toEqual(['ACCEPTED', 'ACCEPTED'])
   })
 
   // The optional fields went unchecked: a `where` object lost the whole
@@ -337,6 +337,7 @@ describe('assertExecuteResult — what a plugin executor may resolve', () => {
     expect(
       refusal({
         ...ok,
+        exitCode: 143,
         where: 'w-1',
         cpuMs: 0,
         peakRssBytes: 1024,
@@ -346,6 +347,20 @@ describe('assertExecuteResult — what a plugin executor may resolve', () => {
         violations: [{ line: 'deny', timestamp: new Date() }],
       }),
     ).toBe('ACCEPTED')
+  })
+
+  // `{ exitCode: 0, signal: 'SIGKILL' }` passed as a success and was saved:
+  // a command a signal killed exits 128 + n (the local runner's own result).
+  it('an exit 0 with a signal is refused, not saved as a pass', () => {
+    expect([
+      refusal({ ...ok, signal: 'SIGKILL' }),
+      refusal({ ...ok, signal: 9 }),
+      refusal({ ...ok, exitCode: 137, signal: 'SIGKILL' }),
+    ]).toEqual([
+      says('exitCode is 0 with signal SIGKILL (a killed command exits non-zero)'),
+      says('exitCode is 0 with signal 9 (a killed command exits non-zero)'),
+      'ACCEPTED',
+    ])
   })
 
   it('CONTROL: the shapes a correct executor resolves all pass', () => {

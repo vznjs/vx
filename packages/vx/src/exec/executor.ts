@@ -585,6 +585,10 @@ export function assertExecuteResult(
     !(typeof signal === 'number' && Number.isInteger(signal) && signal > 0)
   )
     fail(`signal is ${shown(signal)} (expected a name or a signal number)`)
+  // A pass with a signal was saved as one: a killed command exits 128 + n,
+  // as the local runner reports it.
+  if (signal !== undefined && r['exitCode'] === 0)
+    fail(`exitCode is 0 with signal ${String(signal as string)} (a killed command exits non-zero)`)
   if (r['timedOut'] !== undefined && typeof r['timedOut'] !== 'boolean')
     fail(`timedOut is ${typeof r['timedOut']} (expected a boolean)`)
   const machine = r['machine']
