@@ -1489,7 +1489,7 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    One to the inputs of a task it was running leaves that task unsaved
    (its key no longer describes them), and the loop starts its first
    cycle on that, labelled `<task> inputs, edited during the first run`.
-   Any other (an input of a task that already finished, a `vx lock`) is
+   Any other (an input of a task that already finished, a new lock) is
    found as the loop arms: a file git lists as untracked or modified,
    written since the run started by none of its commands, is a change,
    and the first cycle runs on it. A deletion made while it runs is
