@@ -48,7 +48,11 @@ not list the directory <dir>: it can be entered but not read …`: a task
 reads a file there by name, and an edit to it was a stale hit
 (`tests/unlistable-input-dir.test.ts`).
 A directory gone before git opened it (a run lock's staging directory in a
-TMPDIR inside the workspace) holds no file to miss, so it is skipped too.
+TMPDIR inside the workspace) holds no file to miss, so it is skipped too,
+and so is one git's reason says was gone (`No such file or directory`,
+`Not a directory`) though it is back by the check: a task re-created its
+own output directory under another task's walk, which was refused as a
+path too long (2026-11-10).
 A cut message is never skipped: it may name a prefix of a real path.
 
 Every enumeration spawn runs `git --no-optional-locks`. A plain `status`
