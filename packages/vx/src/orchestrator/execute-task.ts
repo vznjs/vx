@@ -107,7 +107,7 @@ import { sandboxFix } from './sandbox-fix.js'
 // The hit path's entry stays importable from here (tests).
 export { restoreHit, type RestoreHitArgs } from './hit-restore.js'
 import type { DeferredOutputs } from './deferred-outputs.js'
-import type { TreeLoad } from './telemetry.js'
+import { taskLogMasks, type TreeLoad } from './telemetry.js'
 import { type Logger, warnOf } from '../report/index.js'
 import {
   computeGroupHash,
@@ -1619,6 +1619,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       errTail = (errTail + t).slice(-2048)
       log.taskStderr(node, t)
     }
+    if (secrets) taskLogMasks.set(node, secrets)
     const masked = secrets && maskedStreams(secrets, toOut, toErr)
     flushMasked = () => masked?.end()
     // A plugin executor gets frozen copies of what core goes on reading:

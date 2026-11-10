@@ -40,6 +40,20 @@ describe('secretMask', () => {
     expect(m.maskCut('plain', 'words')).toEqual(['plain', 'words'])
   })
 
+  // `${A}xyz789` printed `***xyz789`: one alternation replaced A and
+  // resumed past it, so B, which overlaps A's end, was never matched.
+  it('masks the union of overlapping and adjacent values', () => {
+    const m = secretMask([{ A_TOKEN: 'abcdef123456', B_TOKEN: '123456xyz789' }])!
+    expect(m.mask('x abcdef123456xyz789 y')).toBe(`x ${MASKED} y`)
+    expect(m.mask('abcdef123456123456xyz789')).toBe(MASKED)
+    expect(m.spans('abcdef123456xyz789!')).toEqual([[0, 18]])
+    const s = m.stream()
+    const streamed =
+      ['abcdef', '123456', 'xyz', '789 done'].map((c) => s.push(c)).join('') + s.end()
+    expect(streamed).toBe(`${MASKED} done`)
+    expect(m.maskCut('a abcdef123456xyz789', 'b')).toEqual([`a ${MASKED}`, 'b'])
+  })
+
   it("a URL's password is masked whatever the variable is named", () => {
     const m = secretMask([
       {
@@ -359,6 +373,31 @@ describe('a value split by a pause is masked in every stored copy', () => {
       stdout: `${MASKED}\n`,
       stderr: 'working\n',
     })
+  })
+
+  // A telemetry sink got the live chunks, whose held piece the 25 ms
+  // bound had let go: vx-otel's buffer joined them into the value.
+  it('the telemetry task.log records', async () => {
+    await project(0)
+    delete process.env['API_TOKEN']
+    await lock(root)
+    process.env['API_TOKEN'] = SECRET
+    const chunks: string[] = []
+    const r = await runFromLock({
+      cwd: root,
+      tasks: ['t'],
+      log: quiet,
+      handleSignals: false,
+      telemetrySinks: [
+        {
+          wants: ['task.log'],
+          onRecord: (rec) => {
+            if (rec.kind === 'task.log') chunks.push(rec.chunk)
+          },
+        },
+      ],
+    })
+    expect({ ok: r.ok, log: chunks.join('') }).toEqual({ ok: true, log: `${MASKED}\n` })
   })
 
   it('the failure record', async () => {

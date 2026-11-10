@@ -163,13 +163,40 @@ function urlPasswords(value: string): string[] {
 }
 
 function maskOf(values: ReadonlySet<string>): SecretMask {
-  // Longest first, so a value holding another is replaced whole.
+  // Longest first, so the value tried first at a position is the longest
+  // there.
   const sorted = [...values].sort((a, b) => b.length - a.length)
+  // A lookahead matches at every position, not only past the last match:
+  // a value overlapping another's end (`${A}xyz789` where B is A's tail +
+  // `xyz789`) is found too, and the union is masked (`***xyz789` leaked).
   const pattern = new RegExp(
-    sorted.map((v) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'),
+    `(?=(${sorted.map((v) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')}))`,
     'g',
   )
-  const mask = (text: string): string => text.replace(pattern, MASKED)
+  /** Where values sit in `text`: overlapping or adjacent ones merged, in order. */
+  const spans = (text: string): Array<[number, number]> => {
+    const out: Array<[number, number]> = []
+    pattern.lastIndex = 0
+    for (let m = pattern.exec(text); m !== null; m = pattern.exec(text)) {
+      const end = m.index + m[1]!.length
+      const last = out.at(-1)
+      if (last !== undefined && m.index <= last[1]) last[1] = Math.max(last[1], end)
+      else out.push([m.index, end])
+      pattern.lastIndex = m.index + 1
+    }
+    return out
+  }
+  const mask = (text: string): string => {
+    const found = spans(text)
+    if (found.length === 0) return text
+    let out = ''
+    let at = 0
+    for (const [s, e] of found) {
+      out += text.slice(at, s) + MASKED
+      at = e
+    }
+    return out + text.slice(at)
+  }
   /** The longest tail of `text` that is a proper prefix of a value. */
   const partialTail = (text: string): number => {
     let longest = 0
@@ -196,26 +223,25 @@ function maskOf(values: ReadonlySet<string>): SecretMask {
     }
     return longest
   }
+  /**
+   * `text` cut where nothing after the cut could begin a value, and no
+   * masked span runs across it or ends at it with text after: a span
+   * ending there may yet merge with a value the next chunk completes.
+   */
+  const safeCut = (text: string): number => {
+    let cut = text.length - partialTail(text)
+    for (const [s, e] of spans(text))
+      if (s < cut && (e > cut || (e === cut && cut < text.length))) cut = s
+    return cut
+  }
   return {
     mask,
-    spans(text) {
-      const out: Array<[number, number]> = []
-      pattern.lastIndex = 0
-      for (let m = pattern.exec(text); m !== null; m = pattern.exec(text))
-        out.push([m.index, m.index + m[0].length])
-      return out
-    },
+    spans,
     maskCut(head, tail) {
       let h = head.length - partialTail(head)
-      pattern.lastIndex = 0
-      for (let m = pattern.exec(head); m !== null; m = pattern.exec(head)) {
-        if (m.index < h && m.index + m[0].length > h) h = m.index
-      }
+      for (const [s, e] of spans(head)) if (s < h && e >= h) h = s
       let t = partialHead(tail)
-      pattern.lastIndex = 0
-      for (let m = pattern.exec(tail); m !== null; m = pattern.exec(tail)) {
-        if (m.index < t && m.index + m[0].length > t) t = m.index + m[0].length
-      }
+      for (const [s, e] of spans(tail)) if (s <= t && e > t) t = e
       return [
         mask(head.slice(0, h)) + (h < head.length ? MASKED : ''),
         (t > 0 ? MASKED : '') + mask(tail.slice(t)),
@@ -228,12 +254,7 @@ function maskOf(values: ReadonlySet<string>): SecretMask {
           const text = carry + chunk
           // Held back: only a tail that could begin a value, so output that
           // cannot be one is never delayed (a `readyWhen` line, a marker).
-          let cut = text.length - partialTail(text)
-          pattern.lastIndex = 0
-          // Never cut through a value that is already whole.
-          for (let m = pattern.exec(text); m !== null; m = pattern.exec(text)) {
-            if (m.index < cut && m.index + m[0].length > cut) cut = m.index
-          }
+          const cut = safeCut(text)
           carry = text.slice(cut)
           return mask(text.slice(0, cut))
         },

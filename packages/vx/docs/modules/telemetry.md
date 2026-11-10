@@ -53,6 +53,8 @@ is pre-folded, bigint wallclock spans are decimal strings.
   (`graph/task-status.ts`, scheduler.md).
 - `TELEMETRY_SCHEMA_VERSION` — bumped when a record's shape changes, so a
   receiver can refuse what it cannot read.
+- `taskLogMasks` — each running task's secret mask, which
+  `execute-task.ts` sets; `task.log` masks the live chunks again through it.
 
 ## Records
 
@@ -197,6 +199,11 @@ elsewhere (the run history keeps it a success).
   propagates, and so is an `async` hook that rejects; it is said once,
   however many rejections follow (`telemetry-async-hooks.test.ts`).
 - `task.log` is opt-in via `TelemetrySink.wants` (default excludes it).
+  Its chunks pass a second `mask.stream()` per task and stream
+  (`taskLogMasks`): the live mask lets a held piece go after 25 ms, so a
+  value printed slowly reached a sink in pieces it joined whole. This one
+  holds the piece until more output, the task's `task:complete` or
+  `run:end`, never on a timer.
 - `task.sample` is opt-in the same way. Only when a sink wants it does the
   source offer `track(taskId, pid)`, which run.ts hands each task's
   executor as `ExecuteRequest.onSpawn`: one timer for the run samples each
