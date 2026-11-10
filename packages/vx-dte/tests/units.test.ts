@@ -4959,11 +4959,14 @@ it('fails a task whose project the run’s tree lacks, naming it', async () => {
 // and the run waited for an `end` that never came (2026-10-25).
 it('sends a result too long for one relay frame in parts, all of it arriving', async () => {
   const root = await tmp()
-  const many = 24_000
+  // ~1 MB of names, past a 512 KiB frame, in long names: 24 000 short ones
+  // outlasted the test's minute on a loaded CI runner (2026-11-10).
+  const many = 4_000
+  const long = 'n'.repeat(220)
   await mkdir(path.join(root, 'files'))
   await Promise.all(
     Array.from({ length: many }, (_, i) =>
-      writeFile(path.join(root, 'files', `a-rather-long-file-name-${i}.txt`), '0\n'),
+      writeFile(path.join(root, 'files', `${long}-${i}.txt`), '0\n'),
     ),
   )
   const git = (...a: string[]) =>
@@ -5002,6 +5005,7 @@ it('sends a result too long for one relay frame in parts, all of it arriving', a
     }
     const changed: string[] = []
     let ended = false
+    let parts = 0
     for (let i = 0; i < 400 && !ended; i++)
       for (const { from, body } of flat(await o.poll())) {
         const m = body as {
@@ -5020,6 +5024,7 @@ it('sends a result too long for one relay frame in parts, all of it arriving', a
           })
           await o.send(m.id!, { type: 'batch', n: 1, root, realRoot: root, tasks: [order] })
         } else if (m.type === 'part') {
+          parts++
           changed.push(...(m.changed ?? []))
         } else if (m.type === 'end') {
           changed.push(...(m.result?.changed ?? []))
@@ -5028,11 +5033,12 @@ it('sends a result too long for one relay frame in parts, all of it arriving', a
         }
       }
     expect(ended).toBe(true)
+    expect(parts).toBeGreaterThan(0)
     expect(changed).toHaveLength(many)
     expect(await code).toBe(0)
   } finally {
     await served.stop()
-    // Here, under the test's minute: 24 000 files outlast the 5 s hook
+    // Here, under the test's minute: thousands of files outlast the 5 s hook
     // below on a loaded runner, which failed the test after it passed.
     await rm(root, { recursive: true, force: true })
   }
