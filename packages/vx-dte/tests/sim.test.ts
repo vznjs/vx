@@ -479,9 +479,9 @@ it('asks no worker while the CI queues one of its size', () => {
     ),
   )
   expect(late.map((w) => w.id)).toEqual([])
-  // Asked at once for tasks of no history counted at twice their guess,
-  // one the CI queued past 84 s is cancelled once those ran shorter.
-  expect(r.workers.filter((w) => w.cancelledAt !== undefined).length).toBeLessThanOrEqual(1)
+  // Asked at once for tasks of no history, which no guess gives slack,
+  // two the CI queued past 83 s are cancelled once those ran shorter.
+  expect(r.workers.filter((w) => w.cancelledAt !== undefined).length).toBeLessThanOrEqual(2)
   // The run's ideal, 121.6 s, within the plan's 5% margin: a plan that
   // holds is followed, not played again at each join for a closer end.
   expect(r.endMs).toBeLessThanOrEqual(121_600 * 1.05)
