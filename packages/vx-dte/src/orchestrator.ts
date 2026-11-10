@@ -59,7 +59,7 @@ import { type Need, Queue, type Soon } from './dispatch.js'
 import { DEFAULT_STRATEGY, type Strategy } from './strategy.js'
 import { RelayError, unsent, type Participant } from './wire.js'
 import { ORCHESTRATOR, Trace } from './trace.js'
-import { names } from './outputs.js'
+import { leftUnder, names, outputFiles } from './outputs.js'
 
 /** What a task is expected to hold while it runs, from its history; `Infinity`: a whole worker (one that filled its worker). */
 
@@ -472,14 +472,23 @@ export class Orchestrator {
     if (req.inputs !== undefined && req.inputs.files.length > 0) {
       this.inTree ??= listTree(this.o.root, this.o.tree)
       const tree = await this.inTree
-      // A dependency's output is restored there before the task runs: a
-      // key that reads an upstream's bytes (`inputs.tasks` leaving it out)
-      // was refused (2026-10-25).
+      // A dependency's output is there before the task runs: a cached one's
+      // restored, an uncached one's left where it ran, which its dependants
+      // follow. A key that reads an upstream's bytes (`inputs.tasks` leaving
+      // it out) was refused (2026-10-25), an uncached one's too (2026-11-10).
       let restored: ((file: string) => boolean)[] | undefined
       const made = (file: string): boolean =>
         (restored ??= [...up].flatMap((id) => {
-          const d = this.dep(nodes, id)
-          return d === undefined ? [] : [names(d.project, d.outputs)]
+          const n = nodes?.get(id)
+          const outs = n?.config.outputs
+          return n === undefined || outs === undefined
+            ? []
+            : [
+                names(path.relative(this.o.root, n.projectDir), {
+                  files: outs.files,
+                  workspaceFiles: outs.workspaceFiles ?? [],
+                }),
+              ]
         })).some((m) => m(file))
       const stray =
         tree === undefined
@@ -1439,7 +1448,10 @@ export class Orchestrator {
       job.req.remoteOnly === true || deferred ? this.o.artifacts.output(key) : restore()
     // A failed download reads as a miss: asked once more, since one stalled
     // download failed a CI run whose upload had landed (main, 2026-10-28).
-    const log = await read()
+    const log = await (
+      job.req.remoteOnly === true || deferred ? Promise.resolve() : this.clear(job, node)
+    )
+      .then(read)
       .then((got) => got ?? read())
       .catch((err: unknown) => {
         job.reject(err)
@@ -1517,6 +1529,31 @@ export class Orchestrator {
         ...(share < 1 ? { cpuShare: share } : {}),
       },
     })
+  }
+
+  /**
+   * Clears what its worker cleared before `job`'s task ran: an earlier
+   * run's files under its outputs, not committed ones, nested projects' or
+   * its dependencies'. A restore lays files and removes none, so a file
+   * the task no longer writes, or deleted (an uncached `rm -rf dist`, which
+   * core cleans nothing for), stayed beside its new ones (2026-11-10).
+   */
+  private async clear(job: Job, node: TaskNode | undefined): Promise<void> {
+    if (job.req.outputs.files.length + job.req.outputs.workspaceFiles.length === 0) return
+    this.inTree ??= listTree(this.o.root, this.o.tree)
+    const tree = await this.inTree
+    // No list of the committed files: none is told from the rest.
+    if (tree === undefined) return
+    const nodes = this.o.nodes()
+    const held = [...(job.up ?? upstream(nodes, job.req.taskId))].flatMap((id) => {
+      const d = this.dep(nodes, id)
+      return d === undefined ? [] : [names(d.project, d.outputs)]
+    })
+    const project = path.relative(this.o.root, node?.projectDir ?? job.req.cwd)
+    const nested = node === undefined ? [] : nestedIn(nodes!, node.projectDir, this.o.root)
+    const under = await outputFiles(this.o.root, project, job.req.outputs)
+    for (const f of leftUnder(under, tree.files, nested, held).cleared)
+      await rm(path.join(this.o.root, f), { force: true })
   }
 
   /**

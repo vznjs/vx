@@ -456,11 +456,14 @@ export async function runWorker(opts: {
       // its upstream's tree) found the files it builds on gone.
       const upstream = m.deps.map((d) => names(d.project, d.outputs))
       const under = await outputFiles(opts.root, m.project, m.outputs)
-      const { cleared, held: upstreams } = leftUnder(under, tracked, m.nested, upstream)
+      const { cleared, held: upstreams, committed } = leftUnder(under, tracked, m.nested, upstream)
       // An upstream's file it leaves as it found it is not its entry's: one
       // saved there replayed the upstream's old bytes over its new ones on
       // a hit that did not fold the upstream's key (2026-10-24).
       const found = await stamps(upstreams.map((f) => path.join(opts.root, f)))
+      // A committed file under its outputs it deletes is gone here, not
+      // there: no restore removes one (2026-11-10).
+      const mine = committed.map((f) => path.join(opts.root, f))
       for (const [key, held] of holds)
         if (cleared.some(held)) {
           present.delete(key)
@@ -599,14 +602,16 @@ export async function runWorker(opts: {
       // run's hit (2026-10-24). Core withholds its own save if the key read
       // it; this entry is withheld for any. Nor for an additive task that
       // removed an upstream's file: a hit left the file in place, and core
-      // saves none once this machine removes it too (2026-10-24).
+      // saves none once this machine removes it too (2026-10-24). Nor for
+      // one that removed a committed file under its outputs: a hit leaves
+      // that in place too (2026-11-10).
       const changed = [
         ...(await changedTracked(opts.root, base.commit, m, names(m.project, m.outputs))),
         ...strays,
       ]
-      const now = await stamps([...found.keys()])
+      const now = await stamps([...found.keys(), ...mine])
       const others = unchanged(found, now)
-      const removed = [...found.keys()]
+      const removed = [...found.keys(), ...mine]
         .filter((f) => !now.has(f))
         .map((f) => path.relative(opts.root, f))
       const key =

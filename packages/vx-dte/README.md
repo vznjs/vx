@@ -582,9 +582,12 @@ use your own instead.
   fails the run. Before a task runs, its
   worker removes the files under its outputs that an earlier task left,
   except committed files, nested projects' files, and its dependencies'
-  outputs (an additive task builds on its upstream's tree). An upstream's
+  outputs (an additive task builds on its upstream's tree); before laying
+  what it left, this machine removes the same, cached task or not, so its
+  outputs end as the worker's did. An upstream's
   file the task leaves as it found it is not saved in its entry; one it
-  removes is removed on this machine too, unless a link on its path leads
+  removes, or a committed file under its own outputs it removes, is
+  removed on this machine too, unless a link on its path leads
   elsewhere (that file is kept, with a warning), and the task saves no
   entry, as core saves none.
 - A hit only this machine's cache holds (the remote evicted it, or this
@@ -625,7 +628,8 @@ use your own instead.
 - A task whose key hashes a file the run's commit lacks (untracked, or
   gitignored and named outright, or inside a submodule, whose files the
   commit holds only as a gitlink) fails, naming the file: no worker has it.
-  A dependency's declared output is not one: its worker restores it first.
+  A dependency's declared output is not one: its worker restores it first,
+  or, uncached, ran it there.
   A task whose project the commit lacks (its config untracked) fails,
   naming the project, and a run whose `.vx/workspace.*` is untracked is
   refused before a worker starts.
