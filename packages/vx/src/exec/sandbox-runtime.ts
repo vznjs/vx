@@ -1133,7 +1133,9 @@ function cleanupListeners(): Map<string, unknown[]> {
  * early on the dying session, and the next wrap threw "Linux HTTP bridge
  * socket does not exist" (the bridge-socket row's gate failure, M-35).
  * Each listener stays, once-only as SRT made it; vx now tracks the reset
- * it starts, as its own.
+ * it starts, as its own. SRT 0.0.81's `exit` listener starts that reset
+ * and returns nothing, so the reset is the session's end itself: SRT
+ * drops its context last, once its proxies have closed.
  */
 function adoptSrtCleanup(before: Map<string, unknown[]>): void {
   for (const ev of SRT_CLEANUP_EVENTS) {
@@ -1144,10 +1146,26 @@ function adoptSrtCleanup(before: Map<string, unknown[]>): void {
       process.removeListener(ev, l)
       process.once(ev, (...a: unknown[]) => {
         srtDown()
-        trackReset(Promise.resolve(l(...a)))
+        const reset = l(...a)
+        trackReset(reset instanceof Promise ? reset : sessionGone())
       })
     }
   }
+}
+
+/** Settles once SRT has dropped its session's context, or after 10 s. */
+function sessionGone(): Promise<void> {
+  const m = srtLoaded?.SandboxManager
+  const up = () =>
+    m !== undefined && (m.getProxyPort() !== undefined || m.getLinuxHttpSocketPath() !== undefined)
+  const end = performance.now() + 10_000
+  return new Promise((resolve) => {
+    const check = () => {
+      if (!up() || performance.now() >= end) return resolve()
+      setTimeout(check, 5).unref()
+    }
+    check()
+  })
 }
 
 export interface SandboxedRunArgs {
