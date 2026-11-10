@@ -37,8 +37,8 @@ const task = (id: string, ms: number, deps: string[] = [], cores = 1): PlanTask 
 })
 
 // Main 2163fff asked 6 workers at 0.6 s for 109 tasks; 85 hit and 2 did
-// the work at 46% (2026-10-23). Booked in full beside others, it takes three.
-it('plans main’s run on three workers: only its misses are work, never a group or a hit', () => {
+// the work at 46% (2026-10-23). Booked in full beside others, it takes four.
+it('plans main’s run on four workers: only its misses are work, never a group or a hit', () => {
   const nodes = new Map(
     replay.nodes.map((n) => [
       n.id,
@@ -62,7 +62,8 @@ it('plans main’s run on three workers: only its misses are work, never a group
   )
   expect(work.map((t) => t.id).sort()).toEqual(Object.keys(ran).sort())
   const p = plan(work, [], candidates([small], new Map(), [], work.length), WARM)
-  expect(p.start).toEqual([small, small, small])
+  // Four end it on its longest chain; three, the fewest within 5% of it, ended it late (2026-11-10).
+  expect(p.start).toEqual([small, small, small, small])
   expect(p.release).toEqual([])
   // How busy it keeps them is tests/sim.test.ts's to judge.
   // The longest chain, vx-docs's import, build and test, after the warm-up.

@@ -45,7 +45,9 @@ import {
 } from './messages.js'
 import {
   advise,
+  leftMs,
   simulate,
+  UNKNOWN_MS,
   type Fleets,
   type PlanTask,
   type PlanWorker,
@@ -53,7 +55,7 @@ import {
   type WarmUp,
 } from './planner.js'
 import { Usage, type UsageStats } from './usage.js'
-import { type Need, Queue } from './dispatch.js'
+import { type Need, Queue, type Soon } from './dispatch.js'
 import { DEFAULT_STRATEGY, type Strategy } from './strategy.js'
 import { RelayError, unsent, type Participant } from './wire.js'
 import { ORCHESTRATOR, Trace } from './trace.js'
@@ -204,6 +206,13 @@ export interface OrchestratorOptions {
   readonly faulted?: () => void
   /** How much of the run waits on a task (`tailsMs`): the queue places the most first. */
   readonly tail?: (taskId: string) => number
+  /** A task's time as history says it (ms): when a running one ends, and what a hold keeps from (`Hold`). */
+  readonly ms?: (taskId: string) => number | undefined
+  /**
+   * Tasks about to be ready, given when each running one ends (ms from
+   * now): the queue keeps room for them (`holdFor`), highest rank first.
+   */
+  readonly soon?: (ends: ReadonlyMap<string, number>) => readonly (Soon & { readonly id: string })[]
   /** How waiting tasks are ordered and placed (`Strategy`). */
   readonly how?: Strategy
   /** The platform a task naming none runs on (`homeOf`). */
@@ -657,10 +666,26 @@ export class Orchestrator {
     // and its 41 s build began 47 s in, the run's end (main, 2026-10-23).
     const workers = [...this.workers.values()].filter((a) => !a.faulty)
     const byId = this.waiting
+    const now = performance.now()
+    const ms = this.o.ms
+    // When each running task ends, as history says: where a hold finds room.
+    const endsIn = new Map<string, number>()
     const bins = workers.map((a) => {
       let running = 0
-      for (const j of a.busy.values()) if (j.held !== undefined) running++
+      const ends: [number, number, number][] = []
+      for (const j of a.busy.values()) {
+        if (j.held === undefined) continue
+        running++
+        if (ms === undefined) continue
+        const at = Math.max(
+          1,
+          leftMs((ms(j.req.taskId) ?? UNKNOWN_MS) - (now - (j.startedAt ?? j.sentAt ?? now))),
+        )
+        endsIn.set(j.req.taskId, at)
+        ends.push([at, j.held.cores, j.held.memory])
+      }
       return {
+        ...(ms === undefined ? {} : { ends }),
         id: a.id,
         cores: a.cores,
         memory: a.memory,
@@ -673,7 +698,16 @@ export class Orchestrator {
       }
     })
     const nodes = this.o.nodes()
+    const soon =
+      this.o.soon === undefined || ms === undefined
+        ? undefined
+        : this.o
+            .soon(endsIn)
+            .filter((s) => !byId.has(s.id) && !endsIn.has(s.id))
+            // As many as the run has workers, and a few: room kept for more is room no task gets.
+            .slice(0, 4 * bins.length + 8)
     const to = this.queue.pass(bins, {
+      ...(soon === undefined ? {} : { soon, ms: (id: string) => ms!(id) ?? UNKNOWN_MS }),
       book: (need) => this.booking(need),
       deps: (id) => (byId.get(id)!.deps ??= nodes?.get(id)?.deps),
       gate: (id) => {
