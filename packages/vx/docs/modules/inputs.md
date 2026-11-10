@@ -306,8 +306,10 @@ export function stopRuntimeProbes(...memos: readonly Map<string, Promise<string>
 `filesToken` names what `resolveFiles` would resolve and the key would
 fold for a task's files without resolving them: the project's
 `filesDigest` (git-inputs.md), the workspace root and the declaration
-`resolveFiles` keys its own memo on. It is undefined for a task with
-`workspaceFiles`, a declaration that names a gitignored path outright,
+`resolveFiles` keys its own memo on, and for `workspaceFiles` the
+declaration and `declarationDigest` of the workspace paths its globs may
+take in (git-inputs.md). It is undefined for a declaration that names a
+gitignored path outright,
 and a partition holding anything the enumeration did not vouch for (a
 dirty, untracked, linked or undecodable file, or a path a run already
 marked changed). `computeTaskHash` keys the fold memo on it

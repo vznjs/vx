@@ -949,8 +949,8 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
   // By object, not name: one package can export two plugins.
   const disabled = new Set<Plugin>()
   // Made at the first event a plugin hears: a run no handler hears pays nothing.
-  let readOnly: ((event: RunEvent) => RunEvent) | undefined
-  const viewOf = (event: RunEvent): RunEvent => (readOnly ??= readOnlyEvents())(event)
+  let readOnly: (<T>(value: T) => T) | undefined
+  const viewOf = <T>(value: T): T => (readOnly ??= readOnlyEvents())(value)
 
   for (const plugin of plugins) {
     if (typeof plugin.name !== 'string' || plugin.name.length === 0) {
@@ -1021,40 +1021,39 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
           )
         }
         const onFail = (err: unknown): void => fail(hook, err)
+        const kind = HOOK_EVENTS[hook]
         const dispose = bus.subscribe((live) => {
-          if (disabled.has(plugin)) return
-          const event = HOOK_EVENTS[hook] === live.kind ? viewOf(live) : live
+          if (live.kind !== kind || disabled.has(plugin)) return
           // Not awaited: the bus is synchronous and plugin work runs off the
           // critical path. A handler's rejection is caught like its throw.
+          // Handed each part's view, not the event's: a view of the event
+          // was one more proxy and two traps per task a hook heard.
           let ret: unknown
           try {
-            switch (hook) {
-              case 'onRunStart':
-                if (event.kind === 'run:start')
-                  ret = (handler as PluginHookHandlers['onRunStart'])(event.info)
+            switch (live.kind) {
+              case 'run:start':
+                ret = (handler as PluginHookHandlers['onRunStart'])(viewOf(live.info))
                 break
-              case 'onTaskStart':
-                if (event.kind === 'task:start')
-                  ret = (handler as PluginHookHandlers['onTaskStart'])(event.node)
+              case 'task:start':
+                ret = (handler as PluginHookHandlers['onTaskStart'])(viewOf(live.node))
                 break
-              case 'onTaskStdout':
-                if (event.kind === 'task:stdout')
-                  ret = (handler as PluginHookHandlers['onTaskStdout'])(event.node, event.chunk)
+              case 'task:stdout':
+                ret = (handler as PluginHookHandlers['onTaskStdout'])(viewOf(live.node), live.chunk)
                 break
-              case 'onTaskStderr':
-                if (event.kind === 'task:stderr')
-                  ret = (handler as PluginHookHandlers['onTaskStderr'])(event.node, event.chunk)
+              case 'task:stderr':
+                ret = (handler as PluginHookHandlers['onTaskStderr'])(viewOf(live.node), live.chunk)
                 break
-              case 'onTaskComplete':
-                if (event.kind === 'task:complete')
-                  ret = (handler as PluginHookHandlers['onTaskComplete'])(event.node, event.outcome)
+              case 'task:complete':
+                ret = (handler as PluginHookHandlers['onTaskComplete'])(
+                  viewOf(live.node),
+                  viewOf(live.outcome),
+                )
                 break
-              case 'onRunStatus':
-                if (event.kind === 'run:status')
-                  ret = (handler as PluginHookHandlers['onRunStatus'])(event.line)
+              case 'run:status':
+                ret = (handler as PluginHookHandlers['onRunStatus'])(live.line)
                 break
-              case 'onRunEnd':
-                if (event.kind === 'run:end') ret = (handler as PluginHookHandlers['onRunEnd'])()
+              case 'run:end':
+                ret = (handler as PluginHookHandlers['onRunEnd'])()
                 break
             }
           } catch (err) {

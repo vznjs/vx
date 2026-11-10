@@ -76,6 +76,13 @@ function keptServers(
   return reached
 }
 
+const NONE: string[] = []
+
+function someNode(nodes: ReadonlyMap<string, TaskNode>, is: (n: TaskNode) => boolean): boolean {
+  for (const n of nodes.values()) if (is(n)) return true
+  return false
+}
+
 /**
  * The servers no task left needs, as tasks finish: a dependency-only
  * server stops once every task that uses it, directly or through groups,
@@ -88,6 +95,9 @@ export function unneededServers(
   foreground: boolean,
 ): (id: string) => string[] {
   const isServer = (n: TaskNode): boolean => n.config.exec?.persistent !== undefined
+  // No server, nothing to stop: a dependents map of the whole graph was
+  // ~7 ms of a 9,603-task warm run (2026-11-10).
+  if (!someNode(nodes, isServer)) return () => NONE
   const kept = foreground ? keptServers(nodes, (id) => isServer(nodes.get(id)!)) : new Set<string>()
   const dependents = new Map<string, string[]>()
   for (const [id, n] of nodes)
@@ -403,6 +413,8 @@ export async function disposeServers(args: {
   endedBeforeStop: ReadonlySet<Child> | undefined
 }): Promise<{ keepAlive: KeepAlive; crashed: CrashedPersistent[] }> {
   const { registry, outcomes, endedBeforeStop } = args
+  // No server ran: nothing to keep, stop or fail.
+  if (registry.size === 0) return { keepAlive: { nodes: [], children: [] }, crashed: [] }
   // One turn of the event loop first, so Bun reaps what has already died:
   // `exitCode` stays null until it does. A server dead at once, with
   // nothing between its spawn and here to yield, was judged still up: the

@@ -297,6 +297,80 @@ interface IgnoredListing {
   base: string | undefined
   paths: readonly string[]
   asked: Map<string, boolean>
+  /** Whether every directory above an ignored path was asked at once (`ancestorDirs`). */
+  batched?: boolean
+}
+
+/**
+ * The paths of `snapshot` at, under or above one of `heads` (root-relative,
+ * none empty), in its order: every path a glob with that fixed head can take
+ * in, through a link above it too. A walk of all of it took each
+ * declaration's globs to every workspace path (vueuse: 11 declarations,
+ * 1,583 paths). The whole of it when it is not in code-unit order.
+ */
+function underHeads(snapshot: readonly string[], heads: readonly string[]): readonly string[] {
+  let sorted = sortedMemo.get(snapshot)
+  if (sorted === undefined) {
+    sorted = true
+    for (let i = 1; i < snapshot.length; i++) {
+      if (!(snapshot[i - 1]! < snapshot[i]!)) {
+        sorted = false
+        break
+      }
+    }
+    sortedMemo.set(snapshot, sorted)
+  }
+  if (!sorted) return snapshot
+  const lowerBound = (key: string): number => {
+    let lo = 0
+    let hi = snapshot.length
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1
+      if (snapshot[mid]! < key) lo = mid + 1
+      else hi = mid
+    }
+    return lo
+  }
+  const at = new Set<number>()
+  const exact = (rel: string): void => {
+    const i = lowerBound(rel)
+    if (snapshot[i] === rel) at.add(i)
+  }
+  for (const head of heads) {
+    for (let i = head.lastIndexOf('/'); i > 0; i = head.lastIndexOf('/', i - 1))
+      exact(head.slice(0, i))
+    exact(head)
+    // `/` sorts after `-` and `.`: `dir-x` lies between `dir` and `dir/a`.
+    const end = lowerBound(`${head}0`)
+    for (let i = lowerBound(`${head}/`); i < end; i++) at.add(i)
+  }
+  return [...at].sort((x, y) => x - y).map((i) => snapshot[i]!)
+}
+
+const sortedMemo = new WeakMap<readonly string[], boolean>()
+
+/** Past this many, a directory is asked alone, when it is: most never are. */
+const BATCHED_DIRS = 256
+
+/**
+ * The directories `newFilesIgnored` can be asked of and has not been: each
+ * above an ignored path, and an ignored directory itself. Undefined past
+ * {@link BATCHED_DIRS}.
+ */
+function ancestorDirs(
+  paths: readonly string[],
+  asked: ReadonlyMap<string, boolean>,
+): string[] | undefined {
+  const dirs = new Set<string>()
+  for (const p of paths) {
+    const rel = p.endsWith('/') ? p.slice(0, -1) : p.slice(0, Math.max(0, p.lastIndexOf('/')))
+    for (let d = rel; d !== ''; d = d.slice(0, Math.max(0, d.lastIndexOf('/')))) {
+      if (dirs.has(d)) break
+      if (!asked.has(d)) dirs.add(d)
+      if (dirs.size > BATCHED_DIRS) return undefined
+    }
+  }
+  return [...dirs]
 }
 
 export class GitFilesCache extends Map<string, readonly string[]> {
@@ -473,7 +547,22 @@ export class GitFilesCache extends Map<string, readonly string[]> {
       else hi = mid
     }
     known = false
-    if (ig.paths[lo]?.startsWith(under) === true) known = newFilesIgnoredIn(ig.root, [rel]).size > 0
+    if (ig.paths[lo]?.startsWith(under) === true) {
+      // Every directory this question can be asked of, in one spawn: a
+      // workspaceFiles glob per package (vueuse's `packages/core/**`) asked
+      // for each, and each spawn was ~2 ms (11 of a no-op, 2026-11-10).
+      if (!ig.batched) {
+        ig.batched = true
+        const dirs = ancestorDirs(ig.paths, ig.asked)
+        if (dirs !== undefined && dirs.length > 1) {
+          const hit = newFilesIgnoredIn(ig.root, dirs)
+          for (const d of dirs) ig.asked.set(d, hit.has(d))
+          const batched = ig.asked.get(rel)
+          if (batched !== undefined) return batched
+        }
+      }
+      known = newFilesIgnoredIn(ig.root, [rel]).size > 0
+    }
     ig.asked.set(rel, known)
     return known
   }
@@ -567,6 +656,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   }
 
   private recordChanged(partitionDir: string, relPaths: readonly string[]): void {
+    this.stats.clear()
     // A partition with no snapshot has nothing for a mark to invalidate
     // (`snapshotFor` answers undefined either way), so this guard bounds
     // memory for a project the enumeration left without a partition; it
@@ -594,6 +684,81 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     if (this.oids.get(projectDir) !== d.oids || this.changed.has(projectDir)) return
     return d.digest()
   }
+
+  /**
+   * `filesDigest` for a `workspaceFiles` declaration: a digest of the paths
+   * of the workspace partition `snapshot` that `takes`, each with its index
+   * OID, or its stat and whether git tracks it where git vouches for none
+   * (an untracked or edited file). Undefined where `filesDigest` would be:
+   * the partition moved, a path is a link, undecodable, or written within
+   * the racy window. Once per `key` and partition: tasks share declarations.
+   */
+  declarationDigest(
+    root: string,
+    snapshot: readonly string[],
+    key: string,
+    takes: (rel: string) => boolean,
+    heads?: readonly string[],
+  ): string | undefined {
+    const slot = this.oids.get(root)
+    if (slot === undefined || this.get(root) !== snapshot || this.changed.has(root)) return
+    let held = this.declDigests.get(slot)
+    if (held === undefined)
+      this.declDigests.set(slot, (held = { digests: new Map(), records: new Map() }))
+    if (held.digests.has(key)) return held.digests.get(key)
+    const oids = slot.map
+    const base = root.endsWith(path.sep) ? root : root + path.sep
+    // Declarations overlap (each package's reads the shared `meta/**`):
+    // each path's record is made once for them all.
+    const records = held.records
+    let committed: ((abs: string) => boolean) | undefined
+    const now = Date.now()
+    let joined = ''
+    let refused = false
+    for (const rel of heads === undefined ? snapshot : underHeads(snapshot, heads)) {
+      if (!takes(rel)) continue
+      let record = records.get(rel)
+      if (record === undefined) {
+        const abs = base + rel
+        const oid = oids.get(abs)
+        if (this.undecodable.has(abs) || oid?.startsWith('120000:') === true) record = null
+        else if (oid !== undefined) record = `${rel}\0${oid}\n`
+        else {
+          const stat = statRecord(rel, this.statOf(abs), now, 0)
+          committed ??= this.committedIn(root)
+          record =
+            stat === undefined ? null : `${stat}:${committed(abs) ? 'tracked' : 'untracked'}\n`
+        }
+        records.set(rel, record)
+      }
+      if (record === null) {
+        refused = true
+        break
+      }
+      joined += record
+    }
+    const digest = refused ? undefined : xxh3hex(joined)
+    held.digests.set(key, digest)
+    return digest
+  }
+
+  private readonly declDigests = new WeakMap<
+    OidSlot,
+    { digests: Map<string, string | undefined>; records: Map<string, string | null> }
+  >()
+
+  /**
+   * A path's lstat, once until a partition moves: a path a project's digest
+   * and a workspace declaration both name was stat'ed for each.
+   */
+  statOf(abs: string): Stats | undefined {
+    if (this.stats.has(abs)) return this.stats.get(abs)
+    const st = lstatSync(abs, { throwIfNoEntry: false })
+    this.stats.set(abs, st)
+    return st
+  }
+
+  private readonly stats = new Map<string, Stats | undefined>()
 
   noteFilesDigest(
     projectDir: string,
@@ -669,6 +834,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   }
 
   override set(key: string, value: readonly string[]): this {
+    this.stats?.clear()
     this.changed.delete(key)
     this.oids.delete(key)
     this.digests.delete(key)
@@ -676,6 +842,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   }
 
   override delete(key: string): boolean {
+    this.stats?.clear()
     this.changed.delete(key)
     this.oids.delete(key)
     this.digests.delete(key)
@@ -683,6 +850,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   }
 
   override clear(): void {
+    this.stats?.clear()
     this.changed.clear()
     this.oids.clear()
     this.digests.clear()
@@ -2373,18 +2541,30 @@ function statRecords(
   rels: readonly string[],
   abs: (rel: string) => string,
   prefixLength: number,
+  stat: (abs: string) => Stats | undefined,
 ): string | undefined {
   if (rels.length === 0) return ''
   const now = Date.now()
   let out = ''
   for (const rel of rels) {
-    const st = lstatSync(abs(rel), { throwIfNoEntry: false })
-    if (st === undefined || !st.isFile()) return undefined
-    if (now - Math.floor(st.ctimeMs) < racyWindowMs(st.ctimeMs, FILE_HASH_RACY_MS)) return
-    const mode = (st.mode & 0o100) !== 0 ? '100755' : '100644'
-    out += `${rel.slice(prefixLength)}\0stat:${mode}:${st.size}:${Math.floor(st.mtimeMs)}:${Math.floor(st.ctimeMs)}:${Number(st.ino)}\n`
+    const record = statRecord(rel, stat(abs(rel)), now, prefixLength)
+    if (record === undefined) return undefined
+    out += `${record}\n`
   }
   return out
+}
+
+/** One loose file's record for {@link statRecords}, less its line end. */
+function statRecord(
+  rel: string,
+  st: Stats | undefined,
+  now: number,
+  prefixLength: number,
+): string | undefined {
+  if (st === undefined || !st.isFile()) return undefined
+  if (now - Math.floor(st.ctimeMs) < racyWindowMs(st.ctimeMs, FILE_HASH_RACY_MS)) return
+  const mode = (st.mode & 0o100) !== 0 ? '100755' : '100644'
+  return `${rel.slice(prefixLength)}\0stat:${mode}:${st.size}:${Math.floor(st.mtimeMs)}:${Math.floor(st.ctimeMs)}:${Number(st.ino)}`
 }
 
 /** The partition half of `populateGitFilesCache`: store per-project slices of one enumeration. */
@@ -2523,7 +2703,7 @@ export async function applyGitEnumeration(
     if (records !== undefined) {
       const known = records
       cache.noteFilesDigest(projectDir, matches, () => {
-        const statted = statRecords(loose, projAbs, prefix.length)
+        const statted = statRecords(loose, projAbs, prefix.length, (p) => cache.statOf(p))
         return statted === undefined ? undefined : xxh3hex(`${known}\0${statted}`)
       })
     }
