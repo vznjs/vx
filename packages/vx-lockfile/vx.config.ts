@@ -47,6 +47,7 @@ const SHARDS: readonly (readonly string[])[] = [
     'entry-shapes',
     'io-refusals',
     'link-outside-root',
+    'linked-dirs',
     'memo-identity',
     'npm-nested-workspace',
     'pnpm-manifest-files',

@@ -11,6 +11,8 @@
 //
 // Bun.YAML is the parser: no dependency, and the file is plain YAML.
 
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { reachDigests, type LockfileImporter } from '@vzn/vx'
 import { reachedImporters, withTransitive } from './graph.js'
 import { record, sectionsOf, stable } from './json.js'
@@ -336,8 +338,16 @@ export function importerDigests(
   // With its links left out, the file does not say which importer links
   // which, so each folds them all: keyed by its own reach, a project
   // linking another missed a bump in the linked one's dependencies.
+  // The directories its manifests link (`manifestLinks`) join them too:
+  // the file names none of them.
   const all = lock.excludesLinks
-    ? [...lock.importers.keys()].sort().map(reachOf).join('\0')
+    ? [
+        ...[...lock.importers.keys()].sort().map(reachOf),
+        ...[...files]
+          .filter(([rel]) => !MANIFESTS.includes(path.posix.basename(rel)))
+          .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+          .map(([rel, h]) => `${rel}\0${h}`),
+      ].join('\0')
     : undefined
   for (const dir of lock.importers.keys()) {
     const h = Bun.hash.xxHash3(`${global}\0${all ?? reachOf(dir)}`)
@@ -380,6 +390,49 @@ export function fileDeps(lock: Lockfile): string[] {
   // dependencies, written root-relative in its snapshot: one no importer
   // names was never read, so an edit in it moved no key.
   for (const deps of lock.snapshots.values()) add('.', deps)
+  return [...out].sort()
+}
+
+const MANIFESTS = ['package.json', 'package.json5', 'package.yaml']
+
+/**
+ * With `excludeLinksFromLockfile`, each importer's manifest and the
+ * directories its `link:` dependencies name that no importer holds: the
+ * file records neither, so a linked directory's edit moved no key. The
+ * manifests are named too, so a link added under an unchanged file reads
+ * them anew rather than the directories the last read named. A manifest
+ * that does not parse names nothing here: `discover` refuses it.
+ */
+export function manifestLinks(lock: Lockfile, root: string): string[] {
+  if (!lock.excludesLinks) return []
+  const out = new Set<string>()
+  for (const importer of lock.importers.keys()) {
+    for (const base of MANIFESTS) {
+      const rel = joinPosix(importer, base)!
+      let pkg: unknown
+      try {
+        const text = readFileSync(path.join(root, rel), 'utf8')
+        out.add(rel)
+        pkg = base.endsWith('.yaml')
+          ? Bun.YAML.parse(text)
+          : base.endsWith('.json5')
+            ? Bun.JSON5.parse(text)
+            : JSON.parse(text)
+      } catch {
+        continue
+      }
+      for (const field of DEP_FIELDS) {
+        for (const spec of Object.values(record(record(pkg)?.[field]) ?? {})) {
+          if (typeof spec !== 'string' || !spec.startsWith('link:')) continue
+          const to = spec.slice('link:'.length)
+          const target = path.isAbsolute(to)
+            ? path.relative(root, to).split(path.sep).join('/') || '.'
+            : resolvePosix(importer, to)
+          if (!lock.importers.has(target)) out.add(target)
+        }
+      }
+    }
+  }
   return [...out].sort()
 }
 

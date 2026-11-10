@@ -175,6 +175,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-lockfile/extra-in-project',
     'vx-lockfile/file-dir-dep',
     'vx-lockfile/link-to-workspace',
+    'vx-lockfile/linked-dirs',
     'vx-lockfile/npm-nested-workspace',
     'vx-lockfile/outside-dir-dep',
     'vx-lockfile/overrides-precise',
