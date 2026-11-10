@@ -16,6 +16,7 @@ import path from 'node:path'
 import { reachDigests, type LockfileImporter } from '@vzn/vx'
 import { reachedImporters, withTransitive } from './graph.js'
 import { record, sectionsOf, stable } from './json.js'
+import { topLevel } from './pnpm-blocks.js'
 import { joinPosix, resolvePosix } from './posix.js'
 
 // The graph the digest built from this parse, for `importerLinks`: `vx
@@ -150,44 +151,6 @@ export function parseLockfile(text: string): Lockfile {
 }
 
 /**
- * Whether pnpm drops a manifest's dependency `name` from the install:
- * one of its `optionalDependencies` the lockfile's
- * `ignoredOptionalDependencies` names (pnpm also drops it from
- * `dependencies`, and records it nowhere), matched as `@pnpm/matcher`
- * does: `*` any run, a leading `!` excludes.
- */
-export function ignoredOptional(
-  text: string,
-): (name: string, pkg: Record<string, unknown>) => boolean {
-  const list = topLevel(text, 'ignoredOptionalDependencies')
-  const patterns = Array.isArray(list) ? list.filter((p) => typeof p === 'string') : []
-  if (patterns.length === 0) return () => false
-  const matchers = patterns.map((p) => {
-    const ignore = p.startsWith('!')
-    const pattern = ignore ? p.slice(1) : p
-    const re = new RegExp(`^${pattern.replace(/[|\\{}()[\]^$+?.]/g, '\\$&').replace(/\*/g, '.*')}$`)
-    return { ignore, match: (s: string) => re.test(s) }
-  })
-  const hasInclude = matchers.some((m) => !m.ignore)
-  const hasIgnore = matchers.some((m) => m.ignore)
-  const matches = (name: string): boolean => {
-    if (!hasIgnore) return matchers.some((m) => m.match(name))
-    if (!hasInclude) return !matchers.some((m) => m.match(name))
-    let matched = false
-    for (const m of matchers) {
-      if (m.ignore) {
-        if (m.match(name)) matched = false
-      } else if (!matched && m.match(name)) matched = true
-    }
-    return matched
-  }
-  return (name, pkg) => {
-    const optional = record(pkg['optionalDependencies'])
-    return optional !== undefined && Object.hasOwn(optional, name) && matches(name)
-  }
-}
-
-/**
  * The importers' dependencies alone, as `parseLockfile` reads them. The
  * staleness check asks for them on every run, after the digest memo spared
  * the parse: solid's 6,900-line lockfile took 8 ms to parse whole and
@@ -200,42 +163,6 @@ export function recordedImporters(text: string): ReadonlyMap<string, ReadonlyMap
   const importers = new Map<string, ReadonlyMap<string, string>>()
   for (const [dir, entry] of Object.entries(rawImporters)) importers.set(dir, depsOf(entry))
   return importers
-}
-
-/** `settings.excludeLinksFromLockfile`, read from its block alone as `recordedImporters` reads. */
-export function excludesLinks(text: string): boolean {
-  return record(topLevel(text, 'settings'))?.['excludeLinksFromLockfile'] === true
-}
-
-/**
- * The last document's top-level `key`, parsed from its block alone (to
- * the next top-level key); undefined where pnpm wrote no such block. A
- * CRLF file (a Windows checkout) heads it `key:\r\n`: found by `\n`
- * alone, the block read as absent though the whole parse has it.
- */
-function topLevel(text: string, key: string): unknown {
-  const doc = lastDocument(text)
-  // The first line's ending says which: a second scan cost every LF run.
-  const head = text.charCodeAt(text.indexOf('\n') - 1) === 13 ? `\n${key}:\r\n` : `\n${key}:\n`
-  const at = text.indexOf(head, doc)
-  if (at < 0) return undefined
-  const block = text.slice(at + 1)
-  const end = /\n\S/.exec(block.slice(head.length - 1))
-  return record(
-    Bun.YAML.parse(end === null ? block : block.slice(0, head.length - 1 + end.index + 1)),
-  )?.[key]
-}
-
-/**
- * Where the last document starts: the last `\n---`, or 0. Found forward:
- * JSC's `lastIndexOf` walks the text a character at a time, 0.5 ms over
- * vueuse's 680 KB lockfile against 0.05 for `indexOf`, and every run's
- * staleness check asks twice.
- */
-function lastDocument(text: string): number {
-  let doc = 0
-  for (let i = text.indexOf('\n---'); i !== -1; i = text.indexOf('\n---', i + 4)) doc = i
-  return doc
 }
 
 /** `dependencies` + `devDependencies` + `optionalDependencies` of an entry, as name → version. */

@@ -81,3 +81,34 @@ it('pnpm(): the ignored list is read from a CRLF lockfile too', async () => {
   await writeFile(path.join(root, 'pnpm-lock.yaml'), LOCK("'@s/b'").replace(/\n/g, '\r\n'))
   expect(await discover()).toEqual(['packages/b', 'packages/c'])
 })
+
+// The list and `excludeLinksFromLockfile` are memoised with the recorded
+// names: a warm discover read and decoded the whole lockfile again for
+// them, ~1 ms of solid's run. A repeated pattern keeps its place, as core
+// keeps the memo's names in a set.
+it('pnpm(): a warm discover reads no lockfile text, and the list keeps its order', async () => {
+  await writeFile(path.join(root, 'pnpm-lock.yaml'), LOCK("'@s/b'\n  - '!@s/b'\n  - '@s/b'"))
+  expect(await discover()).toEqual(['packages/b', 'packages/c'])
+  const file = Bun.file
+  let texts = 0
+  Bun.file = ((...args: Parameters<typeof file>) => {
+    const f = file(...args)
+    if (String(args[0]).endsWith('pnpm-lock.yaml')) {
+      const text = f.text.bind(f)
+      f.text = () => {
+        texts++
+        return text()
+      }
+    }
+    return f
+  }) as typeof file
+  try {
+    expect(await discover()).toEqual(['packages/b', 'packages/c'])
+  } finally {
+    Bun.file = file
+  }
+  expect(texts).toBe(0)
+  // CONTROL: the last pattern decides; without it the name is not ignored.
+  await writeFile(path.join(root, 'pnpm-lock.yaml'), LOCK("'@s/b'\n  - '!@s/b'"))
+  await expect(discover()).rejects.toThrow("does not list packages/c's dependency on @s/b")
+})

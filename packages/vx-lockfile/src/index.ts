@@ -43,6 +43,7 @@ const pnpmLock = (): typeof import('./pnpm.js') => load('./pnpm.js')
 const bunLock = (): typeof import('./bun.js') => load('./bun.js')
 const npmLock = (): typeof import('./npm.js') => load('./npm.js')
 const yarnLock = (): typeof import('./yarn.js') => load('./yarn.js')
+const pnpmBlocks = (): typeof import('./pnpm-blocks.js') => load('./pnpm-blocks.js')
 const pnpmSettings = (): typeof import('./pnpm-settings.js') => load('./pnpm-settings.js')
 const yarnSettings = (): typeof import('./yarn-settings.js') => load('./yarn-settings.js')
 
@@ -57,8 +58,11 @@ export interface LockfileOptions {
   readonly scope?: 'project' | 'workspace'
 }
 
+/** `recorded`'s entry for `stalenessFacts`: no importer path is `\0`. */
+const FACTS = '\0'
+
 /** Bumps when a digest folds differently or the memo holds more (its identity). */
-const DIGEST_VERSION = 24
+const DIGEST_VERSION = 25
 
 let memoVersion: number | undefined
 /**
@@ -124,13 +128,21 @@ interface Manager {
   readonly member?: (pkg: Record<string, unknown>) => boolean
   /** The lockfile files a peer under `dependencies`: the manifest says which entries are peers. */
   readonly peersInManifest?: true
-  /** The file leaves out every `link:` dependency (pnpm's `excludeLinksFromLockfile`): the manifests name them. */
-  readonly linksUnrecorded?: (text: string) => boolean
+  /**
+   * What the staleness check reads from the file beside the recorded
+   * names, memoised with them: `links` when the file leaves out every
+   * `link:` dependency (pnpm's `excludeLinksFromLockfile`), so the
+   * manifests name them, and `optional:<i>:<pattern>` per pattern
+   * `unrecorded` matches.
+   */
+  readonly stalenessFacts?: (text: string) => readonly string[]
   /**
    * A manifest dependency the install leaves out of the file by design, so
-   * its absence is no stale lockfile.
+   * its absence is no stale lockfile: `patterns` from `stalenessFacts`.
    */
-  readonly unrecorded?: (text: string) => (name: string, pkg: Record<string, unknown>) => boolean
+  readonly unrecorded?: (
+    patterns: readonly string[],
+  ) => (name: string, pkg: Record<string, unknown>) => boolean
   /** The manager reads package.json as JSONC (trailing commas, comments): bun does. */
   readonly jsoncManifests?: true
   /** The file names a manifest may have (default `package.json` alone). */
@@ -190,9 +202,10 @@ const MANAGERS = {
     // package.json, and records its dependencies like any other's.
     manifests: ['package.json', 'package.json5', 'package.yaml'],
     peersInManifest: true,
-    // Read from their blocks alone: a whole parse here was on every warm run.
-    linksUnrecorded: (t) => pnpmLock().excludesLinks(t),
-    unrecorded: (t) => pnpmLock().ignoredOptional(t),
+    // Read from their blocks alone, without the parser, and memoised with
+    // the recorded names: a warm run read and searched the text for them.
+    stalenessFacts: (t) => pnpmBlocks().stalenessFacts(t),
+    unrecorded: (patterns) => pnpmBlocks().ignoredOptional(patterns),
   },
   bun: {
     name: 'bun',
@@ -340,10 +353,13 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       version: digestVersion(),
       scope,
       importers: guarded((text: string) => manager.importers(text)),
-      recorded: guarded(
-        (text: string) =>
-          new Map([...manager.recorded(text)].map(([i, deps]) => [i, [...deps.keys()]])),
-      ),
+      recorded: guarded((text: string) => {
+        const recorded = new Map<string, readonly string[]>(
+          [...manager.recorded(text)].map(([i, deps]) => [i, [...deps.keys()]]),
+        )
+        if (manager.stalenessFacts !== undefined) recorded.set(FACTS, manager.stalenessFacts(text))
+        return recorded
+      }),
       // Read before `digest` on the key path: a malformed bun.lock refused
       // there as a bare "JSONC Parse error", no file named (fuzzed, L-16).
       ...(extraFiles !== undefined
@@ -492,21 +508,28 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       // lock refuses until the install, as a key from a stale lockfile names
       // an install that is not on disk.
       if (file !== undefined) {
-        const text = await Bun.file(path.join(ctx.workspaceRoot, file)).text()
-        const linksUnrecorded = manager.linksUnrecorded?.(text) === true
+        const recorded = new Map(
+          await claimsAt(ctx.workspaceRoot)
+            .find((c) => c.file === file)!
+            .claim.recorded(ctx),
+        )
+        const facts = [...(recorded.get(FACTS) ?? [])]
+        recorded.delete(FACTS)
+        const linksUnrecorded = facts.includes('links')
         if (linksUnrecorded)
           importers = await withManifestLinks(ctx.workspaceRoot, importers, manifest)
+        const optional = facts
+          .filter((f) => f.startsWith('optional:'))
+          .map((f) => f.slice(f.indexOf(':', 9) + 1))
         const missing = await staleness(
           ctx.workspaceRoot,
           importers,
-          (await claimsAt(ctx.workspaceRoot)
-            .find((c) => c.file === file)!
-            .claim.recorded(ctx)) ?? new Map(),
+          recorded,
           await dirs,
           manifest,
           manager.member,
           linksUnrecorded,
-          manager.unrecorded?.(text),
+          optional.length > 0 ? manager.unrecorded?.(optional) : undefined,
         )
         if (missing.length > 0) {
           // pnpm then writes a lockfile per package, and the root's lists
