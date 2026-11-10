@@ -1007,13 +1007,14 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
     task with no measure counts for when the run decides how many workers
     to start: a new task, or one over before the Linux sandbox's first
     look (250 ms), which leaves no CPU. It books one free core on any
-    worker, so it waits for no worker of its own.
+    worker, so it waits for no worker of its own, and goes where the most
+    cores are free, room to use more than it booked.
   - `scheduler` (a partial `Strategy`) picks each layer of how the run schedules; a layer left
     out is the default (first named):
     - `order`, which waiting task goes first: `critical-path` (the
       longest chain after it), `graphene` (the long and the wide first),
       `fifo`;
-    - `place`, which worker takes it: `best-fit` (fewest cores left),
+    - `place`, which worker takes a measured task: `best-fit` (fewest cores left),
       `tetris` (needs aligned with what is free), `worst-fit`,
       `first-fit`;
     - `book`, what a task holds: `measured` (its history), `margin`

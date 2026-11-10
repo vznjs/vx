@@ -464,7 +464,14 @@ export function assign<B extends Bin>(
       if (++seen > SAMPLE) break
       let has = 0
       for (const id of ask.up ?? []) if (b.has?.has(id) === true) has++
-      const score: [number, number] = [has, fit(b, need, place, i)]
+      // A task of no history books next to nothing but may use any share:
+      // where most is free, it has room to be bigger than it booked. Best-fit
+      // stacked them on one worker, which they overran: 4.47% late to 3.95%
+      // on graphs a third unmeasured, 1% more worker time (lab, 2026-11-10).
+      const score: [number, number] = [
+        has,
+        fit(b, need, need.ask === undefined ? place : 'worst-fit', i),
+      ]
       if (
         best === undefined ||
         score[0] > bestScore[0] ||
