@@ -51,9 +51,14 @@ const FRESH_NAME = '__vx_probe__'
  * watch asks of the entries a task names (`namedIgnoredReach`).
  */
 export function newFilesIgnoredIn(root: string, dirs: readonly string[]): Set<string> {
-  const probes = dirs.map((d) => `${d}/${FRESH_NAME}`)
+  const probes = dirs.map(freshProbe)
   const hit = checkIgnoreSync(root, probes)
   return new Set(dirs.filter((_, i) => hit?.has(probes[i]!) === true))
+}
+
+/** The path `newFilesIgnored` asks git about for `dir` (root-relative): a new file directly in it. */
+export function freshProbe(dir: string): string {
+  return `${dir}/${FRESH_NAME}`
 }
 
 /** The facts of the repository a directory is in: read off the disk, or one `git rev-parse`. */
@@ -299,42 +304,51 @@ interface IgnoredListing {
   asked: Map<string, boolean>
   /** Whether every directory above an ignored path was asked at once (`ancestorDirs`). */
   batched?: boolean
+  /**
+   * git's answer for a new file directly in each directory the tasks name
+   * outright, asked beside the enumeration (`answerNewFilesIgnored`).
+   */
+  answered?: ReadonlyMap<string, boolean>
 }
 
 /**
  * The paths of `snapshot` at, under or above one of `heads` (root-relative,
- * none empty), in its order: every path a glob with that fixed head can take
- * in, through a link above it too. A walk of all of it took each
+ * none empty), in code-unit order: every path a glob with that fixed head
+ * can take in, through a link above it too. A walk of all of it took each
  * declaration's globs to every workspace path (vueuse: 11 declarations,
- * 1,583 paths). The whole of it when it is not in code-unit order.
+ * 1,583 paths). A snapshot not in that order (untracked paths follow the
+ * tracked ones) is searched through a sorted copy, made once: walked whole,
+ * it cost vueuse's no-op 8 ms with its configs untracked.
  */
 function underHeads(snapshot: readonly string[], heads: readonly string[]): readonly string[] {
-  let sorted = sortedMemo.get(snapshot)
-  if (sorted === undefined) {
-    sorted = true
+  let ordered = sortedMemo.get(snapshot)
+  if (ordered === undefined) {
+    let sorted = true
     for (let i = 1; i < snapshot.length; i++) {
       if (!(snapshot[i - 1]! < snapshot[i]!)) {
         sorted = false
         break
       }
     }
-    sortedMemo.set(snapshot, sorted)
+    ordered = sorted ? snapshot : [...snapshot].sort()
+    sortedMemo.set(snapshot, ordered)
   }
-  if (!sorted) return snapshot
+  const list = ordered
   const lowerBound = (key: string): number => {
     let lo = 0
-    let hi = snapshot.length
+    let hi = list.length
     while (lo < hi) {
       const mid = (lo + hi) >>> 1
-      if (snapshot[mid]! < key) lo = mid + 1
+      if (list[mid]! < key) lo = mid + 1
       else hi = mid
     }
     return lo
   }
   const at = new Set<number>()
   const exact = (rel: string): void => {
-    const i = lowerBound(rel)
-    if (snapshot[i] === rel) at.add(i)
+    let i = lowerBound(rel)
+    // A path listed twice (tracked and untracked spellings) is taken once each.
+    for (; list[i] === rel; i++) at.add(i)
   }
   for (const head of heads) {
     for (let i = head.lastIndexOf('/'); i > 0; i = head.lastIndexOf('/', i - 1))
@@ -344,10 +358,10 @@ function underHeads(snapshot: readonly string[], heads: readonly string[]): read
     const end = lowerBound(`${head}0`)
     for (let i = lowerBound(`${head}/`); i < end; i++) at.add(i)
   }
-  return [...at].sort((x, y) => x - y).map((i) => snapshot[i]!)
+  return [...at].sort((x, y) => x - y).map((i) => list[i]!)
 }
 
-const sortedMemo = new WeakMap<readonly string[], boolean>()
+const sortedMemo = new WeakMap<readonly string[], readonly string[]>()
 
 /** Past this many, a directory is asked alone, when it is: most never are. */
 const BATCHED_DIRS = 256
@@ -547,7 +561,9 @@ export class GitFilesCache extends Map<string, readonly string[]> {
       else hi = mid
     }
     known = false
-    if (ig.paths[lo]?.startsWith(under) === true) {
+    const answered = ig.answered?.get(rel)
+    if (answered !== undefined) known = answered && ig.paths[lo]?.startsWith(under) === true
+    else if (ig.paths[lo]?.startsWith(under) === true) {
       // Every directory this question can be asked of, in one spawn: a
       // workspaceFiles glob per package (vueuse's `packages/core/**`) asked
       // for each, and each spawn was ~2 ms (11 of a no-op, 2026-11-10).
@@ -565,6 +581,17 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     }
     ig.asked.set(rel, known)
     return known
+  }
+
+  /**
+   * git's answer for a new file directly in each of `dirs` (root-relative),
+   * asked with the run's other `check-ignore` while git enumerated:
+   * `newFilesIgnored` reads it instead of a spawn of its own on the key
+   * path (vueuse: one `check-ignore` of ~2-4 ms, 2026-11-10). Held until
+   * the next enumeration.
+   */
+  answerNewFilesIgnored(dirs: readonly string[], ignored: (dir: string) => boolean): void {
+    if (this.ignored !== null) this.ignored.answered = new Map(dirs.map((d) => [d, ignored(d)]))
   }
 
   get undecodableNames(): ReadonlySet<string> {

@@ -866,7 +866,11 @@ export async function prepareRunLocked(
       )
     // While git walks: the gate's pass over every task cost 2-8 ms at
     // 1,000 projects when it ran before the spawn.
-    const settleIgnored = askIgnoredOutputs(gatedOutputs(nodes, workspaceRoot), workspaceRoot)
+    const settleIgnored = askIgnoredOutputs(
+      gatedOutputs(nodes, workspaceRoot),
+      workspaceRoot,
+      nodes,
+    )
     const enumeration = await enumerating
     localCache.holdBlobSizes()
     const applied = applyGitEnumeration(

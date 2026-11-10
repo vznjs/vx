@@ -110,7 +110,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     snapshot: readonly string[],
     key: string,
     takes: (rel: string) => boolean,
-    heads?: readonly string[], // its entries' fixed heads: only paths at, under or above one are asked
+    heads?: readonly string[], // its entries' fixed heads: only paths at, under or above one are asked, found in a sorted copy when git listed untracked paths last
   ): string | undefined // filesDigest of the workspace paths a workspaceFiles declaration may take in
   statOf(abs: string): Stats | undefined // a path's lstat, once until a partition moves
   noteFilesDigest(
@@ -126,7 +126,8 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   enumeratedAtMs: number | undefined // the enumeration's start: what `oidsFor` says is true as of then
   ignoredOutputs: ReadonlySet<string> // declared outputs (root-relative) git ignores whole, asked once per run (`stable-keys.md`)
   setIgnored(root: string, paths: readonly string[]): void // what `status --ignored=matching` named
-  newFilesIgnored(dir: string): boolean // an ignored path lies under dir and git ignores a new file there (asked once per dir; a normalized dir under the root is relative as its rest, no path.relative; the first spawn asks every dir above an ignored path, up to 256)
+  newFilesIgnored(dir: string): boolean // an ignored path lies under dir and git ignores a new file there (asked once per dir; a normalized dir under the root is relative as its rest, no path.relative; the first spawn asks every dir above an ignored path, up to 256; none for a dir `answerNewFilesIgnored` answered)
+  answerNewFilesIgnored(dirs: readonly string[], ignored: (dir: string) => boolean): void // git's answer for root-relative dirs, asked beside the enumeration (`askIgnoredOutputs`); held until the next enumeration
 }
 
 export interface GitEnumeration {
@@ -168,6 +169,7 @@ export interface LazyGitEnumeration {
 }
 export function lazyGitEnumeration(workspaceRoot: string): LazyGitEnumeration
 export function newFilesIgnoredIn(root: string, dirs: readonly string[]): Set<string> // which root-relative dirs git ignores a new file directly in, one check-ignore (`newFilesIgnored`'s probe)
+export function freshProbe(dir: string): string // the path that probe asks for dir: a new file directly in it
 export const MAX_SCOPED_PATHSPECS: number // 64: above it the walk is the whole tree
 export function gitPathspecs(
   workspaceRoot: string,

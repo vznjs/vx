@@ -214,7 +214,7 @@ export function excludesLinks(text: string): boolean {
  * alone, the block read as absent though the whole parse has it.
  */
 function topLevel(text: string, key: string): unknown {
-  const doc = Math.max(text.lastIndexOf('\n---'), 0)
+  const doc = lastDocument(text)
   // The first line's ending says which: a second scan cost every LF run.
   const head = text.charCodeAt(text.indexOf('\n') - 1) === 13 ? `\n${key}:\r\n` : `\n${key}:\n`
   const at = text.indexOf(head, doc)
@@ -224,6 +224,18 @@ function topLevel(text: string, key: string): unknown {
   return record(
     Bun.YAML.parse(end === null ? block : block.slice(0, head.length - 1 + end.index + 1)),
   )?.[key]
+}
+
+/**
+ * Where the last document starts: the last `\n---`, or 0. Found forward:
+ * JSC's `lastIndexOf` walks the text a character at a time, 0.5 ms over
+ * vueuse's 680 KB lockfile against 0.05 for `indexOf`, and every run's
+ * staleness check asks twice.
+ */
+function lastDocument(text: string): number {
+  let doc = 0
+  for (let i = text.indexOf('\n---'); i !== -1; i = text.indexOf('\n---', i + 4)) doc = i
+  return doc
 }
 
 /** `dependencies` + `devDependencies` + `optionalDependencies` of an entry, as name → version. */

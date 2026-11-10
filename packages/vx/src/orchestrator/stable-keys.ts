@@ -11,6 +11,7 @@
 // fall back to lazy read-through in execute-task, which is always
 // correct. The check is conservative: when unsure, treat as unstable.
 
+import path from 'node:path'
 import {
   foldedDeps,
   isGroupTask,
@@ -19,7 +20,7 @@ import {
   type TaskNode,
   type TaskOutcome,
 } from '../graph/index.js'
-import type { CacheLayer, GitFilesCache } from '../cache/index.js'
+import { type CacheLayer, freshProbe, type GitFilesCache, namedOutright } from '../cache/index.js'
 import {
   checkIgnore,
   ignoreProbes,
@@ -468,21 +469,62 @@ export function gatedOutputs(
  * enumeration; the call it returns settles `files.ignoredOutputs` once that
  * enumeration is in, whose listing says whether a tracked or re-included
  * file lies under a glob. Nothing gated: no spawn.
+ *
+ * The same spawn asks whether git ignores a new file directly in each
+ * directory a task of `nodes` names outright (`namedOutright`), which the
+ * key asks `GitFilesCache.newFilesIgnored` of: answered later, it was a
+ * synchronous `check-ignore` on the key path. A probe git refuses (one
+ * past a symlink, or inside a submodule) fails the whole spawn, so the
+ * outputs are then asked again alone and those directories later, as before.
  */
 export function askIgnoredOutputs(
   gated: ReadonlyMap<string, { projectDir: string; glob: string }>,
   workspaceRoot: string,
+  nodes: ReadonlyMap<string, TaskNode>,
 ): (files: GitFilesCache) => Promise<void> {
   if (gated.size === 0) return async () => {}
   const paths = [...gated.keys()].flatMap((g) => ignoreProbes(g)?.paths ?? [])
-  const asked = paths.length === 0 ? Promise.resolve(null) : checkIgnore(workspaceRoot, paths)
+  if (paths.length === 0) return async () => {}
+  const dirs = namedDirs(nodes, workspaceRoot)
+  const asked: Promise<{ hit: Set<string> | null; dirs: readonly string[] }> =
+    dirs.length === 0
+      ? checkIgnore(workspaceRoot, paths).then((hit) => ({ hit, dirs }))
+      : checkIgnore(workspaceRoot, [...paths, ...dirs.map(freshProbe)]).then(async (hit) =>
+          hit !== null ? { hit, dirs } : { hit: await checkIgnore(workspaceRoot, paths), dirs: [] },
+        )
   return async (files) => {
-    files.ignoredOutputs = wholeIgnored(gated.keys(), await asked, (g) => {
+    const { hit, dirs: answered } = await asked
+    files.ignoredOutputs = wholeIgnored(gated.keys(), hit, (g) => {
       const { projectDir, glob } = gated.get(g)!
       const listed = files.get(projectDir)
       return listed === undefined || listed.some((f) => taskGlob(glob).match(f))
     })
+    if (hit !== null && answered.length > 0)
+      files.answerNewFilesIgnored(answered, (d) => hit.has(freshProbe(d)))
   }
+}
+
+/** Every directory a task's inputs name outright, root-relative, once each; none above the root. */
+function namedDirs(nodes: ReadonlyMap<string, TaskNode>, workspaceRoot: string): string[] {
+  const out = new Set<string>()
+  const seen = new Set<string>()
+  for (const n of nodes.values()) {
+    if (n.config.inputs === undefined || isGroupTask(n)) continue
+    const named = namedOutright(n.config)
+    for (const [base, entries] of [
+      [n.projectDir, named.files],
+      [workspaceRoot, named.workspaceFiles],
+    ] as const) {
+      for (const e of entries) {
+        const at = `${base}\0${e}`
+        if (seen.has(at)) continue
+        seen.add(at)
+        const rel = relPosix(workspaceRoot, path.resolve(base, e))
+        if (rel !== '' && !rel.startsWith('../') && !path.isAbsolute(rel)) out.add(rel)
+      }
+    }
+  }
+  return [...out]
 }
 
 /** `outputsOf` less what git ignores whole; the same map when it ignores none. */
