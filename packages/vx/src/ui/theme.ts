@@ -99,10 +99,16 @@ const IDENTITY = [
 
 /** A name's identity hue: a fold of the name into the palette. */
 export function identityHue(name: string): string {
+  // A run names each project and task in many rows: each folded once.
+  let hue = hues.get(name)
+  if (hue !== undefined) return hue
   let h = 0
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0
-  return IDENTITY[h % IDENTITY.length]!
+  hue = IDENTITY[h % IDENTITY.length]!
+  if (hues.size < 65_536) hues.set(name, hue)
+  return hue
 }
+const hues = new Map<string, string>()
 
 /**
  * Standard env precedence:

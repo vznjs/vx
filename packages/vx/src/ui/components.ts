@@ -91,6 +91,8 @@ export function idParts(
   c: ColorSupport,
   opts: { bold?: boolean; sep?: '#' | ':' } = {},
 ): string {
+  // Plain, every half is its text: no hue to fold (a row per task).
+  if (!c.enabled) return `${projectText}${opts.sep ?? '#'}${taskText}`
   const style = opts.bold === true ? { bold: true } : {}
   return (
     paintHex(identityHue(hueSource), projectText, c, style) +
