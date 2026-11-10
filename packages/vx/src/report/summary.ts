@@ -120,7 +120,8 @@ export function cacheBucketOf(o: TaskOutcome): CacheBucket | undefined {
             : 'miss'
     case 'failed':
       // A hit whose restore failed is in no bucket: not a miss, not a hit.
-      if (o.restoreFailed === true) return undefined
+      // Nor is a task with no key, which asked no cache.
+      if (o.restoreFailed === true || isKeyFailed(o)) return undefined
       return ranNoCache(o) ? 'noCache' : 'miss'
     case 'cache-hit':
       return o.restored === false ? 'upToDate' : 'restoredLocal'
@@ -617,10 +618,15 @@ export function formatRunSummary(
   context?: RunContext,
 ): string[] {
   // Counted here, not in the Tally: a task without `cache: true` never
-  // consulted the cache, so it is not a miss.
+  // consulted the cache, so it is not a miss. One with no key ran nothing
+  // and is `keyFailed`'s: counted in both, the misses went negative and the
+  // bar threw (2026-11-10).
   const noCache = outcomes.filter(
     (o) =>
-      !isGroupTask(o.node) && (o.status === 'success' || o.status === 'failed') && ranNoCache(o),
+      !isGroupTask(o.node) &&
+      (o.status === 'success' || o.status === 'failed') &&
+      ranNoCache(o) &&
+      !isKeyFailed(o),
   ).length
   const restoreFailed = outcomes.filter(
     (o) => !isGroupTask(o.node) && o.status === 'failed' && o.restoreFailed === true,

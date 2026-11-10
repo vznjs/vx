@@ -1075,8 +1075,9 @@ and a restore writes them. It is also in the task's key, even under its
 own output glob and when no `inputs.files` glob reaches it (`dist/LICENSE`
 under `dist/**` with inputs `src/**`; until 2026-10-28 that one was left
 out, and a hit wrote the old bytes over a committed edit, as
-turborepo#14831 fixed in Turbo), so an edit moves the key and the saved
-bytes follow from it; the task's rewrite is no input that moved mid-run.
+turborepo#14831 fixed in Turbo) or a `!` entry takes it back (`**`,
+`!dist/**`; until 2026-11-10 the negation dropped it too), so an edit
+moves the key and the saved bytes follow from it; the task's rewrite is no input that moved mid-run.
 A committed file under `outputs.workspaceFiles` is keyed only where
 `inputs.workspaceFiles` reaches it. Until then the
 clean deleted a committed file under an output, and a reader with no edge

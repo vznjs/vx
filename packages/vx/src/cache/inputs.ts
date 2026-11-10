@@ -2321,11 +2321,16 @@ interface FilesPlan {
    */
   verdicts: Map<string, boolean>
   /**
-   * Whether a path is under the task's own outputs, and no exclude takes it
-   * back: one git tracks is an input (`committedFiles`) whether or not a
-   * positive glob reaches it, since a hit writes the artifact's copy over it.
+   * Whether a path is under the task's own outputs and not vx's own
+   * (`ALWAYS_IGNORE`): one git tracks is an input (`committedFiles`) whether
+   * or not a positive glob reaches it, since a hit writes the artifact's
+   * copy over it. A `!` entry does not take it back: `!dist/**` names the
+   * outputs to keep the build's own writes out, and dropped the committed
+   * `dist/LICENSE` with them, so a committed edit hit and the restore wrote
+   * the old bytes over it (2026-11-10).
    */
   ownOnly: Map<string, boolean>
+  isIgnored: (rel: string) => boolean
 }
 
 /**
@@ -2371,6 +2376,7 @@ function filesPlan(
           ...reachOf(positive),
           verdicts: new Map<string, boolean>(),
           ownOnly: new Map<string, boolean>(),
+          isIgnored: anyTaskGlob(ALWAYS_IGNORE),
         }
   filesPlans.set(key, plan)
   return plan
@@ -2582,7 +2588,7 @@ function inPlan(plan: FilesPlan, rel: string): boolean {
 function ownOnly(plan: FilesPlan, rel: string): boolean {
   let own = plan.ownOnly.get(rel)
   if (own === undefined) {
-    own = plan.ownOutput(rel) && !plan.isExcluded(rel)
+    own = plan.ownOutput(rel) && !plan.isIgnored(rel)
     plan.ownOnly.set(rel, own)
   }
   return own

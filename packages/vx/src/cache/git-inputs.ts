@@ -924,6 +924,8 @@ const FATAL_UTF8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
 const LS_FILES_STAGE_RE = /^(?:([A-Za-z]) )?([0-7]{6}) ([0-9a-f]{40,64}) ([0-3])\t/
 
 const UNOPENED = "warning: could not open directory '"
+/** The reasons (ENOENT, ENOTDIR) git gives for a directory that was not there when it looked. */
+const GONE = new Set(['No such file or directory', 'Not a directory'])
 
 /**
  * Refuses a walk git did not finish. `could not open directory` is a
@@ -955,7 +957,11 @@ function refuseUnopenedDirs(cwd: string, stderr: string): void {
     // Gone since git read its parent (a run lock's staging directory in a
     // TMPDIR inside the workspace): no file is under it to miss. Only a
     // line git did not cut: a cut one may name a prefix of a real path.
-    if (end !== -1 && vanished(at)) continue
+    // Gone when git opened it and made again since (a task re-creating its
+    // own output directory under another task's walk) is the same race:
+    // git's reason says so, and it was refused as a path too long
+    // (2026-11-10).
+    if (end !== -1 && (GONE.has(rest.slice(end + 3).trim()) || vanished(at))) continue
     if (!canAccess(at, fsConstants.X_OK)) continue
     const shown = dir.length > 100 ? `${dir.slice(0, 40)}…${dir.slice(-40)}` : dir
     if (end !== -1 && !canAccess(at, fsConstants.R_OK))

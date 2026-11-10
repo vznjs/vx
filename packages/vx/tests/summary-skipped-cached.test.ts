@@ -3,7 +3,7 @@
 // block.
 import { describe, expect, it } from 'bun:test'
 import { formatRunSummary } from '../src/report/summary.js'
-import type { TaskOutcome } from '../src/graph/scheduler.js'
+import { markKeyFailed, type TaskOutcome } from '../src/graph/scheduler.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 
 function outcome(id: string, status: TaskOutcome['status'], cache?: object): TaskOutcome {
@@ -49,5 +49,14 @@ describe('a skipped task is no cache miss', () => {
       outcome('c#x', 'skipped', {}),
     ])
     expect(lines.find((l) => l.includes('miss'))).toBe('            1 miss · 1 up-to-date')
+  })
+})
+
+describe('a task with no key is no cache bucket', () => {
+  it('an uncached task whose key failed is counted once, not twice', () => {
+    // Taken out of the misses as no-cache AND as key-failed, the bar got a
+    // negative segment and the run ended in a RangeError (2026-11-10).
+    const lines = footer([outcome('a#x', 'cache-hit', {}), markKeyFailed(outcome('b#x', 'failed'))])
+    expect(lines.find((l) => l.includes('up-to-date'))).toBe('            1 up-to-date')
   })
 })

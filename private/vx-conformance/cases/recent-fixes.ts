@@ -384,4 +384,28 @@ export default [
       { run: 'build', expect: { exit: 0, files: { [out('a')]: 'a\ntwo\n' } } },
     ],
   }),
+  defineCase({
+    id: 'outputs/committed-output-kept-when-inputs-negate-the-outputs',
+    category: 'outputs',
+    kind: 'correctness',
+    title:
+      'A committed edit under the outputs is not reverted by a replay when the inputs negate the outputs',
+    why: 'Inputs are everything but `out/**`, the common way to keep a build’s own writes out of its inputs. `out/LICENSE` is committed source under the outputs. The negation keeps the build’s writes out, but the committed file still decides what a replay writes back: a tool that drops it with the rest replays the old LICENSE over the one just committed.',
+    from: ['stale-hit-git'],
+    workspace: one(
+      {
+        command: 'mkdir -p out && cat src/*.txt > out/out.txt',
+        inputs: ['**', '!out/**'],
+        outputs: ['out/**'],
+      },
+      { 'src/a.txt': 'a\n', 'out/LICENSE': 'license v1', '.gitignore': 'out/out.txt\n' },
+    ),
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { run: 'build', expect: { exit: 0 } },
+      { write: { 'packages/a/out/LICENSE': 'license v2' } },
+      { commit: 'license v2' },
+      { run: 'build', expect: { exit: 0, files: { 'packages/a/out/LICENSE': 'license v2' } } },
+    ],
+  }),
 ]

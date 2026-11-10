@@ -162,43 +162,47 @@ describe('stale cache hits', () => {
     TIMEOUT,
   )
 
-  it(
-    'an edit to a committed file under its own output moves the key though no input glob reaches it',
-    async () => {
-      // `dist/LICENSE` is committed under `dist/**`, outside `src/**`. A hit
-      // writes the artifact's copy of it back, so the key must fold it: left
-      // out, a committed edit hit and the restore put the old bytes back
-      // (turborepo#14831).
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
-      await writeLocalWorkspace(root)
-      await write(
-        path.join(root, 'vx.config.mjs'),
-        `export default {
+  // The second row negates the outputs out of the inputs, as the docs advise
+  // (`!dist/**`): the negation dropped the committed file from the key too,
+  // and a committed edit hit and was overwritten (2026-11-10).
+  for (const inputs of [`['src/**']`, `['**', '!dist/**', '!vx.config.mjs']`])
+    it(
+      `an edit to a committed file under its own output moves the key though no input glob reaches it (${inputs})`,
+      async () => {
+        // `dist/LICENSE` is committed under `dist/**`, outside `src/**`. A hit
+        // writes the artifact's copy of it back, so the key must fold it: left
+        // out, a committed edit hit and the restore put the old bytes back
+        // (turborepo#14831).
+        await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+        await writeLocalWorkspace(root)
+        await write(
+          path.join(root, 'vx.config.mjs'),
+          `export default {
            tasks: {
              build: {
                exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt' },
-               inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+               inputs: { files: ${inputs} }, outputs: { files: ['dist/**'] }, cache: true,
              },
            },
          }`,
-      )
-      await write(path.join(root, 'src/a.txt'), 'a')
-      await write(path.join(root, 'dist/LICENSE'), 'license v1')
-      await write(path.join(root, '.gitignore'), '.vx/cache/\ndist/out.txt\n')
-      git(root, 'init', '-q')
-      git(root, 'add', '-A')
-      git(root, 'commit', '-q', '-m', 'initial')
+        )
+        await write(path.join(root, 'src/a.txt'), 'a')
+        await write(path.join(root, 'dist/LICENSE'), 'license v1')
+        await write(path.join(root, '.gitignore'), '.vx/cache/\ndist/out.txt\n')
+        git(root, 'init', '-q')
+        git(root, 'add', '-A')
+        git(root, 'commit', '-q', '-m', 'initial')
 
-      await writeLocalWorkspace(root)
-      vx(root, 'run', 'build')
-      expect(vx(root, 'run', 'build')).toMatch(/build[^\n]*up-to-date/)
-      await write(path.join(root, 'dist/LICENSE'), 'license v2')
-      git(root, 'commit', '-q', '-am', 'license v2')
-      expect(vx(root, 'run', 'build')).not.toMatch(/build[^\n]*(up-to-date|restored)/)
-      expect(await readFile(path.join(root, 'dist/LICENSE'), 'utf8')).toBe('license v2')
-    },
-    TIMEOUT,
-  )
+        await writeLocalWorkspace(root)
+        vx(root, 'run', 'build')
+        expect(vx(root, 'run', 'build')).toMatch(/build[^\n]*up-to-date/)
+        await write(path.join(root, 'dist/LICENSE'), 'license v2')
+        git(root, 'commit', '-q', '-am', 'license v2')
+        expect(vx(root, 'run', 'build')).not.toMatch(/build[^\n]*(up-to-date|restored)/)
+        expect(await readFile(path.join(root, 'dist/LICENSE'), 'utf8')).toBe('license v2')
+      },
+      TIMEOUT,
+    )
 
   it(
     'a codegen that rewrites its committed output is saved, and a hit writes what it left',
@@ -793,6 +797,13 @@ describe('stale cache hits', () => {
         for (const dirs of [[root], [p]]) await enumerate(dirs)
         expect(runGitLsFiles(p).files).toContain('kept/f')
         await shim('p/package.json/x', 'Not a directory')
+        expect(runGitLsFiles(p).files).toContain('kept/f')
+        // Gone when git opened it and made again since (a task re-creating
+        // its own output directory under another task's walk): the reason
+        // says it was not there, and it was refused as a path too long
+        // (2026-11-10).
+        await shim('p/kept', 'No such file or directory')
+        for (const dirs of [[root], [p]]) await enumerate(dirs)
         expect(runGitLsFiles(p).files).toContain('kept/f')
         await shim('p/kept', 'Too many open files')
         await expect(enumerate([root])).rejects.toThrow(
