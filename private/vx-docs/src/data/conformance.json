@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 229,
+    "ported": 230,
     "rest": {
       "pending": [
         "affected-clean-filters",
@@ -18,7 +18,6 @@
         "server-died-under-task",
         "server-stops-unneeded",
         "uncached-outputs",
-        "vx-lockfile/linked-dirs",
         "vx-lockfile/sparse-checkout",
         "watch-dependency-gone",
         "watch-edit-before-keys",
@@ -1053,14 +1052,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 988,
-        "can": 988,
-        "of": 990
+        "pass": 990,
+        "can": 990,
+        "of": 992
       },
       "correctness": {
-        "pass": 812,
-        "can": 812,
-        "of": 814
+        "pass": 814,
+        "can": 814,
+        "of": 816
       },
       "efficiency": {
         "pass": 167,
@@ -1098,9 +1097,9 @@
         "of": 42
       },
       "inputs": {
-        "pass": 303,
-        "can": 303,
-        "of": 303
+        "pass": 304,
+        "can": 304,
+        "of": 304
       },
       "env": {
         "pass": 31,
@@ -1123,21 +1122,21 @@
         "of": 19
       },
       "watch": {
-        "pass": 31,
-        "can": 31,
-        "of": 31
+        "pass": 32,
+        "can": 32,
+        "of": 32
       }
     },
     "turbo": {
       "all": {
         "pass": 630,
-        "can": 906,
-        "of": 990
+        "can": 908,
+        "of": 992
       },
       "correctness": {
         "pass": 509,
-        "can": 736,
-        "of": 814
+        "can": 738,
+        "of": 816
       },
       "efficiency": {
         "pass": 117,
@@ -1176,8 +1175,8 @@
       },
       "inputs": {
         "pass": 187,
-        "can": 293,
-        "of": 303
+        "can": 294,
+        "of": 304
       },
       "env": {
         "pass": 27,
@@ -1201,20 +1200,20 @@
       },
       "watch": {
         "pass": 28,
-        "can": 31,
-        "of": 31
+        "can": 32,
+        "of": 32
       }
     },
     "nx": {
       "all": {
-        "pass": 644,
-        "can": 931,
-        "of": 990
+        "pass": 645,
+        "can": 933,
+        "of": 992
       },
       "correctness": {
-        "pass": 486,
-        "can": 757,
-        "of": 814
+        "pass": 487,
+        "can": 759,
+        "of": 816
       },
       "efficiency": {
         "pass": 154,
@@ -1253,8 +1252,8 @@
       },
       "inputs": {
         "pass": 186,
-        "can": 303,
-        "of": 303
+        "can": 304,
+        "of": 304
       },
       "env": {
         "pass": 25,
@@ -1277,21 +1276,21 @@
         "of": 19
       },
       "watch": {
-        "pass": 27,
-        "can": 31,
-        "of": 31
+        "pass": 28,
+        "can": 32,
+        "of": 32
       }
     },
     "vite-task": {
       "all": {
         "pass": 501,
-        "can": 744,
-        "of": 990
+        "can": 745,
+        "of": 992
       },
       "correctness": {
         "pass": 412,
-        "can": 616,
-        "of": 814
+        "can": 617,
+        "of": 816
       },
       "efficiency": {
         "pass": 87,
@@ -1330,8 +1329,8 @@
       },
       "inputs": {
         "pass": 177,
-        "can": 294,
-        "of": 303
+        "can": 295,
+        "of": 304
       },
       "env": {
         "pass": 29,
@@ -1356,19 +1355,19 @@
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 31
+        "of": 32
       }
     },
     "nix": {
       "all": {
         "pass": 478,
-        "can": 705,
-        "of": 990
+        "can": 706,
+        "of": 992
       },
       "correctness": {
         "pass": 412,
-        "can": 584,
-        "of": 814
+        "can": 585,
+        "of": 816
       },
       "efficiency": {
         "pass": 64,
@@ -1407,8 +1406,8 @@
       },
       "inputs": {
         "pass": 176,
-        "can": 293,
-        "of": 303
+        "can": 294,
+        "of": 304
       },
       "env": {
         "pass": 22,
@@ -1433,19 +1432,19 @@
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 31
+        "of": 32
       }
     },
     "moon": {
       "all": {
         "pass": 580,
-        "can": 892,
-        "of": 990
+        "can": 893,
+        "of": 992
       },
       "correctness": {
         "pass": 450,
-        "can": 731,
-        "of": 814
+        "can": 732,
+        "of": 816
       },
       "efficiency": {
         "pass": 125,
@@ -1484,8 +1483,8 @@
       },
       "inputs": {
         "pass": 192,
-        "can": 303,
-        "of": 303
+        "can": 304,
+        "of": 304
       },
       "env": {
         "pass": 26,
@@ -1510,7 +1509,7 @@
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 31
+        "of": 32
       }
     }
   },
@@ -21118,6 +21117,46 @@
       }
     },
     {
+      "id": "inputs/global-link-dependency-edit-reruns",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "An edit inside a package linked by name (`link:dep`) runs the task depending on it",
+      "why": "A `link:<name>` dependency points at a folder the user registered with `bun link`, so the manifest names no path at all. The folder is still what the project imports, and an edit there is live at once. A runner that keys only path-shaped links misses it and replays the old build.",
+      "from": [
+        "vx-lockfile/linked-dirs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 7,
+          "detail": "did not run lib#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 7,
+          "detail": "did not run lib#build"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 7,
+          "detail": "did not run lib#build"
+        },
+        "nix": {
+          "status": "fail",
+          "step": 5,
+          "detail": "exited 100, expected success"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 7,
+          "detail": "did not run lib#build"
+        }
+      }
+    },
+    {
       "id": "affected/file-dir-dependency-edit-selects-dependent",
       "category": "affected",
       "kind": "correctness",
@@ -32678,6 +32717,41 @@
         },
         "turbo": {
           "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs watch"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "needs watch"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "needs watch"
+        }
+      }
+    },
+    {
+      "id": "watch/directory-moved-in-reruns",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "A folder moved into the inputs rebuilds with its files, and so does an edit inside it",
+      "why": "Moving a folder in is one rename: no file inside it is written, so a watch that waits for file writes hears nothing. Its files are still new inputs, as if they had been created there. The build must take them, and the folder must be watched from then on so its next edit rebuilds too.",
+      "from": [
+        "watch-tree-linux"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "phase 3: after 30 s: did not run app#build"
         },
         "nx": {
           "status": "pass"
