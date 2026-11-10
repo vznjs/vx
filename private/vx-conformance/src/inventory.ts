@@ -587,6 +587,8 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-dte/units',
     'vx-dte/warm-ups',
     'vx-dte/wire',
+    'vx-dte/wire-dials',
+    'vx-dte/wire-faults',
     'vx-history-server/bun',
     'vx-history-server/start-line',
     'vx-history-server/worker',
