@@ -323,13 +323,17 @@ function cell(text: string, color: Style | '', width: number, colors: ColorSuppo
 function statusOf(o: TaskOutcome): { word: string; color: Style } {
   switch (o.status) {
     case 'failed':
-      return { word: 'failed', color: 'error' }
+      return FAILED
     case 'skipped':
-      return { word: 'skipped', color: 'warn' }
+      return SKIPPED
     default:
-      return { word: 'success', color: 'ok' }
+      return SUCCEEDED
   }
 }
+// One each, never one per row: callers only read them.
+const FAILED: { word: string; color: Style } = { word: 'failed', color: 'error' }
+const SKIPPED: { word: string; color: Style } = { word: 'skipped', color: 'warn' }
+const SUCCEEDED: { word: string; color: Style } = { word: 'success', color: 'ok' }
 
 /** Whether the task ran its command: a hit whose restore failed did not, nor a task with no key. */
 function ranCommand(o: TaskOutcome): boolean {
@@ -343,24 +347,26 @@ function ranCommand(o: TaskOutcome): boolean {
  * a hit whose restore failed (neither a miss nor a hit) and a task with no key.
  */
 function cacheOf(o: TaskOutcome): { word: string; color: Style } {
-  if (o.restoreFailed === true || isKeyFailed(o)) return { word: '', color: 'muted' }
+  if (o.restoreFailed === true || isKeyFailed(o)) return NO_CACHE_WORD
   switch (o.status) {
     case 'success':
     case 'failed':
       // A task no cache answered for never consulted one: not a miss.
-      return { word: ranNoCache(o) ? 'no-cache' : 'miss', color: 'muted' } // dim
+      return ranNoCache(o) ? NO_CACHE : MISS // dim
     case 'cache-hit':
-      return o.restored === false
-        ? { word: 'fresh', color: 'ok' }
-        : { word: 'local', color: 'local' }
+      return o.restored === false ? FRESH : LOCAL
     case 'cache-hit-remote':
-      return o.restored === false
-        ? { word: 'fresh', color: 'ok' }
-        : { word: 'remote', color: 'remote' }
+      return o.restored === false ? FRESH : REMOTE
     default:
-      return { word: '', color: 'muted' }
+      return NO_CACHE_WORD
   }
 }
+const NO_CACHE_WORD: { word: string; color: Style } = { word: '', color: 'muted' }
+const NO_CACHE: { word: string; color: Style } = { word: 'no-cache', color: 'muted' }
+const MISS: { word: string; color: Style } = { word: 'miss', color: 'muted' }
+const FRESH: { word: string; color: Style } = { word: 'fresh', color: 'ok' }
+const LOCAL: { word: string; color: Style } = { word: 'local', color: 'local' }
+const REMOTE: { word: string; color: Style } = { word: 'remote', color: 'remote' }
 
 /**
  * One reported task row on the list grid: `<status> <cache> <usual>

@@ -96,7 +96,12 @@ export function runKeysToken(args: RunKeysArgs): RunKeysAt | undefined {
   const declarationOf = (cfg: TaskNode['config']): string => {
     let text = declarations.get(cfg)
     if (text === undefined) {
-      text = JSON.stringify([cfg.inputs?.files, cfg.outputs?.files, cfg.outputs?.workspaceFiles])
+      text = JSON.stringify([
+        cfg.inputs?.files,
+        cfg.inputs?.workspaceFiles,
+        cfg.outputs?.files,
+        cfg.outputs?.workspaceFiles,
+      ])
       declarations.set(cfg, text)
     }
     return text
@@ -115,9 +120,13 @@ export function runKeysToken(args: RunKeysArgs): RunKeysAt | undefined {
     // node names that hash, which is also what the delta compares.
     let files = ''
     if (inputs !== undefined) {
-      if ((inputs.workspaceFiles?.length ?? 0) > 0) return undefined
-      // No positive entry resolves no files (`filesPlan`).
-      if (inputs.files === undefined || inputs.files.some((e) => !e.startsWith('!'))) {
+      // No positive entry resolves no files (`filesPlan`). The files token
+      // carries the workspace files a declaration lists as well.
+      if (
+        inputs.files === undefined ||
+        inputs.files.some((e) => !e.startsWith('!')) ||
+        (inputs.workspaceFiles?.some((e) => !e.startsWith('!')) ?? false)
+      ) {
         const declared = declarationOf(cfg)
         let byDeclared = tokens.get(node.projectName)
         if (byDeclared === undefined) tokens.set(node.projectName, (byDeclared = new Map()))

@@ -250,10 +250,17 @@ export function filesToken(
     | 'gitFilesCache'
   >,
 ): string | undefined {
-  if ((args.inputs?.workspaceFiles?.length ?? 0) > 0) return undefined
-  const plan = filesPlan(args.inputs?.files, args.ownOutputs)
   const cache = args.gitFilesCache
-  if (plan === null || cache === undefined) return undefined
+  if (cache === undefined) return undefined
+  const ws = workspaceFilesToken(args.workspaceRoot, args.inputs?.workspaceFiles, cache)
+  if (ws === undefined) return undefined
+  const plan = filesPlan(args.inputs?.files, args.ownOutputs)
+  if (plan === null) {
+    // Only workspace files: a project fold of none.
+    return ws === ''
+      ? undefined
+      : `${args.workspaceRoot}\0${filesMemoKey(args.projectDir, { positive: [], negative: [] }, args.ownOutputs, args.ownWorkspaceOutputs ?? [], args.nestedProjectDirs)}\0-${ws}`
+  }
   const snapshot = cache.snapshotFor(args.projectDir, plan.positiveGlobs)
   if (snapshot === undefined) return undefined
   const digest = cache.filesDigest(args.projectDir, snapshot)
@@ -262,13 +269,87 @@ export function filesToken(
     ignoredReach(plan, snapshot, { dir: args.projectDir, cache }).length > 0
   )
     return undefined
-  return `${args.workspaceRoot}\0${filesMemoKey(args.projectDir, plan, args.ownOutputs, args.ownWorkspaceOutputs ?? [], args.nestedProjectDirs)}\0${digest}`
+  return `${args.workspaceRoot}\0${filesMemoKey(args.projectDir, plan, args.ownOutputs, args.ownWorkspaceOutputs ?? [], args.nestedProjectDirs)}\0${digest}${ws}`
+}
+
+/**
+ * The `workspaceFiles` half of {@link filesToken}: '' for none declared,
+ * undefined when git cannot vouch for what the declaration lists. Else the
+ * declaration and a digest of every workspace path its globs may take in
+ * (`declarationDigest`): what `resolveWorkspaceFiles` picks from them is a
+ * function of that, the task's outputs and project (the token's memo key).
+ * One a glob names that git answers nothing for is read from disk
+ * (`ignoredReach`), which no digest covers.
+ */
+function workspaceFilesToken(
+  workspaceRoot: string,
+  declared: readonly string[] | undefined,
+  cache: GitFilesCache,
+): string | undefined {
+  if (declared === undefined || declared.length === 0) return ''
+  const key = JSON.stringify(declared)
+  let plan = wsPlans.get(key)
+  if (plan === undefined) {
+    const positive = declared.filter((e) => !e.startsWith('!'))
+    const isPositive = throughLinks(positive, anyTaskGlob(asTrees(positive)))
+    const mayHold = mayHoldMatch(positive)
+    plan = {
+      positive,
+      globs: asTrees(positive).map(globFor),
+      reach: reachOf(positive),
+      takes: (rel) => isPositive(rel) || mayHold(rel),
+      heads: headsOf(positive),
+    }
+    wsPlans.set(key, plan)
+  }
+  // No positive entry lists no workspace file (`resolveWorkspaceFiles`).
+  if (plan.positive.length === 0) return ''
+  const snapshot = cache.snapshotFor(workspaceRoot, plan.globs)
+  if (snapshot === undefined) return undefined
+  if (ignoredReach(plan.reach, snapshot, { dir: workspaceRoot, cache }).length > 0) return undefined
+  const digest = cache.declarationDigest(workspaceRoot, snapshot, key, plan.takes, plan.heads)
+  return digest === undefined ? undefined : `\0ws\0${key}\0${digest}`
+}
+
+const wsPlans = new Map<
+  string,
+  {
+    positive: string[]
+    globs: Bun.Glob[]
+    reach: { prefixes: string[]; literals: string[] }
+    takes: (rel: string) => boolean
+    heads: string[] | undefined
+  }
+>()
+
+/**
+ * Each entry's fixed head: every path it takes in lies at, under or above
+ * one (`declarationDigest`). Undefined when one has none (a leading `**`).
+ */
+function headsOf(positive: readonly string[]): string[] | undefined {
+  const heads: string[] = []
+  for (const glob of asTrees(positive.flatMap(braceAlternatives))) {
+    const fixed = isLiteralPattern(glob) ? normalizeGlob(glob) : staticPrefix(glob)
+    const head = fixed.replace(/\/+$/, '')
+    // An escape names a character the path spells bare: walked whole.
+    if (
+      head === '' ||
+      head === '.' ||
+      head === '..' ||
+      head.startsWith('../') ||
+      head.includes('\\') ||
+      path.isAbsolute(head)
+    )
+      return undefined
+    heads.push(head)
+  }
+  return heads
 }
 
 /** Everything below the git snapshot that decides `resolveFiles`' result. */
 function filesMemoKey(
   projectDir: string,
-  plan: FilesPlan,
+  plan: Pick<FilesPlan, 'positive' | 'negative'>,
   ownOutputs: readonly string[],
   ownWorkspaceOutputs: readonly string[],
   nestedProjectDirs: readonly string[],

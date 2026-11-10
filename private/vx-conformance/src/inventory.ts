@@ -1084,6 +1084,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'run-id',
     'run-keys',
     'run-keys-token',
+    'run-keys-workspace-files',
     'run-lock',
     'run-lock-e2e',
     'run-lock-fs',

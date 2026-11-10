@@ -74,9 +74,12 @@ export function codeIdentity(): string
   stands for each task's project, edges, config and adders, and a task
   adds only its id, `requested` and files token hash. It answers undefined, and the run derives as
   before, when there is no fold memo, or any task is keyless, has an
-  excluded upstream, declares `runtime`, `workspaceRuntime` or
-  `workspaceFiles` inputs, or has no files token (an untrusted input, an
-  ignored path a declaration reaches). A files token is computed and
+  excluded upstream, declares `runtime` or `workspaceRuntime` inputs,
+  or has no files token (an untrusted input, an ignored path a
+  declaration reaches). A `workspaceFiles` declaration is in the files
+  token (`inputs.md`): refused, every key of a repo whose tasks read a
+  root `tsconfig.json` derived again on every no-op (vueuse: 107 of
+  230 ms, 2026-11-10). A files token is computed and
   hashed once per project and declaration (inputs and outputs), and the
   declaration's text once per config object: the lock shares one among
   the tasks that declare it alike. The hash, not the ~200-character

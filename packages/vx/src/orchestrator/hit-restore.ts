@@ -454,9 +454,11 @@ export function currentHit(restore: RestoreHitArgs): (() => TaskOutcome) | undef
     // Kept: a row set that shrank would otherwise vouch for a tree it never
     // saw, and the failure it would let through is a skipped restore.
     if (!dirPrefixes.every((pre) => dirRows.some((r) => r.path === pre))) return undefined
-    if (!args.cache.outputDirsCurrent(node.projectDir, dirRows)) return undefined
     // No workspace output is declared, so every row is the project's.
     if (expected.some((e) => e.path.startsWith(WORKSPACE_OUTPUT_PREFIX))) return undefined
+    // Asked back to back: the second reads the directories' modes the first
+    // lstat'ed (`OutputIndex.dirModes`).
+    if (!args.cache.outputDirsCurrent(node.projectDir, dirRows)) return undefined
     if (!args.cache.isOutputsCurrent(node.projectDir, expected)) return undefined
   }
   return () => hitOutcome(restore, false)

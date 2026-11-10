@@ -101,6 +101,14 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   oidsFor(projectDir: string): ReadonlyMap<string, string> | undefined // trusted index OIDs by path
   setOids(projectDir: string, oids: Map<string, string>): void
   filesDigest(projectDir: string, snapshot: readonly string[]): string | undefined // the partition's paths + OIDs (a file with none by its stat), none a link
+  declarationDigest(
+    root: string,
+    snapshot: readonly string[],
+    key: string,
+    takes: (rel: string) => boolean,
+    heads?: readonly string[], // its entries' fixed heads: only paths at, under or above one are asked
+  ): string | undefined // filesDigest of the workspace paths a workspaceFiles declaration may take in
+  statOf(abs: string): Stats | undefined // a path's lstat, once until a partition moves
   noteFilesDigest(
     projectDir: string,
     snapshot: readonly string[],
@@ -114,7 +122,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   enumeratedAtMs: number | undefined // the enumeration's start: what `oidsFor` says is true as of then
   ignoredOutputs: ReadonlySet<string> // declared outputs (root-relative) git ignores whole, asked once per run (`stable-keys.md`)
   setIgnored(root: string, paths: readonly string[]): void // what `status --ignored=matching` named
-  newFilesIgnored(dir: string): boolean // an ignored path lies under dir and git ignores a new file there (asked once per dir; a normalized dir under the root is relative as its rest, no path.relative)
+  newFilesIgnored(dir: string): boolean // an ignored path lies under dir and git ignores a new file there (asked once per dir; a normalized dir under the root is relative as its rest, no path.relative; the first spawn asks every dir above an ignored path, up to 256)
 }
 
 export interface GitEnumeration {
@@ -224,7 +232,12 @@ and index OIDs joined and hashed once, when the enumeration trusted an
 OID for every path and none is a symlink or an undecodable name.
 `filesDigest` answers it only while the partition is that snapshot with
 those OIDs and no path marked changed: a re-enumeration, a save or a
-restore in the project ends it for the run.
+restore in the project ends it for the run. `declarationDigest` does
+the same for the workspace partition, per `workspaceFiles` declaration:
+the paths its globs may take in, each by OID, or by its stat and
+whether git tracks it, once per declaration and partition; each path's
+record once for every declaration, and a stat a project's digest took
+is not taken again (`statOf`).
 
 `gitPathspecs` scopes the spawn to the projects in the run when there
 are at most `MAX_SCOPED_PATHSPECS` (64) of them and none is the root
