@@ -190,6 +190,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'watch-edit-before-keys',
     'watch-empty-dir',
     'watch-initial-edit',
+    'watch-initial-edit-done',
     'watch-judge-fence',
     'watch-label-live-path',
     'watch-label-workspace-wide',

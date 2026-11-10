@@ -1485,10 +1485,15 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
 
 1. **Initial run.** Same code path as `vx run` — same scope resolution,
    same task graph, same cache behaviour, printed as its rows alone.
-   No watcher is armed yet, so an edit made while it runs is unheard;
-   one to the inputs of a task it was running leaves that task unsaved
+   No watcher is armed yet, so an edit made while it runs has no event.
+   One to the inputs of a task it was running leaves that task unsaved
    (its key no longer describes them), and the loop starts its first
    cycle on that, labelled `<task> inputs, edited during the first run`.
+   Any other (an input of a task that already finished, a `vx lock`) is
+   found as the loop arms: a file git lists as untracked or modified,
+   written since the run started by none of its commands, is a change,
+   and the first cycle runs on it. A deletion made while it runs is
+   still unheard: it has no date to tell it from one made before.
 2. **Watch loop.** After the initial run finishes (or once it waits only
    on a server's readiness, X-139), the directory of
    every project a cycle can run — the scope (the bare tasks' scope
