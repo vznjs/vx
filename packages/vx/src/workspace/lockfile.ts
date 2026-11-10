@@ -147,6 +147,12 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
   }
   const lock = parsed as { version?: unknown; projects?: unknown; nestedWorkspaces?: unknown }
   if (lock.version !== LOCKFILE_VERSION) {
+    // This vx's `vx lock` would write the older version over it.
+    if (typeof lock.version === 'number' && lock.version > LOCKFILE_VERSION)
+      throw new UserError(
+        `${LOCKFILE_NAME} was written by a newer vx (version ${lock.version}; this vx reads ${LOCKFILE_VERSION}) — upgrade vx`,
+        'VX_E_LOCK',
+      )
     throw new UserError(
       `${LOCKFILE_NAME} has unsupported version ${String(lock.version)} ` +
         `(this vx expects ${LOCKFILE_VERSION}) — re-run \`vx lock\``,

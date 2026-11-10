@@ -76,7 +76,7 @@ interface GitDir {
 }
 
 /** The repository `dir` is in: walk up to a `.git`; null past one not ours. */
-function locateGitDir(dir: string): GitDir | null {
+export function locateGitDir(dir: string): GitDir | null {
   let current = path.resolve(dir)
   for (;;) {
     const at = gitDirAt(current)

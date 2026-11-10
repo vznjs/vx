@@ -92,6 +92,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'keyed-group-config',
     'keyed-projects',
     'linked-inputs',
+    'lock-edges',
     'may-hold-match',
     'member-cwd',
     'negated-outputs',

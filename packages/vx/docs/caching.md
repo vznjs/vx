@@ -1475,7 +1475,9 @@ re-run`, and a restore fails the task with that hint, never as a
 corrupt artifact (A-39). Opening the index is named the same way: SQLite reports a
 descriptor it could not get as `unable to open database file`, and vx
 says `the cache index <path> could not be opened (…) — …raise the limit`
-(A-56).
+(A-56). A path SQLite will not open, past 504 bytes (its 512 less the
+`-journal` it may add), says its length and to point the cache at a
+shorter directory (`--cache-dir`, `VX_CACHE_DIR`).
 A restore that cannot READ its artifact (a cache directory another
 user owns) names the cache, not the outputs: `restore of <hash> could
 not read its artifact (EACCES: …). Make the cache directory readable

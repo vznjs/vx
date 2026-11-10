@@ -15,6 +15,7 @@ import {
   refuseFiltersThroughGroups,
 } from '../graph/index.js'
 import {
+  acquireRunLock,
   applyGraphStage,
   claimedDigests,
   discoverProjects,
@@ -156,12 +157,20 @@ export async function lockWorkspace(
   warn: (message: string) => void = warnToStderr,
   say: (line: string) => void = (line) => ui.print('out', ui.status('ok', 'vx lock', line)),
 ): Promise<number> {
-  const check = await audit(root, warn)
-  if (check.broken !== null) {
-    notWritten(check.broken, check.brokenParts, check.alsoBroken)
-    return 1
+  // One writer at a time: two at once left a review copy and the lock from
+  // different evaluations. Taken before the evaluation, so the second
+  // writes what the configs say after the first.
+  const release = await acquireRunLock(root, { log: warn, of: 'lock' })
+  try {
+    const check = await audit(root, warn)
+    if (check.broken !== null) {
+      notWritten(check.broken, check.brokenParts, check.alsoBroken)
+      return 1
+    }
+    return await writeLock(root, check, say)
+  } finally {
+    await release()
   }
-  return await writeLock(root, check, say)
 }
 
 /**
@@ -195,7 +204,17 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
       strayReviews,
       shadowed,
       nestedWorkspaces,
+      sparse,
     } = await findProjectConfigs(root)
+    // Left out, the project would leave the committed lock, as a run refuses it.
+    if (sparse.length > 0) {
+      const { file, add } = sparse[0]!
+      const dir = relPosix(root, path.dirname(file)) || 'the workspace root project'
+      throw new UserError(
+        `${dir} is outside this sparse checkout, so vx lock cannot read its ${path.basename(file)} — run \`git sparse-checkout add ${add}\``,
+        'VX_E_LOCK',
+      )
+    }
     out.strayReviews = strayReviews
     out.shadowed = shadowed
     // The one load that evaluates: every reader reads the lock this writes.

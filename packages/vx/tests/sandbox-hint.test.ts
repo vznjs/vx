@@ -93,3 +93,43 @@ describe('the socket-length refusal sits exactly on the limit', () => {
     expect(socketPathRefusal(dir)).toContain(`${dir}/claude-http-`)
   })
 })
+
+// The runtime writes its bridge socket's path, under the temp directory,
+// unquoted into a shell script inside the sandbox and into socat
+// addresses on the host. A `;` there hung the run, a space cost every
+// task ~7 s and broke its network proxy unsaid, a `,` or `:` failed
+// "Failed to create bridge sockets after 5 attempts", and a relative path
+// left a stray directory and failed "a mount went away" (2026-11-10). vx's
+// own task temp directories, under CLAUDE_CODE_TMPDIR, carry its sockets
+// the same way: a space there failed every networked task.
+describe('a temp directory the runtime cannot carry unquoted is refused, naming it', () => {
+  const tail = 'at an absolute path of ASCII letters, digits and . _ - / + @'
+  // `ü`: the runtime quotes it in the command it hands back, and a
+  // networked task failed "the runtime gave this networked task no proxy
+  // to replace".
+  it.each(Array.from(' \t\n;\'"`$(),:\\|&<>*?!{}[]#~=%\x01üΩ'))('TMPDIR holding %p', (c) => {
+    const dir = `/tmp/a${c}b`
+    expect(socketPathRefusal(dir, '/tmp/claude')).toBe(
+      `the sandbox runtime writes socket paths under TMPDIR unquoted into shell and socat commands, and ${JSON.stringify(dir)} holds a character they cannot carry — point TMPDIR ${tail}`,
+    )
+  })
+
+  it('a relative TMPDIR', () => {
+    expect(socketPathRefusal('relx', '/tmp/claude')).toBe(
+      `the sandbox runtime writes socket paths under TMPDIR unquoted into shell and socat commands, and "relx" is not absolute — point TMPDIR ${tail}`,
+    )
+  })
+
+  it('CLAUDE_CODE_TMPDIR, the parent of every task temp directory', () => {
+    expect(socketPathRefusal('/tmp', '/tmp/a b')).toContain(
+      'under CLAUDE_CODE_TMPDIR unquoted into shell and socat commands, and "/tmp/a b" holds',
+    )
+    expect(socketPathRefusal('/tmp', 'rel')).toContain('"rel" is not absolute')
+  })
+
+  // Each run as TMPDIR, and as CLAUDE_CODE_TMPDIR, under a sandboxed task
+  // that lists a network: ~50 ms, as a plain `/tmp/x` runs.
+  it('ASCII letters and digits, and . _ - / + @, are accepted', () => {
+    expect(socketPathRefusal('/tmp/hv.a_b-c+d@eZ9', '/tmp/claude/x.y_z-1+2@Q')).toBeUndefined()
+  })
+})

@@ -245,6 +245,9 @@ function unreadableIndexError(dbFile: string, err: unknown): UserError {
   )
 }
 
+/** The longest index path SQLite opens: its unix `MAX_PATHNAME`, 512, less `-journal`. */
+const SQLITE_PATH_MAX = 512 - '-journal'.length
+
 /**
  * SQLite reports a descriptor it could not get as `SQLITE_CANTOPEN`, never
  * `EMFILE`, so an open under a low `ulimit -n` reached the user as a bare
@@ -262,6 +265,17 @@ function cantOpenIndex(dbFile: string, err: unknown): UserError | undefined {
     return new UserError(
       `the cache index ${dbFile} could not be opened (${(err as Error).message}) — ${OUT_OF_FDS_HINT}`,
       'VX_E_FDS',
+    )
+  }
+  // SQLite's unix VFS opens no path past 512 bytes, the `-journal` it may
+  // add counted: a long one was blamed on permissions (2026-11-10).
+  const bytes = Buffer.byteLength(path.resolve(dbFile))
+  if (bytes > SQLITE_PATH_MAX) {
+    return new UserError(
+      `the cache index ${dbFile} could not be opened (${(err as Error).message}) — ` +
+        `its path is ${bytes} bytes and SQLite opens none past ${SQLITE_PATH_MAX}; ` +
+        'point the cache at a shorter directory (--cache-dir, VX_CACHE_DIR)',
+      'VX_E_FS',
     )
   }
   // Any other: a directory, or a file this user may not open, where the

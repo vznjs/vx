@@ -2158,7 +2158,10 @@ shell expand it: `$API_TOKEN` in the command, the name in
 
 The review copies are written before the lock: one that cannot be
 written (a directory in its place, a read-only file) is named and the
-lock is left as it was.
+lock is left as it was. One `vx lock` writes at a time on a workspace: a
+second waits (`[vx] waiting for another vx lock (pid N) on this workspace
+to finish…`), then evaluates and writes, so the review copies and the lock
+always come from one run.
 
 ### How runs read it
 
@@ -2170,7 +2173,8 @@ locked directory whose config file is gone (X-144) or that this user
 may not search (EACCES, named as such), or a missing lock, is a hard error;
 one a sparse checkout left out is refused only when the run selects it or
 depends on it, naming the `git sparse-checkout add` that brings it back
-(`vx lock` there would drop it from the committed lock); a config added since the lock is no project until
+(`vx lock` and `vx lock --check` there refuse too, naming the same
+command: the lock they wrote would have dropped it); a config added since the lock is no project until
 `vx lock`, and naming its task, `c#build`, says so: "c#build: c/vx.config.ts
 is not in the lock yet — run `vx lock`", as a run from its directory says
 `c/vx.config.ts is not in the lock yet`, where it ran the locked project
@@ -3967,7 +3971,9 @@ Colors are the two conventions in § Output format › Colors (`NO_COLOR`,
 `@vzn/vx-ci`'s. A sandboxed
 task's temp dir sits under `CLAUDE_CODE_TMPDIR` (else `CLAUDE_TMPDIR`,
 else `/tmp/claude`), the sandbox runtime's own convention
-(`docs/modules/sandbox-runtime.md`).
+(`docs/modules/sandbox-runtime.md`). Both it and `TMPDIR` hold sockets
+whose paths pass unquoted through a shell, so a sandboxed task is refused
+unless each is an absolute path of ASCII letters, digits and `. _ - / + @`.
 
 ## Output format
 
