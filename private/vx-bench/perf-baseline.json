@@ -5,7 +5,7 @@
         "hash xxh3": 1935,
         "spawn git": 6,
         "spawn sh": 1,
-        "sqlite statement": 719
+        "sqlite statement": 722
       },
       "up-to-date run @25": {
         "hash xxh3": 1045,
@@ -31,7 +31,7 @@
       "cold run @100": {
         "hash xxh3": 7859,
         "spawn git": 8,
-        "sqlite statement": 2749
+        "sqlite statement": 2752
       },
       "up-to-date run @100": {
         "hash xxh3": 4195,

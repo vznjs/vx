@@ -1002,6 +1002,9 @@ describe('withForwardArgs', () => {
     ['a trailing newline', '\n  echo args:\n', 'args: --fix a b\n'],
     ['trailing blank lines', 'echo args: \n\t\n', 'args: --fix a b\n'],
     ['control: a line continuation', 'echo args: \\\n', 'args: --fix a b\n'],
+    ['a line continuation then a blank line', 'echo args: \\\n\n', 'args: --fix a b\n'],
+    ['a line continuation then a spaces-only line', '\n  echo args: \\\n  \n', 'args: --fix a b\n'],
+    ['an escaped trailing space then a blank line', 'echo a\\ \n\n', 'a  --fix a b\n'],
     ['control: an escaped trailing space', 'echo a\\ ', 'a  --fix a b\n'],
     ['control: an escaped backslash before the newline', 'echo a\\\\\n', 'a\\ --fix a b\n'],
   ])('%s', (_name, command, printed) => {

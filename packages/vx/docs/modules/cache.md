@@ -464,13 +464,16 @@ export function holdStore(storeDir: string, log: (line: string) => void): Promis
 // which workspaces may share: a run holds `<dir>/cache.lock` shared from
 // before its cache opens to its end, `vx cache clean` exclusive; each waits
 // for the other, saying so after a second. A clean deletes the file it
-// holds, so a taker checks the name still is that file. A directory with
-// no index yet, or an unwritable one, holds nothing.
+// holds, so a taker checks the name still is that file. A run finding no
+// index yet makes the directory and the file first, so the index it makes
+// is held; a clean finding none, an unwritable directory, or one the open
+// refuses (`workspaceRoot`'s, as the open asks it) holds nothing.
 export function holdCacheDir(
   dir: string,
   mode: 'shared' | 'exclusive',
   log: (line: string) => void,
   signal?: AbortSignal,
+  workspaceRoot?: string,
 ): Promise<() => void>
 // The files a second connection writes a run's hits through; undefined
 // when the store keeps no history on disk.

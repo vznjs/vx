@@ -4367,15 +4367,18 @@ const DIR_LOCK = 'cache.lock'
  * `cache.lock` in the directory: shared and exclusive, any spelling of the
  * directory meets it, and a holder's lock dies with its process. A clean
  * deletes the file with the rest while it holds it, so a taker checks the
- * name still is the file it locked. A directory with no index yet, or one
- * this user cannot write, holds nothing: there is nothing a clean deletes.
- * A default directory beside its store pays nothing.
+ * name still is the file it locked. A run finding no index yet makes the
+ * directory and the file first, so the index it makes next is held; a clean
+ * finding none has nothing to delete, and a directory this user cannot
+ * write, or one the open refuses (`workspaceRoot`'s, as the open asks it),
+ * holds nothing. A default directory beside its store pays nothing.
  */
 export async function holdCacheDir(
   dir: string,
   mode: 'shared' | 'exclusive',
   log: (line: string) => void,
   signal?: AbortSignal,
+  workspaceRoot?: string,
 ): Promise<() => void> {
   const file = path.join(dir, DIR_LOCK)
   const started = performance.now()
@@ -4386,11 +4389,19 @@ export async function holdCacheDir(
     let before: Stats
     try {
       let seen = statSync(file, { throwIfNoEntry: false })
+      if (seen === undefined && !existsSync(path.join(dir, 'cache.db'))) {
+        if (mode === 'exclusive') return () => {}
+        // The run makes the index next: unheld, a clean in another workspace
+        // deleted it under the run, which ended green with its entry gone.
+        // A directory that was there may be one the open refuses a first
+        // index in (a project's own): its refusal, thrown here, writes
+        // nothing, and the open throws it again.
+        if (mkdirSync(dir, { recursive: true }) === undefined) {
+          refuseManifestDir(dir, workspaceRoot)
+          refuseForeignCacheDir(dir, workspaceRoot)
+        }
+      }
       if (seen === undefined) {
-        // A directory with no index has nothing a clean deletes, and may be
-        // one a first index is refused in (a project's own): nothing is
-        // written there.
-        if (!existsSync(path.join(dir, 'cache.db'))) return () => {}
         // Made before it is stat'ed: a file Database creates is not the one
         // a stat before it saw.
         writeFileSync(file, '', { flag: 'a' })

@@ -301,3 +301,22 @@ describe('the run history stores each field in its own column', () => {
     }
   })
 })
+
+// `vx run test -- one.test.ts` runs a sliver of the task: timed as the
+// task, seven such runs set its usual to ~8 ms and its full run read +1.5 s.
+it('a run with forwarded args leaves no duration sample', () => {
+  const cache = new Cache(path.join(dir, 'cache'))
+  const db = indexDb(cache)
+  cache.recordRunBundle({
+    runs: [
+      { ...runB, forwardArgs: ['one.test.ts'] },
+      { ...runB, hash: 'c'.repeat(16), task: 'lint', forwardArgs: [''] },
+      { ...runB, hash: 'd'.repeat(16), task: 'plain' },
+      { ...runB, hash: 'e'.repeat(16), task: 'plain2', forwardArgs: [] },
+    ],
+    invocation,
+  })
+  const timed = db.query('SELECT task FROM task_durations ORDER BY task').all()
+  cache.close()
+  expect(timed).toEqual([{ task: 'plain' }, { task: 'plain2' }])
+})
