@@ -45,6 +45,38 @@ export const LINK_MODE = 0o120000
 export const DIR_MODE = 0o040000
 
 /**
+ * A directory the entry records no mode for holds what it was left with: the
+ * save records only a mode that withholds what 0755 grants
+ * (`narrowDirModes`), and a restore here leaves 0755 minus the umask.
+ */
+export function wideDirMode(disk: number): boolean {
+  return (disk & 0o755) === 0o755 || modeMatches(disk, 0o755)
+}
+
+/**
+ * The directories on the way to `rows` below their namespace that have no
+ * row of their own, by row path without the slash: those the entry records
+ * no mode for besides its empty ones. Climbs from each row until a
+ * directory already met.
+ */
+export function rowAncestors(rows: readonly OutputFileRow[]): string[] {
+  const seen = new Set<string>()
+  for (const r of rows) if (r.path.endsWith('/')) seen.add(r.path.slice(0, -1))
+  const out: string[] = []
+  for (const r of rows) {
+    const top = r.path.startsWith(WORKSPACE_OUTPUT_PREFIX) ? WORKSPACE_OUTPUT_PREFIX.length : 0
+    const end = r.path.endsWith('/') ? r.path.length - 2 : r.path.length - 1
+    for (let i = r.path.lastIndexOf('/', end); i > top; i = r.path.lastIndexOf('/', i - 1)) {
+      const dir = r.path.slice(0, i)
+      if (seen.has(dir)) break
+      seen.add(dir)
+      out.push(dir)
+    }
+  }
+  return out
+}
+
+/**
  * A file system that keeps whole (or FAT's even) seconds stored a restore's
  * millisecond "now" as the second it falls in: that stamp, not a write.
  */
@@ -284,10 +316,11 @@ export class OutputIndex {
         if (e.mode === LINK_MODE) return linkCurrent(path.join(projectDir, e.path), e)
         const s = statSync(path.join(projectDir, e.path))
         // An empty output directory: current while a directory stands there,
-        // with the mode its row records if it records one.
+        // with the mode its row records, or one at least 0755 without.
         if (e.path.endsWith('/'))
           return (
-            s.isDirectory() && ((e.mode & 0o170000) !== DIR_MODE || modeMatches(s.mode, e.mode))
+            s.isDirectory() &&
+            ((e.mode & 0o170000) === DIR_MODE ? modeMatches(s.mode, e.mode) : wideDirMode(s.mode))
           )
         return (
           s.size === e.size &&
@@ -317,7 +350,14 @@ export class OutputIndex {
         return false
       }
     })
-    return results.every(Boolean)
+    if (!results.every(Boolean)) return false
+    // A directory holding outputs has no row unless its mode is narrow, so
+    // a chmod of one left the tree "current" (a stat per directory).
+    for (const dir of rowAncestors(expected)) {
+      const s = statSync(path.join(projectDir, dir), { throwIfNoEntry: false })
+      if (s === undefined || !wideDirMode(s.mode)) return false
+    }
+    return true
   }
 
   /**

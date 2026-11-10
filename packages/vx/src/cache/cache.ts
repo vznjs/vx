@@ -136,7 +136,7 @@ import {
   zstdEncoder,
 } from './zstd.js'
 import { FileHashStore } from './file-hashes.js'
-import { DIR_MODE, LINK_MODE, OutputIndex } from './output-index.js'
+import { DIR_MODE, LINK_MODE, OutputIndex, rowAncestors, wideDirMode } from './output-index.js'
 import { RunHistory } from './run-history.js'
 import { CACHE_VERSION, foldKey } from './key-fold.js'
 import { type FoldMemo, IndexFoldMemo } from './fold-memo.js'
@@ -4452,18 +4452,35 @@ function modedDirs(
   workspaceRoot: string | undefined,
 ): Array<[string, number]> {
   const out: Array<[string, number]> = []
+  const abs = (rel: string): string | undefined => {
+    if (!rel.startsWith(WORKSPACE_OUTPUT_PREFIX)) return path.join(projectDir, rel)
+    return workspaceRoot === undefined
+      ? undefined
+      : path.join(workspaceRoot, rel.slice(WORKSPACE_OUTPUT_PREFIX.length))
+  }
+  // A directory with no recorded mode was left at least 0755: one standing
+  // narrower (a switch from an entry that chmods it, a hand's chmod) is
+  // given 0755. A missing one is mkdir's, which is that already.
+  const wide = (rel: string): void => {
+    const dir = abs(rel)
+    if (dir === undefined) return
+    const st = lstatSync(dir, { throwIfNoEntry: false })
+    if (st?.isDirectory() === true && !wideDirMode(st.mode)) out.push([dir, 0o755])
+  }
   for (const r of rows) {
-    if ((r.mode & 0o170000) !== DIR_MODE || !r.path.endsWith('/')) continue
+    if (!r.path.endsWith('/')) continue
     const rel = r.path.slice(0, -1)
-    const ws = rel.startsWith(WORKSPACE_OUTPUT_PREFIX)
-    if (ws && workspaceRoot === undefined) continue
-    const dir = ws
-      ? path.join(workspaceRoot!, rel.slice(WORKSPACE_OUTPUT_PREFIX.length))
-      : path.join(projectDir, rel)
+    if ((r.mode & 0o170000) !== DIR_MODE) {
+      wide(rel)
+      continue
+    }
+    const dir = abs(rel)
+    if (dir === undefined) continue
     const st = lstatSync(dir, { throwIfNoEntry: false })
     if (st === undefined || (st.isDirectory() && !modeMatches(st.mode, r.mode)))
       out.push([dir, r.mode & 0o777])
   }
+  for (const rel of rowAncestors(rows)) wide(rel)
   return out.sort((a, b) => b[0].length - a[0].length)
 }
 
