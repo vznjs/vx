@@ -455,8 +455,9 @@ export class OutputIndex {
    * save or a restore has left the tree equal to the entry. `dated` holds
    * the mtime a restore left each file with, by row path (now for one it
    * wrote); any other file is held to its row's. A file whose size, mode or mtime no
-   * longer matches is left unstamped, so a write that landed since is
-   * never vouched for; the next hit restores. Written with the directory
+   * longer matches, or whose whole-second ctime is still racy, is left
+   * unstamped, so a write that landed since is never vouched for; the
+   * next hit restores. Written with the directory
    * snapshots, in one transaction.
    */
   recordOutputStamps(
@@ -468,6 +469,7 @@ export class OutputIndex {
     if (!this.memo) return
     const rows = this.rowsOf(hash)
     const stamps = new Map<string, [number, number, number]>()
+    const now = Date.now()
     for (const e of rows) {
       if (e.path.endsWith('/') || e.mode === LINK_MODE) continue
       const ws = e.path.startsWith(WORKSPACE_OUTPUT_PREFIX)
@@ -480,7 +482,14 @@ export class OutputIndex {
         if (
           s.size === e.size &&
           modeMatches(s.mode, e.mode) &&
-          (Math.abs(s.mtimeMs - at) < 1 || secondOf(s.mtimeMs, at))
+          (Math.abs(s.mtimeMs - at) < 1 || secondOf(s.mtimeMs, at)) &&
+          // Git's racy-clean rule: on a file system that keeps whole
+          // seconds, a same-size rewrite later in the second of this
+          // write keeps every field the stamp holds, and every run after
+          // it said up-to-date over the wrong bytes. Such a file is left
+          // unstamped; the next hit re-checks it. A sub-second ctime is
+          // trusted as before: a rewrite moves it.
+          (stampGrainMs(s.ctimeMs) === 0 || s.ctimeMs < now - racyWindowMs(s.ctimeMs, 0))
         ) {
           stamps.set(e.path, [s.ino, Math.floor(s.ctimeMs), Math.floor(s.mtimeMs)])
         }

@@ -97,8 +97,11 @@ All are on the `@vzn/vx` façade.
 - **Once per process.** The file's size, mtime, ctime and inode gate the
   read within a process (a `vx watch` cycle), as `Cache.hashFile`'s memo
   keys a file: size and mtime alone kept the digests of a same-size
-  lockfile copied in with its mtime (`cp -p`). The content hash decides
-  whether the digests are current.
+  lockfile copied in with its mtime (`cp -p`). A file changed within the
+  racy window of its read (50 ms, or its second where the file system
+  keeps whole seconds) gates nothing: a same-size rewrite later in that
+  second kept every field, and the next cycle served the first bytes'
+  digests. The content hash decides whether the digests are current.
 - **Every project folds the root importer's digest** beside its own
   (one xxh3 over both; the root project folds the root's alone). The
   root package's dependencies reach every task: their bins through the

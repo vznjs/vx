@@ -13,11 +13,13 @@
 // age, which a 50 ms window still trusts.
 
 import * as fs from 'node:fs'
+import * as fsp from 'node:fs/promises'
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, setSystemTime, spyOn } from 'bun:test'
 import { Cache } from '../src/cache/index.js'
+import { lockfileClaim } from '../src/index.js'
 import { movedInput } from '../src/orchestrator/task-hash.js'
 import { FingerprintWatch } from '../src/orchestrator/fingerprint-watch.js'
 import { readClaimedFiles } from '../src/workspace/index.js'
@@ -151,6 +153,45 @@ describe('a whole-second stamp', () => {
     expect(await snapshotAt(SECOND)).toBe(0)
     expect(await snapshotAt(SECOND + 7)).toBe(1)
   })
+
+  it('leaves an output written in the second of its stamp unstamped', async () => {
+    // A restore (or a save) wrote dist/a.js and stamped it in the same
+    // second; a same-size hand rewrite later in that second kept size,
+    // inode, ctime and mtime, and every later run said up-to-date over the
+    // wrong bytes. The stamp is now refused, so the next hit re-checks.
+    const proj = path.join(root, 'proj')
+    const out = path.join(proj, 'dist', 'a.js')
+    mkdirSync(path.dirname(out), { recursive: true })
+    const realStat = fs.statSync
+    spyOn(fs, 'statSync').mockImplementation(((p: fs.PathLike, o?: fs.StatOptions) => {
+      const st = realStat(p, o as never)
+      if (st === undefined || String(p) !== out) return st
+      return Object.assign(st, { ctimeMs: stamp, mtimeMs: stamp })
+    }) as typeof fs.statSync)
+    const currentAfterRewrite = async (hash: string): Promise<boolean> => {
+      writeFileSync(out, 'AAAA')
+      await cache.save({
+        hash,
+        projectDir: proj,
+        outputFiles: [out],
+        entry: { taskId: 'p#build', command: 'x', durationMs: 1, stdout: '' },
+      })
+      setSystemTime(new Date(stamp + 120))
+      cache.recordOutputStamps(hash, proj, root)
+      writeFileSync(out, 'BBBB')
+      return cache.isOutputsCurrent(proj, cache.loadOutputFilesBatch([hash]).get(hash)!)
+    }
+    try {
+      stamp = SECOND
+      expect(await currentAfterRewrite('w1')).toBe(false)
+      // Control: a sub-second stamp 120 ms old is trusted, and the stamp is
+      // what answers (the rewrite moved no stat field the mocks report).
+      stamp = SECOND + 7
+      expect(await currentAfterRewrite('w2')).toBe(true)
+    } finally {
+      ;(fs.statSync as unknown as { mockRestore(): void }).mockRestore()
+    }
+  })
 })
 
 // C-59 (A-2's lead): the run's watch over the claimed root files skipped a
@@ -184,5 +225,51 @@ describe("the fingerprint watch's whole-second stamp", () => {
     expect(await movedAt(SECOND)).toEqual(['pnpm-lock.yaml'])
     // Control: a sub-second stamp 499 ms before the read is trusted.
     expect(await movedAt(SECOND + 1)).toBeUndefined()
+  })
+})
+
+// The same gap in the claimant's in-process gate (`vx watch`): the lockfile
+// read at 12:00:00.120 and rewritten same-size at .700 kept every field its
+// identity holds, and the next cycle served the first bytes' digests.
+describe("the lockfile claim's whole-second stamp", () => {
+  const realStat = fsp.stat
+  afterEach(() => {
+    ;(fsp.stat as unknown as { mockRestore?(): void }).mockRestore?.()
+  })
+
+  it('re-reads a lockfile stamped in the second of its read', async () => {
+    const lock = path.join(root, 'bun.lock')
+    mkdirSync(path.join(root, '.vx', 'cache'), { recursive: true })
+    spyOn(fsp, 'stat').mockImplementation((async (p: fs.PathLike, o?: fs.StatOptions) => {
+      const st = await realStat(p, o as never)
+      if (String(p) !== lock) return st
+      return Object.assign(st, { ctimeMs: stamp, mtimeMs: stamp })
+    }) as typeof fsp.stat)
+    const digestAfterRewrite = async (): Promise<string> => {
+      const hooks = lockfileClaim({
+        file: 'bun.lock',
+        version: 1,
+        digest: (text) => new Map([['.', text.trim()]]),
+      })
+      const ask = async () =>
+        (await hooks.fingerprint.digests!('bun.lock', {
+          workspaceRoot: root,
+          cacheDir: path.join(root, '.vx', 'cache'),
+          warn() {},
+          projects: [{ name: 'p', dir: root }],
+        }))!.projects['p']!
+      writeFileSync(lock, 'AAAA')
+      setSystemTime(new Date(stamp + 120))
+      await ask()
+      writeFileSync(lock, 'BBBB')
+      setSystemTime(new Date(stamp + 700))
+      return ask()
+    }
+    stamp = SECOND
+    expect(await digestAfterRewrite()).toBe('BBBB')
+    // Control: a sub-second stamp 120 ms old is trusted, and the gate is
+    // what answers (the mocks hide the rewrite).
+    stamp = SECOND + 7
+    expect(await digestAfterRewrite()).toBe('AAAA')
   })
 })

@@ -22,7 +22,13 @@
 
 import path from 'node:path'
 import { readdir, realpath, stat } from 'node:fs/promises'
-import { type LockfileMemo, readLockfileMemo, writeLockfileMemo } from '../cache/index.js'
+import {
+  FILE_HASH_RACY_MS,
+  type LockfileMemo,
+  racyWindowMs,
+  readLockfileMemo,
+  writeLockfileMemo,
+} from '../cache/index.js'
 import { relPosix, UserError, xxh3, xxh3hex } from '../util/index.js'
 import type { TaskNode } from '../graph/index.js'
 import type {
@@ -196,19 +202,34 @@ async function hashDir(dir: string): Promise<string> {
  * A file's identity for the in-process gate, as `Cache.hashFile`'s memo
  * keys one: size and mtime alone kept the digests of a lockfile or patch
  * replaced by another of the same size with its mtime kept (`cp -p`,
- * `tar -x`), and no task sets a ctime.
+ * `tar -x`), and no task sets a ctime. Given `readAt` (taken before the
+ * read), a file changed within the racy window of it is recorded as `RACY`,
+ * which no stat matches: on a file system that keeps whole seconds a
+ * same-size rewrite later in the read's second kept every field, and the
+ * next cycle of `vx watch` served the first bytes' digests.
  */
-function identityOf(st: { size: number; mtimeMs: number; ctimeMs: number; ino: number }): string {
+function identityOf(
+  st: { size: number; mtimeMs: number; ctimeMs: number; ino: number },
+  readAt?: number,
+): string {
+  if (readAt !== undefined && st.ctimeMs >= readAt - racyWindowMs(st.ctimeMs, FILE_HASH_RACY_MS))
+    return RACY
   return `${st.size}:${st.mtimeMs}:${st.ctimeMs}:${st.ino}`
 }
 
+const RACY = 'racy'
+
 // A directory's own stat moves only when an entry is added or removed, not
 // when a file in it is edited: its identity is its content hash.
-async function statsOf(workspaceRoot: string, rels: readonly string[]): Promise<string[]> {
+async function statsOf(
+  workspaceRoot: string,
+  rels: readonly string[],
+  readAt?: number,
+): Promise<string[]> {
   return Promise.all(
     rels.map((rel) =>
       stat(path.resolve(workspaceRoot, rel)).then(
-        (st) => (st.isDirectory() ? hashExtra(workspaceRoot, rel) : identityOf(st)),
+        (st) => (st.isDirectory() ? hashExtra(workspaceRoot, rel) : identityOf(st, readAt)),
         () => 'gone',
       ),
     ),
@@ -220,7 +241,7 @@ async function hashExtras(
   workspaceRoot: string,
   rels: readonly string[],
 ): Promise<{ hashes: Record<string, string>; stats: Record<string, string> }> {
-  const ids = await statsOf(workspaceRoot, rels)
+  const ids = await statsOf(workspaceRoot, rels, Date.now())
   const stats = Object.fromEntries(rels.map((rel, i) => [rel, ids[i]!] as const))
   const hashes = Object.fromEntries(
     await Promise.all(rels.map(async (rel) => [rel, await hashExtra(workspaceRoot, rel)] as const)),
@@ -286,8 +307,12 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
   ): Promise<Digests> => {
     const full = path.join(workspaceRoot, file)
     let identity: string
+    let stamped: string
     try {
-      identity = identityOf(await stat(full))
+      const readAt = Date.now()
+      const st = await stat(full)
+      identity = identityOf(st)
+      stamped = identityOf(st, readAt)
     } catch {
       const digests: Digests = {
         lock: '',
@@ -317,7 +342,10 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
     const lockHash = xxh3hex(bytes)
     // The extra files the last digest read, and their hashes now: a warm run
     // re-hashes the files the memo names and never parses to learn them.
-    const memo = memoises ? readMemo(cacheDir, lockHash) : undefined
+    // A memo no index could keep yet is this process's own, read again when
+    // a racy identity sent the gate here over unchanged bytes.
+    const kept = last?.unsaved?.lock === lockHash ? last.unsaved : undefined
+    const memo = memoises ? (readMemo(cacheDir, lockHash) ?? kept) : undefined
     let extras: Record<string, string> = {}
     let extraStats: Record<string, string> = {}
     let importers: ReadonlyMap<string, string> | undefined
@@ -334,6 +362,7 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
         importers = memo.importers === null ? undefined : new Map(Object.entries(memo.importers))
         edges = new Map(Object.entries(memo.edges as Record<string, LockfileImporter>))
         recorded = memo.recorded === undefined ? undefined : new Map(Object.entries(memo.recorded))
+        if (memo === kept && !writeLockfileMemo(cacheDir, file, claimant, memo)) unsaved = memo
       }
     }
     if (!served) {
@@ -379,7 +408,7 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
           : new Map([...recorded].map(([i, names]) => [i, new Set(names)])),
     }
     seen.set(workspaceRoot, {
-      identity,
+      identity: stamped,
       extras: rels,
       extraStats,
       digests,
