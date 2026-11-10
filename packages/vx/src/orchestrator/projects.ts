@@ -423,8 +423,8 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
       const rel = relPosix(workspaceRoot, gone.dir) || 'the workspace root project'
       const named = gone.name === pathName(workspaceRoot, gone.dir) ? '' : ` ("${gone.name}")`
       const file = relPosix(gone.dir, gone.configPath)
-      // A sparse checkout left it out: `vx lock` would drop it from the
-      // committed lock. Asked only on this failure path.
+      // A sparse checkout left it out, not deleted: `vx lock` there
+      // refuses too. Asked only on this failure path.
       const sparse = skipWorktreeSync(workspaceRoot, relPosix(workspaceRoot, gone.configPath))
       if (sparse !== null) {
         throw new UserError(

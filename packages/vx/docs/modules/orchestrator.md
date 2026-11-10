@@ -48,10 +48,11 @@ export interface LiveSnapshot {
   tasks: LiveTask[]
   warnings: string[]
 }
-// The workspace's run lock (below); `vx cache clean` takes it too.
+// The workspace's run lock (below); `vx cache clean` takes it too. `of: 'lock'`
+// is its other lock, which `vx lock` holds from evaluating to writing.
 export function acquireRunLock(
   workspaceRoot: string,
-  opts: { log: (line: string) => void; signal?: AbortSignal; dir?: string },
+  opts: { log: (line: string) => void; signal?: AbortSignal; dir?: string; of?: 'lock' },
 ): Promise<() => Promise<void>>
 // What `vx run` and a plugin verb read of the workspace's cache policy.
 export function workspaceCachePolicy(config): CachePolicy | undefined

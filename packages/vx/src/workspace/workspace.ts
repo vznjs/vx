@@ -4,7 +4,7 @@
 // never walks. A project is named by `name` in its config, else by a
 // `discover` plugin, else by its root-relative path, `//` for the root.
 // Design: docs/design/language-agnostic-core-2026-10.md.
-import type { Dirent } from 'node:fs'
+import { type Dirent, realpathSync } from 'node:fs'
 import { lstat, readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
@@ -20,6 +20,7 @@ import {
   printable,
   refusal,
   relPosix,
+  skipWorktreeSync,
   UserError,
 } from '../util/index.js'
 import {
@@ -31,7 +32,7 @@ import {
 } from '../handoff.js'
 import { canonicalDir } from './canonical-dir.js'
 import { parseFilter } from './filter.js'
-import { repoIdOf } from './repo-id.js'
+import { locateGitDir, repoIdOf } from './repo-id.js'
 
 export interface ProjectMeta {
   /** `name` in its config, else a `discover` plugin's, else its root-relative path (`//` for the root). */
@@ -275,6 +276,8 @@ export interface ProjectConfigs {
   readonly shadowed: { file: string; read: string }[]
   /** Absolute, sorted: the outermost directories holding their own `.vx/workspace.*`. */
   readonly nestedWorkspaces: string[]
+  /** Config files git lists that a sparse checkout left out: `file` absolute, `add` what `git sparse-checkout add` takes. */
+  readonly sparse: { file: string; add: string }[]
 }
 
 /**
@@ -337,13 +340,23 @@ export async function findProjectConfigs(root: string): Promise<ProjectConfigs> 
       shadowed.push({ file: path.join(dir, n), read: path.join(dir, files[0]!) })
     return files[0] === undefined ? null : path.join(dir, files[0])
   }
+  const sparse: { file: string; add: string }[] = []
   const found = await Promise.all(
     [...byDir].map(async ([rel, names]) => {
       const dir = rel === '' ? root : path.join(root, rel)
       const configPath = await firstFile(dir, names, CONFIG_RANK)
+      // Skipped, its project left the committed lock unsaid. Asked only of
+      // a listed config the worktree lacks, so a full checkout pays nothing.
+      if (configPath === null && inGit) {
+        for (const n of names) {
+          const at = skipWorktreeSync(root, rel === '' ? n : `${rel}/${n}`)
+          if (at !== null) sparse.push({ file: path.join(dir, n), add: path.posix.dirname(at) })
+        }
+      }
       return configPath === null ? null : { dir, configPath }
     }),
   )
+  sparse.sort((a, b) => (a.file < b.file ? -1 : 1))
   // The root's own, asked by name: a walk outside git lists no dot-directory.
   await firstFile(root, [...WORKSPACE_CONFIG_FILENAMES], WORKSPACE_RANK)
   shadowed.sort((a, b) => (a.file < b.file ? -1 : 1))
@@ -370,7 +383,13 @@ export async function findProjectConfigs(root: string): Promise<ProjectConfigs> 
     .filter((n) => !nested.some((m) => n.startsWith(`${m}/`)))
     .map((rel) => path.join(root, rel))
     .sort()
-  return { configs, strayReviews, shadowed, nestedWorkspaces: [...new Set(nestedWorkspaces)] }
+  return {
+    configs,
+    strayReviews,
+    shadowed,
+    nestedWorkspaces: [...new Set(nestedWorkspaces)],
+    sparse,
+  }
 }
 
 /**
@@ -468,7 +487,21 @@ async function gitConfigs(root: string): Promise<string[]> {
   const gitlinks = index
     .filter((e) => e.startsWith('160000 '))
     .map((e) => e.slice(e.indexOf('\t') + 1))
-  const embedded = untracked.filter((e) => e.endsWith('/')).map((e) => e.slice(0, -1))
+  // A linked worktree of this repository made inside it (`git worktree add
+  // .worktrees/x`) is this tree checked out again, no nested repository:
+  // recorded as a nested workspace, it failed `--check` on every other checkout.
+  const common = (dir: string): string | null => {
+    const at = locateGitDir(dir)?.commonDir
+    return at === undefined ? null : realpathSync(at)
+  }
+  let rootCommon: string | null | undefined
+  const embedded = untracked
+    .filter((e) => e.endsWith('/'))
+    .map((e) => e.slice(0, -1))
+    .filter((rel) => {
+      const theirs = common(path.join(root, rel))
+      return theirs === null || theirs !== (rootCommon ??= common(root))
+    })
   const inner = await Promise.all([
     ...gitlinks.map(async (rel) =>
       // A submodule never initialised, or vendored with its `.git` removed, is walked.
@@ -478,7 +511,8 @@ async function gitConfigs(root: string): Promise<string[]> {
   ])
   const nested = [...gitlinks, ...embedded]
   const prefixed = inner.flatMap((files, i) => files.map((f) => `${nested[i]}/${f}`))
-  return [...configs, ...prefixed]
+  // Deduplicated: an unmerged path is listed once per stage.
+  return [...new Set(configs), ...prefixed]
 }
 
 /**

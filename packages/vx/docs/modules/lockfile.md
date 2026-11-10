@@ -69,7 +69,9 @@ shapes a run walks: `name` a string, `tags` a list, `tasks` an object of
 objects, each `dependsOn` a list (a string one was walked per character),
 and `nestedWorkspaces`, when present, a list of such keys other than `.`.
 Anything else, including a lock an earlier vx wrote (version 2 keyed
-by name), is a `UserError` asking to re-run `vx lock`. `frozenProjectConfigs` is what a run's load serves instead
+by name), is a `UserError` asking to re-run `vx lock`; a lock a newer vx
+wrote (a higher version) asks to upgrade vx instead, as re-locking would
+write the older version over it. `frozenProjectConfigs` is what a run's load serves instead
 of an evaluation: an entry missing for the project is a
 `UserError` naming the project and the remedy. No entry is otherwise validated:
 `vx lock` validated what it wrote, and `--check` re-evaluates

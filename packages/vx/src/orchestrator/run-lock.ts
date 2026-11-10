@@ -138,6 +138,12 @@ export interface RunLockOptions {
   log: (line: string) => void
   /** Abort the wait (Ctrl-C, an embedder's signal). */
   signal?: AbortSignal | undefined
+  /**
+   * `'lock'`: the workspace's other lock, held by a `vx lock` writing the
+   * lock and its review copies, which a run does not take: two at once left
+   * a review copy and the lock from different runs.
+   */
+  of?: 'lock'
 }
 
 /** Releases a taken run lock; `path` is its directory (`runLockPath`). */
@@ -357,12 +363,13 @@ export async function acquireRunLock(
   workspaceRoot: string,
   opts: RunLockOptions,
 ): Promise<RunLockRelease> {
-  const lockDir = runLockPath(workspaceRoot, opts.dir)
+  const lockDir = `${runLockPath(workspaceRoot, opts.dir)}${opts.of === 'lock' ? '-lock' : ''}`
+  const what = opts.of === 'lock' ? 'vx lock' : 'vx run'
   // A task's own process (`vx cache clean` in a task) would wait for the
   // run that started it, which holds the lock until that task ends.
   // Empty is unset: resolved, '' named the cwd.
   const outer = process.env[VX_RUN_WORKSPACE_ENV] || undefined
-  if (outer !== undefined && runLockPath(outer, opts.dir) === lockDir) {
+  if (opts.of === undefined && outer !== undefined && runLockPath(outer, opts.dir) === lockDir) {
     throw new UserError(
       `this vx runs inside task ${process.env[VX_RUN_TASK_ENV] ?? '<unknown>'} of a vx run on this workspace, which holds its run lock until it ends — run it before or after that run, not from one of its tasks`,
     )
@@ -429,13 +436,13 @@ export async function acquireRunLock(
       // writable names its knob (a minimal image, 2026-09-16).
       const hint = isTmpdirRefusal(err) ? `; ${TMPDIR_HINT}` : ''
       opts.log(
-        `[vx] no run lock for this workspace (${(err as Error).message}${hint}) — another vx run on it at the same time may race this one`,
+        `[vx] no ${opts.of ?? 'run'} lock for this workspace (${(err as Error).message}${hint}) — another ${what} on it at the same time may race this one`,
       )
       return Object.assign(async () => {}, { path: lockDir })
     }
     if (h !== null && !said && Date.now() - started >= SAY_AFTER_MS) {
       said = true
-      opts.log(`[vx] waiting for another vx run (pid ${h.pid}) on this workspace to finish…`)
+      opts.log(`[vx] waiting for another ${what} (pid ${h.pid}) on this workspace to finish…`)
     }
     await Bun.sleep(POLL_MS)
   }
