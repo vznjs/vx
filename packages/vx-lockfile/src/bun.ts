@@ -240,7 +240,7 @@ function workspaceOf(lock: Lockfile, id: string): string | undefined {
   if (at !== -1) return id.slice(at + '@workspace:'.length) || '.'
   if (id.endsWith('@root:')) return '.'
   const link = id.indexOf('@link:', 1)
-  if (link === -1) return undefined
+  if (link === -1 || globalLink(id.slice(link + '@link:'.length))) return undefined
   const dir = joinPosix('.', id.slice(link + '@link:'.length))
   return dir !== undefined && lock.workspaces.has(dir) ? dir : undefined
 }
@@ -284,21 +284,41 @@ export function patchFiles(text: string): string[] {
  */
 export function fileDeps(lock: Lockfile): string[] {
   const out = new Set<string>()
-  for (const e of lock.packages.values()) {
-    const dir = fileDir(lock, e.id)
-    if (dir !== undefined) out.add(dir)
-  }
+  for (const [p, e] of lock.packages) for (const dir of fileDirs(lock, p, e.id)) out.add(dir)
   return [...out].sort()
 }
 
-/** `dep@file:vendor/dep` → `vendor/dep`; `dep@link:./vendor/dep` → `vendor/dep` unless a workspace. */
-function fileDir(lock: Lockfile, id: string): string | undefined {
+/**
+ * `dep@file:vendor/dep` → `vendor/dep`; `dep@link:./vendor/dep` →
+ * `vendor/dep` unless a workspace. A `bun link` link (`gdep@link:gdep`, a
+ * name, never a path: bun.lock writes a path `./`-led) points into the
+ * user's global store, outside the repo: read as `./gdep`, it hashed
+ * nothing. Its symlinks in node_modules name what the install linked,
+ * where the hoisted linker (the root) or the isolated one (each workspace
+ * asking for it) puts them; one absent hashes as none until it is there.
+ */
+function fileDirs(lock: Lockfile, p: string, id: string): string[] {
   const file = id.indexOf('@file:', 1)
-  if (file !== -1) return id.slice(file + '@file:'.length)
+  if (file !== -1) return [id.slice(file + '@file:'.length)]
   const link = id.indexOf('@link:', 1)
-  if (link === -1) return undefined
-  const dir = resolvePosix('.', id.slice(link + '@link:'.length))
-  return lock.workspaces.has(dir) ? undefined : dir
+  if (link === -1) return []
+  const rest = id.slice(link + '@link:'.length)
+  if (globalLink(rest)) {
+    const out = new Set([`node_modules/${installName(p)}`])
+    for (const [dir, deps] of lock.workspaces) {
+      for (const [name, spec] of deps) {
+        if (spec === `link:${rest}`) out.add(joinPosix(dir, `node_modules/${name}`)!)
+      }
+    }
+    return [...out].sort()
+  }
+  const dir = resolvePosix('.', rest)
+  return lock.workspaces.has(dir) ? [] : [dir]
+}
+
+/** A `link:` to a name in Bun's global link store, not a path. */
+function globalLink(rest: string): boolean {
+  return /^(?:@[^/]+\/)?[^/.][^/]*$/.test(rest)
 }
 
 /**
@@ -358,8 +378,8 @@ function buildGraph(
   // it sits still decides what it resolves; that is the edges.
   for (const [p, e] of lock.packages) node(p, `${installName(p)}\0${e.id}\0${e.resolution}`)
   for (const [p, e] of lock.packages) {
-    const dir = fileDir(lock, e.id)
-    if (dir !== undefined) material[index.get(p)!] += `\nfile\0${files.get(dir) ?? ''}`
+    for (const dir of fileDirs(lock, p, e.id))
+      material[index.get(p)!] += `\nfile\0${files.get(dir) ?? ''}`
   }
   // A patch is part of the package it patches: an edit to one only `b`
   // reaches re-keyed every workspace while it was install-wide (D-143).

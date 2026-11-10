@@ -106,8 +106,8 @@ interface Manager {
   readonly importers: (text: string) => ReadonlyMap<string, LockfileImporter>
   /** Each importer's dependency names the file records, whatever they resolve to. */
   readonly recorded: (text: string) => ReadonlyMap<string, ReadonlyMap<string, unknown>>
-  /** `root` is the workspace's when the key reads them, undefined under `--affected`. */
-  readonly extraFiles?: (text: string, root: string | undefined) => readonly string[]
+  /** `root`: the workspace root; `affected`: `--affected` asks, not the key. */
+  readonly extraFiles?: (text: string, root: string, affected: boolean) => readonly string[]
   /** Dirs the manager's workspace walk never enters (default `node_modules`). */
   readonly skippedDirs?: readonly string[]
   /** Root files no lockfile records that lay the install out: folded whole into every task. */
@@ -170,7 +170,10 @@ const MANAGERS = {
     files: ['pnpm-lock.yaml'],
     digest: (t, files) => pnpmLock().importerDigests(pnpmParse(t), files),
     importers: (t) => pnpmLock().importerLinks(pnpmParse(t)),
-    extraFiles: (t) => pnpmLock().fileDeps(pnpmParse(t)),
+    extraFiles: (t, root) => [
+      ...pnpmLock().fileDeps(pnpmParse(t)),
+      ...pnpmLock().manifestLinks(pnpmParse(t), root),
+    ],
     recorded: (t) => pnpmLock().recordedImporters(t),
     // pnpm's walk skips bower_components as it does node_modules (pnpm 10).
     skippedDirs: ['node_modules', 'bower_components'],
@@ -243,7 +246,7 @@ const MANAGERS = {
       return yarnLock().importerDigests(lock, files, yarnLock().packageExtensions(rc), resolutions)
     },
     importers: (t) => yarnLock().importerLinks(yarnParse(t)),
-    extraFiles: (t, root) => {
+    extraFiles: (t, root, affected) => {
       // Classic keys a `link:` to a workspace like any linked directory,
       // and records no workspace to tell them apart. Yarn 1 links the
       // workspace itself (an edge, from the manifests), and its content
@@ -253,7 +256,7 @@ const MANAGERS = {
       // Berry's file names its workspaces, and contentDirs reads them there.
       const lock = yarnParse(t)
       const linked =
-        root === undefined || lock.generation !== 'classic'
+        affected || lock.generation !== 'classic'
           ? undefined
           : (d: string) => isClassicWorkspace(root, d)
       return yarnLock().fileDeps(lock, linked)
@@ -344,7 +347,7 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       // Read before `digest` on the key path: a malformed bun.lock refused
       // there as a bare "JSONC Parse error", no file named (fuzzed, L-16).
       ...(extraFiles !== undefined
-        ? { extraFiles: guarded((text: string) => extraFiles(text, affected ? undefined : root)) }
+        ? { extraFiles: guarded((text: string) => extraFiles(text, root, affected)) }
         : {}),
       digest: guarded((text: string, files: ReadonlyMap<string, string>) =>
         manager.digest(text, files, root),

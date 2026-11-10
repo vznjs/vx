@@ -1070,6 +1070,9 @@ export class Orchestrator {
         project: node === undefined ? '' : path.relative(this.o.root, node.projectDir),
         env,
         ...(unset.length === 0 ? {} : { unset }),
+        ...('PATH' in req.envDefine || req.inputs?.env.some((e) => e.name === 'PATH') === true
+          ? { path: true as const }
+          : {}),
         ...(node?.config.exec?.env?.secret === undefined
           ? {}
           : { secret: [...node.config.exec.env.secret] }),
@@ -1106,22 +1109,27 @@ export class Orchestrator {
         ...(req.servers === undefined || req.servers.length === 0
           ? {}
           : {
-              servers: req.servers.map((s) => ({
-                task: s.taskId,
-                command: s.command,
-                cwd: path.relative(this.o.root, s.cwd),
-                env: defined(s.env, {}),
-                ...(s.readyWhen === undefined ? {} : { readyWhen: s.readyWhen }),
-                ...(s.timeoutMs === undefined ? {} : { timeoutMs: s.timeoutMs }),
-                ...(s.sandbox === undefined
-                  ? {}
-                  : {
-                      sandbox: {
-                        config: s.sandbox.config,
-                        nested: s.sandbox.nested.map((d) => path.relative(this.o.root, d)),
-                      },
-                    }),
-              })),
+              servers: req.servers.map((s) => {
+                // Its own `env.define`: a defined HOME or PATH ran as the worker's.
+                const define = nodes?.get(s.taskId)?.config.exec?.env?.define ?? {}
+                return {
+                  task: s.taskId,
+                  command: s.command,
+                  cwd: path.relative(this.o.root, s.cwd),
+                  env: defined(s.env, define),
+                  ...('PATH' in define ? { path: true as const } : {}),
+                  ...(s.readyWhen === undefined ? {} : { readyWhen: s.readyWhen }),
+                  ...(s.timeoutMs === undefined ? {} : { timeoutMs: s.timeoutMs }),
+                  ...(s.sandbox === undefined
+                    ? {}
+                    : {
+                        sandbox: {
+                          config: s.sandbox.config,
+                          nested: s.sandbox.nested.map((d) => path.relative(this.o.root, d)),
+                        },
+                      }),
+                }
+              }),
             }),
       } as RunOrder
       return { job, order }

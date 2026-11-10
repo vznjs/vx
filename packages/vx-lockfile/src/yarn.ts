@@ -423,15 +423,30 @@ function linkedDir(
 
 /** The root-relative directory a berry `link:` or `portal:` entry symlinks. */
 function linkPath(dirOf: ReadonlyMap<string, string>, id: string): string | undefined {
-  const m = /^(?:@[^@/]+\/)?[^@]+@(?:link|portal):([^:]*)::locator=([^&]+)/.exec(id)
+  return /^(?:@[^@/]+\/)?[^@]+@(?:link|portal):/.test(id) ? locatedDir(dirOf, id) : undefined
+}
+
+/**
+ * The root-relative directory of a workspace, `link:`, `portal:` or `file:`
+ * locator. The path is relative to the locator that located it, which is
+ * itself a `portal:` or `file:` package where one links another
+ * (`q@link:../q::locator=p%40portal%3A..%2Fvendor%2Fp%3A%3Alocator%3D…`):
+ * resolved among the workspaces alone, an edit in such a `q` moved no key.
+ */
+function locatedDir(dirOf: ReadonlyMap<string, string>, locator: string): string | undefined {
+  const ws = dirOf.get(locator)
+  if (ws !== undefined) return ws
+  const m = /^(?:@[^@/]+\/)?[^@]+@(?:link|portal|file):([^#:]*)[^]*?(?:::|&)locator=([^&]+)/.exec(
+    locator,
+  )
   if (m === null) return undefined
-  let locator: string
+  let parent: string
   try {
-    locator = decodeURIComponent(m[2]!)
+    parent = decodeURIComponent(m[2]!)
   } catch {
     return undefined
   }
-  const from = dirOf.get(locator)
+  const from = locatedDir(dirOf, parent)
   return from === undefined ? undefined : resolvePosix(from, m[1]!)
 }
 

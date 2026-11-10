@@ -881,7 +881,8 @@ What `@vzn/vx-dte` reads from the CI job it runs in:
 - `CI_MERGE_REQUEST_SOURCE_BRANCH_NAME` or `CI_COMMIT_REF_NAME`, then
   `CI_MERGE_REQUEST_TARGET_BRANCH_NAME`: the ref worker pipelines run on.
 - `PATH`: a worker keeps the task's own bin directories, then its own
-  machine's `PATH`.
+  machine's `PATH`. A task whose `exec.env.define` sets `PATH`, or whose
+  `inputs.env` names it, runs on that `PATH` as the orchestrator sent it.
 - `GIT_INDEX_FILE`: `local()` clears it before `git worktree add`, so a
   run started from a git hook checks out the run's commit, not the hook's
   index.

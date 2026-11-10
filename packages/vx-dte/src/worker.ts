@@ -490,7 +490,7 @@ export async function runWorker(opts: {
         command: m.command,
         forwardArgs: [],
         cwd: path.join(opts.root, m.cwd),
-        env: localEnv(m.env, root, opts.root, m.unset),
+        env: localEnv(m.env, root, opts.root, m.unset, m.path === true),
         envDefine: {},
         // Both streams as one capture, in the order written, as core keeps a
         // run's: kept apart, a hit replayed every stdout line before the
@@ -510,7 +510,7 @@ export async function runWorker(opts: {
                 taskId: s.task,
                 command: s.command,
                 cwd: path.join(opts.root, s.cwd),
-                env: localEnv(s.env, root, opts.root),
+                env: localEnv(s.env, root, opts.root, [], s.path === true),
                 ...(s.readyWhen === undefined ? {} : { readyWhen: s.readyWhen }),
                 ...(s.timeoutMs === undefined ? {} : { timeoutMs: s.timeoutMs }),
                 ...(s.sandbox === undefined
@@ -1139,13 +1139,15 @@ function available(): number {
 /**
  * The orchestrator's env for a task, made this machine's: its checkout root
  * swapped for ours, host names from our own env but those its key folds as
- * `unset`, and PATH our own behind the workspace's bin directories.
+ * `unset`, and PATH our own behind the workspace's bin directories unless
+ * the task defines or keys it (`ownPath`).
  */
 export function localEnv(
   env: Readonly<Record<string, string>>,
   remoteRoot: string,
   root: string,
   unset: readonly string[] = [],
+  ownPath = false,
 ): Record<string, string | undefined> {
   // By path: a plain replace moved `/ws2` and `/private/ws` with `/ws`.
   const out: Record<string, string | undefined> = swapRoots({ ...env }, [[remoteRoot, root]])
@@ -1157,6 +1159,8 @@ export function localEnv(
     if (manager !== null) out['npm_execpath'] = manager
   }
   for (const k of HOST_ENV) if (!(k in out) && !unset.includes(k)) out[k] = process.env[k]
+  // Defined or keyed: the key folded this PATH, so the task runs on it.
+  if (ownPath) return out
   const bins = (out['PATH'] ?? '').split(':').filter((p) => p === root || p.startsWith(`${root}/`))
   out['PATH'] = [...bins, process.env['PATH'] ?? ''].join(':')
   return out
