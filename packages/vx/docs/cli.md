@@ -3971,7 +3971,9 @@ Colors are the two conventions in § Output format › Colors (`NO_COLOR`,
 `@vzn/vx-ci`'s. A sandboxed
 task's temp dir sits under `CLAUDE_CODE_TMPDIR` (else `CLAUDE_TMPDIR`,
 else `/tmp/claude`), the sandbox runtime's own convention
-(`docs/modules/sandbox-runtime.md`).
+(`docs/modules/sandbox-runtime.md`). Both it and `TMPDIR` hold sockets
+whose paths pass unquoted through a shell, so a sandboxed task is refused
+unless each is an absolute path of ASCII letters, digits and `. _ - / + @`.
 
 ## Output format
 

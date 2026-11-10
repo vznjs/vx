@@ -274,10 +274,11 @@ export function releaseBridges(tag: string): void
 // errno, anything else its message. The sandbox never reports a stack.
 export function thrownReason(err: unknown, what?: string): string
 // The probe's verdicts as one line each: a failed start, missing
-// dependencies, a temp dir too long for the socket path.
+// dependencies, a temp dir too long for the socket path or one the
+// runtime cannot carry unquoted.
 export function unavailableReason(exitCode: number | null, stderr: string): string
 export function dependencyReason(errors: readonly string[]): string
-export function socketPathRefusal(tmpdir?: string): string | undefined
+export function socketPathRefusal(tmpdir?: string, taskTmp?: string): string | undefined
 
 // The port bridge (Linux; § Port bridge)
 export function bridgedPorts(c: Pick<ResolvedSandboxConfig, 'localBinding'>): number[]
@@ -395,7 +396,17 @@ export function refusedConnections(records: readonly string[]): SandboxViolation
    bridge's, `claude-http-<16 hex>.sock`): past it the runtime said ENAMETOOLONG on
    macOS and "Failed to create bridge sockets after 5 attempts" on
    Linux, neither naming the directory; the verdict now gives the path,
-   its length, the limit and "point TMPDIR at a shorter path".
+   its length, the limit and "point TMPDIR at a shorter path". It also
+   refuses a TMPDIR, or a CLAUDE_CODE_TMPDIR (the parent of the task temp
+   directories, which hold vx's own bridge sockets), that is not absolute
+   or holds anything but ASCII letters, digits and `. _ - / + @`: the
+   runtime pastes the socket path unquoted into the shell script it runs
+   in the sandbox and into socat addresses on the host, and vx splices its
+   own into bwrap's command line. A `;` hung the run, a space cost every
+   task ~7 s and its network proxy, `,` `:` `'` `"` `(` failed "Failed to
+   create bridge sockets after 5 attempts", a relative path failed "a
+   mount went away", and a non-ASCII letter failed a networked task; the
+   verdict names the variable and the path.
 2. **`initSandbox`** is called at most once per `vx run`, lazily: the
    first sandboxed execution arms the run's `prepareSandbox` armer
    (sandbox-request.md), which probes and then inits. It calls `SandboxManager.initialize`
@@ -447,6 +458,9 @@ export function refusedConnections(records: readonly string[]): SandboxViolation
      too: its dial must reach the proxy, whose refusal names the host and
      fails it; without the wait it met the closed port under load and
      passed with nothing reported. The wait costs ~4 ms, the socat's start.
+     A bridge that never listens is said on the task's stderr (`[vx] the
+sandbox's network proxy bridges (ports 3128 and 1080) did not listen
+within 5 s; …`) and the command runs anyway.
 4. **Filtering.** Enforcement anchors at the workspace root, but only
    denials on a path inside `reportWithin` (the project) or one of
    `reportLinked` (the linked packages a cached task was denied because

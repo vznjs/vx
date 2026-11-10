@@ -314,8 +314,18 @@ export function dependencyReason(errors: readonly string[]): string {
  * directory (2026-09-16). Checked up front, with room for the sequence.
  * On Linux the longer name is the network bridge's,
  * `claude-http-<16 hex>.sock`, and it is the one that fails there.
+ *
+ * Both directories that hold sockets are also checked for what the paths
+ * pass through: `tmpdir`, where the runtime puts its bridges, and
+ * `taskTmp`, the parent of vx's own task temp directories (`taskTmpdir`).
  */
-export function socketPathRefusal(tmpdir = os.tmpdir()): string | undefined {
+export function socketPathRefusal(
+  tmpdir = os.tmpdir(),
+  taskTmp = sandboxTmpdir(),
+): string | undefined {
+  const unsafe =
+    unquotableSocketDir(tmpdir, 'TMPDIR') ?? unquotableSocketDir(taskTmp, 'CLAUDE_CODE_TMPDIR')
+  if (unsafe !== undefined) return unsafe
   const sample = path.join(
     tmpdir,
     process.platform === 'linux'
@@ -326,6 +336,26 @@ export function socketPathRefusal(tmpdir = os.tmpdir()): string | undefined {
   const length = Buffer.byteLength(sample)
   if (length <= limit) return undefined
   return `the sandbox runtime listens on a unix socket under the temp directory, and ${sample} is ${length} bytes where the OS allows ${limit} — point TMPDIR at a shorter path`
+}
+
+/**
+ * The runtime pastes its bridge socket's path unquoted into the shell
+ * script it runs inside the sandbox and into socat addresses on the host,
+ * and vx's port bridges hand theirs to socat and splice them into bwrap's
+ * command line. Shell splits on whitespace and its metacharacters, socat on
+ * `:` `,` `!` and `\`, and a relative path names another directory inside
+ * the sandbox: `;` hung the run, a space cost every task ~7 s and its
+ * network proxy, `,` failed "Failed to create bridge sockets" (2026-11-10).
+ * Each character this lets through was run as both directories. Not a
+ * non-ASCII letter: the runtime quotes it in the command it hands back, and
+ * a networked task's proxy front, found by the bare path, was not swapped in.
+ */
+const SOCKET_DIR = /^\/[A-Za-z0-9._\-/+@]*$/
+
+function unquotableSocketDir(dir: string, variable: string): string | undefined {
+  if (SOCKET_DIR.test(dir)) return undefined
+  const why = path.isAbsolute(dir) ? 'holds a character they cannot carry' : 'is not absolute'
+  return `the sandbox runtime writes socket paths under ${variable} unquoted into shell and socat commands, and ${JSON.stringify(dir)} ${why} — point ${variable} at an absolute path of ASCII letters, digits and . _ - / + @`
 }
 
 /**
@@ -1658,7 +1688,7 @@ async function wrapIn(
       ? ownGroupCommand(tag, inTmp, args.trace, args.tracePaths === true)
       : { command: taggedCommand, forwards: false, traced: false }
   // The tag leads: SRT keys a record by the wrap's first 100 characters,
-  // and the proxy wait below is the same 190 for every task.
+  // and the proxy wait below is the same ~360 for every task.
   const inner = [
     process.platform === 'linux' ? `: 'vx-${tag}';` : '',
     ports.length > 0 ? portBridgeInner(ports, tag) : '',
@@ -2024,7 +2054,8 @@ export function bridgedPorts(c: Pick<ResolvedSandboxConfig, 'localBinding'>): nu
  * (curl's `000`) on a loaded box (M-20). This waits, in front of the
  * command, until both listen in the task's network namespace, read off
  * /proc/net (IPv4 or IPv6, state 0A). Bounded at ~5 s: a bridge that never
- * listens leaves the command to meet the refusal it met before.
+ * listens leaves the command to meet the refusal it met before, and says
+ * so on the task's stderr (it gave up in silence, 2026-11-10).
  *
  * Every task the run's bridge reaches waits, not only one that lists a
  * network: one that lists none dials the same proxy, which refuses and
@@ -2033,8 +2064,8 @@ export function bridgedPorts(c: Pick<ResolvedSandboxConfig, 'localBinding'>): nu
  * and passed with nothing reported (2026-11-06). The wait costs ~4 ms, the
  * socat's own start.
  */
-const PROXY_BRIDGE_WAIT =
-  "( i=0; until grep -qsE ':0C38 [0-9A-F]+:0000 0A' /proc/net/tcp /proc/net/tcp6 && grep -qsE ':0438 [0-9A-F]+:0000 0A' /proc/net/tcp /proc/net/tcp6; do [ $i -ge 500 ] && break; i=$((i+1)); sleep 0.01; done );"
+export const PROXY_BRIDGE_WAIT =
+  "( i=0; until grep -qsE ':0C38 [0-9A-F]+:0000 0A' /proc/net/tcp /proc/net/tcp6 && grep -qsE ':0438 [0-9A-F]+:0000 0A' /proc/net/tcp /proc/net/tcp6; do [ $i -ge 500 ] && { echo \"[vx] the sandbox's network proxy bridges (ports 3128 and 1080) did not listen within 5 s; this task's network requests will be refused\" >&2; break; }; i=$((i+1)); sleep 0.01; done );"
 
 /** Each networked task's own proxy front, by tag, closed when its bridges go. */
 const taskProxies = new Map<string, TaskProxy>()
