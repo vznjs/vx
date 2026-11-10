@@ -4,7 +4,7 @@
 // "restores". Both are said once, on the miss, on the run's status line.
 
 import { realpathSync } from 'node:fs'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -85,6 +85,9 @@ describe('cache declarations that match nothing', () => {
         // root-anchored glob DOES match, so the outputs are not empty and
         // there is nothing to warn about. Not \`build/**\`: the lock refuses
         // two tasks declaring one output.
+        // Its only input is a link to a directory: the glob reads through it.
+        linked: { exec: { command: 'true' },
+          inputs: { files: ['vendor/**'] }, outputs: { files: [] }, cache: true },
         wsfound: { exec: { command: 'mkdir -p ../../shared && echo x > ../../shared/a.js' },
           inputs: { files: ['src/**'] },
           outputs: { files: ['out/**'], workspaceFiles: ['shared/**'] },
@@ -119,6 +122,15 @@ describe('cache declarations that match nothing', () => {
     ])
     // The hit says nothing: the warning belongs to the run that saved.
     expect(await runTask('lost')).toEqual([])
+  })
+
+  // `vendor -> ../../lib` was listed by the link's name, which `vendor/**`
+  // does not match: the warning said the key would not move, yet it did.
+  it('a glob that reaches its files only through a linked directory is not named', async () => {
+    await mkdir(path.join(root, 'lib'))
+    await writeFile(path.join(root, 'lib', 'x.js'), 'x\n')
+    await symlink('../../lib', path.join(root, 'packages', 'app', 'vendor'))
+    expect(await runTask('linked')).toEqual([])
   })
 
   it('a wildcard glob that matches nothing is named though a literal input matched', async () => {

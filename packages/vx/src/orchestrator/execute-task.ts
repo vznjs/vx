@@ -1,4 +1,4 @@
-import { existsSync, lstatSync } from 'node:fs'
+import { existsSync, lstatSync, statSync } from 'node:fs'
 import path from 'node:path'
 import type { ExecConfig, TaskConfig, InputsConfig, InputStability } from '../config.js'
 import {
@@ -1008,7 +1008,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       ? []
       : inputs.files.length === 0
         ? declaredInputs
-        : deadSourceGlobs(cfg.inputs, inputs.files, relPosix(args.workspaceRoot, node.projectDir))
+        : deadSourceGlobs(
+            cfg.inputs,
+            inputs.files,
+            args.workspaceRoot,
+            relPosix(args.workspaceRoot, node.projectDir),
+          )
   if (unmatched.length > 0) {
     warnOf(log)(
       `[vx] ${node.id}: inputs matched no files (${unmatched.join(', ')}) — ` +
@@ -2068,6 +2073,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
 function deadSourceGlobs(
   declared: InputsConfig | undefined,
   files: readonly { readonly path: string }[],
+  root: string,
   projectRel: string,
 ): string[] {
   const wild = (globs: readonly string[] | undefined): string[] =>
@@ -2082,6 +2088,11 @@ function deadSourceGlobs(
     if (wsMatch(p)) return []
     if (p.startsWith(prefix) && ownMatch(p.slice(prefix.length))) return []
   }
+  // A link to a directory a glob reaches below is listed by its own name,
+  // which the glob does not match: `src/**` over `src -> ../shared` was
+  // called dead though an edit through it moved the key.
+  for (const { path: p } of files)
+    if (statSync(path.join(root, p), { throwIfNoEntry: false })?.isDirectory() === true) return []
   return [...own, ...ws]
 }
 
