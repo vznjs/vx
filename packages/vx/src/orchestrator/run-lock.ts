@@ -442,7 +442,12 @@ export async function acquireRunLock(
     }
     if (h !== null && !said && Date.now() - started >= SAY_AFTER_MS) {
       said = true
-      opts.log(`[vx] waiting for another ${what} (pid ${h.pid}) on this workspace to finish…`)
+      // Spelled out: the Troubleshooting page quotes the run's line as printed.
+      opts.log(
+        opts.of === 'lock'
+          ? `[vx] waiting for another vx lock (pid ${h.pid}) on this workspace to finish…`
+          : `[vx] waiting for another vx run (pid ${h.pid}) on this workspace to finish…`,
+      )
     }
     await Bun.sleep(POLL_MS)
   }
