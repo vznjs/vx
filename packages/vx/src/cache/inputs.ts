@@ -292,6 +292,7 @@ function workspaceFilesToken(
       globs: asTrees(positive).map(globFor),
       reach: reachOf(positive),
       takes: (rel) => isPositive(rel) || mayHold(rel),
+      heads: headsOf(positive),
     }
     wsPlans.set(key, plan)
   }
@@ -300,7 +301,7 @@ function workspaceFilesToken(
   const snapshot = cache.snapshotFor(workspaceRoot, plan.globs)
   if (snapshot === undefined) return undefined
   if (ignoredReach(plan.reach, snapshot, { dir: workspaceRoot, cache }).length > 0) return undefined
-  const digest = cache.declarationDigest(workspaceRoot, snapshot, key, plan.takes)
+  const digest = cache.declarationDigest(workspaceRoot, snapshot, key, plan.takes, plan.heads)
   return digest === undefined ? undefined : `\0ws\0${key}\0${digest}`
 }
 
@@ -311,8 +312,33 @@ const wsPlans = new Map<
     globs: Bun.Glob[]
     reach: { prefixes: string[]; literals: string[] }
     takes: (rel: string) => boolean
+    heads: string[] | undefined
   }
 >()
+
+/**
+ * Each entry's fixed head: every path it takes in lies at, under or above
+ * one (`declarationDigest`). Undefined when one has none (a leading `**`).
+ */
+function headsOf(positive: readonly string[]): string[] | undefined {
+  const heads: string[] = []
+  for (const glob of asTrees(positive.flatMap(braceAlternatives))) {
+    const fixed = isLiteralPattern(glob) ? normalizeGlob(glob) : staticPrefix(glob)
+    const head = fixed.replace(/\/+$/, '')
+    // An escape names a character the path spells bare: walked whole.
+    if (
+      head === '' ||
+      head === '.' ||
+      head === '..' ||
+      head.startsWith('../') ||
+      head.includes('\\') ||
+      path.isAbsolute(head)
+    )
+      return undefined
+    heads.push(head)
+  }
+  return heads
+}
 
 /** Everything below the git snapshot that decides `resolveFiles`' result. */
 function filesMemoKey(
