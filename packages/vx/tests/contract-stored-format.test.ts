@@ -6,7 +6,8 @@
 // with the wrong container restores wrong bytes under a green hit. This
 // records each layout beside the version that names it, in
 // `tests/contract/stored-format.json`: the index's DDL as a fresh open
-// makes it, and a fixture artifact's entries, sidecar and digest. A
+// makes it, a fixture artifact's entries, sidecar and digest, and the
+// tree (`cache.store.decompress`) a save keeps of it. A
 // changed layout under the recorded version fails; with the version
 // bumped, regenerate:
 //   VX_UPDATE_CONTRACT=1 bun test tests/contract-stored-format.test.ts
@@ -14,8 +15,8 @@
 
 import { Database } from 'bun:sqlite'
 import { afterAll, describe, expect, it } from 'bun:test'
-import { chmodSync, readFileSync, utimesSync, writeFileSync } from 'node:fs'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { chmodSync, lstatSync, readdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { packArtifact } from '../src/cache/archive.js'
@@ -92,7 +93,43 @@ async function artifactLayout(): Promise<unknown> {
     })
   }
   const sha256 = new Bun.CryptoHasher('sha256').update(bytes).digest('hex')
-  return { entries, sha256 }
+  return { entries, sha256, tree: await treeLayout() }
+}
+
+/** What a tree-form save of a file, a link and a workspace file keeps on disk: each path and kind. */
+async function treeLayout(): Promise<string[]> {
+  const ws = await tmp()
+  const proj = path.join(ws, 'p')
+  await mkdir(path.join(proj, 'dist'), { recursive: true })
+  await mkdir(path.join(ws, 'gen'))
+  await writeFile(path.join(proj, 'dist/a.txt'), 'hello\n')
+  await symlink('a.txt', path.join(proj, 'dist/l'))
+  await writeFile(path.join(ws, 'gen/w.txt'), 'w\n')
+  const store = path.join(ws, 'store')
+  const cache = new Cache(store, undefined, undefined, undefined, undefined, undefined, {
+    embeddings: 0,
+    decompress: true,
+  })
+  try {
+    await cache.save({
+      hash: 'fixture-key',
+      entry: { taskId: 'p#build', command: 'build', durationMs: 1, stdout: 'built\n' },
+      projectDir: proj,
+      outputFiles: [path.join(proj, 'dist/a.txt'), path.join(proj, 'dist/l')],
+      workspaceOutputFiles: [path.join(ws, 'gen/w.txt')],
+      workspaceRoot: ws,
+    })
+  } finally {
+    cache.close()
+  }
+  const tree = path.join(store, 'fixture-key.tree')
+  return readdirSync(tree, { recursive: true })
+    .map(String)
+    .sort()
+    .map((rel) => {
+      const st = lstatSync(path.join(tree, rel))
+      return `${st.isSymbolicLink() ? 'link' : st.isDirectory() ? 'dir' : 'file'} ${rel}`
+    })
 }
 
 describe('the stored formats move with their versions', () => {

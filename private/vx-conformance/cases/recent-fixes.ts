@@ -1,7 +1,7 @@
 // Cases drawn from vx fixes of November 2026: each guards a behaviour a
 // bug once broke, written so any task runner can be held to it.
 import { defineCase, type TaskSpec, type WorkspaceSpec } from '../src/spec.ts'
-import { CONCAT, one, out } from './shapes.ts'
+import { CONCAT, chainProject, one, out } from './shapes.ts'
 
 const build = (extra: Partial<TaskSpec> = {}): TaskSpec => ({
   command: CONCAT,
@@ -315,5 +315,43 @@ export default [
       },
     },
     steps: [{ run: 'build', expect: { exit: 'fail' } }],
+  }),
+  defineCase({
+    id: 'outputs/hit-restores-a-default-dir-mode',
+    category: 'outputs',
+    kind: 'correctness',
+    title: 'A hit gives a standing output directory back the default mode its build left',
+    why: 'One build leaves `dist/d` at the default 755, another locks it to 700. Replaying the first must open the directory again, since the mode is part of what that build produced. A tool that restores only modes a task changed leaves the folder locked from the other build, and whatever reads it next sees a tree no build made.',
+    from: ['restore-dir-mode'],
+    workspace: one(
+      build({
+        command:
+          'mkdir -p dist/d && cat src/a.txt > dist/d/f && if grep -q tight src/a.txt; then chmod 700 dist/d; fi',
+      }),
+      { 'src/a.txt': 'open\n' },
+    ),
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { write: { [A]: 'tight\n' } },
+      { run: 'build', expect: { exit: 0, ran: ['a#build'] } },
+      { check: { modes: { 'packages/a/dist/d': 0o700 } } },
+      { write: { [A]: 'open\n' } },
+      { run: 'build', expect: { exit: 0, files: { 'packages/a/dist/d/f': 'open\n' } } },
+      { check: { modes: { 'packages/a/dist/d': 0o755 } } },
+    ],
+  }),
+  defineCase({
+    id: 'graph/dependency-left-out-by-sparse-checkout-not-replayed',
+    category: 'graph',
+    kind: 'correctness',
+    title: 'A task whose dependency a sparse checkout left out does not replay its old result',
+    why: 'A sparse checkout leaves some projects off disk, and `app` builds from `lib`. With `lib` gone, nothing can say whether `app`’s stored result still fits, so replaying it is a guess. The run should fail or refuse, never go green on a build whose dependency is missing.',
+    from: ['sparse-checkout-config'],
+    workspace: { projects: { lib: chainProject('lib'), app: chainProject('app', ['lib']) } },
+    steps: [
+      { run: 'build', expect: { exit: 0, files: { [out('app')]: 'lib\napp\n' } } },
+      { sh: "git sparse-checkout set --no-cone '/*' '!/packages/lib/' && rm -rf packages/lib" },
+      { run: 'build', projects: ['app'], expect: { exit: 'fail' } },
+    ],
   }),
 ]

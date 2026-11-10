@@ -44,7 +44,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v52'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v53'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -1549,20 +1549,22 @@ naming the task: the task's output clean would delete it mid-run. Its layout:
 ├── cache.db-wal                            write-ahead log
 ├── cache.db-shm                            shared memory
 └── <hash>.tree/                             one artifact per cache entry, the larger ones (v47):
-    ├── outputs/<rel>                       declared output files, project-relative (when any),
-    │                                       each with its saved mode and mtime
-    │                                       (a restore dates its copy now)
-    ├── workspace-outputs/<rel>             declared outputs.workspaceFiles,
-    │                                       WORKSPACE-ROOT-relative (when any)
-    ├── .vx-meta.json                       per-output [mode, mtimeMs], the key it was
-    │                                       packed under (v35), the miss's CPU and RSS,
-    │                                       the empty output directories (v44),
-    │                                       the output symlinks (v45), the modes of
-    │                                       output directories narrower than 0755 (v49)
-    └── .vx-sum                             CRC-32 of the archive this tree packs to (v36)
+    ├── <rel>                               declared output files, project-relative (when any),
+    │                                       each with its saved mtime; an output symlink
+    │                                       as the link itself
+    └── workspace-outputs/<rel>             declared outputs.workspaceFiles,
+                                            WORKSPACE-ROOT-relative (when any)
 ```
 
-The stdout of a tree entry is its `entry_stdout` row. With
+The stdout of a tree entry is its `entry_stdout` row, and each file's
+mode and mtime, the empty and moded output directories, the key and the
+miss's CPU and RSS are its `output_files` and `entries` rows: a tree
+keeps each output at its row's path and nothing else (v53). A
+`.vx-meta.json` and an `outputs/` level once took a 4 KiB block each,
+~8 of the ~16 KiB a small entry spent on the file system beyond its
+files (217 against 225 KiB an entry on the 500-task bench; a tree save
+16 to 26 % faster, a restore unchanged). An upload rebuilds the archive's sidecar from the rows,
+each link held to its row's length and CRC-32. With
 `cache.store.decompress: false` an artifact is instead one `<hash>.tar.zst`
 holding `stdout`, `outputs/`, `workspace-outputs/`, `.vx-meta.json` and
 `.vx-sum`: the bytes a remote stores. The tree form is that archive
@@ -2420,7 +2422,8 @@ Not required when:
 
 `tests/contract-stored-format.test.ts` holds the layout rows: it
 records the index's DDL beside `SCHEMA_VERSION` and a fixture
-artifact's entries, sidecar and digest beside `CACHE_VERSION`
+artifact's entries, sidecar and digest, and the tree a save keeps of it,
+beside `CACHE_VERSION`
 (`tests/contract/stored-format.json`), and fails when either layout
 moves under its recorded version. Every bump of either version
 regenerates the record
@@ -2441,6 +2444,10 @@ breaking footer).
 
 ### History
 
+- **v52 → v53**: the tree form's layout (2026-11-10). A tree keeps each
+  output at its row's path, with no `.vx-meta.json` and no `outputs/`
+  level; a v52 tree read by row path would find a project output named
+  `outputs/…` at another output's place, so it is never read.
 - **v51 → v52**: stored bytes wrong under a key the change does not move
   (2026-11-07). A sandboxed task could read through a `node_modules`
   that is itself a link (to the workspace root or a sibling project), or

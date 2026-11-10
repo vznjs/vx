@@ -76,7 +76,8 @@ import {
 } from 'node:fs/promises'
 import path from 'node:path'
 import { ignoreDir, UserError, writableUnder } from '../util/index.js'
-import { WORKSPACE_OUTPUT_PREFIX } from './layer.js'
+import { type OutputFileRow, WORKSPACE_OUTPUT_PREFIX } from './layer.js'
+import { LINK_MODE } from './output-index.js'
 import {
   TarFormatError,
   type TarInput,
@@ -91,6 +92,9 @@ import { readUmask, restoredMode } from './umask.js'
 
 /** Archive entry name carrying the per-output mode/mtime sidecar. */
 const META_ENTRY = '.vx-meta.json'
+
+/** The project outputs' prefix no artifact may use: the tree form keeps workspace outputs there. */
+const RESERVED_OUTPUT = `outputs/${WORKSPACE_OUTPUT_PREFIX}`
 
 /** Archive entry name of the always-present stdout record. */
 const STDOUT_ENTRY = 'stdout'
@@ -567,12 +571,16 @@ function streamOf(gen: AsyncGenerator<Uint8Array>): ReadableStream<Uint8Array> {
 }
 
 /**
- * The tree form (`cache.store.decompress`, v47): an artifact's members
- * as plain files under one directory, `outputs/<rel>` and
- * `workspace-outputs/<rel>` as named in the tar, beside its sidecar.
- * stdout lives in the index. A restore copies (or clones) each file out,
- * so a hit decodes nothing; an upload packs the tree back into the
- * artifact a remote expects.
+ * The tree form (`cache.store.decompress`, v47): an artifact's members as
+ * plain files under one directory, each at its index row's path: a project
+ * output at its rel, a workspace one under `workspace-outputs/`, an output
+ * link as the link itself (v53). stdout lives in the index, and every
+ * other fact the artifact's sidecar holds (modes, mtimes, empty and moded
+ * directories, the key, the producing execution's usage) in its rows: the
+ * tree keeps no sidecar and no `outputs/` level, each of which cost a
+ * 4 KiB block per entry. A restore copies (or clones) each file out, so a
+ * hit decodes nothing; an upload packs the tree back into the artifact a
+ * remote expects (`planOfTree`).
  *
  * Write `plan`'s outputs into the empty `dir` as the tree form, each copied
  * by the kernel (`copy_file_range`, or a clone where the filesystem has one)
@@ -584,7 +592,8 @@ export async function writeTree(plan: ArtifactPlan, dir: string): Promise<Artifa
   const meta = plan.inputs.find((i) => i.name === META_ENTRY)!.body as Uint8Array
   const metaText = utf8.decode(meta)
   fold.sidecar(metaText)
-  const times = (JSON.parse(metaText) as MetaFile).files
+  const parsed = JSON.parse(metaText) as MetaFile
+  const times = parsed.files
   for (const i of plan.inputs) {
     if (i.name === META_ENTRY) continue
     assertSafeName(i.name)
@@ -595,10 +604,10 @@ export async function writeTree(plan: ArtifactPlan, dir: string): Promise<Artifa
   await mkdir(dir, { recursive: true })
   // Every write settles before a failure is thrown: the caller removes
   // `dir`, and a write still in flight would make its parents again.
-  const settled = await Promise.allSettled(
-    plan.inputs.map(async (i) => {
+  const settled = await Promise.allSettled([
+    ...plan.inputs.map(async (i) => {
       if (!(i.body instanceof Blob)) return
-      const to = path.join(dir, i.name)
+      const to = path.join(dir, treeRel(i.name))
       // The tar form's refusal (`tarPackInto`): an output that grew or shrank
       // since the plan's stat is not the file its row describes.
       const n = await Bun.write(to, i.body)
@@ -606,53 +615,77 @@ export async function writeTree(plan: ArtifactPlan, dir: string): Promise<Artifa
       const at = new Date(times[i.name]![1])
       await utimes(to, at, at)
     }),
-  )
+    // Its row holds only the target's length and CRC: the link is the target's record.
+    ...Object.entries(parsed.links ?? {}).map(async ([name, to]) => {
+      const at = path.join(dir, treeRel(name))
+      await mkdir(path.dirname(at), { recursive: true })
+      await symlink(to, at)
+    }),
+  ])
   const failed = settled.find((s) => s.status === 'rejected')
   if (failed !== undefined) throw failed.reason
-  await writeFile(path.join(dir, META_ENTRY), meta)
   return fold.result()
 }
 
-/**
- * Write a scanned artifact's sidecar into `dir`, whose outputs an extract
- * just wrote: an ingested remote hit kept as a tree.
- */
-export async function sealTree(dir: string, scan: ArtifactScan): Promise<void> {
-  // An artifact with no outputs extracts nothing, so nothing made `dir`.
-  await mkdir(dir, { recursive: true })
-  const meta: MetaFile = { version: 1, files: {} }
-  if (scan.key !== undefined) meta.key = scan.key
-  for (const e of scan.entries) {
-    if (e.name !== STDOUT_ENTRY) meta.files[e.name] = [e.mode, e.mtimeMs]
-  }
-  if (scan.dirs.length > 0) meta.dirs = scan.dirs
-  if (scan.links.length > 0) meta.links = Object.fromEntries(scan.links)
-  if (scan.dirModes.length > 0) meta.dirModes = Object.fromEntries(scan.dirModes)
-  if (scan.exec !== undefined) meta.exec = scan.exec
-  await writeFile(path.join(dir, META_ENTRY), JSON.stringify(meta))
+/** Where an artifact entry lives in a tree: its index row's path. */
+function treeRel(name: string): string {
+  return name.startsWith('outputs/') ? name.slice('outputs/'.length) : name
 }
 
-/** The plan that packs the tree in `dir` back into the artifact it holds. */
-export function planOfTree(dir: string, stdout: string): ArtifactPlan {
-  const metaBytes = readFileSync(path.join(dir, META_ENTRY))
-  const meta = JSON.parse(utf8.decode(metaBytes)) as MetaFile
+/**
+ * The plan that packs the tree in `dir` back into the artifact it holds,
+ * its sidecar rebuilt from the entry's index rows (`rows`, `key`, `exec`).
+ * A link is read from the tree and held to its row's length and CRC.
+ */
+export function planOfTree(
+  dir: string,
+  stdout: string,
+  rows: readonly OutputFileRow[],
+  key: string,
+  exec: ExecUsage | undefined,
+): ArtifactPlan {
+  const meta: MetaFile = { version: 1, key, files: {} }
+  if (exec !== undefined) meta.exec = exec
   const out = new TextEncoder().encode(stdout)
   const inputs: TarInput[] = [{ name: STDOUT_ENTRY, size: out.byteLength, body: out }]
-  for (const [name, [mode, mtimeMs]] of Object.entries(meta.files)) {
+  const nameOf = (rel: string): string =>
+    rel.startsWith(WORKSPACE_OUTPUT_PREFIX) ? rel : `outputs/${rel}`
+  const dirs: string[] = []
+  const dirModes: Record<string, number> = {}
+  for (const r of rows) {
+    if (r.path.endsWith('/')) {
+      const name = nameOf(r.path.slice(0, -1))
+      // A moded directory with nothing under it is an empty one too.
+      if (r.mode === 0 || !rows.some((o) => o !== r && o.path.startsWith(r.path))) dirs.push(name)
+      if (r.mode !== 0) dirModes[name] = r.mode & 0o7777
+      continue
+    }
+    const name = nameOf(r.path)
+    const at = path.join(dir, r.path)
+    if (r.mode === LINK_MODE) {
+      const to = readlinkSync(at, 'buffer')
+      if (to.byteLength !== r.size || Bun.hash.crc32(to) !== r.mtimeMs)
+        throw new ArchiveSecurityError(`kept tree link ${name} is not the link its row records`)
+      ;(meta.links ??= {})[name] = utf8.decode(to)
+      continue
+    }
     // Bun.file reads through a link: only a regular file is packed as one.
-    const st = lstatSync(path.join(dir, name))
+    const st = lstatSync(at)
     if (!st.isFile())
       throw new ArchiveSecurityError(`kept tree entry ${name} is not a regular file`)
-    const file = Bun.file(path.join(dir, name))
+    meta.files[name] = [r.mode, r.mtimeMs]
     inputs.push({
       name,
       size: st.size,
-      mode,
-      mtime: Math.min(USTAR_MTIME_MAX, Math.max(0, Math.floor(mtimeMs / 1000))),
-      body: file,
+      mode: r.mode,
+      mtime: Math.min(USTAR_MTIME_MAX, Math.max(0, Math.floor(r.mtimeMs / 1000))),
+      body: Bun.file(at),
     })
   }
-  inputs.push({ name: META_ENTRY, size: metaBytes.byteLength, body: new Uint8Array(metaBytes) })
+  if (dirs.length > 0) meta.dirs = dirs
+  if (Object.keys(dirModes).length > 0) meta.dirModes = dirModes
+  const metaBytes = new TextEncoder().encode(JSON.stringify(meta))
+  inputs.push({ name: META_ENTRY, size: metaBytes.byteLength, body: metaBytes })
   return { inputs, size: tarSize([...inputs, sumInput('0'.repeat(SUM_SIZE))]) }
 }
 
@@ -1126,10 +1159,10 @@ export async function extractArtifactStream(
       provided.add(`${name}/`)
     }
     // A link may point only inside the workspace (the project, without one).
-    // Unpacked into a cache tree (no stage root), `outputs/` and
-    // `workspace-outputs/` are siblings: bounded by the latter alone, a
+    // Unpacked into a cache tree (no stage root), the project outputs and
+    // `workspace-outputs/` share the tree: bounded by the latter alone, a
     // `dist/link -> big.bin` pointed "out" and the ingest failed. The tree
-    // bounds by their parent; its restore checks against the workspace.
+    // bounds by the dir holding both; its restore checks against the workspace.
     const bound =
       stageRoot ?? (workspaceDest === undefined ? destDir : commonDir(destDir, workspaceDest))
     const linked = new Map<string, string>()
@@ -2315,6 +2348,13 @@ function assertSafeName(name: string): void {
   }
   if (name.includes('\0')) {
     throw new ArchiveSecurityError(`archive entry name contains a null byte (unsafe): ${name}`)
+  }
+  // A tree keeps a project output at its rel beside `workspace-outputs/`
+  // (`writeTree`): one by that name would come back a workspace output.
+  if (name.startsWith(RESERVED_OUTPUT) || name === RESERVED_OUTPUT.slice(0, -1)) {
+    throw new ArchiveSecurityError(
+      `archive entry ${name} is a project output under ${WORKSPACE_OUTPUT_PREFIX}, the name outputs.workspaceFiles reserve`,
+    )
   }
   // Only a pax `path` record can carry a name this long. Left to the file
   // system it is a raw ENAMETOOLONG, which the restore reports as an

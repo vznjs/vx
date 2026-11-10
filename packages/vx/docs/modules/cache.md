@@ -601,8 +601,14 @@ everything in `cache.db`.
 constructor argument) picks the local form: `embeddings` keeps an entry up
 to that size inline, `decompress: false` keeps a file-backed one as the
 tar.zst, and otherwise it is `<hash>.tree/`: the same entries unpacked (`writeTree`
-at save, the validated tar extracted at ingest, `sealTree`), stdout in
-its `entry_stdout` row. A tree restore checks nothing (the tree holds no
+at save, the validated tar extracted at ingest), each at its
+`output_files` row's path: a project output at its rel, a workspace one
+under `workspace-outputs/`, an output link as the link (v53). The tree
+keeps no sidecar and no `outputs/` level: stdout is its `entry_stdout`
+row, and every other fact the sidecar holds (modes, mtimes, empty and
+moded directories, the key, `exec`) is in its rows, but a link's target,
+which the link itself keeps. `planOfTree` rebuilds the sidecar from the
+rows, each link held to its row's length and CRC-32. A tree restore checks nothing (the tree holds no
 `.vx-sum`; the archive's sum is checked when it is unpacked) and copies each file with `Bun.write` (copy_file_range, a clone where
 the filesystem has one; never a hard link): a missing top directory is
 built in `.vx/tmp/` (`copyStaging`) and renamed into place once, a
@@ -879,7 +885,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
-`CACHE_VERSION` is currently `'vx-cache-v52'`; `SCHEMA_VERSION` is
+`CACHE_VERSION` is currently `'vx-cache-v53'`; `SCHEMA_VERSION` is
 `'v55'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside
