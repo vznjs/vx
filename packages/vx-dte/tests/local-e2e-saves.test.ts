@@ -384,6 +384,89 @@ export default { name: 'ad', tasks: {
   ])
 }, 60_000)
 
+/** Project `dir` of `config`, its other `files` and a `.gitignore` of `dist`, committed. */
+async function commitProject(
+  dir: string,
+  config: string,
+  files: Record<string, string> = {},
+): Promise<void> {
+  for (const [rel, text] of Object.entries({
+    'vx.config.mjs': config,
+    '.gitignore': 'dist\ngen\n',
+    ...files,
+  })) {
+    await mkdir(path.dirname(path.join(root, dir, rel)), { recursive: true })
+    await writeFile(path.join(root, dir, rel), text)
+  }
+  expect(vx(['lock']).exitCode).toBe(0)
+  commit()
+}
+
+const commit = (): void => {
+  Bun.spawnSync(['git', 'add', '-A'], { cwd: root })
+  Bun.spawnSync(['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qm', 'c'], {
+    cwd: root,
+  })
+}
+
+// A restore lays files and removes none: an uncached task's `rm -rf dist`
+// on its worker left this machine's old file beside its new one, where a
+// local run leaves only the new (2026-11-10).
+it('leaves an uncached task’s outputs as its worker left them, an old one gone', async () => {
+  await commitProject(
+    'sh',
+    `export default { name: 'sh', tasks: { build: {
+  exec: { command: 'rm -rf dist; mkdir -p dist && cp src/* dist/' },
+  inputs: { files: ['src/**'] },
+  outputs: { files: ['dist/**'] },
+} } }
+`,
+    { 'src/one.txt': '1\n' },
+  )
+  const first = vx(['run', 'sh#build'], 'shrink-1')
+  expect([first.exitCode, await readdir(path.join(root, 'sh/dist'))]).toEqual([0, ['one.txt']])
+  Bun.spawnSync(['git', 'mv', 'sh/src/one.txt', 'sh/src/two.txt'], { cwd: root })
+  commit()
+  const again = vx(['run', 'sh#build'], 'shrink-2')
+  expect([again.exitCode, await readdir(path.join(root, 'sh/dist'))]).toEqual([0, ['two.txt']])
+}, 60_000)
+
+// A committed file under a task's outputs it deleted on its worker stayed
+// here: a local run leaves it gone (2026-11-10).
+it('removes a committed file under its outputs the task deleted on its worker', async () => {
+  await commitProject(
+    'td',
+    `export default { name: 'td', tasks: { build: {
+  exec: { command: 'rm -rf out && mkdir -p out && echo new > out/new.txt' },
+  outputs: { files: ['out/**'] },
+} } }
+`,
+    { 'out/old.txt': 'old\n' },
+  )
+  const run = vx(['run', 'td#build'], 'tdel')
+  expect([run.exitCode, await readdir(path.join(root, 'td/out'))]).toEqual([0, ['new.txt']])
+}, 60_000)
+
+// A key reading an uncached dependency's output was refused as a file the
+// commit lacks: the dependency runs on its worker first (2026-11-10).
+it('runs a task whose key reads an uncached dependency’s output', async () => {
+  await commitProject(
+    'ud',
+    `export default { name: 'ud', tasks: {
+  gen: { exec: { command: 'mkdir -p gen && echo g > gen/g.txt' }, inputs: { files: ['src/**'] }, outputs: { files: ['gen/**'] } },
+  build: { dependsOn: ['gen'], exec: { command: 'mkdir -p dist && cp gen/g.txt dist/' }, inputs: { files: ['src/**', 'gen/**'], tasks: [] }, outputs: { files: ['dist/**'] }, cache: true },
+} }
+`,
+    { 'src/s.txt': 's\n' },
+  )
+  const run = vx(['run', 'ud#build'], 'udo')
+  expect([run.exitCode, run.stdout.toString() + run.stderr.toString()]).toEqual([
+    0,
+    expect.any(String),
+  ])
+  expect(await readFile(path.join(root, 'ud/dist/g.txt'), 'utf8')).toBe('g\n')
+}, 60_000)
+
 // A worker saved a task that rewrote its own input under its key: this
 // machine never saw the rewrite, and the next run hit it (2026-10-24).
 it('saves no entry under its key for a task that changed its input on its worker', async () => {

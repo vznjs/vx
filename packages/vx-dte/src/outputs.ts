@@ -81,24 +81,28 @@ export async function outputFiles(
 
 /**
  * Of the files under a task's outputs, those an earlier task left
- * (`cleared`: neither tracked, a nested project's, nor an upstream's) and
- * those an upstream's outputs name (`held`). The held ones were read
+ * (`cleared`: neither tracked, a nested project's, nor an upstream's),
+ * those an upstream's outputs name (`held`) and the task's own tracked
+ * ones (`committed`). The held ones were read
  * against every cleared one: 20,000 stale files cost a worker a second a
  * task (2026-10-25).
  */
 export function leftUnder(
   under: readonly string[],
-  tracked: ReadonlySet<string>,
+  tracked: { has(file: string): boolean },
   nested: readonly string[],
   upstream: readonly ((file: string) => boolean)[],
-): { cleared: string[]; held: string[] } {
+): { cleared: string[]; held: string[]; committed: string[] } {
   const cleared: string[] = []
   const held: string[] = []
+  const committed: string[] = []
   for (const f of under) {
     if (upstream.some((up) => up(f))) held.push(f)
-    else if (!tracked.has(f) && !nested.some((n) => f.startsWith(`${n}/`))) cleared.push(f)
+    else if (nested.some((n) => f.startsWith(`${n}/`))) continue
+    else if (tracked.has(f)) committed.push(f)
+    else cleared.push(f)
   }
-  return { cleared, held }
+  return { cleared, held, committed }
 }
 
 /** Whether declared outputs name `file` (workspace-relative), as `outputFiles` would find it. */
