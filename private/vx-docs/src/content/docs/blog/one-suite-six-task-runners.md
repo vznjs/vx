@@ -1,26 +1,26 @@
 ---
-title: 'One test suite, six task runners, the same 984 cases'
+title: 'One test suite, six task runners, the same 988 cases'
 date: 2026-11-07T22:00:00Z
 authors:
   - vzn
 tags:
   - correctness
   - comparison
-excerpt: '984 task-runner cases, compiled from the test suites of Nx, Turborepo, Vite Task, moon, Nix and vx, run sandboxed against all six. Every result is on one page.'
+excerpt: '988 task-runner cases, compiled from the test suites of Nx, Turborepo, Vite Task, moon, Nix and vx, run sandboxed against all six. Every result is on one page.'
 ---
 
 Each case is a small workspace and the outcome a user would see. All six
-tools run the same 984 cases, each in a sandbox.
+tools run the same 988 cases, each in a sandbox.
 
 ```mermaid
 xychart-beta
-  title "Cases passed, of 984"
+  title "Cases passed, of 988"
   x-axis [vx, Nx, Turborepo, moon, "Vite Task", Nix]
-  y-axis "cases" 0 --> 984
-  bar [982, 640, 627, 579, 499, 473]
+  y-axis "cases" 0 --> 988
+  bar [986, 642, 629, 579, 501, 477]
 ```
 
-<small>vx 747b26f · Turborepo 2.11.10 · Nx 24.0.2 · Vite Task 1.4.0 · moon 2.6.5 · Nix 2.34.6 · 2026-11-07 · [every case](../../conformance/)</small>
+<small>vx e26d450 · Turborepo 2.11.10 · Nx 24.0.2 · Vite Task 1.4.0 · moon 2.6.5 · Nix 2.34.6 · 2026-11-08 · [every case](../../conformance/)</small>
 
 ## The cases come from every tool's own tests
 
@@ -45,8 +45,8 @@ marks each command as it starts and ends, so "ran" means it ran.
 | Group    | Cases | vx  | Nx  | Turborepo | moon | Vite Task | Nix |
 | -------- | ----: | --: | --: | --------: | ---: | --------: | --: |
 | graph    |   149 | 149 | 113 |        91 |   84 |        86 |  57 |
-| inputs   |   302 | 302 | 186 |       187 |  192 |       177 | 175 |
-| outputs  |   223 | 223 | 156 |       160 |  122 |       139 | 158 |
+| inputs   |   303 | 303 | 186 |       187 |  192 |       177 | 176 |
+| outputs  |   224 | 224 | 157 |       161 |  122 |       140 | 159 |
 | affected |    97 |  97 |  57 |        68 |   69 |         0 |   0 |
 | watch    |    31 |  31 |  27 |        28 |    0 |         0 |   0 |
 | sandbox  |    18 |  18 |   0 |         1 |    0 |         1 |  15 |
