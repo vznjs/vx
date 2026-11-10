@@ -348,7 +348,9 @@ export function withForwardArgs(command: string, args: readonly string[] | undef
       const head = trimmed.slice(0, -end.length).trimEnd()
       return `${withForwardArgs(head, args)}${trimmed.slice(head.length)}`
     }
-    return `${escaped ? command : trimmed} ${quoted}`
+    // Only the one character the backslash escapes: blank lines after a
+    // continuation put the args on a command line of their own.
+    return `${escaped ? command.slice(0, trimmed.length + 1) : trimmed} ${quoted}`
   }
   // A comment-only last line after a commented line: the args go before
   // the earliest comment, or they land inside it (`echo one # c\n# two`).
