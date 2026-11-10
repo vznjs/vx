@@ -1,13 +1,29 @@
 {
   "coverage": {
-    "ported": 228,
+    "ported": 229,
     "rest": {
       "pending": [
+        "affected-clean-filters",
+        "affected-diff-early",
+        "affected-pass-through",
+        "affected-workspace-plugin",
+        "cache-dir-in-outputs",
         "clean-readonly-dir",
         "deferred-output-empty",
+        "may-hold-match",
+        "restore-mtime",
+        "key-not-derived",
+        "server-chain",
+        "server-chain-stop-order",
+        "server-died-under-task",
         "server-stops-unneeded",
         "uncached-outputs",
+        "vx-lockfile/linked-dirs",
+        "vx-lockfile/sparse-checkout",
         "watch-dependency-gone",
+        "watch-edit-before-keys",
+        "watch-node-modules-input",
+        "watch-cache-dir-change",
         "workspace-file-broken"
       ],
       "vx-only": [
@@ -44,6 +60,7 @@
         "config-global-leak",
         "config-import-specifiers",
         "config-missing-import",
+        "config-module-leak",
         "config-pnp-import",
         "config-refusals-pinned",
         "config-schema-cache-keys",
@@ -77,6 +94,8 @@
         "core-alias",
         "critical-path",
         "discovery-node-modules",
+        "dry-no-writes",
+        "dry-remote-failfast",
         "dte-sandbox.unsafe",
         "executor",
         "executor-demand",
@@ -85,6 +104,7 @@
         "executor-sync-result",
         "flaky",
         "flaky-retry",
+        "foreign-store",
         "forecast",
         "forward-args-group",
         "frozen-deleted-config",
@@ -102,6 +122,7 @@
         "history-fetch.unsafe",
         "history-forecast-branch",
         "history-p50s",
+        "history-scale",
         "history.unsafe",
         "info-bad-setting-env",
         "info-corrupt-index",
@@ -116,6 +137,7 @@
         "inspect-no-create",
         "interactive",
         "last-attempts",
+        "last-definition",
         "last-empty",
         "last-input-moved",
         "last-live",
@@ -216,10 +238,13 @@
         "sandbox-mkdir-ancestor.unsafe",
         "sandbox-network-patterns.unsafe",
         "sandbox-network-per-task.unsafe",
+        "sandbox-node-modules-link.unsafe",
         "sandbox-noscan-dir.unsafe",
         "sandbox-noscan-gone.unsafe",
         "sandbox-observer-drain.unsafe",
         "sandbox-open-flags",
+        "sandbox-openat2.unsafe",
+        "sandbox-outside-git.unsafe",
         "sandbox-output-link.unsafe",
         "sandbox-paths",
         "sandbox-placeholder-nested.unsafe",
@@ -241,6 +266,7 @@
         "sandbox-trace-exit.unsafe",
         "sandbox-mount-race.unsafe",
         "sandbox-tracer-retry.unsafe",
+        "sandbox-unchecked-rewriter.unsafe",
         "sandbox-usage.unsafe",
         "sandbox-violation-secret-mask.unsafe",
         "sandbox-widened-reads.unsafe",
@@ -294,6 +320,7 @@
         "vx-cache/oidc-endpoint",
         "vx-cache/oidc-said-once",
         "vx-cache/refusals",
+        "vx-cache/token-echo",
         "vx-cache/url-source",
         "vx-cache/vx-cache",
         "vx-ci/cache-scope",
@@ -323,6 +350,7 @@
         "vx-dte/init",
         "vx-dte/jsdoc",
         "vx-dte/live-run",
+        "vx-dte/local-close",
         "vx-dte/local-e2e",
         "vx-dte/local-e2e-saves",
         "vx-dte/noise",
@@ -354,9 +382,11 @@
         "vx-history/server-answers",
         "vx-history/timings-file",
         "vx-history/unknown-options",
+        "vx-history/url-masked",
         "vx-lockfile/bun",
         "vx-lockfile/bun-catalog-precise",
         "vx-lockfile/bun-patch-precise",
+        "vx-lockfile/dependency-section",
         "vx-lockfile/discover-parity",
         "vx-lockfile/entry-shapes",
         "vx-lockfile/io-refusals",
@@ -379,6 +409,7 @@
         "vx-lockfile/yarn",
         "vx-lockfile/yarn-bound-descriptor",
         "vx-lockfile/yarn-classic-link-workspace",
+        "vx-lockfile/yarn-classic-root-deps",
         "vx-lockfile/yarn-numeric-range",
         "vx-lockfile/yarn-package-extensions",
         "vx-lockfile/yarn-package-settings",
@@ -396,6 +427,7 @@
         "vx-migrate/keychain-token",
         "vx-migrate/mapping-cache",
         "vx-migrate/migrate",
+        "vx-migrate/migrate-keep-nofollow",
         "vx-migrate/migrate-nx-adopted-notes",
         "vx-migrate/migrate-nx-npm-env",
         "vx-migrate/migrate-nx-workspace",
@@ -410,7 +442,9 @@
         "vx-migrate/migrate-turbo-preset-takeback",
         "vx-migrate/migrate-turbo-sealed-tsconfig",
         "vx-migrate/migrate-turbo-tracked-outputs",
+        "vx-migrate/migrate-undecodable-member",
         "vx-migrate/migrate-vite-task",
+        "vx-migrate/migration-member-link",
         "vx-migrate/no-conflict-markers",
         "vx-migrate/no-install-next",
         "vx-migrate/nx",
@@ -447,6 +481,7 @@
         "vx-migrate/nx-input-keyed-group",
         "vx-migrate/nx-input-projects",
         "vx-migrate/nx-input-projects-deps",
+        "vx-migrate/nx-input-sets",
         "vx-migrate/nx-legacy-executors",
         "vx-migrate/nx-lerna-order",
         "vx-migrate/nx-map-sweep",
@@ -460,6 +495,7 @@
         "vx-migrate/nx-release-publish",
         "vx-migrate/nx-root-outside",
         "vx-migrate/nx-root-tsconfig",
+        "vx-migrate/nx-root-tsconfig-reads",
         "vx-migrate/nx-run-commands-args-name-live",
         "vx-migrate/nx-run-commands-decoration",
         "vx-migrate/nx-run-commands-override-live",
@@ -518,6 +554,7 @@
         "vx-migrate/scripts-yarn-pnp",
         "vx-migrate/shared-outputs",
         "vx-migrate/taken-back-literal",
+        "vx-migrate/token-echo",
         "vx-migrate/token-redirect",
         "vx-migrate/tracked-outputs",
         "vx-migrate/tsc-buildinfo",
@@ -533,6 +570,7 @@
         "vx-migrate/turbo-caret-stop",
         "vx-migrate/turbo-dependency-outputs",
         "vx-migrate/turbo-dependency-outputs-upstream",
+        "vx-migrate/turbo-dot-segments",
         "vx-migrate/turbo-dotenv-globs",
         "vx-migrate/turbo-entry-root-edge",
         "vx-migrate/turbo-env-key",
@@ -546,6 +584,7 @@
         "vx-migrate/turbo-nested-inputs",
         "vx-migrate/turbo-negated-output-inputs",
         "vx-migrate/turbo-noop-node",
+        "vx-migrate/turbo-noop-uncached",
         "vx-migrate/turbo-oidc",
         "vx-migrate/turbo-output-mode",
         "vx-migrate/turbo-package-tags",
@@ -554,6 +593,7 @@
         "vx-migrate/turbo-root-engines",
         "vx-migrate/turbo-scriptless-build",
         "vx-migrate/turbo-scriptless-task",
+        "vx-migrate/turbo-sibling-output-input",
         "vx-migrate/turbo-staged-output",
         "vx-migrate/turbo-v1-root-deps",
         "vx-migrate/turbo-wild-literal-output",
@@ -565,6 +605,7 @@
         "vx-migrate/workspace-keys",
         "vx-migrate/yarn-berry-no-lock",
         "vx-otel/boolean-options",
+        "vx-otel/bounded-reply",
         "vx-otel/collector",
         "vx-otel/compression-env-warning",
         "vx-otel/contract-otlp",
@@ -587,6 +628,7 @@
         "vx-reapi/decode-sweep",
         "vx-reapi/encoding",
         "vx-reapi/exec-e2e",
+        "vx-reapi/execute-retry",
         "vx-reapi/executor",
         "vx-reapi/executor-auth",
         "vx-reapi/executor-helpers-sweep",
@@ -610,6 +652,7 @@
         "vx-reapi/record-digest-sizes",
         "vx-reapi/record-streams",
         "vx-reapi/request-metadata-action",
+        "vx-reapi/shared-subtree",
         "vx-reapi/stream-cache",
         "vx-reapi/string-map-options",
         "vx-reapi/timeout-options",
@@ -709,6 +752,7 @@
         "free-port",
         "gates",
         "git-env",
+        "git-ignorecase",
         "git-listing-temp",
         "git-optional-locks",
         "git-reftable.unsafe",
@@ -885,7 +929,9 @@
         "version-fast-path",
         "vx-lockfile/link-outside-root",
         "wal-checkpointer",
+        "wall-clock-step",
         "watch-affected",
+        "watch-claimed-extras",
         "watch-claimed-files",
         "watch-cycle-clock",
         "watch-ignore-submodule",
@@ -894,6 +940,7 @@
         "watch-judge-properties",
         "watch-loop-dump",
         "watch-one-stream",
+        "watch-poll-moved-dir",
         "watch-poll-output-beside-input",
         "watch-pool-close",
         "watch-server-blame",
@@ -952,6 +999,7 @@
         "plugin-exports-documented.unsafe",
         "plugin-hooks-doc-drift",
         "plugin-hooks-doc-drift.unsafe",
+        "plugin-hostile-answers",
         "plugin-options-documented.unsafe",
         "readme-imports.unsafe",
         "readme-links.unsafe",
@@ -1005,14 +1053,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 986,
-        "can": 986,
-        "of": 988
+        "pass": 988,
+        "can": 988,
+        "of": 990
       },
       "correctness": {
-        "pass": 810,
-        "can": 810,
-        "of": 812
+        "pass": 812,
+        "can": 812,
+        "of": 814
       },
       "efficiency": {
         "pass": 167,
@@ -1025,9 +1073,9 @@
         "of": 9
       },
       "graph": {
-        "pass": 149,
-        "can": 149,
-        "of": 149
+        "pass": 150,
+        "can": 150,
+        "of": 150
       },
       "config": {
         "pass": 8,
@@ -1060,9 +1108,9 @@
         "of": 33
       },
       "outputs": {
-        "pass": 224,
-        "can": 224,
-        "of": 224
+        "pass": 225,
+        "can": 225,
+        "of": 225
       },
       "report": {
         "pass": 9,
@@ -1082,14 +1130,14 @@
     },
     "turbo": {
       "all": {
-        "pass": 629,
-        "can": 904,
-        "of": 988
+        "pass": 630,
+        "can": 906,
+        "of": 990
       },
       "correctness": {
-        "pass": 508,
-        "can": 734,
-        "of": 812
+        "pass": 509,
+        "can": 736,
+        "of": 814
       },
       "efficiency": {
         "pass": 117,
@@ -1102,9 +1150,9 @@
         "of": 9
       },
       "graph": {
-        "pass": 91,
-        "can": 130,
-        "of": 149
+        "pass": 92,
+        "can": 131,
+        "of": 150
       },
       "config": {
         "pass": 4,
@@ -1138,8 +1186,8 @@
       },
       "outputs": {
         "pass": 161,
-        "can": 221,
-        "of": 224
+        "can": 222,
+        "of": 225
       },
       "report": {
         "pass": 4,
@@ -1159,14 +1207,14 @@
     },
     "nx": {
       "all": {
-        "pass": 642,
-        "can": 929,
-        "of": 988
+        "pass": 644,
+        "can": 931,
+        "of": 990
       },
       "correctness": {
-        "pass": 484,
-        "can": 755,
-        "of": 812
+        "pass": 486,
+        "can": 757,
+        "of": 814
       },
       "efficiency": {
         "pass": 154,
@@ -1179,9 +1227,9 @@
         "of": 9
       },
       "graph": {
-        "pass": 113,
-        "can": 136,
-        "of": 149
+        "pass": 114,
+        "can": 137,
+        "of": 150
       },
       "config": {
         "pass": 1,
@@ -1214,9 +1262,9 @@
         "of": 33
       },
       "outputs": {
-        "pass": 157,
-        "can": 221,
-        "of": 224
+        "pass": 158,
+        "can": 222,
+        "of": 225
       },
       "report": {
         "pass": 4,
@@ -1237,13 +1285,13 @@
     "vite-task": {
       "all": {
         "pass": 501,
-        "can": 742,
-        "of": 988
+        "can": 744,
+        "of": 990
       },
       "correctness": {
         "pass": 412,
-        "can": 614,
-        "of": 812
+        "can": 616,
+        "of": 814
       },
       "efficiency": {
         "pass": 87,
@@ -1257,8 +1305,8 @@
       },
       "graph": {
         "pass": 86,
-        "can": 115,
-        "of": 149
+        "can": 116,
+        "of": 150
       },
       "config": {
         "pass": 4,
@@ -1292,8 +1340,8 @@
       },
       "outputs": {
         "pass": 140,
-        "can": 221,
-        "of": 224
+        "can": 222,
+        "of": 225
       },
       "report": {
         "pass": 2,
@@ -1313,14 +1361,14 @@
     },
     "nix": {
       "all": {
-        "pass": 477,
-        "can": 703,
-        "of": 988
+        "pass": 478,
+        "can": 705,
+        "of": 990
       },
       "correctness": {
-        "pass": 411,
-        "can": 582,
-        "of": 812
+        "pass": 412,
+        "can": 584,
+        "of": 814
       },
       "efficiency": {
         "pass": 64,
@@ -1333,9 +1381,9 @@
         "of": 9
       },
       "graph": {
-        "pass": 57,
-        "can": 64,
-        "of": 149
+        "pass": 58,
+        "can": 65,
+        "of": 150
       },
       "config": {
         "pass": 0,
@@ -1369,8 +1417,8 @@
       },
       "outputs": {
         "pass": 159,
-        "can": 219,
-        "of": 224
+        "can": 220,
+        "of": 225
       },
       "report": {
         "pass": 2,
@@ -1390,14 +1438,14 @@
     },
     "moon": {
       "all": {
-        "pass": 579,
-        "can": 890,
-        "of": 988
+        "pass": 580,
+        "can": 892,
+        "of": 990
       },
       "correctness": {
-        "pass": 449,
-        "can": 729,
-        "of": 812
+        "pass": 450,
+        "can": 731,
+        "of": 814
       },
       "efficiency": {
         "pass": 125,
@@ -1410,9 +1458,9 @@
         "of": 9
       },
       "graph": {
-        "pass": 84,
-        "can": 121,
-        "of": 149
+        "pass": 85,
+        "can": 122,
+        "of": 150
       },
       "config": {
         "pass": 3,
@@ -1446,8 +1494,8 @@
       },
       "outputs": {
         "pass": 122,
-        "can": 224,
-        "of": 224
+        "can": 225,
+        "of": 225
       },
       "report": {
         "pass": 5,
@@ -34868,6 +34916,76 @@
         "moon": {
           "status": "n/a",
           "detail": "needs sandbox"
+        }
+      }
+    },
+    {
+      "id": "outputs/hit-restores-a-default-dir-mode",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A hit gives a standing output directory back the default mode its build left",
+      "why": "One build leaves `dist/d` at the default 755, another locks it to 700. Replaying the first must open the directory again, since the mode is part of what that build produced. A tool that restores only modes a task changed leaves the folder locked from the other build, and whatever reads it next sees a tree no build made.",
+      "from": [
+        "restore-dir-mode"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 7,
+          "detail": "packages/a/dist/d has mode 700, expected 755"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 7,
+          "detail": "packages/a/dist/d has mode 700, expected 755"
+        },
+        "nix": {
+          "status": "fail",
+          "step": 4,
+          "detail": "packages/a/dist/d has mode 755, expected 700"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 7,
+          "detail": "packages/a/dist/d has mode 700, expected 755"
+        }
+      }
+    },
+    {
+      "id": "graph/dependency-left-out-by-sparse-checkout-not-replayed",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A task whose dependency a sparse checkout left out does not replay its old result",
+      "why": "A sparse checkout leaves some projects off disk, and `app` builds from `lib`. With `lib` gone, nothing can say whether `app`’s stored result still fits, so replaying it is a guess. The run should fail or refuse, never go green on a build whose dependency is missing.",
+      "from": [
+        "sparse-checkout-config"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "succeeded, expected a failure"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
         }
       }
     }
