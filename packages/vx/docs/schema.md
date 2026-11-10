@@ -782,13 +782,16 @@ the error a verb ends on (a plugin's failure, a config's own throw) and
 `vx watch`'s `cycle failed` line. A multi-line value (a PEM
 key) is also masked line by line, each line of six characters or more,
 and a value holding a `'` also as a shell-quoted line spells it (`'\''`).
-A value
+Values that overlap or touch are masked as one `***` (`${A}xyz789`
+where `B` is `A`'s tail plus `xyz789`). A value
 split across two output chunks is still caught; the output holds back
 that many characters until the next chunk. Streamed live, the hold
 lasts 25 ms, so a value written in two pieces with a longer pause
 between them shows; a buffered frame (the CI default) and every stored
 copy (the entry a hit replays and a remote cache receives, the failure
-record `vx last` reads) are masked again whole and never hold it. A plugin that reads a task's
+record `vx last` reads) are masked again whole and never hold it. A
+telemetry `task.log` record holds the piece until more output or the
+task's end, never on a timer, so a sink never gets a paused value in pieces. A plugin that reads a task's
 config directly sees it as written. A secret whose name holds none of
 those words (`GH_PAT`, `NPM_AUTH`) is listed in `exec.env.secret`, and is
 then masked in the same places. A token a plugin's OS keychain answered

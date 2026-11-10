@@ -183,3 +183,69 @@ it.skipIf(process.platform === 'win32')(
   },
   60_000,
 )
+
+// The save records only a mode narrower than 0755, so a directory the miss
+// left 0755 carried none, and a hit kept whatever stood there: B's 0555 or
+// 0700 after a switch B → A, or a hand's chmod, which the hit even called
+// current (`local 1✓`) and restored nothing.
+it.skipIf(process.platform === 'win32')(
+  'a hit gives a standing output directory 0755 where the entry records no mode',
+  async () => {
+    const before = process.umask(0o022)
+    try {
+      const root = await makeWorkspace({ prefix: 'vx-dir-mode-wide-' })
+      made.push(root)
+      const app = await addProject(root, 'app', {
+        config: `export default { tasks: { build: {
+          exec: { command: 'mkdir -p dist/s && echo a > dist/s/f && chmod $(cat src/mode) dist/s' },
+          inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+        } } }`,
+        files: { 'src/mode': '755\n', '.gitignore': 'dist/\n' },
+      })
+      const git = gitIn(root)
+      git('add', '-A')
+      git('commit', '-q', '-m', 'init')
+      const cacheDir = path.join(root, '.cache')
+      const build = () => vx(root, ['run', 'build', '--all', '--cache-dir', cacheDir])
+      const sub = path.join(app, 'dist/s')
+      const mode = (dir = sub) => (statSync(dir).mode & 0o777).toString(8)
+      for (const m of ['700', '555', '755']) {
+        writeFileSync(path.join(app, 'src/mode'), `${m}\n`)
+        const miss = await build()
+        expect(`${miss.code}\n${miss.err}`).toStartWith('0\n')
+        expect(mode()).toBe(m)
+      }
+      for (const m of ['700', '555']) {
+        writeFileSync(path.join(app, 'src/mode'), `${m}\n`)
+        const narrow = await build()
+        expect(`${narrow.code}\n${narrow.err}`).toStartWith('0\n')
+        expect(mode()).toBe(m)
+        writeFileSync(path.join(app, 'src/mode'), '755\n')
+        const hit = await build()
+        expect(`${hit.code}\n${hit.err}`).toStartWith('0\n')
+        expect(hit.out + hit.err).toContain('local 1↓')
+        expect(mode()).toBe('755')
+      }
+
+      // A hand's chmod, the files and the directory's mtime untouched, and
+      // of the output root as well as a directory below it.
+      for (const [dir, m] of [
+        [sub, 0o700],
+        [sub, 0o555],
+        [path.join(app, 'dist'), 0o700],
+      ] as const) {
+        chmodSync(dir, m)
+        const chmodded = await build()
+        expect(`${chmodded.code}\n${chmodded.err}`).toStartWith('0\n')
+        expect(chmodded.out + chmodded.err).toContain('local 1↓')
+        expect(mode(dir)).toBe('755')
+        const again = await build()
+        expect(`${again.code}\n${again.err}`).toStartWith('0\n')
+        expect(again.out + again.err).toContain('local 1✓')
+      }
+    } finally {
+      process.umask(before)
+    }
+  },
+  60_000,
+)

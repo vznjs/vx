@@ -1056,13 +1056,15 @@ export async function extractArtifactStream(
    * mtimes apply.
    */
   dated?: Map<string, number>,
+  /** Given, filled with the directories the extract found missing (and so made). */
+  absentDirs?: Set<string>,
 ): Promise<Set<string>> {
   // No `mkdir -p` of the destination here: `stage` creates each entry's
   // directory chain, the destination included, and the cache restores
   // into a project directory that exists. The eager one cost every
   // restore a thread-pool round trip for an EEXIST and a stat (item 627).
   readUmask()
-  const x = new Extractor(destDir, workspaceDest, stageRoot)
+  const x = new Extractor(destDir, workspaceDest, stageRoot, absentDirs)
   const provided = new Set<string>()
   const headerMtime = new Map<string, number>()
   let meta: MetaFile['files'] = {}
@@ -1318,13 +1320,16 @@ class Extractor {
   // Directories the containment walk found missing, which `treeFor` would
   // otherwise probe again. A directory made since fails the tree's rename,
   // and the entries then go in one by one.
-  private readonly seenAbsent = new Set<string>()
+  private readonly seenAbsent: Set<string>
 
   constructor(
     private readonly destDir: string,
     private readonly workspaceDest: string | undefined,
     private readonly stageRoot: string | undefined,
-  ) {}
+    seenAbsent: Set<string> = new Set(),
+  ) {
+    this.seenAbsent = seenAbsent
+  }
 
   /** Each namespace anchors at its own destination dir. */
   destFor(name: string): { base: string; rel: string } | null {

@@ -1034,7 +1034,10 @@ Declared `outputs.files` are wiped in two distinct places:
   Each output directory with a recorded mode (`dirModes`) gets it whether
   the restore made it or found it standing with another, and a mode that
   differs makes the tree stale (2026-11-07: a branch switch A → B → A
-  left B's 0755 on A's `chmod 700 dist/keys`).
+  left B's 0755 on A's `chmod 700 dist/keys`). One with none was left
+  at least 0755, so a standing one narrower than that is given 0755
+  minus the umask, and is stale too (2026-11-10: B's `chmod 555 dist/s`
+  stayed after a hit of A, which left it 0755).
   Hand-edits to output files don't persist through a cache replay. When
   the hit's own check walked the output globs to find the tree stale,
   the removal uses that walk's list instead of walking again (X-161).

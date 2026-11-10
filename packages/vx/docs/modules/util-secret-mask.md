@@ -58,6 +58,12 @@ that echoed that token printed it whole in the warning. `events.ts`
 builds its status-line mask again when `heldSecrets()` grows, and
 `execute-task.ts` its task's once the sandbox is armed.
 
+Every value is matched at every position (a lookahead alternation), and
+overlapping or adjacent matches merge into one span and one `***`: one
+alternation resumed past a match, so `${A}xyz789`, where `B` is `A`'s
+tail plus `xyz789`, printed `***xyz789`. A stream never cuts through a
+span, nor right after one with a held tail behind it.
+
 `stream()` holds back only a tail that could begin a value, so a value
 split across two chunks is caught and output that cannot be one (a
 `readyWhen` line, a start marker) is never delayed. `maskedStreams` emits a held tail
@@ -70,7 +76,8 @@ not caught where it streams live. What vx stores of the output
 frame (`report/logger.ts`, the CI default) mask each stream's whole
 text again through `spans` (`maskStreams`), a write to the other stream
 between the pieces included, so no stored or framed copy keeps a value
-a pause split. `maskCut` masks the two sides of a
+a pause split. A telemetry `task.log` record passes a second `stream()`
+with no timer (`orchestrator/telemetry.ts`). `maskCut` masks the two sides of a
 cut whose middle is gone: a value the cut split leaves a piece at the
 end of `head` or the start of `tail`, and each piece is masked too.
 

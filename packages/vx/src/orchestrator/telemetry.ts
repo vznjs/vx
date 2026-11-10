@@ -31,6 +31,7 @@ import {
 } from '../graph/index.js'
 import {
   maskedCommand,
+  type SecretMask,
   settleWithin,
   stageTimes,
   teardownTimeoutMs,
@@ -38,6 +39,15 @@ import {
 } from '../util/index.js'
 import { neverStarted, type RunEvent, type RunEventSubscriber } from '../report/index.js'
 import { freezeDeep } from './read-only.js'
+
+/**
+ * Each running task's secret mask, set where the task's env is known
+ * (`execute-task`). The live chunks a sink gets were masked by a stream
+ * that lets a held piece go after a 25 ms pause, so a value printed
+ * slowly reached `task.log` in pieces a sink joins whole: telemetry masks
+ * them again, holding a piece until more bytes or the task's end.
+ */
+export const taskLogMasks = new WeakMap<TaskNode, SecretMask>()
 
 /** Bumped when the record shape changes. Readers MUST check `v`. */
 export const TELEMETRY_SCHEMA_VERSION = 4
@@ -650,6 +660,34 @@ export function createTelemetrySource(args: {
     }
   }
 
+  // `${taskId}\0${stream}` → its telemetry mask stream (`taskLogMasks`).
+  const logMasks = new Map<
+    string,
+    {
+      mask: SecretMask
+      s: ReturnType<SecretMask['stream']>
+      taskId: string
+      stream: 'stdout' | 'stderr'
+    }
+  >()
+  const logRecord = (
+    taskId: string,
+    stream: 'stdout' | 'stderr',
+    chunk: string,
+    ts: number,
+  ): void => {
+    deliver({ v: TELEMETRY_SCHEMA_VERSION, kind: 'task.log', runId, taskId, stream, chunk, ts })
+  }
+  /** The held pieces of `taskId`'s streams (every task's when undefined), masked whole. */
+  const endLogs = (taskId: string | undefined, ts: number): void => {
+    for (const [key, held] of logMasks) {
+      if (taskId !== undefined && held.taskId !== taskId) continue
+      logMasks.delete(key)
+      const rest = held.s.end()
+      if (rest) logRecord(held.taskId, held.stream, rest, ts)
+    }
+  }
+
   const subscriber: RunEventSubscriber = (event: RunEvent) => {
     const ts = Date.now()
     switch (event.kind) {
@@ -686,19 +724,29 @@ export function createTelemetrySource(args: {
       case 'task:stdout':
       case 'task:stderr': {
         if (!wantsLog) return // nobody wants logs — pay nothing
-        deliver({
-          v: TELEMETRY_SCHEMA_VERSION,
-          kind: 'task.log',
-          runId,
-          taskId: event.node.id,
-          stream: event.kind === 'task:stdout' ? 'stdout' : 'stderr',
-          chunk: event.chunk,
-          ts,
-        })
+        const stream = event.kind === 'task:stdout' ? 'stdout' : 'stderr'
+        const taskId = event.node.id
+        const mask = taskLogMasks.get(event.node)
+        if (mask === undefined) {
+          logRecord(taskId, stream, event.chunk, ts)
+          return
+        }
+        const key = `${taskId}\0${stream}`
+        let held = logMasks.get(key)
+        if (held?.mask !== mask) {
+          // The sandbox's token joined the mask: what the old one holds goes first.
+          const rest = held?.s.end()
+          if (rest) logRecord(taskId, stream, rest, ts)
+          held = { mask, s: mask.stream(), taskId, stream }
+          logMasks.set(key, held)
+        }
+        const out = held.s.push(event.chunk)
+        if (out) logRecord(taskId, stream, out, ts)
         return
       }
       case 'task:complete': {
         const { node, outcome } = event
+        if (wantsLog) endLogs(node.id, ts)
         if (node.config.exec === undefined) return // group task
         // The stop reached it first: no task.start, and the summary counts
         // it in `notRunCount`, not `tasks`, so no task.end either.
@@ -722,6 +770,7 @@ export function createTelemetrySource(args: {
       case 'run:status':
         return // status lines are terminal-rendering noise, not telemetry
       case 'run:end':
+        if (wantsLog) endLogs(undefined, ts)
         ended = true
         tracked.clear()
         stopTimer()
