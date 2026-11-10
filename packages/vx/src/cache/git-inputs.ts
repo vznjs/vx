@@ -51,9 +51,14 @@ const FRESH_NAME = '__vx_probe__'
  * watch asks of the entries a task names (`namedIgnoredReach`).
  */
 export function newFilesIgnoredIn(root: string, dirs: readonly string[]): Set<string> {
-  const probes = dirs.map((d) => `${d}/${FRESH_NAME}`)
+  const probes = dirs.map(freshProbe)
   const hit = checkIgnoreSync(root, probes)
   return new Set(dirs.filter((_, i) => hit?.has(probes[i]!) === true))
+}
+
+/** The path `newFilesIgnored` asks git about for `dir` (root-relative): a new file directly in it. */
+export function freshProbe(dir: string): string {
+  return `${dir}/${FRESH_NAME}`
 }
 
 /** The facts of the repository a directory is in: read off the disk, or one `git rev-parse`. */
@@ -299,6 +304,11 @@ interface IgnoredListing {
   asked: Map<string, boolean>
   /** Whether every directory above an ignored path was asked at once (`ancestorDirs`). */
   batched?: boolean
+  /**
+   * git's answer for a new file directly in each directory the tasks name
+   * outright, asked beside the enumeration (`answerNewFilesIgnored`).
+   */
+  answered?: ReadonlyMap<string, boolean>
 }
 
 /**
@@ -547,7 +557,9 @@ export class GitFilesCache extends Map<string, readonly string[]> {
       else hi = mid
     }
     known = false
-    if (ig.paths[lo]?.startsWith(under) === true) {
+    const answered = ig.answered?.get(rel)
+    if (answered !== undefined) known = answered && ig.paths[lo]?.startsWith(under) === true
+    else if (ig.paths[lo]?.startsWith(under) === true) {
       // Every directory this question can be asked of, in one spawn: a
       // workspaceFiles glob per package (vueuse's `packages/core/**`) asked
       // for each, and each spawn was ~2 ms (11 of a no-op, 2026-11-10).
@@ -565,6 +577,17 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     }
     ig.asked.set(rel, known)
     return known
+  }
+
+  /**
+   * git's answer for a new file directly in each of `dirs` (root-relative),
+   * asked with the run's other `check-ignore` while git enumerated:
+   * `newFilesIgnored` reads it instead of a spawn of its own on the key
+   * path (vueuse: one `check-ignore` of ~2-4 ms, 2026-11-10). Held until
+   * the next enumeration.
+   */
+  answerNewFilesIgnored(dirs: readonly string[], ignored: (dir: string) => boolean): void {
+    if (this.ignored !== null) this.ignored.answered = new Map(dirs.map((d) => [d, ignored(d)]))
   }
 
   get undecodableNames(): ReadonlySet<string> {

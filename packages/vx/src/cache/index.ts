@@ -84,6 +84,7 @@ export {
 } from './inputs.js'
 export {
   GitFilesCache,
+  freshProbe,
   gitRefusal,
   repoFacts,
   applyGitEnumeration,
