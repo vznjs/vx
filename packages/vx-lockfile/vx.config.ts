@@ -54,6 +54,7 @@ const SHARDS: readonly (readonly string[])[] = [
     'pnpm',
     'root-workspace-dep',
     'settings',
+    'sparse-checkout',
     'yarn-bound-descriptor',
     'yarn-numeric-range',
   ],

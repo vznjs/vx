@@ -752,6 +752,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
             violations: [],
             // What it started may still run and write the retry's outputs.
             leftRunning: true,
+            // Its row named this machine: the task was placed on the executor.
+            where: args.executor.name,
             ...(timeoutFired ? { timedOut: true } : {}),
           })
         }, graceMs)
@@ -1343,16 +1345,17 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // 137 (item 1063); so did a shell dead of the SIGTERM whose leftover the
     // SIGKILL took.
     if (res.timedOut) {
-      // A plugin executor's child is its own: core only aborted its request.
+      // A plugin executor's child is its own: core only aborted its request,
+      // or, on the executor's own clock, aborted nothing.
       const how = !isLocalExecutor(args.executor)
-        ? 'its executor was aborted'
+        ? timeoutFired
+          ? 'its executor was aborted'
+          : 'as its executor reported'
         : res.signal === 'SIGKILL' || res.killedAfterGrace === true
           ? 'killed (SIGKILL after the SIGTERM grace)'
           : 'killed (SIGTERM)'
-      log.taskStderr(
-        node,
-        `${midLine ? '\n' : ''}[vx] timed out after ${effectiveTimeout}ms — ${how}\n`,
-      )
+      const after = effectiveTimeout === undefined ? '' : ` after ${effectiveTimeout}ms`
+      log.taskStderr(node, `${midLine ? '\n' : ''}[vx] timed out${after} — ${how}\n`)
       // Force a non-zero classification even if the child TRAPPED SIGTERM and
       // still exited 0 (`trap 'exit 0' TERM`, a common graceful-shutdown
       // pattern). Without this a timed-out task is classified `success` and its

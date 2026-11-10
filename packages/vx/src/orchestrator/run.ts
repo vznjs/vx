@@ -113,6 +113,7 @@ import { freezeDeep } from './read-only.js'
 import {
   buildAdmission,
   executorDemand,
+  executorFailedOn,
   executorLabel,
   resolveExecutors,
   teardownPlugins,
@@ -1538,6 +1539,8 @@ async function runOnBus(
         stopping.push(p)
       }
     }
+    // Tasks a plugin's executor threw on, and its name: the throw left no `where`.
+    const thrownOn = new Map<string, string>()
     const outcomes = await runGraph({
       nodes,
       concurrency,
@@ -1558,6 +1561,10 @@ async function runOnBus(
         log.taskStart?.(node)
       },
       onFinish: (o) => {
+        if (thrownOn.size > 0 && o.where === undefined) {
+          const where = thrownOn.get(o.node.id)
+          if (where !== undefined) o.where = where
+        }
         if (cacheOff) o.cacheOff = true
         const root = taintedRan.get(o.node.id)
         if (root !== undefined && o.blockedBy === undefined) o.taintedBy = root
@@ -1580,13 +1587,16 @@ async function runOnBus(
       },
       // A crash a hand-broken lock entry caused is named as that; asked
       // only here, so a run that does not crash pays nothing.
-      onError: (node, line, err) =>
+      onError: (node, line, err) => {
+        const on = executorFailedOn(err)
+        if (on !== undefined) thrownOn.set(node.id, on)
         log.taskStderr(
           node,
           !isUserError(err) && !isFsRefusal(err) && (lockBroken ??= lockEntryBroken(workspaceRoot))
             ? `[vx] ${node.id}: ${LOCK_INVALID}\n`
             : line,
-        ),
+        )
+      },
       execute: (node, upstream) => {
         const skip = platformSkip(node)
         if (skip !== undefined) return Promise.resolve(skip)

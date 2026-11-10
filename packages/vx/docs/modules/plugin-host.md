@@ -90,6 +90,10 @@ nothing runs and caches here.
   (C-63), the plugin's error as its `cause`: printed plainly, as every
   stage's throw is, never as vx's internal error, and the plugin's own
   error is never renamed (C-85). The floor's is untouched.
+- `executorFailedOn(err)` — the executor's name on an error
+  `nameExecutorFailure` made, else `undefined`: `run()` sets it as the
+  task's `where`, whose row read `local` though the task was placed on
+  the plugin's executor.
 - `resolveCache(plugins, host)` → `CacheLayer`. `host` is a
   `CacheHost`: the hook's `CacheContext` (with the run's `scope`) plus
   the `localCache` and `policy` core keeps from plugins. Each plugin's `cache`

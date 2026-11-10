@@ -177,6 +177,36 @@ export function listedSync(cwd: string, dirs: readonly string[]): string[] | nul
 }
 
 /**
+ * `rel` (relative to `cwd`) as the repository names it when the index
+ * flags it skip-worktree (a sparse checkout left it out), else null.
+ */
+export function skipWorktreeSync(cwd: string, rel: string): string | null {
+  try {
+    const r = Bun.spawnSync({
+      cmd: [
+        executablePath('git'),
+        ...gitCaseArgs(cwd),
+        'ls-files',
+        '-t',
+        '-z',
+        '--full-name',
+        '--',
+        `:(literal)${rel}`,
+      ],
+      env: gitEnv(),
+      cwd,
+      stdout: 'pipe',
+      stderr: 'ignore',
+    })
+    if (r.exitCode !== 0) return null
+    const record = new TextDecoder().decode(r.stdout).split('\0')[0] ?? ''
+    return record.startsWith('S ') ? record.slice(2) : null
+  } catch {
+    return null
+  }
+}
+
+/**
  * Of `globs` (root-relative), those git ignores whole: each probe ignored
  * and, for a deep glob, no listed file it matches (`listedMatch`).
  */

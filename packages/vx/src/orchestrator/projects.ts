@@ -26,7 +26,13 @@ import {
 import type { WorkspaceConfig } from '../config.js'
 import { atPath, SETTINGS } from '../settings.js'
 import { lazyGitEnumeration, type LazyGitEnumeration, parseCachePolicy } from '../cache/index.js'
-import { checkIgnoreSync, isUserError, relPosix, UserError } from '../util/index.js'
+import {
+  checkIgnoreSync,
+  isUserError,
+  relPosix,
+  skipWorktreeSync,
+  UserError,
+} from '../util/index.js'
 import {
   cacheScopeError,
   isCacheScope,
@@ -417,6 +423,14 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
       const rel = relPosix(workspaceRoot, gone.dir) || 'the workspace root project'
       const named = gone.name === pathName(workspaceRoot, gone.dir) ? '' : ` ("${gone.name}")`
       const file = relPosix(gone.dir, gone.configPath)
+      // A sparse checkout left it out: `vx lock` would drop it from the
+      // committed lock. Asked only on this failure path.
+      const sparse = skipWorktreeSync(workspaceRoot, relPosix(workspaceRoot, gone.configPath))
+      if (sparse !== null) {
+        throw new UserError(
+          `${rel}${named} is outside this sparse checkout, but this run needs its ${file} — run \`git sparse-checkout add ${path.posix.dirname(sparse)}\``,
+        )
+      }
       // exists() says false for a file behind a directory this user may not
       // search too; asked only on this failure path, so a run pays no stat.
       const denied = await stat(gone.configPath).then(

@@ -431,6 +431,8 @@ What counts as a change:
 - A file git was told not to look at (`git update-index
 --assume-unchanged` or `--skip-worktree`) counts when its bytes on disk
   differ, as the key hashes them. One a sparse checkout left out does not.
+  A run that needs a project the sparse checkout left out is refused (see
+  [How runs read it](#how-runs-read-it)).
 - A file a clean filter can rewrite (`core.autocrlf`, a `text`, `eol`,
   `ident`, `filter` or `working-tree-encoding` attribute) counts when git
   sees its stat move, even if its filtered bytes match the base: the key
@@ -2165,7 +2167,10 @@ lock with no evaluation, no staleness check and no schema validation
 of its entries, which `vx lock` validated when it wrote them (frozen-env
 semantics: env reads in a config keep their lock-time values; a
 locked directory whose config file is gone (X-144) or that this user
-may not search (EACCES, named as such), or a missing lock, is a hard error; a config added since the lock is no project until
+may not search (EACCES, named as such), or a missing lock, is a hard error;
+one a sparse checkout left out is refused only when the run selects it or
+depends on it, naming the `git sparse-checkout add` that brings it back
+(`vx lock` there would drop it from the committed lock); a config added since the lock is no project until
 `vx lock`, and naming its task, `c#build`, says so: "c#build: c/vx.config.ts
 is not in the lock yet — run `vx lock`", as a run from its directory says
 `c/vx.config.ts is not in the lock yet`, where it ran the locked project

@@ -19,6 +19,7 @@ export async function checkIgnore(
 ): Promise<Set<string> | null>
 export function checkIgnoreSync(cwd: string, paths: readonly string[]): Set<string> | null
 export function listedSync(cwd: string, dirs: readonly string[]): string[] | null
+export function skipWorktreeSync(cwd: string, rel: string): string | null
 export function ignoreCaseLies(dir: string, probe: string): boolean
 export function gitCaseArgs(cwd: string): readonly string[]
 export function wholeIgnored(
@@ -41,6 +42,10 @@ export function wholeIgnored(
   through `checkIgnoreSync` too.
 - `listedSync`: `git ls-files --cached --others --exclude-standard` under
   `dirs`, for `vx lock`; a run reads its own enumeration instead.
+- `skipWorktreeSync`: `git ls-files -t --full-name` of one path: its
+  repository path when the index flags it skip-worktree (a sparse
+  checkout left it out), else null. Asked only when a locked config is
+  missing (`orchestrator/projects.ts`), so a run pays no spawn.
 - `ignoreCaseLies`: whether `core.ignorecase=true`, which git in `dir`
   reported, is false on disk (a `.git` copied from macOS to Linux): one
   stat of `probe` with its name's case swapped, once per `dir`. Asked
