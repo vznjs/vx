@@ -142,6 +142,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   ignoredOutputs: ReadonlySet<string>
   setIgnored(root: string, paths: readonly string[]): void
   newFilesIgnored(dir: string): boolean
+  answerNewFilesIgnored(dirs: readonly string[], ignored: (dir: string) => boolean): void
   get undecodableNames(): ReadonlySet<string>
   markUndecodable(absPaths: readonly string[]): void
   setWorkspaceRoot(root: string): void
