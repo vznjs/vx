@@ -2257,7 +2257,12 @@ interface CacheSettings {
   `.gitignore` would hide the sources from git and the cache keys. One
   that resolves, through links (a `.vx/cache` linked to `~` or `..`), to
   the home directory, `/`, or a directory holding the workspace or a
-  `.git` is refused on every open, an index already there or not. A
+  `.git` is refused on every open, an index already there or not. A run
+  whose cache directory lies under a selected task's `outputs` (`files` or
+  `workspaceFiles`; `--cache-dir pkg/dist/cache` with `dist/**`) is refused
+  before any task, naming the task: the output clean would delete the
+  cache, and with `clean: false` each save would pack it into its own
+  entry. A `!` take-back over the directory keeps the run. A
   directory other than the default `.vx/cache` gets that `*` `.gitignore`;
   the default is ignored by `.vx/.gitignore` (`/cache`, `/tmp`) instead, written
   when missing and never edited.

@@ -1524,7 +1524,9 @@ decide it the same way, the reading ones without making or changing
 anything, so they read the entries runs use. Name a
 cache directory (`--cache-dir`, relative to the working directory; else
 `VX_CACHE_DIR`, else `cache.dir` in .vx/workspace.ts, each relative to the
-workspace root) and it holds everything, shared with no other workspace:
+workspace root) and it holds everything, shared with no other workspace.
+One under a selected task's declared outputs is refused before any task,
+naming the task: the task's output clean would delete it mid-run. Its layout:
 
 ```
 <cacheDir>/                                 (default .vx/cache when one is named)
