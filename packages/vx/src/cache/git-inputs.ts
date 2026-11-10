@@ -595,6 +595,56 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     return d.digest()
   }
 
+  /**
+   * `filesDigest` for a `workspaceFiles` declaration: a digest of the paths
+   * of the workspace partition `snapshot` that `takes`, each with its index
+   * OID, or its stat and whether git tracks it where git vouches for none
+   * (an untracked or edited file). Undefined where `filesDigest` would be:
+   * the partition moved, a path is a link, undecodable, or written within
+   * the racy window. Once per `key` and partition: tasks share declarations.
+   */
+  declarationDigest(
+    root: string,
+    snapshot: readonly string[],
+    key: string,
+    takes: (rel: string) => boolean,
+  ): string | undefined {
+    const slot = this.oids.get(root)
+    if (slot === undefined || this.get(root) !== snapshot || this.changed.has(root)) return
+    let memo = this.declDigests.get(slot)
+    if (memo === undefined) this.declDigests.set(slot, (memo = new Map()))
+    if (memo.has(key)) return memo.get(key)
+    const oids = slot.map
+    const base = root.endsWith(path.sep) ? root : root + path.sep
+    const committed = this.committedIn(root)
+    let records = ''
+    let digest: string | undefined
+    const loose: string[] = []
+    let refused = false
+    for (const rel of snapshot) {
+      if (!takes(rel)) continue
+      const abs = base + rel
+      const oid = oids.get(abs)
+      if (this.undecodable.has(abs) || oid?.startsWith('120000:') === true) {
+        refused = true
+        break
+      }
+      if (oid === undefined) loose.push(rel)
+      else records += `${rel}\0${oid}\n`
+    }
+    if (!refused) {
+      const statted = statRecords(loose, (rel) => base + rel, 0)
+      if (statted !== undefined) {
+        const tracked = loose.map((rel) => (committed(base + rel) ? '1' : '0')).join('')
+        digest = xxh3hex(`${records}\0${statted}\0${tracked}`)
+      }
+    }
+    memo.set(key, digest)
+    return digest
+  }
+
+  private readonly declDigests = new WeakMap<OidSlot, Map<string, string | undefined>>()
+
   noteFilesDigest(
     projectDir: string,
     snapshot: readonly string[],

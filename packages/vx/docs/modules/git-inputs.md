@@ -101,6 +101,12 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   oidsFor(projectDir: string): ReadonlyMap<string, string> | undefined // trusted index OIDs by path
   setOids(projectDir: string, oids: Map<string, string>): void
   filesDigest(projectDir: string, snapshot: readonly string[]): string | undefined // the partition's paths + OIDs (a file with none by its stat), none a link
+  declarationDigest(
+    root: string,
+    snapshot: readonly string[],
+    key: string,
+    takes: (rel: string) => boolean,
+  ): string | undefined // filesDigest of the workspace paths a workspaceFiles declaration may take in
   noteFilesDigest(
     projectDir: string,
     snapshot: readonly string[],
@@ -222,7 +228,10 @@ and index OIDs joined and hashed once, when the enumeration trusted an
 OID for every path and none is a symlink or an undecodable name.
 `filesDigest` answers it only while the partition is that snapshot with
 those OIDs and no path marked changed: a re-enumeration, a save or a
-restore in the project ends it for the run.
+restore in the project ends it for the run. `declarationDigest` does
+the same for the workspace partition, per `workspaceFiles` declaration:
+the paths its globs may take in, each by OID, or by its stat and
+whether git tracks it, once per declaration and partition.
 
 `gitPathspecs` scopes the spawn to the projects in the run when there
 are at most `MAX_SCOPED_PATHSPECS` (64) of them and none is the root
