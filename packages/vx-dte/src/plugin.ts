@@ -16,7 +16,7 @@ import {
   type TaskResources,
 } from '@vzn/vx'
 import type { DteInit, DteSetup } from './init.js'
-import type { Need } from './dispatch.js'
+import type { Need, Soon } from './dispatch.js'
 import { booked, DEFAULT_STRATEGY, STRATEGIES, type Strategy } from './strategy.js'
 import type { Orchestrator } from './orchestrator.js'
 import type { Proof } from './seal.js'
@@ -623,7 +623,7 @@ export function dte(options: DteOptions = {}) {
       const [
         { Orchestrator },
         { joinOffLoop },
-        { decide, keepLast, knownMisses, slowdown, tailsMs, WARM_UP_MS },
+        { decide, keepLast, knownMisses, slowdown, tailsMs, UNKNOWN_MS, WARM_UP_MS },
         { snapshot, untrackedWorkspace },
         seal,
       ] = await Promise.all([
@@ -672,6 +672,8 @@ export function dte(options: DteOptions = {}) {
       }
       // The run plans again on it, now when `now`; set once the plan is.
       let onChange = (_now?: boolean): void => {}
+      // Tasks about to be ready (`OrchestratorOptions.soon`); set once the run's work is known.
+      let soonOf = (_ends: ReadonlyMap<string, number>): (Soon & { id: string })[] => []
       const o = new Orchestrator({
         me: seal.sealOrchestrator(
           // Off this loop: the run's own sync work held its acks, and every
@@ -693,6 +695,8 @@ export function dte(options: DteOptions = {}) {
         keyOf: (id) => keys.get(id),
         tail: (id) =>
           (tails ??= tailsMs(nodes ?? new Map(), (x) => peaks.get(x)?.p50DurationMs))(id),
+        ms: (id) => peaks.get(id)?.p50DurationMs,
+        soon: (ends) => soonOf(ends),
         how,
         home,
         joinedPlace,
@@ -783,9 +787,9 @@ export function dte(options: DteOptions = {}) {
       const last: { forecast?: Forecast } = {}
       // A plan that needs a worker later plans again then.
       let again: ReturnType<typeof setTimeout> | undefined
-      // The fewest workers that end the run's known work within a margin of
-      // the most would, played out (`planner.ts`); idle ones it does
-      // without leave. Again at each miss, finish, join and history read.
+      // The workers the run's known work needs to end as soon as all
+      // would, each started when a task needs it, played out
+      // (`planner.ts`); idle ones it does without leave. Again at each miss, finish, join and history read.
       const shape = (remaining: ReadonlySet<string>): void => {
         // This run's for the size, else an earlier run's, else any size's
         // this run, else the default.
@@ -952,6 +956,51 @@ export function dte(options: DteOptions = {}) {
       }
       if (needsIn === undefined) scheduled = forecast
       else forecast()
+      // Each task's dependants, by the graph: made once it is.
+      let after: Map<string, string[]> | undefined
+      let afterOf: ReadonlyMap<string, TaskNode> | undefined
+      soonOf = (ends) => {
+        const graph = nodes
+        if (graph === undefined || pending === undefined) return []
+        if (afterOf !== graph) {
+          afterOf = graph
+          after = new Map()
+          for (const [id, n] of graph)
+            for (const d of n.deps) {
+              const list = after.get(d)
+              if (list === undefined) after.set(d, [id])
+              else list.push(id)
+            }
+        }
+        const rest = pending
+        const out: (Soon & { id: string })[] = []
+        const seen = new Set<string>()
+        for (const id of ends.keys())
+          for (const d of after!.get(id) ?? []) {
+            if (seen.has(d) || !rest.has(d) || !(likely.has(d) || sure.has(d))) continue
+            seen.add(d)
+            let at = 0
+            let all = true
+            for (const x of graph.get(d)!.deps) {
+              if (!rest.has(x)) continue
+              const e = ends.get(x)
+              if (e === undefined) {
+                all = false
+                break
+              }
+              at = Math.max(at, e)
+            }
+            if (!all) continue
+            out.push({
+              id: d,
+              need: o.booking(need(d)),
+              at,
+              rank: (tails ??= tailsMs(graph, (x) => peaks.get(x)?.p50DurationMs))(d),
+              ms: peaks.get(d)?.p50DurationMs ?? UNKNOWN_MS,
+            })
+          }
+        return out.sort((a, b) => b.rank - a.rank)
+      }
       // Core asks the footer and the summary after teardown: the last run's graph.
       const depsOf = (id: string): readonly string[] => (nodes ?? ran)?.get(id)?.deps ?? []
       return {

@@ -578,6 +578,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-dte/seal',
     'vx-dte/server-fit',
     'vx-dte/sim',
+    'vx-dte/sim-theory',
     'vx-dte/trace',
     'vx-dte/tree',
     'vx-dte/units',

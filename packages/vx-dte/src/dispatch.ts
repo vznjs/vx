@@ -69,6 +69,10 @@ export interface Dispatching {
   readonly gate?: (id: string) => 'wait' | 'done' | { only?: string; avoid?: string }
   /** A worker bigger than `above` of `platform` is coming (`assign`'s `waits`). */
   readonly waits?: (above: NonNullable<Need['above']>, platform: string | undefined) => boolean
+  /** Its time, as history said: with `soon`, what a hold keeps it from (`Hold`). */
+  readonly ms?: (id: string) => number | undefined
+  /** Tasks about to be ready, highest rank first: room is kept for each (`holdFor`). */
+  readonly soon?: readonly Soon[]
 }
 
 /**
@@ -124,9 +128,16 @@ export function dispatch<B extends Bin>(
       if (gate === 'done') continue
       read.push(id)
       if (gate === 'wait') continue
-      yield { id, need: needs[i]!, up: o.deps(id) ?? [], ...gate }
+      yield {
+        id,
+        need: needs[i]!,
+        up: o.deps(id) ?? [],
+        ...gate,
+        ...(o.soon === undefined ? {} : { rank: o.tail?.(id) ?? 0, ms: o.ms?.(id) ?? Infinity }),
+      }
     }
   }
+  if (o.soon !== undefined) holdFor(bins, o.soon)
   const to = assign(asks(), bins, o.waits, o.how.place, { floor, kinds: Infinity, bounds })
   const left = read.filter((id) => !to.has(id))
   // The pass ended at the ask it read last, and took or left it.
@@ -180,6 +191,116 @@ export interface Bin {
   readonly platform?: string | undefined
   /** The servers it runs, each base booked: a task needing one books no base here. */
   readonly serving?: Set<string>
+  /** When each task on it ends, from now (ms), its cores and memory: where a hold finds room. */
+  ends?: readonly (readonly [at: number, cores: number, memory: number])[] | undefined
+  /** Room kept for tasks about to be ready (`holdFor`): one of lower rank goes here only beside it. */
+  holds?: Hold[] | undefined
+}
+
+/**
+ * Room a task about to be ready keeps on a bin: from `at` to `until` ms
+ * from now, `cores` and `memory`, for a task of `rank` (its chain). A
+ * task of lower rank that would still run at `at` goes there only if
+ * both fit then: a worker started for a critical task joined early, was
+ * filled by short ones, and the critical task waited a minute
+ * (2026-11-10: "Critical path should never have to wait for availability").
+ */
+export interface Hold {
+  readonly at: number
+  readonly until: number
+  readonly cores: number
+  readonly memory: number
+  readonly rank: number
+}
+
+/** A task the run expects ready `at` ms from now, with its rank (its chain) and time. */
+export interface Soon {
+  readonly need: Need
+  readonly at: number
+  readonly rank: number
+  readonly ms: number
+}
+
+/** What `b` holds at `at`: its tasks still running then, and holds over it. */
+function heldAt(b: Bin, at: number, skip?: Hold): { cores: number; memory: number } {
+  let cores = 0
+  let memory = 0
+  let ending = 0
+  for (const [end, c, m] of b.ends ?? []) {
+    ending += c
+    if (end > at) {
+      cores += c
+      memory += m
+    }
+  }
+  // What no end is known for (a server's base) stays.
+  cores += Math.max(0, b.used.cores - ending)
+  if (b.ends === undefined) memory = b.used.memory
+  for (const h of b.holds ?? [])
+    if (h !== skip && h.at <= at && h.until > at) {
+      cores += h.cores
+      memory += h.memory
+    }
+  return { cores, memory }
+}
+
+/**
+ * Keeps room for each of `soon` (highest rank first) on the bin where it
+ * is first free from its `at`: tasks of lower rank then fit beside it
+ * only. A bin of another platform, or too small, holds none.
+ */
+export function holdFor(bins: readonly Bin[], soon: readonly Soon[]): void {
+  for (const b of bins) b.holds = undefined
+  for (const s of soon) holdOne(bins, s)
+}
+
+/** Keeps room for `s` on the bin where it is first free from its `at`. */
+function holdOne(bins: readonly Bin[], s: Soon): void {
+  {
+    let best: Bin | undefined
+    let bestAt = Infinity
+    for (const b of bins) {
+      if (s.need.platform !== undefined && b.platform !== s.need.platform) continue
+      const times = [s.at]
+      for (const [end] of b.ends ?? []) if (end > s.at) times.push(end)
+      for (const h of b.holds ?? []) if (h.until > s.at) times.push(h.until)
+      times.sort((x, y) => x - y)
+      for (const at of times) {
+        if (at >= bestAt) break
+        const u = heldAt(b, at)
+        const empty = u.cores <= 1e-9 && u.memory <= 0
+        if (
+          empty ||
+          (u.cores + s.need.cores <= b.cores + 1e-9 && u.memory + s.need.memory <= b.memory)
+        ) {
+          best = b
+          bestAt = at
+          break
+        }
+      }
+    }
+    if (best === undefined) return
+    ;(best.holds ??= []).push({
+      at: bestAt,
+      until: bestAt + s.ms,
+      cores: Math.min(s.need.cores, best.cores),
+      memory: Math.min(s.need.memory, best.memory),
+      rank: s.rank,
+    })
+  }
+}
+
+/** Whether `ask` on `b` would take room a hold of higher rank keeps. */
+function breaks(b: Bin, ask: Ask): boolean {
+  if (b.holds === undefined || ask.rank === undefined) return false
+  const until = ask.ms ?? Infinity
+  for (const h of b.holds) {
+    if (h.rank <= ask.rank || h.at >= until) continue
+    const u = heldAt(b, h.at)
+    if (u.cores + ask.need.cores > b.cores + 1e-9 || u.memory + ask.need.memory > b.memory)
+      return true
+  }
+  return false
 }
 
 export interface Ask {
@@ -197,6 +318,9 @@ export interface Ask {
   readonly only?: string
   /** A bin that may not take it. */
   readonly avoid?: string
+  /** Its rank (its chain) and time: a bin's holds of higher rank keep it off (`Hold`). */
+  readonly rank?: number
+  readonly ms?: number
 }
 
 /** What `Ask.kind` names: every field of a need `assign` reads. */
@@ -265,6 +389,8 @@ export function assign<B extends Bin>(
   // until one is, each ask of them fails alike.
   const spent = all?.spent ?? new Set<string>()
   spent.clear()
+  // Ready asks given room ahead this pass.
+  let waiting = 0
   for (const ask of asks) {
     if (
       all !== undefined &&
@@ -296,9 +422,15 @@ export function assign<B extends Bin>(
     let best: B | undefined
     let bestScore: [number, number] = [0, 0]
     let seen = 0
+    // A hold kept it off a bin it fits: one of its kind may still fit.
+    let blocked = false
     for (let i = 0; i < pool.length; i++) {
       const b = pool[i]!
       if (held.has(b) || !fits(b, need)) continue
+      if (breaks(b, ask)) {
+        blocked = true
+        continue
+      }
       // Workers fill in order, so the first that fit hold the fullest.
       if (++seen > SAMPLE) break
       let has = 0
@@ -314,6 +446,10 @@ export function assign<B extends Bin>(
       }
     }
     if (best === undefined) {
+      // Ready and no room: room is kept where it first frees, so no task
+      // of lower rank takes it meanwhile, a few a pass.
+      if (ask.rank !== undefined && ask.ms !== undefined && waiting++ < pool.length)
+        holdOne(pool, { need, at: 0, rank: ask.rank, ms: ask.ms })
       // One it fits only empty: the one using least is held for it.
       let soonest: B | undefined
       for (const b of pool) {
@@ -324,7 +460,7 @@ export function assign<B extends Bin>(
       if (soonest !== undefined) {
         held.add(soonest)
         rebound()
-      } else if (ask.kind !== undefined) spent.add(ask.kind)
+      } else if (ask.kind !== undefined && !blocked) spent.add(ask.kind)
       continue
     }
     spent.clear()
@@ -333,6 +469,11 @@ export function assign<B extends Bin>(
     for (const sv of need.servers ?? []) best.serving?.add(sv.id)
     best.used.memory += Math.min(need.memory, best.memory)
     best.running++
+    if (best.holds !== undefined && best.ends !== undefined && ask.ms !== undefined)
+      best.ends = [
+        ...best.ends,
+        [ask.ms, Math.min(coresOn(best, need), best.cores), Math.min(need.memory, best.memory)],
+      ]
     rebound()
   }
   return out
@@ -616,11 +757,18 @@ export class Queue {
             continue
           }
           if (gate === 'wait') continue
-          yield { id: e.id, need, up: o.deps(e.id) ?? [], ...gate }
+          yield {
+            id: e.id,
+            need,
+            up: o.deps(e.id) ?? [],
+            ...gate,
+            ...(o.soon === undefined ? {} : { rank: -e.rank, ms: o.ms?.(e.id) ?? Infinity }),
+          }
           break
         }
       }
     }
+    if (o.soon !== undefined) holdFor(bins, o.soon)
     const to = assign(asks(), bins, o.waits, this.how.place, { floor, kinds: Infinity, bounds })
     for (const e of done) if (!e.gone) this.drop(e)
     for (const id of to.keys()) this.drop(this.of.get(id)!)

@@ -855,7 +855,7 @@ real time in the run summary and the footer's `ideal` line, and
 
 The same replay says which workers to declare next time
 (`TaskExecutor.advice`), each from an empty run with the plan's own
-rules (the fewest that end it within its margin of the soonest): `best`
+rule (the fewest that end it within 5% of the soonest): `best`
 is how many of each size; `more`, shown only when more than a size's
 `max` would end the run sooner past that margin, is how many it would
 take; `any` is one shape for each platform, of 2 to 64 cores (memory a
@@ -915,15 +915,19 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     that work out on its workers and on N more (`src/planner.ts`), each new
     one joining after its size's warm-up: this run's first of that size,
     else an earlier run's, else any size's this run, else 20 s,
-    and takes the fewest N that end within 5% (5 s at least) of the best.
+    and the best end is the one with all N. A new worker starts only when
+    a task reaches its latest start (the best end less its chain) with no
+    room on a worker already running: a task with slack waits for room
+    the run pays for anyway, and the critical path never waits. A worker
+    started for a task starts as soon as that task is ready, and tasks
+    with slack fill its room. A task with no history counts twice its
+    guess toward how soon its chain must start; one running past its
+    history counts as running as long again.
     It plays only two warm-ups and the longest task ahead; past that, the
     rest ends no sooner than its longest chain, nor than its work spread
     on the cores it has, and the next plan, a warm-up on, sees further.
-    Sizes of different platforms come in turns, so of those N it drops
-    each the plan ends as soon without, its platform's work no more than
-    5 s later.
-    That margin is spent once: later plans keep its deadline until new
-    work is known. A task waiting on one that runs waits until it ends.
+    The plan may end 5% (5 s at least) past the best; that margin is
+    spent once: later plans keep its deadline until new work is known. A task waiting on one that runs waits until it ends.
     Then the run follows that plan: a start it wants later is asked when
     due, and a worker idle with its planned work done goes, once every
     task planned on it has started. It plays again
