@@ -114,6 +114,22 @@ it('a worker leaves unset a host name the key folds as unset', () => {
   }
 })
 
+it('a worker keeps a PATH the task defines or keys, its root swapped', () => {
+  const saved = process.env['PATH']
+  process.env['PATH'] = '/usr/bin'
+  try {
+    const env = { PATH: '/orc/ws/node_modules/.bin:/tool:/bin' }
+    expect(localEnv(env, '/orc/ws', '/worker/ws', [], true)['PATH']).toBe(
+      '/worker/ws/node_modules/.bin:/tool:/bin',
+    )
+    expect(localEnv(env, '/orc/ws', '/worker/ws')['PATH']).toBe(
+      '/worker/ws/node_modules/.bin:/usr/bin',
+    )
+  } finally {
+    process.env['PATH'] = saved
+  }
+})
+
 it('a worker runs the orchestrator’s env with its own root, host names and PATH', () => {
   const saved = {
     HOME: process.env['HOME'],
@@ -2456,6 +2472,37 @@ it('sends a host name the task keys in inputs.env, with the value keyed', async 
     expect(await a.batches()).toEqual([['t1']])
     expect(a.orders[0]!.env).toEqual({ XDG_CONFIG_HOME: '/orc/config', X: '1' })
     expect(a.orders[0]!.unset).toEqual(['TMPDIR'])
+  } finally {
+    await h.stop()
+  }
+})
+
+// A worker swapped a defined or keyed PATH for its own: the task ran
+// without the defined tools and saved that under the key (2026-11-10).
+it('marks an order whose PATH the task defines or keys', async () => {
+  const h = await harness(new Map([node('t1'), node('t2'), node('t3')]))
+  try {
+    const a = await h.worker(3)
+    await Bun.sleep(50)
+    void h.o.execute({ ...h.req('t1'), env: { PATH: '/tool' }, envDefine: { PATH: '/tool' } })
+    void h.o.execute({
+      ...h.req('t2'),
+      env: { PATH: '/orc/bin' },
+      inputs: {
+        files: [],
+        env: [{ name: 'PATH', value: '/orc/bin' }],
+        runtime: [],
+        workspaceRuntime: [],
+        upstream: [],
+        configDigest: 'c',
+      },
+    } as unknown as ExecuteRequest)
+    void h.o.execute({ ...h.req('t3'), env: { PATH: '/orc/bin' } })
+    await a.batches()
+    const by = new Map(a.orders.map((o) => [o.task, o]))
+    expect(by.get('t1')!.path).toBe(true)
+    expect(by.get('t2')!.path).toBe(true)
+    expect(by.get('t3')!.path).toBeUndefined()
   } finally {
     await h.stop()
   }

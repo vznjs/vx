@@ -56,6 +56,8 @@ export interface RunOrder {
   env: Record<string, string>
   /** `HOST_ENV` names its key folds as unset: the worker leaves them unset, not its own. */
   unset?: string[]
+  /** Its `env.define` sets PATH or its `inputs.env` keys it: the worker runs it as sent, not its own. */
+  path?: true
   /** Its `exec.env.secret`: the names in `env` whose values its saved output masks. */
   secret?: string[]
   timeoutMs?: number
@@ -98,6 +100,8 @@ export interface ServerOrder {
   command: string
   cwd: string
   env: Record<string, string>
+  /** Its `env.define` sets PATH: the worker runs it as sent (`RunOrder.path`). */
+  path?: true
   readyWhen?: string
   timeoutMs?: number
   /** Its `exec.sandbox` and the projects nested in its own, workspace-relative: it starts inside it. */
