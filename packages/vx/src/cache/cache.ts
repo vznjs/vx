@@ -2608,7 +2608,7 @@ export class Cache implements CacheLayer {
       projectStat = undefined
     }
     if (projectStat === undefined) await mkdir(projectDir, { recursive: true })
-    const staging = roots.length > 0 ? await copyStaging(workspaceRoot) : undefined
+    const staging = roots.length > 0 ? copyStaging(workspaceRoot) : undefined
     if (staging?.stats !== undefined) {
       const fits = new Map<string, boolean>()
       for (const rel of roots) {
