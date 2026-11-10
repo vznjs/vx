@@ -292,7 +292,8 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
         }
         at = Math.max(at, e - now)
       }
-      if (ok) soon.push({ need: need(t.id), at, rank: tail(t.id), ms: durationMs(t.id) ?? UNKNOWN_MS })
+      if (ok)
+        soon.push({ need: need(t.id), at, rank: tail(t.id), ms: durationMs(t.id) ?? UNKNOWN_MS })
     }
     soon.sort((a, b) => b.rank - a.rank)
     // The live run's own rule (`Orchestrator.pump`).

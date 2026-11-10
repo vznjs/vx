@@ -623,15 +623,6 @@ function play(
     }
   }
   /**
-   * Each ready task at its latest start (`deadline` less its chain):
-   * into the room of a worker the play started, back to when that one's
-   * first task got ready; else a dormant one starts for it. Ranked by
-   * chain, the waiting at their latest start come first, so a step reads
-   * only those: each waiting one checked against each worker at each
-   * step planned 9000 in a minute (2026-11-10). Whether it gave or
-   * started one now.
-   */
-  /**
    * `t`, at its latest start: into the room of a worker the play
    * started, back to when that one's first task got ready; else a
    * dormant one starts for it. Whether it gave or started one.
@@ -664,6 +655,15 @@ function play(
     giveAt(t, into, intoAt)
     return true
   }
+  /**
+   * Each ready task at its latest start (`deadline` less its chain):
+   * into the room of a worker the play started, back to when that one's
+   * first task got ready; else a dormant one starts for it. Ranked by
+   * chain, the waiting at their latest start come first, so a step reads
+   * only those: each waiting one checked against each worker at each
+   * step planned 9000 in a minute (2026-11-10). Whether it gave or
+   * started one now.
+   */
   const wake = (by: number): boolean => {
     let changed = false
     for (const t of ready.from()) {
