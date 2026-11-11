@@ -8,7 +8,7 @@ import { FILE_HASH_RACY_MS, filesBehind, racyWindowMs } from '../cache/index.js'
 import { commandWindows, type CommandWindows } from '../orchestrator/index.js'
 import { printable, xxh3 } from '../util/index.js'
 import * as ui from '../ui/index.js'
-import { gitIgnored, gitSpeller } from './watch-filter.js'
+import { gitIgnored, gitSpeller, gitTracks } from './watch-filter.js'
 import { modifiedBefore } from './watch-fs.js'
 
 const ABSENT = -1n
@@ -101,6 +101,8 @@ export interface JudgeContext {
   armedAt: number
   /** Whether a persistent server the last cycle started is still running. */
   held(): boolean
+  /** The project directories of the servers `held` says run; absent, a server may write anywhere. */
+  serverDirs?(): readonly string[]
   /** Projects whose uncached task may read a git-ignored file. */
   uncached(): ReadonlySet<string>
   /** Paths a task's inputs name outright: a git-ignored file at or under one is an input. */
@@ -168,6 +170,8 @@ export class ChangeJudge {
   // notice never came).
   private readonly streak = { abs: '', n: 0 }
   private readonly noticed = new Set<string>()
+  /** Files git came to track after the arm (`tracked`). */
+  private readonly trackedSince = new Set<string>()
 
   constructor(private readonly ctx: JudgeContext) {}
 
@@ -210,7 +214,7 @@ export class ChangeJudge {
     if (t < c.from || t > c.to) return
     if (c.windows.writerDuring('', abs, t, t + racyWindowMs(t, FILE_HASH_RACY_MS)) !== undefined)
       return
-    if (this.ctx.held() && !this.trackedAtArm(abs)) return
+    if (this.serverMayHaveWritten(abs)) return
     this.lastState.set(abs, UNSEEN)
   }
 
@@ -271,35 +275,62 @@ export class ChangeJudge {
     return false
   }
 
-  /** Whether git tracked `abs` when the loop armed; false when git could not answer. */
-  trackedAtArm(abs: string): boolean {
-    return this.ctx.trackedAtArm?.has(gitSpeller(this.ctx.workspaceRoot)(abs)) === true
+  /**
+   * Whether git tracks `abs`: at the arm, or since (a commit, a checkout),
+   * asked of git then; false when git could not answer at the arm.
+   */
+  tracked(abs: string): boolean {
+    const atArm = this.ctx.trackedAtArm
+    if (atArm === undefined) return false
+    const spelled = gitSpeller(this.ctx.workspaceRoot)(abs)
+    if (atArm.has(spelled) || this.trackedSince.has(spelled)) return true
+    if (!gitTracks(this.ctx.workspaceRoot, spelled)) return false
+    this.trackedSince.add(spelled)
+    return true
   }
 
-  /** `spell` (git's spelling, see `gitSpeller`) given: a held server's write counts outside a cycle too. */
-  private writtenDuringLastCycle(abs: string, spell?: (p: string) => string): boolean {
+  /**
+   * Whether a server still running may have written `abs`: a file in its
+   * own project (not one nested there) that git does not track. A file git
+   * tracks is the user's: three saves of one source file were told to
+   * .gitignore it as a server's write (WD-7), and so were a file committed
+   * since the arm and a new file in another project.
+   */
+  private serverMayHaveWritten(abs: string): boolean {
+    if (!this.ctx.held()) return false
+    const dirs = this.ctx.serverDirs?.()
+    if (
+      dirs !== undefined &&
+      !dirs.some((d) => abs.startsWith(d + path.sep) && this.ctx.fenced?.(d, abs) !== true)
+    )
+      return false
+    return !this.tracked(abs)
+  }
+
+  /** `byServer`: a server the last cycle left running counts as that cycle (`serverMayHaveWritten`). */
+  private writtenDuringLastCycle(abs: string, byServer = false): boolean {
     // A server the last cycle left running is still that cycle's: its
     // writes land after the cycle ended, and with a closed window a dev
     // server that rewrites a log in its project restarted itself forever
     // with no word of it, 12 restarts in 8 s (item 948). The initial run's
-    // server is one too, from the arm on. Not a tracked file: that is the
-    // user's edit, and three saves of one source file were told to
-    // .gitignore it as a server's write (WD-7).
-    const open =
-      spell !== undefined && this.ctx.held() && this.ctx.trackedAtArm?.has(spell(abs)) !== true
-    if (this.lastCycle === undefined && !open) return false
+    // server is one too, from the arm on.
+    const last = this.lastCycle
+    if (last === undefined && !(byServer && this.ctx.held())) return false
+    let m: number
     try {
       // The later of the two clocks: a cache hit restores an output with
       // the mtime it was saved with, and read by mtime alone the restore
       // was the user's edit and ran one more cycle (solid, 2026-10-15).
       // The restore's write moves the ctime.
       const st = fs.statSync(abs)
-      const m = Math.max(st.mtimeMs, st.ctimeMs)
-      const start = this.lastCycle?.start ?? this.ctx.armedAt
-      return m >= start && (open || m <= this.lastCycle!.end)
+      m = Math.max(st.mtimeMs, st.ctimeMs)
     } catch {
       return false
     }
+    if (m < (last?.start ?? this.ctx.armedAt)) return false
+    if (last !== undefined && m <= last.end) return true
+    // Last: it may ask git.
+    return byServer && this.serverMayHaveWritten(abs)
   }
 
   judge(): string | undefined {
@@ -383,7 +414,7 @@ export class ChangeJudge {
     if (firstAbs === undefined) return named
     this.cycle = { from: at, to: Infinity, windows: commandWindows() }
     const byServer = this.ctx.held()
-    if (!this.writtenDuringLastCycle(firstAbs, spell)) {
+    if (!this.writtenDuringLastCycle(firstAbs, true)) {
       this.streak.n = 0
       return named
     }

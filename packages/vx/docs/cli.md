@@ -1606,8 +1606,13 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    server the last cycle left running counts as that cycle for as long
    as it runs, so a log it rewrites in its project is named too, with
    `.gitignore` as the remedy (a persistent task declares no outputs;
-   item 948). A file git tracks is never blamed on the server: three
-   saves of a source file are the user's (WD-7). When any project's config declares
+   item 948). Only a file in a running server's own project, outside any
+   project nested there, is blamed on it, and never one git tracks, as
+   git answers when it would be blamed, so a file committed or checked
+   out since watch started counts: three saves of a source file are the
+   user's (WD-7). A new file not yet added to git in the server's own
+   project is the one case where the server and the user look alike:
+   `git add` it. When any project's config declares
    `inputs.workspaceFiles`, the per-project watchers are swapped
    for ONE recursive root watcher (boundaries are off for those globs,
    so a root-relative glob can name a file anywhere). That watcher
