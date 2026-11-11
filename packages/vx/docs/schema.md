@@ -1749,6 +1749,10 @@ exec: {
 }
 ```
 
+A write to such a per-run temp name (`.<hex>-<n>.bun-build`) gets no
+`fix:` grant, which the next run's new name would miss; the failure
+names this `ignore` glob instead.
+
 **Home.** In `allow` and `ignore`, `~` and `~/…` are the home
 directory; `~user/…` is refused when the config loads, naming the entry:
 vx does not look up another user's home (until 2026-11-06 `~root/x/` was
@@ -2059,7 +2063,13 @@ wall, so `read: ['.']` in a root project leaves it out too). On Linux
 a task whose grants name a `.git` gets `GIT_DISCOVERY_ACROSS_FILESYSTEM=1`
 (a value the task sets wins), since every sandbox mount is a filesystem
 boundary git's discovery stops at. `git rev-parse` and `git log` then answer as outside;
-`git status` reports a file the task may not read as deleted.
+`git status` reports a file the task may not read as deleted, so `git describe --dirty`
+(and anything built on status) says dirty on a clean tree. A version stamp needs the whole
+workspace readable: `read: ['../..', '../../.git']` from a project two levels down. git's
+`HEAD` is in no key, so such a task is uncached or keys it: `inputs: { workspaceRuntime: ['git describe --always --dirty'] }`.
+A task git finds no repository for (git probes `.git` by `stat`, which the trace does not
+report) fails with a hint naming the `.git` grant, or saying it lies outside the workspace and
+is walled on purpose.
 
 **Policy: fail on violation.** An undeclared read, or a write the
 sandbox refuses, fails the task, and a failed task is never cached.

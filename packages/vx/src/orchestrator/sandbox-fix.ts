@@ -162,7 +162,8 @@ export function sandboxFix(
         const wsRel = relPosix(dirs.root, v.path)
         if (!keyed.workspaceFiles(wsRel)) fix.workspaceFiles.add(taskGlobOf(wsRel))
       }
-    } else {
+    } else if (isPerRunTemp(v.path)) continue
+    else {
       const isDir =
         v.line.startsWith('mkdir') ||
         lstatSync(v.path, { throwIfNoEntry: false })?.isDirectory() === true
@@ -173,4 +174,37 @@ export function sandboxFix(
   for (const k of Object.keys(fix) as (keyof SandboxFix)[])
     if (fix[k].size > 0) out[k] = [...new Set([...fix[k]].map(mask))].sort()
   return Object.keys(out).length > 0 ? out : undefined
+}
+
+// `bun build --compile` stages `.<16 hex>-<n>.bun-build` in its cwd, a new
+// name each run: a grant naming one failed the next run on another, and a
+// Linux grant is a mount, so a glob grant covers no file made later.
+const isPerRunTemp = (abs: string): boolean => abs.endsWith('.bun-build')
+
+/**
+ * The note for a write refused at a per-run temp name, which `sandboxFix`
+ * grants no path for: the `ignore` glob the docs give (config.ts
+ * `SandboxConfig.ignore`), from the project. Undefined when there is none.
+ */
+export function perRunWriteHint(
+  violations: readonly SandboxViolation[],
+  projectDir: string,
+  workspaceRoot: string,
+): SandboxViolation | undefined {
+  const dirs = { project: toRealPath(projectDir), root: toRealPath(workspaceRoot) }
+  const globs = new Set<string>()
+  for (const v of violations)
+    if (v.hint !== true && v.path !== undefined && isPerRunTemp(v.path) && kindOf(v) === 'write') {
+      const dir = path.posix.dirname(grantPath(v.path, dirs))
+      globs.add(dir === '.' ? '*.bun-build' : `${dir}/*.bun-build`)
+    }
+  if (globs.size === 0) return undefined
+  const list = [...globs].sort().map((g) => `'${g.replace(/[\\']/g, '\\$&')}'`)
+  return {
+    timestamp: new Date(),
+    hint: true,
+    line:
+      `vx: a temp file named anew each run (bun build --compile's) cannot be granted; ` +
+      `ignore it instead: \`sandbox: { ignore: { write: [${list.join(', ')}] } }\`.`,
+  }
 }

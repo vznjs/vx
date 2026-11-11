@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { SandboxViolation } from '../src/exec/index.js'
-import { sandboxFix } from '../src/orchestrator/sandbox-fix.js'
+import { perRunWriteHint, sandboxFix } from '../src/orchestrator/sandbox-fix.js'
 import { CREDENTIAL_STORES } from '../src/orchestrator/sandbox-request.js'
 import { anyTaskGlob } from '../src/util/index.js'
 import { validateProjectConfig } from '../src/workspace/config-schema.js'
@@ -293,5 +293,23 @@ describe('sandboxFix', () => {
       expect(all.filter((f) => new Bun.Glob(entry!).match(f))).toEqual([n])
       expect(all.filter(anyTaskGlob([entry!]))).toEqual([n])
     }
+  })
+  // `bun build --compile` stages a random `.<hex>-<n>.bun-build` in its
+  // cwd: the fix granted that one name, and the next run used another.
+  it('grants no per-run temp name, and names the ignore glob the docs give instead', () => {
+    mkdirSync(path.join(dir, 'sub'))
+    const temps = [
+      '.822aa61db00eaa87-00000000.bun-build',
+      'sub/.0123456789abcdef-00000001.bun-build',
+    ]
+    const denied = [
+      ...temps.map((t) => v(`openat(${t}) = -1 EROFS`, ['write'], path.join(dir, t))),
+      v('mkdir(out) = -1 EROFS', ['write'], path.join(dir, 'out')),
+    ]
+    expect(sandboxFix(denied, dir, dir)).toEqual({ write: ['out/'] })
+    const hint = perRunWriteHint(denied, dir, dir)
+    expect(hint?.hint).toBe(true)
+    expect(hint?.line).toContain("ignore: { write: ['*.bun-build', 'sub/*.bun-build'] }")
+    expect(perRunWriteHint(denied.slice(2), dir, dir)).toBeUndefined()
   })
 })
