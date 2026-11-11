@@ -628,6 +628,14 @@ describe('applyFilters with the workspace root as a project', () => {
     expect(pick).toEqual([])
   })
 
+  it('a one-level path glob takes no root project; `./**` reaches it as zero dirs', () => {
+    // `Bun.Glob('*')` matches '', the root's relative dir: `./*` ran `//`.
+    expect(sel('./*')).toEqual([])
+    expect(sel('{*}')).toEqual([])
+    expect(sel('./*/*')).toEqual(['admin', 'bar', 'docs', 'web'])
+    expect(sel('./**')).toEqual(['admin', 'bar', 'docs', 'root', 'web'])
+  })
+
   it('a project nested in a project is left out of the outer path (D-43)', () => {
     const nested = [...projects, mkProject('web-example', `${ROOT}/apps/web/examples/x`)]
     const g = buildPackageGraph(nested)
