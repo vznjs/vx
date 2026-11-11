@@ -370,20 +370,17 @@ describe('task timeout — classification + escalation', () => {
       await addProject(
         fixture.root,
         'a',
-        `export default { tasks: { run: { exec: { command: "trap '' TERM; exec sleep 10", timeout: '1s' } } } }`,
+        `export default { tasks: { run: { exec: { command: "trap '' TERM; exec sleep 600", timeout: '1s' } } } }`,
       )
-      const started = Date.now()
       const r = await run({
         cwd: fixture.root,
         tasks: ['run'],
         projects: ['a'],
         log: capturingLogger(fixture),
       })
-      const elapsed = Date.now() - started
+      // Ended by the SIGKILL escalation: the sleep outlasts the test's timeout.
       expect(r.ok).toBe(false)
       expect(r.outcomes[0]!.status).toBe('failed')
-      // Bounded by the SIGKILL escalation, NOT the 10s sleep.
-      expect(elapsed).toBeLessThan(6000)
       // And the line names the signal that did it: it said SIGTERM over an
       // exit 137 (item 1063). signal-death.test.ts holds the SIGTERM case.
       expect(fixture.err.join('')).toContain(

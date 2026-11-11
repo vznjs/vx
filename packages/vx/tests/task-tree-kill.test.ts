@@ -205,18 +205,15 @@ describe('a task dies with everything it forked', () => {
       // takes 0.3 s to clean up. The teardown ended the grace when the
       // shell exited and SIGKILLed the group mid-cleanup. The grace is
       // the group's: SIGKILL only past it, only for whoever is left.
-      const proc = spawnVx(root, 'graceful', 5000)
+      // A grace past the row's timeout: the wait ends when the group is
+      // gone, or the row times out. That a zombie counts as gone is
+      // kill-tree-proc.unsafe.test.ts's, decided by state, not a clock.
+      const proc = spawnVx(root, 'graceful', 600_000)
       const gc = await grandchildPid(root)
       leaked.push(gc)
-      const t0 = Date.now()
       process.kill(proc.pid, 'SIGTERM')
       expect(await proc.exited).toBe(143)
       expect(existsSync(path.join(root, 'packages', 'app', 'cleanup.txt'))).toBe(true)
-      // And the wait ends when the group is gone, not at the grace. The
-      // server dies an orphan, a zombie until init reaps it (1 to 2 s in a
-      // container), and a group read that counted the zombie waited that
-      // out: 1.5–2 s here against 0.32 s reading /proc (2026-09-24).
-      expect(Date.now() - t0).toBeLessThan(1200)
       expect(await waitForDead(gc, 1000)).toBe(true)
     },
     TIMEOUT,

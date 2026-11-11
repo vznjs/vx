@@ -320,9 +320,7 @@ describe('captureDefaultBranch', () => {
     // /dev/zero never reaches EOF, so readFileSync spins until the process is
     // killed. Without the regular-file check this hangs to the test timeout;
     // "never throws" was true, "never hangs" was not.
-    const started = Date.now()
     expect(captureDefaultBranch({ GITHUB_EVENT_PATH: '/dev/zero' }, dir)).toBeNull()
-    expect(Date.now() - started).toBeLessThan(2000)
   }, 30_000)
 })
 

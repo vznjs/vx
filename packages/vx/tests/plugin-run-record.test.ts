@@ -51,13 +51,13 @@ const WIRE = pluginSource(
   `{ cache: () => ({
       has: async (h) => globalThis.__vxWire.has(h),
       get: async (h) => globalThis.__vxWire.has(h) ? { body: new Blob([globalThis.__vxWire.get(h)]), durationMs: undefined } : null,
-      put: async (h, b) => { globalThis.__vxPuts?.push(Date.now()); globalThis.__vxWire.set(h, new Uint8Array(await b.arrayBuffer())) },
+      put: async (h, b) => { if (globalThis.__vxPutSeen) await Bun.write(globalThis.__vxPutSeen, ''); globalThis.__vxWire.set(h, new Uint8Array(await b.arrayBuffer())) },
     }) }`,
 )
 
 const box = globalThis as unknown as {
   __vxWire: Map<string, Uint8Array>
-  __vxPuts?: number[]
+  __vxPutSeen?: string
   __vxShown?: unknown
 }
 
@@ -196,22 +196,21 @@ it('the footer counts each task whose run bytes reached the remote', async () =>
 }, 30_000)
 
 it("a task's bytes leave when it ends, not when the run does", async () => {
+  // slow#test ends only once the remote took a put, so the order is proven,
+  // not timed: were bytes held to the run's end, slow#test would give up.
   await fixture()
   await Bun.write(
     path.join(root, 'slow/vx.config.mjs'),
-    `export default { tasks: { test: { exec: { command: 'sleep 1.5 && echo slow' } } } }`,
+    `export default { tasks: { test: { exec: { command: 'for i in $(seq 200); do if [ -e ../put-seen ]; then echo saw > ../slow-saw-put; exit 0; fi; sleep 0.1; done' } } } }`,
   )
   gitInitCommit(root, 'slow')
-  box.__vxPuts = []
+  box.__vxPutSeen = path.join(root, 'put-seen')
   try {
-    const started = Date.now()
     expect((await runAs(true, ['lib#test', 'slow#test'], { continueMode: 'always' })).ok).toBe(
       false,
     )
-    // lib#test's log and outputs went while slow#test still ran.
-    expect(box.__vxPuts.length).toBeGreaterThan(0)
-    expect(box.__vxPuts[0]! - started).toBeLessThan(1_200)
+    expect(await Bun.file(path.join(root, 'slow-saw-put')).exists()).toBe(true)
   } finally {
-    delete box.__vxPuts
+    delete box.__vxPutSeen
   }
 }, 30_000)

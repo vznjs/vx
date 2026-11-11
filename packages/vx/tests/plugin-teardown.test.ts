@@ -92,13 +92,9 @@ describe('teardownPlugins — a dropped result is reported', () => {
   // call that timed out still holds the run's exit: bin.ts is
   // `process.exit(await run(...))`, so an unbounded await drains the event loop
   // with no exit code pending and a failed run reports green.
+  // The teardown never settles: an unbounded await is the test's timeout.
   it('the bound is real — a hung teardown returns, it does not hold the run', async () => {
-    const started = Date.now()
     await teardownPlugins([testPlugin('org/hung', { teardown: never })], () => {})
-    const elapsed = Date.now() - started
-    // Generous upper bound: this asserts "bounded", not a precise deadline,
-    // so it cannot flake on a loaded box.
-    expect(elapsed).toBeLessThan(BOUND_MS * 12)
   })
 
   // CONTROL: a broken neighbour must not cost a healthy plugin its teardown.
@@ -302,13 +298,14 @@ describe('the lifecycle is reached on a run a signal stops', () => {
   }
 
   // The suite's own 120 ms bound would end a hung teardown before any
-  // second signal could: 10 s here, so the second signal is what ends it.
+  // second signal could: past the test's timeout here, so the second
+  // signal is the only thing that ends it.
   const started = async (): Promise<ReturnType<typeof Bun.spawn>> => {
     const proc = Bun.spawn([process.execPath, BIN, 'run', 'slow', '--all'], {
       cwd: root,
       stdout: 'pipe',
       stderr: 'pipe',
-      env: { ...process.env, VX_TEST_KILL_GRACE: '200ms', VX_TEST_TEARDOWN_TIMEOUT: '10000ms' },
+      env: { ...process.env, VX_TEST_KILL_GRACE: '200ms', VX_TEST_TEARDOWN_TIMEOUT: '600000ms' },
     })
     const up = path.join(root, 'a', 'up.txt')
     const deadline = Date.now() + 10_000
@@ -339,10 +336,8 @@ describe('the lifecycle is reached on a run a signal stops', () => {
     proc.kill('SIGINT')
     const deadline = Date.now() + 10_000
     while (!(await lifecycle()).includes('teardown') && Date.now() < deadline) await Bun.sleep(20)
-    const t0 = Date.now()
     proc.kill('SIGINT')
     expect(await proc.exited).toBe(130)
-    expect(Date.now() - t0).toBeLessThan(1_500)
     expect(await lifecycle()).toEqual(['flush', 'teardown'])
   }, 30_000)
 

@@ -1012,11 +1012,10 @@ describe('startedVersion', () => {
   it('gives up on a binary that does not answer, so the rollback can run', async () => {
     // The answer decides the rollback, and it was unbounded: a new binary
     // that hung on start held `vx upgrade` forever with the old one never
-    // put back (E-22). Six seconds of silence against a 300 ms bound.
-    const hung = await fake('hung', 'exec sleep 6')
-    const t0 = performance.now()
+    // put back (E-22). A binary that never answers: an unbounded wait
+    // hangs to the test's timeout.
+    const hung = await fake('hung', 'exec sleep 600')
     expect(startedVersion(hung, 300)).toBeNull()
-    expect(performance.now() - t0).toBeLessThan(3_000)
   }, 30_000)
 })
 

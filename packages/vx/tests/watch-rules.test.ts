@@ -1028,10 +1028,9 @@ describe('armWatcher on an unwritable directory', () => {
       const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-arm-ro-'))
       chmodSync(dir, 0o500)
       try {
-        const t0 = Date.now()
-        const armed = armWatcher(dir, true, () => {}, 2_000)
+        // A budget past the test's timeout: sitting it out fails the test.
+        const armed = armWatcher(dir, true, () => {}, 600_000)
         expect(await armed.ready).toBe(false)
-        expect(Date.now() - t0).toBeLessThan(1_000) // it did not sit out the 2 s budget
         armed.watcher.close()
       } finally {
         chmodSync(dir, 0o700)
