@@ -39,6 +39,7 @@ export {
   OUTPUT_DIRS_RACY_MS,
   racyWindowMs,
   hashFileSeen,
+  hashFilesOf,
   type SchemaReset,
   SCHEMA_VERSION,
   storedLog,

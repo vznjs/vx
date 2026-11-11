@@ -333,6 +333,75 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
   )
 
   it(
+    'keys with no index OID to trust: a file several tasks read is stat-ed twice a run, not per task',
+    async () => {
+      const root = await makeWorkspace({ dir, git: false })
+      // `text` drops every index OID (a clean filter may rewrite bytes), so
+      // each input is hashed from the worktree, as in vueuse.
+      await writeFile(path.join(root, '.gitattributes'), '* text=auto eol=lf\n')
+      await mkdir(path.join(root, 'shared'))
+      await writeFile(path.join(root, 'shared', 'a.txt'), 'a')
+      // `gen` runs first and saves, so the cold run's keys are taken after a
+      // write and leave no fold memo: the next run derives every key.
+      await addProject(root, 'gen', {
+        config: `export default { tasks: { build: {
+          exec: { command: 'mkdir -p out && echo x > out/x.txt' },
+          inputs: { files: ['src/**'] }, outputs: { files: ['out/**'] }, cache: true,
+        } } }\n`,
+        files: { 'src/g.txt': 'g' },
+      })
+      // Three declarations, so the workspace listing resolves three times.
+      for (const [name, extra] of [
+        ['a', []],
+        ['b', ['b-only/**']],
+        ['c', ['c-only/**']],
+      ] as const) {
+        await addProject(root, name, {
+          config: `export default { tasks: { build: {
+            dependsOn: ['gen#build'],
+            exec: { command: 'mkdir -p dist && cp ../../shared/a.txt dist/' },
+            inputs: { files: ['src/**'], workspaceFiles: ${JSON.stringify(['shared/**', ...extra])} },
+            outputs: { files: ['dist/**'] }, cache: true,
+          } } }\n`,
+          files: { 'src/s.txt': name },
+        })
+      }
+      const lock = Bun.spawnSync({
+        cmd: [process.execPath, path.join(SRC, 'bin.ts'), 'lock'],
+        cwd: root,
+        stderr: 'pipe',
+      })
+      expect(`${lock.exitCode}\n${lock.stderr.toString()}`).toBe('0\n')
+      gitInitCommit(root)
+      const vx = ['run', 'build', '--all']
+      const prime = Bun.spawnSync({
+        cmd: [process.execPath, path.join(SRC, 'bin.ts'), ...vx],
+        env: { ...process.env, VX_DEBUG_DUMPABLE: '1' },
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      expect(`${prime.exitCode}\n${prime.stderr.toString()}`).toStartWith('0\n')
+      const calls = await trace(
+        dir,
+        `
+        process.chdir(${JSON.stringify(root)})
+        process.argv.splice(2, Infinity, ...${JSON.stringify(vx)})
+        await import('$SRC/bin.ts')
+        `,
+      )
+      // The run's stat of it (`statOf`: the files token and the listing's
+      // existence check), then the hash's own, taken once for all three
+      // keys. Taken per task and per declaration, it was seven.
+      expect(on(calls, path.join(root, 'shared', 'a.txt')).filter((c) => c === 'lstat')).toEqual([
+        'lstat',
+        'lstat',
+      ])
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a hit on an inline artifact asks the file system nothing about it; a file hit stats it once',
     async () => {
       const cacheDir = path.join(dir, 'hits', 'cache')

@@ -1048,6 +1048,8 @@ const seenHashers = new WeakMap<
     /** The layer's `hashFile` when it registered: one replaced since is not this. */
     method: CacheLayer['hashFile']
     hash: (file: string, seen: (ctimeMs: number) => void) => Promise<string>
+    /** `hashFiles`: one memo query for them all. */
+    many: (files: readonly string[]) => Promise<Map<string, string>>
   }
 >()
 
@@ -1068,10 +1070,36 @@ export function hashFileSeen(
     : own.hash(file, seen)
 }
 
+/**
+ * Each of `files` by `layer.hashFile`'s answer, with one memo query for
+ * them all when the layer is core's own cache (`hashFiles`), where one
+ * point query per file took the lock each time: 10 of vueuse's 45 ms of
+ * keys (2026-11-11). A file that cannot be hashed is absent: the caller
+ * asks `hashFile` for it, and its error is that call's.
+ */
+export async function hashFilesOf(
+  layer: CacheLayer,
+  files: readonly string[],
+): Promise<Map<string, string>> {
+  const own = seenHashers.get(layer)
+  if (own !== undefined && own.method === layer.hashFile) return own.many(files)
+  const out = new Map<string, string>()
+  await Promise.all(
+    files.map((f) =>
+      layer.hashFile(f).then(
+        (id) => void out.set(f, id),
+        () => {},
+      ),
+    ),
+  )
+  return out
+}
+
 /** `to` answers `hashFileSeen` as `from` does: a layer over core's cache. */
 export function shareSeenHasher(from: CacheLayer, to: CacheLayer): void {
   const own = seenHashers.get(from)
-  if (own !== undefined) seenHashers.set(to, { method: to.hashFile, hash: own.hash })
+  if (own !== undefined)
+    seenHashers.set(to, { method: to.hashFile, hash: own.hash, many: own.many })
 }
 
 export class Cache implements CacheLayer {
@@ -1540,6 +1568,7 @@ export class Cache implements CacheLayer {
     seenHashers.set(this, {
       method: this.hashFile,
       hash: (file, seen) => this.guard(() => this.files.hashFile(file, seen)),
+      many: (files) => this.hashFiles(files),
     })
     this.outputs = new OutputIndex(this.db, this.writeBlocked === null && !this.inspecting)
     this.folds = new IndexFoldMemo(this.db, this.write && !this.inspecting)

@@ -165,6 +165,9 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     { digests: Map<string, string | undefined>; records: Map<string, string | null> }
   >()
   statOf(abs: string): Stats | undefined
+  identityOf(abs: string): string | undefined
+  get factsEpoch(): number
+  learnIdentities(ids: ReadonlyMap<string, string>, epoch: number): void
   noteFilesDigest(
     projectDir: string,
     snapshot: readonly string[],
