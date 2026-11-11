@@ -57,7 +57,10 @@ async function main(): Promise<void> {
       () => require('./index.js') as Record<string, unknown>,
       () => require('./config.js') as Record<string, unknown>,
     )
-    const code = await run(argv)
+    // A refusal too: work a verb left running (a config bundle) finishes,
+    // never cut by the exit below with its temp dir left behind.
+    const { settleBeforeExit } = await import('./util/index.js')
+    const code = await run(argv).finally(settleBeforeExit)
     // Not `process.exit` here: Bun drops what a pipe has not yet taken
     // when it follows a large write (300 KB written, 64 KiB delivered;
     // `vx history --format json` was cut mid-string, 2026-09-15). The code

@@ -230,6 +230,33 @@ describe('workspace config bytecode', () => {
   )
 
   it(
+    'a run that makes .vx/cache leaves the bundle, and a reading verb makes neither',
+    async () => {
+      // A cold run (no .vx/cache yet) built nothing, so the run after it
+      // built the bundle inside its `workspace config` stage (~30 ms).
+      await rm(path.join(root, '.vx', 'cache'), { recursive: true })
+      await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws' }))
+      await writeFile(
+        path.join(root, 'vx.config.mjs'),
+        "export default { name: 'ws', tasks: { hi: { exec: { command: 'true' } } } }\n",
+      )
+      const vx = (...args: string[]): void => {
+        const p = Bun.spawnSync([process.execPath, BIN, ...args], { cwd: root, stderr: 'pipe' })
+        expect(p.exitCode, p.stderr.toString()).toBe(0)
+      }
+      expect(Bun.spawnSync(['git', 'init', '-q'], { cwd: root }).exitCode).toBe(0)
+      probe()
+      expect(await compiled()).toEqual([])
+      vx('lock')
+      vx('run', 'hi')
+      expect((await compiled()).some((f) => f.endsWith('.js.jsc'))).toBe(true)
+      expect((await compiled()).filter((f) => f.startsWith('.tmp-'))).toEqual([])
+      expect(probe().bundled).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'the bundle stays out of git under a cache dir elsewhere and no .vx/.gitignore',
     async () => {
       const cacheDir = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-bytecode-cache-')))
