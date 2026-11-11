@@ -126,3 +126,27 @@ it(
   },
   TIMEOUT,
 )
+
+// A cached `e2e` on a dev server that declares no `inputs` folds a key no
+// later run derives: the footer said `1 not saved` and nothing said why.
+it(
+  'a cached task that folds a task with no inputs says why it is not saved',
+  async () => {
+    await addProject(root, 'app', {
+      config: `export default { tasks: {
+        serve: { exec: { command: 'true' } },
+        e2e: { dependsOn: ['serve'], exec: { command: 'echo ok > out.txt' },
+               inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true } } }`,
+      files: { 'src/a.txt': 'a', '.gitignore': 'out.txt\n' },
+    })
+    gitIn(root)('add', '-A')
+    gitIn(root)('commit', '-q', '-m', 'fixture')
+    const r = await run({ cwd: root, tasks: ['app#e2e'], log, handleSignals: false })
+    expect(r.outcomes.find((o) => o.node.id === 'app#e2e')?.saved).toBeUndefined()
+    expect(lines.filter((l) => l.startsWith('[vx] app#e2e:'))).toEqual([
+      '[vx] app#e2e: not saved — its key folds app#serve, which declares no `inputs`, so no ' +
+        'later run derives it; declare inputs on app#serve',
+    ])
+  },
+  TIMEOUT,
+)

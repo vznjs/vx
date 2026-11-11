@@ -46,6 +46,7 @@ import {
   sandboxReads,
   maskCaptured,
   BoundedCapture,
+  toRealPath,
 } from '../exec/index.js'
 import {
   encodeOutputLog,
@@ -1345,6 +1346,15 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // A local request carries no timer, so the runner alone decides there.
     if (timeoutFired && res.timedOut !== true) res = { ...res, timedOut: true }
     violations = [...res.violations]
+    // A pass that was denied a file its key holds ran without what the key
+    // says it saw (a build that falls back on a hidden root
+    // `tsconfig.base.json` emits other code): the denial fails it. One the
+    // key does not hold stays silent: tools probe many paths.
+    if (userSandbox && res.hiddenReads !== undefined && described !== undefined) {
+      const keyed = keyedHidden(res.hiddenReads, described.inputs.files, args.workspaceRoot)
+      if (keyed.length > 0)
+        violations.push(...keyed, keyedHiddenLine(keyed, node.projectDir, args.workspaceRoot))
+    }
     // A denial under a dependency the key does not answer for says only
     // ENOENT; the line beside it names the package and how to key it. Only
     // with a denial there, so it never reddens a pass.
@@ -2082,6 +2092,13 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         `describes — the result stands, but is not saved`,
     )
   }
+  // The footer counted it `not saved` and nothing said why (`vx why` did).
+  if (keylessBy !== undefined && willWrite && effectiveExitCode === 0) {
+    warnOf(log)(
+      `[vx] ${node.id}: not saved — its key folds ${keylessBy}, which declares no \`inputs\`, ` +
+        `so no later run derives it; declare inputs on ${keylessBy}`,
+    )
+  }
 
   const finalViolations = violations
   const fixOf = (fix: TaskOutcome['sandboxFix']) => (fix === undefined ? {} : { sandboxFix: fix })
@@ -2150,6 +2167,51 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
           ),
         }
       : {}),
+  }
+}
+
+/** The hidden reads of files the key holds, one record per path. */
+function keyedHidden(
+  hidden: readonly SandboxViolation[],
+  files: readonly { readonly path: string }[],
+  workspaceRoot: string,
+): SandboxViolation[] {
+  const root = toRealPath(workspaceRoot)
+  const held = new Set(files.map((f) => f.path))
+  const seen = new Set<string>()
+  return hidden.filter((v) => {
+    const rel = relPosix(root, v.path!)
+    if (seen.has(rel) || !held.has(rel)) return false
+    seen.add(rel)
+    return true
+  })
+}
+
+/** The line beside a keyed hidden read: what was hidden and the grant that shows it. */
+function keyedHiddenLine(
+  keyed: readonly SandboxViolation[],
+  projectDir: string,
+  workspaceRoot: string,
+): SandboxViolation {
+  const shown = keyed
+    .slice(0, 5)
+    .map((v) => v.path)
+    .join(', ')
+  const more = keyed.length > 5 ? ` and ${keyed.length - 5} more` : ''
+  const grants = (sandboxFix(keyed, projectDir, workspaceRoot)?.read ?? []).map((g) =>
+    g.includes("'") ? JSON.stringify(g) : `'${g.replaceAll('\\', '\\\\')}'`,
+  )
+  const said =
+    `vx: the sandbox hid a file this task's key holds, so the run did not see what its key ` +
+    `says: ${shown}${more}.`
+  // A credential store is walled on purpose and never suggested (sandbox-fix.ts).
+  return {
+    timestamp: new Date(),
+    hint: true,
+    line:
+      grants.length === 0
+        ? `${said} It is walled on purpose, so vx suggests no grant for it.`
+        : `${said} Grant it, e.g. \`allow: { read: [${grants.join(', ')}] }\`.`,
   }
 }
 

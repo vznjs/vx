@@ -109,6 +109,7 @@ import {
   srtDefaultWritePaths,
 } from './sandbox-deny-scan.js'
 import {
+  hiddenReadRecords,
   hiddenReadsOutside,
   parseStraceViolations,
   refusedConnections,
@@ -1534,6 +1535,12 @@ export interface SandboxViolation {
 export interface SandboxedRunResult extends RunResult {
   /** Violations captured during this task. Empty when nothing tripped. */
   violations: SandboxViolation[]
+  /**
+   * A cached task that passed: the reads the wall hid under its workspace
+   * (`keyRoot`), never violations. Core fails the task on one its key
+   * holds (execute-task.ts `keyedHidden`). Absent when there are none.
+   */
+  hiddenReads?: SandboxViolation[]
 }
 
 /**
@@ -2852,10 +2859,23 @@ async function runSandboxedOnce(
       violations.push(hiddenReadsHint(hidden, baselines.denyRead, args.reportWithin, args.keyRoot))
   }
 
+  // On a pass only a read under the workspace can be one the key holds,
+  // so nothing is stat'ed here: core holds the paths against its key.
+  const root = exitCode === 0 && args.keyRoot !== undefined ? toRealPath(args.keyRoot) : undefined
+  const hiddenReads =
+    root === undefined || recorded.length === 0
+      ? []
+      : hiddenReadRecords(recorded, {
+          within: args.reportWithin,
+          linked: args.reportLinked,
+          config: args.config,
+        }).filter((v) => atOrUnder(v.path!, root))
+
   afterCommand(SandboxManager)
 
   return {
     exitCode,
+    ...(hiddenReads.length > 0 ? { hiddenReads } : {}),
     durationMs: Math.round(runTime() - start),
     stdout,
     stderr,

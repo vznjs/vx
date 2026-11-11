@@ -558,12 +558,29 @@ Semantics:
 - **Downstream unblocks on ready, not on exit.** Useful for e2e tests
   that need a dev server up first:
   ```ts
-  'dev:run':  { exec: { command: 'vite', persistent: { readyWhen: 'Local:' } } },
-  'e2e':      { dependsOn: ['dev:run'], exec: { command: 'playwright test' } },
+  'dev:run': {
+    exec: {
+      command: 'vite --port 5173 --strictPort',
+      persistent: { readyWhen: 'Local:' },
+      // Bounds the server's writes, so `e2e` is probed before it boots;
+      // the port list lets `e2e` reach it from outside the sandbox.
+      sandbox: { allow: { read: ['.'], write: ['node_modules/.vite/'], localBinding: [5173] } },
+    },
+    // `e2e`'s key folds this one: with no `inputs` it is new each run,
+    // and `e2e` is never saved.
+    inputs: { files: ['src/**', 'index.html', 'vite.config.ts'] },
+  },
+  e2e: {
+    dependsOn: ['dev:run'],
+    exec: { command: 'playwright test' },
+    inputs: { files: ['e2e/**'] },
+    outputs: { files: ['test-results/**'] },
+    cache: true,
+  },
   ```
 - **Not started when nothing needs it.** A persistent task you did not
   request, whose every dependant is a confirmed cache hit, local or
-  remote, is never spawned: a fully cached `vx run e2e` does not boot the server
+  remote, is never spawned: with the example above, a fully cached `vx run e2e` does not boot the server
   `e2e` depends on, and the server is in no outcome or count. A group
   between them that nobody requested (`env: { dependsOn: ['dev'] }`) is
   passed through for local hits, and so is a server nobody requested:
@@ -2005,7 +2022,12 @@ where it tried. So is a read the wall hid of a path that exists on the
 host, with the grant spelled from the project (`'../../tsconfig.base.json'`)
 and, for a cached task, the `inputs.workspaceFiles` entry that keys it
 (`'tsconfig.base.json'`, a file `!cfg` escaped `'\\!cfg'`; a grant alone leaves an edit there a stale hit):
-the tool said only "not found". To reach a path outside the project but
+the tool said only "not found". A cached task that PASSES though the
+wall hid a file its key holds (`inputs.workspaceFiles`) fails, with the
+denial and the grant: a build that falls back on a hidden root
+`tsconfig.base.json` emits other code, and its key says it saw the file.
+A hidden read of a file the key does not hold stays silent on a pass
+(tools probe many paths). To reach a path outside the project but
 inside the workspace — a workspace-level fixture — declare it; a path
 outside the workspace is not walled (above).
 

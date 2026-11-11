@@ -768,22 +768,38 @@ export function hiddenReadsOutside(
     skip: readonly string[]
   },
 ): string[] {
-  const reported = reportedWithin(opts.within, opts.linked ?? [])
   const home = toRealPath(opts.within)
   const skip = opts.skip.map(toRealPath)
   const found = new Map<string, boolean>()
-  for (const v of filterIgnored(describe(violations), opts.config.ignore)) {
-    const p = v.path
-    if (p === undefined || v.hint === true || !v.ignorable?.includes('read') || reported(v))
-      continue
-    if (found.has(p) || atOrUnder(home, p) || skip.some((s) => atOrUnder(p, s))) continue
+  for (const { path: p } of hiddenReadRecords(violations, opts)) {
+    if (found.has(p!) || atOrUnder(home, p!) || skip.some((s) => atOrUnder(p!, s))) continue
     try {
-      found.set(p, statSync(p).isDirectory())
+      found.set(p!, statSync(p!).isDirectory())
     } catch {
       // Not on the host either: the tool's own miss.
     }
   }
   return [...found].sort((a, b) => Number(a[1]) - Number(b[1])).map(([p]) => p)
+}
+
+/**
+ * The read denials the wall hid outside the reported directories, each
+ * record described and with its path, the user's `ignore` applied: what
+ * `hiddenReadsOutside` names, and what a passing cached task hands core to
+ * hold against its key (`SandboxedRunResult.hiddenReads`).
+ */
+export function hiddenReadRecords(
+  violations: readonly SandboxViolation[],
+  opts: { within: string; linked?: readonly string[]; config: ResolvedSandboxConfig },
+): SandboxViolation[] {
+  const reported = reportedWithin(opts.within, opts.linked ?? [])
+  return filterIgnored(describe(violations), opts.config.ignore).filter(
+    (v) =>
+      v.path !== undefined &&
+      v.hint !== true &&
+      v.ignorable?.includes('read') === true &&
+      !reported(v),
+  )
 }
 
 /** Every record described: a seatbelt one parsed, a Linux one as produced. */

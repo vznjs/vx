@@ -250,6 +250,7 @@ export interface SandboxViolation {
 }
 export interface SandboxedRunResult extends RunResult {
   violations: SandboxViolation[]
+  hiddenReads?: SandboxViolation[] // a cached task's pass: reads the wall hid under keyRoot (never violations)
 }
 export function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRunResult>
 
@@ -372,6 +373,8 @@ export function refusedWrites(
 export function refusedWritesOutside(violations, opts: { within; linked?; config; skip }): string[]
 // the reads the wall hid of paths that exist on the host, files first: a failed task's hint
 export function hiddenReadsOutside(violations, opts: { within; linked?; config; skip }): string[]
+// the read records the wall hid outside the reported directories, described, `ignore` applied
+export function hiddenReadRecords(violations, opts: { within; linked?; config }): SandboxViolation[]
 // Linux: the proxy's `deny network-outbound <host>:<port> (<reason>)` records
 export function refusedConnections(records: readonly string[]): SandboxViolation[]
 ```
@@ -598,6 +601,14 @@ told to grant `../../home/.npmrc` until 2026-11-08. For a cached task
 read the file unkeyed and an edit there was a stale hit. The entry is
 spelled by `taskGlobOf`, as the fix's is: `'\\!cfg'` for a file `!cfg`,
 which raw is a negation that keyed nothing.
+
+A cached task that PASSED hands core the reads the wall hid under the
+workspace (`SandboxedRunResult.hiddenReads`, filtered by
+`hiddenReadRecords`, nothing stat'ed); core fails the task when one is a
+file its key holds (execute-task.ts `keyedHidden`): `bun build` falling
+back on a hidden root `tsconfig.base.json` compiled JSX for React, passed,
+and saved that under a key holding the file. A hidden read the key does
+not hold stays silent: tools probe many paths.
 
 bwrap enters the task's cwd only if a mount holds it, and otherwise
 `$HOME`, with no word: a project granted no read (`sandbox: {}`, its own
