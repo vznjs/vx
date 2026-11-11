@@ -10,6 +10,7 @@ and key derivation logic live here.
 
 - `layer.ts` — the CONTRACT (`CacheLayer`) and every shape that crosses
   it: `CacheKeyInput`, `CacheEntry`, `RunRecord`, `InvocationRecord`,
+  `MeasureRecord` (a plugin measure `recordMeasures` keeps as a timing),
   output fingerprint rows, stats and prune options, `CorruptArtifactError`,
   `ArtifactVanishedError`.
   No implementation.

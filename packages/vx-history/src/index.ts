@@ -421,6 +421,14 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
       // tried a default-branch import (and paid a query per group).
       const ids: string[] = []
       for (const n of nodes.values()) if (n.config.exec?.command !== undefined) ids.push(n.id)
+      // What other plugins measure (a worker's warm-up) is timed as a task
+      // is: fetched and imported with the tasks, never ordered.
+      // A core before measures (the perf bench's base arm runs this
+      // plugin's source) hands none.
+      const measures: ReadonlyMap<string, string> =
+        (ctx as Partial<typeof ctx>).measures ?? new Map()
+      const timed = measures.size === 0 ? ids : [...ids, ...measures.keys()]
+      const timedDefs = measures.size === 0 ? defs : new Map([...defs, ...measures])
       let table: ReadonlyMap<string, TaskResources>
       let provider: LocalHistory
       try {
@@ -464,13 +472,13 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
         let late = false
         stopImport = () => (late = true)
         const weights = (async () => {
-          const hashes = [...new Set(ids.flatMap((id) => defs.get(id) ?? []))]
+          const hashes = [...new Set(timed.flatMap((id) => timedDefs.get(id) ?? []))]
           const { timings: got, flaky } = await server.query(refs, hashes)
           if (flaky.size > 0 && !late) ctx.flaky(ids.filter((id) => flaky.has(defs.get(id) ?? '')))
           const timings = new Map<string, number>()
           const needs = new Map<string, TaskResources>()
-          for (const id of ids) {
-            const t = got.get(defs.get(id) ?? '')
+          for (const id of timed) {
+            const t = got.get(timedDefs.get(id) ?? '')
             if (t === undefined) continue
             timings.set(id, t.durationMs)
             needs.set(id, {
@@ -482,7 +490,7 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
           // A run that ended first writes nothing: its cache is closing.
           if (timings.size === 0 || late) return undefined
           const sha = `vx-history-server:${Bun.hash(JSON.stringify([...got])).toString(16)}`
-          if (!provider.hasImported(sha)) provider.importTimings(sha, timings, needs, defs)
+          if (!provider.hasImported(sha)) provider.importTimings(sha, timings, needs, timedDefs)
           const fresh = await provider.resourcesFor(ids)
           reservations = reservationsFor(nodes.keys(), fresh, options)
           return order(fresh)
@@ -565,6 +573,16 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
         const o = outcomeOf(outcome, def)
         if (o !== undefined) outcomes.set(`${o.hash}\0${o.key}`, o)
       })
+      // A plugin's measure goes up as a task's timing: the run's last of each.
+      try {
+        ctx.on('onMeasure', (m) => {
+          timings.set(m.def, {
+            durationMs: Math.round(m.durationMs),
+            ...(m.cores === undefined ? {} : { cores: m.cores }),
+          })
+        })
+        // quiet: a core before measures (the perf bench's base arm) has no such hook
+      } catch {}
       // Every outcome is known here, and core's own end of run (history
       // rows, cache uploads, telemetry) is still ahead: sent from teardown,
       // a new OIDC token and the upload shared its 3 s bound.

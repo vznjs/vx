@@ -82,7 +82,7 @@ Keyed by name: `tasks`, `tasks.<name>.exec.env.define`.
 ### The plugin API
 
 - **Hooks**, in pipeline order: `config`, `discover`, `project`, `graph`, `key`,
-  `fingerprint`, `schedule`, `admit`, `executor`, `cache`, `telemetry`,
+  `fingerprint`, `measures`, `schedule`, `admit`, `executor`, `cache`, `telemetry`,
   `output`, `setup`, `commands`, `teardown`. A plugin is
   `definePlugin(import.meta, hooks)`, and its name is its package's.
 - **Telemetry records**, schema version 4. The kinds are `run.start`,

@@ -549,8 +549,8 @@ use your own instead.
   with no dependant running, each cost from looks with it (a look on a
   full machine only raises them). Each dependant's cost is added to its
   CPU, so its history books it; the base is booked once on each worker
-  that starts the server, in placement and in the plan, and kept for the
-  next run under the commit, as warm-ups are.
+  that starts the server, in placement and in the plan, and kept in
+  history for the next run, as warm-ups are.
 - A task whose key hashes a runtime probe (`inputs.runtime`, such as
   `bun --version`) runs on a worker, which answers the probe first and
   fails the task when it answers otherwise than this machine did. A path
@@ -768,9 +768,15 @@ task the cache does not answer, so a warm run starts none. Once one has
 joined, its warm-up is what the next of its size takes at the least: work
 that ends sooner starts no worker while others are online or starting, and
 new workers are started for the cores the run keeps busy after that
-warm-up, not before it. A run on CI keeps each size's warm-up in the
-workspace's cache under its commit, and the next commit's run plans by it
-before any worker of that size joins.
+warm-up, not before it. Each size's worker is timed as a task is:
+`@vzn/vx-dte#worker:<size>`, defined by the size's name, platform, cores,
+memory and runner, so a size changed starts over. Its warm-up is the
+task's time and its machine's cores besides the run's tasks its cores;
+its join spread is `@vzn/vx-dte#join-spread:<size>`, and each server's
+base `@vzn/vx-dte#server-base:<task>`. Core keeps them in the run's
+history, and a history plugin (`@vzn/vx-history`) shares them as it does
+task timings, so the next run plans by them before any worker of that
+size joins.
 
 The `workers` rows, live while the run goes and again in the footer,
 give each worker its status (`starting`, `online`, `left`, `lost`, or `failed`
@@ -962,7 +968,7 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     and the best end is the one with all N. A worker counts its cores
     less what its machine spends besides the run's tasks, and a new one
     of a size what this run's of that size spent, else an earlier run's
-    (kept under the commit, as warm-ups are), else none. A new worker starts only when
+    (kept in history, as warm-ups are), else none. A new worker starts only when
     a task reaches its latest start (the best end less three times its
     chain, as history is a guess) with no room sooner on a worker running
     or starting: a task with slack waits for room the run pays for
@@ -1001,7 +1007,7 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     packs the whole run, past the window. Each next new
     worker of a size is counted as joining later by the spread this run's
     joins of it showed (the slowest less the fastest, over the joins
-    between), else an earlier run's (kept under the commit, as warm-ups
+    between), else an earlier run's (kept in history, as warm-ups
     are). A
     worker past its warm-up is packed as if asked now. The run then gives each task only to the worker the plan gave
     it, once that joined, and not before the plan starts it: one the plan

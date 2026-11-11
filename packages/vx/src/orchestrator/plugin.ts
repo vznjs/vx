@@ -23,6 +23,7 @@ import type { TaskNode, TaskOutcome, TaskStatus } from '../graph/index.js'
 import {
   errorCode,
   hookStarted,
+  isMeasure,
   maskedLine,
   nearest,
   type PluginSecrets,
@@ -32,7 +33,7 @@ import {
 } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import type { ProjectMeta } from '../workspace/index.js'
-import type { EventBus, Logger, RunEvent, RunStartInfo } from '../report/index.js'
+import type { EventBus, Logger, Measure, RunEvent, RunStartInfo } from '../report/index.js'
 import { readOnlyEvents } from './read-only.js'
 import { unlessStopped } from './signals.js'
 import type { CiContext } from './run-context.js'
@@ -168,6 +169,16 @@ export interface VxPlugin {
     nodes: ReadonlyMap<string, TaskNode>,
     ctx: ScheduleHookContext,
   ): ReadonlyMap<string, number> | undefined | Promise<ReadonlyMap<string, number> | undefined>
+
+  /**
+   * What this plugin will measure in the run that is no task of the graph
+   * (a worker's warm-up): measure id → definition hash, each id
+   * `<plugin>#<name>`. Asked once before `schedule`, which hands every
+   * plugin the union as `ctx.measures`, so a history plugin fetches their
+   * timings with the tasks'. A plugin reports each by `ctx.measure` and
+   * reads them back as tasks, `localHistory(…).resourcesFor`.
+   */
+  measures?(nodes: ReadonlyMap<string, TaskNode>): ReadonlyMap<string, string> | undefined
 
   /**
    * Admission over the worker count: asked for every task about to start
@@ -335,6 +346,13 @@ export interface PluginSetupContext extends BaseContext, PluginSecrets {
    * can never turn a failed task into a pass.
    */
   on<K extends PluginHookName>(hook: K, handler: PluginHookHandlers[K]): void
+  /**
+   * Report a measure this plugin declared (`measures`): its id under the
+   * plugin's name, its definition hash, its milliseconds and, if any, its
+   * cores. Each plugin hears it (`onMeasure`); the run's last of an id is
+   * kept in history at its end, as a task's timing is.
+   */
+  measure(measure: Measure): void
 }
 
 /** One CLI verb contributed by a plugin. */
@@ -598,6 +616,8 @@ export interface ScheduleHookContext extends BaseContext {
   readonly branch: string | null
   /** The refs the run reads, in order (`CacheContext.refs`): a remote's timings are read by them too. */
   readonly refs: readonly string[]
+  /** Every plugin's `measures`, id → definition hash: timed as tasks are, fetched with them. */
+  readonly measures: ReadonlyMap<string, string>
   /** This plugin's entries in the workspace's cache, as `setup` has them. */
   readonly cache: PluginCache
   /**
@@ -688,6 +708,7 @@ export type PluginHookName =
   | 'onTaskStdout'
   | 'onTaskStderr'
   | 'onTaskComplete'
+  | 'onMeasure'
   | 'onRunStatus'
   | 'onRunEnd'
 
@@ -699,6 +720,7 @@ const HOOK_EVENTS: Record<PluginHookName, RunEvent['kind']> = {
   onTaskStdout: 'task:stdout',
   onTaskStderr: 'task:stderr',
   onTaskComplete: 'task:complete',
+  onMeasure: 'task:measure',
   onRunStatus: 'run:status',
   onRunEnd: 'run:end',
 }
@@ -709,6 +731,7 @@ export interface PluginHookHandlers {
   onTaskStdout: (node: TaskNode, chunk: string) => void | Promise<void>
   onTaskStderr: (node: TaskNode, chunk: string) => void | Promise<void>
   onTaskComplete: (node: TaskNode, outcome: TaskOutcome) => void | Promise<void>
+  onMeasure: (measure: Measure) => void | Promise<void>
   onRunStatus: (line: string) => void | Promise<void>
   onRunEnd: () => void | Promise<void>
 }
@@ -921,6 +944,33 @@ export interface InstallPluginsArgs {
   step?: <T>(id: string, work: () => Promise<T>) => Promise<T>
   /** The run's held signals: a stop ends a setup's wait, which then throws. */
   signal?: AbortSignal | undefined
+  /** Where `ctx.measure` keeps the run's last measure of each id; default: kept nowhere. */
+  measured?: Map<string, Measure>
+}
+
+/**
+ * `ctx.measure`'s measure, copied: refused when its id is not under the
+ * plugin's name, it has no definition, or a number is not finite and at
+ * least 0, since history keeps a row for good and every later forecast
+ * reads it.
+ */
+function measureOf(plugin: string, m: Measure): Measure {
+  const bad = (what: string): never => {
+    throw new Error(`ctx.measure: ${what}`)
+  }
+  if (typeof m !== 'object' || m === null)
+    bad(`got ${m === null ? 'null' : typeof m}, not a measure`)
+  const { id, def, durationMs, cores } = m
+  if (typeof id !== 'string' || !id.startsWith(`${plugin}#`) || id.length === plugin.length + 1)
+    bad(`id ${JSON.stringify(id)} is not '${plugin}#<name>'`)
+  if (typeof def !== 'string' || def === '') bad(`${id} has no definition hash`)
+  if (typeof durationMs !== 'number' || !isMeasure(durationMs))
+    bad(`${id}'s durationMs ${String(durationMs)} is not a finite number ≥ 0`)
+  if (cores !== undefined && (typeof cores !== 'number' || !isMeasure(cores)))
+    bad(`${id}'s cores ${String(cores)} is not a finite number ≥ 0`)
+  return Object.freeze(
+    cores === undefined ? { id, def, durationMs } : { id, def, durationMs, cores },
+  )
 }
 
 /**
@@ -1013,6 +1063,11 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
           return dispose
         },
       },
+      measure(measure) {
+        const m = measureOf(plugin.name, measure)
+        args.measured?.set(m.id, m)
+        bus.emit({ kind: 'task:measure', measure: m })
+      },
       on(hook, handler) {
         // A misspelt name ('taskComplete') subscribed a handler that never
         // ran, and no word of it; a config file has no type-checker (H-16).
@@ -1055,6 +1110,9 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
                   viewOf(live.node),
                   viewOf(live.outcome),
                 )
+                break
+              case 'task:measure':
+                ret = (handler as PluginHookHandlers['onMeasure'])(live.measure)
                 break
               case 'run:status':
                 ret = (handler as PluginHookHandlers['onRunStatus'])(live.line)

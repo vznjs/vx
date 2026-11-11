@@ -37,6 +37,20 @@ export interface RunStartInfo {
 }
 
 /**
+ * What a plugin measured that is no task of the graph (a worker's
+ * warm-up), timed as a task is: an id under the plugin's name
+ * (`<plugin>#<name>`), a definition hash that starts its history over
+ * when what it measures changes, its milliseconds and, if any, the cores
+ * it kept busy.
+ */
+export interface Measure {
+  readonly id: string
+  readonly def: string
+  readonly durationMs: number
+  readonly cores?: number
+}
+
+/**
  * The in-process event vocabulary. Carries LIVE `TaskNode` / `TaskOutcome`
  * refs — zero-copy, because the default terminal subscriber runs on the
  * same thread and reads those objects directly. Crossing a thread or RPC
@@ -50,6 +64,8 @@ export type RunEvent =
   | { kind: 'task:stdout'; node: TaskNode; chunk: string }
   | { kind: 'task:stderr'; node: TaskNode; chunk: string }
   | { kind: 'task:complete'; node: TaskNode; outcome: TaskOutcome }
+  /** A plugin's measure (`PluginSetupContext.measure`): kept in history as a task's timing. */
+  | { kind: 'task:measure'; measure: Measure }
   | { kind: 'run:status'; line: string }
   /** A warning, which the terminal prints on stderr. */
   | { kind: 'run:status'; line: string; warn: true }
@@ -507,6 +523,7 @@ export type WireEvent =
   | { kind: 'task:stdout'; taskId: string; chunk: string }
   | { kind: 'task:stderr'; taskId: string; chunk: string }
   | { kind: 'task:complete'; outcome: OutcomeView }
+  | { kind: 'task:measure'; measure: Measure }
   | { kind: 'run:status'; line: string }
   /** A warning, which the terminal prints on stderr. */
   | { kind: 'run:status'; line: string; warn: true }
@@ -533,6 +550,7 @@ export function toWireEvent(event: RunEvent): WireEvent {
       return 'warn' in event
         ? { kind: 'run:status', line: event.line, warn: true }
         : { kind: 'run:status', line: event.line }
+    case 'task:measure':
     case 'step:start':
     case 'step:end':
     case 'run:end':

@@ -706,7 +706,7 @@ export default defineProject({
     category: 'extend',
     hook: 'Fifteen stages, and core applies no plugin by default.',
     body: [
-      'vx is a pipeline: config, discover, project, graph, key, fingerprint, schedule, admit, executor, cache, telemetry, output, setup, teardown and commands. A plugin can fill any of them.',
+      'vx is a pipeline: config, discover, project, graph, key, fingerprint, measures, schedule, admit, executor, cache, telemetry, output, setup, teardown and commands. A plugin can fill any of them.',
       'Plugins decide where a task runs, where artifacts live, who observes, who draws the terminal and which CLI verbs exist. Running and caching on this machine are built into core, so a workspace with no plugin still runs and caches.',
     ],
     example: {

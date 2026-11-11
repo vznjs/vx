@@ -311,6 +311,10 @@ export class Cache implements CacheLayer {
     runs: readonly RunRecord[],
     head?: Pick<InvocationRecord, 'branch' | 'commitSha'>,
   ): void
+  recordMeasures(
+    measures: readonly MeasureRecord[],
+    head: Pick<InvocationRecord, 'branch' | 'commitSha'>,
+  ): void
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
   recordRemoteErrors(runId: string, errors: readonly (readonly [string, string])[]): void
   stats(opts: CacheStatsOptions = {}): CacheStats
@@ -1322,6 +1326,7 @@ One local cache's run history, read and written by core (`localHistory`): plain 
 export interface LocalHistory extends HistoryProvider {
   resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>>
   durationsFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>>
+  measuresFor(ids: readonly string[]): ReadonlyMap<string, MeasureForecast>
   hasImported(sha: string): boolean
   importTimings(
     sha: string,
@@ -1516,6 +1521,38 @@ export interface MachineReport {
   bookedAvg?: number
   warmUpMs?: number
   startMs?: number
+}
+```
+
+## `Measure`
+
+type · `src/report/events.ts`
+
+What a plugin measured that is no task of the graph (a worker's
+warm-up), timed as a task is: an id under the plugin's name
+(`<plugin>#<name>`), a definition hash that starts its history over
+when what it measures changes, its milliseconds and, if any, the cores
+it kept busy.
+
+```ts
+export interface Measure {
+  readonly id: string
+  readonly def: string
+  readonly durationMs: number
+  readonly cores?: number
+}
+```
+
+## `MeasureForecast`
+
+type · `src/history/history.ts`
+
+A plugin measure as history forecasts it: the median of its newest timings and of their cores.
+
+```ts
+export interface MeasureForecast {
+  readonly durationMs: number
+  readonly cores?: number
 }
 ```
 
@@ -1857,6 +1894,7 @@ export const PLUGIN_HOOKS = [
   'graph',
   'key',
   'fingerprint',
+  'measures',
   'schedule',
   'admit',
   'executor',
@@ -1917,6 +1955,7 @@ export interface PluginHookHandlers {
   onTaskStdout: (node: TaskNode, chunk: string) => void | Promise<void>
   onTaskStderr: (node: TaskNode, chunk: string) => void | Promise<void>
   onTaskComplete: (node: TaskNode, outcome: TaskOutcome) => void | Promise<void>
+  onMeasure: (measure: Measure) => void | Promise<void>
   onRunStatus: (line: string) => void | Promise<void>
   onRunEnd: () => void | Promise<void>
 }
@@ -1933,6 +1972,7 @@ export type PluginHookName =
   | 'onTaskStdout'
   | 'onTaskStderr'
   | 'onTaskComplete'
+  | 'onMeasure'
   | 'onRunStatus'
   | 'onRunEnd'
 ```
@@ -2003,6 +2043,7 @@ export interface PluginSetupContext extends BaseContext, PluginSecrets {
   readonly ci: boolean
   readonly branch: string | null
   on<K extends PluginHookName>(hook: K, handler: PluginHookHandlers[K]): void
+  measure(measure: Measure): void
 }
 ```
 
@@ -2770,6 +2811,7 @@ export interface ScheduleHookContext extends BaseContext {
   readonly localCache: Cache
   readonly branch: string | null
   readonly refs: readonly string[]
+  readonly measures: ReadonlyMap<string, string>
   readonly cache: PluginCache
   refine(
     weights: ReadonlyMap<string, number> | Promise<ReadonlyMap<string, number> | undefined>,
@@ -3496,6 +3538,7 @@ export interface VxPlugin {
     nodes: ReadonlyMap<string, TaskNode>,
     ctx: ScheduleHookContext,
   ): ReadonlyMap<string, number> | undefined | Promise<ReadonlyMap<string, number> | undefined>
+  measures?(nodes: ReadonlyMap<string, TaskNode>): ReadonlyMap<string, string> | undefined
   admit?(task: TaskNode, ctx: AdmitContext): boolean
   readonly commands?: Readonly<Record<string, PluginCommand>>
   cache?(ctx: CacheContext): RemoteCacheLayer | undefined | Promise<RemoteCacheLayer | undefined>

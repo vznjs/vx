@@ -8,6 +8,7 @@ export {
   type HistoryTable,
   type LocalHistory,
   type LocalHistoryOptions,
+  type MeasureForecast,
   localHistory,
   LocalHistoryProvider,
   PASS_STATUSES,

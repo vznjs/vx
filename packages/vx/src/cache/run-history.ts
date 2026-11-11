@@ -5,8 +5,8 @@
 
 import type { Database, SQLQueryBindings } from 'bun:sqlite'
 import { lazyStatement } from './schema.js'
-import type { InvocationRecord, RunRecord } from './layer.js'
-import { isMeasure } from '../util/index.js'
+import type { InvocationRecord, MeasureRecord, RunRecord } from './layer.js'
+import { isMeasure, splitTaskId } from '../util/index.js'
 
 /** The `main.runs` columns `bindRun` fills, in its order. */
 const RUN_COLUMNS = [
@@ -201,6 +201,38 @@ export class RunHistory {
         )
         .run(...params)
     }
+  }
+
+  /**
+   * One `task_durations` row per plugin measure, a task's timing to every
+   * reader, its cores where a remote row keeps a task's need: a plugin
+   * reads it back as a task (`localHistory(…).resourcesFor`).
+   */
+  recordMeasures(measures: readonly MeasureRecord[], head: RunHead): void {
+    const source = branchSource(head.branch)
+    const sha = head.commitSha
+    const insert = this.db.query(
+      `INSERT INTO task_durations(project, task, source, sha, duration_ms, recorded_at, def, cpu_parallelism)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    const now = Date.now()
+    this.db
+      .transaction(() => {
+        for (const m of measures) {
+          const [project, task] = splitTaskId(m.id)
+          insert.run(
+            project,
+            task,
+            source,
+            sha,
+            Math.round(m.durationMs),
+            now,
+            m.def,
+            m.cores ?? null,
+          )
+        }
+      })
+      .immediate()
   }
 
   /**

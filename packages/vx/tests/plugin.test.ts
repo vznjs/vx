@@ -319,7 +319,7 @@ describe('Plugin API', () => {
       (e: unknown) => (e as Error).message,
     )
     expect(err).toBe(
-      "plugin 'org/typo' failed in setup: ctx.on: unknown hook 'taskComplete' (one of onRunStart, onTaskStart, onTaskStdout, onTaskStderr, onTaskComplete, onRunStatus, onRunEnd)",
+      "plugin 'org/typo' failed in setup: ctx.on: unknown hook 'taskComplete' (one of onRunStart, onTaskStart, onTaskStdout, onTaskStderr, onTaskComplete, onMeasure, onRunStatus, onRunEnd)",
     )
   })
 

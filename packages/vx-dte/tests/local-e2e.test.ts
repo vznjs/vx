@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
+import { Cache, localHistory } from '@vzn/vx'
 import {
   alive,
   CORE_BIN,
@@ -70,6 +71,7 @@ import { definePlugin } from ${JSON.stringify(path.resolve(import.meta.dir, '../
 const timings = definePlugin({ dir: ${JSON.stringify(dir)} }, {
   setup(ctx) {
     ctx.on('onTaskComplete', (n, o) => ${line('id: n.id, status: o.status, durationMs: o.durationMs, cpuMs: o.cpuMs, rss: o.peakRssBytes, where: o.where')})
+    ctx.on('onMeasure', (m) => ${line('measure: m.id, def: m.def, ms: m.durationMs')})
   },
   teardown() { ${line('flush: true')} },
 })
@@ -87,6 +89,22 @@ const timings = definePlugin({ dir: ${JSON.stringify(dir)} }, {
   const real = await realpath(root)
   expect(rows.every((r) => r['cwd'] === real || r['cwd'] === root)).toBe(true)
   expect(rows.filter((r) => r['flush'] === true)).toHaveLength(1)
+  // The workers' warm-up is timed as a task (2026-11-11): heard before the
+  // run's end, where a history plugin sends it, and kept in history.
+  const worker = '@vzn/vx-dte#worker:linux.small'
+  const warmUps = rows.filter((r) => r['measure'] === worker)
+  expect(warmUps.length).toBeGreaterThan(0)
+  expect(rows.findIndex((r) => r['measure'] === worker)).toBeLessThan(
+    rows.findIndex((r) => r['flush'] === true),
+  )
+  const cache = new Cache(path.join(root, '.vx/cache'))
+  try {
+    const def = String(warmUps.at(-1)!['def'])
+    const kept = localHistory(cache, { defs: new Map([[worker, def]]) }).measuresFor([worker])
+    expect(kept.get(worker)?.durationMs).toBe(Math.round(Number(warmUps.at(-1)!['ms'])))
+  } finally {
+    cache.close()
+  }
   const tasks = rows.filter((r) => r['id'] !== undefined)
   expect(
     tasks

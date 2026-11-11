@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-dte: time worker warm-ups as tasks in history
+
+PLUGIN_HOOKS gains measures, before schedule.
+
 ## orchestrator: vx lock records the discover stage; runs read it
 
 the projects lock is version 6; a workspace must re-run vx lock after upgrading, and a discover plugin's change to projects or edges reaches runs only through vx lock.

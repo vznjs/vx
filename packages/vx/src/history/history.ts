@@ -123,6 +123,8 @@ export interface LocalHistory extends HistoryProvider {
   resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>>
   /** Only each task's `p50DurationMs` as `resourcesFor` answers it, read without the rest. */
   durationsFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>>
+  /** Each plugin measure's (`PluginSetupContext.measure`) forecast; ids with none are left out. */
+  measuresFor(ids: readonly string[]): ReadonlyMap<string, MeasureForecast>
   /** Whether timings of commit `sha` were imported. */
   hasImported(sha: string): boolean
   /** Keep commit `sha`'s timings (task id → ms) and needs as forecast rows. */
@@ -132,6 +134,12 @@ export interface LocalHistory extends HistoryProvider {
     needs?: ReadonlyMap<string, TaskResources>,
     defs?: ReadonlyMap<string, string>,
   ): void
+}
+
+/** A plugin measure as history forecasts it: the median of its newest timings and of their cores. */
+export interface MeasureForecast {
+  readonly durationMs: number
+  readonly cores?: number
 }
 
 export interface LocalHistoryOptions {
@@ -329,6 +337,52 @@ export class LocalHistoryProvider implements LocalHistory {
    * costs nothing (a query per task was 70 ms at 8,002 tasks).
    */
   lackedBranchHistory = false
+
+  /**
+   * Each plugin measure's forecast, tiered as a task's duration is: the
+   * median of its newest `FORECAST_RUNS` rows on this branch, else its
+   * newest imported row, else the median on any branch; its cores the
+   * median of the same rows' that have one. A measure has few rows and
+   * no run row, so a probe each, where `resourcesFor` groups the window.
+   */
+  measuresFor(ids: readonly string[]): ReadonlyMap<string, MeasureForecast> {
+    const out = new Map<string, MeasureForecast>()
+    if (ids.length === 0) return out
+    const tiers: { where: string; params: string[]; limit: number }[] = []
+    if (this.branch !== undefined)
+      tiers.push({ where: 'source = ?', params: [branchSource(this.branch)], limit: FORECAST_RUNS })
+    tiers.push({ where: `source = 'remote'`, params: [], limit: 1 })
+    tiers.push({ where: `source LIKE 'branch:%'`, params: [], limit: FORECAST_RUNS })
+    for (const id of ids) {
+      const [project, task, def] = this.keyOf(id)
+      for (const tier of tiers) {
+        const rows = this.db
+          .query(
+            `SELECT duration_ms AS ms, cpu_parallelism AS cores FROM task_durations
+             WHERE project = ? AND task = ? AND ${tier.where}
+               ${def === undefined ? '' : 'AND (def IS NULL OR def = ?)'}
+             ORDER BY id DESC LIMIT ${tier.limit}`,
+          )
+          .all(project!, task!, ...tier.params, ...(def === undefined ? [] : [def])) as {
+          ms: number
+          cores: number | null
+        }[]
+        if (rows.length === 0) continue
+        const median = (xs: number[]): number =>
+          pickPercentile(
+            xs.sort((x, y) => x - y),
+            0.5,
+          )
+        const cores = rows.flatMap((r) => (r.cores === null ? [] : [r.cores]))
+        out.set(id, {
+          durationMs: median(rows.map((r) => r.ms)),
+          ...(cores.length === 0 ? {} : { cores: median(cores) }),
+        })
+        break
+      }
+    }
+    return out
+  }
 
   /** Whether timings of default-branch commit `sha` were imported. */
   hasImported(sha: string): boolean {
