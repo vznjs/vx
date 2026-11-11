@@ -423,8 +423,12 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
       for (const n of nodes.values()) if (n.config.exec?.command !== undefined) ids.push(n.id)
       // What other plugins measure (a worker's warm-up) is timed as a task
       // is: fetched and imported with the tasks, never ordered.
-      const timed = ctx.measures.size === 0 ? ids : [...ids, ...ctx.measures.keys()]
-      const timedDefs = ctx.measures.size === 0 ? defs : new Map([...defs, ...ctx.measures])
+      // A core before measures (the perf bench's base arm runs this
+      // plugin's source) hands none.
+      const measures: ReadonlyMap<string, string> =
+        (ctx as Partial<typeof ctx>).measures ?? new Map()
+      const timed = measures.size === 0 ? ids : [...ids, ...measures.keys()]
+      const timedDefs = measures.size === 0 ? defs : new Map([...defs, ...measures])
       let table: ReadonlyMap<string, TaskResources>
       let provider: LocalHistory
       try {
@@ -570,12 +574,15 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
         if (o !== undefined) outcomes.set(`${o.hash}\0${o.key}`, o)
       })
       // A plugin's measure goes up as a task's timing: the run's last of each.
-      ctx.on('onMeasure', (m) => {
-        timings.set(m.def, {
-          durationMs: Math.round(m.durationMs),
-          ...(m.cores === undefined ? {} : { cores: m.cores }),
+      try {
+        ctx.on('onMeasure', (m) => {
+          timings.set(m.def, {
+            durationMs: Math.round(m.durationMs),
+            ...(m.cores === undefined ? {} : { cores: m.cores }),
+          })
         })
-      })
+        // quiet: a core before measures (the perf bench's base arm) has no such hook
+      } catch {}
       // Every outcome is known here, and core's own end of run (history
       // rows, cache uploads, telemetry) is still ahead: sent from teardown,
       // a new OIDC token and the upload shared its 3 s bound.
