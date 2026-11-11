@@ -16,6 +16,7 @@ import { reachedImporters, withTransitive } from './graph.js'
 import { depsOf, record, stable } from './json.js'
 import { joinPosix, resolvePosix } from './posix.js'
 import { parseSyml } from './syml.js'
+import { BUILTIN_EXTENSIONS } from './yarn-builtin.js'
 
 export interface Lockfile {
   readonly generation: 'berry' | 'classic'
@@ -502,11 +503,18 @@ export interface Extension {
   readonly deps: ReadonlyMap<string, string>
 }
 
-// Yarn's builtin list (yarnpkg-extensions) adds one dependency; the rest
-// are peers, which the parent that provides them already reaches.
-const BUILTIN: readonly Extension[] = [
-  { name: '@babel/parser', range: '*', deps: new Map([['@babel/types', '^7.8.3']]) },
-]
+/** The extension a selector (`ident`, `ident@range`) names, adding `deps`. */
+function extension(selector: string, deps: ReadonlyMap<string, string>): Extension {
+  const at = selector.indexOf('@', 1)
+  return at === -1
+    ? { name: selector, range: '*', deps }
+    : { name: selector.slice(0, at), range: selector.slice(at + 1), deps }
+}
+
+const BUILTIN: readonly Extension[] = BUILTIN_EXTENSIONS.flatMap(([selectors, deps]) => {
+  const map = new Map(Object.entries(deps))
+  return selectors.map((s) => extension(s, map))
+})
 
 /**
  * Yarn's builtin extensions and `.yarnrc.yml`'s `packageExtensions`
@@ -526,12 +534,7 @@ export function packageExtensions(rc: string | undefined): readonly Extension[] 
   for (const [selector, raw] of Object.entries(record(record(doc)?.['packageExtensions']) ?? {})) {
     const deps = depsOf(record(raw) ?? {}, ['dependencies'])
     if (deps.size === 0) continue
-    const at = selector.indexOf('@', 1)
-    out.push(
-      at === -1
-        ? { name: selector, range: '*', deps }
-        : { name: selector.slice(0, at), range: selector.slice(at + 1), deps },
-    )
+    out.push(extension(selector, deps))
   }
   return out
 }
@@ -580,9 +583,15 @@ function extend(
   edges: number[][],
   extensions: readonly Extension[],
 ): void {
+  const byName = new Map<string, Extension[]>()
+  for (const ext of extensions) {
+    const list = byName.get(ext.name)
+    if (list === undefined) byName.set(ext.name, [ext])
+    else list.push(ext)
+  }
   for (const [id, e] of lock.entries) {
-    for (const ext of extensions) {
-      if (ext.name !== e.name || !matches(ext.range, e.version)) continue
+    for (const ext of byName.get(e.name) ?? []) {
+      if (!matches(ext.range, e.version)) continue
       for (const [name, range] of ext.deps) {
         if (e.installed.has(name)) continue
         for (const target of resolveDescriptor(lock, id, name, range)) {
