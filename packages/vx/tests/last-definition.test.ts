@@ -42,9 +42,8 @@ it("--stats reads the task's timings of its command now, as --dry does", () => {
     tasks: { p50Ms?: number }[]
   }
   const [row] = stats.stats
-  // The two `sleep 0.6` runs are another task's: one run, well under them.
+  // The two `sleep 0.6` runs are another task's: one run, not three.
   expect(row?.runs).toBe(1)
-  expect(row?.p50DurationMs).toBeLessThan(500)
   expect(row?.p50DurationMs).toBe(dry.tasks[0]!.p50Ms!)
 })
 

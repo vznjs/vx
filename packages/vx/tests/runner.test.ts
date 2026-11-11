@@ -81,28 +81,23 @@ describe('runCommand', () => {
   })
 
   it('returns promptly when a backgrounded grandchild holds the pipe open (no hang)', async () => {
-    // `sleep 10 & echo up` — sh backgrounds `sleep` (inheriting fd 1/2), prints
-    // `up`, and exits. The orphaned `sleep` keeps the stdout pipe's write-end
-    // open, so EOF never arrives while the child is alive. Without the
-    // post-exit drain bound the reader would block until the sleep ends (~10s,
-    // and forever for a real server); with it, runCommand returns just after
-    // the child exits + the short grace.
-    //
-    // DELIBERATELY leaks an orphaned sleeper: a backgrounded grandchild that
-    // outlives its parent IS the subject here, so it cannot be `exec`-wrapped
-    // away without deleting the test. The 10s duration must stay above the 3s
-    // assertion below.
-    const t0 = Date.now()
-    const result = await runCommand({
-      command: 'sleep 10 & echo up',
-      cwd,
-      env: { PATH: process.env.PATH ?? '' },
-    })
-    const elapsed = Date.now() - t0
-    expect(result.exitCode).toBe(0)
-    expect(result.stdout).toContain('up')
-    // Well under the sleep's 10s → proves we did not wait for the grandchild.
-    expect(elapsed).toBeLessThan(3000)
+    // sh backgrounds a loop (inheriting fd 1/2), prints `up`, and exits. The
+    // loop keeps the stdout pipe's write-end open until the test releases it,
+    // so EOF never arrives on its own: without the post-exit drain bound the
+    // reader waits forever (the test's timeout), with it runCommand returns
+    // just after the child exits + the short grace. No clock is read.
+    const release = path.join(cwd, 'release')
+    try {
+      const result = await runCommand({
+        command: `(until [ -e ${JSON.stringify(release)} ] || [ ! -d ${JSON.stringify(cwd)} ]; do sleep 0.05; done) & echo up`,
+        cwd,
+        env: { PATH: process.env.PATH ?? '' },
+      })
+      expect(result.exitCode).toBe(0)
+      expect(result.stdout).toContain('up')
+    } finally {
+      await writeFile(release, '')
+    }
   }, 30_000)
 
   it('output a backgrounded child writes after the drain bound is cut, and the frame says so', async () => {
@@ -171,16 +166,25 @@ describe('runCommand', () => {
   // Ctrl-Z stops vx and its tasks: time stopped is not time the task ran,
   // and it fed history's forecasts and critical path.
   it('time vx spent stopped is not in the duration', async () => {
+    // Bounded by the test's own reads of vx's clock, not a threshold: the
+    // run sits inside [t0, t1] and its stop holds at least [s0, s1].
+    const t0 = performance.now()
     const run = runCommand({ command: 'sleep 1', cwd, env: { PATH: process.env.PATH ?? '' } })
+    let s0 = 0
+    let s1 = 0
     try {
       await Bun.sleep(100)
       markStopped(true)
+      s0 = performance.now()
       await Bun.sleep(600)
+      s1 = performance.now()
     } finally {
       markStopped(false)
     }
     const r = await run
-    expect(r.durationMs).toBeLessThan(800)
+    const t1 = performance.now()
+    // +1: durationMs is rounded.
+    expect(r.durationMs).toBeLessThanOrEqual(t1 - t0 - (s1 - s0) + 1)
   }, 30_000)
 
   // The cut line opens a line of its own, and only that: its leading

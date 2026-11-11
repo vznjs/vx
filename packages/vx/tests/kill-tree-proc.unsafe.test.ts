@@ -8,7 +8,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
-import { killTree, untilGroupsGone } from '../src/exec/kill-tree.js'
+import { type Child, groupAlive, killTree, untilGroupsGone } from '../src/exec/kill-tree.js'
 
 const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-kill-tree-proc-'))
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
@@ -60,4 +60,42 @@ describe('untilGroupsGone reading /proc', () => {
       }
     },
   )
+
+  // A group whose last member died waits as a zombie until its parent reaps
+  // it: an orphan's init took 1 to 2 s (2026-09-24), and `kill -0` counts it
+  // live, so a shutdown that asked the group signal sat that out. Here the
+  // parent is a `sleep` that never reaps, so the zombie stays put and the
+  // read is decided by state, not by how long the reap takes.
+  it.skipIf(process.platform !== 'linux')('a group of one zombie is gone', async () => {
+    const pidFile = path.join(dir, 'zombie.pid')
+    const parent = Bun.spawn(
+      ['sh', '-c', `setsid sh -c 'echo $$ > "$0"' ${JSON.stringify(pidFile)} & exec sleep 30`],
+      { stdio: ['ignore', 'ignore', 'ignore'] },
+    )
+    try {
+      const state = (pid: number): string | undefined => {
+        try {
+          const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+          return stat.slice(stat.lastIndexOf(')') + 2).split(' ', 1)[0]
+        } catch {
+          return undefined
+        }
+      }
+      const deadline = Date.now() + 10_000
+      let pid = 0
+      while (pid === 0 || state(pid) !== 'Z') {
+        if (Date.now() > deadline) throw new Error(`no zombie (pid ${pid}, state ${state(pid)})`)
+        try {
+          pid = Number(readFileSync(pidFile, 'utf8').trim())
+        } catch {}
+        await Bun.sleep(5)
+      }
+      // CONTROL: the group signal still answers for it.
+      expect(() => process.kill(-pid, 0)).not.toThrow()
+      expect(groupAlive({ pid } as Child)).toBe(false)
+    } finally {
+      parent.kill('SIGKILL')
+      await parent.exited
+    }
+  })
 })

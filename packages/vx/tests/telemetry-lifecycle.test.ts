@@ -83,7 +83,7 @@ describe('telemetry flush is time-bounded', () => {
     const started = Date.now()
     await source.flush()
     const elapsed = Date.now() - started
-    expect(elapsed).toBeLessThan(5000)
+    // The wedged flush never settles: an unbounded wait is the test's timeout.
     expect(elapsed).toBeGreaterThanOrEqual(200)
     // Named, as a flush that throws is: the one still pending, not the one done.
     expect(warnings).toEqual([

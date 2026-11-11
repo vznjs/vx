@@ -353,8 +353,8 @@ describe('signal handling during vx run (e2e)', () => {
   it(
     'a second signal during the grace SIGKILLs at once',
     async () => {
-      // Grace long enough that only the second signal can explain a fast
-      // exit: 5 s of grace versus a 2.5 s bound on the whole teardown.
+      // A grace past the row's timeout: only the second signal can end the
+      // run, so no clock is read.
       const dir = await addProject(
         fixture.root,
         'app',
@@ -375,12 +375,11 @@ describe('signal handling during vx run (e2e)', () => {
         cwd: fixture.root,
         stdout: 'pipe',
         stderr: 'pipe',
-        env: { ...process.env, VX_TEST_KILL_GRACE: '5000ms' },
+        env: { ...process.env, VX_TEST_KILL_GRACE: '600000ms' },
       })
       const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
       expect(isAlive(pid)).toBe(true)
 
-      const started = Date.now()
       proc.kill('SIGINT')
       // The second only once vx has heard the first: two back to back can
       // land as one, and then the row drives the first-signal path.
@@ -388,7 +387,6 @@ describe('signal handling during vx run (e2e)', () => {
       proc.kill('SIGINT')
       const code = await proc.exited
       expect(code).toBe(130)
-      expect(Date.now() - started).toBeLessThan(2_500)
       expect(await waitForDead(pid, 3_000)).toBe(true)
     },
     TIMEOUT,

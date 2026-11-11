@@ -9,6 +9,8 @@ import { addProject, makeWorkspace } from './helpers/workspace.js'
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 let root: string
+/** Each branch's one recorded timing, read back from its run: a bound on it bends under load. */
+const took: Record<string, number> = {}
 const vx = (env: Record<string, string>, ...args: string[]) => {
   const p = Bun.spawnSync({
     cmd: [process.execPath, BIN, ...args],
@@ -31,9 +33,14 @@ beforeAll(async () => {
     `export default { tasks: { nap: { exec: { command: 'sleep "$(cat nap)"' } } } }\n`,
   )
   await writeFile(path.join(dir, 'nap'), '0.6')
+  const last = () =>
+    (JSON.parse(vx({}, 'last', '--format', 'json').out) as { tasks: { durationMs: number }[] })
+      .tasks[0]!.durationMs
   expect(vx({ VX_RUN_BRANCH: 'slow' }, 'run', 'a#nap').code).toBe(0)
+  took['slow'] = last()
   await writeFile(path.join(dir, 'nap'), '0')
   expect(vx({}, 'run', 'a#nap', '--branch', 'fast').code).toBe(0)
+  took['fast'] = last()
 }, 60_000)
 afterAll(async () => {
   await rm(root, { recursive: true, force: true })
@@ -44,11 +51,12 @@ it('--branch picks the branch p50 forecasts from, and the JSON names it', () => 
   const fast = stats({}, '--branch=fast')
   expect([slow.branch, fast.branch]).toEqual(['slow', 'fast'])
   expect(slow.stats[0]!.p50DurationMs).toBeGreaterThanOrEqual(600)
-  expect(fast.stats[0]!.p50DurationMs).toBeLessThan(600)
+  expect(slow.stats[0]!.p50DurationMs).toBe(took['slow']!)
+  expect(fast.stats[0]!.p50DurationMs).toBe(took['fast']!)
 })
 
 it('VX_RUN_BRANCH is the default, and the flag beats it', () => {
-  expect(stats({ VX_RUN_BRANCH: 'slow' }).stats[0]!.p50DurationMs).toBeGreaterThanOrEqual(600)
+  expect(stats({ VX_RUN_BRANCH: 'slow' }).stats[0]!.p50DurationMs).toBe(took['slow']!)
   expect(stats({ VX_RUN_BRANCH: 'slow' }, '--branch', 'fast').branch).toBe('fast')
 })
 

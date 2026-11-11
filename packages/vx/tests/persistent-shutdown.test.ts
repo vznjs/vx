@@ -163,15 +163,19 @@ describe('shutdownPersistent', () => {
 
   // C-46: the e2e rows set VX_TEST_KILL_GRACE and pass on the 2 s default
   // too, only slower, so a default that ignored it survived them.
-  it('VX_TEST_KILL_GRACE shortens the default grace', async () => {
+  // Proven by lengthening it: load can only make a SIGKILL late, never
+  // early, so a child alive past the 2 s default is one no clock flakes.
+  it('VX_TEST_KILL_GRACE replaces the default grace', async () => {
     const saved = { ...process.env }
-    process.env['VX_TEST_KILL_GRACE'] = '100ms'
+    process.env['VX_TEST_KILL_GRACE'] = '600000ms'
     try {
       const child = await stubborn('env')
-      const t0 = Date.now()
-      await shutdownPersistent(new Map([['p#dev', child]]), [])
+      const done = shutdownPersistent(new Map([['p#dev', child]]), [])
+      await Bun.sleep(2_500)
+      expect(child.signalCode).toBeNull()
+      process.kill(-child.pid, 'SIGKILL')
+      await done
       expect(child.signalCode).toBe('SIGKILL')
-      expect(Date.now() - t0).toBeLessThan(1_500)
     } finally {
       restoreEnv(saved)
     }
