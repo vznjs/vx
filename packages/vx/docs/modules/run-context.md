@@ -44,7 +44,7 @@ export function captureGitContext(
 export function captureDefaultBranch(env: NodeJS.ProcessEnv, workspaceRoot: string): string | null
 // A checkout's cache scope from `.git` alone: `<owner>/<repo>:<branch>`, the
 // branch it tracks on that remote's repository, else its own on origin's;
-// undefined on `baseBranch` (else the default branch), a detached HEAD or with no remote URL.
+// undefined on the default branch (as cacheRefs finds it), a detached HEAD or with no remote URL.
 export function localBranchScope(
   workspaceRoot: string,
   baseBranch: string | undefined,
@@ -61,7 +61,10 @@ export function resolveCacheScope(
 ): string | undefined
 // The refs a remote reads, in order: a plugin's (`setBranch`; github()
 // and gitlab() on CI), else git's current branch, then the default
-// branch. Core reads no CI env for them. `turboCache()` sends them.
+// branch: `baseBranch`, else captureDefaultBranch's, else the first of
+// origin/main, origin/master, main, master that exists (a clone whose
+// `git push -u` wrote no origin/HEAD). Core reads no CI env for them.
+// `turboCache()` sends them.
 export function cacheRefs(
   workspaceRoot: string,
   baseBranch: string | undefined,

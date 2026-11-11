@@ -585,15 +585,88 @@ export function localBranchScope(
   const url = config.get(`remote "${own?.get('remote') ?? 'origin'}"`)?.get('url')
   const repo = url === undefined ? undefined : repoOfUrl(url)
   if (repo === undefined) return undefined
-  const trunk = baseBranch ?? captureDefaultBranch(env, workspaceRoot)
+  const trunk = trunkBranch(workspaceRoot, baseBranch, env)
   if (trunk === null ? name === 'main' || name === 'master' : name === trunk) return undefined
   return branchCacheScope(repo, name)
 }
 
 /**
+ * The default branch a cache reads: `baseBranch`, else
+ * `captureDefaultBranch`'s, else, as `--affected` finds its base, the
+ * first of `origin/main`, `origin/master`, `main`, `master` that exists.
+ * The repo creator's clone (`git push -u origin main`) has no
+ * `origin/HEAD`, and a feature branch there read none of CI's main entries.
+ */
+function trunkBranch(
+  workspaceRoot: string,
+  baseBranch: string | undefined,
+  env: NodeJS.ProcessEnv,
+): string | null {
+  const named = baseBranch ?? captureDefaultBranch(env, workspaceRoot)
+  if (named !== null) return named
+  const order = [
+    'refs/remotes/origin/main',
+    'refs/remotes/origin/master',
+    'refs/heads/main',
+    'refs/heads/master',
+  ]
+  const have = existingRefs(workspaceRoot, order)
+  const found = order.find((r) => have.has(r))
+  return found === undefined ? null : found.slice(found.lastIndexOf('/') + 1)
+}
+
+/** Which of `refs` exist, from the `.git` files, else from one git spawn. */
+function existingRefs(workspaceRoot: string, refs: readonly string[]): Set<string> {
+  try {
+    const dirs = refDirsOf(workspaceRoot)
+    if (dirs !== null) {
+      const packed = path.join(dirs.commonDir, 'packed-refs')
+      const packedRefs = new Set(
+        fs.existsSync(packed)
+          ? fs
+              .readFileSync(packed, 'utf8')
+              .split('\n')
+              .map((line) => line.slice(line.indexOf(' ') + 1))
+          : [],
+      )
+      return new Set(
+        refs.filter(
+          (r) =>
+            packedRefs.has(r) ||
+            fs.existsSync(path.join(dirs.gitDir, r)) ||
+            fs.existsSync(path.join(dirs.commonDir, r)),
+        ),
+      )
+    }
+  } catch {
+    // no `.git` at the root: ask git.
+  }
+  try {
+    const proc = Bun.spawnSync({
+      cmd: [
+        executablePath('git'),
+        '-C',
+        workspaceRoot,
+        'for-each-ref',
+        '--format=%(refname)',
+        '--end-of-options',
+        ...refs,
+      ],
+      env: gitEnv(),
+      stdout: 'pipe',
+      stderr: 'ignore',
+    })
+    if (proc.exitCode === 0) return new Set(new TextDecoder().decode(proc.stdout).split('\n'))
+  } catch {
+    // git unavailable: none.
+  }
+  return new Set()
+}
+
+/**
  * The refs a remote reads, in order: a plugin's (`setBranch`, `github()`
  * and `gitlab()` on CI, 2026-10-25), else git's: the checked-out branch,
- * then the default (`origin/HEAD`). A remote plugin keys or scopes its
+ * then the default (`trunkBranch`). A remote plugin keys or scopes its
  * entries by them (`scope` on turboCache/nxCache); core keys nothing by them.
  */
 export function cacheRefs(
@@ -608,7 +681,7 @@ export function cacheRefs(
   const own = head(
     (readHeadDirect(workspaceRoot) ?? captureGitContext(workspaceRoot, null, {})).branch,
   )
-  const trunk = head(baseBranch ?? captureDefaultBranch(env, workspaceRoot))
+  const trunk = head(trunkBranch(workspaceRoot, baseBranch, env))
   return [...new Set([own, trunk].filter((r): r is string => r !== undefined))]
 }
 
