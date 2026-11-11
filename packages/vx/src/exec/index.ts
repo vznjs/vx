@@ -44,8 +44,10 @@ export {
 export { type DeniedCall } from './sandbox-violations.js'
 export {
   atOrUnder,
+  grantAlternatives,
   isMountableLiteral,
   MOUNT_WILDCARDS,
+  replacedBySandbox,
   sandboxReads,
   toRealPath,
 } from './sandbox-paths.js'

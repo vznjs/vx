@@ -1713,7 +1713,11 @@ file created later is not covered — grant its directory instead. On both
 platforms `<dir>/**` and `<dir>/**/*` collapse to `<dir>`, so
 `read: ['**/*']` lets a task list its own cwd; a `<dir>` that is itself a
 glob keeps its subtree (`.*.tmp/**` covers what is inside each match).
-As in a task glob, `[id]` is a class, so a Next.js route is granted escaped, `read: ['pages/\\[id\\].tsx']`.
+As in a task glob, `[id]` is a class, so a Next.js route is granted escaped, `read: ['pages/\\[id\\].tsx']`,
+and a brace is alternation on both platforms: `read: ['c{a,b}']` grants
+`ca` and `cb` (a range, `{1..3}`, too), and `write: ['g/{a,b}.txt']` is
+two file grants. A name holding a brace is granted escaped,
+`read: ['c\\{a,b\\}']`.
 On Linux a WRITE path holding a bracket, `*` or `?` cannot be mounted
 (the runtime drops it): vx says so once, names the directory above it to
 grant instead, and a write under it is refused and reported. A READ path
@@ -2023,6 +2027,9 @@ directory holding a backslash, which the runtime cannot mount at all (its
 task saw no project and ran in `$HOME`). On every platform so is one
 under a directory holding a line break: the runtime reports a refused
 touch one line per record, so it arrived split and was misreported.
+On Linux so is a project under `/dev` (a workspace in `/dev/shm`): the
+sandbox mounts a fresh `/dev`, so the project is gone from the task's
+view, and `vx info` calls the sandbox unavailable there.
 
 **macOS cannot nest.** `sandbox_apply` is refused inside a sandboxed
 process, so a task that itself sandboxes something (vx's own test suite)

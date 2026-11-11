@@ -92,6 +92,7 @@ import {
 } from './sandbox-binds.js'
 import {
   atOrUnder,
+  grantAlternatives,
   isMountableLiteral,
   localBindingOn,
   MOUNT_WILDCARDS,
@@ -1420,9 +1421,9 @@ export function resolveSandboxConfig(
   const pending: string[] = []
   const linked: Array<{ link: string; target: string }> = []
   const r: ResolvedSandboxConfig = {
-    allowRead: expandGrants((a.read ?? []).map(resolve), walls),
+    allowRead: expandGrants((a.read ?? []).flatMap(grantAlternatives).map(resolve), walls),
     allowWrite: expandGrants(
-      (a.write ?? []).map((p) => {
+      (a.write ?? []).flatMap(grantAlternatives).map((p) => {
         const real = resolve(p)
         assertWriteStaysHome(p, real, projectDir)
         const link = linkSpelling(p, real, projectDir)

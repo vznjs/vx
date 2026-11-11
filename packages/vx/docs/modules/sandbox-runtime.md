@@ -34,7 +34,8 @@ Three companions hold the rest, split 2026-09-09 as pure code motion:
   (`bindableWrites`), read grants punched around the write grants
   inside them (`punchWritePaths`), and the SRT custom config.
 - `sandbox-paths.ts` — `toRealPath`, `absolutize`, `atOrUnder`,
-  `isUnderAny`, `sandboxReads`, `unique`.
+  `isUnderAny`, `sandboxReads`, `unique`, `grantAlternatives`,
+  `replacedBySandbox`.
 - `sandbox-deny-scan.ts` — `scopedMandatoryDenies`: SRT's mandatory
   write denies (`.bashrc`, `.mcp.json`, `.vscode/`, `.git/hooks`, …),
   found within each task's write grants instead of the whole root.
@@ -291,12 +292,18 @@ export function macProfileRules(c: ResolvedSandboxConfig): string[]
 export function sbplResolvedPath(value: string, field: string): string
 
 // sandbox-paths.ts: the wildcard alphabet of a GRANT. Smaller than
-// util/paths.ts's BUN_GLOB_WILDCARDS on purpose — `{}` is a literal to a
-// grant (a brace grant gets a placeholder and is widened to its
-// directory; scanned, it matches nothing before the task writes). The
-// request builder reads it to decide whether an output grant is a glob.
+// util/paths.ts's BUN_GLOB_WILDCARDS on purpose — a grant's braces are
+// expanded first, so one left is escaped and literal (scanned, it would
+// match nothing before the task writes). The request builder reads it to
+// decide whether an output grant is a glob.
 export const MOUNT_WILDCARDS: RegExp
 export function isMountableLiteral(grant: string): boolean
+// The grants one declared grant stands for: braces expanded as a task
+// glob's are, and an escaped brace or comma in a literal read as itself.
+export function grantAlternatives(grant: string): string[]
+// Linux: `dir` is under `/dev`, which the sandbox mounts afresh, so no
+// sandboxed task runs there (refused by the request builder; `vx info`).
+export function replacedBySandbox(dir: string): boolean
 // The one path a grant names: a literal, or one whose only brackets are
 // escaped (`out/\[id\]` names `out/[id]`); undefined for a pattern.
 export function namedPath(grant: string): string | undefined
@@ -953,9 +960,13 @@ Linux's observer records every write attempt). `bun build --compile`
 said only "Failed to extract executable" when its cache was not
 writable.
 
-`write: ['g/{a,b}.txt']` is ok, because the classifier here counts only
-`*?[]` and a brace-spelled grant is therefore treated as a file — placed,
-then widened to its directory. It deliberately does NOT read
+A grant's braces are expanded first (`grantAlternatives`, both
+platforms, as a task glob's are; an escaped `\{`, `\}` or `\,` in a
+grant that names a path then reads as itself), so
+`write: ['g/{a,b}.txt']` is two file grants, each placed, then widened to
+its directory. Kept as written, `read: ['c{a,b}']` named a literal no
+project holds and granted nothing. The classifier here counts only
+`*?[]`, so an escaped brace stays a literal. It deliberately does NOT read
 `BUN_GLOB_WILDCARDS`, `Bun.Glob`'s own set, which also counts `{}`
 (nor `isLiteralPattern`, the task-glob predicate item 495 unified): doing so would move that spelling into the scan and turn a
 working grant into `Read-only file system`. The two predicates answer

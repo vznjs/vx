@@ -18,6 +18,7 @@ import {
   utimes,
   writeFile,
 } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -117,6 +118,63 @@ describe('a project under a directory holding a line break', () => {
         'none',
       ])
     }
+  })
+})
+
+// The Linux sandbox mounts a fresh /dev after every bind and skips any
+// grant there, so a project under /dev/shm was gone from the task's view:
+// bwrap failed to remount it, vx called that a mount race, ran the task
+// again, and it failed the same way.
+describe.skipIf(process.platform !== 'linux' || !existsSync('/dev/shm'))(
+  'a project under /dev',
+  () => {
+    let shm = ''
+    afterEach(async () => {
+      if (shm !== '') await rm(shm, { recursive: true, force: true })
+    })
+
+    it('is refused with the directory named, before anything is created', async () => {
+      shm = await mkdtemp('/dev/shm/vx-sandbox-request-')
+      dir = path.join(shm, 'proj')
+      await mkdir(dir, { recursive: true })
+      const err = await sandboxRequestFor(
+        node(),
+        { allow: { write: ['dist/'] } },
+        shm,
+        undefined,
+      ).then(
+        () => undefined,
+        (e: unknown) => (e as Error).message,
+      )
+      expect([err, await kind(path.join(dir, 'dist'))]).toEqual([
+        `exec.sandbox: ${dir} is under /dev, which the Linux sandbox replaces with its own, so ` +
+          `it mounts none of the project — move the workspace out of /dev, or run the task without exec.sandbox`,
+        'none',
+      ])
+    })
+  },
+)
+
+// A grant's brace is alternation, as a task glob's is: `read: ['c{a,b}']`
+// named the literal `c{a,b}`, which no project holds, and granted nothing
+// with no word; `c\{a,b\}` was dropped for its backslash.
+describe('a brace in a grant', () => {
+  it('names each alternative; an escaped brace names the braced path', async () => {
+    const r = await sandboxRequestFor(
+      node(),
+      { allow: { read: ['c{a,b}', 'd\\{a\\,b\\}', 'e{1..2}.txt'], write: ['g/{x,y}.txt'] } },
+      root,
+      undefined,
+    )
+    expect([
+      r.sandbox.config.allowRead.map((p) => relPosix(dir, p)),
+      r.sandbox.config.allowWrite.map((p) => relPosix(dir, p)),
+      r.placeholders.map((p) => relPosix(dir, p.path)),
+    ]).toEqual([
+      ['ca', 'cb', 'd{a,b}', 'e1.txt', 'e2.txt'],
+      ['g/x.txt', 'g/y.txt'],
+      ['g/x.txt', 'g/y.txt'],
+    ])
   })
 })
 

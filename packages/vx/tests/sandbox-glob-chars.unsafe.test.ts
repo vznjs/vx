@@ -182,3 +182,38 @@ describe.skipIf(!available || !linux)('a sandboxed read of a file named with * o
     }
   })
 })
+
+// A grant's brace is alternation, as a task glob's is: `c{a,b}` named a
+// literal no project holds and granted nothing, with no word, and the
+// escaped `c\{a,b\}` was dropped for its backslash.
+describe.skipIf(!available || !linux)('a sandboxed read under a brace grant', () => {
+  let dir = ''
+  beforeEach(async () => {
+    dir = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-brace-')))
+    await initSandbox()
+  })
+  afterEach(async () => {
+    await resetSandbox()
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it('grants each alternative, and an escaped brace names the braced file', async () => {
+    const proj = path.join(dir, 'proj')
+    await mkdir(proj, { recursive: true })
+    for (const f of ['ca', 'cb', 'cc', 'd{a,b}', 'da']) await writeFile(path.join(proj, f), f)
+    const r = await runSandboxed({
+      command: 'for f in ca cb cc \'d{a,b}\' da; do cat < "$f"; done; true',
+      cwd: proj,
+      env: process.env,
+      baseAllowRead: [],
+      baseDenyRead: [dir],
+      reportWithin: proj,
+      reportLinked: [],
+      config: resolveSandboxConfig({ allow: { read: ['c{a,b}', 'd\\{a,b\\}'] } }, proj),
+    })
+    expect([
+      r.stdout,
+      r.violations.map((v) => String(v.target)).sort((a, b) => a.localeCompare(b)),
+    ]).toEqual(['cacbd{a,b}', ['cc', 'da'].map((f) => path.join(proj, f))])
+  })
+})
