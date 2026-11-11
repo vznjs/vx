@@ -4412,13 +4412,7 @@ export async function holdStore(
     }
     if (!said && performance.now() - started >= 1_000) {
       said = true
-      try {
-        log(`[vx] waiting for another vx process using the cache store ${storeDir} to finish…`)
-      } catch (err) {
-        // The caller refuses to wait.
-        closeDb(db)
-        throw err
-      }
+      log(`[vx] waiting for another vx process using the cache store ${storeDir} to finish…`)
     }
     await Bun.sleep(50)
   }

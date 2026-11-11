@@ -20,11 +20,9 @@ import {
   refuseForeignCacheDir,
   relPosix,
   treeBytes,
-  UserError,
 } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import { acquireRunLock } from '../orchestrator/index.js'
-import { VX_RUN_TASK_ENV, VX_RUN_WORKSPACE_ENV } from '../exec/index.js'
 import { findWorkspaceRoot, repoIdsOf } from '../workspace/index.js'
 import {
   cliCacheDir,
@@ -37,21 +35,6 @@ import { formatBytes } from './format.js'
 // parseSize moved to `util` (the orchestrator's resource resolver needs it
 // and can't import cli); re-exported here so existing callers are unchanged.
 export { parseDuration, parseSize } from '../util/index.js'
-
-/**
- * The notice a clean prints while another process holds the cache it
- * deletes. From a task, that holder may be the run that started it, which
- * holds the store (or a shared cache directory) until the task ends: the
- * same-workspace case is the run lock's refusal, another checkout's store
- * or another workspace's `--cache-dir` waited forever.
- */
-function waitOrRefuse(line: string): void {
-  if (process.env[VX_RUN_WORKSPACE_ENV])
-    throw new UserError(
-      `this vx runs inside task ${process.env[VX_RUN_TASK_ENV] ?? '<unknown>'} of a vx run, and another vx process has the cache it cleans open; that run holds its cache until the task ends — clean before or after it, not from one of its tasks`,
-    )
-  warnToStderr(line)
-}
 
 /**
  * `vx cache stats` is a habit from the other runners, and vx's answer is a
@@ -272,10 +255,10 @@ async function cleanCmd(args: readonly string[]): Promise<number> {
     // has the store open, then opens its own handle on it. A cache
     // directory with no store may be another workspace's: the prune holds
     // it until done, as its runs do.
-    if (!parsed.dry && storeRoot !== null) (await holdStore(storeRoot, waitOrRefuse))()
+    if (!parsed.dry && storeRoot !== null) (await holdStore(storeRoot, warnToStderr))()
     const releaseDir =
       !parsed.dry && storeRoot === null
-        ? await holdCacheDir(dir, 'exclusive', waitOrRefuse)
+        ? await holdCacheDir(dir, 'exclusive', warnToStderr)
         : () => {}
     const cache =
       parsed.dry === true
@@ -482,8 +465,8 @@ async function clearHeld(
     const asides: string[] = []
     try {
       for (const t of [...doomed].sort()) {
-        holds.push(await holdStore(t, waitOrRefuse))
-        if (t === shared) holds.push(await holdCacheDir(t, 'exclusive', waitOrRefuse))
+        holds.push(await holdStore(t, warnToStderr))
+        if (t === shared) holds.push(await holdCacheDir(t, 'exclusive', warnToStderr))
       }
       for (const t of doomed) {
         for (const e of entries(t)) {
