@@ -87,6 +87,31 @@ it('`vx lock` and the run over its lock each print a stage warning once', () => 
   })
 })
 
+it('each `vx show` runs the config stage once', () => {
+  // `vx show` loaded the workspace again for its project load, a third
+  // time for `--affected`: turbo()'s warning printed twice (principle 9).
+  const count = (args: string[]) => {
+    const p = Bun.spawnSync({
+      cmd: ['bun', BIN, ...args],
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+    })
+    return (p.stdout.toString() + p.stderr.toString()).split('careful: app').length - 1
+  }
+  expect(count(['lock'])).toBe(1)
+  const verbs = [
+    ['show'],
+    ['show', '--format', 'json'],
+    ['show', '--filter', 'app'],
+    ['show', '--affected=HEAD'],
+    ['show', 'build', '--affected=HEAD'],
+    ['show', 'app#build'],
+  ]
+  expect(verbs.map((v) => [v.join(' '), count(v)])).toEqual(verbs.map((v) => [v.join(' '), 1]))
+})
+
 // vercel/turborepo#2067: "Remote computation caching enabled" printed on
 // stdout ahead of the JSON. A remote layer that answers and one that fails
 // each leave stdout the plan alone.

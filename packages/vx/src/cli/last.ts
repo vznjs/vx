@@ -55,7 +55,7 @@ import {
   cliCacheDir,
   discoverCliProjects,
   loadCliProjects,
-  loadCliWorkspace,
+  workspaceOfDiscovery,
   parseCacheDirFlag,
   rootSpelled,
   stageCacheDir,
@@ -316,9 +316,9 @@ async function definitionsNow(
   try {
     // A plugin's warning is the run's to say, not a history read's.
     const opts = { warn: () => {}, ...(cacheDir === undefined ? {} : { cacheDir }) }
-    const metas = await discoverCliProjects(root)
+    const metas = await discoverCliProjects(root, opts)
     const projects = await loadCliProjects(root, metas, 'all', opts)
-    const ws = await loadCliWorkspace(root, opts.warn)
+    const ws = workspaceOfDiscovery(metas)!
     const rules = runRules(ws.workspaceConfig)
     const names = new Set<string>()
     for (const p of projects.values())
@@ -931,10 +931,16 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
     // recorded run failed" and a run id pointed at a `--list` that lists
     // nothing, while `--list --failed` past green runs said there were none.
     const noRuns = (): boolean => listInvocations(db, { limit: 1 }).length === 0
+    const noRunsYet = (): UserError =>
+      refusal(
+        { tone: 'info', headline: 'no runs yet', fix: 'vx run' },
+        { code: 'VX_E_NO_HISTORY', message: 'vx last: no recorded runs yet — run something first' },
+      )
 
     if (parsed.sql !== undefined) return printQuery(db, parsed.sql, parsed.format)
 
     if (parsed.stats === true) {
+      if (noRuns()) throw noRunsYet()
       const branch = currentBranch(root, undefined, parsed.branch)
       const task = parsed.task === undefined ? undefined : await rootSpelled(root, parsed.task)
       return await printStats(
@@ -1061,12 +1067,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         'VX_E_NO_HISTORY',
       )
     }
-    if ((inv === null || inv === undefined) && noRuns()) {
-      throw refusal(
-        { tone: 'info', headline: 'no runs yet', fix: 'vx run' },
-        { code: 'VX_E_NO_HISTORY', message: 'vx last: no recorded runs yet — run something first' },
-      )
-    }
+    if ((inv === null || inv === undefined) && noRuns()) throw noRunsYet()
     // Nothing failed is no fault: said as `--list --failed` says it.
     if ((inv === null || inv === undefined) && parsed.failed === true) {
       throw refusal(

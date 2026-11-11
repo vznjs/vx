@@ -181,6 +181,8 @@ export interface CliLoadOptions {
  * reads: configs from the lock, the plugin `project` stage applied. `scope`
  * is every project or a list of names; their closure only with `closure`.
  * No lock is `NO_LOCK`, whatever the scope: only `vx lock` evaluates.
+ * The workspace a discovery of `metas` loaded is reused: its `config`
+ * stage runs once per verb.
  */
 export async function loadCliProjects(
   workspaceRoot: string,
@@ -189,7 +191,7 @@ export async function loadCliProjects(
   opts: CliLoadOptions = {},
 ): Promise<Map<string, ProjectEntry>> {
   const warn = opts.warn ?? warnToStderr
-  const ws = await loadCliWorkspace(workspaceRoot, warn)
+  const ws = workspaceOfDiscovery(metas) ?? (await loadCliWorkspace(workspaceRoot, warn))
   const { plugins } = ws
   const cacheDir = stageCacheDir(ws, opts)
   const loaded = await loadProjects({
