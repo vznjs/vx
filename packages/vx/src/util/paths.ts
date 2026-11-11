@@ -279,7 +279,13 @@ function memoFor<T>(memos: WeakMap<object, Map<string, T>>): Map<string, T> {
 }
 
 function compileTaskGlob(pattern: string): Bun.Glob {
-  const glob = new Bun.Glob(pattern)
+  const scan = scannable(pattern)
+  const glob = new Bun.Glob(scan)
+  if (scan !== pattern) {
+    // Only the scan reads the class spelling; the match stays the pattern's own.
+    const own = new Bun.Glob(pattern)
+    glob.match = (rel: string): boolean => own.match(rel)
+  }
   const alternatives = braceAlternatives(pattern)
   if (alternatives.length > 1) {
     const any = anyTaskGlob(alternatives)
@@ -297,6 +303,36 @@ function compileTaskGlob(pattern: string): Bun.Glob {
   glob.match = (rel: string): boolean =>
     rel.endsWith('/') ? native.match.call(glob, rel) : compiled.test(rel)
   return glob
+}
+
+/**
+ * `pattern` with each `\]`, `\}` and `\\` outside a class spelled as a class
+ * of that one character. `Bun.Glob`'s scan reads those escapes, in a segment
+ * holding no wildcard, as the backslash and the character, though its match
+ * reads them right: an output `dist/\]b` saved nothing, and a hit cleaned
+ * `dist/]b` and restored none of it, green.
+ */
+export function scannable(pattern: string): string {
+  if (!/\\[\]}\\]/.test(pattern)) return pattern
+  let out = ''
+  let inClass = false
+  for (let i = 0; i < pattern.length; i++) {
+    const c = pattern[i]!
+    if (c === '\\' && i + 1 < pattern.length) {
+      const next = pattern[++i]!
+      out += !inClass && ']}\\'.includes(next) ? `[${next === '\\' ? '\\\\' : next}]` : c + next
+    } else if (c === '[' && !inClass) {
+      inClass = true
+      out += c
+      // A `]` first in a class (after its `!`) is a member, not the close.
+      if (pattern[i + 1] === '!' || pattern[i + 1] === '^') out += pattern[++i]
+      if (pattern[i + 1] === ']') out += pattern[++i]
+    } else {
+      if (c === ']') inClass = false
+      out += c
+    }
+  }
+  return out
 }
 
 /**

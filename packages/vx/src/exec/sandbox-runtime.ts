@@ -76,6 +76,7 @@ import {
   isTmpdirRefusal,
   procfsIsOwn,
   relPosix,
+  scannable,
   taskGlobOf,
   TMPDIR_HINT,
   UserError,
@@ -3435,7 +3436,7 @@ function expandGrants(
  * of the grant (B-6). A missing base matches nothing, as an empty one does.
  */
 function scanOrNothing(pattern: string, base: string): Iterable<string> {
-  const glob = new Bun.Glob(pattern)
+  const glob = new Bun.Glob(scannable(pattern))
   try {
     // Materialised here: the throw comes from the first step, not the call.
     return [...glob.scanSync({ cwd: base, onlyFiles: false, dot: true })]

@@ -1636,7 +1636,17 @@ function assertPosixGlob(glob: string, where: string, base: string): void {
   DRIVE.lastIndex = 0
   const drive = DRIVE.test(body)
   if (!drive && !hasBackslashSeparator(body)) return
-  const write = neg + body.replace(DRIVE, '$1').replace(/\\(?![[\]{}!\\])/g, '/')
+  // A backslash that starts a name separates nothing: before a `*` or `?`
+  // it meant the character, which a class names (`src/\*x` was told to
+  // write `src//*x`, a wildcard).
+  const classed = body.replace(DRIVE, '$1').replace(/(^|[/{,])\\([*?])/g, '$1[$2]')
+  const write = neg + classed.replace(/\\(?![[\]{}!\\])/g, '/')
+  if (!drive && !hasBackslashSeparator(classed)) {
+    throw new UserError(
+      `${where}: "${glob}" escapes a wildcard with a backslash, which task globs read as a ` +
+        `path separator: write "${write}" for the character itself`,
+    )
+  }
   throw new UserError(
     `${where}: "${glob}" ${drive ? 'starts with a Windows drive' : 'uses a backslash as a path separator'} — ` +
       `task globs are ${base}-relative with forward slashes: write "${write}"`,

@@ -45,6 +45,7 @@ export {
   grantPrefix,
   isLiteralPattern,
   literalPath,
+  scannable,
   taskGlobOf,
   GLOB_WILDCARDS,
   normalizeBunGlob,

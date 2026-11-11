@@ -1336,6 +1336,24 @@ describe('a backslash separator or a drive letter in a task glob', () => {
     ).toBe(drive('outputs.workspaceFiles', 'D:\\out\\**', 'out/**', 'workspace-root'))
   })
 
+  // `src/\*x` was told to write `src//*x`: a wildcard, and a doubled slash.
+  // A backslash after a slash separates nothing; a literal star or `?` is
+  // the class `[*]`.
+  it('names the class spelling for a backslash before a star or ? that starts a name', () => {
+    expect(taskRefusal(task({ files: ['src/\\*x'] }))).toBe(
+      `${CFG}: tasks.t.inputs.files: "src/\\*x" escapes a wildcard with a backslash, which ` +
+        `task globs read as a path separator: write "src/[*]x" for the character itself`,
+    )
+    expect(taskRefusal(task({ files: ['\\?x/**'] }))).toBe(
+      `${CFG}: tasks.t.inputs.files: "\\?x/**" escapes a wildcard with a backslash, which ` +
+        `task globs read as a path separator: write "[?]x/**" for the character itself`,
+    )
+    // CONTROL: one after a name is still a separator.
+    expect(taskRefusal(task({ files: ['src/lib\\*.ts'] }))).toBe(
+      sep('inputs.files', 'src/lib\\*.ts', 'src/lib/*.ts'),
+    )
+  })
+
   it('leaves an escape and a colon in a name alone', () => {
     // CONTROL: a backslash before a glob character escapes it (Turbo's
     // `app/\[id\]/**`), and a colon past a drive's one letter is a name.

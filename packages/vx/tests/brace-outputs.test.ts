@@ -120,3 +120,59 @@ it('a brace holding an escaped char saves and restores each tree', async () => {
     readFileSync(path.join(app, 'app/[id]/b.js'), 'utf8'),
   ]).toEqual(['a\n', 'b\n'])
 })
+
+// `Bun.Glob`'s scan reads `\]`, `\}` and `\\` in a segment with no wildcard
+// as the backslash and the character, so `dist/\]b` saved nothing: a hit
+// cleaned the output and restored none of it, green, and silent while
+// another escaped glob (`dist/\[a\]`) matched.
+it('an escaped bracket, brace or backslash output saves and restores, alone or beside others', async () => {
+  const cmd =
+    `mkdir -p dist "dist/]d" "l]/]c" && printf A > "dist/[a]" && printf B > "dist/]b" && ` +
+    `printf C > "dist/}x" && printf D > 'dist/a\\b' && printf E > "dist/]d/e" && printf F > "l]/]c/f"`
+  const want: Record<string, string> = {
+    'dist/[a]': 'A',
+    'dist/]b': 'B',
+    'dist/}x': 'C',
+    'dist/a\\b': 'D',
+    'dist/]d/e': 'E',
+    'l]/]c/f': 'F',
+  }
+  const cases: [string, string[], string[]][] = [
+    ['b', ['dist/\\]b'], ['dist/]b']],
+    ['c', ['dist/\\}x'], ['dist/}x']],
+    ['d', ['dist/a\\\\b'], ['dist/a\\b']],
+    [
+      'all',
+      ['dist/\\[a\\]', 'dist/\\]b', 'dist/\\}x', 'dist/a\\\\b', 'dist/\\]d', 'l*/\\]c/**'],
+      Object.keys(want),
+    ],
+  ]
+  for (const [name, outputs, restored] of cases) {
+    const app = await addProject(root, name, {
+      config: `
+        export default {
+          tasks: {
+            build: {
+              exec: { command: ${JSON.stringify(cmd)} },
+              inputs: { files: ['src/**'] }, outputs: { files: ${JSON.stringify(outputs)} }, cache: true,
+            },
+          },
+        }
+      `,
+      files: { 'src/x.ts': 'x', '.gitignore': 'dist/\nl]/\n' },
+    })
+    gitIn(root)('add', '-A')
+    gitIn(root)('commit', '-q', '-m', name)
+    const build = () => run({ cwd: root, tasks: [`${name}#build`], log, handleSignals: false })
+    expect((await build()).outcomes[0]!.status).toBe('success')
+    await rm(path.join(app, 'dist'), { recursive: true })
+    await rm(path.join(app, 'l]'), { recursive: true })
+    expect([name, (await build()).outcomes[0]!.status]).toEqual([name, 'cache-hit'])
+    const got = Object.fromEntries(
+      Object.keys(want)
+        .filter((f) => existsSync(path.join(app, f)))
+        .map((f) => [f, readFileSync(path.join(app, f), 'utf8')]),
+    )
+    expect([name, got]).toEqual([name, Object.fromEntries(restored.map((f) => [f, want[f]!]))])
+  }
+})

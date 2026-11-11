@@ -138,6 +138,12 @@ that expands the grant sees a wildcard.
   `match` is a RegExp of the same verdict when the pattern has no brace,
   class, escape, leading `!`, empty
   or dot segment: a JS test, not a native call.
+- `scannable(p)` — `p` with each `\]`, `\}` and `\\` outside a class
+  spelled as a one-character class (`[]]`, `[}]`, `[\\]`), for a scan:
+  `Bun.Glob`'s scan reads those escapes, in a segment with no wildcard,
+  as the backslash and the character, so an output `dist/\]b` saved
+  nothing and a hit restored none of it. `taskGlob` scans with it and
+  keeps the pattern's own `match`; a sandbox grant's scan uses it too.
 - `anyTaskGlob(ps)` — whether a path matches any of the task globs: one
   RegExp per 1000 alternatives when each has one (Bun's RegExp slows
   sharply past about 2000). An input file is tested once per side
