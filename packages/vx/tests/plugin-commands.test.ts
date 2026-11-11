@@ -646,6 +646,9 @@ describe('bin.ts prints a foreign-copy UserError as one line', () => {
       } },
       crash: { description: 'throws a plain Error', run() { throw new Error('kaboom') } },
       floats: { description: 'leaves a rejection unawaited', run() { Promise.reject(new Error('floating')); return 0 } },
+      late: { description: 'leaves a rejection as it resolves', run() {
+        return new Promise((resolve) => setImmediate(() => { Promise.reject(new Error('floating')); resolve(0) }))
+      } },
       'My.verb': { description: 'a capital and a dot', run() { throw new Error('dotted') } },
       big: { description: 'resolves a bigint', run() { return 0n } },
     },
@@ -657,6 +660,15 @@ describe('bin.ts prints a foreign-copy UserError as one line', () => {
   it('a rejection the verb left unawaited fails the run, saying so', async () => {
     await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([PLUGIN]))
     const r = spawn('floats')
+    expect([r.code, r.err.includes('floating')]).toEqual([1, true])
+  })
+
+  // Reported in the turn the exit ended the streams, its line came after
+  // stderr had ended and was dropped: exit 1 and no word of why (CI, under
+  // load, 2026-11-11).
+  it('a rejection reported as the exit begins still says so', async () => {
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([PLUGIN]))
+    const r = spawn('late')
     expect([r.code, r.err.includes('floating')]).toEqual([1, true])
   })
 
