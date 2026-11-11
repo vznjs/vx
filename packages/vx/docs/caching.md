@@ -1566,7 +1566,10 @@ and https agree) and the workspace's path in the repository; with no
 remote, the first commit. A repository with neither (no commit yet, a
 shallow clone with no remote) shares nothing: its workspace holds its
 entries, and once it has an identity (its first commit) the next run
-moves them into the store, so they still replay. Each level of `~/.vx` is
+moves them into the store, so they still replay. Rewriting the first
+commit with no remote (`commit --amend`, `rebase --root`) is a new id and
+an empty store; the old one stays in `~/.vx` until removed by hand.
+Each level of `~/.vx` is
 owner-only; vx closes one of yours that others can read (chmod 700), and one others can write, or owned by another user, is not used. Design: [`design/shared-store-2026-10.md`](./design/shared-store-2026-10.md).
 
 ```
