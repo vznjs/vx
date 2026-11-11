@@ -45,19 +45,3 @@ it('CONTROL: one kept under this code and these reads is served', async () => {
   expect(await served(['graph-v1'])).toBe('kept')
   expect(await served(['graph-v2'])).toBe('fresh')
 })
-
-// turbo(): what git ignores under an input glob is no file read; a kept
-// mapping served after an ignored file appeared named none of it.
-it('one whose asked answers moved is mapped afresh', async () => {
-  let maps = 0
-  const name = async (answer: string) => {
-    const fresh = async () => ({ ...mapping(`map ${++maps}`), asked: [['q', 'a1']] as const })
-    const ask = async (q: string) => (q === 'q' ? answer : '')
-    return (await cachedMapping(dir, 'u', ['r'], fresh, ask)).byName.get('a')!.tasks[0]!.name
-  }
-  expect([await name('a1'), await name('a1'), await name('a2')]).toEqual([
-    'map 1',
-    'map 1',
-    'map 2',
-  ])
-})

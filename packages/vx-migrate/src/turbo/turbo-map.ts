@@ -307,8 +307,6 @@ interface Literals {
   readonly taken: readonly string[]
   /** The package, root-relative (`files` entries are relative to it). */
   readonly pkgDir: string
-  /** The task, whose `outputs` are set after these are taken. */
-  readonly task: Record<string, unknown>
 }
 type Named = readonly ['files' | 'workspaceFiles' | null, string]
 
@@ -412,7 +410,6 @@ function keyIgnoredGlobbed(
     ),
   )
   const taken = [...l.taken, ...current].map((t) => new Bun.Glob(t))
-  const own = ownOutputs(l)
   for (const [glob, kind] of l.globs) {
     const matcher = new Bun.Glob(glob)
     const at = kind === 'files' && l.pkgDir !== '' ? `${l.pkgDir}/` : ''
@@ -422,13 +419,11 @@ function keyIgnoredGlobbed(
       // globs stop at: its path is named from the workspace root.
       const nested = at !== '' && projectDirs.some((d) => d.startsWith(at) && e.startsWith(`${d}/`))
       const base = nested ? '' : at
-      const entry = own(e)
-        ? null
-        : e.endsWith('/')
-          ? globUnder(glob.slice(at.length), e.slice(at.length, -1))
-          : matcher.match(e) && !taken.some((t) => t.match(e))
-            ? literalGlob(e.slice(base.length))
-            : null
+      const entry = e.endsWith('/')
+        ? globUnder(glob.slice(at.length), e.slice(at.length, -1))
+        : matcher.match(e) && !taken.some((t) => t.match(e))
+          ? literalGlob(e.slice(base.length))
+          : null
       if (entry === null) continue
       const into = nested ? 'workspaceFiles' : kind
       const named = nested && e.endsWith('/') ? `${l.pkgDir}/${entry}` : entry
@@ -436,43 +431,6 @@ function keyIgnoredGlobbed(
       if (!list.includes(named)) l.inputs[into] = [...list, named]
     }
   }
-}
-
-/**
- * Whether the task's own outputs hold the root-relative ignored entry
- * whole (a directory as `dir/`): core refuses an input they hold, since
- * the task cleans it before it runs, and Turbo's run rewrites it anyway.
- * An entry a `!` output reaches into is kept: part of it is no output.
- */
-function ownOutputs(l: Literals): (entry: string) => boolean {
-  const outputs = l.task.outputs as { files?: string[]; workspaceFiles?: string[] } | undefined
-  if (outputs === undefined) return () => false
-  const at = l.pkgDir === '' ? '' : `${l.pkgDir}/`
-  const all = [
-    ...(outputs.files ?? []).map((o) => o.replace(/^(!?)/, `$1${at}`)),
-    ...(outputs.workspaceFiles ?? []),
-  ]
-  const pos = all.filter((o) => !o.startsWith('!'))
-  const neg = all.filter((o) => o.startsWith('!')).map((o) => o.slice(1))
-  if (pos.length === 0) return () => false
-  const posGlobs = pos.map((o) => new Bun.Glob(o))
-  const negGlobs = neg.map((n) => new Bun.Glob(n))
-  return (entry) => {
-    if (!entry.endsWith('/'))
-      return posGlobs.some((o) => o.match(entry)) && !negGlobs.some((n) => n.match(entry))
-    const dir = entry.slice(0, -1)
-    return pos.some((o) => holdsDir(o, dir)) && !neg.some((n) => outputsOverlap(n, `${dir}/**`))
-  }
-}
-
-/** Whether the glob matches every path below `dir`: its head before a closing `/**` reaches `dir`. */
-function holdsDir(glob: string, dir: string): boolean {
-  const m = /^(?:(.*)\/)?\*\*(?:\/\*)?$/.exec(glob)
-  if (m === null) return false
-  if (m[1] === undefined) return true
-  const hs = m[1].split('/')
-  const ds = dir.split('/')
-  return hs.length <= ds.length && hs.every((h, i) => h !== '**' && new Bun.Glob(h).match(ds[i]!))
 }
 
 /**
@@ -2331,7 +2289,7 @@ function buildTask(
   for (const g of globalKept)
     if (g.startsWith('!')) taken.push(g.slice(1))
     else if (!isLiteral(g) && !globs.has(g)) globs.set(g, 'workspaceFiles')
-  literals.tasks.push({ inputs, rels, globs, taken, pkgDir: atRoot ? '' : pkgDir, task })
+  literals.tasks.push({ inputs, rels, globs, taken, pkgDir: atRoot ? '' : pkgDir })
   // Turbo keys every task on its inputs, cached or not, and a dependant
   // folds that key: an uncached task's inputs still move its dependants.
   task.inputs = inputs

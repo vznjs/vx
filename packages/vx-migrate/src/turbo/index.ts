@@ -254,18 +254,6 @@ async function run(root: string, projects: readonly ProjectMeta[]): Promise<Adop
     Promise.all(['.npmrc', 'pnpm-workspace.yaml'].map((f) => textOf(path.join(root, f)))),
   ])
   const envNames = envNamesThatMap(configs, envNamesNow())
-  // An explicit input glob names each gitignored path it matches, which no
-  // read above sees appear: the kept mapping holds what git answered and is
-  // used only while git answers the same. Once per run: a remap reuses it.
-  const answers = new Map<string, Promise<string>>()
-  const ask = (question: string): Promise<string> => {
-    let answer = answers.get(question)
-    if (answer === undefined) {
-      const globs = JSON.parse(question) as string[]
-      answers.set(question, (answer = gitIgnoredUnder(root, globs).then((u) => JSON.stringify(u))))
-    }
-    return answer
-  }
   // The tsconfigs a `tsc` script reads are the mapping's inputs too.
   const tsc = onceReader()
   for (const m of metas)
@@ -293,8 +281,7 @@ async function run(root: string, projects: readonly ProjectMeta[]): Promise<Adop
       JSON.stringify(metas.map((m) => [m.name, m.dir, m.packageJson, m.configPath])),
       JSON.stringify([...tsc.texts]),
     ],
-    map: (tracked) => mapAll(root, metas, envNames, tracked, tsc.read, ask),
-    ask,
+    map: (tracked) => mapAll(root, metas, envNames, tracked, tsc.read),
   }
 }
 
@@ -310,10 +297,8 @@ async function mapAll(
   envNames: readonly string[],
   trackedFiles: () => Promise<readonly string[] | null>,
   read: ReadText,
-  ask: (question: string) => Promise<string>,
 ): Promise<AdoptionMapping> {
   const tracked = await trackedFiles()
-  const asked: [string, string][] = []
   const configs = new Map(
     metas.flatMap((m) =>
       m.configPath === null ? [] : [[relPosix(root, m.dir), path.basename(m.configPath)] as const],
@@ -332,15 +317,10 @@ async function mapAll(
     ...(tracked === null ? {} : { tracked: trackedKinds(tracked) }),
     ownConfig: (rel) => configs.get(rel === '.' ? '' : rel) ?? null,
     ignored: (rels) => gitIgnored(root, rels),
-    ignoredUnder: async (globs) => {
-      const question = JSON.stringify(globs)
-      const answer = await ask(question)
-      asked.push([question, answer])
-      return JSON.parse(answer) as string[]
-    },
+    ignoredUnder: (globs) => gitIgnoredUnder(root, globs),
     buildInfo: (rel, command) => tscBuildInfo(read, path.join(root, rel), command),
   })
   const byName = new Map<string, TurboMappedProject>()
   for (const project of mapped.projects) byName.set(project.name, project)
-  return { byName, gaps: collectGaps(mapped.projects, mapped.notes), asked }
+  return { byName, gaps: collectGaps(mapped.projects, mapped.notes) }
 }

@@ -29,7 +29,7 @@ async function spare(
     if (ids === undefined) todos.set(todo, (ids = []))
     ids.push(id)
   }
-  return { ...mapping, gaps: { ...mapping.gaps, todos } }
+  return { byName: mapping.byName, gaps: { ...mapping.gaps, todos } }
 }
 
 /**
@@ -48,8 +48,6 @@ export interface AdoptionRun {
    * file under one is taken back (`tracked-outputs.ts`).
    */
   readonly spareTracked?: boolean
-  /** Answers a question a kept mapping's `asked` holds (`cachedMapping`), as `map` would now. */
-  readonly ask?: (question: string) => Promise<string>
 }
 
 /**
@@ -83,23 +81,13 @@ export function adoptionPlugin(
         const stamp = headStamp(ctx.workspaceRoot)
         mapping = mapRun(ctx).then(async (r) =>
           r.spareTracked === true
-            ? cachedMapping(
-                ctx.cacheDir,
-                r.name,
-                [...r.reads, await stamp],
-                async () => {
-                  let read: Promise<readonly string[] | null> | undefined
-                  const tracked = () => (read ??= trackedFiles(ctx.workspaceRoot))
-                  return spare(ctx, await r.map(tracked), await tracked())
-                },
-                r.ask,
-              )
-            : cachedMapping(
-                ctx.cacheDir,
-                r.name,
-                r.reads,
-                () => r.map(() => trackedFiles(ctx.workspaceRoot)),
-                r.ask,
+            ? cachedMapping(ctx.cacheDir, r.name, [...r.reads, await stamp], async () => {
+                let read: Promise<readonly string[] | null> | undefined
+                const tracked = () => (read ??= trackedFiles(ctx.workspaceRoot))
+                return spare(ctx, await r.map(tracked), await tracked())
+              })
+            : cachedMapping(ctx.cacheDir, r.name, r.reads, () =>
+                r.map(() => trackedFiles(ctx.workspaceRoot)),
               ),
         )
         warned = false
