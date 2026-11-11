@@ -1722,6 +1722,33 @@ describe('OTLP envelopes, exactly', () => {
     ])
   })
 
+  it('a log record body is plain text: the task’s colour and title escapes are dropped', async () => {
+    // Core runs tasks with FORCE_COLOR=1, so a captured tail carries SGR and
+    // OSC escapes a log backend shows as raw `\x1b[31m` noise.
+    const { buildLogsRequest } = await import('../src/otlp.js')
+    const req = buildLogsRequest({
+      serviceName: 'vx',
+      vxVersion: '1.2.3',
+      runId: 'run-1',
+      workspaceId: 'ws-test',
+      entries: [
+        {
+          taskId: 'a#build',
+          status: 'failed',
+          content: '\x1b]0;title\x07\x1b[31merror\x1b[39m: \x1b[1mboom\x1b[22m\n',
+          charsFull: 4,
+          truncatedHeadChars: 0,
+        } as never,
+      ],
+      timeUnixNano: '7',
+    }) as {
+      resourceLogs: { scopeLogs: { logRecords: { body: { stringValue: string } }[] }[] }[]
+    }
+    expect(req.resourceLogs[0]!.scopeLogs[0]!.logRecords[0]!.body).toEqual({
+      stringValue: 'error: boom\n',
+    })
+  })
+
   it('an int attribute is an integer string: a fractional duration is truncated', () => {
     // OTLP's intValue is an int64 in decimal; "12.7" is not one, and a
     // collector rejects the attribute (or the span).

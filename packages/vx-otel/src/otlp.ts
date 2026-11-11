@@ -830,7 +830,8 @@ export function buildLogsRequest(args: {
       observedTimeUnixNano: args.timeUnixNano,
       severityNumber: failed ? SEVERITY_ERROR : SEVERITY_INFO,
       severityText: failed ? 'ERROR' : 'INFO',
-      body: { stringValue: e.content },
+      // Tasks run with FORCE_COLOR=1; a log backend shows escapes as noise.
+      body: { stringValue: Bun.stripANSI(e.content) },
       attributes: attrs,
       ...(args.traceId ? { traceId: args.traceId } : {}),
       ...(spanId ? { spanId } : {}),
