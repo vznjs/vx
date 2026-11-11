@@ -1789,7 +1789,9 @@ symlink under the outputs to its target as written (`outputs/dist/latest`
 → `v2.txt`). A hit makes the link apart from its place and renames it
 over the target like a file, and only if the target is relative and
 stays inside the workspace at every step, read segment by segment from
-the link's own directory; any other fails the whole restore. A target
+the link's own directory, and through no other link it restores except
+as its last hop (a soname chain, at most 8 links, no loop); any other
+fails the whole restore. A target
 that climbs above the root and comes back (`../../../ws/app/x`) is out:
 judged by where it ends, it resolved inside only on a checkout whose root
 is named `ws`, saved there and was refused as corrupt everywhere else

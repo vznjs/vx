@@ -185,7 +185,11 @@ A task with `exec.sandbox` runs where only what it declares exists:
   restore, where a link out of it fails the whole restore. Nor may it
   reach its target through another link of the same outputs: each
   target is checked as text, and `up -> ..` with `esc -> up/../../x`
-  each read as inside while `esc` lands outside. An output
+  each read as inside while `esc` lands outside. Another link as the
+  target's LAST hop is no such step (a shared library's soname chain,
+  `libu.so -> libu.so.1`): the kernel lands where that link lands, and
+  that link is checked on its own, so the chain is
+  kept unless it loops or runs past 8 hops. An output
   directory linked out of the project refuses the task by name (X-88).
   Linux judges making a link by the link, never its target
   (`tests/sandbox-output-link.unsafe.test.ts`).

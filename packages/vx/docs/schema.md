@@ -1527,7 +1527,10 @@ as the link, its target as written (a link to a file, to a directory,
 or to nothing yet), and the clean unlinks it (never following it). No
 byte of its target is read. A link must be relative and lead somewhere
 inside the workspace, out of `.git`: an absolute one, `../../../etc/hosts`, or
-`../../.git/config` fails the save by name and caches nothing, so the next run executes again. An
+`../../.git/config` fails the save by name and caches nothing, so the next run executes again.
+A link may name another output link as its target (`libu.so -> libu.so.1`, a
+soname chain), but never pass through one on the way (`up/../x`), loop, or
+chain past 8 links. An
 output DIRECTORY that is a symlink (`dist -> real-out`) is followed: its
 target is cleaned, saved and restored as the output; one that resolves
 outside the project refuses the task, naming the link. The clean also prunes the directories it
@@ -2008,7 +2011,9 @@ reported, items 444 and 1011). One exception: the observer cannot see an
 swallowed `openat2` write there passes, having written nothing; one it
 may not read is reported as an open, its fix a read grant. A write
 outside the project is refused the same way and named on a failed
-task, never counted. The remedy is to declare it: `allow: { write: [...] }`.
+task, never counted, with a grant for each refused write (a refused
+`mkdir ~/.cache` is granted as `'~/.cache/'`, never home itself). The
+remedy is to declare it: `allow: { write: [...] }`.
 
 **A write grant cannot be removed on Linux.** A directory grant is
 mounted in place, so `rm -rf dist && tsc` under `write: ['dist/']`

@@ -381,16 +381,25 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
       }
     }),
   )
+  const shownOf = new Map<string, string>()
   const linked = new Map<string, string>()
   const symlinks = files.filter(
     (f): f is Extract<(typeof files)[number], { link: string }> => 'link' in f,
   )
-  for (const f of symlinks) linked.set(f.abs, f.shown)
+  for (const f of symlinks) {
+    shownOf.set(f.abs, f.shown)
+    linked.set(f.abs, f.link)
+  }
   for (const f of symlinks) {
     const via = throughLink(path.dirname(f.abs), f.link, linked)
-    if (via !== undefined) {
+    if (via?.why === 'through') {
       throw new UserError(
-        `${f.shown} is a symlink to ${f.link} through ${linked.get(via)}, another link: vx restores each link as written and checks where it points alone — point it at the target directly, or take it back with a '!' entry`,
+        `${f.shown} is a symlink to ${f.link} through ${shownOf.get(via.at)}, another link: vx restores each link as written and checks where it points alone — point it at the target directly, or take it back with a '!' entry`,
+      )
+    }
+    if (via?.why === 'loop') {
+      throw new UserError(
+        `${f.shown} is a symlink to ${f.link}, a chain of links that loops or runs past ${LINK_CHAIN_MAX} hops at ${shownOf.get(via.at)} — point it at the target directly, or take it back with a '!' entry`,
       )
     }
   }
@@ -903,24 +912,40 @@ function linksOf(meta: MetaFile): Array<[string, string]> {
   })
 }
 
+/** Links one link may lead through as its last hop: `libx.so -> libx.so.1 -> libx.so.1.0` is 2. */
+const LINK_CHAIN_MAX = 8
+
 /**
- * The first of `links` (absolute paths) that `to` passes through, walked
- * from `dir` a segment at a time. Each link's target is checked as text,
- * but the kernel follows one link while it resolves the next: `up -> ..`
- * and `esc -> up/../../x` each read as inside while `esc` lands outside.
+ * The first of `links` (absolute paths to their targets as written) that
+ * `to` passes through, walked from `dir` a segment at a time. Each link's
+ * target is checked as text, but the kernel follows one link while it
+ * resolves the next: `up -> ..` and `esc -> up/../../x` each read as
+ * inside while `esc` lands outside. A link that is the LAST hop is no
+ * such step: `libx.so -> libx.so.1` lands where `libx.so.1` lands, and
+ * that link is checked on its own, so a shared library's soname chain is
+ * kept. Such a chain is walked to its end and refused only when it loops
+ * or runs past `LINK_CHAIN_MAX` (`why: 'loop'`).
  */
 function throughLink(
   dir: string,
   to: string,
   links: ReadonlyMap<string, string>,
-): string | undefined {
-  let at = dir
-  for (const seg of to.split('/')) {
-    if (seg === '' || seg === '.') continue
-    at = seg === '..' ? path.dirname(at) : path.join(at, seg)
-    if (links.has(at)) return at
+): { at: string; why: 'through' | 'loop' } | undefined {
+  const seen = new Set<string>()
+  for (;;) {
+    const segs = to.split('/').filter((seg) => seg !== '' && seg !== '.')
+    let at = dir
+    for (const [i, seg] of segs.entries()) {
+      at = seg === '..' ? path.dirname(at) : path.join(at, seg)
+      if (links.has(at) && (i < segs.length - 1 || seg === '..')) return { at, why: 'through' }
+    }
+    const next = links.get(at)
+    if (next === undefined) return undefined
+    if (seen.has(at) || seen.size >= LINK_CHAIN_MAX) return { at, why: 'loop' }
+    seen.add(at)
+    dir = path.dirname(at)
+    to = next
   }
-  return undefined
 }
 
 /**
@@ -1162,10 +1187,13 @@ export async function extractArtifactStream(
     const tree = stageRoot === undefined && workspaceDest !== undefined
     const bound = stageRoot ?? destDir
     const where = stageRoot === undefined ? 'project' : 'workspace'
+    const nameOf = new Map<string, string>()
     const linked = new Map<string, string>()
-    for (const [name] of links) {
+    for (const [name, to] of links) {
       const dest = x.destFor(name)
-      if (dest !== null && dest.rel.length > 0) linked.set(path.join(dest.base, dest.rel), name)
+      if (dest === null || dest.rel.length === 0) continue
+      nameOf.set(path.join(dest.base, dest.rel), name)
+      linked.set(path.join(dest.base, dest.rel), to)
     }
     let realBound: Promise<string> | undefined
     const realDirs = new Map<string, Promise<string>>()
@@ -1189,9 +1217,14 @@ export async function extractArtifactStream(
         throw new ArchiveSecurityError(`archive link ${name} points out of the ${where}: ${to}`)
       }
       const via = throughLink(path.dirname(target), to, linked)
-      if (via !== undefined) {
+      if (via?.why === 'through') {
         throw new ArchiveSecurityError(
-          `archive link ${name} points through ${linked.get(via)}, another link it restores: ${to}`,
+          `archive link ${name} points through ${nameOf.get(via.at)}, another link it restores: ${to}`,
+        )
+      }
+      if (via?.why === 'loop') {
+        throw new ArchiveSecurityError(
+          `archive link ${name} starts a chain of links that loops or runs past ${LINK_CHAIN_MAX} hops at ${nameOf.get(via.at)}: ${to}`,
         )
       }
       if (refused === undefined && !tree) {

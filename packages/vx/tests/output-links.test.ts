@@ -344,6 +344,51 @@ it.skipIf(process.platform === 'win32')(
   },
 )
 
+// A shared library's soname chain (`libu.so -> libu.so.1 -> libu.so.1.0`)
+// failed every save as a link "through another link". A link that is the
+// LAST hop lands where that link lands, and each link is checked on its
+// own, so the chain is kept; one that loops is still refused.
+it.skipIf(process.platform === 'win32')(
+  'an artifact with a soname chain restores it, and one with a looping chain restores nothing',
+  async () => {
+    const outer = mkdtempSync(path.join(os.tmpdir(), 'vx-links-soname-'))
+    made.push(outer)
+    const ws = path.join(outer, 'ws')
+    const dest = path.join(ws, 'app')
+    mkdirSync(dest, { recursive: true })
+    const restore = async (links: Record<string, string>) =>
+      extractArtifactStream(
+        streamOf(await artifact({ links })),
+        dest,
+        ws,
+        undefined,
+        undefined,
+        ws,
+      ).then(
+        () => null,
+        (e: unknown) => e,
+      )
+    expect(
+      await restore({
+        'outputs/lib/libu.so': 'libu.so.1',
+        'outputs/lib/libu.so.1': 'libu.so.1.0',
+        'outputs/lib/libu.so.1.0': '../real/libu.so',
+      }),
+    ).toBeNull()
+    expect(readlinkSync(path.join(dest, 'lib/libu.so'))).toBe('libu.so.1')
+    expect(readlinkSync(path.join(dest, 'lib/libu.so.1'))).toBe('libu.so.1.0')
+    rmSync(path.join(dest, 'lib'), { recursive: true })
+    expect(String(await restore({ 'outputs/lib/a': 'b', 'outputs/lib/b': './a' }))).toContain(
+      'ArchiveSecurityError: archive link outputs/lib/a starts a chain of links that loops',
+    )
+    // A chain whose next hop leaves the workspace is refused at that hop.
+    expect(
+      String(await restore({ 'outputs/lib/a': 'b', 'outputs/lib/b': '../../../../outside' })),
+    ).toContain('ArchiveSecurityError: archive link outputs/lib/b points out of the workspace')
+    expect(lstatSync(path.join(dest, 'lib/a'), { throwIfNoEntry: false })).toBeUndefined()
+  },
+)
+
 // The other link may already be on disk: a committed `app/up -> ..` read
 // as text was any directory, so `esc -> ../up/../OUTSIDE` passed and
 // landed beside the workspace. A link on disk is followed before a `..`.
@@ -484,3 +529,40 @@ it.skipIf(!otherFs)('a link restored across filesystems stays a link', async () 
   )
   expect(readlinkSync(path.join(dest, 'dist/l'))).toBe('target.txt')
 })
+
+it.skipIf(process.platform === 'win32')(
+  'a shared library soname chain in the outputs is saved and comes back as links',
+  async () => {
+    const { root, dir } = await workspace(
+      'rm -rf dist && mkdir -p dist && echo so > dist/libu.so.1.0 && ln -s libu.so.1.0 dist/libu.so.1 && ln -s libu.so.1 dist/libu.so',
+    )
+    expect(await ok(root)).toContain('local 1↑')
+    rmSync(path.join(dir, 'dist'), { recursive: true })
+    expect(await ok(root)).toContain('1↓')
+    expect(readlinkSync(path.join(dir, 'dist/libu.so'))).toBe('libu.so.1')
+    expect(readlinkSync(path.join(dir, 'dist/libu.so.1'))).toBe('libu.so.1.0')
+    expect(lstatSync(path.join(dir, 'dist/libu.so.1.0')).isFile()).toBe(true)
+  },
+  TIMEOUT,
+)
+
+it.skipIf(process.platform === 'win32')(
+  'a looping, an outward and an absolute link chain in the outputs each fail the save',
+  async () => {
+    for (const [hop, said] of [
+      ['libu.so', /output dist\/libu\.so is a symlink to libu\.so\.1, a chain of links that loops/],
+      [
+        '../../../../x',
+        /output dist\/libu\.so\.1 is a symlink to \.\.\/\.\.\/\.\.\/\.\.\/x, outside the workspace/,
+      ],
+      ['/etc/hostname', /output dist\/libu\.so\.1 is a symlink to an absolute path/],
+    ] as const) {
+      const { root } = await workspace(
+        `rm -rf dist && mkdir -p dist && ln -s ${hop} dist/libu.so.1 && ln -s libu.so.1 dist/libu.so`,
+      )
+      const r = await build(root)
+      expect(r.out + r.err).toMatch(said)
+    }
+  },
+  TIMEOUT,
+)
