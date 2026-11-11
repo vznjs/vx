@@ -21,6 +21,7 @@ import {
   notAWorkTree,
   parseCheckAttrOutput,
   relPosix,
+  sameDir,
   UserError,
   xxh3hex,
 } from '../util/index.js'
@@ -751,6 +752,49 @@ const CONFIG_NAMES: ReadonlySet<string> = new Set(PROJECT_CONFIG_FILENAMES)
 const PROJECT_MARKERS: ReadonlySet<string> = new Set([...PROJECT_CONFIG_FILENAMES, 'package.json'])
 
 /**
+ * Each project's dir to its name, looked up by a path's own spelling first.
+ * macOS git reports paths NFC (core.precomposeunicode) while a dir
+ * discovered by readdir keeps the spelling it was created with, so a dir
+ * not spelled NFC is found by its NFC name too, when that name is the same
+ * directory: Linux keeps `café` NFC and NFD as two, git reports each
+ * byte-exact, and one NFC key made an edit in one select the other.
+ */
+interface DirIndex {
+  /** The name `dir` maps to, and the spelling of `dir` that matched. */
+  get(dir: string): { name: string; dir: string } | undefined
+  /** Adds `dir` unless a project already holds it. */
+  add(dir: string, name: string): void
+  entries(): Iterable<[string, string]>
+}
+
+function dirIndex(projects: readonly ProjectMeta[]): DirIndex {
+  const exact = new Map<string, string>()
+  const alias = new Map<string, string>()
+  const aliasOf = (dir: string, name: string): void => {
+    const nfc = dir.normalize('NFC')
+    if (nfc !== dir && !exact.has(nfc) && sameDir(dir, nfc)) alias.set(nfc, name)
+  }
+  for (const p of projects) exact.set(p.dir, p.name)
+  for (const p of projects) aliasOf(p.dir, p.name)
+  return {
+    get(dir) {
+      const name = exact.get(dir)
+      if (name !== undefined) return { name, dir }
+      if (alias.size === 0) return undefined
+      const nfc = dir.normalize('NFC')
+      const viaNfc = alias.get(nfc)
+      return viaNfc === undefined ? undefined : { name: viaNfc, dir: nfc }
+    },
+    add(dir, name) {
+      if (exact.has(dir)) return
+      exact.set(dir, name)
+      aliasOf(dir, name)
+    },
+    entries: () => [...exact, ...alias],
+  }
+}
+
+/**
  * The projects a NEW nested project took files from. A project's inputs
  * stop at every project below it, so a marker that makes an existing
  * directory a project re-keys the project above it — its `**` lost the
@@ -765,19 +809,16 @@ function parentsOfNewNested(
   projects: readonly ProjectMeta[],
 ): Set<string> {
   const out = new Set<string>()
-  // Keyed NFC: macOS git reports paths NFC (core.precomposeunicode) while a
-  // dir discovered by readdir keeps the spelling it was created with.
-  const dirToName = new Map<string, string>()
-  for (const p of projects) dirToName.set(p.dir.normalize('NFC'), p.name)
+  const dirToName = dirIndex(projects)
   const existed = new Set<string>()
   for (const [rel, bytes] of atBase) if (bytes !== null) existed.add(path.posix.dirname(rel))
   for (const rel of atBase.keys()) {
     if (existed.has(path.posix.dirname(rel))) continue
     const dir = path.resolve(workspaceRoot, path.posix.dirname(rel))
-    if (!dirToName.has(dir)) continue
+    if (dirToName.get(dir) === undefined) continue
     let parent: string | undefined
     for (let d = path.dirname(dir); parent === undefined; d = path.dirname(d)) {
-      parent = dirToName.get(d)
+      parent = dirToName.get(d)?.name
       if (path.dirname(d) === d) break
     }
     if (parent !== undefined) out.add(parent)
@@ -791,7 +832,7 @@ async function removedProjectConfigs(
   atBase: ReadonlyMap<string, Uint8Array | null>,
   projects: readonly ProjectMeta[],
 ): Promise<string[]> {
-  const dirs = new Set(projects.map((p) => p.dir.normalize('NFC')))
+  const dirs = dirIndex(projects)
   const gone: string[] = []
   let added: Uint8Array[] | undefined
   for (const [rel, bytes] of atBase) {
@@ -799,8 +840,7 @@ async function removedProjectConfigs(
     if (bytes === null || !CONFIG_NAMES.has(path.posix.basename(rel))) continue
     // Under `.vx` no config made a project, at the base either.
     if (inVxDir(rel)) continue
-    const dir = path.resolve(workspaceRoot, path.posix.dirname(rel)).normalize('NFC')
-    if (dirs.has(dir)) continue
+    if (dirs.get(path.resolve(workspaceRoot, path.posix.dirname(rel))) !== undefined) continue
     if (await Bun.file(path.join(workspaceRoot, rel)).exists()) continue
     // Each config the base lacked, read once, only when one went.
     added ??= await Promise.all(
@@ -1811,10 +1851,7 @@ function projectsContaining(
   // O(files · path-depth) instead of O(files · projects): independent of the
   // project count, which is what a big --affected diff on a 1000-project repo
   // pays for.
-  // Keyed NFC: macOS git reports paths NFC (core.precomposeunicode) while a
-  // dir discovered by readdir keeps the spelling it was created with.
-  const dirToName = new Map<string, string>()
-  for (const p of projects) dirToName.set(p.dir.normalize('NFC'), p.name)
+  const dirToName = dirIndex(projects)
   // A member linked in from elsewhere in the tree (`pkgs/b -> ../ext/b`) is
   // indexed by its link, and git reports its files at their real place
   // (`ext/b/src/a.txt`), which resolved to no project: an edit there
@@ -1825,18 +1862,19 @@ function projectsContaining(
     const real = realDirs.get(p.dir) ?? p.dir
     const rel = path.relative(realRoot, real)
     if (rel.startsWith('..') || path.isAbsolute(rel)) continue
-    const spelled = path.resolve(workspaceRoot, rel).normalize('NFC')
-    if (!dirToName.has(spelled)) dirToName.set(spelled, p.name)
+    dirToName.add(path.resolve(workspaceRoot, rel), p.name)
   }
   const owned = new Set<string>()
   for (const rel of changedRelPaths) {
     const repo = nested.has(rel)
-    let dir = path.resolve(workspaceRoot, rel).normalize('NFC')
+    const at = path.resolve(workspaceRoot, rel)
+    let dir = at
     for (;;) {
-      const name = dirToName.get(dir)
-      if (name !== undefined) {
+      const hit = dirToName.get(dir)
+      if (hit !== undefined) {
+        const { name } = hit
         owned.add(name)
-        on?.path(name, relPosix(dir, path.resolve(workspaceRoot, rel).normalize('NFC')), rel)
+        on?.path(name, relPosix(hit.dir, hit.dir === dir ? at : at.normalize('NFC')), rel)
         // Its files are the project's inputs, and none of them is this
         // path: a task's globs cannot say whether they reach inside.
         if (repo) on?.repo(name)
@@ -1854,8 +1892,8 @@ function projectsContaining(
     // Its own enumeration already keys those projects on their files
     // (git-inputs.ts); without this, `--affected` after an edit inside
     // selected none of them.
-    const prefix = path.resolve(workspaceRoot, rel).normalize('NFC') + path.sep
-    for (const [dir, name] of dirToName) {
+    const prefix = at + path.sep
+    for (const [dir, name] of dirToName.entries()) {
       if (!dir.startsWith(prefix)) continue
       owned.add(name)
       on?.repo(name)

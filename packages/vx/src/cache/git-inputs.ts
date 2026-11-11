@@ -39,6 +39,7 @@ import {
   notAWorkTree,
   parseCheckAttrOutput,
   relPosix,
+  sameDir,
   UserError,
   xxh3hex,
 } from '../util/index.js'
@@ -2704,19 +2705,30 @@ export async function applyGitEnumeration(
       base !== undefined && projectDir.startsWith(base) && path.normalize(projectDir) === projectDir
         ? projectDir.slice(base.length).replace(/\/$/, '')
         : relPosix(workspaceRoot, projectDir)
-    // macOS git reports paths NFC (core.precomposeunicode) while a dir
-    // discovered by readdir keeps the spelling it was created with: match
-    // NFC, and key the OIDs by the project's spelling, which is how
-    // `resolveFiles` looks them up.
-    const relPrefix = spelled.normalize('NFC')
-    if (relPrefix === '' || relPrefix === '.') {
+    if (spelled === '' || spelled === '.') {
       cache.set(projectDir, all)
       cache.setLazyOids(projectDir, rootOids)
       continue
     }
+    let relPrefix = spelled
+    let start = lowerBound(`${spelled}/`)
+    let end = lowerBound(`${spelled}0`)
+    // macOS git reports paths NFC (core.precomposeunicode) while a dir
+    // discovered by readdir keeps the spelling it was created with: match
+    // NFC, and key the OIDs by the project's spelling, which is how
+    // `resolveFiles` looks them up. Only when the NFC name is this very
+    // directory: Linux git lists bytes as they are, `café` NFC and NFD are
+    // two directories there, and the NFD project took its sibling's files
+    // and OIDs, a stale hit.
+    if (start === end) {
+      const nfc = spelled.normalize('NFC')
+      if (nfc !== spelled && sameDir(projectDir, path.join(workspaceRoot, nfc))) {
+        relPrefix = nfc
+        start = lowerBound(`${nfc}/`)
+        end = lowerBound(`${nfc}0`)
+      }
+    }
     const prefix = `${relPrefix}/`
-    const start = lowerBound(prefix)
-    const end = lowerBound(`${relPrefix}0`)
     const matches: string[] = []
     const projAbs =
       relPrefix === spelled ? abs : (rel: string) => path.join(projectDir, rel.slice(prefix.length))
