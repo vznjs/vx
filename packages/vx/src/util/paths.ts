@@ -613,6 +613,46 @@ function expandBraces(pattern: string, slashOnly: boolean): string[] {
   return [pattern]
 }
 
+/**
+ * How many globs `braceAlternatives(pattern)` would return, counted
+ * without expanding and capped at `cap + 1`: twenty `{a,b}` groups held a
+ * million alternatives, and expanding them only to count took seconds.
+ * Duplicates count, so the answer is an upper bound.
+ */
+export function braceExpansionCount(pattern: string, cap: number): number {
+  for (let open = 0; open < pattern.length; open++) {
+    if (pattern[open] === '\\') {
+      open++
+      continue
+    }
+    if (pattern[open] === '[') {
+      open = classEnd(pattern, open)
+      continue
+    }
+    if (pattern[open] !== '{') continue
+    let depth = 0
+    const cuts: number[] = []
+    let close = -1
+    for (let i = open; i < pattern.length && close === -1; i++) {
+      const c = pattern[i]
+      if (c === '\\') i++
+      else if (c === '[') i = classEnd(pattern, i)
+      else if (c === '{') depth++
+      else if (c === '}' && --depth === 0) close = i
+      else if (c === ',' && depth === 1) cuts.push(i)
+    }
+    if (close === -1) return 1
+    const range = cuts.length === 0 ? braceRange(pattern.slice(open + 1, close)) : null
+    if (cuts.length === 0 && range === null) continue
+    const bounds = [open, ...cuts, close]
+    let alts = range?.length ?? 0
+    for (let k = 1; range === null && k < bounds.length && alts <= cap; k++)
+      alts += braceExpansionCount(pattern.slice(bounds[k - 1]! + 1, bounds[k]), cap)
+    return Math.min(cap + 1, alts * braceExpansionCount(pattern.slice(close + 1), cap))
+  }
+  return 1
+}
+
 const NUMERIC_RANGE = /^(-?\d+)\.\.(-?\d+)(?:\.\.(-?\d+))?$/
 const LETTER_RANGE = /^(?:([a-z])\.\.([a-z])|([A-Z])\.\.([A-Z]))(?:\.\.(-?\d+))?$/
 /** The most names a brace range may name: each is a glob vx compiles. */

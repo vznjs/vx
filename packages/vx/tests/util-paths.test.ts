@@ -28,6 +28,8 @@ import path from 'node:path'
 import { describe, expect, it, spyOn } from 'bun:test'
 import {
   asTrees,
+  braceAlternatives,
+  braceExpansionCount,
   BUN_GLOB_WILDCARDS,
   grantPrefix,
   isLiteralPattern,
@@ -1002,5 +1004,40 @@ describe('anyTaskGlob over many ** globs', () => {
     const any = anyTaskGlob(globs)
     expect(paths.filter((p) => any(p))).toHaveLength(1000)
     expect(cpu()).toBeLessThan(1500)
+  })
+})
+
+// The schema refuses a brace product past the limit from this count, so it
+// must be what expanding returns, without expanding: twenty `{a,b}` took
+// seconds to expand only to be counted.
+describe('braceExpansionCount', () => {
+  it('is the number of globs braceAlternatives returns, when none repeats', () => {
+    for (const p of [
+      'src/**',
+      '{a,b}',
+      '{a,b}{c,d,e}',
+      '{a,{b,c}d}x{1..3}',
+      '{a,b',
+      '{a}{b,c}',
+      'x{a,b}[{,}]{c,d}',
+      '{a,b}/{c,{d,e}}/**',
+      '\\{a,b\\}',
+      '{{a,b},{c,d}}{e,f}',
+      '{01..10}{a..c}',
+    ])
+      expect([p, braceExpansionCount(p, 1024)]).toEqual([p, braceAlternatives(p).length])
+  })
+
+  it('counts a repeat, so it bounds the expansion from above', () => {
+    expect([
+      braceExpansionCount('{a,a}{1,11}{1,11}', 1024),
+      braceAlternatives('{a,a}{1,11}{1,11}').length,
+    ]).toEqual([8, 3])
+  })
+
+  it('stops at cap + 1', () => {
+    expect(braceExpansionCount('{1..1000}{1..1000}', 1024)).toBe(1025)
+    expect(braceExpansionCount('{a,b}'.repeat(60), 1024)).toBe(1025)
+    expect(braceExpansionCount('{1..32}{1..32}', 1024)).toBe(1024)
   })
 })

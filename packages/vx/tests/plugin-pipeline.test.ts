@@ -677,6 +677,85 @@ describe('graph stage', () => {
     TIMEOUT,
   )
 
+  // A run trusts the lock and skips the overlap walks, but a hook may edit
+  // only for the run it sees (here, by what was asked), so the lock's own
+  // graph stage never saw the edit: both tasks ran and saved, and each
+  // clean deleted the other's file.
+  describe('an overlap a hook makes only in a run is refused there', () => {
+    const tasks = `export default { tasks: {
+      build: { exec: { command: 'echo B > out.txt' }, inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true },
+      other: { exec: { command: 'echo O > other.txt' }, dependsOn: ['build'], inputs: { files: ['src/**'] }, outputs: { files: ['other.txt'] }, cache: true },
+    } }\n`
+    const inRun = (edit: string) =>
+      pluginSource(
+        'org/late',
+        `{ graph(nodes, ctx) { if (ctx.requested.length === 1) { ${edit} } } }`,
+      )
+    const said = () =>
+      planRun({ cwd: root, tasks: ['other'], log: silent() }).then(
+        (p) =>
+          p.tasks
+            .map((t) => t.node.id)
+            .toSorted()
+            .join(' '),
+        (e: Error) => e.message,
+      )
+
+    it(
+      'an edited output',
+      async () => {
+        await pkg('a', tasks)
+        await workspace([inRun(`nodes.get('a#other').config.outputs.files = ['out.txt']`)])
+        expect(await said()).toBe(
+          `plugin 'org/late' failed in graph: a#other and a#build both declare the output "out.txt" in outputs.files — vx cleans a task's declared outputs before it runs and before a cache-hit restore, so whichever of these runs second DELETES the other's output. Give each task its own output path, or set run.rules.exclusiveOutputs: false in .vx/workspace.ts to let a dependant add to its upstream's outputs.`,
+        )
+      },
+      TIMEOUT,
+    )
+
+    it(
+      'an added node',
+      async () => {
+        await pkg('a', tasks)
+        await workspace([
+          inRun(`const n = nodes.get('a#build')
+            nodes.set('a#extra', { ...n, id: 'a#extra', taskName: 'extra', deps: [], requested: false, config: { ...n.config, outputs: { files: ['out.txt'] } } })
+            nodes.get('a#other').deps.push('a#extra')`),
+        ])
+        expect(await said()).toBe(
+          `plugin 'org/late' failed in graph: a#build and a#extra both declare the output "out.txt" in outputs.files — vx cleans a task's declared outputs before it runs and before a cache-hit restore, so whichever of these runs second DELETES the other's output and the run still reports success. Give each task its own output path.`,
+        )
+      },
+      TIMEOUT,
+    )
+
+    it(
+      'an edited input that reads an output',
+      async () => {
+        await pkg('a', tasks)
+        await workspace([
+          inRun(
+            `nodes.get('a#other').deps = []; nodes.get('a#other').config.inputs.files = ['**']`,
+          ),
+        ])
+        expect(await said()).toStartWith(
+          `plugin 'org/late' failed in graph: a#other reads "**" in inputs.files, which matches a#build's output "out.txt"`,
+        )
+      },
+      TIMEOUT,
+    )
+
+    it(
+      'CONTROL: an edit that overlaps nothing plans',
+      async () => {
+        await pkg('a', tasks)
+        await workspace([inRun(`nodes.get('a#other').config.outputs.files = ['late.txt']`)])
+        expect(await said()).toBe('a#build a#other')
+      },
+      TIMEOUT,
+    )
+  })
+
   it(
     'a node a plugin moves to another key is refused by name, not a TypeError (item 981)',
     async () => {

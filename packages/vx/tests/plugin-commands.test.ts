@@ -541,6 +541,24 @@ describe('plugin commands', () => {
     expect(out.join('').split('\n')).toContain(`  vx ${'hello'.padEnd(17)} says hi (org/hello)`)
   })
 
+  // `ESC ]0;…BEL` printed raw retitled the terminal, as a task description
+  // in `vx show` would were it not escaped.
+  it("vx help escapes a control character in a plugin verb's description", async () => {
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      localWorkspaceSource([
+        pluginSource(
+          'org/ctl',
+          `{ commands: { hi: { description: 'd\\u001b]0;pwn\\u0007', run() { return 0 } } } }`,
+        ),
+      ]),
+    )
+    expect(await cli(['help'])).toBe(0)
+    expect(out.join('').split('\n')).toContain(
+      `  vx ${'hi'.padEnd(17)} d\\x1b]0;pwn\\x07 (org/ctl)`,
+    )
+  })
+
   it('keeps two spaces after a verb longer than the column', async () => {
     await Bun.write(
       path.join(root, '.vx/workspace.mjs'),

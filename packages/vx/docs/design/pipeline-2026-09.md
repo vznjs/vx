@@ -57,7 +57,10 @@ Rules that keep it a pipeline and not a soup:
 2. **A transform hook mutates in place and returns nothing.** `project`
    receives the validated config object and may edit it; core
    re-validates after the last plugin, so a plugin cannot produce a
-   config the loader would refuse from a user. Same for `graph`.
+   config the loader would refuse from a user. Same for `graph`, whose
+   edited graph is also checked as `vx lock` checks one (overlapping
+   outputs, an input reading another task's outputs), in a run too: a
+   hook may edit only the graph a run sees.
 3. **Everything a hook changes reaches the cache key by construction.**
    Resolved-config hashing (principle #4) hashes the task config _after_
    `project` ran, so an injected task or edited command re-keys exactly

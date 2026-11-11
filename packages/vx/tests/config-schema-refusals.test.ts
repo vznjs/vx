@@ -1447,3 +1447,107 @@ describe('a ** glued to text in a task glob', () => {
     ).toBeNull()
   })
 })
+
+// Each loaded with one "inputs matched no files" warning, and then the task
+// keyed nothing for the entry: an edit under src/ replayed a stale out.txt.
+describe('a glob no file name can match', () => {
+  const lists = (g: string) => [
+    cacheRefusal({ files: [g] }),
+    cacheRefusal({ files: ['**', `!${g}`] }),
+    cacheRefusal({ files: ['**'], workspaceFiles: [g] }),
+    cacheRefusal({ files: ['**'] }, { files: [g] }),
+    cacheRefusal({ files: ['**'] }, { files: ['dist/**'], workspaceFiles: [g] }),
+  ]
+  const fields = [
+    'inputs.files',
+    'inputs.files',
+    'inputs.workspaceFiles',
+    'outputs.files',
+    'outputs.workspaceFiles',
+  ]
+  const every = (g: string, rest: (shown: string) => string) =>
+    fields.map((f, i) => {
+      const shown = i === 1 ? `!${g}` : g
+      return `${CFG}: tasks.t.${f}: ${JSON.stringify(shown)} ${rest(shown)}`
+    })
+
+  it('is refused with surrounding whitespace, naming the glob without it', () => {
+    expect(lists(' src/**')).toEqual(
+      every(
+        ' src/**',
+        (s) =>
+          `has surrounding whitespace, which the glob reads as part of a name — write "${s.startsWith('!') ? '!' : ''}src/**"`,
+      ),
+    )
+    expect(cacheRefusal({ files: ['src/** '] })).toBe(
+      `${CFG}: tasks.t.inputs.files: "src/** " has surrounding whitespace, which the glob reads as part of a name — write "src/**"`,
+    )
+  })
+
+  it('is refused with a control character', () => {
+    for (const g of ['src/\n', 'src/\u0000x', 'src/\tx'])
+      expect(lists(g)).toEqual(
+        every(g, () => 'holds a control character, which no file name the task means holds'),
+      )
+  })
+
+  it('is refused with a character-class range that runs backwards', () => {
+    expect(lists('src/[z-a]')).toEqual(
+      every(
+        'src/[z-a]',
+        (s) =>
+          `holds the class range z-a, which runs backwards and matches no character — write "${s.startsWith('!') ? '!' : ''}src/[a-z]"`,
+      ),
+    )
+    expect(cacheRefusal({ files: ['src/[!9-0x]'] })).toBe(
+      `${CFG}: tasks.t.inputs.files: "src/[!9-0x]" holds the class range 9-0, which runs backwards and matches no character — write "src/[!0-9x]"`,
+    )
+  })
+
+  it('CONTROL: a forward range, a lone dash, an escaped bracket and inner spaces load', () => {
+    expect(
+      cacheRefusal({
+        files: [
+          'src/[a-z]',
+          'src/[a-a]',
+          'src/[-z]',
+          'src/[a-]',
+          'src/[a-c-b]',
+          'src/\\[z-a\\]',
+          'my dir/**',
+        ],
+      }),
+    ).toBeNull()
+  })
+})
+
+// `src/{1..1000}{1..1000}` passed `vx lock` in a second and the run spent
+// 45 s and 3.2 GB compiling a million globs: the limit held one range, not
+// the product. Twenty `{a,b}` took `vx lock` itself 13 s.
+describe('a brace product past the limit', () => {
+  const past = (f: string, g: string) =>
+    `${CFG}: tasks.t.${f}: "${g}" expands to more than 1024 globs, each one vx compiles and ` +
+    `matches files against — write a wildcard in place of the braces, or split the entry`
+
+  it('is refused in each glob list, before any expansion', () => {
+    const big = 'src/{1..1000}{1..1000}'
+    expect(cacheRefusal({ files: ['src/**', big] })).toBe(past('inputs.files', big))
+    const twenty = `src/${'{a,b}'.repeat(20)}`
+    expect(cacheRefusal({ files: [twenty] })).toBe(past('inputs.files', twenty))
+    expect(cacheRefusal({ files: ['**'], workspaceFiles: [`!${big}`, 'x'] })).toBe(
+      past('inputs.workspaceFiles', `!${big}`),
+    )
+    expect(cacheRefusal({ files: ['**'] }, { files: [big] })).toBe(past('outputs.files', big))
+    const nested = '{a,{b,c}{1..400}{1..2}}'
+    expect(cacheRefusal({ files: ['**'] }, { files: ['dist/**'], workspaceFiles: [nested] })).toBe(
+      past('outputs.workspaceFiles', nested),
+    )
+  })
+
+  it('CONTROL: a product of exactly 1024 loads', () => {
+    expect(cacheRefusal({ files: ['src/{1..32}{1..32}', `${'{a,b}'.repeat(10)}`] })).toBeNull()
+    expect(cacheRefusal({ files: ['src/{1..32}{1..33}'] })).toBe(
+      past('inputs.files', 'src/{1..32}{1..33}'),
+    )
+  })
+})

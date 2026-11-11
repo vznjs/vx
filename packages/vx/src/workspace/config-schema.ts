@@ -24,6 +24,7 @@ import {
   BUN_GLOB_WILDCARDS,
   EXTGLOB,
   braceAlternatives,
+  braceExpansionCount,
   braceRange,
   BRACE_RANGE_LIMIT,
   anyTaskGlob,
@@ -891,6 +892,7 @@ export function validateProjectConfig(
         if (typeof g !== 'string' || g.length === 0) {
           throw new UserError(`${where}.inputs.files must be an array of non-empty strings`)
         }
+        assertGlobText(g, `${where}.inputs.files`)
         if (!g.startsWith('!/') && isAbsoluteGlob(g)) {
           throw new UserError(
             `${where}.inputs.files: absolute paths are not allowed (got "${g}") — ` +
@@ -1042,6 +1044,7 @@ export function validateProjectConfig(
         if (typeof g !== 'string' || g.length === 0) {
           throw new UserError(`${where}.outputs.files must be an array of non-empty strings`)
         }
+        assertGlobText(g, `${where}.outputs.files`)
         if (isAbsoluteGlob(g)) {
           throw new UserError(
             `${where}.outputs.files: absolute paths are not allowed (got "${g}") — ` +
@@ -1383,6 +1386,76 @@ const FOREIGN_TOKENS: readonly (readonly [string, string])[] = [
     "Nx's workspace root — name the path without it in `workspaceFiles`, which is workspace-root-relative",
   ],
 ]
+
+/**
+ * A glob no file name the task means can match, refused before anything
+ * reads it: each loaded with one "matched no files" warning, and then the
+ * task keyed nothing for it, so an edit replayed a stale hit. A brace
+ * product past the limit is counted, not expanded: a million alternatives
+ * took `vx lock` seconds and a run gigabytes.
+ */
+function assertGlobText(glob: string, where: string): void {
+  const shown = JSON.stringify(glob)
+  if (hasControl(glob)) {
+    throw new UserError(
+      `${where}: ${shown} holds a control character, which no file name the task means holds`,
+    )
+  }
+  const trimmed = glob.trim()
+  const neg = trimmed.startsWith('!') ? '!' : ''
+  const write = neg + trimmed.slice(neg.length).trim()
+  if (write !== glob) {
+    throw new UserError(
+      `${where}: ${shown} has surrounding whitespace, which the glob reads as part of a name — write "${write}"`,
+    )
+  }
+  const back = backwardClassRange(glob)
+  if (back !== null) {
+    const [at, from, to] = back
+    throw new UserError(
+      `${where}: ${shown} holds the class range ${from}-${to}, which runs backwards and matches ` +
+        `no character — write "${glob.slice(0, at)}${to}-${from}${glob.slice(at + 3)}"`,
+    )
+  }
+  if (braceExpansionCount(glob, BRACE_RANGE_LIMIT) > BRACE_RANGE_LIMIT) {
+    throw new UserError(
+      `${where}: ${shown} expands to more than ${BRACE_RANGE_LIMIT} globs, each one vx compiles ` +
+        `and matches files against — write a wildcard in place of the braces, or split the entry`,
+    )
+  }
+}
+
+/**
+ * The first `x-y` range in a `[`…`]` class whose `x` sorts after `y`, as
+ * [its index, x, y], or null. `Bun.Glob` reads one as matching nothing, so
+ * `[z-a]` alone matched no name at all. A class is read as `classEnd` in
+ * util/paths.ts reads one; an escaped member is left alone.
+ */
+function backwardClassRange(glob: string): [number, string, string] | null {
+  for (let i = 0; i < glob.length; i++) {
+    if (glob[i] === '\\') {
+      i++
+      continue
+    }
+    if (glob[i] !== '[') continue
+    const end = glob.indexOf(']', i + 2)
+    if (end === -1) continue
+    let j = i + 1
+    if (glob[j] === '!' || glob[j] === '^') j++
+    for (; j < end; j++) {
+      if (glob[j] === '\\') {
+        j++
+        continue
+      }
+      if (glob[j + 1] !== '-' || j + 2 >= end || glob[j + 2] === '\\') continue
+      if (glob[j]! > glob[j + 2]!) return [j, glob[j]!, glob[j + 2]!]
+      // `[a-c-b]`: the dash after a range is a member, not a range from `c`.
+      j += 2
+    }
+    i = end
+  }
+  return null
+}
 
 function assertNoForeignToken(glob: string, where: string): void {
   // `^production`: Nx's named input of the dependencies (D-51). No file
@@ -1850,6 +1923,7 @@ function validateWorkspaceGlobs(v: unknown, where: string, negation: boolean): v
     if (typeof g !== 'string' || g.length === 0) {
       throw new UserError(`${where} must be an array of non-empty strings`)
     }
+    assertGlobText(g, where)
     if (isAbsoluteGlob(g)) {
       throw new UserError(
         `${where}: absolute paths are not allowed (got "${g}") — ` +

@@ -297,9 +297,10 @@ export async function applyProjectHooks(
 
 /**
  * `graph` stage: every plugin edits the task graph in place, then the graph
- * is checked ONCE the way the builder checks its own output (`checkGraph`:
- * each node under its own id, every dep a node, no cycle, no two tasks
- * deleting each other's outputs). A violation is reported
+ * is checked ONCE the way `vx lock` checks the builder's output, in a run
+ * too (`checkGraph`: each node under its own id, every dep a node, no
+ * cycle, no two tasks deleting each other's outputs, no input reading
+ * another task's outputs). A violation is reported
  * against the LAST plugin that ran: usually the one whose edit made it so,
  * but an earlier plugin's edit that a later one left in place is blamed on
  * the later one, since the structure is not checked between plugins.
@@ -326,7 +327,10 @@ export async function applyGraphHooks(
     last = plugin
   }
   if (last === undefined) return
-  await safe(last, 'graph', () => checkGraph(nodes, ctx.workspaceRoot, rules))
+  // Unlocked, whatever the run's rules say: the lock checked the graph it
+  // built, and a hook may edit a run's graph only (by what was asked, or
+  // what it reads at run time). Paid only when a `graph` hook ran.
+  await safe(last, 'graph', () => checkGraph(nodes, ctx.workspaceRoot, { ...rules, locked: false }))
 }
 
 /**
