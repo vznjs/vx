@@ -380,6 +380,28 @@ describe('vx-worker.yml', () => {
 // and the `||` fallback wins without a word: a PR changing the cache
 // server then ran against the deployed one, whose older protocol refused
 // it (#5036 dropped `.cache`, found on #5051).
+describe('real-repos.yml', () => {
+  const doc = read('real-repos.yml')
+  const job = doc.jobs['real-repos']!
+  // Clones and timed arms on the benchmark machine, never under DTE or on
+  // a PR, one run at a time; the rows leave as an artifact, as bench.yml's.
+  it('runs the real-repo bench weekly or dispatched, off the DTE run, one at a time', () => {
+    expect(Object.keys((doc.on ?? doc.true)!)).toEqual(['schedule', 'workflow_dispatch'])
+    expect(doc.concurrency).toEqual({ group: 'real-repos', 'cancel-in-progress': false })
+    expect(JSON.stringify(job)).not.toContain('VX_DTE')
+    expect(job['runs-on']).toBe("${{ vars.BENCH_RUNNER || 'ubuntu-latest' }}")
+    expect(job.permissions).toEqual({ contents: 'read' })
+    expect(job.steps?.find((s) => s.name === 'vx run bench.real')?.run).toBe(
+      'bun packages/vx/src/bin.ts run @vzn/vx-bench#bench.real --concurrency 1',
+    )
+    expect(job.steps?.at(-1)?.if).toBe('always()')
+    expect(job.steps?.at(-1)?.with).toEqual({
+      name: 'real-repos',
+      path: 'private/vx-bench/real-repos.json',
+    })
+  })
+})
+
 describe('every `steps.<id>` a workflow reads names a step of its job', () => {
   for (const file of readdirSync(dir).filter((f) => f.endsWith('.yml'))) {
     it(file, () => {

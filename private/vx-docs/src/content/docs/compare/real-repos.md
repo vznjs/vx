@@ -1,86 +1,92 @@
 ---
-title: vx on real repos
-description: Public monorepos moved to vx and timed against the tool they ship with, with the commit, versions and machine for every number.
+title: vx on real workspaces
+description: Public workspaces on native vx config, timed against the tool they ship with, with the commit, versions and machine for every number.
 ---
 
 The benchmark on [vx vs Nx](../nx/) is a synthetic graph built to be
 fair to every tool.
 
-This page is the other half: real public repos, moved to vx with one
-command and timed against the tool they already use.
+This page is the other half: real public workspaces, each given native vx
+config that follows its `turbo.json`, timed against the Turborepo it
+already pins. Both tools run the same tasks with the same number of
+workers, five interleaved runs per case, best of five.
 
-Covered so far: TanStack/query (Nx), create-t3-turbo and react-email
-(Turborepo). The list grows as runs finish.
+<!-- bench: filled from private/vx-bench/real-repos.json at build (src/bench/real.ts) -->
 
-## TanStack/query, against Nx
+## solidjs/solid
 
-[TanStack/query](https://github.com/TanStack/query) at commit `817bd02`,
-the `build` tasks without examples and integrations: 25 tasks for each
-tool.
+[solidjs/solid](https://github.com/solidjs/solid) at commit
+%bench.real.solid.commit%: `build` on the whole workspace, 4 tasks.
 
-| Run                     | vx         | Nx     |
-| ----------------------- | ---------- | ------ |
-| Cold build (total time) | **34.6 s** | 39.4 s |
-| Restore from cache      | **0.39 s** | 1.26 s |
-| Nothing changed         | **0.22 s** | 1.43 s |
+| Run                     | vx                            | %bench.real.solid.rival%         |
+| ----------------------- | ----------------------------- | -------------------------------- |
+| Cold build (total time) | %bench.real.solid.cold.vx%    | %bench.real.solid.cold.rival%    |
+| Restore from cache      | %bench.real.solid.restore.vx% | %bench.real.solid.restore.rival% |
+| Nothing changed         | %bench.real.solid.noop.vx%    | %bench.real.solid.noop.rival%    |
 
-Cold build deletes the outputs and both caches, and is the whole build's
-wall time: on a real repo there is no ideal schedule to subtract, so the
-total is the fair number.
+Run %bench.real.solid.date% on %bench.real.solid.machine%, against
+%bench.real.solid.tool%.
 
-Restore deletes the build outputs and keeps the cache; "nothing changed"
-deletes nothing. In those two rows every task is a cache hit, so the
-whole run is the runner's overhead.
+## vueuse/vueuse
 
-Run 2026-10-09 on linux x64, 4 cores: vx 0.0.633 configured by
-`vx init --native`, Nx 23.2.1 with the daemon off and no Nx Cloud, pnpm
-12.4.2. 5 workers each, best of three interleaved runs. Every run is in
-[the benchmarks](../../benchmarks/#real-repos).
+[vueuse/vueuse](https://github.com/vueuse/vueuse) at commit
+%bench.real.vueuse.commit%: `build` on the whole workspace, 12 tasks.
 
-## create-t3-turbo and react-email, against Turborepo
+| Run                     | vx                             | %bench.real.vueuse.rival%         |
+| ----------------------- | ------------------------------ | --------------------------------- |
+| Cold build (total time) | %bench.real.vueuse.cold.vx%    | %bench.real.vueuse.cold.rival%    |
+| Restore from cache      | %bench.real.vueuse.restore.vx% | %bench.real.vueuse.restore.rival% |
+| Nothing changed         | %bench.real.vueuse.noop.vx%    | %bench.real.vueuse.noop.rival%    |
+
+Run %bench.real.vueuse.date% on %bench.real.vueuse.machine%, against
+%bench.real.vueuse.tool%.
+
+This workspace sets `* text=auto eol=lf`. There Turborepo trusts git's
+index, and
+[a conformance case](../../conformance/#inputs/same-size-line-ending-swap-under-text-attribute)
+shows it replaying stale output after a same-size line-ending change.
+
+vx checks each of those files on disk instead of trusting the index.
+
+## t3-oss/create-t3-turbo
 
 [t3-oss/create-t3-turbo](https://github.com/t3-oss/create-t3-turbo) at
-commit `8f945b7` (3 tasks) and
-[resend/react-email](https://github.com/resend/react-email) at commit
-`1531a39` (7 tasks).
+commit %bench.real.create-t3-turbo.commit%: `build` over `./packages/*`,
+3 tasks.
 
-Each runs its `./packages/*` tasks against the Turborepo version the
-repo pins.
+| Run                     | vx                                      | %bench.real.create-t3-turbo.rival%         |
+| ----------------------- | --------------------------------------- | ------------------------------------------ |
+| Cold build (total time) | %bench.real.create-t3-turbo.cold.vx%    | %bench.real.create-t3-turbo.cold.rival%    |
+| Restore from cache      | %bench.real.create-t3-turbo.restore.vx% | %bench.real.create-t3-turbo.restore.rival% |
+| Nothing changed         | %bench.real.create-t3-turbo.noop.vx%    | %bench.real.create-t3-turbo.noop.rival%    |
 
-| Run                          | vx          | Turborepo |
-| ---------------------------- | ----------- | --------- |
-| create-t3-turbo, cold build  | **6.23 s**  | 7.14 s    |
-| create-t3-turbo, restore     | **0.087 s** | 0.519 s   |
-| create-t3-turbo, nothing new | **0.081 s** | 0.476 s   |
-| react-email, cold build      | **30.21 s** | 33.22 s   |
-| react-email, restore         | **0.283 s** | 0.382 s   |
-| react-email, nothing new     | **0.136 s** | 0.252 s   |
+Run %bench.real.create-t3-turbo.date% on
+%bench.real.create-t3-turbo.machine%, against
+%bench.real.create-t3-turbo.tool%.
 
-Cold build is the total wall time from empty caches; restore and
-nothing new are cache hits throughout, so they are the runner's
-overhead.
+<!-- bench:end -->
 
-Run 2026-10-09 on linux x64, 4 cores: vx 0.0.634 configured by `vx init
---native` plus the [history scheduler](../../plugins/vx-history/)
-reading task timings saved from one earlier run; Turborepo 2.5.8
-(create-t3-turbo) and 2.9.14 (react-email) with the daemon off; pnpm
-12.4.2. 10 workers each, best of three interleaved runs.
+Cold build deletes the outputs and both caches, and is the whole build's
+wall time: a real workspace has no ideal schedule to subtract, so the
+total is the fair number. Restore deletes the build outputs and keeps
+the cache; "nothing changed" deletes nothing. In those two rows every
+task is a cache hit, so the whole run is the runner's overhead.
 
-Every run is in [the benchmarks](../../benchmarks/#real-repos).
+Turborepo runs with its daemon off. Each workspace's vx config, its
+pinned commit and every change the bench makes to it live in vx's
+source under `private/vx-bench/real/`, and a workflow measures them
+again each week. How the harness works is in
+[the benchmarks](../../benchmarks/#real-repos).
 
 ## Try it on yours
 
 ```sh
-bunx @vzn/vx init --keep
+bunx @vzn/vx init --native
 ```
 
-`--keep` writes one file, `.vx/workspace.ts`, which reads your
-`turbo.json` or Nx graph as it is: nothing in the repo changes. Run `vx
+`--native` writes a `vx.config.ts` per package from your `turbo.json`
+or Nx graph; [Migrate](../../guides/migrate/) walks through it. Run `vx
 run build --all` next to the tool you use today.
 
-To undo, delete `.vx/workspace.ts`. When you want native config, `vx
-init --native` writes a `vx.config.ts` per package;
-[Migrate](../../guides/migrate/) walks through it.
-
-More repos join this page as they are measured, each with its commit,
+More workspaces join this page as they are measured, each with its commit,
 versions and machine.

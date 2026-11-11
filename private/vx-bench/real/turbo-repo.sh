@@ -1,6 +1,8 @@
 #!/bin/bash
-# vx (compiled binary + @vzn/vx-migrate's turbo() on the repo's own turbo.json) against
-# the repo's own Turbo, on a real Turbo monorepo. Three arms per tool,
+# vx (compiled binary on the repo's vx config: native, from an overlay
+# under real/<name>/ that nightly.ts copies in, or @vzn/vx-migrate's
+# turbo() on the repo's own turbo.json) against the repo's own Turbo, on a
+# real Turbo monorepo. Three arms per tool,
 # interleaved (vx, turbo, vx, turbo …) so box noise lands on both:
 #   cold     caches AND outputs wiped — every task executes
 #   restore  outputs wiped, caches intact — every task a hit, outputs come back
@@ -12,8 +14,8 @@
 #
 #   real/turbo-repo.sh <repo> <vx-binary> "<tasks>" [reps] [output-dir-names]
 #
-# The repo must already have `.vx/workspace.mjs` with `plugins: [turbo()]`
-# and its dependencies installed. `output-dir-names` is what the wipe
+# The repo must already have its vx config (`.vx/workspace.ts`) and its
+# dependencies installed. `output-dir-names` is what the wipe
 # removes under packages/*/ (default: dist types coverage). Rows print as
 # `<tool> <arm> <ms> exit=<code>`; each arm's log is kept beside the repo
 # as .vx-bench-<tool>-<arm>.log. First run: solidjs/solid, 2026-09-10,

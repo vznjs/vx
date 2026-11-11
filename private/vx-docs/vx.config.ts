@@ -14,6 +14,11 @@ const PROOFS = [
   'packages/vx-migrate/tests/turbo.test.ts',
 ]
 
+// The real-repo rows src/bench/data.ts imports (the bench's own file): every
+// task that loads that module is granted it by name and keyed on it.
+const REAL_ROWS = 'private/vx-bench/real-repos.json'
+const REAL_ROWS_READ = '../vx-bench/real-repos.json'
+
 // What `import` generates from packages/vx/docs: a hit restores only these,
 // so a page missing here vanishes from the site on a hit. Pinned to the
 // .gitignore manifest by tests/sidebar-coverage.test.ts.
@@ -78,7 +83,7 @@ export default defineProject({
           'oxlint --type-aware --type-check astro.config.mjs scripts src/bench src/components src/conformance src/features src/nav src/pages src/plugins tests',
         sandbox: {
           allow: {
-            read: ['**/*', '../../packages/vx/src/**'],
+            read: ['**/*', '../../packages/vx/src/**', REAL_ROWS_READ],
             systemInfo: ['vfs.disk-space'],
           },
         },
@@ -107,6 +112,7 @@ export default defineProject({
           '.oxlintrc.json',
           'tsconfig.json',
         ],
+        workspaceFiles: [REAL_ROWS],
       },
       outputs: { files: [] },
       cache: true,
@@ -238,6 +244,7 @@ export default defineProject({
               // reference-pages.test.ts maps the one-page references' ids to their pages.
               '../../packages/vx/docs/cli.md',
               '../../packages/vx/docs/schema.md',
+              REAL_ROWS_READ,
             ],
             systemInfo: ['vfs.disk-space'],
           },
@@ -275,7 +282,12 @@ export default defineProject({
           'scripts/**',
           ...NOT_GENERATED,
         ],
-        workspaceFiles: [...PROOFS, 'packages/vx/docs/cli.md', 'packages/vx/docs/schema.md'],
+        workspaceFiles: [
+          ...PROOFS,
+          'packages/vx/docs/cli.md',
+          'packages/vx/docs/schema.md',
+          REAL_ROWS,
+        ],
       },
       outputs: { files: [] },
       cache: true,
@@ -342,7 +354,7 @@ export default defineProject({
         env: { define: { ASTRO_TELEMETRY_DISABLED: '1' } },
         sandbox: {
           allow: {
-            read: ['**/*'],
+            read: ['**/*', REAL_ROWS_READ],
             // astro's and vite's caches live under `.astro/` (astro.config.mjs),
             // never under node_modules: a write grant there makes the sandbox
             // punch the read grant into node_modules' children, and bwrap
@@ -364,6 +376,7 @@ export default defineProject({
       // `packages/`, so a docs edit never re-keyed the build.
       inputs: {
         files: ['**/*', ...NOT_GENERATED],
+        workspaceFiles: [REAL_ROWS],
       },
       outputs: { files: ['dist/**'] },
       cache: true,
@@ -393,7 +406,7 @@ export default defineProject({
         },
         sandbox: {
           allow: {
-            read: ['**/*'],
+            read: ['**/*', REAL_ROWS_READ],
             write: ['measured/live.json', 'dist-live/**', '.astro/**'],
             systemInfo: ['vfs.disk-space', 'net.link.addr'],
             machLookup: ['com.apple.SystemConfiguration.DNSConfiguration'],
@@ -445,7 +458,7 @@ export default defineProject({
         timeout: '2m',
         sandbox: {
           allow: {
-            read: ['**/*'],
+            read: ['**/*', REAL_ROWS_READ],
             write: ['.astro/**'],
             systemInfo: ['vfs.disk-space', 'net.link.addr'],
             machLookup: ['com.apple.SystemConfiguration.DNSConfiguration'],

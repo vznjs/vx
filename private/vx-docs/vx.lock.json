@@ -21,7 +21,8 @@
           "allow": {
             "read": [
               "**/*",
-              "../../packages/vx/src/**"
+              "../../packages/vx/src/**",
+              "../vx-bench/real-repos.json"
             ],
             "systemInfo": [
               "vfs.disk-space"
@@ -52,6 +53,9 @@
           "package.json",
           ".oxlintrc.json",
           "tsconfig.json"
+        ],
+        "workspaceFiles": [
+          "private/vx-bench/real-repos.json"
         ]
       },
       "outputs": {
@@ -256,7 +260,8 @@
               "../../packages/vx-reapi/tests/exec-e2e.test.ts",
               "../../packages/vx-migrate/tests/turbo.test.ts",
               "../../packages/vx/docs/cli.md",
-              "../../packages/vx/docs/schema.md"
+              "../../packages/vx/docs/schema.md",
+              "../vx-bench/real-repos.json"
             ],
             "systemInfo": [
               "vfs.disk-space"
@@ -320,7 +325,8 @@
           "packages/vx-reapi/tests/exec-e2e.test.ts",
           "packages/vx-migrate/tests/turbo.test.ts",
           "packages/vx/docs/cli.md",
-          "packages/vx/docs/schema.md"
+          "packages/vx/docs/schema.md",
+          "private/vx-bench/real-repos.json"
         ]
       },
       "outputs": {
@@ -386,7 +392,8 @@
         "sandbox": {
           "allow": {
             "read": [
-              "**/*"
+              "**/*",
+              "../vx-bench/real-repos.json"
             ],
             "write": [
               "dist/**",
@@ -431,6 +438,9 @@
           "!public/_img/**",
           "!dist/**",
           "package.json"
+        ],
+        "workspaceFiles": [
+          "private/vx-bench/real-repos.json"
         ]
       },
       "outputs": {
@@ -471,7 +481,8 @@
         "sandbox": {
           "allow": {
             "read": [
-              "**/*"
+              "**/*",
+              "../vx-bench/real-repos.json"
             ],
             "write": [
               "measured/live.json",
@@ -556,7 +567,8 @@
         "sandbox": {
           "allow": {
             "read": [
-              "**/*"
+              "**/*",
+              "../vx-bench/real-repos.json"
             ],
             "write": [
               ".astro/**"
