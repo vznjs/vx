@@ -10,7 +10,8 @@ import { type BranchFacts, branchCacheScope } from '@vzn/vx'
  * is unknown; else `<owner>/<repo>:<branch>`, the repository and branch a
  * pull request comes from, or the branch or tag pushed. A fork's pull
  * request names the fork, a scope a laptop on the base repository never
- * derives. An event that runs in the default branch's context on a pull
+ * derives; one whose head repository is unknown (a deleted fork)
+ * `pr-<n>`. An event that runs in the default branch's context on a pull
  * request's behalf (`pull_request_target`, `issue_comment` on a PR, a
  * `workflow_run` a PR started) is the PR's, whatever `GITHUB_REF` says: a
  * workflow that checks out the PR's head there would otherwise share main's
@@ -95,10 +96,12 @@ function scopeOf(
     const head = event?.pull_request?.head
     const branch = env['GITHUB_HEAD_REF'] || stringOf(head?.ref)
     if (branch !== undefined)
-      return withBase(headScope(branch, stringOf(head?.repo?.full_name), repo))
+      return withBase(
+        headScope(branch, stringOf(head?.repo?.full_name), event?.pull_request?.number),
+      )
     return withBase('pr-target')
   }
-  const onBehalf = prOf(env['GITHUB_EVENT_NAME'], event, repo)
+  const onBehalf = prOf(env['GITHUB_EVENT_NAME'], event)
   if (onBehalf !== undefined) return withBase(onBehalf)
   const name = env['GITHUB_REF_NAME']
   if (ref === '' || name === undefined || name === '' || repo === undefined) return {}
@@ -130,34 +133,38 @@ function stringOf(v: unknown): string | undefined {
   return typeof v === 'string' && v !== '' ? v : undefined
 }
 
-/** A head branch's scope: the repository it lives in (a fork's own), then the branch. */
-function headScope(branch: string, headRepo: string | undefined, repo: string | undefined): string {
-  return branchCacheScope(headRepo ?? repo ?? 'unknown/unknown', branch)
+/**
+ * A head branch's scope: the repository it lives in (a fork's own), then
+ * the branch. A head repository unknown (a deleted fork's is `null`) is
+ * the PR's own `pr-<n>`, else `pr-target`: the base repository in its
+ * place named the base's own branch of that name.
+ */
+function headScope(branch: string, headRepo: string | undefined, pr: unknown): string {
+  if (headRepo !== undefined) return branchCacheScope(headRepo, branch)
+  return prScope(pr)
 }
 
+const prScope = (n: unknown): string =>
+  typeof n === 'number' && Number.isInteger(n) && n > 0 ? `pr-${n}` : 'pr-target'
+
 /** The scope of an event that runs in the base branch's context for a PR; `pr-target` when its head is unknown. */
-function prOf(
-  name: string | undefined,
-  event: ActionsEvent | undefined,
-  repo: string | undefined,
-): string | undefined {
+function prOf(name: string | undefined, event: ActionsEvent | undefined): string | undefined {
   if (name === 'pull_request_target') {
     const head = event?.pull_request?.head
     const branch = stringOf(head?.ref)
     return branch === undefined
       ? 'pr-target'
-      : headScope(branch, stringOf(head?.repo?.full_name), repo)
+      : headScope(branch, stringOf(head?.repo?.full_name), event?.pull_request?.number)
   }
   if (name === 'issue_comment' && event?.issue?.pull_request != null) {
-    const n = event.issue.number
-    return typeof n === 'number' && Number.isInteger(n) && n > 0 ? `pr-${n}` : 'pr-target'
+    return prScope(event.issue.number)
   }
   const run = prRun(name, event)
   if (run !== undefined) {
     const branch = stringOf(run.head_branch)
     return branch === undefined
       ? 'pr-target'
-      : headScope(branch, stringOf(run.head_repository?.full_name), repo)
+      : headScope(branch, stringOf(run.head_repository?.full_name), run.pull_requests?.[0]?.number)
   }
   return undefined
 }

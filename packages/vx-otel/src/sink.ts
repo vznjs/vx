@@ -73,7 +73,7 @@ export interface OtelSinkConfig {
   live?: boolean
   /** Live mode's batch window (ms): what ends within it goes in one send. Default 1000. */
   liveBatchMs?: number
-  /** False under `OTEL_TRACES_EXPORTER=none`; absent is true. */
+  /** False when `OTEL_TRACES_EXPORTER` names no `otlp` (e.g. `none`); absent is true. */
   tracesEnabled?: boolean
   metricsEnabled: boolean
   logsEnabled: boolean

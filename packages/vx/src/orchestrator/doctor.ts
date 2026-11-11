@@ -24,7 +24,13 @@ import { isDefaultBuild } from '../graph/index.js'
 import * as ui from '../ui/index.js'
 import { vxPath } from '../handoff.js'
 import { VERSION } from '../version.js'
-import { probeSandbox, resetSandbox, untracedReason } from '../exec/index.js'
+import {
+  probeSandbox,
+  replacedBySandbox,
+  resetSandbox,
+  toRealPath,
+  untracedReason,
+} from '../exec/index.js'
 import {
   findWorkspaceRoot,
   lockfilePath,
@@ -295,7 +301,17 @@ async function collectWorkspaceInfo(
   // Asked while the probe runs: each is a synchronous spawn.
   const git = gitVersion()
   const statusCache = gitStatusCache(root)
-  const sandbox = { ...(await probing), declared: sandboxed }
+  const probed = await probing
+  // The host's runtime may start, but no sandboxed task runs here (a run
+  // refuses each one, sandbox-request.ts).
+  const sandbox = replacedBySandbox(toRealPath(root))
+    ? {
+        available: false,
+        reason: 'the workspace is under /dev, which the Linux sandbox replaces with its own',
+        untraced: null,
+        declared: sandboxed,
+      }
+    : { ...probed, declared: sandboxed }
   const cacheStore = indexStore ?? storeRoot
   return {
     vx: VERSION,

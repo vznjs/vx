@@ -2351,8 +2351,8 @@ Any entry by one of those names marks the root: one that is a broken
 link or a directory, with no file beside it, is refused by name
 (`<path>: is a broken link — fix or remove it`), not walked past, as
 `vx lock` counts it a nested workspace. Without one, every verb but `vx init` stops with `VX_E_NO_WORKSPACE`;
-`vx init` writes one (`@vzn/vx-migrate` beside a `turbo.json` or
-`nx.json`). A project inside the
+`vx init` writes one (`@vzn/vx-migrate` beside a `turbo.json`,
+`nx.json`, exported Nx graph or Lerna on Nx). A project inside the
 root is a directory holding a `vx.config.*`, which `vx lock` finds
 (see [`vx lock`](#vx-lock)); a `discover` plugin adds others.
 
@@ -2626,8 +2626,10 @@ version is read from the registry that manager is configured for
 
 When the directory it runs in, or one above it up
 to the git top-level (outside git, up to the `package.json` root below),
-holds a `turbo.json`, `turbo.jsonc` or `nx.json`,
-it runs `@vzn/vx-migrate` there, so `vx init` is the one command
+holds a `turbo.json`, `turbo.jsonc` or `nx.json`, an exported Nx graph
+(`.nx/workspace-data/project-graph.json`), or a `lerna.json` whose root
+script runs `lerna run` through Nx (`useNx`, else Lerna 6+), as
+vx-migrate detects them, it runs `@vzn/vx-migrate` there, so `vx init` is the one command
 (2026-10-08): the latest release through `bun x`,
 never an installed one, so init always installs the latest `@vzn/vx`
 and moves every `@vzn/vx-*` plugin the root lists to it
@@ -2718,7 +2720,8 @@ core (`src/cli/plugin-templates.ts`) and held equal by
 
 Mapping a repo's own config to vx is `@vzn/vx-migrate`, its own
 package, run before a workspace file exists (it writes one); `vx init`
-runs it in a repo with a `turbo.json`, `turbo.jsonc` or `nx.json` —
+runs it in a repo with a `turbo.json`, `turbo.jsonc`, `nx.json`, an
+exported Nx graph or Lerna on Nx —
 
 ```
 bunx @vzn/vx-migrate           # turbo.json, an Nx graph, vite-plus run.tasks, else package.json scripts → vx.config.ts (vx init hands it only Turbo and Nx)

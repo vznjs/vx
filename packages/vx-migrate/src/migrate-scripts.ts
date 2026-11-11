@@ -860,9 +860,9 @@ export function migrateScripts(
       const todos: string[] = []
       const own = berry ? berryRun(scripts[name] as string) : (scripts[name] as string)
       const delegate = delegatedScript(own)
-      // npm lifecycle hooks (`prepack`, `prepublishOnly`, …) belong to the
-      // package manager and never ride inside a task — `pack` stays alone.
-      const hook = (h: string): boolean => runsHooks && has(h) && !LIFECYCLE.test(h)
+      // `npm run pack` runs `prepack` too, as pnpm, Yarn 1 and Bun do: a
+      // script named for a verb folds its hooks like any other (2026-11-11).
+      const hook = (h: string): boolean => runsHooks && has(h)
       const hooks = [`pre${name}`, `post${name}`].filter(hook)
       // A group over a script that is no task (`setup: npm run prepare`)
       // named a task nothing defines, and the run `vx init` suggested

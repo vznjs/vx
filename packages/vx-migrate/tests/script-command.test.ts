@@ -24,7 +24,7 @@ describe('scriptCommand — a script body becomes the task command', () => {
       build: 'tsup',
       postbuild: 'rm a.directcss',
       test: 'vitest',
-      // Lifecycle hooks of the package manager's own verbs never ride inside a task.
+      // `npm run install` runs `preinstall` too.
       preinstall: 'node check.js',
       install: 'node-gyp rebuild',
     }
@@ -32,7 +32,9 @@ describe('scriptCommand — a script body becomes the task command', () => {
       foldScriptHooks('cp a.css a.directcss', 'tsup', 'rm a.directcss'),
     )
     expect(scriptCommand('test', 'vitest', scripts)).toBe('vitest')
-    expect(scriptCommand('install', 'node-gyp rebuild', scripts)).toBe('node-gyp rebuild')
+    expect(scriptCommand('install', 'node-gyp rebuild', scripts)).toBe(
+      foldScriptHooks('node check.js', 'node-gyp rebuild', undefined),
+    )
     // An empty hook is no hook.
     expect(scriptCommand('build', 'tsup', { prebuild: '', build: 'tsup' })).toBe('tsup')
     // yarn >= 2 runs no hooks: a builtin anywhere means `yarn run`, hooks dropped.

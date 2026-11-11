@@ -7,8 +7,9 @@
 //   `<name>` without being asked, are folded into the command in that
 //   order (novu's `prebuild` copies the CSS its `build` inlines,
 //   2026-09-11; Nx and Turbo run `pnpm run build`, so they get the hooks
-//   for free). Lifecycle hooks of the package manager's own verbs
-//   (`preinstall`, `prepublishOnly`, …) never ride inside a task.
+//   for free). A script named for a verb (`version`, `pack`) is no
+//   exception: `npm run version` runs `preversion` too, as pnpm, Yarn 1
+//   and Bun do (2026-11-11).
 // - yarn ≥ 2 runs scripts in its own shell, where `run` is a builtin
 //   (`run -T rollup -c` is "the root's rollup", `run build:code` the
 //   sibling script); inlined into sh that body is `run: command not
@@ -26,7 +27,6 @@ import { foldScriptHooks } from '@vzn/vx'
 import { shellQuote } from './nx-command.js'
 
 const YARN_RUN_BUILTIN = /(^|&&|\|\||;|\(|\|)\s*run\s/
-const LIFECYCLE = /^(pre|post)(install|publish|pack|version)$|^(prepare|prepublishOnly|install)$/
 
 function usable(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0
@@ -42,7 +42,7 @@ export function scriptCommand(
 ): string {
   if (pnp) return yarnRun(name)
   const hook = (h: string): string | undefined =>
-    hooks && !LIFECYCLE.test(h) && usable(scripts[h]) ? scripts[h] : undefined
+    hooks && usable(scripts[h]) ? scripts[h] : undefined
   const parts = [hook(`pre${name}`), body, hook(`post${name}`)]
   if (parts.some((p) => p !== undefined && YARN_RUN_BUILTIN.test(p))) return yarnRun(name)
   return foldScriptHooks(parts[0], body, parts[2])

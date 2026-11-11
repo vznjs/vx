@@ -136,7 +136,7 @@ export async function initCmd(args: readonly string[]): Promise<number> {
   // Outside git `dirs` reach `/`: a stray turbo.json or nx.json above the
   // project took init over, as a stray package.json did (2026-10-28).
   const own = top !== null ? dirs : dirs.slice(0, dirs.indexOf(pkgRoot ?? cwd) + 1)
-  if (own.some((d) => TOOL_CONFIGS.some((f) => existsSync(path.join(d, f))))) {
+  if (own.some(adoptsFrom)) {
     return migrate(dirs, parsed)
   }
   // Asked of git itself: a kept workspace file is `top` too, and the
@@ -177,8 +177,57 @@ function declaresWorkspaces(dir: string): boolean {
   }
 }
 
-/** What makes a repo vx-migrate's to map: a Turbo or Nx config. */
-const TOOL_CONFIGS = ['turbo.json', 'turbo.jsonc', 'nx.json']
+/**
+ * What makes a repo vx-migrate's to map, as vx-migrate detects it: a Turbo
+ * or Nx config, an exported Nx graph, or Lerna running through Nx.
+ */
+const TOOL_CONFIGS = [
+  'turbo.json',
+  'turbo.jsonc',
+  'nx.json',
+  path.join('.nx', 'workspace-data', 'project-graph.json'),
+]
+
+function adoptsFrom(dir: string): boolean {
+  return TOOL_CONFIGS.some((f) => existsSync(path.join(dir, f))) || lernaOnNx(dir)
+}
+
+const LERNA_RUN = /(?:^|[\s;&|(])lerna\s+run\s/
+
+/**
+ * vx-migrate's `lernaOnNx`, read the same way: a root script runs `lerna
+ * run`, and Lerna runs it through Nx (`useNx`, else Lerna 6+).
+ */
+function lernaOnNx(root: string): boolean {
+  const json = (file: string): Record<string, unknown> | undefined => {
+    try {
+      return JSON.parse(readFileSync(file, 'utf8').replace(/^\uFEFF/, '')) as Record<
+        string,
+        unknown
+      >
+    } catch {
+      return undefined
+    }
+  }
+  const config = json(path.join(root, 'lerna.json'))
+  if (config === undefined) return false
+  const installed = json(path.join(root, 'node_modules', 'lerna', 'package.json'))?.['version']
+  const manifest = json(path.join(root, 'package.json'))
+  const declared = ['devDependencies', 'dependencies']
+    .map((k) => (manifest?.[k] as Record<string, unknown> | undefined)?.['lerna'])
+    .find((v): v is string => typeof v === 'string')
+  const version = typeof installed === 'string' ? installed : declared
+  if (version === undefined) return false
+  const scripts = manifest?.['scripts']
+  const runs =
+    scripts !== null &&
+    typeof scripts === 'object' &&
+    Object.values(scripts).some((v) => typeof v === 'string' && LERNA_RUN.test(v))
+  if (!runs) return false
+  if (typeof config['useNx'] === 'boolean') return config['useNx']
+  const major = /\d+/.exec(version)?.[0]
+  return major === undefined || Number(major) >= 6
+}
 
 /**
  * The installs `vx init` runs (2026-10-20): vx at `version` globally,

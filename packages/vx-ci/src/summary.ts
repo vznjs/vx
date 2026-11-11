@@ -142,11 +142,16 @@ function escapeMarkdownCell(value: string): string {
 
 /**
  * A task id as inline markdown: `a#*x*` rendered as `a#` and an italic
- * `x` (item 1058), `a#~x~` struck through and `&lt;` as `<`. Table cells
- * escape their pipes on top of this.
+ * `x` (item 1058), `a#~x~` struck through, `&lt;` as `<`, `$x$` as math,
+ * and `www.x`, `http://x` or `a@b.c` as a link (every `.` and `:` is
+ * escaped: GFM's autolinks need them literal). A space at either end is an
+ * entity: `**p#1 **` is not bold, as a closing `**` after a space is no
+ * delimiter. Table cells escape their pipes on top of this.
  */
 function escapeInline(s: string): string {
-  return s.replace(/[\\`*_[\]<>~&]/g, '\\$&')
+  return s
+    .replace(/[\\`*_[\]<>~&$.:]/g, '\\$&')
+    .replace(/^\s+|\s+$/g, (ws) => ws.replace(/./gs, (c) => `&#${c.codePointAt(0)};`))
 }
 
 /**

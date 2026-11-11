@@ -6,7 +6,7 @@ Everything for adopting [`@vzn/vx`](https://vznjs.github.io/vx/) from Turborepo,
 
 - **`turbo()`** — a temporary start for a Turbo repository: the plugin makes each package-manager member a project (`discover`; core finds only directories holding a `vx.config`) and fills vx's `project` stage from `turbo.json` and each package's `package.json` scripts until the migrator writes native config.
 - **`nx()`** — the same temporary start for an Nx repository, filled from Nx's resolved project graph. Executor targets (`@nx/js:tsc`, `@nx/vite:build`, your own) run as themselves through **`nx-exec`**, one executor per process.
-- **`bunx @vzn/vx-migrate`** — write one `vx.config.ts` per workspace package from your `turbo.json`, an exported Nx project graph, vite-plus's `run.tasks` (Vite Task, `vp run`), or else each package's `package.json` scripts, plus the workspace file every run needs. Runs without a workspace file, so it is the first command, not the second; `vx init` runs it in a repo with a `turbo.json`, `turbo.jsonc` or `nx.json`.
+- **`bunx @vzn/vx-migrate`** — write one `vx.config.ts` per workspace package from your `turbo.json`, an exported Nx project graph, vite-plus's `run.tasks` (Vite Task, `vp run`), or else each package's `package.json` scripts, plus the workspace file every run needs. Runs without a workspace file, so it is the first command, not the second; `vx init` runs it in a repo with a `turbo.json`, `turbo.jsonc`, `nx.json`, an exported Nx graph or Lerna on Nx.
 - **`turboCache()`** and **`nxCache()`** — keep the remote cache you have: any server speaking Turbo's `/v8/artifacts` API (Vercel's hosted cache included) or Nx's self-hosted `/v1/cache` spec.
 
 ```sh
@@ -295,6 +295,8 @@ package's `package.json` scripts become its `vx.config.ts`, plus a
 `.vx/workspace.ts` that declares the `@vzn/vx-lockfile` plugin for the lockfile at
 the root (`bun()`, `pnpm()`, `npm()` or `yarn()`; with none yet, the
 one its install writes; `{ plugins: [] }` under `--no-install`): package edges (`^build`, `--affected`) come from it.
+With no plugin declared there are none: a lone package's tasks get no `^` edge,
+and a workspace's report names the install and the plugin `^build` needs.
 vx runs and caches on this machine with no plugin, so it declares no executor or
 cache, and the file carries no comment (it is the user's). When
 `@vzn/vx-lockfile` is not installed, it installs it with that manager,
@@ -420,7 +422,9 @@ as npm hands them to the script and not its hooks (item 905), appended
 as text, so no part sees them as `$1` (X-60). The
 command is a small shell function, `vx_script`, around the three parts;
 it carries a TODO saying so; a `pre<x>` with no `x` stays a task of its own, and
-npm's lifecycle hooks (`prepack`, `prepublishOnly`, …) are never tasks.
+npm's lifecycle hooks (`prepack`, `prepublishOnly`, …) are never tasks. A script
+named for a verb joins its hooks too: `npm run version` runs `preversion`, as
+pnpm, Yarn 1 and Bun do, so the `version` task's command holds it.
 Every project gets a `vx.config.ts` (2026-10-14): a member with
 no script to run (none, or only lifecycle hooks: a types-only or config
 package), or with none a Turbo or Nx repo runs, gets one declaring

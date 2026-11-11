@@ -33,6 +33,7 @@ import {
   isStarterConfig,
   isUserError,
   VERSION,
+  type GeneratedProject,
   type MigrationFormat,
   type MigrationPlan,
   UserError,
@@ -818,6 +819,15 @@ async function scripts(
     metas.some((m) => m.dir === root) ? undefined : await readRootManifest(root),
     root,
   )
+  // With no lockfile plugin declared the graph has no project edges, and
+  // `vx lock` refuses every `^build`: a lone package has none to lose, so
+  // it drops them; a workspace is told what gives them.
+  const edgeless = plugins.length === 0 && workspaceFileAt(root) === undefined
+  if (edgeless && plan.projects.length === 1) dropUpstreamEdges(plan.projects[0]!)
+  else if (edgeless && plan.projects.some(readsUpstream))
+    plan.notes.push(
+      'no lockfile here, so .vx/workspace.ts declares no lockfile plugin and `^build` has no project edges: install with the package manager, declare its pnpm() / bun() / npm() / yarn() from @vzn/vx-lockfile in .vx/workspace.ts, then run `vx lock`',
+    )
   const empty = plan.projects.length === 0
   // Single-project mode with packages the root's missing `workspaces` never
   // reaches: the scripts exist, the globs do not (item 248).
@@ -861,6 +871,25 @@ async function scripts(
     ...(args.noInstall === true ? {} : { lock: lockWorkspace }),
   })
   return exitAfter(code, installed)
+}
+
+function upstream(task: Record<string, unknown> | null): string[] | undefined {
+  const deps = task?.['dependsOn']
+  return Array.isArray(deps) ? (deps as string[]) : undefined
+}
+
+function readsUpstream(project: GeneratedProject): boolean {
+  return project.tasks.some((t) => upstream(t.task)?.some((d) => d.startsWith('^')) === true)
+}
+
+function dropUpstreamEdges(project: GeneratedProject): void {
+  for (const { task } of project.tasks) {
+    const deps = upstream(task)
+    if (deps === undefined || task === null) continue
+    const own = deps.filter((d) => !d.startsWith('^'))
+    if (own.length > 0) task['dependsOn'] = own
+    else delete task['dependsOn']
+  }
 }
 
 /**

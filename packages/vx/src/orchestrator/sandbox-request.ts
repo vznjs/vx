@@ -22,6 +22,8 @@ import {
   type ExecuteRequest,
   isMountableLiteral,
   atOrUnder,
+  grantAlternatives,
+  replacedBySandbox,
   type SandboxViolation,
 } from '../exec/index.js'
 import type { TaskNode } from '../graph/index.js'
@@ -239,6 +241,14 @@ export async function sandboxRequestFor(
         `it mounts none of the project — rename the directory, or run the task without exec.sandbox`,
     )
   }
+  // Asked here, not left to bwrap: its "Can't remount" reads as a mount
+  // race, so the task ran twice and failed with no word of the cause.
+  if (replacedBySandbox(home)) {
+    throw new UserError(
+      `exec.sandbox: ${home} is under /dev, which the Linux sandbox replaces with its own, so ` +
+        `it mounts none of the project — move the workspace out of /dev, or run the task without exec.sandbox`,
+    )
+  }
   // A workspace dependency is a SYMLINK in `node_modules` pointing at a
   // sibling project, so granting `node_modules` grants a link whose
   // target is outside it. That target is a dependency, not a reach-out:
@@ -284,7 +294,10 @@ export async function sandboxRequestFor(
   // Made before the walls judge the binds: a directory grant naming nothing
   // yet (`dist/`, `dist/**`) was judged as a file, its bind its parent, and
   // a root project's was refused for `.git`.
-  const placeholders = await prepareOutputsForBind(node.projectDir, sandbox.allow?.write ?? [])
+  const placeholders = await prepareOutputsForBind(
+    node.projectDir,
+    (sandbox.allow?.write ?? []).flatMap(grantAlternatives),
+  )
   let config: ResolvedSandboxConfig
   try {
     config = wallOff(resolved, workspaceRoot, walls, sealed)

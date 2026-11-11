@@ -3,8 +3,8 @@
 // string, and counts the brace (item 495: `dist/{a,b}.txt` read as a literal
 // let two tasks delete each other's outputs). `MOUNT_WILDCARDS` decides
 // whether a GRANT is scanned for matches or mounted as the path it names,
-// and does NOT count the brace: `write: ['g/{a,b}.txt']` is a literal to the
-// sandbox, gets a placeholder and is widened to its directory, which works;
+// and does NOT count the brace: a grant's braces are expanded before it
+// (`grantAlternatives`), so one that reaches it was escaped and names itself;
 // scanned, it matches nothing before the task writes and the grant is lost.
 // A task glob is a standard glob (2026-10-18): `GLOB_WILDCARDS` is
 // `Bun.Glob`'s own set (`BUN_GLOB_WILDCARDS`) plus the escape, since an
