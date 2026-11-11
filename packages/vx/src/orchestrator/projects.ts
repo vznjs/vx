@@ -174,9 +174,7 @@ export function keepDiscoveryWorkspace(
   discoveredWorkspace.set(projects, workspace)
 }
 
-export function workspaceOfDiscovery(
-  projects: readonly ProjectMeta[],
-): WorkspacePlugins | undefined {
+export function pluginsOfDiscovery(projects: readonly ProjectMeta[]): WorkspacePlugins | undefined {
   return discoveredWorkspace.get(projects)
 }
 

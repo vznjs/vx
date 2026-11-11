@@ -81,7 +81,7 @@ export function keepDiscoveryWorkspace(
   projects: readonly ProjectMeta[],
   workspace: Awaited<ReturnType<typeof loadWorkspacePlugins>>,
 ): void
-export function workspaceOfDiscovery(
+export function pluginsOfDiscovery(
   projects: readonly ProjectMeta[],
 ): Awaited<ReturnType<typeof loadWorkspacePlugins>> | undefined
 // Why a project a `discover` plugin added has no config while its directory

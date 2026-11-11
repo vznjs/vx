@@ -30,6 +30,7 @@ import type { ProjectEntry } from '../workspace/index.js'
 import { isDefaultBuild, parseDependencySpec } from '../graph/index.js'
 import { declaresInput, lazyGitEnumeration, workspaceFilesReachInto } from '../cache/index.js'
 import {
+  BUN_GLOB_WILDCARDS,
   isUserError,
   listed,
   maskedCommand,
@@ -814,7 +815,12 @@ async function unlockedFilter(
 ): Promise<{ filter: string; config: string } | undefined> {
   for (const f of parsed) {
     if (f.negate || f.tag === true || !unmatched.includes(f.raw)) continue
-    if (f.isPath ? f.pathGlob !== undefined : /[*?[\]{}!]/.test(f.matcher)) continue
+    if (
+      f.isPath
+        ? f.pathGlob !== undefined
+        : BUN_GLOB_WILDCARDS.test(f.matcher) || f.matcher.includes('!')
+    )
+      continue
     const config = await unlockedDir(f.matcher, projects, root)
     if (config !== undefined) return { filter: f.raw, config }
   }

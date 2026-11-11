@@ -94,7 +94,7 @@ import {
   loadProjects,
   loadWorkspacePlugins,
   lockOfDiscovery,
-  workspaceOfDiscovery,
+  pluginsOfDiscovery,
   lockReader,
   type LoadedProjects,
   nestedWorkspacesOf,
@@ -313,7 +313,7 @@ export async function prepareRunLocked(
     workspaceConfig,
     plugins,
     branch: branchFacts,
-  } = (reused !== undefined ? workspaceOfDiscovery(reused.projects) : undefined) ??
+  } = (reused !== undefined ? pluginsOfDiscovery(reused.projects) : undefined) ??
   (await loadWorkspacePlugins(workspaceRoot, warnOf(log)))
   mark('workspace config')
   const baseBranch = configuredBaseBranch(workspaceConfig)
