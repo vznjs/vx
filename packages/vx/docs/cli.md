@@ -4143,7 +4143,9 @@ per layer: `local 1✓ 1∅ 2↓ 1↑ · remote 3↓ 4↑ 2✗ 1⇡`. `✓` is a
 hit (the local cache answered and its outputs were already on disk; a
 remote hit is never fresh, outputs or none: it is `↓` from the remote), `∅` a task with no cache, `↓` is restored from that
 layer and `↑` saved to it, `✗` a task a remote read or write failed
-for, and `⇡` an upload still running (live only, always last). The
+for (not one that turned the remote off for the run, a refused token or
+no answer: that is the run's, on the `warn` row, and its task counts as
+the others), and `⇡` an upload still running (live only, always last). The
 region stays through vx's closing steps, worker rows gone, and the
 final footer replaces it in place. Each task counts once, under its strongest state: a
 failed remote read or write, then an upload running, then saved to a

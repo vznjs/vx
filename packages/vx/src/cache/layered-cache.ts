@@ -149,6 +149,14 @@ export interface RemoteCacheLayer {
    */
   readonly endpoint?: string
   /**
+   * Optional: true once a failure turned the layer off for the run (a
+   * refused token, a server with no answer). The failure that did is the
+   * run's, said once, and on no task's key: it landed on whichever task
+   * asked first, whose footer then read `remote 1✗` and the others' `local
+   * 1↑`, though all were saved alike.
+   */
+  readonly off?: boolean
+  /**
    * Optional: make the layer ready (read a credential, ask for one).
    * Called once per run, in declared order, before the status line and the
    * first task, and only when the run's policy lets this remote read or

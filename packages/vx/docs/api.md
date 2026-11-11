@@ -2249,6 +2249,7 @@ plugin guide's example shows it).
 ```ts
 export interface RemoteCacheLayer {
   readonly endpoint?: string
+  readonly off?: boolean
   open?(ctx: RemoteOpenContext): Promise<void>
   lend?(): Promise<LentAccess | undefined>
   has(hash: string): Promise<ArtifactInfo | null>

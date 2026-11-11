@@ -367,6 +367,10 @@ function limitsNamed(res: Response): Limits | undefined {
 export class VxCacheLayer implements RemoteCacheLayer {
   readonly endpoint: string
   private disabled = false
+  /** Core's `off`: the failure that turned the layer off is the run's, on no task. */
+  get off(): boolean {
+    return this.disabled
+  }
   private writesRefused = false
   /** The refs a read names, in order: the first holding a hash answers it. */
   refs: readonly string[] = []
@@ -568,6 +572,18 @@ export class VxCacheLayer implements RemoteCacheLayer {
         : undefined
     if (sending === undefined) arm()
     const url = `${this.config.url}${path}`
+    const noAnswer = (err: unknown) => {
+      // A read the server never answered: the next would wait the same
+      // deadline, so the remote is off for the run (a server that takes the
+      // connection and never answers cost each of 300 tasks 30 s). An
+      // upload's deadline bounds its pace, no sign of a dead server.
+      if (init.write === true || !controller.signal.aborted || controller.signal.reason !== err)
+        throw err
+      const first = !this.disabled
+      this.disabled = true
+      if (!first) return undefined
+      throw new Error(`${(err as Error).message}; remote cache off for this run`, { cause: err })
+    }
     let res = await this.fetchImpl(url, {
       method: init.method ?? 'POST',
       headers: {
@@ -581,7 +597,8 @@ export class VxCacheLayer implements RemoteCacheLayer {
       ...(init.body === undefined ? {} : { body: sending?.body ?? init.body }),
       signal: controller.signal,
       redirect: 'manual',
-    })
+    }).catch(noAnswer)
+    if (res === undefined) return undefined
     // An answer before the last byte (one the scope holds): its body is bounded as any answer's.
     sending?.stop()
     arm()

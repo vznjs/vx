@@ -1359,6 +1359,37 @@ describe('LayeredCache', () => {
       closeAndReopen(layered)
     })
 
+    // A refused token turned the remote off on one task's download: that
+    // task read `remote 1✗`, the other, as refused, `local 1↑`, though both
+    // were saved here (2026-11-11). The failure is the run's, said once.
+    it("a failure that turned the remote off is the run's, on no task's key", async () => {
+      const errors: Error[] = []
+      let off = false
+      const layered = layeredOver(
+        local,
+        {
+          get off() {
+            return off
+          },
+          has: async () => null,
+          get: async () => {
+            if (off) return undefined
+            off = true
+            throw new Error('HTTP 403: the token was refused; remote cache off for this run')
+          },
+          put: async () => false,
+        },
+        { onRemoteError: (e) => errors.push(e) },
+      )
+      expect(await layered.get('h1')).toBeNull()
+      expect(await layered.get('h2')).toBeNull()
+      expect(errors.map((e) => e.message)).toEqual([
+        'download h1 failed: HTTP 403: the token was refused; remote cache off for this run',
+      ])
+      expect([...local.traffic.keys]).toEqual([])
+      closeAndReopen(layered)
+    })
+
     it('an upload is in flight on its key until it lands', async () => {
       let land!: () => void
       const landed = new Promise<void>((resolve) => (land = resolve))
