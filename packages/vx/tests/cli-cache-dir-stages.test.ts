@@ -3,8 +3,8 @@
 // the run resolves it. The CLI's selection pass runs the `discover` and
 // `project` stages before the run (which reuses them): `discover` was told
 // the workspace's cache dir and `project` the flag's raw relative text.
-// Since 2026-11-11 only `vx lock` runs the `project` stage: a run calls
-// no `project` hook, so only `discover` is told.
+// Since 2026-11-11 only `vx lock` runs the `discover` and `project`
+// stages: a run calls neither hook, and `setup` is told.
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -49,7 +49,7 @@ it('every stage of a --cache-dir run is told the one resolved directory', async 
     path.join(root, '.vx/workspace.mjs'),
     `${PLUGIN_IMPORT}export default { plugins: [${pluginSource(
       'vx-test-seen',
-      `{ discover(ctx) { (${record('discover')})(ctx); return [] }, project(_c, ctx) { (${record('project')})(ctx) } }`,
+      `{ setup(ctx) { (${record('setup')})(ctx) }, discover(ctx) { (${record('discover')})(ctx); return [] }, project(_c, ctx) { (${record('project')})(ctx) } }`,
     )}] }\n`,
   )
   await mkdir(path.join(root, 'app'))
@@ -67,6 +67,6 @@ it('every stage of a --cache-dir run is told the one resolved directory', async 
     expect(vx(path.join(root, cwd), 'run', 'hello', ...args, '--cache-dir', 'here').code).toBe(0)
     const seen = new Set((await readFile(log, 'utf8')).trim().split('\n'))
     const dir = path.join(root, cwd, 'here')
-    expect([...seen].sort()).toEqual([`discover ${dir}`])
+    expect([...seen].sort()).toEqual([`setup ${dir}`])
   }
 }, 30_000)

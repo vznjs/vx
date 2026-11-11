@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## orchestrator: vx lock records the discover stage; runs read it
+
+the projects lock is version 6; a workspace must re-run vx lock after upgrading, and a discover plugin's change to projects or edges reaches runs only through vx lock.
+
 ## orchestrator: vx lock records the project stage; runs read it
 
 a workspace with a project-stage plugin (turbo(), nx(), bun()/pnpm()/npm()/yarn()) must re-run vx lock after upgrading; until then a run maps nothing the lock does not record.

@@ -255,9 +255,10 @@ describe('vx watch loop (e2e): the watched set', () => {
 
   it('a dependency added under --filter joins the watched closure', async () => {
     // The closure was computed at start: `app` alone. An edit to the file
-    // the edge plugin claims that makes `lib` its dependency runs `lib` in
-    // the cycle it triggers, and the re-read arms it. Differential: without
-    // the re-read on a claimed file's edit, the `lib` edit below is silence.
+    // the edge plugin reads that makes `lib` its dependency joins once
+    // `vx lock` records the edge (a run follows the lock's `discover`
+    // record, 2026-11-11): the lock is the event, and the re-read arms
+    // `lib`. Differential: without the re-read, the `lib` edit is silence.
     await Bun.write(
       path.join(f.root, '.vx/workspace.mjs'),
       `${PLUGIN_IMPORT}export default { plugins: [${packagesSource()}, ${FILE_EDGES}] }\n`,
@@ -281,6 +282,7 @@ describe('vx watch loop (e2e): the watched set', () => {
       path.join(f.root, 'edges.json'),
       JSON.stringify({ 'packages/app': ['packages/lib'] }),
     )
+    relock()
     await until(() => arms(w, 2) === 1, 'lib joins the set')
     await Bun.sleep(SETTLE_MS)
     const afterDep = await lines()

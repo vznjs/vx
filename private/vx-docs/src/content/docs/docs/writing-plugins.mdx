@@ -132,7 +132,11 @@ export function ciConcurrency(): VxPlugin {
 ```
 
 `discover` makes a directory with no `vx.config.ts` a project; its
-tasks come from a `project` hook:
+tasks come from a `project` hook.
+
+Both run under `vx lock` only: the
+lock records what they return, and a run reads that record and calls
+neither hook, so a changed answer runs after the next `vx lock`:
 
 ```ts
 import { definePlugin, type VxPlugin } from '@vzn/vx'

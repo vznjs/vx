@@ -13,13 +13,17 @@ message per project that differs. With a plugin `project` stage, the
 lock also records what the stage left of every project, a config-less
 one included (`projectStage`): a run reads that and calls no hook
 (2026-11-11), and `--check` names each project the stage now maps
-otherwise.
+otherwise. The plugin `discover` stage is recorded alike
+(`discoverStage`): each project it added, named or gave edges. A run
+applies it to the locked directories and calls no `discover` hook, so a
+plugin's live answer (an Nx graph, a manifest) never moves a run until
+`vx lock`.
 
 ## Public surface
 
 ```ts
 export const LOCKFILE_NAME = '.vx/projects.lock.json'
-export const LOCKFILE_VERSION = 5
+export const LOCKFILE_VERSION = 6
 
 export interface LockedProject {
   file: string // the config file's name in the directory (`vx.config.ts`)
@@ -35,11 +39,23 @@ export interface Lockfile {
   nestedWorkspaces?: string[]
   // the `project` stage as `vx lock` ran it; absent when no plugin fills it
   projectStage?: ProjectStageLock
+  // the `discover` stage as `vx lock` ran it; absent when no plugin fills it
+  discoverStage?: DiscoverStageLock
   validated?: string // the self-digest writeLockfile appends
 }
 export interface ProjectStageLock {
   plugins: string[] // the plugins that filled it, in order; `--check` names another set
   configs: Record<string, ProjectConfig> // by directory: each config after the stage, before the default build
+}
+export interface DiscoverStageLock {
+  plugins: string[] // the plugins that filled it, in order; `--check` names another set
+  projects: Record<string, DiscoveredLock> // by directory: each project the stage added, named or gave edges
+}
+export interface DiscoveredLock {
+  name: string
+  by?: string // the plugin that added it, on a project with no locked config
+  deps?: string[] // project names, as ProjectMeta.deps; present, even empty, makes an edge source
+  reach?: string[]
 }
 // On disk only: `pool` holds each task, exec, env, sandbox, inputs or cache
 // value two places hold alike, once; each place holds its index. A read
@@ -80,18 +96,24 @@ shapes a run walks: `name` a string, `tags` a list, `tasks` an object of
 objects, each `dependsOn` a list (a string one was walked per character),
 and `nestedWorkspaces`, when present, a list of such keys other than `.`;
 `projectStage`, when present, a list of plugin names and an object of
-such keys to configs of the same shapes.
+such keys to configs of the same shapes; `discoverStage`, when present,
+a list of plugin names and an object of such keys to `{ name, by?,
+deps?, reach? }` of strings and lists of strings.
 Anything else, including a lock an earlier vx wrote (version 2 keyed
 by name), is a `UserError` asking to re-run `vx lock`; a lock a newer vx
 wrote (a higher version) asks to upgrade vx instead, as re-locking would
 write the older version over it. `frozenProjectConfigs` is what a run's load serves instead
 of an evaluation: an entry missing for the project is a
-`UserError` naming the project and the remedy. No entry is otherwise validated:
+`UserError` naming the project and the remedy. `discoverProjects` refuses
+what its parse already holds and `vx lock` never writes, in
+`LOCK_INVALID`'s words with the reason (a `discoverStage` edge or a recorded name that clashes, a
+`projectStage` config for no project): followed blindly, the edge was
+dropped and the dependant ran without it. No entry is otherwise validated:
 `vx lock` validated what it wrote, and `--check` re-evaluates
 (2026-10-14). A hand-broken entry that then crashes a run is
 named, not shown as a raw TypeError: on that crash's path only, a task
-or the CLI asks `lockEntryBroken` and prints `LOCK_INVALID`
-(2026-10-14). `writeLockfile` writes a value two places hold alike once, in `pool`
+or the CLI asks `lockEntryBroken` (which reads past a leading BOM, as
+`readLockfile` does) and prints `LOCK_INVALID` (2026-10-14). `writeLockfile` writes a value two places hold alike once, in `pool`
 (`task`, `exec`, `env`, `sandbox`, `inputs`, `cache`), and puts its index
 in each place. Each slot is one the schema types as an object, so a number
 there can only be an index. Big workspaces repeat their tasks: 2,000

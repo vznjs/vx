@@ -70,9 +70,7 @@ it("run() rejects with a plugin's setup failure masked", async () => {
 }, 30_000)
 
 it("run() rejects with a plugin's stage failure masked", async () => {
-  // `discover`: a run calls no `project` hook (2026-11-11).
-  expect(await refusal(`{ discover() { ${THROW} } }`)).toBe(
-    `plugin 'org/p' failed in discover: ${SAID}`,
-  )
+  // `graph`: a run calls no `discover` or `project` hook (2026-11-11).
+  expect(await refusal(`{ graph() { ${THROW} } }`)).toBe(`plugin 'org/p' failed in graph: ${SAID}`)
   expect(await refusal(`{ key() { ${THROW} } }`)).toBe(`plugin 'org/p' failed in key: ${SAID}`)
 }, 30_000)

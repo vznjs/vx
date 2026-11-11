@@ -299,6 +299,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'core-alias',
     'critical-path',
     'discover-stage',
+    'discover-stage-lock',
     'discovery-links',
     'discovery-node-modules',
     'discovery-refusals',

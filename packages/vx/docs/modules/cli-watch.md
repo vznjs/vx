@@ -174,8 +174,8 @@ too: they format one run's result.
 2. `cli/run.ts:resolveRunOptions(parsed, cwd, tasks)` → `RunOptions`.
    Same scope resolution as `vx run`.
 3. Enumerate projects in the resolved scope via `discoverCliProjects`
-   (discovery plus the plugins' `discover` stage, as `vx run` lists
-   them): `opts.projects` (every project when undefined) plus each
+   (the lock's projects with the `discover` stage it records, as
+   `vx run` lists them): `opts.projects` (every project when undefined) plus each
    `pkg#task`'s project, or only those when every task is anchored
    (`tests/watch-anchored-scope.test.ts`). Empty scope → exit 1, judged
    after the initial run so an unknown `pkg` gets the run's refusal.
@@ -260,9 +260,10 @@ too: they format one run's result.
      the watched set (`shapesWatchedSet`): a project config (a task
      that starts or stops declaring `workspaceFiles` swaps the arm
      between per-project and root, `dropMode` / `armMode`), the
-     workspace config, or a file a plugin claims (a lockfile plugin's
-     `discover` names and edges come from it, so a dependency added
-     under `--filter` widens the closure). Until item 891 each of
+     workspace config, or a file a plugin claims. A plugin's `discover`
+     names and edges come from the lock (2026-11-11), so a dependency
+     added widens a `--filter` closure only once `vx lock` records it,
+     whose own event re-reads. Until item 891 each of
      these waited for a restart. A re-read that fails is said once,
      after the cycle's header: the one before the run stays silent, and
      the one after says nothing the cycle's own failure said.

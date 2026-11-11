@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, realpath, rm, symlink } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { discoverProjects, type VxPlugin } from '../src/orchestrator/index.js'
+import { lockDiscovery, type VxPlugin } from '../src/orchestrator/index.js'
 import type { ProjectConfig } from '../src/config.js'
 import {
   applyFilters,
@@ -33,7 +33,7 @@ const plugin = (name: string, discover: VxPlugin['discover']): VxPlugin =>
 const lockOf =
   (extra: Record<string, ProjectConfig> = {}) =>
   async (): Promise<Lockfile> => ({
-    version: 5,
+    version: 6,
     projects: Object.fromEntries(
       Object.entries({ 'packages/a': {}, ...extra }).map(([d, config]) => [
         d,
@@ -43,7 +43,7 @@ const lockOf =
   })
 
 const discover = (plugins: VxPlugin[], extra?: Record<string, ProjectConfig>) =>
-  discoverProjects(root, lockOf(extra), plugins, root, warn)
+  lockDiscovery(root, lockOf(extra), plugins, root, warn).then((r) => r.projects)
 
 const names = async (plugins: VxPlugin[], extra?: Record<string, ProjectConfig>) =>
   (await discover(plugins, extra)).map((p) => `${p.name}@${path.relative(root, p.dir) || '.'}`)
@@ -219,7 +219,7 @@ describe('discover stage', () => {
       try {
         await mkdir(path.join(root, 'widgets'))
         await symlink('../packages/a', path.join(root, 'widgets', 'a'))
-        const projects = await discoverProjects(
+        const { projects } = await lockDiscovery(
           linked,
           lockOf(),
           [plugin('p', () => [{ dir: 'widgets/a', name: 'a' }])],
@@ -285,7 +285,7 @@ describe('discover stage', () => {
   ]
   for (const [what, discover, message] of refusals) {
     it(`refuses ${what}, naming the plugin`, async () => {
-      const err = await discoverProjects(root, lockOf(), [plugin('p', discover)], root, warn).then(
+      const err = await lockDiscovery(root, lockOf(), [plugin('p', discover)], root, warn).then(
         () => null,
         (e: unknown) => e as Error,
       )
@@ -299,7 +299,7 @@ describe('discover stage', () => {
   // as 5 after it crashed linking the edges ("5 is not iterable").
   it('a getter or Proxy trap in an entry that throws is refused naming the plugin', async () => {
     const said = (discover: VxPlugin['discover']): Promise<string> =>
-      discoverProjects(root, lockOf(), [plugin('p', discover)], root, warn).then(
+      lockDiscovery(root, lockOf(), [plugin('p', discover)], root, warn).then(
         () => 'ok',
         (e: Error) => `${e.constructor.name}: ${e.message}`,
       )

@@ -38,17 +38,28 @@ export function loadWorkspacePlugins(
 ): Promise<{ workspaceConfig: WorkspaceConfig | null; plugins: readonly VxPlugin[] }>
 
 // The lock's directories (lockedProjects; a run never walks for configs),
-// then the plugin `discover` stage (skipped when no plugin has it), its
-// edges onto the metas (linkDiscoveredEdges), then checkProjectNames
+// with the `discover` stage `vx lock` recorded (Lockfile.discoverStage)
+// applied: added projects, names, deps and reach. No hook runs. An edge
+// to no project, a recorded name that clashes, or a `projectStage` config
+// for no project is refused as an invalid lock. Then checkProjectNames.
 export function discoverProjects(
+  workspaceRoot: string,
+  lock: () => Promise<Lockfile>,
+  git?: LazyGitEnumeration, // the run's enumeration, which `--affected` reads and starts
+): Promise<ProjectMeta[]>
+// `vx lock`'s discovery, the one place a `discover` hook runs: the lock's
+// directories through the stage (skipped when no plugin has it), its edges
+// onto the metas (linkDiscoveredEdges), checkProjectNames, and what to record
+// (`stage`: each project the stage added, renamed or gave edges, with the
+// plugins that filled it; absent with no `discover` plugin).
+export function lockDiscovery(
   workspaceRoot: string,
   lock: () => Promise<Lockfile>,
   plugins: readonly VxPlugin[],
   cacheDir: string,
   warn: (m: string) => void,
-  git?: LazyGitEnumeration, // what `DiscoverContext.worktreeChanges` reads and starts
-): Promise<ProjectMeta[]>
-// The enumeration a discovery's hooks shared, by the array it returned (G-75).
+): Promise<{ projects: ProjectMeta[]; stage?: DiscoverStageLock }>
+// The enumeration a discovery registered, by the array it returned (G-75).
 export function gitOfDiscovery(projects: readonly ProjectMeta[]): LazyGitEnumeration | undefined
 // The run's extra-file hashes (`ExtraHashes`, lockfile-claim.md), by the same array:
 // `discover`, the `project` stage, `--affected` and the key hash a `file:` directory once.

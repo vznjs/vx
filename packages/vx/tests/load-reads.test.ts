@@ -122,10 +122,8 @@ describe('a run reads each root file once', () => {
         '.vx/projects.lock.json': ['exists', 'text'],
         // A config the run reads is still there (X-144).
         'packages/a/vx.config.mjs': ['exists'],
-        // The plugin's reads, once each: core probes no package file.
-        'pnpm-workspace.yaml': ['text'],
-        'package.json': ['text'],
-        'packages/a/package.json': ['text'],
+        // No package file: the plugin's `discover` answer is the lock's
+        // (2026-11-11), and core probes none.
       })
     },
     TIMEOUT,
@@ -134,8 +132,9 @@ describe('a run reads each root file once', () => {
   it(
     "a --filter run discovers the workspace once: the run takes the selection pass's projects",
     async () => {
-      // Differential: with `discovered` not handed from resolveFilters to
-      // the run, discovery (the plugin's manifest reads with it) runs twice.
+      // Discovery reads only the lock, once per process, since a run calls
+      // no `discover` hook (2026-11-11): the hooks' manifest reads, which
+      // a second discovery repeated, are gone with them.
       const ops = await fileOps(async () => {
         const parsed = parseRunArgs(['build', '--filter', 'a'])
         const opts = (await resolveRunOptions(parsed, root, parsed.tasks)) as RunOptions
@@ -143,7 +142,7 @@ describe('a run reads each root file once', () => {
         p.cache.close()
         expect([...p.nodes.keys()]).toEqual(['a#build'])
       })
-      expect(ops['packages/a/package.json']).toEqual(['text'])
+      expect(ops['.vx/projects.lock.json']).toEqual(['exists', 'text'])
     },
     TIMEOUT,
   )
@@ -151,8 +150,7 @@ describe('a run reads each root file once', () => {
   it(
     "a run from inside a project discovers the workspace once: the run takes the cwd lookup's projects",
     async () => {
-      // Differential: with the cwd lookup's discovery not handed to the
-      // run, discovery (every `discover` hook with it) runs twice.
+      // As above: discovery reads only the lock, once per process.
       const ops = await fileOps(async () => {
         const parsed = parseRunArgs(['build'])
         const opts = (await resolveRunOptions(
@@ -164,7 +162,7 @@ describe('a run reads each root file once', () => {
         p.cache.close()
         expect([...p.nodes.keys()]).toEqual(['a#build'])
       })
-      expect(ops['packages/a/package.json']).toEqual(['text'])
+      expect(ops['.vx/projects.lock.json']).toEqual(['exists', 'text'])
     },
     TIMEOUT,
   )

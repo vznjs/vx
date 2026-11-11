@@ -517,7 +517,7 @@ describe('affectedProjects', () => {
     // review files off, the lock was the only change, and it was dropped.
     const lockOf = (command: string) =>
       JSON.stringify({
-        version: 5,
+        version: 6,
         projects: Object.fromEntries(
           ['a', 'b'].map((n) => [
             `packages/${n}`,
