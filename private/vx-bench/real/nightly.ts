@@ -16,6 +16,7 @@ import path from 'node:path'
 import { parseArgs } from 'node:util'
 import { benchEnv } from '../bench-env.js'
 import { vxCompileEntries } from '../compile-entries.js'
+import { type Matchup, verdict } from './verdict.js'
 
 interface Repo {
   name: string
@@ -151,12 +152,9 @@ must(
 )
 const vxCommit = must(['git', 'rev-parse', '--short', 'HEAD'], REPO_ROOT).trim()
 
-interface Row {
+interface Row extends Matchup {
   repo: string
-  tool: string
   arm: (typeof ARMS)[number]
-  vx: number
-  rival: number
 }
 const rows: Row[] = []
 const failures: string[] = []
@@ -217,13 +215,6 @@ for (const repo of REPOS) {
 }
 
 const secs = (ms: number): string => `${(ms / 1000).toFixed(ms < 1000 ? 3 : 2)} s`
-// "N× faster" from 2×, a percentage below it (2026-10-09).
-const verdict = (r: Row): string => {
-  const [fast, slow] = r.vx <= r.rival ? [r.vx, r.rival] : [r.rival, r.vx]
-  const ratio = slow / fast
-  const size = ratio >= 2 ? `${ratio.toFixed(1)}×` : `${Math.round((ratio - 1) * 100)}%`
-  return r.vx <= r.rival ? `${size} faster` : `LOSS: ${r.tool} ${size} faster`
-}
 const losses = rows.filter((r) => r.vx > r.rival)
 const report = [
   `# Nightly real-repo bench ${new Date().toISOString().slice(0, 10)}`,

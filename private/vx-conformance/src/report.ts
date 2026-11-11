@@ -93,10 +93,12 @@ export function scores(tools: string[], rows: Row[]): Results['scores'] {
   )
 }
 
+// Rounded down, as the site shows it: only a clean sweep reads 100%.
+const pct = (n: number, of: number) => `${Math.floor((n * 100) / of)}%`
 const percent = (s: Score | undefined) =>
   s === undefined || s.of === 0
     ? '–'
-    : `${Math.round((s.pass / s.of) * 100)}% (${s.pass}/${s.of}), supports ${Math.round((s.can / s.of) * 100)}%`
+    : `${pct(s.pass, s.of)} (${s.pass}/${s.of}), supports ${pct(s.can, s.of)}`
 
 /** The score table, as the CLI prints it. */
 export function scoreTable(r: Pick<Results, 'tools' | 'scores'>): string {
