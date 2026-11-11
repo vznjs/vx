@@ -649,6 +649,15 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const willSave =
     willWrite && args.taintedUpstream !== true && !unkeyed && !keyless && args.belowNoop !== true
 
+  // An executor's own record of executions is a remote store: a run whose
+  // policy turns the remote's read or write off keeps it off that record
+  // too. A `--cache-policy=remote:` run replayed one, and a run off CI wrote
+  // one a CI run on a fresh cache then replayed and uploaded. Only with a
+  // remote layer: without one the remote axes read off, and a worker that
+  // shares this machine's store (`@vzn/vx-dte`'s `local()`) is no remote.
+  const remoteOff = (axis: 'remoteRead' | 'remoteWrite'): boolean =>
+    cache.hasRemote === true && !policy[axis]
+
   // The executor retains nothing: the entry's output is the attempt's
   // `output` log, both streams in the order they reached the logger, kept
   // only when this task will WRITE an entry. Both streams are still drained
@@ -1672,14 +1681,18 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       ...(effectiveTimeout !== undefined ? { timeoutMs: effectiveTimeout } : {}),
       ...(inputs !== undefined ? { inputs } : {}),
       ...(cfgCacheable ? { cacheKey: hash } : {}),
-      ...(cfgCacheable && !remoteOnly && !willSave ? { unsaved: true } : {}),
+      ...(cfgCacheable && ((!remoteOnly && !willSave) || remoteOff('remoteWrite'))
+        ? { unsaved: true }
+        : {}),
       ...(remoteOnly ? { remoteOnly: true } : {}),
       ...(node.platform !== undefined ? { platform: node.platform } : {}),
       ...(node.worker !== undefined ? { worker: node.worker } : {}),
       ...(deferralRequested ? { download: 'deferred' as const } : {}),
       // `--force`/`--no-cache` reach a remote executor's private record
       // through this flag — the policy gates above only cover vx's OWN cache.
-      ...(cfgCacheable && !(policy.localRead || policy.remoteRead) ? { refresh: true } : {}),
+      ...(cfgCacheable && (!(policy.localRead || policy.remoteRead) || remoteOff('remoteRead'))
+        ? { refresh: true }
+        : {}),
       outputs: { files: own(outputs), workspaceFiles: own(wsOutputs) },
       ...(args.terminal === true ? { terminal: true as const } : {}),
       ...(args.servers === undefined

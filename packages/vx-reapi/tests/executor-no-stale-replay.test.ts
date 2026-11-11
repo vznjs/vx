@@ -138,3 +138,51 @@ it('writes no record for an unsaved request, so the next run executes', async ()
     client.close()
   }
 })
+
+// A dependant whose upstream's outputs are nowhere on this disk grafts them
+// from that upstream's record. A record of a failed run (the action cache is
+// the server's) was grafted, and the dependant ran on a failed build's
+// outputs and was cached as a success.
+describe.if(CHUNKING_SUPPORTED)('an upstream graft', () => {
+  const dependant = (hash: string): ExecuteRequest => {
+    const req = request(`k-dependant-of-${hash}`)
+    return {
+      ...req,
+      inputs: {
+        ...req.inputs!,
+        upstream: [{ taskId: 'pkg#up', hash, outputs: ['pkg/up.txt'] }],
+      },
+    }
+  }
+  const graft = async (hash: string, exitCode: number) => {
+    const digest = fake.put(bytes('upstream output'))
+    fake.actions.set(execDigestFor(hash).hash, {
+      exit_code: exitCode,
+      output_files: [{ path: 'pkg/up.txt', digest, is_executable: false }],
+    })
+    const client = new ReapiClient({ endpoint: fake.endpoint })
+    try {
+      const before = executes()
+      const res = await reapiExecutor(client, { warn: () => undefined })
+        .execute(dependant(hash))
+        .then(
+          (r) => r.exitCode,
+          (err: unknown) => (err instanceof Error ? err.message : String(err)),
+        )
+      return { res, executed: executes() - before }
+    } finally {
+      client.close()
+    }
+  }
+
+  it("refuses a failed run's record", async () => {
+    expect(await graft('k-up-failed', 3)).toEqual({
+      res: 'upstream pkg#up outputs are in the remote store only as a failed run (exit 3) — re-run it (e.g. --force)',
+      executed: 0,
+    })
+  })
+
+  it("takes a passed run's record (control)", async () => {
+    expect(await graft('k-up-passed', 0)).toEqual({ res: 0, executed: 1 })
+  })
+})

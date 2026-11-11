@@ -230,6 +230,27 @@ describe('commandEnvironment', () => {
       commandEnvironment(inputs([{ name: 'NO_COLOR', value: '1' }]), {}, { NO_COLOR: '1' }),
     ).toEqual([{ name: 'NO_COLOR', value: '1' }])
   })
+
+  // The local child keeps this machine's FORCE_COLOR and NO_COLOR (the
+  // essential allowlist), unkeyed, and gets no FORCE_COLOR=1 under a
+  // non-empty NO_COLOR. The worker forced colour there: a local run and a
+  // remote one of the same key stored different bytes.
+  it('ships the colour names the local child sees, as it sees them', () => {
+    expect(commandEnvironment(inputs([]), {}, { NO_COLOR: '1' })).toEqual([
+      { name: 'NO_COLOR', value: '1' },
+    ])
+    expect(commandEnvironment(inputs([]), {}, { FORCE_COLOR: '0' })).toEqual([
+      { name: 'FORCE_COLOR', value: '0' },
+    ])
+    expect(commandEnvironment(inputs([]), {}, { FORCE_COLOR: '1', PATH: '/bin' })).toEqual([
+      { name: 'FORCE_COLOR', value: '1' },
+    ])
+    // A define still wins.
+    expect(commandEnvironment(inputs([]), { FORCE_COLOR: '3' }, { NO_COLOR: '1' })).toEqual([
+      { name: 'FORCE_COLOR', value: '3' },
+      { name: 'NO_COLOR', value: '1' },
+    ])
+  })
 })
 
 describe('acceptsTask', () => {
