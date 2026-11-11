@@ -95,6 +95,22 @@ export function parseCachePolicy(spec: string, base: CachePolicy = FULL_CACHE_PO
 }
 
 /**
+ * Why `VX_CACHE_POLICY`'s value `spec` is refused, or null when it parses.
+ * Its grammar is this module's, which the settings table may not import,
+ * so the setting is typed a string there and checked here, before any verb.
+ */
+export function cachePolicyEnvRefusal(spec: string): string | null {
+  if (!spec.split(',').some((seg) => seg.trim().length > 0))
+    return 'VX_CACHE_POLICY needs a spec like local:r, local:rw, remote:, or local:,remote:rw'
+  try {
+    parseCachePolicy(spec)
+    return null
+  } catch (err) {
+    return `VX_CACHE_POLICY: ${err instanceof Error ? err.message : String(err)}`
+  }
+}
+
+/**
  * The `--cache-policy` spec for `p`, both layers named, so the line
  * `vx last` shows pastes back as the flag: `local:rw,remote:r`.
  */

@@ -17,6 +17,7 @@ export {
   type CacheLayer,
   type RemoteTraffic,
   type CachePolicy,
+  cachePolicyEnvRefusal,
   cachesNothing,
   EXECUTED_RUNS_SQL,
   historyFiles,

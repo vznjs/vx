@@ -3,6 +3,7 @@
 
 import { VERSION } from '../version.js'
 import { checkSettingsEnv } from '../settings.js'
+import { cachePolicyEnvRefusal } from '../cache/index.js'
 import { CORE_VERBS, flagHint, printHelp, refuse, refusedWord, seeHelp } from './help.js'
 import {
   errorDocument,
@@ -56,14 +57,30 @@ export async function run(argv: readonly string[]): Promise<number> {
   // --help` above is not: help is where a setting's values are read. Nor
   // for `vx info`, which reports a refused one (doctor.ts). Nor for one
   // whose flag is given: the flag beats it.
-  if (command !== 'help' && command !== '--help' && command !== '-h' && command !== 'info')
+  if (command !== 'help' && command !== '--help' && command !== '-h' && command !== 'info') {
     checkSettingsEnv(process.env, rest)
+    refuseCachePolicyEnv(rest)
+  }
 
   try {
     return await dispatch(command, rest)
   } catch (err) {
     throw await brokenLockNamed(err)
   }
+}
+
+/** `VX_CACHE_POLICY`, whose grammar `checkSettingsEnv` cannot read, unless `--cache-policy` beats it. */
+function refuseCachePolicyEnv(args: readonly string[]): void {
+  const spec = process.env['VX_CACHE_POLICY'] || undefined
+  const end = args.indexOf('--')
+  const given = end === -1 ? args : args.slice(0, end)
+  if (
+    spec === undefined ||
+    given.some((a) => a === '--cache-policy' || a.startsWith('--cache-policy='))
+  )
+    return
+  const refused = cachePolicyEnvRefusal(spec)
+  if (refused !== null) throw new UserError(refused, 'VX_E_USAGE')
 }
 
 /**
