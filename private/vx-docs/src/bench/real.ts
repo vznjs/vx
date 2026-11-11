@@ -37,9 +37,13 @@ const TIE = 0.02
 export function verdict(vx: string, rival: string): string {
   const [a, b] = [ms(vx), ms(rival)]
   const [fast, slow] = a <= b ? [a, b] : [b, a]
-  const ratio = slow / fast
-  if (ratio <= 1 + TIE) return 'tie'
-  const size = ratio >= 2 ? `${ratio.toFixed(1)}×` : `${Math.round((ratio - 1) * 100)}%`
+  if (slow / fast <= 1 + TIE) return 'tie'
+  // Rounded down, never claiming more than measured; divide last, as
+  // (slow / fast - 1) * 100 lands on 56.99… for a 57% gap.
+  const size =
+    slow >= 2 * fast
+      ? `${(Math.floor((slow * 10) / fast) / 10).toFixed(1)}×`
+      : `${Math.floor(((slow - fast) * 100) / fast)}%`
   return `vx ${size} ${a <= b ? 'faster' : 'slower'}`
 }
 
