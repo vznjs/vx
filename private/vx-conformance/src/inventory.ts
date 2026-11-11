@@ -467,6 +467,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'sandbox-open-flags',
     'sandbox-openat2.unsafe',
     'sandbox-outside-git.unsafe',
+    'sandbox-outside-writes-hint',
     'sandbox-output-link.unsafe',
     'sandbox-parent-env.unsafe',
     'sandbox-paths',

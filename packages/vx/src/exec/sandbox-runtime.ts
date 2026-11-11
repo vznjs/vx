@@ -2855,8 +2855,12 @@ async function runSandboxedOnce(
       config: args.config,
       skip: [taskTmpRoot(), ...srtDefaultWritePaths()],
     })
-    if (outside.length > 0)
-      violations.push(outsideWritesHint(outside, baselines.denyRead, args.reportWithin))
+    if (outside.length > 0) {
+      const made = new Set(
+        recorded.filter((v) => /^mkdir(?:at)?\(/.test(v.line)).map((v) => v.path),
+      )
+      violations.push(outsideWritesHint(outside, made, baselines.denyRead, args.reportWithin))
+    }
     if (process.platform === 'linux') {
       const removed = grantRemovalHint(
         `${stdout}\n${stderr}`,
@@ -2951,30 +2955,56 @@ function afterCommand(SandboxManager: SrtModule['SandboxManager']): void {
   }
 }
 
-/** The hint for writes refused outside the project, a few paths named. */
-function outsideWritesHint(
+/**
+ * The hint for writes refused outside the project, a few paths named, and
+ * a grant for each: a sandboxed `go build` on a fresh home was refused its
+ * telemetry file and then `mkdir ~/.cache`, and the hint granted only the
+ * first one's directory, which left the build failing (2026-11-11).
+ * `made` holds the paths a refused `mkdir` named: the directory itself is
+ * the grant, not its parent.
+ */
+export function outsideWritesHint(
   paths: readonly string[],
+  made: ReadonlySet<string | undefined>,
   walled: readonly string[],
   within: string,
 ): SandboxViolation {
   const shown = paths.slice(0, 5).join(', ')
   const more = paths.length > 5 ? ` and ${paths.length - 5} more` : ''
-  const spelled = grantSpelling(path.dirname(paths[0]!), walled, within)
   const refused =
     `vx: the sandbox refused writes outside the project, which are not reported as ` +
     `violations: ${shown}${more}.`
+  const home = toRealPath(os.homedir())
+  const walls = walled.map(toRealPath)
   // Granting a system temp directory opens it to every write of the task;
   // the task already has a temp directory of its own. A workspace kept
   // under one is the workspace, and its directory is the grant.
-  const first = paths[0]!
-  const scratchTemp =
-    hostTempRoots().some((t) => atOrUnder(first, t)) &&
-    !walled.some((w) => atOrUnder(first, toRealPath(w)))
-  const line = scratchTemp
-    ? `${refused} The task has its own temp directory, empty at its start: write under ` +
+  const scratchTemp = (p: string): boolean =>
+    hostTempRoots().some((t) => atOrUnder(p, t)) && !walls.some((w) => atOrUnder(p, w))
+  const isDir = (p: string): boolean =>
+    made.has(p) || statSync(p, { throwIfNoEntry: false })?.isDirectory() === true
+  // Never home or above it: a tool's own `~/.cache` (or `~/.npmrc`) is the grant.
+  const grantOf = (p: string): string =>
+    isDir(p) ? `${p}/` : atOrUnder(home, path.dirname(p)) ? p : `${path.dirname(p)}/`
+  const grants = [...new Set(paths.filter((p) => !scratchTemp(p)).map(grantOf))].filter(
+    (g, _, all) =>
+      !all.some(
+        (o) => o !== g && o.endsWith('/') && atOrUnder(g.replace(/\/$/, ''), o.slice(0, -1)),
+      ),
+  )
+  const temp = paths.some(scratchTemp)
+    ? ` The task has its own temp directory, empty at its start: write under ` +
       `$TMPDIR (os.tmpdir() in Node and Bun) instead of a fixed path.`
-    : `${refused} If the task needs one, grant its directory, e.g. ` +
-      `\`allow: { write: [${jsString(spelled.endsWith('/') ? spelled : `${spelled}/`)}] }\`.`
+    : ''
+  const spelled = grants.slice(0, 3).map((g) => {
+    const s = grantSpelling(g.endsWith('/') ? g.slice(0, -1) : g, walled, within)
+    return jsString(g.endsWith('/') && !s.endsWith('/') ? `${s}/` : s)
+  })
+  const line =
+    grants.length === 0
+      ? `${refused}${temp}`
+      : `${refused} If the task needs ${grants.length === 1 ? 'one, grant its directory' : 'them, grant their directories'}, e.g. ` +
+        `\`allow: { write: [${spelled.join(', ')}] }\`.${temp}`
   return { timestamp: new Date(), hint: true, line }
 }
 
