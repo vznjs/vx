@@ -478,6 +478,10 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       let settings = settingsPerRun.get(ctx)
       if (settings === undefined) {
         settings = readSettings(ctx.workspaceRoot, manager.settings, manager.settingsText)
+        // Awaited only after the lockfile's key: a rejection before then (a
+        // refused key, a key slower than the read) was unhandled, and vx
+        // exits 1 on one. Every key still awaits it below.
+        settings.catch(() => {})
         settingsPerRun.set(ctx, settings)
       }
       let deps: Readonly<Record<string, string>> | undefined
