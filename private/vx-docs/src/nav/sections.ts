@@ -177,7 +177,7 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Guides' | 'Reference', SidebarItem[]> = {
       items: [
         { label: 'The numbers', link: '/benchmarks/' },
         { label: 'Why vx is fast', link: '/concepts/why-vx-is-fast/' },
-        { label: 'On real repos', link: '/compare/real-repos/' },
+        { label: 'On real workspaces', link: '/compare/real-repos/' },
       ],
     },
     {
