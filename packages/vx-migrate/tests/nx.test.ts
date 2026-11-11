@@ -442,6 +442,24 @@ describe('nx()', () => {
     TIMEOUT,
   )
 
+  // Nx reads a `.nxignore` in any directory, as it reads a `.gitignore`;
+  // only the root's was counted, so adding or removing one between project
+  // roots kept the old project list.
+  it(
+    'an added or removed .nxignore between project roots re-exports',
+    async () => {
+      await planRun({ cwd: root, tasks: ['lint'], log: silent() })
+      expect(await nxCalls(root)).toBe(1)
+      await writeFile(path.join(root, 'packages', '.nxignore'), 'legacy/\n')
+      await planRun({ cwd: root, tasks: ['lint'], log: silent() })
+      expect(await nxCalls(root)).toBe(2)
+      await rm(path.join(root, 'packages', '.nxignore'))
+      await planRun({ cwd: root, tasks: ['lint'], log: silent() })
+      expect(await nxCalls(root)).toBe(3)
+    },
+    TIMEOUT,
+  )
+
   // A local plugin nx.json names shapes the graph from outside every
   // project root, and so does a root tool config an inferring plugin
   // reads: an edit to either kept the old snapshot until the next commit.
@@ -1417,6 +1435,45 @@ describe('nx(): the mapping cache', () => {
         JSON.stringify({ namedInputs: { src: ['{projectRoot}/lib/**/*'] } }),
       )
       expect(await inputs()).toEqual(['lib/**/*'])
+    },
+    TIMEOUT,
+  )
+
+  // An input under another target's output is dropped while git ignores
+  // the output, and git's answer was no part of the key: un-ignoring `gen`
+  // kept the mapping, `build` stayed keyed on no file under it, and an
+  // edit to `gen/x` replayed the old result (stale hit).
+  it(
+    'an output git stops ignoring maps afresh',
+    async () => {
+      const g = structuredClone(GRAPH) as { graph: { nodes: Record<string, unknown> } }
+      g.graph.nodes['lib'] = {
+        name: 'lib',
+        type: 'lib',
+        data: {
+          root: 'packages/lib',
+          targets: {
+            gen: { command: 'gen', cache: true, outputs: ['{projectRoot}/gen'] },
+            build: {
+              command: 'cat gen/x',
+              cache: true,
+              inputs: ['{projectRoot}/src/**', '{projectRoot}/gen/**'],
+            },
+          },
+        },
+      }
+      await writeFile(path.join(root, 'graph.json'), JSON.stringify(g))
+      await appendFile(path.join(root, '.gitignore'), 'gen\n')
+      const inputs = async () =>
+        (await planRun({ cwd: root, tasks: ['lib#build'], log: silent() })).tasks.find(
+          (t) => t.node.id === 'lib#build',
+        )!.node.config.inputs!.files
+      expect(await inputs()).not.toContain('gen/**')
+      await writeFile(
+        path.join(root, '.gitignore'),
+        'dist\nnode_modules\n.vx/cache/\n.nx\nlint.log\n',
+      )
+      expect(await inputs()).toContain('gen/**')
     },
     TIMEOUT,
   )
