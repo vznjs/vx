@@ -8,6 +8,8 @@
 // is-number@6.0.0, extended too; `declares` → is-number@3.0.0, which
 // declares kind-of itself; the babel workspaces reach @babel/types only
 // through the builtin extension, but for `babel-new`, whose parser declares it.
+// `winston` → winston-transport@4.4.0, which another builtin extension
+// gives logform@^2.2.0, the entry `logs` keys by its own range.
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -18,7 +20,16 @@ import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { affectedIds, commitAll, moved } from './helpers/affected.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
-const WORKSPACES = ['babel-alias', 'babel-new', 'babel-old', 'declares', 'extended', 'redundant']
+const WORKSPACES = [
+  'babel-alias',
+  'babel-new',
+  'babel-old',
+  'declares',
+  'extended',
+  'logs',
+  'redundant',
+  'winston',
+]
 const BUILD =
   "export default { tasks: { build: { exec: { command: 'echo built' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true } } }\n"
 
@@ -55,7 +66,7 @@ ${lines.length === 0 ? '' : `  dependencies:\n${lines.join('\n')}\n`}  languageN
 `
 }
 
-function lock(opts: { kindOf?: string; types?: string } = {}): string {
+function lock(opts: { kindOf?: string; types?: string; logform?: string } = {}): string {
   return [
     `__metadata:\n  version: 8\n  cacheKey: 10c0\n`,
     pkg('@babel/helper-string-parser@npm:^7.29.7', '7.29.7'),
@@ -77,7 +88,11 @@ function lock(opts: { kindOf?: string; types?: string } = {}): string {
     pkg('is-odd@npm:3.0.1', '3.0.1', { 'is-number': 'npm:^6.0.0' }),
     pkg('kind-of@npm:^3.0.2', '3.2.2', { 'is-buffer': 'npm:^1.1.5' }),
     pkg('kind-of@npm:^6.0.0', opts.kindOf ?? '6.0.3'),
+    pkg('logform@npm:^2.2.0', opts.logform ?? '2.6.0'),
+    ws('logs', 'packages/logs', { logform: 'npm:^2.2.0' }),
     ws('redundant', 'packages/redundant', { 'is-odd': 'npm:3.0.1' }),
+    ws('winston', 'packages/winston', { 'winston-transport': 'npm:4.4.0' }),
+    pkg('winston-transport@npm:4.4.0', '4.4.0'),
   ].join('\n')
 }
 
@@ -140,6 +155,14 @@ it("a bump of @babel/types re-keys and selects every package whose parser gets i
   const want = ['babel-alias#build', 'babel-new#build', 'babel-old#build']
   expect(moved(before, await plan())).toEqual(want)
   expect(affectedIds(root, 'build')).toEqual(want)
+})
+
+it("a bump of what Yarn's other builtin extensions add re-keys and selects the package it extends", async () => {
+  commitAll(root)
+  const before = await plan()
+  await writeFile(path.join(root, 'yarn.lock'), lock({ logform: '2.7.0' }))
+  expect(moved(before, await plan())).toEqual(['logs#build', 'winston#build'])
+  expect(affectedIds(root, 'build')).toEqual(['logs#build', 'winston#build'])
 })
 
 it('an entry nothing reaches, from an extension vx cannot read, re-keys every package', async () => {
