@@ -725,13 +725,6 @@ export interface CacheLayer {
    */
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
   /**
-   * The hashes of every entry this machine's index holds for `taskId`
-   * (optional — a layer without it answers none). An additive task's miss
-   * reads their rows to tell the files a save or restore of its own left
-   * from what it found (item 588).
-   */
-  taskEntries?(taskId: string): string[]
-  /**
    * The directory-mtime short-circuit behind a warm hit (optional — a layer
    * without it keeps the output walk). `recordOutputDirs` snapshots every
    * directory under each of `prefixes` (project-relative, `''` the project

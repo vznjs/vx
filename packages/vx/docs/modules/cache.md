@@ -117,9 +117,6 @@ export interface CacheLayer {
   prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean>
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
-  // Every entry this machine's index holds for the task: an additive
-  // task's miss reads their rows to tell what it left from what it found.
-  taskEntries?(taskId: string): string[]
   // The output-directory short-circuit (A-2): record, load, and judge the
   // stamps of a hit's output dirs, so a current tree is not re-walked.
   recordOutputDirs?(
@@ -493,6 +490,7 @@ export const SCHEMA_VERSION = 'v55'
 // An entry_stdout row's log, its zstd frame decoded (v52); null reads as ''.
 // `vx last --log` reads the row itself.
 export function storedLog(blob: Uint8Array | null): string
+export function taskEntryHashes(layer: CacheLayer, taskId: string): string[] // every entry this machine holds for the task (an additive miss reads their rows)
 // What vx wrote in a cache dir (index, artifacts, run history, its `*`
 // ignore): all a clear of a dir the user named may delete (item 968).
 export function vxCacheEntries(cacheDir: string): string[]

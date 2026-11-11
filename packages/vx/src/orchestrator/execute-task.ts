@@ -28,6 +28,7 @@ import {
   type TaskInputComponent,
   declaresInput,
   fsClockNow,
+  taskEntryHashes,
   WORKSPACE_OUTPUT_PREFIX,
 } from '../cache/index.js'
 import {
@@ -1841,7 +1842,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     return (abs) => {
       if (byPath === undefined) {
         byPath = new Map()
-        const hashes = args.cache.taskEntries?.(node.id) ?? []
+        const hashes = taskEntryHashes(args.cache, node.id)
         for (const rows of args.cache.loadOutputFilesBatch(hashes).values()) {
           for (const row of rows) {
             if (row.ino === undefined) continue

@@ -212,7 +212,7 @@ glob before an attempt: its outputs are stamped once before the first
 attempt (`stampOutputs`) and, after a 0 exit, its own set is what the
 run added or changed against that stamp (`ownOutputsSince`), plus what
 it found and left exactly as a save or restore of its own left it: a
-row of any of the task's entries (`CacheLayer.taskEntries`) that
+row of any of the task's entries (`taskEntryHashes`) that
 `isOutputsCurrent` holds current. An incremental emitter rewrites only
 what changed, and without those its entry restored a tree a forced run
 never leaves. The set is handed to
