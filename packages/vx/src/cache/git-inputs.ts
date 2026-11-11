@@ -1716,10 +1716,13 @@ async function dropFilteredOids(
   // on a 15k-file repo with no attributes this whole function is a size check,
   // a line scan of `git var -l`, three stats, and a key walk that exits on the
   // first `.gitattributes` it does not find.
+  // git reads a relative `core.attributesFile` from the repo's top level,
+  // not from where the workspace sits in it.
+  const top = repoRootOf(args.workspaceRoot, args.gitPrefix)
   let attributesPossible =
     args.ignoredAttributes ||
     attributeFilesOutsideTree(args.gitVars, process.env).some((f) =>
-      existsSync(path.resolve(args.workspaceRoot, f)),
+      existsSync(path.resolve(top, f)),
     ) ||
     (args.gitDir !== '' &&
       existsSync(path.resolve(args.workspaceRoot, args.gitDir, 'info', 'attributes')))
