@@ -1106,7 +1106,9 @@ to its producer failed naming only the file (A-48, vueuse's
 before. Paths compare as
 git compares them: case-folded under `core.ignorecase` where the disk
 folds case too (macOS), and a
-file inside a submodule counts as committed.
+file inside a submodule counts as committed. A file past a committed
+symbolic link (`dist -> real`) does not: git tracks none through one, so
+it is asked by its target's name (`real/x`).
 Workspace outputs take the same rules, and a path an output `!` entry
 takes back (A-44) is off the wipe, the artifact and the restore alike.
 Skipped when:

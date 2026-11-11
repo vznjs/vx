@@ -98,7 +98,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   markOutputsChanged(projectDir: string, relPaths: readonly string[]): void // a save or restore wrote these
   noteTracked(scopes: readonly string[], absPaths: readonly string[]): void // what the index lists under these dirs
   noteTrackedLater(scopes: readonly string[], absPaths: () => Iterable<string>): void // the same, listed on the first committedIn question
-  committedIn(dir: string): (abs: string) => boolean // git tracks it: never cleaned (lists an uncovered dir once)
+  committedIn(dir: string): (abs: string) => boolean // git tracks it or a gitlink above it, never a link above it: never cleaned (lists an uncovered dir once)
   markWorkspaceOutputsChanged(workspaceRoot: string, relPaths: readonly string[]): void
   invalidateWorkspacePartition(): void
   clear(): void // every partition AND its OIDs and pending marks (a write that reached the workspace)

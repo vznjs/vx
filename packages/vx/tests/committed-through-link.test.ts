@@ -3,7 +3,7 @@
 // setup script) was asked about as `public/logo.txt`, a path git never
 // lists, and the clean before the miss deleted `static/logo.txt`.
 
-import { existsSync, symlinkSync } from 'node:fs'
+import { existsSync, readdirSync, symlinkSync } from 'node:fs'
 import { rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
@@ -251,6 +251,39 @@ it.each(["'src/**'", "'*.json'", "'src/*/a.txt'", "'{src,lib}/**'"])(
     expect(r.outcomes[0]?.status).toBe('success')
     expect(existsSync(path.join(dir, 'build-out/a.out'))).toBe(true)
     expect(existsSync(path.join(dir, 'build-out/stale.out'))).toBe(false)
+  },
+  TIMEOUT,
+)
+
+// git tracks no file through a symlink, so a committed `dist -> real` link
+// covers nothing under it. Asked as an ancestor, it made every file past
+// it committed: no clean deleted one, each miss saved the files of every
+// earlier run, and a hit brought them back.
+it(
+  'a committed output link shields no file past it from the clean',
+  async () => {
+    const dir = await addProject(f.root, 'app', {
+      files: { 'src/a.txt': 'b', 'real/keep.txt': 'committed' },
+      config: `export default { tasks: { build: {
+        exec: { command: 'cp src/a.txt dist/a.out && touch dist/f$(cat src/a.txt)' },
+        inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+      } } }`,
+    })
+    symlinkSync('real', path.join(dir, 'dist'))
+    const git = gitIn(f.root)
+    git('add', '-A')
+    git('commit', '-q', '-m', 'init')
+    const build = async (src: string, status: 'success' | 'cache-hit'): Promise<string[]> => {
+      await writeFile(path.join(dir, 'src/a.txt'), src)
+      const r = await run({ cwd: f.root, tasks: ['build'], log: silentLogger(f) })
+      expect(r.outcomes[0]?.status).toBe(status)
+      return readdirSync(path.join(dir, 'real')).sort()
+    }
+    expect(await build('b', 'success')).toEqual(['a.out', 'fb', 'keep.txt'])
+    expect(await build('c', 'success')).toEqual(['a.out', 'fc', 'keep.txt'])
+    // The restore's clean, on its own: a file no entry holds is gone.
+    await writeFile(path.join(dir, 'real/stray'), 'old run')
+    expect(await build('b', 'cache-hit')).toEqual(['a.out', 'fb', 'keep.txt'])
   },
   TIMEOUT,
 )
