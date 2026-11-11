@@ -174,6 +174,13 @@ const UNMEASURED_KEYS: PluginOptionKinds<NonNullable<DteOptions['unmeasured']>> 
  */
 const NAME = /^[A-Za-z0-9_-]+$/
 const NAMED = 'named by letters, digits, _ and -'
+/**
+ * A machine may hold dots after its first character (`c5.large`): its
+ * type's has none, so `<type>.<machine>` splits at the first dot alone, and
+ * no name is `.` or `..` in a log path.
+ */
+const MACHINE = /^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/
+const MACHINE_NAMED = 'named by letters, digits, _, - and . (not first)'
 
 const USAGE = 'Usage: vx dte worker | vx dte init [--dry] [--force]'
 
@@ -218,7 +225,7 @@ export function dte(options: DteOptions = {}) {
     refuseUnknownOptions(`dte() option "workers.${type}"`, t, TYPE_KEYS)
     const machines = Object.entries(t?.machines ?? {})
     for (const [machine] of machines)
-      if (!NAME.test(machine)) refuse(`workers.${type}.machines`, NAMED, machine)
+      if (!MACHINE.test(machine)) refuse(`workers.${type}.machines`, MACHINE_NAMED, machine)
     if (machines.length === 0)
       refuse(
         `workers.${type}.machines`,
