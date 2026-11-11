@@ -74,8 +74,8 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'cannot express it' } as con
       <div class="container">
         <h2>Scores</h2>
         <p class="cfm-sub">
-          Cases passed, of those the tool supports. The bar is every case: its faint part is
-          what the tool supports, so a missing feature reads as missing, not as failures.
+          Cases passed, of every case, rounded down: 100% means every case passed. A case the tool
+          cannot express is not a pass. The bar's faint part is what the tool supports.
         </p>
         <p class="cfm-sub">
           Open a group to see its cases: ✓ passes, ✗ fails, – the tool cannot express it. Open a ✗

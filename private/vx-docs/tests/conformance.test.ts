@@ -162,16 +162,18 @@ describe('the conformance page', () => {
     }
     expect(wrong).toEqual([])
     expect(percent({ pass: 0, can: 0, of: 0 })).toBe('–')
-    expect(percent({ pass: 0, can: 0, of: 11 })).toBe('–')
+    expect(percent({ pass: 0, can: 0, of: 11 })).toBe('0%')
     expect(supports({ pass: 0, can: 10, of: 11 })).toBe('90%')
   })
 
-  it('prints 100% only when every supported case passed', () => {
+  it('prints 100% only when every case passed', () => {
     expect(percent({ pass: 859, can: 860, of: 860 })).toBe('99%')
     expect(percent({ pass: 860, can: 860, of: 860 })).toBe('100%')
     expect(percent({ pass: 1, can: 200, of: 200 })).toBe('0%')
-    expect(percent({ pass: 1, can: 1, of: 11 })).toBe('100%')
-    expect(percent({ pass: 1, can: 2, of: 11 })).toBe('50%')
+    // A case the tool cannot express is not a pass: 992 of 993 is 99%.
+    expect(percent({ pass: 992, can: 992, of: 993 })).toBe('99%')
+    expect(percent({ pass: 992, can: 993, of: 993 })).toBe('99%')
+    expect(percent({ pass: 1, can: 1, of: 11 })).toBe('9%')
     // (29 / 100) * 100 is 28.999…: an exact share must not lose a point.
     expect(percent({ pass: 29, can: 100, of: 100 })).toBe('29%')
     expect(supports({ pass: 0, can: 29, of: 100 })).toBe('29%')
