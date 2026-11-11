@@ -4379,6 +4379,10 @@ it('local() reclaims the worktrees of a run whose vx is gone, and keeps a live r
   }
   const dead = await left(done.pid)
   const live = await left(process.pid)
+  // A base of a repository since deleted: no run there reclaims it.
+  const orphan = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-'))
+  dirs.push(orphan)
+  await writeFile(path.join(orphan, 'owner'), String(done.pid))
   const adapter = local({ prepare: 'exit 1' })
   try {
     await adapter.spawn({
@@ -4415,13 +4419,15 @@ it('local() reclaims the worktrees of a run whose vx is gone, and keeps a live r
     }
   }
   const until = Date.now() + 10_000
-  while ((await trees()).includes(dead) && Date.now() < until) await Bun.sleep(20)
+  while (((await trees()).includes(dead) || existsSync(orphan)) && Date.now() < until)
+    await Bun.sleep(20)
   const after = await trees()
-  expect([after.includes(dead), existsSync(dead), after.includes(live)]).toEqual([
-    false,
-    false,
-    true,
-  ])
+  expect([
+    after.includes(dead),
+    existsSync(dead),
+    after.includes(live),
+    existsSync(orphan),
+  ]).toEqual([false, false, true, false])
 }, 30_000)
 
 it('a worker size or unmeasured with a key dte() does not read is refused', () => {

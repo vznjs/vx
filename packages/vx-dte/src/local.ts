@@ -3,7 +3,7 @@
 // loopback. For tests, demos
 // and trying a distributed run before a CI starts the workers.
 
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { refuseUnknownOptions, type PluginOptionKinds } from '@vzn/vx'
@@ -199,7 +199,9 @@ const OWN_BASE = new RegExp(`^${BASE_PREFIX}[A-Za-z0-9]{6}$`)
  * The worktrees a run whose vx was killed (SIGKILL, a lost machine) left in
  * `root`'s repository, removed: each under a base whose owner process is
  * gone. A killed run's close never ran, and they stayed for good
- * (2026-11-06). One `git worktree list`, off the run's path.
+ * (2026-11-06). One `git worktree list`, off the run's path. So are this
+ * machine's other bases whose owner is gone: one of a repository no run
+ * comes back to (a test's, deleted) stayed for good too (2026-11-11).
  */
 async function reclaim(root: string): Promise<void> {
   try {
@@ -213,6 +215,9 @@ async function reclaim(root: string): Promise<void> {
       stderr: 'ignore',
     })
     const bases = new Set<string>()
+    const tmp = os.tmpdir()
+    for (const name of await readdir(tmp).catch(() => []))
+      if (OWN_BASE.test(name)) bases.add(path.join(tmp, name))
     for (const line of (await new Response(list.stdout).text()).split('\n')) {
       if (!line.startsWith('worktree ')) continue
       const dir = line.slice('worktree '.length)
