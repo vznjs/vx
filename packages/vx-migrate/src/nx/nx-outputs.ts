@@ -126,42 +126,30 @@ export function mapNxOutputs(
 ): NxOutputs {
   const outFiles: string[] = []
   const wsOutFiles: string[] = []
-  outputs: for (const o of outputs) {
+  for (const o of outputs) {
     // A `!` output takes a path back, as Nx's does (A-44); it maps as its
     // path does and keeps the `!`.
     const neg = o.startsWith('!') ? '!' : ''
-    let s = o.slice(neg.length)
-    // Every `{options.x}`, not the first: `dist/{options.a}/{options.b}`.
-    for (const optTok of o.matchAll(/\{options\.([^}]+)\}/g)) {
-      // A dotted path walks the options, as Nx's `_interpolate` does:
-      // @nx/angular:application's `{options.outputPath.base}` read as one
-      // key was no output, and a cached build's hit restored nothing.
-      let v: unknown = options
-      for (const k of optTok[1]!.split('.')) {
-        v = v !== null && typeof v === 'object' ? (v as Record<string, unknown>)[k] : undefined
-        if (!v) break
-      }
-      // Nx leaves a falsy option's token in place and drops the output
-      // (`getOutputsForTargetAndConfiguration`): @nx/eslint's
-      // `{options.outputFile}` with no outputFile is no output, not a todo
-      // on every lint target (2026-09-28).
-      if (!v) continue outputs
-      // Nx's template replacement writes a number or a boolean as its text.
-      if (typeof v === 'number' || typeof v === 'boolean') {
-        s = s.replace(optTok[0], String(v))
-        continue
-      }
-      if (typeof v !== 'string') {
-        todos.push(
-          `output ${JSON.stringify(o)}: option ${JSON.stringify(optTok[1])} is not a literal ` +
-            'string — resolve manually',
-        )
-        continue outputs
-      }
-      s = s.replace(optTok[0], v)
+    const r = withOptions(o.slice(neg.length), options)
+    // Nx leaves an unset option's token in place and drops the output
+    // (`getOutputsForTargetAndConfiguration`): @nx/eslint's
+    // `{options.outputFile}` with no outputFile is no output, not a todo
+    // on every lint target (2026-09-28).
+    if (r === null) continue
+    if (typeof r !== 'string') {
+      todos.push(
+        `output ${JSON.stringify(o)}: option ${JSON.stringify(r.notText)} is not a literal ` +
+          'string — resolve manually',
+      )
+      continue
     }
+    let s = r
+    // `{workspaceRoot}` may come from a fallback, as Nx 24 reads it.
+    const rootWide = (projectRel === '' || projectRel === '.') && s.startsWith('{workspaceRoot}')
     if (s.includes('{')) {
-      const p = nxWorkspacePath(s, projectRel, projectName)
+      // An options token Nx's grammar does not read (a literal before a
+      // fallback) is no path either.
+      const p = /\{options[.}]/.test(s) ? null : nxWorkspacePath(s, projectRel, projectName)
       if (p === null) {
         todos.push(`output ${JSON.stringify(o)} uses a token vx does not support`)
         continue
@@ -189,8 +177,6 @@ export function mapNxOutputs(
       )
       continue
     }
-    const rootWide =
-      (projectRel === '' || projectRel === '.') && o.slice(neg.length).startsWith('{workspaceRoot}')
     const globs = vxOutputGlobs(neg + s)
     if (globs === null) {
       todos.push(`output ${JSON.stringify(o)} has a glob form vx cannot spell — dropped`)
@@ -217,6 +203,149 @@ export function mapNxOutputs(
     }
   }
   return { outFiles: takingBack(outFiles), wsOutFiles: takingBack(wsOutFiles) }
+}
+
+// Nx 24's tokens (`tasks-runner/tokens.js`): `{options.a.b}` walks the
+// options, and `{options.x ?? {workspaceRoot}/dist/{projectRoot}}` falls
+// back, braces nesting, to another option or a last literal. Read with a
+// `[^}]+` key, the fallback was the key `outputPath ?? {workspaceRoot`: no
+// value, so the output was dropped without a todo and a hit restored nothing.
+type NxTokenPart =
+  | { readonly kind: 'ref'; readonly name: string; readonly path?: string }
+  | { readonly kind: 'literal'; readonly nodes: readonly NxTokenNode[] }
+type NxTokenNode = string | readonly NxTokenPart[]
+
+const OUTPUT_TOKENS = new Set(['projectRoot', 'projectName', 'project', 'options'])
+
+function parseTokens(t: string): NxTokenNode[] {
+  const nodes: NxTokenNode[] = []
+  let text = ''
+  let at = 0
+  for (let open = t.indexOf('{'); open !== -1; open = t.indexOf('{', at)) {
+    const close = closingBrace(t, open)
+    const parts = close === -1 ? null : parseToken(t.slice(open + 1, close))
+    // No token, but one may sit inside it: `{a,{projectRoot}}`.
+    if (parts === null) {
+      text += t.slice(at, open + 1)
+      at = open + 1
+      continue
+    }
+    text += t.slice(at, open)
+    if (text !== '') nodes.push(text)
+    text = ''
+    nodes.push(parts)
+    at = close + 1
+  }
+  text += t.slice(at)
+  if (text !== '') nodes.push(text)
+  return nodes
+}
+
+function parseToken(inner: string): NxTokenPart[] | null {
+  const sources = splitFallbacks(inner)
+  const parts: NxTokenPart[] = []
+  for (const [i, src] of sources.entries()) {
+    const dot = src.indexOf('.')
+    const name = dot === -1 ? src : src.slice(0, dot)
+    if (OUTPUT_TOKENS.has(name)) {
+      parts.push(
+        dot === -1 ? { kind: 'ref', name } : { kind: 'ref', name, path: src.slice(dot + 1) },
+      )
+      continue
+    }
+    // Nx throws on a literal before another fallback; left as text, the
+    // token is a todo.
+    if (i === 0 || i < sources.length - 1) return null
+    parts.push({ kind: 'literal', nodes: parseTokens(src) })
+  }
+  return parts
+}
+
+function closingBrace(t: string, open: number): number {
+  let depth = 0
+  for (let i = open; i < t.length; i++) {
+    if (t[i] === '{') depth++
+    else if (t[i] === '}' && --depth === 0) return i
+  }
+  return -1
+}
+
+function splitFallbacks(e: string): string[] {
+  const parts: string[] = []
+  let depth = 0
+  let start = 0
+  for (let i = 0; i < e.length; i++) {
+    if (e[i] === '{') depth++
+    else if (e[i] === '}') depth--
+    else if (depth === 0 && e.startsWith('??', i)) {
+      parts.push(e.slice(start, i))
+      start = i + 2
+      i++
+    }
+  }
+  parts.push(e.slice(start))
+  return parts.map((p) => p.trim())
+}
+
+/**
+ * `o` with each options token written in; the path tokens stay for
+ * {@link nxWorkspacePath}. Null when an option is unset with no fallback,
+ * as Nx drops that output; `notText` names an option no path can spell.
+ */
+function withOptions(
+  o: string,
+  options: Record<string, unknown>,
+): string | { notText: string } | null {
+  let notText: string | undefined
+  const render = (nodes: readonly NxTokenNode[]): string | null => {
+    let s = ''
+    for (const n of nodes) {
+      const v = typeof n === 'string' ? n : resolve(n)
+      if (v === null) return null
+      s += v
+    }
+    return s
+  }
+  const resolve = (parts: readonly NxTokenPart[]): string | null => {
+    for (const p of parts) {
+      if (p.kind === 'literal') return render(p.nodes)
+      if (p.name !== 'options') return `{${p.name}${p.path === undefined ? '' : `.${p.path}`}}`
+      // A dotted path walks the options: @nx/angular:application's
+      // `{options.outputPath.base}` read as one key was no output.
+      let v: unknown = options
+      for (const k of (p.path ?? '').split('.').filter((k) => k !== '')) {
+        v = v !== null && typeof v === 'object' ? (v as Record<string, unknown>)[k] : undefined
+        if (v === undefined) break
+      }
+      // Nx 23 drops a falsy option's output; Nx 24 falls back only past an
+      // unset or empty one, and a lone token is either's.
+      if (parts.length === 1 ? !v : v === undefined || v === null || v === '') continue
+      if (typeof v === 'string') return v
+      // Nx's template replacement writes a number or a boolean as its text.
+      if (typeof v === 'number' || typeof v === 'boolean') return String(v)
+      notText ??= p.path ?? ''
+      return ''
+    }
+    return null
+  }
+  const s = render(parseTokens(o))
+  return notText !== undefined ? { notText } : s
+}
+
+/** The options an output reads, by their first key: a forwarded one moves the outputs. */
+export function nxOutputOptions(o: string): string[] {
+  const names: string[] = []
+  const walk = (nodes: readonly NxTokenNode[]): void => {
+    for (const n of nodes) {
+      if (typeof n === 'string') continue
+      for (const p of n) {
+        if (p.kind === 'literal') walk(p.nodes)
+        else if (p.name === 'options' && p.path !== undefined) names.push(p.path.split('.')[0]!)
+      }
+    }
+  }
+  walk(parseTokens(o))
+  return names
 }
 
 /**

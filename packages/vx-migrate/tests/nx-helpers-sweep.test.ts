@@ -330,6 +330,39 @@ describe('mapNxOutputs', () => {
     })
     expect([got.outFiles, got.wsOutFiles, got.todos]).toEqual([[], ['dist/apps/products'], []])
   })
+
+  // Nx 24's `{options.x ?? fallback}` (`nx show target outputs`, 24.0.6:
+  // `dist/libs/a`, `libs/a/o2/a-x`). The key was read as
+  // `outputPath ?? {workspaceRoot`, found no value, and the output was
+  // dropped without a todo: a miss saved nothing and a hit restored nothing.
+  it('a `??` fallback is the option when set, else the fallback', () => {
+    const outputs = [
+      '{options.outputPath ?? {workspaceRoot}/dist/{projectRoot}}',
+      '{projectRoot}/o2/{projectName}-{options.missing ?? x}',
+    ]
+    expect(out(outputs, 'libs/a')).toEqual({
+      outFiles: ['o2/a-x'],
+      wsOutFiles: ['dist/libs/a'],
+      todos: [],
+    })
+    expect(out(outputs, 'libs/a', { outputPath: 'out/a', missing: 'm' })).toEqual({
+      outFiles: ['o2/a-m'],
+      wsOutFiles: ['out/a'],
+      todos: [],
+    })
+    expect(out(['{options.a ?? {options.b}}'], 'libs/a', { b: 'dist/b' }).wsOutFiles).toEqual([
+      'dist/b',
+    ])
+    expect(out(['{options.a ?? {options.b}}'], 'libs/a')).toEqual({
+      outFiles: [],
+      wsOutFiles: [],
+      todos: [],
+    })
+    // A literal before a fallback, which Nx refuses, is a todo, never a path.
+    expect(out(['{options.a ?? b ?? c}'], 'libs/a').todos).toEqual([
+      'output "{options.a ?? b ?? c}" uses a token vx does not support',
+    ])
+  })
 })
 
 describe('mapNxDeps', () => {
