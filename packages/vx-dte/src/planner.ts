@@ -10,6 +10,7 @@ import type { TaskNode } from '@vzn/vx'
 import {
   assign,
   dead,
+  allFailAlike,
   failsAlike,
   fits,
   kindOf,
@@ -21,6 +22,7 @@ import {
   type Kept,
   type Need,
   type Soon,
+  type Span,
 } from './dispatch.js'
 import { DEFAULT_STRATEGY, type Strategy } from './strategy.js'
 
@@ -519,9 +521,13 @@ function play(
   const kept: Kept[] = []
   // Proved to fail, as `assign` would skip it: yielded to it, each ask was
   // most of a plan of 3,800 tasks (2026-11-11).
-  const proved = (place: number): boolean =>
-    unstarted !== undefined &&
-    failsAlike(kept, tasks[place]!, tailAt(place), tasks[place]!.ms ?? UNKNOWN_MS)
+  const proved: Proof = {
+    one: (place) =>
+      unstarted !== undefined &&
+      failsAlike(kept, tasks[place]!, tailAt(place), tasks[place]!.ms ?? UNKNOWN_MS),
+    all: (span) => unstarted !== undefined && allFailAlike(kept, span),
+    rank: tailAt,
+  }
   const bounds: Bounds = { done: false, open: true, free: 0, cores: 0, memory: 0 }
   // Ready tasks by what they need: no ready task needs less than the
   // least of these, and a pass ends once no slot takes that.
@@ -2073,6 +2079,17 @@ const classOf = (t: PlanTask): number =>
  * joins: rebuilt with each join, a 9000-task tree hashed every ready
  * task 17 million times a plan (2026-10-25).
  */
+/** Ready tasks `assign` would skip (`Kept`): one, or a `Span` of them all. */
+interface Proof {
+  one(place: number): boolean
+  all(span: Span): boolean
+  rank(place: number): number
+}
+
+/** Ready tasks a `Span` sums (`Ready.leap`). */
+const BLOCK_BITS = 4
+const BLOCK = 1 << BLOCK_BITS
+
 class Ready {
   private readonly at: Kinds['at']
   private readonly kindAt: (place: number) => string
@@ -2099,6 +2116,9 @@ class Ready {
   private lo = 0
   /** Order it again before the next step. */
   stale = false
+  /** Joins so far: a queue's `spans` hold until the next. */
+  private joins = 0
+  private readonly spans = new WeakMap<readonly number[], { at: number; spans: Span[] }>()
   /** Taken ones still in `order`: past its live ones, it is read again without them. */
   private dead = 0
   /** Each kind's tasks not taken: a kind with none leaves `kinds`. */
@@ -2205,6 +2225,7 @@ class Ready {
   }
 
   private join(batch: readonly number[]): void {
+    this.joins++
     // Taken ones outnumber the rest: read without them once.
     if (this.dead > this.order.length / 2) {
       this.order = this.merge(this.order, [])
@@ -2306,7 +2327,7 @@ class Ready {
     bounds?: Bounds,
     kinds?: number,
     // Read past, as `assign` would skip it (`Kept`).
-    skip?: (place: number) => boolean,
+    skip?: Proof,
   ): Generator<Ask> {
     // Measured needs are unrounded, so kinds can be as many as tasks: a
     // jump across every kind then cost more than a read of every task.
@@ -2352,7 +2373,7 @@ class Ready {
       if (next === -1) return
       at[nextAt]!++
       cursor = next
-      if (skip?.(next) === true) continue
+      if (skip?.one(next) === true) continue
       const t = this.tasks[next]!
       yield { id: t.id, need: t, kind: ks[nextAt]! }
     }
@@ -2370,7 +2391,7 @@ class Ready {
     spent: Set<string>,
     bounds?: Bounds,
     kinds?: number,
-    skip?: (place: number) => boolean,
+    skip?: Proof,
   ): Generator<Ask> {
     const cs: number[] = []
     const qs: (readonly number[])[] = []
@@ -2434,10 +2455,10 @@ class Ready {
       // stand while `spent` does. Read again across every class, a plan of
       // varied needs spent most of its time here (2026-11-11).
       let again = false
-      while (skip?.(next) === true) {
+      while (skip?.one(next) === true) {
         // As a step reads its class: past the dead, then past the spent.
         const q = qs[nextAt]!
-        let r = cand[nextAt]! + 1
+        let r = this.leap(q, cand[nextAt]! + 1, skip)
         for (; r < q.length; r++) {
           const i = q[r]!
           if (this.taken[i] === 1) continue
@@ -2467,6 +2488,54 @@ class Ready {
       const t = this.tasks[next]!
       yield { id: t.id, need: t, kind: this.kindAt(next) }
     }
+  }
+
+  /**
+   * Past each block of `q` from `r` that `proof` proves fails whole: one
+   * by one, the ready tasks read past were most of a plan of varied needs
+   * (2026-11-11). A dead one passed so stays unspent, and its kind's next
+   * is dead alike, so spent then.
+   */
+  private leap(q: readonly number[], r: number, proof: Proof): number {
+    if ((r & (BLOCK - 1)) !== 0) return r
+    const spans = this.spansOf(q, proof)
+    while (r < q.length && proof.all(spans[r >> BLOCK_BITS]!)) r += BLOCK
+    return Math.min(r, q.length)
+  }
+
+  /** Each block's `Span` of `q`, made again once a join changed the queues. */
+  private spansOf(q: readonly number[], proof: Proof): Span[] {
+    const had = this.spans.get(q)
+    if (had !== undefined && had.at === this.joins) return had.spans
+    const spans: Span[] = []
+    for (let b = 0; b < q.length; b += BLOCK) {
+      const t0 = this.tasks[q[b]!]!
+      const span: Span = {
+        minCores: Infinity,
+        maxCores: -Infinity,
+        minMemory: Infinity,
+        maxMemory: -Infinity,
+        maxRank: -Infinity,
+        minMs: Infinity,
+        platform: t0.platform,
+        mixed: false,
+        special: false,
+      }
+      for (let p = b; p < Math.min(q.length, b + BLOCK); p++) {
+        const t = this.tasks[q[p]!]!
+        span.minCores = Math.min(span.minCores, t.cores)
+        span.maxCores = Math.max(span.maxCores, t.cores)
+        span.minMemory = Math.min(span.minMemory, t.memory)
+        span.maxMemory = Math.max(span.maxMemory, t.memory)
+        span.maxRank = Math.max(span.maxRank, proof.rank(q[p]!))
+        span.minMs = Math.min(span.minMs, t.ms ?? UNKNOWN_MS)
+        if (t.platform !== span.platform) span.mixed = true
+        if (t.above !== undefined || (t.servers?.length ?? 0) > 0) span.special = true
+      }
+      spans.push(span)
+    }
+    this.spans.set(q, { at: this.joins, spans })
+    return spans
   }
 
   private classHeadOf(c: number, q: readonly number[]): number {
