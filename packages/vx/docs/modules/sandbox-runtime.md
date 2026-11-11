@@ -718,7 +718,7 @@ variables (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `GRPC_PROXY`,
 `FTP_PROXY`, `NO_PROXY` and their lowercase forms, `RSYNC_PROXY`,
 `DOCKER_HTTP(S)_PROXY`, `CLOUDSDK_PROXY_*`,
 `CLAUDE_CODE_HOST_*_PROXY_PORT`), `GIT_SSH_COMMAND`,
-`GIT_CONFIG_PARAMETERS`, `JAVA_TOOL_OPTIONS` (below), and the CA-bundle variables when it has a CA
+`GIT_CONFIG_PARAMETERS`, `SOCAT_DEFAULT_LISTEN_IP`, `SHLVL`, `JAVA_TOOL_OPTIONS` (below), and the CA-bundle variables when it has a CA
 (`NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE` and the others in its
 `CA_TRUST_VARS`). A task's `define` or `passThrough` of one of these
 names does not reach a sandboxed task: the sandbox's network goes through
