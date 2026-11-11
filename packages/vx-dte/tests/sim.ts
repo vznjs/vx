@@ -15,6 +15,7 @@ import {
   simulate as play,
   sized,
   slowdown,
+  spreadMs,
   tailsMs,
   type Forecast,
   type PlanTask,
@@ -384,6 +385,15 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
           least = Math.min(least ?? Infinity, w.joinedAt - w.spawnedAt)
       return least ?? warmUpOf(1)
     }
+    // As the plugin (`Orchestrator.spreadsMs`).
+    const spread = (size: string): number =>
+      spreadMs(
+        workers.flatMap((w) =>
+          w.joinedAt !== undefined && sizeOf.get(w.id)?.name === size
+            ? [w.joinedAt - w.spawnedAt]
+            : [],
+        ),
+      )
     const planWorkers: PlanWorker[] = []
     const running = new Set<string>()
     for (const w of joined()) {
@@ -455,6 +465,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       started,
       final: false,
       warmUpMs: warmUp,
+      spreadMs: spread,
       replaceable: true,
       limitMs: deadline === undefined ? undefined : deadline - now,
       known: planned,

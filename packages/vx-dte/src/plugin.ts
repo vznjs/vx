@@ -875,6 +875,7 @@ export function dte(options: DteOptions = {}) {
           started,
           final,
           warmUpMs: warmUp,
+          spreadMs: (size) => o.spreadOf(size),
           replaceable: adapter !== undefined,
           limitMs: deadline === undefined ? undefined : deadline - performance.now(),
           known,

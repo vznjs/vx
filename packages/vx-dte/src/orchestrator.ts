@@ -52,6 +52,7 @@ import {
   type PlanTask,
   type PlanWorker,
   type Size,
+  spreadMs,
   type WarmUp,
 } from './planner.js'
 import { Usage, type UsageStats } from './usage.js'
@@ -2081,6 +2082,14 @@ export class Orchestrator {
       if (!(out.get(size)! <= a.warmUpMs)) out.set(size, a.warmUpMs)
     }
     return out
+  }
+
+  /** How much later each next worker of `size` joined than the one before, this run (`spreadMs`). */
+  spreadOf(size: string): number {
+    const ups: number[] = []
+    for (const a of [...this.workers.values(), ...this.gone])
+      if (a.warmUpMs !== undefined && a.declared?.size === size) ups.push(a.warmUpMs)
+    return spreadMs(ups)
   }
 
   /** Each size's cores its machines spent besides the run's tasks, on average: what the plan leaves it. */

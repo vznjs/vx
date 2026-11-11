@@ -990,7 +990,10 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     between its ready time and its latest start, on the worker whose
     time it lengthens least; a new worker, of the smallest size it fits,
     starts only for a task none has room for by then, asked to join as
-    that task gets ready. It packs the whole run, past the window. A
+    that task gets ready. It packs the whole run, past the window. Each next new
+    worker of a size is counted as joining later by the spread this run's
+    joins of it showed (the slowest less the fastest, over the joins
+    between). A
     worker past its warm-up is packed as if asked now. The run then gives each task only to the worker the plan gave
     it, once that joined, and not before the plan starts it: one the plan
     starts as it gets ready goes as soon as it is. A task whose worker

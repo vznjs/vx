@@ -202,6 +202,22 @@ interface Ahead {
   }[]
 }
 
+/**
+ * How much later each next worker of a size joins than the one before,
+ * from the warm-ups those of it took: the spread of the slowest from the
+ * fastest, over the joins between. None until two joined.
+ */
+export function spreadMs(warmUps: readonly number[]): number {
+  if (warmUps.length < 2) return 0
+  let least = Infinity
+  let most = 0
+  for (const w of warmUps) {
+    least = Math.min(least, w)
+    most = Math.max(most, w)
+  }
+  return (most - least) / (warmUps.length - 1)
+}
+
 /** History the run's finished tasks must have had before `slowdown` says anything. */
 const SLOWDOWN_MS = 20_000
 
@@ -1505,6 +1521,8 @@ export function plan(
   // The latest an earlier plan of the same work allowed, from now.
   limitMs = Infinity,
   how: Strategy = DEFAULT_STRATEGY,
+  // How much later each next worker of a size asked at once joins (`decide`'s `spreadMs`).
+  spreadMs: (size: string) => number = () => 0,
 ): Plan & Ahead {
   const warm = warmOf(warmUpMs)
   const added = candidates.map((s, i) => fresh({ ...s, size: s.name }, `\0new${i}`, warm(s.name)))
@@ -1759,7 +1777,7 @@ export function plan(
       tasks,
       workers.map((w) => (w.starting === true && w.at <= 0 ? { ...w, at: warm(w.size) } : w)),
       candidates,
-      warm,
+      (size, nth) => warm(size) + nth * spreadMs(size),
       best,
     )
     // A play cut at its window holds less than its run: not compared.
@@ -1983,6 +2001,13 @@ export function decide(input: {
    */
   readonly last?: { forecast?: Forecast }
   readonly now?: number
+  /**
+   * How much later each next worker of a size asked at once joins: CI
+   * runners asked together joined 2.5 s apart, and a packing that counted
+   * on all joining as the first ended a run 18 s late (tests/sim.test.ts,
+   * 2026-11-11).
+   */
+  readonly spreadMs?: ((size: string) => number) | undefined
 }): Plan & { readonly tasks: readonly PlanTask[] } {
   const how = input.how ?? DEFAULT_STRATEGY
   const now = input.now ?? 0
@@ -2040,6 +2065,7 @@ export function decide(input: {
     // New work moves the deadline; work done or known already does not.
     tasks.every((t) => input.known?.has(t.id) === true) ? input.limitMs : undefined,
     how,
+    input.spreadMs,
   )
   if (input.last !== undefined)
     input.last.forecast = forecastOf(

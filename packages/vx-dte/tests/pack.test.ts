@@ -1,7 +1,7 @@
 import { expect, it } from 'bun:test'
 import { Placing } from '../src/dispatch.js'
 import { pack } from '../src/pack.js'
-import type { PlanTask, PlanWorker, Size } from '../src/planner.js'
+import { spreadMs, type PlanTask, type PlanWorker, type Size } from '../src/planner.js'
 
 const task = (id: string, ms: number, deps: string[] = [], cores = 1): PlanTask => ({
   id,
@@ -138,4 +138,28 @@ it('follows a plan: each task to its worker once joined, not before its start', 
   p.joined('w#2', 'w#2', 'w')
   expect(p.gate('b', 6_000)).toEqual({ only: 'w#2' })
   expect(p.next(6_000)).toBe(10_000)
+})
+
+it('reads how much later each next worker of a size joins, once two did', () => {
+  expect(spreadMs([])).toBe(0)
+  expect(spreadMs([57_500])).toBe(0)
+  expect(spreadMs([57_500, 60_000, 65_000, 62_500])).toBe(2_500)
+})
+
+// Runners asked at once join one after another: each next new one is
+// asked sooner by the spread, so it still joins as its task is ready.
+it('asks each next worker of a size sooner by the join spread', () => {
+  const tasks = [
+    task('a', 30_000),
+    ...Array.from({ length: 3 }, (_, i) => task(`b${i}`, 40_000, ['a'], 4)),
+  ]
+  const p = pack(
+    tasks,
+    [worker('one', { cores: 1 })],
+    Array(3).fill(size('w', 4)),
+    (_, nth) => WARM + nth * 2_500,
+    70_000,
+  )
+  expect(p.end).toBe(70_000)
+  expect(p.starts.map((s) => s.at).sort((x, y) => x - y)).toEqual([5_000, 7_500, 10_000])
 })

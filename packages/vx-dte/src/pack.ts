@@ -127,14 +127,15 @@ const suits = (bay: Bay, t: PlanTask): boolean =>
 
 /**
  * Packs `tasks` (each with its time) onto `workers` and new ones, each of
- * `fresh` at most once, joining `warm(size)` after its ask, to end by
+ * `fresh` at most once, the `nth` of its size (those starting counted)
+ * joining `warm(size, nth)` after its ask, to end by
  * `deadline` (ms from now) on the least worker time.
  */
 export function pack(
   tasks: readonly PlanTask[],
   workers: readonly PlanWorker[],
   fresh: readonly Size[],
-  warm: (size: string) => number,
+  warm: (size: string, nth: number) => number,
   deadline: number,
 ): Packing {
   const n = tasks.length
@@ -203,6 +204,10 @@ export function pack(
     (a, b) => fresh[a]!.cpu - fresh[b]!.cpu || fresh[a]!.memory - fresh[b]!.memory,
   )
   const starts: { id: string; size: Size; at: number }[] = []
+  // Each size's workers asked: those starting, then the packing's.
+  const asked = new Map<string, number>()
+  for (const w of workers)
+    if (w.starting === true && w.size !== undefined) asked.set(w.size, (asked.get(w.size) ?? 0) + 1)
   const placed = new Map<string, { worker: string; at: number; ready: number }>()
   let end = 0
   // Ready tasks, least latest start first.
@@ -270,7 +275,9 @@ export function pack(
       if (k >= 0) {
         const size = fresh[unused[k]!]!
         unused.splice(k, 1)
-        const w = warm(size.name)
+        const nth = asked.get(size.name) ?? 0
+        asked.set(size.name, nth + 1)
+        const w = warm(size.name, nth)
         const spawn = Math.max(0, r - w)
         const id = `\0pack${starts.length}`
         starts.push({ id, size, at: spawn })
