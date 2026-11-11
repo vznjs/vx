@@ -250,7 +250,6 @@ export interface SandboxViolation {
 }
 export interface SandboxedRunResult extends RunResult {
   violations: SandboxViolation[]
-  hiddenReads?: SandboxViolation[] // a cached task's pass: reads the wall hid under keyRoot (never violations)
 }
 export function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRunResult>
 
@@ -328,6 +327,14 @@ export function localBindingOn(c: { localBinding?: boolean | readonly number[] }
 // that would hold a wall and punches the read grants.
 export function bindableWrites(paths: readonly string[]): string[]
 export function punchWalls(readPath: string, walls: readonly string[]): string[]
+// The files a key holds (workspace-relative) no read, write or baseline
+// grant of the request reaches, canonical: hidden inside the sandbox. A
+// wildcard grant reaches its literal head; `ignore.read` leaves one out.
+export function keyedOutsideGrants(
+  sandbox: { baseAllowRead; config },
+  workspaceRoot: string,
+  rels: readonly string[],
+): string[]
 export function punchWritePaths(
   readPath: string,
   writePaths: readonly string[],
@@ -373,8 +380,6 @@ export function refusedWrites(
 export function refusedWritesOutside(violations, opts: { within; linked?; config; skip }): string[]
 // the reads the wall hid of paths that exist on the host, files first: a failed task's hint
 export function hiddenReadsOutside(violations, opts: { within; linked?; config; skip }): string[]
-// the read records the wall hid outside the reported directories, described, `ignore` applied
-export function hiddenReadRecords(violations, opts: { within; linked?; config }): SandboxViolation[]
 // Linux: the proxy's `deny network-outbound <host>:<port> (<reason>)` records
 export function refusedConnections(records: readonly string[]): SandboxViolation[]
 ```
@@ -602,13 +607,12 @@ read the file unkeyed and an edit there was a stale hit. The entry is
 spelled by `taskGlobOf`, as the fix's is: `'\\!cfg'` for a file `!cfg`,
 which raw is a negation that keyed nothing.
 
-A cached task that PASSED hands core the reads the wall hid under the
-workspace (`SandboxedRunResult.hiddenReads`, filtered by
-`hiddenReadRecords`, nothing stat'ed); core fails the task when one is a
-file its key holds (execute-task.ts `keyedHidden`): `bun build` falling
-back on a hidden root `tsconfig.base.json` compiled JSX for React, passed,
-and saved that under a key holding the file. A hidden read the key does
-not hold stays silent: tools probe many paths.
+A cached task whose key holds a file outside the project that no grant
+reaches is failed before it runs (execute-task.ts, `keyedOutsideGrants`), on both platforms: the
+trace records no stat, and oxlint `statx`es its `.oxlintrc.json` before
+opening it, so with the file hidden it passed on its defaults and was
+saved under a key holding the file. A hidden read of a file the key does
+not hold stays silent on a pass: tools probe many paths.
 
 bwrap enters the task's cwd only if a mount holds it, and otherwise
 `$HOME`, with no word: a project granted no read (`sandbox: {}`, its own

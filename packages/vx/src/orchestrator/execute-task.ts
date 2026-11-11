@@ -46,7 +46,7 @@ import {
   sandboxReads,
   maskCaptured,
   BoundedCapture,
-  toRealPath,
+  keyedOutsideGrants,
 } from '../exec/index.js'
 import {
   encodeOutputLog,
@@ -1250,15 +1250,39 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // the throw is its rejection, the value its resolution, so both reach
     // the naming catch and the cleanup in finally below.
     let running: Promise<unknown>
+    // A file the key holds outside the project that no grant reaches is
+    // not there inside the sandbox, so the run cannot see what its key says
+    // (a build that falls back on a hidden root `tsconfig.base.json` emits
+    // other code, and oxlint without its `.oxlintrc.json` passes). Known
+    // from the request, so the command is never spawned: a stat-first tool
+    // leaves no record, and a read past the wall is no violation. One in
+    // the project is a violation when opened, and a key may hold one the
+    // task never reads.
+    const unseen =
+      req.sandbox !== undefined &&
+      described !== undefined &&
+      (cfg.inputs?.workspaceFiles?.length ?? 0) > 0
+        ? keyedOutsideGrants(
+            req.sandbox,
+            args.workspaceRoot,
+            outsideProject(described.inputs.files, relPosix(args.workspaceRoot, node.projectDir)),
+          )
+        : []
     const closeWindow =
-      args.commandWindows?.open(
-        node.id,
-        node.projectDir,
-        commandWriteReach(node, args.workspaceRoot),
-      ) ?? (() => {})
-    args.executing?.(node.id)
+      unseen.length > 0
+        ? () => {}
+        : (args.commandWindows?.open(
+            node.id,
+            node.projectDir,
+            commandWriteReach(node, args.workspaceRoot),
+          ) ?? (() => {}))
+    if (unseen.length === 0) args.executing?.(node.id)
     try {
-      running = Promise.resolve(args.executor.execute(req))
+      running = Promise.resolve(
+        unseen.length > 0
+          ? unseenResult(unseen, node.projectDir, args.workspaceRoot)
+          : args.executor.execute(req),
+      )
     } catch (thrown) {
       running = Promise.reject(thrown)
     }
@@ -1346,15 +1370,6 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // A local request carries no timer, so the runner alone decides there.
     if (timeoutFired && res.timedOut !== true) res = { ...res, timedOut: true }
     violations = [...res.violations]
-    // A pass that was denied a file its key holds ran without what the key
-    // says it saw (a build that falls back on a hidden root
-    // `tsconfig.base.json` emits other code): the denial fails it. One the
-    // key does not hold stays silent: tools probe many paths.
-    if (userSandbox && res.hiddenReads !== undefined && described !== undefined) {
-      const keyed = keyedHidden(res.hiddenReads, described.inputs.files, args.workspaceRoot)
-      if (keyed.length > 0)
-        violations.push(...keyed, keyedHiddenLine(keyed, node.projectDir, args.workspaceRoot))
-    }
     // A denial under a dependency the key does not answer for says only
     // ENOENT; the line beside it names the package and how to key it. Only
     // with a denial there, so it never reddens a pass.
@@ -2170,48 +2185,48 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   }
 }
 
-/** The hidden reads of files the key holds, one record per path. */
-function keyedHidden(
-  hidden: readonly SandboxViolation[],
-  files: readonly { readonly path: string }[],
-  workspaceRoot: string,
-): SandboxViolation[] {
-  const root = toRealPath(workspaceRoot)
-  const held = new Set(files.map((f) => f.path))
-  const seen = new Set<string>()
-  return hidden.filter((v) => {
-    const rel = relPosix(root, v.path!)
-    if (seen.has(rel) || !held.has(rel)) return false
-    seen.add(rel)
-    return true
-  })
+/** The workspace-relative paths of `files` outside project `project` (workspace-relative). */
+function outsideProject(files: readonly { readonly path: string }[], project: string): string[] {
+  if (project === '') return []
+  const under = `${project}/`
+  return files.flatMap((f) => (f.path === project || f.path.startsWith(under) ? [] : [f.path]))
 }
 
-/** The line beside a keyed hidden read: what was hidden and the grant that shows it. */
-function keyedHiddenLine(
-  keyed: readonly SandboxViolation[],
+/**
+ * The result of a task not run because the sandbox hides files its key
+ * holds (`keyedOutsideGrants`): one read violation per file, which
+ * `sandboxFix` turns into its grant, and the line that says why.
+ */
+function unseenResult(
+  unseen: readonly string[],
   projectDir: string,
   workspaceRoot: string,
-): SandboxViolation {
-  const shown = keyed
-    .slice(0, 5)
-    .map((v) => v.path)
-    .join(', ')
-  const more = keyed.length > 5 ? ` and ${keyed.length - 5} more` : ''
-  const grants = (sandboxFix(keyed, projectDir, workspaceRoot)?.read ?? []).map((g) =>
+): ExecuteResult {
+  const timestamp = new Date()
+  const denied: SandboxViolation[] = unseen.map((p) => ({
+    line: `vx: hidden by the sandbox, held by the key: ${p}`,
+    timestamp,
+    target: p,
+    path: p,
+    ignorable: ['read'],
+  }))
+  const shown = unseen.slice(0, 5).join(', ')
+  const more = unseen.length > 5 ? ` and ${unseen.length - 5} more` : ''
+  const grants = (sandboxFix(denied, projectDir, workspaceRoot)?.read ?? []).map((g) =>
     g.includes("'") ? JSON.stringify(g) : `'${g.replaceAll('\\', '\\\\')}'`,
   )
-  const said =
-    `vx: the sandbox hid a file this task's key holds, so the run did not see what its key ` +
-    `says: ${shown}${more}.`
+  const said = `vx: the sandbox hides a file this task's key holds, so it was not run: ${shown}${more}.`
   // A credential store is walled on purpose and never suggested (sandbox-fix.ts).
+  const line =
+    grants.length === 0
+      ? `${said} It is walled on purpose, so vx suggests no grant for it.`
+      : `${said} Grant it, e.g. \`allow: { read: [${grants.join(', ')}] }\`.`
   return {
-    timestamp: new Date(),
-    hint: true,
-    line:
-      grants.length === 0
-        ? `${said} It is walled on purpose, so vx suggests no grant for it.`
-        : `${said} Grant it, e.g. \`allow: { read: [${grants.join(', ')}] }\`.`,
+    exitCode: 0,
+    durationMs: 0,
+    stdout: '',
+    stderr: '',
+    violations: [...denied, { timestamp, hint: true, line }],
   }
 }
 

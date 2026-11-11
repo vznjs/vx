@@ -51,7 +51,7 @@ export {
   sandboxReads,
   toRealPath,
 } from './sandbox-paths.js'
-export { bindableWrites, punchWalls } from './sandbox-binds.js'
+export { bindableWrites, keyedOutsideGrants, punchWalls } from './sandbox-binds.js'
 export { isLocalExecutor, localExecutor } from './local-executor.js'
 export { holdGroups, killTree, markStopped, pauseTree, untilGroupsGone } from './kill-tree.js'
 export { sampleTrees, type TreeUsage } from './proc-sample.js'

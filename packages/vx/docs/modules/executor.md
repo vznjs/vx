@@ -159,10 +159,7 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   hit would have matched; held in memory for the attempt and never
   persisted (`env`/`runtime` values may be secrets — `entry_inputs` stores
   digests only).
-- `ExecuteResult extends RunResult { violations; hiddenReads?; outputs?; changed?; where? }` —
-  `hiddenReads` (a cached sandboxed task that passed) are the reads the
-  sandbox hid under the workspace: one of a file the key holds fails the
-  task as a violation, since the run did not see what its key says.
+- `ExecuteResult extends RunResult { violations; outputs?; changed?; where? }` —
   `outputs` is `{ kind: 'disk' }` or `{ kind: 'deferred'; materialize }`
   (outputs left remote, fetched only if a local consumer needs them).
   `spawnFailed: true` says the command never started (its 127 is the

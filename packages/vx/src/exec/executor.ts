@@ -254,12 +254,6 @@ export interface ExecuteResult extends RunResult {
   /** Sandbox violations (empty when unsandboxed). */
   readonly violations: readonly SandboxViolation[]
   /**
-   * A cached task that passed: reads the sandbox hid under the workspace,
-   * not violations. One of a file the key holds fails the task: the run
-   * did not see what its key says.
-   */
-  readonly hiddenReads?: readonly SandboxViolation[]
-  /**
    * Where this task's outputs are. Absent = `{kind:'disk'}` — in place
    * under `cwd`, which is what every executor did before deferral
    * existed. `deferred` means they are NOT on disk and `materialize()`

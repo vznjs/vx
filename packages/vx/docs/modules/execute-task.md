@@ -279,11 +279,16 @@ the request withheld gets one more line beside it
 (`withheldLinkLine`): the package, where it is linked, and the ways to
 key it (a `dependsOn` edge names the project id at the target, `projectAt`;
 a target that is no project gets only the grant and `inputs.workspaceFiles`).
-A pass whose result lists `hiddenReads` (`executor.md`) is held against
-the key's files (`keyedHidden`): each read the sandbox hid of a file the
-key holds becomes a violation, so the task fails unsaved, with a line
-naming the file and the read grant (`keyedHiddenLine`, spelled by
-`sandboxFix`).
+Before the executor is called, the key's files outside the project
+(`inputs.workspaceFiles`, `outsideProject`) are held against the request
+(`keyedOutsideGrants`, sandbox-runtime.md): a file no grant reaches is
+not there inside the sandbox, so the command is not spawned and the
+attempt's result (`unseenResult`) is one read violation per such
+file and a line naming the grant (spelled by `sandboxFix`; none for a
+credential file). Asked from the request, not a trace: a tool that stats
+a config before opening it (oxlint) leaves no record, and a read past
+the wall is no violation. A project file is left to the trace: an open
+of it is a violation, and a key may hold one the task never reads.
 
 ## Verdict
 

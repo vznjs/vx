@@ -2022,12 +2022,14 @@ where it tried. So is a read the wall hid of a path that exists on the
 host, with the grant spelled from the project (`'../../tsconfig.base.json'`)
 and, for a cached task, the `inputs.workspaceFiles` entry that keys it
 (`'tsconfig.base.json'`, a file `!cfg` escaped `'\\!cfg'`; a grant alone leaves an edit there a stale hit):
-the tool said only "not found". A cached task that PASSES though the
-wall hid a file its key holds (`inputs.workspaceFiles`) fails, with the
-denial and the grant: a build that falls back on a hidden root
-`tsconfig.base.json` emits other code, and its key says it saw the file.
-A hidden read of a file the key does not hold stays silent on a pass
-(tools probe many paths). To reach a path outside the project but
+the tool said only "not found". A cached task whose key holds a file
+outside the project that no grant reaches (`inputs.workspaceFiles:
+['.oxlintrc.json']` beside `read: ['.']`) fails before it runs, on Linux and macOS alike, with the
+read to grant: oxlint without its `.oxlintrc.json` passes on its
+defaults, a build that falls back on a hidden root `tsconfig.base.json`
+emits other code, and either was saved under a key that says it saw the
+file. A hidden file the key does not hold stays silent on a pass (tools
+probe many paths). To reach a path outside the project but
 inside the workspace — a workspace-level fixture — declare it; a path
 outside the workspace is not walled (above).
 

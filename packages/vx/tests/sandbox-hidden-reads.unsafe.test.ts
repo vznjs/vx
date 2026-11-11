@@ -97,74 +97,6 @@ describe.skipIf(!available || process.platform !== 'linux')('a read hidden by th
     expect(await Bun.file(path.join(app, 'out.txt')).text()).toBe('v2\n')
   })
 
-  // A build that falls back when its root `tsconfig.base.json` is hidden
-  // (`bun build` compiled JSX for React, not the configured runtime)
-  // passed, and the wrong output was saved under a key that holds the
-  // file. A keyed input the task could not read fails it, with the grant.
-  it('fails a passing cached task denied a file its key holds, and the fix applied re-runs', async () => {
-    const cached = (read: string[]) =>
-      `export default { tasks: { t: {
-        exec: { command: '(cat < ../../tsconfig.base.json || echo fallback) > out.txt',
-          sandbox: { allow: { read: ${JSON.stringify(read)}, write: ['out.txt'] } } },
-        cache: true,
-        inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] },
-        outputs: { files: ['out.txt'] },
-      } } }\n`
-    const app = await addProject(root, 'app', { config: cached(['.']) })
-    const t = async () => (await run({ cwd: root, tasks: ['t'], log: quiet })).outcomes[0]
-    const o = await t()
-    expect([o?.status, o?.saved, o?.sandboxViolations, o?.sandboxFix]).toEqual([
-      'failed',
-      undefined,
-      1,
-      { read: ['../../tsconfig.base.json'] },
-    ])
-    expect(o?.sandboxViolationLines?.at(-1)).toBe(
-      `vx: the sandbox hid a file this task's key holds, so the run did not see what its key ` +
-        `says: ${root}/tsconfig.base.json. Grant it, e.g. ` +
-        "`allow: { read: ['../../tsconfig.base.json'] }`.",
-    )
-    await writeFile(path.join(app, 'vx.config.mjs'), cached(['.', ...o!.sandboxFix!.read!]))
-    expect((await t())?.status).toBe('success')
-    expect(await Bun.file(path.join(app, 'out.txt')).text()).toBe('{}\n')
-  })
-
-  // An agent applies a suggested grant as given: a keyed `.env` is
-  // failed on the same way, but no grant to it is named.
-  it('fails one denied a keyed credential file without suggesting its grant', async () => {
-    await writeFile(path.join(root, '.env'), 'K=v\n')
-    await addProject(root, 'app', {
-      config: `export default { tasks: { t: {
-        exec: { command: '(cat < ../../.env || echo fallback) > out.txt',
-          sandbox: { allow: { read: ['.'], write: ['out.txt'] } } },
-        cache: true,
-        inputs: { files: ['src/**'], workspaceFiles: ['.env'] },
-        outputs: { files: ['out.txt'] },
-      } } }\n`,
-    })
-    const o = (await run({ cwd: root, tasks: ['t'], log: quiet })).outcomes[0]
-    expect([o?.status, o?.sandboxFix?.read, o?.sandboxViolationLines?.at(-1)]).toEqual([
-      'failed',
-      undefined,
-      `vx: the sandbox hid a file this task's key holds, so the run did not see what its key ` +
-        `says: ${root}/.env. It is walled on purpose, so vx suggests no grant for it.`,
-    ])
-  })
-
-  it('CONTROL: a passing cached task denied a file its key does not hold passes', async () => {
-    await addProject(root, 'app', {
-      config: `export default { tasks: { t: {
-        exec: { command: '(cat < ../../tsconfig.base.json || echo fallback) > out.txt',
-          sandbox: { allow: { read: ['.'], write: ['out.txt'] } } },
-        cache: true,
-        inputs: { files: ['src/**'] },
-        outputs: { files: ['out.txt'] },
-      } } }\n`,
-    })
-    const o = (await run({ cwd: root, tasks: ['t'], log: quiet })).outcomes[0]
-    expect([o?.status, o?.saved, o?.sandboxViolationLines]).toEqual(['success', true, undefined])
-  })
-
   it('CONTROL: never beside a passing task', async () => {
     expect(await outcome('cat < ../../tsconfig.base.json || true')).toEqual(['success', []])
   })
@@ -243,4 +175,103 @@ describe.skipIf(!available || process.platform !== 'linux')('a hidden store', ()
         "If the task reads one, grant it, e.g. `allow: { read: ['../tsconfig.base.json'] }`.",
     ])
   }, 30_000)
+})
+
+// A build that falls back when its root `tsconfig.base.json` is hidden
+// (`bun build` compiled JSX for React, not the configured runtime)
+// passed, and the wrong output was saved under a key that holds the file.
+// So did oxlint with its root `.oxlintrc.json` hidden: it stats the file
+// before it opens it, and no trace records a stat. Judged from the grants
+// before the run, on every platform.
+describe.skipIf(!available)('a file the key holds that no grant reaches', () => {
+  let root: string
+  beforeEach(async () => {
+    root = realpathSync(await makeWorkspace({ prefix: 'vx-keyed-hidden-' }))
+    await writeFile(path.join(root, 'tsconfig.base.json'), '{}\n')
+  })
+  afterEach(() => rm(root, { recursive: true, force: true }))
+
+  const cached = (command: string, read: string[], workspaceFiles: string[]) =>
+    `export default { tasks: { t: {
+      exec: { command: ${JSON.stringify(command)},
+        sandbox: { allow: { read: ${JSON.stringify(read)}, write: ['out.txt'] } } },
+      cache: true,
+      inputs: { files: ['src/**'], workspaceFiles: ${JSON.stringify(workspaceFiles)} },
+      outputs: { files: ['out.txt'] },
+    } } }\n`
+  const t = async () => (await run({ cwd: root, tasks: ['t'], log: quiet })).outcomes[0]
+
+  it('fails a task that stats the file before it reads it, unrun, and the fix applied re-runs', async () => {
+    const stat =
+      '{ [ -e ../../tsconfig.base.json ] && cat ../../tsconfig.base.json || echo fallback; } > out.txt'
+    const app = await addProject(root, 'app', {
+      config: cached(stat, ['.'], ['tsconfig.base.json']),
+    })
+    const o = await t()
+    expect([o?.status, o?.saved, o?.sandboxViolations, o?.sandboxFix?.read]).toEqual([
+      'failed',
+      undefined,
+      1,
+      ['../../tsconfig.base.json'],
+    ])
+    expect(o?.sandboxViolationLines?.at(-1)).toBe(
+      `vx: the sandbox hides a file this task's key holds, so it was not run: ` +
+        `${root}/tsconfig.base.json. Grant it, e.g. ` +
+        "`allow: { read: ['../../tsconfig.base.json'] }`.",
+    )
+    expect(await Bun.file(path.join(app, 'out.txt')).exists()).toBe(false)
+    await writeFile(
+      path.join(app, 'vx.config.mjs'),
+      cached(stat, ['.', ...o!.sandboxFix!.read!], ['tsconfig.base.json']),
+    )
+    expect((await t())?.status).toBe('success')
+    expect(await Bun.file(path.join(app, 'out.txt')).text()).toBe('{}\n')
+  })
+
+  it('fails one whose open of the file falls back', async () => {
+    await addProject(root, 'app', {
+      config: cached(
+        '(cat < ../../tsconfig.base.json || echo fallback) > out.txt',
+        ['.'],
+        ['tsconfig.base.json'],
+      ),
+    })
+    const o = await t()
+    expect([o?.status, o?.sandboxFix?.read]).toEqual(['failed', ['../../tsconfig.base.json']])
+  })
+
+  // An agent applies a suggested grant as given: a keyed `.env` is
+  // failed on the same way, but no grant to it is named.
+  it('fails one whose key holds a walled credential file without suggesting its grant', async () => {
+    await writeFile(path.join(root, '.env'), 'K=v\n')
+    await addProject(root, 'app', {
+      config: cached('(cat < ../../.env || echo fallback) > out.txt', ['.'], ['.env']),
+    })
+    const o = await t()
+    expect([o?.status, o?.sandboxFix?.read, o?.sandboxViolationLines?.at(-1)]).toEqual([
+      'failed',
+      undefined,
+      `vx: the sandbox hides a file this task's key holds, so it was not run: ` +
+        `${root}/.env. It is walled on purpose, so vx suggests no grant for it.`,
+    ])
+  })
+
+  it('CONTROL: a task whose key holds no hidden file passes and is saved', async () => {
+    await addProject(root, 'app', {
+      config: cached('(cat < ../../tsconfig.base.json || echo fallback) > out.txt', ['.'], []),
+    })
+    const o = await t()
+    expect([o?.status, o?.saved, o?.sandboxViolationLines]).toEqual(['success', true, undefined])
+  })
+
+  it('CONTROL: a granted keyed file passes', async () => {
+    await addProject(root, 'app', {
+      config: cached(
+        'cat < ../../tsconfig.base.json > out.txt',
+        ['.', '../../tsconfig.base.json'],
+        ['tsconfig.base.json'],
+      ),
+    })
+    expect((await t())?.status).toBe('success')
+  })
 })
