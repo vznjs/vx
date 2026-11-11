@@ -469,7 +469,7 @@ export interface Kept {
 }
 
 /** At most this many `Kept` a pass: the newest. */
-const KEPT = 8
+const KEPT = 32
 
 /** Whether one of `kept` proves `need`, of `rank` and `ms`, fails (`Kept`). */
 export function failsAlike(

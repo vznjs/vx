@@ -1145,8 +1145,10 @@ interface Kinds {
  * windowed to two warm-ups reads few of them (2026-11-06).
  */
 function lazyKinds(tasks: readonly PlanTask[]): (place: number) => string {
-  const kinds: (string | undefined)[] = []
-  return (i) => (kinds[i] ??= kindOf(tasks[i]!))
+  // Packed: an array of holes filled by place read as a dictionary, most
+  // of a 3,800-task plan of varied needs (2026-11-11). No kind is empty.
+  const kinds = Array.from<string>({ length: tasks.length }).fill('')
+  return (i) => kinds[i] || (kinds[i] = kindOf(tasks[i]!))
 }
 
 function kindsOf(tasks: readonly PlanTask[]): Kinds {
@@ -2377,11 +2379,23 @@ class Ready {
       qs.push(q)
     }
     const at = new Int32Array(cs.length).fill(-1)
+    // Each class's first not taken nor spent, as last read: `spent` only
+    // grows until a give clears it, so the read goes on from there. Read
+    // again from `at` each step, the spent ones were most of a plan of
+    // varied needs (2026-11-11).
+    const unspent = new Int32Array(cs.length)
+    // Each class's next to yield this step, or -1.
+    const cand = new Int32Array(cs.length)
+    let spentSeen = spent.size
     let cursor = -1
     for (;;) {
       if (bounds?.done === true || (kinds !== undefined && spent.size >= kinds)) return
+      if (spent.size < spentSeen) unspent.fill(0)
+      spentSeen = spent.size
       let next = -1
+      let nextAt = -1
       for (let x = 0; x < cs.length; x++) {
+        cand[x] = -1
         const c = cs[x]!
         if (
           bounds !== undefined &&
@@ -2405,15 +2419,51 @@ class Ready {
         }
         at[x] = p
         // A spent kind is passed here only: a give clears `spent`.
-        let r = p
+        let r = Math.max(p, unspent[x]!)
         while (r < q.length && (this.taken[q[r]!] === 1 || spent.has(this.kindAt(q[r]!)))) r++
+        unspent[x] = r
+        if (r < q.length) cand[x] = r
         if (r < q.length && (next === -1 || this.before(q[r]!, next))) {
           next = q[r]!
+          nextAt = x
         }
       }
       if (next === -1) return
       cursor = next
-      if (skip?.(next) === true) continue
+      // Past each skipped one, only its class reads on: the others' next
+      // stand while `spent` does. Read again across every class, a plan of
+      // varied needs spent most of its time here (2026-11-11).
+      let again = false
+      while (skip?.(next) === true) {
+        // As a step reads its class: past the dead, then past the spent.
+        const q = qs[nextAt]!
+        let r = cand[nextAt]! + 1
+        for (; r < q.length; r++) {
+          const i = q[r]!
+          if (this.taken[i] === 1) continue
+          if (bounds === undefined || !dead(this.tasks[i]!, bounds)) break
+          spent.add(this.kindAt(i))
+        }
+        if (spent.size !== spentSeen) {
+          again = true
+          break
+        }
+        at[nextAt] = r
+        while (r < q.length && (this.taken[q[r]!] === 1 || spent.has(this.kindAt(q[r]!)))) r++
+        unspent[nextAt] = r
+        cand[nextAt] = r < q.length ? r : -1
+        next = -1
+        for (let x = 0; x < cs.length; x++) {
+          const y = cand[x]!
+          if (y !== -1 && (next === -1 || this.before(qs[x]![y]!, next))) {
+            next = qs[x]![y]!
+            nextAt = x
+          }
+        }
+        if (next === -1) return
+        cursor = next
+      }
+      if (again) continue
       const t = this.tasks[next]!
       yield { id: t.id, need: t, kind: this.kindAt(next) }
     }
