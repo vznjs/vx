@@ -89,7 +89,12 @@ function inForeground() {
 }
 
 function run(cmd, cmdArgs) {
-  const child = spawn(cmd, cmdArgs, { stdio: 'inherit' })
+  // A stop sent to the whole group reaches vx from here too; the mark says
+  // the copy is one (src/util/signal-relay.ts).
+  const child = spawn(cmd, cmdArgs, {
+    stdio: 'inherit',
+    env: { ...process.env, VX_SIGNAL_RELAY: '1' },
+  })
   // A signal sent to this launcher alone (`kill`, a process manager, a CI
   // cancel) reaches vx only through here; unhandled, it killed the launcher
   // and left vx running under init. Either way the launcher waits for vx.

@@ -129,6 +129,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'persistent-shutdown',
     'persistent-stop-before-spawn',
     'project-stage-lock',
+    'relayed-signal',
     'repeated-runs.unsafe',
     'restore-declared-only',
     'restore-dir-mode',

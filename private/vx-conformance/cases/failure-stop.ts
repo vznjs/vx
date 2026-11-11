@@ -66,6 +66,29 @@ const reachesAs = (signal: 'SIGINT' | 'SIGTERM', why: string) =>
     ],
   })
 
+/** A task whose cleanup takes half a second: a runner that reads one stop as two kills it first. */
+const cleanupGrace = (signal: 'SIGTERM' | 'SIGHUP', why: string) =>
+  defineCase({
+    id: `failure/group-${signal.toLowerCase()}-leaves-task-its-cleanup`,
+    category: 'failure',
+    kind: 'correctness',
+    title: `A ${signal} to the run's process group lets a task finish its cleanup`,
+    why,
+    from: ['relayed-signal', 'parity-turbo'],
+    workspace: a({
+      t: {
+        command: `trap 'sleep 0.5; echo cleaned > cleaned.txt; exit 0' TERM HUP; touch started; ${LOOP}`,
+      },
+    }),
+    steps: [
+      {
+        run: 't',
+        stop: stop(signal),
+        expect: { exit: 'fail', files: { 'packages/a/cleaned.txt': 'cleaned\n' }, within: 20 },
+      },
+    ],
+  })
+
 export default [
   reaps(
     'SIGINT',
@@ -90,6 +113,15 @@ export default [
     'Ctrl-\\ (SIGQUIT)',
     'The quit key is a harder stop than Ctrl-C, and a user who presses it wants everything gone. A shell runs a backgrounded job with SIGQUIT ignored, so the signal alone does not end it. The runner must end the whole tree, or the job runs on under init with nothing left that will stop it.',
     ['task-tree-kill'],
+  ),
+
+  cleanupGrace(
+    'SIGTERM',
+    'A supervisor often stops a whole process group at once, and a launcher in that group may pass the same signal on. That is one request to stop, not two. A runner that counts the copy as a second, urgent stop kills its tasks at once, and their shutdown code never runs: temp files, locks and half-written outputs stay behind.',
+  ),
+  cleanupGrace(
+    'SIGHUP',
+    'Closing a terminal sends SIGHUP to every job it started, the runner and any launcher in front of it included. That is one hang-up, not two. A runner that counts the launcher’s copy as a second, urgent stop kills its tasks before their cleanup runs, and leaves locks and partial files behind.',
   ),
 
   reachesAs(

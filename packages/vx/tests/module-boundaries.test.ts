@@ -202,7 +202,8 @@ describe('module boundaries', () => {
     const edges = await collectEdges()
     // `vx --version` answers before anything loads: its one painted line is
     // the ui module's, imported alone (the ui barrel loads util, ~20 ms).
-    const ALONE = new Set(['bin.ts → ui/version-line'])
+    // The signal relay's mark leaves the env first, on every call, alone too.
+    const ALONE = new Set(['bin.ts → ui/version-line', 'bin.ts → util/signal-relay'])
     const violations = edges.filter(
       (e) =>
         CONTRACTED.includes(e.toModule) &&

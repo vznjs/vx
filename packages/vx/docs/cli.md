@@ -1178,7 +1178,11 @@ hands off to a Node launcher. On Node 22.15 or later that one
 replaces itself with the binary (`process.execve`) too. On older Node it runs the binary and waits for it:
 a signal sent to the launcher alone (`kill`, a process manager) is
 passed to the binary, and a terminal's Ctrl-C already reaches both, so
-the launcher does not send it twice. Either way it dies of the signal vx
+the launcher does not send it twice. A stop sent to the whole process
+group outside a terminal (`kill -TERM -<pgid>`, a hang-up to a
+background job) reaches vx twice, from the kernel and from the
+launcher: vx takes the copy as the same stop, so its tasks keep their
+grace. Either way it dies of the signal vx
 died of, as vx does. So does a compiled vx that hands the call to the
 workspace's own.
 
@@ -3994,6 +3998,7 @@ what a TASK sees is `exec.env` in `docs/schema.md`.
 | `VX_DEBUG_WATCH`                  | [`debug.watch`](schema.md#settings)                | `vx watch`: say on stderr each time the loop arms, with the projects it watches.                                                                                                                 |
 | `VX_DEBUG_DUMPABLE`               | [`debug.dumpable`](schema.md#settings)             | Linux: keep vx dumpable, so strace or a debugger can read its memory and `/proc/<pid>/fd`, and an unsandboxed task its env.                                                                      |
 | `VX_HANDED_OFF`                   | —                                                  | Set by a global vx that hands the call to the project's own (§ Which vx runs): the path of the vx that handed off, so the receiver does not hand off again.                                      |
+| `VX_SIGNAL_RELAY`                 | —                                                  | Set to `1` by a parent that relays stop signals (the Node launcher, a handing-off vx): a group stop's copy is the same stop, not a second one. vx removes it at start.                           |
 | `VX_RUN_WORKSPACE`, `VX_RUN_TASK` | —                                                  | Set by vx on every task (below); a `vx run` a task starts reads them back.                                                                                                                       |
 
 <!-- /variables table -->

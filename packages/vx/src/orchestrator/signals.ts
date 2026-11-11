@@ -19,6 +19,7 @@ import {
   dieOf,
   hangupIgnored,
   killGraceMs,
+  relayedCopy,
   settleWithin,
 } from '../util/index.js'
 import {
@@ -128,7 +129,10 @@ export function holdSignals(): HeldSignals {
   let heard: StopSignal | undefined
   let armed = false
   const onSignal = (signal: StopSignal): void => {
-    if (heard !== undefined) exitOf(heard, false)
+    if (heard !== undefined) {
+      if (relayedCopy(signal, heard)) return
+      exitOf(heard, false)
+    }
     if (!armed) {
       claimExitForSignal()
       exitOf(signal, false)
@@ -261,8 +265,12 @@ export function forwardSignals(args: {
   const onSignal = (signal: StopSignal): void => {
     // A second signal during the grace is the user saying "now": SIGKILL
     // and go. The exit code stays the first signal's — that is the one
-    // that ended the run.
-    if (stopping !== undefined) exit(stopping)
+    // that ended the run. A group stop's copy through a relaying parent is
+    // the same stop (util/signal-relay.ts).
+    if (stopping !== undefined) {
+      if (relayedCopy(signal, stopping)) return
+      exit(stopping)
+    }
     stopping = signal
     claimExitForSignal()
     // The live region stays: the stop marks its rows `stopping` (run.ts's
