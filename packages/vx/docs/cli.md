@@ -1917,7 +1917,9 @@ workspace's too: each run on it holds it shared, from before its cache
 opens to its end, and the prune waits for those runs (`[vx] waiting for
 another vx process using the cache directory <dir> to finish…`), as a run
 waits for the prune (`[vx] waiting for a vx cache clean of <dir> to
-finish…`) ([caching](./caching.md#concurrent-runs)).
+finish…`) ([caching](./caching.md#concurrent-runs)). From a task, either
+wait is refused after that second: the holder may be the task's own run,
+which holds its cache until the task ends.
 
 ### Which cache
 

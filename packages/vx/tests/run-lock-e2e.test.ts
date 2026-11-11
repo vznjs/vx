@@ -318,6 +318,31 @@ describe('two runs on one workspace', () => {
   )
 
   it(
+    '`vx cache clean` from a task, of a cache directory its run shares, is refused, not left waiting',
+    async () => {
+      // Another workspace's clean of the run's --cache-dir took no run lock
+      // of this one and waited on the run's hold of the directory, which
+      // lasts until the task ends.
+      const other = await makeWorkspace({ prefix: 'vx-run-lock-other-' })
+      const shared = path.join(root, '..', `${path.basename(root)}-shared`)
+      try {
+        await addProject(root, 'app', {
+          config: `export default { tasks: { prune: { exec: { command: 'cd ${other} && ${process.execPath} ${BIN} cache clean --older-than 30d --cache-dir ${shared}' } } } }`,
+        })
+        const r = await vx(root, ['run', 'prune', '--all', '--cache-dir', shared])
+        expect(r.code).toBe(1)
+        expect(r.out + r.err).toContain(
+          'runs inside task app#prune of a vx run, and another vx process has the cache it cleans open',
+        )
+      } finally {
+        await rm(other, { recursive: true, force: true })
+        await rm(shared, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a finished run leaves no lock directory behind',
     async () => {
       // The release was fired and forgotten at close, and the CLI exits as
