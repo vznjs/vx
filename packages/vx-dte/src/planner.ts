@@ -2189,14 +2189,6 @@ const classOf = (t: PlanTask): number =>
     ? ODD
     : Math.floor(Math.log2(Math.max(t.cores, 1e-6)) * CLASSES)
 
-/**
- * Ready tasks in the order `ordered` gave, by kind (`kindOf`): `assign`
- * reads them in that order, a kind it found spent skipped in one jump,
- * where it read every ready task each step (2026-10-25). A task is its
- * place in the play's tasks, and its rank (`before`) is fixed once it
- * joins: rebuilt with each join, a 9000-task tree hashed every ready
- * task 17 million times a plan (2026-10-25).
- */
 /** Ready tasks `assign` would skip (`Kept`): one, or a `Span` of them all. */
 interface Proof {
   one(place: number): boolean
@@ -2208,6 +2200,14 @@ interface Proof {
 const BLOCK_BITS = 4
 const BLOCK = 1 << BLOCK_BITS
 
+/**
+ * Ready tasks in the order `ordered` gave, by kind (`kindOf`): `assign`
+ * reads them in that order, a kind it found spent skipped in one jump,
+ * where it read every ready task each step (2026-10-25). A task is its
+ * place in the play's tasks, and its rank (`before`) is fixed once it
+ * joins: rebuilt with each join, a 9000-task tree hashed every ready
+ * task 17 million times a plan (2026-10-25).
+ */
 class Ready {
   private readonly at: Kinds['at']
   private readonly kindAt: (place: number) => string
