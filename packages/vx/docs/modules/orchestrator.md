@@ -193,7 +193,11 @@ export interface RunSummary {
     ready when its task is reached, without a spawn, and its output cell
     is pointed at the new run's bus; the others are stopped before the
     run lock (`takeHeldServers`). A taken server leaves the earlier
-    hand-back: its `stop()` and exit notice skip it.
+    hand-back: its `stop()` and exit notice skip it. A server outlives
+    the runs that keep it, so each listens on its exit once
+    (`onServerExit`: a later run's listener replaces the earlier one's),
+    and a stopped hand-back lets go of its run: each cycle kept every
+    earlier cycle's run reachable through `keep` (`held-persistent.test.ts`).
     `RunOptions.signal` aborts a run from outside through the same
     teardown: the scheduler dispatches nothing further (never-started
     tasks complete `aborted`) and run() returns to its caller.

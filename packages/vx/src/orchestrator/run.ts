@@ -180,6 +180,7 @@ import {
   disposeServers,
   failServer,
   holdServers,
+  onServerExit,
   sessionEnd,
   serverUsers,
   stopServer,
@@ -197,7 +198,7 @@ import {
   knownFlaky,
   LocalHistoryProvider,
 } from '../history/index.js'
-import type { RunOptions, RunSummary } from './options.js'
+import type { HeldPersistent, RunOptions, RunSummary } from './options.js'
 import { withRunSettings } from './run-settings.js'
 import { cacheFacts, taskArtifacts } from './task-artifacts.js'
 import { resolveSetting } from '../settings.js'
@@ -440,14 +441,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // none of its server's log while it idled, the renderer gone with this
     // return (C-57). It stays until the caller stops them.
     held = true
-    const { stop } = summary.persistent
-    return {
-      ...summary,
-      persistent: {
-        ...summary.persistent,
-        stop: (signal) => stop(signal).finally(detach),
-      },
-    }
+    return { ...summary, persistent: detachOnStop(summary.persistent, detach) }
   } finally {
     if (!held) detach()
     // A signal heard before the run's stop took over: the run left before
@@ -455,6 +449,30 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // its lock released, and vx leaves as that signal says.
     const heard = signals.held?.takeOver()
     if (heard !== undefined) await exitOfSignal(heard)
+  }
+}
+
+/**
+ * The hand-back whose stop also takes the run's renderer off the bus. Once
+ * stopped it lets go of the run: the next cycle's run keeps it
+ * (`RunOptions.keep`) and every closure of an async `run()` keeps all of
+ * that run, its own `keep` too, so `vx watch dev` held every cycle's run
+ * from the latest (~13 statements, maps and closures a cycle).
+ */
+function detachOnStop(held: HeldPersistent, detach: () => void): HeldPersistent {
+  let live: { stop: HeldPersistent['stop']; detach: () => void } | undefined = {
+    stop: held.stop,
+    detach,
+  }
+  return {
+    ids: held.ids,
+    servers: held.servers,
+    stop: (signal) => {
+      const run = live
+      if (run === undefined) return Promise.resolve()
+      live = undefined
+      return run.stop(signal).finally(run.detach)
+    },
   }
 }
 
@@ -1588,7 +1606,7 @@ async function runOnBus(
         // its pin stayed `running` under the line naming its exit.
         const server = o.status === 'success' ? persistentRegistry.get(o.node.id) : undefined
         if (server !== undefined && o.serverExit === undefined)
-          void server.exited.then((code) => {
+          onServerExit(server, 'outcome', (code) => {
             if (code !== 0 && !graphOver && !stop.signal.aborted && !released.has(o.node.id))
               o.serverExit = code
           })

@@ -333,3 +333,50 @@ it('a run interrupted on readiness keeps the servers it made ready', async () =>
     await r.persistent?.stop()
   }
 }, 30_000)
+
+// Each cycle that kept a server tied a fresh exit listener to the same
+// long-lived child, closing over that cycle's run: `vx watch dev` grew
+// by ~13 statements, maps and closures a cycle, ~90 MB of RSS over 460
+// cycles, and gave none of it back until the server exited.
+it("a server kept over many cycles does not keep the earlier cycles' runs", async () => {
+  await addProject(root, 'app', {
+    config: `export default { tasks: { dev: { exec: { command: 'echo READY; exec sleep 30', persistent: { readyWhen: 'READY' } } } } }`,
+  })
+  const logs: WeakRef<Logger>[] = []
+  const cycle = async (keep?: HeldPersistent): Promise<HeldPersistent> => {
+    const log: Logger = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
+    logs.push(new WeakRef(log))
+    return (
+      await run({
+        cwd: root,
+        tasks: ['dev'],
+        projects: ['app'],
+        log,
+        handleSignals: false,
+        holdPersistent: true,
+        ...(keep !== undefined ? { keep } : {}),
+      })
+    ).persistent!
+  }
+  let held = await cycle()
+  const child = held.servers.get('app#dev')!.child
+  try {
+    // As the watch loop does: the next cycle keeps it, then the last stops the rest.
+    for (let i = 0; i < 5; i++) {
+      const next = await cycle(held)
+      await held.stop()
+      held = next
+    }
+    expect(held.servers.get('app#dev')!.child).toBe(child)
+    // The first run reads the server's output and the last one holds it;
+    // the one stopped last may still be settling. The ones between are done.
+    const between = (): number => logs.slice(1, -2).filter((w) => w.deref() !== undefined).length
+    for (let i = 0; i < 5 && between() > 0; i++) {
+      await Bun.sleep(10)
+      Bun.gc(true)
+    }
+    expect(between()).toBe(0)
+  } finally {
+    await held.stop()
+  }
+}, 30_000)
