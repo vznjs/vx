@@ -138,15 +138,21 @@ const NX_VAL =
  * outputs from the overrides, vx from the options when it mapped the
  * target, so it cleaned and saved the old path and a hit restored nothing.
  * Matches what Nx's override parser reads as the key (no camel-case
- * expansion, dot notation): `--k`, `--k=v`, `--k.x`, `--no-k`.
+ * expansion, dot notation): `--k`, `--k=v`, `--k.x`, `--no-k`; with
+ * `kebab`, the kebab-case spelling too, which an executor's schema names
+ * as the camelCase option (`convertToCamelCase`).
  */
-function outputsGuard(names: readonly string[]): string {
-  const arms = names.map((k) => {
-    const flag = shellQuote(`--${k}`)
-    const msg =
-      `--${k} moves the outputs ({options.${k}}) vx caches as mapped — ` +
-      `set ${k} in a configuration and run that configuration's task`
-    return `${flag}|${flag}=*|${flag}.*|${shellQuote(`--no-${k}`)}) printf '%s\\n' ${shellQuote(msg)} >&2; return 2;;`
+function outputsGuard(names: readonly string[], kebab = false): string {
+  const arms = names.flatMap((k) => {
+    const dashed = k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)
+    const spellings = kebab && dashed.indexOf('-') > 1 ? [k, dashed] : [k]
+    return spellings.map((s) => {
+      const flag = shellQuote(`--${s}`)
+      const msg =
+        `--${s} moves the outputs ({options.${k}}) vx caches as mapped — ` +
+        `set ${k} in a configuration and run that configuration's task`
+      return `${flag}|${flag}=*|${flag}.*|${shellQuote(`--no-${s}`)}) printf '%s\\n' ${shellQuote(msg)} >&2; return 2;;`
+    })
   })
   return `for nx_a; do case $nx_a in ${arms.join(' ')} esac; done; `
 }
@@ -154,11 +160,13 @@ function outputsGuard(names: readonly string[]): string {
 /**
  * A whole line (an `nx:run-script` script, a translated executor's
  * command) behind {@link outputsGuard}, the forwarded arguments still
- * appended to it as text.
+ * appended to it as text. `kebab` for a translated executor, which stands
+ * in for one whose schema Nx names the forwarded keys by; run-script hands
+ * its script the arguments as typed.
  */
-export function guardOutputs(command: string, names: readonly string[]): string {
+export function guardOutputs(command: string, names: readonly string[], kebab = false): string {
   if (names.length === 0) return command
-  return `${NX_RUN}; nx_guarded() { ${outputsGuard(names)}nx_run ${shellQuote(command)} "$@"; }; nx_guarded`
+  return `${NX_RUN}; nx_guarded() { ${outputsGuard(names, kebab)}nx_run ${shellQuote(command)} "$@"; }; nx_guarded`
 }
 
 /** A no-op: Nx completes a target with `commands: []` at once (nx#31345). */

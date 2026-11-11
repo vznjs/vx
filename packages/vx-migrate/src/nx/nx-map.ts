@@ -1484,7 +1484,7 @@ function mapCommand(
       // `.env` files load as they do for a run-commands line: Nx loads
       // them for every executor.
       return {
-        ...shell(guardOutputs(mapped.command, outputsOptions), undefined, {
+        ...shell(guardOutputs(mapped.command, outputsOptions, true), undefined, {
           env: mapped.env,
           readyWhen: undefined,
         }),

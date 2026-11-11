@@ -79,6 +79,34 @@ exports.workspaceRoot = path.resolve(__dirname, '..', '..', '..', '..')
 }
 `,
   )
+  // Nx's own, as `combineOptionsForExecutor` names an override: kebab-case
+  // to the schema's camelCase property, an alias to its property.
+  await writeFile(
+    path.join(src, 'utils', 'params.js'),
+    `function camelCase(s) {
+  return s.indexOf('-') > 1 ? s.toLowerCase().replace(/-(.)/g, (_, c) => c.toUpperCase()) : s
+}
+function find(k, schema) {
+  if (k in schema.properties) return k
+  const f = Object.entries(schema.properties).find(([, d]) => d.alias === k || (Array.isArray(d.aliases) && d.aliases.includes(k)))
+  return f ? f[0] : null
+}
+exports.convertToCamelCase = (o, schema) => Object.fromEntries(Object.entries(o).map(([k, v]) => [schema.properties[camelCase(k)] ? camelCase(k) : k, v]))
+exports.convertAliases = (o, schema) => Object.fromEntries(Object.entries(o).map(([k, v]) => [find(k, schema) ?? k, v]))
+`,
+  )
+  // The executor's schema is `<root>/executor-schema.json` when there is one.
+  await writeFile(
+    path.join(src, 'command-line', 'run', 'executor-utils.js'),
+    `const fs = require('node:fs'); const path = require('node:path')
+const { workspaceRoot } = require('../../utils/workspace-root')
+exports.parseExecutor = (s) => s.split(':')
+exports.getExecutorInformation = () => {
+  const f = path.join(workspaceRoot, 'executor-schema.json')
+  return { schema: fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : { properties: {} } }
+}
+`,
+  )
   await writeFile(
     path.join(src, 'config', 'nx-json.js'),
     `const fs = require('node:fs'); const path = require('node:path')
