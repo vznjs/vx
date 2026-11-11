@@ -9,9 +9,15 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { initSandbox, resetSandbox, resolveSandboxConfig, runSandboxed } from '../src/exec/index.js'
+import { run as runVx } from './helpers/orchestrator.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
+import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 const available = await sandboxAvailable('sandbox grant removal test')
+const HINT =
+  `vx: the write grant 'dist/' is mounted in place on Linux: the task may empty it ` +
+  `but not remove or rename it ("Read-only file system"). Remove its contents ` +
+  'instead, e.g. `rm -rf dist/*`.'
 
 describe.skipIf(!available || process.platform !== 'linux')('removing a write grant', () => {
   let dir = ''
@@ -48,14 +54,7 @@ describe.skipIf(!available || process.platform !== 'linux')('removing a write gr
     'a failed removal of the grant names it: %s',
     async (command) => {
       const r = await run(command)
-      expect([r.exitCode, hints(r)]).toEqual([
-        1,
-        [
-          `vx: the write grant 'dist/' is mounted in place on Linux: the task may empty it ` +
-            `but not remove or rename it ("Read-only file system"). Remove its contents ` +
-            'instead, e.g. `rm -rf dist/*`.',
-        ],
-      ])
+      expect([r.exitCode, hints(r)]).toEqual([1, [HINT]])
     },
     30_000,
   )
@@ -73,3 +72,30 @@ describe.skipIf(!available || process.platform !== 'linux')('removing a write gr
     expect([r.exitCode, hints(r), existsSync(path.join(dir, 'dist'))]).toEqual([1, [], true])
   }, 30_000)
 })
+
+// The orchestrator streams a task's output and captures none, so the hint
+// read from captured output never reached a `vx run` (2026-11-11).
+describe.skipIf(!available || process.platform !== 'linux')(
+  'removing a write grant in a run',
+  () => {
+    let root = ''
+    beforeEach(async () => {
+      root = realpathSync(await makeWorkspace({ prefix: 'vx-grant-rm-run-' }))
+    })
+    afterEach(() => rm(root, { recursive: true, force: true }))
+
+    it('names the grant', async () => {
+      await addProject(root, 'app', {
+        config: `export default { tasks: { t: { exec: {
+        command: 'rm -rf dist && echo new > dist/new.js',
+        sandbox: { allow: { read: ['.'], write: ['dist/'] } },
+      } } } }\n`,
+      })
+      await mkdir(path.join(root, 'packages', 'app', 'dist'))
+      await writeFile(path.join(root, 'packages', 'app', 'dist', 'old.js'), 'old')
+      const quiet = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
+      const r = await runVx({ cwd: root, tasks: ['t'], log: quiet })
+      expect(r.outcomes[0]?.sandboxViolationLines).toEqual([HINT])
+    }, 30_000)
+  },
+)

@@ -911,11 +911,12 @@ renamed: under `write: ['dist/']`, `rm -rf dist && tsc` empties `dist`,
 then fails with `Read-only file system` (EBUSY under a writable parent).
 macOS allows it. No bind makes it work and keeps "a task writes only its
 grants": binding the parent lets the task write beside the grant. So a
-failed task whose stdout or stderr names a grant root (absolute, or
+failed task whose stderr names a grant root (absolute, or
 relative to the cwd, `./` allowed) on a line holding `Read-only file
 system`, `EROFS`, `EBUSY` or `resource busy` gets a hint naming the grant
 and the removal that works, `rm -rf dist/*` (`grantRemovalHint`; X-90,
-`sandbox-grant-remove.unsafe.test.ts`).
+`sandbox-grant-remove.unsafe.test.ts`). The lines are kept as stderr
+streams, as `GIT_NO_REPO`'s are: a run captures no output.
 
 ## git and a hidden `.git`
 

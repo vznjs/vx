@@ -2706,6 +2706,8 @@ async function runSandboxedOnce(
   let mountGone = false
   // Read whatever the capture setting, as the two above: `hiddenGitHint`.
   let gitNoRepo = false
+  // The same for `grantRemovalHint`: a run captures no output.
+  const readOnlyLines: string[] = []
   const [out, err] = pipes.streams(proc)
   const ends = lineEnds(args.onStdout, args.onStderr)
   const streams = Promise.all([
@@ -2720,6 +2722,8 @@ async function runSandboxedOnce(
         if (lines.some((l) => STRACE_OWN_ERROR.test(l))) straceSpoke = true
         if (lines.some((l) => BWRAP_MOUNT_GONE.test(l))) mountGone = true
         if (lines.some((l) => GIT_NO_REPO.test(l))) gitNoRepo = true
+        for (const l of lines)
+          if (readOnlyLines.length < 64 && READ_ONLY_FS.test(l)) readOnlyLines.push(l)
         ends.onStderr?.(chunk)
       },
       ac.signal,
@@ -2866,7 +2870,7 @@ async function runSandboxedOnce(
     }
     if (process.platform === 'linux') {
       const removed = grantRemovalHint(
-        `${stdout}\n${stderr}`,
+        readOnlyLines,
         bindableWrites(args.config.allowWrite),
         args.cwd,
         args.reportWithin,
@@ -3020,18 +3024,15 @@ export function outsideWritesHint(
  * be removed or renamed, so `rm -rf dist` empties it and then fails with
  * "Read-only file system" (EBUSY under a writable parent). Binding the
  * parent instead would let the task write beside the grant, so the
- * removal stays refused; a failure whose output names a grant on such an
+ * removal stays refused; a failure whose stderr names a grant on such an
  * error line gets the spelling that works.
  */
 function grantRemovalHint(
-  output: string,
+  lines: readonly string[],
   roots: readonly string[],
   cwd: string,
   within: string,
 ): SandboxViolation | undefined {
-  const lines = output
-    .split('\n')
-    .filter((l) => /Read-only file system|EROFS|EBUSY|resource busy/i.test(l))
   if (lines.length === 0) return undefined
   const named = roots.filter((root) => {
     const rel = path.relative(cwd, root)
@@ -3053,6 +3054,9 @@ function grantRemovalHint(
       `instead, e.g. \`rm -rf ${contents}/*\`.`,
   }
 }
+
+/** A stderr line that may say a removal of a write grant was refused (`grantRemovalHint`). */
+const READ_ONLY_FS = /Read-only file system|EROFS|EBUSY|resource busy/i
 
 /** git's word, on stderr, for a discovery that found no `.git`. */
 const GIT_NO_REPO = /not a git repository/i
