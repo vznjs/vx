@@ -628,7 +628,9 @@ built in `.vx/tmp/` (`copyStaging`) and renamed into place once, a
 missing file in a directory that stands is copied straight to its place.
 Every copy settles before a failure's cleanup. Into existing outputs, a workspace output, a link, or
 where that rename would cross a filesystem or a setgid directory it feeds `extractArtifactStream` the
-tree packed back (`packArtifactStream(planOfTree(…))`). `pinArtifact`
+tree packed back (`packArtifactStream(planOfTree(…))`), so the extract at
+ingest leaves where a link points to that restore, the one that knows the
+workspace: bounded by the tree, a link into a sibling project was refused. `pinArtifact`
 packs a tree into the upload's tar.zst.
 
 `exec` is `{ cpuMs?, peakRssBytes? }` — what the producing execution

@@ -963,13 +963,6 @@ function sameBytes(file: string, body: Uint8Array): boolean {
   }
 }
 
-/** The deepest directory holding both `a` and `b`. */
-function commonDir(a: string, b: string): string {
-  let dir = a
-  while (!inside(b, dir) && path.dirname(dir) !== dir) dir = path.dirname(dir)
-  return dir
-}
-
 /** `p` is `root` or under it, lexically. */
 const inside = (p: string, root: string): boolean => {
   const r = path.resolve(root)
@@ -1160,12 +1153,15 @@ export async function extractArtifactStream(
       provided.add(`${name}/`)
     }
     // A link may point only inside the workspace (the project, without one).
-    // Unpacked into a cache tree (no stage root), the project outputs and
-    // `workspace-outputs/` share the tree: bounded by the latter alone, a
-    // `dist/link -> big.bin` pointed "out" and the ingest failed. The tree
-    // bounds by the dir holding both; its restore checks against the workspace.
-    const bound =
-      stageRoot ?? (workspaceDest === undefined ? destDir : commonDir(destDir, workspaceDest))
+    // Unpacked into a cache tree (no stage root, `workspace-outputs/` inside
+    // the tree), the workspace is unknown: bounded by the tree, a project's
+    // `dist/l -> ../../other/f.txt` read as out and a good remote hit was
+    // refused. The tree stores a link as text and nothing is written through
+    // it; its restore (`restoreTree`, always the extractor for a link) bounds
+    // it by the workspace, as a local save's tree and an inline artifact are.
+    const tree = stageRoot === undefined && workspaceDest !== undefined
+    const bound = stageRoot ?? destDir
+    const where = stageRoot === undefined ? 'project' : 'workspace'
     const linked = new Map<string, string>()
     for (const [name] of links) {
       const dest = x.destFor(name)
@@ -1188,9 +1184,9 @@ export async function extractArtifactStream(
       if (dest === null || dest.rel.length === 0) continue
       const target = path.join(dest.base, dest.rel)
       await x.assertContained(dest.base, target, name)
-      let refused = linkRefused(path.dirname(target), to, bound)
+      let refused = tree ? undefined : linkRefused(path.dirname(target), to, bound)
       if (refused === 'out') {
-        throw new ArchiveSecurityError(`archive link ${name} points out of the workspace: ${to}`)
+        throw new ArchiveSecurityError(`archive link ${name} points out of the ${where}: ${to}`)
       }
       const via = throughLink(path.dirname(target), to, linked)
       if (via !== undefined) {
@@ -1198,12 +1194,12 @@ export async function extractArtifactStream(
           `archive link ${name} points through ${linked.get(via)}, another link it restores: ${to}`,
         )
       }
-      if (refused === undefined) {
+      if (refused === undefined && !tree) {
         realBound ??= realOf(bound)
         refused = await linkLandsRefused(path.dirname(target), to, await realBound, realDirs)
       }
       if (refused === 'out') {
-        throw new ArchiveSecurityError(`archive link ${name} points out of the workspace: ${to}`)
+        throw new ArchiveSecurityError(`archive link ${name} points out of the ${where}: ${to}`)
       }
       if (refused === '.git') {
         throw new ArchiveSecurityError(`archive link ${name} points into .git: ${to}`)

@@ -4,8 +4,8 @@
 // `cache-hit-remote`; one holding `out.txt` as a file AND a directory failed
 // the run, and every run after it from the local copy, blaming the tree.
 // Both are refused at ingest now, so the read is a miss and the task runs.
-import { existsSync } from 'node:fs'
-import { readFile, rm, writeFile } from 'node:fs/promises'
+import { existsSync, lstatSync } from 'node:fs'
+import { mkdir, readFile, readlink, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { describe, expect, it, spyOn } from 'bun:test'
 import { addProject, makeWorkspace, silentLogger, TIMEOUT } from './helpers/orchestrator-fixture.js'
@@ -255,6 +255,107 @@ describe('a remote artifact names only what its task declares', () => {
           statuses: r.outcomes.map((o) => o.status),
           out: await readFile(path.join(fx.root, 'packages', 'app', 'out.txt'), 'utf8'),
         }).toEqual({ statuses: ['success'], out: 'built\n' })
+      } finally {
+        await rm(fx.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
+// A remote body past the inline size is unpacked into the cache's tree, and
+// that unpack bounded each link by the tree itself: `dist/l -> ../../other/f.txt`,
+// inside the workspace, was refused as "out of the workspace", the task ran
+// again and the good remote copy was distrusted. The restore into the
+// workspace is what bounds a link; a link past the workspace is still refused.
+describe('a large remote artifact holding a link', () => {
+  const LINK_CFG = `export default { tasks: { build: {
+  exec: { command: 'echo built > out.txt' },
+  inputs: { files: ['src/**'] }, outputs: { files: ['out.txt', 'dist/l'] }, cache: true } } }`
+
+  /** A remote serving a 200 KB `out.txt` and `dist/l -> to`, packed from a link `depth` deep. */
+  const servingLink = async (
+    root: string,
+    to: string,
+    depth: number,
+  ): Promise<RemoteCacheLayer> => {
+    const base = path.join(root, '.link-src')
+    const dir = path.join(base, ...Array.from({ length: depth }, (_, i) => `d${i}`))
+    await mkdir(dir, { recursive: true })
+    const big = path.join(base, 'big.bin')
+    await writeFile(big, crypto.getRandomValues(new Uint8Array(200_000)))
+    await symlink(to, path.join(dir, 'l'))
+    const outputs = new Map([
+      ['outputs/out.txt', big],
+      ['outputs/dist/l', path.join(dir, 'l')],
+    ])
+    return {
+      endpoint: 'mem://test',
+      async has() {
+        return {}
+      },
+      async get(hash: string) {
+        const tar = await packArtifactBytes(
+          await planArtifact({ key: hash, stdout: 'hi\n', outputs, root: base }),
+        )
+        return { body: new Blob([Bun.zstdCompressSync(tar)]), durationMs: 1 }
+      },
+      async put() {},
+    }
+  }
+
+  it.skipIf(process.platform === 'win32')(
+    'one linking into a sibling project is a remote hit, the link restored as written',
+    async () => {
+      const fx = await makeWorkspace('vx-names-')
+      try {
+        await addProject(fx.root, 'app', { files: { 'src/in.txt': 'v1' }, config: LINK_CFG })
+        const remote = await servingLink(fx.root, '../../other/f.txt', 2)
+        const r = await run({
+          cwd: fx.root,
+          tasks: ['build'],
+          log: silentLogger(fx),
+          remoteCache: remote,
+        })
+        const app = path.join(fx.root, 'packages', 'app')
+        expect({
+          statuses: r.outcomes.map((o) => o.status),
+          link: await readlink(path.join(app, 'dist', 'l')).catch(() => null),
+          size: (await stat(path.join(app, 'out.txt'))).size,
+        }).toEqual({ statuses: ['cache-hit-remote'], link: '../../other/f.txt', size: 200_000 })
+      } finally {
+        await rm(fx.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it.skipIf(process.platform === 'win32')(
+    'one linking out of the workspace is a miss, and restores no link',
+    async () => {
+      const fx = await makeWorkspace('vx-names-')
+      try {
+        await addProject(fx.root, 'app', { files: { 'src/in.txt': 'v1' }, config: LINK_CFG })
+        const remote = await servingLink(fx.root, '../../../../outside', 4)
+        const log = silentLogger(fx)
+        const first = await run({ cwd: fx.root, tasks: ['build'], log, remoteCache: remote })
+        const second = await run({ cwd: fx.root, tasks: ['build'], log, remoteCache: remote })
+        const app = path.join(fx.root, 'packages', 'app')
+        expect({
+          statuses: [first, second].map((r) => r.outcomes.map((o) => o.status)),
+          link: lstatSync(path.join(app, 'dist', 'l'), { throwIfNoEntry: false }) !== undefined,
+          out: await readFile(path.join(app, 'out.txt'), 'utf8'),
+          said: fx.log.some((l) =>
+            l.includes(
+              'archive link outputs/dist/l points out of the workspace: ../../../../outside',
+            ),
+          ),
+        }).toEqual({
+          statuses: [['success'], ['cache-hit']],
+          link: false,
+          out: 'built\n',
+          said: true,
+        })
       } finally {
         await rm(fx.root, { recursive: true, force: true })
       }
