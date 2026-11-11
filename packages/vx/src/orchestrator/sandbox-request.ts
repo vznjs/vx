@@ -27,7 +27,7 @@ import {
   type SandboxViolation,
 } from '../exec/index.js'
 import type { TaskNode } from '../graph/index.js'
-import { grantPrefix, relPosix, restorableOutput, UserError } from '../util/index.js'
+import { grantPrefix, relPosix, restorableOutput, scannable, UserError } from '../util/index.js'
 
 /**
  * Arm the sandbox runtime for a run, lazily: only when at least one task
@@ -399,8 +399,8 @@ export async function dependencyReads(
         if (glob.startsWith('!')) continue
         const head = grantPrefix(glob)
         if (head === '' || head === '.') {
-          for await (const f of new Bun.Glob(glob).scan({ cwd: base, onlyFiles: true, dot: true }))
-            if (isOutput(f)) add(path.join(base, f))
+          const hits = new Bun.Glob(scannable(glob)).scan({ cwd: base, onlyFiles: true, dot: true })
+          for await (const f of hits) if (isOutput(f)) add(path.join(base, f))
           continue
         }
         const abs = path.join(base, head)

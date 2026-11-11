@@ -46,6 +46,7 @@ import {
   sandboxReads,
   maskCaptured,
   BoundedCapture,
+  keyedOutsideGrants,
 } from '../exec/index.js'
 import {
   encodeOutputLog,
@@ -1249,15 +1250,39 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // the throw is its rejection, the value its resolution, so both reach
     // the naming catch and the cleanup in finally below.
     let running: Promise<unknown>
+    // A file the key holds outside the project that no grant reaches is
+    // not there inside the sandbox, so the run cannot see what its key says
+    // (a build that falls back on a hidden root `tsconfig.base.json` emits
+    // other code, and oxlint without its `.oxlintrc.json` passes). Known
+    // from the request, so the command is never spawned: a stat-first tool
+    // leaves no record, and a read past the wall is no violation. One in
+    // the project is a violation when opened, and a key may hold one the
+    // task never reads.
+    const unseen =
+      req.sandbox !== undefined &&
+      described !== undefined &&
+      (cfg.inputs?.workspaceFiles?.length ?? 0) > 0
+        ? keyedOutsideGrants(
+            req.sandbox,
+            args.workspaceRoot,
+            outsideProject(described.inputs.files, relPosix(args.workspaceRoot, node.projectDir)),
+          )
+        : []
     const closeWindow =
-      args.commandWindows?.open(
-        node.id,
-        node.projectDir,
-        commandWriteReach(node, args.workspaceRoot),
-      ) ?? (() => {})
-    args.executing?.(node.id)
+      unseen.length > 0
+        ? () => {}
+        : (args.commandWindows?.open(
+            node.id,
+            node.projectDir,
+            commandWriteReach(node, args.workspaceRoot),
+          ) ?? (() => {}))
+    if (unseen.length === 0) args.executing?.(node.id)
     try {
-      running = Promise.resolve(args.executor.execute(req))
+      running = Promise.resolve(
+        unseen.length > 0
+          ? unseenResult(unseen, node.projectDir, args.workspaceRoot)
+          : args.executor.execute(req),
+      )
     } catch (thrown) {
       running = Promise.reject(thrown)
     }
@@ -2082,6 +2107,13 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         `describes — the result stands, but is not saved`,
     )
   }
+  // The footer counted it `not saved` and nothing said why (`vx why` did).
+  if (keylessBy !== undefined && willWrite && effectiveExitCode === 0) {
+    warnOf(log)(
+      `[vx] ${node.id}: not saved — its key folds ${keylessBy}, which declares no \`inputs\`, ` +
+        `so no later run derives it; declare inputs on ${keylessBy}`,
+    )
+  }
 
   const finalViolations = violations
   const fixOf = (fix: TaskOutcome['sandboxFix']) => (fix === undefined ? {} : { sandboxFix: fix })
@@ -2150,6 +2182,51 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
           ),
         }
       : {}),
+  }
+}
+
+/** The workspace-relative paths of `files` outside project `project` (workspace-relative). */
+function outsideProject(files: readonly { readonly path: string }[], project: string): string[] {
+  if (project === '') return []
+  const under = `${project}/`
+  return files.flatMap((f) => (f.path === project || f.path.startsWith(under) ? [] : [f.path]))
+}
+
+/**
+ * The result of a task not run because the sandbox hides files its key
+ * holds (`keyedOutsideGrants`): one read violation per file, which
+ * `sandboxFix` turns into its grant, and the line that says why.
+ */
+function unseenResult(
+  unseen: readonly string[],
+  projectDir: string,
+  workspaceRoot: string,
+): ExecuteResult {
+  const timestamp = new Date()
+  const denied: SandboxViolation[] = unseen.map((p) => ({
+    line: `vx: hidden by the sandbox, held by the key: ${p}`,
+    timestamp,
+    target: p,
+    path: p,
+    ignorable: ['read'],
+  }))
+  const shown = unseen.slice(0, 5).join(', ')
+  const more = unseen.length > 5 ? ` and ${unseen.length - 5} more` : ''
+  const grants = (sandboxFix(denied, projectDir, workspaceRoot)?.read ?? []).map((g) =>
+    g.includes("'") ? JSON.stringify(g) : `'${g.replaceAll('\\', '\\\\')}'`,
+  )
+  const said = `vx: the sandbox hides a file this task's key holds, so it was not run: ${shown}${more}.`
+  // A credential store is walled on purpose and never suggested (sandbox-fix.ts).
+  const line =
+    grants.length === 0
+      ? `${said} It is walled on purpose, so vx suggests no grant for it.`
+      : `${said} Grant it, e.g. \`allow: { read: [${grants.join(', ')}] }\`.`
+  return {
+    exitCode: 0,
+    durationMs: 0,
+    stdout: '',
+    stderr: '',
+    violations: [...denied, { timestamp, hint: true, line }],
   }
 }
 

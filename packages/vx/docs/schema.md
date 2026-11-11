@@ -558,12 +558,29 @@ Semantics:
 - **Downstream unblocks on ready, not on exit.** Useful for e2e tests
   that need a dev server up first:
   ```ts
-  'dev:run':  { exec: { command: 'vite', persistent: { readyWhen: 'Local:' } } },
-  'e2e':      { dependsOn: ['dev:run'], exec: { command: 'playwright test' } },
+  'dev:run': {
+    exec: {
+      command: 'vite --port 5173 --strictPort',
+      persistent: { readyWhen: 'Local:' },
+      // Bounds the server's writes, so `e2e` is probed before it boots;
+      // the port list lets `e2e` reach it from outside the sandbox.
+      sandbox: { allow: { read: ['.'], write: ['node_modules/.vite/'], localBinding: [5173] } },
+    },
+    // `e2e`'s key folds this one: with no `inputs` it is new each run,
+    // and `e2e` is never saved.
+    inputs: { files: ['src/**', 'index.html', 'vite.config.ts'] },
+  },
+  e2e: {
+    dependsOn: ['dev:run'],
+    exec: { command: 'playwright test' },
+    inputs: { files: ['e2e/**'] },
+    outputs: { files: ['test-results/**'] },
+    cache: true,
+  },
   ```
 - **Not started when nothing needs it.** A persistent task you did not
   request, whose every dependant is a confirmed cache hit, local or
-  remote, is never spawned: a fully cached `vx run e2e` does not boot the server
+  remote, is never spawned: with the example above, a fully cached `vx run e2e` does not boot the server
   `e2e` depends on, and the server is in no outcome or count. A group
   between them that nobody requested (`env: { dependsOn: ['dev'] }`) is
   passed through for local hits, and so is a server nobody requested:
@@ -1007,7 +1024,9 @@ braces together expand to more than 1024 (`src/{1..100}{1..100}`, ten
 `{a,b}` in a row is 1024 and loads): each is a glob vx compiles, and a
 million took a run gigabytes. A class range that runs backwards
 (`[z-a]`) matches no character and is refused, naming `[a-z]`. A leading `!` is still the negation, so `!(group)/**`
-takes a route group back. This holds for every task glob — `inputs.files`,
+takes a route group back; any other `!` is the character, one that
+starts a name (`out/*/!a`) or a brace alternative (`{x,!a}`) too. A
+negated class never matches a `/`: `gen[!.]*` is not `gen/notes.txt`. This holds for every task glob — `inputs.files`,
 `inputs.workspaceFiles`, `outputs.files`, `outputs.workspaceFiles` — and
 for everything read from them (`--affected`, `vx watch`, the
 overlapping-output refusal). Package-manager member globs (`workspaces`,
@@ -1129,7 +1148,9 @@ matched nothing under that arm and said so nowhere. A Windows spelling
 is refused the same way, with the forward-slash glob to write: a
 backslash separator (`src\**`, `src\*.ts`) or a drive (`C:\src\**`,
 `C:/src/**`). A backslash before a bracket, a brace, a `!` or a
-backslash stays an escape. A glob with surrounding whitespace
+backslash stays an escape. One that starts a name before `*` or `?`
+(`src/\*x`) is refused with the class to write for the character,
+`src/[*]x`. A glob with surrounding whitespace
 (`' src/**'`) or a control character (`'src/\n'`) is refused: the
 engine reads either as part of a name, so it matched nothing and the
 task keyed nothing for it.
@@ -2000,8 +2021,15 @@ tool that cannot fill its cache (`~/.bun/install/cache`) rarely says
 where it tried. So is a read the wall hid of a path that exists on the
 host, with the grant spelled from the project (`'../../tsconfig.base.json'`)
 and, for a cached task, the `inputs.workspaceFiles` entry that keys it
-(`'tsconfig.base.json'`; a grant alone leaves an edit there a stale hit):
-the tool said only "not found". To reach a path outside the project but
+(`'tsconfig.base.json'`, a file `!cfg` escaped `'\\!cfg'`; a grant alone leaves an edit there a stale hit):
+the tool said only "not found". A cached task whose key holds a file
+outside the project that no grant reaches (`inputs.workspaceFiles:
+['.oxlintrc.json']` beside `read: ['.']`) fails before it runs, on Linux and macOS alike, with the
+read to grant: oxlint without its `.oxlintrc.json` passes on its
+defaults, a build that falls back on a hidden root `tsconfig.base.json`
+emits other code, and either was saved under a key that says it saw the
+file. A hidden file the key does not hold stays silent on a pass (tools
+probe many paths). To reach a path outside the project but
 inside the workspace — a workspace-level fixture — declare it; a path
 outside the workspace is not walled (above).
 

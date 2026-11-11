@@ -519,6 +519,24 @@ describe('a root project stops at the walls: nested projects, .git, .vx', () => 
     },
   )
 
+  // `Bun.Glob`'s scan read `\]` in a segment with no wildcard as the
+  // backslash and the bracket, so the grant `src/\]b` bound nothing.
+  it.skipIf(process.platform !== 'linux')(
+    'a grant holding an escaped closing bracket binds the path it names',
+    async () => {
+      await walled()
+      await writeFile(path.join(root, 'src/]b'), '')
+      const r = await sandboxRequestFor(
+        rootNode(),
+        { allow: { read: ['src/\\]b'] } },
+        root,
+        undefined,
+        nested(),
+      )
+      expect(r.sandbox.config.allowRead).toEqual([path.join(root, 'src/]b')])
+    },
+  )
+
   // The wall sweep (B-16): the glob-hit filter could lose its separator
   // with the suite green. A hit that only shares a wall's name prefix is
   // not inside it, and stays.
@@ -1385,6 +1403,13 @@ describe('dependencyReads binds only what the outputs take', () => {
 
   it('a glob with no head binds the files it matches and reports nothing', async () => {
     expect(await reads(['*.tsbuildinfo'])).toEqual({ reads: ['root.tsbuildinfo'], reported: [] })
+  })
+
+  // `Bun.Glob`'s scan read `\]` with no wildcard beside it as the backslash
+  // and the bracket, so the output `\]x` was never bound for its dependent.
+  it('a glob with no head and an escaped closing bracket binds the file it names', async () => {
+    await writeFile(path.join(dir, ']x'), '')
+    expect(await reads(['\\]x'])).toEqual({ reads: [']x'], reported: [] })
   })
 
   it('a link is never bound alone: its target may be no output', async () => {

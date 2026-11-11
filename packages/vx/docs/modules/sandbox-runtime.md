@@ -328,6 +328,14 @@ export function localBindingOn(c: { localBinding?: boolean | readonly number[] }
 // that would hold a wall and punches the read grants.
 export function bindableWrites(paths: readonly string[]): string[]
 export function punchWalls(readPath: string, walls: readonly string[]): string[]
+// The files a key holds (workspace-relative) no read, write or baseline
+// grant of the request reaches, canonical: hidden inside the sandbox. A
+// wildcard grant reaches its literal head; `ignore.read` leaves one out.
+export function keyedOutsideGrants(
+  sandbox: { baseAllowRead; config },
+  workspaceRoot: string,
+  rels: readonly string[],
+): string[]
 export function punchWritePaths(
   readPath: string,
   writePaths: readonly string[],
@@ -596,7 +604,16 @@ grant: an agent applies a suggestion as given, and `cat ~/.npmrc` was
 told to grant `../../home/.npmrc` until 2026-11-08. For a cached task
 (`keyRoot`) a grant inside the workspace comes with the
 `inputs.workspaceFiles` entry that keys it: applied alone, the grant
-read the file unkeyed and an edit there was a stale hit.
+read the file unkeyed and an edit there was a stale hit. The entry is
+spelled by `taskGlobOf`, as the fix's is: `'\\!cfg'` for a file `!cfg`,
+which raw is a negation that keyed nothing.
+
+A cached task whose key holds a file outside the project that no grant
+reaches is failed before it runs (execute-task.ts, `keyedOutsideGrants`), on both platforms: the
+trace records no stat, and oxlint `statx`es its `.oxlintrc.json` before
+opening it, so with the file hidden it passed on its defaults and was
+saved under a key holding the file. A hidden read of a file the key does
+not hold stays silent on a pass: tools probe many paths.
 
 bwrap enters the task's cwd only if a mount holds it, and otherwise
 `$HOME`, with no word: a project granted no read (`sandbox: {}`, its own

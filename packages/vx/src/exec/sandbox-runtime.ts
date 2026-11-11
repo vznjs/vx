@@ -76,6 +76,9 @@ import {
   grantPrefix,
   isTmpdirRefusal,
   procfsIsOwn,
+  relPosix,
+  scannable,
+  taskGlobOf,
   TMPDIR_HINT,
   UserError,
   xxh3hex,
@@ -3014,8 +3017,12 @@ function grantRemovalHint(
   }
 }
 
-/** A path as a JS string literal a config can take: a quote in it is escaped. */
-const jsString = (p: string): string => (p.includes("'") ? JSON.stringify(p) : `'${p}'`)
+/**
+ * A path as a JS string literal a config can take: a quote or a backslash
+ * in it is escaped, so the escape in a key entry `\!cfg` survives being pasted.
+ */
+const jsString = (p: string): string =>
+  p.includes("'") ? JSON.stringify(p) : `'${p.replaceAll('\\', '\\\\')}'`
 
 /** The host's shared temp directories, canonical: what a fixed temp path in a tool names. */
 function hostTempRoots(): string[] {
@@ -3051,7 +3058,7 @@ function hiddenReadsHint(
     grantable === undefined || root === undefined || !atOrUnder(grantable, root)
       ? ''
       : `, and, if the output depends on it, key it: ` +
-        `\`inputs: { workspaceFiles: [${jsString(path.relative(root, grantable).replace(/[*?{}[\]\\]/g, '\\$&'))}] }\``
+        `\`inputs: { workspaceFiles: [${jsString(taskGlobOf(relPosix(root, grantable)))}] }\``
   return {
     timestamp: new Date(),
     hint: true,
@@ -3480,7 +3487,7 @@ function expandGrants(
  * of the grant (B-6). A missing base matches nothing, as an empty one does.
  */
 function scanOrNothing(pattern: string, base: string): Iterable<string> {
-  const glob = new Bun.Glob(pattern)
+  const glob = new Bun.Glob(scannable(pattern))
   try {
     // Materialised here: the throw comes from the first step, not the call.
     return [...glob.scanSync({ cwd: base, onlyFiles: false, dot: true })]

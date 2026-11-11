@@ -816,7 +816,9 @@ remote-only no-op (an `exec.remote: 'only'` task no remote executor took:
 it ran nothing under the key a real run has), and cleans its declared outputs
 before exec only when `willWrite`. A keyless task runs a command and
 declares no `inputs`: its key is unknown, so a task that folds it
-(through `dependsOn`, directly or through a group) always misses. Remote-only is an `exec.remote: 'only'` task placed on a
+(through `dependsOn`, directly or through a group) always misses, and
+a cached one warns that it is not saved, naming the task with no
+`inputs` its key folds. Remote-only is an `exec.remote: 'only'` task placed on a
 remote executor: it never touches this machine's disk (no probe, no
 restore, no output clean, no local save), and its result lives in the
 remote executor's own store.

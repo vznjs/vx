@@ -219,6 +219,22 @@ export function isLiteralPattern(glob: string): boolean {
 export const GLOB_WILDCARDS = /[*?{}[\]\\]/
 
 /**
+ * A path as a task glob names it, matching that path alone, in a spelling
+ * the config check accepts (a hint is applied as given). `*` and `?` take
+ * a class: the check reads `\*` as a Windows separator. A leading `!` is
+ * escaped, or the entry is a negation that keys nothing, and a space at
+ * either end takes a class, which the surrounding-whitespace check spares.
+ */
+export function taskGlobOf(rel: string): string {
+  return rel
+    .replace(new RegExp(GLOB_WILDCARDS.source, 'g'), (c) =>
+      c === '*' || c === '?' ? `[${c}]` : `\\${c}`,
+    )
+    .replace(/^!/, '\\!')
+    .replace(/^\s+|\s+$/g, (ws) => ws.replace(/\s/g, '[$&]'))
+}
+
+/**
  * `Bun.Glob`'s own alphabet, for the globs vx does not own: package-manager
  * workspace members and `--filter` path globs follow npm/pnpm semantics,
  * and a sandbox grant's prefix must stop where the scan that expands the
@@ -263,7 +279,7 @@ function memoFor<T>(memos: WeakMap<object, Map<string, T>>): Map<string, T> {
 }
 
 function compileTaskGlob(pattern: string): Bun.Glob {
-  const glob = new Bun.Glob(pattern)
+  const glob = new Bun.Glob(scannable(pattern))
   const alternatives = braceAlternatives(pattern)
   if (alternatives.length > 1) {
     const any = anyTaskGlob(alternatives)
@@ -271,7 +287,11 @@ function compileTaskGlob(pattern: string): Bun.Glob {
     return glob
   }
   const re = regExpSource(pattern)
-  if (re === null) return glob
+  if (re === null) {
+    const own = new Bun.Glob(rewriteGlob(pattern, false))
+    glob.match = (rel: string): boolean => own.match(rel)
+    return glob
+  }
   const compiled = new RegExp(`^${re}$`, 'u')
   const native = Object.getPrototypeOf(glob) as Bun.Glob
   // A path with a slash on the end names no file vx lists; `Bun.Glob` reads
@@ -281,6 +301,62 @@ function compileTaskGlob(pattern: string): Bun.Glob {
   glob.match = (rel: string): boolean =>
     rel.endsWith('/') ? native.match.call(glob, rel) : compiled.test(rel)
   return glob
+}
+
+/**
+ * `pattern` as `Bun.Glob`'s scan must read it to find what the task glob
+ * names. Each `\]`, `\}` and `\\` outside a class is spelled as a class of
+ * that one character: the scan reads those escapes, in a segment holding no
+ * wildcard, as the backslash and the character, so an output `dist/\]b`
+ * saved nothing and a hit cleaned `dist/]b` and restored none of it, green.
+ * Each `!` outside a class is escaped: the scan reads one that starts a
+ * name as a negation, so `out/*\/!a` saved every other file there and
+ * `out/!*` none. A pattern reaching here is never an entry's own `!`.
+ */
+export function scannable(pattern: string): string {
+  if (!/\\[\]}\\]|!/.test(pattern)) return pattern
+  return rewriteGlob(pattern, true)
+}
+
+/**
+ * `pattern` in the spelling both of `Bun.Glob`'s readings share with the
+ * task glob: every `!` outside a class is literal (`Bun.Glob` reads a
+ * leading one as a negation, and a brace alternative can lead: `{x,!a}`
+ * matched every path), and a negated class never takes a `/`, which its
+ * match did (`gen[!.]*` took `gen/notes.txt`, so a clean deleted it). The
+ * scan also gets the class spellings {@link scannable} gives.
+ */
+function rewriteGlob(pattern: string, scan: boolean): string {
+  let out = ''
+  for (let i = 0; i < pattern.length; i++) {
+    const c = pattern[i]!
+    if (c === '\\' && i + 1 < pattern.length) {
+      const next = pattern[++i]!
+      out += scan && ']}\\'.includes(next) ? `[${next === '\\' ? '\\\\' : next}]` : c + next
+    } else if (c === '!') out += '\\!'
+    else if (c === '[') {
+      // As `Bun.Glob` reads a class: `!` or `^` negates, a `]` first is a
+      // member, and a `[` with no close is the character.
+      let body = i + 1
+      const negated = pattern[body] === '!' || pattern[body] === '^'
+      if (negated) body++
+      let end = pattern[body] === ']' ? body + 1 : body
+      while (end < pattern.length && pattern[end] !== ']') end += pattern[end] === '\\' ? 2 : 1
+      if (end >= pattern.length) {
+        out += c
+        continue
+      }
+      let members = pattern.slice(body, end)
+      if (negated && !scan) {
+        // Appended last; a `-` before it would make a range ending at `/`.
+        const dash = /(?:^|[^\\])(?:\\\\)*-$/.test(members)
+        members = `${dash ? `${members.slice(0, -1)}\\-` : members}/`
+      }
+      out += pattern.slice(i, body) + members + ']'
+      i = end
+    } else out += c
+  }
+  return out
 }
 
 /**
@@ -356,12 +432,12 @@ const REGEXP_SYNTAX = /[\\^$.*+?()[\]{}|]/g
  * The RegExp source of a task glob, matching what `Bun.Glob` matches
  * (`tests/util-paths.test.ts` holds the two to the same verdict on every
  * shape): `*` any run within a name, `?` one character, a `**` segment any
- * number of directories. Null for the syntax left to `Bun.Glob`: a brace,
- * a character class, an escape, a leading `!`, an empty, `.` or `..`
+ * number of directories, a `!` the character. Null for the syntax left to
+ * `Bun.Glob`: a brace, a character class, an escape, an empty, `.` or `..`
  * segment, a `**` inside a name, or two `**` segments in a row.
  */
 function regExpSource(pattern: string): string | null {
-  if (/[\\{}[\]]/.test(pattern) || pattern.startsWith('!')) return null
+  if (/[\\{}[\]]/.test(pattern)) return null
   const segments = pattern.split('/')
   let out = ''
   for (let i = 0; i < segments.length; i++) {

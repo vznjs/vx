@@ -363,6 +363,54 @@ const globChar = (c: string): string =>
   c === '[' || c === ']' ? 'a bracket' : c === '\\' ? 'a backslash' : `a ${c}`
 
 /**
+ * The files of `rels` (workspace-relative, as a key holds them) that no
+ * read, write or baseline grant reaches: under the workspace's denial,
+ * so not there inside the sandbox, whatever the task calls on them.
+ * Judged from the request before the run: oxlint `statx`es its
+ * `.oxlintrc.json` before it opens it, the trace records no stat, and the
+ * task passed on the defaults. A grant holding a wildcard reaches as far
+ * as its literal head and a write grant as far as its bind, and a file
+ * `ignore.read` names is left out: a doubt lets a file through, never
+ * refuses it. One Set lookup per ancestor of each file, no syscall per
+ * file.
+ */
+export function keyedOutsideGrants(
+  sandbox: {
+    readonly baseAllowRead: readonly string[]
+    readonly config: ResolvedSandboxConfig
+  },
+  workspaceRoot: string,
+  rels: readonly string[],
+): string[] {
+  const head = (g: string): string => {
+    const at = g.search(MOUNT_WILDCARDS)
+    return at === -1 ? g : g.slice(0, g.lastIndexOf(path.sep, at)) || path.sep
+  }
+  const { config } = sandbox
+  const reach = new Set([...sandbox.baseAllowRead, ...config.allowRead].map(head))
+  for (const g of [...config.allowWrite, ...(config.pendingWrites ?? [])])
+    reach.add(process.platform === 'linux' ? bindOf(head(g)) : head(g))
+  const reached = (abs: string): boolean => {
+    for (let p = abs; ; p = path.dirname(p)) {
+      if (reach.has(p)) return true
+      if (path.dirname(p) === p) return false
+    }
+  }
+  const ignore = config.ignore?.read ?? []
+  const globs = ignore.map((pat) => new Bun.Glob(pat))
+  // A grant from the request's own baselines may be spelled from the root
+  // as given, one from the config canonical: the file is asked both ways.
+  const real = toRealPath(workspaceRoot)
+  const out: string[] = []
+  for (const rel of rels) {
+    const abs = path.join(real, rel)
+    if (reached(abs) || (real !== workspaceRoot && reached(path.join(workspaceRoot, rel)))) continue
+    if (!ignore.includes(abs) && !globs.some((g) => g.match(abs))) out.push(abs)
+  }
+  return out
+}
+
+/**
  * Linux: the read grants SRT can mount as the paths they are. It reads
  * one holding `*` or `?` as a glob and mounts every match, and no spelling
  * makes either literal (its rewrite of each runs inside a class too), so a

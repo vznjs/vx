@@ -59,6 +59,9 @@ export const BRACE_RANGE_LIMIT: number // 1024 — the most names a range may na
 // a task glob's product past BRACE_RANGE_LIMIT is refused at load
 export function braceExpansionCount(pattern: string, cap: number): number
 export const GLOB_WILDCARDS: RegExp // /[*?{}]/ — a task glob's wildcards
+// A path as a task glob names it alone, in a spelling the config check accepts: `[*]`, `[?]`,
+// `\[`, `\{`, `\\`, a leading `\!`, a space at either end `[ ]` (a sandbox fix's key entry)
+export function taskGlobOf(rel: string): string
 export const BUN_GLOB_WILDCARDS: RegExp // /[*?[\]{}]/ — Bun.Glob's own
 // An extglob group, which vx's matchers do not read: refused in member and task globs (A-62).
 export const EXTGLOB: RegExp // /[!@+*?]\(/
@@ -133,8 +136,18 @@ that expands the grant sees a wildcard.
   included, or null for a pattern.
 - `taskGlob(p)` — compile a task glob for `Bun.Glob`, memoised. Its
   `match` is a RegExp of the same verdict when the pattern has no brace,
-  class, escape, leading `!`, empty
-  or dot segment: a JS test, not a native call.
+  class, escape, empty or dot segment: a JS test, not a native call.
+  Every `!` in `p` is the character (a matcher never gets an entry's
+  negation; `{x,!a}` matched every path), and a negated class never
+  takes a `/` (`gen[!.]*` took `gen/notes.txt`, which a clean deleted).
+- `scannable(p)` — `p` as a scan must read it: each `\]`, `\}` and `\\`
+  outside a class spelled as a one-character class (`[]]`, `[}]`,
+  `[\\]`), since `Bun.Glob`'s scan reads those escapes, in a segment
+  with no wildcard, as the backslash and the character (an output
+  `dist/\]b` saved nothing); each `!` outside a class escaped, since the
+  scan reads one that starts a name as a negation (`out/*/!a` saved every
+  other file, `out/!*` none). `taskGlob` scans with it; a sandbox
+  grant's scan uses it too.
 - `anyTaskGlob(ps)` — whether a path matches any of the task globs: one
   RegExp per 1000 alternatives when each has one (Bun's RegExp slows
   sharply past about 2000). An input file is tested once per side

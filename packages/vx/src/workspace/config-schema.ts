@@ -1636,7 +1636,17 @@ function assertPosixGlob(glob: string, where: string, base: string): void {
   DRIVE.lastIndex = 0
   const drive = DRIVE.test(body)
   if (!drive && !hasBackslashSeparator(body)) return
-  const write = neg + body.replace(DRIVE, '$1').replace(/\\(?![[\]{}!\\])/g, '/')
+  // A backslash that starts a name separates nothing: before a `*` or `?`
+  // it meant the character, which a class names (`src/\*x` was told to
+  // write `src//*x`, a wildcard).
+  const classed = body.replace(DRIVE, '$1').replace(/(^|[/{,])\\([*?])/g, '$1[$2]')
+  const write = neg + classed.replace(/\\(?![[\]{}!\\])/g, '/')
+  if (!drive && !hasBackslashSeparator(classed)) {
+    throw new UserError(
+      `${where}: "${glob}" escapes a wildcard with a backslash, which task globs read as a ` +
+        `path separator: write "${write}" for the character itself`,
+    )
+  }
   throw new UserError(
     `${where}: "${glob}" ${drive ? 'starts with a Windows drive' : 'uses a backslash as a path separator'} — ` +
       `task globs are ${base}-relative with forward slashes: write "${write}"`,
@@ -1674,14 +1684,13 @@ function assertInputGlob(glob: string, where: string): void {
 }
 
 /**
- * `!!x` INVERTS the input set instead of double-negating it.
+ * `!!x` is refused: no reading of it is coherent.
  *
- * The resolver strips ONE `!` and hands the remainder to `new Bun.Glob()` —
- * which applies its OWN leading-`!` negation. So `!!vendor/**` becomes the
- * exclude glob `Glob('!vendor/**')`, and that matches every path EXCEPT
- * vendor's. Everything else is therefore excluded and the task folds ONLY
- * `vendor/**`: its own source drops out of the cache key entirely, which is a
- * permanent stale hit.
+ * The resolver once stripped ONE `!` and handed the remainder to
+ * `new Bun.Glob()`, which applied its OWN leading-`!` negation, so
+ * `!!vendor/**` excluded every path EXCEPT vendor's: a permanent stale hit.
+ * It now escapes the remainder (`!!x` excludes the literal path `!x`), and
+ * this guard keeps the spelling from reaching it at all.
  *
  * Neither neighbouring guard catches it — `assertNotNegationOnly` sees the
  * positive glob and is satisfied, and `hasParentSegment` strips one `!` before
