@@ -235,3 +235,40 @@ it('--follow needs --live, and --live combines only with --follow, --format and 
     expect(r.err).toContain('--live combines only with --follow, --format and --cache-dir')
   }
 })
+
+it('a follower whose run is killed before its end exits 1, not 0', async () => {
+  // The stream closed with no `run:done` and the follower exited 0: a
+  // script read a lost run as one followed to its end.
+  await rm(go(), { force: true })
+  const run = Bun.spawn({
+    cmd: [process.execPath, BIN, 'run', 'a#slow', '--force'],
+    cwd: root,
+    env,
+  })
+  try {
+    await liveWhen((s) => s.tasks.some((t) => t.status === 'running'))
+    const follow = Bun.spawn({
+      cmd: [process.execPath, BIN, 'last', '--live', '--follow', '--format', 'json'],
+      cwd: root,
+      env,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const reader = follow.stdout.getReader()
+    let text = ''
+    while (!text.includes('\n')) {
+      const { value, done } = await reader.read()
+      if (done) break
+      text += new TextDecoder().decode(value)
+    }
+    run.kill('SIGKILL')
+    await run.exited
+    expect(await follow.exited).toBe(1)
+    expect(await new Response(follow.stderr).text()).toContain(
+      'the run let go before it ended: it was killed, or this follower fell 1 MiB behind',
+    )
+  } finally {
+    run.kill()
+    writeFileSync(go(), '')
+  }
+}, 60_000)
