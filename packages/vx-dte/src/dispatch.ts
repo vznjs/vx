@@ -420,6 +420,11 @@ export function assign<B extends Bin>(
   spent.clear()
   // Ready asks given room ahead this pass.
   let waiting = 0
+  // Of each kind that a hold kept off and no bin took, the shortest such
+  // ask and its rank: one of no higher rank and no shorter fails alike, as
+  // holds only grow until a bin is given. Each read every bin: a billion
+  // reads in a sim of 3,800 tasks (2026-11-11).
+  const kept = new Map<string, { rank: number; ms: number }>()
   for (const ask of asks) {
     if (
       all !== undefined &&
@@ -432,6 +437,17 @@ export function assign<B extends Bin>(
     )
       break
     if (ask.kind !== undefined && spent.has(ask.kind)) continue
+    const k = ask.kind === undefined ? undefined : kept.get(ask.kind)
+    if (
+      k !== undefined &&
+      ask.only === undefined &&
+      ask.avoid === undefined &&
+      ask.rank !== undefined &&
+      ask.ms !== undefined &&
+      ask.rank <= k.rank &&
+      ask.ms >= k.ms
+    )
+      continue
     const { need } = ask
     const bigger = (b: B): boolean =>
       need.above === undefined || b.cores > need.above.cores || b.memory > need.above.memory
@@ -484,8 +500,8 @@ export function assign<B extends Bin>(
     if (best === undefined) {
       // Ready and no room: room is kept where it first frees, so no task
       // of lower rank takes it meanwhile, a few a pass.
-      if (ask.rank !== undefined && ask.ms !== undefined && waiting++ < pool.length)
-        holdOne(pool, { need, at: 0, rank: ask.rank, ms: ask.ms })
+      const holds = ask.rank !== undefined && ask.ms !== undefined && waiting++ < pool.length
+      if (holds) holdOne(pool, { need, at: 0, rank: ask.rank!, ms: ask.ms! })
       // One it fits only empty: the one using least is held for it.
       let soonest: B | undefined
       for (const b of pool) {
@@ -497,9 +513,21 @@ export function assign<B extends Bin>(
         held.add(soonest)
         rebound()
       } else if (ask.kind !== undefined && !blocked) spent.add(ask.kind)
+      else if (
+        ask.kind !== undefined &&
+        !holds &&
+        ask.only === undefined &&
+        ask.avoid === undefined &&
+        ask.rank !== undefined &&
+        ask.ms !== undefined
+      ) {
+        const had = kept.get(ask.kind)
+        if (had === undefined || ask.ms < had.ms) kept.set(ask.kind, { rank: ask.rank, ms: ask.ms })
+      }
       continue
     }
     spent.clear()
+    kept.clear()
     out.set(ask.id, best)
     best.used.cores += Math.min(coresOn(best, need), best.cores)
     for (const sv of need.servers ?? []) best.serving?.add(sv.id)

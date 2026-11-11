@@ -2429,7 +2429,8 @@ export class Orchestrator {
       const known = seen.get(id)
       if (known !== undefined) return known
       seen.set(id, [])
-      const out = depsOf(id).flatMap((d) => (this.took.has(d) ? [d] : ran(d)))
+      // Each once, as `planTasks`: a diamond of groups held a task once per path.
+      const out = [...new Set(depsOf(id).flatMap((d) => (this.took.has(d) ? [d] : ran(d))))]
       seen.set(id, out)
       return out
     }

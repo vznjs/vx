@@ -511,6 +511,19 @@ it('advises the workers that would have run it best: of the declared sizes, past
   expect(advise(tasks, [{ ...small, max: 4 }], () => 0).more).toBeUndefined()
 })
 
+// 2026-11-11: a 25 GB task was advised a 16 GB worker: alone on an empty
+// worker any task fits.
+it('advises a task only workers with room for its peak memory', () => {
+  const tasks = [
+    { ...task('heavy', 10_000), memory: 25e9 },
+    ...Array.from({ length: 4 }, (_, i) => task(`t${i}`, 10_000)),
+  ]
+  const big: Size = { name: 'big', max: 1, cpu: 4, memory: 32e9 }
+  const advice = advise(tasks, [{ ...small, max: 4 }, big], () => 0)
+  expect(advice.declared?.fleet.some((f) => f.size === 'big')).toBe(true)
+  expect(advice.any?.fleet.every((f) => f.memory >= 25e9)).toBe(true)
+})
+
 it('advises each platform its own workers, joined after its warm-up', () => {
   const tasks = [
     ...Array.from({ length: 4 }, (_, i) => ({ ...task(`l${i}`, 10_000), platform: 'linux' })),
@@ -732,6 +745,37 @@ it('starts a worker the plan foresaw without reading the work, and none past its
   const spent: { forecast?: Forecast } = {}
   at(0, 0, spent)
   expect(at(due, small.max, spent).start).toEqual([])
+})
+
+// 2026-11-11, a ~380-project workspace: `<p>#build` a group over
+// `install` and `^build`, each a group over the deps' `#build`. A group's
+// deps joined as lists held a task once per path to it: 2e9 for one
+// task's 570, and the first plan never returned.
+it('a task behind a diamond of groups waits on each task once', () => {
+  const nodes = new Map<string, TaskNode>()
+  const add = (id: string, deps: string[], runs: boolean) =>
+    nodes.set(id, {
+      id,
+      deps,
+      config: runs ? { exec: { command: 'x' } } : {},
+    } as unknown as TaskNode)
+  add('c', [], true)
+  let below = 'c'
+  // Each level two groups on the one below, joined by a third: 2^20 paths.
+  for (let i = 0; i < 20; i++) {
+    add(`a${i}`, [below], false)
+    add(`b${i}`, [below], false)
+    add(`g${i}`, [`a${i}`, `b${i}`], false)
+    below = `g${i}`
+  }
+  add('top', [below], true)
+  const tasks = planTasks(
+    ['c', 'top'],
+    nodes,
+    () => ({ cores: 1, memory: 1e9 }),
+    () => 1000,
+  )
+  expect(tasks.find((t) => t.id === 'top')!.deps).toEqual(['c'])
 })
 
 // 2026-11-06: a plan reads the run's tasks by number, not by id, where a
