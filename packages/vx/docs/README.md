@@ -101,11 +101,12 @@ each is recorded in [optimizations.md](./optimizations.md).
 ## Adopt it in two minutes
 
 ```bash
-bun add -d @vzn/vx
+bunx @vzn/vx init   # installs vx, writes .vx/workspace.ts and a root vx.config.ts
 # …or globally, as the prebuilt standalone binary:
 bun add -g @vzn/vx
 ```
 
+A local install's `vx` is not on PATH: run it as `bunx vx` (or `npx vx`).
 A global vx run inside a project that installs `@vzn/vx` hands the call
 to that project's own, so the lockfile's version runs.
 
@@ -142,11 +143,12 @@ export default defineProject({
 })
 ```
 
-Optionally declare plugins — a remote cache, a remote executor,
-telemetry — in `.vx/workspace.ts` (`vx init` and `@vzn/vx-migrate` emit it).
-Core applies none by default; running here and caching on this machine
-(entries in `~/.vx/<id>/cache`, shared by every checkout of the repo) are its
-floor, so the file can be absent:
+`.vx/workspace.ts` is required: it marks the workspace root (`vx init`
+and `@vzn/vx-migrate` write it). Plugins — a remote cache, a remote
+executor, telemetry — are declared there. Core applies none by default;
+running here and caching on this machine (entries in `~/.vx/<id>/cache`,
+shared by every checkout of the repo) are its floor, so `plugins: []` runs
+and caches:
 
 ```ts
 // .vx/workspace.ts
@@ -155,9 +157,11 @@ import { defineWorkspace } from '@vzn/vx/config'
 export default defineWorkspace({ plugins: [] })
 ```
 
-Run things:
+Then lock: runs read configs from `.vx/projects.lock.json`, so run
+`vx lock` after each config edit. Run things:
 
 ```bash
+vx lock                         # after editing a vx.config
 vx run build                    # current package (+ its dependency graph)
 vx run build test --all         # every package, shared graph
 vx run build --filter "@app/*"  # pnpm-style filters
