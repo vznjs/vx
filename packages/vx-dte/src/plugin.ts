@@ -20,7 +20,7 @@ import { booked, DEFAULT_STRATEGY, STRATEGIES, type Strategy } from './strategy.
 import type { Orchestrator } from './orchestrator.js'
 import type { Proof } from './seal.js'
 import type { Forecast, Size } from './planner.js'
-import { learnedOf, type Learned, measureDefs, runMeasures } from './measures.js'
+import type { Learned } from './measures.js'
 
 /** One worker type: the machines of it the adapter can start, by name (letters, digits, `_` and `-`). */
 export interface WorkerType {
@@ -349,6 +349,8 @@ export function dte(options: DteOptions = {}) {
   /** The workspace names its cache dir (`cache.dir`): `config` reads it. */
   let namesCache = false
   let peaks: ReadonlyMap<string, TaskResources> = new Map()
+  /** `measures.ts`, loaded with the orchestrator: a run that is not distributed loads none of it. */
+  let measures: typeof import('./measures.js') | undefined
   /** The run's measures (`measures.ts`), id → definition: what history keeps of its workers and servers. */
   let measured: ReadonlyMap<string, string> = new Map()
   /** What earlier runs' measures say (`measures.ts`): each size's warm-up, other cores and join spread. */
@@ -520,7 +522,7 @@ export function dte(options: DteOptions = {}) {
     measures(graph) {
       // A run that is not distributed measures nothing.
       if (orchestrator === undefined) return undefined
-      measured = measureDefs(sized, graph)
+      measured = measures?.measureDefs(sized, graph) ?? new Map()
       return measured
     },
 
@@ -533,7 +535,8 @@ export function dte(options: DteOptions = {}) {
         const o = orchestrator
         if (o === undefined) return
         const fitted = new Map([...bases].filter(([id, c]) => learned.bases.get(id) !== c))
-        const now = runMeasures(measured, {
+        if (measures === undefined) return
+        const now = measures.runMeasures(measured, {
           warmUps: o.warmUpsMs(),
           others: o.othersOf(),
           spreads: o.spreadsMs(),
@@ -603,11 +606,12 @@ export function dte(options: DteOptions = {}) {
           )
         }
         try {
-          learned = learnedOf(
-            localHistory(ctx.localCache, { branch: ctx.branch, defs: measured }).measuresFor([
-              ...measured.keys(),
-            ]),
-          )
+          if (measures !== undefined)
+            learned = measures.learnedOf(
+              localHistory(ctx.localCache, { branch: ctx.branch, defs: measured }).measuresFor([
+                ...measured.keys(),
+              ]),
+            )
           for (const [id, cores] of learned.bases) if (!bases.has(id)) bases.set(id, cores)
         } catch (err) {
           ctx.warn(
@@ -647,13 +651,16 @@ export function dte(options: DteOptions = {}) {
         { decide, keepLast, knownMisses, sized: within, slowdown, tailsMs, UNKNOWN_MS, WARM_UP_MS },
         { snapshot, untrackedWorkspace },
         seal,
+        m,
       ] = await Promise.all([
         import('./orchestrator.js'),
         import('./wire-thread.js'),
         import('./planner.js'),
         import('./tree.js'),
         import('./seal.js'),
+        import('./measures.js'),
       ])
+      measures = m
       // VX_DTE_SECRET wins. On GitHub, workers that join on their own or
       // an adapter's keyless ones prove themselves by OIDC; the workers
       // another adapter starts get a secret made for this run.
