@@ -26,7 +26,7 @@ import { parseRunArgs } from '../src/cli/run.js'
 const ROOT = path.join(import.meta.dir, '..')
 const SRC = path.join(ROOT, 'src')
 /** What vx sets for the processes it starts: outputs, never settings. */
-const TASK_MARKERS = ['VX_RUN_WORKSPACE', 'VX_RUN_TASK', 'VX_HANDED_OFF']
+const TASK_MARKERS = ['VX_RUN_WORKSPACE', 'VX_RUN_TASK', 'VX_HANDED_OFF', 'VX_SIGNAL_RELAY']
 
 function sources(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
@@ -319,6 +319,7 @@ function variablesTable(): string {
     '| --- | --- | --- |',
     ...rows,
     "| `VX_HANDED_OFF` | — | Set by a global vx that hands the call to the project's own (§ Which vx runs): the path of the vx that handed off, so the receiver does not hand off again. |",
+    "| `VX_SIGNAL_RELAY` | — | Set to `1` by a parent that relays stop signals (the Node launcher, a handing-off vx): a group stop's copy is the same stop, not a second one. vx removes it at start. |",
     '| `VX_RUN_WORKSPACE`, `VX_RUN_TASK` | — | Set by vx on every task (below); a `vx run` a task starts reads them back. |',
   ].join('\n')
 }

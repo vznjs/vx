@@ -2,11 +2,14 @@
 // Wrapped in an explicit async main so `bun build --compile` accepts
 // the file. The compile target doesn't allow top-level await.
 import { handOff, localVx, upgradesOnlyItself, vxPath } from './handoff.js'
+import { takeSignalRelay } from './util/signal-relay.js'
 
 let settled = false
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2)
+  // Out of the env before anything spawns: no task, and no vx this one hands off to, inherits it.
+  takeSignalRelay()
   // A rejection nothing awaited (a plugin verb's floating promise) is a
   // failure: the exit after the streams end came before Bun reported it,
   // and the run said nothing and exited 0. Its line is written here, not
