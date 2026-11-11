@@ -200,6 +200,7 @@ src/util/env-flag.ts
 src/util/errors.ts
 src/util/essential-env.ts
 src/util/foreign-cache-dir.ts
+src/util/git-attributes.ts
 src/util/git-ignored.ts
 src/util/hangup.ts
 src/util/hash.ts
