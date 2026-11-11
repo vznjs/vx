@@ -840,8 +840,12 @@ describe('vx run with vxHistory({ url })', () => {
       const cache = new Cache(path.join(root, '.vx', 'cache'))
       const store = cache.storeDir
       cache.close()
-      // History rows live in the store `cache.db` attaches.
-      const db = new Database(path.join(store!, 'store.db'))
+      // History rows live in the shared store when one is attached.
+      const db = new Database(
+        store === undefined
+          ? path.join(root, '.vx', 'cache', 'cache.db')
+          : path.join(store, 'store.db'),
+      )
       try {
         db.run(`DELETE FROM task_durations WHERE project = 'org/meter'`)
       } finally {
