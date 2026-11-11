@@ -556,7 +556,9 @@ not in the cache entry — and the frame says so with one line on stderr:
 running still held its stdout/stderr 250 ms later`. Until 2026-09-24 the
 cut was silent (nx#35302 reproduced on vx; `tests/runner.test.ts` ›
 "output a backgrounded child writes after the drain bound is cut, and
-the frame says so"). A cached task cut this way is not saved: the
+the frame says so"). A task the run stopped (Ctrl-C, a `vx watch`
+restart) gets no such line: vx killed it, and what is left is vx's to
+sweep. A cached task cut this way is not saved: the
 leftover may still write its outputs, and a hit would replay a tree the
 run never leaves (`tsc & vite build` saved vite's output without tsc's;
 `tests/left-running-save.test.ts`). So is one whose leftover sent its

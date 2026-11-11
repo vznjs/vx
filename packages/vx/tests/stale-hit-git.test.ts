@@ -724,6 +724,41 @@ describe('stale cache hits', () => {
     )
   }
 
+  // git reads a relative `core.attributesFile` from the repo's top level;
+  // the gate looked for it under the workspace root, so with the workspace
+  // in a subdirectory it found nothing and trusted the index: a clean
+  // filter hid the edit from `git status` and the run replayed old bytes.
+  it(
+    'a relative core.attributesFile is found from the repo top, not the workspace',
+    async () => {
+      const ws = path.join(root, 'ws')
+      await write(path.join(ws, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(ws)
+      await write(
+        path.join(ws, 'vx.config.mjs'),
+        `export default { tasks: { build: {
+           exec: { command: 'mkdir -p dist && cat src/a.txt > dist/out.txt' },
+           inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+         } } }`,
+      )
+      await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
+      await write(path.join(ws, 'src/a.txt'), 'abc\n')
+      await write(path.join(root, 'myattrs'), '*.txt filter=low\n')
+      git(root, 'init', '-q')
+      git(root, 'config', 'filter.low.clean', 'tr A-Z a-z')
+      git(root, 'config', 'filter.low.smudge', 'cat')
+      git(root, 'config', 'core.attributesFile', 'myattrs')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+      vx(ws, 'run', 'build')
+      expect(await readFile(path.join(ws, 'dist/out.txt'), 'utf8')).toBe('abc\n')
+      await write(path.join(ws, 'src/a.txt'), 'Abc\n')
+      vx(ws, 'run', 'build')
+      expect(await readFile(path.join(ws, 'dist/out.txt'), 'utf8')).toBe('Abc\n')
+    },
+    TIMEOUT,
+  )
+
   it(
     'core.autocrlf alone is enough to distrust index OIDs',
     async () => {

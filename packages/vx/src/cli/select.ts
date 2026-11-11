@@ -9,7 +9,6 @@ import fs from 'node:fs'
 import {
   affectedChanges,
   type AffectedChanges,
-  affectedProjects,
   headBase,
   applyFilters,
   buildPackageGraph,
@@ -22,6 +21,7 @@ import {
   NO_LOCK,
   parseFilter,
   PROJECT_CONFIG_FILENAMES,
+  type PackageGraph,
   type ProjectMeta,
   readLockfile,
 } from '../workspace/index.js'
@@ -414,7 +414,7 @@ export async function resolveFilters(
   // config, discovery and the config load, where they waited on all three.
   // One after another, as a shallow clone's fetches must be; each is
   // awaited in filter order below, so a refusal comes where it came.
-  const diffs = new Map<(typeof parsed)[number], Promise<AffectedChanges | Set<string>>>()
+  const diffs = new Map<(typeof parsed)[number], Promise<AffectedChanges>>()
   let previous: Promise<unknown> | undefined
   for (const f of parsed) {
     if (f.gitSince === undefined) continue
@@ -452,8 +452,9 @@ export async function resolveFilters(
         return g !== undefined && g.scopes.includes('.') ? g.flagged : null
       },
     }
-    const diff = (): Promise<AffectedChanges | Set<string>> =>
-      f.raw === affected?.filter ? affectedChanges(args) : affectedProjects(args)
+    // A typed `[<since>]` needs only the projects, not the per-task paths,
+    // but its changed paths too: they say whether the tree is clean.
+    const diff = (): Promise<AffectedChanges> => affectedChanges(args, f.raw === affected?.filter)
     const started = previous === undefined ? diff() : previous.then(diff)
     started.catch(() => {})
     diffs.set(f, started)
@@ -500,13 +501,10 @@ export async function resolveFilters(
   for (const [f, diff] of diffs) {
     try {
       const answer = await diff
-      let names: Set<string>
-      if (answer instanceof Set) {
-        names = answer
-      } else {
+      let names = answer.projects
+      if (answer.changed.length > 0 || answer.nested !== undefined) changedAny.add(f)
+      if (f.raw === affected?.filter) {
         changes = answer
-        names = changes.projects
-        if (changes.changed.length > 0 || changes.nested !== undefined) changedAny.add(f)
         // A `graph` plugin may tie any task to a changed path (an edge, an
         // input), and the run alone builds that graph: every project is a
         // candidate, and the run keeps the tasks its final graph reaches.
@@ -613,7 +611,9 @@ export async function resolveFilters(
     // hint a typo needs. Only the ones that matched nothing: `app !app apq` named
     // app, and `--affected` a `...[<base>]` nobody typed.
     const hint =
-      (await unlockedHint(root, parsed, unmatched)) ?? didYouMean(unmatched, projects, tags)
+      (await unlockedHint(root, parsed, unmatched)) ??
+      bracedHint(root, parsed, unmatched, projects, graph) ??
+      didYouMean(unmatched, projects, tags)
     // Quoted, as the warning below quotes it: bare, `apq...` and the hint's
     // full stop read `apq....` in the flat message `--format json` carries.
     return {
@@ -626,7 +626,7 @@ export async function resolveFilters(
     sayNotice(
       'warn',
       `vx ${verb}`,
-      `filter "${f}" matched no projects${(await unlockedHint(root, parsed, [f])) ?? didYouMean([f], projects, tags)}`,
+      `filter "${f}" matched no projects${(await unlockedHint(root, parsed, [f])) ?? bracedHint(root, parsed, [f], projects, graph) ?? didYouMean([f], projects, tags)}`,
     )
   // Each include is a union: what `--filter other` selected runs its tasks
   // whether or not the `--affected` diff reaches them, and an exclude
@@ -794,6 +794,36 @@ async function unlockedHint(
   const config = configs.find((c) => dirs.includes(c.dir))
   if (config === undefined) return undefined
   return `. ${relPosix(root, config.configPath)} is not in the lock yet — run \`vx lock\``
+}
+
+/**
+ * `. A directory takes a git ref braced: did you mean {libs}[HEAD]?` for an
+ * unmatched `./libs[HEAD]`: an unbraced path keeps its brackets as a glob
+ * class, as pnpm and Turbo read it, and the project names listed instead
+ * read as a typo of the path. Only when the braced directory matches a project.
+ */
+function bracedHint(
+  root: string,
+  parsed: readonly ReturnType<typeof parseFilter>[],
+  unmatched: readonly string[],
+  projects: ProjectMeta[],
+  graph: PackageGraph,
+): string | undefined {
+  for (const f of parsed) {
+    if (!f.isPath || f.exactDir === true || !unmatched.includes(f.raw)) continue
+    const at = (f.negate ? 1 : 0) + (f.withDependents ? 3 : 0) + (f.onlyDependents ? 1 : 0)
+    const m = /^(\.\/[^{}[\]]+|\.)\[([^\]]+)\](\^?\.\.\.)?$/.exec(f.raw.slice(at))
+    if (m === null) continue
+    const dir = m[1] === '.' ? '.' : m[1]!.slice(2)
+    const braced = parseFilter(`{${dir}}`, root)
+    if (
+      applyFilters({ filters: [braced], projects, graph, affectedByFilter: new Map() }).size === 0
+    )
+      continue
+    const meant = `${f.raw.slice(0, at)}{${dir}}[${m[2]}]${m[3] ?? ''}`
+    return `. A directory takes a git ref braced: did you mean ${meant}?`
+  }
+  return undefined
 }
 
 /** A pattern as a name: its `[<since>]` and graph operators aside. */

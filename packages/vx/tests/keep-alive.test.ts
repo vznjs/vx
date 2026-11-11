@@ -109,9 +109,25 @@ describe('foreground keep-alive ends when one requested server exits', () => {
       )
       const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
       expect(isAlive(pid)).toBe(true)
+      // `go` only once vx has seen both servers ready (the summary follows
+      // readiness): written on dev's pid alone, other could exit before vx
+      // matched its READY, and the run reported "never ready" instead.
+      let out = ''
+      const decoder = new TextDecoder()
+      const reader = proc.stdout.getReader()
+      const drained = (async () => {
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) return
+          out += decoder.decode(value, { stream: true })
+        }
+      })()
+      const deadline = Date.now() + 10_000
+      while (!out.includes('Summary') && Date.now() < deadline) await Bun.sleep(20)
+      expect(out).toContain('Summary')
       writeFileSync(path.join(dir, 'go'), '')
-      const [out, err, code] = await Promise.all([
-        new Response(proc.stdout).text(),
+      const [, err, code] = await Promise.all([
+        drained,
         new Response(proc.stderr).text(),
         proc.exited,
       ])

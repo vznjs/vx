@@ -160,6 +160,29 @@ describe('resolveFilters', () => {
     expect((named.value as { empty: string }).empty).toStartWith('nothing affected since HEAD')
   })
 
+  it('a ./dir with a git ref hints the braced form that reads it', async () => {
+    // `./packages/lib[HEAD]` is a path glob, as pnpm and Turbo read it; the
+    // refusal listed the project names, where `{packages/lib}[HEAD]` works.
+    for (const [f, meant] of [
+      ['./packages/lib[HEAD]', '{packages/lib}[HEAD]'],
+      ['./packages/*[HEAD]', '{packages/*}[HEAD]'],
+      ['..../packages/lib[HEAD]', '...{packages/lib}[HEAD]'],
+    ]) {
+      const { value } = await quiet(() => resolveFilters(root, [f!]))
+      expect(value).toEqual({
+        error: `no projects matched filter(s): "${f}". A directory takes a git ref braced: did you mean ${meant}?`,
+      })
+      // CONTROL: the braced form it names reads.
+      const braced = await quiet(() => resolveFilters(root, [meant!]))
+      expect((braced.value as { empty: string }).empty).toStartWith('nothing affected since HEAD')
+    }
+    // CONTROL: a braced form that would match nothing is no hint.
+    const none = await quiet(() => resolveFilters(root, ['./packages/nosuch[HEAD]']))
+    expect(none.value).toEqual({
+      error: 'no projects matched filter(s): "./packages/nosuch[HEAD]". Projects: app, lib',
+    })
+  })
+
   it('a typo beside a walk that came back empty names the typo, with its hint', async () => {
     // `lib^...` matched lib, which depends on no project; `apq` matched
     // nothing. The empty walk's error hid the typo and its "did you mean".
