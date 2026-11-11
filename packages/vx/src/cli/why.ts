@@ -5,7 +5,7 @@
 // moved input file, no re-hash. Configs are evaluated only when a moved
 // upstream is a group: it records no run, so the graph names what it gathers.
 
-import { indexDb, Cache } from '../cache/index.js'
+import { indexDb, indexError, Cache } from '../cache/index.js'
 import { anchoredSpecError, flagHint, formatValue, seeHelp } from './help.js'
 import { buildTaskGraph, isDefaultBuild, isGroupTask, splitTaskId } from '../graph/index.js'
 import {
@@ -491,6 +491,8 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
     }
     ui.print('out', ...blocks)
     return 0
+  } catch (err) {
+    throw indexError(cache, err)
   } finally {
     cache.close()
   }

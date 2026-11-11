@@ -465,6 +465,9 @@ export interface FoldMemo {
 // Core's own readers (`vx last`, `vx why`, the history provider) take the
 // index handle from `indexDb(cache)`, never from a `Cache` member.
 export function indexDb(cache: Cache): Database
+// What such a reader throws for `err`: a page SQLite cannot read is the
+// open's own refusal, naming the file (`vx last`, `vx why`).
+export function indexError(cache: Cache, err: unknown): unknown
 // Wait until no other connection has `<storeDir>/store.db` open (a run in
 // any checkout holds it from its run lock to its end; WAL connections keep a shared lock),
 // then hold it alone until the release. Nothing to hold without the file.
@@ -706,7 +709,8 @@ SQLite stores metadata, and the small artifacts above:
   artifact, indexed again from its own bytes when its task next hits.
 - **`fold_memo`** — each task's last key, `(task_id, probe, key, seen_at)`
   (v42, `fold-memo.ts`). A memo: the key a row names is the one the whole
-  fold derives under that probe.
+  fold derives under that probe. A page of it SQLite cannot read is no
+  memo: every fold is made afresh.
 - **`schema_meta`** — schema version sentinel. Mismatch → drop the
   tables and recreate (pre-alpha; no migration code). An open that does
   not read the current version re-reads it under `BEGIN IMMEDIATE`
@@ -796,7 +800,9 @@ Reads via `get()` are non-blocking thanks to WAL.
   that entry as a miss and runs the task. An artifact that is not a
   readable archive or lacks an output the index recorded, or a tree
   still in place that lacks one of its files (`CorruptArtifactError`,
-  `<rel> is missing from its stored tree`), is dropped, unless the cache is read-only,
+  `<rel> is missing from its stored tree`) or holds anything but a file
+  at one's place (`<rel> is not a file in its stored tree`: a FIFO there
+  hung the copy-out's open), is dropped, unless the cache is read-only,
   and throws `ArtifactVanishedError` the same way (A-52). So is one
   holding an unsafe name or an escape by name (`ArchiveSecurityError`,
   as the `CorruptArtifactError`'s cause): the save proved every name

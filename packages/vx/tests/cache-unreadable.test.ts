@@ -19,8 +19,9 @@ import {
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Database } from 'bun:sqlite'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { Cache } from '../src/cache/index.js'
+import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 let dir: string
 let db: string
@@ -229,5 +230,79 @@ describe('a shared store corrupt past the pages the open reads', () => {
     } finally {
       again.close()
     }
+  })
+})
+
+describe('a history page SQLite cannot read, read by a verb', () => {
+  // `vx last` and `vx why` read the history through `indexDb` and printed a
+  // raw `SQLiteError` and a stack for a garbled page past the open's.
+  let root: string
+  let pristine: Buffer
+  const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
+  const index = (): string => path.join(root, '.vx', 'cache', 'cache.db')
+  const vx = (...args: string[]) => {
+    const p = Bun.spawnSync({
+      cmd: [process.execPath, BIN, ...args],
+      cwd: root,
+      env: { ...process.env, NO_COLOR: '1' },
+    })
+    return { code: p.exitCode, err: p.stderr.toString() }
+  }
+  beforeAll(async () => {
+    root = await makeWorkspace({ prefix: 'vx-unreadable-history-' })
+    await addProject(
+      root,
+      'a',
+      `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
+    )
+    expect(vx('run', 'a#build').code).toBe(0)
+    const d = new Database(index())
+    d.exec('PRAGMA wal_checkpoint(TRUNCATE)')
+    d.close()
+    pristine = readFileSync(index())
+  }, 30_000)
+  afterAll(() => rmSync(root, { recursive: true, force: true }))
+
+  /** The index as the run left it, with `table`'s root page garbled. */
+  const garble = (table: string): void => {
+    writeFileSync(index(), pristine)
+    const d = new Database(index())
+    const { page_size } = d.query('PRAGMA page_size').get() as { page_size: number }
+    const { rootpage } = d
+      .query('SELECT rootpage FROM sqlite_master WHERE name = ?')
+      .get(table) as { rootpage: number }
+    d.close()
+    const fd = openSync(index(), 'r+')
+    writeSync(fd, Buffer.alloc(page_size, 0xab), 0, page_size, (rootpage - 1) * page_size)
+    closeSync(fd)
+  }
+
+  const cases: Array<[table: string, verb: string[]]> = [
+    ['runs', ['last']],
+    ['runs', ['why', 'a#build']],
+    ['runs_run', ['last']],
+    ['runs_run', ['why', 'a#build']],
+    ['run_ids', ['why', 'a#build']],
+    ['invocations', ['last']],
+  ]
+  for (const [table, verb] of cases) {
+    it(`vx ${verb.join(' ')} over a garbled ${table} refuses the file by name, in one line`, () => {
+      garble(table)
+      const r = vx(...verb)
+      expect([r.code, r.err.trim().split('\n')]).toEqual([
+        1,
+        [
+          `✗ vx ${verb[0]}  the cache index ${index()} is not a database SQLite can read (database disk image is malformed) — ` +
+            `it holds nothing a run cannot rebuild: remove it with its -wal and -shm files and ` +
+            `re-run, and \`vx cache clean\` reclaims the artifacts it indexed`,
+        ],
+      ])
+    })
+  }
+
+  it('CONTROL: the index as the run left it answers both', () => {
+    writeFileSync(index(), pristine)
+    expect(vx('last').code).toBe(0)
+    expect(vx('why', 'a#build').code).toBe(0)
   })
 })

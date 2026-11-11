@@ -9,6 +9,12 @@ import type { Database, SQLQueryBindings } from 'bun:sqlite'
 /** SQLite's file-control opcode (sqlite3.h). */
 export const SQLITE_FCNTL_PERSIST_WAL = 10
 
+/** SQLite's answer for a file that is not a readable database: corrupt, or not one at all. */
+export function unreadableIndex(err: unknown): boolean {
+  const code = (err as { code?: unknown }).code
+  return typeof code === 'string' && (code.startsWith('SQLITE_CORRUPT') || code === 'SQLITE_NOTADB')
+}
+
 /**
  * A statement prepared on its first `run` or `get`. A warm run executes few
  * of the index's statements, and preparing every one at the open cost each
