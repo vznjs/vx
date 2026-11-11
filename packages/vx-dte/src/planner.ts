@@ -10,12 +10,15 @@ import type { TaskNode } from '@vzn/vx'
 import {
   assign,
   dead,
+  failsAlike,
+  fits,
   kindOf,
   ordered,
   type Ask,
   type Bin,
   holdFor,
   type Bounds,
+  type Kept,
   type Need,
   type Soon,
 } from './dispatch.js'
@@ -448,6 +451,8 @@ function play(
   // them when economically the best ... Otherwise we spawn as soon as
   // possible").
   deadline?: number,
+  // Read for its wakes only: it ends once no dormant one is left to start.
+  wakesOnly = false,
 ): {
   end: number
   /** It stopped at `horizon` with work left. */
@@ -511,6 +516,12 @@ function play(
   let joining = tasks.filter((_, i) => waits[i] === 0)
   let readyCount = joining.length
   const spent = new Set<string>()
+  const kept: Kept[] = []
+  // Proved to fail, as `assign` would skip it: yielded to it, each ask was
+  // most of a plan of 3,800 tasks (2026-11-11).
+  const proved = (place: number): boolean =>
+    unstarted !== undefined &&
+    failsAlike(kept, tasks[place]!, tailAt(place), tasks[place]!.ms ?? UNKNOWN_MS)
   const bounds: Bounds = { done: false, open: true, free: 0, cores: 0, memory: 0 }
   // Ready tasks by what they need: no ready task needs less than the
   // least of these, and a pass ends once no slot takes that.
@@ -766,7 +777,14 @@ function play(
       for (const s of slots) if (s.at > now) nextJoin = Math.min(nextJoin, s.at)
     }
     // With none ready nothing is given: a third of a sim's steps (2026-11-05).
-    if (unstarted !== undefined && readyCount > 0) {
+    // Nor with no worker room for the least ready: holds keep room only
+    // from the asks, which `assign` then reads none of. Each step held for
+    // a worker's count of tasks on full workers (2026-11-11).
+    if (
+      unstarted !== undefined &&
+      readyCount > 0 &&
+      joined.some((s) => fits(s, (floor ??= floorOf(needs.values()))))
+    ) {
       const soon: Soon[] = []
       for (const d of coming) {
         if (waits[d] === 0) {
@@ -784,10 +802,11 @@ function play(
     const to =
       readyCount === 0
         ? NONE
-        : assign(ranked(ready.asks(spent, bounds, needs.size)), joined, later, how.place, {
+        : assign(ranked(ready.asks(spent, bounds, needs.size, proved)), joined, later, how.place, {
             floor: (floor ??= floorOf(needs.values())),
             kinds: needs.size,
             spent,
+            kept,
             bounds,
           })
     // `graphene` ranks against the longest chain still ready.
@@ -835,6 +854,8 @@ function play(
       nextJoin = -Infinity
       continue
     }
+    if (wakesOnly && dormant.length === 0)
+      return { end: Infinity, cut: true, first: first(), ends: byPlatform(), free, given, wakes }
     if (left === 0 && readyCount === 0)
       return { end: last, first: first(), ends: byPlatform(), free, given, wakes }
     // The next moment anything changes: a task ends or a worker joins.
@@ -1124,8 +1145,10 @@ interface Kinds {
  * windowed to two warm-ups reads few of them (2026-11-06).
  */
 function lazyKinds(tasks: readonly PlanTask[]): (place: number) => string {
-  const kinds: (string | undefined)[] = []
-  return (i) => (kinds[i] ??= kindOf(tasks[i]!))
+  // Packed: an array of holes filled by place read as a dictionary, most
+  // of a 3,800-task plan of varied needs (2026-11-11). No kind is empty.
+  const kinds = Array.from<string>({ length: tasks.length }).fill('')
+  return (i) => kinds[i] || (kinds[i] = kindOf(tasks[i]!))
 }
 
 function kindsOf(tasks: readonly PlanTask[]): Kinds {
@@ -1273,10 +1296,11 @@ export function plan(
     ws: readonly PlanWorker[],
     deadline?: number,
     until = horizon,
+    wakesOnly = false,
   ): ReturnType<typeof play> => {
-    const key = `${deadline}\0${until}\n${ws.map((w) => `${w.id}\0${w.at}\0${w.dormant === true}`).join('\n')}`
+    const key = `${deadline}\0${until}\0${wakesOnly}\n${ws.map((w) => `${w.id}\0${w.at}\0${w.dormant === true}`).join('\n')}`
     let p = plays.get(key)
-    if (p === undefined) plays.set(key, (p = play(tasks, ws, how, until, deadline)))
+    if (p === undefined) plays.set(key, (p = play(tasks, ws, how, until, deadline, wakesOnly)))
     return p
   }
   // Given no task in the play, and none past its window.
@@ -1311,7 +1335,9 @@ export function plan(
     if (asleep.length === 0) return memo(ws)
     // Played through: a task with slack past the window still starts its
     // worker as it gets ready, not a window before its latest start.
-    const lazy = memo([...ws, ...asleep], best, Infinity)
+    // Read for its wakes: played on past the last, each plan of 3,800
+    // tasks played the rest of the run (2026-11-11).
+    const lazy = memo([...ws, ...asleep], best, Infinity, true)
     const at = new Map(lazy.wakes.map((w) => [w.id, w.readyAt]))
     const early = memo(
       [
@@ -2275,11 +2301,17 @@ class Ready {
   }
 
   /** In order, past each kind in `spent` as `assign` reads it then. */
-  *asks(spent: Set<string>, bounds?: Bounds, kinds?: number): Generator<Ask> {
+  *asks(
+    spent: Set<string>,
+    bounds?: Bounds,
+    kinds?: number,
+    // Read past, as `assign` would skip it (`Kept`).
+    skip?: (place: number) => boolean,
+  ): Generator<Ask> {
     // Measured needs are unrounded, so kinds can be as many as tasks: a
     // jump across every kind then cost more than a read of every task.
     if (this.kinds.size > MAX_JUMP_KINDS) {
-      yield* this.byClass(spent, bounds, kinds)
+      yield* this.byClass(spent, bounds, kinds, skip)
       return
     }
     // Arrays, not the maps: the scan below is most of a sim's time (2026-11-05).
@@ -2320,6 +2352,7 @@ class Ready {
       if (next === -1) return
       at[nextAt]!++
       cursor = next
+      if (skip?.(next) === true) continue
       const t = this.tasks[next]!
       yield { id: t.id, need: t, kind: ks[nextAt]! }
     }
@@ -2333,7 +2366,12 @@ class Ready {
    * found dead stays dead until a bin is given, and a give only shrinks
    * the bins' room, so the read goes past it for the rest of the pass.
    */
-  private *byClass(spent: Set<string>, bounds?: Bounds, kinds?: number): Generator<Ask> {
+  private *byClass(
+    spent: Set<string>,
+    bounds?: Bounds,
+    kinds?: number,
+    skip?: (place: number) => boolean,
+  ): Generator<Ask> {
     const cs: number[] = []
     const qs: (readonly number[])[] = []
     for (const [c, q] of this.classes) {
@@ -2341,11 +2379,23 @@ class Ready {
       qs.push(q)
     }
     const at = new Int32Array(cs.length).fill(-1)
+    // Each class's first not taken nor spent, as last read: `spent` only
+    // grows until a give clears it, so the read goes on from there. Read
+    // again from `at` each step, the spent ones were most of a plan of
+    // varied needs (2026-11-11).
+    const unspent = new Int32Array(cs.length)
+    // Each class's next to yield this step, or -1.
+    const cand = new Int32Array(cs.length)
+    let spentSeen = spent.size
     let cursor = -1
     for (;;) {
       if (bounds?.done === true || (kinds !== undefined && spent.size >= kinds)) return
+      if (spent.size < spentSeen) unspent.fill(0)
+      spentSeen = spent.size
       let next = -1
+      let nextAt = -1
       for (let x = 0; x < cs.length; x++) {
+        cand[x] = -1
         const c = cs[x]!
         if (
           bounds !== undefined &&
@@ -2369,14 +2419,51 @@ class Ready {
         }
         at[x] = p
         // A spent kind is passed here only: a give clears `spent`.
-        let r = p
+        let r = Math.max(p, unspent[x]!)
         while (r < q.length && (this.taken[q[r]!] === 1 || spent.has(this.kindAt(q[r]!)))) r++
+        unspent[x] = r
+        if (r < q.length) cand[x] = r
         if (r < q.length && (next === -1 || this.before(q[r]!, next))) {
           next = q[r]!
+          nextAt = x
         }
       }
       if (next === -1) return
       cursor = next
+      // Past each skipped one, only its class reads on: the others' next
+      // stand while `spent` does. Read again across every class, a plan of
+      // varied needs spent most of its time here (2026-11-11).
+      let again = false
+      while (skip?.(next) === true) {
+        // As a step reads its class: past the dead, then past the spent.
+        const q = qs[nextAt]!
+        let r = cand[nextAt]! + 1
+        for (; r < q.length; r++) {
+          const i = q[r]!
+          if (this.taken[i] === 1) continue
+          if (bounds === undefined || !dead(this.tasks[i]!, bounds)) break
+          spent.add(this.kindAt(i))
+        }
+        if (spent.size !== spentSeen) {
+          again = true
+          break
+        }
+        at[nextAt] = r
+        while (r < q.length && (this.taken[q[r]!] === 1 || spent.has(this.kindAt(q[r]!)))) r++
+        unspent[nextAt] = r
+        cand[nextAt] = r < q.length ? r : -1
+        next = -1
+        for (let x = 0; x < cs.length; x++) {
+          const y = cand[x]!
+          if (y !== -1 && (next === -1 || this.before(qs[x]![y]!, next))) {
+            next = qs[x]![y]!
+            nextAt = x
+          }
+        }
+        if (next === -1) return
+        cursor = next
+      }
+      if (again) continue
       const t = this.tasks[next]!
       yield { id: t.id, need: t, kind: this.kindAt(next) }
     }
