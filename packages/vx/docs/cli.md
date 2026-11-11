@@ -332,8 +332,12 @@ change), or name the last good commit, --affected=<sha>`. `HEAD~1`
   fetch. A base it lacks is fetched as named: a commit id, `origin/<branch>`,
   or a tag (`v1`, `refs/tags/v1`). When origin cannot give that history, vx refuses (`has no merge
 base with HEAD in this shallow clone`) rather than diff from the base's tip.
+- A whole clone that fetched only its own branch (GitLab at any
+  `GIT_DEPTH`, Jenkins "honor refspec") fetches the base branch, or the
+  base you name, with the history the merge base needs.
 - With no base branch and no origin to fetch from, vx says `--affected has
-no base here`.
+no base here`. When the fetch from origin failed, it says so with git's
+  reason: `fetching it from origin failed (...)`.
 - When the base you name is the commit you are on, the
   `nothing affected since <ref>` note says so and names the bases you
   probably meant (`--affected=origin/main`, `--affected=HEAD~1`).

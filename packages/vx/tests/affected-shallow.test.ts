@@ -167,7 +167,8 @@ describe('a shallow clone', () => {
     gitIn(unset)('remote', 'set-url', 'origin', `file://${dir}/nowhere`)
     expect(await changed(unset, 'HEAD~1').catch((err: Error) => err.message)).toBe(
       'git ref "HEAD~1" did not resolve. Pass a branch or commit you have locally. ' +
-        'This clone is shallow and origin did not give it: fetch the base (`git fetch --depth=1 origin <base>`).',
+        `This clone is shallow and fetching it from origin failed ('${dir}/nowhere' does not ` +
+        'appear to be a git repository): fetch the base (`git fetch --depth=1 origin <base>`).',
     )
     // The base's tip is here but not the history to its merge base: diffing
     // the tip selected what main changed, green.
@@ -187,6 +188,60 @@ describe('a shallow clone', () => {
     // CONTROL: the same missing ref in a full clone keeps the bare message.
     expect(await changed(origin, 'HEAD~99').catch((err: Error) => err.message)).toBe(
       'git ref "HEAD~99" did not resolve. Pass a branch or commit you have locally.',
+    )
+  })
+})
+
+// GitLab fetches only the pipeline's branch even at GIT_DEPTH 0, as does
+// Jenkins with "honor refspec": the clone is whole, yet has no base.
+describe('a full clone that fetched one branch', () => {
+  async function single(branch: string): Promise<string> {
+    const to = await mkdtemp(path.join(dir, 'single-'))
+    const g = gitIn(to)
+    g('init', '-q')
+    g('remote', 'add', 'origin', `file://${origin}`)
+    g('fetch', '-q', 'origin', `+refs/heads/${branch}:refs/remotes/origin/${branch}`)
+    g('checkout', '-q', '--detach', `origin/${branch}`)
+    expect(shallow(to)).toBe('false')
+    return to
+  }
+
+  it('fetches the base and diffs from the merge base', async () => {
+    const bare = await single('feat')
+    expect(await defaultAffectedBase(bare, undefined)).toBe('origin/main')
+    expect(await changed(bare, 'origin/main')).toEqual(['b.txt', 'c.txt'])
+    expect(shallow(bare)).toBe('false')
+    expect(await defaultAffectedBase(await single('feat'), 'main')).toBe('origin/main')
+    expect(await changed(await single('feat'), 'origin/main')).toEqual(['b.txt', 'c.txt'])
+    expect(await changed(await single('feat'), sha(origin, 'main'))).toEqual(['b.txt', 'c.txt'])
+    expect(await changed(await single('feat'), 'origin/main..HEAD')).toEqual([
+      'a.txt',
+      'b.txt',
+      'c.txt',
+    ])
+  })
+
+  it('fetches nothing when the base is here', async () => {
+    const root = await single('feat')
+    gitIn(root)('fetch', '-q', 'origin', '+refs/heads/main:refs/remotes/origin/main')
+    gitIn(root)('remote', 'set-url', 'origin', `file://${dir}/nowhere`)
+    expect(await defaultAffectedBase(root, undefined)).toBe('origin/main')
+    expect(await changed(root, 'origin/main')).toEqual(['b.txt', 'c.txt'])
+  })
+
+  it('says the fetch from origin failed, and why', async () => {
+    const root = await single('feat')
+    gitIn(root)('remote', 'set-url', 'origin', `file://${dir}/nowhere`)
+    const why = `'${dir}/nowhere' does not appear to be a git repository`
+    expect(await defaultAffectedBase(root, undefined).catch((err: Error) => err.message)).toBe(
+      `--affected has no base here: fetching it from origin failed (${why}): ` +
+        'make origin reachable, or name the base: --affected=origin/main',
+    )
+    // The github() plugin's base: a commit id whose object is not here.
+    const base = sha(origin, 'main')
+    expect(await changed(root, base).catch((err: Error) => err.message)).toBe(
+      `git ref "${base}" did not resolve. Pass a branch or commit you have locally. ` +
+        `Fetching it from origin failed: ${why}.`,
     )
   })
 })

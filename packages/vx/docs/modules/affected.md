@@ -256,9 +256,12 @@ spawns) — easy to test against in-memory fixtures.
 
 ## What this does NOT do
 
-- **Doesn't run `git fetch` in a whole clone.** If the local clone is
-  stale, `affectedProjects` operates on stale refs. Only a shallow
-  clone fetches, and only what its merge base needs
+- **Doesn't refresh a base the clone has.** If the local clone is
+  stale, `affectedProjects` operates on stale refs. A clone fetches
+  only a base it lacks. A whole clone that fetched one branch (GitLab
+  at any `GIT_DEPTH`, Jenkins "honor refspec") fetches the base tip with
+  its history, so the merge base is there at once. A shallow clone
+  fetches only what its merge base needs
   (`reachMergeBase`): the base's tip at depth 1, then both tips
   deepened 1, 2, 4… commits (to 1,024) until git finds the merge base;
   a merge checkout whose parent is the base needs no deepening. Every
@@ -269,7 +272,10 @@ spawns) — easy to test against in-memory fixtures.
   Probes set `GIT_NO_LAZY_FETCH`: a missing commit fetched its whole
   history. With no `remote.origin.url` nothing is fetched: a filtered
   fetch from no origin fails, yet first writes a promisor
-  `[remote "origin"]` into the user's config.
+  `[remote "origin"]` into the user's config. A failed fetch's first
+  line of git's stderr goes into the refusal; a full commit id is
+  verified as `<sha>^{object}`, since `rev-parse --verify <sha>` passes
+  one whose object is missing.
 - **Doesn't honor `.gitattributes` or `--diff-filter`.** A
   whitespace-only commit still marks projects as affected.
 - **Doesn't intersect with `inputs.files`.** A project is
