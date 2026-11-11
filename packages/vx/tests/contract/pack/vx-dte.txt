@@ -15,6 +15,7 @@ src/messages.ts
 src/noise.ts
 src/orchestrator.ts
 src/outputs.ts
+src/pack.ts
 src/planner.ts
 src/plugin.ts
 src/printable.ts
