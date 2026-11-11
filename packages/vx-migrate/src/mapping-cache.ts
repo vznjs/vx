@@ -27,6 +27,12 @@ export interface AdoptionMapping {
     }
   >
   readonly gaps: Gaps
+  /**
+   * What the mapping asked of files no read above names, each as
+   * `[question, answer]`: a kept mapping is used only while `ask` answers
+   * each the same (turbo(): the gitignored paths an input glob matches).
+   */
+  readonly asked?: readonly (readonly [string, string])[]
 }
 
 let code: Promise<string> | undefined
@@ -69,14 +75,19 @@ interface Held {
   readonly notes: string[]
   readonly todos: [string, string[]][]
   readonly live: string[]
+  readonly asked?: [string, string][]
 }
 
-/** `map()`, or the mapping it returned last under the same `parts`. */
+/**
+ * `map()`, or the mapping it returned last under the same `parts` whose
+ * `asked` questions `ask` still answers the same.
+ */
 export async function cachedMapping(
   cacheDir: string,
   name: string,
   parts: readonly string[],
   map: () => Promise<AdoptionMapping>,
+  ask?: (question: string) => Promise<string>,
 ): Promise<AdoptionMapping> {
   const file = path.join(cacheDir, `vx-migrate-${name}-mapping.json`)
   const reading = Bun.file(file)
@@ -84,10 +95,11 @@ export async function cachedMapping(
     .catch(() => null) as Promise<Held | null>
   const key = hex([await codeId(), ...parts].join('\0'))
   const held = await reading
-  if (held?.key === key) {
+  if (held?.key === key && (await sameAnswers(held.asked, ask))) {
     return {
       byName: new Map(held.byName),
       gaps: { notes: held.notes, todos: new Map(held.todos), live: held.live },
+      ...(held.asked === undefined ? {} : { asked: held.asked }),
     }
   }
   const mapping = await map()
@@ -103,6 +115,9 @@ export async function cachedMapping(
     notes: [...mapping.gaps.notes],
     todos: [...mapping.gaps.todos].map(([todo, ids]) => [todo, [...ids]]),
     live: [...mapping.gaps.live],
+    ...(mapping.asked === undefined || mapping.asked.length === 0
+      ? {}
+      : { asked: mapping.asked.map(([q, a]) => [q, a]) }),
   }
   // Best-effort, and whole or absent: a reader never sees half a file, and
   // a cache dir it cannot write costs the next run a mapping, not the run.
@@ -112,4 +127,14 @@ export async function cachedMapping(
     .then(() => rename(tmp, file))
     .catch(() => {})
   return mapping
+}
+
+async function sameAnswers(
+  asked: Held['asked'],
+  ask: ((question: string) => Promise<string>) | undefined,
+): Promise<boolean> {
+  if (asked === undefined || asked.length === 0) return true
+  if (ask === undefined) return false
+  const now = await Promise.all(asked.map(([q]) => ask(q)))
+  return asked.every(([, a], i) => now[i] === a)
 }
