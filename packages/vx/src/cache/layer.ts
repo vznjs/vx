@@ -818,7 +818,7 @@ export interface CacheLayer {
    * ride the entry-save transaction (`save`/`ingest`) so a warm
    * all-cache-hit run writes nothing.
    */
-  recordRunBundle(bundle: RunBundle): void
+  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
   stats(opts?: CacheStatsOptions): CacheStats
   /**
    * Content-hash a file with an mtime+size fast path. If the
@@ -867,12 +867,4 @@ export interface MeasureRecord {
   readonly def: string
   readonly durationMs: number
   readonly cores?: number
-}
-
-/** A run's history, written at its end in one transaction. */
-export interface RunBundle {
-  readonly runs: readonly RunRecord[]
-  readonly invocation: InvocationRecord
-  /** The run's plugins' measures, each its last. */
-  readonly measures?: readonly MeasureRecord[]
 }

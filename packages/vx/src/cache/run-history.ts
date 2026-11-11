@@ -5,7 +5,7 @@
 
 import type { Database, SQLQueryBindings } from 'bun:sqlite'
 import { lazyStatement } from './schema.js'
-import type { InvocationRecord, MeasureRecord, RunBundle, RunRecord } from './layer.js'
+import type { InvocationRecord, MeasureRecord, RunRecord } from './layer.js'
 import { isMeasure, splitTaskId } from '../util/index.js'
 
 /** The `main.runs` columns `bindRun` fills, in its order. */
@@ -149,19 +149,14 @@ export class RunHistory {
    * the commit the run ran on: its timings file under that branch, as a
    * finished run's do, or the branch's forecast never reads them.
    */
-  recordRuns(
-    runs: readonly RunRecord[],
-    head: RunHead = NO_HEAD,
-    measures: readonly MeasureRecord[] = [],
-  ): void {
-    if (runs.length === 0 && measures.length === 0) return
+  recordRuns(runs: readonly RunRecord[], head: RunHead = NO_HEAD): void {
+    if (runs.length === 0) return
     // One transaction, one fsync: for a 200-task run, one instead of 200.
     // IMMEDIATE, as `recordRunBundle` explains.
     this.db
       .transaction(() => {
         this.insertRuns(runs)
         this.insertDurations(runs, branchSource(head.branch), head.commitSha)
-        this.insertMeasures(measures, branchSource(head.branch), head.commitSha)
         this.insertOutcomes(runs)
       })
       .immediate()
@@ -213,21 +208,31 @@ export class RunHistory {
    * reader, its cores where a remote row keeps a task's need: a plugin
    * reads it back as a task (`localHistory(…).resourcesFor`).
    */
-  private insertMeasures(
-    measures: readonly MeasureRecord[],
-    source: string,
-    sha: string | null,
-  ): void {
-    if (measures.length === 0) return
+  recordMeasures(measures: readonly MeasureRecord[], head: RunHead): void {
+    const source = branchSource(head.branch)
+    const sha = head.commitSha
     const insert = this.db.query(
       `INSERT INTO task_durations(project, task, source, sha, duration_ms, recorded_at, def, cpu_parallelism)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     const now = Date.now()
-    for (const m of measures) {
-      const [project, task] = splitTaskId(m.id)
-      insert.run(project, task, source, sha, Math.round(m.durationMs), now, m.def, m.cores ?? null)
-    }
+    this.db
+      .transaction(() => {
+        for (const m of measures) {
+          const [project, task] = splitTaskId(m.id)
+          insert.run(
+            project,
+            task,
+            source,
+            sha,
+            Math.round(m.durationMs),
+            now,
+            m.def,
+            m.cores ?? null,
+          )
+        }
+      })
+      .immediate()
   }
 
   /**
@@ -318,7 +323,7 @@ export class RunHistory {
     ).id
   }
 
-  recordRunBundle(bundle: RunBundle): void {
+  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void {
     // Whole run records atomically — one transaction, one fsync: the
     // per-task `runs` rows and the one `invocations` header. The
     // input-fingerprint rows do NOT live here: they're written inside
@@ -338,11 +343,6 @@ export class RunHistory {
         this.insertInvocation.run(...bindInvocation(bundle.invocation))
         this.insertDurations(
           bundle.runs,
-          branchSource(bundle.invocation.branch),
-          bundle.invocation.commitSha,
-        )
-        this.insertMeasures(
-          bundle.measures ?? [],
           branchSource(bundle.invocation.branch),
           bundle.invocation.commitSha,
         )

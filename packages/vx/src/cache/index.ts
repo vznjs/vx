@@ -29,7 +29,6 @@ export {
   FULL_CACHE_POLICY,
   type InvocationRecord,
   type MeasureRecord,
-  type RunBundle,
   KEYED_RUNS_SQL,
   parseCachePolicy,
   type RunRecord,

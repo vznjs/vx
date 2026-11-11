@@ -1842,7 +1842,8 @@ async function runOnBus(
     }
     if (stop.stoppedBy === undefined && !historyAfterWait) {
       stepSync('vx:history', () => {
-        recordHistory(() => cache.recordRunBundle({ ...records, measures: [...measured.values()] }))
+        recordHistory(() => cache.recordRunBundle(records))
+        recordHistory(() => prepared.localCache.recordMeasures([...measured.values()], head))
         recordFailures(list)
       })
     } else if (stop.stoppedBy !== undefined) {
@@ -1850,11 +1851,8 @@ async function runOnBus(
       // measured, or the next run knows none of it (2026-10-21).
       const ended = list.filter((o) => o.status !== 'aborted' && o.status !== 'skipped')
       stepSync('vx:history', () => {
-        recordHistory(() =>
-          prepared.localCache.recordRuns(recordsOf(ended, false).runs, head, [
-            ...measured.values(),
-          ]),
-        )
+        recordHistory(() => prepared.localCache.recordRuns(recordsOf(ended, false).runs, head))
+        recordHistory(() => prepared.localCache.recordMeasures([...measured.values()], head))
         recordFailures(ended)
       })
     }
@@ -2056,10 +2054,8 @@ async function runOnBus(
           // to its schema during the session, and a mismatch resets silently.
           const local = new Cache(prepared.cacheDir, undefined, prepared.workspaceRoot)
           try {
-            local.recordRunBundle({
-              ...recordsOf(final, ok && !crashed),
-              measures: [...measured.values()],
-            })
+            local.recordRunBundle(recordsOf(final, ok && !crashed))
+            local.recordMeasures([...measured.values()], head)
             recordFailures(final, local)
           } finally {
             local.close()

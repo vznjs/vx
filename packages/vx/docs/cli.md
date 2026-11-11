@@ -3236,7 +3236,7 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   `sandbox.untraced`, the reason or `null`.
 - `plugins` names every plugin `.vx/workspace.*` declares and the seams
   each fills, in pipeline order (`config`, `discover`, `project`, `graph`, `key`,
-  `fingerprint`, `schedule`, `admit`, `executor`, `cache`, `telemetry`,
+  `fingerprint`, `measures`, `schedule`, `admit`, `executor`, `cache`, `telemetry`,
   `output`, `setup`, `commands`), or `none`. It reads the declarations: a plugin
   that declines a task at run time still lists its seam here.
 - `workers` is the count a run defaults to and where it comes from:

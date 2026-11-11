@@ -401,6 +401,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'plugin-executor-abort',
     'plugin-hook-tables',
     'plugin-json-schemas.unsafe',
+    'plugin-measures',
     'plugin-name',
     'plugin-output',
     'plugin-pipeline',

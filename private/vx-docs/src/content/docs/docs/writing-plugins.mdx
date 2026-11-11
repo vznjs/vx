@@ -101,6 +101,7 @@ interface VxPlugin {
   graph?(nodes, ctx): void
   key?(task, ctx): Record<string, string>
   fingerprint?: { files; affected(change, ctx) }
+  measures?(nodes): Map<string, string>
   schedule?(nodes, ctx): Map<string, number>
   admit?(task, ctx): boolean
   executor?(ctx): TaskExecutor | undefined

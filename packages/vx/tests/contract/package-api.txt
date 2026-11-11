@@ -104,9 +104,12 @@ export class Cache implements CacheLayer {
   recordRuns(
     runs: readonly RunRecord[],
     head?: Pick<InvocationRecord, 'branch' | 'commitSha'>,
-    measures?: readonly MeasureRecord[],
   ): void
-  recordRunBundle(bundle: RunBundle): void
+  recordMeasures(
+    measures: readonly MeasureRecord[],
+    head: Pick<InvocationRecord, 'branch' | 'commitSha'>,
+  ): void
+  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
   recordRemoteErrors(runId: string, errors: readonly (readonly [string, string])[]): void
   stats(opts: CacheStatsOptions = {}): CacheStats
   async prune(options: PruneOptions): Promise<PruneResult>
@@ -700,7 +703,7 @@ export interface CacheLayer {
     absent?: boolean
   }): Promise<void>
   ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
-  recordRunBundle(bundle: RunBundle): void
+  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
   stats(opts?: CacheStatsOptions): CacheStats
   hashFile(filePath: string): Promise<string>
   outputsPath(hash: string): string
@@ -1630,12 +1633,6 @@ export interface ResolvedSandboxConfig {
     systemInfo?: readonly string[]
     network?: readonly string[]
   }
-}
-== type RunBundle (src/cache/layer.ts)
-export interface RunBundle {
-  readonly runs: readonly RunRecord[]
-  readonly invocation: InvocationRecord
-  readonly measures?: readonly MeasureRecord[]
 }
 == type RunContext (src/report/summary.ts)
 export interface RunContext {
