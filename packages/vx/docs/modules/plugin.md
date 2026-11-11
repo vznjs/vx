@@ -178,7 +178,10 @@ a run explorer's record on this API and reads it back through a verb.
   refused setup, a factory that threw, an unresolved name) or a plan
   (item 1021); a second signal, or a `kill -9`, is. A signal during a
   setup or executor factory that never settles tears every plugin down,
-  that one included, and exits. A plugin whose own `setup` threw is not
+  that one included, and exits. So does a run a hook strands (one that
+  never settles, from the stage after the factories on): the loop
+  drains, `bin.ts` names the plugin and hook and exits 1 once the
+  teardowns end. A plugin whose own `setup` threw is not
   torn down. Its `ctx.on` handlers and telemetry
   sinks are released just before `teardown()`, so it hears nothing after
   it, a server vx keeps in the foreground included (C-66). (The older `eventSink` seam is gone since

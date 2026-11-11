@@ -20,6 +20,7 @@ import {
 import { localExecutor, type TaskExecutor } from '../exec/index.js'
 import {
   errorCode,
+  hookStarted,
   maskedLine,
   settleWithin,
   teardownTimeoutMs,
@@ -97,10 +98,14 @@ function assertShape(
  * and telemetry-host.ts logs-and-skips them instead.)
  */
 async function safe<T>(plugin: VxPlugin, hook: string, fn: () => T | Promise<T>): Promise<T> {
+  // Named while awaited: one that never settles is what a stranded run names.
+  const settled = hookStarted(plugin.name, hook)
   try {
     return await fn()
   } catch (err) {
     throw pluginFailure(plugin, hook, err)
+  } finally {
+    settled()
   }
 }
 

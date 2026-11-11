@@ -15,6 +15,7 @@ import {
   mark,
   nearest,
   OWN_DIR_HINT,
+  owedIfStranded,
   relPosix,
   restorableOutput,
   type SecretBroker,
@@ -659,7 +660,9 @@ export async function prepareRunLocked(
   // throw (a stage hook, a `^name` nobody declares, a cycle, an unknown
   // exclude name) closed neither and tore nothing down, once per failed
   // cycle under `vx watch` (item 1029). run() owns both only once this
-  // returns.
+  // returns. A hook here that never settles strands the process, which
+  // tears the plugins down before it ends (bin.ts).
+  const unowe = owedIfStranded(() => teardownPlugins(plugins, warnOf(log)))
   try {
     const hashCache = createHashCache(
       localCache.foldMemo(),
@@ -1034,6 +1037,8 @@ export async function prepareRunLocked(
     await teardownPlugins(plugins, warnOf(log))
     cache.close()
     throw err
+  } finally {
+    unowe()
   }
 }
 

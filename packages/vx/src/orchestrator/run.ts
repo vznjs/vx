@@ -70,6 +70,7 @@ import {
   SecretBroker,
   thrownMessage,
   relPosix,
+  owedIfStranded,
 } from '../util/index.js'
 import * as ui from '../ui/index.js'
 
@@ -557,12 +558,17 @@ async function runOnBus(
   // per cycle under `vx watch`. A plugin whose own setup threw set up
   // nothing, and is the one left out.
   let tornDown = false
+  // A hook that never settles strands the run with no exit of its own:
+  // bin.ts tears the plugins down before the process ends.
+  let unowe = (): void => {}
   const teardown = async (except?: unknown, report?: RunReport): Promise<void> => {
     if (tornDown) return
     tornDown = true
+    unowe()
     const plugins = prepared.plugins.filter((p) => p !== except)
     await teardownPlugins(plugins, warnOf(log), report, step)
   }
+  unowe = owedIfStranded(() => teardown())
   // The setting variables are read before any task, so a bad value is
   // refused here, not mid-run; an embedder's (the CLI refuses it first)
   // threw past the teardown and the cache close.

@@ -1393,6 +1393,89 @@ describe('admit stage', () => {
   )
 })
 
+describe('a reference a plugin keeps past its stage', () => {
+  // A stage's edits reach the key because the key reads the config after
+  // the stage. A plugin that kept the object and wrote it later (here in
+  // `admit`) ran another command under the key of the declared one, and
+  // the next run restored those bytes as a hit.
+  const writes =
+    "export default { tasks: { build: { exec: { command: 'echo orig > out.txt' } } } }\n"
+  const kept = globalThis as { __vxKept?: unknown }
+  afterEach(() => {
+    delete kept.__vxKept
+  })
+
+  it(
+    "a project config kept from `project` and written in `admit` is not the run's: the task runs as keyed",
+    async () => {
+      await pkg('a', writes)
+      await workspace([
+        pluginSource(
+          'org/keep',
+          `{ project(c) { globalThis.__vxKept = c }, admit() { globalThis.__vxKept.tasks.build.exec.command = 'echo ADMIT > out.txt'; return true } }`,
+        ),
+      ])
+      const summary = await run({
+        cwd: root,
+        tasks: ['build'],
+        log: silent(),
+        handleSignals: false,
+      })
+      expect(summary.ok).toBe(true)
+      expect(await Bun.file(path.join(root, 'packages/a/out.txt')).text()).toBe('orig\n')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a node kept from `graph` can neither edit nor swap its config in `admit`',
+    async () => {
+      await pkg('a', writes)
+      await workspace([
+        pluginSource(
+          'org/keep',
+          `{ graph(nodes) { globalThis.__vxKept = nodes.get('a#build') }, admit() {
+            const n = globalThis.__vxKept
+            try { n.config.exec.command = 'echo ADMIT > out.txt' } catch {}
+            n.config = { ...n.config, exec: { command: 'echo SWAP > out.txt' } }
+            return true
+          } }`,
+        ),
+      ])
+      const status: string[] = []
+      const log = { ...silent(), status: (m: string) => status.push(m) } as Logger
+      const summary = await run({ cwd: root, tasks: ['build'], log, handleSignals: false })
+      expect(summary.ok).toBe(true)
+      expect(await Bun.file(path.join(root, 'packages/a/out.txt')).text()).toBe('orig\n')
+      expect(status.filter((l) => l.includes("plugin 'org/keep' failed in admit"))).toHaveLength(1)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "another project's hook cannot write a project config its own hooks already left",
+    async () => {
+      // Validation runs after each plugin on the project it visits; a write
+      // to an earlier project's kept config skipped it, and `command: 42`
+      // failed the task with an internal TypeError.
+      await pkg('a', build)
+      await pkg('b', build)
+      await workspace([
+        pluginSource(
+          'org/keep',
+          `{ project(c, ctx) { if (ctx.lock) return; if (globalThis.__vxKept === undefined) globalThis.__vxKept = c; else globalThis.__vxKept.tasks.build.exec.command = 42 } }`,
+        ),
+      ])
+      const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
+      expect(plan.tasks.map((t) => [t.node.id, t.node.config.exec?.command])).toEqual([
+        ['a#build', 'echo build'],
+        ['b#build', 'echo build'],
+      ])
+    },
+    TIMEOUT,
+  )
+})
+
 describe('schedule stage', () => {
   it(
     "a plugin's weights decide which ready task runs first",
