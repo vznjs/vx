@@ -770,14 +770,39 @@ export class GitFilesCache extends Map<string, readonly string[]> {
    * trusted an OID for every one, none is a symlink and every name decodes:
    * then the files a task resolves there, and what it folds for them, are
    * a function of this digest and its declaration (`filesToken`). Undefined
-   * once anything moved the partition: a re-enumeration, a changed path.
+   * once the partition moved under it: a re-enumeration, a changed path in
+   * the snapshot. A changed path outside it (a save's ignored `dist/`)
+   * leaves it standing: the snapshot's files are as listed, and a task
+   * whose globs take a changed path is refused by `snapshotFor` first. Six
+   * in seven of a cold 8,002-task run's keys had no fold row (2026-11-11).
    */
   filesDigest(projectDir: string, snapshot: readonly string[]): string | undefined {
     const d = this.digests.get(projectDir)
     if (d === undefined || d.snapshot !== snapshot || this.get(projectDir) !== snapshot) return
-    if (this.oids.get(projectDir) !== d.oids || this.changed.has(projectDir)) return
+    if (this.oids.get(projectDir) !== d.oids) return
+    const pending = this.changed.get(projectDir)
+    if (pending !== undefined && this.movesSnapshot(pending, snapshot)) return
     return d.digest()
   }
+
+  /**
+   * Whether a path of `pending` is one of `snapshot`'s. Each path read once
+   * (the list only grows until a reset replaces it, as `pendingMatch`).
+   */
+  private movesSnapshot(pending: readonly string[], snapshot: readonly string[]): boolean {
+    let seen = this.seen.get(pending)
+    if (seen === undefined) this.seen.set(pending, (seen = { upTo: 0, moved: false }))
+    if (seen.moved) return true
+    if (seen.upTo === pending.length) return false
+    let names = this.names.get(snapshot)
+    if (names === undefined) this.names.set(snapshot, (names = new Set(snapshot)))
+    for (; seen.upTo < pending.length; seen.upTo++)
+      if (names.has(pending[seen.upTo]!)) return (seen.moved = true)
+    return false
+  }
+
+  private readonly seen = new WeakMap<readonly string[], { upTo: number; moved: boolean }>()
+  private readonly names = new WeakMap<readonly string[], ReadonlySet<string>>()
 
   /**
    * `filesDigest` for a `workspaceFiles` declaration: a digest of the paths

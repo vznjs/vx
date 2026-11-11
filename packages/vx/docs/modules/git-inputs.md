@@ -239,8 +239,14 @@ export function attributeFilesOutsideTree(
 and index OIDs joined and hashed once, when the enumeration trusted an
 OID for every path and none is a symlink or an undecodable name.
 `filesDigest` answers it only while the partition is that snapshot with
-those OIDs and no path marked changed: a re-enumeration, a save or a
-restore in the project ends it for the run. `declarationDigest` does
+those OIDs and no path of the snapshot is marked changed: a
+re-enumeration ends it for the run, and so does a save, clean or restore
+that writes a listed path. One that writes only outside the snapshot (a
+build's ignored `dist/`) leaves it: the listed files are as the digest
+names them, and a task whose input globs take a marked path gets no
+snapshot from `snapshotFor`, so no token. Refused on any mark, six in
+seven of a cold 8,002-task bench run's keys stored no fold row, and the
+restore after derived them again (2026-11-11). `declarationDigest` does
 the same for the workspace partition, per `workspaceFiles` declaration:
 the paths its globs may take in, each by OID, or by its stat and
 whether git tracks it, once per declaration and partition; each path's
