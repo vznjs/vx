@@ -1773,15 +1773,32 @@ export function plan(
     // on joining at once, workers the CI started 2.5 s apart took work
     // planned on the fleet and the run ended 19 s late, where a play
     // started two more (tests/sim.test.ts, 2026-11-11).
-    const packed = pack(
-      tasks,
-      workers.map((w) => (w.starting === true && w.at <= 0 ? { ...w, at: warm(w.size) } : w)),
-      candidates,
-      (size, nth) => warm(size) + nth * spreadMs(size),
-      best,
-    )
-    // A play cut at its window holds less than its run: not compared.
-    if (packed.end <= best + 1e-6 && (played.cut === true || packed.held < played.held())) {
+    const packs = (deadline: number, strict: boolean) =>
+      pack(
+        tasks,
+        workers.map((w) => (w.starting === true && w.at <= 0 ? { ...w, at: warm(w.size) } : w)),
+        candidates,
+        (size, nth) => warm(size) + nth * spreadMs(size),
+        deadline,
+        { strict },
+      )
+    // Packed to the chain first, then past it by a warm-up, then by the
+    // play's end: packed to the play's end only, a run a moment off its plan
+    // packed to that later end, and ended there (tests/sim-theory.test.ts,
+    // 2026-11-11).
+    const warmest = candidates.reduce((most, c) => Math.max(most, warm(c.name)), 0)
+    const packed =
+      (floor < best ? packs(floor, true) : undefined) ??
+      (floor + warmest < best ? packs(floor + warmest, true) : undefined) ??
+      packs(best, false)!
+    // A play cut at its window holds less than its run: not compared. One
+    // that left out a task no worker fits (its history over a worker's
+    // cores) held nothing, and the run waited on it forever (2026-11-11).
+    if (
+      packed.placed.size === tasks.length &&
+      packed.end <= best + 1e-6 &&
+      (played.cut === true || packed.held < played.held())
+    ) {
       const start: Size[] = []
       const started: Ahead['started'][number][] = []
       const later: Ahead['later'][number][] = []

@@ -443,13 +443,15 @@ function slowerThanHistory(seed: number): SimTask[] {
 // two whose plan spun on a sub-millisecond `againInMs` (74, 283). Packed,
 // 283 lets go one asked a moment before the run's end moved out, before
 // it joins, and asks none again: ending as soon, on 16% less worker time
-// (2026-11-11).
+// (2026-11-11). 151 lets one go whose next task was planned past a
+// warm-up and two away, and asks one for it 10 s later, as planned: the
+// seeds end as soon on 1% less worker time (2026-11-11).
 it.each([14, 29, 74, 90, 151, 195, 283])(
   'a run slower than its history asks for more, not workers it then cancels (seed %d)',
   (seed) => {
     const r = simulate(slowerThanHistory(seed), { sizes: [small] })
     expect(r.workers.filter((w) => w.cancelledAt !== undefined).length).toBeLessThanOrEqual(1)
-    expect(r.churn).toBe(0)
+    expect(r.churn).toBeLessThanOrEqual(seed === 151 ? 1 : 0)
   },
 )
 
