@@ -1007,7 +1007,11 @@ and only literal files did (`scr/**` beside the `package.json` a
 lockfile plugin appends), naming the wildcard globs. `outputs matched no files (build/**)` — an empty
 artifact was saved and a later hit restores nothing — is said on the
 save path, and when a deferred fetch (`--cache-download=none`) lands
-nothing. Both are almost always a glob
+nothing. It is said too when every wildcard output glob matched nothing
+and only literal files did (`dist/**` beside the `tsconfig.tsbuildinfo`
+turbo()/nx() add to an incremental tsc task): `outputs matched no files
+(dist/**) — a later hit restores only the literal files
+(tsconfig.tsbuildinfo)`. Both are almost always a glob
 against the wrong directory; the output line names one other cause when
 it applies: a sandboxed task with no `exec.sandbox.allow.write`, whose
 writes never reached disk, or a `workspaceFiles` directory that is a
