@@ -9,8 +9,10 @@ import {
   parseServerBases,
   parseSizeOthers,
   parseWarmUps,
+  readJoinSpreads,
   readServerBases,
   readWarmUps,
+  writeJoinSpreads,
   writeServerBases,
   writeWarmUps,
 } from '../src/warm-ups.js'
@@ -124,4 +126,18 @@ it("reads each size's other cores as server bases are read", () => {
     new Map([['small', 0.8]]),
   )
   expect(parseSizeOthers(enc({ version: 1, servers: { small: 0.8 } }))).toBeNull()
+})
+
+it("a later commit's run asks each next worker sooner by the join spread an earlier run learned", async () => {
+  const cache = store()
+  await writeJoinSpreads(cache, root, new Map([['mac', 9_000]]), new Map([['small', 2_500.4]]))
+  commit()
+  expect(await readJoinSpreads(cache, root)).toEqual(
+    new Map([
+      ['mac', 9_000],
+      ['small', 2_500],
+    ]),
+  )
+  // Its own key: the warm-ups read none of it.
+  expect(await readWarmUps(cache, root)).toEqual(new Map())
 })

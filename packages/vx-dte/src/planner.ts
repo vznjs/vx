@@ -24,7 +24,7 @@ import {
   type Soon,
   type Span,
 } from './dispatch.js'
-import { leftMs, pack } from './pack.js'
+import { leftMs, pack, type PackOptions, type Packing } from './pack.js'
 import { DEFAULT_STRATEGY, type Strategy } from './strategy.js'
 
 /** Where a task naming no platform runs, or (several worker types) where each task runs. */
@@ -40,6 +40,9 @@ export const WARM_UP_MS = 20_000
 /** How much later than the best a plan may end: a few seconds, or 5%. */
 const MARGIN_MS = 5_000
 const MARGIN = 0.05
+/** Packings tried again in other orders, at most; fewer as tasks pass `RESTART_TASKS / RESTARTS`. */
+const RESTARTS = 64
+const RESTART_TASKS = 6_400
 
 /** One kind of worker, as `dte()` resolved it: memory in bytes, `max` Infinity when uncapped. */
 export interface Size {
@@ -1773,15 +1776,57 @@ export function plan(
     // on joining at once, workers the CI started 2.5 s apart took work
     // planned on the fleet and the run ended 19 s late, where a play
     // started two more (tests/sim.test.ts, 2026-11-11).
-    const packed = pack(
-      tasks,
-      workers.map((w) => (w.starting === true && w.at <= 0 ? { ...w, at: warm(w.size) } : w)),
-      candidates,
-      (size, nth) => warm(size) + nth * spreadMs(size),
-      best,
+    // Each worker read once: a pack reads its running tasks twice.
+    const packedWorkers = workers.map((w) =>
+      w.starting === true && w.at <= 0 ? { ...w, at: warm(w.size) } : { ...w },
     )
-    // A play cut at its window holds less than its run: not compared.
-    if (packed.end <= best + 1e-6 && (played.cut === true || packed.held < played.held())) {
+    const packs = (deadline: number, strict: boolean, more: PackOptions = {}) =>
+      pack(
+        tasks,
+        packedWorkers,
+        candidates,
+        (size, nth) => warm(size) + nth * spreadMs(size),
+        deadline,
+        { ...more, strict },
+      )
+    // Packed to the chain first, then past it by a warm-up, then by the
+    // play's end: packed to the play's end only, a run a moment off its plan
+    // packed to that later end, and ended there (tests/sim-theory.test.ts,
+    // 2026-11-11).
+    const warmest = candidates.reduce((most, c) => Math.max(most, warm(c.name)), 0)
+    let packed: Packing =
+      (floor < best ? packs(floor, true) : undefined) ??
+      (floor + warmest < best ? packs(floor + warmest, true) : undefined) ??
+      packs(best, false)!
+    // Then packed again in other orders, each task's new worker a random
+    // way into its slack, keeping the least held by the same end: on 50
+    // small graphs solved exactly, 64 more brought 3-10% over the least
+    // CPU to under 3% (lab, 2026-11-11). As many as a plan's time allows.
+    const tries = Math.min(RESTARTS, Math.floor(RESTART_TASKS / Math.max(1, tasks.length)))
+    if (tries > 0 && packed.placed.size === tasks.length) {
+      const mean = tasks.reduce((sum, t) => sum + (t.ms ?? 0), 0) / tasks.length
+      const end = packed.end
+      let seed = 1
+      const rnd = (): number => (seed = (seed * 48271) % 2147483647) / 2147483647
+      for (let k = 0; k < tries; k++) {
+        const scale = mean * [0.1, 0.3, 0.8][k % 3]!
+        // By the first packing's end, never later: slack it left is margin.
+        const other = packs(end, true, {
+          noise: tasks.map(() => (rnd() * 2 - 1) * scale),
+          late: tasks.map(() => rnd()),
+        })
+        if (other !== undefined && other.placed.size === tasks.length && other.held < packed.held)
+          packed = other
+      }
+    }
+    // A play cut at its window holds less than its run: not compared. One
+    // that left out a task no worker fits (its history over a worker's
+    // cores) held nothing, and the run waited on it forever (2026-11-11).
+    if (
+      packed.placed.size === tasks.length &&
+      packed.end <= best + 1e-6 &&
+      (played.cut === true || packed.held < played.held())
+    ) {
       const start: Size[] = []
       const started: Ahead['started'][number][] = []
       const later: Ahead['later'][number][] = []

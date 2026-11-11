@@ -2084,12 +2084,20 @@ export class Orchestrator {
     return out
   }
 
-  /** How much later each next worker of `size` joined than the one before, this run (`spreadMs`). */
-  spreadOf(size: string): number {
-    const ups: number[] = []
-    for (const a of [...this.workers.values(), ...this.gone])
-      if (a.warmUpMs !== undefined && a.declared?.size === size) ups.push(a.warmUpMs)
-    return spreadMs(ups)
+  /**
+   * How much later each next worker of a size joined than the one before,
+   * this run (`spreadMs`): each size two of which joined.
+   */
+  spreadsMs(): Map<string, number> {
+    const ups = new Map<string, number[]>()
+    for (const a of [...this.workers.values(), ...this.gone]) {
+      const size = a.declared?.size
+      if (a.warmUpMs === undefined || size === undefined) continue
+      const of = ups.get(size)
+      if (of === undefined) ups.set(size, [a.warmUpMs])
+      else of.push(a.warmUpMs)
+    }
+    return new Map([...ups].flatMap(([size, ms]) => (ms.length < 2 ? [] : [[size, spreadMs(ms)]])))
   }
 
   /** Each size's cores its machines spent besides the run's tasks, on average: what the plan leaves it. */

@@ -1,7 +1,14 @@
 import { expect, it } from 'bun:test'
 import { Placing } from '../src/dispatch.js'
 import { pack } from '../src/pack.js'
-import { spreadMs, type PlanTask, type PlanWorker, type Size } from '../src/planner.js'
+import {
+  candidates,
+  plan,
+  spreadMs,
+  type PlanTask,
+  type PlanWorker,
+  type Size,
+} from '../src/planner.js'
 
 const task = (id: string, ms: number, deps: string[] = [], cores = 1): PlanTask => ({
   id,
@@ -162,4 +169,12 @@ it('asks each next worker of a size sooner by the join spread', () => {
   )
   expect(p.end).toBe(70_000)
   expect(p.starts.map((s) => s.at).sort((x, y) => x - y)).toEqual([5_000, 7_500, 10_000])
+})
+
+// A task measured over every size's cores: packed, it fit no worker, the
+// plan placed nothing and asked for none, and the run waited forever.
+it('plans a task over every size’s cores as the play does, not out of the run', () => {
+  const one = size('one', 1)
+  const p = plan([task('a', 2, [], 1.3)], [], candidates([one], new Map(), [], 1), WARM)
+  expect(p.start).toEqual([one])
 })

@@ -33,11 +33,9 @@ interface Bay {
   readonly open: boolean
   /** When its last task ends. */
   end: number
-  /** Each change in what it holds, in time order: when, and the cores and memory it adds. */
+  /** Each change in what it holds, in time order, the first at 0. */
   readonly at: number[]
-  readonly dc: number[]
-  readonly dm: number[]
-  /** What it holds from each change on. */
+  /** What it holds from each change to the next. */
   readonly hc: number[]
   readonly hm: number[]
   readonly given: string[]
@@ -61,18 +59,36 @@ export interface Packing {
   readonly starts: readonly { readonly id: string; readonly size: Size; readonly at: number }[]
 }
 
-/** Adds what `bay` holds from `at` on, as `hc`/`hm` count it. */
-function change(bay: Bay, at: number, cores: number, memory: number): void {
-  let i = bay.at.length
-  while (i > 0 && bay.at[i - 1]! > at) i--
-  bay.at.splice(i, 0, at)
-  bay.dc.splice(i, 0, cores)
-  bay.dm.splice(i, 0, memory)
-  bay.hc.splice(i, 0, 0)
-  bay.hm.splice(i, 0, 0)
-  for (let j = i; j < bay.at.length; j++) {
-    bay.hc[j] = (j === 0 ? 0 : bay.hc[j - 1]!) + bay.dc[j]!
-    bay.hm[j] = (j === 0 ? 0 : bay.hm[j - 1]!) + bay.dm[j]!
+export interface PackOptions {
+  /** Added to each task's latest start to order them, not to place them. */
+  readonly noise?: ArrayLike<number>
+  /** How far into its slack, 0 to 1, a task a new worker is started for starts. */
+  readonly late?: ArrayLike<number>
+  /** Undefined as soon as a task would start past its latest start. */
+  readonly strict?: boolean
+}
+
+/**
+ * The index of a change at `t`, split from the one before it. Levels, not
+ * deltas: a running total rebuilt to the end on each insert made a
+ * 9000-task pack 3.7 s (2026-11-11).
+ */
+function split(bay: Bay, t: number): number {
+  const i = before(bay, t)
+  if (bay.at[i] === t) return i
+  bay.at.splice(i + 1, 0, t)
+  bay.hc.splice(i + 1, 0, bay.hc[i]!)
+  bay.hm.splice(i + 1, 0, bay.hm[i]!)
+  return i + 1
+}
+
+/** Adds `cores` and `memory` to what `bay` holds over [from, to). */
+function hold(bay: Bay, from: number, to: number, cores: number, memory: number): void {
+  const a = split(bay, from)
+  const b = split(bay, to)
+  for (let k = a; k < b; k++) {
+    bay.hc[k]! += cores
+    bay.hm[k]! += memory
   }
 }
 
@@ -88,18 +104,19 @@ function before(bay: Bay, t: number): number {
   return lo - 1
 }
 
-/** Whether `bay` has `cores` and `memory` free over [t, t + ms). */
-function room(bay: Bay, t: number, ms: number, cores: number, memory: number): boolean {
+/** The first change over [t, t + ms) where `bay` lacks `cores` or `memory`, or -1. */
+function blocked(bay: Bay, t: number, ms: number, cores: number, memory: number): number {
   const freeCores = bay.cores + 1e-9 - cores
   const freeMemory = bay.memory - memory
-  let i = before(bay, t)
-  if (i >= 0 && (bay.hc[i]! > freeCores || bay.hm[i]! > freeMemory)) return false
-  for (i++; i < bay.at.length && bay.at[i]! < t + ms; i++)
-    if (bay.hc[i]! > freeCores || bay.hm[i]! > freeMemory) return false
-  return true
+  for (let i = before(bay, t); i < bay.at.length && bay.at[i]! < t + ms; i++)
+    if (bay.hc[i]! > freeCores || bay.hm[i]! > freeMemory) return i
+  return -1
 }
 
-/** The earliest start in [from, until] where `bay` has room for the task, or undefined. */
+/**
+ * The earliest start in [from, until] where `bay` has room for the task, or
+ * undefined: past each change that lacks room, never back over it.
+ */
 function first(
   bay: Bay,
   from: number,
@@ -108,12 +125,13 @@ function first(
   cores: number,
   memory: number,
 ): number | undefined {
-  const lo = Math.max(from, bay.join)
-  if (lo > until + 1e-6) return undefined
-  if (room(bay, lo, ms, cores, memory)) return lo
-  for (let i = before(bay, lo) + 1; i < bay.at.length && bay.at[i]! <= until + 1e-6; i++)
-    if ((bay.dc[i]! < 0 || bay.dm[i]! < 0) && room(bay, bay.at[i]!, ms, cores, memory))
-      return bay.at[i]!
+  let t = Math.max(from, bay.join)
+  while (t <= until + 1e-6) {
+    const k = blocked(bay, t, ms, cores, memory)
+    if (k < 0) return t
+    if (k + 1 >= bay.at.length) return undefined
+    t = bay.at[k + 1]!
+  }
   return undefined
 }
 
@@ -137,7 +155,25 @@ export function pack(
   fresh: readonly Size[],
   warm: (size: string, nth: number) => number,
   deadline: number,
-): Packing {
+  options?: PackOptions & { readonly strict?: false },
+): Packing
+export function pack(
+  tasks: readonly PlanTask[],
+  workers: readonly PlanWorker[],
+  fresh: readonly Size[],
+  warm: (size: string, nth: number) => number,
+  deadline: number,
+  options: PackOptions,
+): Packing | undefined
+export function pack(
+  tasks: readonly PlanTask[],
+  workers: readonly PlanWorker[],
+  fresh: readonly Size[],
+  warm: (size: string, nth: number) => number,
+  deadline: number,
+  options: PackOptions = {},
+): Packing | undefined {
+  const { noise, late, strict = false } = options
   const n = tasks.length
   const index = new Map(tasks.map((t, i) => [t.id, i]))
   const after: number[][] = tasks.map(() => [])
@@ -174,6 +210,7 @@ export function pack(
     }
   }
   const latest = (i: number): number => deadline - tail[i]!
+  const rank = noise === undefined ? latest : (i: number): number => latest(i) + noise[i]!
   const bays: Bay[] = []
   for (const w of workers) {
     const bay: Bay = {
@@ -185,23 +222,23 @@ export function pack(
       join: Math.max(0, w.at),
       open: w.drainIn === undefined,
       end: 0,
-      at: [],
-      dc: [],
-      dm: [],
-      hc: [],
-      hm: [],
+      at: [0],
+      hc: [0],
+      hm: [0],
       given: [],
     }
     for (const r of w.running) {
       const end = Math.max(1, leftMs(r.endsIn))
-      change(bay, 0, r.cores, r.memory)
-      change(bay, end, -r.cores, -r.memory)
+      hold(bay, 0, end, r.cores, r.memory)
       bay.end = Math.max(bay.end, end)
     }
     bays.push(bay)
   }
-  const unused = [...fresh.keys()].sort(
-    (a, b) => fresh[a]!.cpu - fresh[b]!.cpu || fresh[a]!.memory - fresh[b]!.memory,
+  // Each size left to start, smallest first, and how many of it.
+  const left = new Map<string, number>()
+  for (const f of fresh) left.set(f.name, (left.get(f.name) ?? 0) + 1)
+  const kinds = [...new Map(fresh.map((f) => [f.name, f])).values()].sort(
+    (a, b) => a.cpu - b.cpu || a.memory - b.memory,
   )
   const starts: { id: string; size: Size; at: number }[] = []
   // Each size's workers asked: those starting, then the packing's.
@@ -217,7 +254,7 @@ export function pack(
     ready.push(i)
     while (k > 0) {
       const p = (k - 1) >> 1
-      if (latest(ready[p]!) <= latest(i)) break
+      if (rank(ready[p]!) <= rank(i)) break
       ready[k] = ready[p]!
       k = p
     }
@@ -231,8 +268,8 @@ export function pack(
       for (;;) {
         const l = 2 * k + 1
         if (l >= ready.length) break
-        const c = l + 1 < ready.length && latest(ready[l + 1]!) < latest(ready[l]!) ? l + 1 : l
-        if (latest(ready[c]!) >= latest(last)) break
+        const c = l + 1 < ready.length && rank(ready[l + 1]!) < rank(ready[l]!) ? l + 1 : l
+        if (rank(ready[c]!) >= rank(last)) break
         ready[k] = ready[c]!
         k = c
       }
@@ -250,35 +287,47 @@ export function pack(
     let best: Bay | undefined
     let bestAt = Infinity
     let bestCost = Infinity
+    // One idle now could take it: letting it go to ask another later is churn.
+    let idle = false
+    // The best room's cost on a worker the run has: the margin a new one
+    // must beat it by, as a plan of history may be off by as much.
+    let real = false
     for (const bay of bays) {
       if (!suits(bay, t)) continue
       const at = first(bay, r, by, ms, t.cores, t.memory)
       if (at === undefined) continue
+      if (bay.end === 0 && bay.given.length === 0) idle = true
       const cost = bay.cores * Math.max(0, at + ms - bay.end)
       if (cost < bestCost || (cost === bestCost && at < bestAt)) {
+        real = bay.size === undefined
         best = bay
         bestAt = at
         bestCost = cost
       }
     }
-    if (best === undefined) {
-      // A new one, the smallest it fits, asked so it joins as the task is ready.
-      const k = unused.findIndex((f) => {
-        const s = fresh[f]!
-        return (
-          (t.platform === undefined || s.platform === t.platform) &&
-          s.cpu >= t.cores - 1e-9 &&
-          s.memory >= t.memory &&
-          (t.above === undefined || s.cpu > t.above.cores || s.memory > t.above.memory)
-        )
-      })
-      if (k >= 0) {
-        const size = fresh[unused[k]!]!
-        unused.splice(k, 1)
-        const nth = asked.get(size.name) ?? 0
+    // A new one, the smallest it fits, joining as the task is ready (or
+    // later, as `late` asks): taken when none has room by its latest start,
+    // or when keeping one idle until then costs more than a warm-up.
+    const size = kinds.find(
+      (s) =>
+        left.get(s.name)! > 0 &&
+        (t.platform === undefined || s.platform === t.platform) &&
+        s.cpu >= t.cores - 1e-9 &&
+        s.memory >= t.memory &&
+        (t.above === undefined || s.cpu > t.above.cores || s.memory > t.above.memory),
+    )
+    if (size !== undefined) {
+      const nth = asked.get(size.name) ?? 0
+      const w = warm(size.name, nth)
+      const want = late === undefined ? r : r + late[i]! * Math.max(0, by - r)
+      const spawn = Math.max(0, want - w)
+      const at = spawn + w
+      if (
+        best === undefined ||
+        (!idle && size.cpu * (at + ms - spawn + (real ? w : 0)) < bestCost)
+      ) {
+        left.set(size.name, left.get(size.name)! - 1)
         asked.set(size.name, nth + 1)
-        const w = warm(size.name, nth)
-        const spawn = Math.max(0, r - w)
         const id = `\0pack${starts.length}`
         starts.push({ id, size, at: spawn })
         best = {
@@ -288,33 +337,33 @@ export function pack(
           platform: size.platform,
           size,
           spawn,
-          join: spawn + w,
+          join: at,
           open: true,
           end: 0,
-          at: [],
-          dc: [],
-          dm: [],
-          hc: [],
-          hm: [],
+          at: [0],
+          hc: [0],
+          hm: [0],
           given: [],
         }
         bays.push(best)
-        bestAt = best.join > r ? best.join : r
-      } else {
-        // None left to start: the soonest room any has, late.
-        for (const bay of bays) {
-          if (!suits(bay, t)) continue
-          const at = first(bay, r, Infinity, ms, t.cores, t.memory)
-          if (at !== undefined && at < bestAt) {
-            best = bay
-            bestAt = at
-          }
-        }
-        if (best === undefined) continue
+        bestAt = at
       }
     }
-    change(best, bestAt, t.cores, t.memory)
-    change(best, bestAt + ms, -t.cores, -t.memory)
+    if (best === undefined) {
+      if (strict) return undefined
+      // None left to start: the soonest room any has, late.
+      for (const bay of bays) {
+        if (!suits(bay, t)) continue
+        const at = first(bay, r, Infinity, ms, t.cores, t.memory)
+        if (at !== undefined && at < bestAt) {
+          best = bay
+          bestAt = at
+        }
+      }
+      if (best === undefined) continue
+    }
+    if (strict && bestAt > by + 1e-6) return undefined
+    hold(best, bestAt, bestAt + ms, t.cores, t.memory)
     best.end = Math.max(best.end, bestAt + ms)
     best.given.push(t.id)
     placed.set(t.id, { worker: best.id, at: bestAt, ready: r })

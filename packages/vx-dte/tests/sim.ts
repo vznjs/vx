@@ -45,6 +45,8 @@ export interface SimOptions {
   readonly sizes: readonly Size[]
   /** How long the n-th worker started (1 first) takes to join. */
   readonly warmUpMs?: (n: number) => number
+  /** Each size's join spread an earlier run learned (`readJoinSpreads`). */
+  readonly spreadsMs?: ReadonlyMap<string, number>
   /** The tasks the forecast says miss (`likelyMisses`), before any does. */
   readonly likely?: ReadonlySet<string>
   /** How it orders, places, books and scales; default `DEFAULT_STRATEGY`. */
@@ -385,15 +387,15 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
           least = Math.min(least ?? Infinity, w.joinedAt - w.spawnedAt)
       return least ?? warmUpOf(1)
     }
-    // As the plugin (`Orchestrator.spreadsMs`).
-    const spread = (size: string): number =>
-      spreadMs(
-        workers.flatMap((w) =>
-          w.joinedAt !== undefined && sizeOf.get(w.id)?.name === size
-            ? [w.joinedAt - w.spawnedAt]
-            : [],
-        ),
+    // As the plugin: this run's once two of the size joined (`Orchestrator.spreadsMs`), else an earlier run's.
+    const spread = (size: string): number => {
+      const ups = workers.flatMap((w) =>
+        w.joinedAt !== undefined && sizeOf.get(w.id)?.name === size
+          ? [w.joinedAt - w.spawnedAt]
+          : [],
       )
+      return ups.length >= 2 ? spreadMs(ups) : (options.spreadsMs?.get(size) ?? 0)
+    }
     const planWorkers: PlanWorker[] = []
     const running = new Set<string>()
     for (const w of joined()) {

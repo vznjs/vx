@@ -80,9 +80,41 @@ async function newest(
 }
 
 /** `learned` with this run's own over it, under HEAD: once per commit, as every entry is. */
-export async function writeWarmUps(
+export function writeWarmUps(
   cache: PluginCache,
   root: string,
+  learned: ReadonlyMap<string, number>,
+  run: ReadonlyMap<string, number>,
+): Promise<void> {
+  return writeMs(cache, root, keyOf, learned, run)
+}
+
+// How much later each next worker of a size joined than the one before
+// (`Orchestrator.spreadsMs`): before this run's own show it, the plan asks
+// each next new one sooner by it. Kept as the warm-ups are, in their shape.
+
+const spreadsKeyOf = (sha: string): string => `join-spreads\0${sha}`
+
+/** The newest join spreads an ancestor's run wrote. */
+export function readJoinSpreads(cache: PluginCache, root: string): Promise<Map<string, number>> {
+  return newest(cache, root, spreadsKeyOf, parseWarmUps)
+}
+
+/** `learned` with this run's own over it, under HEAD. */
+export function writeJoinSpreads(
+  cache: PluginCache,
+  root: string,
+  learned: ReadonlyMap<string, number>,
+  run: ReadonlyMap<string, number>,
+): Promise<void> {
+  return writeMs(cache, root, spreadsKeyOf, learned, run)
+}
+
+/** `{ version: 1, sizes: { name: ms } }` of `learned` with `run` over it, under HEAD's `key`. */
+async function writeMs(
+  cache: PluginCache,
+  root: string,
+  key: (sha: string) => string,
   learned: ReadonlyMap<string, number>,
   run: ReadonlyMap<string, number>,
 ): Promise<void> {
@@ -91,7 +123,7 @@ export async function writeWarmUps(
   if (head === undefined) return
   const sizes: Record<string, number> = {}
   for (const [name, ms] of [...learned, ...run]) sizes[name] = Math.round(ms)
-  await cache.put(keyOf(head), new TextEncoder().encode(JSON.stringify({ version: 1, sizes })))
+  await cache.put(key(head), new TextEncoder().encode(JSON.stringify({ version: 1, sizes })))
 }
 
 // Each server's base, the cores it uses with no dependant's work
