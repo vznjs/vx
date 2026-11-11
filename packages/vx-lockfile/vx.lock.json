@@ -178,7 +178,7 @@
     "test.shard-3": {
       "description": "bun test, shard 3 of 3",
       "exec": {
-        "command": "bun test --only-failures --timeout=30000 tests/bun-catalog-precise.test.ts tests/bun.test.ts tests/discover-parity.test.ts tests/discover.test.ts tests/entry-shapes.test.ts tests/io-refusals.test.ts tests/link-outside-root.test.ts tests/linked-dirs.test.ts tests/memo-identity.test.ts tests/npm-nested-workspace.test.ts tests/pnpm-manifest-files.test.ts tests/pnpm.test.ts tests/root-workspace-dep.test.ts tests/settings.test.ts tests/sparse-checkout.test.ts tests/yarn-bound-descriptor.test.ts tests/yarn-numeric-range.test.ts",
+        "command": "bun test --only-failures --timeout=30000 tests/bun-catalog-precise.test.ts tests/bun.test.ts tests/discover-parity.test.ts tests/discover.test.ts tests/entry-shapes.test.ts tests/io-refusals.test.ts tests/link-outside-root.test.ts tests/linked-dirs.test.ts tests/memo-identity.test.ts tests/npm-nested-workspace.test.ts tests/pnpm-manifest-files.test.ts tests/pnpm.test.ts tests/root-workspace-dep.test.ts tests/settings.test.ts tests/sparse-checkout.test.ts tests/yarn-bound-descriptor.test.ts tests/yarn-classic-workspace-deps.test.ts tests/yarn-numeric-range.test.ts",
         "env": {
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",

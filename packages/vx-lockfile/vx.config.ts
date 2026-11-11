@@ -56,6 +56,7 @@ const SHARDS: readonly (readonly string[])[] = [
     'settings',
     'sparse-checkout',
     'yarn-bound-descriptor',
+    'yarn-classic-workspace-deps',
     'yarn-numeric-range',
   ],
 ]

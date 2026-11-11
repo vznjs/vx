@@ -727,7 +727,16 @@ export function importerDigests(
   const out = new Map<string, string>()
   const fold = (h: string) => Bun.hash.xxHash3(`${global}\0${h}`).toString(16).padStart(16, '0')
   if (lock.generation === 'classic') {
-    const all = ['classic', global, ...[...digests].sort()].join('\n')
+    // Yarn 1 records no importer, only the ranges asked: a workspace moved
+    // to a range another already keys (a's is-number 6 → 7 beside b's 7)
+    // leaves yarn.lock byte for byte and changes what a, and every
+    // project linking a, resolves. So each workspace manifest
+    // (`classicManifests`, an extra file) folds into the one digest.
+    const manifests = [...files]
+      .filter(([rel]) => rel.endsWith('/package.json'))
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([rel, h]) => `manifest\0${rel}\0${h}`)
+    const all = ['classic', global, ...[...digests].sort(), ...manifests].join('\n')
     out.set('.', Bun.hash.xxHash3(all).toString(16).padStart(16, '0'))
     return out
   }

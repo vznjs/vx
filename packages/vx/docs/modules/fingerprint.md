@@ -90,6 +90,10 @@ What each claims:
 | `npm()`  | `npm-shrinkwrap.json` over `package-lock.json` | `.npmrc`                                                                                                                     |
 | `yarn()` | `yarn.lock`                                    | `.yarnrc.yml`, `.yarnrc`, `.npmrc`, `package.json` (`workspaces.nohoist`, `installConfig`, `resolutions`, dependency ranges) |
 
+Under yarn 1, `yarn()` also names each workspace's `package.json` through
+`extraFiles`: yarn.lock records no workspace's ranges, so one moved to a
+range another already keys changes the install with yarn.lock byte for byte.
+
 An install setting moves `node_modules` under a byte-identical lockfile:
 bun 1.4.2 with `[install] linker = "isolated"` rewrote no byte of
 `bun.lock` and moved every dependency out of the root `node_modules`
