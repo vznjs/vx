@@ -50,6 +50,15 @@ export interface LockfileClaimHooks {
 }
 export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
 
+// an extra file's content hash ('' when absent; a directory: every file under
+// it but node_modules and .git), read once per run through `hashes`
+export function hashExtra(workspaceRoot: string, rel: string, hashes?: ExtraHashes): Promise<string>
+export type ExtraHashes = Map<string, Promise<string>> // absolute path → hash, one run's
+// `ctx` carrying the run's hashes (a spread of it keeps them); core makes its
+// discover, project, key and fingerprint contexts so
+export function withExtraHashes<T extends object>(ctx: T, hashes: ExtraHashes | undefined): T
+export function extraHashesOf(ctx: object): ExtraHashes | undefined
+
 export interface ReachGraph {
   readonly material: readonly string[] // one per node
   readonly edges: ReadonlyArray<readonly number[]> // node → the nodes it reaches directly
@@ -94,6 +103,14 @@ All are on the `@vzn/vx` façade.
   context object; under `scope: 'workspace'` a `WeakMap` on it makes the
   stat + read happen once per run, not once per task (1000 tasks cost
   1000 stats, 47 ms in the plugin-stages row, before this).
+- **An extra file is hashed once per run.** A `file:` directory is
+  walked and read whole, and `discover` (`importers`), the in-process
+  gate, `--affected`'s check and the key each asked for it: four walks
+  a run, six when it had moved. Each discovery makes one `ExtraHashes`
+  (`extraHashesOfDiscovery`), the contexts core hands a claim carry it
+  (`withExtraHashes`), and every hash a claim takes goes through it. A
+  run hashes before any task starts, so no task's write falls between;
+  a `vx watch` cycle discovers, and hashes, afresh.
 - **Once per process.** The file's size, mtime, ctime and inode gate the
   read within a process (a `vx watch` cycle), as `Cache.hashFile`'s memo
   keys a file: size and mtime alone kept the digests of a same-size
@@ -170,7 +187,19 @@ its path (Growth, file-dir-dep-stale.sh). Its hash covers every file
 under it but `node_modules` and `.git`, following links, and the
 in-process gate uses that hash as the
 directory's identity, since a directory's stat does not move when a file
-in it is edited. A path outside the root is never read.
+in it is edited. A path outside the root is read too: a `file:` or
+`link:` directory beside the checkout is what a task imports.
+
+`--affected` sees an extra file move that git lists no change to: a
+file git ignores inside a `file:` directory (a vendored package's built
+`dist/`, which the install copies) or a directory outside the
+repository. Selection hashes each extra file the base's
+`.vx/dependencies.lock.json` records for a claimed file (the working
+tree's copy when the diff does not touch it, no `git show`) and hands one
+whose hash moved to `affected` in `change.extras`, as a changed path
+under it would be, so only the projects reaching it are selected. The
+hashes are the run's (`FingerprintClaims.hashExtra`): the key reads the
+same ones.
 
 ## What it does NOT do
 

@@ -44,9 +44,12 @@ import {
   claimedAffected,
   claimedExtraFiles,
   claimedDigests,
+  extraHashesOfDiscovery,
   fingerprintClaims,
+  hashExtra,
   hasHook,
   keepDiscoveryGraph,
+  withExtraHashes,
 } from '../orchestrator/index.js'
 import {
   type CliLoadOptions,
@@ -54,6 +57,7 @@ import {
   loadCliProjects,
   loadCliWorkspace,
   stageCacheDir,
+  workspaceOfDiscovery,
 } from './workspace-config.js'
 
 /**
@@ -156,19 +160,25 @@ async function workspaceFingerprintClaims(
   projects: readonly ProjectMeta[],
   load: CliLoadOptions,
 ): Promise<FingerprintClaims> {
-  const ws = await loadCliWorkspace(root)
+  const ws = workspaceOfDiscovery(projects) ?? (await loadCliWorkspace(root))
   const claims = fingerprintClaims(ws.plugins)
-  const ctx = {
-    workspaceRoot: root,
-    cacheDir: stageCacheDir(ws, load),
-    warn: (m: string) => ui.say('warn', maskedLine(m)),
-    projects: projects.map((p) => ({ name: p.name, dir: p.dir })),
-  }
+  // The run's own hashes: what selection hashes, its key reads.
+  const hashes = extraHashesOfDiscovery(projects)
+  const ctx = withExtraHashes(
+    {
+      workspaceRoot: root,
+      cacheDir: stageCacheDir(ws, load),
+      warn: (m: string) => ui.say('warn', maskedLine(m)),
+      projects: projects.map((p) => ({ name: p.name, dir: p.dir })),
+    },
+    hashes,
+  )
   return {
     files: new Set(claims.keys()),
     affected: (change) => claimedAffected(claims.get(change.file)!, change, ctx),
     extraFiles: (file, bytes) => claimedExtraFiles(claims.get(file)!, file, bytes, ctx),
     digests: (file) => claimedDigests(claims.get(file)!, file, ctx),
+    hashExtra: (rel) => hashExtra(root, rel, hashes),
   }
 }
 
@@ -271,7 +281,11 @@ export type FilterResolution =
       outright?: string[]
     }
   | Refusal
-  | { empty: string }
+  | {
+      empty: string
+      /** The discovery this pass made, for the undeclared-task check to reuse. */
+      discovered: { root: string; projects: ProjectMeta[] }
+    }
 
 /**
  * The cross-project `dependsOn` edges the configs declare, project → the
@@ -578,13 +592,14 @@ export async function resolveFilters(
             : self === 'HEAD'
               ? ' — the working tree has no change against HEAD; to compare commits, use the branch you merge into (--affected=origin/main) or the previous commit (--affected=HEAD~1)'
               : ` — ${self} is HEAD itself: compare with the branch you merge into (--affected=origin/main) or the previous commit (--affected=HEAD~1)`
-        return { empty: `nothing affected since ${refs}${hint}` }
+        return { empty: `nothing affected since ${refs}${hint}`, discovered: { root, projects } }
       }
       // The diff matched and a walk or an exclusion left nothing: still the
       // exit-0 outcome (`--affected --filter '!docs'` on a docs-only change
       // must not red CI), said as what happened (X-146).
       return {
         empty: `no projects selected: ${emptyWalks.length > 0 ? emptyWalks.join('; ') : excluded}`,
+        discovered: { root, projects },
       }
     }
     if (unmatched.length === 0 && emptyWalks.length > 0) {

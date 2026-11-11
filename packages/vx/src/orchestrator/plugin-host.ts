@@ -45,7 +45,7 @@ import type {
   ConfigContext,
 } from './plugin.js'
 import type { ProjectMeta } from '../workspace/index.js'
-import { hashExtra } from './lockfile-claim.js'
+import { extraHashesOf, hashExtra } from './lockfile-claim.js'
 import { readOnly, readOnlyNodes } from './read-only.js'
 
 /** `a string`, `an array`, `null`, `a number` — for a refusal that names what came back. */
@@ -529,7 +529,9 @@ export async function claimedDigests(
   }
   if (extras === undefined || extras.length === 0) return { hash, projects }
   const hashed = await Promise.all(
-    extras.map(async (rel) => [rel, await hashExtra(ctx.workspaceRoot, rel)] as const),
+    extras.map(
+      async (rel) => [rel, await hashExtra(ctx.workspaceRoot, rel, extraHashesOf(ctx))] as const,
+    ),
   )
   return { hash, projects, extras: Object.fromEntries(hashed) }
 }

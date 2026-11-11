@@ -82,8 +82,10 @@ import {
   type ScheduleRun,
 } from './plugin-host.js'
 import { lockedFiles } from './locked-digests.js'
+import { withExtraHashes } from './lockfile-claim.js'
 import {
   discoverProjects,
+  extraHashesOfDiscovery,
   gitOfDiscovery,
   graphOfDiscovery,
   ignoredConfigRefusal,
@@ -911,7 +913,14 @@ export async function prepareRunLocked(
     }
     if (hasHook(plugins, 'key')) {
       const locked = lockedFiles(workspaceRoot, claimed, claimedBytes, await dependenciesLock)
-      await applyKeyHooks(plugins, nodes, { workspaceRoot, cacheDir, warn: warnOf(log), locked })
+      await applyKeyHooks(
+        plugins,
+        nodes,
+        withExtraHashes(
+          { workspaceRoot, cacheDir, warn: warnOf(log), locked },
+          extraHashesOfDiscovery(projectMetas),
+        ),
+      )
     }
     refuseFiltersThroughGroups(nodes)
     refuseCacheInOutputs(nodes, gitFilesCache.vxDirs, cacheDir, workspaceRoot, nestedDirsByProject)

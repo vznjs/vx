@@ -7,7 +7,7 @@
 import type { TaskConfig } from '../config.js'
 import { isDefaultBuild } from '../graph/index.js'
 import { nxProjectTarget, projectNamed } from '../orchestrator/index.js'
-import { findWorkspaceRoot } from '../workspace/index.js'
+import { findWorkspaceRoot, type ProjectMeta } from '../workspace/index.js'
 import { nearest } from '../util/index.js'
 import { findCwdProject } from './select.js'
 import { discoverCliProjects, loadCliProjects } from './workspace-config.js'
@@ -98,8 +98,10 @@ export async function taskNamesHere(
 export async function undeclaredTasks(
   tasks: readonly string[],
   cwd: string,
+  /** The selection's discovery (`RunOptions.discovered`): discovering again ran every `discover` hook twice. */
+  discovered?: { root: string; projects: ProjectMeta[] },
 ): Promise<string | undefined> {
-  const projects = await workspaceProjects(cwd)
+  const projects = await workspaceProjects(cwd, discovered)
   if (projects === null) return undefined
   const declared = new Set<string>()
   for (const p of projects.values())
@@ -113,8 +115,10 @@ export async function undeclaredTasks(
 
 async function workspaceProjects(
   cwd: string,
+  discovered?: { root: string; projects: ProjectMeta[] },
 ): Promise<Awaited<ReturnType<typeof loadCliProjects>> | null> {
   try {
+    if (discovered !== undefined) return await loadCliProjects(discovered.root, discovered.projects)
     const root = await findWorkspaceRoot(cwd)
     return await loadCliProjects(root, await discoverCliProjects(root))
   } catch {

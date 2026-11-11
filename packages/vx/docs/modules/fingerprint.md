@@ -49,9 +49,13 @@ the projects reaching it move.
 
 A named path above the root (a `file:` or `link:` directory beside the
 checkout, `../vendor/dep`) is read and hashed into the key like one
-inside it. Git holds no base for it, so `--affected` sees an edit there
-only when the lockfile changes too; nor for a gitignored file in a
-directory inside the root, which `hashDir` reads as the manager copies it.
+inside it, and so is a gitignored file in a directory inside the root,
+which `hashDir` reads as the manager copies it. Git lists no change to
+either, so `--affected` hashes each extra file the base's
+`.vx/dependencies.lock.json` records (`FingerprintClaims.hashExtra`, the
+run's own hashes, which its key reads too) and hands one that moved to
+the claimant as a changed directory: only the projects reaching it are
+selected.
 
 ## Claiming a file (`VxPlugin.fingerprint`)
 
