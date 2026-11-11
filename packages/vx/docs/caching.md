@@ -1346,6 +1346,12 @@ content hasher, which hashes the worktree bytes — the correct source
 either way. The only cost is reading the file, which is exactly what
 the gate exists to avoid paying needlessly.
 
+Nor can the index's stat stand in for the file's own `lstat` there. When
+a file's stat moved, git compares content after the filter, calls a
+match clean and keeps the old stat: `a\r\nb\n` rewritten as `a\nb\r\n`
+(same size, same blob) is clean, and the index still describes the
+first file. So each such file is stat'ed once per run.
+
 `--affected` asks the same question (`core.autocrlf`, then `check-attr`)
 of a file whose stat moved: such a file is a change, though git, which
 compares after the filter, calls it clean against the base.

@@ -2681,6 +2681,10 @@ export class Cache implements CacheLayer {
       }
       return path.join(projectDir, rel)
     }
+    // Per file, not `fs.promises.cp` of the tree (14.5 ms for vueuse's 92
+    // tree files against 1.9; `cpSync` 3.5), nor a Worker: the copies are
+    // 1.9 ms of a 25 ms restore, and one Worker's start is 1.5–2.4 ms
+    // (2026-11-11).
     const copy = async (to: string, from: string): Promise<number> => {
       try {
         return await Bun.write(to, Bun.file(from), { createPath: false })

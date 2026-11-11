@@ -591,6 +591,63 @@ describe('stale cache hits', () => {
     TIMEOUT,
   )
 
+  // The index's stat cannot stand in for a file's lstat under a text
+  // filter (2026-11-11): git called this same-size rewrite clean by
+  // content after normalizing and kept the old stat, so a token built from
+  // the index held while the bytes the task reads moved.
+  it(
+    'a same-size line-ending swap git calls clean is not served from cache',
+    async () => {
+      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+      await writeLocalWorkspace(root)
+      const proj = path.join(root, 'packages', 'app')
+      await write(path.join(proj, 'package.json'), '{"name":"app","version":"1.0.0"}')
+      await write(
+        path.join(proj, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             own: {
+               exec: { command: 'mkdir -p dist && cat src/a.txt > dist/own.txt' },
+               inputs: { files: ['src/**'] }, outputs: { files: ['dist/own.txt'] }, cache: true,
+             },
+             ws: {
+               exec: { command: 'mkdir -p dist && cat ../../shared/a.txt > dist/ws.txt' },
+               inputs: { files: [], workspaceFiles: ['shared/**'] },
+               outputs: { files: ['dist/ws.txt'] }, cache: true,
+             },
+           },
+         }`,
+      )
+      await write(path.join(root, '.gitattributes'), '* text=auto eol=lf\n')
+      await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
+      const files = [path.join(proj, 'src/a.txt'), path.join(root, 'shared/a.txt')]
+      for (const f of files) await write(f, 'a\r\nb\n')
+      git(root, 'init', '-q')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+      const out = (task: string) => readFile(path.join(proj, `dist/${task}.txt`), 'utf8')
+      for (const task of ['own', 'ws']) {
+        vx(root, 'run', `app#${task}`)
+        vx(root, 'run', `app#${task}`)
+        expect(await out(task)).toBe('a\r\nb\n')
+      }
+      for (const f of files) await write(f, 'a\nb\r\n')
+      const status = Bun.spawnSync({
+        cmd: ['git', '--no-optional-locks', 'status', '--porcelain', '--', 'packages', 'shared'],
+        cwd: root,
+      })
+      expect(new TextDecoder().decode(status.stdout)).toBe('')
+      const got: string[] = []
+      for (const task of ['own', 'ws']) {
+        vx(root, 'run', `app#${task}`)
+        got.push(JSON.stringify(await out(task)))
+      }
+      expect(got).toEqual([JSON.stringify('a\nb\r\n'), JSON.stringify('a\nb\r\n')])
+    },
+    TIMEOUT,
+  )
+
   // Row X of the upstream survey: git's DEFAULT global attributes file,
   // read when `core.attributesFile` is unset, is `$XDG_CONFIG_HOME/git/
   // attributes`, else `~/.config/git/attributes`. The gate looked for the

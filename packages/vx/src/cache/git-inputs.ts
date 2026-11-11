@@ -2739,10 +2739,6 @@ export async function applyGitEnumeration(
   cache.setIgnored(workspaceRoot, enumeration.ignored)
   cache.enumeratedAtMs = enumeration.startedAtMs
   cache.markUndecodable(enumeration.undecodable.map((rel) => path.join(workspaceRoot, rel)))
-  cache.noteTrackedLater(
-    enumeration.scopes.map((rel) => path.join(workspaceRoot, rel)),
-    () => enumeration.tracked.map((rel) => path.join(workspaceRoot, rel)),
-  )
   // Sort once, then each project's files are a contiguous range found
   // by binary search on its `dir/` prefix — O((F+P) log F) instead of
   // the O(P·F) per-project startsWith scan (54 ms at 1090 projects ×
@@ -2774,6 +2770,13 @@ export async function applyGitEnumeration(
       : undefined
   const abs = (rel: string): string =>
     base === undefined ? path.join(workspaceRoot, rel) : base + rel
+  // Built when a no-OID file's record asks (`committedIn`): with
+  // `path.join`, 1.2 ms of vueuse's no-op for 1,583 tracked files, 0.7
+  // joined as above (2026-11-11).
+  cache.noteTrackedLater(
+    enumeration.scopes.map((rel) => path.join(workspaceRoot, rel)),
+    () => enumeration.tracked.map(abs),
+  )
   const lowerBound = (key: string): number => {
     let lo = 0
     let hi = sorted.length
