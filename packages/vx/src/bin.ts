@@ -9,17 +9,18 @@ async function main(): Promise<void> {
   const argv = process.argv.slice(2)
   // A rejection nothing awaited (a plugin verb's floating promise) is a
   // failure: the exit after the streams end came before Bun reported it,
-  // and the run said nothing and exited 0.
+  // and the run said nothing and exited 0. Its line is written here, not
+  // after an import: one reported in the turn the exit ends the streams
+  // landed after stderr had ended and was dropped (exit 1, no word of why).
   process.on('unhandledRejection', (reason) => {
     process.exitCode = 1
-    void Promise.all([import('./ui/index.js'), import('./util/index.js')]).then(
-      ([ui, { maskedLine }]) =>
-        ui.say(
-          'error',
-          maskedLine(
-            `vx: unhandled rejection: ${reason instanceof Error ? reason.message : String(reason)}\n`,
-          ),
-        ),
+    const ui = require('./ui/index.js') as typeof import('./ui/index.js')
+    const { maskedLine } = require('./util/index.js') as typeof import('./util/index.js')
+    ui.say(
+      'error',
+      maskedLine(
+        `vx: unhandled rejection: ${reason instanceof Error ? reason.message : String(reason)}\n`,
+      ),
     )
   })
   try {
