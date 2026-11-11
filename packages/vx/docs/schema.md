@@ -2491,7 +2491,8 @@ to <reader>'s inputs.<field>, or depend on <writer> and leave it out of
   `{ name: value }` material folded into the cache key), `fingerprint`
   (claim a lockfile and key it per project, or a root file the plugin's
   stages read, such as `turbo.json`, so `--affected` asks the plugin
-  about it and `vx watch` re-runs on it), `schedule` (task id →
+  about it and `vx watch` re-runs on it), `measures` (what the
+  plugin times that is no task, kept as a task's timing), `schedule` (task id →
   priority, merged over the scheduler's baseline), `admit` (may this
   ready task start now beside what runs here), `executor` (return a
   `TaskExecutor` — where one task's command runs — or decline), `cache`

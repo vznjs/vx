@@ -11,7 +11,7 @@ everything else stays core's.
 
 ```mermaid
 flowchart LR
-  config --> discover --> project --> G["graph"] --> key --> fingerprint --> schedule --> admit --> E["executor / cache"] --> T["telemetry / output"]
+  config --> discover --> project --> G["graph"] --> key --> fingerprint --> measures --> schedule --> admit --> E["executor / cache"] --> T["telemetry / output"]
 ```
 
 ---
@@ -79,6 +79,7 @@ runs and is stored on this machine.
 | graph       | `graph(nodes, ctx)`    | the run's edges                                           |
 | key         | `key(task, ctx)`       | extra cache-key material, named in `vx why`               |
 | fingerprint | `fingerprint`          | a root file it keys itself, such as a lockfile            |
+| measures    | `measures(nodes)`      | what the plugin times that is no task, kept as a timing   |
 | schedule    | `schedule(nodes, ctx)` | which ready task runs first                               |
 | admit       | `admit(task, ctx)`     | whether a ready task starts now, beside what runs here    |
 | execute     | `executor(ctx)`        | where one task's command runs                             |

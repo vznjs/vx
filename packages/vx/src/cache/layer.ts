@@ -818,7 +818,7 @@ export interface CacheLayer {
    * ride the entry-save transaction (`save`/`ingest`) so a warm
    * all-cache-hit run writes nothing.
    */
-  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
+  recordRunBundle(bundle: RunBundle): void
   stats(opts?: CacheStatsOptions): CacheStats
   /**
    * Content-hash a file with an mtime+size fast path. If the
@@ -860,3 +860,19 @@ export interface CacheLayer {
  * @internal
  */
 export type SaveArgs = Parameters<CacheLayer['save']>[0]
+
+/** A plugin's measure kept as a task's timing (`PluginSetupContext.measure`): `id` is `<plugin>#<name>`. */
+export interface MeasureRecord {
+  readonly id: string
+  readonly def: string
+  readonly durationMs: number
+  readonly cores?: number
+}
+
+/** A run's history, written at its end in one transaction. */
+export interface RunBundle {
+  readonly runs: readonly RunRecord[]
+  readonly invocation: InvocationRecord
+  /** The run's plugins' measures, each its last. */
+  readonly measures?: readonly MeasureRecord[]
+}

@@ -27,11 +27,10 @@ import type {
   CacheStats,
   CacheStatsOptions,
   IngestMeta,
-  InvocationRecord,
+  RunBundle,
   OutputFileRow,
   PruneOptions,
   PruneResult,
-  RunRecord,
   SaveArgs,
 } from './cache.js'
 import type { OutputDirRow } from './cache.js'
@@ -746,7 +745,7 @@ export class LayeredCache implements CacheLayer {
     return this.local.outputDirsCurrent(projectDir, rows)
   }
 
-  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void {
+  recordRunBundle(bundle: RunBundle): void {
     this.local.recordRunBundle(bundle)
   }
 

@@ -7,10 +7,12 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Database } from 'bun:sqlite'
 import { afterAll, beforeAll, describe, expect, it, setSystemTime, spyOn } from 'bun:test'
-import { Cache, taskDefinitions, type TaskNode } from '@vzn/vx'
+import { Cache, localHistory, taskDefinitions, type TaskNode } from '@vzn/vx'
 import { oidcTokenAuth } from '@vzn/vx-devtools'
 import { createHistoryServer, sqliteStore } from '@vzn/vx-history-server'
 import { run } from '../../vx/tests/helpers/orchestrator.js'
+import { PLUGIN_IMPORT, pluginSource } from '../../vx/tests/helpers/plugin.js'
+import { indexDb } from '../../vx/src/cache/index.js'
 import { allowOf, type Issuer, issuer, NAMED } from './issuer.js'
 import { HistoryServer, timingOf } from '../src/history-server.js'
 import { vxHistory } from '../src/index.js'
@@ -807,6 +809,59 @@ describe('vx run with vxHistory({ url })', () => {
       refs: ['refs/heads/main'],
       hashes: [sent[0]!.hash],
     })
+  })
+
+  // A plugin's measure (vx-dte's worker warm-up) is timed as a task is:
+  // sent with the run's timings, asked for by the next run and kept for
+  // the plugin to read back (2026-11-11).
+  it('sends and fetches what another plugin measures, as tasks are', async () => {
+    const ws = path.join(root, '.vx/workspace.mjs')
+    const was = await Bun.file(ws).text()
+    const meter = pluginSource(
+      'org/meter',
+      `{
+        measures() { return new Map([['org/meter#warm-up', 'meter-def']]) },
+        setup(ctx) {
+          ctx.on('onTaskComplete', () =>
+            ctx.measure({ id: 'org/meter#warm-up', def: 'meter-def', durationMs: 1234.4, cores: 1.5 }))
+        },
+      }`,
+    )
+    await Bun.write(ws, PLUGIN_IMPORT + was.replace('plugins: [', `plugins: [${meter}, `))
+    try {
+      const before = seen.length
+      await run({ cwd: root, tasks: ['build'], handleSignals: false })
+      const upload = seen.slice(before).find((r) => r.path === '/v1/timings/upload')
+      expect((JSON.parse(upload!.body) as { timings: unknown[] }).timings).toContainEqual({
+        hash: 'meter-def',
+        durationMs: 1234,
+        cores: 1.5,
+      })
+      // Gone from here, the next run reads it from the server.
+      const cache = new Cache(path.join(root, '.vx', 'cache'))
+      try {
+        indexDb(cache).run(`DELETE FROM task_durations WHERE project = 'org/meter'`)
+      } finally {
+        cache.close()
+      }
+      const mid = seen.length
+      await run({ cwd: root, tasks: ['build'], handleSignals: false })
+      const query = seen.slice(mid).find((r) => r.path === '/v1/timings/query')
+      expect((JSON.parse(query!.body) as { hashes: string[] }).hashes).toContain('meter-def')
+      const again = new Cache(path.join(root, '.vx', 'cache'))
+      try {
+        const id = 'org/meter#warm-up'
+        expect(
+          localHistory(again, { defs: new Map([[id, 'meter-def']]) })
+            .measuresFor([id])
+            .get(id),
+        ).toEqual({ durationMs: 1234, cores: 1.5 })
+      } finally {
+        again.close()
+      }
+    } finally {
+      await Bun.write(ws, was)
+    }
   })
 
   it('names the server it could not reach, reading and sending', async () => {

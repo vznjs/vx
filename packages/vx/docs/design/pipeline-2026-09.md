@@ -38,6 +38,7 @@ in pipeline order:
 | graph       | `graph(nodes, ctx)`                  | once, after the task graph                | edges, `requested`                                                                            |
 | key         | `key(task, ctx)`                     | once per task, at hash                    | extra key material (folded, never replaces)                                                   |
 | fingerprint | `fingerprint`: `{ files, affected }` | claim, static; `affected` at `--affected` | takes named lockfiles out of the workspace fingerprint; `key` folds their meaning per project |
+| measures    | `measures(nodes)`                    | once, before `schedule`                   | what a plugin times that is no task (id → definition), timed and shared as tasks are          |
 | schedule    | `schedule(nodes, ctx)`               | once, before scheduling                   | per-task priorities (the two-tier scheduler input)                                            |
 | admit       | `admit(task, ctx)`                   | at every local dispatch                   | whether a ready task starts now beside what runs here (a plugin's own reservations)           |
 | execute     | `executor(ctx)`                      | once per run                              | WHERE one task's command runs (existing)                                                      |

@@ -101,6 +101,7 @@ import {
   formatPersistentList,
   formatRunSummary,
   type Logger,
+  type Measure,
   neverStarted,
   plainOutput,
   resolveOutputView,
@@ -684,6 +685,8 @@ async function runOnBus(
     terminal === null ? undefined : () => terminal.holdStatus(),
   )
   const remotesClosed = await openRemotes(prepared.remotes, ciContext.ci, secrets)
+  // Each plugin measure's last (`ctx.measure`), kept with the run's history.
+  const measured = new Map<string, Measure>()
   signals.held?.arm()
   try {
     disposePlugins = await installPlugins({
@@ -698,6 +701,7 @@ async function runOnBus(
       secrets,
       step,
       signal: signals.held?.signal,
+      measured,
     })
   } catch (err) {
     disposePlugins?.()
@@ -1838,7 +1842,7 @@ async function runOnBus(
     }
     if (stop.stoppedBy === undefined && !historyAfterWait) {
       stepSync('vx:history', () => {
-        recordHistory(() => cache.recordRunBundle(records))
+        recordHistory(() => cache.recordRunBundle({ ...records, measures: [...measured.values()] }))
         recordFailures(list)
       })
     } else if (stop.stoppedBy !== undefined) {
@@ -1846,7 +1850,11 @@ async function runOnBus(
       // measured, or the next run knows none of it (2026-10-21).
       const ended = list.filter((o) => o.status !== 'aborted' && o.status !== 'skipped')
       stepSync('vx:history', () => {
-        recordHistory(() => prepared.localCache.recordRuns(recordsOf(ended, false).runs, head))
+        recordHistory(() =>
+          prepared.localCache.recordRuns(recordsOf(ended, false).runs, head, [
+            ...measured.values(),
+          ]),
+        )
         recordFailures(ended)
       })
     }
@@ -2048,7 +2056,10 @@ async function runOnBus(
           // to its schema during the session, and a mismatch resets silently.
           const local = new Cache(prepared.cacheDir, undefined, prepared.workspaceRoot)
           try {
-            local.recordRunBundle(recordsOf(final, ok && !crashed))
+            local.recordRunBundle({
+              ...recordsOf(final, ok && !crashed),
+              measures: [...measured.values()],
+            })
             recordFailures(final, local)
           } finally {
             local.close()

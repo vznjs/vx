@@ -92,7 +92,7 @@ More: [Quickstart](https://vznjs.github.io/vx/quickstart/) ·
 - **Sandboxed tasks:** opt in per task; a workspace file the task did
   not declare is out of its reach, so it cannot poison the cache.
 - **Clean exits:** Ctrl-C reaps each task's process group.
-- **Plugins at every stage** (15 hooks, `commands` included): remote cache, remote execution, telemetry,
+- **Plugins at every stage** (16 hooks, `commands` included): remote cache, remote execution, telemetry,
   CLI verbs. Core ships none and needs none.
 - **Free:** MIT. No paywall, no cloud, no account.
 

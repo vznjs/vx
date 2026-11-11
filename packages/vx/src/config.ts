@@ -207,6 +207,7 @@ export interface Plugin {
   project?(config: unknown, ctx: unknown): unknown
   graph?(nodes: unknown, ctx: unknown): unknown
   key?(task: unknown, ctx: unknown): unknown
+  measures?(nodes: unknown): unknown
   schedule?(nodes: unknown, ctx: unknown): unknown
   admit?(task: unknown, ctx: unknown): unknown
   readonly commands?: Readonly<Record<string, unknown>>
@@ -234,6 +235,7 @@ export const PLUGIN_HOOKS = [
   'graph',
   'key',
   'fingerprint',
+  'measures',
   'schedule',
   'admit',
   'executor',

@@ -41,7 +41,7 @@ xychart-beta horizontal
 
 ```mermaid
 flowchart LR
-  A[config] --> B[discover] --> C[project] --> D[graph] --> K[key] --> F[fingerprint] --> S[schedule] --> AD[admit] --> E[executor / cache] --> T[telemetry]
+  A[config] --> B[discover] --> C[project] --> D[graph] --> K[key] --> F[fingerprint] --> M[measures] --> S[schedule] --> AD[admit] --> E[executor / cache] --> T[telemetry]
 ```
 
 In words: `config → discover → project → graph → key → fingerprint →

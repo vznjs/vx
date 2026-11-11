@@ -12,6 +12,7 @@ export {
   projectNode,
   projectOutcome,
   ranNoCache,
+  type Measure,
   type RunEvent,
   type RunEventSubscriber,
   type RunStartInfo,

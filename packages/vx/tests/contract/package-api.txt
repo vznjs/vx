@@ -104,8 +104,9 @@ export class Cache implements CacheLayer {
   recordRuns(
     runs: readonly RunRecord[],
     head?: Pick<InvocationRecord, 'branch' | 'commitSha'>,
+    measures?: readonly MeasureRecord[],
   ): void
-  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
+  recordRunBundle(bundle: RunBundle): void
   recordRemoteErrors(runId: string, errors: readonly (readonly [string, string])[]): void
   stats(opts: CacheStatsOptions = {}): CacheStats
   async prune(options: PruneOptions): Promise<PruneResult>
@@ -231,6 +232,7 @@ export const PLUGIN_HOOKS = [
   'graph',
   'key',
   'fingerprint',
+  'measures',
   'schedule',
   'admit',
   'executor',
@@ -698,7 +700,7 @@ export interface CacheLayer {
     absent?: boolean
   }): Promise<void>
   ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
-  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
+  recordRunBundle(bundle: RunBundle): void
   stats(opts?: CacheStatsOptions): CacheStats
   hashFile(filePath: string): Promise<string>
   outputsPath(hash: string): string
@@ -1135,6 +1137,7 @@ export interface LocalFloor {
 export interface LocalHistory extends HistoryProvider {
   resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>>
   durationsFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>>
+  measuresFor(ids: readonly string[]): ReadonlyMap<string, MeasureForecast>
   hasImported(sha: string): boolean
   importTimings(
     sha: string,
@@ -1228,6 +1231,25 @@ export interface MachineReport {
   bookedAvg?: number
   warmUpMs?: number
   startMs?: number
+}
+== type Measure (src/report/events.ts)
+export interface Measure {
+  readonly id: string
+  readonly def: string
+  readonly durationMs: number
+  readonly cores?: number
+}
+== type MeasureForecast (src/history/history.ts)
+export interface MeasureForecast {
+  readonly durationMs: number
+  readonly cores?: number
+}
+== type MeasureRecord (src/cache/layer.ts)
+export interface MeasureRecord {
+  readonly id: string
+  readonly def: string
+  readonly durationMs: number
+  readonly cores?: number
 }
 == type MigrationFormat (src/workspace/migration.ts)
 export type MigrationFormat = 'ts' | 'mjs'
@@ -1369,6 +1391,7 @@ export interface Plugin {
   project?(config: unknown, ctx: unknown): unknown
   graph?(nodes: unknown, ctx: unknown): unknown
   key?(task: unknown, ctx: unknown): unknown
+  measures?(nodes: unknown): unknown
   schedule?(nodes: unknown, ctx: unknown): unknown
   admit?(task: unknown, ctx: unknown): unknown
   readonly commands?: Readonly<Record<string, unknown>>
@@ -1402,6 +1425,7 @@ export interface PluginHookHandlers {
   onTaskStdout: (node: TaskNode, chunk: string) => void | Promise<void>
   onTaskStderr: (node: TaskNode, chunk: string) => void | Promise<void>
   onTaskComplete: (node: TaskNode, outcome: TaskOutcome) => void | Promise<void>
+  onMeasure: (measure: Measure) => void | Promise<void>
   onRunStatus: (line: string) => void | Promise<void>
   onRunEnd: () => void | Promise<void>
 }
@@ -1412,6 +1436,7 @@ export type PluginHookName =
   | 'onTaskStdout'
   | 'onTaskStderr'
   | 'onTaskComplete'
+  | 'onMeasure'
   | 'onRunStatus'
   | 'onRunEnd'
 == type PluginHooks (src/orchestrator/plugin.ts)
@@ -1436,6 +1461,7 @@ export interface PluginSetupContext extends BaseContext, PluginSecrets {
   readonly ci: boolean
   readonly branch: string | null
   on<K extends PluginHookName>(hook: K, handler: PluginHookHandlers[K]): void
+  measure(measure: Measure): void
 }
 == type PreparedRun (src/orchestrator/prepare.ts)
 export interface PreparedRun {
@@ -1605,6 +1631,12 @@ export interface ResolvedSandboxConfig {
     network?: readonly string[]
   }
 }
+== type RunBundle (src/cache/layer.ts)
+export interface RunBundle {
+  readonly runs: readonly RunRecord[]
+  readonly invocation: InvocationRecord
+  readonly measures?: readonly MeasureRecord[]
+}
 == type RunContext (src/report/summary.ts)
 export interface RunContext {
   version: string
@@ -1668,6 +1700,7 @@ export type RunEvent =
   | { kind: 'task:stdout'; node: TaskNode; chunk: string }
   | { kind: 'task:stderr'; node: TaskNode; chunk: string }
   | { kind: 'task:complete'; node: TaskNode; outcome: TaskOutcome }
+  | { kind: 'task:measure'; measure: Measure }
   | { kind: 'run:status'; line: string }
   | { kind: 'run:status'; line: string; warn: true }
   | { kind: 'step:start'; id: string }
@@ -1922,6 +1955,7 @@ export interface ScheduleHookContext extends BaseContext {
   readonly localCache: Cache
   readonly branch: string | null
   readonly refs: readonly string[]
+  readonly measures: ReadonlyMap<string, string>
   readonly cache: PluginCache
   refine(
     weights: ReadonlyMap<string, number> | Promise<ReadonlyMap<string, number> | undefined>,
@@ -2335,6 +2369,7 @@ export interface VxPlugin {
     nodes: ReadonlyMap<string, TaskNode>,
     ctx: ScheduleHookContext,
   ): ReadonlyMap<string, number> | undefined | Promise<ReadonlyMap<string, number> | undefined>
+  measures?(nodes: ReadonlyMap<string, TaskNode>): ReadonlyMap<string, string> | undefined
   admit?(task: TaskNode, ctx: AdmitContext): boolean
   readonly commands?: Readonly<Record<string, PluginCommand>>
   cache?(ctx: CacheContext): RemoteCacheLayer | undefined | Promise<RemoteCacheLayer | undefined>
@@ -2424,7 +2459,7 @@ export type WriteReach = 'none' | 'project' | 'workspace'
 LOG_WIRE_VERSION = 1
 PERSISTENT_TODO = "persistent task — set persistent.readyWhen (regex matched against output) so dependents unblock on readiness, and consider exec.timeout to bound the wait"
 PLATFORMS = ["linux-x64","linux-arm64","darwin-x64","darwin-arm64"]
-PLUGIN_HOOKS = ["config","discover","project","graph","key","fingerprint","schedule","admit","executor","cache","telemetry","output","setup","commands","teardown"]
+PLUGIN_HOOKS = ["config","discover","project","graph","key","fingerprint","measures","schedule","admit","executor","cache","telemetry","output","setup","commands","teardown"]
 PROJECT_CONFIG_FILENAMES = ["vx.config.ts","vx.config.mts","vx.config.js","vx.config.mjs","vx.config.cts","vx.config.cjs"]
 TELEMETRY_SCHEMA_VERSION = 4
 ui = {}

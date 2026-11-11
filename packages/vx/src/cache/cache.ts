@@ -116,6 +116,8 @@ import {
   type DeclaredOutputs,
   type IngestMeta,
   type InvocationRecord,
+  type MeasureRecord,
+  type RunBundle,
   isIndexFull,
   type OutputDirRow,
   type OutputFileRow,
@@ -3979,11 +3981,12 @@ export class Cache implements CacheLayer {
   recordRuns(
     runs: readonly RunRecord[],
     head?: Pick<InvocationRecord, 'branch' | 'commitSha'>,
+    measures?: readonly MeasureRecord[],
   ): void {
     if (this.writeBlocked !== null) return
-    return this.guard(() => this.history.recordRuns(runs, head))
+    return this.guard(() => this.history.recordRuns(runs, head, measures))
   }
-  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void {
+  recordRunBundle(bundle: RunBundle): void {
     if (this.writeBlocked !== null) return
     return this.guard(() => this.history.recordRunBundle(bundle))
   }

@@ -634,7 +634,10 @@ export interface ScheduleRun {
 export async function applyScheduleHooks(
   plugins: readonly VxPlugin[],
   nodes: ReadonlyMap<string, TaskNode>,
-  ctx: Omit<ScheduleHookContext, 'cache' | 'refine' | 'onRefine' | 'refining' | 'flaky'>,
+  ctx: Omit<
+    ScheduleHookContext,
+    'cache' | 'refine' | 'onRefine' | 'refining' | 'flaky' | 'measures'
+  >,
   cacheFor: (plugin: string) => PluginCache = () => absentPluginCache,
   run: ScheduleRun = {},
 ): Promise<ReadonlyMap<string, number>> {
@@ -652,6 +655,7 @@ export async function applyScheduleHooks(
     for (const set of sets) if (set !== undefined) for (const [id, w] of set) out.set(id, w)
     return out
   }
+  const measures = measuresOf(plugins, viewed, ctx.warn)
   for (const [i, plugin] of plugins.entries()) {
     if (plugin.schedule === undefined) continue
     const refine = (
@@ -691,7 +695,15 @@ export async function applyScheduleHooks(
       if (run.refined !== undefined) listeners.push({ plugin, i, listener })
     }
     const flaky = (taskIds: Iterable<string>): void => run.flaky?.(taskIds)
-    const own = { ...ctx, cache: cacheFor(plugin.name), refine, onRefine, refining, flaky }
+    const own = {
+      ...ctx,
+      measures,
+      cache: cacheFor(plugin.name),
+      refine,
+      onRefine,
+      refining,
+      flaky,
+    }
     const call = (): Promise<ReadonlyMap<string, number> | undefined> =>
       safe(plugin, 'schedule', () => plugin.schedule!(viewed, own))
     const weights = await (run.step === undefined
@@ -702,6 +714,53 @@ export async function applyScheduleHooks(
       sets[i] ??= reading(plugin, 'schedule', () => scheduleWeights(plugin, weights, nodes))
   }
   return merged()
+}
+
+/**
+ * Every plugin's `measures`, id → definition: an answer that is not a Map
+ * of `<plugin>#<name>` ids, none a task's, to definition hashes is said
+ * and left out, as history is observability and never breaks a run.
+ */
+function measuresOf(
+  plugins: readonly VxPlugin[],
+  nodes: ReadonlyMap<string, TaskNode>,
+  warn: (message: string) => void,
+): ReadonlyMap<string, string> {
+  const out = new Map<string, string>()
+  for (const plugin of plugins) {
+    if (plugin.measures === undefined) continue
+    let got: unknown
+    try {
+      got = plugin.measures(nodes)
+    } catch (err) {
+      warn(`[vx] plugin '${plugin.name}' failed in measures: ${thrownMessage(err)}`)
+      continue
+    }
+    if (got === undefined) continue
+    if (!(got instanceof Map)) {
+      warn(
+        `[vx] plugin '${plugin.name}' failed in measures: returned ${describeValue(got)}, not a Map of measure id → definition hash`,
+      )
+      continue
+    }
+    for (const [id, def] of got as Map<unknown, unknown>) {
+      if (
+        typeof id !== 'string' ||
+        !id.startsWith(`${plugin.name}#`) ||
+        id.length === plugin.name.length + 1 ||
+        nodes.has(id) ||
+        typeof def !== 'string' ||
+        def === ''
+      ) {
+        warn(
+          `[vx] plugin '${plugin.name}' failed in measures: ${JSON.stringify(id)} → ${describeValue(def)} is not '${plugin.name}#<name>' → a definition hash`,
+        )
+        continue
+      }
+      out.set(id, def)
+    }
+  }
+  return out
 }
 
 /** A `schedule` answer's weights for tasks in the graph, refused by name when it is not a Map of finite numbers. */
