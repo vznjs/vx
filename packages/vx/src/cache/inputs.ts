@@ -49,6 +49,7 @@ import {
   slashBraceExpansions,
   braceAlternatives,
   ESSENTIAL_ENV,
+  ownEnv,
   POST_EXIT_DRAIN_MS,
   splitNegations,
   staticPrefix,
@@ -715,7 +716,7 @@ function resolveEnvValues(
   source: NodeJS.ProcessEnv,
 ): Array<[string, string | undefined]> {
   return [...names].sort().map((name) => {
-    const value = source[name]
+    const value = ownEnv(source, name)
     // Bun decodes the environment lossily and offers no raw bytes on every
     // platform (Linux's /proc/self/environ misses what vx sets itself), so
     // Latin-1 é and è both read as U+FFFD and replayed each other's build.

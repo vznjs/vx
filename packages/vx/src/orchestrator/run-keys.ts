@@ -13,7 +13,7 @@ import { readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
 import type { GitFilesCache } from '../cache/index.js'
 import type { TaskNode } from '../graph/index.js'
-import { xxh3hex } from '../util/index.js'
+import { ownEnv, xxh3hex } from '../util/index.js'
 import type { StableKey } from './stable-keys.js'
 import {
   hashTaskConfig,
@@ -168,7 +168,7 @@ export function runKeysToken(args: RunKeysArgs): RunKeysAt | undefined {
     )
   }
   for (const name of [...envNames].sort()) {
-    const value = process.env[name]
+    const value = ownEnv(process.env, name)
     parts.push(value === undefined ? name : `${name}=${value}`)
   }
   const selection = xxh3hex(ids.join('\0'))

@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { ESSENTIAL_ENV, withoutWorkspaceBins } from '../util/index.js'
+import { ESSENTIAL_ENV, ownEnv, withoutWorkspaceBins } from '../util/index.js'
 
 // Build the environment exposed to a task.
 //
@@ -48,7 +48,7 @@ export function buildIsolatedEnv(opts: BuildEnvOptions): NodeJS.ProcessEnv {
     if (value !== undefined) out[name] = value
   }
   for (const name of opts.passThrough) {
-    const value = opts.source[name]
+    const value = ownEnv(opts.source, name)
     if (value !== undefined) out[name] = value
   }
   if (opts.workspaceRoot !== undefined && out['PATH'] !== undefined) {
