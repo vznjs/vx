@@ -134,7 +134,7 @@ open it first or join it; vx and the relay refuse any other. `local()` starts ea
 git worktree of the tracked files as they are, uncommitted changes
 included, and a file mid-merge or flagged `assume-unchanged` or
 `skip-worktree` as it is on disk (untracked files are not: a task that keys
-one fails), at the
+one fails until it is `git add`ed), at the
 workspace's place in it (a workspace in a subdirectory of its repository too),
 saving to the run's store (a relative `cache.dir` or `--cache-dir` too).
 A run from a git hook works too: the worktree and its worker drop the
@@ -649,6 +649,8 @@ use your own instead.
 - A task whose key hashes a file the run's commit lacks (untracked, or
   gitignored and named outright, or inside a submodule, whose files the
   commit holds only as a gitlink) fails, naming the file: no worker has it.
+  `git add` puts it in the tree `local()` and `docker()` workers check out;
+  workers on CI check out the pushed commit, so there it must be committed.
   A dependency's declared output is not one: its worker restores it first,
   or, uncached, ran it there.
   A task whose project the commit lacks (no file under it tracked) fails,

@@ -499,7 +499,7 @@ export class Orchestrator {
       const tree = await this.inTree
       if (tree !== undefined && !holds(tree, dir))
         throw new UserError(
-          `${req.taskId} runs in ${dir}, which is not in the commit workers check out: commit its project (no file under ${dir} is tracked)`,
+          `${req.taskId} runs in ${dir}, where git tracks no file, so no worker has it: git add its project (and commit it for workers on CI)`,
         )
     }
     // A worker runs the run's tree: a file its key includes that the tree
@@ -535,7 +535,7 @@ export class Orchestrator {
         const link = tree?.links.find((l) => stray.path.startsWith(`${l}/`))
         throw new UserError(
           link === undefined
-            ? `${req.taskId} keys ${stray.path}, which is not in the commit workers check out: commit it, or leave it out of the task's inputs`
+            ? `${req.taskId} keys ${stray.path}, which git does not track, so no worker has it: git add it (and commit it for workers on CI), or leave it out of the task's inputs`
             : `${req.taskId} keys ${stray.path}, in submodule ${link}, whose files workers do not check out: leave it out of the task's inputs`,
         )
       }

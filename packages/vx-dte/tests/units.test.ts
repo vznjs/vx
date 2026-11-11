@@ -5201,9 +5201,17 @@ it('fails a task whose key folds a file the run’s tree lacks, naming it', asyn
         inputs: { files: paths.map((p) => ({ path: p, digest: 'd' })) },
       }) as unknown as ExecuteRequest
     await expect(o.execute(req('a#build', 'a/src/x', 'a/src/z'))).rejects.toThrow(
-      "a#build keys a/src/z, which is not in the commit workers check out: commit it, or leave it out of the task's inputs",
+      "a#build keys a/src/z, which git does not track, so no worker has it: git add it (and commit it for workers on CI), or leave it out of the task's inputs",
     )
     await o.close()
+    // The advice holds: the run's tree is the tracked files as they are,
+    // so `git add` alone puts the file in what local() workers check out.
+    git('add', 'a/src/z')
+    const { tree } = await snapshot(root)
+    expect(git('ls-tree', '-r', '--name-only', tree, 'a/src').split('\n')).toEqual([
+      'a/src/x',
+      'a/src/z',
+    ])
   } finally {
     await served.stop()
   }
@@ -5243,7 +5251,7 @@ it('fails a task whose project the run’s tree lacks, naming it', async () => {
     await expect(
       o.execute({ taskId: 'e#hi', cwd: path.join(root, 'e') } as unknown as ExecuteRequest),
     ).rejects.toThrow(
-      'e#hi runs in e, which is not in the commit workers check out: commit its project (no file under e is tracked)',
+      'e#hi runs in e, where git tracks no file, so no worker has it: git add its project (and commit it for workers on CI)',
     )
     await o.close()
   } finally {
@@ -5727,7 +5735,7 @@ it('takes a key that reads a dependency’s outputs, which its worker restores',
     ])
     expect(queued).toBe('queued')
     await expect(o.execute(req('a/x', 'a/z'))).rejects.toThrow(
-      'a#use keys a/z, which is not in the commit',
+      'a#use keys a/z, which git does not track',
     )
     await o.close()
   } finally {
