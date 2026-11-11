@@ -236,6 +236,8 @@ export interface OrchestratorOptions {
    * now): the queue keeps room for them (`holdFor`), highest rank first.
    */
   readonly soon?: (ends: ReadonlyMap<string, number>) => readonly (Soon & { readonly id: string })[]
+  /** With `soon`: the tasks about to be ready once task `id` is given (`Dispatching.next`). */
+  readonly next?: (id: string, ends: ReadonlyMap<string, number>) => readonly Soon[]
   /** How waiting tasks are ordered and placed (`Strategy`). */
   readonly how?: Strategy
   /** The platform a task naming none runs on (`homeOf`). */
@@ -381,6 +383,10 @@ export class Orchestrator {
   private readonly cancelled = new Set<string>()
   /** When each cancelled one was: held from its ask until then (`heldMs`). */
   private readonly cancelledAt = new Map<string, number>()
+  /** When each worker a plan drained stops taking tasks (`drain`). */
+  private readonly drainAt = new Map<string, number>()
+  /** Where the last plan gave each task (`place`). */
+  private placed: ReadonlyMap<string, string> = new Map()
   /** Of `cancelled`, those given up past their join limit, not let go: taken if they join. */
   private readonly late = new Set<string>()
   /** Of `cancelled`, those that joined anyway and were told to exit. */
@@ -745,21 +751,34 @@ export class Orchestrator {
             .filter((s) => !byId.has(s.id) && !endsIn.has(s.id))
             // As many as the run has workers, and a few: room kept for more is room no task gets.
             .slice(0, 4 * bins.length + 8)
-    const to = this.queue.pass(bins, {
-      ...(soon === undefined ? {} : { soon, ms: (id: string) => ms!(id) ?? UNKNOWN_MS }),
-      book: (need) => this.booking(need),
-      deps: (id) => (byId.get(id)!.deps ??= nodes?.get(id)?.deps),
-      gate: (id) => {
-        const job = byId.get(id)!
-        const up =
-          job.up ?? (nodes?.has(id) === true ? (job.up = upstream(nodes, id)) : upstream(nodes, id))
-        const pin = this.pin(job, up)
-        // It ended: the queue lets it go.
-        if (pin === 'done') byId.delete(id)
-        return pin
-      },
-      waits: (above, platform) => this.bigger(above, platform),
-    })
+    // The draining last, for what no other takes now: a run never waits on a drain.
+    const to = new Map<string, (typeof bins)[number]>()
+    const draining = (b: (typeof bins)[number]): boolean =>
+      (this.drainAt.get(b.id) ?? Infinity) <= now
+    for (const of of [bins.filter((b) => !draining(b)), bins.filter(draining)]) {
+      if (of.length === 0) continue
+      for (const [id, b] of this.queue.pass(of, {
+        ...(soon === undefined ? {} : { soon, ms: (id: string) => ms!(id) ?? UNKNOWN_MS }),
+        ...(soon === undefined || this.o.next === undefined
+          ? {}
+          : { next: (id: string) => this.o.next!(id, endsIn) }),
+        want: (id) => this.placed.get(id),
+        book: (need) => this.booking(need),
+        deps: (id) => (byId.get(id)!.deps ??= nodes?.get(id)?.deps),
+        gate: (id) => {
+          const job = byId.get(id)!
+          const up =
+            job.up ??
+            (nodes?.has(id) === true ? (job.up = upstream(nodes, id)) : upstream(nodes, id))
+          const pin = this.pin(job, up)
+          // It ended: the queue lets it go.
+          if (pin === 'done') byId.delete(id)
+          return pin
+        },
+        waits: (above, platform) => this.bigger(above, platform),
+      }))
+        to.set(id, b)
+    }
     const placed = [...to.keys()].map((id) => byId.get(id)!)
     for (const id of to.keys()) byId.delete(id)
     for (const job of placed) {
@@ -2081,6 +2100,7 @@ export class Orchestrator {
         ...(a.serving.size === 0 ? {} : { serving: new Map(a.serving) }),
         ...(a.declared === undefined ? {} : { size: a.declared.size }),
         at: 0,
+        ...(this.drainAt.has(a.id) ? { drainIn: Math.max(0, this.drainAt.get(a.id)! - now) } : {}),
         idle: a.busy.size === 0,
         // An unmeasured one counts as it did waiting (`ask`), not as the
         // one core it holds: started, it freed a core the plan then found
@@ -2141,6 +2161,21 @@ export class Orchestrator {
         out.add(declared.size)
     }
     return out
+  }
+
+  /**
+   * Workers `drain` names take no task from `inMs` on, from now, while
+   * another takes it: the plan moved the rest of their work to a smaller
+   * one, and each leaves once idle (`Plan.drain`).
+   */
+  drain(drain: readonly { readonly id: string; readonly inMs: number }[]): void {
+    const now = performance.now()
+    for (const d of drain) this.drainAt.set(d.id, now + d.inMs)
+  }
+
+  /** The worker the last plan gave each task (`Plan.placed`): each goes there first where it fits. */
+  place(placed: ReadonlyMap<string, string>): void {
+    this.placed = placed
   }
 
   /**

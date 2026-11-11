@@ -73,6 +73,20 @@ export interface Dispatching {
   readonly ms?: (id: string) => number | undefined
   /** Tasks about to be ready, highest rank first: room is kept for each (`holdFor`). */
   readonly soon?: readonly Soon[]
+  /**
+   * With `soon`: the tasks about to be ready once task `id` is given,
+   * held for as it is, before the rest of the pass takes their room. Held
+   * only from the next pass, a chain's next step found its worker filled
+   * by fillers given beside its first (lab, 2026-11-11).
+   */
+  readonly next?: (id: string) => readonly Soon[]
+  /**
+   * The worker the last plan gave task `id` (`Plan.placed`): of those it
+   * fits now, that one first. Placed by locality, a chain's next step took
+   * the empty worker the plan kept for a 4-core task, which waited 3
+   * minutes past its latest start (lab, 2026-11-11).
+   */
+  readonly want?: (id: string) => string | undefined
 }
 
 /**
@@ -141,7 +155,13 @@ export function dispatch<B extends Bin>(
     }
   }
   if (o.soon !== undefined) holdFor(bins, o.soon)
-  const to = assign(asks(), bins, o.waits, o.how.place, { floor, kinds: Infinity, bounds })
+  const to = assign(asks(), bins, o.waits, o.how.place, {
+    floor,
+    kinds: Infinity,
+    bounds,
+    ...(o.soon === undefined || o.next === undefined ? {} : { next: o.next }),
+    ...(o.want === undefined ? {} : { want: o.want }),
+  })
   const left = read.filter((id) => !to.has(id))
   // The pass ended at the ask it read last, and took or left it.
   for (let j = i < queue.length && read.at(-1) === queue[i] ? i + 1 : i; j < queue.length; j++)
@@ -255,8 +275,13 @@ export function holdFor(bins: readonly Bin[], soon: readonly Soon[]): void {
 function holdOne(bins: readonly Bin[], s: Soon, ready?: true): void {
   let best: Bin | undefined
   let bestAt = Infinity
+  const above = s.need.above
   for (const b of bins) {
     if (s.need.platform !== undefined && b.platform !== s.need.platform) continue
+    // Nor one it may not go to: held on a 2-core worker it fit only
+    // empty, a 3-core task left the 8-core one to tasks of no rank and
+    // waited past its latest start (lab, 2026-11-11).
+    if (above !== undefined && b.cores <= above.cores && b.memory <= above.memory) continue
     // None frees it sooner than at once: most holds found one free at once.
     if (s.at >= bestAt) break
     const at = firstFree(b, s.need, s.at, bestAt)
@@ -605,6 +630,10 @@ export function assign<B extends Bin>(
     readonly kept?: Kept[]
     /** Where it keeps the bins' bounds as it gives, for the asks to skip each `dead` one as it reads. */
     readonly bounds?: Bounds
+    /** What to hold for once an ask is given (`Dispatching.next`). */
+    readonly next?: (id: string) => readonly Soon[]
+    /** The bin each ask goes to first, where it fits (`Dispatching.want`). */
+    readonly want?: (id: string) => string | undefined
   },
 ): Map<string, B> {
   const out = new Map<string, B>()
@@ -659,8 +688,9 @@ export function assign<B extends Bin>(
     }
     const pool = anyBigger && need.above !== undefined ? of.filter(bigger) : of
     let best: B | undefined
-    let bestScore: [number, number] = [0, 0]
+    let bestScore: [number, number, number] = [0, 0, 0]
     let seen = 0
+    const want = all?.want?.(ask.id)
     // A hold kept it off a bin it fits: one of its kind may still fit.
     let blocked = false
     for (let i = 0; i < pool.length; i++) {
@@ -678,14 +708,16 @@ export function assign<B extends Bin>(
       // where most is free, it has room to be bigger than it booked. Best-fit
       // stacked them on one worker, which they overran: 4.47% late to 3.95%
       // on graphs a third unmeasured, 1% more worker time (lab, 2026-11-10).
-      const score: [number, number] = [
+      const score: [number, number, number] = [
+        b.id === want ? 1 : 0,
         has,
         fit(b, need, need.ask === undefined ? place : 'worst-fit', i),
       ]
       if (
         best === undefined ||
         score[0] > bestScore[0] ||
-        (score[0] === bestScore[0] && score[1] > bestScore[1])
+        (score[0] === bestScore[0] &&
+          (score[1] > bestScore[1] || (score[1] === bestScore[1] && score[2] > bestScore[2])))
       ) {
         best = b
         bestScore = score
@@ -752,6 +784,7 @@ export function assign<B extends Bin>(
         ...best.ends,
         [ask.ms, Math.min(coresOn(best, need), best.cores), Math.min(need.memory, best.memory)],
       ]
+    for (const s of all?.next?.(ask.id) ?? []) holdOne(bins, s)
     rebound()
   }
   return out
@@ -1055,7 +1088,13 @@ export class Queue {
       }
     }
     if (o.soon !== undefined) holdFor(bins, o.soon)
-    const to = assign(asks(), bins, o.waits, this.how.place, { floor, kinds: Infinity, bounds })
+    const to = assign(asks(), bins, o.waits, this.how.place, {
+      floor,
+      kinds: Infinity,
+      bounds,
+      ...(o.soon === undefined || o.next === undefined ? {} : { next: o.next }),
+      ...(o.want === undefined ? {} : { want: o.want }),
+    })
     for (const e of done) if (!e.gone) this.drop(e)
     for (const id of to.keys()) this.drop(this.of.get(id)!)
     return to

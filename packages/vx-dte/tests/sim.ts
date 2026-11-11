@@ -241,8 +241,30 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
   // Workers whose tasks use all their cores now, and tasks sent to one.
   const overloaded = new Set<string>()
   let overSent = 0
+  // As the plugin (`Dispatching.next`): what is about to be ready once `id` is given.
+  const children = new Map<string, string[]>()
+  for (const t of graph)
+    for (const d of t.deps) (children.get(d) ?? children.set(d, []).get(d)!).push(t.id)
+  const nextOf = (id: string, endsAt: ReadonlyMap<string, number>): Soon[] =>
+    (children.get(id) ?? []).flatMap((d) => {
+      const t = byId.get(d)!
+      if (!t.exec || t.ran === undefined || readyAt.has(d) || done.has(d)) return []
+      let at = durationMs(id) ?? UNKNOWN_MS
+      for (const x of t.deps) {
+        if (x === id || done.has(x)) continue
+        const e = endsAt.get(x)
+        if (e === undefined) return []
+        at = Math.max(at, e - now)
+      }
+      return [{ need: need(d), at, rank: tail(d), ms: durationMs(d) ?? UNKNOWN_MS }]
+    })
+  // As the plugin (`Orchestrator.drain`): from then on a worker takes no task.
+  const drainAt = new Map<string, number>()
+  // As the plugin (`Plan.placed`): the worker the last plan gave each task.
+  let placed: ReadonlyMap<string, string> = new Map()
   const dispatch = (): void => {
-    const bins = joined().map((w) => {
+    const draining = (w: Live): boolean => (drainAt.get(w.id) ?? Infinity) <= now
+    const all = joined().map((w) => {
       let cores = 0
       let memory = 0
       let load = 0
@@ -298,11 +320,18 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     }
     soon.sort((a, b) => b.rank - a.rank)
     // The live run's own rule (`Orchestrator.pump`).
-    const to = queue.pass(bins, {
-      deps: (id) => byId.get(id)!.deps,
-      ms: durationMs,
-      soon: soon.slice(0, 4 * bins.length + 8),
-    })
+    // The draining last, for what no other takes now: a run never waits on a drain.
+    const to = new Map<string, (typeof all)[number]>()
+    for (const bins of [all.filter((b) => !draining(b.w)), all.filter((b) => draining(b.w))])
+      if (bins.length > 0)
+        for (const [id, b] of queue.pass(bins, {
+          deps: (id) => byId.get(id)!.deps,
+          ms: durationMs,
+          soon: soon.slice(0, 4 * bins.length + 8),
+          next: (id) => nextOf(id, endsAt),
+          want: (id) => placed.get(id),
+        }))
+          to.set(id, b)
     for (const [id, bin] of to) {
       const w = bin.w
       if (overloaded.has(w.id)) overSent++
@@ -370,6 +399,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
         // As the orchestrator: its declared size, which a stand-in starts again.
         size: sizeOf.get(w.id)?.name,
         at: 0,
+        ...(drainAt.has(w.id) ? { drainIn: Math.max(0, drainAt.get(w.id)! - now) } : {}),
         idle: jobs.length === 0,
         running: jobs.map((r) => ({
           id: r.id,
@@ -431,6 +461,8 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     })
     deadline = now + p.boundMs
     for (const t of p.tasks) planned.add(t.id)
+    for (const d of p.drain) drainAt.set(d.id, now + d.inMs)
+    if (p.placed !== undefined) placed = p.placed
     if (p.release.length > 0 && !remaining[Symbol.iterator]().next().done)
       for (const id of p.release) {
         const w = workers.find((x) => x.id === id)!
