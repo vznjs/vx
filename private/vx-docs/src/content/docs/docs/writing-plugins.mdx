@@ -586,10 +586,10 @@ subscriber or a `Logger` gets, telemetry records and the run report.
 
 So are `ctx.projects` in `discover` and `project`, the task a `key` or
 `admit` hook gets, the nodes a `schedule` hook gets, and a plugin
-executor's `outputs`, `envDefine` and `forwardArgs`. So is a task's
-config once the `graph` stage ends; a project config a `project` hook
-kept is no longer the run's once that project's hooks have run, so a
-write to it changes nothing.
+executor's `outputs`, `envDefine` and `forwardArgs`.
+
+So is a task's config once the `graph` stage ends. A project config a `project` hook kept is no longer the run's once that
+project's hooks have run, so a write to it changes nothing.
 
 A write to them throws, so a handler can never turn a failed task into
 a pass, nor a hook change a command after its key is taken.
