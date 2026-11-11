@@ -240,14 +240,17 @@ export function planTasks(
   const depsOf = (e: Node): string[] => {
     if (e.deps !== undefined) return e.deps
     e.deps = []
-    const out: string[] = []
+    // Each once: a group's deps joined as lists held a task once per path
+    // to it, and a diamond of groups 380 projects deep listed 2e9 for
+    // one task's 570; the first plan never returned (2026-11-11).
+    const out = new Set<string>()
     for (const d of e.node.deps) {
       const x = of.get(d)
       if (x === undefined) continue
-      if (x.runs) out.push(d)
-      else for (const dd of depsOf(x)) out.push(dd)
+      if (x.runs) out.add(d)
+      else for (const dd of depsOf(x)) out.add(dd)
     }
-    return (e.deps = out)
+    return (e.deps = [...out])
   }
   const out: PlanTask[] = []
   for (const id of ids) {

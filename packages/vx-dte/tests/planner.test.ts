@@ -734,6 +734,37 @@ it('starts a worker the plan foresaw without reading the work, and none past its
   expect(at(due, small.max, spent).start).toEqual([])
 })
 
+// 2026-11-11, a ~380-project workspace: `<p>#build` a group over
+// `install` and `^build`, each a group over the deps' `#build`. A group's
+// deps joined as lists held a task once per path to it: 2e9 for one
+// task's 570, and the first plan never returned.
+it('a task behind a diamond of groups waits on each task once', () => {
+  const nodes = new Map<string, TaskNode>()
+  const add = (id: string, deps: string[], runs: boolean) =>
+    nodes.set(id, {
+      id,
+      deps,
+      config: runs ? { exec: { command: 'x' } } : {},
+    } as unknown as TaskNode)
+  add('c', [], true)
+  let below = 'c'
+  // Each level two groups on the one below, joined by a third: 2^20 paths.
+  for (let i = 0; i < 20; i++) {
+    add(`a${i}`, [below], false)
+    add(`b${i}`, [below], false)
+    add(`g${i}`, [`a${i}`, `b${i}`], false)
+    below = `g${i}`
+  }
+  add('top', [below], true)
+  const tasks = planTasks(
+    ['c', 'top'],
+    nodes,
+    () => ({ cores: 1, memory: 1e9 }),
+    () => 1000,
+  )
+  expect(tasks.find((t) => t.id === 'top')!.deps).toEqual(['c'])
+})
+
 // 2026-11-06: a plan reads the run's tasks by number, not by id, where a
 // map of a million ids was most of it. By number or by id, it plans alike.
 it('plans tasks read by number as it plans them read by id', () => {
