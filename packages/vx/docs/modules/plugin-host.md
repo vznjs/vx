@@ -123,7 +123,8 @@ nothing runs and caches here.
   `plugin '<p>' failed in teardown: <reason>`; the run's verdict stands.
   Runs on every exit of a run once `prepareRun` has called the
   plugins' factories (an early return, a refused setup, a throw before
-  or during the schedule) and at the end of a plan, and `prepareRun`
+  or during the schedule, a hook that never settles) and at the end of
+  a plan, and `prepareRun`
   itself tears down and closes the cache when a stage or refusal after
   the factories throws (item 1029); a plugin whose own
   `setup` threw is left out (item 1021). Telemetry sinks are flushed by

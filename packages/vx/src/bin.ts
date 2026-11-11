@@ -181,11 +181,17 @@ function withCauses(err: unknown): string {
 process.on('beforeExit', () => {
   if (settled) return
   settled = true
+  const util = require('./util/index.js') as typeof import('./util/index.js')
+  const hooks = util.unsettledHooks()
   ;(require('./ui/index.js') as typeof import('./ui/index.js')).say(
     'error',
-    'vx: the run stopped before it finished: something it awaited can never settle (a plugin hook?)',
+    `vx: the run stopped before it finished: ${hooks.length > 0 ? hooks.join(', ') : 'something it awaited can never settle (a plugin hook?)'}`,
   )
   process.exitCode = 1
+  // Teardown runs on every exit (plugin.ts): the plugins' factories and
+  // setup ran, and what they opened is theirs to release. Its timers keep
+  // the loop up; the next drain finds `settled` and exits.
+  void util.settleStranded()
 })
 
 /** `process.cwd()`'s refusal of a directory removed under the process. */

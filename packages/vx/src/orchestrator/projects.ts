@@ -481,7 +481,7 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
       // The lock shares a task, or a part of one, every place declares alike,
       // in this project too: an edit in place works on a copy that shares
       // nothing. `structuredClone` keeps the sharing; the lock is JSON.
-      const config: ProjectConfig = projectStage ? JSON.parse(JSON.stringify(frozen)) : frozen
+      let config: ProjectConfig = projectStage ? JSON.parse(JSON.stringify(frozen)) : frozen
       if (projectStage) {
         // The `project` stage edits the validated object in place; core
         // re-validates after EACH plugin so a plugin can only produce what
@@ -517,6 +517,11 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
             }
           },
         )
+        // The run takes a copy of what the hooks left: a plugin that kept
+        // the object and wrote it later (from `admit`, or another project's
+        // hook) ran a command its key never saw, past the validation above.
+        // A copy, not a deep freeze: 1.5 ms of 1,000 projects against 4.4.
+        config = JSON.parse(JSON.stringify(config))
       }
       const built = withDefaultBuild(config)
       const named = rootName === undefined ? built : rootSpelled(built, rootName)

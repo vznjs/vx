@@ -22,6 +22,7 @@ import type { TaskExecutor } from '../exec/index.js'
 import type { TaskNode, TaskOutcome, TaskStatus } from '../graph/index.js'
 import {
   errorCode,
+  hookStarted,
   maskedLine,
   nearest,
   type PluginSecrets,
@@ -66,7 +67,9 @@ export interface VxPlugin {
   // core re-validates after each plugin, so a plugin cannot produce what
   // the loader would refuse from a user. Declaration order is the order.
   // Whatever a stage changes reaches the cache key by construction: the key
-  // hashes the task config AFTER `project` ran. See
+  // hashes the task config AFTER `project` and `graph` ran, and a reference
+  // kept past its stage cannot change it later: the run copies a project's
+  // config after its hooks and freezes each task's after `graph`. See
   // docs/design/pipeline-2026-09.md.
 
   /**
@@ -261,7 +264,8 @@ export interface VxPlugin {
    * declaration order, a plugin with `cache` after every other: the
    * others may still write through its remote. Errors are logged, never
    * thrown. A run that ran to its end passes its
-   * `RunReport`; every other exit (a refused setup, a stop) passes none.
+   * `RunReport`; every other exit (a refused setup, a stop, a hook that
+   * never settles) passes none.
    */
   teardown?(run?: RunReport): void | Promise<void>
 }
@@ -1067,7 +1071,14 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
     }
 
     try {
-      const setup = async (): Promise<void> => plugin.setup?.(ctx)
+      const setup = async (): Promise<void> => {
+        const settled = hookStarted(plugin.name, 'setup')
+        try {
+          await plugin.setup?.(ctx)
+        } finally {
+          settled()
+        }
+      }
       await unlessStopped(
         args.step === undefined ? setup() : args.step(`${plugin.name}:setup`, setup),
         args.signal,

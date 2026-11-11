@@ -63,6 +63,11 @@ Rules that keep it a pipeline and not a soup:
    `project` ran, so an injected task or edited command re-keys exactly
    like a hand edit. `key` material is folded as one more part. `graph`
    edits change `dependsOn` closure, which changes upstream folding.
+   Once a project's own `project` hooks have run, the run reads a copy
+   of what they left; once the `graph` stage ends, each task's config is
+   frozen and the node's `config` cannot be swapped. A plugin that kept
+   the object and wrote it later, from `admit`, ran a command its key
+   never saw.
 4. **Observe hooks cannot change behaviour.** `telemetry` keeps its
    handle-free contract. `setup` gets the bus, read-only. Until
    2026-11-07 "read-only" held for the handle, not the data: a handler
