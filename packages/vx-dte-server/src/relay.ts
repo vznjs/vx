@@ -657,6 +657,10 @@ export function createRelay(opts: RelayOptions): Relay {
         // `null` or an array read as a frame threw a TypeError out of the relay.
         if (typeof body !== 'object' || body === null || Array.isArray(body))
           throw new HttpError(400, 'frame is not a JSON object')
+        // Echoed in the answer: anything but a number (an array nested 60k
+        // deep threw a RangeError out of JSON.stringify and ended the relay).
+        if (body.n !== undefined && body.n !== null && !Number.isSafeInteger(body.n))
+          throw new HttpError(400, 'n is a whole number')
         n = body.n ?? null
         const found = live(key)
         lapse(found)

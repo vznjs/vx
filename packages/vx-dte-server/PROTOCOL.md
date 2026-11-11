@@ -100,6 +100,7 @@ A participant sends:
   `{ "n", "results" }` with `null` or `{ "status", "error" }` for each
   send. A frame of sends with no `n` is answered only if a send in it
   fails, `n` then `null`.
+- An `n` that is not a whole number is a `400`, answered with `n` `null`.
 - A frame that fails is answered `{ "n", "status", "error" }`; one that is
   no JSON object, or none of the above, `400`; one over 1 MiB `413`,
   answered by its `n` when the frame starts `{"n":`. One past its

@@ -783,6 +783,14 @@ describe('a host that keeps runs and holds websockets', () => {
       status: 400,
       error: 'frame is not a JSON object',
     })
+    // `n` is echoed: one nested past JSON.stringify's stack ended the relay.
+    const deep = '['.repeat(60_000) + ']'.repeat(60_000)
+    for (const text of [`{"n":${deep},"sends":[]}`, `{"n":${deep}}`, '{"n":"7","leave":true}'])
+      expect(JSON.parse(c.relay.frame(K, a, text)!)).toEqual({
+        n: null,
+        status: 400,
+        error: 'n is a whole number',
+      })
     expect((await c.frame(R, a, { sends: [null, 7] })).results).toEqual([
       { status: 400, error: 'a send is an object' },
       { status: 400, error: 'a send is an object' },
