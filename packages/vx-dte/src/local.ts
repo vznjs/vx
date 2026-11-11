@@ -216,7 +216,10 @@ async function reclaim(root: string): Promise<void> {
     })
     const bases = new Set<string>()
     const tmp = os.tmpdir()
-    for (const name of await readdir(tmp).catch(() => []))
+    for (const name of await readdir(tmp).catch(
+      // quiet: an unreadable temp dir leaves only the repository's bases
+      () => [],
+    ))
       if (OWN_BASE.test(name)) bases.add(path.join(tmp, name))
     for (const line of (await new Response(list.stdout).text()).split('\n')) {
       if (!line.startsWith('worktree ')) continue
