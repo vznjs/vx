@@ -49,7 +49,7 @@ export function bestReps(out: string): Best {
 }
 
 /** The 1-minute load the arms wait under, and for how long at most. */
-export const QUIET_LOAD = 1
+const QUIET_LOAD = 1
 export const SETTLE_MS = 120_000
 
 /**
