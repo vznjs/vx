@@ -408,4 +408,42 @@ export default [
       { run: 'build', expect: { exit: 0, files: { 'packages/a/out/LICENSE': 'license v2' } } },
     ],
   }),
+  defineCase({
+    id: 'outputs/write-through-linked-output-dir-reaches-reader',
+    category: 'outputs',
+    kind: 'correctness',
+    title:
+      'A task reading the directory an output link points at sees what was written through the link',
+    why: '`out` is a link to `gen` inside the same project, and `make` declares `out/**`, so its writes land in `gen`. `use` reads `gen/**`. A tool that records the write only under `out` keeps its old fingerprint of `gen/x` and replays the result from before, under a green run.',
+    from: ['stale-hit-digest'],
+    workspace: {
+      projects: {
+        a: {
+          tasks: {
+            make: { command: 'cp src/p.txt out/x', inputs: ['src/**'], outputs: ['out/**'] },
+            use: {
+              command: 'mkdir -p dist && cat gen/x > dist/r.txt',
+              dependsOn: ['make'],
+              dependencyInputs: false,
+              inputs: ['gen/**'],
+              outputs: ['dist/**'],
+            },
+          },
+          files: { 'src/p.txt': '1\n', 'gen/x': '1\n', '.gitignore': 'out\n' },
+        },
+      },
+    },
+    steps: [
+      { link: { 'packages/a/out': 'gen' } },
+      { run: 'use', expect: { exit: 0, files: { 'packages/a/dist/r.txt': '1\n' } } },
+      { write: { 'packages/a/src/p.txt': '2\n' } },
+      {
+        run: 'use',
+        expect: {
+          exit: 0,
+          files: { 'packages/a/gen/x': '2\n', 'packages/a/dist/r.txt': '2\n' },
+        },
+      },
+    ],
+  }),
 ]

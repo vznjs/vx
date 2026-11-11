@@ -299,6 +299,65 @@ class OidSlot {
   }
 }
 
+/**
+ * `rels` (names under `dir`) plus, for each written through a linked
+ * directory, the name it landed under: an output glob's head may be a
+ * link into the project (`out -> gen` for `out/**`, X-88), and marked only
+ * as `out/x`, the `gen/x` a reader of `gen/**` keys kept its index OID
+ * and replayed the bytes from before the write. Undefined when one lands
+ * outside `dir`, where no name in it covers the write.
+ */
+function realNames(dir: string, rels: readonly string[]): readonly string[] | undefined {
+  let out: string[] | undefined
+  // Each directory asked once per call: a save's outputs share a few.
+  const links = new Map<string, string | null>()
+  let realDir: string | undefined
+  const queue = [...rels]
+  for (let n = 0; n < queue.length; n++) {
+    const rel = queue[n]!
+    for (let i = rel.indexOf('/'); i > 0; i = rel.indexOf('/', i + 1)) {
+      const head = rel.slice(0, i)
+      let real = links.get(head)
+      if (real === undefined) {
+        real = null
+        const abs = path.join(dir, head)
+        let st: Stats | undefined
+        try {
+          st = lstatSync(abs, { throwIfNoEntry: false })
+        } catch {
+          st = undefined
+        }
+        if (st?.isSymbolicLink() === true) {
+          let to: string
+          try {
+            to = realpathSync(abs)
+            realDir ??= realpathSync(dir)
+          } catch {
+            return undefined
+          }
+          const inside = relPosix(realDir, to)
+          if (
+            inside === '' ||
+            inside === '..' ||
+            inside.startsWith('../') ||
+            path.isAbsolute(inside)
+          )
+            return undefined
+          real = inside
+        }
+        links.set(head, real)
+      }
+      if (real !== null) {
+        const landed = real + rel.slice(i)
+        ;(out ??= [...rels]).push(landed)
+        queue.push(landed)
+        break
+      }
+    }
+  }
+  return out ?? rels
+}
+
 interface IgnoredListing {
   root: string
   /** `root/` when `root` is absolute and normalized: a normalized path under it is relative as its rest. */
@@ -685,7 +744,12 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     if (this.wsRoot !== null) this.delete(this.wsRoot)
   }
 
-  private recordChanged(partitionDir: string, relPaths: readonly string[]): void {
+  private recordChanged(partitionDir: string, written: readonly string[]): void {
+    const relPaths = realNames(partitionDir, written)
+    if (relPaths === undefined) {
+      this.delete(partitionDir)
+      return
+    }
     this.forgetFacts({ dir: partitionDir, rels: relPaths })
     // A partition with no snapshot has nothing for a mark to invalidate
     // (`snapshotFor` answers undefined either way), so this guard bounds
@@ -706,14 +770,39 @@ export class GitFilesCache extends Map<string, readonly string[]> {
    * trusted an OID for every one, none is a symlink and every name decodes:
    * then the files a task resolves there, and what it folds for them, are
    * a function of this digest and its declaration (`filesToken`). Undefined
-   * once anything moved the partition: a re-enumeration, a changed path.
+   * once the partition moved under it: a re-enumeration, a changed path in
+   * the snapshot. A changed path outside it (a save's ignored `dist/`)
+   * leaves it standing: the snapshot's files are as listed, and a task
+   * whose globs take a changed path is refused by `snapshotFor` first. Six
+   * in seven of a cold 8,002-task run's keys had no fold row (2026-11-11).
    */
   filesDigest(projectDir: string, snapshot: readonly string[]): string | undefined {
     const d = this.digests.get(projectDir)
     if (d === undefined || d.snapshot !== snapshot || this.get(projectDir) !== snapshot) return
-    if (this.oids.get(projectDir) !== d.oids || this.changed.has(projectDir)) return
+    if (this.oids.get(projectDir) !== d.oids) return
+    const pending = this.changed.get(projectDir)
+    if (pending !== undefined && this.movesSnapshot(pending, snapshot)) return
     return d.digest()
   }
+
+  /**
+   * Whether a path of `pending` is one of `snapshot`'s. Each path read once
+   * (the list only grows until a reset replaces it, as `pendingMatch`).
+   */
+  private movesSnapshot(pending: readonly string[], snapshot: readonly string[]): boolean {
+    let seen = this.seen.get(pending)
+    if (seen === undefined) this.seen.set(pending, (seen = { upTo: 0, moved: false }))
+    if (seen.moved) return true
+    if (seen.upTo === pending.length) return false
+    let names = this.names.get(snapshot)
+    if (names === undefined) this.names.set(snapshot, (names = new Set(snapshot)))
+    for (; seen.upTo < pending.length; seen.upTo++)
+      if (names.has(pending[seen.upTo]!)) return (seen.moved = true)
+    return false
+  }
+
+  private readonly seen = new WeakMap<readonly string[], { upTo: number; moved: boolean }>()
+  private readonly names = new WeakMap<readonly string[], ReadonlySet<string>>()
 
   /**
    * `filesDigest` for a `workspaceFiles` declaration: a digest of the paths

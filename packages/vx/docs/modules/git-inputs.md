@@ -239,8 +239,14 @@ export function attributeFilesOutsideTree(
 and index OIDs joined and hashed once, when the enumeration trusted an
 OID for every path and none is a symlink or an undecodable name.
 `filesDigest` answers it only while the partition is that snapshot with
-those OIDs and no path marked changed: a re-enumeration, a save or a
-restore in the project ends it for the run. `declarationDigest` does
+those OIDs and no path of the snapshot is marked changed: a
+re-enumeration ends it for the run, and so does a save, clean or restore
+that writes a listed path. One that writes only outside the snapshot (a
+build's ignored `dist/`) leaves it: the listed files are as the digest
+names them, and a task whose input globs take a marked path gets no
+snapshot from `snapshotFor`, so no token. Refused on any mark, six in
+seven of a cold 8,002-task bench run's keys stored no fold row, and the
+restore after derived them again (2026-11-11). `declarationDigest` does
 the same for the workspace partition, per `workspaceFiles` declaration:
 the paths its globs may take in, each by OID, or by its stat and
 whether git tracks it, once per declaration and partition; each path's
@@ -256,6 +262,13 @@ marks path by path (a save's or a restore's outputs) drops those paths'
 identities, an undeclared write drops them all, a listing again drops
 none, and an identity hashed before any write is not kept after it
 (`factsEpoch`). The stats go on every one.
+
+A marked path written through a linked directory (an output glob's head
+may be a link that stays in the project, `out -> gen` for `out/**`) is
+marked under the name it landed at too: marked only as `out/x`, the
+`gen/x` a reader of `gen/**` keys kept its index OID and a stale hit
+replayed the bytes from before the write. One that lands outside the
+partition drops the partition, as an undeclared write does.
 
 `gitPathspecs` scopes the spawn to the projects in the run when there
 are at most `MAX_SCOPED_PATHSPECS` (64) of them and none is the root
@@ -372,7 +385,10 @@ gitlink or an untracked embedded repository, and one inside a project:
 its own git enumerates it, and a source change is a miss), `tests/inputs.test.ts` and `tests/inputs-resolution.test.ts`
 (through the resolver), `tests/restore-git-spawns.test.ts` (spawn
 count), `tests/cache-hash-files.test.ts`, `tests/affected*.test.ts`
-(the same enumeration behind `--affected`).
+(the same enumeration behind `--affected`), `tests/stale-hit-digest.test.ts`
+(a task moves another's input mid-run by a save, a clean or a write
+through a linked directory, tracked or loose: the reader reads the moved
+files, and the files put back are not answered by a row stored mid-run).
 
 ## Replacing this module
 

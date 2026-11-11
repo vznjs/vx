@@ -2,15 +2,15 @@
   "linux-x64": {
     "counts": {
       "cold run @25": {
-        "hash xxh3": 1935,
+        "hash xxh3": 2185,
         "spawn git": 6,
         "spawn sh": 1,
-        "sqlite statement": 722
+        "sqlite statement": 747
       },
       "up-to-date run @25": {
-        "hash xxh3": 1045,
+        "hash xxh3": 670,
         "spawn git": 3,
-        "sqlite statement": 54
+        "sqlite statement": 29
       },
       "restore run @25": {
         "hash xxh3": 135,
@@ -26,17 +26,17 @@
         "hash blob update": 2,
         "hash xxh3": 894,
         "spawn git": 3,
-        "sqlite statement": 220
+        "sqlite statement": 219
       },
       "cold run @100": {
-        "hash xxh3": 7859,
+        "hash xxh3": 8859,
         "spawn git": 8,
-        "sqlite statement": 2752
+        "sqlite statement": 2852
       },
       "up-to-date run @100": {
-        "hash xxh3": 4195,
+        "hash xxh3": 2695,
         "spawn git": 3,
-        "sqlite statement": 132
+        "sqlite statement": 32
       },
       "restore run @100": {
         "hash xxh3": 510,
@@ -52,7 +52,7 @@
         "hash blob update": 2,
         "hash xxh3": 3419,
         "spawn git": 3,
-        "sqlite statement": 723
+        "sqlite statement": 722
       }
     },
     "time": {

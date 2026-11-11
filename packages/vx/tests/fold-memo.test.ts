@@ -276,3 +276,22 @@ it('a files digest, once asked, lets go of what it was computed from', async () 
   expect(cache.filesDigest('/w/p0', cache.get('/w/p0')!)).toBe('100')
   expect(refs.filter((r) => r.deref() !== undefined).length).toBeLessThan(10)
 })
+
+// A save into an ignored `dist/` turned every later same-project task's
+// files digest off: six in seven of a cold 8,002-task run's keys stored no
+// fold row, and the restore after derived them again (2026-11-11).
+it('a files digest stands past a mark outside its snapshot, and falls to one in it', () => {
+  const cache = new GitFilesCache()
+  const dir = '/w/p'
+  const snapshot = ['package.json', 'src/a.ts']
+  cache.set(dir, snapshot)
+  cache.noteFilesDigest(dir, snapshot, () => 'd')
+  cache.markOutputsChanged(dir, ['dist/a.js', 'dist/b.js'])
+  expect(cache.filesDigest(dir, snapshot)).toBe('d')
+  cache.markOutputsChanged(dir, ['dist/c.js'])
+  expect(cache.filesDigest(dir, snapshot)).toBe('d')
+  cache.markOutputsChanged(dir, ['src/a.ts'])
+  expect(cache.filesDigest(dir, snapshot)).toBeUndefined()
+  cache.markOutputsChanged(dir, ['dist/d.js'])
+  expect(cache.filesDigest(dir, snapshot)).toBeUndefined()
+})

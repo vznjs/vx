@@ -317,8 +317,9 @@ declaration and `declarationDigest` of the workspace paths its globs may
 take in (git-inputs.md). It is undefined for a declaration that names a
 gitignored path outright,
 and a partition holding anything the enumeration did not vouch for (a
-dirty, untracked, linked or undecodable file, or a path a run already
-marked changed). `computeTaskHash` keys the fold memo on it
+linked or undecodable file, a loose one within the racy window, or a
+path a run already marked changed that the partition lists or the
+declaration's globs take). `computeTaskHash` keys the fold memo on it
 (task-hash.md).
 
 ## File resolution rules
