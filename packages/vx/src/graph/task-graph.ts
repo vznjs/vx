@@ -1006,6 +1006,42 @@ export function checkGraph(
 }
 
 /**
+ * Mark on `nodes` the dependants outside the run that add to their outputs
+ * (item 588, only with `run.rules.exclusiveOutputs: false`): a run of
+ * `build` alone has no `types` in its graph, so `build` would count what
+ * `types` added to its tree as strays, restore on every warm run and wipe
+ * them. A task in `projects` outside the run whose outputs overlap one in
+ * it is its dependant: had it been an upstream it would be in the run, and
+ * an unordered pair is `vx lock`'s refusal. Only `outputsAddedToBy` is
+ * set on the run's nodes.
+ */
+export function markOutsideAdditions(
+  nodes: Map<string, TaskNode>,
+  projects: ReadonlyMap<string, ProjectEntry>,
+  workspaceRoot: string,
+): void {
+  const all = new Map(nodes)
+  const outside = new Set<string>()
+  for (const [projectName, project] of projects) {
+    for (const [taskName, config] of Object.entries(project.config.tasks ?? {})) {
+      const id = taskId(projectName, taskName)
+      if (nodes.has(id) || config.outputs === undefined) continue
+      outside.add(id)
+      all.set(id, {
+        id,
+        projectName,
+        projectDir: project.dir,
+        taskName,
+        config,
+        deps: [],
+        requested: false,
+      })
+    }
+  }
+  if (outside.size > 0) detectOutputCollisions(all, workspaceRoot, false, outside)
+}
+
+/**
  * `--exclude-dependencies`: take `dependsOn` edges out of the SCHEDULE, not
  * out of the graph. `'all'` drops every edge; a name list drops each edge
  * whose target task has one of those names, whichever `dependsOn` form
@@ -1352,11 +1388,15 @@ function detectOutputCollisions(
   nodes: Map<string, TaskNode>,
   workspaceRoot: string | undefined,
   exclusive: boolean,
+  outside?: ReadonlySet<string>,
 ): void {
   // Does `from` reach `to` through deps? Asked only for a colliding pair,
   // so the walk is rare; memoised per source across the detector's calls.
+  // With `outside` (`markOutsideAdditions`), a task outside the run reaches
+  // every task in it: the only order the lock lets such a pair have.
   const reachMemo = new Map<string, Set<string>>()
   const reaches = (from: string, to: string): boolean => {
+    if (outside !== undefined) return outside.has(from) && !outside.has(to)
     let seen = reachMemo.get(from)
     if (seen === undefined) {
       seen = new Set<string>()
@@ -1387,6 +1427,18 @@ function detectOutputCollisions(
   // (4,000 with outputs spent 10.7 s here, item 741), so each domain is
   // indexed again by path (`overlapCandidates`) and only the pairs that can
   // overlap are compared, in the order the all-pairs loop met them.
+  // With `outside`, only a pair of one task in the run and one outside it
+  // is compared, and only to mark it: the run's own pairs were checked as
+  // its graph was built, and `vx lock` refuses the rest.
+  const pair = (a: TaskNode, b: TaskNode, compare: () => void): void => {
+    if (outside === undefined) return compare()
+    if (outside.has(a.id) === outside.has(b.id)) return
+    try {
+      compare()
+    } catch {
+      // A shape the lock refuses: no mark.
+    }
+  }
   const byProject = new Map<string, TaskNode[]>()
   const wsDeclarers: TaskNode[] = []
   for (const n of nodes.values()) {
@@ -1416,14 +1468,16 @@ function detectOutputCollisions(
     for (const [i, j] of overlapCandidates(bucket, filesOf)) {
       const a = bucket[i]!
       const b = bucket[j]!
-      collide(a, b, filesOf(a), filesOf(b), 'files', reaches, exclusive)
+      pair(a, b, () => collide(a, b, filesOf(a), filesOf(b), 'files', reaches, exclusive))
     }
   }
   if (wsDeclarers.length >= 2) {
     for (const [i, j] of overlapCandidates(wsDeclarers, wsFilesOf)) {
       const a = wsDeclarers[i]!
       const b = wsDeclarers[j]!
-      collide(a, b, wsFilesOf(a), wsFilesOf(b), 'workspaceFiles', reaches, exclusive)
+      pair(a, b, () =>
+        collide(a, b, wsFilesOf(a), wsFilesOf(b), 'workspaceFiles', reaches, exclusive),
+      )
     }
   }
   // A root-anchored output that reaches into ANOTHER project's `files`
@@ -1456,7 +1510,9 @@ function detectOutputCollisions(
     const y = entries[j]!
     if (x.node === y.node) continue
     const [ws, files] = x.rel === undefined ? [x, y] : [y, x]
-    collideAcross(ws.node, ws.globs, files.node, files.globs, files.rel!, reaches, exclusive)
+    pair(ws.node, files.node, () =>
+      collideAcross(ws.node, ws.globs, files.node, files.globs, files.rel!, reaches, exclusive),
+    )
   }
 }
 

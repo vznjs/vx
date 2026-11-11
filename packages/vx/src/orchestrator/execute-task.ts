@@ -11,6 +11,7 @@ import {
   cleanOutputPaths,
   committedFiles,
   cleanWorkspaceOutputs,
+  type OutputFileRow,
   type OutputStamp,
   ownOutputsSince,
   ownWorkspaceOutputsSince,
@@ -27,6 +28,7 @@ import {
   type TaskInputComponent,
   declaresInput,
   fsClockNow,
+  WORKSPACE_OUTPUT_PREFIX,
 } from '../cache/index.js'
 import {
   signalExitCode,
@@ -851,7 +853,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // orders them; item 588) does not clean by glob — the glob selects the
   // upstream's files it adds beside. Its outputs are stamped once before
   // the first attempt, and after a 0 exit its own set is what the run
-  // added or changed against that stamp; a retry first removes what the
+  // added or changed against that stamp, or found as a save or restore of
+  // its own left it (`leftByOwnEntries`); a retry first removes what the
   // failed attempt added (`dropFailedAdditions`). Stale files of its own from an
   // earlier run are its command's to clean, as they are under Turbo.
   const additive = (node.addsToOutputsOf?.length ?? 0) > 0
@@ -1812,17 +1815,49 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   > {
     if (failedTouchedFound) return undefined
     const mine: { ownOutputFiles?: string[]; ownWsOutputFiles?: string[] } = {}
+    const left = leftByOwnEntries()
     if (stampedBefore !== undefined) {
-      const files = await ownOutputsSince(cleanArgs, stampedBefore)
+      const files = await ownOutputsSince(cleanArgs, stampedBefore, left)
       if (files === undefined) return undefined
       mine.ownOutputFiles = files
     }
     if (wsStampedBefore !== undefined) {
-      const files = await ownWorkspaceOutputsSince(wsCleanArgs, wsStampedBefore)
+      const files = await ownWorkspaceOutputsSince(wsCleanArgs, wsStampedBefore, left)
       if (files === undefined) return undefined
       mine.ownWsOutputFiles = files
     }
     return mine
+  }
+
+  /**
+   * Whether a file the additive run found and left alone is one a save or
+   * restore of this task left there: the proof a hit trusts
+   * (`isOutputsCurrent`) against the rows of any of its entries. Read on
+   * the first such file only; the upstream's files and what nobody saved
+   * have no row of this task's and stay the upstream's.
+   */
+  function leftByOwnEntries(): (abs: string) => boolean {
+    let byPath: Map<string, Array<[root: string, row: OutputFileRow]>> | undefined
+    return (abs) => {
+      if (byPath === undefined) {
+        byPath = new Map()
+        const hashes = args.cache.taskEntries?.(node.id) ?? []
+        for (const rows of args.cache.loadOutputFilesBatch(hashes).values()) {
+          for (const row of rows) {
+            if (row.ino === undefined) continue
+            const ws = row.path.startsWith(WORKSPACE_OUTPUT_PREFIX)
+            const root = ws ? args.workspaceRoot : node.projectDir
+            const rel = ws ? row.path.slice(WORKSPACE_OUTPUT_PREFIX.length) : row.path
+            const at = path.join(root, rel)
+            const list = byPath.get(at)
+            const entry: [string, OutputFileRow] = [root, { ...row, path: rel }]
+            if (list === undefined) byPath.set(at, [entry])
+            else list.push(entry)
+          }
+        }
+      }
+      return (byPath.get(abs) ?? []).some(([root, row]) => args.cache.isOutputsCurrent(root, [row]))
+    }
   }
 
   /**

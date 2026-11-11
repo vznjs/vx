@@ -67,7 +67,7 @@ you will read it to understand cache invalidation history.
 
 The current version and the reasoning live in `CLAUDE.md` § Live
 invariants and `docs/caching.md`; the history is in git (the decision log
-was retired 2026-09-02). Current: `vx-cache-v53`, core `SCHEMA_VERSION`
+was retired 2026-09-02). Current: `vx-cache-v54`, core `SCHEMA_VERSION`
 `v55` (bumped 2026-11-08: output_stamps.mtime_ms holds the mtime a
 restore dated a file it wrote with, now, not the entry's saved one; a `SCHEMA_VERSION` bump
 drops the whole index, so it is taken only when a stored shape changes).

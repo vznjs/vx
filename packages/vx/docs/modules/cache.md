@@ -117,6 +117,9 @@ export interface CacheLayer {
   prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean>
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
+  // Every entry this machine's index holds for the task: an additive
+  // task's miss reads their rows to tell what it left from what it found.
+  taskEntries?(taskId: string): string[]
   // The output-directory short-circuit (A-2): record, load, and judge the
   // stamps of a hit's output dirs, so a current tree is not re-walked.
   recordOutputDirs?(
@@ -890,7 +893,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
-`CACHE_VERSION` is currently `'vx-cache-v53'`; `SCHEMA_VERSION` is
+`CACHE_VERSION` is currently `'vx-cache-v54'`; `SCHEMA_VERSION` is
 `'v55'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside

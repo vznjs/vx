@@ -726,6 +726,10 @@ export class LayeredCache implements CacheLayer {
     return this.local.isOutputsCurrent(projectDir, expected)
   }
 
+  taskEntries(taskId: string): string[] {
+    return this.local.taskEntries(taskId)
+  }
+
   recordOutputDirs(
     hash: string,
     projectDir: string,

@@ -1598,7 +1598,8 @@ collides with `b`'s `dist/**` (item 1088). An overlap
 between two tasks one of which depends on the other is refused too,
 unless the workspace sets `run.rules.exclusiveOutputs: false` (X-53);
 then the dependant is additive and owns only what its run adds to the
-tree (`caching.md` § Additive outputs, item 588). Across the two namespaces
+tree, or finds as its own last run left it (`caching.md` § Additive
+outputs, item 588). Across the two namespaces
 an upstream `files` task is told the dependant's globs in its own
 project's terms, so a workspace glob that does not start inside that
 project (`**/a.txt`) is refused even with the edge.

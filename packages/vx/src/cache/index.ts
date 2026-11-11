@@ -33,6 +33,7 @@ export {
   type TaskInputRow,
   WORKSPACE_OUTPUT_PREFIX,
   type OutputDirRow,
+  type OutputFileRow,
   OUTPUT_DIRS_CAP,
   OUTPUT_DIRS_OVER_CAP,
   FILE_HASH_RACY_MS,

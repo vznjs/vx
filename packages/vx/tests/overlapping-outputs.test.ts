@@ -682,3 +682,148 @@ describe('overlapping outputs: a same-size rewrite that keeps the mtime', () => 
     TIMEOUT,
   )
 })
+
+// An incremental emitter (tsc's, `cmp || cp`) rewrites only the files whose
+// bytes changed. Its second miss found `ta.d` from its own first run and
+// left it alone, so the entry held `tb.d` alone, and a hit over a wiped
+// `dist` restored a tree without `ta.d`, under a green run. What the
+// dependant found exactly as a save or restore of its own left it is its
+// own too.
+describe("overlapping outputs: an incremental dependant keeps what it didn't rewrite", () => {
+  const config = `
+    export default {
+      tasks: {
+        build: {
+          exec: { command: 'mkdir -p dist && cp src/x dist/o' },
+          inputs: { files: ['src/x'] }, outputs: { files: ['dist/**'] }, cache: true,
+        },
+        types: {
+          dependsOn: ['build'],
+          exec: { command: 'mkdir -p dist/types && for f in ta tb; do cmp -s src/$f dist/types/$f.d || cp src/$f dist/types/$f.d; done' },
+          inputs: { files: ['src/t*'] }, outputs: { files: ['dist/types/**'] }, cache: true,
+        },
+      },
+    }
+  `
+  let root: string
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it(
+    'a hit over a wiped tree restores every file a forced run leaves',
+    async () => {
+      root = await additive({ prefix: 'vx-ovl-incr-' })
+      const app = await addProject(root, 'app', {
+        files: { 'src/x': 'X', 'src/ta': 'TA', 'src/tb': 'TB1' },
+        config,
+      })
+      const want = (tb: string): Array<[string, string]> => [
+        ['dist/o', 'X'],
+        ['dist/types/ta.d', 'TA'],
+        ['dist/types/tb.d', tb],
+      ]
+      expect((await run({ cwd: root, tasks: ['types'], log: silent })).ok).toBe(true)
+      await writeFile(path.join(app, 'src', 'tb'), 'TB2')
+      const second = await run({ cwd: root, tasks: ['types'], log: silent })
+      expect(statusOf(second)).toEqual({ build: 'cache-hit', types: 'success' })
+      expect(tree(app)).toEqual(want('TB2'))
+      // The entry holds the file the run found as its first entry left it.
+      const hash = second.outcomes.find((o) => o.node.taskName === 'types')!.hash!
+      const cache = new Cache(path.join(root, '.vx', 'cache'))
+      try {
+        const rows = cache.loadOutputFilesBatch([hash]).get(hash) ?? []
+        expect(rows.map((r) => r.path).sort()).toEqual(['dist/types/ta.d', 'dist/types/tb.d'])
+      } finally {
+        cache.close()
+      }
+      await rm(path.join(app, 'dist'), { recursive: true, force: true })
+      const hit = await run({ cwd: root, tasks: ['types'], log: silent })
+      expect(statusOf(hit)).toEqual({
+        build: 'cache-hit+restored',
+        types: 'cache-hit+restored',
+      })
+      expect(tree(app)).toEqual(want('TB2'))
+      // CONTROL: what a forced run leaves.
+      await run({ cwd: root, tasks: ['types'], log: silent, cacheFlags: { force: true } })
+      expect(tree(app)).toEqual(want('TB2'))
+    },
+    TIMEOUT,
+  )
+})
+
+// The upstream run alone: its dependant is not in the graph, so nothing
+// told it which globs add to its tree, its current-check counted the
+// dependant's files as strays, and every warm `build` restored, wiping
+// them (and every warm `types` restored them back).
+describe('overlapping outputs: the upstream run without its dependant', () => {
+  let root: string
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it(
+    'in one project: a warm upstream stays up-to-date and keeps the addition',
+    async () => {
+      root = await additive({ prefix: 'vx-ovl-alone-' })
+      const app = await addProject(root, 'app', {
+        files: { 'src/x': 'X' },
+        config: `export default { tasks: {
+          build: {
+            exec: { command: 'mkdir -p dist && cp src/x dist/o' },
+            inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+          },
+          types: {
+            dependsOn: ['build'],
+            exec: { command: 'mkdir -p dist/types && cp dist/o dist/types/t' },
+            inputs: { files: ['src/**'] }, outputs: { files: ['dist/types/**'] }, cache: true,
+          },
+        } }`,
+      })
+      expect((await run({ cwd: root, tasks: ['types'], log: silent })).ok).toBe(true)
+      const want: Array<[string, string]> = [
+        ['dist/o', 'X'],
+        ['dist/types/t', 'X'],
+      ]
+      for (let i = 0; i < 2; i++) {
+        const alone = await run({ cwd: root, tasks: ['build'], log: silent })
+        expect(statusOf(alone)).toEqual({ build: 'cache-hit' })
+        expect(tree(app)).toEqual(want)
+        const both = await run({ cwd: root, tasks: ['types'], log: silent })
+        expect(statusOf(both)).toEqual({ build: 'cache-hit', types: 'cache-hit' })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'across projects at the workspace root: a warm upstream stays up-to-date',
+    async () => {
+      root = await additive({ prefix: 'vx-ovl-alone-ws-' })
+      await addProject(root, 'a', {
+        files: { 'src/a.txt': 'A1' },
+        config: `export default { tasks: { build: {
+          exec: { command: 'mkdir -p ../../gen && cp src/a.txt ../../gen/a.txt' },
+          inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['gen'] }, cache: true,
+        } } }`,
+      })
+      await addProject(root, 'b', {
+        files: { 'src/b.txt': 'B1' },
+        config: `export default { tasks: { types: {
+          dependsOn: ['a#build'],
+          exec: { command: 'mkdir -p ../../gen/b && cp src/b.txt ../../gen/b/b.txt' },
+          inputs: { files: ['src/**'], tasks: [] },
+          outputs: { files: [], workspaceFiles: ['gen/b'] },
+          cache: true,
+        } } }`,
+      })
+      expect((await run({ cwd: root, tasks: ['b#types'], log: silent })).ok).toBe(true)
+      for (let i = 0; i < 2; i++) {
+        const alone = await run({ cwd: root, tasks: ['a#build'], log: silent })
+        expect(statusOf(alone)).toEqual({ build: 'cache-hit' })
+        expect(readFileSync(path.join(root, 'gen', 'b', 'b.txt'), 'utf8')).toBe('B1')
+      }
+    },
+    TIMEOUT,
+  )
+})

@@ -2316,6 +2316,16 @@ export class Cache implements CacheLayer {
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean {
     return this.outputs.isOutputsCurrent(projectDir, expected)
   }
+  taskEntries(taskId: string): string[] {
+    const [project, task] = splitTaskId(taskId)
+    return this.guard(() =>
+      (
+        this.db
+          .query('SELECT hash FROM entries WHERE project = ? AND task = ?')
+          .all(project, task) as Array<{ hash: string }>
+      ).map((r) => r.hash),
+    )
+  }
   outputsPath(hash: string): string {
     return this.tarPath(hash)
   }
