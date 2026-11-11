@@ -86,3 +86,12 @@ function canonical(p: string): string | undefined {
     return undefined
   }
 }
+
+/**
+ * `source[name]` when `source` holds it itself. Bun's `process.env`
+ * inherits `Object.prototype`: an unset `constructor` or `toString` read
+ * as a function, reached a task's env and crashed vx (`.includes`).
+ */
+export function ownEnv(source: NodeJS.ProcessEnv, name: string): string | undefined {
+  return Object.hasOwn(source, name) ? source[name] : undefined
+}

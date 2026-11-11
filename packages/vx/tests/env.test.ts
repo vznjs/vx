@@ -644,3 +644,42 @@ describe('npm_execpath', () => {
     expect(value).toBe('undefined')
   })
 })
+
+// Bun's process.env inherits Object.prototype: an unset `constructor` read
+// as a function, reached the task's env and crashed vx ("internal error",
+// `value?.includes is not a function`), and in `inputs.env` failed the key.
+describe('an env name Object.prototype holds, unset on the host', () => {
+  const NAMES = ['constructor', 'toString', 'valueOf', 'hasOwnProperty']
+
+  it('is unset for buildIsolatedEnv', () => {
+    const env = buildIsolatedEnv({ passThrough: NAMES, define: {}, source: { PATH: '/bin' } })
+    for (const name of NAMES) expect(Object.hasOwn(env, name)).toBe(false)
+  })
+
+  it('runs and keys as unset, end to end', async () => {
+    const root = await makeWorkspace({ prefix: 'vx-env-proto-' })
+    try {
+      const dir = await addProject(root, 'app', {
+        config: `
+          export default {
+            tasks: {
+              t: {
+                exec: {
+                  command: 'printf %s "\${constructor-unset}" > out.txt',
+                  env: { passThrough: ${JSON.stringify(NAMES)} },
+                },
+                inputs: { files: [], env: ${JSON.stringify(NAMES)} },
+              },
+            },
+          }
+        `,
+      })
+      const quiet = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
+      const r = await run({ cwd: root, tasks: ['t'], log: quiet })
+      expect(r.ok).toBe(true)
+      expect(await Bun.file(path.join(dir, 'out.txt')).text()).toBe('unset')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})

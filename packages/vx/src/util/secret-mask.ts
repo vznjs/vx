@@ -5,6 +5,8 @@
 // replays, and the spans a telemetry plugin exports. The masking is
 // GitHub Actions' kind: a known value is replaced wherever it appears.
 
+import { ownEnv } from './essential-env.js'
+
 /** A variable whose value is masked, by the words its name holds. */
 const SECRET_NAME = /TOKEN|SECRET|KEY|PASSWORD|PASSWD|CREDENTIAL/i
 
@@ -121,7 +123,7 @@ export function secretMask(
       if (value?.includes('://') === true && value.includes('@'))
         for (const pw of urlPasswords(value)) add(pw)
     }
-    for (const name of named) add(source[name])
+    for (const name of named) add(ownEnv(source, name))
   }
   // This process's secrets: the environment's and the held ones.
   if (sources.includes(process.env)) for (const value of held) add(value)

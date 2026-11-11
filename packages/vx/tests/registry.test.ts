@@ -44,6 +44,17 @@ describe('resolveRegistry', () => {
     expect(r.auth('https://registry.npmjs.org/@vzn/vx/latest')).toBeUndefined()
   })
 
+  it('an unset variable named like an Object.prototype member expands empty', () => {
+    // `${constructor}` read the prototype's function and sent its source as the token.
+    const r = resolve(
+      world({
+        'work/.npmrc':
+          'registry = "https://npm.corp.example/api/npm"\n//npm.corp.example/api/npm/:_authToken=${constructor}x\n',
+      }),
+    )
+    expect(r.auth('https://npm.corp.example/api/npm/@vzn/vx/latest')).toBe('Bearer x')
+  })
+
   it('a scoped registry beats the environment, which beats the .npmrc files', () => {
     const scoped = world({
       '.npmrc': '@vzn:registry=https://vzn.example/\nregistry=https://user.example/\n',
