@@ -54,7 +54,9 @@
 @vzn/vx-dte GITHUB_RUN_ID
 @vzn/vx-dte GITHUB_SHA
 @vzn/vx-dte GITLAB_CI
+@vzn/vx-dte GIT_DIR
 @vzn/vx-dte GIT_INDEX_FILE
+@vzn/vx-dte GIT_WORK_TREE
 @vzn/vx-dte HOME
 @vzn/vx-dte PATH
 @vzn/vx-dte RUNNER_TEMP
