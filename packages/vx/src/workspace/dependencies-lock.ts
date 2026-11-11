@@ -12,7 +12,7 @@
 // parsed. `vx lock --check` holds it to a fresh derivation.
 
 import path from 'node:path'
-import type { PendingWrite } from '../util/index.js'
+import { type PendingWrite, UserError } from '../util/index.js'
 import type { ProjectMeta } from './workspace.js'
 import { lockKey } from './lockfile.js'
 import { type LoadReads, readOnce } from './load-reads.js'
@@ -104,11 +104,25 @@ export function readDependenciesLock(root: string, reads?: LoadReads): Promise<U
   return readOnce(reads, path.join(root, DEPENDENCIES_LOCK_NAME))
 }
 
-/** The lock in `bytes`; null when absent, another version, or not this shape. */
+/**
+ * The lock in `bytes`; null when absent, an older version, or not this
+ * shape. A newer version throws: "run `vx lock`" there would have this vx
+ * write its older version over the file.
+ */
 export function parseDependenciesLock(bytes: Uint8Array | null): DependenciesLock | null {
   if (bytes === null) return null
+  let lock: Partial<DependenciesLock>
   try {
-    const lock = JSON.parse(new TextDecoder().decode(bytes)) as Partial<DependenciesLock>
+    lock = JSON.parse(new TextDecoder().decode(bytes)) as Partial<DependenciesLock>
+  } catch {
+    return null
+  }
+  if (typeof lock?.version === 'number' && lock.version > DEPENDENCIES_LOCK_VERSION)
+    throw new UserError(
+      `${DEPENDENCIES_LOCK_NAME} was written by a newer vx (version ${lock.version}; this vx reads ${DEPENDENCIES_LOCK_VERSION}) — upgrade vx`,
+      'VX_E_LOCK',
+    )
+  try {
     return lock.version === DEPENDENCIES_LOCK_VERSION && wellFormed(lock)
       ? (lock as DependenciesLock)
       : null

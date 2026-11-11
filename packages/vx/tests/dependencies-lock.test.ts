@@ -91,6 +91,13 @@ it('reads nothing from a missing file, another version or another shape', () => 
   expect(parseDependenciesLock(new TextEncoder().encode('{'))).toBeNull()
 })
 
+it('refuses a lock a newer vx wrote: re-locking would write the older version over it', () => {
+  const bytes = new TextEncoder().encode(JSON.stringify({ version: 99 }))
+  expect(() => parseDependenciesLock(bytes)).toThrow(
+    '.vx/dependencies.lock.json was written by a newer vx (version 99; this vx reads 3) — upgrade vx',
+  )
+})
+
 // A committed file a merge or a hand edit can break inside: a shape check
 // of the top level alone let `files: { "bun.lock": null }` or `deps: [5]`
 // through, and the first lookup threw a raw TypeError instead of the
