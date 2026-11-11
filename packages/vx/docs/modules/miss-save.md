@@ -117,7 +117,9 @@ the upstream's output rows, which the save writes.
    NOW, after the command.
 2. The empty-set warning (`outputs matched no files`) — a status
    line, once, on this miss; `outputs: []` is a deliberate cached no-op
-   and says nothing. When the task declares `exec.sandbox` and no
+   and says nothing. When only literal outputs matched and every
+   wildcard glob matched nothing, the line names those globs and says a
+   later hit restores only the literal files. When the task declares `exec.sandbox` and no
    `allow.write`, the line names that as the cause: its writes were
    refused (item 444; until 2026-10-02 a single-package workspace's
    mask took them unnoticed, and this line was the only signal). An
