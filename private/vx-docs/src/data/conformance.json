@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 230,
+    "ported": 233,
     "rest": {
       "pending": [
         "affected-clean-filters",
@@ -10,6 +10,7 @@
         "cache-dir-in-outputs",
         "clean-readonly-dir",
         "deferred-output-empty",
+        "lock-edges",
         "may-hold-match",
         "restore-mtime",
         "key-not-derived",
@@ -18,6 +19,7 @@
         "server-died-under-task",
         "server-stops-unneeded",
         "uncached-outputs",
+        "unlistable-input-dir",
         "vx-lockfile/sparse-checkout",
         "watch-dependency-gone",
         "watch-edit-before-keys",
@@ -362,11 +364,14 @@
         "vx-dte/seal",
         "vx-dte/server-fit",
         "vx-dte/sim",
+        "vx-dte/sim-theory",
         "vx-dte/trace",
         "vx-dte/tree",
         "vx-dte/units",
         "vx-dte/warm-ups",
         "vx-dte/wire",
+        "vx-dte/wire-dials",
+        "vx-dte/wire-faults",
         "vx-history-server/bun",
         "vx-history-server/start-line",
         "vx-history-server/worker",
@@ -409,6 +414,7 @@
         "vx-lockfile/yarn-bound-descriptor",
         "vx-lockfile/yarn-classic-link-workspace",
         "vx-lockfile/yarn-classic-root-deps",
+        "vx-lockfile/yarn-classic-workspace-deps",
         "vx-lockfile/yarn-numeric-range",
         "vx-lockfile/yarn-package-extensions",
         "vx-lockfile/yarn-package-settings",
@@ -531,6 +537,7 @@
         "vx-migrate/remote-breaker",
         "vx-migrate/remote-cache-carry",
         "vx-migrate/remote-cache-degrade",
+        "vx-migrate/remote-cache-foreign-403",
         "vx-migrate/remote-retry",
         "vx-migrate/script-command",
         "vx-migrate/script-hooks-skipped",
@@ -843,6 +850,7 @@
         "run-id",
         "run-keys",
         "run-keys-token",
+        "run-keys-workspace-files",
         "run-lock",
         "run-lock-e2e",
         "run-lock-fs",
@@ -910,6 +918,7 @@
         "tmpdir-refusal",
         "tool-not-on-path",
         "tree-states-key",
+        "tree-store-layout",
         "tree-store-torn",
         "ui",
         "ui-only-output.unsafe",
@@ -1052,14 +1061,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 990,
-        "can": 990,
-        "of": 992
+        "pass": 991,
+        "can": 991,
+        "of": 993
       },
       "correctness": {
-        "pass": 814,
-        "can": 814,
-        "of": 816
+        "pass": 815,
+        "can": 815,
+        "of": 817
       },
       "efficiency": {
         "pass": 167,
@@ -1097,9 +1106,9 @@
         "of": 42
       },
       "inputs": {
-        "pass": 304,
-        "can": 304,
-        "of": 304
+        "pass": 305,
+        "can": 305,
+        "of": 305
       },
       "env": {
         "pass": 31,
@@ -1130,13 +1139,13 @@
     "turbo": {
       "all": {
         "pass": 630,
-        "can": 908,
-        "of": 992
+        "can": 909,
+        "of": 993
       },
       "correctness": {
         "pass": 509,
-        "can": 738,
-        "of": 816
+        "can": 739,
+        "of": 817
       },
       "efficiency": {
         "pass": 117,
@@ -1175,8 +1184,8 @@
       },
       "inputs": {
         "pass": 187,
-        "can": 294,
-        "of": 304
+        "can": 295,
+        "of": 305
       },
       "env": {
         "pass": 27,
@@ -1206,14 +1215,14 @@
     },
     "nx": {
       "all": {
-        "pass": 645,
-        "can": 933,
-        "of": 992
+        "pass": 646,
+        "can": 934,
+        "of": 993
       },
       "correctness": {
-        "pass": 487,
-        "can": 759,
-        "of": 816
+        "pass": 488,
+        "can": 760,
+        "of": 817
       },
       "efficiency": {
         "pass": 154,
@@ -1251,9 +1260,9 @@
         "of": 42
       },
       "inputs": {
-        "pass": 186,
-        "can": 304,
-        "of": 304
+        "pass": 187,
+        "can": 305,
+        "of": 305
       },
       "env": {
         "pass": 25,
@@ -1283,14 +1292,14 @@
     },
     "vite-task": {
       "all": {
-        "pass": 501,
-        "can": 745,
-        "of": 992
+        "pass": 502,
+        "can": 746,
+        "of": 993
       },
       "correctness": {
-        "pass": 412,
-        "can": 617,
-        "of": 816
+        "pass": 413,
+        "can": 618,
+        "of": 817
       },
       "efficiency": {
         "pass": 87,
@@ -1328,9 +1337,9 @@
         "of": 42
       },
       "inputs": {
-        "pass": 177,
-        "can": 295,
-        "of": 304
+        "pass": 178,
+        "can": 296,
+        "of": 305
       },
       "env": {
         "pass": 29,
@@ -1360,14 +1369,14 @@
     },
     "nix": {
       "all": {
-        "pass": 478,
-        "can": 706,
-        "of": 992
+        "pass": 479,
+        "can": 707,
+        "of": 993
       },
       "correctness": {
-        "pass": 412,
-        "can": 585,
-        "of": 816
+        "pass": 413,
+        "can": 586,
+        "of": 817
       },
       "efficiency": {
         "pass": 64,
@@ -1405,9 +1414,9 @@
         "of": 42
       },
       "inputs": {
-        "pass": 176,
-        "can": 294,
-        "of": 304
+        "pass": 177,
+        "can": 295,
+        "of": 305
       },
       "env": {
         "pass": 22,
@@ -1437,14 +1446,14 @@
     },
     "moon": {
       "all": {
-        "pass": 580,
-        "can": 893,
-        "of": 992
+        "pass": 581,
+        "can": 894,
+        "of": 993
       },
       "correctness": {
-        "pass": 450,
-        "can": 732,
-        "of": 816
+        "pass": 451,
+        "can": 733,
+        "of": 817
       },
       "efficiency": {
         "pass": 125,
@@ -1482,9 +1491,9 @@
         "of": 42
       },
       "inputs": {
-        "pass": 192,
-        "can": 304,
-        "of": 304
+        "pass": 193,
+        "can": 305,
+        "of": 305
       },
       "env": {
         "pass": 26,
@@ -9848,6 +9857,38 @@
           "status": "fail",
           "step": 4,
           "detail": "packages/a/dist/out.txt is \"10\\n\", expected \"8\\n\""
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/same-size-line-ending-swap-under-text-attribute",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "Under `* text=auto eol=lf`, moving a CR to another line, same size, runs the task again",
+      "why": "Under a text rule git compares a file after normalising its line endings. `a\\r\\nb\\n` rewritten as `a\\nb\\r\\n` has the same size and the same normalised blob, so git calls it clean and keeps the old stat in its index. The task reads different bytes. A tool that trusts git’s blob id, or its index stat, replays the first build.",
+      "from": [
+        "stale-hit-git"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 4,
+          "detail": "packages/a/dist/out.txt is \"a\\r\\nb\\n\", expected \"a\\nb\\r\\n\""
         },
         "nx": {
           "status": "pass"

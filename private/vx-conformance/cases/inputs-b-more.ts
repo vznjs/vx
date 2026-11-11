@@ -980,6 +980,32 @@ const cases: Case[] = [
     ['stale-hit-git'],
   ),
 
+  defineCase({
+    id: 'inputs/same-size-line-ending-swap-under-text-attribute',
+    category: 'inputs',
+    kind: 'correctness',
+    title:
+      'Under `* text=auto eol=lf`, moving a CR to another line, same size, runs the task again',
+    why: 'Under a text rule git compares a file after normalising its line endings. `a\\r\\nb\\n` rewritten as `a\\nb\\r\\n` has the same size and the same normalised blob, so git calls it clean and keeps the old stat in its index. The task reads different bytes. A tool that trusts git’s blob id, or its index stat, replays the first build.',
+    from: ['stale-hit-git'],
+    workspace: one(
+      {
+        command: 'mkdir -p dist && cp src/a.txt dist/out.txt',
+        inputs: ['src/**'],
+        outputs: ['dist/**'],
+      },
+      { 'src/a.txt': 'a\r\nb\n' },
+    ),
+    steps: [
+      {
+        sh: 'printf "* text=auto eol=lf\\n" > .gitattributes && git add -A && git commit -qm attrs && git rm -q --cached packages/a/src/a.txt && git add packages/a/src/a.txt && git commit -qm lf',
+      },
+      { run: 'build', expect: { exit: 0, files: { [out('a')]: 'a\r\nb\n' } } },
+      { write: { 'packages/a/src/a.txt': 'a\nb\r\n' } },
+      { run: 'build', expect: { exit: 0, files: { [out('a')]: 'a\nb\r\n' } } },
+    ],
+  }),
+
   crlf(
     'inputs/crlf-to-lf-under-autocrlf',
     'With `core.autocrlf` set, changing an input from CRLF to LF runs the task again',
