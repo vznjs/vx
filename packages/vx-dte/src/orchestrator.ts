@@ -483,7 +483,7 @@ export class Orchestrator {
     const nodes = this.o.nodes()
     const up = upstream(nodes, req.taskId)
     // A worker runs a task in its project's directory of the run's tree: a
-    // project whose config is untracked is not there, and every worker
+    // project with no tracked file is not there, and every worker
     // failed to spawn it, exit 127 (2026-11-07).
     const dir = path.relative(this.o.root, req.cwd)
     if (dir !== '' && !dir.startsWith('..')) {
@@ -491,7 +491,7 @@ export class Orchestrator {
       const tree = await this.inTree
       if (tree !== undefined && !holds(tree, dir))
         throw new UserError(
-          `${req.taskId} runs in ${dir}, which is not in the commit workers check out: commit its project (its vx.config file is untracked)`,
+          `${req.taskId} runs in ${dir}, which is not in the commit workers check out: commit its project (no file under ${dir} is tracked)`,
         )
     }
     // A worker runs the run's tree: a file its key includes that the tree

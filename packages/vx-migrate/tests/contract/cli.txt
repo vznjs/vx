@@ -16,6 +16,7 @@ nx-exec --target
 nx-exec --configuration
 nx-exec --options
 nx-exec --dotenv
+nx-exec --outputs-option
 nx-exec (no arguments): exit 2
 nx-env --help: exit 0
 nx-env argv starts: (a flag)

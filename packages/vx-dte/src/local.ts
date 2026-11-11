@@ -306,20 +306,26 @@ export function reasons(): (what: string, id: string, err: string) => Promise<st
 
 /**
  * The line of a process's stderr that says what went wrong: vx's own `✗`
- * line, else the first naming an error or git's `fatal:`, else the last. The last alone was
- * often a hint (`fix  vx run …`) that hid the error above it.
+ * line with the facts core prints below it (up to three lines; a
+ * `.vx/workspace.ts` that failed to load is named only there), else the
+ * first naming an error or git's `fatal:`, else the last. The last alone
+ * was often a hint (`fix  vx run …`) that hid the error above it.
  */
 export function errorLine(text: string): string {
-  const lines = Bun.stripANSI(text)
+  const all = Bun.stripANSI(text)
     .split('\n')
     .map((l) => l.trim())
-    .filter(Boolean)
-  return (
-    lines.find((l) => l.startsWith('✗')) ??
-    lines.find((l) => /\berror\b|^fatal:/i.test(l)) ??
-    lines.at(-1) ??
-    ''
-  )
+  const x = all.findIndex((l) => l.startsWith('✗'))
+  if (x !== -1) {
+    let i = x + 1
+    while (all[i] === '') i++
+    const facts: string[] = []
+    for (let l = all[i]; facts.length < 3 && l && !/^(fix|next)\s/.test(l); l = all[++i])
+      facts.push(l)
+    return [all[x], ...facts].join(' ')
+  }
+  const lines = all.filter(Boolean)
+  return lines.find((l) => /\berror\b|^fatal:/i.test(l)) ?? lines.at(-1) ?? ''
 }
 
 /** A relay of the run's own on loopback, with no auth: only this machine reaches it. */

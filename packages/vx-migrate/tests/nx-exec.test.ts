@@ -176,6 +176,17 @@ describe('nx-exec', () => {
     expect(rec['target']).toEqual({ executor: 'x:y', options: { registry: 'x' } })
   })
 
+  it('an override of an --outputs-option is exit 2 before the executor runs; others run', async () => {
+    const argv = ['x:y', '--project', 'app', '--target', 'build', '--outputs-option', 'outputPath']
+    const r = await nxExec([...argv, '--outputPath=dist/other'])
+    expect(r.code).toBe(2)
+    expect(r.err).toContain('--outputPath')
+    expect(await Bun.file(path.join(root, 'record.json')).exists()).toBe(false)
+    const ok = await nxExec([...argv, '--otp=1'])
+    expect({ code: ok.code, err: ok.err }).toEqual({ code: 0, err: '' })
+    expect((await record())['overrides']).toEqual({ otp: 1 })
+  })
+
   it('a project the graph does not have is exit 1 with its name', async () => {
     // Not in the cache, so computed (P2-43), and not there either.
     await writeFile(path.join(root, 'fallback-graph.json'), JSON.stringify(GRAPH))
