@@ -240,6 +240,8 @@ filter(s): …`, plus a hint:
   `@vzn/vx-otel`). The hint is the pattern as typed with the name put
   right, operators kept (`--filter apq...` hints `app...`). A task id
   (`--filter app#build`) hints its project: a filter names projects.
+  A name only one project's name opens with hints that project
+  (`--filter '!@m/slow'` hints `!@m/slow-tests`).
 - `A filter is one pattern: --filter a --filter b` for a comma list
   (`--filter a,b`, Nx's `--projects` habit), and `--filter {a} --filter {b}`
   for a braced one (`{a,b}`); a comma inside a glob's braces
@@ -250,6 +252,9 @@ filter(s): …`, plus a hint:
 - When an exclusion took back everything the filters matched, it names
   it: `no projects
 selected: !app excluded every project the other filters matched`.
+- An exclusion (`!<pattern>`) that matches nothing excludes nothing and
+  prints the same line as a warning, hint included; the run goes on, so
+  a CI script may exclude a project some checkouts lack.
 
 | Form               | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -563,6 +568,12 @@ vx run build -- --sourcemap         # build command gets "--sourcemap"
 
 Only `vx run` and `vx watch` forward. Any other core verb refuses a `--`
 (`vx show forwards nothing after --`, `VX_E_USAGE`).
+
+vx takes no short flag, so a `-x` before `--` that no vx flag hint claims
+is refused with the run that forwards it: `vx run test -t adds` says
+`unknown flag: -t (did you mean vx run test -- -t adds?)`. A long flag
+far from every vx flag gets no such guess: a typo of a vx flag
+forwarded would be ignored by the task unseen.
 
 They are appended to the command's last line (trailing blank lines are
 dropped first, so a multi-line command's closing newline does not run

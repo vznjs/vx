@@ -956,6 +956,9 @@ function didYouMeanProject(
     const bare = byBare.has(typed) ? typed : nearest(typed, byBare.keys())
     const scoped = bare === undefined ? undefined : byBare.get(bare)
     if (scoped?.length === 1) return meant(scoped[0]!)
+    // A name cut short (`@m/slow` for `@m/slow-tests`) is past the edit budget.
+    const opened = names.filter((n) => n.startsWith(typed))
+    if (typed !== '' && opened.length === 1) return meant(opened[0]!)
   }
   return names.length === 0 ? '' : `. Projects: ${listed(names)}`
 }
