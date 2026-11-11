@@ -133,10 +133,9 @@ const plugins = [
 ]
 
 // Conformance, the first argument after the hero: every tool's score on
-// one neutral suite, rounded down so only a clean sweep reads 100%. Two
-// numbers: what a tool passes of the cases it supports, and what share of
-// every case it supports (the bar's faint part), so a tool that expresses
-// little never reads as complete.
+// one neutral suite: cases passed of every case, rounded down, so only a
+// clean sweep reads 100%. The bar's faint part is what share of every case
+// a tool supports.
 const conformance = TOOLS.map((t) => {
   const all = RESULTS.scores[t]!.all!
   return { tool: t, name: toolName(t), pct: percent(all), sup: supports(all), width: (all.pass / all.of) * 100, canWidth: (all.can / all.of) * 100 }
