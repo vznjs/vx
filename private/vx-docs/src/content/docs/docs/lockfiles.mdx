@@ -57,8 +57,8 @@ the manager installed, and `--affected` follows both. `pnpm({ scope:
 
 | Plugin   | A package's key includes                                                              | Install-wide, for every package |
 | -------- | ------------------------------------------------------------------------------------- | ------------------------------- |
-| `pnpm()` | every package it reaches, by name, version and resolved peers, with integrity and any patch | every top-level field but `importers`, `packages`, `snapshots`, `patchedDependencies`, `catalogs` and `overrides` (`settings`, `onlyBuiltDependencies`, …) |
-| `bun()`  | the same, through Bun's hoisted layout                                                | every top-level field but `workspaces`, `packages`, `catalog`, `catalogs`, `overrides` and `patchedDependencies` (`trustedDependencies`, …) |
+| `pnpm()` | every package it reaches, by name, version and resolved peers, with integrity and any patch; under `nodeLinker: hoisted`, every peer variant of each | every top-level field but `importers`, `packages`, `snapshots`, `patchedDependencies`, `catalogs` and `overrides` (`settings`, `onlyBuiltDependencies`, …) |
+| `bun()`  | the same, through Bun's hoisted layout; a peer reaches every installed copy of its name | every top-level field but `workspaces`, `packages`, `catalog`, `catalogs`, `overrides` and `patchedDependencies` (`trustedDependencies`, …) |
 | `npm()`  | the same, from `npm-shrinkwrap.json` or `package-lock.json` versions 2 and 3                                | the `lockfileVersion`; root `overrides` reach a package through the entries they force |
 | `yarn()` | the same, from a berry lockfile, each entry with every field but its dependency lists; a yarn 1 lockfile records no workspaces, so every package's key includes the whole file | `__metadata`'s `version` and `cacheKey`, and the root workspace's entry (its `dependenciesMeta`) through the root's closure |
 

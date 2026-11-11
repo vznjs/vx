@@ -180,7 +180,17 @@ const MANAGERS = {
   pnpm: {
     name: 'pnpm',
     files: ['pnpm-lock.yaml'],
-    digest: (t, files) => pnpmLock().importerDigests(pnpmParse(t), files),
+    // The working tree's linker on both sides of an `--affected` diff: a
+    // changed one is a settings change, which selects every project.
+    digest: (t, files, root) =>
+      pnpmLock().importerDigests(
+        pnpmParse(t),
+        files,
+        pnpmSettings().hoistedLinker(
+          readText(path.join(root, 'pnpm-workspace.yaml')),
+          readText(path.join(root, '.npmrc')),
+        ),
+      ),
     importers: (t) => pnpmLock().importerLinks(pnpmParse(t)),
     extraFiles: (t, root) => [
       ...pnpmLock().fileDeps(pnpmParse(t)),

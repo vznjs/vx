@@ -74,3 +74,21 @@ export function packageSettings(text: string, file: string): string | undefined 
   }
   return `pnpm-package\0${stable(rest)}`
 }
+
+/**
+ * Whether pnpm lays node_modules out hoisted: `nodeLinker` in
+ * pnpm-workspace.yaml or `node-linker` in `.npmrc` says `hoisted`. That
+ * install keeps one copy per `name@version` and ignores the lockfile's
+ * peer variants; `isolated` (the default) and `pnp` keep each variant.
+ */
+export function hoistedLinker(
+  workspaceYaml: string | undefined,
+  npmrc: string | undefined,
+): boolean {
+  if (workspaceYaml !== undefined) {
+    try {
+      if (record(Bun.YAML.parse(workspaceYaml))?.['nodeLinker'] === 'hoisted') return true
+    } catch {}
+  }
+  return npmrc !== undefined && /^[ \t]*node-linker[ \t]*=[ \t]*["']?hoisted\b/m.test(npmrc)
+}
