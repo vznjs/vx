@@ -1165,7 +1165,7 @@ cache entry for them, so the next run is a plain local hit.
 A task runs in its own session, so a terminal's Ctrl-C reaches vx alone,
 and each task hears it once: from vx, as SIGINT. Ctrl-Z (SIGTSTP) stops
 each task's process group, then vx; `fg` or `bg` continues vx, and vx
-continues them. A `timeout` does not count the time stopped. A Linux sandboxed task's command is not stopped, only
+continues them. Neither a `timeout` nor a task's duration counts the time stopped. A Linux sandboxed task's command is not stopped, only
 held once its output pipe fills. A stop starts no more remote
 cache uploads and does not wait on one in flight, nor on a remote lookup or
 download: what was half-read is dropped and fetched again next run.

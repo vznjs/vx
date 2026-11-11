@@ -118,6 +118,7 @@ import {
   groupAlive,
   killTree,
   releaseGroup,
+  runTime,
   signalThrough,
   guardLine,
   guardSession,
@@ -2517,8 +2518,8 @@ const STRACE_OWN_ERROR = /^(?:[^\s:]*\/)?strace: /
 async function runSandboxedOnce(
   args: SandboxedRunArgs,
 ): Promise<SandboxedRunResult & { tracerFailed: boolean; mountGone: boolean; ranMs: number }> {
-  // Elapsed time, not wall time: see runCommand.
-  const start = performance.now()
+  // Elapsed time, not wall time, less time vx was stopped: see runCommand.
+  const start = runTime()
   const { SandboxManager } = await loadSrt()
   // Linux: SRT's store sees only writes (below), so read denials need
   // the command traced and the trace parsed for denied syscalls. The trace
@@ -2565,7 +2566,7 @@ async function runSandboxedOnce(
     const signal = stopSignal(args.signal.reason)
     return {
       exitCode: signalExitCode(signal),
-      durationMs: Math.round(performance.now() - start),
+      durationMs: Math.round(runTime() - start),
       stdout: '',
       stderr: '',
       signal,
@@ -2620,7 +2621,7 @@ async function runSandboxedOnce(
     afterCommand(SandboxManager)
     return {
       exitCode: 127,
-      durationMs: Math.round(performance.now() - start),
+      durationMs: Math.round(runTime() - start),
       stdout: '',
       stderr,
       spawnFailed: true,
@@ -2639,7 +2640,7 @@ async function runSandboxedOnce(
   args.onSpawn?.(proc.pid)
   const watch = process.platform === 'linux' ? watchTree(proc.pid) : undefined
   const timeout = armTimeout(proc, args.timeoutMs)
-  const armedAt = performance.now()
+  const armedAt = runTime()
   const ac = new AbortController()
   // The unfinished last line of stderr, and whether a line was strace's.
   let partial = ''
@@ -2668,7 +2669,7 @@ async function runSandboxedOnce(
   // OR a clean exit that backgrounds a process) can't hang the run — timeout
   // aborts at once, otherwise drainOrAbort bounds the post-exit drain.
   await proc.exited
-  const ranMs = Math.round(performance.now() - armedAt)
+  const ranMs = Math.round(runTime() - armedAt)
   const looked = watch?.stop()
   await timeout.settle()
   let cut = false
@@ -2676,9 +2677,13 @@ async function runSandboxedOnce(
   else cut = await drainOrAbort(streams, ac)
   const [stdout, streamed] = await streams
   ends.end()
+  // As runCommand: a leftover of a task the run stopped is vx's doing.
+  // (`?? false`: the check above narrowed `aborted`, which a stop has
+  // turned true across the awaits since.)
+  const blame = cut && !(args.signal?.aborted ?? false)
   const cutLine = ends.own(POST_EXIT_CUT_LINE)
-  if (cut) args.onStderr?.(cutLine)
-  const stderr = cut ? streamed + cutLine : streamed
+  if (blame) args.onStderr?.(cutLine)
+  const stderr = blame ? streamed + cutLine : streamed
   // As runCommand: a leftover holding no pipe is still in the group. Under
   // Linux's pid namespace it died with the command; macOS keeps it.
   const left = cut || groupAlive(proc)
@@ -2844,7 +2849,7 @@ async function runSandboxedOnce(
 
   return {
     exitCode,
-    durationMs: Math.round(performance.now() - start),
+    durationMs: Math.round(runTime() - start),
     stdout,
     stderr,
     violations,

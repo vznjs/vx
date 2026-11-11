@@ -29,6 +29,7 @@ import {
   signalThrough,
   guardLine,
   spawnGuarded,
+  runTime,
   stoppedMs,
   untilGroupsGone,
 } from './kill-tree.js'
@@ -1232,8 +1233,9 @@ async function stopLate(proc: Child, signal: 'SIGINT' | 'SIGTERM'): Promise<void
 
 export async function runCommand(opts: RunOptions): Promise<RunResult> {
   // Elapsed time, not wall time: an NTP step mid-task gave a negative or
-  // hour-long duration (the executor check refuses a negative one).
-  const start = performance.now()
+  // hour-long duration (the executor check refuses a negative one). Nor
+  // time vx was stopped (Ctrl-Z): the task was stopped with it.
+  const start = runTime()
   const fullCommand = withForwardArgs(opts.command, opts.forwardArgs)
 
   let proc: Child
@@ -1287,7 +1289,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
       opts.onStderr?.(stderr)
       return {
         exitCode: 127,
-        durationMs: Math.round(performance.now() - start),
+        durationMs: Math.round(runTime() - start),
         stdout: '',
         stderr,
         spawnFailed: true,
@@ -1328,9 +1330,11 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   else cut = await drainOrAbort(streams, ac)
   const [stdout, streamed] = await streams
   ends.end()
+  // A leftover of a task the run stopped is vx's doing, not the task's.
+  const blame = cut && opts.signal?.aborted !== true
   const cutLine = ends.own(POST_EXIT_CUT_LINE)
-  if (cut) opts.onStderr?.(cutLine)
-  const stderr = cut ? streamed + cutLine : streamed
+  if (blame) opts.onStderr?.(cutLine)
+  const stderr = blame ? streamed + cutLine : streamed
   // A leftover with its stdio sent elsewhere holds no pipe for the drain to
   // cut: its group, still not empty, is what says so. One kill(0) when the
   // group is empty, as it is after any task that waits for what it starts.
@@ -1349,7 +1353,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
     opts.onStderr?.(text)
     return {
       exitCode: 127,
-      durationMs: Math.round(performance.now() - start),
+      durationMs: Math.round(runTime() - start),
       stdout,
       stderr: stderr + text,
       spawnFailed: true,
@@ -1360,7 +1364,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   const exitCode = exited === 0 && timeout.timedOut() ? signalExitCode('SIGTERM') : exited
   return {
     exitCode,
-    durationMs: Math.round(performance.now() - start),
+    durationMs: Math.round(runTime() - start),
     stdout,
     stderr,
     ...(proc.signalCode != null ? { signal: proc.signalCode } : {}),

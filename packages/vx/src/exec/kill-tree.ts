@@ -401,6 +401,11 @@ export function stoppedMs(): number {
   return stoppedTotal + (stoppedSince === undefined ? 0 : performance.now() - stoppedSince)
 }
 
+/** `performance.now()` less the time vx spent stopped: the clock a task's duration reads. */
+export function runTime(): number {
+  return performance.now() - stoppedMs()
+}
+
 /**
  * Stop or continue `child`'s group with vx (Ctrl-Z, `fg`). Straight to
  * the group, never down a sandbox's channel: its watcher passes one
