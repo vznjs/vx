@@ -1314,9 +1314,13 @@ is gated in three steps, and the common case pays nothing:
    binary, where a standard build puts it. Before 2026-09-24 the gate
    missed the default global file, so `* text` there left a CRLF file
    keyed on its LF blob: a CRLF→LF edit was a stale hit.
-3. Otherwise `git check-attr` resolves `text`, `eol`, `ident`, `filter`
-   and `working-tree-encoding` from the index — without reading worktree
-   content — and only the paths actually carrying one lose their OID. A
+3. Otherwise `git check-attr --all` resolves every attribute a rule
+   sets from the index — without reading worktree content — and only the
+   paths carrying `text`, `eol`, `ident`, `filter`,
+   `working-tree-encoding` or the legacy `crlf` lose their OID. Asked by
+   name, git printed all five for every path, `unspecified` included:
+   vueuse's `* text=auto eol=lf` was 473 KB to decode and split each run
+   (~5 ms of the main thread), 160 KB under `--all`. A
    `filter` driver was missing from the list until item 978: a clean
    driver that drops comment lines (`sed '/^#/d'`, nbstripout's shape)
    stores one blob for two worktree files, so an edit git calls clean

@@ -78,7 +78,6 @@ export {
   startGitEnumeration,
   applyGitEnumeration,
   gitPathspecs,
-  parseCheckAttrOutput,
   autocrlfConverts,
   gitStatWeakened,
   attributeFilesOutsideTree,

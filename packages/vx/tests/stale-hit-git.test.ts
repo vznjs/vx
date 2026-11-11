@@ -8,12 +8,12 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { affectedProjects } from '../src/workspace/index.js'
+import { CHECK_ATTR, parseCheckAttrOutput } from '../src/util/index.js'
 import {
   GitFilesCache,
   attributeFilesOutsideTree,
   autocrlfConverts,
   gitStatWeakened,
-  parseCheckAttrOutput,
   populateGitFilesCache,
   runGitLsFiles,
 } from '../src/cache/inputs.js'
@@ -1440,6 +1440,49 @@ describe('parseCheckAttrOutput', () => {
       ),
     ]).toEqual([])
     expect([...parseCheckAttrOutput('')]).toEqual([])
+  })
+
+  it("reads git's own CHECK_ATTR answer: only what converts, the legacy crlf too", async () => {
+    const ws = await mkdtemp(path.join(os.tmpdir(), 'vx-attr-'))
+    try {
+      git(ws, 'init', '-q')
+      await write(
+        path.join(ws, '.gitattributes'),
+        [
+          '*.png binary',
+          'gen.ts linguist-generated',
+          'a.ts text eol=lf',
+          'legacy.txt crlf',
+          'input.txt crlf=input',
+          'off.txt -crlf',
+          'plain.c -text',
+          '',
+        ].join('\n'),
+      )
+      const files = [
+        'x.png',
+        'gen.ts',
+        'a.ts',
+        'legacy.txt',
+        'input.txt',
+        'off.txt',
+        'plain.c',
+        'none.md',
+      ]
+      const out = Bun.spawnSync({
+        cmd: ['git', ...CHECK_ATTR],
+        cwd: ws,
+        stdin: new TextEncoder().encode(files.map((f) => `${f}\0`).join('')),
+      })
+      expect(out.exitCode).toBe(0)
+      expect([...parseCheckAttrOutput(out.stdout.toString())].sort()).toEqual([
+        'a.ts',
+        'input.txt',
+        'legacy.txt',
+      ])
+    } finally {
+      await rm(ws, { recursive: true, force: true })
+    }
   })
 })
 
