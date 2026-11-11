@@ -683,7 +683,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   }
 
   private recordChanged(partitionDir: string, relPaths: readonly string[]): void {
-    this.stats.clear()
+    this.forgetFacts()
     // A partition with no snapshot has nothing for a mark to invalidate
     // (`snapshotFor` answers undefined either way), so this guard bounds
     // memory for a project the enumeration left without a partition; it
@@ -787,6 +787,43 @@ export class GitFilesCache extends Map<string, readonly string[]> {
 
   private readonly stats = new Map<string, Stats | undefined>()
 
+  /**
+   * A file's key identity (`hashFile`'s answer), once until a partition
+   * moves, as `statOf`: the stat facts the files token already trusts go
+   * with it, so a run reuses it exactly where it reuses them. Tasks share
+   * inputs: with no index OID to trust (a `.gitattributes` setting `text`
+   * drops them all), each of vueuse's 1,300 files was stat'ed and looked
+   * up once per task that reads it, 7,000 times a run (2026-11-11).
+   */
+  identityOf(abs: string): string | undefined {
+    return this.identities.get(abs)
+  }
+
+  /** Which facts `learnIdentities` may keep: a write since moves it. */
+  get factsEpoch(): number {
+    return this.epoch
+  }
+
+  /**
+   * Keep identities hashed while the facts stood at `epoch`. Hashed before
+   * a write and kept after it, one would outlive the bytes it names.
+   */
+  learnIdentities(ids: ReadonlyMap<string, string>, epoch: number): void {
+    if (epoch !== this.epoch) return
+    for (const [abs, id] of ids) this.identities.set(abs, id)
+  }
+
+  private readonly identities = new Map<string, string>()
+  private epoch = 0
+
+  /** Every file fact the run holds, when a write may have moved one. */
+  private forgetFacts(): void {
+    this.stats?.clear()
+    this.identities?.clear()
+    // Undefined only under `super()`: there is no fact yet to outlive.
+    if (this.epoch !== undefined) this.epoch++
+  }
+
   noteFilesDigest(
     projectDir: string,
     snapshot: readonly string[],
@@ -861,7 +898,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   }
 
   override set(key: string, value: readonly string[]): this {
-    this.stats?.clear()
+    this.forgetFacts()
     this.changed.delete(key)
     this.oids.delete(key)
     this.digests.delete(key)
@@ -869,7 +906,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   }
 
   override delete(key: string): boolean {
-    this.stats?.clear()
+    this.forgetFacts()
     this.changed.delete(key)
     this.oids.delete(key)
     this.digests.delete(key)
@@ -877,7 +914,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   }
 
   override clear(): void {
-    this.stats?.clear()
+    this.forgetFacts()
     this.changed.clear()
     this.oids.clear()
     this.digests.clear()

@@ -23,3 +23,21 @@ it('reads each changed path once per input glob, across the tasks that ask', () 
   cache.set('/p', ['a.txt'])
   expect(cache.snapshotFor('/p', [counted])).toEqual(['a.txt'])
 })
+
+it('keeps a file identity until a write, and none hashed before one', () => {
+  const cache = new GitFilesCache()
+  cache.set('/p', ['a.txt'])
+  const at = cache.factsEpoch
+  cache.learnIdentities(new Map([['/p/a.txt', '100644:aa']]), at)
+  expect(cache.identityOf('/p/a.txt')).toBe('100644:aa')
+  cache.markOutputsChanged('/p', ['out/x'])
+  expect(cache.identityOf('/p/a.txt')).toBeUndefined()
+  // Hashed while the facts stood at `at`, learned after the write: the
+  // bytes it names may be gone.
+  cache.learnIdentities(new Map([['/p/a.txt', '100644:aa']]), at)
+  expect(cache.identityOf('/p/a.txt')).toBeUndefined()
+  cache.learnIdentities(new Map([['/p/a.txt', '100644:bb']]), cache.factsEpoch)
+  expect(cache.identityOf('/p/a.txt')).toBe('100644:bb')
+  cache.clear()
+  expect(cache.identityOf('/p/a.txt')).toBeUndefined()
+})

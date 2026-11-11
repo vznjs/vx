@@ -239,6 +239,15 @@ export function hashFileSeen(
   seen: (ctimeMs: number) => void,
 ): Promise<string>
 
+// Each of `files` by `layer.hashFile`'s answer, with one memo query for
+// them all when the layer is core's own (`hashFiles`); any other layer is
+// asked per file. A file that cannot be hashed is absent: the key's fold
+// asks `hashFile` for it, and the error is that call's.
+export function hashFilesOf(
+  layer: CacheLayer,
+  files: readonly string[],
+): Promise<Map<string, string>>
+
 // What a symlinked directory input keys (linked-inputs.ts): every regular
 // file and link under `dir`, relative and sorted, `.git`, `node_modules`,
 // `.vx/cache` and `.yarn/cache` skipped. `vx watch` judges a change behind

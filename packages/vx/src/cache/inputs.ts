@@ -577,7 +577,9 @@ async function resolveWorkspaceFilesOver(
       if (dirLinkInput(abs, oids)) candidates.push(abs)
     }
   }
-  return candidates.filter((abs) => oids?.has(abs) === true || isInputOnDisk(abs)).sort()
+  return candidates
+    .filter((abs) => oids?.has(abs) === true || inputOnDisk(abs, args.gitFilesCache))
+    .sort()
 }
 
 /**
@@ -661,6 +663,22 @@ function isInputOnDisk(abs: string): boolean {
   } catch {
     return false
   }
+}
+
+/**
+ * `isInputOnDisk` from the run's stat of the path (`statOf`): each
+ * declaration naming a file the index vouches no OID for stat'ed it again,
+ * seven times a run for each of vueuse's core sources (2026-11-11).
+ */
+function inputOnDisk(abs: string, run: GitFilesCache | undefined): boolean {
+  if (run === undefined) return isInputOnDisk(abs)
+  let st
+  try {
+    st = run.statOf(abs)
+  } catch {
+    return false
+  }
+  return st !== undefined && (st.isFile() || st.isSymbolicLink())
 }
 
 /** vx's values of `ESSENTIAL_ENV`: the one environment every probe gets. */
@@ -2737,7 +2755,9 @@ async function resolveFiles(
   // per-file syscalls. Paths without an OID keep the probe:
   // `git ls-files -s` can surface staged entries whose working-tree
   // file is gone; the hasher would otherwise throw ENOENT.
-  const resolved = candidates.filter((abs) => oids?.has(abs) === true || isInputOnDisk(abs))
+  const resolved = candidates.filter(
+    (abs) => oids?.has(abs) === true || inputOnDisk(abs, args.gitFilesCache),
+  )
   // Git's slice comes sorted and a common prefix keeps it so: one pass
   // proves it instead of a sort per task.
   for (let i = 1; i < resolved.length; i++) {
