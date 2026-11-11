@@ -494,6 +494,40 @@ export function failsAlike(
   return false
 }
 
+/**
+ * What a run of ready tasks asks all told: the least and most of each
+ * need, the longest chain (`rank`) and the shortest time, one platform
+ * (`mixed` if not) and whether any has a bigger size to wait for or servers.
+ */
+export interface Span {
+  minCores: number
+  maxCores: number
+  minMemory: number
+  maxMemory: number
+  maxRank: number
+  minMs: number
+  platform: string | undefined
+  mixed: boolean
+  special: boolean
+}
+
+/** Whether one of `kept` proves every task of `s` fails (`failsAlike` of each). */
+export function allFailAlike(kept: readonly Kept[], s: Span): boolean {
+  if (s.mixed || s.special) return false
+  for (const k of kept)
+    if (
+      s.platform === k.platform &&
+      s.minCores >= k.cores &&
+      s.minMemory >= k.memory &&
+      s.maxRank <= k.rank &&
+      s.minMs > k.longest &&
+      s.maxCores < k.under.cores &&
+      s.maxMemory <= k.under.memory
+    )
+      return true
+  return false
+}
+
 export interface Ask {
   readonly id: string
   readonly need: Need

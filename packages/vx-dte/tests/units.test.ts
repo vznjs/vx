@@ -1392,6 +1392,41 @@ it('says cpu utilization from the machine, not from its tasks alone', async () =
   )
 })
 
+// 2026-11-11: "Allocated cpu but not used counts as used": the run held
+// each worker's cores from its ask to its leave, idle or not.
+it('counts the CPU each worker held, idle and cancelled ones too', async () => {
+  const h = await harness(new Map([node('t1')]))
+  h.o.asked(2, 1, 1, 70_000, [])
+  const t0 = performance.now()
+  h.o.spawned('small#1', { size: 'small', cpu: 2, memory: 4e9 })
+  h.o.spawned('big#1', { size: 'big', cpu: 8, memory: 4e9 })
+  const t1 = performance.now()
+  await h.worker(2, 'small#1')
+  await Bun.sleep(40)
+  const t2 = performance.now()
+  h.o.release(['big#1'])
+  const t3 = performance.now()
+  await Bun.sleep(40)
+  const t4 = performance.now()
+  await h.stop()
+  const t5 = performance.now()
+  const held = h.o.heldMs()
+  expect(held).toBeGreaterThanOrEqual(2 * (t4 - t1) + 8 * (t2 - t1))
+  expect(held).toBeLessThanOrEqual(2 * (t5 - t0) + 8 * (t3 - t0))
+  const rows = h.o
+    .footer(
+      () => 98_240,
+      undefined,
+      undefined,
+      () => 125_000,
+    )
+    .map(([, line]) => ui.inline(line, { enabled: false }))
+  expect(rows.find((r) => r.startsWith('ideal'))).toMatch(
+    /^ideal +98\.2s: each task as long as it took, placed perfectly, holding 2\.1 core-min at least$/,
+  )
+  expect(rows.find((r) => r.startsWith('total'))).toMatch(/ · held \d+\.\d core-s$/)
+})
+
 it('says no worker started once a run that needed none is over', async () => {
   const h = await harness(new Map([node('t1')]))
   expect(h.o.footer()).toEqual([])

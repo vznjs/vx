@@ -493,7 +493,13 @@ use your own instead.
   next frame: that load counted the task. Every
   task sent begins at once; none waits in a worker's queue. A task asking
   a whole worker, or bigger than any, runs alone on an idle one (one that
-  filled its worker last time). The first such task waiting holds
+  filled its worker last time). A task with history goes only on a size
+  with room for its cores and memory when some size has it, so a 4-core
+  task never runs at half speed on a 2-core worker while 8-core sizes
+  go unasked. Workers its work needs within a warm-up of each other
+  start as fewer, bigger ones with the cores of them all: four 2-core
+  tasks ready at once start one 8-core worker, so fewer machines pay a
+  warm-up. The first such task waiting holds
   the worker that empties soonest: no task after it is sent there, so it
   is not passed over again and again. Any ready task with history that
   fits no worker now keeps its room where it first frees: a task of lower
@@ -814,7 +820,9 @@ cache, or not answered for) and how many of them it found in none. The `asked` l
 time the run asked for workers: how many, when, for how many tasks that
 missed, how many of them with a measured need (an unmeasured one counts
 as `unmeasured`), and when its plan ended then. The `ideal` line is the run's ideal end
-(below), so every log reads it beside core's `time` row. The `drift`
+(below), so every log reads it beside core's `time` row, and the least
+CPU a run ending then holds: each task's cores for as long as it held its
+worker, and one warm-up of the smallest size. The `drift`
 line says how far past it the run ended and what caused it, along the
 chain of tasks that ended the run: tasks waiting for a worker to join
 past its platform's fastest warm-up, waiting for room on a joined one,
@@ -830,7 +838,10 @@ rest went, the worker says in its own log as it leaves: `cpu over 61.2s:
 machine 2.80 cores · tasks 2.00 cores · this worker 0.15 cores · its other
 children 0.05 cores · most besides: Runner.Worker 0.30 cores`, the last
 from one `ps` as it starts and one as it leaves. The `total` line is the same cpu utilization of every
-machine together, and the share of their history the run's tasks used:
+machine together, the share of their history the run's tasks used, and
+the CPU the workers held: each one's cores from when the run asked for it
+until it left, was cancelled or the run ended, idle or not, so it reads
+against the `ideal` line's least:
 
 ```
             linux.small#1  stopped  5 done · warm-up 0.2s
@@ -842,12 +853,12 @@ machine together, and the share of their history the run's tasks used:
                      sent 6 messages · 3.1 MB, received 15 messages · 8.4 MB
             probe    at 0.4s: 5 tasks left to run, 5 known misses
             asked    1 at 0.5s for 5 tasks (5 measured), plan 12.0s
-            ideal    10.8s: each task as long as it took, placed perfectly
+            ideal    10.8s: each task as long as it took, placed perfectly, holding 34.5 core-s at least
             drift    +1.3s past ideal: workers joining 0.8s · waiting for room 0.3s · sending inputs 0.1s
             best     2 × linux.small (4c/14G): 11.4s, the fewest of its sizes
             more     3 × linux.small (4c/14G): 10.8s, past its sizes' max
             any      1 × (8c/28G): 10.9s, of any cores, the least core time
-            total    cpu utilization machine 74% · tasks 60% · worker 2%
+            total    cpu utilization machine 74% · tasks 60% · worker 2% · held 52.1 core-s
 ```
 
 `vx run --profile[=<path>]` adds the run in time to the profile it
@@ -884,8 +895,8 @@ is how many of each size; `more`, shown only when more than a size's
 `max` would end the run sooner past that margin, is how many it would
 take; `any` is one shape for each platform, of 2 to 64 cores (memory a
 core as the platform's sizes have most), the one ending as soon for the
-least core time. A task goes only on a size with room for its peak
-memory, when one is declared. Raise a size's `max`, or change its `cpu` and
+least CPU held, each worker from its ask to its last task's end. A task goes only on a size with room for its cores
+and peak memory, when one is declared. Raise a size's `max`, or change its `cpu` and
 `memory`, by them. They are in the footer and the run summary, and
 `@vzn/vx-ci` prints them under "Workers to declare".
 

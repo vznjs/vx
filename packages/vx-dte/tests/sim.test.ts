@@ -273,6 +273,32 @@ for (const c of cases) {
   })
 }
 
+// Sizes declared smallest first: a 4-core task ran on 2-core workers at
+// half speed and the run started no bigger one, 59% late on a lab of 2-
+// to 16-core sizes (2026-11-11).
+describe('sizes declared smallest first', () => {
+  const sizes: Size[] = [2, 4, 8, 16].map((cpu) => ({
+    name: `c${cpu}`,
+    max: 8,
+    cpu,
+    memory: cpu * 4e9,
+  }))
+  const graph: SimTask[] = Array.from({ length: 24 }, (_, i) => ({
+    id: `t${i}`,
+    deps: i < 4 ? [] : [`t${i - 4}`],
+    exec: true,
+    cache: true,
+    ran: { ms: 30_000, cores: 4, memory: 1e9 },
+  }))
+  const r = simulate(graph, { sizes, likely: new Set(graph.map((t) => t.id)) })
+  it('runs no task on a worker with fewer cores than it asks', () => {
+    expect(r.workers.filter((w) => w.tasks > 0 && w.cores < 4).map((w) => w.id)).toEqual([])
+  })
+  it('ends in its chain and a warm-up', () => {
+    expect(r.endMs).toBeLessThanOrEqual(6 * 30_000 + 20_000 + 5_000)
+  })
+})
+
 // Tasks core placed on a platform (`exec.platforms`) go only to workers of
 // it, and the run starts a worker of each platform its work needs, though
 // that size is declared after another the work fills.

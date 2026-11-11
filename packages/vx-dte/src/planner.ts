@@ -10,6 +10,7 @@ import type { TaskNode } from '@vzn/vx'
 import {
   assign,
   dead,
+  allFailAlike,
   failsAlike,
   fits,
   kindOf,
@@ -21,6 +22,7 @@ import {
   type Kept,
   type Need,
   type Soon,
+  type Span,
 } from './dispatch.js'
 import { DEFAULT_STRATEGY, type Strategy } from './strategy.js'
 
@@ -463,6 +465,8 @@ function play(
   given: () => Map<string, readonly string[]>
   /** The dormant workers it started (`deadline`), in order. */
   wakes: readonly Wake[]
+  /** Core-ms its workers were held, each from its ask to its last task's end (`Ideal`). */
+  held: () => number
 } {
   // A dependency running now ends when it does; one ended or a hit, now.
   const runningIds = new Set<string>()
@@ -519,9 +523,13 @@ function play(
   const kept: Kept[] = []
   // Proved to fail, as `assign` would skip it: yielded to it, each ask was
   // most of a plan of 3,800 tasks (2026-11-11).
-  const proved = (place: number): boolean =>
-    unstarted !== undefined &&
-    failsAlike(kept, tasks[place]!, tailAt(place), tasks[place]!.ms ?? UNKNOWN_MS)
+  const proved: Proof = {
+    one: (place) =>
+      unstarted !== undefined &&
+      failsAlike(kept, tasks[place]!, tailAt(place), tasks[place]!.ms ?? UNKNOWN_MS),
+    all: (span) => unstarted !== undefined && allFailAlike(kept, span),
+    rank: tailAt,
+  }
   const bounds: Bounds = { done: false, open: true, free: 0, cores: 0, memory: 0 }
   // Ready tasks by what they need: no ready task needs less than the
   // least of these, and a pass ends once no slot takes that.
@@ -583,6 +591,13 @@ function play(
     }
   }
   const wakes: Wake[] = []
+  const held = (): number => {
+    let ms = 0
+    for (const x of slots)
+      if (x.free !== undefined && x.at < Infinity)
+        ms += x.cores * Math.max(0, x.free - Math.max(0, x.at - x.warm))
+    return ms
+  }
   /** Ready places whose chain runs through a task of no history, in rank order. */
   let blindQ: number[] = []
   let blindHead = 0
@@ -855,9 +870,18 @@ function play(
       continue
     }
     if (wakesOnly && dormant.length === 0)
-      return { end: Infinity, cut: true, first: first(), ends: byPlatform(), free, given, wakes }
+      return {
+        end: Infinity,
+        cut: true,
+        first: first(),
+        ends: byPlatform(),
+        free,
+        given,
+        wakes,
+        held,
+      }
     if (left === 0 && readyCount === 0)
-      return { end: last, first: first(), ends: byPlatform(), free, given, wakes }
+      return { end: last, first: first(), ends: byPlatform(), free, given, wakes, held }
     // The next moment anything changes: a task ends or a worker joins.
     let next = ends.next()
     for (const s of slots) if (s.at > now) next = Math.min(next, s.at)
@@ -891,7 +915,7 @@ function play(
       for (const e of ends.all())
         for (const d of (e.place >= 0 ? afterAt(e.place) : after.get(e.id!)) ?? [])
           end = Math.max(end, e.at + tailAt(d))
-      return { end, cut: true, first: first(), ends: byPlatform(), free, given, wakes }
+      return { end, cut: true, first: first(), ends: byPlatform(), free, given, wakes, held }
     }
     if (next === Infinity)
       return {
@@ -901,6 +925,7 @@ function play(
         free,
         given,
         wakes,
+        held,
       }
     now = next
     while (ends.next() <= now) {
@@ -1252,6 +1277,92 @@ function fresh(
 }
 
 /**
+ * `need`, kept to the sizes with room for all of it when some sizes have
+ * none: alone on an empty worker any task fits, so a 4-core task ran on
+ * 2 cores at half speed while 8-core sizes went unasked, 59% late on
+ * graphs of 2- to 16-core sizes (2026-11-11), and a 25 GB one was
+ * advised a 16 GB worker. Bigger is more cores when every size with
+ * the cores has the memory, else more memory.
+ */
+export function sized(need: Need, sizes: readonly Size[]): Need {
+  if (need.above !== undefined || need.ask !== undefined || !Number.isFinite(need.cores))
+    return need
+  const of = sizes.filter((s) => need.platform === undefined || s.platform === need.platform)
+  const roomy = (s: Size): boolean => s.cpu >= need.cores - 1e-9 && s.memory >= need.memory
+  const fit = of.filter(roomy).length
+  if (fit === 0 || fit === of.length) return need
+  const byCores = of.every((s) => s.cpu < need.cores - 1e-9 || s.memory >= need.memory)
+  const byMemory = of.every((s) => s.memory < need.memory || s.cpu >= need.cores - 1e-9)
+  return {
+    ...need,
+    above:
+      byMemory && !byCores
+        ? { cores: Infinity, memory: need.memory - 1 }
+        : { cores: need.cores - 1e-6, memory: Infinity },
+  }
+}
+
+/**
+ * When each of `asleep` starts: the `wakes` within a warm-up of the first
+ * of them, of one platform, as fewer, bigger workers with all their cores
+ * and no less than the biggest of them, each from the first's time, when
+ * that takes fewer; the rest as they woke.
+ */
+function together(wakes: readonly Wake[], asleep: readonly PlanWorker[]): Map<string, number> {
+  const byId = new Map(asleep.map((a) => [a.id, a]))
+  const sorted = [...wakes].sort((x, y) => x.readyAt - y.readyAt)
+  const unwoken = new Set(asleep.map((a) => a.id))
+  for (const w of sorted) unwoken.delete(w.id)
+  const out = new Map<string, number>()
+  for (let i = 0; i < sorted.length;) {
+    const from = sorted[i]!.readyAt
+    const until = from + byId.get(sorted[i]!.id)!.at
+    const group = new Map<string | undefined, PlanWorker[]>()
+    const woke = new Map<string, number>()
+    for (; i < sorted.length && sorted[i]!.readyAt <= until + 1e-6; i++) {
+      const a = byId.get(sorted[i]!.id)!
+      woke.set(a.id, sorted[i]!.readyAt)
+      group.set(a.platform, [...(group.get(a.platform) ?? []), a])
+    }
+    for (const [platform, of] of group) {
+      let cores = 0
+      let most = 0
+      let memory = 0
+      for (const a of of) {
+        cores += a.cores
+        most = Math.max(most, a.cores)
+        memory = Math.max(memory, a.memory)
+      }
+      const pool = [
+        ...of,
+        ...[...unwoken].map((id) => byId.get(id)!).filter((a) => a.platform === platform),
+      ].sort((x, y) => x.cores - y.cores || x.memory - y.memory)
+      const taken = new Set<PlanWorker>()
+      while (cores > 1e-9) {
+        const left = pool.filter((x) => !taken.has(x))
+        const pick =
+          left.find((x) => x.cores >= Math.max(cores, most) - 1e-9 && x.memory >= memory) ??
+          left[left.length - 1]
+        if (pick === undefined) break
+        taken.add(pick)
+        cores -= pick.cores
+      }
+      // No fewer: each as it woke, none sooner than its task needs it.
+      if (taken.size >= of.length) {
+        for (const a of of) out.set(a.id, woke.get(a.id)!)
+        continue
+      }
+      for (const a of taken) {
+        out.set(a.id, from)
+        unwoken.delete(a.id)
+      }
+      for (const a of of) if (!taken.has(a)) unwoken.add(a.id)
+    }
+  }
+  return out
+}
+
+/**
  * The workers to start and to let go. Of the new ones (`candidates`, in
  * the order the run would start them, each joining after its size's
  * `warmUpMs`), those a task needs to end by the best (all of them
@@ -1324,6 +1435,7 @@ export function plan(
   // random, layered, wide and chain graphs (2026-11-10).
   const asleep =
     none <= best || best === Infinity ? [] : added.map((a) => ({ ...a, dormant: true }))
+  const smallFirst = [...asleep].sort((x, y) => x.cores - y.cores || x.memory - y.memory)
   // Played twice: once to learn which it starts, at their tasks' latest
   // start; again with each joining as soon as its task is ready, no
   // sooner than its warm-up, as the run starts it: one a task needs
@@ -1337,8 +1449,13 @@ export function plan(
     // worker as it gets ready, not a window before its latest start.
     // Read for its wakes: played on past the last, each plan of 3,800
     // tasks played the rest of the run (2026-11-11).
-    const lazy = memo([...ws, ...asleep], best, Infinity, true)
-    const at = new Map(lazy.wakes.map((w) => [w.id, w.readyAt]))
+    // Learned smallest first, then those within a warm-up of each other
+    // asked as fewer, bigger ones: on graphs of 2- to 16-core sizes, 1.6%
+    // late to 1.2% and 3% less CPU held (lab, 2026-11-11: "scale the
+    // workers to as big as possible at the same time to save on startup
+    // times").
+    const lazy = memo([...ws, ...smallFirst], best, Infinity, true)
+    const at = together(lazy.wakes, asleep)
     const early = memo(
       [
         ...ws,
@@ -1471,7 +1588,7 @@ export function plan(
  * filled its worker last time (`above`), one of the smallest size of its platform bigger
  * than it while the run has none of that size; for each platform tasks
  * run on, its sizes in declared order, up to one per task of it; then
- * sizes in declared order up to each one's max.
+ * sizes biggest first, each up to its max and `limit`.
  */
 export function candidates(
   sizes: readonly Size[],
@@ -1510,7 +1627,14 @@ export function candidates(
       added = true
     }
   }
-  for (const s of sizes) while (out.length < limit && (count.get(s.name) ?? 0) < s.max) add(s)
+  // The biggest first, `limit` of each: declared smallest first, a plan
+  // of 2- to 16-core sizes took 2-core ones only, 59% late; `limit` in all,
+  // the biggest only, and a short burst held a 16-core worker for the
+  // chain after it, 10% more CPU held than with each size (lab, 2026-11-11:
+  // "scale the workers to as big as possible at the same time to save on
+  // startup times").
+  for (const s of [...sizes].sort((x, y) => y.cpu - x.cpu || y.memory - x.memory))
+    for (let n = 0; n < limit && (count.get(s.name) ?? 0) < s.max; n++) add(s)
   return out
 }
 
@@ -2065,6 +2189,17 @@ const classOf = (t: PlanTask): number =>
     ? ODD
     : Math.floor(Math.log2(Math.max(t.cores, 1e-6)) * CLASSES)
 
+/** Ready tasks `assign` would skip (`Kept`): one, or a `Span` of them all. */
+interface Proof {
+  one(place: number): boolean
+  all(span: Span): boolean
+  rank(place: number): number
+}
+
+/** Ready tasks a `Span` sums (`Ready.leap`). */
+const BLOCK_BITS = 4
+const BLOCK = 1 << BLOCK_BITS
+
 /**
  * Ready tasks in the order `ordered` gave, by kind (`kindOf`): `assign`
  * reads them in that order, a kind it found spent skipped in one jump,
@@ -2099,6 +2234,9 @@ class Ready {
   private lo = 0
   /** Order it again before the next step. */
   stale = false
+  /** Joins so far: a queue's `spans` hold until the next. */
+  private joins = 0
+  private readonly spans = new WeakMap<readonly number[], { at: number; spans: Span[] }>()
   /** Taken ones still in `order`: past its live ones, it is read again without them. */
   private dead = 0
   /** Each kind's tasks not taken: a kind with none leaves `kinds`. */
@@ -2205,6 +2343,7 @@ class Ready {
   }
 
   private join(batch: readonly number[]): void {
+    this.joins++
     // Taken ones outnumber the rest: read without them once.
     if (this.dead > this.order.length / 2) {
       this.order = this.merge(this.order, [])
@@ -2306,7 +2445,7 @@ class Ready {
     bounds?: Bounds,
     kinds?: number,
     // Read past, as `assign` would skip it (`Kept`).
-    skip?: (place: number) => boolean,
+    skip?: Proof,
   ): Generator<Ask> {
     // Measured needs are unrounded, so kinds can be as many as tasks: a
     // jump across every kind then cost more than a read of every task.
@@ -2352,7 +2491,7 @@ class Ready {
       if (next === -1) return
       at[nextAt]!++
       cursor = next
-      if (skip?.(next) === true) continue
+      if (skip?.one(next) === true) continue
       const t = this.tasks[next]!
       yield { id: t.id, need: t, kind: ks[nextAt]! }
     }
@@ -2370,7 +2509,7 @@ class Ready {
     spent: Set<string>,
     bounds?: Bounds,
     kinds?: number,
-    skip?: (place: number) => boolean,
+    skip?: Proof,
   ): Generator<Ask> {
     const cs: number[] = []
     const qs: (readonly number[])[] = []
@@ -2434,10 +2573,10 @@ class Ready {
       // stand while `spent` does. Read again across every class, a plan of
       // varied needs spent most of its time here (2026-11-11).
       let again = false
-      while (skip?.(next) === true) {
+      while (skip?.one(next) === true) {
         // As a step reads its class: past the dead, then past the spent.
         const q = qs[nextAt]!
-        let r = cand[nextAt]! + 1
+        let r = this.leap(q, cand[nextAt]! + 1, skip)
         for (; r < q.length; r++) {
           const i = q[r]!
           if (this.taken[i] === 1) continue
@@ -2467,6 +2606,54 @@ class Ready {
       const t = this.tasks[next]!
       yield { id: t.id, need: t, kind: this.kindAt(next) }
     }
+  }
+
+  /**
+   * Past each block of `q` from `r` that `proof` proves fails whole: one
+   * by one, the ready tasks read past were most of a plan of varied needs
+   * (2026-11-11). A dead one passed so stays unspent, and its kind's next
+   * is dead alike, so spent then.
+   */
+  private leap(q: readonly number[], r: number, proof: Proof): number {
+    if ((r & (BLOCK - 1)) !== 0) return r
+    const spans = this.spansOf(q, proof)
+    while (r < q.length && proof.all(spans[r >> BLOCK_BITS]!)) r += BLOCK
+    return Math.min(r, q.length)
+  }
+
+  /** Each block's `Span` of `q`, made again once a join changed the queues. */
+  private spansOf(q: readonly number[], proof: Proof): Span[] {
+    const had = this.spans.get(q)
+    if (had !== undefined && had.at === this.joins) return had.spans
+    const spans: Span[] = []
+    for (let b = 0; b < q.length; b += BLOCK) {
+      const t0 = this.tasks[q[b]!]!
+      const span: Span = {
+        minCores: Infinity,
+        maxCores: -Infinity,
+        minMemory: Infinity,
+        maxMemory: -Infinity,
+        maxRank: -Infinity,
+        minMs: Infinity,
+        platform: t0.platform,
+        mixed: false,
+        special: false,
+      }
+      for (let p = b; p < Math.min(q.length, b + BLOCK); p++) {
+        const t = this.tasks[q[p]!]!
+        span.minCores = Math.min(span.minCores, t.cores)
+        span.maxCores = Math.max(span.maxCores, t.cores)
+        span.minMemory = Math.min(span.minMemory, t.memory)
+        span.maxMemory = Math.max(span.maxMemory, t.memory)
+        span.maxRank = Math.max(span.maxRank, proof.rank(q[p]!))
+        span.minMs = Math.min(span.minMs, t.ms ?? UNKNOWN_MS)
+        if (t.platform !== span.platform) span.mixed = true
+        if (t.above !== undefined || (t.servers?.length ?? 0) > 0) span.special = true
+      }
+      spans.push(span)
+    }
+    this.spans.set(q, { at: this.joins, spans })
+    return spans
   }
 
   private classHeadOf(c: number, q: readonly number[]): number {
@@ -2558,14 +2745,7 @@ export function advise(
   if (ran.length === 0) return {}
   // A task goes only where its peak memory fits: alone on an empty worker
   // any task fits, and a 25 GB one was advised a 16 GB worker (2026-11-11).
-  const tasks = ran.map((t) =>
-    t.above === undefined &&
-    sizes.some(
-      (s) => (t.platform === undefined || s.platform === t.platform) && s.memory < t.memory,
-    )
-      ? { ...t, above: { cores: Infinity, memory: t.memory - 1 } }
-      : t,
-  )
+  const tasks = ran.map((t) => ({ ...t, ...sized(t, sizes) }))
   // First a worker each of them fits, as the live plan starts one.
   const bigger = tasks.flatMap((t) =>
     t.above === undefined ? [] : [{ ...t.above, platform: t.platform }],
@@ -2606,7 +2786,9 @@ export function advise(
     return Math.min(n, 2 * Math.ceil(w / cores / Math.max(1, chain)) + 1)
   }
   /** The fewest of `of`, each up to its `max`, ending within the margin of all of them: halving. */
-  const halved = (of: readonly Size[]): { fleets: Fleets; kept: PlanWorker[] } | undefined => {
+  const halved = (
+    of: readonly Size[],
+  ): { fleets: Fleets; kept: PlanWorker[]; held: number } | undefined => {
     const at = byName(of)
     const all = candidates(of, new Map(), bigger, Infinity, wants).map((s, i) =>
       fresh({ ...s, size: s.name }, `\0advice${i}`, at(s.name)),
@@ -2628,7 +2810,7 @@ export function advise(
       play(tasks, all.slice(0, lo), how),
       (ws) => play(tasks, ws, how),
     )
-    return { fleets: { fleet: fleetOf(kept, of), endMs: before.end }, kept }
+    return { fleets: { fleet: fleetOf(kept, of), endMs: before.end }, kept, held: before.held() }
   }
   const declared = sizes.length === 0 ? undefined : halved(sizes)?.fleets
   const lifted = sizes.map((s) => ({ ...s, max: Math.max(s.max, capOf(s.cpu, s.platform)) }))
@@ -2659,9 +2841,10 @@ export function advise(
     }))
     const got = halved(shapes)
     if (got === undefined) continue
-    let coreMs = 0
-    for (const k of got.kept) coreMs += k.cores * Math.max(0, got.fleets.endMs - k.at)
-    tried.push({ fleets: got.fleets, coreMs, workers: got.kept.length })
+    // Each held from its ask to its last task's end, warm-up and idle
+    // cores counted: charged to the run's end, one small task's worker
+    // cost as much as the busiest (2026-11-11).
+    tried.push({ fleets: got.fleets, coreMs: got.held, workers: got.kept.length })
   }
   let any: Fleets | undefined
   if (tried.length > 0) {

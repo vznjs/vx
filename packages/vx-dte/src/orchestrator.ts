@@ -379,6 +379,8 @@ export class Orchestrator {
   private readonly refused: string[] = []
   /** Started, then not needed before they joined (`release`), or given up as late. */
   private readonly cancelled = new Set<string>()
+  /** When each cancelled one was: held from its ask until then (`heldMs`). */
+  private readonly cancelledAt = new Map<string, number>()
   /** Of `cancelled`, those given up past their join limit, not let go: taken if they join. */
   private readonly late = new Set<string>()
   /** Of `cancelled`, those that joined anyway and were told to exit. */
@@ -2001,6 +2003,7 @@ export class Orchestrator {
         if (this.ended || this.cancelled.has(id) || this.unstarted.has(id)) return
         if ([...this.workers.values(), ...this.gone].some((a) => a.label === id)) return
         this.cancelled.add(id)
+        this.cancelledAt.set(id, performance.now())
         this.late.add(id)
         this.o.overdue?.(id)
         this.failed(id, `did not join within ${Math.round(ms / 1000)} s`, true)
@@ -2161,6 +2164,7 @@ export class Orchestrator {
         !this.unstoppable.has(id)
       ) {
         this.cancelled.add(id)
+        this.cancelledAt.set(id, performance.now())
         cancelled.push(id)
         this.trace.unstarted(id, this.spawnedAt.get(id)!.at, 'cancelled: not needed')
       }
@@ -2296,6 +2300,48 @@ export class Orchestrator {
     const end = simulate(r.tasks, pool)
     if (!Number.isFinite(end)) return undefined
     return r.from + end
+  }
+
+  /**
+   * The least CPU its ideal could hold (2026-11-11: "Allocated cpu but
+   * not used counts as used"): each task's cores for as long as it held
+   * its worker, and one warm-up of the smallest worker.
+   */
+  leastHeldMs(
+    depsOf: (id: string) => readonly string[],
+    sizes: readonly Size[],
+  ): number | undefined {
+    const r = this.replay(depsOf)
+    if (r === undefined) return undefined
+    let ms = 0
+    for (const t of r.tasks) ms += t.cores * (t.ms ?? 0)
+    const all = [...this.workers.values(), ...this.gone]
+    const smallest = Math.min(
+      ...(sizes.length > 0
+        ? sizes.filter((s) => s.max > 0).map((s) => s.cpu)
+        : all.map((a) => a.cores)),
+    )
+    return ms + (Number.isFinite(smallest) ? smallest * r.warm(undefined) : 0)
+  }
+
+  /**
+   * The CPU the run's workers held: each its cores from when the run asked
+   * for it (or it joined, one that joined on its own) until it left, was
+   * cancelled or the run ended, idle or not.
+   */
+  heldMs(): number {
+    const until = this.ended ? this.endedAt : performance.now()
+    let ms = 0
+    const joined = new Set<string>()
+    for (const a of [...this.workers.values(), ...this.gone]) {
+      joined.add(a.label)
+      const from = this.spawnedAt.get(a.label)?.at ?? a.usage.from
+      ms += a.cores * Math.max(0, (a.usage.to ?? until) - from)
+    }
+    for (const [id, { at, declared }] of this.spawnedAt)
+      if (!joined.has(id) && !this.unstarted.has(id))
+        ms += declared.cpu * Math.max(0, (this.cancelledAt.get(id) ?? until) - at)
+    return ms
   }
 
   /**
@@ -2502,6 +2548,7 @@ export class Orchestrator {
     ideal?: () => number | undefined,
     advice?: () => readonly WorkerAdvice[],
     drift?: () => Drift | undefined,
+    least?: () => number | undefined,
   ): [string, ui.Inline][] {
     // Over with none, it says so: core's own `N workers` (this machine's
     // pool) read as the run's when no task needed one (2026-10-25), and
@@ -2650,7 +2697,7 @@ export class Orchestrator {
                     [
                       '',
                       ui.dim(
-                        `${'ideal'.padEnd(width)}  ${seconds(ms)}: each task as long as it took, placed perfectly`,
+                        `${'ideal'.padEnd(width)}  ${seconds(ms)}: each task as long as it took, placed perfectly${((h) => (h === undefined ? '' : `, holding ${coreTime(h)} at least`))(least?.())}`,
                       ),
                     ] as [string, ui.Inline],
                     ...driftRow(this.endedAt - this.startedAt - ms, drift?.(), width),
@@ -2682,7 +2729,7 @@ export class Orchestrator {
         ? [
             [
               '',
-              `${'total'.padEnd(width)}  ${utilization(cpuMs / coreMs, tasksMs / coreMs, workerMs === undefined ? undefined : workerMs / coreMs)}${this.needMs < LEARN_MS ? '' : ` · tasks used ${percent(this.usedMs / this.needMs)} of their history`}`,
+              `${'total'.padEnd(width)}  ${utilization(cpuMs / coreMs, tasksMs / coreMs, workerMs === undefined ? undefined : workerMs / coreMs)}${this.needMs < LEARN_MS ? '' : ` · tasks used ${percent(this.usedMs / this.needMs)} of their history`} · held ${coreTime(this.heldMs())}`,
             ] as [string, ui.Inline],
           ]
         : []),
@@ -2691,6 +2738,13 @@ export class Orchestrator {
 
   /** Why the relay was given up on; then every task runs here. */
   lost: string | undefined
+}
+
+/** Core-time as read: `42.0 core-s`, `12.5 core-min`, `3.2 core-h`. */
+function coreTime(ms: number): string {
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)} core-s`
+  if (ms < 3_600_000) return `${(ms / 60_000).toFixed(1)} core-min`
+  return `${(ms / 3_600_000).toFixed(1)} core-h`
 }
 
 /**

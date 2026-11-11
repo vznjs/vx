@@ -13,6 +13,7 @@ import {
   decide,
   keepLast,
   simulate as play,
+  sized,
   slowdown,
   tailsMs,
   type Forecast,
@@ -167,7 +168,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       how.book,
     )
     const platform = byId.get(id)!.platform ?? options.home
-    return platform === undefined ? b : { ...b, platform }
+    return sized(platform === undefined ? b : { ...b, platform }, options.sizes)
   }
   const durationMs = (id: string): number | undefined => known(id)?.ms
   let tails = tailsMs(nodes, durationMs)
