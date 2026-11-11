@@ -684,22 +684,23 @@ clone pinned to a full SHA (solid, vueuse, create-t3-turbo;
 ### Real repos on native config
 
 Each repo on its overlay's native config, 10 workers each, best of five
-interleaved runs; vx `221cd2ff4` (main plus the fixes below), pnpm per repo, Node 22.23, linux x64, 4 cores, 2026-11-11.
+interleaved runs; vx at main with #5206, pnpm per repo, Node 22.23, linux x64, 4 cores, 2026-11-11.
 `real-repos.json` holds the rows and the site's
 [real repos](https://vznjs.github.io/vx/compare/real-repos/) page renders
-them; the nightly prints every rep and the load beside it.
+them; the nightly waits up to two minutes for a 1-minute load under 1
+before each workspace, prints every rep and records the load in the row.
 
 | Repo                                      | Case        | vx      | Turbo   |
 | ----------------------------------------- | ----------- | ------- | ------- |
-| solid `b25c557`, 4 tasks, 2.10.10         | Cold build  | 29.89 s | 35.88 s |
-| solid                                     | Restore     | 0.073 s | 0.081 s |
-| solid                                     | Nothing new | 0.062 s | 0.069 s |
-| vueuse `efdd69a`, 12 tasks, 2.10.12       | Cold build  | 16.58 s | 18.10 s |
-| vueuse                                    | Restore     | 0.135 s | 0.117 s |
-| vueuse                                    | Nothing new | 0.101 s | 0.096 s |
-| create-t3-turbo `8f945b7`, 3 tasks, 2.5.8 | Cold build  | 5.14 s  | 6.50 s  |
-| create-t3-turbo                           | Restore     | 0.074 s | 0.430 s |
-| create-t3-turbo                           | Nothing new | 0.073 s | 0.402 s |
+| solid `b25c557`, 4 tasks, 2.10.10         | Cold build  | 30.45 s | 36.01 s |
+| solid                                     | Restore     | 0.075 s | 0.075 s |
+| solid                                     | Nothing new | 0.064 s | 0.066 s |
+| vueuse `efdd69a`, 12 tasks, 2.10.12       | Cold build  | 16.70 s | 18.57 s |
+| vueuse                                    | Restore     | 0.140 s | 0.106 s |
+| vueuse                                    | Nothing new | 0.097 s | 0.098 s |
+| create-t3-turbo `8f945b7`, 3 tasks, 2.5.8 | Cold build  | 5.37 s  | 6.47 s  |
+| create-t3-turbo                           | Restore     | 0.078 s | 0.408 s |
+| create-t3-turbo                           | Nothing new | 0.071 s | 0.407 s |
 
 The harness's restore follows a cold run and its "nothing new" that
 restore, and vx paid two stalls there that the run after did not. A
@@ -766,10 +767,7 @@ stages 2.5, classify 16, of it `stable keys` 13 (each key's files token
 stats the 1,300 files the twelve keys read: no index OID holds under
 `text=auto`), run graph 4, history and close 4.
 
-This run's box was slower than the one before for both tools (Turbo's
-vueuse restore 91 → 117 ms); the ratios held.
-
-Restore still loses by ~18 ms: the up-front derivation the cold run
+Restore lost by ~18 ms in the run before this one: the up-front derivation the cold run
 left no memo for (`stable keys`, ~15 ms) and the extraction's wall in
 `run graph`. Remembering the keys at the end of the cold run, after its
 last write, is safe (the memo's token is checked when it is read) but
@@ -790,9 +788,21 @@ linked into the project (`out -> gen` for `out/**`) wrote `gen/x`, but
 only `out/x` was marked, so a reader of `gen/**` kept the old index OID.
 The write is now marked where it landed too. Turbo without its daemon extracts
 every hit on every run, the no-op too, on parallel goroutines: its
-restore and no-op make the same syscalls. Load average before each
-repo: vueuse 0.6, t3 2.6, solid 14 (other work on the box), Turbo's
-rows too.
+restore and no-op make the same syscalls.
+
+Vueuse's restore still loses, 140 against 106 ms. About 7 ms is
+`stable keys` statting 1,124 files: under `text=auto` the index's stat
+cannot stand in for them, since git calls a same-size line-ending swap
+clean and keeps the old stat (stale-hit-git.test.ts). Turbo keys on the
+index there and replays stale output: the conformance case
+`inputs/same-size-line-ending-swap-under-text-attribute`. The rest is
+the restore's own work, 25 ms on 4 cores: trees alone 10 ms, the five
+inline artifacts alone 9 ms, all twelve 26 ms. Copying is 1.9 ms of it;
+`fs.promises.cp` (14.5 ms) and a Worker (1.5–2.4 ms to start) lost.
+
+Load average before each workspace: vueuse 0.3, solid 1.0 and t3 0.2,
+the last two rerun once the box settled (solid began at 14 after
+vueuse's cold builds and lost its restore tie by one rival rep).
 
 ### TanStack/query (2026-10-09)
 

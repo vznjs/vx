@@ -7,12 +7,13 @@
       "version": "2.10.10",
       "commit": "b25c557754f2ced0d86490e6dbfded9b1745b663",
       "machine": "linux x64, 4 cores",
+      "load": "0.98 3.39 4.59",
       "setup": "native config, `private/vx-bench/real/solid/`",
       "date": "2026-11-11",
       "heading": "Real repos on native config",
-      "cold": ["29.9 s", "35.9 s"],
-      "restore": ["73 ms", "81 ms"],
-      "noop": ["62 ms", "69 ms"]
+      "cold": ["30.5 s", "36.0 s"],
+      "restore": ["75 ms", "75 ms"],
+      "noop": ["64 ms", "66 ms"]
     },
     {
       "repo": "withastro/astro",
@@ -89,12 +90,13 @@
       "version": "2.10.12",
       "commit": "efdd69a1481205051e85d9c815eaa5840237f2d1",
       "machine": "linux x64, 4 cores",
+      "load": "0.32 3.75 4.25",
       "setup": "native config, `private/vx-bench/real/vueuse/`",
       "date": "2026-11-11",
       "heading": "Real repos on native config",
-      "cold": ["16.6 s", "18.1 s"],
-      "restore": ["135 ms", "**117 ms**"],
-      "noop": ["101 ms", "**96 ms**"]
+      "cold": ["16.7 s", "18.6 s"],
+      "restore": ["140 ms", "**106 ms**"],
+      "noop": ["97 ms", "98 ms"]
     },
     {
       "repo": "t3-oss/create-t3-turbo",
@@ -102,12 +104,13 @@
       "version": "2.5.8",
       "commit": "8f945b7bb3bfb3ca8358d48b1ff0214079bc11ee",
       "machine": "linux x64, 4 cores",
+      "load": "0.22 1.37 3.01",
       "setup": "native config, `private/vx-bench/real/create-t3-turbo/`",
       "date": "2026-11-11",
       "heading": "Real repos on native config",
-      "cold": ["5.14 s", "6.50 s"],
-      "restore": ["74 ms", "430 ms"],
-      "noop": ["73 ms", "402 ms"]
+      "cold": ["5.37 s", "6.47 s"],
+      "restore": ["78 ms", "408 ms"],
+      "noop": ["71 ms", "407 ms"]
     },
     {
       "repo": "TanStack/query",
