@@ -106,6 +106,7 @@ import type { FingerprintWatch } from './fingerprint-watch.js'
 import { currentHit, restoreHit } from './hit-restore.js'
 import type { MissExplainer } from '../history/index.js'
 import { shellVerdict } from './shell-verdict.js'
+import { lockedDirGone } from './projects.js'
 import { sandboxFix } from './sandbox-fix.js'
 // The hit path's entry stays importable from here (tests).
 export { restoreHit, type RestoreHitArgs } from './hit-restore.js'
@@ -1314,6 +1315,15 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         throw thrown
       })
     endExec()
+    // A locked directory moved away after `vx lock`: the spawn's "working
+    // directory does not exist" named no way out (X-144). Asked only here.
+    if (res.spawnFailed === true && !existsSync(node.projectDir)) {
+      await sweepPlaceholders(placeholders)
+      throw new UserError(
+        lockedDirGone(args.workspaceRoot, node.projectName, node.projectDir),
+        'VX_E_LOCK',
+      )
+    }
     if (unbegun) {
       await sweepPlaceholders(placeholders)
       if (attempt === 1) return { result: res, exitCode: res.exitCode, unbegun: true }

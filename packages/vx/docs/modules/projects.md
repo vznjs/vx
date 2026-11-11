@@ -84,6 +84,9 @@ export function keepDiscoveryWorkspace(
 export function pluginsOfDiscovery(
   projects: readonly ProjectMeta[],
 ): Awaited<ReturnType<typeof loadWorkspacePlugins>> | undefined
+// The refusal a task gets when it cannot spawn because its locked
+// project's directory is gone: run `vx lock`.
+export function lockedDirGone(root: string, name: string, dir: string): string
 // Why a project a `discover` plugin added has no config while its directory
 // holds one git ignores (`config`, looked for when not given), naming the
 // plugin, or undefined: `vx lock` refuses it, and a run says it instead of

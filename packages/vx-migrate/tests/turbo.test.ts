@@ -814,6 +814,78 @@ describe("the package's package.json with explicit inputs", () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'a negation that matches it does not take it back, as Turbo keys it whatever the negations',
+    async () => {
+      // Turbo 2.11's dry run lists package.json under each of these. Mapped
+      // as written, `!**/*.json` kept it out of the key (a stale hit on a
+      // `type` edit), and beside a literal `package.json` core refused the
+      // list.
+      const cases: [string[], string[]][] = [
+        [
+          ['src/**', '!**/*.json'],
+          ['src/**', 'package.json'],
+        ],
+        [
+          ['src/**', '!package.json'],
+          ['src/**', 'package.json'],
+        ],
+        [
+          ['src/**', '!*.json'],
+          ['src/**', 'package.json'],
+        ],
+        [
+          ['src/**', 'package.json', '!**/*.json'],
+          ['src/**', 'package.json'],
+        ],
+        [
+          ['src/**', '!**/*.md'],
+          ['src/**', '!**/*.md', 'package.json'],
+        ],
+        [['!**'], ['**/*']],
+        [['!**/*.json'], ['**/*']],
+        [['!**/*.md'], ['**/*', '!**/*.md']],
+      ]
+      for (const [given, mapped] of cases) {
+        await writeFile(
+          path.join(root, 'turbo.json'),
+          JSON.stringify({ tasks: { build: { inputs: given, outputs: ['dist/**'] } } }),
+        )
+        const plan = await planRun({ cwd: root, tasks: ['lib#build'], log: silent() })
+        const files = plan.tasks.find((t) => t.node.id === 'lib#build')!.node.config.inputs!.files
+        expect({ given, files }).toEqual({ given, files: mapped })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'an edit to it re-runs a task whose inputs exclude every json file',
+    async () => {
+      const lib = path.join(root, 'packages', 'lib')
+      const BUILD = `mkdir -p dist && grep -o '"type":"[a-z]*"' package.json > dist/t`
+      const manifest = (type: string) =>
+        JSON.stringify({ name: 'lib', version: '1.0.0', type, scripts: { build: BUILD } })
+      await writeFile(path.join(lib, 'package.json'), manifest('commonjs'))
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({
+          tasks: { build: { inputs: ['src/**', '!**/*.json'], outputs: ['dist/**'] } },
+        }),
+      )
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      const opts = { cwd: root, tasks: ['lib#build'], log: silent(), handleSignals: false }
+      const status = (r: Awaited<ReturnType<typeof run>>) =>
+        r.outcomes.find((o) => o.node.id === 'lib#build')!.status
+      expect(status(await run(opts))).toBe('success')
+      expect(status(await run(opts))).toBe('cache-hit')
+      await writeFile(path.join(lib, 'package.json'), manifest('module'))
+      expect(status(await run(opts))).toBe('success')
+      expect(await Bun.file(path.join(lib, 'dist', 't')).text()).toBe('"type":"module"\n')
+    },
+    TIMEOUT,
+  )
 })
 
 describe('output negation', () => {

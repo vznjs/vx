@@ -2202,6 +2202,9 @@ of its entries, which `vx lock` validated when it wrote them (frozen-env
 semantics: env reads in a config keep their lock-time values; a
 locked directory whose config file is gone (X-144) or that this user
 may not search (EACCES, named as such), or a missing lock, is a hard error;
+a config-less one (a `project` plugin's, such as `turbo()`'s) whose
+directory is gone fails its task with the same `vx lock` hint, asked only
+once its spawn failed, so a run stats no project directory;
 one a sparse checkout left out is refused only when the run selects it or
 depends on it, naming the `git sparse-checkout add` that brings it back
 (`vx lock` and `vx lock --check` there refuse too, naming the same
