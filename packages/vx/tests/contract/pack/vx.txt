@@ -215,6 +215,7 @@ src/util/real-path.ts
 src/util/secret-mask.ts
 src/util/secrets.ts
 src/util/settle.ts
+src/util/signal-relay.ts
 src/util/size.ts
 src/util/tail.ts
 src/util/task-id.ts
