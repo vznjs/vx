@@ -8,6 +8,8 @@ the [vx-cache protocol](./PROTOCOL.md) (`/v1`). Three ways to run it
 answer alike:
 
 - **Bun**, with any S3-compatible bucket; any number of nodes share one.
+  The bucket is required: there is no local-disk mode (on one machine,
+  run an S3-compatible store such as MinIO beside it).
 - **Docker**, the same server as an image (`Dockerfile`).
 - **Cloudflare Workers**, with R2.
 
@@ -64,7 +66,7 @@ S3_ACCESS_KEY_ID=… S3_SECRET_ACCESS_KEY=… \
 bun packages/vx-cache-server/src/bun.ts --port 8080
 ```
 
-S3 settings are those Bun's S3 client reads (`S3_REGION` too). A node keeps no state of its own, so
+`S3_BUCKET` is required: without it the server does not start. S3 settings are those Bun's S3 client reads (`S3_REGION` too). A node keeps no state of its own, so
 any number of them serve one bucket behind a balancer.
 
 ## With Docker
