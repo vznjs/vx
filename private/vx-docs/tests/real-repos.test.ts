@@ -22,9 +22,16 @@ const row = (over: Partial<RealRow>): RealRow => ({
 describe('real-repo figures', () => {
   it('says how much faster or slower vx is: a percentage below 2×, N× from it', () => {
     expect(verdict('36.0 s', '40.0 s')).toBe('vx 11% faster')
-    expect(verdict('121 ms', '**73 ms**')).toBe('vx 66% slower')
+    expect(verdict('121 ms', '**73 ms**')).toBe('vx 65% slower')
     expect(verdict('113 ms', '423 ms')).toBe('vx 3.7× faster')
     expect(verdict('278 ms', '**106 ms**')).toBe('vx 2.6× slower')
+  })
+
+  it('rounds down, never up', () => {
+    expect(verdict('100 ms', '199 ms')).toBe('vx 99% faster')
+    expect(verdict('100 ms', '157 ms')).toBe('vx 57% faster')
+    expect(verdict('100 ms', '299 ms')).toBe('vx 2.9× faster')
+    expect(verdict('100 ms', '200 ms')).toBe('vx 2.0× faster')
   })
 
   it('calls two figures within 2% of each other a tie, either way', () => {

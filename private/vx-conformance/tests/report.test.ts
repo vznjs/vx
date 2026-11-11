@@ -36,3 +36,17 @@ test('a score counts every case, and how many the tool can express', () => {
     '| all | 50% (1/2), supports 100% | 50% (1/2), supports 50% |',
   )
 })
+
+test('a score rounds down: only a clean sweep reads 100%', () => {
+  const all = { pass: 996, can: 999, of: 1000 }
+  expect(scoreTable({ tools: { a: '1' }, scores: { a: { all } } })).toContain(
+    '| all | 99% (996/1000), supports 99% |',
+  )
+})
+
+test('an exact share keeps its point', () => {
+  const all = { pass: 29, can: 100, of: 100 }
+  expect(scoreTable({ tools: { a: '1' }, scores: { a: { all } } })).toContain(
+    '| all | 29% (29/100), supports 100% |',
+  )
+})
