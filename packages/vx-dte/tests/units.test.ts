@@ -239,6 +239,81 @@ it('a worker with other tracked files than the run is refused', async () => {
         body: { type: 'refused', reason: 'checked out tree bbb, the run is on aaa' },
       },
     ])
+    // Two hashes alone left a run whose prepare rewrote bun.lock with no
+    // lead (2026-11-11): the worker names the tracked files it changed.
+    const changed = await join(
+      url,
+      R,
+      'worker',
+      { v: 1, cores: 1, memory: 1, tree: 'bbb', changed: ['bun.lock', 'a', 'b', 'c'] },
+      undefined,
+    )
+    got = []
+    for (let i = 0; i < 20 && got.length === 0; i++) got = await changed.poll()
+    expect(got).toEqual([
+      {
+        from: 'orchestrator',
+        body: {
+          type: 'refused',
+          reason:
+            'checked out tree bbb, the run is on aaa: it changed tracked bun.lock, a, b and more after checkout, as a prepare step (an install) can',
+        },
+      },
+    ])
+    await o.close()
+  } finally {
+    await served.stop()
+  }
+})
+
+// A package added without `git add` is not in a worktree, so its
+// prepare's install rewrote bun.lock and every worker was refused by two
+// hashes; only the new project's own task said `git add` (2026-11-11).
+it('a refusal names a project of the run its tree lacks first, as the likely cause', async () => {
+  const root = await checkout()
+  await mkdir(path.join(root, 'packages/new'), { recursive: true })
+  await writeFile(path.join(root, 'packages/new/package.json'), '{}')
+  const tree = Bun.spawnSync(['git', 'rev-parse', 'HEAD^{tree}'], { cwd: root })
+    .stdout.toString()
+    .trim()
+  const served = servedRelay()
+  try {
+    const o = new Orchestrator({
+      me: await join(served.url, R, 'orchestrator', null, undefined),
+      root,
+      tree,
+      nodes: () =>
+        new Map([
+          [
+            'new#build',
+            { id: 'new#build', deps: [], projectDir: path.join(root, 'packages/new'), config: {} },
+          ],
+          ['root#build', { id: 'root#build', deps: [], projectDir: root, config: {} }],
+        ] as unknown as [string, TaskNode][]),
+      need: () => ({ cores: 1, memory: 0 }),
+      artifacts: fakeArtifacts().artifacts,
+      cacheFacts: async () => ({ refs: [], lent: {} }),
+      run: R,
+      keyOf: () => undefined,
+    })
+    const worker = await join(
+      served.url,
+      R,
+      'worker',
+      { v: 1, cores: 1, memory: 1, tree: 'bbb', changed: ['bun.lock'] },
+      undefined,
+    )
+    let got: unknown[] = []
+    for (let i = 0; i < 20 && got.length === 0; i++) got = await worker.poll()
+    expect(got).toEqual([
+      {
+        from: 'orchestrator',
+        body: {
+          type: 'refused',
+          reason: `checked out tree bbb, the run is on ${tree}: packages/new is untracked, so no worker has it: git add its project (and commit it for workers on CI); it changed tracked bun.lock after checkout, as a prepare step (an install) can`,
+        },
+      },
+    ])
     await o.close()
   } finally {
     await served.stop()

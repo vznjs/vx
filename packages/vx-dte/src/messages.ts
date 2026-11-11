@@ -4,6 +4,9 @@
 
 import type { CacheFacts, ExecuteResult, SandboxConfig } from '@vzn/vx'
 
+/** How many tracked files a worker's `changed` names: one past it says there are more. */
+export const CHANGED_NAMED = 3
+
 /** A worker's `join` info. */
 export interface WorkerInfo {
   readonly v: 1
@@ -16,6 +19,8 @@ export interface WorkerInfo {
   readonly platform?: string
   /** Its checkout's tree: a worker with other tracked files than the run is refused. */
   readonly tree: string
+  /** Tracked files it changed after checkout (`changedFiles`), a few: a refusal for another tree names them. */
+  readonly changed?: readonly string[]
   /** When its `vx` started, wall-clock ms: the run's trace splits its warm-up there. */
   readonly booted?: number
 }

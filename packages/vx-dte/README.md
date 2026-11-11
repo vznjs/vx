@@ -633,7 +633,10 @@ use your own instead.
 - A worker whose tracked files differ from the orchestrator's (another
   tree, or the same commit with a tracked file changed, such as by a
   prepare step) is refused, and the orchestrator says so as it happens:
-  `[vx] dte: refused worker <id>: <reason>`. Both sides read their tracked files as they
+  `[vx] dte: refused worker <id>: <reason>`. The reason names a project
+  of the run git does not track first (`git add` it: a worktree lacks it,
+  so its install rewrites the lockfile), then up to three tracked files
+  the worker changed after checkout. Both sides read their tracked files as they
   are on disk, a file flagged `assume-unchanged` or `skip-worktree` too
   (one a sparse checkout left off disk is its index's), so the same change
   on both is the same tree.

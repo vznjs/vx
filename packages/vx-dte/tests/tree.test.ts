@@ -4,7 +4,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises
 import os from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
-import { snapshot, unfilter, untrackedWorkspace } from '../src/tree.ts'
+import { changedFiles, snapshot, unfilter, untrackedWorkspace } from '../src/tree.ts'
 
 // Mid-merge, `git stash create` refuses the unmerged index, and the run
 // took HEAD for its tree: workers ran HEAD's files under keys of the
@@ -72,6 +72,41 @@ it('takes HEAD when nothing changed, and no commit as none', async () => {
     git('commit', '-qm', 'a')
     const head = git('rev-parse', 'HEAD').stdout.toString().trim()
     expect((await snapshot(repo)).commit).toBe(head)
+  } finally {
+    await rm(repo, { recursive: true, force: true })
+  }
+})
+
+// A worker refused for another tree said only two hashes, where its
+// prepare's install had rewritten bun.lock (2026-11-11): it names the
+// tracked files it changed since its checkout, a few at most.
+it('names the tracked files changed since the checkout, a few at most', async () => {
+  const repo = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-tree-'))
+  try {
+    const git = (...a: string[]) =>
+      Bun.spawnSync(
+        [
+          'git',
+          '-c',
+          'user.email=t@vx.local',
+          '-c',
+          'user.name=t',
+          '-c',
+          'commit.gpgsign=false',
+          ...a,
+        ],
+        { cwd: repo, stdout: 'pipe', stderr: 'ignore' },
+      )
+    git('init', '-q')
+    for (const f of ['a', 'b', 'c', 'd', 'e', 'bun.lock'])
+      await writeFile(path.join(repo, f), '1\n')
+    git('add', '.')
+    git('commit', '-qm', 'a')
+    expect(await changedFiles(repo, await snapshot(repo))).toEqual([])
+    await writeFile(path.join(repo, 'bun.lock'), '2\n')
+    expect(await changedFiles(repo, await snapshot(repo))).toEqual(['bun.lock'])
+    for (const f of ['a', 'b', 'c', 'd', 'e']) await writeFile(path.join(repo, f), '2\n')
+    expect(await changedFiles(repo, await snapshot(repo))).toEqual(['a', 'b', 'bun.lock', 'c'])
   } finally {
     await rm(repo, { recursive: true, force: true })
   }
