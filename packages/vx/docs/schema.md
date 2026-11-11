@@ -91,7 +91,7 @@ absent, which is what a conditional spread
 held to this: its plugins are objects of functions.
 
 `vx lock` evaluates a project config with the workspace root as
-`process.cwd()`, from whichever directory it runs, so the lock does not
+`process.cwd()` and `PWD`, from whichever directory it runs, so the lock does not
 depend on where you ran it; `import.meta.dir` is the config's own
 directory. What it prints goes to stderr, a child it spawns
 included: a verb's stdout is its output.
